@@ -53,7 +53,6 @@ struct spot_client_state_t
         active_deadline_us (0),
         fatal (false),
         active_received (0),
-        probe (NULL),
         callback_queue (NULL)
     {
     }
@@ -64,7 +63,6 @@ struct spot_client_state_t
     std::atomic<bool> fatal;
     std::atomic<unsigned long long> active_received;
     latency_stats_builder_t latency;
-    queue_probe_t *probe;
     single_callback_metric_queue_t *callback_queue;
     std::mutex mutex;
     std::condition_variable cv;
@@ -267,7 +265,6 @@ bool run_active_window (void *pub_,
       perf_single_metric::now_us ()
         + static_cast<uint64_t> (std::max (1, duration_s_) * 1000000ULL),
       std::memory_order_release);
-    client_state_.probe = NULL;
     client_state_.latency = latency_stats_builder_t ();
 
     const auto deadline =

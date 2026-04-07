@@ -87,8 +87,7 @@ struct spot_client_state_t
         seen_msg_size(0),
         seen_phase(static_cast<int>(perf_multi_metric::phase_unknown)),
         recv_workers_stop(false),
-        metrics_epoch(1),
-        queue_probe(NULL)
+        metrics_epoch(1)
     {
     }
 
@@ -121,7 +120,6 @@ struct spot_client_state_t
     std::atomic<int> seen_phase;
     std::atomic<bool> recv_workers_stop;
     std::atomic<uint64_t> metrics_epoch;
-    std::atomic<multi_client_queue_probe_t *> queue_probe;
 };
 
 spot_client_state_t *g_client_state = NULL;
@@ -154,6 +152,7 @@ struct spot_thread_metrics_t
 
     spot_client_state_t *owner;
     bool registered;
+    std::mutex mutex;
     uint64_t epoch;
     unsigned long long active_received;
     unsigned long long sample_index;
@@ -184,6 +183,7 @@ void reset_spot_thread_metrics(spot_thread_metrics_t *metrics, uint64_t epoch)
     if (!metrics)
         return;
 
+    std::lock_guard<std::mutex> lock(metrics->mutex);
     metrics->epoch = epoch;
     metrics->active_received = 0;
     metrics->sample_index = 0;
@@ -209,8 +209,15 @@ spot_thread_metrics_t *bind_spot_thread_metrics(spot_client_state_t *state)
     }
 
     const uint64_t epoch = state->metrics_epoch.load(std::memory_order_acquire);
-    if (metrics.epoch != epoch)
-        reset_spot_thread_metrics(&metrics, epoch);
+    {
+        std::lock_guard<std::mutex> lock(metrics.mutex);
+        if (metrics.epoch != epoch) {
+            metrics.epoch = epoch;
+            metrics.active_received = 0;
+            metrics.sample_index = 0;
+            metrics.latency.reset();
+        }
+    }
     return &metrics;
 }
 
@@ -232,7 +239,10 @@ void collect_spot_thread_metrics(spot_client_state_t *state,
         std::lock_guard<std::mutex> lock(state->metrics_mutex);
         for (size_t i = 0; i < state->thread_metrics.size(); ++i) {
             spot_thread_metrics_t *metrics = state->thread_metrics[i];
-            if (!metrics || metrics->owner != state || metrics->epoch != epoch)
+            if (!metrics)
+                continue;
+            std::lock_guard<std::mutex> metrics_lock(metrics->mutex);
+            if (metrics->owner != state || metrics->epoch != epoch)
                 continue;
             active_received += metrics->active_received;
             merged_latency.merge_from(metrics->latency);
@@ -805,16 +815,18 @@ void handle_spot_client_parts(const char *topic,
         }
 
         spot_thread_metrics_t *metrics = bind_spot_thread_metrics(state);
-        if (metrics)
+        if (metrics) {
+            std::lock_guard<std::mutex> metrics_lock(metrics->mutex);
             ++metrics->active_received;
-        if (metrics && should_sample_spot_latency(++metrics->sample_index)) {
-            const uint64_t sample_ts_us =
-              trace_phases ? recv_ts_us : perf_multi_metric::now_us();
-            const double latency_us =
-              header.sent_ts_us > 0 && sample_ts_us >= header.sent_ts_us
-                ? static_cast<double>(sample_ts_us - header.sent_ts_us)
-                : 0.0;
-            metrics->latency.add(latency_us);
+            if (should_sample_spot_latency(++metrics->sample_index)) {
+                const uint64_t sample_ts_us =
+                  trace_phases ? recv_ts_us : perf_multi_metric::now_us();
+                const double latency_us =
+                  header.sent_ts_us > 0 && sample_ts_us >= header.sent_ts_us
+                    ? static_cast<double>(sample_ts_us - header.sent_ts_us)
+                    : 0.0;
+                metrics->latency.add(latency_us);
+            }
         }
     }
 
@@ -878,23 +890,14 @@ bool drain_spot_client_slot(spot_client_slot_t *slot, bool *progressed)
     if (!slot)
         return false;
 
-    unsigned long long drained = 0;
     while (!slot->stop.load(std::memory_order_acquire)) {
         bool received = false;
         if (!recv_one_spot_message(slot, ZLINK_DONTWAIT, &received))
             return false;
         if (!received)
             break;
-        ++drained;
         if (progressed)
             *progressed = true;
-    }
-
-    if (drained > 0 && g_client_state) {
-        multi_client_queue_probe_t *queue_probe =
-          g_client_state->queue_probe.load(std::memory_order_acquire);
-        if (queue_probe)
-            queue_probe->observe_rcv_pending(drained);
     }
 
     return true;
@@ -1510,8 +1513,7 @@ bool run_single_size_case(spot_client_state_t *state,
                           const multi_bench_settings_t &settings,
                           const std::string &lib_name,
                           const std::string &transport,
-                          size_t msg_size,
-                          multi_client_queue_probe_t *queue_probe)
+                          size_t msg_size)
 {
     const int phase_timeout_ms =
       resolve_spot_phase_timeout_ms(settings, msg_size);
@@ -1534,8 +1536,6 @@ bool run_single_size_case(spot_client_state_t *state,
 
     std::cout << "CLIENT_READY," << msg_size << std::endl;
 
-    if (queue_probe)
-        queue_probe->start();
     reset_metrics(state, msg_size);
     state->active_duration_us.store(
       static_cast<uint64_t>(std::max(1, settings.duration_seconds))
@@ -1602,13 +1602,9 @@ bool run_single_size_case(spot_client_state_t *state,
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-client] active wait failed size="
                       << msg_size << std::endl;
-        if (queue_probe)
-            queue_probe->stop();
         return false;
     }
     state->collect_active.store(false, std::memory_order_release);
-    if (queue_probe)
-        queue_probe->stop();
     if (bench_transition_debug_enabled()) {
         std::cerr << "[multi-spot-client] collect done ts_us="
                   << perf_multi_metric::now_us()
@@ -1729,24 +1725,12 @@ int run_client_benchmark(const std::string &lib_name,
         fast_exit_process(1);
     }
 
-    std::vector<void *> recv_socket_handles;
-    recv_socket_handles.reserve(state.slots.size());
-    for (size_t i = 0; i < state.slots.size(); ++i) {
-        spot_client_slot_t *slot = state.slots[i];
-        if (slot && slot->handle)
-            recv_socket_handles.push_back(slot->handle);
-    }
-    multi_client_queue_probe_t queue_probe(recv_socket_handles);
-    state.queue_probe.store(&queue_probe, std::memory_order_release);
-
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
         if (!run_single_size_case(&state, settings, lib_name, transport,
-                                  msg_sizes[i], &queue_probe)) {
+                                  msg_sizes[i])) {
             fast_exit_process(1);
         }
     }
-
-    state.queue_probe.store(NULL, std::memory_order_release);
 
     fast_exit_process(0);
     return 0;

@@ -3,10 +3,10 @@
 
 // CLI option parsing, per-case metrics collection, and result output helpers.
 // Provides:
-//   client_options_t       – all benchmark parameters with sensible defaults
-//   case_metrics_t         – per-size result accumulator (throughput, latency, errors)
-//   parse_options()        – populates client_options_t from argv
-//   send_stop_token_once() – sends a stop token to the echo server
+//   client_options_t       - all benchmark parameters with sensible defaults
+//   case_metrics_t         - per-size result accumulator (throughput, latency, errors)
+//   parse_options()        - populates client_options_t from argv
+//   send_stop_token_once() - sends a stop token to the echo server
 
 #include "perf_stream_arg_reader.hpp"
 #include "perf_stream_common.hpp"
@@ -28,7 +28,6 @@ struct client_options_t
     int ccu;
     std::vector<size_t> sizes;
     int runs;
-    int warmup;
     int duration;
     int drain_ms;
     int size_transition_drain_ms;
@@ -45,7 +44,6 @@ struct client_options_t
           ccu (10000),
           sizes (),
           runs (1),
-          warmup (2),
           duration (10),
           drain_ms (500),
           size_transition_drain_ms (0),
@@ -109,7 +107,6 @@ inline bool parse_options (int argc, char **argv, client_options_t &opt)
     opt.port = args.get_int ("--port", opt.port, 1);
     opt.ccu = args.get_int ("--ccu", opt.ccu, 1);
     opt.runs = args.get_int ("--runs", opt.runs, 1);
-    opt.warmup = args.get_int ("--warmup", opt.warmup, 0);
     opt.duration = args.get_int ("--duration", opt.duration, 1);
     opt.drain_ms = args.get_int ("--drain-ms", opt.drain_ms, 0);
     opt.size_transition_drain_ms = args.get_int (

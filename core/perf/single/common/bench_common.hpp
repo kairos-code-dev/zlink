@@ -8,7 +8,7 @@
 #include "perf_single_metric_queue.hpp"
 #include "perf_single_phase.hpp"
 #include "perf_single_metric_worker.hpp"
-#include "perf_single_queue_probe.hpp"
+#include "perf_single_monitor.hpp"
 
 #include <chrono>
 #include <condition_variable>

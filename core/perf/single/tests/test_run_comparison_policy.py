@@ -77,48 +77,23 @@ class RunComparisonPolicyTests(unittest.TestCase):
             os.path.join(root, "single", "report"),
         )
 
-    def test_result_filename_includes_recv_mode(self):
+    def test_result_filename_uses_current_mode_label(self):
         self.assertRegex(
-            RC.build_result_filename("recv", "tag"),
-            r"^perf_[a-z]+_recv_\d{8}_\d{6}_tag\.txt$",
+            RC.build_result_filename("callback", "tag"),
+            r"^perf_[a-z]+_callback_\d{8}_\d{6}_tag\.txt$",
         )
         self.assertRegex(
             RC.build_result_filename("callback"),
             r"^perf_[a-z]+_callback_\d{8}_\d{6}\.txt$",
         )
 
-    def test_resolve_recv_mode_rejects_invalid_value(self):
-        self.assertEqual(RC.resolve_recv_mode("recv"), "recv")
-        self.assertEqual(RC.resolve_recv_mode("CALLBACK"), "callback")
-        with self.assertRaises(ValueError):
-            RC.resolve_recv_mode("bogus")
-
-    def test_single_default_recv_mode_is_callback(self):
-        self.assertEqual(RC.resolve_recv_mode(""), "callback")
-
-    def test_recv_mode_uses_current_targets(self):
+    def test_callback_mode_uses_current_targets(self):
         self.assertEqual(RC.resolve_binary_name("PAIR", "callback"), "perf_pair")
         self.assertEqual(
             RC.resolve_binary_name("PUBSUB", "callback"), "perf_pubsub"
         )
         self.assertEqual(
             RC.resolve_binary_name("SPOT", "callback"), "perf_spot"
-        )
-        with self.assertRaises(ValueError):
-            RC.resolve_binary_name("PAIR", "recv")
-        with self.assertRaises(ValueError):
-            RC.resolve_binary_name("SPOT", "recv")
-
-    def test_collect_unsupported_patterns_matches_current_single_matrix(self):
-        self.assertEqual(
-            RC.collect_unsupported_patterns(
-                ["PAIR", "SPOT"], "callback"
-            ),
-            [],
-        )
-        self.assertEqual(
-            RC.collect_unsupported_patterns(["PAIR", "SPOT"], "recv"),
-            ["PAIR", "SPOT"],
         )
 
     def test_single_runner_executes_each_size_case_separately(self):
@@ -147,20 +122,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
                 return None
 
         try:
-            RC.run_single_test = lambda build_dir, current_lib_dir, binary_name, lib_name, pattern, transport, size, timeout_sec, pin_cpu: (
-                calls.append((binary_name, pattern, transport, size))
-                or RC.RunOutcome(
-                    status="success",
-                    throughput=1.0,
-                    bandwidth=1.0,
-                    latency=1.0,
-                    latency_p95=1.0,
-                    latency_p99=1.0,
-                )
-            )
-            RC.msg_sizes_for_pattern = lambda pattern: [64, 256]
-            RC.select_transports = lambda pattern: ["tcp"]
-            RC.parse_args = lambda: type(
+            args = type(
                 "Args",
                 (),
                 {
@@ -175,10 +137,24 @@ class RunComparisonPolicyTests(unittest.TestCase):
                     "recv": "callback",
                 },
             )()
+            RC.run_single_test = lambda build_dir, current_lib_dir, binary_name, lib_name, pattern, transport, size, timeout_sec, pin_cpu: (
+                calls.append((binary_name, pattern, transport, size))
+                or RC.RunOutcome(
+                    status="success",
+                    throughput=1.0,
+                    bandwidth=1.0,
+                    latency=1.0,
+                    latency_p95=1.0,
+                    latency_p99=1.0,
+                )
+            )
+            RC.msg_sizes_for_pattern = lambda pattern: [64, 256]
+            RC.select_transports = lambda pattern: ["tcp"]
+            RC.parse_args = lambda: args
             RC.collect_missing_patterns = lambda *args, **kwargs: []
             builtins.open = lambda *args, **kwargs: DummyFile()
             RC.os.makedirs = lambda *args, **kwargs: None
-            RC.build_result_filename = lambda recv_mode, tag="": "dummy.txt"
+            RC.build_result_filename = lambda mode, tag="": "dummy.txt"
             RC.single_result_dir = lambda root: root
             RC.print_effective_options = lambda *args, **kwargs: None
 

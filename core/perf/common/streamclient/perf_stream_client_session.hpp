@@ -4,7 +4,7 @@
 // Async transport session for the multi-connection benchmark path.
 // Provides:
 //   Benchmark tuning constants (connect batch, socket buffers, RTT capacity)
-//   phase_mode_t  – idle / warmup / measure state enum
+//   phase_mode_t  - ready / active state enum
 //   resize_latch_t – condition-variable barrier for chunk-size transitions
 //   client_session_t – single transport connection with len32be async I/O loop
 //
@@ -79,12 +79,11 @@ inline int resolve_stream_rcvbuf_bytes ()
     return value;
 }
 
-// Benchmark phase: controls whether sessions send traffic and collect metrics.
+// Benchmark phase: controls whether sessions are ready or actively sending.
 enum phase_mode_t
 {
-    phase_idle = 0,    // no traffic
-    phase_warmup = 1,  // traffic active, metrics discarded
-    phase_measure = 2, // traffic active, metrics collected
+    phase_ready = 0,  // no traffic
+    phase_active = 1, // traffic active, metrics collected
 };
 
 // Countdown barrier for chunk-size transitions.
@@ -198,7 +197,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         });
     }
 
-    // Kick the send loop (called at the start of each phase window).
+    // Kick the send loop when the active window starts.
     void start_traffic ()
     {
         const std::shared_ptr<client_session_t> self = shared_from_this ();

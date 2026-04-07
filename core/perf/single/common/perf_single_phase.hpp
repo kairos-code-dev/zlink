@@ -194,9 +194,6 @@ inline void single_note_callback_receive (
         single_increment_counter (state_->active_received);
     }
 
-    if (state_->probe)
-        state_->probe->sample_recv_if_due ();
-
     if (single_phase_wait_notify_armed (*state_))
         state_->cv.notify_all ();
 }

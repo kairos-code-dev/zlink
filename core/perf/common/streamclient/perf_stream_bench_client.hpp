@@ -13,7 +13,7 @@
 //   1. Spin up io_context + worker threads
 //   2. Create CCU client_session_t instances
 //   3. Batched connect scheduling
-//   4. For each size: resize → warmup → measure → drain → report
+//   4. For each size: resize → active window → completion wait → report
 //   5. Shutdown and join
 
 #include "perf_stream_client_options.hpp"
@@ -151,7 +151,7 @@ class bench_client_t : public bench_client_iface_t
           connect_success (0),
           connect_fail (0),
           connect_completed (0),
-          mode (phase_idle),
+          mode (phase_ready),
           phase_end_ns (0),
           phase_size (opt.sizes.empty () ? 64 : opt.sizes[0]),
           outstanding_total (0),
@@ -310,10 +310,9 @@ class bench_client_t : public bench_client_iface_t
 
     bool allow_send () const override
     {
-        if (mode.load (std::memory_order_acquire) == phase_idle)
-            return false;
-        return perf_stream_common::perf_stream_now_ns ()
-               < phase_end_ns.load (std::memory_order_relaxed);
+        return mode.load (std::memory_order_acquire) == phase_active
+               && perf_stream_common::perf_stream_now_ns ()
+                    < phase_end_ns.load (std::memory_order_relaxed);
     }
 
     size_t current_phase_size () const override
@@ -329,9 +328,7 @@ class bench_client_t : public bench_client_iface_t
     perf_multi_metric::phase_t metric_phase () const override
     {
         const int current_mode = mode.load (std::memory_order_acquire);
-        if (current_mode == phase_measure)
-            return perf_multi_metric::phase_active;
-        if (current_mode == phase_warmup)
+        if (current_mode == phase_active)
             return perf_multi_metric::phase_active;
         return perf_multi_metric::phase_unknown;
     }
@@ -534,28 +531,25 @@ class bench_client_t : public bench_client_iface_t
         return drain_ms;
     }
 
-    // Run a timed window (warmup or measure). Kicks traffic, sleeps for
-    // duration, then stops and drains in-flight ops.
-    bool run_window (int duration_s, bool measure)
+    // Run the active window, then stop and wait for in-flight ops to finish.
+    bool run_active_window (int duration_s)
     {
         if (duration_s <= 0)
             return true;
 
-        if (measure)
-            reset_measurement_counters ();
+        reset_measurement_counters ();
 
-        collect_metrics.store (measure, std::memory_order_release);
+        collect_metrics.store (true, std::memory_order_release);
         const uint64_t end_ns =
           perf_stream_common::perf_stream_now_ns ()
           + static_cast<uint64_t> (duration_s) * 1000ULL * 1000ULL * 1000ULL;
         phase_end_ns.store (end_ns, std::memory_order_release);
-        mode.store (measure ? phase_measure : phase_warmup,
-                    std::memory_order_release);
+        mode.store (phase_active, std::memory_order_release);
 
         kick_phase_for_connected ();
         std::this_thread::sleep_for (std::chrono::seconds (duration_s));
 
-        mode.store (phase_idle, std::memory_order_release);
+        mode.store (phase_ready, std::memory_order_release);
         collect_metrics.store (false, std::memory_order_release);
 
         const int drain_ms = effective_phase_completion_ms (
@@ -584,7 +578,7 @@ class bench_client_t : public bench_client_iface_t
         return true;
     }
 
-    // Brief drain between size transitions to let in-flight ops complete.
+    // Brief completion wait between size transitions.
     void run_size_transition_drain ()
     {
         const int drain_ms = std::max (0, opt.size_transition_drain_ms);
@@ -643,7 +637,7 @@ class bench_client_t : public bench_client_iface_t
     }
 
     // --- Per-size benchmark execution ---
-    // resize → warmup → measure → collect metrics
+    // resize → active → drain → collect metrics
     case_metrics_t run_case (size_t size)
     {
         const long connect_target = static_cast<long> (std::max (1, opt.ccu));
@@ -660,10 +654,7 @@ class bench_client_t : public bench_client_iface_t
             return failed;
         }
 
-        if (opt.warmup > 0)
-            (void)run_window (opt.warmup, false);
-
-        const bool window_ok = run_window (std::max (1, opt.duration), true);
+        const bool window_ok = run_active_window (std::max (1, opt.duration));
 
         case_metrics_t out;
         out.connect_ok = count_connected_sessions ();
@@ -767,7 +758,7 @@ class bench_client_t : public bench_client_iface_t
     std::atomic<long> timeout_error_measure;
     std::atomic<long> size_mismatch_measure;
 
-    std::atomic<bool> collect_metrics; // true only during measure window
+    std::atomic<bool> collect_metrics; // true only during active window
 
     // --- RTT ring buffer ---
     std::unique_ptr<std::atomic<uint64_t>[]> rtt_samples_bits; // bit-cast doubles

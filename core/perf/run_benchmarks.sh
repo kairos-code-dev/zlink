@@ -66,7 +66,6 @@ esac
 BUILD_DIR="${ROOT_DIR}/core/build"
 
 STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT"
-MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM"
 PATTERN="ALL"
 OUTPUT_FILE=""
 RESULTS_DIR=""
@@ -89,11 +88,11 @@ SINGLE_SNDBUF="${PERF_SINGLE_SNDBUF:-${PERF_SNDBUF:-}}"
 SINGLE_RCVBUF="${PERF_SINGLE_RCVBUF:-${PERF_RCVBUF:-}}"
 SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
-PERF_ALLOW_MULTI="${PERF_ALLOW_MULTI:-0}"
-if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
-  PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
-else
-  PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/single/run_comparison.py"
+PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/single/run_comparison.py"
+
+if [[ "${PERF_ALLOW_MULTI:-0}" == "1" ]]; then
+  echo "Error: multi benchmarks are handled by core/perf/run_benchmarks_multi.sh." >&2
+  exit 1
 fi
 
 usage() {
@@ -129,11 +128,11 @@ Options:
   --transports LIST           Comma-separated transports.
 
 Notes:
-  - result is saved under results/<single|multi>/report/ as
+  - result is saved under results/single/report/ as
     perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt.
   - default build mode is incremental (configure/build without deleting build dir).
   - --output and result save can be used together.
-  - single mode rejects multi patterns; run_benchmarks_multi.sh enables multi mode.
+  - run_benchmarks.sh is single-only; run_benchmarks_multi.sh owns multi mode.
 USAGE
 }
 
@@ -149,46 +148,6 @@ set_build_mode() {
   fi
   BUILD_MODE="${next_mode}"
   BUILD_MODE_EXPLICIT=1
-}
-
-normalize_multi_pattern_token() {
-  local raw="${1:-}"
-  raw="$(printf '%s' "${raw}" | tr '[:lower:]' '[:upper:]')"
-
-  if [[ "${raw}" == MULTI_* ]]; then
-    raw="${raw#MULTI_}"
-  fi
-
-  case "${raw}" in
-    STREAM|STREAMS)
-      printf '%s' "STREAM"
-      ;;
-    *)
-      printf '%s' "${raw}"
-      ;;
-  esac
-}
-
-display_pattern_token() {
-  local raw="${1:-}"
-  if [[ "${PERF_ALLOW_MULTI:-0}" == "1" ]]; then
-    raw="$(normalize_multi_pattern_token "${raw}")"
-    if [[ -n "${raw}" ]]; then
-      printf 'MULTI_%s' "${raw}"
-    fi
-    return
-  fi
-  printf '%s' "${raw}"
-}
-
-display_pattern_csv() {
-  local items=()
-  local item=""
-  for item in "$@"; do
-    items+=( "$(display_pattern_token "${item}")" )
-  done
-  local IFS=,
-  printf '%s' "${items[*]}"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -305,11 +264,7 @@ fi
 if [[ "${PATTERN}" != "ALL" ]]; then
   PATTERN="$(printf '%s' "${PATTERN}" | tr '[:lower:]' '[:upper:]')"
 else
-  if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
-    PATTERN="${MULTI_PATTERNS}"
-  else
-    PATTERN="${STANDARD_PATTERNS}"
-  fi
+  PATTERN="${STANDARD_PATTERNS}"
 fi
 
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERN}"
@@ -324,37 +279,18 @@ for i in "${!PATTERN_LIST[@]}"; do
     echo "Error: empty pattern entry in list." >&2
     exit 1
   fi
-  if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
-    PATTERN_LIST[i]="$(normalize_multi_pattern_token "${PATTERN_LIST[i]}")"
-  fi
 done
 
-PATTERN_COUNT=0
-SINGLE_PATTERN_COUNT=0
 for p in "${PATTERN_LIST[@]}"; do
-  if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
-    case ",${MULTI_PATTERNS}," in
-      *,"${p}",*)
-        PATTERN_COUNT=$((PATTERN_COUNT + 1))
-        ;;
-      *)
-        echo "Error: unsupported multi pattern: ${p}" >&2
-        echo "Supported multi patterns: ${MULTI_PATTERNS}" >&2
-        exit 1
-        ;;
-    esac
-  else
-    case ",${STANDARD_PATTERNS}," in
-      *,"${p}",*)
-        SINGLE_PATTERN_COUNT=$((SINGLE_PATTERN_COUNT + 1))
-        ;;
-      *)
-        echo "Error: unsupported single pattern: ${p}" >&2
-        echo "Supported single patterns: ${STANDARD_PATTERNS}" >&2
-        exit 1
-        ;;
-    esac
-  fi
+  case ",${STANDARD_PATTERNS}," in
+    *,"${p}",*)
+      ;;
+    *)
+      echo "Error: unsupported single pattern: ${p}" >&2
+      echo "Supported single patterns: ${STANDARD_PATTERNS}" >&2
+      exit 1
+      ;;
+  esac
 done
 
 if [[ ! -f "${PERF_COMPARISON_SCRIPT}" ]]; then
@@ -437,9 +373,6 @@ if [[ -n "${RESULTS_TAG}" ]]; then
   NAME="${NAME}_${RESULTS_TAG}"
 fi
 RESULT_SUITE="single"
-if (( PATTERN_COUNT > 0 )); then
-  RESULT_SUITE="multi"
-fi
 RESULT_FILE="${RESULTS_DIR}/${RESULT_SUITE}/report/${NAME}.txt"
 
 if [[ -n "${OUTPUT_FILE}" ]]; then
@@ -596,9 +529,7 @@ if [[ "${PIN_CPU}" -eq 1 ]]; then
   RUN_CMD+=("--pin-cpu")
 fi
 if [[ -n "${SINGLE_DURATION_SECONDS}" ]]; then
-  if [[ "${PERF_ALLOW_MULTI:-0}" != "1" ]]; then
-    RUN_CMD+=("--duration" "${SINGLE_DURATION_SECONDS}")
-  fi
+  RUN_CMD+=("--duration" "${SINGLE_DURATION_SECONDS}")
 fi
 
 if [[ -n "${RESULTS_DIR}" ]]; then
@@ -621,28 +552,28 @@ fi
 if [[ -n "${PERF_TRANSPORTS}" ]]; then
   RUN_ENV+=(PERF_TRANSPORTS="${PERF_TRANSPORTS}")
 fi
-if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_DURATION_SECONDS}" ]]; then
+if [[ -n "${SINGLE_DURATION_SECONDS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_DURATION_SECONDS="${SINGLE_DURATION_SECONDS}")
 fi
-if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_HWM}" ]]; then
+if [[ -n "${SINGLE_HWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_HWM="${SINGLE_HWM}")
 fi
-if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_SNDHWM}" ]]; then
+if [[ -n "${SINGLE_SNDHWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_SNDHWM="${SINGLE_SNDHWM}")
 fi
-if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_RCVHWM}" ]]; then
+if [[ -n "${SINGLE_RCVHWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVHWM="${SINGLE_RCVHWM}")
 fi
-if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_SNDBUF}" ]]; then
+if [[ -n "${SINGLE_SNDBUF}" ]]; then
   RUN_ENV+=(PERF_SINGLE_SNDBUF="${SINGLE_SNDBUF}")
 fi
-if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_RCVBUF}" ]]; then
+if [[ -n "${SINGLE_RCVBUF}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVBUF="${SINGLE_RCVBUF}")
 fi
-if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_SNDTIMEO_MS}" ]]; then
+if [[ -n "${SINGLE_SNDTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_SNDTIMEO_MS="${SINGLE_SNDTIMEO_MS}")
 fi
-if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_RCVTIMEO_MS}" ]]; then
+if [[ -n "${SINGLE_RCVTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVTIMEO_MS="${SINGLE_RCVTIMEO_MS}")
 fi
 if [[ "${BUILD_MODE}" == "reuse" ]]; then
@@ -679,21 +610,7 @@ DISPLAY_SNDBUF="${SINGLE_SNDBUF}"
 DISPLAY_RCVBUF="${SINGLE_RCVBUF}"
 DISPLAY_SNDTIMEO_MS="${SINGLE_SNDTIMEO_MS}"
 DISPLAY_RCVTIMEO_MS="${SINGLE_RCVTIMEO_MS}"
-if [[ "${PERF_ALLOW_MULTI:-0}" == "1" ]]; then
-  DISPLAY_PATTERN_CSV="$(display_pattern_csv "${PATTERN_LIST[@]}")"
-  DISPLAY_DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-${SINGLE_DURATION_SECONDS}}"
-  DISPLAY_HWM="${PERF_MULTI_HWM:-}"
-  DISPLAY_SEND_HWM="${PERF_MULTI_SNDHWM:-${DISPLAY_HWM}}"
-  DISPLAY_RECV_HWM="${PERF_MULTI_RCVHWM:-${DISPLAY_HWM}}"
-  DISPLAY_SNDBUF="${PERF_MULTI_SNDBUF:-}"
-  DISPLAY_RCVBUF="${PERF_MULTI_RCVBUF:-}"
-  DISPLAY_SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-${SINGLE_SNDTIMEO_MS}}"
-  DISPLAY_RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-${SINGLE_RCVTIMEO_MS}}"
-fi
 DEFAULT_IO_THREADS_LABEL="default(binary=1)"
-if [[ "${PERF_ALLOW_MULTI:-0}" == "1" ]]; then
-  DEFAULT_IO_THREADS_LABEL="default(policy)"
-fi
 EFFECTIVE_IO_THREADS="$(value_or_default "${PERF_IO_THREADS}" "${DEFAULT_IO_THREADS_LABEL}")"
 
 echo

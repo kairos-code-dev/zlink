@@ -18,13 +18,23 @@ SPEC.loader.exec_module(RC)
 def multi_args():
     return {
         "num_runs": 1,
-        "recv_mode": "recv",
+        "recv_mode": "callback",
         "server_ready_timeout_ms": 10000,
         "server_shutdown_timeout_ms": 5000,
         "server_bind_port": 0,
         "transport_transition_ms": 3000,
         "pattern_transition_ms": 3000,
     }
+
+
+def tier1_metrics(value):
+    return (
+        ("throughput", value),
+        ("bandwidth", value),
+        ("latency", value),
+        (RC.LATENCY_P95_METRIC, value),
+        (RC.LATENCY_P99_METRIC, value),
+    )
 
 
 class MultiRunComparisonPolicyTests(unittest.TestCase):
@@ -38,7 +48,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             [64, 256, 1024, 65536],
         )
 
-    def test_result_filename_includes_recv_mode(self):
+    def test_result_filename_uses_current_mode_label(self):
         old_value = os.environ.get("PERF_RECV_MODE")
         try:
             os.environ["PERF_RECV_MODE"] = "callback"
@@ -60,10 +70,10 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             ["DEALER_DEALER", "STREAM"],
         )
 
-    def test_collect_unsupported_patterns_matches_current_multi_matrix(self):
+    def test_collect_unsupported_patterns_matches_current_callback_matrix(self):
         self.assertEqual(
             RC.collect_unsupported_patterns(
-                ["DEALER_DEALER", "STREAM"], "recv"
+                ["SPOT", "STREAM"], "callback"
             ),
             [],
         )
@@ -73,10 +83,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                 "callback",
             ),
             ["DEALER_DEALER", "PUBSUB"],
-        )
-        self.assertEqual(
-            RC.collect_unsupported_patterns(["SPOT", "STREAM"], "callback"),
-            [],
         )
 
     def test_multi_connect_concurrency_header_uses_multi_env_name(self):
@@ -136,8 +142,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                     "parsed": {},
                     "timed_out": False,
                     "returncode": 0,
-                    "cpu_pct": None,
-                    "mem_mb": None,
                     "reason": "",
                     "warnings": [],
                 }
@@ -181,8 +185,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                     "parsed": {},
                     "timed_out": False,
                     "returncode": 0,
-                    "cpu_pct": None,
-                    "mem_mb": None,
                     "reason": "",
                     "warnings": [],
                 }
@@ -226,8 +228,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                     "parsed": {},
                     "timed_out": False,
                     "returncode": 0,
-                    "cpu_pct": None,
-                    "mem_mb": None,
                     "reason": "",
                     "warnings": [],
                 }
@@ -273,23 +273,13 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                 calls.append((transport, list(sizes), pattern_name))
                 if result_line_callback is not None:
                     for size in sizes:
-                        for metric_name, value in (
-                            ("throughput", 1.0),
-                            ("bandwidth", 1.0),
-                            ("latency", 1.0),
-                            (RC.LATENCY_P95_METRIC, 1.0),
-                            (RC.LATENCY_P99_METRIC, 1.0),
-                            ("server_cpu_pct", 0.0),
-                            ("server_mem_mb", 0.0),
-                        ):
+                        for metric_name, value in tier1_metrics(1.0):
                             result_line_callback(transport, size, metric_name, value)
                 return {
                     "status": "success",
                     "parsed": {},
                     "timed_out": False,
                     "returncode": 0,
-                    "cpu_pct": None,
-                    "mem_mb": None,
                     "reason": "",
                     "warnings": [],
                 }
@@ -340,15 +330,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                                     pattern_name, result_line_callback=None):
                 for size in sizes:
                     if result_line_callback is not None:
-                        for metric_name, value in (
-                            ("throughput", 1.0),
-                            ("bandwidth", 1.0),
-                            ("latency", 1.0),
-                            (RC.LATENCY_P95_METRIC, 1.0),
-                            (RC.LATENCY_P99_METRIC, 1.0),
-                            ("server_cpu_pct", 1.0),
-                            ("server_mem_mb", 1.0),
-                        ):
+                        for metric_name, value in tier1_metrics(1.0):
                             result_line_callback(transport, size, metric_name, value)
                 return {
                     "status": "success",
@@ -358,20 +340,14 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                         "tcp|64|latency": 1.0,
                         "tcp|64|latency_p95": 1.0,
                         "tcp|64|latency_p99": 1.0,
-                        "tcp|64|server_cpu_pct": 1.0,
-                        "tcp|64|server_mem_mb": 1.0,
                         "tcp|256|throughput": 1.0,
                         "tcp|256|bandwidth": 1.0,
                         "tcp|256|latency": 1.0,
                         "tcp|256|latency_p95": 1.0,
                         "tcp|256|latency_p99": 1.0,
-                        "tcp|256|server_cpu_pct": 1.0,
-                        "tcp|256|server_mem_mb": 1.0,
                     },
                     "timed_out": False,
                     "returncode": 0,
-                    "cpu_pct": None,
-                    "mem_mb": None,
                     "reason": "",
                     "warnings": [],
                 }

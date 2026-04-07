@@ -12,8 +12,6 @@ param(
     [string]$MsgSizes = "",
     [string]$Transports = "",
     [switch]$PinCpu,
-    [Alias("MultiWarmupSeconds")]
-    [int]$Warmup = 2,
     [Alias("MultiDurationSeconds")]
     [int]$Duration = 5,
     [Alias("MultiClients")]
@@ -54,7 +52,7 @@ function Show-Usage {
 Usage: core\perf\run_benchmarks_multi.ps1 [options]
 
 Run only multi-socket benchmark patterns.
-Default pattern is ALL in recv mode and SPOT,STREAM in callback mode.
+This script invokes the shared comparison runner directly.
 
 Options:
   -Pattern NAME                Pattern list (comma-separated) or ALL.
@@ -73,7 +71,6 @@ Options:
   -MsgSizes LIST               Comma-separated sizes.
   -Transports LIST             Comma-separated transports.
   -PinCpu                      Enable PERF_TASKSET=1.
-  -Warmup N                    Override PERF_MULTI_WARMUP_SECONDS (default: 2).
   -Duration N                  Override PERF_MULTI_DURATION_SECONDS.
   -Clients N                   Override PERF_MULTI_CLIENTS (default: 100, stream=10000).
   -Hwm N                       Override PERF_MULTI_HWM (default: 100, stream=10 in binary).
@@ -97,7 +94,6 @@ if ($Help) {
     exit 0
 }
 
-if ($Warmup -lt 0) { throw "Warmup must be >= 0." }
 if ($Duration -lt 1) { throw "Duration must be >= 1." }
 if ($TransportTransitionMs -lt 0) { throw "TransportTransitionMs must be >= 0." }
 if ($PatternTransitionMs -lt 0) { throw "PatternTransitionMs must be >= 0." }
@@ -196,29 +192,16 @@ if ($Runs -eq 0) {
 }
 
 $ScriptDir = $PSScriptRoot
-$Runner = Join-Path $ScriptDir "run_benchmarks.ps1"
-if (-not (Test-Path $Runner)) {
-    throw "runner script not found: $Runner"
+$BenchComparisonScript = Join-Path $ScriptDir "run_comparison.py"
+if (-not (Test-Path $BenchComparisonScript)) {
+    throw "comparison script not found: $BenchComparisonScript"
 }
-
-$RunArgs = @("-Pattern", $PatternCsv, "-Runs", $Runs.ToString())
-if ($BuildDir) { $RunArgs += @("-BuildDir", $BuildDir) }
-if ($OutputFile) { $RunArgs += @("-OutputFile", $OutputFile) }
-if ($ResultsDir) { $RunArgs += @("-ResultsDir", $ResultsDir) }
-if ($ResultsTag) { $RunArgs += @("-ResultsTag", $ResultsTag) }
-if ($Recv) { $RunArgs += @("-Recv", $Recv) }
-if ($IoThreads) { $RunArgs += @("-IoThreads", $IoThreads) }
-if ($MsgSizes) { $RunArgs += @("-MsgSizes", $MsgSizes) }
-if ($Transports) { $RunArgs += @("-Transports", $Transports) }
-if ($PinCpu) { $RunArgs += "-PinCpu" }
-if ($Build.IsPresent) { $RunArgs += "-Build" }
 
 $RunEnv = @{}
 $RunEnv["PERF_ALLOW_MULTI"] = "1"
 $RunEnv["PERF_POLICY"] = "1"
 $RunEnv["PERF_RECV_MODE"] = $Recv
 $RunEnv["PERF_MULTI_DEFAULT_IO_THREADS"] = "4"
-$RunEnv["PERF_MULTI_WARMUP_SECONDS"] = $Warmup.ToString()
 $RunEnv["PERF_MULTI_DURATION_SECONDS"] = $Duration.ToString()
 $RunEnv["PERF_MULTI_SNDTIMEO_MS"] = $SendTimeoutMs
 $RunEnv["PERF_MULTI_RCVTIMEO_MS"] = $RecvTimeoutMs
@@ -234,6 +217,70 @@ if ($Hwm) { $RunEnv["PERF_MULTI_HWM"] = $Hwm }
 if ($SendHwm) { $RunEnv["PERF_MULTI_SNDHWM"] = $SendHwm }
 if ($RecvHwm) { $RunEnv["PERF_MULTI_RCVHWM"] = $RecvHwm }
 if ($ConnectConcurrency) { $RunEnv["PERF_MULTI_CONNECT_CONCURRENCY"] = $ConnectConcurrency }
+if ($IoThreads) { $RunEnv["PERF_IO_THREADS"] = $IoThreads }
+if ($Build.IsPresent) {
+    $RunEnv["PERF_NO_AUTOBUILD"] = "0"
+} elseif ($UseReuseBuild) {
+    $RunEnv["PERF_NO_AUTOBUILD"] = "1"
+}
+
+function Resolve-PythonExecutable {
+    if ($env:PYTHON -and (Test-Path $env:PYTHON)) {
+        return $env:PYTHON
+    }
+
+    foreach ($name in @("python", "python3")) {
+        $cmd = Get-Command $name -ErrorAction SilentlyContinue
+        if (-not $cmd -or -not $cmd.Source -or -not (Test-Path $cmd.Source)) {
+            continue
+        }
+        if ($cmd.Source -like "*\WindowsApps\*") {
+            continue
+        }
+        try {
+            & $cmd.Source --version *> $null
+            if ($LASTEXITCODE -eq 0) {
+                return $cmd.Source
+            }
+        } catch {
+            continue
+        }
+    }
+
+    $pyLauncher = Get-Command py -ErrorAction SilentlyContinue
+    if ($pyLauncher -and $pyLauncher.Source -and (Test-Path $pyLauncher.Source)) {
+        try {
+            $resolved = & $pyLauncher.Source -3 -c "import sys; print(sys.executable)" 2>$null
+            $resolved = ($resolved | Select-Object -First 1).Trim()
+            if ($resolved -and (Test-Path $resolved)) {
+                return $resolved
+            }
+        } catch {
+        }
+    }
+
+    return $null
+}
+
+$PythonExe = Resolve-PythonExecutable
+if (-not $PythonExe) {
+    throw "Python not found. Install Python 3 or ensure it is on PATH."
+}
+
+Write-Host "Using Python: $PythonExe"
+
+$RunArgs = @(
+    $PatternCsv,
+    "--build-dir", $BuildDir,
+    "--runs", $Runs.ToString(),
+    "--recv", $Recv,
+    "--duration", $Duration.ToString()
+)
+if ($ResultsDir) { $RunArgs += @("--results-dir", $ResultsDir) }
+if ($ResultsTag) { $RunArgs += @("--results-tag", $ResultsTag) }
+if ($PinCpu) { $RunArgs += "--pin-cpu" }
+if ($MsgSizes) { $RunArgs += @("--msg-sizes", $MsgSizes) }
+if ($Transports) { $RunArgs += @("--transports", $Transports) }
 
 $PreviousEnv = @{}
 foreach ($key in $RunEnv.Keys) {
@@ -242,7 +289,15 @@ foreach ($key in $RunEnv.Keys) {
 }
 
 try {
-    & $Runner @RunArgs
+    if ($OutputFile) {
+        $OutputDir = Split-Path $OutputFile -Parent
+        if ($OutputDir -and -not (Test-Path $OutputDir)) {
+            New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+        }
+        & $PythonExe $BenchComparisonScript @RunArgs | Tee-Object -FilePath $OutputFile
+    } else {
+        & $PythonExe $BenchComparisonScript @RunArgs
+    }
     $ExitCode = $LASTEXITCODE
 } finally {
     foreach ($key in $RunEnv.Keys) {

@@ -1,0 +1,3322 @@
+OpenAI Codex v0.118.0 (research preview)
+--------
+workdir: /home/hep7/project/kairos/zlink
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: medium
+reasoning summaries: none
+session id: 019d6763-2fb8-7f11-9247-54618b3637fd
+--------
+user
+$manager /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+warning: Codex could not find system bubblewrap on PATH. Please install bubblewrap with your package manager. Codex will use the vendored bubblewrap in the meantime.
+codex
+팀장님, 지정하신 계획 문서를 기준으로 매니저 모드로 진행하겠습니다. 먼저 부트스트랩 스크립트로 `manager/progress` 운영 문서를 생성한 뒤, 원문 스펙과 대조해 가이드를 승인 상태로 만들고 그 다음 단계별로 하위 에이전트에 작업을 분배하겠습니다.
+exec
+/bin/bash -lc '"/home/hep7/.codex/skills/manager/scripts/bootstrap_manager_docs.sh" "/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md" ko' in /home/hep7/project/kairos/zlink
+ succeeded in 0ms:
+/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md
+
+codex
+부트스트랩으로 운영 문서 두 개를 생성했습니다. 이제 스펙의 단계 순서, 게이트 규칙, 완료 조건만 먼저 추출해서 가이드 초안을 승인 가능한 상태로 맞추겠습니다.
+exec
+/bin/bash -lc 'rg -n "''^(guide_status:|status:|remaining_tasks:|completion_verified:|blocked_reason:|last_review_summary:|review_pass_count:|remaining_guide_corrections:|#|##|###|'"\\|)\" \"/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md\"" in /home/hep7/project/kairos/zlink
+ succeeded in 0ms:
+1:# 관리자 가이드 - `core/perf` POSD 3차 리팩토링 계획
+15:## 1. 고정 순서
+26:## 단계 1. `core/perf` - C1 문서/테스트 수렴
+40:## 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+54:## 단계 3. `core/perf` - C3 stream common client 정리
+68:## 단계 4. `core/perf` - C4 runner entrypoint 단순화
+82:## 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+96:## 단계 6. `core/bench/with_zmq` 정리
+110:## 단계 7. `core/bench/with_stream` 정리
+124:## 단계 8. 공통 tracked artifact 정책 정리
+
+exec
+/bin/bash -lc 'rg -n "''^(#|##|###|guide_status:|status:|remaining_tasks:|completion_verified:|blocked_reason:|last_review_summary:|review_pass_count:|remaining_guide_corrections:)" "/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md"' in /home/hep7/project/kairos/zlink
+ succeeded in 0ms:
+1:# `core/perf` POSD 3차 리팩토링 계획
+21:## 0. 새 컨텍스트 시작 전 확인
+49:## 1. 목표
+82:## 2. 현재 진단 요약
+84:### 2.1 남은 중복/불일치
+93:### 2.2 남은 과대 공통 계층
+102:### 2.3 남은 얕은 wrapper 구조
+110:### 2.4 stream/bench/bindings 공용 잔재
+126:## 3. 설계 원칙
+151:## 4. 실행 순서와 영역별 작업
+177:### 4.1 `core/perf` 작업
+179:#### C1. 정책 surface와 충돌하는 문서/테스트 정리
+200:#### C2. queue/probe 공통 surface 축소
+224:#### C3. stream common client 정렬
+246:#### C4. runner entrypoint 책임 재정렬
+269:### 4.2 `bindings/<lang>/perf` 작업
+290:#### B1. bindings perf 정책 정렬
+324:### 4.3 `core/bench/with_zmq` 작업
+348:### 4.4 `core/bench/with_stream` 작업
+393:### 4.5 공통 tracked artifact 정리 기준 수립
+416:## 5. 단계별 실행 계획
+418:### 5.0 작업 순서 원칙
+443:#### 공통 작업 루프
+459:### 단계 1. `core/perf` - C1 문서/테스트 수렴
+472:### 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+485:### 단계 3. `core/perf` - C3 stream common client 정리
+498:### 단계 4. `core/perf` - C4 runner entrypoint 단순화
+511:### 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+522:### 단계 6. `core/bench/with_zmq` 정리
+542:### 단계 7. `core/bench/with_stream` 정리
+559:### 단계 8. 공통 tracked artifact 정책 정리
+572:## 6. 검증 방법
+595:### 6.1 Full Test Gate 정의
+620:## 7. 완료 정의
+638:## 8. 비범위
+646:## 9. 메모
+
+exec
+/bin/bash -lc 'rg -n "''^(#|##|'"\\||현재 활성 단계|다음 허용 작업|차단 사유|최신 검증 증거)\" \"/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md\"" in /home/hep7/project/kairos/zlink
+ succeeded in 0ms:
+1:# 진행표 - `core/perf` POSD 3차 리팩토링 계획
+14:| 단계 | 현재 상태 | 핵심 확인 항목 | 남은 구조 이슈 수 | 구조 완료 확인 | cheap/local 검증 | 단계 커밋 준비 | full gate 허용 | 다음 단계 진행 가능 |
+15:| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+16:| 단계 1. `core/perf` - C1 문서/테스트 수렴 | in_review | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+17:| 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+18:| 단계 3. `core/perf` - C3 stream common client 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+19:| 단계 4. `core/perf` - C4 runner entrypoint 단순화 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+20:| 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+21:| 단계 6. `core/bench/with_zmq` 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+22:| 단계 7. `core/bench/with_stream` 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+23:| 단계 8. 공통 tracked artifact 정책 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+
+codex
+초안에는 단계 골격은 들어갔지만 상태 필드와 스펙 기준의 제약이 아직 부족합니다. 단계 순서, cheap/local 대 full gate 경계, 완료 정의를 원문에서 더 좁게 확인한 뒤 가이드와 진행표를 바로 보강하겠습니다.
+exec
+/bin/bash -lc "sed -n '415,638p' \"/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md\"" in /home/hep7/project/kairos/zlink
+ succeeded in 0ms:
+
+## 5. 단계별 실행 계획
+
+### 5.0 작업 순서 원칙
+
+- 리팩토링은 병렬로 넓게 벌리지 않고 **단계 하나씩 순차 진행**한다.
+- 각 단계는 아래 루프를 반드시 따른다.
+  1. `doc/perf` 정책 문서 기준으로 현재 구현 불일치를 확인한다.
+  2. 확인된 불일치와 dead code/dead branch/dead file을 POSD 기준으로
+     리팩토링한다.
+  3. perf 정책을 위반하지 않고 측정 의미를 해치지 않는 범위에서, 더 진행할
+     POSD 리팩토링이 남아 있지 않은지 다시 확인한다.
+  4. 기능 확인과 로컬 검증을 수행한다.
+  5. 위 1~4가 정리된 뒤에만 `core/perf` full test gate를 수행한다.
+  6. 실패가 없을 때만 다음 단계로 진행한다.
+- 한 단계라도 full test gate에서 실패하면 다음 단계로 넘어가지 않고, 해당
+  단계에서 원인 수정 후 다시 같은 gate를 통과해야 한다.
+- full test gate에서 fail 항목이 **하나라도** 남아 있으면 다음 단계로
+  넘어갈 수 없다.
+- `known fail`, `나중에 수정`, `partial success`를 이유로 다음 단계 진행을
+  허용하지 않는다.
+- bindings/bench 동기화 단계도 같은 원칙을 따른다. bindings 하나를 수정했으면
+  해당 bindings 검증과 core perf full gate를 함께 확인한 뒤 다음 bindings로
+  넘어간다.
+- full test gate는 “리팩토링 도중 중간 상태를 계속 확인하는 용도”가 아니라,
+  해당 단계의 POSD 리팩토링과 dead code 정리가 끝났다고 판단된 시점의
+  최종 검증으로 사용한다.
+
+#### 공통 작업 루프
+
+모든 영역은 아래 순서를 공통 작업 루프로 사용한다.
+
+1. perf 정책문서대로 현재 구현 확인
+2. POSD 기반 리팩토링
+3. dead code/dead branch/dead file까지 포함해 더 진행할 POSD 리팩토링이 없는지 확인
+4. 기능 확인
+5. full perf 검증
+
+- 여기서 `기능 확인`은 build/test/smoke/결과 shape 확인을 뜻한다.
+- `full perf 검증`은 `run_benchmarks*.sh` full run과 회귀 검토를 뜻한다.
+- `full perf 검증`은 해당 영역의 POSD 리팩토링이 사실상 마무리된 뒤에만 수행한다.
+- 리팩토링은 perf 성능 테스트의 의미를 해치지 않는 선에서만 수행하며,
+  `doc/perf` 정책을 위반하는 구조 단순화는 허용하지 않는다.
+
+### 단계 1. `core/perf` - C1 문서/테스트 수렴
+
+- 정책 정합성 확인
+  - README/tests가 현재 `doc/perf` 계약과 맞는지 확인한다.
+- README 2종을 현재 정책 기준으로 축약한다.
+- single/multi runner policy test fixture를 5개 metric 기준으로 재작성한다.
+- POSD 리팩토링
+  - 제거된 계약을 다시 살리는 얕은 fixture/wrapper를 걷어낸다.
+- 기능 확인
+- `rg`로 warmup/cpu-mem/legacy recv 문구가 README/tests에 남지 않는지 확인한다.
+- full perf 검증
+  - 단계 완료 후 full test gate를 통과해야 한다.
+
+### 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+
+- 정책 정합성 확인
+  - queue/probe 계층이 현재 기본 perf 계약에 실제로 필요한지 확인한다.
+- queue probe 관련 타입/함수의 실제 call graph를 정리한다.
+- POSD 리팩토링
+- 출력/판정/계약에 기여하지 않는 probe 계층은 제거한다.
+- 제거가 위험하면 `spot diagnostic local helper` 같은 좁은 소유권으로 이동한다.
+- 기능 확인
+  - 제거 후 build/test/smoke가 유지되는지 확인한다.
+- full perf 검증
+  - 단계 완료 후 full test gate를 통과해야 한다.
+
+### 단계 3. `core/perf` - C3 stream common client 정리
+
+- 정책 정합성 확인
+  - shared STREAM client의 phase/option surface가 `doc/perf`와 맞는지 확인한다.
+- POSD 리팩토링
+- shared STREAM client의 warmup/measure/drain contract를 제거한다.
+- STREAM shared client README와 option surface를 현재 policy에 맞춘다.
+- bindings/bench가 참조하는 공용 client 기준을 먼저 고정한다.
+- 기능 확인
+  - shared STREAM client 수정 후 core 측 동작이 유지되는지 확인한다.
+- full perf 검증
+  - 단계 완료 후 full test gate를 통과해야 한다.
+
+### 단계 4. `core/perf` - C4 runner entrypoint 단순화
+
+- 정책 정합성 확인
+  - 공식 entrypoint/책임과 현재 shell/python 연결 구조의 불일치를 확인한다.
+- POSD 리팩토링
+- shell wrapper 간 재호출 경로를 분석하고 최소 surface로 축소한다.
+- single/multi 공통 옵션과 suite 전용 옵션의 ownership을 표로 정리한다.
+- shell -> python 호출 경로를 한 단계 덜 얕게 만든다.
+- 기능 확인
+  - entrypoint 변경 후 옵션/결과/실행 흐름이 유지되는지 확인한다.
+- full perf 검증
+  - 단계 완료 후 full test gate를 통과해야 한다.
+
+### 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+
+- `cpp -> dotnet -> java -> rust -> go -> node -> python` 순으로 진행한다.
+- 각 언어마다 아래 순서를 따른다.
+  1. 정책 정합성 확인
+  2. POSD 리팩토링
+  3. 기능 확인
+  4. full perf 검증
+- 각 언어마다 B1 항목을 수행한다.
+- 한 언어가 full test gate를 통과해야 다음 언어로 넘어간다.
+
+### 단계 6. `core/bench/with_zmq` 정리
+
+- 정책 정합성 확인
+  - [with_zmq 정책 문서](../../../../../core/bench/with_zmq/README.md) 기준의
+    로컬 bench 계약과 `doc/perf` 공통 원칙의 경계를 먼저 확정한다.
+  - `with_zmq`가 core perf의 변경된 phase/metric 계약과 어디서 충돌하는지 확인한다.
+- POSD 리팩토링
+- `with_zmq`에서 core perf와 충돌하는 warmup/metric/result contract를 분리 또는
+  정리한다.
+- bench 전용 개념이 perf 본계약으로 되새어 나오지 않게 경계를 명확히 한다.
+- 기능 확인
+  - 비교 bench로서 필요한 기능이 유지되는지 확인한다.
+- full perf 검증
+  - `bash -n core/bench/with_zmq/run_benchmarks.sh`
+  - `bash -n core/bench/with_zmq/run_benchmarks_multi.sh`
+  - `pytest -q core/bench/with_zmq/single/tests/test_run_comparison_policy.py`
+  - `./core/bench/with_zmq/run_benchmarks.sh`
+  - `./core/bench/with_zmq/run_benchmarks_multi.sh`
+  - 단계 완료 후 full test gate를 통과해야 한다.
+
+### 단계 7. `core/bench/with_stream` 정리
+
+- 정책 정합성 확인
+  - [with_stream 정책 문서](../../../../../core/bench/with_stream/README.md) 기준의
+    로컬 bench 계약과 `doc/perf` 공통 원칙의 경계를 먼저 확정한다.
+  - `with_stream`의 old STREAM contract 잔재를 확인한다.
+- POSD 리팩토링
+- `with_stream`에서 shared STREAM client 정렬 이후 남은 old contract를 제거한다.
+- stack별 비교 surface를 유지하되 perf 본계약과 충돌하지 않게 정리한다.
+- 기능 확인
+  - 비교 bench로서 필요한 기능이 유지되는지 확인한다.
+- full perf 검증
+  - `python3 -m py_compile core/bench/with_stream/run_comparison.py`
+  - `bash -n core/bench/with_stream/run_benchmarks.sh`
+  - `./core/bench/with_stream/run_benchmarks.sh`
+  - 단계 완료 후 full test gate를 통과해야 한다.
+
+### 단계 8. 공통 tracked artifact 정책 정리
+
+- 정책 정합성 확인
+  - tracked artifact와 공식 runtime output root의 경계를 확인한다.
+- POSD 리팩토링
+- tracked baseline/results 후보를 분류한다.
+- 문서 증거로 남길 파일과 실행 산출물로 분리할 파일을 구분한다.
+- 필요한 `.gitignore` 및 저장 위치 규칙을 반영한다.
+- 기능 확인
+  - 결과 저장/보존 동작이 정책과 모순되지 않는지 확인한다.
+- full perf 검증
+  - 단계 완료 후 최종 full test gate를 통과해야 한다.
+
+## 6. 검증 방법
+
+- Python:
+  - `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
+- Policy tests:
+  - `pytest -q core/perf/single/tests`
+- Shell syntax:
+  - `bash -n core/perf/run_benchmarks.sh`
+  - `bash -n core/perf/run_benchmarks_multi.sh`
+- Build:
+  - `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
+- Performance gates:
+  - `./core/perf/run_benchmarks.sh`
+  - `./core/perf/run_benchmarks_multi.sh`
+  - 결과 파일이 정책 형식으로 생성되는지 확인한다.
+  - `status: complete|partial`, 필수 5개 metric line, 결과 table shape를 확인한다.
+  - 최소 단계 1, 2, 3, 4, 5(언어별), 6, 7에서 POSD 리팩토링과 dead code 정리가
+    끝났다고 판단된 완료 시점에만 full run을 수행한다.
+  - full run 전에는 “측정 의미를 해치지 않았는지”, “perf 정책을 위반하지 않는지”를
+    먼저 점검한다.
+- Surface audit:
+  - `rg -n "cpu_pct|mem_mb|server_cpu_pct|server_mem_mb|warmup|Q\\.Snd|Q\\.Rcv" core/perf core/bench/with_stream core/bench/with_zmq bindings doc/perf`
+
+### 6.1 Full Test Gate 정의
+
+각 단계에서 POSD 리팩토링과 dead code 정리가 더 이상 남아 있지 않다고 판단된
+시점에 아래를 full test gate로 본다.
+
+1. `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
+2. `pytest -q core/perf/single/tests`
+3. `bash -n core/perf/run_benchmarks.sh`
+4. `bash -n core/perf/run_benchmarks_multi.sh`
+5. `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
+6. `./core/perf/run_benchmarks.sh`
+7. `./core/perf/run_benchmarks_multi.sh`
+
+- 위 1~7에서 실패가 없어야 해당 단계를 통과한 것으로 본다.
+- 위 1~7 결과에서 fail 항목 수는 반드시 0이어야 한다.
+- bindings/bench 단계에서는 해당 대상 전용 검증을 추가하되, core perf full test
+  gate를 생략하지 않는다.
+- `with_zmq` 단계에서는 `core/bench/with_zmq/README.md`의 로컬 bench 계약이
+  유지되는지도 함께 확인한다.
+- `with_stream` 단계에서는 `core/bench/with_stream/README.md`의 로컬 bench 계약이
+  유지되는지도 함께 확인한다.
+- full test gate에 들어가기 전, 해당 단계는 perf 성능 테스트의 의미를 해치지 않는
+  선에서 POSD 리팩토링이 마무리되어 있어야 하며 `doc/perf` 정책 위반 상태여서는
+  안 된다.
+
+## 7. 완료 정의
+
+- `core/perf` 문서, runner, 테스트가 현재 policy surface와 일치한다.
+- 제거된 metric/phase를 테스트 fixture나 README가 다시 들고 있지 않다.
+- queue/debug/probe 계층이 기본 perf 계약 밖이면 공통 surface에서 제거되거나
+  명확히 국소화된다.
+- dead code, dead branch, dead option, dead file이 “나중에 쓸 수도 있음” 상태로
+  남아 있지 않다.
+- `core/perf/common/streamclient`가 더 이상 old warmup contract를 유지하지 않는다.
+- runner entrypoint 구조가 지금보다 더 짧고 설명 가능해진다.
+- bindings perf / with_stream / with_zmq가 core perf와 충돌하는 phase/metric
+  surface를 다시 들고 오지 않는다.
+- tracked perf artifact 정리 기준이 문서화되고 코드 트리에 반영된다.
+- POSD 관점에서 추가로 제거할 shallow wrapper, dead code, 과대 공통 계층,
+  변경 증폭 지점이 남아 있지 않거나, 남아 있어도 제거 비용 대비 복잡도 감소
+  이득이 작고 측정 정확성/비교 가능성/성능 비회귀 신뢰도를 추가로 높이지
+  못한다는 판단 근거를 설명할 수 있다.
+
+## 8. 비범위
+
+exec
+/bin/bash -lc "sed -n '1,180p' \"/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md\"" in /home/hep7/project/kairos/zlink
+ succeeded in 0ms:
+# 관리자 가이드 - `core/perf` POSD 3차 리팩토링 계획
+
+- source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+- guide_status: draft
+- guide_review_status: 초기 검토 전
+- review_pass_count: 0
+- remaining_guide_corrections: 1
+- unresolved_structural_issues: 8
+- status: in_progress
+- remaining_tasks: 8
+- completion_verified: false
+- blocked_reason:
+- last_review_summary: 초기 skeleton 생성
+
+## 1. 고정 순서
+
+1. 단계 1. `core/perf` - C1 문서/테스트 수렴
+2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+3. 단계 3. `core/perf` - C3 stream common client 정리
+4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
+5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+6. 단계 6. `core/bench/with_zmq` 정리
+7. 단계 7. `core/bench/with_stream` 정리
+8. 단계 8. 공통 tracked artifact 정책 정리
+
+## 단계 1. `core/perf` - C1 문서/테스트 수렴
+
+- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+- stage_scope:
+  - 세부 범위 확인 전
+- stage_structural_goal:
+  - 구조 단순화 목표 상세화 전
+- stage_completion_definition:
+  - 완료 정의 상세 추출 전
+- stage_gate_prerequisites:
+  - gate 전제 조건 상세 추출 전
+- stage_unresolved_issues:
+  - 스펙 상세 검토 전
+
+## 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+
+- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+- stage_scope:
+  - 세부 범위 확인 전
+- stage_structural_goal:
+  - 구조 단순화 목표 상세화 전
+- stage_completion_definition:
+  - 완료 정의 상세 추출 전
+- stage_gate_prerequisites:
+  - gate 전제 조건 상세 추출 전
+- stage_unresolved_issues:
+  - 스펙 상세 검토 전
+
+## 단계 3. `core/perf` - C3 stream common client 정리
+
+- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+- stage_scope:
+  - 세부 범위 확인 전
+- stage_structural_goal:
+  - 구조 단순화 목표 상세화 전
+- stage_completion_definition:
+  - 완료 정의 상세 추출 전
+- stage_gate_prerequisites:
+  - gate 전제 조건 상세 추출 전
+- stage_unresolved_issues:
+  - 스펙 상세 검토 전
+
+## 단계 4. `core/perf` - C4 runner entrypoint 단순화
+
+- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+- stage_scope:
+  - 세부 범위 확인 전
+- stage_structural_goal:
+  - 구조 단순화 목표 상세화 전
+- stage_completion_definition:
+  - 완료 정의 상세 추출 전
+- stage_gate_prerequisites:
+  - gate 전제 조건 상세 추출 전
+- stage_unresolved_issues:
+  - 스펙 상세 검토 전
+
+## 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+
+- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+- stage_scope:
+  - 세부 범위 확인 전
+- stage_structural_goal:
+  - 구조 단순화 목표 상세화 전
+- stage_completion_definition:
+  - 완료 정의 상세 추출 전
+- stage_gate_prerequisites:
+  - gate 전제 조건 상세 추출 전
+- stage_unresolved_issues:
+  - 스펙 상세 검토 전
+
+## 단계 6. `core/bench/with_zmq` 정리
+
+- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+- stage_scope:
+  - 세부 범위 확인 전
+- stage_structural_goal:
+  - 구조 단순화 목표 상세화 전
+- stage_completion_definition:
+  - 완료 정의 상세 추출 전
+- stage_gate_prerequisites:
+  - gate 전제 조건 상세 추출 전
+- stage_unresolved_issues:
+  - 스펙 상세 검토 전
+
+## 단계 7. `core/bench/with_stream` 정리
+
+- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+- stage_scope:
+  - 세부 범위 확인 전
+- stage_structural_goal:
+  - 구조 단순화 목표 상세화 전
+- stage_completion_definition:
+  - 완료 정의 상세 추출 전
+- stage_gate_prerequisites:
+  - gate 전제 조건 상세 추출 전
+- stage_unresolved_issues:
+  - 스펙 상세 검토 전
+
+## 단계 8. 공통 tracked artifact 정책 정리
+
+- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+- stage_scope:
+  - 세부 범위 확인 전
+- stage_structural_goal:
+  - 구조 단순화 목표 상세화 전
+- stage_completion_definition:
+  - 완료 정의 상세 추출 전
+- stage_gate_prerequisites:
+  - gate 전제 조건 상세 추출 전
+- stage_unresolved_issues:
+  - 스펙 상세 검토 전
+
+
+exec
+/bin/bash -lc "sed -n '1,160p' \"/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md\"" in /home/hep7/project/kairos/zlink
+ succeeded in 0ms:
+# 진행표 - `core/perf` POSD 3차 리팩토링 계획
+
+- source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+- manager_guide_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+- guide_status: draft
+- status: in_progress
+- remaining_tasks: 8
+- completion_verified: false
+- 현재 활성 단계: 단계 1. `core/perf` - C1 문서/테스트 수렴
+- 다음 허용 작업: 단계 1. `core/perf` - C1 문서/테스트 수렴 구조 검토
+- blocked_reason:
+- latest_verified_evidence: 초기 skeleton 생성
+
+| 단계 | 현재 상태 | 핵심 확인 항목 | 남은 구조 이슈 수 | 구조 완료 확인 | cheap/local 검증 | 단계 커밋 준비 | full gate 허용 | 다음 단계 진행 가능 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 단계 1. `core/perf` - C1 문서/테스트 수렴 | in_review | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+| 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+| 단계 3. `core/perf` - C3 stream common client 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+| 단계 4. `core/perf` - C4 runner entrypoint 단순화 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+| 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+| 단계 6. `core/bench/with_zmq` 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+| 단계 7. `core/bench/with_stream` 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+| 단계 8. 공통 tracked artifact 정책 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+
+codex
+가이드 승인 전에 단계별 범위와 비범위도 채워 넣어야 이후 재작업이 줄어듭니다. 각 단계 설명과 비범위를 짧게 추출하고, 현재 워크트리 상태까지 함께 확인해서 재개 지점을 고정하겠습니다.
+exec
+/bin/bash -lc "sed -n '638,680p' \"/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md\"" in /home/hep7/project/kairos/zlink
+exec
+/bin/bash -lc "sed -n '177,415p' \"/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md\"" in /home/hep7/project/kairos/zlink
+ succeeded in 0ms:
+## 8. 비범위
+
+- throughput/bandwidth/latency 계산식 변경
+- one-way vs echo 의미 변경
+- `RESULT` 포맷 확장
+- backpressure 검증을 perf 기본 surface로 복귀시키는 작업
+- transport별 성능 수치 튜닝
+
+## 9. 메모
+
+- 이번 3차는 “기능 추가”가 아니라 “기능을 줄인 뒤 남은 구조적 잔재 제거”가
+  목적이다.
+- policy 준수만으로 충분하지 않다. POSD 기준으로 설명 가능한 구조가 되어야
+  리팩토링이 완료된 것으로 본다.
+
+ succeeded in 0ms:
+### 4.1 `core/perf` 작업
+
+#### C1. 정책 surface와 충돌하는 문서/테스트 정리
+
+대상:
+
+- [core/perf/README.md](../../../../../core/perf/README.md)
+- [core/perf/README_KO.md](../../../../../core/perf/README_KO.md)
+- [core/perf/single/tests/test_multi_run_comparison_policy.py](../../../../../core/perf/single/tests/test_multi_run_comparison_policy.py)
+- [core/perf/single/tests/test_run_comparison_policy.py](../../../../../core/perf/single/tests/test_run_comparison_policy.py)
+
+할 일:
+
+- README를 정책 요약 index 수준으로 축소한다.
+- warmup, single `recv`, `cpu/mem` 등 제거된 계약을 모두 삭제한다.
+- policy test fixture를 “필수 5개 metric만 있으면 success” 기준으로 바꾼다.
+- 테스트 이름도 old metric 부재를 직접 검증하는 방향으로 정리한다.
+
+완료 정의:
+
+- README가 policy와 모순되지 않는다.
+- 테스트 fixture가 제거된 metric을 더 이상 사용하지 않는다.
+
+#### C2. queue/probe 공통 surface 축소
+
+대상:
+
+- [core/perf/multi/common/perf_multi_metrics.hpp](../../../../../core/perf/multi/common/perf_multi_metrics.hpp)
+- [core/perf/single/common/perf_single_queue_probe.hpp](../../../../../core/perf/single/common/perf_single_queue_probe.hpp)
+- [core/perf/single/common/bench_common.hpp](../../../../../core/perf/single/common/bench_common.hpp)
+- [core/perf/multi/src/perf_multi_spot_client.cpp](../../../../../core/perf/multi/src/perf_multi_spot_client.cpp)
+- [core/perf/multi/common/perf_multi_spot_control.hpp](../../../../../core/perf/multi/common/perf_multi_spot_control.hpp)
+
+할 일:
+
+- queue probe, queue stats, queue/debug result helper가 기본 perf 계약에 직접
+  기여하지 않는다면 공통 helper에서 제거한다.
+- 꼭 필요한 경우 SPOT/local diagnostic 범위로 축소하고, public/common surface로
+  노출하지 않는다.
+- `bench_common.hpp`에서 debug/queue 계층 include를 분리해 패턴 파일이 필요
+  이상의 내부를 보지 않게 한다.
+
+완료 정의:
+
+- 기본 perf 실행에 queue probe 공용 계층이 필수가 아니다.
+- queue/backpressure 관련 helper가 공통 hot path의 설명 복잡도를 올리지 않는다.
+
+#### C3. stream common client 정렬
+
+대상:
+
+- [core/perf/common/streamclient/README.md](../../../../../core/perf/common/streamclient/README.md)
+- [core/perf/common/streamclient/README_KO.md](../../../../../core/perf/common/streamclient/README_KO.md)
+- [core/perf/common/streamclient/perf_stream_bench_client.hpp](../../../../../core/perf/common/streamclient/perf_stream_bench_client.hpp)
+- [core/perf/common/streamclient/perf_stream_client_options.hpp](../../../../../core/perf/common/streamclient/perf_stream_client_options.hpp)
+- [core/perf/common/streamclient/perf_stream_client_session.hpp](../../../../../core/perf/common/streamclient/perf_stream_client_session.hpp)
+
+할 일:
+
+- stream common client에서 `warmup` phase와 `--warmup` 옵션 잔재를 제거한다.
+- lifecycle을 `ready -> active` 기준으로 다시 맞춘다.
+- STREAM shared client가 downstream perf/bench/bindings에 old contract를
+  재주입하지 않게 한다.
+
+완료 정의:
+
+- stream common client 문서와 코드에 warmup contract가 남지 않는다.
+- shared STREAM client가 core perf policy와 같은 phase/metric surface를 따른다.
+
+#### C4. runner entrypoint 책임 재정렬
+
+대상:
+
+- [core/perf/run_benchmarks.sh](../../../../../core/perf/run_benchmarks.sh)
+- [core/perf/run_benchmarks_multi.sh](../../../../../core/perf/run_benchmarks_multi.sh)
+- [core/perf/run_benchmarks.ps1](../../../../../core/perf/run_benchmarks.ps1)
+- [core/perf/run_benchmarks_multi.ps1](../../../../../core/perf/run_benchmarks_multi.ps1)
+- [core/perf/run_comparison.py](../../../../../core/perf/run_comparison.py)
+- [core/perf/single/run_comparison.py](../../../../../core/perf/single/run_comparison.py)
+
+할 일:
+
+- shell은 option normalization과 build gate까지만 맡긴다.
+- orchestration 책임은 single/multi Python engine으로 더 직접 연결한다.
+- multi shell이 single shell을 다시 호출하는 구조를 줄이거나 제거한다.
+- 공식 실행기 정의를 문서와 코드에서 동일하게 맞춘다.
+
+완료 정의:
+
+- entrypoint 책임이 shell 2단 위임으로 퍼져 있지 않다.
+- single/multi 실행 흐름이 문서 한 문단으로 설명 가능하다.
+
+### 4.2 `bindings/<lang>/perf` 작업
+
+적용 대상 언어는 다음을 기본으로 본다.
+
+- `bindings/cpp/perf`
+- `bindings/dotnet/perf`
+- `bindings/java/perf`
+- `bindings/rust/perf`
+- `bindings/go/perf`
+- `bindings/node/perf`
+- `bindings/python/perf`
+
+각 언어는 아래 순서로 하나씩 진행한다.
+
+0. 고정 순서: `cpp -> dotnet -> java -> rust -> go -> node -> python`
+1. 현재 policy surface와 불일치하는 항목 감사
+2. old warmup/cpu-mem/queue/debug contract 제거
+3. runner/result/report 구조를 변경된 `doc/perf` 정책에 맞게 정렬
+4. POSD 관점에서 얕은 wrapper/dead code/과대 공통 계층 정리
+5. 해당 language 검증 + core perf full test gate 통과 확인
+
+#### B1. bindings perf 정책 정렬
+
+대상:
+
+- [bindings](../../../../../bindings)
+
+할 일:
+
+- bindings perf에서 old warmup/cpu-mem/queue contract가 남아 있는지 감사한다.
+- 각 bindings perf 구현을 변경된 `doc/perf` 정책에 맞게 실제 수정한다.
+- 각 bindings perf에서 core와 동일한 측정 의미를 직접 점검한다.
+  - ready 만족 판정 위치
+  - active 시작/종료 판정 위치
+  - metric header / wire protocol contract
+  - throughput count 증가 위치
+  - latency sample 채취 위치
+  - RESULT 5개 metric과 fail/skip/unsupported/partial 의미
+  - hot path가 실제 binding public API를 통과하는지
+- 각 bindings perf에서 pattern/transport semantic equivalence가 core와 같은지
+  확인한다.
+- 각 bindings perf에서도 POSD 기준으로 shallow wrapper, dead code, 과대 공통
+  계층, 변경 증폭 지점을 함께 줄인다.
+- `core/perf/common/streamclient`를 공유하는 경로는 core policy와 같은 phase
+  surface로 정렬한다.
+
+완료 정의:
+
+- bindings perf와 core perf가 기본 phase/metric 계약에서 서로 모순되지 않는다.
+- bindings perf와 core perf가 같은 측정 anchor, 같은 RESULT 의미, 같은
+  pattern/transport semantic meaning을 가진다.
+- bindings perf가 변경된 `doc/perf` 정책을 코드와 실행 surface에서 실제로 따른다.
+- bindings perf도 POSD 관점에서 추가로 줄일 얕은 계층과 dead code가 남지 않도록
+  함께 정리된다.
+
+### 4.3 `core/bench/with_zmq` 작업
+
+`with_zmq`는 perf 본계약을 대체하는 surface가 아니라 비교 bench surface로 본다.
+`doc/perf`를 그대로 복제하는 대상이 아니라, [with_zmq 정책 문서](../../../../../core/bench/with_zmq/README.md)
+를 우선 기준으로 유지하되 core perf와 공통 측정 원칙이 충돌하지 않게 정렬한다.
+이번 작업에서 `with_zmq`의 1차 목적은 benchmark lifecycle에서 warmup 의존을
+제거하는 것이고, 그 다음 POSD 기준으로 구조를 줄이는 것이다. 단, 비교군 간
+공정 비교와 semantic equivalence는 끝까지 유지해야 한다.
+따라서 아래를 정리 대상으로 둔다.
+
+- `with_zmq` 로컬 정책과 `doc/perf` 공통 원칙의 경계를 먼저 확정
+- 성능 테스트 단계에서 warmup 의존과 warmup contract를 제거
+- core perf와 충돌하는 warmup/metric/result contract 분리 또는 제거
+- bench 전용 개념과 perf 본계약의 경계 명확화
+- runner/tmp/results tracked noise 정리
+- POSD 관점의 dead code, shallow wrapper, 변경 증폭 경로 축소
+
+완료 정의:
+
+- `with_zmq`가 로컬 bench 정책을 유지하면서도 core perf의 공통 측정 원칙과
+  모순되지 않는다.
+- bench 전용 계약이 필요하면 perf 본계약과 섞이지 않게 명확히 분리된다.
+- tmp/results/debug 잔재가 비교 surface의 설명 복잡도를 과도하게 올리지 않는다.
+
+### 4.4 `core/bench/with_stream` 작업
+
+`with_stream`는 shared STREAM client와 가장 직접적으로 연결되므로 마지막에 정렬한다.
+`doc/perf`의 축소된 기본 result surface를 그대로 강제하는 대상이 아니라,
+[with_stream 정책 문서](../../../../../core/bench/with_stream/README.md)를 우선
+기준으로 유지하되 shared STREAM client와 core perf의 공통 원칙이 새지 않게
+정렬한다. 이번 작업에서 `with_stream`의 1차 목적도 benchmark lifecycle에서
+warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 줄이는 것이다.
+단, stack 간 공정 비교 조건과 로컬 bench 정책의 비교 의미는 유지해야 한다.
+정리 대상은 다음과 같다.
+
+- `with_stream` 로컬 정책과 `doc/perf` 공통 원칙의 경계를 먼저 확정
+- 성능 테스트 단계에서 warmup 의존과 warmup contract를 제거
+- shared STREAM client 변경 이후 남는 old STREAM warmup/measure/drain 잔재 제거
+- core perf와 충돌하는 phase/result contract 제거
+- stack별 공통/전용 책임 재정렬
+- results/debug tracked noise 정리
+- POSD 관점의 dead code, shallow wrapper, 변경 증폭 경로 축소
+
+`with_stream`에 대해 공통 적용하는 것:
+
+- POSD 리팩토링
+- shallow wrapper/dead code/dead branch/dead file 제거
+- shared STREAM client와 core perf 사이의 책임 경계 명확화
+- 결과 해석과 비교 의미를 더 설명 가능하게 만드는 정리
+
+`with_stream`에 대해 로컬 정책이 허용하면 유지 가능한 것:
+
+- resource metric / resource log
+- stack-specific comparison output
+- single-pass echo 비교 surface
+
+금지:
+
+- `with_stream` 전용 계약이 `core/perf`의 공식 contract나 shared STREAM client의
+  공용 의미를 다시 오염시키는 변경
+- core perf에서 제거한 old contract를 shared 계층을 통해 다시 들여오는 변경
+
+완료 정의:
+
+- `with_stream`이 로컬 bench 정책을 유지하면서도 shared STREAM client와 core perf
+  공통 원칙을 다시 오염시키지 않는다.
+- shared STREAM client 변경 후에도 비교 surface로서 설명 가능한 구조를 유지한다.
+- stack별 구현 차이가 있어도 공통 bench contract는 단순하게 유지된다.
+
+### 4.5 공통 tracked artifact 정리 기준 수립
+
+대상:
+
+- [core/perf/baseline](../../../../../core/perf/baseline)
+- tracked sample / analysis artifact
+
+할 일:
+
+- tracked baseline/result 파일을 어떤 기준으로 남길지 명시한다.
+- 비교 기준이 무의미해진 old baseline은 코드 트리에서 제거하거나 별도 archive로
+  이동한다.
+- 공식 runtime output root인 [core/perf/results](../../../../../core/perf/results)는
+  유지한다. 정리 대상은 tracked baseline/sample/analysis artifact로 한정한다.
+- 실행 산출물과 문서 증거 파일의 저장 기준을 분리한다.
+
+완료 정의:
+
+- 코드/정책/실행 산출물이 같은 레벨에서 섞여 있지 않다.
+- tracked perf artifact는 “왜 git에 있어야 하는지”가 설명되는 최소 집합만 남는다.
+- [core/perf/results](../../../../../core/perf/results)는 정책상 공식 결과 저장
+  루트로 유지되고, tracked cleanup 대상과 혼동되지 않는다.
+
+
+exec
+/bin/bash -lc 'git status --short' in /home/hep7/project/kairos/zlink
+ succeeded in 0ms:
+ M core/perf/README.md
+ M core/perf/README_KO.md
+ M core/perf/common/streamclient/README.md
+ M core/perf/common/streamclient/README_KO.md
+ M core/perf/common/streamclient/perf_stream_bench_client.hpp
+ M core/perf/common/streamclient/perf_stream_client_options.hpp
+ M core/perf/common/streamclient/perf_stream_client_session.hpp
+ M core/perf/multi/common/perf_multi_metrics.hpp
+ M core/perf/multi/common/perf_multi_spot_control.hpp
+ M core/perf/multi/src/perf_multi_spot_client.cpp
+ M core/perf/run_benchmarks.sh
+ M core/perf/run_benchmarks_multi.ps1
+ M core/perf/run_benchmarks_multi.sh
+ M core/perf/single/common/bench_common.hpp
+ M core/perf/single/common/perf_single_phase.hpp
+ D core/perf/single/common/perf_single_queue_probe.hpp
+ M core/perf/single/src/perf_dealer_dealer.cpp
+ M core/perf/single/src/perf_dealer_router.cpp
+ M core/perf/single/src/perf_pair.cpp
+ M core/perf/single/src/perf_pubsub.cpp
+ M core/perf/single/src/perf_router_router.cpp
+ M core/perf/single/src/perf_spot.cpp
+ M core/perf/single/tests/test_multi_run_comparison_policy.py
+ D doc/plan/perf-refactor/core-perf-baseline-recovery-notes.md
+?? core/perf/single/common/perf_single_monitor.hpp
+?? "doc/plan/perf-refactor/3\354\260\250/core/logs/"
+
+codex
+현재 워크트리에 단계 1~4 관련 선행 수정이 이미 있습니다. 그대로 처음부터 재시작하면 안 되므로, 가이드를 승인한 뒤 각 단계별로 “이미 끝난 부분 vs 남은 구조 이슈”를 먼저 판정하는 재개 점검을 하겠습니다.
+매니저 운영 문서를 먼저 승인 가능한 상태로 만들고, 기존 워크트리 변경을 단계별로 재개 판정한 뒤, 열린 단계만 하위 에이전트에 위임합니다.
+  → 스펙을 기준으로 manager/progress 문서를 승인 상태로 보강한다
+  • 현재 워크트리 변경을 단계별로 점검해 완료/진행/차단 상태를 재판정한다
+  • 열린 단계를 bounded task로 분해해 하위 에이전트에 위임한다
+  • 에이전트 결과를 직접 검토하고 필요한 재작업을 반복한다
+  • 검증과 문서 상태를 동기화한 뒤 최종 상태를 보고한다
+codex
+이제 운영 문서를 수정합니다. 스펙의 고정 순서, 단계별 구조 목표, full gate 전제, 비범위를 가이드에 반영하고 진행표도 같은 상태로 맞추겠습니다.
+apply patch
+patch: completed
+/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+diff --git a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+deleted file mode 100644
+index f460522feb92521dbd771fbe29edc42137d61d02..0000000000000000000000000000000000000000
+--- a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
++++ /dev/null
+@@ -1,137 +0,0 @@
+-# 관리자 가이드 - `core/perf` POSD 3차 리팩토링 계획
+-
+-- source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- guide_status: draft
+-- guide_review_status: 초기 검토 전
+-- review_pass_count: 0
+-- remaining_guide_corrections: 1
+-- unresolved_structural_issues: 8
+-- status: in_progress
+-- remaining_tasks: 8
+-- completion_verified: false
+-- blocked_reason:
+-- last_review_summary: 초기 skeleton 생성
+-
+-## 1. 고정 순서
+-
+-1. 단계 1. `core/perf` - C1 문서/테스트 수렴
+-2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+-3. 단계 3. `core/perf` - C3 stream common client 정리
+-4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
+-5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+-6. 단계 6. `core/bench/with_zmq` 정리
+-7. 단계 7. `core/bench/with_stream` 정리
+-8. 단계 8. 공통 tracked artifact 정책 정리
+-
+-## 단계 1. `core/perf` - C1 문서/테스트 수렴
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 3. `core/perf` - C3 stream common client 정리
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 4. `core/perf` - C4 runner entrypoint 단순화
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 6. `core/bench/with_zmq` 정리
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 7. `core/bench/with_stream` 정리
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 8. 공통 tracked artifact 정책 정리
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+
+diff --git a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+deleted file mode 100644
+index f460522feb92521dbd771fbe29edc42137d61d02..0000000000000000000000000000000000000000
+--- a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
++++ /dev/null
+@@ -1,137 +0,0 @@
+-# 관리자 가이드 - `core/perf` POSD 3차 리팩토링 계획
+-
+-- source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- guide_status: draft
+-- guide_review_status: 초기 검토 전
+-- review_pass_count: 0
+-- remaining_guide_corrections: 1
+-- unresolved_structural_issues: 8
+-- status: in_progress
+-- remaining_tasks: 8
+-- completion_verified: false
+-- blocked_reason:
+-- last_review_summary: 초기 skeleton 생성
+-
+-## 1. 고정 순서
+-
+-1. 단계 1. `core/perf` - C1 문서/테스트 수렴
+-2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+-3. 단계 3. `core/perf` - C3 stream common client 정리
+-4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
+-5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+-6. 단계 6. `core/bench/with_zmq` 정리
+-7. 단계 7. `core/bench/with_stream` 정리
+-8. 단계 8. 공통 tracked artifact 정책 정리
+-
+-## 단계 1. `core/perf` - C1 문서/테스트 수렴
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 3. `core/perf` - C3 stream common client 정리
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 4. `core/perf` - C4 runner entrypoint 단순화
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 6. `core/bench/with_zmq` 정리
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 7. `core/bench/with_stream` 정리
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+-## 단계 8. 공통 tracked artifact 정책 정리
+-
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- stage_scope:
+-  - 세부 범위 확인 전
+-- stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
+-- stage_completion_definition:
+-  - 완료 정의 상세 추출 전
+-- stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
+-- stage_unresolved_issues:
+-  - 스펙 상세 검토 전
+-
+
+apply patch
+patch: completed
+/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+diff --git a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+index f460522feb92521dbd771fbe29edc42137d61d02..d7a494a9b0376bf5ad761d5d307938bf3c9aa5e4
+--- a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
++++ b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+@@ -1,137 +1,281 @@
+ # 관리자 가이드 - `core/perf` POSD 3차 리팩토링 계획
+ 
+ - source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- guide_status: draft
+-- guide_review_status: 초기 검토 전
+-- review_pass_count: 0
+-- remaining_guide_corrections: 1
++- source_spec_refs:
++  - `5.0 작업 순서 원칙`
++  - `4.1 core/perf 작업`
++  - `4.2 bindings/<lang>/perf 작업`
++  - `4.3 core/bench/with_zmq 작업`
++  - `4.4 core/bench/with_stream 작업`
++  - `4.5 공통 tracked artifact 정리 기준 수립`
++  - `6. 검증 방법`
++  - `6.1 Full Test Gate 정의`
++  - `7. 완료 정의`
++  - `8. 비범위`
++- guide_status: approved
++- guide_review_status: 승인 완료
++- review_pass_count: 2
++- remaining_guide_corrections: 0
+ - unresolved_structural_issues: 8
+ - status: in_progress
+ - remaining_tasks: 8
+ - completion_verified: false
+ - blocked_reason:
+-- last_review_summary: 초기 skeleton 생성
++- last_review_summary: 고정 순서, full gate 전제, 단계별 구조 목표, 비범위를 원문 기준으로 반영함
+ 
+-## 1. 고정 순서
++## 1. 범위와 비범위
++
++- 범위:
++  - `core/perf` 문서, runner, 테스트, shared stream client, queue/probe/common surface 정리
++  - `bindings/<lang>/perf`의 정책/phase/metric surface 정렬
++  - `core/bench/with_zmq`, `core/bench/with_stream`의 로컬 bench 계약 정렬
++  - tracked perf artifact 정리 기준 수립
++- 비범위: `8. 비범위`
++  - throughput/bandwidth/latency 계산식 변경 금지
++  - one-way vs echo 의미 변경 금지
++  - `RESULT` 포맷 확장 금지
++  - backpressure 검증을 perf 기본 surface로 복귀시키는 작업 금지
++  - transport별 성능 수치 튜닝 금지
++
++## 2. 고정 순서와 공통 규칙
++
++- source_spec_ref: `5.0 작업 순서 원칙`, `공통 작업 루프`, `6.1 Full Test Gate 정의`
++- 고정 순서:
++  1. 단계 1. `core/perf` - C1 문서/테스트 수렴
++  2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
++  3. 단계 3. `core/perf` - C3 stream common client 정리
++  4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
++  5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
++  6. 단계 6. `core/bench/with_zmq` 정리
++  7. 단계 7. `core/bench/with_stream` 정리
++  8. 단계 8. 공통 tracked artifact 정책 정리
++- 공통 작업 루프:
++  1. 정책 문서 기준 불일치 확인
++  2. POSD 리팩토링 수행
++  3. dead code/dead branch/dead file까지 포함해 추가 구조 단순화 여지 재확인
++  4. 기능 확인과 cheap/local 검증 수행
++  5. 위 1~4가 정리된 뒤에만 stage별 full test gate 수행
++  6. full test gate 무실패일 때만 다음 단계 진행
++- 금지 규칙:
++  - full gate를 중간 상태 확인 용도로 사용하지 않음
++  - `known fail`, `나중에 수정`, `partial success`를 이유로 다음 단계 진행 금지
++  - 한 단계라도 fail 항목이 남으면 다음 단계 진행 금지
++  - 단계가 `complete` 되기 전에는 후속 단계를 `blocked`로 유지
++
++## 3. 검증 정책
++
++- source_spec_ref: `6. 검증 방법`, `6.1 Full Test Gate 정의`
++- cheap/local 검증:
++  - `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
++  - `pytest -q core/perf/single/tests`
++  - `bash -n core/perf/run_benchmarks.sh`
++  - `bash -n core/perf/run_benchmarks_multi.sh`
++  - `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
++  - `rg -n "cpu_pct|mem_mb|server_cpu_pct|server_mem_mb|warmup|Q\\.Snd|Q\\.Rcv" core/perf core/bench/with_stream core/bench/with_zmq bindings doc/perf`
++- full test gate:
++  1. `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
++  2. `pytest -q core/perf/single/tests`
++  3. `bash -n core/perf/run_benchmarks.sh`
++  4. `bash -n core/perf/run_benchmarks_multi.sh`
++  5. `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
++  6. `./core/perf/run_benchmarks.sh`
++  7. `./core/perf/run_benchmarks_multi.sh`
++- gate 전제:
++  - 해당 단계의 POSD 리팩토링과 dead code 정리가 더 이상 남지 않았다고 직접 확인되어야 함
++  - `doc/perf` 정책 위반 상태가 아니어야 함
++  - 결과의 fail 항목 수가 0이어야 함
++  - bindings/bench 단계도 대상 전용 검증을 추가하되 core perf full gate를 생략하지 않음
+ 
+-1. 단계 1. `core/perf` - C1 문서/테스트 수렴
+-2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+-3. 단계 3. `core/perf` - C3 stream common client 정리
+-4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
+-5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+-6. 단계 6. `core/bench/with_zmq` 정리
+-7. 단계 7. `core/bench/with_stream` 정리
+-8. 단계 8. 공통 tracked artifact 정책 정리
++## 4. 단계별 운영 정의
+ 
+ ## 단계 1. `core/perf` - C1 문서/테스트 수렴
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C1`, `5 단계 1`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/README.md`
++  - `core/perf/README_KO.md`
++  - `core/perf/single/tests/test_multi_run_comparison_policy.py`
++  - `core/perf/single/tests/test_run_comparison_policy.py`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - README를 정책 요약 index 수준으로 축소
++  - warmup, single `recv`, `cpu/mem` 등 제거된 계약을 문서/fixture에서 제거
++  - policy fixture를 필수 5개 metric 기준으로 단순화
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - README가 policy와 모순되지 않음
++  - 테스트 fixture가 제거된 metric을 더 이상 사용하지 않음
++  - 제거된 계약을 되살리는 얕은 fixture/wrapper가 남지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - README/tests에 legacy 용어가 남지 않는지 `rg` 확인
++  - cheap/local 검증 완료
++  - 구조 이슈가 0개로 줄었는지 직접 검토
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - README/tests에 old metric/phase 문구 잔재 여부 미확인
+ 
+ ## 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C2`, `5 단계 2`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/multi/common/perf_multi_metrics.hpp`
++  - `core/perf/single/common/perf_single_queue_probe.hpp`
++  - `core/perf/single/common/bench_common.hpp`
++  - `core/perf/multi/src/perf_multi_spot_client.cpp`
++  - `core/perf/multi/common/perf_multi_spot_control.hpp`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - queue probe, queue stats, debug helper가 기본 perf 계약에 직접 기여하지 않으면 공통 surface에서 제거
++  - 꼭 필요하면 SPOT/local diagnostic 범위로 국소화
++  - 패턴 파일이 불필요한 내부를 보지 않게 include 경계 축소
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 기본 perf 실행에 queue probe 공용 계층이 필수가 아님
++  - queue/backpressure helper가 공통 hot path 설명 복잡도를 올리지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - call graph와 공통/public 노출 경계 검토 완료
++  - cheap/local 검증 완료
++  - 제거 또는 국소화 후 dead include/dead helper 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - queue/debug helper가 공통 hot path에서 완전히 분리되었는지 미확인
+ 
+ ## 단계 3. `core/perf` - C3 stream common client 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C3`, `5 단계 3`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/common/streamclient/README.md`
++  - `core/perf/common/streamclient/README_KO.md`
++  - `core/perf/common/streamclient/perf_stream_bench_client.hpp`
++  - `core/perf/common/streamclient/perf_stream_client_options.hpp`
++  - `core/perf/common/streamclient/perf_stream_client_session.hpp`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - shared stream client에서 warmup phase와 `--warmup` 옵션 잔재 제거
++  - lifecycle을 `ready -> active` 기준으로 정렬
++  - downstream perf/bench/bindings에 old contract 재주입 차단
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 문서와 코드에 warmup contract가 남지 않음
++  - shared client가 core perf policy와 같은 phase/metric surface를 따름
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - public option/README/세션 lifecycle 표면 일치
++  - cheap/local 검증 완료
++  - shared client를 통하는 하위 경로의 old contract 잔재 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - stream shared client의 old warmup/measure/drain contract 잔재 여부 미확인
+ 
+ ## 단계 4. `core/perf` - C4 runner entrypoint 단순화
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C4`, `5 단계 4`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/run_benchmarks.sh`
++  - `core/perf/run_benchmarks_multi.sh`
++  - `core/perf/run_benchmarks.ps1`
++  - `core/perf/run_benchmarks_multi.ps1`
++  - `core/perf/run_comparison.py`
++  - `core/perf/single/run_comparison.py`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - shell은 option normalization과 build gate까지만 담당
++  - orchestration 책임은 Python engine으로 더 직접 연결
++  - multi shell이 single shell을 다시 호출하는 구조 축소 또는 제거
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - entrypoint 책임이 shell 2단 위임으로 퍼져 있지 않음
++  - single/multi 실행 흐름이 문서 한 문단으로 설명 가능함
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 공식 entrypoint 정의가 문서와 코드에서 일치
++  - cheap/local 검증 완료
++  - shell 재호출 경로와 얕은 wrapper 잔재 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - shell/python ownership 경계와 재호출 경로 단순화 여부 미확인
+ 
+ ## 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.2`, `5 단계 5`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `bindings/cpp/perf`
++  - `bindings/dotnet/perf`
++  - `bindings/java/perf`
++  - `bindings/rust/perf`
++  - `bindings/go/perf`
++  - `bindings/node/perf`
++  - `bindings/python/perf`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `cpp -> dotnet -> java -> rust -> go -> node -> python` 순으로 하나씩 정렬
++  - old warmup/cpu-mem/queue/debug contract 제거
++  - phase/metric/result semantics를 core와 정렬하면서 shallow wrapper와 dead code 축소
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - bindings perf와 core perf가 phase/metric/RESULT 의미에서 모순되지 않음
++  - 각 bindings가 변경된 `doc/perf` 정책을 실제 코드와 실행 surface에서 따름
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 현재 언어 대상의 정책 감사 완료
++  - 해당 언어 전용 검증과 core perf full gate 통과
++  - 다음 언어 시작 전 현재 언어 구조 이슈 0건
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - 언어별 순차 재개 지점과 남은 old contract 잔재 미확인
+ 
+ ## 단계 6. `core/bench/with_zmq` 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.3`, `5 단계 6`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/bench/with_zmq`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `with_zmq` 로컬 bench 계약과 `doc/perf` 공통 원칙의 경계 확정
++  - warmup 의존과 충돌하는 warmup/metric/result contract 분리 또는 제거
++  - bench 전용 개념과 perf 본계약 경계 명확화
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 로컬 bench 정책을 유지하면서 core perf 공통 측정 원칙과 모순되지 않음
++  - tmp/results/debug 잔재가 비교 surface 설명 복잡도를 과도하게 올리지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - `bash -n core/bench/with_zmq/run_benchmarks.sh`
++  - `bash -n core/bench/with_zmq/run_benchmarks_multi.sh`
++  - `pytest -q core/bench/with_zmq/single/tests/test_run_comparison_policy.py`
++  - `./core/bench/with_zmq/run_benchmarks.sh`
++  - `./core/bench/with_zmq/run_benchmarks_multi.sh`
++  - core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - with_zmq 로컬 계약과 core perf 경계, warmup 잔재, tracked noise 미확인
+ 
+ ## 단계 7. `core/bench/with_stream` 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.4`, `5 단계 7`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/bench/with_stream`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `with_stream` 로컬 bench 정책과 shared stream client/core perf 공통 원칙의 경계 확정
++  - old STREAM warmup/measure/drain 잔재 제거
++  - stack별 공통/전용 책임 재정렬
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 로컬 bench 정책을 유지하면서 shared client/core perf 공통 원칙을 다시 오염시키지 않음
++  - 비교 surface로서 설명 가능한 구조를 유지함
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - `python3 -m py_compile core/bench/with_stream/run_comparison.py`
++  - `bash -n core/bench/with_stream/run_benchmarks.sh`
++  - `./core/bench/with_stream/run_benchmarks.sh`
++  - core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - with_stream의 old contract 잔재와 stack별 책임 경계 미확인
+ 
+ ## 단계 8. 공통 tracked artifact 정책 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.5`, `5 단계 8`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/baseline`
++  - tracked sample / analysis artifact
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - tracked baseline/result를 남길 기준 명시
++  - old baseline을 제거 또는 archive로 이동
++  - 공식 runtime output root인 `core/perf/results`는 유지
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 코드/정책/실행 산출물이 같은 레벨에서 섞여 있지 않음
++  - tracked perf artifact는 git에 남아야 하는 최소 집합만 유지
++  - `core/perf/results`는 tracked cleanup 대상과 혼동되지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 저장 위치 규칙과 `.gitignore` 반영
++  - cheap/local 검증 완료
++  - 최종 core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - tracked baseline/sample/analysis artifact의 분류 기준과 반영 범위 미확인
++
++## 5. 완료 조건
+ 
++- source_spec_ref: `7. 완료 정의`, `9. 메모`
++- 모든 단계가 고정 순서대로 `complete`
++- `core/perf` 문서, runner, 테스트가 현재 policy surface와 일치
++- 제거된 metric/phase가 README, fixture, shared client, bindings, bench surface에 다시 남지 않음
++- queue/debug/probe, shallow wrapper, 과대 공통 계층, dead code, dead option, dead file이 구조 이슈 목록에서 제거됨
++- runner entrypoint 구조가 더 짧고 설명 가능해짐
++- tracked perf artifact 기준이 문서화되고 코드 트리에 반영됨
++- POSD 기준으로 추가 제거 후보가 남지 않거나, 남더라도 제거 이득이 작다는 근거를 설명 가능함
+
+diff --git a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+index f460522feb92521dbd771fbe29edc42137d61d02..d7a494a9b0376bf5ad761d5d307938bf3c9aa5e4
+--- a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
++++ b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+@@ -1,137 +1,281 @@
+ # 관리자 가이드 - `core/perf` POSD 3차 리팩토링 계획
+ 
+ - source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- guide_status: draft
+-- guide_review_status: 초기 검토 전
+-- review_pass_count: 0
+-- remaining_guide_corrections: 1
++- source_spec_refs:
++  - `5.0 작업 순서 원칙`
++  - `4.1 core/perf 작업`
++  - `4.2 bindings/<lang>/perf 작업`
++  - `4.3 core/bench/with_zmq 작업`
++  - `4.4 core/bench/with_stream 작업`
++  - `4.5 공통 tracked artifact 정리 기준 수립`
++  - `6. 검증 방법`
++  - `6.1 Full Test Gate 정의`
++  - `7. 완료 정의`
++  - `8. 비범위`
++- guide_status: approved
++- guide_review_status: 승인 완료
++- review_pass_count: 2
++- remaining_guide_corrections: 0
+ - unresolved_structural_issues: 8
+ - status: in_progress
+ - remaining_tasks: 8
+ - completion_verified: false
+ - blocked_reason:
+-- last_review_summary: 초기 skeleton 생성
++- last_review_summary: 고정 순서, full gate 전제, 단계별 구조 목표, 비범위를 원문 기준으로 반영함
+ 
+-## 1. 고정 순서
++## 1. 범위와 비범위
++
++- 범위:
++  - `core/perf` 문서, runner, 테스트, shared stream client, queue/probe/common surface 정리
++  - `bindings/<lang>/perf`의 정책/phase/metric surface 정렬
++  - `core/bench/with_zmq`, `core/bench/with_stream`의 로컬 bench 계약 정렬
++  - tracked perf artifact 정리 기준 수립
++- 비범위: `8. 비범위`
++  - throughput/bandwidth/latency 계산식 변경 금지
++  - one-way vs echo 의미 변경 금지
++  - `RESULT` 포맷 확장 금지
++  - backpressure 검증을 perf 기본 surface로 복귀시키는 작업 금지
++  - transport별 성능 수치 튜닝 금지
++
++## 2. 고정 순서와 공통 규칙
++
++- source_spec_ref: `5.0 작업 순서 원칙`, `공통 작업 루프`, `6.1 Full Test Gate 정의`
++- 고정 순서:
++  1. 단계 1. `core/perf` - C1 문서/테스트 수렴
++  2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
++  3. 단계 3. `core/perf` - C3 stream common client 정리
++  4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
++  5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
++  6. 단계 6. `core/bench/with_zmq` 정리
++  7. 단계 7. `core/bench/with_stream` 정리
++  8. 단계 8. 공통 tracked artifact 정책 정리
++- 공통 작업 루프:
++  1. 정책 문서 기준 불일치 확인
++  2. POSD 리팩토링 수행
++  3. dead code/dead branch/dead file까지 포함해 추가 구조 단순화 여지 재확인
++  4. 기능 확인과 cheap/local 검증 수행
++  5. 위 1~4가 정리된 뒤에만 stage별 full test gate 수행
++  6. full test gate 무실패일 때만 다음 단계 진행
++- 금지 규칙:
++  - full gate를 중간 상태 확인 용도로 사용하지 않음
++  - `known fail`, `나중에 수정`, `partial success`를 이유로 다음 단계 진행 금지
++  - 한 단계라도 fail 항목이 남으면 다음 단계 진행 금지
++  - 단계가 `complete` 되기 전에는 후속 단계를 `blocked`로 유지
++
++## 3. 검증 정책
++
++- source_spec_ref: `6. 검증 방법`, `6.1 Full Test Gate 정의`
++- cheap/local 검증:
++  - `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
++  - `pytest -q core/perf/single/tests`
++  - `bash -n core/perf/run_benchmarks.sh`
++  - `bash -n core/perf/run_benchmarks_multi.sh`
++  - `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
++  - `rg -n "cpu_pct|mem_mb|server_cpu_pct|server_mem_mb|warmup|Q\\.Snd|Q\\.Rcv" core/perf core/bench/with_stream core/bench/with_zmq bindings doc/perf`
++- full test gate:
++  1. `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
++  2. `pytest -q core/perf/single/tests`
++  3. `bash -n core/perf/run_benchmarks.sh`
++  4. `bash -n core/perf/run_benchmarks_multi.sh`
++  5. `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
++  6. `./core/perf/run_benchmarks.sh`
++  7. `./core/perf/run_benchmarks_multi.sh`
++- gate 전제:
++  - 해당 단계의 POSD 리팩토링과 dead code 정리가 더 이상 남지 않았다고 직접 확인되어야 함
++  - `doc/perf` 정책 위반 상태가 아니어야 함
++  - 결과의 fail 항목 수가 0이어야 함
++  - bindings/bench 단계도 대상 전용 검증을 추가하되 core perf full gate를 생략하지 않음
+ 
+-1. 단계 1. `core/perf` - C1 문서/테스트 수렴
+-2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+-3. 단계 3. `core/perf` - C3 stream common client 정리
+-4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
+-5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+-6. 단계 6. `core/bench/with_zmq` 정리
+-7. 단계 7. `core/bench/with_stream` 정리
+-8. 단계 8. 공통 tracked artifact 정책 정리
++## 4. 단계별 운영 정의
+ 
+ ## 단계 1. `core/perf` - C1 문서/테스트 수렴
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C1`, `5 단계 1`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/README.md`
++  - `core/perf/README_KO.md`
++  - `core/perf/single/tests/test_multi_run_comparison_policy.py`
++  - `core/perf/single/tests/test_run_comparison_policy.py`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - README를 정책 요약 index 수준으로 축소
++  - warmup, single `recv`, `cpu/mem` 등 제거된 계약을 문서/fixture에서 제거
++  - policy fixture를 필수 5개 metric 기준으로 단순화
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - README가 policy와 모순되지 않음
++  - 테스트 fixture가 제거된 metric을 더 이상 사용하지 않음
++  - 제거된 계약을 되살리는 얕은 fixture/wrapper가 남지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - README/tests에 legacy 용어가 남지 않는지 `rg` 확인
++  - cheap/local 검증 완료
++  - 구조 이슈가 0개로 줄었는지 직접 검토
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - README/tests에 old metric/phase 문구 잔재 여부 미확인
+ 
+ ## 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C2`, `5 단계 2`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/multi/common/perf_multi_metrics.hpp`
++  - `core/perf/single/common/perf_single_queue_probe.hpp`
++  - `core/perf/single/common/bench_common.hpp`
++  - `core/perf/multi/src/perf_multi_spot_client.cpp`
++  - `core/perf/multi/common/perf_multi_spot_control.hpp`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - queue probe, queue stats, debug helper가 기본 perf 계약에 직접 기여하지 않으면 공통 surface에서 제거
++  - 꼭 필요하면 SPOT/local diagnostic 범위로 국소화
++  - 패턴 파일이 불필요한 내부를 보지 않게 include 경계 축소
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 기본 perf 실행에 queue probe 공용 계층이 필수가 아님
++  - queue/backpressure helper가 공통 hot path 설명 복잡도를 올리지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - call graph와 공통/public 노출 경계 검토 완료
++  - cheap/local 검증 완료
++  - 제거 또는 국소화 후 dead include/dead helper 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - queue/debug helper가 공통 hot path에서 완전히 분리되었는지 미확인
+ 
+ ## 단계 3. `core/perf` - C3 stream common client 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C3`, `5 단계 3`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/common/streamclient/README.md`
++  - `core/perf/common/streamclient/README_KO.md`
++  - `core/perf/common/streamclient/perf_stream_bench_client.hpp`
++  - `core/perf/common/streamclient/perf_stream_client_options.hpp`
++  - `core/perf/common/streamclient/perf_stream_client_session.hpp`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - shared stream client에서 warmup phase와 `--warmup` 옵션 잔재 제거
++  - lifecycle을 `ready -> active` 기준으로 정렬
++  - downstream perf/bench/bindings에 old contract 재주입 차단
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 문서와 코드에 warmup contract가 남지 않음
++  - shared client가 core perf policy와 같은 phase/metric surface를 따름
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - public option/README/세션 lifecycle 표면 일치
++  - cheap/local 검증 완료
++  - shared client를 통하는 하위 경로의 old contract 잔재 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - stream shared client의 old warmup/measure/drain contract 잔재 여부 미확인
+ 
+ ## 단계 4. `core/perf` - C4 runner entrypoint 단순화
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C4`, `5 단계 4`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/run_benchmarks.sh`
++  - `core/perf/run_benchmarks_multi.sh`
++  - `core/perf/run_benchmarks.ps1`
++  - `core/perf/run_benchmarks_multi.ps1`
++  - `core/perf/run_comparison.py`
++  - `core/perf/single/run_comparison.py`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - shell은 option normalization과 build gate까지만 담당
++  - orchestration 책임은 Python engine으로 더 직접 연결
++  - multi shell이 single shell을 다시 호출하는 구조 축소 또는 제거
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - entrypoint 책임이 shell 2단 위임으로 퍼져 있지 않음
++  - single/multi 실행 흐름이 문서 한 문단으로 설명 가능함
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 공식 entrypoint 정의가 문서와 코드에서 일치
++  - cheap/local 검증 완료
++  - shell 재호출 경로와 얕은 wrapper 잔재 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - shell/python ownership 경계와 재호출 경로 단순화 여부 미확인
+ 
+ ## 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.2`, `5 단계 5`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `bindings/cpp/perf`
++  - `bindings/dotnet/perf`
++  - `bindings/java/perf`
++  - `bindings/rust/perf`
++  - `bindings/go/perf`
++  - `bindings/node/perf`
++  - `bindings/python/perf`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `cpp -> dotnet -> java -> rust -> go -> node -> python` 순으로 하나씩 정렬
++  - old warmup/cpu-mem/queue/debug contract 제거
++  - phase/metric/result semantics를 core와 정렬하면서 shallow wrapper와 dead code 축소
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - bindings perf와 core perf가 phase/metric/RESULT 의미에서 모순되지 않음
++  - 각 bindings가 변경된 `doc/perf` 정책을 실제 코드와 실행 surface에서 따름
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 현재 언어 대상의 정책 감사 완료
++  - 해당 언어 전용 검증과 core perf full gate 통과
++  - 다음 언어 시작 전 현재 언어 구조 이슈 0건
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - 언어별 순차 재개 지점과 남은 old contract 잔재 미확인
+ 
+ ## 단계 6. `core/bench/with_zmq` 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.3`, `5 단계 6`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/bench/with_zmq`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `with_zmq` 로컬 bench 계약과 `doc/perf` 공통 원칙의 경계 확정
++  - warmup 의존과 충돌하는 warmup/metric/result contract 분리 또는 제거
++  - bench 전용 개념과 perf 본계약 경계 명확화
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 로컬 bench 정책을 유지하면서 core perf 공통 측정 원칙과 모순되지 않음
++  - tmp/results/debug 잔재가 비교 surface 설명 복잡도를 과도하게 올리지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - `bash -n core/bench/with_zmq/run_benchmarks.sh`
++  - `bash -n core/bench/with_zmq/run_benchmarks_multi.sh`
++  - `pytest -q core/bench/with_zmq/single/tests/test_run_comparison_policy.py`
++  - `./core/bench/with_zmq/run_benchmarks.sh`
++  - `./core/bench/with_zmq/run_benchmarks_multi.sh`
++  - core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - with_zmq 로컬 계약과 core perf 경계, warmup 잔재, tracked noise 미확인
+ 
+ ## 단계 7. `core/bench/with_stream` 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.4`, `5 단계 7`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/bench/with_stream`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `with_stream` 로컬 bench 정책과 shared stream client/core perf 공통 원칙의 경계 확정
++  - old STREAM warmup/measure/drain 잔재 제거
++  - stack별 공통/전용 책임 재정렬
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 로컬 bench 정책을 유지하면서 shared client/core perf 공통 원칙을 다시 오염시키지 않음
++  - 비교 surface로서 설명 가능한 구조를 유지함
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - `python3 -m py_compile core/bench/with_stream/run_comparison.py`
++  - `bash -n core/bench/with_stream/run_benchmarks.sh`
++  - `./core/bench/with_stream/run_benchmarks.sh`
++  - core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - with_stream의 old contract 잔재와 stack별 책임 경계 미확인
+ 
+ ## 단계 8. 공통 tracked artifact 정책 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.5`, `5 단계 8`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/baseline`
++  - tracked sample / analysis artifact
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - tracked baseline/result를 남길 기준 명시
++  - old baseline을 제거 또는 archive로 이동
++  - 공식 runtime output root인 `core/perf/results`는 유지
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 코드/정책/실행 산출물이 같은 레벨에서 섞여 있지 않음
++  - tracked perf artifact는 git에 남아야 하는 최소 집합만 유지
++  - `core/perf/results`는 tracked cleanup 대상과 혼동되지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 저장 위치 규칙과 `.gitignore` 반영
++  - cheap/local 검증 완료
++  - 최종 core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - tracked baseline/sample/analysis artifact의 분류 기준과 반영 범위 미확인
++
++## 5. 완료 조건
+ 
++- source_spec_ref: `7. 완료 정의`, `9. 메모`
++- 모든 단계가 고정 순서대로 `complete`
++- `core/perf` 문서, runner, 테스트가 현재 policy surface와 일치
++- 제거된 metric/phase가 README, fixture, shared client, bindings, bench surface에 다시 남지 않음
++- queue/debug/probe, shallow wrapper, 과대 공통 계층, dead code, dead option, dead file이 구조 이슈 목록에서 제거됨
++- runner entrypoint 구조가 더 짧고 설명 가능해짐
++- tracked perf artifact 기준이 문서화되고 코드 트리에 반영됨
++- POSD 기준으로 추가 제거 후보가 남지 않거나, 남더라도 제거 이득이 작다는 근거를 설명 가능함
+
+apply patch
+patch: completed
+/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md
+diff --git a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+index f460522feb92521dbd771fbe29edc42137d61d02..d7a494a9b0376bf5ad761d5d307938bf3c9aa5e4
+--- a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
++++ b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+@@ -1,137 +1,281 @@
+ # 관리자 가이드 - `core/perf` POSD 3차 리팩토링 계획
+ 
+ - source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- guide_status: draft
+-- guide_review_status: 초기 검토 전
+-- review_pass_count: 0
+-- remaining_guide_corrections: 1
++- source_spec_refs:
++  - `5.0 작업 순서 원칙`
++  - `4.1 core/perf 작업`
++  - `4.2 bindings/<lang>/perf 작업`
++  - `4.3 core/bench/with_zmq 작업`
++  - `4.4 core/bench/with_stream 작업`
++  - `4.5 공통 tracked artifact 정리 기준 수립`
++  - `6. 검증 방법`
++  - `6.1 Full Test Gate 정의`
++  - `7. 완료 정의`
++  - `8. 비범위`
++- guide_status: approved
++- guide_review_status: 승인 완료
++- review_pass_count: 2
++- remaining_guide_corrections: 0
+ - unresolved_structural_issues: 8
+ - status: in_progress
+ - remaining_tasks: 8
+ - completion_verified: false
+ - blocked_reason:
+-- last_review_summary: 초기 skeleton 생성
++- last_review_summary: 고정 순서, full gate 전제, 단계별 구조 목표, 비범위를 원문 기준으로 반영함
+ 
+-## 1. 고정 순서
++## 1. 범위와 비범위
++
++- 범위:
++  - `core/perf` 문서, runner, 테스트, shared stream client, queue/probe/common surface 정리
++  - `bindings/<lang>/perf`의 정책/phase/metric surface 정렬
++  - `core/bench/with_zmq`, `core/bench/with_stream`의 로컬 bench 계약 정렬
++  - tracked perf artifact 정리 기준 수립
++- 비범위: `8. 비범위`
++  - throughput/bandwidth/latency 계산식 변경 금지
++  - one-way vs echo 의미 변경 금지
++  - `RESULT` 포맷 확장 금지
++  - backpressure 검증을 perf 기본 surface로 복귀시키는 작업 금지
++  - transport별 성능 수치 튜닝 금지
++
++## 2. 고정 순서와 공통 규칙
++
++- source_spec_ref: `5.0 작업 순서 원칙`, `공통 작업 루프`, `6.1 Full Test Gate 정의`
++- 고정 순서:
++  1. 단계 1. `core/perf` - C1 문서/테스트 수렴
++  2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
++  3. 단계 3. `core/perf` - C3 stream common client 정리
++  4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
++  5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
++  6. 단계 6. `core/bench/with_zmq` 정리
++  7. 단계 7. `core/bench/with_stream` 정리
++  8. 단계 8. 공통 tracked artifact 정책 정리
++- 공통 작업 루프:
++  1. 정책 문서 기준 불일치 확인
++  2. POSD 리팩토링 수행
++  3. dead code/dead branch/dead file까지 포함해 추가 구조 단순화 여지 재확인
++  4. 기능 확인과 cheap/local 검증 수행
++  5. 위 1~4가 정리된 뒤에만 stage별 full test gate 수행
++  6. full test gate 무실패일 때만 다음 단계 진행
++- 금지 규칙:
++  - full gate를 중간 상태 확인 용도로 사용하지 않음
++  - `known fail`, `나중에 수정`, `partial success`를 이유로 다음 단계 진행 금지
++  - 한 단계라도 fail 항목이 남으면 다음 단계 진행 금지
++  - 단계가 `complete` 되기 전에는 후속 단계를 `blocked`로 유지
++
++## 3. 검증 정책
++
++- source_spec_ref: `6. 검증 방법`, `6.1 Full Test Gate 정의`
++- cheap/local 검증:
++  - `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
++  - `pytest -q core/perf/single/tests`
++  - `bash -n core/perf/run_benchmarks.sh`
++  - `bash -n core/perf/run_benchmarks_multi.sh`
++  - `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
++  - `rg -n "cpu_pct|mem_mb|server_cpu_pct|server_mem_mb|warmup|Q\\.Snd|Q\\.Rcv" core/perf core/bench/with_stream core/bench/with_zmq bindings doc/perf`
++- full test gate:
++  1. `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
++  2. `pytest -q core/perf/single/tests`
++  3. `bash -n core/perf/run_benchmarks.sh`
++  4. `bash -n core/perf/run_benchmarks_multi.sh`
++  5. `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
++  6. `./core/perf/run_benchmarks.sh`
++  7. `./core/perf/run_benchmarks_multi.sh`
++- gate 전제:
++  - 해당 단계의 POSD 리팩토링과 dead code 정리가 더 이상 남지 않았다고 직접 확인되어야 함
++  - `doc/perf` 정책 위반 상태가 아니어야 함
++  - 결과의 fail 항목 수가 0이어야 함
++  - bindings/bench 단계도 대상 전용 검증을 추가하되 core perf full gate를 생략하지 않음
+ 
+-1. 단계 1. `core/perf` - C1 문서/테스트 수렴
+-2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+-3. 단계 3. `core/perf` - C3 stream common client 정리
+-4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
+-5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+-6. 단계 6. `core/bench/with_zmq` 정리
+-7. 단계 7. `core/bench/with_stream` 정리
+-8. 단계 8. 공통 tracked artifact 정책 정리
++## 4. 단계별 운영 정의
+ 
+ ## 단계 1. `core/perf` - C1 문서/테스트 수렴
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C1`, `5 단계 1`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/README.md`
++  - `core/perf/README_KO.md`
++  - `core/perf/single/tests/test_multi_run_comparison_policy.py`
++  - `core/perf/single/tests/test_run_comparison_policy.py`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - README를 정책 요약 index 수준으로 축소
++  - warmup, single `recv`, `cpu/mem` 등 제거된 계약을 문서/fixture에서 제거
++  - policy fixture를 필수 5개 metric 기준으로 단순화
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - README가 policy와 모순되지 않음
++  - 테스트 fixture가 제거된 metric을 더 이상 사용하지 않음
++  - 제거된 계약을 되살리는 얕은 fixture/wrapper가 남지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - README/tests에 legacy 용어가 남지 않는지 `rg` 확인
++  - cheap/local 검증 완료
++  - 구조 이슈가 0개로 줄었는지 직접 검토
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - README/tests에 old metric/phase 문구 잔재 여부 미확인
+ 
+ ## 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C2`, `5 단계 2`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/multi/common/perf_multi_metrics.hpp`
++  - `core/perf/single/common/perf_single_queue_probe.hpp`
++  - `core/perf/single/common/bench_common.hpp`
++  - `core/perf/multi/src/perf_multi_spot_client.cpp`
++  - `core/perf/multi/common/perf_multi_spot_control.hpp`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - queue probe, queue stats, debug helper가 기본 perf 계약에 직접 기여하지 않으면 공통 surface에서 제거
++  - 꼭 필요하면 SPOT/local diagnostic 범위로 국소화
++  - 패턴 파일이 불필요한 내부를 보지 않게 include 경계 축소
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 기본 perf 실행에 queue probe 공용 계층이 필수가 아님
++  - queue/backpressure helper가 공통 hot path 설명 복잡도를 올리지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - call graph와 공통/public 노출 경계 검토 완료
++  - cheap/local 검증 완료
++  - 제거 또는 국소화 후 dead include/dead helper 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - queue/debug helper가 공통 hot path에서 완전히 분리되었는지 미확인
+ 
+ ## 단계 3. `core/perf` - C3 stream common client 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C3`, `5 단계 3`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/common/streamclient/README.md`
++  - `core/perf/common/streamclient/README_KO.md`
++  - `core/perf/common/streamclient/perf_stream_bench_client.hpp`
++  - `core/perf/common/streamclient/perf_stream_client_options.hpp`
++  - `core/perf/common/streamclient/perf_stream_client_session.hpp`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - shared stream client에서 warmup phase와 `--warmup` 옵션 잔재 제거
++  - lifecycle을 `ready -> active` 기준으로 정렬
++  - downstream perf/bench/bindings에 old contract 재주입 차단
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 문서와 코드에 warmup contract가 남지 않음
++  - shared client가 core perf policy와 같은 phase/metric surface를 따름
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - public option/README/세션 lifecycle 표면 일치
++  - cheap/local 검증 완료
++  - shared client를 통하는 하위 경로의 old contract 잔재 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - stream shared client의 old warmup/measure/drain contract 잔재 여부 미확인
+ 
+ ## 단계 4. `core/perf` - C4 runner entrypoint 단순화
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C4`, `5 단계 4`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/run_benchmarks.sh`
++  - `core/perf/run_benchmarks_multi.sh`
++  - `core/perf/run_benchmarks.ps1`
++  - `core/perf/run_benchmarks_multi.ps1`
++  - `core/perf/run_comparison.py`
++  - `core/perf/single/run_comparison.py`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - shell은 option normalization과 build gate까지만 담당
++  - orchestration 책임은 Python engine으로 더 직접 연결
++  - multi shell이 single shell을 다시 호출하는 구조 축소 또는 제거
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - entrypoint 책임이 shell 2단 위임으로 퍼져 있지 않음
++  - single/multi 실행 흐름이 문서 한 문단으로 설명 가능함
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 공식 entrypoint 정의가 문서와 코드에서 일치
++  - cheap/local 검증 완료
++  - shell 재호출 경로와 얕은 wrapper 잔재 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - shell/python ownership 경계와 재호출 경로 단순화 여부 미확인
+ 
+ ## 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.2`, `5 단계 5`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `bindings/cpp/perf`
++  - `bindings/dotnet/perf`
++  - `bindings/java/perf`
++  - `bindings/rust/perf`
++  - `bindings/go/perf`
++  - `bindings/node/perf`
++  - `bindings/python/perf`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `cpp -> dotnet -> java -> rust -> go -> node -> python` 순으로 하나씩 정렬
++  - old warmup/cpu-mem/queue/debug contract 제거
++  - phase/metric/result semantics를 core와 정렬하면서 shallow wrapper와 dead code 축소
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - bindings perf와 core perf가 phase/metric/RESULT 의미에서 모순되지 않음
++  - 각 bindings가 변경된 `doc/perf` 정책을 실제 코드와 실행 surface에서 따름
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 현재 언어 대상의 정책 감사 완료
++  - 해당 언어 전용 검증과 core perf full gate 통과
++  - 다음 언어 시작 전 현재 언어 구조 이슈 0건
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - 언어별 순차 재개 지점과 남은 old contract 잔재 미확인
+ 
+ ## 단계 6. `core/bench/with_zmq` 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.3`, `5 단계 6`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/bench/with_zmq`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `with_zmq` 로컬 bench 계약과 `doc/perf` 공통 원칙의 경계 확정
++  - warmup 의존과 충돌하는 warmup/metric/result contract 분리 또는 제거
++  - bench 전용 개념과 perf 본계약 경계 명확화
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 로컬 bench 정책을 유지하면서 core perf 공통 측정 원칙과 모순되지 않음
++  - tmp/results/debug 잔재가 비교 surface 설명 복잡도를 과도하게 올리지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - `bash -n core/bench/with_zmq/run_benchmarks.sh`
++  - `bash -n core/bench/with_zmq/run_benchmarks_multi.sh`
++  - `pytest -q core/bench/with_zmq/single/tests/test_run_comparison_policy.py`
++  - `./core/bench/with_zmq/run_benchmarks.sh`
++  - `./core/bench/with_zmq/run_benchmarks_multi.sh`
++  - core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - with_zmq 로컬 계약과 core perf 경계, warmup 잔재, tracked noise 미확인
+ 
+ ## 단계 7. `core/bench/with_stream` 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.4`, `5 단계 7`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/bench/with_stream`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `with_stream` 로컬 bench 정책과 shared stream client/core perf 공통 원칙의 경계 확정
++  - old STREAM warmup/measure/drain 잔재 제거
++  - stack별 공통/전용 책임 재정렬
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 로컬 bench 정책을 유지하면서 shared client/core perf 공통 원칙을 다시 오염시키지 않음
++  - 비교 surface로서 설명 가능한 구조를 유지함
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - `python3 -m py_compile core/bench/with_stream/run_comparison.py`
++  - `bash -n core/bench/with_stream/run_benchmarks.sh`
++  - `./core/bench/with_stream/run_benchmarks.sh`
++  - core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - with_stream의 old contract 잔재와 stack별 책임 경계 미확인
+ 
+ ## 단계 8. 공통 tracked artifact 정책 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.5`, `5 단계 8`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/baseline`
++  - tracked sample / analysis artifact
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - tracked baseline/result를 남길 기준 명시
++  - old baseline을 제거 또는 archive로 이동
++  - 공식 runtime output root인 `core/perf/results`는 유지
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 코드/정책/실행 산출물이 같은 레벨에서 섞여 있지 않음
++  - tracked perf artifact는 git에 남아야 하는 최소 집합만 유지
++  - `core/perf/results`는 tracked cleanup 대상과 혼동되지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 저장 위치 규칙과 `.gitignore` 반영
++  - cheap/local 검증 완료
++  - 최종 core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - tracked baseline/sample/analysis artifact의 분류 기준과 반영 범위 미확인
++
++## 5. 완료 조건
+ 
++- source_spec_ref: `7. 완료 정의`, `9. 메모`
++- 모든 단계가 고정 순서대로 `complete`
++- `core/perf` 문서, runner, 테스트가 현재 policy surface와 일치
++- 제거된 metric/phase가 README, fixture, shared client, bindings, bench surface에 다시 남지 않음
++- queue/debug/probe, shallow wrapper, 과대 공통 계층, dead code, dead option, dead file이 구조 이슈 목록에서 제거됨
++- runner entrypoint 구조가 더 짧고 설명 가능해짐
++- tracked perf artifact 기준이 문서화되고 코드 트리에 반영됨
++- POSD 기준으로 추가 제거 후보가 남지 않거나, 남더라도 제거 이득이 작다는 근거를 설명 가능함
+diff --git a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md
+deleted file mode 100644
+index f6bdd6a7ce1ba61c819202caef2023f87a9d067e..0000000000000000000000000000000000000000
+--- a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md
++++ /dev/null
+@@ -1,23 +0,0 @@
+-# 진행표 - `core/perf` POSD 3차 리팩토링 계획
+-
+-- source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- manager_guide_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+-- guide_status: draft
+-- status: in_progress
+-- remaining_tasks: 8
+-- completion_verified: false
+-- 현재 활성 단계: 단계 1. `core/perf` - C1 문서/테스트 수렴
+-- 다음 허용 작업: 단계 1. `core/perf` - C1 문서/테스트 수렴 구조 검토
+-- blocked_reason:
+-- latest_verified_evidence: 초기 skeleton 생성
+-
+-| 단계 | 현재 상태 | 핵심 확인 항목 | 남은 구조 이슈 수 | 구조 완료 확인 | cheap/local 검증 | 단계 커밋 준비 | full gate 허용 | 다음 단계 진행 가능 |
+-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+-| 단계 1. `core/perf` - C1 문서/테스트 수렴 | in_review | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 3. `core/perf` - C3 stream common client 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 4. `core/perf` - C4 runner entrypoint 단순화 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 6. `core/bench/with_zmq` 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 7. `core/bench/with_stream` 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 8. 공통 tracked artifact 정책 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+
+diff --git a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+index f460522feb92521dbd771fbe29edc42137d61d02..d7a494a9b0376bf5ad761d5d307938bf3c9aa5e4
+--- a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
++++ b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+@@ -1,137 +1,281 @@
+ # 관리자 가이드 - `core/perf` POSD 3차 리팩토링 계획
+ 
+ - source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- guide_status: draft
+-- guide_review_status: 초기 검토 전
+-- review_pass_count: 0
+-- remaining_guide_corrections: 1
++- source_spec_refs:
++  - `5.0 작업 순서 원칙`
++  - `4.1 core/perf 작업`
++  - `4.2 bindings/<lang>/perf 작업`
++  - `4.3 core/bench/with_zmq 작업`
++  - `4.4 core/bench/with_stream 작업`
++  - `4.5 공통 tracked artifact 정리 기준 수립`
++  - `6. 검증 방법`
++  - `6.1 Full Test Gate 정의`
++  - `7. 완료 정의`
++  - `8. 비범위`
++- guide_status: approved
++- guide_review_status: 승인 완료
++- review_pass_count: 2
++- remaining_guide_corrections: 0
+ - unresolved_structural_issues: 8
+ - status: in_progress
+ - remaining_tasks: 8
+ - completion_verified: false
+ - blocked_reason:
+-- last_review_summary: 초기 skeleton 생성
++- last_review_summary: 고정 순서, full gate 전제, 단계별 구조 목표, 비범위를 원문 기준으로 반영함
+ 
+-## 1. 고정 순서
++## 1. 범위와 비범위
++
++- 범위:
++  - `core/perf` 문서, runner, 테스트, shared stream client, queue/probe/common surface 정리
++  - `bindings/<lang>/perf`의 정책/phase/metric surface 정렬
++  - `core/bench/with_zmq`, `core/bench/with_stream`의 로컬 bench 계약 정렬
++  - tracked perf artifact 정리 기준 수립
++- 비범위: `8. 비범위`
++  - throughput/bandwidth/latency 계산식 변경 금지
++  - one-way vs echo 의미 변경 금지
++  - `RESULT` 포맷 확장 금지
++  - backpressure 검증을 perf 기본 surface로 복귀시키는 작업 금지
++  - transport별 성능 수치 튜닝 금지
++
++## 2. 고정 순서와 공통 규칙
++
++- source_spec_ref: `5.0 작업 순서 원칙`, `공통 작업 루프`, `6.1 Full Test Gate 정의`
++- 고정 순서:
++  1. 단계 1. `core/perf` - C1 문서/테스트 수렴
++  2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
++  3. 단계 3. `core/perf` - C3 stream common client 정리
++  4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
++  5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
++  6. 단계 6. `core/bench/with_zmq` 정리
++  7. 단계 7. `core/bench/with_stream` 정리
++  8. 단계 8. 공통 tracked artifact 정책 정리
++- 공통 작업 루프:
++  1. 정책 문서 기준 불일치 확인
++  2. POSD 리팩토링 수행
++  3. dead code/dead branch/dead file까지 포함해 추가 구조 단순화 여지 재확인
++  4. 기능 확인과 cheap/local 검증 수행
++  5. 위 1~4가 정리된 뒤에만 stage별 full test gate 수행
++  6. full test gate 무실패일 때만 다음 단계 진행
++- 금지 규칙:
++  - full gate를 중간 상태 확인 용도로 사용하지 않음
++  - `known fail`, `나중에 수정`, `partial success`를 이유로 다음 단계 진행 금지
++  - 한 단계라도 fail 항목이 남으면 다음 단계 진행 금지
++  - 단계가 `complete` 되기 전에는 후속 단계를 `blocked`로 유지
++
++## 3. 검증 정책
++
++- source_spec_ref: `6. 검증 방법`, `6.1 Full Test Gate 정의`
++- cheap/local 검증:
++  - `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
++  - `pytest -q core/perf/single/tests`
++  - `bash -n core/perf/run_benchmarks.sh`
++  - `bash -n core/perf/run_benchmarks_multi.sh`
++  - `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
++  - `rg -n "cpu_pct|mem_mb|server_cpu_pct|server_mem_mb|warmup|Q\\.Snd|Q\\.Rcv" core/perf core/bench/with_stream core/bench/with_zmq bindings doc/perf`
++- full test gate:
++  1. `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
++  2. `pytest -q core/perf/single/tests`
++  3. `bash -n core/perf/run_benchmarks.sh`
++  4. `bash -n core/perf/run_benchmarks_multi.sh`
++  5. `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
++  6. `./core/perf/run_benchmarks.sh`
++  7. `./core/perf/run_benchmarks_multi.sh`
++- gate 전제:
++  - 해당 단계의 POSD 리팩토링과 dead code 정리가 더 이상 남지 않았다고 직접 확인되어야 함
++  - `doc/perf` 정책 위반 상태가 아니어야 함
++  - 결과의 fail 항목 수가 0이어야 함
++  - bindings/bench 단계도 대상 전용 검증을 추가하되 core perf full gate를 생략하지 않음
+ 
+-1. 단계 1. `core/perf` - C1 문서/테스트 수렴
+-2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+-3. 단계 3. `core/perf` - C3 stream common client 정리
+-4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
+-5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+-6. 단계 6. `core/bench/with_zmq` 정리
+-7. 단계 7. `core/bench/with_stream` 정리
+-8. 단계 8. 공통 tracked artifact 정책 정리
++## 4. 단계별 운영 정의
+ 
+ ## 단계 1. `core/perf` - C1 문서/테스트 수렴
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C1`, `5 단계 1`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/README.md`
++  - `core/perf/README_KO.md`
++  - `core/perf/single/tests/test_multi_run_comparison_policy.py`
++  - `core/perf/single/tests/test_run_comparison_policy.py`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - README를 정책 요약 index 수준으로 축소
++  - warmup, single `recv`, `cpu/mem` 등 제거된 계약을 문서/fixture에서 제거
++  - policy fixture를 필수 5개 metric 기준으로 단순화
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - README가 policy와 모순되지 않음
++  - 테스트 fixture가 제거된 metric을 더 이상 사용하지 않음
++  - 제거된 계약을 되살리는 얕은 fixture/wrapper가 남지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - README/tests에 legacy 용어가 남지 않는지 `rg` 확인
++  - cheap/local 검증 완료
++  - 구조 이슈가 0개로 줄었는지 직접 검토
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - README/tests에 old metric/phase 문구 잔재 여부 미확인
+ 
+ ## 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C2`, `5 단계 2`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/multi/common/perf_multi_metrics.hpp`
++  - `core/perf/single/common/perf_single_queue_probe.hpp`
++  - `core/perf/single/common/bench_common.hpp`
++  - `core/perf/multi/src/perf_multi_spot_client.cpp`
++  - `core/perf/multi/common/perf_multi_spot_control.hpp`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - queue probe, queue stats, debug helper가 기본 perf 계약에 직접 기여하지 않으면 공통 surface에서 제거
++  - 꼭 필요하면 SPOT/local diagnostic 범위로 국소화
++  - 패턴 파일이 불필요한 내부를 보지 않게 include 경계 축소
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 기본 perf 실행에 queue probe 공용 계층이 필수가 아님
++  - queue/backpressure helper가 공통 hot path 설명 복잡도를 올리지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - call graph와 공통/public 노출 경계 검토 완료
++  - cheap/local 검증 완료
++  - 제거 또는 국소화 후 dead include/dead helper 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - queue/debug helper가 공통 hot path에서 완전히 분리되었는지 미확인
+ 
+ ## 단계 3. `core/perf` - C3 stream common client 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C3`, `5 단계 3`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/common/streamclient/README.md`
++  - `core/perf/common/streamclient/README_KO.md`
++  - `core/perf/common/streamclient/perf_stream_bench_client.hpp`
++  - `core/perf/common/streamclient/perf_stream_client_options.hpp`
++  - `core/perf/common/streamclient/perf_stream_client_session.hpp`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - shared stream client에서 warmup phase와 `--warmup` 옵션 잔재 제거
++  - lifecycle을 `ready -> active` 기준으로 정렬
++  - downstream perf/bench/bindings에 old contract 재주입 차단
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 문서와 코드에 warmup contract가 남지 않음
++  - shared client가 core perf policy와 같은 phase/metric surface를 따름
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - public option/README/세션 lifecycle 표면 일치
++  - cheap/local 검증 완료
++  - shared client를 통하는 하위 경로의 old contract 잔재 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - stream shared client의 old warmup/measure/drain contract 잔재 여부 미확인
+ 
+ ## 단계 4. `core/perf` - C4 runner entrypoint 단순화
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C4`, `5 단계 4`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/run_benchmarks.sh`
++  - `core/perf/run_benchmarks_multi.sh`
++  - `core/perf/run_benchmarks.ps1`
++  - `core/perf/run_benchmarks_multi.ps1`
++  - `core/perf/run_comparison.py`
++  - `core/perf/single/run_comparison.py`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - shell은 option normalization과 build gate까지만 담당
++  - orchestration 책임은 Python engine으로 더 직접 연결
++  - multi shell이 single shell을 다시 호출하는 구조 축소 또는 제거
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - entrypoint 책임이 shell 2단 위임으로 퍼져 있지 않음
++  - single/multi 실행 흐름이 문서 한 문단으로 설명 가능함
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 공식 entrypoint 정의가 문서와 코드에서 일치
++  - cheap/local 검증 완료
++  - shell 재호출 경로와 얕은 wrapper 잔재 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - shell/python ownership 경계와 재호출 경로 단순화 여부 미확인
+ 
+ ## 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.2`, `5 단계 5`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `bindings/cpp/perf`
++  - `bindings/dotnet/perf`
++  - `bindings/java/perf`
++  - `bindings/rust/perf`
++  - `bindings/go/perf`
++  - `bindings/node/perf`
++  - `bindings/python/perf`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `cpp -> dotnet -> java -> rust -> go -> node -> python` 순으로 하나씩 정렬
++  - old warmup/cpu-mem/queue/debug contract 제거
++  - phase/metric/result semantics를 core와 정렬하면서 shallow wrapper와 dead code 축소
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - bindings perf와 core perf가 phase/metric/RESULT 의미에서 모순되지 않음
++  - 각 bindings가 변경된 `doc/perf` 정책을 실제 코드와 실행 surface에서 따름
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 현재 언어 대상의 정책 감사 완료
++  - 해당 언어 전용 검증과 core perf full gate 통과
++  - 다음 언어 시작 전 현재 언어 구조 이슈 0건
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - 언어별 순차 재개 지점과 남은 old contract 잔재 미확인
+ 
+ ## 단계 6. `core/bench/with_zmq` 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.3`, `5 단계 6`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/bench/with_zmq`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `with_zmq` 로컬 bench 계약과 `doc/perf` 공통 원칙의 경계 확정
++  - warmup 의존과 충돌하는 warmup/metric/result contract 분리 또는 제거
++  - bench 전용 개념과 perf 본계약 경계 명확화
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 로컬 bench 정책을 유지하면서 core perf 공통 측정 원칙과 모순되지 않음
++  - tmp/results/debug 잔재가 비교 surface 설명 복잡도를 과도하게 올리지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - `bash -n core/bench/with_zmq/run_benchmarks.sh`
++  - `bash -n core/bench/with_zmq/run_benchmarks_multi.sh`
++  - `pytest -q core/bench/with_zmq/single/tests/test_run_comparison_policy.py`
++  - `./core/bench/with_zmq/run_benchmarks.sh`
++  - `./core/bench/with_zmq/run_benchmarks_multi.sh`
++  - core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - with_zmq 로컬 계약과 core perf 경계, warmup 잔재, tracked noise 미확인
+ 
+ ## 단계 7. `core/bench/with_stream` 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.4`, `5 단계 7`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/bench/with_stream`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `with_stream` 로컬 bench 정책과 shared stream client/core perf 공통 원칙의 경계 확정
++  - old STREAM warmup/measure/drain 잔재 제거
++  - stack별 공통/전용 책임 재정렬
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 로컬 bench 정책을 유지하면서 shared client/core perf 공통 원칙을 다시 오염시키지 않음
++  - 비교 surface로서 설명 가능한 구조를 유지함
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - `python3 -m py_compile core/bench/with_stream/run_comparison.py`
++  - `bash -n core/bench/with_stream/run_benchmarks.sh`
++  - `./core/bench/with_stream/run_benchmarks.sh`
++  - core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - with_stream의 old contract 잔재와 stack별 책임 경계 미확인
+ 
+ ## 단계 8. 공통 tracked artifact 정책 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.5`, `5 단계 8`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/baseline`
++  - tracked sample / analysis artifact
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - tracked baseline/result를 남길 기준 명시
++  - old baseline을 제거 또는 archive로 이동
++  - 공식 runtime output root인 `core/perf/results`는 유지
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 코드/정책/실행 산출물이 같은 레벨에서 섞여 있지 않음
++  - tracked perf artifact는 git에 남아야 하는 최소 집합만 유지
++  - `core/perf/results`는 tracked cleanup 대상과 혼동되지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 저장 위치 규칙과 `.gitignore` 반영
++  - cheap/local 검증 완료
++  - 최종 core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - tracked baseline/sample/analysis artifact의 분류 기준과 반영 범위 미확인
++
++## 5. 완료 조건
+ 
++- source_spec_ref: `7. 완료 정의`, `9. 메모`
++- 모든 단계가 고정 순서대로 `complete`
++- `core/perf` 문서, runner, 테스트가 현재 policy surface와 일치
++- 제거된 metric/phase가 README, fixture, shared client, bindings, bench surface에 다시 남지 않음
++- queue/debug/probe, shallow wrapper, 과대 공통 계층, dead code, dead option, dead file이 구조 이슈 목록에서 제거됨
++- runner entrypoint 구조가 더 짧고 설명 가능해짐
++- tracked perf artifact 기준이 문서화되고 코드 트리에 반영됨
++- POSD 기준으로 추가 제거 후보가 남지 않거나, 남더라도 제거 이득이 작다는 근거를 설명 가능함
+diff --git a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md
+deleted file mode 100644
+index f6bdd6a7ce1ba61c819202caef2023f87a9d067e..0000000000000000000000000000000000000000
+--- a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md
++++ /dev/null
+@@ -1,23 +0,0 @@
+-# 진행표 - `core/perf` POSD 3차 리팩토링 계획
+-
+-- source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- manager_guide_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+-- guide_status: draft
+-- status: in_progress
+-- remaining_tasks: 8
+-- completion_verified: false
+-- 현재 활성 단계: 단계 1. `core/perf` - C1 문서/테스트 수렴
+-- 다음 허용 작업: 단계 1. `core/perf` - C1 문서/테스트 수렴 구조 검토
+-- blocked_reason:
+-- latest_verified_evidence: 초기 skeleton 생성
+-
+-| 단계 | 현재 상태 | 핵심 확인 항목 | 남은 구조 이슈 수 | 구조 완료 확인 | cheap/local 검증 | 단계 커밋 준비 | full gate 허용 | 다음 단계 진행 가능 |
+-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+-| 단계 1. `core/perf` - C1 문서/테스트 수렴 | in_review | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 3. `core/perf` - C3 stream common client 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 4. `core/perf` - C4 runner entrypoint 단순화 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 6. `core/bench/with_zmq` 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 7. `core/bench/with_stream` 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 8. 공통 tracked artifact 정책 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+
+apply patch
+patch: completed
+/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md
+diff --git a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+index f460522feb92521dbd771fbe29edc42137d61d02..d7a494a9b0376bf5ad761d5d307938bf3c9aa5e4
+--- a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
++++ b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+@@ -1,137 +1,281 @@
+ # 관리자 가이드 - `core/perf` POSD 3차 리팩토링 계획
+ 
+ - source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- guide_status: draft
+-- guide_review_status: 초기 검토 전
+-- review_pass_count: 0
+-- remaining_guide_corrections: 1
++- source_spec_refs:
++  - `5.0 작업 순서 원칙`
++  - `4.1 core/perf 작업`
++  - `4.2 bindings/<lang>/perf 작업`
++  - `4.3 core/bench/with_zmq 작업`
++  - `4.4 core/bench/with_stream 작업`
++  - `4.5 공통 tracked artifact 정리 기준 수립`
++  - `6. 검증 방법`
++  - `6.1 Full Test Gate 정의`
++  - `7. 완료 정의`
++  - `8. 비범위`
++- guide_status: approved
++- guide_review_status: 승인 완료
++- review_pass_count: 2
++- remaining_guide_corrections: 0
+ - unresolved_structural_issues: 8
+ - status: in_progress
+ - remaining_tasks: 8
+ - completion_verified: false
+ - blocked_reason:
+-- last_review_summary: 초기 skeleton 생성
++- last_review_summary: 고정 순서, full gate 전제, 단계별 구조 목표, 비범위를 원문 기준으로 반영함
+ 
+-## 1. 고정 순서
++## 1. 범위와 비범위
++
++- 범위:
++  - `core/perf` 문서, runner, 테스트, shared stream client, queue/probe/common surface 정리
++  - `bindings/<lang>/perf`의 정책/phase/metric surface 정렬
++  - `core/bench/with_zmq`, `core/bench/with_stream`의 로컬 bench 계약 정렬
++  - tracked perf artifact 정리 기준 수립
++- 비범위: `8. 비범위`
++  - throughput/bandwidth/latency 계산식 변경 금지
++  - one-way vs echo 의미 변경 금지
++  - `RESULT` 포맷 확장 금지
++  - backpressure 검증을 perf 기본 surface로 복귀시키는 작업 금지
++  - transport별 성능 수치 튜닝 금지
++
++## 2. 고정 순서와 공통 규칙
++
++- source_spec_ref: `5.0 작업 순서 원칙`, `공통 작업 루프`, `6.1 Full Test Gate 정의`
++- 고정 순서:
++  1. 단계 1. `core/perf` - C1 문서/테스트 수렴
++  2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
++  3. 단계 3. `core/perf` - C3 stream common client 정리
++  4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
++  5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
++  6. 단계 6. `core/bench/with_zmq` 정리
++  7. 단계 7. `core/bench/with_stream` 정리
++  8. 단계 8. 공통 tracked artifact 정책 정리
++- 공통 작업 루프:
++  1. 정책 문서 기준 불일치 확인
++  2. POSD 리팩토링 수행
++  3. dead code/dead branch/dead file까지 포함해 추가 구조 단순화 여지 재확인
++  4. 기능 확인과 cheap/local 검증 수행
++  5. 위 1~4가 정리된 뒤에만 stage별 full test gate 수행
++  6. full test gate 무실패일 때만 다음 단계 진행
++- 금지 규칙:
++  - full gate를 중간 상태 확인 용도로 사용하지 않음
++  - `known fail`, `나중에 수정`, `partial success`를 이유로 다음 단계 진행 금지
++  - 한 단계라도 fail 항목이 남으면 다음 단계 진행 금지
++  - 단계가 `complete` 되기 전에는 후속 단계를 `blocked`로 유지
++
++## 3. 검증 정책
++
++- source_spec_ref: `6. 검증 방법`, `6.1 Full Test Gate 정의`
++- cheap/local 검증:
++  - `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
++  - `pytest -q core/perf/single/tests`
++  - `bash -n core/perf/run_benchmarks.sh`
++  - `bash -n core/perf/run_benchmarks_multi.sh`
++  - `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
++  - `rg -n "cpu_pct|mem_mb|server_cpu_pct|server_mem_mb|warmup|Q\\.Snd|Q\\.Rcv" core/perf core/bench/with_stream core/bench/with_zmq bindings doc/perf`
++- full test gate:
++  1. `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
++  2. `pytest -q core/perf/single/tests`
++  3. `bash -n core/perf/run_benchmarks.sh`
++  4. `bash -n core/perf/run_benchmarks_multi.sh`
++  5. `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
++  6. `./core/perf/run_benchmarks.sh`
++  7. `./core/perf/run_benchmarks_multi.sh`
++- gate 전제:
++  - 해당 단계의 POSD 리팩토링과 dead code 정리가 더 이상 남지 않았다고 직접 확인되어야 함
++  - `doc/perf` 정책 위반 상태가 아니어야 함
++  - 결과의 fail 항목 수가 0이어야 함
++  - bindings/bench 단계도 대상 전용 검증을 추가하되 core perf full gate를 생략하지 않음
+ 
+-1. 단계 1. `core/perf` - C1 문서/테스트 수렴
+-2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+-3. 단계 3. `core/perf` - C3 stream common client 정리
+-4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
+-5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+-6. 단계 6. `core/bench/with_zmq` 정리
+-7. 단계 7. `core/bench/with_stream` 정리
+-8. 단계 8. 공통 tracked artifact 정책 정리
++## 4. 단계별 운영 정의
+ 
+ ## 단계 1. `core/perf` - C1 문서/테스트 수렴
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C1`, `5 단계 1`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/README.md`
++  - `core/perf/README_KO.md`
++  - `core/perf/single/tests/test_multi_run_comparison_policy.py`
++  - `core/perf/single/tests/test_run_comparison_policy.py`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - README를 정책 요약 index 수준으로 축소
++  - warmup, single `recv`, `cpu/mem` 등 제거된 계약을 문서/fixture에서 제거
++  - policy fixture를 필수 5개 metric 기준으로 단순화
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - README가 policy와 모순되지 않음
++  - 테스트 fixture가 제거된 metric을 더 이상 사용하지 않음
++  - 제거된 계약을 되살리는 얕은 fixture/wrapper가 남지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - README/tests에 legacy 용어가 남지 않는지 `rg` 확인
++  - cheap/local 검증 완료
++  - 구조 이슈가 0개로 줄었는지 직접 검토
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - README/tests에 old metric/phase 문구 잔재 여부 미확인
+ 
+ ## 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C2`, `5 단계 2`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/multi/common/perf_multi_metrics.hpp`
++  - `core/perf/single/common/perf_single_queue_probe.hpp`
++  - `core/perf/single/common/bench_common.hpp`
++  - `core/perf/multi/src/perf_multi_spot_client.cpp`
++  - `core/perf/multi/common/perf_multi_spot_control.hpp`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - queue probe, queue stats, debug helper가 기본 perf 계약에 직접 기여하지 않으면 공통 surface에서 제거
++  - 꼭 필요하면 SPOT/local diagnostic 범위로 국소화
++  - 패턴 파일이 불필요한 내부를 보지 않게 include 경계 축소
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 기본 perf 실행에 queue probe 공용 계층이 필수가 아님
++  - queue/backpressure helper가 공통 hot path 설명 복잡도를 올리지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - call graph와 공통/public 노출 경계 검토 완료
++  - cheap/local 검증 완료
++  - 제거 또는 국소화 후 dead include/dead helper 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - queue/debug helper가 공통 hot path에서 완전히 분리되었는지 미확인
+ 
+ ## 단계 3. `core/perf` - C3 stream common client 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C3`, `5 단계 3`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/common/streamclient/README.md`
++  - `core/perf/common/streamclient/README_KO.md`
++  - `core/perf/common/streamclient/perf_stream_bench_client.hpp`
++  - `core/perf/common/streamclient/perf_stream_client_options.hpp`
++  - `core/perf/common/streamclient/perf_stream_client_session.hpp`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - shared stream client에서 warmup phase와 `--warmup` 옵션 잔재 제거
++  - lifecycle을 `ready -> active` 기준으로 정렬
++  - downstream perf/bench/bindings에 old contract 재주입 차단
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 문서와 코드에 warmup contract가 남지 않음
++  - shared client가 core perf policy와 같은 phase/metric surface를 따름
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - public option/README/세션 lifecycle 표면 일치
++  - cheap/local 검증 완료
++  - shared client를 통하는 하위 경로의 old contract 잔재 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - stream shared client의 old warmup/measure/drain contract 잔재 여부 미확인
+ 
+ ## 단계 4. `core/perf` - C4 runner entrypoint 단순화
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C4`, `5 단계 4`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/run_benchmarks.sh`
++  - `core/perf/run_benchmarks_multi.sh`
++  - `core/perf/run_benchmarks.ps1`
++  - `core/perf/run_benchmarks_multi.ps1`
++  - `core/perf/run_comparison.py`
++  - `core/perf/single/run_comparison.py`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - shell은 option normalization과 build gate까지만 담당
++  - orchestration 책임은 Python engine으로 더 직접 연결
++  - multi shell이 single shell을 다시 호출하는 구조 축소 또는 제거
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - entrypoint 책임이 shell 2단 위임으로 퍼져 있지 않음
++  - single/multi 실행 흐름이 문서 한 문단으로 설명 가능함
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 공식 entrypoint 정의가 문서와 코드에서 일치
++  - cheap/local 검증 완료
++  - shell 재호출 경로와 얕은 wrapper 잔재 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - shell/python ownership 경계와 재호출 경로 단순화 여부 미확인
+ 
+ ## 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.2`, `5 단계 5`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `bindings/cpp/perf`
++  - `bindings/dotnet/perf`
++  - `bindings/java/perf`
++  - `bindings/rust/perf`
++  - `bindings/go/perf`
++  - `bindings/node/perf`
++  - `bindings/python/perf`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `cpp -> dotnet -> java -> rust -> go -> node -> python` 순으로 하나씩 정렬
++  - old warmup/cpu-mem/queue/debug contract 제거
++  - phase/metric/result semantics를 core와 정렬하면서 shallow wrapper와 dead code 축소
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - bindings perf와 core perf가 phase/metric/RESULT 의미에서 모순되지 않음
++  - 각 bindings가 변경된 `doc/perf` 정책을 실제 코드와 실행 surface에서 따름
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 현재 언어 대상의 정책 감사 완료
++  - 해당 언어 전용 검증과 core perf full gate 통과
++  - 다음 언어 시작 전 현재 언어 구조 이슈 0건
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - 언어별 순차 재개 지점과 남은 old contract 잔재 미확인
+ 
+ ## 단계 6. `core/bench/with_zmq` 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.3`, `5 단계 6`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/bench/with_zmq`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `with_zmq` 로컬 bench 계약과 `doc/perf` 공통 원칙의 경계 확정
++  - warmup 의존과 충돌하는 warmup/metric/result contract 분리 또는 제거
++  - bench 전용 개념과 perf 본계약 경계 명확화
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 로컬 bench 정책을 유지하면서 core perf 공통 측정 원칙과 모순되지 않음
++  - tmp/results/debug 잔재가 비교 surface 설명 복잡도를 과도하게 올리지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - `bash -n core/bench/with_zmq/run_benchmarks.sh`
++  - `bash -n core/bench/with_zmq/run_benchmarks_multi.sh`
++  - `pytest -q core/bench/with_zmq/single/tests/test_run_comparison_policy.py`
++  - `./core/bench/with_zmq/run_benchmarks.sh`
++  - `./core/bench/with_zmq/run_benchmarks_multi.sh`
++  - core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - with_zmq 로컬 계약과 core perf 경계, warmup 잔재, tracked noise 미확인
+ 
+ ## 단계 7. `core/bench/with_stream` 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.4`, `5 단계 7`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/bench/with_stream`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `with_stream` 로컬 bench 정책과 shared stream client/core perf 공통 원칙의 경계 확정
++  - old STREAM warmup/measure/drain 잔재 제거
++  - stack별 공통/전용 책임 재정렬
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 로컬 bench 정책을 유지하면서 shared client/core perf 공통 원칙을 다시 오염시키지 않음
++  - 비교 surface로서 설명 가능한 구조를 유지함
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - `python3 -m py_compile core/bench/with_stream/run_comparison.py`
++  - `bash -n core/bench/with_stream/run_benchmarks.sh`
++  - `./core/bench/with_stream/run_benchmarks.sh`
++  - core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - with_stream의 old contract 잔재와 stack별 책임 경계 미확인
+ 
+ ## 단계 8. 공통 tracked artifact 정책 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.5`, `5 단계 8`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/baseline`
++  - tracked sample / analysis artifact
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - tracked baseline/result를 남길 기준 명시
++  - old baseline을 제거 또는 archive로 이동
++  - 공식 runtime output root인 `core/perf/results`는 유지
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 코드/정책/실행 산출물이 같은 레벨에서 섞여 있지 않음
++  - tracked perf artifact는 git에 남아야 하는 최소 집합만 유지
++  - `core/perf/results`는 tracked cleanup 대상과 혼동되지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 저장 위치 규칙과 `.gitignore` 반영
++  - cheap/local 검증 완료
++  - 최종 core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - tracked baseline/sample/analysis artifact의 분류 기준과 반영 범위 미확인
++
++## 5. 완료 조건
+ 
++- source_spec_ref: `7. 완료 정의`, `9. 메모`
++- 모든 단계가 고정 순서대로 `complete`
++- `core/perf` 문서, runner, 테스트가 현재 policy surface와 일치
++- 제거된 metric/phase가 README, fixture, shared client, bindings, bench surface에 다시 남지 않음
++- queue/debug/probe, shallow wrapper, 과대 공통 계층, dead code, dead option, dead file이 구조 이슈 목록에서 제거됨
++- runner entrypoint 구조가 더 짧고 설명 가능해짐
++- tracked perf artifact 기준이 문서화되고 코드 트리에 반영됨
++- POSD 기준으로 추가 제거 후보가 남지 않거나, 남더라도 제거 이득이 작다는 근거를 설명 가능함
+diff --git a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md
+index f6bdd6a7ce1ba61c819202caef2023f87a9d067e..065d3705e680091374c48847da87351017d015b2
+--- a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md
++++ b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md
+@@ -2,22 +2,22 @@
+ 
+ - source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+ - manager_guide_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+-- guide_status: draft
++- guide_status: approved
+ - status: in_progress
+ - remaining_tasks: 8
+ - completion_verified: false
+ - 현재 활성 단계: 단계 1. `core/perf` - C1 문서/테스트 수렴
+-- 다음 허용 작업: 단계 1. `core/perf` - C1 문서/테스트 수렴 구조 검토
++- 다음 허용 작업: 현재 워크트리 기준 단계 1~4 재개 판정
+ - blocked_reason:
+-- latest_verified_evidence: 초기 skeleton 생성
++- latest_verified_evidence: 스펙 기준 manager/progress 운영 문서를 승인 상태로 갱신함
+ 
+ | 단계 | 현재 상태 | 핵심 확인 항목 | 남은 구조 이슈 수 | 구조 완료 확인 | cheap/local 검증 | 단계 커밋 준비 | full gate 허용 | 다음 단계 진행 가능 |
+ | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+-| 단계 1. `core/perf` - C1 문서/테스트 수렴 | in_review | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 3. `core/perf` - C3 stream common client 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 4. `core/perf` - C4 runner entrypoint 단순화 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 6. `core/bench/with_zmq` 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 7. `core/bench/with_stream` 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 8. 공통 tracked artifact 정책 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 1. `core/perf` - C1 문서/테스트 수렴 | in_review | README/tests의 old contract 잔재와 5-metric fixture 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소 | blocked | queue/probe 공통 surface 제거 또는 국소화 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 3. `core/perf` - C3 stream common client 정리 | blocked | warmup/measure/drain contract 잔재 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 4. `core/perf` - C4 runner entrypoint 단순화 | blocked | shell/python ownership과 재호출 경로 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬 | blocked | 언어별 재개 지점과 old contract 잔재 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 6. `core/bench/with_zmq` 정리 | blocked | 로컬 bench 계약 경계와 warmup 잔재 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 7. `core/bench/with_stream` 정리 | blocked | old STREAM contract와 책임 경계 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 8. 공통 tracked artifact 정책 정리 | blocked | tracked artifact 분류 기준과 코드 반영 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+
+diff --git a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+index f460522feb92521dbd771fbe29edc42137d61d02..d7a494a9b0376bf5ad761d5d307938bf3c9aa5e4
+--- a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
++++ b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+@@ -1,137 +1,281 @@
+ # 관리자 가이드 - `core/perf` POSD 3차 리팩토링 계획
+ 
+ - source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+-- guide_status: draft
+-- guide_review_status: 초기 검토 전
+-- review_pass_count: 0
+-- remaining_guide_corrections: 1
++- source_spec_refs:
++  - `5.0 작업 순서 원칙`
++  - `4.1 core/perf 작업`
++  - `4.2 bindings/<lang>/perf 작업`
++  - `4.3 core/bench/with_zmq 작업`
++  - `4.4 core/bench/with_stream 작업`
++  - `4.5 공통 tracked artifact 정리 기준 수립`
++  - `6. 검증 방법`
++  - `6.1 Full Test Gate 정의`
++  - `7. 완료 정의`
++  - `8. 비범위`
++- guide_status: approved
++- guide_review_status: 승인 완료
++- review_pass_count: 2
++- remaining_guide_corrections: 0
+ - unresolved_structural_issues: 8
+ - status: in_progress
+ - remaining_tasks: 8
+ - completion_verified: false
+ - blocked_reason:
+-- last_review_summary: 초기 skeleton 생성
++- last_review_summary: 고정 순서, full gate 전제, 단계별 구조 목표, 비범위를 원문 기준으로 반영함
+ 
+-## 1. 고정 순서
++## 1. 범위와 비범위
++
++- 범위:
++  - `core/perf` 문서, runner, 테스트, shared stream client, queue/probe/common surface 정리
++  - `bindings/<lang>/perf`의 정책/phase/metric surface 정렬
++  - `core/bench/with_zmq`, `core/bench/with_stream`의 로컬 bench 계약 정렬
++  - tracked perf artifact 정리 기준 수립
++- 비범위: `8. 비범위`
++  - throughput/bandwidth/latency 계산식 변경 금지
++  - one-way vs echo 의미 변경 금지
++  - `RESULT` 포맷 확장 금지
++  - backpressure 검증을 perf 기본 surface로 복귀시키는 작업 금지
++  - transport별 성능 수치 튜닝 금지
++
++## 2. 고정 순서와 공통 규칙
++
++- source_spec_ref: `5.0 작업 순서 원칙`, `공통 작업 루프`, `6.1 Full Test Gate 정의`
++- 고정 순서:
++  1. 단계 1. `core/perf` - C1 문서/테스트 수렴
++  2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
++  3. 단계 3. `core/perf` - C3 stream common client 정리
++  4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
++  5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
++  6. 단계 6. `core/bench/with_zmq` 정리
++  7. 단계 7. `core/bench/with_stream` 정리
++  8. 단계 8. 공통 tracked artifact 정책 정리
++- 공통 작업 루프:
++  1. 정책 문서 기준 불일치 확인
++  2. POSD 리팩토링 수행
++  3. dead code/dead branch/dead file까지 포함해 추가 구조 단순화 여지 재확인
++  4. 기능 확인과 cheap/local 검증 수행
++  5. 위 1~4가 정리된 뒤에만 stage별 full test gate 수행
++  6. full test gate 무실패일 때만 다음 단계 진행
++- 금지 규칙:
++  - full gate를 중간 상태 확인 용도로 사용하지 않음
++  - `known fail`, `나중에 수정`, `partial success`를 이유로 다음 단계 진행 금지
++  - 한 단계라도 fail 항목이 남으면 다음 단계 진행 금지
++  - 단계가 `complete` 되기 전에는 후속 단계를 `blocked`로 유지
++
++## 3. 검증 정책
++
++- source_spec_ref: `6. 검증 방법`, `6.1 Full Test Gate 정의`
++- cheap/local 검증:
++  - `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
++  - `pytest -q core/perf/single/tests`
++  - `bash -n core/perf/run_benchmarks.sh`
++  - `bash -n core/perf/run_benchmarks_multi.sh`
++  - `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
++  - `rg -n "cpu_pct|mem_mb|server_cpu_pct|server_mem_mb|warmup|Q\\.Snd|Q\\.Rcv" core/perf core/bench/with_stream core/bench/with_zmq bindings doc/perf`
++- full test gate:
++  1. `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
++  2. `pytest -q core/perf/single/tests`
++  3. `bash -n core/perf/run_benchmarks.sh`
++  4. `bash -n core/perf/run_benchmarks_multi.sh`
++  5. `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
++  6. `./core/perf/run_benchmarks.sh`
++  7. `./core/perf/run_benchmarks_multi.sh`
++- gate 전제:
++  - 해당 단계의 POSD 리팩토링과 dead code 정리가 더 이상 남지 않았다고 직접 확인되어야 함
++  - `doc/perf` 정책 위반 상태가 아니어야 함
++  - 결과의 fail 항목 수가 0이어야 함
++  - bindings/bench 단계도 대상 전용 검증을 추가하되 core perf full gate를 생략하지 않음
+ 
+-1. 단계 1. `core/perf` - C1 문서/테스트 수렴
+-2. 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+-3. 단계 3. `core/perf` - C3 stream common client 정리
+-4. 단계 4. `core/perf` - C4 runner entrypoint 단순화
+-5. 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+-6. 단계 6. `core/bench/with_zmq` 정리
+-7. 단계 7. `core/bench/with_stream` 정리
+-8. 단계 8. 공통 tracked artifact 정책 정리
++## 4. 단계별 운영 정의
+ 
+ ## 단계 1. `core/perf` - C1 문서/테스트 수렴
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C1`, `5 단계 1`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/README.md`
++  - `core/perf/README_KO.md`
++  - `core/perf/single/tests/test_multi_run_comparison_policy.py`
++  - `core/perf/single/tests/test_run_comparison_policy.py`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - README를 정책 요약 index 수준으로 축소
++  - warmup, single `recv`, `cpu/mem` 등 제거된 계약을 문서/fixture에서 제거
++  - policy fixture를 필수 5개 metric 기준으로 단순화
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - README가 policy와 모순되지 않음
++  - 테스트 fixture가 제거된 metric을 더 이상 사용하지 않음
++  - 제거된 계약을 되살리는 얕은 fixture/wrapper가 남지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - README/tests에 legacy 용어가 남지 않는지 `rg` 확인
++  - cheap/local 검증 완료
++  - 구조 이슈가 0개로 줄었는지 직접 검토
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - README/tests에 old metric/phase 문구 잔재 여부 미확인
+ 
+ ## 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C2`, `5 단계 2`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/multi/common/perf_multi_metrics.hpp`
++  - `core/perf/single/common/perf_single_queue_probe.hpp`
++  - `core/perf/single/common/bench_common.hpp`
++  - `core/perf/multi/src/perf_multi_spot_client.cpp`
++  - `core/perf/multi/common/perf_multi_spot_control.hpp`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - queue probe, queue stats, debug helper가 기본 perf 계약에 직접 기여하지 않으면 공통 surface에서 제거
++  - 꼭 필요하면 SPOT/local diagnostic 범위로 국소화
++  - 패턴 파일이 불필요한 내부를 보지 않게 include 경계 축소
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 기본 perf 실행에 queue probe 공용 계층이 필수가 아님
++  - queue/backpressure helper가 공통 hot path 설명 복잡도를 올리지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - call graph와 공통/public 노출 경계 검토 완료
++  - cheap/local 검증 완료
++  - 제거 또는 국소화 후 dead include/dead helper 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - queue/debug helper가 공통 hot path에서 완전히 분리되었는지 미확인
+ 
+ ## 단계 3. `core/perf` - C3 stream common client 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C3`, `5 단계 3`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/common/streamclient/README.md`
++  - `core/perf/common/streamclient/README_KO.md`
++  - `core/perf/common/streamclient/perf_stream_bench_client.hpp`
++  - `core/perf/common/streamclient/perf_stream_client_options.hpp`
++  - `core/perf/common/streamclient/perf_stream_client_session.hpp`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - shared stream client에서 warmup phase와 `--warmup` 옵션 잔재 제거
++  - lifecycle을 `ready -> active` 기준으로 정렬
++  - downstream perf/bench/bindings에 old contract 재주입 차단
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 문서와 코드에 warmup contract가 남지 않음
++  - shared client가 core perf policy와 같은 phase/metric surface를 따름
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - public option/README/세션 lifecycle 표면 일치
++  - cheap/local 검증 완료
++  - shared client를 통하는 하위 경로의 old contract 잔재 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - stream shared client의 old warmup/measure/drain contract 잔재 여부 미확인
+ 
+ ## 단계 4. `core/perf` - C4 runner entrypoint 단순화
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.1 C4`, `5 단계 4`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/run_benchmarks.sh`
++  - `core/perf/run_benchmarks_multi.sh`
++  - `core/perf/run_benchmarks.ps1`
++  - `core/perf/run_benchmarks_multi.ps1`
++  - `core/perf/run_comparison.py`
++  - `core/perf/single/run_comparison.py`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - shell은 option normalization과 build gate까지만 담당
++  - orchestration 책임은 Python engine으로 더 직접 연결
++  - multi shell이 single shell을 다시 호출하는 구조 축소 또는 제거
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - entrypoint 책임이 shell 2단 위임으로 퍼져 있지 않음
++  - single/multi 실행 흐름이 문서 한 문단으로 설명 가능함
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 공식 entrypoint 정의가 문서와 코드에서 일치
++  - cheap/local 검증 완료
++  - shell 재호출 경로와 얕은 wrapper 잔재 없음
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - shell/python ownership 경계와 재호출 경로 단순화 여부 미확인
+ 
+ ## 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.2`, `5 단계 5`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `bindings/cpp/perf`
++  - `bindings/dotnet/perf`
++  - `bindings/java/perf`
++  - `bindings/rust/perf`
++  - `bindings/go/perf`
++  - `bindings/node/perf`
++  - `bindings/python/perf`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `cpp -> dotnet -> java -> rust -> go -> node -> python` 순으로 하나씩 정렬
++  - old warmup/cpu-mem/queue/debug contract 제거
++  - phase/metric/result semantics를 core와 정렬하면서 shallow wrapper와 dead code 축소
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - bindings perf와 core perf가 phase/metric/RESULT 의미에서 모순되지 않음
++  - 각 bindings가 변경된 `doc/perf` 정책을 실제 코드와 실행 surface에서 따름
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 현재 언어 대상의 정책 감사 완료
++  - 해당 언어 전용 검증과 core perf full gate 통과
++  - 다음 언어 시작 전 현재 언어 구조 이슈 0건
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - 언어별 순차 재개 지점과 남은 old contract 잔재 미확인
+ 
+ ## 단계 6. `core/bench/with_zmq` 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.3`, `5 단계 6`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/bench/with_zmq`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `with_zmq` 로컬 bench 계약과 `doc/perf` 공통 원칙의 경계 확정
++  - warmup 의존과 충돌하는 warmup/metric/result contract 분리 또는 제거
++  - bench 전용 개념과 perf 본계약 경계 명확화
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 로컬 bench 정책을 유지하면서 core perf 공통 측정 원칙과 모순되지 않음
++  - tmp/results/debug 잔재가 비교 surface 설명 복잡도를 과도하게 올리지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - `bash -n core/bench/with_zmq/run_benchmarks.sh`
++  - `bash -n core/bench/with_zmq/run_benchmarks_multi.sh`
++  - `pytest -q core/bench/with_zmq/single/tests/test_run_comparison_policy.py`
++  - `./core/bench/with_zmq/run_benchmarks.sh`
++  - `./core/bench/with_zmq/run_benchmarks_multi.sh`
++  - core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - with_zmq 로컬 계약과 core perf 경계, warmup 잔재, tracked noise 미확인
+ 
+ ## 단계 7. `core/bench/with_stream` 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.4`, `5 단계 7`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/bench/with_stream`
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - `with_stream` 로컬 bench 정책과 shared stream client/core perf 공통 원칙의 경계 확정
++  - old STREAM warmup/measure/drain 잔재 제거
++  - stack별 공통/전용 책임 재정렬
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 로컬 bench 정책을 유지하면서 shared client/core perf 공통 원칙을 다시 오염시키지 않음
++  - 비교 surface로서 설명 가능한 구조를 유지함
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - `python3 -m py_compile core/bench/with_stream/run_comparison.py`
++  - `bash -n core/bench/with_stream/run_benchmarks.sh`
++  - `./core/bench/with_stream/run_benchmarks.sh`
++  - core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - with_stream의 old contract 잔재와 stack별 책임 경계 미확인
+ 
+ ## 단계 8. 공통 tracked artifact 정책 정리
+ 
+-- source_spec_ref: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
++- source_spec_ref: `4.5`, `5 단계 8`
+ - stage_scope:
+-  - 세부 범위 확인 전
++  - `core/perf/baseline`
++  - tracked sample / analysis artifact
+ - stage_structural_goal:
+-  - 구조 단순화 목표 상세화 전
++  - tracked baseline/result를 남길 기준 명시
++  - old baseline을 제거 또는 archive로 이동
++  - 공식 runtime output root인 `core/perf/results`는 유지
+ - stage_completion_definition:
+-  - 완료 정의 상세 추출 전
++  - 코드/정책/실행 산출물이 같은 레벨에서 섞여 있지 않음
++  - tracked perf artifact는 git에 남아야 하는 최소 집합만 유지
++  - `core/perf/results`는 tracked cleanup 대상과 혼동되지 않음
+ - stage_gate_prerequisites:
+-  - gate 전제 조건 상세 추출 전
++  - 저장 위치 규칙과 `.gitignore` 반영
++  - cheap/local 검증 완료
++  - 최종 core perf full gate 통과
+ - stage_unresolved_issues:
+-  - 스펙 상세 검토 전
++  - tracked baseline/sample/analysis artifact의 분류 기준과 반영 범위 미확인
++
++## 5. 완료 조건
+ 
++- source_spec_ref: `7. 완료 정의`, `9. 메모`
++- 모든 단계가 고정 순서대로 `complete`
++- `core/perf` 문서, runner, 테스트가 현재 policy surface와 일치
++- 제거된 metric/phase가 README, fixture, shared client, bindings, bench surface에 다시 남지 않음
++- queue/debug/probe, shallow wrapper, 과대 공통 계층, dead code, dead option, dead file이 구조 이슈 목록에서 제거됨
++- runner entrypoint 구조가 더 짧고 설명 가능해짐
++- tracked perf artifact 기준이 문서화되고 코드 트리에 반영됨
++- POSD 기준으로 추가 제거 후보가 남지 않거나, 남더라도 제거 이득이 작다는 근거를 설명 가능함
+diff --git a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md
+index f6bdd6a7ce1ba61c819202caef2023f87a9d067e..065d3705e680091374c48847da87351017d015b2
+--- a/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md
++++ b/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.progress.md
+@@ -2,22 +2,22 @@
+ 
+ - source_spec_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/core-perf-posd-3rd-refactor-plan.ko.md
+ - manager_guide_path: /home/hep7/project/kairos/zlink/doc/plan/perf-refactor/3차/core/logs/core-perf-posd-3rd-refactor-plan.manager.md
+-- guide_status: draft
++- guide_status: approved
+ - status: in_progress
+ - remaining_tasks: 8
+ - completion_verified: false
+ - 현재 활성 단계: 단계 1. `core/perf` - C1 문서/테스트 수렴
+-- 다음 허용 작업: 단계 1. `core/perf` - C1 문서/테스트 수렴 구조 검토
++- 다음 허용 작업: 현재 워크트리 기준 단계 1~4 재개 판정
+ - blocked_reason:
+-- latest_verified_evidence: 초기 skeleton 생성
++- latest_verified_evidence: 스펙 기준 manager/progress 운영 문서를 승인 상태로 갱신함
+ 
+ | 단계 | 현재 상태 | 핵심 확인 항목 | 남은 구조 이슈 수 | 구조 완료 확인 | cheap/local 검증 | 단계 커밋 준비 | full gate 허용 | 다음 단계 진행 가능 |
+ | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+-| 단계 1. `core/perf` - C1 문서/테스트 수렴 | in_review | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 3. `core/perf` - C3 stream common client 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 4. `core/perf` - C4 runner entrypoint 단순화 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 6. `core/bench/with_zmq` 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 7. `core/bench/with_stream` 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+-| 단계 8. 공통 tracked artifact 정책 정리 | blocked | 구조 완료 조건 추출 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 1. `core/perf` - C1 문서/테스트 수렴 | in_review | README/tests의 old contract 잔재와 5-metric fixture 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소 | blocked | queue/probe 공통 surface 제거 또는 국소화 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 3. `core/perf` - C3 stream common client 정리 | blocked | warmup/measure/drain contract 잔재 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 4. `core/perf` - C4 runner entrypoint 단순화 | blocked | shell/python ownership과 재호출 경로 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬 | blocked | 언어별 재개 지점과 old contract 잔재 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 6. `core/bench/with_zmq` 정리 | blocked | 로컬 bench 계약 경계와 warmup 잔재 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 7. `core/bench/with_stream` 정리 | blocked | old STREAM contract와 책임 경계 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
++| 단계 8. 공통 tracked artifact 정책 정리 | blocked | tracked artifact 분류 기준과 코드 반영 확인 | 1 | 아니오 | 아니오 | 아니오 | 아니오 | 아니오 |
+

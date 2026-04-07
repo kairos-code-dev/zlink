@@ -196,7 +196,7 @@ Default PATTERN is:
   DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM
 When callback mode is selected without an explicit pattern, default PATTERN is:
   SPOT,STREAM
-By default, this wrapper runs current zlink only.
+This script invokes the shared comparison runner directly.
 By default, multi-bench uses ready -> active with a 5s duration window.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
 Policy contract:
@@ -985,10 +985,29 @@ echo "=== Running multi benchmark: ${PATTERN_CSV_DISPLAY} ==="
 echo "    duration=${DURATION_SECONDS}s"
 echo "    recv_mode=${RECV_MODE}"
 RUN_EXIT_CODE=0
+if [[ ! -f "${PERF_COMPARISON_SCRIPT}" ]]; then
+  echo "Error: comparison script not found: ${PERF_COMPARISON_SCRIPT}" >&2
+  exit 1
+fi
+
+if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+  echo "Error: python3 or python not found in PATH." >&2
+  exit 1
+fi
+
+if [[ -z "${PYTHON_BIN:-}" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN=(python3)
+  else
+    PYTHON_BIN=(python)
+  fi
+fi
+
 if PERF_ALLOW_MULTI=1 \
   PERF_SUPPRESS_TOTAL_TIME=1 \
   env "${RUN_ENV[@]}" \
-  "${SCRIPT_DIR}/run_benchmarks.sh" \
+  "${PYTHON_BIN[@]}" \
+  "${PERF_COMPARISON_SCRIPT}" \
   "${RUN_BASE_ARGS[@]}" \
   "${SCRIPT_ARGS[@]}" \
   --pattern "${PATTERN_CSV}"; then

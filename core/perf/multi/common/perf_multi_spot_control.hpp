@@ -795,17 +795,16 @@ inline void start_client_stdin_watcher(StateT *state, NotifyStartFn notify_start
     stdin_watcher.detach();
 }
 
-template<typename StateT, typename QueueProbeFn, typename NotifyStartFn>
+template<typename StateT, typename NotifyStartFn>
 inline void start_server_stdin_watcher(StateT *state,
                                        int connect_ready_timeout_ms,
-                                       QueueProbeFn request_queue_probe_fn,
                                        NotifyStartFn notify_start)
 {
     if (!state)
         return;
 
     std::thread stdin_watcher(
-      [state, connect_ready_timeout_ms, request_queue_probe_fn, notify_start]() {
+      [state, connect_ready_timeout_ms, notify_start]() {
           std::string line;
           while (std::getline(std::cin, line)) {
               if (bench_transition_debug_enabled()) {
@@ -867,12 +866,11 @@ inline void emit_server_ready_lines(const server_session_t &session)
     std::cout << "CONTROL_READY," << session.control_endpoint << std::endl;
 }
 
-template<typename StateT, typename QueueProbeFn, typename NotifyStartFn>
+template<typename StateT, typename NotifyStartFn>
 inline void prepare_server_runtime(StateT *state,
                                    const server_session_t &session,
                                    size_t expected_ready_count,
                                    int connect_ready_timeout_ms,
-                                   QueueProbeFn request_queue_probe_fn,
                                    NotifyStartFn notify_start)
 {
     if (!state)
@@ -890,7 +888,6 @@ inline void prepare_server_runtime(StateT *state,
     start_server_stdin_watcher(
       state,
       connect_ready_timeout_ms,
-      request_queue_probe_fn,
       notify_start);
     emit_server_ready_lines(session);
 }

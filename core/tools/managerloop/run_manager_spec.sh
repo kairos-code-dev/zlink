@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+LOG_FILTER="${SCRIPT_DIR}/filter_manager_log.awk"
 LOGS_DIR=""
 MAX_ITERATIONS=0
 MODEL_ARG=()
@@ -148,6 +149,7 @@ if [[ "${SPEC_PATH}" != /* ]]; then
 fi
 
 require_file "${SPEC_PATH}"
+require_file "${LOG_FILTER}"
 GUIDE_PATH="$(guide_path_for_spec "${SPEC_PATH}")"
 
 if [[ -z "${LOGS_DIR}" ]]; then
@@ -186,7 +188,7 @@ while true; do
   fi
 
   set +e
-  codex "${codex_args[@]}" "\$manager ${SPEC_PATH}" 2>&1 | tee "${log_path}"
+  codex "${codex_args[@]}" "\$manager ${SPEC_PATH}" 2>&1 | awk -f "${LOG_FILTER}" | tee "${log_path}"
   codex_rc=${PIPESTATUS[0]}
   set -e
 

@@ -153,18 +153,28 @@
 이번 리팩토링은 아래 **고정 순서**로 진행한다.
 
 1. `core/perf`
-2. `bindings/<lang>/perf`
-3. `core/bench/with_zmq`
-4. `core/bench/with_stream`
+2. `bindings/cpp/perf`
+3. `bindings/dotnet/perf`
+4. `bindings/java/perf`
+5. `bindings/rust/perf`
+6. `bindings/go/perf`
+7. `bindings/node/perf`
+8. `bindings/python/perf`
+9. `core/bench/with_zmq`
+10. `core/bench/with_stream`
+11. 공통 tracked artifact 정리
 
 이 순서를 따르는 이유는 다음과 같다.
 
 - `core/perf`가 정책/측정 surface의 기준 구현이다.
-- `bindings/<lang>/perf`는 core perf 정책을 따라야 하는 downstream이다.
+- 각 `bindings/<lang>/perf`는 core perf 정책을 따라야 하는 downstream이며,
+  언어별로 작업량과 구조 복잡도가 커서 독립 단계로 다뤄야 한다.
 - `with_zmq`는 비교 bench지만 자체 bench 정책을 가지며, core perf와의 정렬은
   공통 측정 원칙과 의미 충돌 제거 범위에서 수행한다.
 - `with_stream`는 shared STREAM client 정렬이 끝난 뒤 마지막에 맞추는 편이
   변경 증폭이 가장 작다.
+- tracked artifact 정리는 모든 코드 경계가 정리된 뒤 마지막에 고정하는 편이
+  경계가 가장 분명하다.
 
 모든 영역에 공통으로 적용되는 기준은 같다.
 
@@ -268,7 +278,11 @@
 
 ### 4.2 `bindings/<lang>/perf` 작업
 
-적용 대상 언어는 다음을 기본으로 본다.
+`bindings/<lang>/perf`는 하나의 묶음 단계로 처리하지 않는다. 아래 언어별로 각각
+독립 stage를 두고, 앞 언어가 구조적으로 완료되고 full test gate까지 통과해야 다음
+언어로 넘어간다. 각 언어 단계는 `core/perf`와 비슷한 크기의 리팩토링 단계로 본다.
+
+적용 대상 언어와 고정 순서는 다음을 기본으로 본다.
 
 - `bindings/cpp/perf`
 - `bindings/dotnet/perf`
@@ -278,16 +292,29 @@
 - `bindings/node/perf`
 - `bindings/python/perf`
 
-각 언어는 아래 순서로 하나씩 진행한다.
+고정 순서:
 
-0. 고정 순서: `cpp -> dotnet -> java -> rust -> go -> node -> python`
+0. `cpp -> dotnet -> java -> rust -> go -> node -> python`
+
+언어별로 아래 순서를 각각 독립 stage로 진행한다.
+
 1. 현재 policy surface와 불일치하는 항목 감사
 2. old warmup/cpu-mem/queue/debug contract 제거
 3. runner/result/report 구조를 변경된 `doc/perf` 정책에 맞게 정렬
 4. POSD 관점에서 얕은 wrapper/dead code/과대 공통 계층 정리
 5. 해당 language 검증 + core perf full test gate 통과 확인
 
-#### B1. bindings perf 정책 정렬
+언어별 stage 명시는 아래와 같이 고정한다.
+
+- 단계 5. `bindings/cpp/perf`
+- 단계 6. `bindings/dotnet/perf`
+- 단계 7. `bindings/java/perf`
+- 단계 8. `bindings/rust/perf`
+- 단계 9. `bindings/go/perf`
+- 단계 10. `bindings/node/perf`
+- 단계 11. `bindings/python/perf`
+
+#### B1. 언어별 bindings perf 공통 정렬 기준
 
 대상:
 
@@ -314,12 +341,14 @@
 
 완료 정의:
 
-- bindings perf와 core perf가 기본 phase/metric 계약에서 서로 모순되지 않는다.
-- bindings perf와 core perf가 같은 측정 anchor, 같은 RESULT 의미, 같은
+- 각 언어 bindings perf와 core perf가 기본 phase/metric 계약에서 서로 모순되지
+  않는다.
+- 각 언어 bindings perf와 core perf가 같은 측정 anchor, 같은 RESULT 의미, 같은
   pattern/transport semantic meaning을 가진다.
-- bindings perf가 변경된 `doc/perf` 정책을 코드와 실행 surface에서 실제로 따른다.
-- bindings perf도 POSD 관점에서 추가로 줄일 얕은 계층과 dead code가 남지 않도록
-  함께 정리된다.
+- 각 언어 bindings perf가 변경된 `doc/perf` 정책을 코드와 실행 surface에서
+  실제로 따른다.
+- 각 언어 bindings perf도 POSD 관점에서 추가로 줄일 얕은 계층과 dead code가
+  남지 않도록 함께 정리된다.
 
 ### 4.3 `core/bench/with_zmq` 작업
 
@@ -508,18 +537,70 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - full perf 검증
   - 단계 완료 후 full test gate를 통과해야 한다.
 
-### 단계 5. `bindings/<lang>/perf` - 언어별 순차 정렬
+### 단계 5. `bindings/cpp/perf` 정리
 
-- `cpp -> dotnet -> java -> rust -> go -> node -> python` 순으로 진행한다.
-- 각 언어마다 아래 순서를 따른다.
-  1. 정책 정합성 확인
-  2. POSD 리팩토링
-  3. 기능 확인
-  4. full perf 검증
-- 각 언어마다 B1 항목을 수행한다.
-- 한 언어가 full test gate를 통과해야 다음 언어로 넘어간다.
+- 정책 정합성 확인
+- POSD 리팩토링
+- 기능 확인
+- full perf 검증
+- B1 공통 정렬 기준을 적용한다.
+- 단계 5가 full test gate를 통과해야 단계 6으로 넘어간다.
 
-### 단계 6. `core/bench/with_zmq` 정리
+### 단계 6. `bindings/dotnet/perf` 정리
+
+- 정책 정합성 확인
+- POSD 리팩토링
+- 기능 확인
+- full perf 검증
+- B1 공통 정렬 기준을 적용한다.
+- 단계 6이 full test gate를 통과해야 단계 7로 넘어간다.
+
+### 단계 7. `bindings/java/perf` 정리
+
+- 정책 정합성 확인
+- POSD 리팩토링
+- 기능 확인
+- full perf 검증
+- B1 공통 정렬 기준을 적용한다.
+- 단계 7이 full test gate를 통과해야 단계 8로 넘어간다.
+
+### 단계 8. `bindings/rust/perf` 정리
+
+- 정책 정합성 확인
+- POSD 리팩토링
+- 기능 확인
+- full perf 검증
+- B1 공통 정렬 기준을 적용한다.
+- 단계 8이 full test gate를 통과해야 단계 9로 넘어간다.
+
+### 단계 9. `bindings/go/perf` 정리
+
+- 정책 정합성 확인
+- POSD 리팩토링
+- 기능 확인
+- full perf 검증
+- B1 공통 정렬 기준을 적용한다.
+- 단계 9가 full test gate를 통과해야 단계 10으로 넘어간다.
+
+### 단계 10. `bindings/node/perf` 정리
+
+- 정책 정합성 확인
+- POSD 리팩토링
+- 기능 확인
+- full perf 검증
+- B1 공통 정렬 기준을 적용한다.
+- 단계 10이 full test gate를 통과해야 단계 11로 넘어간다.
+
+### 단계 11. `bindings/python/perf` 정리
+
+- 정책 정합성 확인
+- POSD 리팩토링
+- 기능 확인
+- full perf 검증
+- B1 공통 정렬 기준을 적용한다.
+- 단계 11이 full test gate를 통과해야 단계 12로 넘어간다.
+
+### 단계 12. `core/bench/with_zmq` 정리
 
 - 정책 정합성 확인
   - [with_zmq 정책 문서](../../../../../core/bench/with_zmq/README.md) 기준의
@@ -539,7 +620,7 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
   - `./core/bench/with_zmq/run_benchmarks_multi.sh`
   - 단계 완료 후 full test gate를 통과해야 한다.
 
-### 단계 7. `core/bench/with_stream` 정리
+### 단계 13. `core/bench/with_stream` 정리
 
 - 정책 정합성 확인
   - [with_stream 정책 문서](../../../../../core/bench/with_stream/README.md) 기준의
@@ -556,7 +637,7 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
   - `./core/bench/with_stream/run_benchmarks.sh`
   - 단계 완료 후 full test gate를 통과해야 한다.
 
-### 단계 8. 공통 tracked artifact 정책 정리
+### 단계 14. 공통 tracked artifact 정책 정리
 
 - 정책 정합성 확인
   - tracked artifact와 공식 runtime output root의 경계를 확인한다.
@@ -585,7 +666,7 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
   - `./core/perf/run_benchmarks_multi.sh`
   - 결과 파일이 정책 형식으로 생성되는지 확인한다.
   - `status: complete|partial`, 필수 5개 metric line, 결과 table shape를 확인한다.
-  - 최소 단계 1, 2, 3, 4, 5(언어별), 6, 7에서 POSD 리팩토링과 dead code 정리가
+  - 최소 단계 1~14 중 현재 작업 대상 단계에서 POSD 리팩토링과 dead code 정리가
     끝났다고 판단된 완료 시점에만 full run을 수행한다.
   - full run 전에는 “측정 의미를 해치지 않았는지”, “perf 정책을 위반하지 않는지”를
     먼저 점검한다.

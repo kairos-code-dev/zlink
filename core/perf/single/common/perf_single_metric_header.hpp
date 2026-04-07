@@ -12,8 +12,7 @@ static const uint32_t k_magic = 0x53504631U; // "SPF1"
 enum phase_t
 {
     phase_unknown = 0,
-    phase_warmup = 1,
-    phase_active = 2
+    phase_active = 1
 };
 
 struct header_t

@@ -136,16 +136,13 @@ bool run_recv_duration (const std::vector<void *> &sockets,
     double lat_sum = 0.0;
     long lat_count = 0;
     bench_latency_sampler_t lat_samples;
-    const double prelude_seconds =
-      static_cast<double> (std::max (0, settings.warmup_seconds));
     const auto start_wait_deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
         std::chrono::duration<double> (
-          prelude_seconds
-          + static_cast<double> (
-              std::max (1, settings.connect_ready_timeout_ms))
-              / 1000.0));
+          static_cast<double> (
+            std::max (1, settings.connect_ready_timeout_ms))
+          / 1000.0));
 
     bool active_started = false;
     bench_multi_cpu_sample_t sample_start;
@@ -172,6 +169,10 @@ bool run_recv_duration (const std::vector<void *> &sockets,
             const int err = zlink_errno ();
             if (err == EINTR || err == EAGAIN)
                 continue;
+            if (bench_debug_enabled ()) {
+                std::cerr << "[multi-pubsub-client] poller wait failed err="
+                          << err << std::endl;
+            }
             return false;
         }
 
@@ -188,8 +189,13 @@ bool run_recv_duration (const std::vector<void *> &sockets,
                 bool have_sample = false;
                 const int recv_rc = recv_one_pubsub_message (
                   socket, msg_size, run_id, &header, &sample_us, &have_sample);
-                if (recv_rc < 0)
+                if (recv_rc < 0) {
+                    if (bench_debug_enabled ()) {
+                        std::cerr << "[multi-pubsub-client] recv error err="
+                                  << zlink_errno () << std::endl;
+                    }
                     return false;
+                }
                 if (recv_rc == 0)
                     break;
 
@@ -224,16 +230,24 @@ bool run_recv_duration (const std::vector<void *> &sockets,
 
         if (!progressed && perf_socket_poll (NULL, 0, 1) < 0
             && zlink_errno () != EINTR) {
+            if (bench_debug_enabled ()) {
+                std::cerr << "[multi-pubsub-client] idle poll failed err="
+                          << zlink_errno () << std::endl;
+            }
             return false;
         }
     }
 
-    if (!active_started)
-        return false;
+    if (!active_started) {
+        *metrics_out = bench_multi_resource_metrics_t ();
+        *throughput_out = 0.0;
+        *latency_out = bench_latency_stats_t ();
+        return true;
+    }
 
     *metrics_out = bench_multi_finish_resource_probe (sample_start);
 
-    if (recv_count <= 0 || lat_count <= 0) {
+    if (recv_count < 0 || lat_count < 0) {
         if (bench_debug_enabled ()) {
             int events = 0;
             size_t events_size = sizeof (events);
@@ -251,6 +265,10 @@ bool run_recv_duration (const std::vector<void *> &sockets,
 
     *throughput_out = static_cast<double> (recv_count)
                       / static_cast<double> (std::max (1, settings.duration_seconds));
+    if (bench_debug_enabled ()) {
+        std::cerr << "[multi-pubsub-client] active recv_count=" << recv_count
+                  << " lat_count=" << lat_count << std::endl;
+    }
     perf_multi_client::normalize_latency_stats (
       lat_sum, lat_count, &lat_samples, latency_out);
     return true;

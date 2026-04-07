@@ -52,11 +52,7 @@ struct spot_client_state_t
         msg_size (0),
         active_deadline_us (0),
         fatal (false),
-        phase_wait_armed (false),
-        warmup_received (0),
         active_received (0),
-        warmup_processed (0),
-        active_processed (0),
         probe (NULL),
         callback_queue (NULL)
     {
@@ -66,29 +62,13 @@ struct spot_client_state_t
     size_t msg_size;
     std::atomic<uint64_t> active_deadline_us;
     std::atomic<bool> fatal;
-    std::atomic<bool> phase_wait_armed;
-    std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
-    std::atomic<unsigned long long> warmup_processed;
-    std::atomic<unsigned long long> active_processed;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
     single_callback_metric_queue_t *callback_queue;
     std::mutex mutex;
     std::condition_variable cv;
 };
-
-inline void single_set_phase_wait_armed (spot_client_state_t &state_,
-                                         bool value_)
-{
-    state_.phase_wait_armed.store (value_, std::memory_order_release);
-}
-
-inline bool single_phase_wait_notify_armed (
-  const spot_client_state_t &state_)
-{
-    return state_.phase_wait_armed.load (std::memory_order_acquire);
-}
 
 std::atomic<spot_client_state_t *> g_spot_client_state (NULL);
 
@@ -187,17 +167,21 @@ bool wait_for_spot_ready_barrier (void *pub_,
       std::chrono::steady_clock::now ()
       + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
 
-    state_.warmup_received.store (0, std::memory_order_release);
+    state_.active_received.store (0, std::memory_order_release);
     std::vector<char> probe_payload (
       std::max (msg_size_, perf_single_metric::header_size ()), 'p');
 
     while (std::chrono::steady_clock::now () < deadline) {
-        if (state_.warmup_received.load (std::memory_order_acquire) > 0)
+        if (state_.active_received.load (std::memory_order_acquire) > 0)
             return true;
 
         (void) perf_single_metric::stamp_payload (
-          probe_payload.data (), probe_payload.size (), state_.run_id,
-          perf_single_metric::phase_warmup, msg_size_, 0,
+          probe_payload.data (),
+          probe_payload.size (),
+          state_.run_id,
+          perf_single_metric::phase_active,
+          msg_size_,
+          0,
           perf_single_metric::now_us ());
 
         zlink_msg_t part;
@@ -212,7 +196,7 @@ bool wait_for_spot_ready_barrier (void *pub_,
             return false;
     }
 
-    return state_.warmup_received.load (std::memory_order_acquire) > 0;
+    return state_.active_received.load (std::memory_order_acquire) > 0;
 }
 
 void cleanup_spot_case (void **sub_handle_,
@@ -234,7 +218,6 @@ bool publish_payload (void *pub_,
                       std::vector<char> &payload_,
                       size_t msg_size_,
                       uint32_t run_id_,
-                      perf_single_metric::phase_t phase_,
                       uint64_t seq_,
                       int flags_)
 {
@@ -246,7 +229,7 @@ bool publish_payload (void *pub_,
           payload_.data (),
           payload_.size (),
           run_id_,
-          phase_,
+          perf_single_metric::phase_active,
           msg_size_,
           seq_,
           perf_single_metric::now_us ())) {
@@ -267,21 +250,29 @@ bool publish_payload (void *pub_,
     return true;
 }
 
-bool run_publish_window (void *pub_,
-                         spot_client_state_t &client_state_,
-                         queue_probe_t &probe_,
-                         std::vector<char> &payload_,
-                         size_t msg_size_,
-                         perf_single_metric::phase_t phase_,
-                         int duration_s_,
-                         unsigned long long *out_sent_count_)
+bool run_active_window (void *pub_,
+                        spot_client_state_t &client_state_,
+                        std::vector<char> &payload_,
+                        size_t msg_size_,
+                        int duration_s_,
+                        double *throughput_out_,
+                        latency_stats_t *latency_out_)
 {
-    if (out_sent_count_)
-        *out_sent_count_ = 0;
+    if (!pub_ || !throughput_out_ || !latency_out_)
+        return false;
+
+    client_state_.fatal.store (false, std::memory_order_release);
+    client_state_.active_received.store (0, std::memory_order_release);
+    client_state_.active_deadline_us.store (
+      perf_single_metric::now_us ()
+        + static_cast<uint64_t> (std::max (1, duration_s_) * 1000000ULL),
+      std::memory_order_release);
+    client_state_.probe = NULL;
+    client_state_.latency = latency_stats_builder_t ();
 
     const auto deadline =
       std::chrono::steady_clock::now ()
-      + std::chrono::seconds (std::max (0, duration_s_));
+      + std::chrono::seconds (std::max (1, duration_s_));
     uint64_t seq = 1;
     unsigned long long sent_count = 0;
 
@@ -289,75 +280,31 @@ bool run_publish_window (void *pub_,
         if (client_state_.fatal.load (std::memory_order_acquire))
             return false;
 
-        if (!publish_payload (pub_,
-                              payload_,
-                              msg_size_,
-                              client_state_.run_id,
-                              phase_,
-                              seq,
-                              0)) {
+        if (!publish_payload (
+              pub_, payload_, msg_size_, client_state_.run_id, seq, 0)) {
             if (errno == EINTR)
                 continue;
             return false;
         }
-        probe_.sample_send_if_due ();
+
         ++sent_count;
         ++seq;
     }
 
-    if (out_sent_count_)
-        *out_sent_count_ = sent_count;
-    return !client_state_.fatal.load (std::memory_order_acquire);
-}
-
-bool run_phase_window (void *pub_,
-                       spot_client_state_t &client_state_,
-                       queue_probe_t &probe_,
-                       std::vector<char> &payload_,
-                       size_t msg_size_,
-                       perf_single_metric::phase_t phase_,
-                       int duration_s_,
-                       double *throughput_out_,
-                       latency_stats_t *latency_out_)
-{
-    client_state_.fatal.store (false, std::memory_order_release);
-    client_state_.warmup_received.store (0, std::memory_order_release);
-    client_state_.active_received.store (0, std::memory_order_release);
-    client_state_.warmup_processed.store (0, std::memory_order_release);
-    client_state_.active_processed.store (0, std::memory_order_release);
-    client_state_.active_deadline_us.store (
-      phase_ == perf_single_metric::phase_active
-        ? perf_single_metric::now_us ()
-            + static_cast<uint64_t> (std::max (1, duration_s_) * 1000000ULL)
-        : 0,
-      std::memory_order_release);
-    client_state_.latency = latency_stats_builder_t ();
-
-    unsigned long long sent_count = 0;
-    if (!run_publish_window (pub_,
-                             client_state_,
-                             probe_,
-                             payload_,
-                             msg_size_,
-                             phase_,
-                             duration_s_,
-                             &sent_count)) {
-        return false;
-    }
-
-    const bool active_phase = phase_ == perf_single_metric::phase_active;
     const int drain_timeout_ms =
       single_phase_completion_timeout_ms (
         duration_s_, resolve_single_recv_timeout_ms ());
     const bool drained = single_wait_for_phase_processed (
-      client_state_, phase_, sent_count, drain_timeout_ms);
-    if (!drained) {
+      client_state_,
+      perf_single_metric::phase_active,
+      sent_count,
+      drain_timeout_ms);
+    if (!drained || client_state_.fatal.load (std::memory_order_acquire)) {
         if (bench_debug_enabled ()) {
-            std::cerr << "[perf-spot] phase drain failed phase="
-                      << static_cast<int> (phase_)
-                      << " sent=" << sent_count
+            std::cerr << "[perf-spot] phase drain failed sent=" << sent_count
                       << " processed="
-                      << single_load_phase_received (client_state_, phase_)
+                      << single_load_phase_received (
+                           client_state_, perf_single_metric::phase_active)
                       << " fatal="
                       << (client_state_.fatal.load (
                             std::memory_order_acquire)
@@ -367,27 +314,18 @@ bool run_phase_window (void *pub_,
         }
         return false;
     }
-    if (phase_ != perf_single_metric::phase_active) {
-        return !client_state_.fatal.load (std::memory_order_acquire)
-               && client_state_.warmup_received.load (std::memory_order_acquire)
-                    > 0;
-    }
 
     client_state_.active_deadline_us.store (0, std::memory_order_release);
-    const double elapsed_s = std::max (0.001, static_cast<double> (duration_s_));
-    if (throughput_out_) {
-        *throughput_out_ =
-          static_cast<double> (
-            client_state_.active_received.load (std::memory_order_acquire))
-          / elapsed_s;
-    }
-    if (latency_out_) {
-        *latency_out_ = client_state_.latency.snapshot ();
-    }
+    if (client_state_.active_received.load (std::memory_order_acquire) == 0)
+        return false;
 
-    return !client_state_.fatal.load (std::memory_order_acquire)
-           && client_state_.active_received.load (std::memory_order_acquire)
-                > 0;
+    const double elapsed_s = std::max (0.001, static_cast<double> (duration_s_));
+    *throughput_out_ =
+      static_cast<double> (
+        client_state_.active_received.load (std::memory_order_acquire))
+      / elapsed_s;
+    *latency_out_ = client_state_.latency.snapshot ();
+    return client_state_.latency.count () > 0;
 }
 
 int run_case (const std::string &lib_name_,
@@ -405,9 +343,15 @@ int run_case (const std::string &lib_name_,
         return 0;
     }
 
+    auto print_fail = [&] () {
+        print_fail_result (lib_name_, k_pattern, transport_, msg_size_);
+    };
+
     ctx_guard_t ctx;
-    if (!ctx.valid ())
+    if (!ctx.valid ()) {
+        print_fail ();
         return 1;
+    }
 
     void *pub_node = zlink_spot_node_new (ctx.get ());
     void *sub_node = zlink_spot_node_new (ctx.get ());
@@ -421,6 +365,7 @@ int run_case (const std::string &lib_name_,
             zlink_spot_node_destroy (&pub_node);
         if (sub_node)
             zlink_spot_node_destroy (&sub_node);
+        print_fail ();
         return 1;
     }
 
@@ -437,6 +382,7 @@ int run_case (const std::string &lib_name_,
                       << zlink_errno () << std::endl;
         zlink_spot_node_destroy (&sub_node);
         zlink_spot_node_destroy (&pub_node);
+        print_fail ();
         return 1;
     }
 
@@ -447,6 +393,7 @@ int run_case (const std::string &lib_name_,
         zlink_spot_destroy (&pub);
         zlink_spot_node_destroy (&sub_node);
         zlink_spot_node_destroy (&pub_node);
+        print_fail ();
         return 1;
     }
 
@@ -465,10 +412,8 @@ int run_case (const std::string &lib_name_,
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] callback handler attach failed err="
                       << zlink_errno () << std::endl;
-        zlink_spot_destroy (&sub);
-        zlink_spot_destroy (&pub);
-        zlink_spot_node_destroy (&sub_node);
-        zlink_spot_node_destroy (&pub_node);
+        cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
+        print_fail ();
         return 1;
     }
 
@@ -479,6 +424,7 @@ int run_case (const std::string &lib_name_,
             std::cerr << "[perf-spot] bind failed err=" << zlink_errno ()
                       << std::endl;
         cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
+        print_fail ();
         return 1;
     }
 
@@ -487,6 +433,7 @@ int run_case (const std::string &lib_name_,
             std::cerr << "[perf-spot] connect peer failed err=" << zlink_errno ()
                       << std::endl;
         cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
+        print_fail ();
         return 1;
     }
 
@@ -495,6 +442,7 @@ int run_case (const std::string &lib_name_,
             std::cerr << "[perf-spot] subscribe failed err=" << zlink_errno ()
                       << std::endl;
         cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
+        print_fail ();
         return 1;
     }
 
@@ -504,8 +452,6 @@ int run_case (const std::string &lib_name_,
     client_state.run_id = static_cast<uint32_t> (current_process_id ());
     client_state.msg_size = msg_size_;
     spot_client_state_scope_t client_state_scope (&client_state);
-    queue_probe_t probe (pub, sub);
-    client_state.probe = &probe;
     client_state.callback_queue = &callback_queue;
     metric_worker.state = &client_state;
     metric_worker.queue = &callback_queue;
@@ -515,6 +461,7 @@ int run_case (const std::string &lib_name_,
             std::cerr << "[perf-spot] metric worker start failed"
                       << std::endl;
         cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
+        print_fail ();
         return 1;
     }
 
@@ -525,49 +472,39 @@ int run_case (const std::string &lib_name_,
             std::cerr << "[perf-spot] ready barrier failed" << std::endl;
         stop_single_metric_worker (&metric_worker);
         cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
+        print_fail ();
         return 1;
     }
 
     std::vector<char> payload;
-    if (!run_phase_window (
-          pub, client_state, probe, payload, msg_size_,
-          perf_single_metric::phase_warmup,
-          resolve_single_warmup_seconds (), NULL, NULL)) {
-        const queue_stats_t queue_stats = probe.snapshot ();
-        print_result (lib_name_,
-                      k_pattern,
-                      transport_,
-                      msg_size_,
-                      0.0,
-                      0.0,
-                      0.0,
-                      0.0,
-                      queue_stats);
-        stop_single_metric_worker (&metric_worker);
-        cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
+    double throughput = 0.0;
+    latency_stats_t latency;
+    const bool active_ok = run_active_window (
+      pub,
+      client_state,
+      payload,
+      msg_size_,
+      resolve_single_duration_seconds (),
+      &throughput,
+      &latency);
+
+    stop_single_metric_worker (&metric_worker);
+    cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
+
+    if (!active_ok) {
+        print_fail ();
         return 1;
     }
 
-    double throughput = 0.0;
-    latency_stats_t latency;
-    const bool active_ok = run_phase_window (
-      pub, client_state, probe, payload, msg_size_,
-      perf_single_metric::phase_active, resolve_single_duration_seconds (),
-      &throughput, &latency);
-    const queue_stats_t queue_stats = probe.snapshot ();
     print_result (lib_name_,
                   k_pattern,
                   transport_,
                   msg_size_,
-                  active_ok ? throughput : 0.0,
-                  active_ok ? latency.mean_us : 0.0,
-                  active_ok ? latency.p95_us : 0.0,
-                  active_ok ? latency.p99_us : 0.0,
-                  queue_stats);
-
-    stop_single_metric_worker (&metric_worker);
-    cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
-    return active_ok ? 0 : 1;
+                  throughput,
+                  latency.mean_us,
+                  latency.p95_us,
+                  latency.p99_us);
+    return 0;
 }
 } // namespace
 

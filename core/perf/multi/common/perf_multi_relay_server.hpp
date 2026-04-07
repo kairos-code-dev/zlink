@@ -38,46 +38,6 @@ struct relay_server_config_t
     const char *server_routing_id;
 };
 
-inline std::atomic<bool> &queue_probe_pending ()
-{
-    static std::atomic<bool> value (false);
-    return value;
-}
-
-inline std::atomic<size_t> &queue_probe_size ()
-{
-    static std::atomic<size_t> value (0);
-    return value;
-}
-
-inline void request_queue_probe (size_t msg_size)
-{
-    if (msg_size == 0)
-        return;
-
-    queue_probe_size ().store (msg_size, std::memory_order_release);
-    queue_probe_pending ().store (true, std::memory_order_release);
-}
-
-inline void emit_requested_queue_probe (const relay_server_config_t &config,
-                                        const std::string &lib_name,
-                                        const std::string &transport,
-                                        void *server)
-{
-    if (!queue_probe_pending ().exchange (false, std::memory_order_acq_rel))
-        return;
-
-    const size_t msg_size =
-      queue_probe_size ().load (std::memory_order_acquire);
-    if (msg_size == 0 || !server)
-        return;
-
-    const server_queue_stats_t queue_stats =
-      sample_server_queue_stats (server, server);
-    print_server_queue_metrics (
-      lib_name, config.pattern_name, transport, msg_size, queue_stats);
-}
-
 inline bool relay_router_once (void *server)
 {
     zlink_routing_id_t source_rid;
@@ -120,11 +80,10 @@ inline void print_server_metrics (
   const std::string &lib_name,
   const std::string &transport,
   const std::vector<size_t> &sizes,
-  const bench_multi_resource_metrics_t &metrics,
-  const server_queue_stats_t &queue_stats)
+  const bench_multi_resource_metrics_t &metrics)
 {
     print_server_metrics_for_sizes (
-      lib_name, config.pattern_name, transport, sizes, metrics, &queue_stats);
+      lib_name, config.pattern_name, transport, sizes, metrics);
 }
 
 inline bool run_server_loop (const relay_server_config_t &config,
@@ -136,7 +95,6 @@ inline bool run_server_loop (const relay_server_config_t &config,
         return false;
 
     while (!perf_stop_requested ().load (std::memory_order_acquire)) {
-        emit_requested_queue_probe (config, lib_name, transport, server);
         if (!relay_router_once (server))
             return false;
     }
@@ -195,18 +153,11 @@ inline int run_server_benchmark (const relay_server_config_t &config,
     }
 
     perf_stop_requested ().store (false, std::memory_order_release);
-    queue_probe_pending ().store (false, std::memory_order_release);
-    queue_probe_size ().store (0, std::memory_order_release);
     install_perf_signal_handlers ();
 
     std::thread stdin_watcher ([] () {
         std::string line;
         while (std::getline (std::cin, line)) {
-            size_t queue_size = 0;
-            if (parse_queue_probe_command (line, &queue_size)) {
-                request_queue_probe (queue_size);
-                continue;
-            }
             if (line == "STOP" || line == "QUIT") {
                 perf_stop_requested ().store (true, std::memory_order_release);
                 return;
@@ -225,15 +176,11 @@ inline int run_server_benchmark (const relay_server_config_t &config,
 
     std::cout << "READY," << endpoint << std::endl;
 
-    const bool loop_ok =
-      run_server_loop (config, server, lib_name, transport);
+    const bool loop_ok = run_server_loop (config, server, lib_name, transport);
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (sample_start);
-    const server_queue_stats_t queue_stats =
-      sample_server_queue_stats (server, server);
-    print_server_metrics (
-      config, lib_name, transport, sizes, metrics, queue_stats);
+    print_server_metrics (config, lib_name, transport, sizes, metrics);
 
     zlink_close (server);
     return loop_ok ? 0 : 1;

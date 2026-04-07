@@ -17,7 +17,6 @@
 #include <mutex>
 #include <set>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace {
@@ -63,6 +62,10 @@ inline recv_result_t receive_one_message (
   size_t expected_msg_size,
   uint32_t expected_run_id,
   perf_multi_metric::phase_t expected_phase,
+  bool *sender_window_started,
+  uint64_t *sender_window_start_us,
+  uint64_t *sender_window_end_us,
+  uint64_t active_duration_us,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -84,10 +87,24 @@ inline recv_result_t receive_one_message (
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR || err == ETIMEDOUT)
             return recv_none;
+        if (bench_transition_debug_enabled ()) {
+            std::cerr << "[multi-dealer-dealer-server] recv fatal err=" << err
+                      << " size=" << expected_msg_size << " run="
+                      << expected_run_id << " phase="
+                      << static_cast<unsigned int> (expected_phase)
+                      << std::endl;
+        }
         return recv_fatal;
     }
 
     if (part_count < 1) {
+        if (bench_transition_debug_enabled ()) {
+            std::cerr << "[multi-dealer-dealer-server] recv part_count="
+                      << part_count << " size=" << expected_msg_size
+                      << " run=" << expected_run_id << " phase="
+                      << static_cast<unsigned int> (expected_phase)
+                      << std::endl;
+        }
         if (parts) {
             zlink_multipart_close (parts, part_count);
         }
@@ -102,10 +119,36 @@ inline recv_result_t receive_one_message (
       expected_phase,
       &header);
 
-    if (matched && count_message && message_count)
+    if (!matched && bench_debug_enabled ()) {
+        std::cerr << "[multi-dealer-dealer-server] header mismatch expected_size="
+                  << expected_msg_size << " expected_run=" << expected_run_id
+                  << " expected_phase="
+                  << static_cast<unsigned int> (expected_phase)
+                  << " got_magic=" << header.magic << " got_run="
+                  << header.run_id << " got_phase=" << header.phase
+                  << " got_size=" << header.msg_size << std::endl;
+    }
+    bool count_matched = matched;
+    if (matched && sender_window_started && sender_window_start_us
+        && sender_window_end_us) {
+        if (!(*sender_window_started)) {
+            const uint64_t window_start_us =
+              header.sent_ts_us > 0
+                ? header.sent_ts_us
+                : perf_multi_metric::now_us ();
+            *sender_window_started = true;
+            *sender_window_start_us = window_start_us;
+            *sender_window_end_us = window_start_us + active_duration_us;
+        }
+        if (count_matched && header.sent_ts_us > 0
+            && header.sent_ts_us > *sender_window_end_us)
+            count_matched = false;
+    }
+
+    if (count_matched && count_message && message_count)
         (*message_count)++;
 
-    if (matched && collect_latency && lat_sum && lat_count) {
+    if (count_matched && collect_latency && lat_sum && lat_count) {
         const uint64_t now_us = perf_multi_metric::now_us ();
         if (header.sent_ts_us > 0 && now_us >= header.sent_ts_us) {
             const double sample_us = static_cast<double> (now_us - header.sent_ts_us);
@@ -125,6 +168,10 @@ inline bool drain_non_blocking_messages (
   size_t expected_msg_size,
   uint32_t expected_run_id,
   perf_multi_metric::phase_t expected_phase,
+  bool *sender_window_started,
+  uint64_t *sender_window_start_us,
+  uint64_t *sender_window_end_us,
+  uint64_t active_duration_us,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -139,6 +186,10 @@ inline bool drain_non_blocking_messages (
           expected_msg_size,
           expected_run_id,
           expected_phase,
+          sender_window_started,
+          sender_window_start_us,
+          sender_window_end_us,
+          active_duration_us,
           count_message,
           collect_latency,
           message_count,
@@ -158,7 +209,11 @@ inline bool run_receive_window (
   size_t expected_msg_size,
   uint32_t expected_run_id,
   perf_multi_metric::phase_t expected_phase,
-  double duration_seconds,
+  double measure_seconds,
+  double local_wait_seconds,
+  bool *sender_window_started,
+  uint64_t *sender_window_start_us,
+  uint64_t *sender_window_end_us,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -168,22 +223,38 @@ inline bool run_receive_window (
 {
     if (!server)
         return false;
-    if (duration_seconds <= 0.0)
+    if (measure_seconds <= 0.0)
         return true;
 
-    const std::chrono::steady_clock::time_point deadline =
+    if (local_wait_seconds <= 0.0)
+        local_wait_seconds = measure_seconds;
+
+    std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
-        std::chrono::duration<double> (duration_seconds));
+        std::chrono::duration<double> (local_wait_seconds));
+    const uint64_t active_duration_us =
+      static_cast<uint64_t> (
+        std::max (1.0, measure_seconds) * 1000000.0);
+    const double delivery_slack_s =
+      std::max (1.0, std::min (5.0, measure_seconds));
+    bool active_window_observed =
+      sender_window_started ? *sender_window_started : false;
 
     while (!perf_stop_requested ().load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < deadline) {
+        const bool had_sender_window =
+          sender_window_started ? *sender_window_started : false;
         const recv_result_t status = receive_one_message (
           server,
           0,
           expected_msg_size,
           expected_run_id,
           expected_phase,
+          sender_window_started,
+          sender_window_start_us,
+          sender_window_end_us,
+          active_duration_us,
           count_message,
           collect_latency,
           message_count,
@@ -195,11 +266,26 @@ inline bool run_receive_window (
         if (status == recv_fatal)
             return false;
 
+        if (sender_window_started && *sender_window_started
+            && (!active_window_observed || !had_sender_window)) {
+            active_window_observed = true;
+            deadline =
+              std::chrono::steady_clock::now ()
+              + std::chrono::duration_cast<
+                std::chrono::steady_clock::duration> (
+                std::chrono::duration<double> (
+                  measure_seconds + delivery_slack_s));
+        }
+
         if (!drain_non_blocking_messages (
               server,
               expected_msg_size,
               expected_run_id,
               expected_phase,
+              sender_window_started,
+              sender_window_start_us,
+              sender_window_end_us,
+              active_duration_us,
               count_message,
               collect_latency,
               message_count,
@@ -213,6 +299,76 @@ inline bool run_receive_window (
     return true;
 }
 
+inline bool drain_phase_until_idle (void *server,
+                                    size_t expected_msg_size,
+                                    uint32_t expected_run_id,
+                                    perf_multi_metric::phase_t expected_phase,
+                                    double max_wait_seconds,
+                                    int idle_wait_ms)
+{
+    if (!server)
+        return false;
+
+    if (max_wait_seconds <= 0.0)
+        return true;
+
+    if (idle_wait_ms <= 0)
+        idle_wait_ms = 50;
+
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
+        std::chrono::duration<double> (max_wait_seconds));
+    std::chrono::steady_clock::time_point idle_deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (idle_wait_ms);
+
+    while (!perf_stop_requested ().load (std::memory_order_acquire)
+           && std::chrono::steady_clock::now () < deadline) {
+        const recv_result_t status = receive_one_message (
+          server,
+          ZLINK_DONTWAIT,
+          expected_msg_size,
+          expected_run_id,
+          expected_phase,
+          NULL,
+          NULL,
+          NULL,
+          0,
+          false,
+          false,
+          NULL,
+          NULL,
+          NULL,
+          NULL);
+        if (status == recv_fatal)
+            return false;
+        if (status == recv_ok) {
+            idle_deadline =
+              std::chrono::steady_clock::now ()
+              + std::chrono::milliseconds (idle_wait_ms);
+            continue;
+        }
+
+        if (std::chrono::steady_clock::now () >= idle_deadline)
+            return true;
+
+        const long wait_ms = std::max<long> (
+          1,
+          std::min<long> (
+            idle_wait_ms,
+            std::chrono::duration_cast<std::chrono::milliseconds> (
+              idle_deadline - std::chrono::steady_clock::now ())
+              .count ()));
+        if (perf_socket_poll (NULL, 0, wait_ms) < 0
+            && zlink_errno () != EINTR) {
+            return false;
+        }
+    }
+
+    return std::chrono::steady_clock::now () >= idle_deadline;
+}
+
 inline bool run_one_size_benchmark (
   void *server,
   const multi_bench_settings_t &settings,
@@ -221,30 +377,16 @@ inline bool run_one_size_benchmark (
   const std::string &lib_name,
   const std::string &transport)
 {
-    const double warmup_s =
-      static_cast<double> (std::max (0, settings.warmup_seconds));
     const double active_s =
       static_cast<double> (std::max (1, settings.duration_seconds));
-    const bool warmup_ok = run_receive_window (
-      server,
-      msg_size,
-      run_id,
-      perf_multi_metric::phase_warmup,
-      warmup_s,
-      false,
-      false,
-      NULL,
-      NULL,
-      NULL,
-      NULL);
-    if (!warmup_ok) {
-        return false;
-    }
 
     long recv_count = 0;
     double lat_sum = 0.0;
     long lat_count = 0;
     bench_latency_sampler_t lat_samples;
+    bool sender_window_started = false;
+    uint64_t sender_window_start_us = 0;
+    uint64_t sender_window_end_us = 0;
 
     const bool active_ok = run_receive_window (
       server,
@@ -252,6 +394,10 @@ inline bool run_one_size_benchmark (
       run_id,
       perf_multi_metric::phase_active,
       active_s,
+      std::max (active_s + 2.0, active_s + 5.0),
+      &sender_window_started,
+      &sender_window_start_us,
+      &sender_window_end_us,
       true,
       true,
       &recv_count,
@@ -259,11 +405,24 @@ inline bool run_one_size_benchmark (
       &lat_count,
       &lat_samples);
     if (!active_ok) {
+        if (bench_transition_debug_enabled ()) {
+            std::cerr << "[multi-dealer-dealer-server] active failed size="
+                      << msg_size << " run=" << run_id << std::endl;
+        }
         return false;
     }
 
-    if (recv_count <= 0 || lat_count <= 0)
+    if (recv_count <= 0 || lat_count <= 0) {
+        if (bench_transition_debug_enabled ()) {
+            std::cerr << "[multi-dealer-dealer-server] active empty size="
+                      << msg_size << " run=" << run_id
+                      << " recv_count=" << recv_count
+                      << " lat_count=" << lat_count
+                      << " sender_window_started="
+                      << sender_window_started << std::endl;
+        }
         return false;
+    }
 
     bench_latency_stats_t latency;
     normalize_latency_stats (lat_sum, lat_count, &lat_samples, &latency);
@@ -281,15 +440,6 @@ inline bool run_one_size_benchmark (
       latency.mean_us,
       latency.p95_us,
       latency.p99_us);
-
-    const server_queue_stats_t queue_stats =
-      sample_server_queue_stats (server, server);
-    print_server_queue_metrics (
-      lib_name,
-      k_pattern,
-      transport,
-      msg_size,
-      queue_stats);
 
     return true;
 }
@@ -347,31 +497,10 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     perf_stop_requested ().store (false, std::memory_order_release);
     install_perf_signal_handlers ();
-    perf_multi_handshake::start_signal_state_t start_gate;
-
-    std::thread stdin_watcher ([&] () {
-        std::string line;
-        while (std::getline (std::cin, line)) {
-            size_t start_size = 0;
-            if (perf_multi_handshake::parse_size_command_line (
-                  line, "START,", &start_size)) {
-                perf_multi_handshake::signal_start (&start_gate, start_size);
-                continue;
-            }
-            if (line == "STOP" || line == "QUIT") {
-                perf_stop_requested ().store (true, std::memory_order_release);
-                perf_multi_handshake::signal_stop (&start_gate);
-                return;
-            }
-        }
-        perf_stop_requested ().store (true, std::memory_order_release);
-        perf_multi_handshake::signal_stop (&start_gate);
-    });
 
     std::vector<size_t> sizes = resolve_bench_msg_sizes (64);
     if (sizes.empty ())
         sizes.push_back (64);
-
     std::cout << "READY," << endpoint << std::endl;
 
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
@@ -382,10 +511,21 @@ inline int run_server_benchmark (const std::string &lib_name,
             break;
         }
 
-        if (!perf_multi_handshake::wait_for_start (
-              &start_gate, sizes[si], settings.connect_ready_timeout_ms)) {
+        if (bench_transition_debug_enabled ()) {
+            std::cerr << "[multi-dealer-dealer-server] wait start size="
+                      << sizes[si] << std::endl;
+        }
+        if (!perf_multi_handshake::wait_for_start_from_stdin (sizes[si])) {
+            if (bench_transition_debug_enabled ()) {
+                std::cerr << "[multi-dealer-dealer-server] start gate failed size="
+                          << sizes[si] << std::endl;
+            }
             ok = false;
             break;
+        }
+        if (bench_transition_debug_enabled ()) {
+            std::cerr << "[multi-dealer-dealer-server] start size="
+                      << sizes[si] << std::endl;
         }
 
         const uint32_t run_id = static_cast<uint32_t> (si + 1);
@@ -406,9 +546,6 @@ inline int run_server_benchmark (const std::string &lib_name,
     print_server_resource_metrics (lib_name, transport, sizes, metrics);
 
     perf_stop_requested ().store (true, std::memory_order_release);
-    perf_multi_handshake::signal_stop (&start_gate);
-    if (stdin_watcher.joinable ())
-        stdin_watcher.join ();
     zlink_close (server);
 
     return ok ? 0 : 1;

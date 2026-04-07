@@ -17,7 +17,6 @@ struct dealer_callback_state_t
         payload_size (0),
         active_deadline_us (0),
         fatal (false),
-        warmup_received (0),
         active_received (0),
         probe (NULL),
         callback_queue (NULL)
@@ -28,7 +27,6 @@ struct dealer_callback_state_t
     size_t payload_size;
     std::atomic<uint64_t> active_deadline_us;
     std::atomic<bool> fatal;
-    std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
@@ -85,40 +83,34 @@ void dealer_recv_handler (const zlink_routing_id_t *,
     }
 }
 
-inline bool run_oneway_phase (void *sender,
+inline bool run_active_phase (void *sender,
                               std::vector<char> *payload,
                               dealer_callback_state_t *state,
                               uint64_t *seq,
-                              perf_single_metric::phase_t phase,
                               int duration_s,
                               int recv_timeout_ms,
-                              queue_probe_t *queue_probe,
                               unsigned long long *out_received,
                               latency_stats_t *out_latency)
 {
-    if (!sender || !payload || !state || !seq || !out_received)
+    if (!sender || !payload || !state || !seq || !out_received
+        || !out_latency) {
         return false;
+    }
 
-    const bool active_phase = phase == perf_single_metric::phase_active;
     const auto deadline =
       std::chrono::steady_clock::now ()
-        + std::chrono::seconds (duration_s > 0 ? duration_s : 1);
+      + std::chrono::seconds (duration_s > 0 ? duration_s : 1);
     state->fatal.store (false, std::memory_order_release);
-    state->warmup_received.store (0, std::memory_order_release);
     state->active_received.store (0, std::memory_order_release);
     state->active_deadline_us.store (
-      active_phase
-        ? perf_single_metric::now_us ()
-            + static_cast<uint64_t> (std::max (1, duration_s) * 1000000ULL)
-        : 0,
+      perf_single_metric::now_us ()
+        + static_cast<uint64_t> (std::max (1, duration_s) * 1000000ULL),
       std::memory_order_release);
-    state->probe = queue_probe;
+    state->probe = NULL;
     state->latency = latency_stats_builder_t ();
 
     bool send_failed = false;
     unsigned long long successful_send_count = 0;
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_send ();
 
     while (std::chrono::steady_clock::now () < deadline) {
         const uint64_t sent_ts = perf_single_metric::now_us ();
@@ -126,7 +118,7 @@ inline bool run_oneway_phase (void *sender,
         if (!perf_single_metric::stamp_payload (payload->data (),
                                                 state->payload_size,
                                                 state->run_id,
-                                                phase,
+                                                perf_single_metric::phase_active,
                                                 state->msg_size,
                                                 current_seq,
                                                 sent_ts)) {
@@ -152,54 +144,36 @@ inline bool run_oneway_phase (void *sender,
                 break;
         }
 
-        if (send_class == perf_send_fatal) {
+        if (send_class != perf_send_success) {
             ::zlink_msg_close (&part);
             send_failed = true;
             break;
         }
-        if (send_class == perf_send_backpressure) {
-            ::zlink_msg_close (&part);
-            if (!single_wait_for_send_backpressure (queue_probe)) {
-                send_failed = true;
-                break;
-            }
-            continue;
-        }
+
         ++successful_send_count;
         ++(*seq);
-        if (active_phase && queue_probe)
-            queue_probe->sample_send_if_due ();
     }
-
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_send ();
 
     const int drain_timeout_ms =
       single_phase_completion_timeout_ms (duration_s, recv_timeout_ms);
     const bool drained = single_wait_for_phase_processed (
-      *state, phase, successful_send_count, drain_timeout_ms);
+      *state,
+      perf_single_metric::phase_active,
+      successful_send_count,
+      drain_timeout_ms);
 
     if (send_failed || !drained
-        || state->fatal.load (std::memory_order_acquire))
-        return false;
-
-    *out_received = active_phase
-                      ? state->active_received.load (std::memory_order_relaxed)
-                      : state->warmup_received.load (std::memory_order_relaxed);
-
-    if (active_phase) {
-        state->active_deadline_us.store (0, std::memory_order_release);
-        if (*out_received == 0 || !out_latency) {
-            return false;
-        }
-        *out_latency = state->latency.snapshot ();
-        if (state->latency.count () == 0)
-            return false;
-    } else if (*out_received == 0) {
+        || state->fatal.load (std::memory_order_acquire)) {
         return false;
     }
 
-    return true;
+    *out_received = state->active_received.load (std::memory_order_relaxed);
+    state->active_deadline_us.store (0, std::memory_order_release);
+    if (*out_received == 0) {
+        return false;
+    }
+    *out_latency = state->latency.snapshot ();
+    return state->latency.count () > 0;
 }
 
 } // namespace
@@ -211,35 +185,29 @@ void run_dealer_dealer (const std::string &transport,
     if (!transport_available (transport))
         return;
 
-    auto print_fail_no_queue = [&] () {
+    auto print_fail = [&] () {
         print_fail_result (lib_name, "DEALER_DEALER", transport, msg_size);
     };
 
     ctx_guard_t ctx;
     if (!ctx.valid ()) {
-        print_fail_no_queue ();
+        print_fail ();
         return;
     }
 
     socket_guard_t s1 (ctx.get (), ZLINK_SOCKET_DEALER);
     socket_guard_t s2 (ctx.get (), ZLINK_SOCKET_DEALER);
     if (!s1.valid () || !s2.valid ()) {
-        print_fail_no_queue ();
+        print_fail ();
         return;
     }
 
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
-    queue_probe_t queue_probe (s2.get (), s1.get ());
     dealer_callback_state_t callback_state;
     single_callback_metric_queue_t callback_queue (65536);
     single_metric_worker_t<dealer_callback_state_t> metric_worker;
-
-    auto print_fail_with_queue = [&] () {
-        print_fail_result (
-          lib_name, "DEALER_DEALER", transport, msg_size, &queue_probe);
-    };
 
     callback_state.run_id =
       static_cast<uint32_t> (perf_single_metric::now_us ());
@@ -250,65 +218,42 @@ void run_dealer_dealer (const std::string &transport,
     metric_worker.queue = &callback_queue;
     if (zlink_recv_handler (s1.get (), &dealer_recv_handler, &callback_state)
         != 0) {
-        print_fail_with_queue ();
+        print_fail ();
         return;
     }
     if (!start_single_metric_worker (&metric_worker)) {
-        print_fail_with_queue ();
+        print_fail ();
         return;
     }
 
     if (!setup_connected_pair (
           s1.get (), s2.get (), transport, lib_name + "_dealer_dealer")) {
         stop_single_metric_worker (&metric_worker);
-        print_fail_with_queue ();
+        print_fail ();
         return;
     }
 
     const int recv_timeout_ms = resolve_single_recv_timeout_ms ();
-
-    uint64_t seq = 1;
-
-    unsigned long long warmup_received = 0;
-    const int warmup_s = resolve_single_warmup_seconds ();
-    if (!run_oneway_phase (s2.get (),
-                           &payload,
-                           &callback_state,
-                           &seq,
-                           perf_single_metric::phase_warmup,
-                           warmup_s,
-                           recv_timeout_ms,
-                           NULL,
-                           &warmup_received,
-                           NULL)) {
-        stop_single_metric_worker (&metric_worker);
-        print_fail_with_queue ();
-        return;
-    }
-
     const int duration_s = std::max (1, resolve_single_duration_seconds ());
+    uint64_t seq = 1;
     unsigned long long received = 0;
     latency_stats_t latency_stats;
-    if (!run_oneway_phase (s2.get (),
+    if (!run_active_phase (s2.get (),
                            &payload,
                            &callback_state,
                            &seq,
-                           perf_single_metric::phase_active,
                            duration_s,
                            recv_timeout_ms,
-                           &queue_probe,
                            &received,
                            &latency_stats)) {
         stop_single_metric_worker (&metric_worker);
-        print_fail_with_queue ();
+        print_fail ();
         return;
     }
     stop_single_metric_worker (&metric_worker);
 
     const double throughput =
       static_cast<double> (received) / static_cast<double> (duration_s);
-    const queue_stats_t queue_stats = queue_probe.snapshot ();
-
     print_result (lib_name,
                   "DEALER_DEALER",
                   transport,
@@ -316,8 +261,7 @@ void run_dealer_dealer (const std::string &transport,
                   throughput,
                   latency_stats.mean_us,
                   latency_stats.p95_us,
-                  latency_stats.p99_us,
-                  queue_stats);
+                  latency_stats.p99_us);
 }
 
 int main (int argc, char **argv)

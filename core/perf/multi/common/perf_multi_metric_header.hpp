@@ -12,9 +12,8 @@ static const uint32_t k_magic = 0x4d504631U; // "MPF1"
 enum phase_t
 {
     phase_unknown = 0,
-    phase_warmup = 1,
-    phase_active = 2,
-    phase_drain = 3
+    phase_active = 1,
+    phase_drain = 2
 };
 
 struct header_t

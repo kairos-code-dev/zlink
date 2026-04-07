@@ -24,75 +24,16 @@ namespace {
 static const char *k_pattern = PERF_MULTI_STREAM_PATTERN_NAME;
 static const char k_stop_token[] = "__zlink_perf_stop__";
 
-// Uses perf_stop_requested() from perf_common.hpp
-static std::atomic<bool> g_queue_probe_pending (false);
-static std::atomic<size_t> g_queue_probe_size (0);
 static perf_multi_stream::session_t g_stream_session;
-
-inline void request_queue_probe (size_t msg_size)
-{
-    if (msg_size == 0)
-        return;
-    g_queue_probe_size.store (msg_size, std::memory_order_release);
-    g_queue_probe_pending.store (true, std::memory_order_release);
-}
-
-inline void emit_requested_queue_probe (const std::string &lib_name,
-                                        const std::string &transport,
-                                        void *send_socket,
-                                        void *recv_socket)
-{
-    if (!g_queue_probe_pending.exchange (false, std::memory_order_acq_rel))
-        return;
-
-    const size_t msg_size = g_queue_probe_size.load (std::memory_order_acquire);
-    if (msg_size == 0 || !send_socket || !recv_socket)
-        return;
-
-    const server_queue_stats_t queue_stats =
-      sample_server_queue_stats (send_socket, recv_socket);
-    print_server_queue_metrics (
-      lib_name, k_pattern, transport, msg_size, queue_stats);
-}
-
-struct stream_loop_tick_ctx_t
-{
-    stream_loop_tick_ctx_t(const std::string *lib_name_,
-                           const std::string *transport_,
-                           void *send_socket_,
-                           void *recv_socket_) :
-        lib_name(lib_name_),
-        transport(transport_),
-        send_socket(send_socket_),
-        recv_socket(recv_socket_)
-    {
-    }
-
-    const std::string *lib_name;
-    const std::string *transport;
-    void *send_socket;
-    void *recv_socket;
-};
-
-inline void run_stream_loop_tick(void *ctx_)
-{
-    stream_loop_tick_ctx_t *ctx =
-      static_cast<stream_loop_tick_ctx_t *>(ctx_);
-    if (!ctx || !ctx->lib_name || !ctx->transport)
-        return;
-    emit_requested_queue_probe(
-      *ctx->lib_name, *ctx->transport, ctx->send_socket, ctx->recv_socket);
-}
 
 inline void print_server_metrics (
   const std::string &lib_name,
   const std::string &transport,
   const std::vector<size_t> &sizes,
-  const bench_resource_metrics_t &metrics,
-  const server_queue_stats_t &queue_stats)
+  const bench_resource_metrics_t &metrics)
 {
     print_server_metrics_for_sizes (
-      lib_name, k_pattern, transport, sizes, metrics, &queue_stats);
+      lib_name, k_pattern, transport, sizes, metrics);
 }
 
 } // namespace
@@ -173,19 +114,12 @@ int main (int argc, char **argv)
     }
 
     perf_stop_requested ().store (false, std::memory_order_release);
-    g_queue_probe_pending.store (false, std::memory_order_release);
-    g_queue_probe_size.store (0, std::memory_order_release);
     perf_multi_stream::reset_session (&g_stream_session, server);
     install_perf_signal_handlers ();
 
     std::thread stdin_watcher ([] () {
         std::string line;
         while (std::getline (std::cin, line)) {
-            size_t queue_size = 0;
-            if (parse_queue_probe_command (line, &queue_size)) {
-                request_queue_probe (queue_size);
-                continue;
-            }
             if (line == "STOP" || line == "QUIT") {
                 perf_stop_requested ().store (true, std::memory_order_release);
                 return;
@@ -197,21 +131,18 @@ int main (int argc, char **argv)
 
     std::cout << "READY," << endpoint << std::endl;
 
-    stream_loop_tick_ctx_t loop_tick_ctx(&lib_name, &transport, server, server);
     const int rc = perf_multi_stream::run_server_event_loop (
       &g_stream_session,
       server,
       k_stop_token,
-      &run_stream_loop_tick,
-      &loop_tick_ctx);
+      NULL,
+      NULL);
 
     perf_multi_stream::clear_session (&g_stream_session);
 
     const bench_resource_metrics_t metrics =
       bench_finish_resource_probe (cpu_start);
-    const server_queue_stats_t queue_stats =
-      sample_server_queue_stats (server, server);
-    print_server_metrics (lib_name, transport, sizes, metrics, queue_stats);
+    print_server_metrics (lib_name, transport, sizes, metrics);
     zlink_close (server);
     return rc;
 }

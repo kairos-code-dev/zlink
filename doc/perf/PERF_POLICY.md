@@ -30,9 +30,13 @@
 - public C API 동작에 문제가 있으면 perf 코드에서 우회하지 않고 버그로
   레포팅한다. 버그레포팅 문서는 doc/bug/perf 아래에 md 파일 형식으로 작성한다. 버그는 회귀테스트를 작성해서 재현을 확인하고 수정한다. 버그 를 우선 후정하고 이어서 perf 작업을 계속한다.
 - 측정 의미는 유지한다.
-  - `ready / warmup / active`
+  - `ready / active`
   - `RESULT` 포맷
   - 실패 의미
+- backpressure 검증은 기본 perf surface가 아니라 `core/tests/integration`
+  으로 분리한다. one-way backpressure 통합 범위는 `DEALER_DEALER`,
+  `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `SPOT` 이며,
+  `STREAM`, echo, `PAIR` 은 제외한다.
 - 실제 오류는 즉시 `fail` 처리한다.
 - `EAGAIN`은 오류가 아니라 flow-control 상태로 취급한다.
 - perf 측정용 I/O 경로는 두 가지 모델을 지원한다.
@@ -128,8 +132,7 @@
   - `idle drain`
 - 위 단계가 이미 존재하지만 실제로는 “ready 이벤트 하나 기다리기” 또는
   “phase 종료 후 남은 메시지 정리”를 우회적으로 표현한 것뿐이라면, 새 단계로
-  유지하지 말고 삭제하거나 기존 `ready -> warmup -> active` 흐름에
-  흡수한다.
+  유지하지 말고 삭제하거나 기존 `ready -> active` 흐름에 흡수한다.
 - raw pattern 의 ready gate event 는
   [`doc/guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
   raw socket monitoring 절을 단일 기준으로 따른다.
@@ -150,7 +153,7 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`�
 
 - 바이너리는 **단일 측정 케이스**만 수행한다.
 - 단일 측정 케이스의 최소 단위는 `pattern/transport/size/run` 이다.
-- 바이너리는 입력 조건에 따라 해당 케이스의 ready/warmup/active를 수행하고,
+- 바이너리는 입력 조건에 따라 해당 케이스의 ready/active를 수행하고,
   `RESULT,...` line과 필요한 제어 신호만 stdout으로 출력한다.
 - 바이너리는 다음 책임을 가지지 않는다.
   - 여러 pattern 순회
@@ -165,6 +168,13 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`�
   최소 metric event enqueue까지만 수행한다. throughput/latency 계산,
   sample aggregation, 완료 대기는 callback 밖 worker에서 처리해야 하며,
   패턴별 예외를 두지 않는다.
+- perf 기본 HWM 정책은 단순성을 우선한다. perf가 여는 benchmark socket은
+  역할별 예외 없이 동일한 `hwm` budget을 사용하고, 각 socket에
+  `SNDHWM`, `RCVHWM` 을 함께 설정한다.
+- one-way pattern에서도 이 규칙을 유지한다. 실제 traffic 방향상 한쪽 HWM만
+  주로 의미를 가지더라도, perf surface는 동일 설정으로 고정한다.
+- perf는 throughput/bandwidth/latency 중심의 기본 surface만 유지한다. cpu/mem,
+  queue, debug, probe 기반 RESULT surface는 기본 perf에 두지 않는다.
 
 ### 1.2.2 Runner 책임
 
@@ -487,22 +497,9 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | `latency` | 레이턴시 (us) | MUST |
 | `latency_p95` | 레이턴시 95th percentile (us) | MUST |
 | `latency_p99` | 레이턴시 99th percentile (us) | MUST |
-| `cpu_pct` | 프로세스 CPU 사용률 (%) — single용 | Linux/Windows |
-| `mem_mb` | 프로세스 메모리 (MB, RSS/WorkingSet 기준) — single용 | Linux/Windows |
-| `client_cpu_pct` | client 프로세스 CPU (%) — multi용 (바이너리 출력만, 최종 집계 테이블에는 미반영) | Linux/Windows |
-| `client_mem_mb` | client 프로세스 메모리 (MB) — multi용 (바이너리 출력만, 최종 집계 테이블에는 미반영) | Linux/Windows |
-| `server_cpu_pct` | server 프로세스 CPU (%) — multi용 | Linux/Windows |
-| `server_mem_mb` | server 프로세스 메모리 (MB) — multi용 | Linux/Windows |
-| `snd_pending_max` | 송신 큐 최대 대기 수 — single용 | informational |
-| `rcv_pending_max` | 수신 큐 최대 대기 수 — single용 | informational |
-| `rcv_pending_end` | 수신 큐 종료 시점 대기 수 — single용 | informational |
-| `server_snd_pending_max` | server 송신 큐 최대 대기 수 — multi용 | informational |
-| `server_rcv_pending_max` | server 수신 큐 최대 대기 수 — multi용 | informational |
-| `server_rcv_pending_end` | server 수신 큐 종료 시점 대기 수 — multi용 | informational |
-
 - throughput 단위는 패턴의 메시지 흐름 방향에 따라 결정된다. echo(왕복) 패턴은 `ops/s`, one-way(단방향) 패턴은 `msg/s`. 상세 분류는 개별 정책 문서 섹션 8.1을 참조한다.
 - bandwidth는 throughput 단위가 다른 패턴 간에도 실제 데이터 처리량으로 직접 비교할 수 있는 공통 지표이다. 상세 계산은 개별 정책 문서 섹션 8.3을 참조한다.
-- `cpu_pct`, `mem_mb`는 정보성(informational) 메트릭이다. 누락 시 완료 판정에 영향 없음.
+- 기본 perf surface와 RESULT 계약에는 cpu/mem 계열 메트릭을 포함하지 않는다.
 - 상세 META 키 및 패턴별 측정 방식은 개별 정책 문서를 참조한다.
 
 ### 4.3 저장 규칙
@@ -546,10 +543,10 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ## PATTERN: MULTI_DEALER_DEALER (one-way)
 
 ### Transport: tcp
-| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
-|----------|------------------|------------|---------------|---------------|---------------|--------|----------|
-| 64B      |   150.00 Kmsg/s  |   9.6 MB/s |      0.05 ms  |      0.06 ms  |      0.08 ms  | 35.1   |   64.2   |
-| 1024B    |   120.30 Kmsg/s  | 123.2 MB/s |      0.05 ms  |      0.07 ms  |      0.09 ms  | 38.5   |   66.8   |
+| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+|----------|------------------|------------|---------------|---------------|---------------|
+| 64B      |   150.00 Kmsg/s  |   9.6 MB/s |      0.05 ms  |      0.06 ms  |      0.08 ms  |
+| 1024B    |   120.30 Kmsg/s  | 123.2 MB/s |      0.05 ms  |      0.07 ms  |      0.09 ms  |
 ```
 
 - **패턴 간 구분선**: 패턴이 바뀔 때 `===============================================================================` 구분선을 출력한다 (첫 번째 패턴 앞에는 출력하지 않음).
@@ -559,9 +556,6 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | Throughput | echo: `Kops/s`, one-way: `Kmsg/s` | 패턴 방향별 단위 — 개별 정책 문서 섹션 8.1 참조 |
 | Bandwidth | `MB/s` | 네트워크 전송량 — 개별 정책 문서 섹션 8.3 참조 |
 | Lat.Mean / Lat.P95 / Lat.P99 | single: `us` (마이크로초), multi: `ms` (밀리초) | 평균/95th/99th |
-| CPU% | `%` | single 리소스 메트릭, 수집 실패 시 `N/A` |
-| Mem MB | `MB` | single 리소스 메트릭, 수집 실패 시 `N/A` |
-| S.CPU% / S.Mem MB | `%` / `MB` | multi server 리소스 메트릭 |
 
 ### 5.2 진행 로그
 
@@ -593,10 +587,10 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ```text
   > Benchmarking current for PAIR...
     Testing tcp:
-      | Size     |       Throughput |  Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | CPU% | Mem MB |
-      |----------|------------------|------------|--------------|--------------|--------------|------|--------|
-      | 64B      |   523.40 Kmsg/s  | 33.5 MB/s  |   12.35 us   |   18.20 us   |   21.40 us   | 48.2 |   12.3 |
-      | 256B     |   480.12 Kmsg/s  | 122.9 MB/s |   14.20 us   |   20.30 us   |   24.10 us   | 49.8 |   12.5 |
+      | Size     |       Throughput |  Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 |
+      |----------|------------------|------------|--------------|--------------|--------------|
+      | 64B      |   523.40 Kmsg/s  | 33.5 MB/s  |   12.35 us   |   18.20 us   |   21.40 us   |
+      | 256B     |   480.12 Kmsg/s  | 122.9 MB/s |   14.20 us   |   20.30 us   |   24.10 us   |
     Testing tcp: Done
 ```
 
@@ -605,9 +599,9 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
   > Benchmarking current for MULTI_DEALER_DEALER...
     Testing tcp | 64B,256B:
       run 1/3:
-        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
-        | 64B      |    121.98 Kmsg/s |    15.61 MB/s |      0.81 ms  |      1.01 ms  |      1.26 ms  |    N/A |      N/A |
+        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+        |----------|------------------|--------------|---------------|---------------|---------------|
+        | 64B      |    121.98 Kmsg/s |    15.61 MB/s |      0.81 ms  |      1.01 ms  |      1.26 ms  |
         | 256B     |    ...
       [cooldown 3000ms]
       run 2/3:
@@ -616,8 +610,8 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
       run 3/3:
         ...
       median:
-        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
+        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+        |----------|------------------|--------------|---------------|---------------|---------------|
         | 64B      |    ...
         | 256B     |    ...
     Testing tcp: Done
@@ -639,14 +633,8 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 ## 7. 리소스 메트릭 수집
 
-| 메트릭 | Linux 수집 소스 | Windows 수집 소스 | 계산 방식 |
-|--------|----------------|-------------------|-----------|
-| `cpu_pct` | `/proc/[pid]/stat` | `GetProcessTimes()` | `(user₂+kernel₂ - user₁-kernel₁) / (elapsed × nproc) × 100` |
-| `mem_mb` | `/proc/[pid]/status` VmRSS | `GetProcessMemoryInfo()` WorkingSetSize | 측정 종료 시점 1회 읽기, MB 변환 |
-
-- 측정 phase 시작/종료 시점에 2회 샘플링.
-- Single: 벤치마크 프로세스 대상. Multi: server/client 별도 프로세스별 독립 측정 (`client_cpu_pct`, `client_mem_mb`, `server_cpu_pct`, `server_mem_mb`).
-- 정보성(informational) 메트릭이므로 누락 시 완료 판정에 영향 없음.
+- 이번 정책의 기본 perf surface와 RESULT 계약에는 cpu/mem 계열 메트릭을 포함하지 않는다.
+- cpu/mem 수집이 필요하면 별도 진단 작업으로 분리하고, 기본 runner/binary/output 계약과 섞지 않는다.
 
 ---
 
@@ -740,7 +728,7 @@ perf 구현의 공통화 기준은 **코드 중복 제거 자체가 아니라 be
 |------|------|
 | RESULT line 포맷팅/출력 | `RESULT,<lib>,<pattern>,...` 형식과 필드 순서를 단일 구현으로 유지 |
 | metric header encode/decode | `magic`, `run_id`, `phase`, `msg_size`, `seq`, `sent_ts_us` 처리 |
-| phase별 유효 샘플 판정 | active/warmup 구간 구분과 유효 header 판정 |
+| phase별 유효 샘플 판정 | active 구간 구분과 유효 header 판정 |
 | throughput 계산 | 유효 수신 건수 기반 계산 |
 | bandwidth 계산 | throughput와 payload size 기반 계산 |
 | latency 샘플 집계 | header timestamp 기반 샘플 수집 |

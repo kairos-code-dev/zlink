@@ -30,8 +30,6 @@ inline bool run_server_cases(void *state,
                              const std::vector<size_t> &msg_sizes,
                              const server_hooks_t &hooks)
 {
-    const double warmup_seconds =
-      static_cast<double>(std::max(0, settings.warmup_seconds));
     const double active_seconds =
       static_cast<double>(std::max(1, settings.duration_seconds));
     const int start_timeout_ms =
@@ -54,13 +52,6 @@ inline bool run_server_cases(void *state,
             || !hooks.ensure_control_peers_connected(state)
             || !hooks.wait_for_ready_slots(state, msg_size, start_timeout_ms)
             || !hooks.publish_control_start(state, msg_size)
-            || !hooks.run_phase(state,
-                                lib_name,
-                                transport,
-                                msg_size,
-                                perf_multi_metric::phase_warmup,
-                                warmup_seconds,
-                                true)
             || !hooks.run_phase(state,
                                 lib_name,
                                 transport,

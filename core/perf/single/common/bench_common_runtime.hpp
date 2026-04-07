@@ -136,19 +136,6 @@ inline int resolve_single_socket_hwm(bool send_)
                  : parse_positive_env("PERF_SINGLE_RCVHWM", base_hwm);
 }
 
-inline bool single_wait_for_send_backpressure(queue_probe_t *queue_probe_)
-{
-    if (queue_probe_)
-        queue_probe_->sample_send_if_due();
-
-    const int rc = perf_socket_poll(NULL, 0, perf_aux_poll_wait_ms());
-    if (rc >= 0)
-        return true;
-
-    const int err = zlink_errno();
-    return err == EINTR || err == EAGAIN;
-}
-
 inline bool wait_socket_event(void *socket_,
                               short events_,
                               long timeout_ms_,

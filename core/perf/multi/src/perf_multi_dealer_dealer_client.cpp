@@ -2,6 +2,7 @@
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_metric_header.hpp"
 #include "../common/perf_multi_client_helpers.hpp"
+#include "../common/perf_multi_handshake.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -14,7 +15,6 @@
 #include <cstring>
 #include <iostream>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace {
@@ -154,6 +154,12 @@ inline bool run_send_window (const std::vector<void *> &sockets,
         poll_items[i].revents = 0;
     }
 
+    if (bench_transition_debug_enabled ()) {
+        std::cerr << "[multi-dealer-dealer-client] send window begin phase="
+                  << static_cast<unsigned int> (phase)
+                  << " msg_size=" << msg_size << std::endl;
+    }
+
     while (!g_stop_requested.load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < deadline) {
         for (size_t i = 0; i < poll_items.size (); ++i)
@@ -195,6 +201,11 @@ inline bool run_send_window (const std::vector<void *> &sockets,
         }
     }
 
+    if (bench_transition_debug_enabled ()) {
+        std::cerr << "[multi-dealer-dealer-client] send window end phase="
+                  << static_cast<unsigned int> (phase)
+                  << " msg_size=" << msg_size << std::endl;
+    }
     return true;
 }
 
@@ -205,24 +216,10 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
 {
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_multi_metric::header_size ());
-    const double warmup_s =
-      static_cast<double> (std::max (0, settings.warmup_seconds));
     const double active_s =
       static_cast<double> (std::max (1, settings.duration_seconds));
 
     uint64_t seq = 1;
-    if (!run_send_window (
-          sockets,
-          payload_size,
-          run_id,
-          perf_multi_metric::phase_warmup,
-          msg_size,
-          warmup_s,
-          true,
-          &seq)) {
-        return false;
-    }
-
     if (!run_send_window (
           sockets,
           payload_size,
@@ -293,6 +290,16 @@ inline int run_client_benchmark (const std::string &lib_name,
     }
     close_client_monitors (&monitors);
 
+    if (transport == "tls" || transport == "ws" || transport == "wss") {
+        const int settle_ms =
+          std::max (250, std::min (2000, settings.connect_ready_timeout_ms / 4));
+        if (perf_socket_poll (NULL, 0, settle_ms) < 0
+            && zlink_errno () != EINTR) {
+            close_client_sockets (&sockets);
+            return 1;
+        }
+    }
+
     g_stop_requested.store (false, std::memory_order_release);
     install_signal_handlers ();
 
@@ -305,14 +312,36 @@ inline int run_client_benchmark (const std::string &lib_name,
 
         const uint32_t run_id = static_cast<uint32_t> (si + 1);
         std::cout << "CLIENT_READY," << msg_sizes[si] << std::endl;
+        if (bench_transition_debug_enabled ()) {
+            std::cerr << "[multi-dealer-dealer-client] ready size="
+                      << msg_sizes[si] << std::endl;
+        }
+        if (!perf_multi_handshake::wait_for_start_from_stdin (msg_sizes[si])) {
+            if (bench_transition_debug_enabled ()) {
+                std::cerr
+                  << "[multi-dealer-dealer-client] start gate failed size="
+                  << msg_sizes[si] << std::endl;
+            }
+            close_client_monitors (&monitors);
+            close_client_sockets (&sockets);
+            return 1;
+        }
         if (!run_single_size_case (
               sockets,
               settings,
               msg_sizes[si],
               run_id)) {
+            if (bench_transition_debug_enabled ()) {
+                std::cerr << "[multi-dealer-dealer-client] size case failed size="
+                          << msg_sizes[si] << std::endl;
+            }
             close_client_monitors (&monitors);
             close_client_sockets (&sockets);
             return 1;
+        }
+        if (bench_transition_debug_enabled ()) {
+            std::cerr << "[multi-dealer-dealer-client] done size="
+                      << msg_sizes[si] << std::endl;
         }
         std::cout << "CLIENT_DONE," << msg_sizes[si] << std::endl;
     }

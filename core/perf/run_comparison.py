@@ -33,11 +33,6 @@ REQUIRED_RESULT_METRICS = (
     LATENCY_P99_METRIC,
 )
 REQUIRED_RESULT_METRIC_COUNT = len(REQUIRED_RESULT_METRICS)
-SERVER_QUEUE_METRICS = (
-    "server_snd_pending_max",
-    "server_rcv_pending_max",
-    "server_rcv_pending_end",
-)
 PATTERN_SEPARATOR = "==============================================================================="
 STREAM_VARIANT_PATTERNS = ("STREAM",)
 PATTERN_ALIASES = {
@@ -99,7 +94,6 @@ MULTI_ENV_ALIAS_MAP = {
     "PERF_PATTERN": "PERF_MULTI_PATTERN",
     "PERF_CLIENTS": "PERF_MULTI_CLIENTS",
     "PERF_HWM": "PERF_MULTI_HWM",
-    "PERF_WARMUP_SECONDS": "PERF_MULTI_WARMUP_SECONDS",
     "PERF_DURATION_SECONDS": "PERF_MULTI_DURATION_SECONDS",
     "PERF_SNDTIMEO_MS": "PERF_MULTI_SNDTIMEO_MS",
     "PERF_RCVTIMEO_MS": "PERF_MULTI_RCVTIMEO_MS",
@@ -118,7 +112,6 @@ MULTI_ENV_ALIAS_MAP = {
     "PERF_RUN_COOLDOWN_MS": "PERF_MULTI_RUN_COOLDOWN_MS",
     "PERF_TRANSPORT_TRANSITION_MS": "PERF_MULTI_TRANSPORT_TRANSITION_MS",
     "PERF_PATTERN_TRANSITION_MS": "PERF_MULTI_PATTERN_TRANSITION_MS",
-    "PERF_ACTIVE_WARMUP": "PERF_MULTI_ACTIVE_WARMUP",
     "PERF_SERVICE_CLIENTS": "PERF_MULTI_SERVICE_CLIENTS",
     "PERF_LATENCY_SAMPLE_CAP": "PERF_MULTI_LATENCY_SAMPLE_CAP",
     "PERF_SNDHWM": "PERF_MULTI_SNDHWM",
@@ -941,7 +934,6 @@ ENV_ALIAS_KEYS = (
     "PERF_PATTERN",
     "PERF_CLIENTS",
     "PERF_HWM",
-    "PERF_WARMUP_SECONDS",
     "PERF_DURATION_SECONDS",
     "PERF_SNDTIMEO_MS",
     "PERF_RCVTIMEO_MS",
@@ -1077,9 +1069,6 @@ def parse_result_line(line, transport, expected_sizes):
         "client_mem_mb",
         "server_cpu_pct",
         "server_mem_mb",
-        "server_snd_pending_max",
-        "server_rcv_pending_max",
-        "server_rcv_pending_end",
     ):
         return None, f"ignored unknown RESULT metric '{metric}': {line.strip()}"
 
@@ -1255,14 +1244,6 @@ def normalize_metric_name(metric):
 
 
 def should_warn_duplicate_metric(metric_name):
-    # Queue probe metrics can be emitted multiple times; keep the first value and
-    # suppress duplicate warnings for these keys.
-    if metric_name in (
-        "server_snd_pending_max",
-        "server_rcv_pending_max",
-        "server_rcv_pending_end",
-    ):
-        return False
     return True
 
 
@@ -1573,10 +1554,6 @@ def run_sizes_test_stream_shared(
     set_env_pair(env, "PERF_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
     set_env_pair(env, "PERF_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
     set_env_pair(env, "PERF_SERVER_BIND_PORT", bind_port)
-    warmup_seconds = max(
-        0, parse_env_int("PERF_WARMUP_SECONDS", 2)
-    )
-
     server_cmd = build_bench_cmd(server_binary_path, [lib_name, transport])
     shared_client_args = [
         "--transport",
@@ -1587,8 +1564,6 @@ def run_sizes_test_stream_shared(
         size_csv,
         "--runs",
         "1",
-        "--warmup",
-        str(warmup_seconds),
         "--duration",
         str(duration_seconds),
         "--ccu",
@@ -1619,10 +1594,44 @@ def run_sizes_test_stream_shared(
     use_control_plane = normalize_multi_pattern_name(pattern_name) == "SPOT"
     control_connected = [not use_control_plane]
     pending_ready_sizes = set()
+    pending_phase_active_sizes = set()
     client_proc = [None]
+
+    def maybe_send_phase_active(size_value):
+        try:
+            size_int = int(size_value)
+        except (TypeError, ValueError):
+            return False
+        if size_int <= 0:
+            return False
+        if not client_proc[0] or not client_proc[0].stdin:
+            pending_phase_active_sizes.add(size_int)
+            return False
+        try:
+            client_proc[0].stdin.write(f"PHASE_ACTIVE,{size_int}\n")
+            client_proc[0].stdin.flush()
+            pending_phase_active_sizes.discard(size_int)
+            return True
+        except Exception:
+            pending_phase_active_sizes.add(size_int)
+            return False
+
+    def flush_pending_phase_active():
+        if not pending_phase_active_sizes:
+            return
+        for size_int in list(pending_phase_active_sizes):
+            maybe_send_phase_active(size_int)
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
+        if pattern_name == "PUBSUB" and line.startswith("PHASE_ACTIVE,"):
+            try:
+                phase_size = int(line.split(",", 1)[1])
+            except (TypeError, ValueError, IndexError):
+                phase_size = 0
+            if phase_size > 0:
+                pending_phase_active_sizes.add(phase_size)
+                maybe_send_phase_active(phase_size)
         if use_control_plane and parse_control_connected_endpoint(line):
             control_connected[0] = True
             try:
@@ -1831,7 +1840,6 @@ def run_sizes_test_stream_shared(
         last_client_cpu = [None]
         last_client_mem = [None]
         last_client_size = [None]
-        queue_probe_requested_sizes = set()
 
         def maybe_send_size_start(size_value):
             if not control_connected[0] or size_value is None:
@@ -1840,10 +1848,14 @@ def run_sizes_test_stream_shared(
                 if server_proc.stdin:
                     server_proc.stdin.write(f"START,{size_value}\n")
                     server_proc.stdin.flush()
+                sent_to_client = False
                 if client_proc[0] and client_proc[0].stdin:
                     client_proc[0].stdin.write(f"START,{size_value}\n")
                     client_proc[0].stdin.flush()
-                pending_ready_sizes.discard(size_value)
+                    sent_to_client = True
+                if sent_to_client:
+                    pending_ready_sizes.discard(size_value)
+                    flush_pending_phase_active()
             except Exception:
                 pass
 
@@ -1859,24 +1871,6 @@ def run_sizes_test_stream_shared(
             )
             if connect_line:
                 current_live_size[0] = connect_line[1]
-
-        def request_server_queue_probe(size_value):
-            nonlocal server_proc
-            if server_proc is None or server_proc.poll() is not None:
-                return
-            try:
-                size_int = int(size_value)
-            except (TypeError, ValueError):
-                return
-            if size_int <= 0 or size_int in queue_probe_requested_sizes:
-                return
-            try:
-                if server_proc.stdin:
-                    server_proc.stdin.write(f"QUEUE,{size_int}\n")
-                    server_proc.stdin.flush()
-                    queue_probe_requested_sizes.add(size_int)
-            except Exception:
-                return
 
         def emit_live_server_metrics(force=False):
             if result_line_callback is None or sample_server_metrics is None:
@@ -1968,13 +1962,6 @@ def run_sizes_test_stream_shared(
             emit_result_metrics_from_line(
                 line, transport, expected_sizes, result_line_callback
             )
-            parsed_line, _warning = parse_result_line(
-                line, transport, expected_sizes
-            )
-            if parsed_line:
-                _line_transport, line_size, metric_name, _value = parsed_line
-                if normalize_metric_name(metric_name) == "throughput":
-                    request_server_queue_probe(line_size)
             if control_connected[0] and pending_ready_sizes:
                 maybe_send_size_start(next(iter(pending_ready_sizes)))
             emit_live_server_metrics()
@@ -2047,8 +2034,6 @@ def run_sizes_test_stream_shared(
             metric_name = normalize_metric_name(metric)
             key = f"{line_transport}|{line_size}|{metric_name}"
             if key in parsed:
-                if metric_name in SERVER_QUEUE_METRICS:
-                    continue
                 if should_warn_duplicate_metric(metric_name):
                     warnings.append(
                         "duplicate RESULT metric detected; keeping last value: "
@@ -2208,6 +2193,12 @@ def run_sizes_test_split(
         is_secure_transport = transport in ("tls", "wss")
         if pattern_name == "SPOT":
             timeout_sec = max(180, duration_seconds * size_count * 8 + 80)
+        elif pattern_name == "DEALER_DEALER":
+            # DEALER_DEALER recv sweeps can spend a long time draining and
+            # shutting down after the first size finishes. Keep a larger
+            # budget here so a 64 -> 256 sweep can complete without the
+            # wrapper timing out before the next isolated case starts.
+            timeout_sec = max(240, duration_seconds * size_count * 12 + 120)
         elif is_secure_transport and has_large_payload:
             timeout_sec = max(240, duration_seconds * size_count * 12 + 60)
         else:
@@ -2258,10 +2249,44 @@ def run_sizes_test_split(
     use_control_plane = normalize_multi_pattern_name(pattern_name) == "SPOT"
     control_connected = [not use_control_plane]
     pending_ready_sizes = set()
+    pending_phase_active_sizes = set()
     client_proc = [None]
+
+    def maybe_send_phase_active(size_value):
+        try:
+            size_int = int(size_value)
+        except (TypeError, ValueError):
+            return False
+        if size_int <= 0:
+            return False
+        if not client_proc[0] or not client_proc[0].stdin:
+            pending_phase_active_sizes.add(size_int)
+            return False
+        try:
+            client_proc[0].stdin.write(f"PHASE_ACTIVE,{size_int}\n")
+            client_proc[0].stdin.flush()
+            pending_phase_active_sizes.discard(size_int)
+            return True
+        except Exception:
+            pending_phase_active_sizes.add(size_int)
+            return False
+
+    def flush_pending_phase_active():
+        if not pending_phase_active_sizes:
+            return
+        for size_int in list(pending_phase_active_sizes):
+            maybe_send_phase_active(size_int)
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
+        if pattern_name in ("PUBSUB", "DEALER_DEALER") and line.startswith("PHASE_ACTIVE,"):
+            try:
+                phase_size = int(line.split(",", 1)[1])
+            except (TypeError, ValueError, IndexError):
+                phase_size = 0
+            if phase_size > 0:
+                pending_phase_active_sizes.add(phase_size)
+                maybe_send_phase_active(phase_size)
         if use_control_plane and parse_control_connected_endpoint(line):
             control_connected[0] = True
             try:
@@ -2466,7 +2491,6 @@ def run_sizes_test_split(
         last_server_cpu = [None]
         last_server_mem = [None]
         last_server_size = [None]
-        queue_probe_requested_sizes = set()
         stop_requested_sizes = set()
 
         def maybe_send_size_start(size_value):
@@ -2476,10 +2500,14 @@ def run_sizes_test_split(
                 if server_proc.stdin:
                     server_proc.stdin.write(f"START,{size_value}\n")
                     server_proc.stdin.flush()
+                sent_to_client = False
                 if client_proc[0] and client_proc[0].stdin:
                     client_proc[0].stdin.write(f"START,{size_value}\n")
                     client_proc[0].stdin.flush()
-                pending_ready_sizes.discard(size_value)
+                    sent_to_client = True
+                if sent_to_client:
+                    pending_ready_sizes.discard(size_value)
+                    flush_pending_phase_active()
             except Exception:
                 pass
 
@@ -2495,24 +2523,6 @@ def run_sizes_test_split(
             )
             if connect_line:
                 current_live_size[0] = connect_line[1]
-
-        def request_server_queue_probe(size_value):
-            nonlocal server_proc
-            if server_proc is None or server_proc.poll() is not None:
-                return
-            try:
-                size_int = int(size_value)
-            except (TypeError, ValueError):
-                return
-            if size_int <= 0 or size_int in queue_probe_requested_sizes:
-                return
-            try:
-                if server_proc.stdin:
-                    server_proc.stdin.write(f"QUEUE,{size_int}\n")
-                    server_proc.stdin.flush()
-                    queue_probe_requested_sizes.add(size_int)
-            except Exception:
-                return
 
         def emit_live_server_metrics(force=False):
             if result_line_callback is None or sample_server_metrics is None:
@@ -2583,13 +2593,6 @@ def run_sizes_test_split(
             )
             if control_connected[0] and pending_ready_sizes:
                 maybe_send_size_start(next(iter(pending_ready_sizes)))
-            parsed_line, _warning = parse_result_line(
-                line, transport, expected_sizes
-            )
-            if parsed_line:
-                _line_transport, line_size, metric_name, _value = parsed_line
-                if normalize_metric_name(metric_name) == "throughput":
-                    request_server_queue_probe(line_size)
             emit_live_server_metrics()
 
         client_cmd = client_cmd + ["--endpoint", endpoint]
@@ -2645,8 +2648,6 @@ def run_sizes_test_split(
             metric_name = normalize_metric_name(metric)
             key = f"{line_transport}|{line_size}|{metric_name}"
             if key in parsed:
-                if metric_name in SERVER_QUEUE_METRICS:
-                    continue
                 if should_warn_duplicate_metric(metric_name):
                     warnings.append(
                         "duplicate RESULT metric detected; keeping last value: "
@@ -2920,15 +2921,13 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
     if is_pattern(pattern_name):
         timeout_sec = max(
             60,
-            parse_env_int("PERF_WARMUP_SECONDS", 2)
-            + parse_env_int("PERF_DURATION_SECONDS", 5)
+            parse_env_int("PERF_DURATION_SECONDS", 5)
             + 30,
         )
     if pattern_name in STREAM_VARIANT_PATTERNS:
         timeout_sec = max(
             120,
-            parse_env_int("PERF_WARMUP_SECONDS", 2)
-            + parse_env_int("PERF_DURATION_SECONDS", 5)
+            parse_env_int("PERF_DURATION_SECONDS", 5)
             + 90,
         )
 
@@ -2964,12 +2963,6 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
                     except ValueError:
                         continue
         seen = {entry.get("metric", "").strip().lower() for entry in parsed}
-        cpu_pct = sampled.get("cpu_pct")
-        mem_mb = sampled.get("mem_mb")
-        if cpu_pct is not None and "cpu_pct" not in seen:
-            parsed.append({"metric": "cpu_pct", "value": float(cpu_pct)})
-        if mem_mb is not None and "mem_mb" not in seen:
-            parsed.append({"metric": "mem_mb", "value": float(mem_mb)})
         if parsed:
             return parsed
         return []
@@ -2984,22 +2977,12 @@ def _table_header_line(is_multi):
     lat_w = 13
     lat95_w = 13
     lat99_w = 13
-    cpu_w = 7
-    mem_w = 8
-    sndq_w = 9
-    rcvq_w = 9
-    rcvend_w = 9
-    if is_multi:
-        return (
-            f"| {'Size':<{size_w}} | {'Throughput':>{tp_w}} | {'Bandwidth':>{bw_w}} | "
-            f"{'Lat.Mean(ms)':>{lat_w}} | {'Lat.P95(ms)':>{lat95_w}} | {'Lat.P99(ms)':>{lat99_w}} | "
-            f"{'S.CPU%':>{cpu_w}} | {'S.Mem MB':>{mem_w}} | "
-            f"{'Q.Snd.Max':>{sndq_w}} | {'Q.Rcv.Max':>{rcvq_w}} | {'Q.Rcv.End':>{rcvend_w}} |"
-        )
+    label_mean = "Lat.Mean(ms)" if is_multi else "Lat.Mean"
+    label_p95 = "Lat.P95(ms)" if is_multi else "Lat.P95"
+    label_p99 = "Lat.P99(ms)" if is_multi else "Lat.P99"
     return (
         f"| {'Size':<{size_w}} | {'Throughput':>{tp_w}} | {'Bandwidth':>{bw_w}} | "
-        f"{'Lat.Mean':>{lat_w}} | {'Lat.P95':>{lat95_w}} | {'Lat.P99':>{lat99_w}} | "
-        f"{'CPU%':>{cpu_w}} | {'Mem MB':>{mem_w}} |"
+        f"{label_mean:>{lat_w}} | {label_p95:>{lat95_w}} | {label_p99:>{lat99_w}} |"
     )
 
 
@@ -3010,22 +2993,9 @@ def _table_separator_line(is_multi):
     lat_w = 13
     lat95_w = 13
     lat99_w = 13
-    cpu_w = 7
-    mem_w = 8
-    sndq_w = 9
-    rcvq_w = 9
-    rcvend_w = 9
-    if is_multi:
-        return (
-            f"|{'-' * (size_w + 2)}|{'-' * (tp_w + 2)}|{'-' * (bw_w + 2)}|"
-            f"{'-' * (lat_w + 2)}|{'-' * (lat95_w + 2)}|{'-' * (lat99_w + 2)}|"
-            f"{'-' * (cpu_w + 2)}|{'-' * (mem_w + 2)}|"
-            f"{'-' * (sndq_w + 2)}|{'-' * (rcvq_w + 2)}|{'-' * (rcvend_w + 2)}|"
-        )
     return (
         f"|{'-' * (size_w + 2)}|{'-' * (tp_w + 2)}|{'-' * (bw_w + 2)}|"
         f"{'-' * (lat_w + 2)}|{'-' * (lat95_w + 2)}|{'-' * (lat99_w + 2)}|"
-        f"{'-' * (cpu_w + 2)}|{'-' * (mem_w + 2)}|"
     )
 
 
@@ -3046,13 +3016,7 @@ def _emit_table_row(
     latency=None,
     latency_p95=None,
     latency_p99=None,
-    client_cpu=None,
-    client_mem=None,
-    server_cpu=None,
-    server_mem=None,
-    server_sndq_max=None,
-    server_rcvq_max=None,
-    server_rcvq_end=None,
+    **_unused,
 ):
     size_w = 8
     tp_w = 16
@@ -3060,11 +3024,6 @@ def _emit_table_row(
     lat_w = 12
     lat95_w = 12
     lat99_w = 12
-    cpu_w = 6
-    mem_w = 8
-    sndq_w = 9
-    rcvq_w = 9
-    rcvend_w = 9
     if status == "success":
         latency_mean, latency_p95_value, latency_p99_value = resolve_latency_triplet(
             latency, latency_p95, latency_p99
@@ -3085,25 +3044,6 @@ def _emit_table_row(
             lat_s = f"{(latency_mean if latency_mean is not None else 0.0):9.3f} us"
             lat95_s = f"{(latency_p95_value if latency_p95_value is not None else 0.0):9.3f} us"
             lat99_s = f"{(latency_p99_value if latency_p99_value is not None else 0.0):9.3f} us"
-        cpu_s = f"{float(client_cpu):6.3f}" if client_cpu is not None else "N/A"
-        mem_s = f"{float(client_mem):8.3f}" if client_mem is not None else "N/A"
-        server_cpu_s = f"{float(server_cpu):6.3f}" if server_cpu is not None else "N/A"
-        server_mem_s = f"{float(server_mem):8.3f}" if server_mem is not None else "N/A"
-        server_sndq_s = (
-            f"{int(round(float(server_sndq_max))):d}"
-            if server_sndq_max is not None
-            else "N/A"
-        )
-        server_rcvq_max_s = (
-            f"{int(round(float(server_rcvq_max))):d}"
-            if server_rcvq_max is not None
-            else "N/A"
-        )
-        server_rcvq_end_s = (
-            f"{int(round(float(server_rcvq_end))):d}"
-            if server_rcvq_end is not None
-            else "N/A"
-        )
     else:
         token = "UNSUPPORTED" if status == "unsupported" else "FAIL"
         tp_s = token
@@ -3111,27 +3051,10 @@ def _emit_table_row(
         lat_s = token
         lat95_s = token
         lat99_s = token
-        cpu_s = "N/A"
-        mem_s = "N/A"
-        server_cpu_s = "N/A"
-        server_mem_s = "N/A"
-        server_sndq_s = "N/A"
-        server_rcvq_max_s = "N/A"
-        server_rcvq_end_s = "N/A"
-
-    if is_multi:
-        row_line = (
-            f"| {f'{size}B':<{size_w}} | {tp_s:>{tp_w}} | {bw_s:>{bw_w}} | "
-            f"{lat_s:>{lat_w}} | {lat95_s:>{lat95_w}} | {lat99_s:>{lat99_w}} | "
-            f"{server_cpu_s:>{cpu_w}} | {server_mem_s:>{mem_w}} | "
-            f"{server_sndq_s:>{sndq_w}} | {server_rcvq_max_s:>{rcvq_w}} | {server_rcvq_end_s:>{rcvend_w}} |"
-        )
-    else:
-        row_line = (
-            f"| {f'{size}B':<{size_w}} | {tp_s:>{tp_w}} | {bw_s:>{bw_w}} | "
-            f"{lat_s:>{lat_w}} | {lat95_s:>{lat95_w}} | {lat99_s:>{lat99_w}} | "
-            f"{cpu_s:>{cpu_w}} | {mem_s:>{mem_w}} |"
-        )
+    row_line = (
+        f"| {f'{size}B':<{size_w}} | {tp_s:>{tp_w}} | {bw_s:>{bw_w}} | "
+        f"{lat_s:>{lat_w}} | {lat95_s:>{lat95_w}} | {lat99_s:>{lat99_w}} |"
+    )
     emit(f"{indent}{row_line}")
 
 
@@ -3182,8 +3105,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                 )
                 pattern_runs = min(num_runs, stream_runs_limit)
 
-            size_tag = ",".join(f"{sz}B" for sz in sizes)
-            emit(f"    Testing {tr} | {size_tag}:")
+            emit(f"    Testing {tr}:")
             show_run_labels = pattern_runs > 1
             if not show_run_labels:
                 _emit_table_header(emit, True, "      ")
@@ -3201,6 +3123,25 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
             tr_unsupported = False
             tr_skipped = False
             skip_reason = "skip"
+            emitted_size_sections = set()
+
+            def emit_size_section(sz):
+                if sz in emitted_size_sections:
+                    return
+                emit(f"    Testing {tr} | {sz}B:")
+                emitted_size_sections.add(sz)
+
+            def emit_size_row(sz, status, **kwargs):
+                emit_size_section(sz)
+                _emit_table_row(
+                    emit,
+                    pattern_name,
+                    True,
+                    row_indent,
+                    sz,
+                    status,
+                    **kwargs,
+                )
 
             for run_idx in range(pattern_runs):
                 run_no = run_idx + 1
@@ -3238,23 +3179,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     lat99_value = live_metrics.get(lat99_key)
                     server_cpu_value = live_metrics.get(f"{tr}|{sz}|server_cpu_pct")
                     server_mem_value = live_metrics.get(f"{tr}|{sz}|server_mem_mb")
-                    server_sndq_value = live_metrics.get(f"{tr}|{sz}|server_snd_pending_max")
-                    server_rcvq_max_value = live_metrics.get(
-                        f"{tr}|{sz}|server_rcv_pending_max"
-                    )
-                    server_rcvq_end_value = live_metrics.get(
-                        f"{tr}|{sz}|server_rcv_pending_end"
-                    )
-                    has_server_sndq = server_sndq_value is not None
-                    has_server_rcvq_max = server_rcvq_max_value is not None
-                    has_server_rcvq_end = server_rcvq_end_value is not None
-                    has_full_server_metrics = (
-                        has_server_sndq
-                        and has_server_rcvq_max
-                        and has_server_rcvq_end
-                    )
-                    if not has_full_server_metrics:
-                        return
                     if sz in live_emitted_sizes:
                         return
 
@@ -3287,11 +3211,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         if connect_ok_int < connect_required_int:
                             return
 
-                    _emit_table_row(
-                        emit,
-                        pattern_name,
-                        True,
-                        row_indent,
+                    emit_size_row(
                         sz,
                         "success",
                         throughput=tp_value,
@@ -3301,13 +3221,9 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         latency_p99=lat99_value,
                         server_cpu=server_cpu_value,
                         server_mem=server_mem_value,
-                        server_sndq_max=server_sndq_value,
-                        server_rcvq_max=server_rcvq_max_value,
-                        server_rcvq_end=server_rcvq_end_value,
                     )
                     live_emitted_sizes.add(sz)
-                    if has_full_server_metrics:
-                        live_emitted_with_server.add(sz)
+                    live_emitted_with_server.add(sz)
 
                 def on_result_metric(line_transport, line_size, metric_name, value):
                     if line_transport != tr.lower() or line_size not in sizes:
@@ -3334,14 +3250,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     for sz in sizes:
                         if sz in live_emitted_sizes:
                             continue
-                        _emit_table_row(
-                            emit,
-                            pattern_name,
-                            True,
-                            row_indent,
-                            sz,
-                            "unsupported",
-                        )
+                        emit_size_row(sz, "unsupported")
                     break
 
                 if outcome_status == "skip":
@@ -3350,14 +3259,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     for sz in sizes:
                         if sz in live_emitted_sizes:
                             continue
-                        _emit_table_row(
-                            emit,
-                            pattern_name,
-                            True,
-                            row_indent,
-                            sz,
-                            "fail",
-                        )
+                        emit_size_row(sz, "fail")
                     break
 
                 parsed = outcome.get("parsed", {}) or {}
@@ -3371,14 +3273,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                             continue
                         failures.append((pattern_name, lib_name, tr, sz, "timeout"))
                         run_failed_sizes.add(sz)
-                        _emit_table_row(
-                            emit,
-                            pattern_name,
-                            True,
-                            row_indent,
-                            sz,
-                            "fail",
-                        )
+                        emit_size_row(sz, "fail")
                     if FAIL_FAST:
                         return final_stats, failures
                     maybe_cooldown()
@@ -3394,14 +3289,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                             continue
                         failures.append((pattern_name, lib_name, tr, sz, reason))
                         run_failed_sizes.add(sz)
-                        _emit_table_row(
-                            emit,
-                            pattern_name,
-                            True,
-                            row_indent,
-                            sz,
-                            "fail",
-                        )
+                        emit_size_row(sz, "fail")
                     if FAIL_FAST:
                         return final_stats, failures
                     maybe_cooldown()
@@ -3442,14 +3330,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                                     reason = f"missing_{metric}{suffix}"
                             failures.append((pattern_name, lib_name, tr, sz, reason))
                         if sz not in live_emitted_sizes:
-                            _emit_table_row(
-                                emit,
-                                pattern_name,
-                                True,
-                                row_indent,
-                                sz,
-                                "fail",
-                            )
+                            emit_size_row(sz, "fail")
                         if FAIL_FAST:
                             return final_stats, failures
                         continue
@@ -3469,14 +3350,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                                 )
                             )
                             if sz not in live_emitted_sizes:
-                                _emit_table_row(
-                                    emit,
-                                    pattern_name,
-                                    True,
-                                    row_indent,
-                                    sz,
-                                    "fail",
-                                )
+                                emit_size_row(sz, "fail")
                             if FAIL_FAST:
                                 return final_stats, failures
                             continue
@@ -3497,14 +3371,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                             )
                             failures.append((pattern_name, lib_name, tr, sz, reason))
                             if sz not in live_emitted_sizes:
-                                _emit_table_row(
-                                    emit,
-                                    pattern_name,
-                                    True,
-                                    row_indent,
-                                    sz,
-                                    "fail",
-                                )
+                                emit_size_row(sz, "fail")
                             if FAIL_FAST:
                                 return final_stats, failures
                             continue
@@ -3516,25 +3383,11 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         ):
                             server_cpu_value = parsed.get(f"{tr}|{sz}|server_cpu_pct")
                             server_mem_value = parsed.get(f"{tr}|{sz}|server_mem_mb")
-                            server_sndq_value = parsed.get(f"{tr}|{sz}|server_snd_pending_max")
-                            server_rcvq_max_value = parsed.get(
-                                f"{tr}|{sz}|server_rcv_pending_max"
-                            )
-                            server_rcvq_end_value = parsed.get(
-                                f"{tr}|{sz}|server_rcv_pending_end"
-                            )
                             if (
                                 server_cpu_value is not None
                                 or server_mem_value is not None
-                                or server_sndq_value is not None
-                                or server_rcvq_max_value is not None
-                                or server_rcvq_end_value is not None
                             ):
-                                _emit_table_row(
-                                    emit,
-                                    pattern_name,
-                                    True,
-                                    row_indent,
+                                emit_size_row(
                                     sz,
                                     "success",
                                     throughput=parsed.get(tp_key, 0.0),
@@ -3544,17 +3397,10 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                                     latency_p99=parsed.get(lat99_key),
                                     server_cpu=server_cpu_value,
                                     server_mem=server_mem_value,
-                                    server_sndq_max=server_sndq_value,
-                                    server_rcvq_max=server_rcvq_max_value,
-                                    server_rcvq_end=server_rcvq_end_value,
                                 )
                                 live_emitted_with_server.add(sz)
                         continue
-                    _emit_table_row(
-                        emit,
-                        pattern_name,
-                        True,
-                        row_indent,
+                    emit_size_row(
                         sz,
                         "success",
                         throughput=parsed.get(tp_key, 0.0),
@@ -3564,9 +3410,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         latency_p99=parsed.get(lat99_key),
                         server_cpu=parsed.get(f"{tr}|{sz}|server_cpu_pct"),
                         server_mem=parsed.get(f"{tr}|{sz}|server_mem_mb"),
-                        server_sndq_max=parsed.get(f"{tr}|{sz}|server_snd_pending_max"),
-                        server_rcvq_max=parsed.get(f"{tr}|{sz}|server_rcv_pending_max"),
-                        server_rcvq_end=parsed.get(f"{tr}|{sz}|server_rcv_pending_end"),
                     )
                     live_emitted_sizes.add(sz)
 
@@ -3586,14 +3429,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     emit("      median:")
                     _emit_table_header(emit, True, "        ")
                     for sz in sizes:
-                        _emit_table_row(
-                            emit,
-                            pattern_name,
-                            True,
-                            "        ",
-                            sz,
-                            "unsupported",
-                        )
+                        emit_size_row(sz, "unsupported")
                 emit(f"    Testing {tr}: Done")
                 maybe_transport_cooldown()
                 continue
@@ -3611,14 +3447,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     emit("      median:")
                     _emit_table_header(emit, True, "        ")
                     for sz in sizes:
-                        _emit_table_row(
-                            emit,
-                            pattern_name,
-                            True,
-                            "        ",
-                            sz,
-                            "fail",
-                        )
+                        emit_size_row(sz, "fail")
                 emit(f"    Testing {tr}: Done")
                 maybe_transport_cooldown()
                 continue
@@ -3630,9 +3459,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                 for optional_metric in (
                     "server_cpu_pct",
                     "server_mem_mb",
-                    "server_snd_pending_max",
-                    "server_rcv_pending_max",
-                    "server_rcv_pending_end",
                     "connect_ok",
                     "connect_fail",
                     "connect_target",
@@ -3658,20 +3484,9 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         and metrics_raw.get(lat95_key)
                         and metrics_raw.get(lat99_key)
                     ):
-                        _emit_table_row(
-                            emit,
-                            pattern_name,
-                            True,
-                            "        ",
-                            sz,
-                            "fail",
-                        )
+                        emit_size_row(sz, "fail")
                         continue
-                    _emit_table_row(
-                        emit,
-                        pattern_name,
-                        True,
-                        "        ",
+                    emit_size_row(
                         sz,
                         "success",
                         throughput=final_stats.get(tp_key, 0.0),
@@ -3681,9 +3496,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         latency_p99=final_stats.get(lat99_key),
                         server_cpu=final_stats.get(f"{tr}|{sz}|server_cpu_pct"),
                         server_mem=final_stats.get(f"{tr}|{sz}|server_mem_mb"),
-                        server_sndq_max=final_stats.get(f"{tr}|{sz}|server_snd_pending_max"),
-                        server_rcvq_max=final_stats.get(f"{tr}|{sz}|server_rcv_pending_max"),
-                        server_rcvq_end=final_stats.get(f"{tr}|{sz}|server_rcv_pending_end"),
                     )
 
             emit(f"    Testing {tr}: Done")
@@ -4168,8 +3980,6 @@ def build_effective_option_items(args, selected_patterns):
 
         items.extend(
             [
-                ("warmup_seconds", str(parse_env_int("PERF_WARMUP_SECONDS", 2))),
-                ("active_warmup", str(parse_env_int("PERF_ACTIVE_WARMUP", 0))),
                 ("duration_seconds", str(parse_env_int("PERF_DURATION_SECONDS", 5))),
                 ("clients", clients_meta),
                 ("default_clients", str(default_clients)),
@@ -4793,9 +4603,6 @@ def main():
                 mem_key = f"{tr}|{sz}|server_mem_mb" if is_multi else f"{tr}|{sz}|mem_mb"
                 server_cpu_key = f"{tr}|{sz}|server_cpu_pct"
                 server_mem_key = f"{tr}|{sz}|server_mem_mb"
-                server_sndq_key = f"{tr}|{sz}|server_snd_pending_max"
-                server_rcvq_max_key = f"{tr}|{sz}|server_rcv_pending_max"
-                server_rcvq_end_key = f"{tr}|{sz}|server_rcv_pending_end"
                 has_tp = tp_key in c_stats
                 has_bw = bw_key in c_stats
                 has_lat = lat_key in c_stats
@@ -4838,19 +4645,6 @@ def main():
                         mem_v = c_stats[mem_key]
                         current_metric = "server_mem_mb" if is_multi else "mem_mb"
                         current_results[(p_name, tr, sz, current_metric)] = mem_v
-                    if is_multi:
-                        if server_sndq_key in c_stats:
-                            current_results[(p_name, tr, sz, "server_snd_pending_max")] = c_stats[
-                                server_sndq_key
-                            ]
-                        if server_rcvq_max_key in c_stats:
-                            current_results[(p_name, tr, sz, "server_rcv_pending_max")] = c_stats[
-                                server_rcvq_max_key
-                            ]
-                        if server_rcvq_end_key in c_stats:
-                            current_results[(p_name, tr, sz, "server_rcv_pending_end")] = c_stats[
-                                server_rcvq_end_key
-                            ]
 
                 status_counts[status] += 1
 

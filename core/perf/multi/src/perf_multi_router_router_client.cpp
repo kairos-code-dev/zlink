@@ -493,26 +493,6 @@ bool run_single_size_case(router_client_state_t *state,
 
     const uint32_t run_id = next_metric_run_id();
     reset_active_metrics(state, run_id, msg_size);
-
-    configure_phase_slots(
-      state, run_id, msg_size, perf_multi_metric::phase_warmup, true);
-    if (!perf_multi_echo::echo_start_phase_requests(
-          state,
-          settings.connect_ready_timeout_ms,
-          [&] (bool *all_started_out) {
-              return seed_phase_requests(state, all_started_out);
-          },
-          service_router_slots))
-        return false;
-    if (!perf_multi_echo::echo_wait_phase_duration(
-          state,
-          static_cast<double>(std::max(0, settings.warmup_seconds)),
-          service_router_slots)) {
-        return false;
-    }
-
-    stop_phase(state);
-    reset_active_metrics(state, run_id, msg_size);
     state->collect_active.store(true, std::memory_order_release);
     configure_phase_slots(
       state, run_id, msg_size, perf_multi_metric::phase_active, true);

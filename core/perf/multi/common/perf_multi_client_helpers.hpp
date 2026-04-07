@@ -749,25 +749,6 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
     if (recv_sockets.empty ())
         return false;
 
-    const double warmup_seconds =
-      static_cast<double> (std::max (0, settings.warmup_seconds));
-    if (warmup_seconds > 0.0
-        && !run_one_way_window_loop (
-          recv_sockets,
-          settings,
-          msg_size,
-          run_id,
-          perf_multi_metric::phase_warmup,
-          scratch_capacity,
-          warmup_seconds,
-          false,
-          NULL,
-          NULL,
-          NULL,
-          NULL)) {
-        return false;
-    }
-
     long recv_count = 0;
     double lat_sum = 0.0;
     long lat_count = 0;
@@ -1105,27 +1086,6 @@ inline bool run_echo_duration (
     *latency_out = bench_latency_stats_t ();
     if (sockets.empty ())
         return false;
-
-    if (!run_echo_window_round_robin (
-          sockets,
-          settings,
-          payload,
-          payload_size,
-          msg_size,
-          server_id,
-          client_router_send,
-          run_id,
-          perf_multi_metric::phase_warmup,
-          scratch_capacity,
-          static_cast<double> (std::max (0, settings.warmup_seconds)),
-          true,
-          false,
-          NULL,
-          NULL,
-          NULL,
-          NULL)) {
-        return false;
-    }
 
     long recv_count = 0;
     double lat_sum = 0.0;

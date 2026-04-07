@@ -329,9 +329,9 @@ class bench_client_t : public bench_client_iface_t
     perf_multi_metric::phase_t metric_phase () const override
     {
         const int current_mode = mode.load (std::memory_order_acquire);
-        if (current_mode == phase_warmup)
-            return perf_multi_metric::phase_warmup;
         if (current_mode == phase_measure)
+            return perf_multi_metric::phase_active;
+        if (current_mode == phase_warmup)
             return perf_multi_metric::phase_active;
         return perf_multi_metric::phase_unknown;
     }

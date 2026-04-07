@@ -13,8 +13,6 @@ struct bench_settings_t
 {
     size_t clients;
     int hwm;
-    int warmup_seconds;
-    int active_warmup;
     int duration_seconds;
     int connect_ready_timeout_ms;
 };
@@ -141,12 +139,6 @@ inline bench_settings_t resolve_bench_settings ()
       "PERF_HWM",
       resolve_default_hwm (pattern, resolved_clients),
       1);
-    settings.warmup_seconds =
-      resolve_multi_int_env_with_fallback (
-        "PERF_MULTI_WARMUP_SECONDS", "PERF_WARMUP_SECONDS", 2, 0);
-    settings.active_warmup =
-      resolve_multi_int_env_with_fallback (
-        "PERF_MULTI_ACTIVE_WARMUP", "PERF_ACTIVE_WARMUP", 0, 0);
     settings.duration_seconds =
       resolve_multi_int_env_with_fallback (
         "PERF_MULTI_DURATION_SECONDS", "PERF_DURATION_SECONDS", 5, 1);
@@ -242,30 +234,5 @@ inline size_t resolve_multi_service_clients (size_t requested_clients)
 {
     return resolve_service_clients (requested_clients);
 }
-
-inline bool parse_queue_probe_command (const std::string &line,
-                                       size_t *msg_size_out)
-{
-    if (!msg_size_out)
-        return false;
-
-    static const char k_prefix[] = "QUEUE,";
-    if (line.compare (0, sizeof (k_prefix) - 1, k_prefix) != 0)
-        return false;
-
-    const char *value = line.c_str () + (sizeof (k_prefix) - 1);
-    if (!value || *value == '\0')
-        return false;
-
-    errno = 0;
-    char *end = NULL;
-    const unsigned long parsed = std::strtoul (value, &end, 10);
-    if (errno != 0 || end == value || !end || *end != '\0' || parsed == 0)
-        return false;
-
-    *msg_size_out = static_cast<size_t> (parsed);
-    return true;
-}
-
 
 #endif

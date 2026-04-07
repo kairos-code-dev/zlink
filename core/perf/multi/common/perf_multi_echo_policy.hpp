@@ -151,7 +151,6 @@ template <typename State,
           typename ActiveStopFn>
 inline bool echo_run_two_phase_request_flow (State *state,
                                              int timeout_ms,
-                                             double warmup_seconds,
                                              double active_seconds,
                                              const ResetFn &reset_fn,
                                              const ConfigureFn &configure_fn,
@@ -161,24 +160,6 @@ inline bool echo_run_two_phase_request_flow (State *state,
                                              const ActiveStartFn &active_start_fn,
                                              const ActiveStopFn &active_stop_fn)
 {
-    reset_fn ();
-    configure_fn (perf_multi_metric::phase_warmup, true);
-    if (!echo_start_phase_requests (state,
-                                    timeout_ms,
-                                    seed_fn,
-                                    [&] (State *, int slice_ms, bool *progressed) {
-                                        return service_fn (slice_ms, progressed);
-                                    }))
-        return false;
-    if (!echo_wait_phase_duration (state,
-                                   warmup_seconds,
-                                   [&] (State *, int slice_ms, bool *progressed) {
-                                       return service_fn (slice_ms, progressed);
-                                   }))
-        return false;
-
-    stop_fn ();
-
     reset_fn ();
     active_start_fn ();
     configure_fn (perf_multi_metric::phase_active, true);

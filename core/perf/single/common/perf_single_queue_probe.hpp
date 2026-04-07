@@ -638,45 +638,6 @@ inline void print_result (const std::string &lib_type,
               << std::setprecision (2) << latency_p99 << std::endl;
 }
 
-inline void print_queue_metrics (const std::string &lib_type,
-                                 const std::string &pattern,
-                                 const std::string &transport,
-                                 size_t size,
-                                 const queue_stats_t &queue_stats)
-{
-    if (queue_stats.has_snd_pending) {
-        std::cout << "RESULT," << lib_type << "," << pattern << ","
-                  << transport << "," << size << ",snd_pending_max,"
-                  << std::fixed << std::setprecision (2)
-                  << queue_stats.snd_pending_max << std::endl;
-    }
-    if (queue_stats.has_rcv_pending) {
-        std::cout << "RESULT," << lib_type << "," << pattern << ","
-                  << transport << "," << size << ",rcv_pending_max,"
-                  << std::fixed << std::setprecision (2)
-                  << queue_stats.rcv_pending_max << std::endl;
-        std::cout << "RESULT," << lib_type << "," << pattern << ","
-                  << transport << "," << size << ",rcv_pending_end,"
-                  << std::fixed << std::setprecision (2)
-                  << queue_stats.rcv_pending_end << std::endl;
-    }
-}
-
-inline void print_result (const std::string &lib_type,
-                          const std::string &pattern,
-                          const std::string &transport,
-                          size_t size,
-                          double throughput,
-                          double latency,
-                          double latency_p95,
-                          double latency_p99,
-                          const queue_stats_t &queue_stats)
-{
-    print_result (lib_type, pattern, transport, size, throughput, latency,
-                  latency_p95, latency_p99);
-    print_queue_metrics (lib_type, pattern, transport, size, queue_stats);
-}
-
 inline void print_result (const std::string &lib_type,
                           const std::string &pattern,
                           const std::string &transport,
@@ -704,14 +665,9 @@ inline void print_failure_diagnostics (const std::string &lib_type,
 inline void print_fail_result (const std::string &lib_type,
                                const std::string &pattern,
                                const std::string &transport,
-                               size_t size,
-                               queue_probe_t *queue_probe_ = NULL)
+                               size_t size)
 {
     print_failure_diagnostics (lib_type, pattern, transport, size);
-    if (!queue_probe_)
-        return;
-    const queue_stats_t queue_stats = sample_queue_stats (queue_probe_);
-    print_queue_metrics (lib_type, pattern, transport, size, queue_stats);
 }
 
 #endif

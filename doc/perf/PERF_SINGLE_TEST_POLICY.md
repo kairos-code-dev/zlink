@@ -21,7 +21,7 @@
 
 | 항목 | 기준 |
 |------|------|
-| 측정 모델 | ready + warmup(duration) + active(duration) |
+| 측정 모델 | ready + active(duration) |
 | throughput | `active 수신 건수 / active 시간(초)` |
 | latency | active 구간 수신 payload header timestamp 기반 |
 | 대표값 | runs > 1일 때 metric별 median |
@@ -29,7 +29,7 @@
 
 - single은 **한 번의 active 구간에서 throughput + latency를 동시에** 측정한다.
 - size 변경 시마다 별도 프로세스로 실행하여 케이스 간 메트릭 오염을 방지한다.
-- `single`의 공식 lifecycle은 `ready -> warmup -> active`다.
+- `single`의 공식 lifecycle은 `ready -> active`다.
 - 재시도 로직은 두지 않는다.
 - 연결 준비/handshake는 pattern별 contract만 사용한다.
   - raw 패턴: low-cost ready event
@@ -72,8 +72,9 @@
 ### 1.1 Single 핵심 정책
 
 - 목적
-  - 단일 소켓 경로에서 **자연 backpressure를 유지한 채 가능한 최대 throughput**을 측정한다.
+  - 단일 소켓 경로에서 throughput, bandwidth, latency를 측정한다.
   - 같은 active 구간에서 동일 메시지 집합으로 latency도 함께 집계한다.
+  - cpu/mem은 single 기본 perf surface와 RESULT 계약에 포함하지 않는다.
 - single suite는 callback 모드만 지원한다.
 - 수신 모델 (`--recv`)
   - **callback 모델** (`--recv callback`)만 허용한다.
@@ -109,23 +110,21 @@
   - metric header decode, phase 판정, throughput/latency 집계 엔진은
     callback 경로 전체에서 공통으로 유지한다.
 - 한 줄 요약
-  - `single = ready + warmup + active`
+- `single = ready + active`
 
 ---
 
 ## 2. 바이너리 Phase 규칙
 
 ```text
-[single phase]: [ready] -> [warmup(duration)] -> [active(duration)]
+[single phase]: [ready] -> [active(duration)]
 ```
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
 | ready | event-based | raw=`CONNECTION_READY`, SPOT=local `READY/START` barrier | `PERF_CONNECT_READY_TIMEOUT_MS` 계열 timeout |
-| warmup | time-based | 2s | `PERF_SINGLE_WARMUP_SECONDS` |
 | active | time-based | 5s | `PERF_SINGLE_DURATION_SECONDS` |
 
-- warmup 데이터는 최종 집계에서 제외한다.
 - `setup_connected_pair()`는 내부적으로 low-cost monitoring ready gate를
   캡슐화한 helper인 경우에만 허용된다. 별도/독자적인 start gate 규칙으로
   취급하지 않는다.
@@ -198,11 +197,6 @@ RESULT,current,PAIR,tcp,1024,bandwidth,535.96
 RESULT,current,PAIR,tcp,1024,latency,12.35
 RESULT,current,PAIR,tcp,1024,latency_p95,18.10
 RESULT,current,PAIR,tcp,1024,latency_p99,25.40
-RESULT,current,PAIR,tcp,1024,cpu_pct,48.20
-RESULT,current,PAIR,tcp,1024,mem_mb,12.30
-RESULT,current,PAIR,tcp,1024,snd_pending_max,0
-RESULT,current,PAIR,tcp,1024,rcv_pending_max,0
-RESULT,current,PAIR,tcp,1024,rcv_pending_end,0
 ```
 
 필수 metric (success 판정 기준):
@@ -223,10 +217,7 @@ RESULT,current,PAIR,tcp,1024,rcv_pending_end,0
 
 완료 판정은 위 5개 Tier 1 metric RESULT line 기준으로 수행한다.
 
-정보성 metric(없어도 complete 판정에 영향 없음):
-
-- `cpu_pct`, `mem_mb`
-- `snd_pending_max`, `rcv_pending_max`, `rcv_pending_end`
+- cpu/mem 계열 metric은 single 기본 RESULT line에 포함하지 않는다.
 
 ### 4.2 사람이 읽는 테이블
 
@@ -405,11 +396,10 @@ perf는 추가 precondition(`FILTER_APPLIED`, custom handshake, quorum 완화)�
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_SINGLE_WARMUP_SECONDS` | warmup 시간(초) | 2 |
 | `PERF_SINGLE_DURATION_SECONDS` | active 구간 시간(초) | 5 |
 | `PERF_SINGLE_TIMEOUT_SECONDS` | 프로세스 timeout(초) | `max(30, duration*6+15)` |
 
-### 8.3 queue/hwm/timeout
+### 8.3 hwm/timeout
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
@@ -419,11 +409,13 @@ perf는 추가 precondition(`FILTER_APPLIED`, custom handshake, quorum 완화)�
 | `PERF_SINGLE_SNDTIMEO_MS` | 송신 타임아웃(ms) | 200 |
 | `PERF_SINGLE_RCVTIMEO_MS` | 수신 타임아웃(ms) | 200 |
 | `PERF_SINGLE_PUBSUB_RCVTIMEO_MS` | PUBSUB 수신 타임아웃(ms) | `PERF_SINGLE_RCVTIMEO_MS` |
-| `PERF_SINGLE_QUEUE_SAMPLE_MS` | queue pending 샘플링 주기(ms) | 100 |
-| `PERF_SINGLE_QUEUE_SAMPLE_EVERY_MSGS` | queue pending 샘플링 메시지 간격 | 64 |
 | `PERF_SINGLE_LATENCY_SAMPLE_CAP` | 레이턴시 샘플 최대 수 | 200000 |
 | `PERF_SINGLE_PUBSUB_XPUB_NODROP` | PUBSUB의 `ZLINK_XPUB_NODROP` 기본값 | (바이너리별) |
 | `PERF_MAX_SOCKETS` | context max sockets | auto |
+
+- backpressure 검증은 `core/tests/integration`로 분리한다. one-way 통합 범위는
+  `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `SPOT` 이며,
+  `STREAM`, echo, `PAIR` 은 제외한다.
 
 ---
 

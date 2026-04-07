@@ -82,7 +82,6 @@ PERF_MSG_SIZES="${PERF_MSG_SIZES:-}"
 PERF_TRANSPORTS="${PERF_TRANSPORTS:-}"
 RECV_MODE="${PERF_RECV_MODE:-callback}"
 SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
-SINGLE_WARMUP_SECONDS="${PERF_SINGLE_WARMUP_SECONDS:-2}"
 SINGLE_HWM="${PERF_SINGLE_HWM:-}"
 SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
 SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
@@ -115,7 +114,6 @@ Options:
   --runs N                    Iterations per pattern/transport/size (default: 1).
   --recv MODE                 Receive model: callback (default: callback).
   --duration N                Override single duration seconds (default: 5).
-  --warmup N                  Override single warmup seconds (default: 2).
   --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
   --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
   --recv-hwm N                Override PERF_SINGLE_RCVHWM (fallback: --hwm).
@@ -232,10 +230,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --duration)
       SINGLE_DURATION_SECONDS="${2:-}"
-      shift
-      ;;
-    --warmup)
-      SINGLE_WARMUP_SECONDS="${2:-}"
       shift
       ;;
     --hwm)
@@ -385,10 +379,6 @@ fi
 
 if [[ -n "${SINGLE_DURATION_SECONDS}" && ( ! "${SINGLE_DURATION_SECONDS}" =~ ^[0-9]+$ || "${SINGLE_DURATION_SECONDS}" -lt 1 ) ]]; then
   echo "duration must be a positive integer." >&2
-  exit 1
-fi
-if [[ -n "${SINGLE_WARMUP_SECONDS}" && ( ! "${SINGLE_WARMUP_SECONDS}" =~ ^[0-9]+$ || "${SINGLE_WARMUP_SECONDS}" -lt 1 ) ]]; then
-  echo "warmup must be a positive integer." >&2
   exit 1
 fi
 if [[ -n "${SINGLE_HWM}" && ( ! "${SINGLE_HWM}" =~ ^[0-9]+$ || "${SINGLE_HWM}" -lt 1 ) ]]; then
@@ -634,9 +624,6 @@ fi
 if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_DURATION_SECONDS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_DURATION_SECONDS="${SINGLE_DURATION_SECONDS}")
 fi
-if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_WARMUP_SECONDS}" ]]; then
-  RUN_ENV+=(PERF_SINGLE_WARMUP_SECONDS="${SINGLE_WARMUP_SECONDS}")
-fi
 if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_HWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_HWM="${SINGLE_HWM}")
 fi
@@ -685,7 +672,6 @@ EFFECTIVE_SEND_HWM="${SINGLE_SNDHWM:-${SINGLE_HWM:-}}"
 EFFECTIVE_RECV_HWM="${SINGLE_RCVHWM:-${SINGLE_HWM:-}}"
 DISPLAY_PATTERN_CSV="${PATTERN_CSV}"
 DISPLAY_DURATION_SECONDS="${SINGLE_DURATION_SECONDS}"
-DISPLAY_WARMUP_SECONDS="${SINGLE_WARMUP_SECONDS}"
 DISPLAY_HWM="${SINGLE_HWM}"
 DISPLAY_SEND_HWM="${EFFECTIVE_SEND_HWM}"
 DISPLAY_RECV_HWM="${EFFECTIVE_RECV_HWM}"
@@ -696,7 +682,6 @@ DISPLAY_RCVTIMEO_MS="${SINGLE_RCVTIMEO_MS}"
 if [[ "${PERF_ALLOW_MULTI:-0}" == "1" ]]; then
   DISPLAY_PATTERN_CSV="$(display_pattern_csv "${PATTERN_LIST[@]}")"
   DISPLAY_DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-${SINGLE_DURATION_SECONDS}}"
-  DISPLAY_WARMUP_SECONDS="${PERF_MULTI_WARMUP_SECONDS:-${SINGLE_WARMUP_SECONDS}}"
   DISPLAY_HWM="${PERF_MULTI_HWM:-}"
   DISPLAY_SEND_HWM="${PERF_MULTI_SNDHWM:-${DISPLAY_HWM}}"
   DISPLAY_RECV_HWM="${PERF_MULTI_RCVHWM:-${DISPLAY_HWM}}"
@@ -721,7 +706,6 @@ print_effective_option "clean_build" "$( [[ "${BUILD_MODE}" == "clean" ]] && ech
 print_effective_option "runs" "${RUNS}"
 print_effective_option "recv_mode" "${RECV_MODE}"
 print_effective_option "duration_seconds" "${DISPLAY_DURATION_SECONDS}"
-print_effective_option "warmup_seconds" "${DISPLAY_WARMUP_SECONDS}"
 print_effective_option "hwm" "$(value_or_default "${DISPLAY_HWM}" "default(binary)")"
 print_effective_option "send_hwm" "$(value_or_default "${DISPLAY_SEND_HWM}" "default(binary)")"
 print_effective_option "recv_hwm" "$(value_or_default "${DISPLAY_RECV_HWM}" "default(binary)")"

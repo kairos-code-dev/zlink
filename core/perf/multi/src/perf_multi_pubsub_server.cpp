@@ -27,36 +27,8 @@ static const char *k_server_routing_id = "SERVER";
 static const uint32_t k_metric_run_id = 1U;
 static const char *k_pubsub_topic = "bench";
 
-static std::atomic<bool> g_queue_probe_pending (false);
-static std::atomic<size_t> g_queue_probe_size (0);
 static std::atomic<int> g_debug_pub_logs (0);
 perf_multi_handshake::start_signal_state_t g_start_gate;
-
-inline void request_queue_probe (size_t msg_size)
-{
-    if (msg_size == 0)
-        return;
-    g_queue_probe_size.store (msg_size, std::memory_order_release);
-    g_queue_probe_pending.store (true, std::memory_order_release);
-}
-
-inline void emit_requested_queue_probe (const std::string &lib_name,
-                                        const std::string &transport,
-                                        void *send_socket,
-                                        void *recv_socket)
-{
-    if (!g_queue_probe_pending.exchange (false, std::memory_order_acq_rel))
-        return;
-
-    const size_t msg_size = g_queue_probe_size.load (std::memory_order_acquire);
-    if (msg_size == 0 || !send_socket || !recv_socket)
-        return;
-
-    const server_queue_stats_t queue_stats =
-      sample_server_queue_stats (send_socket, recv_socket);
-    print_server_queue_metrics (
-      lib_name, k_pattern, transport, msg_size, queue_stats);
-}
 
 bool wait_for_start_signal (size_t msg_size, int timeout_ms)
 {
@@ -75,7 +47,10 @@ inline bool publish_once (void *server,
                           std::vector<char> &payload,
                           size_t current_msg_size,
                           perf_multi_metric::phase_t phase,
-                          uint64_t *seq)
+                          uint64_t *seq,
+                          unsigned long long *publish_ok_count,
+                          unsigned long long *publish_blocked_count,
+                          unsigned long long *publish_wait_count)
 {
     if (current_msg_size == 0)
         return true;
@@ -106,6 +81,8 @@ inline bool publish_once (void *server,
     if (::zlink_publish (
           server, k_pubsub_topic, &payload_part, 1, ZLINK_DONTWAIT)
         >= 0) {
+        if (publish_ok_count)
+            ++(*publish_ok_count);
         if (bench_debug_enabled ()
             && g_debug_pub_logs.fetch_add (1, std::memory_order_acq_rel) < 8) {
             std::cerr << "[multi-pubsub-server] publish ok phase="
@@ -120,12 +97,16 @@ inline bool publish_once (void *server,
 
     const int err = zlink_errno ();
     if (err == EAGAIN) {
+        if (publish_blocked_count)
+            ++(*publish_blocked_count);
         if (bench_debug_enabled ()
             && g_debug_pub_logs.fetch_add (1, std::memory_order_acq_rel) < 8) {
             std::cerr << "[multi-pubsub-server] publish blocked err=" << err
                       << " phase=" << static_cast<unsigned int> (phase)
                       << " size=" << current_msg_size << std::endl;
         }
+        if (publish_wait_count)
+            ++(*publish_wait_count);
         if (perf_socket_poll (NULL, 0, 1) < 0 && zlink_errno () != EINTR)
             return false;
         return true;
@@ -187,14 +168,11 @@ build_one_way_phases (const multi_bench_settings_t &settings,
     if (msg_sizes.empty ())
         return phases;
 
-    const double warmup_s = static_cast<double> (std::max (0, settings.warmup_seconds));
     const double active_s =
       static_cast<double> (std::max (1, settings.duration_seconds));
 
     for (size_t i = 0; i < msg_sizes.size (); ++i) {
         const size_t msg_size = msg_sizes[i];
-        append_one_way_phase (
-          &phases, msg_size, perf_multi_metric::phase_warmup, warmup_s, true);
         append_one_way_phase (
           &phases, msg_size, perf_multi_metric::phase_active, active_s, true);
     }
@@ -206,11 +184,10 @@ inline void print_server_metrics (
   const std::string &lib_name,
   const std::string &transport,
   const std::vector<size_t> &sizes,
-  const bench_multi_resource_metrics_t &metrics,
-  const server_queue_stats_t &queue_stats)
+  const bench_multi_resource_metrics_t &metrics)
 {
     print_server_metrics_for_sizes (
-      lib_name, k_pattern, transport, sizes, metrics, &queue_stats);
+      lib_name, k_pattern, transport, sizes, metrics);
 }
 
 inline bool run_server_loop (void *server,
@@ -229,23 +206,42 @@ inline bool run_server_loop (void *server,
     auto phase_deadline = std::chrono::steady_clock::time_point ();
     bool phase_started = false;
     size_t current_phase_msg_size = 0;
-    perf_multi_metric::phase_t current_phase = perf_multi_metric::phase_warmup;
+    perf_multi_metric::phase_t current_phase = perf_multi_metric::phase_unknown;
     uint64_t phase_seq = 1;
+    unsigned long long publish_ok_count = 0;
+    unsigned long long publish_blocked_count = 0;
+    unsigned long long publish_wait_count = 0;
+
+    auto log_phase_summary =
+      [&] (const char *reason) {
+          if (!bench_transition_debug_enabled ())
+              return;
+          std::cerr << "[multi-pubsub-server] phase summary reason="
+                    << reason << " size=" << current_phase_msg_size
+                    << " phase=" << static_cast<unsigned int> (current_phase)
+                    << " ok=" << publish_ok_count
+                    << " blocked=" << publish_blocked_count
+                    << " wait=" << publish_wait_count
+                    << " seq=" << (phase_seq > 0 ? phase_seq - 1 : 0)
+                    << std::endl;
+      };
 
     while (!perf_stop_requested ().load (std::memory_order_acquire)) {
-        emit_requested_queue_probe (lib_name, transport, server, server);
-
         if (!phases.empty ()) {
             const auto now = std::chrono::steady_clock::now ();
             while (phase_started && phase_index < phases.size ()
                    && now >= phase_deadline) {
+                log_phase_summary ("deadline");
                 ++phase_index;
                 phase_started = false;
+                publish_ok_count = 0;
+                publish_blocked_count = 0;
+                publish_wait_count = 0;
             }
 
             if (phase_index >= phases.size ()) {
                 // The benchmark phases are fully scripted for PUBSUB, so once
-                // warmup/active is complete there is nothing left to wait for.
+                // active is complete there is nothing left to wait for.
                 // Exiting here avoids an extra STOP-driven shutdown edge.
                 return true;
             }
@@ -257,23 +253,43 @@ inline bool run_server_loop (void *server,
                 current_phase_msg_size = phases[phase_index].msg_size;
                 current_phase = phases[phase_index].phase;
                 phase_seq = 1;
+                publish_ok_count = 0;
+                publish_blocked_count = 0;
+                publish_wait_count = 0;
                 if (new_size
                     && !wait_for_start_signal (
                       current_phase_msg_size,
                       settings.connect_ready_timeout_ms)) {
                     return false;
                 }
+                if (new_size) {
+                    const int settle_ms =
+                      std::max (50, std::min (500,
+                                              settings.connect_ready_timeout_ms
+                                                / 10));
+                    if (perf_socket_poll (NULL, 0, settle_ms) < 0
+                        && zlink_errno () != EINTR) {
+                        return false;
+                    }
+                }
                 phase_started = false;
             }
 
-            if (!phase_started) {
-                phase_deadline =
-                  std::chrono::steady_clock::now ()
-                  + phases[phase_index].duration;
-                phase_started = true;
+            if (!phase_started && phases[phase_index].send_active
+                && bench_transition_debug_enabled ()) {
+                std::cerr << "[multi-pubsub-server] waiting first publish size="
+                          << current_phase_msg_size << " phase="
+                          << static_cast<unsigned int> (current_phase)
+                          << std::endl;
             }
 
             if (!phases[phase_index].send_active) {
+                if (!phase_started) {
+                    phase_deadline =
+                      std::chrono::steady_clock::now ()
+                      + phases[phase_index].duration;
+                    phase_started = true;
+                }
                 const long remaining_ms =
                   std::chrono::duration_cast<std::chrono::milliseconds> (
                     phase_deadline - std::chrono::steady_clock::now ())
@@ -286,13 +302,23 @@ inline bool run_server_loop (void *server,
                 continue;
             }
 
+            const unsigned long long publish_ok_before = publish_ok_count;
             if (!publish_once (
                   server,
                   *payload,
                   phases[phase_index].msg_size,
                   phases[phase_index].phase,
-                  &phase_seq)) {
+                  &phase_seq,
+                  &publish_ok_count,
+                  &publish_blocked_count,
+                  &publish_wait_count)) {
                 return false;
+            }
+            if (!phase_started && publish_ok_count > publish_ok_before) {
+                phase_deadline =
+                  std::chrono::steady_clock::now ()
+                  + phases[phase_index].duration;
+                phase_started = true;
             }
             continue;
         }
@@ -304,7 +330,10 @@ inline bool run_server_loop (void *server,
               *payload,
               payload->size (),
               perf_multi_metric::phase_active,
-              &phase_seq)) {
+              &phase_seq,
+              &publish_ok_count,
+              &publish_blocked_count,
+              &publish_wait_count)) {
             return false;
         }
     }
@@ -360,20 +389,13 @@ inline int run_server_benchmark (const std::string &lib_name,
     }
 
     perf_stop_requested ().store (false, std::memory_order_release);
-    g_queue_probe_pending.store (false, std::memory_order_release);
-    g_queue_probe_size.store (0, std::memory_order_release);
     perf_multi_handshake::reset_start_signal_state (&g_start_gate);
     install_perf_signal_handlers ();
 
     std::thread stdin_watcher ([] () {
         std::string line;
         while (std::getline (std::cin, line)) {
-            size_t queue_size = 0;
             size_t start_size = 0;
-            if (parse_queue_probe_command (line, &queue_size)) {
-                request_queue_probe (queue_size);
-                continue;
-            }
             if (perf_multi_handshake::parse_size_command_line (
                   line, "START,", &start_size)) {
                 perf_multi_handshake::signal_start (&g_start_gate, start_size);
@@ -401,7 +423,6 @@ inline int run_server_benchmark (const std::string &lib_name,
         static_cast<size_t> (1024),
         std::max<size_t> (max_size, perf_multi_metric::header_size ())),
       's');
-
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
 
     std::cout << "READY," << endpoint << std::endl;
@@ -422,9 +443,7 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (sample_start);
-    const server_queue_stats_t queue_stats =
-      sample_server_queue_stats (server, server);
-    print_server_metrics (lib_name, transport, sizes, metrics, queue_stats);
+    print_server_metrics (lib_name, transport, sizes, metrics);
 
     zlink_close (server);
 

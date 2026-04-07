@@ -74,6 +74,9 @@ struct spot_client_state_t
         control_pub(NULL),
         control_sub(NULL),
         expected_msg_size(0),
+        active_duration_us(0),
+        sender_window_start_us(0),
+        sender_window_end_us(0),
         collect_active(false),
         fatal(false),
         ready_barrier_settled(false),
@@ -84,7 +87,8 @@ struct spot_client_state_t
         seen_msg_size(0),
         seen_phase(static_cast<int>(perf_multi_metric::phase_unknown)),
         recv_workers_stop(false),
-        metrics_epoch(1)
+        metrics_epoch(1),
+        queue_probe(NULL)
     {
     }
 
@@ -103,6 +107,9 @@ struct spot_client_state_t
     std::set<size_t> pending_start_sizes;
     std::vector<spot_thread_metrics_t *> thread_metrics;
     std::atomic<size_t> expected_msg_size;
+    std::atomic<uint64_t> active_duration_us;
+    std::atomic<uint64_t> sender_window_start_us;
+    std::atomic<uint64_t> sender_window_end_us;
     std::atomic<bool> collect_active;
     std::atomic<bool> fatal;
     std::atomic<bool> ready_barrier_settled;
@@ -114,6 +121,7 @@ struct spot_client_state_t
     std::atomic<int> seen_phase;
     std::atomic<bool> recv_workers_stop;
     std::atomic<uint64_t> metrics_epoch;
+    std::atomic<multi_client_queue_probe_t *> queue_probe;
 };
 
 spot_client_state_t *g_client_state = NULL;
@@ -290,45 +298,12 @@ const char *spot_recv_mode_name(spot_recv_mode_t mode)
 
 bool apply_spot_sub_options(void *sub, const multi_bench_settings_t &settings)
 {
-    const int linger_ms = 0;
-    const int sndtimeo_ms =
-      bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 200);
-    const int rcvhwm = bench_hwm_from_env("PERF_MULTI_RCVHWM", settings.hwm);
     const int rcvtimeo_ms =
       bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 200);
-    const int sndbuf = bench_socket_buffer_bytes_from_env("PERF_SNDBUF", -1);
-    const int rcvbuf = bench_socket_buffer_bytes_from_env("PERF_RCVBUF", -1);
-
-    if (zlink_set_option(sub, ZLINK_OPT_LINGER, &linger_ms,
-                             sizeof(linger_ms))
-          != 0
-        || zlink_set_option(sub, ZLINK_OPT_SNDTIMEO, &sndtimeo_ms,
-                                sizeof(sndtimeo_ms))
-             != 0
-        || zlink_set_option(sub, ZLINK_OPT_RCVHWM, &rcvhwm,
-                                sizeof(rcvhwm))
-             != 0
-        || zlink_set_option(sub, ZLINK_OPT_RCVTIMEO, &rcvtimeo_ms,
-                                sizeof(rcvtimeo_ms))
-             != 0) {
-        return false;
-    }
-
-    if (sndbuf > 0
-        && zlink_set_option(sub, ZLINK_OPT_SNDBUF, &sndbuf,
-                                sizeof(sndbuf))
-             != 0) {
-        return false;
-    }
-
-    if (rcvbuf > 0
-        && zlink_set_option(sub, ZLINK_OPT_RCVBUF, &rcvbuf,
-                                sizeof(rcvbuf))
-             != 0) {
-        return false;
-    }
-
-    return true;
+    apply_benchmark_socket_options(sub, settings.hwm, "tcp");
+    return zlink_set_option(
+             sub, ZLINK_OPT_RCVTIMEO, &rcvtimeo_ms, sizeof(rcvtimeo_ms))
+           == 0;
 }
 
 bool apply_spot_control_options(void *pub,
@@ -338,25 +313,17 @@ bool apply_spot_control_options(void *pub,
     if (!pub || !sub)
         return false;
 
-    const int linger_ms = 0;
     const int timeout_ms = std::max(1000, settings.connect_ready_timeout_ms);
-    const int hwm = std::max<int>(1024, static_cast<int>(settings.clients * 8));
     const int nodrop = 1;
+    apply_benchmark_socket_options(pub, settings.hwm, "tcp");
+    apply_benchmark_socket_options(sub, settings.hwm, "tcp");
 
-    if (zlink_set_option(pub, ZLINK_OPT_LINGER, &linger_ms,
-                         sizeof(linger_ms))
-          != 0
-        || zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm)) != 0
-        || zlink_set_option(pub, ZLINK_OPT_SNDTIMEO, &timeout_ms,
+    if (zlink_set_option(pub, ZLINK_OPT_SNDTIMEO, &timeout_ms,
                             sizeof(timeout_ms))
              != 0
         || zlink_set_pub_option(pub, ZLINK_PUB_OPT_NODROP, &nodrop,
                                 sizeof(nodrop))
              != 0
-        || zlink_set_option(sub, ZLINK_OPT_LINGER, &linger_ms,
-                            sizeof(linger_ms))
-             != 0
-        || zlink_set_option(sub, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm)) != 0
         || zlink_set_option(sub, ZLINK_OPT_RCVTIMEO, &timeout_ms,
                             sizeof(timeout_ms))
              != 0) {
@@ -724,7 +691,7 @@ void handle_spot_client_parts(const char *topic,
             state->seen_msg_size.store(started_size,
                                        std::memory_order_relaxed);
             state->seen_phase.store(
-              static_cast<int>(perf_multi_metric::phase_warmup),
+              static_cast<int>(perf_multi_metric::phase_active),
               std::memory_order_relaxed);
         }
         if (bench_transition_debug_enabled()) {
@@ -792,13 +759,6 @@ void handle_spot_client_parts(const char *topic,
         && header.msg_size
              == state->expected_msg_size.load(std::memory_order_acquire)) {
         if (header.phase
-              == static_cast<uint32_t>(perf_multi_metric::phase_warmup)
-            && slot->first_warmup_us.load(std::memory_order_acquire) == 0) {
-            uint64_t expected = 0;
-            (void) slot->first_warmup_us.compare_exchange_strong(
-              expected, recv_ts_us, std::memory_order_acq_rel);
-        }
-        if (header.phase
               == static_cast<uint32_t>(perf_multi_metric::phase_active)
             && slot->first_active_us.load(std::memory_order_acquire) == 0) {
             uint64_t expected = 0;
@@ -820,6 +780,30 @@ void handle_spot_client_parts(const char *topic,
              == static_cast<uint32_t> (perf_multi_metric::phase_active)
         && header.msg_size
              == state->expected_msg_size.load(std::memory_order_acquire)) {
+        uint64_t sender_window_end_us =
+          state->sender_window_end_us.load(std::memory_order_acquire);
+        if (sender_window_end_us == 0) {
+            const uint64_t duration_us =
+              state->active_duration_us.load(std::memory_order_acquire);
+            const uint64_t sender_window_start_us =
+              header.sent_ts_us > 0 ? header.sent_ts_us : recv_ts_us;
+            uint64_t expected = 0;
+            if (state->sender_window_start_us.compare_exchange_strong(
+                  expected, sender_window_start_us, std::memory_order_acq_rel)) {
+                sender_window_end_us = sender_window_start_us + duration_us;
+                state->sender_window_end_us.store(sender_window_end_us,
+                                                  std::memory_order_release);
+                state->cv.notify_all();
+            } else {
+                sender_window_end_us =
+                  state->sender_window_end_us.load(std::memory_order_acquire);
+            }
+        }
+        if (sender_window_end_us != 0 && header.sent_ts_us > 0
+            && header.sent_ts_us > sender_window_end_us) {
+            return;
+        }
+
         spot_thread_metrics_t *metrics = bind_spot_thread_metrics(state);
         if (metrics)
             ++metrics->active_received;
@@ -894,14 +878,23 @@ bool drain_spot_client_slot(spot_client_slot_t *slot, bool *progressed)
     if (!slot)
         return false;
 
+    unsigned long long drained = 0;
     while (!slot->stop.load(std::memory_order_acquire)) {
         bool received = false;
         if (!recv_one_spot_message(slot, ZLINK_DONTWAIT, &received))
             return false;
         if (!received)
-            return true;
+            break;
+        ++drained;
         if (progressed)
             *progressed = true;
+    }
+
+    if (drained > 0 && g_client_state) {
+        multi_client_queue_probe_t *queue_probe =
+          g_client_state->queue_probe.load(std::memory_order_acquire);
+        if (queue_probe)
+            queue_probe->observe_rcv_pending(drained);
     }
 
     return true;
@@ -1049,7 +1042,7 @@ bool recv_one_control_message(spot_client_state_t *state, bool *received)
                                                   std::memory_order_relaxed);
             state->seen_msg_size.store(started_size, std::memory_order_relaxed);
             state->seen_phase.store(
-              static_cast<int>(perf_multi_metric::phase_warmup),
+              static_cast<int>(perf_multi_metric::phase_active),
               std::memory_order_relaxed);
         }
         if (bench_transition_debug_enabled()) {
@@ -1280,6 +1273,8 @@ bool create_spot_slots(ctx_guard_t &ctx,
 void reset_metrics(spot_client_state_t *state, size_t msg_size)
 {
     state->expected_msg_size.store(msg_size, std::memory_order_release);
+    state->sender_window_start_us.store(0, std::memory_order_release);
+    state->sender_window_end_us.store(0, std::memory_order_release);
     state->collect_active.store(false, std::memory_order_release);
     state->control_started_msg_size.store(0, std::memory_order_release);
     state->control_start_recv_us.store(0, std::memory_order_release);
@@ -1489,11 +1484,34 @@ bool wait_phase_duration(spot_client_state_t *state, double seconds)
     return !state->fatal.load(std::memory_order_acquire);
 }
 
+bool wait_spot_sender_window_done(spot_client_state_t *state)
+{
+    if (!state)
+        return false;
+
+    const uint64_t grace_us =
+      state->active_duration_us.load(std::memory_order_acquire);
+    std::unique_lock<std::mutex> lock(state->mutex);
+    while (!state->fatal.load(std::memory_order_acquire)) {
+        const uint64_t sender_window_end_us =
+          state->sender_window_end_us.load(std::memory_order_acquire);
+        if (sender_window_end_us != 0) {
+            const uint64_t deadline_us = sender_window_end_us + grace_us;
+            if (perf_multi_metric::now_us() >= deadline_us)
+                break;
+        }
+        state->cv.wait_for(lock, std::chrono::milliseconds(5));
+    }
+
+    return !state->fatal.load(std::memory_order_acquire);
+}
+
 bool run_single_size_case(spot_client_state_t *state,
                           const multi_bench_settings_t &settings,
                           const std::string &lib_name,
                           const std::string &transport,
-                          size_t msg_size)
+                          size_t msg_size,
+                          multi_client_queue_probe_t *queue_probe)
 {
     const int phase_timeout_ms =
       resolve_spot_phase_timeout_ms(settings, msg_size);
@@ -1516,7 +1534,13 @@ bool run_single_size_case(spot_client_state_t *state,
 
     std::cout << "CLIENT_READY," << msg_size << std::endl;
 
+    if (queue_probe)
+        queue_probe->start();
     reset_metrics(state, msg_size);
+    state->active_duration_us.store(
+      static_cast<uint64_t>(std::max(1, settings.duration_seconds))
+      * 1000000ULL,
+      std::memory_order_release);
     if (!ensure_control_connected(state)) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] ensure control connect failed"
@@ -1574,14 +1598,17 @@ bool run_single_size_case(spot_client_state_t *state,
 
     const bench_multi_cpu_sample_t sample_start =
       bench_multi_capture_cpu_sample();
-    if (!wait_phase_duration(
-          state, static_cast<double>(std::max(1, settings.duration_seconds)))) {
+    if (!wait_spot_sender_window_done(state)) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-client] active wait failed size="
                       << msg_size << std::endl;
+        if (queue_probe)
+            queue_probe->stop();
         return false;
     }
     state->collect_active.store(false, std::memory_order_release);
+    if (queue_probe)
+        queue_probe->stop();
     if (bench_transition_debug_enabled()) {
         std::cerr << "[multi-spot-client] collect done ts_us="
                   << perf_multi_metric::now_us()
@@ -1702,12 +1729,24 @@ int run_client_benchmark(const std::string &lib_name,
         fast_exit_process(1);
     }
 
+    std::vector<void *> recv_socket_handles;
+    recv_socket_handles.reserve(state.slots.size());
+    for (size_t i = 0; i < state.slots.size(); ++i) {
+        spot_client_slot_t *slot = state.slots[i];
+        if (slot && slot->handle)
+            recv_socket_handles.push_back(slot->handle);
+    }
+    multi_client_queue_probe_t queue_probe(recv_socket_handles);
+    state.queue_probe.store(&queue_probe, std::memory_order_release);
+
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
         if (!run_single_size_case(&state, settings, lib_name, transport,
-                                  msg_sizes[i])) {
+                                  msg_sizes[i], &queue_probe)) {
             fast_exit_process(1);
         }
     }
+
+    state.queue_probe.store(NULL, std::memory_order_release);
 
     fast_exit_process(0);
     return 0;

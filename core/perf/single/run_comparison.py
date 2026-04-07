@@ -66,9 +66,6 @@ DEFAULT_RESULTS_DIR = os.path.join(PERF_DIR, "results")
 DEFAULT_MAX_RESULT_FILES = 100
 LATENCY_P95_METRIC = "latency_p95"
 LATENCY_P99_METRIC = "latency_p99"
-SND_PENDING_MAX_METRIC = "snd_pending_max"
-RCV_PENDING_MAX_METRIC = "rcv_pending_max"
-RCV_PENDING_END_METRIC = "rcv_pending_end"
 REQUIRED_RESULT_METRICS = (
     "throughput",
     "bandwidth",
@@ -89,9 +86,6 @@ class RunOutcome:
     latency_p99: float = 0.0
     cpu_pct: Optional[float] = None
     mem_mb: Optional[float] = None
-    snd_pending_max: Optional[float] = None
-    rcv_pending_max: Optional[float] = None
-    rcv_pending_end: Optional[float] = None
     reason: str = ""
     warnings: Optional[List[str]] = None
     stderr: str = ""
@@ -107,9 +101,6 @@ class ComboRecord:
     latency_p99: float = 0.0
     cpu_pct: Optional[float] = None
     mem_mb: Optional[float] = None
-    snd_pending_max: Optional[float] = None
-    rcv_pending_max: Optional[float] = None
-    rcv_pending_end: Optional[float] = None
 
 
 class TeeStream:
@@ -141,17 +132,6 @@ def emit_result_lines(combo_results: Dict[Tuple[str, str, int], ComboRecord]) ->
             (LATENCY_P95_METRIC, record.latency_p95),
             (LATENCY_P99_METRIC, record.latency_p99),
         ]
-
-        if record.cpu_pct is not None:
-            metrics.append(("cpu_pct", record.cpu_pct))
-        if record.mem_mb is not None:
-            metrics.append(("mem_mb", record.mem_mb))
-        if record.snd_pending_max is not None:
-            metrics.append((SND_PENDING_MAX_METRIC, record.snd_pending_max))
-        if record.rcv_pending_max is not None:
-            metrics.append((RCV_PENDING_MAX_METRIC, record.rcv_pending_max))
-        if record.rcv_pending_end is not None:
-            metrics.append((RCV_PENDING_END_METRIC, record.rcv_pending_end))
 
         for metric_name, value in metrics:
             print(
@@ -711,9 +691,6 @@ def parse_metric_from_result_line(
         LATENCY_P99_METRIC,
         "cpu_pct",
         "mem_mb",
-        SND_PENDING_MAX_METRIC,
-        RCV_PENDING_MAX_METRIC,
-        RCV_PENDING_END_METRIC,
     ):
         return None, f"ignored unknown RESULT metric '{metric}': {line}"
     return (metric, value), None
@@ -773,22 +750,15 @@ def build_bench_cmd(binary_path: str, args: List[str], pin_cpu: bool) -> List[st
 def single_table_header_line() -> str:
     return (
         "| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |"
-        "   Lat.P95(ms) |   Lat.P99(ms) | CPU% | Mem MB |"
-        " Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |"
+        "   Lat.P95(ms) |   Lat.P99(ms) |"
     )
 
 
 def single_table_separator_line() -> str:
     return (
         "|----------|------------------|--------------|--------------|--------------|"
-        "--------------|------|--------|-----------|-----------|-----------|"
+        "--------------|"
     )
-
-
-def format_queue_pending(value: Optional[float]) -> str:
-    if value is None:
-        return "N/A"
-    return f"{value:,.0f}"
 
 
 def single_table_row_line(size: int, status: str, record: Optional[ComboRecord] = None) -> str:
@@ -803,45 +773,21 @@ def single_table_row_line(size: int, status: str, record: Optional[ComboRecord] 
         lat_s = format_latency_ms(record.latency)
         lat95_s = format_latency_ms(lat_p95 if lat_p95 is not None else 0.0)
         lat99_s = format_latency_ms(lat_p99 if lat_p99 is not None else 0.0)
-        cpu_s = f"{record.cpu_pct:4.1f}" if record.cpu_pct is not None else "N/A"
-        mem_s = f"{record.mem_mb:6.1f}" if record.mem_mb is not None else "N/A"
-        q_snd_s = format_queue_pending(record.snd_pending_max)
-        q_rcv_max_s = format_queue_pending(record.rcv_pending_max)
-        q_rcv_end_s = format_queue_pending(record.rcv_pending_end)
     elif status == "unsupported":
         tp_s = "UNSUPPORTED"
         bw_s = "UNSUPPORTED"
         lat_s = "UNSUPPORTED"
         lat95_s = "UNSUPPORTED"
         lat99_s = "UNSUPPORTED"
-        cpu_s = "N/A"
-        mem_s = "N/A"
-        q_snd_s = "N/A"
-        q_rcv_max_s = "N/A"
-        q_rcv_end_s = "N/A"
     else:
         tp_s = "FAIL"
         bw_s = "FAIL"
         lat_s = "FAIL"
         lat95_s = "FAIL"
         lat99_s = "FAIL"
-        if record is not None:
-            cpu_s = f"{record.cpu_pct:4.1f}" if record.cpu_pct is not None else "N/A"
-            mem_s = f"{record.mem_mb:6.1f}" if record.mem_mb is not None else "N/A"
-            q_snd_s = format_queue_pending(record.snd_pending_max)
-            q_rcv_max_s = format_queue_pending(record.rcv_pending_max)
-            q_rcv_end_s = format_queue_pending(record.rcv_pending_end)
-        else:
-            cpu_s = "N/A"
-            mem_s = "N/A"
-            q_snd_s = "N/A"
-            q_rcv_max_s = "N/A"
-            q_rcv_end_s = "N/A"
     return (
         f"| {f'{size}B':<8} | {tp_s:>16} | {bw_s:>12} | {lat_s:>12} | "
-        f"{lat95_s:>12} | {lat99_s:>12} | "
-        f"{cpu_s:>4} | {mem_s:>6} | {q_snd_s:>9} | {q_rcv_max_s:>9} | "
-        f"{q_rcv_end_s:>9} |"
+        f"{lat95_s:>12} | {lat99_s:>12} |"
     )
 
 
@@ -900,19 +846,12 @@ def run_single_test(
         if isinstance(sampled_mem, (int, float)):
             mem_mb = float(sampled_mem)
 
-    snd_pending_max = metrics.get(SND_PENDING_MAX_METRIC)
-    rcv_pending_max = metrics.get(RCV_PENDING_MAX_METRIC)
-    rcv_pending_end = metrics.get(RCV_PENDING_END_METRIC)
-
     if sampled.get("timed_out"):
         return RunOutcome(
             status="fail",
             reason="timeout",
             cpu_pct=cpu_pct,
             mem_mb=mem_mb,
-            snd_pending_max=snd_pending_max,
-            rcv_pending_max=rcv_pending_max,
-            rcv_pending_end=rcv_pending_end,
             warnings=warnings or None,
             stderr=stderr,
         )
@@ -925,9 +864,6 @@ def run_single_test(
             reason=f"non_zero_exit_{return_code}",
             cpu_pct=cpu_pct,
             mem_mb=mem_mb,
-            snd_pending_max=snd_pending_max,
-            rcv_pending_max=rcv_pending_max,
-            rcv_pending_end=rcv_pending_end,
             warnings=warnings or None,
             stderr=stderr,
         )
@@ -947,9 +883,6 @@ def run_single_test(
             latency_p99=latency_p99 if latency_p99 is not None else metrics["latency"],
             cpu_pct=cpu_pct,
             mem_mb=mem_mb,
-            snd_pending_max=snd_pending_max,
-            rcv_pending_max=rcv_pending_max,
-            rcv_pending_end=rcv_pending_end,
             warnings=warnings or None,
             stderr=stderr,
         )
@@ -960,9 +893,6 @@ def run_single_test(
             reason="unsupported",
             cpu_pct=cpu_pct,
             mem_mb=mem_mb,
-            snd_pending_max=snd_pending_max,
-            rcv_pending_max=rcv_pending_max,
-            rcv_pending_end=rcv_pending_end,
             warnings=warnings or None,
             stderr=stderr,
         )
@@ -972,9 +902,6 @@ def run_single_test(
             reason="skip",
             cpu_pct=cpu_pct,
             mem_mb=mem_mb,
-            snd_pending_max=snd_pending_max,
-            rcv_pending_max=rcv_pending_max,
-            rcv_pending_end=rcv_pending_end,
             warnings=warnings or None,
             stderr=stderr,
         )
@@ -984,9 +911,6 @@ def run_single_test(
         reason="no_data",
         cpu_pct=cpu_pct,
         mem_mb=mem_mb,
-        snd_pending_max=snd_pending_max,
-        rcv_pending_max=rcv_pending_max,
-        rcv_pending_end=rcv_pending_end,
         warnings=warnings or None,
         stderr=stderr,
     )
@@ -1085,18 +1009,17 @@ def build_pattern_table_lines(
         lines.append(
             "| Size   |       Throughput |    Bandwidth | Lat.Mean(ms) |"
             "  Lat.P95(ms) |  Lat.P99(ms) | CPU% |  Mem MB |"
-            " Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |"
         )
         lines.append(
             "|--------|------------------|--------------|-------------|-------------|-------------|"
-            "------|---------|-----------|-----------|-----------|"
+            "------|---------|"
         )
         for size in sizes:
             record = combo_results.get((pattern, transport, size))
             if not record or record.status != "success":
                 lines.append(
                     f"| {size}B  |              N/A |          N/A |         N/A |         N/A |"
-                    f"         N/A |  N/A |     N/A |       N/A |       N/A |       N/A |"
+                    f"         N/A |"
                 )
                 continue
             tp_s = format_throughput(pattern, record.throughput)
@@ -1109,19 +1032,9 @@ def build_pattern_table_lines(
             )
             lat95_s = format_latency_ms(lat95_value if lat95_value is not None else 0.0)
             lat99_s = format_latency_ms(lat99_value if lat99_value is not None else 0.0)
-            cpu_s = "N/A"
-            mem_s = "N/A"
-            if record.cpu_pct is not None:
-                cpu_s = f"{record.cpu_pct:.1f}"
-            if record.mem_mb is not None:
-                mem_s = f"{record.mem_mb:.1f}"
-            q_snd_s = format_queue_pending(record.snd_pending_max)
-            q_rcv_max_s = format_queue_pending(record.rcv_pending_max)
-            q_rcv_end_s = format_queue_pending(record.rcv_pending_end)
             lines.append(
                 f"| {size}B  | {tp_s:>16} | {bw_s:>12} | {lat_s:>11} | {lat95_s:>11} | "
-                f"{lat99_s:>11} | {cpu_s:>4} | {mem_s:>7} | {q_snd_s:>9} |"
-                f" {q_rcv_max_s:>9} | {q_rcv_end_s:>9} |"
+                f"{lat99_s:>11} |"
             )
         lines.append("")
     while lines and lines[-1] == "":
@@ -1379,13 +1292,6 @@ def main() -> int:
             l99_samples: Dict[int, List[float]] = {size: [] for size in sizes}
             cpu_samples: Dict[int, List[float]] = {size: [] for size in sizes}
             mem_samples: Dict[int, List[float]] = {size: [] for size in sizes}
-            snd_pending_samples: Dict[int, List[float]] = {size: [] for size in sizes}
-            rcv_pending_max_samples: Dict[int, List[float]] = {
-                size: [] for size in sizes
-            }
-            rcv_pending_end_samples: Dict[int, List[float]] = {
-                size: [] for size in sizes
-            }
             failed_records: Dict[int, ComboRecord] = {}
             failed_sizes: Dict[int, str] = {}
             transport_unsupported = False
@@ -1439,12 +1345,6 @@ def main() -> int:
                             cpu_samples[size].append(outcome.cpu_pct)
                         if outcome.mem_mb is not None:
                             mem_samples[size].append(outcome.mem_mb)
-                        if outcome.snd_pending_max is not None:
-                            snd_pending_samples[size].append(outcome.snd_pending_max)
-                        if outcome.rcv_pending_max is not None:
-                            rcv_pending_max_samples[size].append(outcome.rcv_pending_max)
-                        if outcome.rcv_pending_end is not None:
-                            rcv_pending_end_samples[size].append(outcome.rcv_pending_end)
                         row = single_table_row_line(
                             size,
                             "success",
@@ -1457,9 +1357,6 @@ def main() -> int:
                                 latency_p99=outcome.latency_p99,
                                 cpu_pct=outcome.cpu_pct,
                                 mem_mb=outcome.mem_mb,
-                                snd_pending_max=outcome.snd_pending_max,
-                                rcv_pending_max=outcome.rcv_pending_max,
-                                rcv_pending_end=outcome.rcv_pending_end,
                             ),
                         )
                         line = f"{row_indent}{row}"
@@ -1483,9 +1380,6 @@ def main() -> int:
                             status="fail",
                             cpu_pct=outcome.cpu_pct,
                             mem_mb=outcome.mem_mb,
-                            snd_pending_max=outcome.snd_pending_max,
-                            rcv_pending_max=outcome.rcv_pending_max,
-                            rcv_pending_end=outcome.rcv_pending_end,
                         )
                         for remain_size in sizes[size_idx:]:
                             failed_sizes[remain_size] = reason
@@ -1505,9 +1399,6 @@ def main() -> int:
                         status="fail",
                         cpu_pct=outcome.cpu_pct,
                         mem_mb=outcome.mem_mb,
-                        snd_pending_max=outcome.snd_pending_max,
-                        rcv_pending_max=outcome.rcv_pending_max,
-                        rcv_pending_end=outcome.rcv_pending_end,
                     )
                     failed_records[size] = failed_record
                     row = single_table_row_line(size, "fail", failed_record)
@@ -1551,21 +1442,6 @@ def main() -> int:
                     latency_p99 = statistics.median(l99_samples[size])
                     cpu_pct = statistics.median(cpu_samples[size]) if cpu_samples[size] else None
                     mem_mb = statistics.median(mem_samples[size]) if mem_samples[size] else None
-                    snd_pending_max = (
-                        statistics.median(snd_pending_samples[size])
-                        if snd_pending_samples[size]
-                        else None
-                    )
-                    rcv_pending_max = (
-                        statistics.median(rcv_pending_max_samples[size])
-                        if rcv_pending_max_samples[size]
-                        else None
-                    )
-                    rcv_pending_end = (
-                        statistics.median(rcv_pending_end_samples[size])
-                        if rcv_pending_end_samples[size]
-                        else None
-                    )
 
                     combo_results[(pattern, transport, size)] = ComboRecord(
                         status="success",
@@ -1576,9 +1452,6 @@ def main() -> int:
                         latency_p99=latency_p99,
                         cpu_pct=cpu_pct,
                         mem_mb=mem_mb,
-                        snd_pending_max=snd_pending_max,
-                        rcv_pending_max=rcv_pending_max,
-                        rcv_pending_end=rcv_pending_end,
                     )
 
             if show_run_labels:

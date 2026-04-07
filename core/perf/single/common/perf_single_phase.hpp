@@ -190,11 +190,7 @@ inline void single_note_callback_receive (
         return;
 
     if (header_.phase
-        == static_cast<uint32_t> (perf_single_metric::phase_warmup)) {
-        single_increment_counter (state_->warmup_received);
-    } else if (header_.phase
-               == static_cast<uint32_t> (
-                 perf_single_metric::phase_active)) {
+        == static_cast<uint32_t> (perf_single_metric::phase_active)) {
         single_increment_counter (state_->active_received);
     }
 
@@ -211,7 +207,7 @@ inline unsigned long long single_load_phase_received (
 {
     return phase_ == perf_single_metric::phase_active
              ? single_load_counter (state_.active_received)
-             : single_load_counter (state_.warmup_received);
+             : 0;
 }
 
 template <typename StateT>

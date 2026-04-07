@@ -41,9 +41,6 @@ static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
 static const uint32_t k_metric_run_id = 1U;
 
-static std::atomic<bool> g_queue_probe_pending(false);
-static std::atomic<size_t> g_queue_probe_size(0);
-
 void ensure_multi_spot_mesh_pub_budget_default()
 {
     // Keep perf aligned with the core default unless the caller overrides it.
@@ -109,14 +106,6 @@ void fast_exit_process(int exit_code)
     std::cout.flush();
     std::cerr.flush();
     std::_Exit(exit_code);
-}
-
-void request_queue_probe(size_t msg_size)
-{
-    if (msg_size == 0)
-        return;
-    g_queue_probe_size.store(msg_size, std::memory_order_release);
-    g_queue_probe_pending.store(true, std::memory_order_release);
 }
 
 bool parse_start_command(const std::string &line, size_t *msg_size_out)
@@ -219,46 +208,20 @@ bool parse_connect_command(const std::string &line, std::string *endpoint_out)
     return true;
 }
 
-void emit_requested_queue_probe(const std::string &lib_name,
-                                const std::string &transport);
-
 bool apply_spot_server_options(void *pub,
                                const multi_bench_settings_t &settings)
 {
-    const int linger_ms = 0;
-    const int sndhwm = bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm);
     const int sndtimeo_ms =
       bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 200);
     const int nodrop =
       resolve_multi_int_env("PERF_MULTI_SPOT_XPUB_NODROP", 1, 0);
-    const int sndbuf = bench_socket_buffer_bytes_from_env("PERF_SNDBUF", -1);
-    const int rcvbuf = bench_socket_buffer_bytes_from_env("PERF_RCVBUF", -1);
+    apply_benchmark_socket_options(pub, settings.hwm, "tcp");
 
-    if (zlink_set_option(pub, ZLINK_OPT_LINGER, &linger_ms,
-                             sizeof(linger_ms))
-          != 0
-        || zlink_set_option(pub, ZLINK_OPT_SNDHWM, &sndhwm,
-                                sizeof(sndhwm))
-             != 0
-        || zlink_set_option(pub, ZLINK_OPT_SNDTIMEO, &sndtimeo_ms,
+    if (zlink_set_option(pub, ZLINK_OPT_SNDTIMEO, &sndtimeo_ms,
                                 sizeof(sndtimeo_ms))
              != 0
         || zlink_set_pub_option(pub, ZLINK_PUB_OPT_NODROP, &nodrop,
                                 sizeof(nodrop))
-             != 0) {
-        return false;
-    }
-
-    if (sndbuf > 0
-        && zlink_set_option(pub, ZLINK_OPT_SNDBUF, &sndbuf,
-                                sizeof(sndbuf))
-             != 0) {
-        return false;
-    }
-
-    if (rcvbuf > 0
-        && zlink_set_option(pub, ZLINK_OPT_RCVBUF, &rcvbuf,
-                                sizeof(rcvbuf))
              != 0) {
         return false;
     }
@@ -273,25 +236,17 @@ bool apply_spot_control_options(void *pub,
     if (!pub || !sub)
         return false;
 
-    const int linger_ms = 0;
     const int timeout_ms = std::max(1000, settings.connect_ready_timeout_ms);
-    const int hwm = std::max<int>(1024, static_cast<int>(settings.clients * 8));
     const int nodrop = 1;
+    apply_benchmark_socket_options(pub, settings.hwm, "tcp");
+    apply_benchmark_socket_options(sub, settings.hwm, "tcp");
 
-    if (zlink_set_option(pub, ZLINK_OPT_LINGER, &linger_ms,
-                         sizeof(linger_ms))
-          != 0
-        || zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm)) != 0
-        || zlink_set_option(pub, ZLINK_OPT_SNDTIMEO, &timeout_ms,
+    if (zlink_set_option(pub, ZLINK_OPT_SNDTIMEO, &timeout_ms,
                             sizeof(timeout_ms))
              != 0
         || zlink_set_pub_option(pub, ZLINK_PUB_OPT_NODROP, &nodrop,
                                 sizeof(nodrop))
              != 0
-        || zlink_set_option(sub, ZLINK_OPT_LINGER, &linger_ms,
-                            sizeof(linger_ms))
-             != 0
-        || zlink_set_option(sub, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm)) != 0
         || zlink_set_option(sub, ZLINK_OPT_RCVTIMEO, &timeout_ms,
                             sizeof(timeout_ms))
              != 0) {
@@ -343,35 +298,6 @@ std::string bind_control_spot_endpoint(void *node,
 #endif
     return perf_bind_fixed_endpoint_range(
       node, transport, base_port, 64, &perf_bind_spot_node_endpoint);
-}
-
-server_queue_stats_t sample_spot_queue_stats(void *pub, bool send_pending)
-{
-    server_queue_stats_t stats;
-    (void) pub;
-    if (send_pending) {
-        stats.snd_pending_max = 1.0;
-    }
-    return stats;
-}
-
-void emit_requested_queue_probe(const std::string &lib_name,
-                                const std::string &transport)
-{
-    if (!g_queue_probe_pending.exchange(false, std::memory_order_acq_rel))
-        return;
-
-    const size_t msg_size = g_queue_probe_size.load(std::memory_order_acquire);
-    spot_server_state_t *state = g_server_state;
-    if (msg_size == 0 || !state || !state->pub)
-        return;
-
-    const bool send_pending =
-      state->send_pending.load(std::memory_order_acquire);
-    const server_queue_stats_t queue_stats =
-      sample_spot_queue_stats(state->pub, send_pending);
-    print_server_queue_metrics(lib_name, k_pattern, transport, msg_size,
-                               queue_stats);
 }
 
 void notify_size_start(spot_server_state_t *state, size_t msg_size)
@@ -687,7 +613,9 @@ enum send_status_t
     send_status_fatal = 2
 };
 
-send_status_t try_publish_locked(spot_server_state_t *state)
+send_status_t try_publish_locked(spot_server_state_t *state,
+                                 unsigned long long *publish_ok_count,
+                                 unsigned long long *publish_blocked_count)
 {
     if (!state || !state->pub || state->msg_size == 0
         || !state->send_enabled.load(std::memory_order_acquire))
@@ -717,11 +645,15 @@ send_status_t try_publish_locked(spot_server_state_t *state)
     (void) zlink_msg_close(&part);
 
     if (rc == 0) {
+        if (publish_ok_count)
+            ++(*publish_ok_count);
         state->send_pending.store(false, std::memory_order_release);
         ++state->next_seq;
         return send_status_ok;
     }
     if (saved_errno == EAGAIN) {
+        if (publish_blocked_count)
+            ++(*publish_blocked_count);
         state->send_pending.store(true, std::memory_order_release);
         errno = saved_errno;
         return send_status_blocked;
@@ -747,6 +679,9 @@ bool run_phase(spot_server_state_t *state,
     state->next_seq = 1;
     state->send_enabled.store(send_enabled, std::memory_order_release);
     state->send_pending.store(false, std::memory_order_release);
+    unsigned long long publish_ok_count = 0;
+    unsigned long long publish_blocked_count = 0;
+    unsigned long long publish_wait_count = 0;
     if (bench_transition_debug_enabled()) {
         std::cerr << "[multi-spot-server] phase start ts_us="
                   << perf_multi_metric::now_us()
@@ -762,13 +697,13 @@ bool run_phase(spot_server_state_t *state,
 
     while (!perf_stop_requested ().load(std::memory_order_acquire)
            && std::chrono::steady_clock::now() < deadline) {
-        emit_requested_queue_probe(lib_name, transport);
-
         bool progressed = false;
         if (state->fatal_errno.load(std::memory_order_acquire) != 0)
             return false;
         if (state->send_enabled.load(std::memory_order_acquire)) {
-            const send_status_t rc = try_publish_locked(state);
+            const send_status_t rc =
+              try_publish_locked(state, &publish_ok_count,
+                                 &publish_blocked_count);
             if (rc == send_status_fatal) {
                 state->fatal_errno.store(errno != 0 ? errno : EIO,
                                          std::memory_order_release);
@@ -778,6 +713,7 @@ bool run_phase(spot_server_state_t *state,
         }
 
         if (!progressed) {
+            ++publish_wait_count;
             wait_for_spot_send_progress(send_enabled);
         }
     }
@@ -789,6 +725,9 @@ bool run_phase(spot_server_state_t *state,
                   << perf_multi_metric::now_us()
                   << " size=" << msg_size
                   << " phase=" << static_cast<int>(phase)
+                  << " ok=" << publish_ok_count
+                  << " blocked=" << publish_blocked_count
+                  << " wait=" << publish_wait_count
                   << " sent="
                   << (state->next_seq > 0 ? state->next_seq - 1 : 0)
                   << " stop="
@@ -808,8 +747,7 @@ bool run_phase(spot_server_state_t *state,
 void print_server_metrics(const std::string &lib_name,
                           const std::string &transport,
                           const std::vector<size_t> &sizes,
-                          const bench_multi_resource_metrics_t &metrics,
-                          const server_queue_stats_t &queue_stats)
+                          const bench_multi_resource_metrics_t &metrics)
 {
     for (size_t i = 0; i < sizes.size(); ++i) {
         if (metrics.has_cpu_pct) {
@@ -824,8 +762,6 @@ void print_server_metrics(const std::string &lib_name,
                       << ",server_mem_mb," << std::fixed
                       << std::setprecision(2) << metrics.mem_mb << std::endl;
         }
-        print_server_queue_metrics(lib_name, k_pattern, transport, sizes[i],
-                                   queue_stats);
     }
 }
 
@@ -835,8 +771,6 @@ bool run_server_loop(spot_server_state_t *state,
                      const std::string &transport,
                      const std::vector<size_t> &msg_sizes)
 {
-    const double warmup_seconds =
-      static_cast<double>(std::max(0, settings.warmup_seconds));
     const double active_seconds =
       static_cast<double>(std::max(1, settings.duration_seconds));
     const int start_timeout_ms =
@@ -901,10 +835,7 @@ bool run_server_loop(spot_server_state_t *state,
                       << " size=" << msg_sizes[i] << std::endl;
         }
         if (!run_phase(state, lib_name, transport, msg_sizes[i],
-                       perf_multi_metric::phase_warmup, warmup_seconds, true)
-            || !run_phase(state, lib_name, transport, msg_sizes[i],
-                          perf_multi_metric::phase_active, active_seconds,
-                          true)) {
+                       perf_multi_metric::phase_active, active_seconds, true)) {
             if (bench_transition_debug_enabled()) {
                 std::cerr << "[multi-spot-server] loop abort size="
                           << msg_sizes[i]
@@ -1067,8 +998,6 @@ int run_server_benchmark(const std::string &lib_name,
     const int connect_ready_timeout_ms = settings.connect_ready_timeout_ms;
 
     perf_stop_requested ().store(false, std::memory_order_release);
-    g_queue_probe_pending.store(false, std::memory_order_release);
-    g_queue_probe_size.store(0, std::memory_order_release);
     install_perf_signal_handlers();
 
     std::thread stdin_watcher([connect_ready_timeout_ms]() {
@@ -1079,13 +1008,8 @@ int run_server_benchmark(const std::string &lib_name,
                           << perf_multi_metric::now_us()
                           << " line=" << line << std::endl;
             }
-            size_t queue_size = 0;
             size_t start_size = 0;
             std::string connect_endpoint;
-            if (parse_queue_probe_command(line, &queue_size)) {
-                request_queue_probe(queue_size);
-                continue;
-            }
             if (parse_connect_command(line, &connect_endpoint)) {
                 if (bench_transition_debug_enabled()) {
                     std::cerr << "[multi-spot-server] reverse connect request ts_us="
@@ -1158,8 +1082,7 @@ int run_server_benchmark(const std::string &lib_name,
     }
 
     const bool ok =
-      run_server_loop(&state, settings, lib_name, transport,
-                      msg_sizes);
+      run_server_loop(&state, settings, lib_name, transport, msg_sizes);
     if (bench_transition_debug_enabled()) {
         std::cerr << "[multi-spot-server] benchmark done ok=" << (ok ? 1 : 0)
                   << " stop="
@@ -1169,13 +1092,9 @@ int run_server_benchmark(const std::string &lib_name,
                   << std::endl;
     }
 
-    const bool send_pending =
-      state.send_pending.load(std::memory_order_acquire);
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe(sample_start);
-    const server_queue_stats_t queue_stats =
-      sample_spot_queue_stats(pub, send_pending);
-    print_server_metrics(lib_name, transport, msg_sizes, metrics, queue_stats);
+    print_server_metrics(lib_name, transport, msg_sizes, metrics);
     fast_exit_process(ok ? 0 : 1);
     return ok ? 0 : 1;
 }

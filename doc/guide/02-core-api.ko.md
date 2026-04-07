@@ -6,6 +6,10 @@
 
 Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한다.
 
+> I/O 스레드가 내부에서 어떤 일을 하는지(이벤트 루프, 명령 처리,
+> 소켓 할당) 상세 설명은
+> [I/O Thread 내부 구조](../internals/io-thread.ko.md)를 참고.
+
 ```c
 /* Create */
 void *ctx = zlink_ctx_new();

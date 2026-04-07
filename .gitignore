@@ -226,6 +226,7 @@ core/tools/refactor/logs/
 
 # Perf Ralph-loop runtime logs and supervisor state
 doc/plan/perf/logs/
+doc/perf/plan/logs/
 
 # Clangd cache
 core/.cache/

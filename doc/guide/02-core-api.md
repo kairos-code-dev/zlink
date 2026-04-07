@@ -6,6 +6,10 @@ English | [한국어](02-core-api.ko.md)
 
 A Context is the top-level object in zlink that manages the I/O thread pool and sockets.
 
+> For a deep dive into what I/O threads do internally (event loop,
+> command processing, socket assignment), see
+> [I/O Thread Internals](../internals/io-thread.md).
+
 ```c
 /* Create */
 void *ctx = zlink_ctx_new();

@@ -814,13 +814,8 @@ inline void start_server_stdin_watcher(StateT *state,
                             << " line=" << line << std::endl;
               }
 
-              size_t queue_size = 0;
               size_t start_size = 0;
               std::string connect_endpoint;
-              if (parse_queue_probe_command(line, &queue_size)) {
-                  request_queue_probe_fn(queue_size);
-                  continue;
-              }
               if (perf_multi_handshake::parse_endpoint_command_line(
                     line, "CONNECT_CONTROL,", &connect_endpoint)) {
                   if (bench_transition_debug_enabled()) {

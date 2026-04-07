@@ -1,4 +1,6 @@
 import importlib.util
+import contextlib
+import io
 import os
 import pathlib
 import sys
@@ -277,9 +279,8 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                             ("latency", 1.0),
                             (RC.LATENCY_P95_METRIC, 1.0),
                             (RC.LATENCY_P99_METRIC, 1.0),
-                            ("server_snd_pending_max", 0.0),
-                            ("server_rcv_pending_max", 0.0),
-                            ("server_rcv_pending_end", 0.0),
+                            ("server_cpu_pct", 0.0),
+                            ("server_mem_mb", 0.0),
                         ):
                             result_line_callback(transport, size, metric_name, value)
                 return {
@@ -323,6 +324,81 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             RC.ALLOW_MULTI = old_allow_multi
             RC.run_sizes_test = old_run_sizes_test
             RC.time.sleep = old_sleep
+            os.environ.clear()
+            os.environ.update(old_env)
+
+    def test_multi_collect_data_reports_each_size_separately(self):
+        old_allow_multi = RC.ALLOW_MULTI
+        old_run_sizes_test = RC.run_sizes_test
+        old_env = os.environ.copy()
+        try:
+            RC.ALLOW_MULTI = True
+            os.environ["PERF_RUN_COOLDOWN_MS"] = "0"
+            os.environ["PERF_TRANSPORT_TRANSITION_MS"] = "0"
+
+            def fake_run_sizes_test(binary_name, lib_name, transport, sizes,
+                                    pattern_name, result_line_callback=None):
+                for size in sizes:
+                    if result_line_callback is not None:
+                        for metric_name, value in (
+                            ("throughput", 1.0),
+                            ("bandwidth", 1.0),
+                            ("latency", 1.0),
+                            (RC.LATENCY_P95_METRIC, 1.0),
+                            (RC.LATENCY_P99_METRIC, 1.0),
+                            ("server_cpu_pct", 1.0),
+                            ("server_mem_mb", 1.0),
+                        ):
+                            result_line_callback(transport, size, metric_name, value)
+                return {
+                    "status": "success",
+                    "parsed": {
+                        "tcp|64|throughput": 1.0,
+                        "tcp|64|bandwidth": 1.0,
+                        "tcp|64|latency": 1.0,
+                        "tcp|64|latency_p95": 1.0,
+                        "tcp|64|latency_p99": 1.0,
+                        "tcp|64|server_cpu_pct": 1.0,
+                        "tcp|64|server_mem_mb": 1.0,
+                        "tcp|256|throughput": 1.0,
+                        "tcp|256|bandwidth": 1.0,
+                        "tcp|256|latency": 1.0,
+                        "tcp|256|latency_p95": 1.0,
+                        "tcp|256|latency_p99": 1.0,
+                        "tcp|256|server_cpu_pct": 1.0,
+                        "tcp|256|server_mem_mb": 1.0,
+                    },
+                    "timed_out": False,
+                    "returncode": 0,
+                    "cpu_pct": None,
+                    "mem_mb": None,
+                    "reason": "",
+                    "warnings": [],
+                }
+
+            RC.run_sizes_test = fake_run_sizes_test
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                RC.collect_data(
+                    "ignored",
+                    "current",
+                    "PUBSUB",
+                    1,
+                    transports=["tcp"],
+                    table_lines=[],
+                )
+
+            output = stdout.getvalue()
+            self.assertNotIn("Q.Snd.Max", output)
+            self.assertNotIn("Q.Rcv.Max", output)
+            self.assertNotIn("Q.Rcv.End", output)
+            self.assertIn("Testing tcp | 64B:", output)
+            self.assertIn("Testing tcp | 256B:", output)
+            self.assertNotIn("Testing tcp | 64B,256B:", output)
+        finally:
+            RC.ALLOW_MULTI = old_allow_multi
+            RC.run_sizes_test = old_run_sizes_test
             os.environ.clear()
             os.environ.update(old_env)
 

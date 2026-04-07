@@ -89,6 +89,12 @@ The following rules apply to **all** test categories: unit tests (`unittests/`),
 - Agents must address the user as `팀장님`.
 - Agents must use `core/build/` as the only build directory for configure, build, test, perf, and bench commands in this repository.
 - Agents must treat any pre-existing top-level `build/` directory as legacy or user-owned state and must not use it for new configure, build, or test commands.
+- Manager-guide artifacts for spec-driven wrapper runs must live under a `logs/` directory beneath the source spec directory, not beside the source spec.
+- The standard manager-guide naming rule is `logs/<spec-stem>.manager.md`, where `<spec-stem>` is the source spec path with the trailing `.md` removed and any final locale suffix such as `.ko` or `.en` stripped first.
+- Example: `doc/perf/plan/foo.ko.md` maps to `doc/perf/plan/logs/foo.manager.md`.
+- The default manager iteration-log directory naming rule is `logs/<spec-stem>.manager/` under the source spec directory.
+- Log-like artifacts produced during manager or wrapper execution should be kept under that `logs/` tree so they can be ignored cleanly.
+- Wrapper or resume logic must first look for the existing manager guide under that `logs/` naming rule and reuse it; create a new guide only when it does not exist.
 - When the user asks for a `core` bug fix, agents must limit code changes to `core/` library and `core/tests/` regression coverage. Do not modify `core/perf/` or `core/bench/` unless the user explicitly asks for perf/bench code changes.
 - Do not use ad-hoc repro programs, `/tmp` experiments, or one-off binaries to justify a fix. Reproduction must be added as a repository regression test under `core/tests/` first, then used to validate the `core` fix.
 - Agents should prefer repository test runners under `core/tests/` for validation before using perf/bench surfaces or custom orchestration wrappers.

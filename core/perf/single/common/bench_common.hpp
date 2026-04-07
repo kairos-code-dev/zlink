@@ -170,11 +170,6 @@ inline int resolve_single_duration_seconds()
     return parse_positive_env("PERF_SINGLE_DURATION_SECONDS", 5);
 }
 
-inline int resolve_single_warmup_seconds()
-{
-    return parse_positive_env("PERF_SINGLE_WARMUP_SECONDS", 2);
-}
-
 inline size_t resolve_single_latency_sample_cap()
 {
     const int cap =

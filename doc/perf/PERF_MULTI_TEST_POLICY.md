@@ -21,7 +21,7 @@
 
 | 항목 | 기준 |
 |------|------|
-| 측정 모델 | time-based, 패턴별 phase: ready → warmup → active(throughput+latency 동시) |
+| 측정 모델 | time-based, 패턴별 phase: ready → active(throughput+latency 동시) |
 | throughput | `recv_count / duration_seconds` — echo 패턴: `ops/s`, one-way 패턴: `msg/s` |
 | latency | active phase에서 수신된 메시지의 내장 timestamp(header)로 전수 집계 |
 | 대표값 | median (runs > 1) |
@@ -32,6 +32,10 @@
 
 - 목적
   - 벤치 코드가 병목이 되지 않게 유지하면서, 선택된 I/O 모델의 성능을 측정한다.
+- backpressure 검증은 기본 perf surface가 아니라 `core/tests/integration`
+  으로 분리한다. one-way backpressure 통합 범위는 `DEALER_DEALER`,
+  `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `SPOT` 이며,
+  `STREAM`, echo, `PAIR` 은 제외한다.
 - 두 가지 I/O 모델 지원 (`--recv` 옵션)
   - **recv 모델** (기본, `--recv recv`):
     - recv: poller `POLLIN` readiness 감지 → `zlink_recv()` / `zlink_msg_recv()`
@@ -124,7 +128,7 @@
   - `quiescent`
   - `server stop wait`
 - 위 항목이 이미 존재하지만 실제로는 ready 이벤트 대기나 phase 종료 정리를
-  우회적으로 표현한 것뿐이면 삭제하고 `ready -> warmup -> active`에 흡수한다.
+  우회적으로 표현한 것뿐이면 삭제하고 `ready -> active`에 흡수한다.
 - 패턴별 ready gate 이벤트는
   [`../guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
   "메시징 시작 전 준비 확인" 절을 단일 기준으로 따른다.
@@ -158,6 +162,14 @@ perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
 - multi policy 는 `event.value` 와 `snapshot.ready_count` gate 를 금지한다.
 - multi policy 는 delivery-ready event gate도 사용하지 않는다.
 - multi SPOT 은 service monitor gate 도 사용하지 않는다.
+- multi 기본 HWM 정책은 pattern/role 특례 없이 동일하다. `PERF_MULTI_HWM`
+  또는 send/recv override로 결정된 값은 perf가 여는 benchmark socket마다
+  `SNDHWM`, `RCVHWM` 둘 다 함께 적용한다.
+- 이 규칙은 one-way pattern과 SPOT facade/control socket에도 동일하게
+  적용한다. 목적은 역할별 HWM 예외를 없애고, perf 설정 의미를 단일 budget으로
+  고정하는 것이다.
+- perf 기본 surface는 throughput/bandwidth/latency 중심으로 유지한다.
+  cpu/mem, queue/probe 기반 RESULT surface는 기본 perf에 두지 않는다.
 
 ### 1.2 프로세스 모델
 
@@ -165,15 +177,14 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 
 | 역할 | 바이너리 | 책임 |
 |------|----------|------|
-| server | `comp_src_<pattern>_server(.exe)` | bind, relay/echo, server-side 리소스 보고 |
-| client | `comp_src_<pattern>_client(.exe)` | connect, 패턴별 phase 정책에 따라 throughput/latency 측정, client-side 리소스 보고 |
+| server | `comp_src_<pattern>_server(.exe)` | bind, relay/echo |
+| client | `comp_src_<pattern>_client(.exe)` | connect, 패턴별 phase 정책에 따라 throughput/latency 측정 |
 
 ```text
 ┌─ server process ─────────────────────┐    ┌─ client process ──────────────────────┐
 │  bind(endpoint)                      │    │  connect(endpoint) × N clients        │
 │  relay/echo received messages        │◄──►│  phase별 throughput/latency 측정         │
-│  RESULT: server_cpu_pct, server_mem_mb│    │  RESULT: throughput, latency, p95/p99, │
-│  READY stdout / stdin STOP 제어       │    │         client_cpu_pct, client_mem_mb  │
+│  READY stdout / stdin STOP 제어       │    │  RESULT: throughput, latency, p95/p99  │
 └──────────────────────────────────────┘    └───────────────────────────────────────┘
                         ▲                                      ▲
                         └────── 스크립트가 양쪽 프로세스를 관리 ──┘
@@ -383,7 +394,6 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 - recv_mode: recv
 - clients: 100
 - pin_cpu: off
-- warmup_seconds: 2
 - duration_seconds: 5
 
 ===============================================================================
@@ -391,10 +401,10 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 ## PATTERN: MULTI_DEALER_DEALER (one-way)
 
 ### Transport: tcp
-| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
-|----------|------------------|------------|---------------|---------------|---------------|--------|----------|
-| 64B      |   150.00 Kmsg/s  |   9.6 MB/s |      0.05 ms  |      0.06 ms  |      0.08 ms  |  35.1  |   64.2   |
-| 256B     |   135.00 Kmsg/s  |  34.6 MB/s |      0.05 ms  |      0.07 ms  |      0.09 ms  |  38.5  |   66.8   |
+| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+|----------|------------------|------------|---------------|---------------|---------------|
+| 64B      |   150.00 Kmsg/s  |   9.6 MB/s |      0.05 ms  |      0.06 ms  |      0.08 ms  |
+| 256B     |   135.00 Kmsg/s  |  34.6 MB/s |      0.05 ms  |      0.07 ms  |      0.09 ms  |
 ```
 
 - **실행 옵션 헤더 + TABLE**을 저장한다.
@@ -505,7 +515,6 @@ run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 �
 | `--output PATH` | 결과를 파일에 동시 출력 (tee) | stdout만 |
 | `--results-dir PATH` | 결과 저장 루트 디렉터리 override (`PATH/multi/` 하위 사용) | `perf/results` |
 | `--results-tag NAME` | 결과 파일명에 태그 추가 | 없음 |
-| `--warmup N` | warmup 시간(초) | 2 |
 | `--duration N` | 측정 시간(초) | 5 |
 | `--clients N` | 클라이언트 소켓 수 | 100 (stream=10000) |
 | `--hwm N` | 소켓 HWM | 100 (stream=10) |
@@ -565,7 +574,7 @@ core/perf/run_benchmarks_multi.sh --results-tag debug1
 core/perf/run_benchmarks_multi.sh --runs 5 --pin-cpu
 
 # 측정 시간 조정
-core/perf/run_benchmarks_multi.sh --warmup 5 --duration 10
+core/perf/run_benchmarks_multi.sh --duration 10
 ```
 
 ### 5.4 바이너리 직접 실행
@@ -614,18 +623,12 @@ core/perf/run_benchmarks_multi.sh --warmup 5 --duration 10
 각 바이너리는 `pattern/transport/size` 조합마다 아래 RESULT line을 stdout에 출력한다.
 
 ```text
-# client 프로세스가 출력 (throughput, bandwidth, latency, client 리소스)
+# client 프로세스가 출력 (throughput, bandwidth, latency)
 RESULT,current,MULTI_DEALER_DEALER,tcp,1024,throughput,150000.00
 RESULT,current,MULTI_DEALER_DEALER,tcp,1024,bandwidth,153.60
 RESULT,current,MULTI_DEALER_DEALER,tcp,1024,latency,45.23
 RESULT,current,MULTI_DEALER_DEALER,tcp,1024,latency_p95,61.40
 RESULT,current,MULTI_DEALER_DEALER,tcp,1024,latency_p99,79.85
-RESULT,current,MULTI_DEALER_DEALER,tcp,1024,client_cpu_pct,48.20
-RESULT,current,MULTI_DEALER_DEALER,tcp,1024,client_mem_mb,128.40
-
-# server 프로세스가 출력 (server 리소스)
-RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_cpu_pct,35.10
-RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 ```
 
 | 필드 | 설명 |
@@ -634,7 +637,7 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 | `pattern` | `MULTI_DEALER_DEALER`, `MULTI_STREAM` 등 |
 | `transport` | `tcp`, `tls`, `ws`, `wss` |
 | `size` | 메시지 크기(bytes) |
-| `metric` | `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99`, `client_cpu_pct`, `client_mem_mb`, `server_cpu_pct`, `server_mem_mb`, `server_snd_pending_max`, `server_rcv_pending_max`, `server_rcv_pending_end` |
+| `metric` | `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99` |
 | `value` | 수치 값 (소수점 2자리) |
 
 | metric | 출력 프로세스 | 설명 | 필수 |
@@ -644,18 +647,7 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 | `latency` | client | 레이턴시 (us) | MUST |
 | `latency_p95` | client | 95th percentile 레이턴시 (us) | MUST |
 | `latency_p99` | client | 99th percentile 레이턴시 (us) | MUST |
-| `client_cpu_pct` | client | client 프로세스 CPU 사용률 (%) | Linux/Windows |
-| `client_mem_mb` | client | client 프로세스 메모리 (MB, RSS/WorkingSet 기준) | Linux/Windows |
-| `server_cpu_pct` | server | server 프로세스 CPU 사용률 (%) | Linux/Windows |
-| `server_mem_mb` | server | server 프로세스 메모리 (MB, RSS/WorkingSet 기준) | Linux/Windows |
-| `server_snd_pending_max` | server | server 송신 큐 최대 대기 수 | informational |
-| `server_rcv_pending_max` | server | server 수신 큐 최대 대기 수 | informational |
-| `server_rcv_pending_end` | server | server 수신 큐 종료 시점 대기 수 | informational |
-
-- 리소스 메트릭은 server/client 프로세스별로 **독립 측정**한다.
-- `client_cpu_pct`, `client_mem_mb`는 client 프로세스가 자체 PID를 대상으로 측정하여 출력한다.
-- `server_cpu_pct`, `server_mem_mb`는 server 프로세스가 자체 PID를 대상으로 측정하여 출력한다.
-- 리소스 메트릭이 누락되어도 완료 판정(`expected`/`actual`)에 영향을 주지 않는다.
+- cpu/mem 계열 metric은 multi 기본 RESULT line에 포함하지 않는다.
 
 ### 6.2 스크립트 결과 테이블
 
@@ -667,11 +659,11 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 ## PATTERN: MULTI_DEALER_DEALER (one-way)
 
 ### Transport: tcp
-| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
-|----------|------------------|------------|---------------|---------------|---------------|--------|----------|
-| 64B      |   150.00 Kmsg/s  |   9.6 MB/s |      0.05 ms  |      0.06 ms  |      0.08 ms  |  35.1  |   64.2   |
-| 1024B    |   120.30 Kmsg/s  | 123.2 MB/s |      0.05 ms  |      0.07 ms  |      0.09 ms  |  38.5  |   66.8   |
-| 65536B   |    35.50 Kmsg/s  |2326.5 MB/s |      0.18 ms  |      0.25 ms  |      0.31 ms  |  42.0  |   72.1   |
+| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+|----------|------------------|------------|---------------|---------------|---------------|
+| 64B      |   150.00 Kmsg/s  |   9.6 MB/s |      0.05 ms  |      0.06 ms  |      0.08 ms  |
+| 1024B    |   120.30 Kmsg/s  | 123.2 MB/s |      0.05 ms  |      0.07 ms  |      0.09 ms  |
+| 65536B   |    35.50 Kmsg/s  |2326.5 MB/s |      0.18 ms  |      0.25 ms  |      0.31 ms  |
 
 
 ===============================================================================
@@ -679,19 +671,17 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 ## PATTERN: MULTI_STREAM (echo)
 
 ### Transport: tcp
-| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
-|----------|------------------|------------|---------------|---------------|---------------|--------|----------|
-| 64B      |   320.00 Kops/s  |  41.0 MB/s |      0.03 ms  |      0.05 ms  |      0.06 ms  |  30.8  |   58.4   |
-| 1024B    |   280.50 Kops/s  | 574.5 MB/s |      0.04 ms  |      0.05 ms  |      0.07 ms  |  33.2  |   60.1   |
+| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+|----------|------------------|------------|---------------|---------------|---------------|
+| 64B      |   320.00 Kops/s  |  41.0 MB/s |      0.03 ms  |      0.05 ms  |      0.06 ms  |
+| 1024B    |   280.50 Kops/s  | 574.5 MB/s |      0.04 ms  |      0.05 ms  |      0.07 ms  |
 ```
 
 - **패턴 간 구분선**: 패턴이 바뀔 때 `===============================================================================` 구분선을 출력한다 (첫 번째 패턴 앞에는 출력하지 않음).
 - throughput 단위: echo 패턴 `Kops/s` (ops/sec / 1000), one-way 패턴 `Kmsg/s` (msg/sec / 1000) — 섹션 8.1 참조
 - bandwidth 단위: `MB/s` (메가바이트/초) — 섹션 8.3 참조
 - latency 단위: `ms` (밀리초, mean/p95/p99) — RESULT line 값(us)을 1000으로 나누어 변환
-- S.CPU% / S.Mem MB: server 프로세스 CPU 사용률 / 메모리
 - transport 미지원 시: `N/A`
-- 수집 실패 시: 리소스 컬럼은 `N/A`
 
 ### 6.3 진행 로그
 
@@ -704,10 +694,10 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 ```text
   > Benchmarking current for MULTI_DEALER_DEALER...
     Testing tcp | 64B,256B,1024B,65536B,131072B,262144B:
-      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
-      |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
-      | 64B      |    121.98 Kops/s |    15.61 MB/s |      0.81 ms  |      1.01 ms  |      1.26 ms  |    N/A |      N/A |
-      | 256B     |    234.56 Kops/s |    60.05 MB/s |      0.75 ms  |      0.92 ms  |      1.19 ms  |    N/A |      N/A |
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|---------------|---------------|---------------|
+      | 64B      |    121.98 Kops/s |    15.61 MB/s |      0.81 ms  |      1.01 ms  |      1.26 ms  |
+      | 256B     |    234.56 Kops/s |    60.05 MB/s |      0.75 ms  |      0.92 ms  |      1.19 ms  |
       | 1024B    |    ...
       | 65536B   |    ...
       | 131072B  |    ...
@@ -715,8 +705,8 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
     Testing tcp: Done
     [transport cooldown 3000ms]
     Testing tls | 64B,256B,1024B,65536B,131072B,262144B:
-      | Size     |       Throughput |    Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
-      |----------|------------------|--------------|--------------|--------------|--------------|--------|----------|
+      | Size     |       Throughput |    Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 |
+      |----------|------------------|--------------|--------------|--------------|--------------|
       | 64B      |    ...
 ```
 
@@ -728,28 +718,28 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
   > Benchmarking current for MULTI_DEALER_DEALER...
     Testing tcp | 64B,256B,1024B:
       run 1/3:
-        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
-        | 64B      |    121.98 Kops/s |    15.61 MB/s |      0.81 ms  |      1.01 ms  |      1.26 ms  |    N/A |      N/A |
+        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+        |----------|------------------|--------------|---------------|---------------|---------------|
+        | 64B      |    121.98 Kops/s |    15.61 MB/s |      0.81 ms  |      1.01 ms  |      1.26 ms  |
         | 256B     |    ...
         | 1024B    |    ...
       [cooldown 3000ms]
       run 2/3:
-        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
+        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+        |----------|------------------|--------------|---------------|---------------|---------------|
         | 64B      |    ...
         | 256B     |    ...
         | 1024B    |    ...
       [cooldown 3000ms]
       run 3/3:
-        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
+        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+        |----------|------------------|--------------|---------------|---------------|---------------|
         | 64B      |    ...
         | 256B     |    ...
         | 1024B    |    ...
       median:
-        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
+        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+        |----------|------------------|--------------|---------------|---------------|---------------|
         | 64B      |    ...
         | 256B     |    ...
         | 1024B    |    ...
@@ -780,40 +770,8 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 
 ### 6.6 리소스 메트릭 수집
 
-Multi 벤치마크는 server/client 별도 프로세스로 동작하므로, 각 프로세스가 **자체 PID를 대상으로** 리소스를 측정한다.
-
-| 메트릭 | 출력 프로세스 | Linux 수집 소스 | Windows 수집 소스 | 계산 방식 |
-|--------|-------------|----------------|-------------------|-----------|
-| `client_cpu_pct` | client | `/proc/[pid]/stat` | `GetProcessTimes()` | `(user₂+kernel₂ - user₁-kernel₁) / (elapsed × nproc) × 100` |
-| `client_mem_mb` | client | `/proc/[pid]/status` VmRSS | `GetProcessMemoryInfo()` WorkingSetSize | 측정 종료 시점 1회 읽기, MB 변환 |
-| `server_cpu_pct` | server | `/proc/[pid]/stat` | `GetProcessTimes()` | 동일 공식 (server 자체 PID) |
-| `server_mem_mb` | server | `/proc/[pid]/status` VmRSS | `GetProcessMemoryInfo()` WorkingSetSize | 동일 (server 자체 PID) |
-
-```text
-client 프로세스 내부:
-[ready] -> [warmup] -> [active(throughput+latency)]
-                          ^                         ^
-                      샘플₁ 수집                  샘플₂ 수집 → client_cpu_pct, client_mem_mb
-
-server 프로세스:
-[bind] -> [READY] -> [relay 대기] -> ... -> [종료 신호] -> server_cpu_pct, server_mem_mb 출력
-                                                           (size 1개 실행 구간 기준)
-```
-
-- **client**: active phase 시작/종료 시점에 자체 PID를 대상으로 2회 샘플링하여 `client_cpu_pct`, `client_mem_mb`를 출력한다.
-- **server**: 종료 신호 수신 시 bind~종료 구간의 CPU/메모리를 측정하여 `server_cpu_pct`, `server_mem_mb`를 출력한다(size 1개 실행 기준).
-- 리소스 메트릭은 정보성(informational)이므로 누락 시 완료 판정에 영향을 주지 않는다.
-
-#### size별 귀속 규칙
-
-스크립트는 size마다 server/client를 별도 실행한다. 리소스 메트릭(`client_cpu_pct`, `client_mem_mb`, `server_cpu_pct`, `server_mem_mb`)은 **size별로 독립 측정**한다.
-
-| 항목 | 규칙 |
-|------|------|
-| `client_cpu_pct` | 각 size의 active phase 시작/종료 시점에 개별 샘플링 |
-| `client_mem_mb` | 각 size의 active phase 종료 시점에 개별 읽기 |
-| `server_cpu_pct` | 각 size 케이스의 server 프로세스 생애주기에서 개별 측정 |
-| `server_mem_mb` | 각 size 케이스의 server 종료 시점에 개별 읽기 |
+- 이번 정책의 기본 multi perf surface와 RESULT 계약에는 cpu/mem 계열 metric을 포함하지 않는다.
+- cpu/mem 수집이 필요하면 별도 진단 작업으로 분리하고, 기본 server/client RESULT 계약과 섞지 않는다.
 
 - size별 측정값이 아닌 바이너리 1회 실행 전체의 단일 측정값을 복제하는 것은 허용하지 않는다.
 - server/client 리소스는 size별 RESULT line에 해당 size 케이스 값으로 귀속되어야 한다.
@@ -845,7 +803,7 @@ server 프로세스:
 ### 7.1 client 프로세스 내부 Phase (size 1개 기준)
 
 ```text
-[ready] -> [warmup] -> [active(throughput+latency)]
+[ready] -> [active(throughput+latency)]
 ```
 
 > echo는 client가 phase를 제어하며 server는 relay/echo 대기한다. one-way는 sender/receiver가 동일 순서의 phase를 수행한다.
@@ -853,7 +811,6 @@ server 프로세스:
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
 | ready | event-based | raw=`CONNECTION_READY`, SPOT=`READY/START` barrier | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` |
-| warmup | time-based | 2s | `PERF_MULTI_WARMUP_SECONDS` |
 | active | time-based | 5s | `PERF_MULTI_DURATION_SECONDS` |
 
 > `PERF_MULTI_SETTLE_MS`는 호환성 때문에 남아 있을 수 있지만 benchmark phase를
@@ -876,14 +833,11 @@ server 프로세스:
 - Multi는 run 내부에서 size loop를 수행하며, size마다 server/client를 별도 실행한다.
 - size 사이의 drain sleep은 사용하지 않는다.
 
-### 7.4 warmup 모드
+### 7.4 active-only 측정
 
-| 모드 | 설명 | 환경 변수 |
-|------|------|-----------|
-| passive (기본) | 송신 비활성 상태에서 시간 대기 | `PERF_MULTI_ACTIVE_WARMUP=0` |
-| active | 송신/수신 활성 상태로 워밍업 | `PERF_MULTI_ACTIVE_WARMUP=1` |
-
-active warmup은 active phase 시작 전 추가 송수신 워밍업을 수행하며, 별도 drain 구간은 사용하지 않는다.
+- multi 기본 측정은 `ready -> active`만 사용한다.
+- active 이전 추가 warmup phase나 active warmup 환경 변수는 두지 않는다.
+- active 구간 밖의 송수신은 준비 확인과 종료 정리에만 한정한다.
 
 ---
 
@@ -906,7 +860,7 @@ active warmup은 active phase 시작 전 추가 송수신 워밍업을 수행하
 
 1. duration 구간의 수신량으로 계산한다.
 2. `throughput = recv_count / duration_seconds`
-3. warmup 구간의 데이터는 계산에서 제외한다.
+3. active 구간 밖의 데이터는 계산에서 제외한다.
 
 ### 8.3 Bandwidth (네트워크 전송량)
 
@@ -931,8 +885,8 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 각 size는 아래 순서로 측정한다.
 
-1. echo 패턴: warmup → active phase
-2. one-way 패턴: warmup → active phase
+1. echo 패턴: ready → active phase
+2. one-way 패턴: ready → active phase
 
 - echo/one-way 모두 active phase 단일 실행에서 throughput/latency를 동시에 산출한다.
 
@@ -951,7 +905,7 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 - RTT 샘플(echo): `sample_us = (recv_ts_us - sent_ts_us) / 2`
 - 단방향 샘플(one-way): 수신 메시지에 포함된 송신 타임스탬프 기준 `now_us - sent_us`
-- warmup 구간의 데이터는 계산에서 제외한다.
+- active 구간 밖의 데이터는 계산에서 제외한다.
 
 ### 9.3 one-way latency 집계 규칙
 
@@ -996,20 +950,10 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 - Tier 2 메트릭은 현재 RESULT line에 출력하지 않는다. 향후 구현 시 RESULT line에 추가할 수 있다.
 - 누락 시 완료 판정에 영향 없음.
 
-### 10.3 Tier 3: 정보성 (RESULT line 출력, 완료 판정 제외)
+### 10.3 Tier 3: 정보성
 
-| 메트릭 | RESULT key | 출력 프로세스 | 단위 | 수집 방식 | 플랫폼 |
-|--------|-----------|-------------|------|-----------|--------|
-| client CPU | `client_cpu_pct` | client | % | Linux: `/proc/[pid]/stat`, Windows: `GetProcessTimes()` | Linux/Windows |
-| client 메모리 | `client_mem_mb` | client | MB | Linux: `/proc/[pid]/status` VmRSS, Windows: `GetProcessMemoryInfo()` WorkingSetSize | Linux/Windows |
-| server CPU | `server_cpu_pct` | server | % | 동일 (server 자체 PID) | Linux/Windows |
-| server 메모리 | `server_mem_mb` | server | MB | 동일 (server 자체 PID) | Linux/Windows |
-
-- server/client 별도 프로세스이므로 각 프로세스가 자체 PID를 대상으로 리소스를 측정한다.
-- server/client 리소스는 모두 size별 독립 측정 (섹션 6.6 참조).
-- **client 리소스 메트릭(`client_cpu_pct`, `client_mem_mb`)은 바이너리가 RESULT line으로 출력하지만, 최종 집계/결과 테이블에는 반영되지 않는다.** 결과 테이블에는 server 리소스(`S.CPU%`, `S.Mem MB`)만 표시된다.
-- 누락 시 완료 판정에 영향 없음.
-- 수집 실패 시 테이블에 `N/A`로 표시.
+- 이번 정책에서는 cpu/mem 계열 정보성 metric을 기본 RESULT line과 결과 테이블에 포함하지 않는다.
+- 정보성 metric이 필요하면 별도 진단 작업으로 분리한다.
 
 ---
 
@@ -1118,12 +1062,10 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_MULTI_WARMUP_SECONDS` | warmup 시간(초) | 2 |
 | `PERF_MULTI_DURATION_SECONDS` | 측정 시간(초) | 5 |
 | `PERF_MULTI_SETTLE_MS` | deprecated. 호환성용 잔존 변수이며 benchmark phase를 만들지 않는다 | 500 |
 | `PERF_MULTI_TRANSPORT_TRANSITION_MS` | transport 전환 cooldown(ms) | 3000 |
 | `PERF_MULTI_PATTERN_TRANSITION_MS` | pattern 전환 cooldown(ms) | 3000 |
-| `PERF_MULTI_ACTIVE_WARMUP` | active warmup 활성화 | 0 |
 
 ### 12.3 클라이언트 제어
 
@@ -1221,7 +1163,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 구분 | 권장 | 금지 |
 |------|------|------|
-| 송신 버퍼 | warmup 전 사전 할당, duration 내 재사용 | 매 send마다 `std::vector` 생성/resize |
+| 송신 버퍼 | active 시작 전 사전 할당, duration 내 재사용 | 매 send마다 `std::vector` 생성/resize |
 | 수신 버퍼 | 고정 크기 버퍼 또는 pool | 매 recv마다 동적 할당 |
 | 수신 데이터 | 필요한 metric header만 추출 후 경량 event로 전달 | 수신 payload 전체를 별도 컨테이너에 복사 |
 | dispatch callback | timestamp/phase 추출 후 bounded queue에 POD event enqueue | `zlink_msg_t` handle, payload pointer, 대형 버퍼를 queue에 push |
@@ -1233,7 +1175,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
   결과에 라이브러리 외 오버헤드가 포함되면 같은 pattern의 recv/callback mode
   비교(예: `MULTI_STREAM --recv recv` vs `MULTI_STREAM --recv callback`)가
   공정하지 않다.
-- warmup phase 이전(setup/connect)과 active 이후(결과 출력/정리)에서는 할당/복사에 제한이 없다.
+- active phase 이전(setup/connect)과 active 이후(결과 출력/정리)에서는 할당/복사에 제한이 없다.
 - `zlink_msg_data()` 반환 포인터를 직접 참조하여 불필요한 복사를 피한다. 내용 검증이 필요 없는 throughput 측정에서는 payload를 읽지 않는다.
 - Multi의 대량 클라이언트(1000~10000) 환경에서는 per-client 버퍼도 setup 시 사전 할당하고, duration 내에서 재사용한다.
 

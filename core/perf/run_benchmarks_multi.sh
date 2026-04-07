@@ -197,7 +197,7 @@ Default PATTERN is:
 When callback mode is selected without an explicit pattern, default PATTERN is:
   SPOT,STREAM
 By default, this wrapper runs current zlink only.
-By default, multi-bench keeps warmup at 2s and duration window at 5s.
+By default, multi-bench uses ready -> active with a 5s duration window.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
 Policy contract:
   - benchmark binaries execute one pattern/transport/size/run case only
@@ -228,7 +228,6 @@ Options:
                          (default: 64,256,1024,65536,131072,262144;
                          STREAM: 64,256,1024,65536).
   --transports LIST      Comma-separated transports.
-  --warmup N             Optional override for multi warmup seconds (default 2).
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override number of client sockets per pattern (default: 100, stream=10000).
   --hwm N                Override PERF_MULTI_HWM (default: 1000 in binary).
@@ -346,7 +345,6 @@ HAS_EXPLICIT_RUNS=0
 HAS_EXPLICIT_RESULTS_DIR=0
 BUILD_MODE="incremental"
 BUILD_MODE_EXPLICIT=0
-WARMUP_SECONDS="${PERF_MULTI_WARMUP_SECONDS:-${PERF_WARMUP_SECONDS:-2}}"
 DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-${PERF_DURATION_SECONDS:-5}}"
 RECV_MODE="${PERF_RECV_MODE:-recv}"
 CLIENTS="${PERF_MULTI_CLIENTS:-${PERF_CLIENTS:-}}"
@@ -360,7 +358,6 @@ RCVBUF="${PERF_MULTI_RCVBUF:-${PERF_RCVBUF:-}}"
 SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-${PERF_SNDTIMEO_MS:-200}}"
 RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-${PERF_RCVTIMEO_MS:-200}}"
 CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-${PERF_CONNECT_CONCURRENCY:-}}"
-ACTIVE_WARMUP="${PERF_MULTI_ACTIVE_WARMUP:-${PERF_ACTIVE_WARMUP:-}}"
 SERVICE_CLIENTS="${PERF_MULTI_SERVICE_CLIENTS:-${PERF_SERVICE_CLIENTS:-}}"
 LATENCY_SAMPLE_CAP="${PERF_MULTI_LATENCY_SAMPLE_CAP:-${PERF_LATENCY_SAMPLE_CAP:-}}"
 TIMEOUT_SECONDS="${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS:-}}"
@@ -486,14 +483,6 @@ while [[ $# -gt 0 ]]; do
       RECV_MODE="callback"
       SCRIPT_ARGS+=( "--recv" "callback" )
       shift
-      ;;
-    --warmup)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: $1 requires a value." >&2
-        exit 1
-      fi
-      WARMUP_SECONDS="${2}"
-      shift 2
       ;;
     --duration)
       if [[ $# -lt 2 ]]; then
@@ -836,7 +825,6 @@ RUN_ENV+=(PERF_ALLOW_MULTI="1")
 RUN_ENV+=(PERF_POLICY="1")
 RUN_ENV+=(PERF_RECV_MODE="${RECV_MODE}")
 RUN_ENV+=(PERF_RESULTS_DIR="${RESULTS_DIR_OVERRIDE}")
-RUN_ENV+=(PERF_MULTI_WARMUP_SECONDS="${WARMUP_SECONDS}")
 RUN_ENV+=(PERF_MULTI_DURATION_SECONDS="${DURATION_SECONDS}")
 RUN_ENV+=(PERF_MULTI_RUN_COOLDOWN_MS="${RUN_COOLDOWN_MS}")
 RUN_ENV+=(PERF_MULTI_TRANSPORT_TRANSITION_MS="${TRANSPORT_TRANSITION_MS}")
@@ -852,9 +840,6 @@ if [[ -n "${EFFECTIVE_DEFAULT_IO_THREADS}" ]]; then
 fi
 if [[ -n "${CLIENTS}" ]]; then
   RUN_ENV+=(PERF_MULTI_CLIENTS="${CLIENTS}")
-fi
-if [[ -n "${ACTIVE_WARMUP}" ]]; then
-  RUN_ENV+=(PERF_MULTI_ACTIVE_WARMUP="${ACTIVE_WARMUP}")
 fi
 if [[ -n "${SERVICE_CLIENTS}" ]]; then
   RUN_ENV+=(PERF_MULTI_SERVICE_CLIENTS="${SERVICE_CLIENTS}")
@@ -997,7 +982,7 @@ PATTERN_CSV_DISPLAY="$(
   echo "${local_items[*]}"
 )"
 echo "=== Running multi benchmark: ${PATTERN_CSV_DISPLAY} ==="
-echo "    warmup=${WARMUP_SECONDS}s duration=${DURATION_SECONDS}s"
+echo "    duration=${DURATION_SECONDS}s"
 echo "    recv_mode=${RECV_MODE}"
 RUN_EXIT_CODE=0
 if PERF_ALLOW_MULTI=1 \

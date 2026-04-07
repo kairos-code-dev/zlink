@@ -34,6 +34,8 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_socket_null
   ${INTEGRATION_TEST_ROOT}/test_heartbeats
   ${INTEGRATION_TEST_ROOT}/test_multi_socket_contract_regressions
+  ${INTEGRATION_TEST_ROOT}/test_backpressure_matrix
+  ${INTEGRATION_TEST_ROOT}/test_backpressure_oneway_matrix
   ${INTEGRATION_TEST_ROOT}/test_public_inproc_multipart_send
   ${INTEGRATION_TEST_ROOT}/test_pubsub
   ${INTEGRATION_TEST_ROOT}/test_reconnect_ivl
@@ -362,6 +364,20 @@ if(TARGET test_issue_566)
 endif()
 if(TARGET test_transport_matrix)
   set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
+endif()
+if(TARGET test_backpressure_matrix)
+  set_tests_properties(
+    test_backpressure_matrix
+    PROPERTIES
+      TIMEOUT 180
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+endif()
+if(TARGET test_backpressure_oneway_matrix)
+  set_tests_properties(
+    test_backpressure_oneway_matrix
+    PROPERTIES
+      TIMEOUT 180
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_monitor_socket_contract)
   set_tests_properties(test_monitor_socket_contract PROPERTIES TIMEOUT 60)

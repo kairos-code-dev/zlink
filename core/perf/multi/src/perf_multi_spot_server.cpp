@@ -749,20 +749,10 @@ void print_server_metrics(const std::string &lib_name,
                           const std::vector<size_t> &sizes,
                           const bench_multi_resource_metrics_t &metrics)
 {
-    for (size_t i = 0; i < sizes.size(); ++i) {
-        if (metrics.has_cpu_pct) {
-            std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                      << transport << "," << sizes[i]
-                      << ",server_cpu_pct," << std::fixed
-                      << std::setprecision(2) << metrics.cpu_pct << std::endl;
-        }
-        if (metrics.has_mem_mb) {
-            std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                      << transport << "," << sizes[i]
-                      << ",server_mem_mb," << std::fixed
-                      << std::setprecision(2) << metrics.mem_mb << std::endl;
-        }
-    }
+    (void) lib_name;
+    (void) transport;
+    (void) sizes;
+    (void) metrics;
 }
 
 bool run_server_loop(spot_server_state_t *state,

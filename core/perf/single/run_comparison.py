@@ -84,8 +84,6 @@ class RunOutcome:
     latency: float = 0.0
     latency_p95: float = 0.0
     latency_p99: float = 0.0
-    cpu_pct: Optional[float] = None
-    mem_mb: Optional[float] = None
     reason: str = ""
     warnings: Optional[List[str]] = None
     stderr: str = ""
@@ -99,8 +97,6 @@ class ComboRecord:
     latency: float = 0.0
     latency_p95: float = 0.0
     latency_p99: float = 0.0
-    cpu_pct: Optional[float] = None
-    mem_mb: Optional[float] = None
 
 
 class TeeStream:
@@ -177,10 +173,6 @@ def parse_env_int(name: str, default: int) -> int:
         return default
 
 
-def resource_metrics_enabled() -> bool:
-    return os.environ.get("PERF_DISABLE_RESOURCE_METRICS", "0") != "1"
-
-
 def resolve_latency_triplet(
     latency: Optional[float],
     latency_p95: Optional[float],
@@ -196,154 +188,6 @@ def resolve_latency_triplet(
     return mean, p95, p99
 
 
-def linux_proc_metrics_supported() -> bool:
-    return IS_LINUX and hasattr(os, "sysconf") and os.path.exists("/proc")
-
-
-def read_proc_cpu_ticks(pid: int) -> Optional[int]:
-    stat_path = f"/proc/{pid}/stat"
-    try:
-        with open(stat_path, "r", encoding="utf-8", errors="ignore") as fh:
-            data = fh.read().strip()
-    except OSError:
-        return None
-    if not data:
-        return None
-    parts = data.split()
-    if len(parts) < 15:
-        return None
-    try:
-        utime = int(parts[13])
-        stime = int(parts[14])
-    except ValueError:
-        return None
-    return utime + stime
-
-
-def read_proc_mem_mb(pid: int) -> Optional[float]:
-    status_path = f"/proc/{pid}/status"
-    try:
-        with open(status_path, "r", encoding="utf-8", errors="ignore") as fh:
-            for line in fh:
-                if not line.startswith("VmRSS:"):
-                    continue
-                parts = line.split()
-                if len(parts) < 2:
-                    break
-                return float(parts[1]) / 1024.0
-    except OSError:
-        return None
-    return None
-
-
-if IS_WINDOWS:
-    import ctypes
-    from ctypes import wintypes
-
-    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-    PROCESS_VM_READ = 0x0010
-
-    class FILETIME(ctypes.Structure):
-        _fields_ = [
-            ("dwLowDateTime", wintypes.DWORD),
-            ("dwHighDateTime", wintypes.DWORD),
-        ]
-
-    class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
-        _fields_ = [
-            ("cb", wintypes.DWORD),
-            ("PageFaultCount", wintypes.DWORD),
-            ("PeakWorkingSetSize", ctypes.c_size_t),
-            ("WorkingSetSize", ctypes.c_size_t),
-            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-            ("PagefileUsage", ctypes.c_size_t),
-            ("PeakPagefileUsage", ctypes.c_size_t),
-        ]
-
-    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    _psapi = ctypes.WinDLL("psapi", use_last_error=True)
-    _kernel32.OpenProcess.argtypes = [
-        wintypes.DWORD,
-        wintypes.BOOL,
-        wintypes.DWORD,
-    ]
-    _kernel32.OpenProcess.restype = wintypes.HANDLE
-    _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-    _kernel32.CloseHandle.restype = wintypes.BOOL
-    _kernel32.GetProcessTimes.argtypes = [
-        wintypes.HANDLE,
-        ctypes.POINTER(FILETIME),
-        ctypes.POINTER(FILETIME),
-        ctypes.POINTER(FILETIME),
-        ctypes.POINTER(FILETIME),
-    ]
-    _kernel32.GetProcessTimes.restype = wintypes.BOOL
-    _psapi.GetProcessMemoryInfo.argtypes = [
-        wintypes.HANDLE,
-        ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
-        wintypes.DWORD,
-    ]
-    _psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
-
-
-def windows_proc_metrics_supported() -> bool:
-    return IS_WINDOWS
-
-
-def open_windows_process_for_metrics(pid: int):
-    if not windows_proc_metrics_supported():
-        return None
-    access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ
-    handle = _kernel32.OpenProcess(access, False, int(pid))
-    if not handle:
-        return None
-    return handle
-
-
-def close_windows_process_handle(handle) -> None:
-    if handle:
-        _kernel32.CloseHandle(handle)
-
-
-def _filetime_to_uint64(filetime_obj) -> int:
-    return (int(filetime_obj.dwHighDateTime) << 32) | int(
-        filetime_obj.dwLowDateTime
-    )
-
-
-def read_windows_cpu_ticks_100ns(handle) -> Optional[int]:
-    if not handle:
-        return None
-    creation = FILETIME()
-    exit_ft = FILETIME()
-    kernel = FILETIME()
-    user = FILETIME()
-    ok = _kernel32.GetProcessTimes(
-        handle,
-        ctypes.byref(creation),
-        ctypes.byref(exit_ft),
-        ctypes.byref(kernel),
-        ctypes.byref(user),
-    )
-    if not ok:
-        return None
-    return _filetime_to_uint64(kernel) + _filetime_to_uint64(user)
-
-
-def read_windows_mem_mb(handle) -> Optional[float]:
-    if not handle:
-        return None
-    counters = PROCESS_MEMORY_COUNTERS()
-    counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
-    ok = _psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb)
-    if not ok:
-        return None
-    return float(counters.WorkingSetSize) / (1024.0 * 1024.0)
-
-
 def run_command_with_metrics(
     cmd: List[str], env: Dict[str, str], timeout_sec: int
 ) -> Dict[str, object]:
@@ -356,44 +200,10 @@ def run_command_with_metrics(
         text=True,
     )
 
-    sample_mode = ""
-    if resource_metrics_enabled():
-        if linux_proc_metrics_supported():
-            sample_mode = "linux"
-        elif windows_proc_metrics_supported():
-            sample_mode = "windows"
-
-    proc_handle = None
-    start_ticks = None
-    end_ticks = None
-    end_mem_mb = None
-    if sample_mode == "linux":
-        start_ticks = read_proc_cpu_ticks(proc.pid)
-        end_ticks = start_ticks
-    elif sample_mode == "windows":
-        proc_handle = open_windows_process_for_metrics(proc.pid)
-        start_ticks = read_windows_cpu_ticks_100ns(proc_handle)
-        end_ticks = start_ticks
-
     timed_out = False
     try:
         while True:
             rc = proc.poll()
-            if sample_mode == "linux":
-                ticks = read_proc_cpu_ticks(proc.pid)
-                if ticks is not None:
-                    end_ticks = ticks
-                mem = read_proc_mem_mb(proc.pid)
-                if mem is not None:
-                    end_mem_mb = mem
-            elif sample_mode == "windows":
-                ticks = read_windows_cpu_ticks_100ns(proc_handle)
-                if ticks is not None:
-                    end_ticks = ticks
-                mem = read_windows_mem_mb(proc_handle)
-                if mem is not None:
-                    end_mem_mb = mem
-
             if rc is not None:
                 break
             if (time.monotonic() - started) > timeout_sec:
@@ -408,46 +218,17 @@ def run_command_with_metrics(
             proc.kill()
             stdout, stderr = proc.communicate()
             timed_out = True
-
-        if sample_mode == "linux":
-            ticks = read_proc_cpu_ticks(proc.pid)
-            if ticks is not None:
-                end_ticks = ticks
-            mem = read_proc_mem_mb(proc.pid)
-            if mem is not None:
-                end_mem_mb = mem
-        elif sample_mode == "windows":
-            ticks = read_windows_cpu_ticks_100ns(proc_handle)
-            if ticks is not None:
-                end_ticks = ticks
-            mem = read_windows_mem_mb(proc_handle)
-            if mem is not None:
-                end_mem_mb = mem
     finally:
-        close_windows_process_handle(proc_handle)
-
-    elapsed = max(1e-6, time.monotonic() - started)
-    cpu_pct = None
-    if start_ticks is not None and end_ticks is not None:
-        nproc = max(1.0, float(os.cpu_count() or 1))
-        if sample_mode == "linux":
-            try:
-                hz = float(os.sysconf("SC_CLK_TCK"))
-            except (OSError, ValueError):
-                hz = 100.0
-            cpu_delta = max(0.0, float(end_ticks - start_ticks)) / max(1.0, hz)
-            cpu_pct = (cpu_delta / (elapsed * nproc)) * 100.0
-        elif sample_mode == "windows":
-            cpu_delta = max(0.0, float(end_ticks - start_ticks)) / 10000000.0
-            cpu_pct = (cpu_delta / (elapsed * nproc)) * 100.0
+        if proc.poll() is None:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+            timed_out = True
 
     return {
         "returncode": proc.returncode,
         "stdout": stdout or "",
         "stderr": stderr or "",
         "timed_out": timed_out,
-        "cpu_pct": cpu_pct,
-        "mem_mb": end_mem_mb,
     }
 
 
@@ -689,8 +470,6 @@ def parse_metric_from_result_line(
         "latency",
         LATENCY_P95_METRIC,
         LATENCY_P99_METRIC,
-        "cpu_pct",
-        "mem_mb",
     ):
         return None, f"ignored unknown RESULT metric '{metric}': {line}"
     return (metric, value), None
@@ -834,24 +613,10 @@ def run_single_test(
             )
         metrics[metric] = value
 
-    cpu_pct = metrics.get("cpu_pct")
-    if cpu_pct is None:
-        sampled_cpu = sampled.get("cpu_pct")
-        if isinstance(sampled_cpu, (int, float)):
-            cpu_pct = float(sampled_cpu)
-
-    mem_mb = metrics.get("mem_mb")
-    if mem_mb is None:
-        sampled_mem = sampled.get("mem_mb")
-        if isinstance(sampled_mem, (int, float)):
-            mem_mb = float(sampled_mem)
-
     if sampled.get("timed_out"):
         return RunOutcome(
             status="fail",
             reason="timeout",
-            cpu_pct=cpu_pct,
-            mem_mb=mem_mb,
             warnings=warnings or None,
             stderr=stderr,
         )
@@ -862,8 +627,6 @@ def run_single_test(
         return RunOutcome(
             status="fail",
             reason=f"non_zero_exit_{return_code}",
-            cpu_pct=cpu_pct,
-            mem_mb=mem_mb,
             warnings=warnings or None,
             stderr=stderr,
         )
@@ -881,8 +644,6 @@ def run_single_test(
             latency=latency_mean if latency_mean is not None else metrics["latency"],
             latency_p95=latency_p95 if latency_p95 is not None else metrics["latency"],
             latency_p99=latency_p99 if latency_p99 is not None else metrics["latency"],
-            cpu_pct=cpu_pct,
-            mem_mb=mem_mb,
             warnings=warnings or None,
             stderr=stderr,
         )
@@ -891,8 +652,6 @@ def run_single_test(
         return RunOutcome(
             status="unsupported",
             reason="unsupported",
-            cpu_pct=cpu_pct,
-            mem_mb=mem_mb,
             warnings=warnings or None,
             stderr=stderr,
         )
@@ -900,8 +659,6 @@ def run_single_test(
         return RunOutcome(
             status="skip",
             reason="skip",
-            cpu_pct=cpu_pct,
-            mem_mb=mem_mb,
             warnings=warnings or None,
             stderr=stderr,
         )
@@ -909,8 +666,6 @@ def run_single_test(
     return RunOutcome(
         status="fail",
         reason="no_data",
-        cpu_pct=cpu_pct,
-        mem_mb=mem_mb,
         warnings=warnings or None,
         stderr=stderr,
     )
@@ -1008,11 +763,10 @@ def build_pattern_table_lines(
         lines.append(f"### Transport: {transport}")
         lines.append(
             "| Size   |       Throughput |    Bandwidth | Lat.Mean(ms) |"
-            "  Lat.P95(ms) |  Lat.P99(ms) | CPU% |  Mem MB |"
+            "  Lat.P95(ms) |  Lat.P99(ms) |"
         )
         lines.append(
             "|--------|------------------|--------------|-------------|-------------|-------------|"
-            "------|---------|"
         )
         for size in sizes:
             record = combo_results.get((pattern, transport, size))
@@ -1290,8 +1044,6 @@ def main() -> int:
             l_samples: Dict[int, List[float]] = {size: [] for size in sizes}
             l95_samples: Dict[int, List[float]] = {size: [] for size in sizes}
             l99_samples: Dict[int, List[float]] = {size: [] for size in sizes}
-            cpu_samples: Dict[int, List[float]] = {size: [] for size in sizes}
-            mem_samples: Dict[int, List[float]] = {size: [] for size in sizes}
             failed_records: Dict[int, ComboRecord] = {}
             failed_sizes: Dict[int, str] = {}
             transport_unsupported = False
@@ -1341,10 +1093,6 @@ def main() -> int:
                         l_samples[size].append(outcome.latency)
                         l95_samples[size].append(outcome.latency_p95)
                         l99_samples[size].append(outcome.latency_p99)
-                        if outcome.cpu_pct is not None:
-                            cpu_samples[size].append(outcome.cpu_pct)
-                        if outcome.mem_mb is not None:
-                            mem_samples[size].append(outcome.mem_mb)
                         row = single_table_row_line(
                             size,
                             "success",
@@ -1355,8 +1103,6 @@ def main() -> int:
                                 latency=outcome.latency,
                                 latency_p95=outcome.latency_p95,
                                 latency_p99=outcome.latency_p99,
-                                cpu_pct=outcome.cpu_pct,
-                                mem_mb=outcome.mem_mb,
                             ),
                         )
                         line = f"{row_indent}{row}"
@@ -1376,11 +1122,7 @@ def main() -> int:
                     if outcome.status == "skip":
                         transport_skip = True
                         reason = outcome.reason or "skip"
-                        skip_record = ComboRecord(
-                            status="fail",
-                            cpu_pct=outcome.cpu_pct,
-                            mem_mb=outcome.mem_mb,
-                        )
+                        skip_record = ComboRecord(status="fail")
                         for remain_size in sizes[size_idx:]:
                             failed_sizes[remain_size] = reason
                             row_record = skip_record if remain_size == size else None
@@ -1395,11 +1137,7 @@ def main() -> int:
                     reason = outcome.reason or "fail"
                     failed_sizes[size] = reason
                     all_failures.append((pattern, transport, size, reason))
-                    failed_record = ComboRecord(
-                        status="fail",
-                        cpu_pct=outcome.cpu_pct,
-                        mem_mb=outcome.mem_mb,
-                    )
+                    failed_record = ComboRecord(status="fail")
                     failed_records[size] = failed_record
                     row = single_table_row_line(size, "fail", failed_record)
                     line = f"{row_indent}{row}"
@@ -1440,8 +1178,6 @@ def main() -> int:
                     latency = statistics.median(l_samples[size])
                     latency_p95 = statistics.median(l95_samples[size])
                     latency_p99 = statistics.median(l99_samples[size])
-                    cpu_pct = statistics.median(cpu_samples[size]) if cpu_samples[size] else None
-                    mem_mb = statistics.median(mem_samples[size]) if mem_samples[size] else None
 
                     combo_results[(pattern, transport, size)] = ComboRecord(
                         status="success",
@@ -1450,8 +1186,6 @@ def main() -> int:
                         latency=latency,
                         latency_p95=latency_p95,
                         latency_p99=latency_p99,
-                        cpu_pct=cpu_pct,
-                        mem_mb=mem_mb,
                     )
 
             if show_run_labels:

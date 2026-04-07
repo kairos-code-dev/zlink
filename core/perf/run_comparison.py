@@ -441,234 +441,6 @@ class BoundedTextBuffer:
         return "[output truncated]\n" + out
 
 
-def resource_metrics_enabled():
-    return os.environ.get("PERF_DISABLE_RESOURCE_METRICS", "0") != "1"
-
-
-def linux_proc_metrics_supported():
-    return IS_LINUX and hasattr(os, "sysconf") and os.path.exists("/proc")
-
-
-def read_proc_cpu_ticks(pid):
-    stat_path = f"/proc/{pid}/stat"
-    try:
-        with open(stat_path, "r", encoding="utf-8", errors="ignore") as f:
-            data = f.read().strip()
-    except OSError:
-        return None
-
-    if not data:
-        return None
-    parts = data.split()
-    if len(parts) < 15:
-        return None
-    try:
-        utime = int(parts[13])
-        stime = int(parts[14])
-    except ValueError:
-        return None
-    return utime + stime
-
-
-def read_proc_mem_mb(pid):
-    status_path = f"/proc/{pid}/status"
-    try:
-        with open(status_path, "r", encoding="utf-8", errors="ignore") as f:
-            for line in f:
-                if not line.startswith("VmRSS:"):
-                    continue
-                parts = line.split()
-                if len(parts) < 2:
-                    break
-                return float(parts[1]) / 1024.0
-    except OSError:
-        return None
-    return None
-
-
-if IS_WINDOWS:
-    import ctypes
-    from ctypes import wintypes
-
-    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-    PROCESS_VM_READ = 0x0010
-
-    class FILETIME(ctypes.Structure):
-        _fields_ = [("dwLowDateTime", wintypes.DWORD), ("dwHighDateTime", wintypes.DWORD)]
-
-    class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
-        _fields_ = [
-            ("cb", wintypes.DWORD),
-            ("PageFaultCount", wintypes.DWORD),
-            ("PeakWorkingSetSize", ctypes.c_size_t),
-            ("WorkingSetSize", ctypes.c_size_t),
-            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-            ("PagefileUsage", ctypes.c_size_t),
-            ("PeakPagefileUsage", ctypes.c_size_t),
-        ]
-
-    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    _psapi = ctypes.WinDLL("psapi", use_last_error=True)
-
-    _kernel32.OpenProcess.argtypes = [
-        wintypes.DWORD,
-        wintypes.BOOL,
-        wintypes.DWORD,
-    ]
-    _kernel32.OpenProcess.restype = wintypes.HANDLE
-    _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-    _kernel32.CloseHandle.restype = wintypes.BOOL
-    _kernel32.GetProcessTimes.argtypes = [
-        wintypes.HANDLE,
-        ctypes.POINTER(FILETIME),
-        ctypes.POINTER(FILETIME),
-        ctypes.POINTER(FILETIME),
-        ctypes.POINTER(FILETIME),
-    ]
-    _kernel32.GetProcessTimes.restype = wintypes.BOOL
-    _psapi.GetProcessMemoryInfo.argtypes = [
-        wintypes.HANDLE,
-        ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
-        wintypes.DWORD,
-    ]
-    _psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
-
-
-def windows_proc_metrics_supported():
-    return IS_WINDOWS
-
-
-def open_windows_process_for_metrics(pid):
-    if not windows_proc_metrics_supported():
-        return None
-    access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ
-    handle = _kernel32.OpenProcess(access, False, int(pid))
-    if not handle:
-        return None
-    return handle
-
-
-def close_windows_process_handle(handle):
-    if handle:
-        _kernel32.CloseHandle(handle)
-
-
-def _filetime_to_uint64(filetime_obj):
-    return (int(filetime_obj.dwHighDateTime) << 32) | int(filetime_obj.dwLowDateTime)
-
-
-def read_windows_cpu_ticks_100ns(handle):
-    if not handle:
-        return None
-    creation = FILETIME()
-    exit_ft = FILETIME()
-    kernel = FILETIME()
-    user = FILETIME()
-    ok = _kernel32.GetProcessTimes(
-        handle,
-        ctypes.byref(creation),
-        ctypes.byref(exit_ft),
-        ctypes.byref(kernel),
-        ctypes.byref(user),
-    )
-    if not ok:
-        return None
-    return _filetime_to_uint64(kernel) + _filetime_to_uint64(user)
-
-
-def read_windows_mem_mb(handle):
-    if not handle:
-        return None
-    counters = PROCESS_MEMORY_COUNTERS()
-    counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
-    ok = _psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb)
-    if not ok:
-        return None
-    return float(counters.WorkingSetSize) / (1024.0 * 1024.0)
-
-
-def compute_process_cpu_pct(elapsed_seconds, start_ticks_value, end_ticks_value, mode):
-    if start_ticks_value is None or end_ticks_value is None:
-        return None
-
-    nproc = max(1.0, float(os.cpu_count() or 1))
-    if mode == "linux":
-        try:
-            hz = float(os.sysconf("SC_CLK_TCK"))
-        except (OSError, ValueError):
-            hz = 100.0
-        cpu_delta = max(0.0, float(end_ticks_value - start_ticks_value)) / max(1.0, hz)
-        return (cpu_delta / (max(1e-6, elapsed_seconds) * nproc)) * 100.0
-    if mode == "windows":
-        cpu_delta = max(0.0, float(end_ticks_value - start_ticks_value)) / 10000000.0
-        return (cpu_delta / (max(1e-6, elapsed_seconds) * nproc)) * 100.0
-    return None
-
-
-def create_external_process_sampler(pid):
-    if not resource_metrics_enabled():
-        def disabled_sample():
-            return None, None, False
-
-        def disabled_close():
-            return None
-
-        return disabled_sample, disabled_close
-
-    sample_mode = ""
-    proc_handle = None
-    start_ticks = None
-
-    if linux_proc_metrics_supported():
-        sample_mode = "linux"
-        start_ticks = read_proc_cpu_ticks(pid)
-    elif windows_proc_metrics_supported():
-        sample_mode = "windows"
-        proc_handle = open_windows_process_for_metrics(pid)
-        start_ticks = read_windows_cpu_ticks_100ns(proc_handle)
-
-    started = time.monotonic()
-    last_cpu = None
-    last_mem = None
-
-    def sample():
-        nonlocal last_cpu, last_mem
-        if not sample_mode:
-            return None, None, False
-
-        end_ticks = None
-        mem_mb = None
-        if sample_mode == "linux":
-            end_ticks = read_proc_cpu_ticks(pid)
-            mem_mb = read_proc_mem_mb(pid)
-        elif sample_mode == "windows":
-            end_ticks = read_windows_cpu_ticks_100ns(proc_handle)
-            mem_mb = read_windows_mem_mb(proc_handle)
-
-        cpu_pct = compute_process_cpu_pct(
-            time.monotonic() - started, start_ticks, end_ticks, sample_mode
-        )
-
-        changed = False
-        if cpu_pct is not None and cpu_pct != last_cpu:
-            changed = True
-        if mem_mb is not None and mem_mb != last_mem:
-            changed = True
-        if cpu_pct is not None:
-            last_cpu = cpu_pct
-        if mem_mb is not None:
-            last_mem = mem_mb
-        return cpu_pct, mem_mb, changed
-
-    def close():
-        close_windows_process_handle(proc_handle)
-
-    return sample, close
-
-
 def run_command_with_metrics(
     cmd,
     env,
@@ -745,67 +517,18 @@ def run_command_with_metrics(
                     except Exception:
                         pass
 
-    sample_mode = ""
-    if resource_metrics_enabled():
-        if linux_proc_metrics_supported():
-            sample_mode = "linux"
-        elif windows_proc_metrics_supported():
-            sample_mode = "windows"
-
-    proc_handle = None
-    start_ticks = None
-    end_ticks = None
-    end_mem_mb = None
-    if sample_mode == "linux":
-        start_ticks = read_proc_cpu_ticks(proc.pid)
-        end_ticks = start_ticks
-    elif sample_mode == "windows":
-        proc_handle = open_windows_process_for_metrics(proc.pid)
-        start_ticks = read_windows_cpu_ticks_100ns(proc_handle)
-        end_ticks = start_ticks
-
     timed_out = False
-    last_sample_cpu = None
-    last_sample_mem = None
 
     try:
         while True:
             _drain_output_queue()
             rc = proc.poll()
-            if sample_mode == "linux":
-                ticks = read_proc_cpu_ticks(proc.pid)
-                if ticks is not None:
-                    end_ticks = ticks
-                mem = read_proc_mem_mb(proc.pid)
-                if mem is not None:
-                    end_mem_mb = mem
-            elif sample_mode == "windows":
-                ticks = read_windows_cpu_ticks_100ns(proc_handle)
-                if ticks is not None:
-                    end_ticks = ticks
-                mem = read_windows_mem_mb(proc_handle)
-                if mem is not None:
-                    end_mem_mb = mem
 
             if on_sample is not None:
-                sample_cpu = compute_process_cpu_pct(
-                    time.monotonic() - started, start_ticks, end_ticks, sample_mode
-                )
-                sample_mem = end_mem_mb
-                changed = False
-                if sample_cpu is not None and sample_cpu != last_sample_cpu:
-                    changed = True
-                if sample_mem is not None and sample_mem != last_sample_mem:
-                    changed = True
-                if changed:
-                    try:
-                        on_sample(sample_cpu, sample_mem)
-                    except Exception:
-                        pass
-                    if sample_cpu is not None:
-                        last_sample_cpu = sample_cpu
-                    if sample_mem is not None:
-                        last_sample_mem = sample_mem
+                try:
+                    on_sample(None, None)
+                except Exception:
+                    pass
 
             if rc is not None and stream_done["stdout"] and stream_done["stderr"]:
                 break
@@ -827,34 +550,19 @@ def run_command_with_metrics(
             except Exception:
                 pass
         _drain_output_queue(block_timeout=0.01)
-
-        if sample_mode == "linux":
-            ticks = read_proc_cpu_ticks(proc.pid)
-            if ticks is not None:
-                end_ticks = ticks
-            mem = read_proc_mem_mb(proc.pid)
-            if mem is not None:
-                end_mem_mb = mem
-        elif sample_mode == "windows":
-            ticks = read_windows_cpu_ticks_100ns(proc_handle)
-            if ticks is not None:
-                end_ticks = ticks
-            mem = read_windows_mem_mb(proc_handle)
-            if mem is not None:
-                end_mem_mb = mem
     finally:
-        close_windows_process_handle(proc_handle)
-
-    elapsed = max(1e-6, time.monotonic() - started)
-    cpu_pct = compute_process_cpu_pct(elapsed, start_ticks, end_ticks, sample_mode)
+        if proc.poll() is None:
+            proc.kill()
+            try:
+                proc.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                pass
 
     return {
         "returncode": proc.returncode,
         "stdout": stdout_buffer.text(),
         "stderr": stderr_buffer.text(),
         "timed_out": timed_out,
-        "cpu_pct": cpu_pct,
-        "mem_mb": end_mem_mb,
     }
 
 
@@ -1063,12 +771,6 @@ def parse_result_line(line, transport, expected_sizes):
         "latency",
         LATENCY_P95_METRIC,
         LATENCY_P99_METRIC,
-        "cpu_pct",
-        "mem_mb",
-        "client_cpu_pct",
-        "client_mem_mb",
-        "server_cpu_pct",
-        "server_mem_mb",
     ):
         return None, f"ignored unknown RESULT metric '{metric}': {line.strip()}"
 
@@ -1130,9 +832,8 @@ def emit_result_metrics_from_line(
     parsed_line, _ = parse_result_line(line, transport, expected_sizes)
     if parsed_line:
         line_transport, line_size, metric, value = parsed_line
-        metric_name = normalize_metric_name(metric)
         _emit_result_metric_callback(
-            result_line_callback, line_transport, line_size, metric_name, value
+            result_line_callback, line_transport, line_size, metric, value
         )
         return
 
@@ -1233,14 +934,6 @@ def resolve_pattern_connect_concurrency(clients):
     if clients >= 10000:
         return 1024
     return 128
-
-
-def normalize_metric_name(metric):
-    if metric == "cpu_pct":
-        return "client_cpu_pct"
-    if metric == "mem_mb":
-        return "client_mem_mb"
-    return metric
 
 
 def should_warn_duplicate_metric(metric_name):
@@ -1469,8 +1162,6 @@ def run_sizes_test_stream_shared(
             "parsed": {},
             "timed_out": False,
             "returncode": 0,
-            "cpu_pct": None,
-            "mem_mb": None,
             "reason": "",
             "warnings": [],
         }
@@ -1486,10 +1177,6 @@ def run_sizes_test_stream_shared(
             )
             merged["parsed"].update(outcome.get("parsed", {}) or {})
             merged["warnings"].extend(outcome.get("warnings", []) or [])
-            if outcome.get("cpu_pct") is not None:
-                merged["cpu_pct"] = outcome.get("cpu_pct")
-            if outcome.get("mem_mb") is not None:
-                merged["mem_mb"] = outcome.get("mem_mb")
             merged["returncode"] = max(
                 int(merged.get("returncode", 0) or 0),
                 int(outcome.get("returncode", 0) or 0),
@@ -1517,8 +1204,6 @@ def run_sizes_test_stream_shared(
             "parsed": {},
             "timed_out": False,
             "returncode": -1,
-            "cpu_pct": None,
-            "mem_mb": None,
             "reason": "missing_stream_shared_binaries",
             "warnings": [],
         }
@@ -1584,7 +1269,6 @@ def run_sizes_test_stream_shared(
         set_env_pair(client_env, "PERF_WAIT_SERVER_STOP_AFTER_CLIENT_DONE", 1)
     server_proc = None
     close_server_sampler = None
-    sample_server_metrics = None
     capture_limit = resolve_output_capture_limit()
     server_stdout_buffer = BoundedTextBuffer(capture_limit)
     server_stderr_buffer = BoundedTextBuffer(capture_limit)
@@ -1794,8 +1478,6 @@ def run_sizes_test_stream_shared(
                 "parsed": {},
                 "timed_out": False,
                 "returncode": 0,
-                "cpu_pct": None,
-                "mem_mb": None,
                 "reason": early_reason or early_status,
                 "warnings": [],
             }
@@ -1822,24 +1504,12 @@ def run_sizes_test_stream_shared(
                 "parsed": {},
                 "timed_out": False,
                 "returncode": server_proc.returncode if server_proc else -1,
-                "cpu_pct": None,
-                "mem_mb": None,
                 "reason": reason,
                 "warnings": [],
             }
 
-        line_transport = transport.lower()
         final_size = sizes[-1] if sizes else fallback_size
-        sample_server_metrics, close_server_sampler = create_external_process_sampler(
-            server_proc.pid
-        )
-        current_live_size = [sizes[0] if sizes else None]
-        last_server_cpu = [None]
-        last_server_mem = [None]
-        last_server_size = [None]
-        last_client_cpu = [None]
-        last_client_mem = [None]
-        last_client_size = [None]
+        close_server_sampler = lambda: None
 
         def maybe_send_size_start(size_value):
             if not control_connected[0] or size_value is None:
@@ -1859,87 +1529,6 @@ def run_sizes_test_stream_shared(
             except Exception:
                 pass
 
-        def update_live_size_from_line(line):
-            parsed_line, _warning = parse_result_line(
-                line, transport, expected_sizes
-            )
-            if parsed_line:
-                current_live_size[0] = parsed_line[1]
-                return
-            connect_line, _connect_warning = parse_result_connect_line(
-                line, transport, expected_sizes
-            )
-            if connect_line:
-                current_live_size[0] = connect_line[1]
-
-        def emit_live_server_metrics(force=False):
-            if result_line_callback is None or sample_server_metrics is None:
-                return
-            sample_cpu, sample_mem, changed = sample_server_metrics()
-            if sample_cpu is not None:
-                last_server_cpu[0] = float(sample_cpu)
-            if sample_mem is not None:
-                last_server_mem[0] = float(sample_mem)
-
-            target_size = current_live_size[0]
-            if target_size not in expected_sizes:
-                return
-            size_changed = target_size != last_server_size[0]
-            if not changed and not force and not size_changed:
-                return
-
-            if last_server_cpu[0] is not None:
-                _emit_result_metric_callback(
-                    result_line_callback,
-                    line_transport,
-                    target_size,
-                    "server_cpu_pct",
-                    last_server_cpu[0],
-                )
-            if last_server_mem[0] is not None:
-                _emit_result_metric_callback(
-                    result_line_callback,
-                    line_transport,
-                    target_size,
-                    "server_mem_mb",
-                    last_server_mem[0],
-                )
-            last_server_size[0] = target_size
-
-        def emit_live_client_metrics(sample_cpu, sample_mem, force=False):
-            if result_line_callback is None:
-                return
-
-            if sample_cpu is not None:
-                last_client_cpu[0] = float(sample_cpu)
-            if sample_mem is not None:
-                last_client_mem[0] = float(sample_mem)
-
-            target_size = current_live_size[0]
-            if target_size not in expected_sizes:
-                return
-            size_changed = target_size != last_client_size[0]
-            if sample_cpu is None and sample_mem is None and not force and not size_changed:
-                return
-
-            if last_client_cpu[0] is not None:
-                _emit_result_metric_callback(
-                    result_line_callback,
-                    line_transport,
-                    target_size,
-                    "client_cpu_pct",
-                    last_client_cpu[0],
-                )
-            if last_client_mem[0] is not None:
-                _emit_result_metric_callback(
-                    result_line_callback,
-                    line_transport,
-                    target_size,
-                    "client_mem_mb",
-                    last_client_mem[0],
-                )
-            last_client_size[0] = target_size
-
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
             client_endpoint = parse_client_endpoint(line)
@@ -1958,21 +1547,16 @@ def run_sizes_test_stream_shared(
                 pending_ready_sizes.add(ready_size)
                 maybe_send_size_start(ready_size)
                 return
-            update_live_size_from_line(line)
             emit_result_metrics_from_line(
                 line, transport, expected_sizes, result_line_callback
             )
             if control_connected[0] and pending_ready_sizes:
                 maybe_send_size_start(next(iter(pending_ready_sizes)))
-            emit_live_server_metrics()
-            emit_live_client_metrics(None, None)
 
-        def on_client_sample(sample_cpu, sample_mem):
+        def on_client_sample(_sample_cpu, _sample_mem):
             pump_server_output_nonblocking()
             if control_connected[0] and pending_ready_sizes:
                 maybe_send_size_start(next(iter(pending_ready_sizes)))
-            emit_live_server_metrics()
-            emit_live_client_metrics(sample_cpu, sample_mem)
 
         client_run_cmd = client_cmd + ["--endpoint", endpoint]
         if use_control_plane:
@@ -1989,8 +1573,6 @@ def run_sizes_test_stream_shared(
             on_process_start=lambda proc: client_proc.__setitem__(0, proc),
         )
         pump_server_output_nonblocking()
-        emit_live_server_metrics(force=True)
-        emit_live_client_metrics(None, None, force=True)
         client_stdout = sampled.get("stdout", "") or ""
         client_stderr = sampled.get("stderr", "") or ""
         if debug_transitions and client_stderr:
@@ -2031,13 +1613,12 @@ def run_sizes_test_stream_shared(
                 continue
 
             line_transport, line_size, metric, value = parsed_line
-            metric_name = normalize_metric_name(metric)
-            key = f"{line_transport}|{line_size}|{metric_name}"
+            key = f"{line_transport}|{line_size}|{metric}"
             if key in parsed:
-                if should_warn_duplicate_metric(metric_name):
+                if should_warn_duplicate_metric(metric):
                     warnings.append(
                         "duplicate RESULT metric detected; keeping last value: "
-                        f"{pattern_name} {transport} {line_size}B {metric_name}"
+                        f"{pattern_name} {transport} {line_size}B {metric}"
                     )
             parsed[key] = value
 
@@ -2055,8 +1636,6 @@ def run_sizes_test_stream_shared(
                 "parsed": parsed,
                 "timed_out": True,
                 "returncode": sampled.get("returncode", -1),
-                "cpu_pct": sampled.get("cpu_pct"),
-                "mem_mb": sampled.get("mem_mb"),
                 "reason": "timeout",
                 "warnings": warnings,
                 **progress_meta,
@@ -2071,8 +1650,6 @@ def run_sizes_test_stream_shared(
                 "parsed": parsed,
                 "timed_out": False,
                 "returncode": sampled.get("returncode", -1),
-                "cpu_pct": sampled.get("cpu_pct"),
-                "mem_mb": sampled.get("mem_mb"),
                 "reason": reason,
                 "warnings": warnings,
                 **progress_meta,
@@ -2089,8 +1666,6 @@ def run_sizes_test_stream_shared(
                 "parsed": parsed,
                 "timed_out": False,
                 "returncode": server_rc,
-                "cpu_pct": sampled.get("cpu_pct"),
-                "mem_mb": sampled.get("mem_mb"),
                 "reason": reason,
                 "warnings": warnings,
                 **progress_meta,
@@ -2102,8 +1677,6 @@ def run_sizes_test_stream_shared(
                 "parsed": parsed,
                 "timed_out": False,
                 "returncode": 0,
-                "cpu_pct": sampled.get("cpu_pct"),
-                "mem_mb": sampled.get("mem_mb"),
                 "reason": "",
                 "warnings": warnings,
                 **progress_meta,
@@ -2114,8 +1687,6 @@ def run_sizes_test_stream_shared(
                 "parsed": {},
                 "timed_out": False,
                 "returncode": 0,
-                "cpu_pct": sampled.get("cpu_pct"),
-                "mem_mb": sampled.get("mem_mb"),
                 "reason": token_reason if token_reason else token_status,
                 "warnings": warnings,
                 **progress_meta,
@@ -2126,8 +1697,6 @@ def run_sizes_test_stream_shared(
                 "parsed": {},
                 "timed_out": False,
                 "returncode": 0,
-                "cpu_pct": sampled.get("cpu_pct"),
-                "mem_mb": sampled.get("mem_mb"),
                 "reason": "unsupported",
                 "warnings": warnings,
                 **progress_meta,
@@ -2137,8 +1706,6 @@ def run_sizes_test_stream_shared(
             "parsed": {},
             "timed_out": False,
             "returncode": sampled.get("returncode", -1),
-            "cpu_pct": sampled.get("cpu_pct"),
-            "mem_mb": sampled.get("mem_mb"),
             "reason": "no_data",
             "warnings": warnings,
             **progress_meta,
@@ -2150,8 +1717,6 @@ def run_sizes_test_stream_shared(
             "parsed": {},
             "timed_out": False,
             "returncode": -1,
-            "cpu_pct": None,
-            "mem_mb": None,
             "reason": "exception",
             "warnings": [],
         }
@@ -2164,8 +1729,6 @@ def run_sizes_test_stream_shared(
         "parsed": {},
         "timed_out": False,
         "returncode": -1,
-        "cpu_pct": None,
-        "mem_mb": None,
         "reason": "no_data",
         "warnings": [],
     }
@@ -2239,7 +1802,6 @@ def run_sizes_test_split(
 
     server_proc = None
     close_server_sampler = None
-    sample_server_metrics = None
     capture_limit = resolve_output_capture_limit()
     server_stdout_buffer = BoundedTextBuffer(capture_limit)
     server_stderr_buffer = BoundedTextBuffer(capture_limit)
@@ -2449,8 +2011,6 @@ def run_sizes_test_split(
                 "parsed": {},
                 "timed_out": False,
                 "returncode": 0,
-                "cpu_pct": None,
-                "mem_mb": None,
                 "reason": early_reason or early_status,
                 "warnings": [],
             }
@@ -2477,20 +2037,11 @@ def run_sizes_test_split(
                 "parsed": {},
                 "timed_out": False,
                 "returncode": server_proc.returncode if server_proc else -1,
-                "cpu_pct": None,
-                "mem_mb": None,
                 "reason": reason,
                 "warnings": [],
             }
 
-        line_transport = transport.lower()
-        sample_server_metrics, close_server_sampler = create_external_process_sampler(
-            server_proc.pid
-        )
-        current_live_size = [sizes[0] if sizes else None]
-        last_server_cpu = [None]
-        last_server_mem = [None]
-        last_server_size = [None]
+        close_server_sampler = lambda: None
         stop_requested_sizes = set()
 
         def maybe_send_size_start(size_value):
@@ -2510,53 +2061,6 @@ def run_sizes_test_split(
                     flush_pending_phase_active()
             except Exception:
                 pass
-
-        def update_live_size_from_line(line):
-            parsed_line, _warning = parse_result_line(
-                line, transport, expected_sizes
-            )
-            if parsed_line:
-                current_live_size[0] = parsed_line[1]
-                return
-            connect_line, _connect_warning = parse_result_connect_line(
-                line, transport, expected_sizes
-            )
-            if connect_line:
-                current_live_size[0] = connect_line[1]
-
-        def emit_live_server_metrics(force=False):
-            if result_line_callback is None or sample_server_metrics is None:
-                return
-            sample_cpu, sample_mem, changed = sample_server_metrics()
-            if sample_cpu is not None:
-                last_server_cpu[0] = float(sample_cpu)
-            if sample_mem is not None:
-                last_server_mem[0] = float(sample_mem)
-
-            target_size = current_live_size[0]
-            if target_size not in expected_sizes:
-                return
-            size_changed = target_size != last_server_size[0]
-            if not changed and not force and not size_changed:
-                return
-
-            if last_server_cpu[0] is not None:
-                _emit_result_metric_callback(
-                    result_line_callback,
-                    line_transport,
-                    target_size,
-                    "server_cpu_pct",
-                    last_server_cpu[0],
-                )
-            if last_server_mem[0] is not None:
-                _emit_result_metric_callback(
-                    result_line_callback,
-                    line_transport,
-                    target_size,
-                    "server_mem_mb",
-                    last_server_mem[0],
-                )
-            last_server_size[0] = target_size
 
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
@@ -2587,13 +2091,11 @@ def run_sizes_test_split(
                     except Exception:
                         pass
                 return
-            update_live_size_from_line(line)
             emit_result_metrics_from_line(
                 line, transport, expected_sizes, result_line_callback
             )
             if control_connected[0] and pending_ready_sizes:
                 maybe_send_size_start(next(iter(pending_ready_sizes)))
-            emit_live_server_metrics()
 
         client_cmd = client_cmd + ["--endpoint", endpoint]
         if use_control_plane:
@@ -2606,17 +2108,15 @@ def run_sizes_test_split(
             client_env,
             timeout_sec,
             on_stdout_line=on_client_stdout_line,
-            on_sample=lambda _cpu, _mem: (
+            on_sample=lambda _sample_cpu, _sample_mem: (
                 pump_server_output_nonblocking(),
                 maybe_send_size_start(next(iter(pending_ready_sizes)))
                 if control_connected[0] and pending_ready_sizes
                 else None,
-                emit_live_server_metrics(),
             ),
             on_process_start=lambda proc: client_proc.__setitem__(0, proc),
         )
         pump_server_output_nonblocking()
-        emit_live_server_metrics(force=True)
         client_stdout = sampled.get("stdout", "") or ""
         client_stderr = sampled.get("stderr", "") or ""
         if debug_transitions and client_stderr:
@@ -2645,13 +2145,12 @@ def run_sizes_test_split(
             if not parsed_line:
                 continue
             line_transport, line_size, metric, value = parsed_line
-            metric_name = normalize_metric_name(metric)
-            key = f"{line_transport}|{line_size}|{metric_name}"
+            key = f"{line_transport}|{line_size}|{metric}"
             if key in parsed:
-                if should_warn_duplicate_metric(metric_name):
+                if should_warn_duplicate_metric(metric):
                     warnings.append(
                         "duplicate RESULT metric detected; keeping last value: "
-                        f"{pattern_name} {transport} {line_size}B {metric_name}"
+                        f"{pattern_name} {transport} {line_size}B {metric}"
                     )
             parsed[key] = value
 
@@ -2665,8 +2164,6 @@ def run_sizes_test_split(
                 "parsed": parsed,
                 "timed_out": True,
                 "returncode": sampled.get("returncode", -1),
-                "cpu_pct": sampled.get("cpu_pct"),
-                "mem_mb": sampled.get("mem_mb"),
                 "reason": "timeout",
                 "warnings": warnings,
                 **progress_meta,
@@ -2681,8 +2178,6 @@ def run_sizes_test_split(
                 "parsed": parsed,
                 "timed_out": False,
                 "returncode": sampled.get("returncode", -1),
-                "cpu_pct": sampled.get("cpu_pct"),
-                "mem_mb": sampled.get("mem_mb"),
                 "reason": reason,
                 "warnings": warnings,
                 **progress_meta,
@@ -2699,8 +2194,6 @@ def run_sizes_test_split(
                 "parsed": parsed,
                 "timed_out": False,
                 "returncode": server_rc,
-                "cpu_pct": sampled.get("cpu_pct"),
-                "mem_mb": sampled.get("mem_mb"),
                 "reason": reason,
                 "warnings": warnings,
                 **progress_meta,
@@ -2712,8 +2205,6 @@ def run_sizes_test_split(
                 "parsed": parsed,
                 "timed_out": False,
                 "returncode": 0,
-                "cpu_pct": sampled.get("cpu_pct"),
-                "mem_mb": sampled.get("mem_mb"),
                 "reason": "",
                 "warnings": warnings,
                 **progress_meta,
@@ -2724,8 +2215,6 @@ def run_sizes_test_split(
                 "parsed": {},
                 "timed_out": False,
                 "returncode": 0,
-                "cpu_pct": sampled.get("cpu_pct"),
-                "mem_mb": sampled.get("mem_mb"),
                 "reason": token_reason if token_reason else token_status,
                 "warnings": warnings,
                 **progress_meta,
@@ -2736,8 +2225,6 @@ def run_sizes_test_split(
                 "parsed": {},
                 "timed_out": False,
                 "returncode": 0,
-                "cpu_pct": sampled.get("cpu_pct"),
-                "mem_mb": sampled.get("mem_mb"),
                 "reason": "unsupported",
                 "warnings": warnings,
                 **progress_meta,
@@ -2747,8 +2234,6 @@ def run_sizes_test_split(
             "parsed": {},
             "timed_out": False,
             "returncode": sampled.get("returncode", -1),
-            "cpu_pct": sampled.get("cpu_pct"),
-            "mem_mb": sampled.get("mem_mb"),
             "reason": "no_data",
             "warnings": warnings,
             **progress_meta,
@@ -2760,8 +2245,6 @@ def run_sizes_test_split(
             "parsed": {},
             "timed_out": False,
             "returncode": -1,
-            "cpu_pct": None,
-            "mem_mb": None,
             "reason": "exception",
             "warnings": [],
         }
@@ -2774,8 +2257,6 @@ def run_sizes_test_split(
         "parsed": {},
         "timed_out": False,
         "returncode": -1,
-        "cpu_pct": None,
-        "mem_mb": None,
         "reason": "no_data",
         "warnings": [],
     }
@@ -2813,8 +2294,6 @@ def run_sizes_test(
                 "parsed": {},
                 "timed_out": False,
                 "returncode": -1,
-                "cpu_pct": None,
-                "mem_mb": None,
                 "reason": "invalid_stream_server_pattern",
                 "warnings": [],
             }
@@ -2837,8 +2316,6 @@ def run_sizes_test(
                 "parsed": {},
                 "timed_out": False,
                 "returncode": -1,
-                "cpu_pct": None,
-                "mem_mb": None,
                 "reason": "invalid_pattern",
                 "warnings": [],
             }
@@ -2851,8 +2328,6 @@ def run_sizes_test(
                 "parsed": {},
                 "timed_out": False,
                 "returncode": -1,
-                "cpu_pct": None,
-                "mem_mb": None,
                 "reason": "missing_split_binaries",
                 "warnings": [],
             }
@@ -2873,8 +2348,6 @@ def run_sizes_test(
         "parsed": {},
         "timed_out": False,
         "returncode": 0,
-        "cpu_pct": None,
-        "mem_mb": None,
         "reason": "",
         "warnings": [],
     }
@@ -2882,20 +2355,6 @@ def run_sizes_test(
         isolated = run_one_size_case(size)
         merged["warnings"].extend(isolated.get("warnings", []))
         merged["parsed"].update(isolated.get("parsed", {}))
-
-        cpu_pct = isolated.get("cpu_pct")
-        if cpu_pct is not None:
-            if merged["cpu_pct"] is None:
-                merged["cpu_pct"] = cpu_pct
-            else:
-                merged["cpu_pct"] = max(merged["cpu_pct"], cpu_pct)
-
-        mem_mb = isolated.get("mem_mb")
-        if mem_mb is not None:
-            if merged["mem_mb"] is None:
-                merged["mem_mb"] = mem_mb
-            else:
-                merged["mem_mb"] = max(merged["mem_mb"], mem_mb)
 
         if isolated.get("status") != "success":
             merged["status"] = isolated.get("status", "fail")
@@ -3162,11 +2621,8 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
 
                 live_metrics = {}
                 live_emitted_sizes = set()
-                live_emitted_with_server = set()
 
                 def maybe_emit_live_row(sz):
-                    if sz in live_emitted_with_server:
-                        return
                     tp_key = f"{tr}|{sz}|throughput"
                     bw_key = f"{tr}|{sz}|bandwidth"
                     lat_key = f"{tr}|{sz}|latency"
@@ -3177,8 +2633,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     lat_value = live_metrics.get(lat_key)
                     lat95_value = live_metrics.get(lat95_key)
                     lat99_value = live_metrics.get(lat99_key)
-                    server_cpu_value = live_metrics.get(f"{tr}|{sz}|server_cpu_pct")
-                    server_mem_value = live_metrics.get(f"{tr}|{sz}|server_mem_mb")
                     if sz in live_emitted_sizes:
                         return
 
@@ -3219,11 +2673,8 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         latency=lat_value,
                         latency_p95=lat95_value,
                         latency_p99=lat99_value,
-                        server_cpu=server_cpu_value,
-                        server_mem=server_mem_value,
                     )
                     live_emitted_sizes.add(sz)
-                    live_emitted_with_server.add(sz)
 
                 def on_result_metric(line_transport, line_size, metric_name, value):
                     if line_transport != tr.lower() or line_size not in sizes:
@@ -3377,28 +2828,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                             continue
 
                     if sz in live_emitted_sizes:
-                        if (
-                            pattern_name not in STREAM_VARIANT_PATTERNS
-                            and sz not in live_emitted_with_server
-                        ):
-                            server_cpu_value = parsed.get(f"{tr}|{sz}|server_cpu_pct")
-                            server_mem_value = parsed.get(f"{tr}|{sz}|server_mem_mb")
-                            if (
-                                server_cpu_value is not None
-                                or server_mem_value is not None
-                            ):
-                                emit_size_row(
-                                    sz,
-                                    "success",
-                                    throughput=parsed.get(tp_key, 0.0),
-                                    bandwidth=parsed.get(bw_key, 0.0),
-                                    latency=parsed.get(lat_key, 0.0),
-                                    latency_p95=parsed.get(lat95_key),
-                                    latency_p99=parsed.get(lat99_key),
-                                    server_cpu=server_cpu_value,
-                                    server_mem=server_mem_value,
-                                )
-                                live_emitted_with_server.add(sz)
                         continue
                     emit_size_row(
                         sz,
@@ -3408,8 +2837,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         latency=parsed.get(lat_key, 0.0),
                         latency_p95=parsed.get(lat95_key),
                         latency_p99=parsed.get(lat99_key),
-                        server_cpu=parsed.get(f"{tr}|{sz}|server_cpu_pct"),
-                        server_mem=parsed.get(f"{tr}|{sz}|server_mem_mb"),
                     )
                     live_emitted_sizes.add(sz)
 
@@ -3456,13 +2883,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                 vals = metrics_raw.get(key, [])
                 final_stats[key] = statistics.median(vals) if vals else 0
             for sz in sizes:
-                for optional_metric in (
-                    "server_cpu_pct",
-                    "server_mem_mb",
-                    "connect_ok",
-                    "connect_fail",
-                    "connect_target",
-                ):
+                for optional_metric in ("connect_ok", "connect_fail", "connect_target"):
                     optional_key = f"{tr}|{sz}|{optional_metric}"
                     vals = metrics_raw.get(optional_key, [])
                     if vals:
@@ -3494,8 +2915,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         latency=final_stats.get(lat_key, 0.0),
                         latency_p95=final_stats.get(lat95_key),
                         latency_p99=final_stats.get(lat99_key),
-                        server_cpu=final_stats.get(f"{tr}|{sz}|server_cpu_pct"),
-                        server_mem=final_stats.get(f"{tr}|{sz}|server_mem_mb"),
                     )
 
             emit(f"    Testing {tr}: Done")
@@ -3622,8 +3041,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     latency=result_by_metric.get("latency"),
                     latency_p95=result_by_metric.get(LATENCY_P95_METRIC),
                     latency_p99=result_by_metric.get(LATENCY_P99_METRIC),
-                    client_cpu=result_by_metric.get("cpu_pct"),
-                    client_mem=result_by_metric.get("mem_mb"),
                 )
 
         if tr_unsupported:
@@ -3690,8 +3107,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     latency=final_stats.get(lat_key),
                     latency_p95=final_stats.get(lat95_key),
                     latency_p99=final_stats.get(lat99_key),
-                    client_cpu=final_stats.get(f"{tr}|{sz}|cpu_pct"),
-                    client_mem=final_stats.get(f"{tr}|{sz}|mem_mb"),
                 )
 
         emit(f"    Testing {tr}: Done")
@@ -4599,10 +4014,6 @@ def main():
                 lat_key = f"{tr}|{sz}|latency"
                 lat95_key = f"{tr}|{sz}|{LATENCY_P95_METRIC}"
                 lat99_key = f"{tr}|{sz}|{LATENCY_P99_METRIC}"
-                cpu_key = f"{tr}|{sz}|server_cpu_pct" if is_multi else f"{tr}|{sz}|cpu_pct"
-                mem_key = f"{tr}|{sz}|server_mem_mb" if is_multi else f"{tr}|{sz}|mem_mb"
-                server_cpu_key = f"{tr}|{sz}|server_cpu_pct"
-                server_mem_key = f"{tr}|{sz}|server_mem_mb"
                 has_tp = tp_key in c_stats
                 has_bw = bw_key in c_stats
                 has_lat = lat_key in c_stats
@@ -4635,16 +4046,6 @@ def main():
                     current_results[(p_name, tr, sz, LATENCY_P99_METRIC)] = cl99
                     expected_result_lines += REQUIRED_RESULT_METRIC_COUNT
                     actual_result_lines += REQUIRED_RESULT_METRIC_COUNT
-
-                    if cpu_key in c_stats:
-                        cpu_v = c_stats[cpu_key]
-                        current_metric = "server_cpu_pct" if is_multi else "cpu_pct"
-                        current_results[(p_name, tr, sz, current_metric)] = cpu_v
-
-                    if mem_key in c_stats:
-                        mem_v = c_stats[mem_key]
-                        current_metric = "server_mem_mb" if is_multi else "mem_mb"
-                        current_results[(p_name, tr, sz, current_metric)] = mem_v
 
                 status_counts[status] += 1
 

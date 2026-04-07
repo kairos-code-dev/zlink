@@ -5,7 +5,11 @@
 > **Date**: 2026-03-21
 > **Scope**: zlink 성능 테스트 통합 정책 — 공통 구조, 통합 실행, 비교 스크립트
 >
-> 본 정책은 `perf/`의 C++ 벤치마크와 현재 perf suite가 구현된 바인딩(`bindings/cpp`, `bindings/dotnet`, `bindings/java`)에 동일하게 적용된다. `bindings/node`는 in-repo perf 자산이 존재하지만 아직 shared policy parity를 맞추는 정렬 대상이므로, 본 문서는 Node에도 현재 기준 계약으로 적용한다. `bindings/python`은 아직 perf suite가 구현되지 않았으므로 본 문서의 구조/운영 원칙만 향후 기준으로 삼는다.
+> 본 정책은 `perf/`의 C++ 벤치마크와 in-repo perf 자산이 존재하는 바인딩
+> (`bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/rust`,
+> `bindings/go`, `bindings/node`, `bindings/python`)에 동일한 기준으로 적용한다.
+> 단, 각 언어의 구현 완성도와 지원 패턴 범위는 다를 수 있으므로 실제 parity
+> 수준은 언어별로 점검/정렬 대상이 된다.
 
 ---
 
@@ -25,14 +29,42 @@
 
 아래 원칙은 `core/perf`와 모든 bindings perf에 동일하게 적용한다.
 
-- perf/bench 코드는 `doc/guide` 및 `doc/api` 문서에 기술된 public C API만
-  사용한다. 내부 헤더나 내부 함수를 직접 호출하지 않는다.
-- public C API 동작에 문제가 있으면 perf 코드에서 우회하지 않고 버그로
-  레포팅한다. 버그레포팅 문서는 doc/bug/perf 아래에 md 파일 형식으로 작성한다. 버그는 회귀테스트를 작성해서 재현을 확인하고 수정한다. 버그 를 우선 후정하고 이어서 perf 작업을 계속한다.
+- `core/perf`는 `doc/guide` 및 `doc/api` 문서에 기술된 public C API만 사용한다.
+  내부 헤더나 내부 함수를 직접 호출하지 않는다.
+- `bindings/<lang>/perf`는 해당 언어 binding의 public API만 사용한다. binding
+  내부/private API, 내부 구현 클래스, native 내부 helper를 직접 호출하지 않는다.
+- public API 동작에 문제가 있으면 perf 코드에서 우회하지 않고 버그로
+  레포팅한다. 버그레포팅 문서는 doc/bug/perf 아래에 md 파일 형식으로 작성한다.
+  버그는 회귀테스트를 작성해서 재현을 확인하고 수정한다. 버그를 우선 수정하고
+  이어서 perf 작업을 계속한다.
 - 측정 의미는 유지한다.
   - `ready / active`
   - `RESULT` 포맷
   - 실패 의미
+- `core/perf`와 bindings perf는 같은 이름의 metric을 서로 다른 anchor point에서
+  계산하면 안 된다. 같은 비교 surface라면 아래 측정 anchor를 동일 의미로
+  유지해야 한다.
+  - send timestamp 기록 위치
+  - ready 만족 판정 위치
+  - active 시작/종료 판정 위치
+  - 유효 recv 판정 위치
+  - throughput count 증가 위치
+  - latency sample 채취 위치
+  - RESULT line 확정 위치
+- bindings perf는 측정 anchor와 결과 의미를 core와 동일하게 유지해야 하지만,
+  구현 스타일은 언어별 특성에 맞게 작성할 수 있다.
+  - 허용: 언어별 async/runtime, callback 등록 방식, 모듈 분리, 타입 시스템 차이
+  - 금지: 측정 anchor point 이동, phase 의미 변경, metric 집합 변경, fail/skip/
+    unsupported 의미 변경
+- bindings perf는 아래 비교 가능성 체크리스트를 함께 만족해야 한다.
+  - 같은 pattern/transport 의미를 측정한다.
+  - 같은 metric header / wire protocol contract를 사용한다.
+  - 같은 Tier 1 5개 metric과 같은 RESULT line 의미를 사용한다.
+  - 같은 fail/skip/unsupported/complete/partial 의미를 사용한다.
+  - hot path가 실제 binding public API를 통과한다.
+- bindings perf는 “binding 라이브러리 성능”을 측정해야 한다. 따라서 core native
+  perf 바이너리를 단순 wrapper로 다시 호출해 결과만 중계하는 방식은 정책 준수
+  구현으로 보지 않는다.
 - backpressure 검증은 기본 perf surface가 아니라 `core/tests/integration`
   으로 분리한다. one-way backpressure 통합 범위는 `DEALER_DEALER`,
   `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `SPOT` 이며,
@@ -370,8 +402,8 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 
 | suite | core 스크립트 | bindings 스크립트 | 정책 문서 |
 |-------|--------------|-------------------|-----------|
-| single | `core/perf/run_benchmarks.sh` / `.ps1` | `bindings/perf/run_policy_bench.py --suite single --binding <binding>` | [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) |
-| multi | `core/perf/run_benchmarks_multi.sh` / `.ps1` | `bindings/perf/run_policy_bench.py --suite multi --binding <binding>` | [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) |
+| single | `core/perf/run_benchmarks.sh` / `.ps1` | `bindings/<binding>/perf/run_benchmarks.sh` / binding-local 실행기 | [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) |
+| multi | `core/perf/run_benchmarks_multi.sh` / `.ps1` | `bindings/<binding>/perf/run_benchmarks_multi.sh` / binding-local 실행기 | [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) |
 
 ```bash
 # core single만 실행
@@ -381,27 +413,27 @@ core/perf/run_benchmarks.sh --pattern PAIR
 core/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
 
 # bindings 실행 (예: cpp)
-bindings/perf/run_policy_bench.py --binding cpp --suite single --pattern PAIR
-bindings/perf/run_policy_bench.py --binding cpp --suite multi --pattern MULTI_STREAM
+bindings/cpp/perf/run_benchmarks.sh --pattern PAIR
+bindings/cpp/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
 ```
 
 각 스크립트의 상세 옵션은 개별 정책 문서의 섹션 5를 참조한다.
 
-> **정책 준수 실행기**: 아래 스크립트가 각 suite의 유일한 정책 준수 실행기이다. core single은 `single/run_comparison.py`를, core multi는 `run_comparison.py`를 내부 실행/비교 엔진으로 사용한다 (`run_benchmarks.sh`에서 `PERF_ALLOW_MULTI=1` 여부로 경로를 결정한다). bindings는 `bindings/perf/run_policy_bench.py`를 내부 실행/비교 엔진으로 사용한다.
+> **정책 준수 실행기**: 아래 스크립트가 각 suite의 유일한 정책 준수 실행기이다. core는 single=`core/perf/run_benchmarks.sh`, multi=`core/perf/run_benchmarks_multi.sh`를 사용하고, bindings는 각 언어 디렉터리의 `bindings/<binding>/perf/run_benchmarks*.sh` 또는 그와 동등한 binding-local 실행기를 사용한다. 내부 실행 엔진과 wrapper 간 호출 체인은 구현 세부이며, 정책은 공식 entrypoint와 책임 분리만 규정한다.
 >
 > | suite | core | bindings |
 > |-------|------|----------|
-> | single | `core/perf/run_benchmarks.sh` | `bindings/perf/run_policy_bench.py --suite single --binding <binding>` |
-> | multi | `core/perf/run_benchmarks_multi.sh` | `bindings/perf/run_policy_bench.py --suite multi --binding <binding>` |
+> | single | `core/perf/run_benchmarks.sh` | `bindings/<binding>/perf/run_benchmarks.sh` 또는 동등한 binding-local 실행기 |
+> | multi | `core/perf/run_benchmarks_multi.sh` | `bindings/<binding>/perf/run_benchmarks_multi.sh` 또는 동등한 binding-local 실행기 |
 >
-> core는 single/multi 스크립트가 같은 디렉터리에 있으므로 `_multi` 접미어로 구분한다. bindings는 중앙 정책 실행기 `bindings/perf/run_policy_bench.py`를 사용한다.
+> core는 single/multi 스크립트가 같은 디렉터리에 있으므로 `_multi` 접미어로 구분한다. bindings는 언어별 디렉터리에서 policy-compliant 실행기를 직접 제공해야 한다.
 
 ### 3.2 통합 실행
 
 실행 엔트리포인트는 wrapper 스크립트다 (§ 3.1 정책 준수 실행기 테이블 참조).
 - core single: `run_benchmarks.sh` / `.ps1`
 - core multi: `run_benchmarks_multi.sh` / `.ps1`
-- bindings: `bindings/perf/run_policy_bench.py --binding <binding> --suite <single|multi>`
+- bindings: `bindings/<binding>/perf/run_benchmarks*.sh` 또는 동등한 binding-local 실행기
 - 단일 실행에서 single/multi를 혼합하지 않는다.
 
 ```bash
@@ -421,8 +453,8 @@ core/perf/run_benchmarks.sh --pattern PAIR
 core/perf/run_benchmarks.sh --results-tag v1.5.0
 
 # bindings: 동일한 옵션 체계 적용 (예: java)
-bindings/perf/run_policy_bench.py --binding java --suite single --pattern ALL
-bindings/perf/run_policy_bench.py --binding java --suite multi --pattern ALL
+bindings/java/perf/run_benchmarks.sh --pattern ALL
+bindings/java/perf/run_benchmarks_multi.sh --pattern ALL
 ```
 
 ### 3.3 통합 실행 옵션

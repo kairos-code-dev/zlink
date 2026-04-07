@@ -5,12 +5,11 @@
 > **Date**: 2026-03-21
 > **Scope**: zlink multi-client 성능 테스트 정책
 >
-> 본 정책은 `perf/multi`의 C++ 벤치마크와 현재 multi perf suite가 구현된
-> 바인딩(`bindings/cpp`, `bindings/dotnet`, `bindings/java`)에 동일하게
-> 적용된다. `bindings/node`는 in-repo multi perf 자산이 존재하지만 shared
-> policy parity를 맞추는 정렬 대상이므로, 본 문서를 현재 기준 계약으로
-> 따른다. `bindings/python`은 아직 multi perf suite가 구현되지 않았으므로
-> 본 문서를 향후 기준으로 삼는다.
+> 본 정책은 `perf/multi`의 C++ 벤치마크와 in-repo multi perf 자산이 존재하는
+> 바인딩(`bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/rust`,
+> `bindings/go`, `bindings/node`, `bindings/python`)에 동일한 기준으로 적용한다.
+> 단, 각 언어의 구현 완성도와 지원 패턴 범위는 다를 수 있으므로 실제 parity
+> 수준은 언어별로 점검/정렬 대상이 된다.
 >
 > **상위 문서**: [PERF_POLICY.md](PERF_POLICY.md) — 공통 디렉터리 구조, 통합 실행, 비교 스크립트
 > **관련 문서**: [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) — single-client 성능 테스트
@@ -231,7 +230,7 @@ perf/multi/
 - 모든 패턴은 `_server.cpp` / `_client.cpp` **별도 소스 파일 / 별도 바이너리**로 작성한다.
 - 단, `recv`와 `callback`을 이유로 별도 callback server 파일이나 별도 public
   pattern 이름을 정책에 추가하지 않는다.
-- 공통 로직(settings 해석, RESULT 출력, TLS 설정 등)은 `perf_common_multi.hpp`에 유지한다.
+- 공통 로직(settings 해석, RESULT 출력, TLS 설정 등)은 multi common 계층에 유지한다. 단, 정책은 공통 로직의 정확한 파일명이나 파일 배치를 고정하지 않는다.
 
 ---
 
@@ -483,16 +482,15 @@ perf/multi/run_benchmarks.sh [options]
 #### 실행기 체인
 
 ```text
-run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 파싱, 빌드, multi 환경 설정
-    → run_benchmarks.sh (PERF_ALLOW_MULTI=1)               # 공통 빌드/실행 래퍼
-        → run_comparison.py                                # Python 비교/실행 엔진
-            → comp_src_*_server(.exe)                  # server 프로세스
-            → comp_src_*_client(.exe)                  # client 프로세스
-            → perf_stream_client (STREAM 계열)             # STREAM 공유 client
+run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
+    → multi Python execution engine                    # 옵션 정규화/수집/집계
+        → comp_src_*_server(.exe)                      # server 프로세스
+        → comp_src_*_client(.exe)                      # client 프로세스
+        → perf_stream_client                           # STREAM 공유 client
 ```
 
-- `run_benchmarks_multi.sh`는 multi 옵션을 정규화한 뒤 `PERF_ALLOW_MULTI=1` 환경으로 `run_benchmarks.sh`를 호출한다.
-- `run_benchmarks.sh`는 `PERF_ALLOW_MULTI=1`일 때 root `run_comparison.py`를 Python 엔진으로 사용한다.
+- 공식 계약은 `run_benchmarks_multi.sh` / `.ps1`가 multi suite의 entrypoint라는 점과, 내부 엔진이 server/client 프로세스 lifecycle 및 RESULT 수집을 책임진다는 점이다.
+- shell wrapper 간 재호출 여부, 환경 변수 전달 방식, Python 엔진 연결 방식은 구현 세부이며 정책이 고정하지 않는다.
 - 스크립트는 각 pattern/transport 조합별로 **server → READY 대기 → client** 순서로 두 프로세스를 관리한다.
 - server/client 양쪽 바이너리가 RESULT line을 stdout에 출력하고, 스크립트가 이를 합산 수집한다.
 
@@ -1131,12 +1129,29 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 ## 13. 구현 제약
 
-### 13.0 Public C API 전용
+### 13.0 Public API 전용
 
-- bench 코드는 `doc/guide` 및 `doc/api` 문서에 기술된 public C API만
+- `core/perf/multi`는 `doc/guide` 및 `doc/api` 문서에 기술된 public C API만
   사용한다. 내부 헤더나 내부 함수를 직접 호출하지 않는다.
-- public C API 동작에 문제가 있으면 bench 코드에서 우회하지 않고 버그로
-  레포팅한다. core 수정 후 bench 작업을 계속한다.
+- `bindings/<lang>/perf/multi`는 해당 언어 binding의 public API만 사용한다.
+  binding 내부/private API, 내부 구현 클래스, native 내부 helper를 직접 호출하지
+  않는다.
+- public API 동작에 문제가 있으면 bench 코드에서 우회하지 않고 버그로
+  레포팅한다. core 또는 binding public API를 수정한 뒤 bench 작업을 계속한다.
+- core와 bindings는 multi 측정 anchor를 동일 의미로 유지해야 한다.
+  - ready 만족 판정
+  - active 시작/종료
+  - metric header decode 유효 판정
+  - throughput count 증가
+  - latency sample 채취
+  - RESULT line 출력
+- core와 bindings는 아래 multi 비교 가능성 조건도 함께 만족해야 한다.
+  - 같은 pattern/transport 의미를 측정한다.
+  - 같은 metric header / wire protocol contract를 사용한다.
+  - 같은 Tier 1 5개 metric과 같은 fail/skip/unsupported/partial 의미를 사용한다.
+  - hot path가 실제 binding public API를 통과한다.
+- 단, 위 anchor와 결과 의미가 같다면 구현 스타일은 언어별 runtime/idiom에 맞게
+  다르게 작성할 수 있다.
 
 ### 13.1 측정 경로(hot path) lock 사용 금지
 

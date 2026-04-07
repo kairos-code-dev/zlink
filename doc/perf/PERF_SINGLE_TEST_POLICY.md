@@ -5,12 +5,11 @@
 > **Date**: 2026-03-21
 > **Scope**: `perf/single` 성능 테스트 정책
 >
-> 본 정책은 `perf/single`의 C++ 벤치마크와 현재 single perf suite가 구현된
-> 바인딩(`bindings/cpp`, `bindings/dotnet`, `bindings/java`)에 동일하게
-> 적용된다. `bindings/node`는 in-repo single perf 자산이 존재하지만 shared
-> policy parity를 맞추는 정렬 대상이므로, 본 문서를 현재 기준 계약으로
-> 따른다. `bindings/python`은 아직 single perf suite가 구현되지 않았으므로
-> 본 문서를 향후 기준으로 삼는다.
+> 본 정책은 `perf/single`의 C++ 벤치마크와 in-repo single perf 자산이 존재하는
+> 바인딩(`bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/rust`,
+> `bindings/go`, `bindings/node`, `bindings/python`)에 동일한 기준으로 적용한다.
+> 단, 각 언어의 구현 완성도와 지원 패턴 범위는 다를 수 있으므로 실제 parity
+> 수준은 언어별로 점검/정렬 대상이 된다.
 >
 > **상위 문서**: [PERF_POLICY.md](PERF_POLICY.md)
 > **관련 문서**: [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md)
@@ -363,7 +362,7 @@ perf는 추가 precondition(`FILTER_APPLIED`, custom handshake, quorum 완화)�
 |------|------|----------------|
 | one-way (단방향) | PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, SPOT | `msg/s` |
 
-> **구현 참고**: `run_comparison.py`는 소켓 동작(echo/one-way)과 무관하게 모든 single 패턴을 **one-way 방향**, **Kmsg/s** 단위로 출력한다. bandwidth도 방향과 무관하게 `throughput × size / 1,000,000`으로 계산한다 (direction_factor를 적용하지 않는다).
+> **구현 참고**: `core/perf/single/run_comparison.py`는 소켓 동작(echo/one-way)과 무관하게 모든 single 패턴을 **one-way 방향**, **Kmsg/s** 단위로 출력한다. bandwidth도 방향과 무관하게 `throughput × size / 1,000,000`으로 계산한다 (direction_factor를 적용하지 않는다).
 
 ### 7.2 표준 메시지 크기
 
@@ -421,12 +420,29 @@ perf는 추가 precondition(`FILTER_APPLIED`, custom handshake, quorum 완화)�
 
 ## 9. 구현 제약
 
-### 9.1 Public C API 전용 / Retry·우회 금지
+### 9.1 Public API 전용 / Retry·우회 금지
 
-- bench 코드는 `doc/guide` 및 `doc/api` 문서에 기술된 public C API만
+- `core/perf/single`은 `doc/guide` 및 `doc/api` 문서에 기술된 public C API만
   사용한다. 내부 헤더나 내부 함수를 직접 호출하지 않는다.
-- public C API 동작에 문제가 있으면 bench 코드에서 우회하지 않고 버그로
-  레포팅한다. core 수정 후 bench 작업을 계속한다.
+- `bindings/<lang>/perf/single`은 해당 언어 binding의 public API만 사용한다.
+  binding 내부/private API, 내부 구현 클래스, native 내부 helper를 직접 호출하지
+  않는다.
+- public API 동작에 문제가 있으면 bench 코드에서 우회하지 않고 버그로
+  레포팅한다. core 또는 binding public API를 수정한 뒤 bench 작업을 계속한다.
+- core와 bindings는 single 측정 anchor를 동일 의미로 유지해야 한다.
+  - ready 만족 판정
+  - active 시작/종료
+  - metric header decode 유효 판정
+  - throughput count 증가
+  - latency sample 채취
+  - RESULT line 출력
+- core와 bindings는 아래 single 비교 가능성 조건도 함께 만족해야 한다.
+  - 같은 pattern/transport 의미를 측정한다.
+  - 같은 metric header / wire protocol contract를 사용한다.
+  - 같은 Tier 1 5개 metric과 같은 fail/skip/partial 의미를 사용한다.
+  - hot path가 실제 binding public API를 통과한다.
+- 단, 위 anchor와 결과 의미가 같다면 구현 스타일은 언어별 runtime/idiom에 맞게
+  다르게 작성할 수 있다.
 - 실패 조합 자동 재시도 로직 금지
 - core 문제를 벤치마크 코드에서 우회하지 않는다
 

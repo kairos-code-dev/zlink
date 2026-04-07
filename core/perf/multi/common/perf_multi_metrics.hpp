@@ -363,16 +363,11 @@ inline void print_server_resource_result_lines(
   size_t size,
   const MetricsT &metrics)
 {
-    if (metrics.has_cpu_pct) {
-        emit_result_metric_line(
-          lib_type, pattern, transport, size, "server_cpu_pct",
-          metrics.cpu_pct, 2);
-    }
-    if (metrics.has_mem_mb) {
-        emit_result_metric_line(
-          lib_type, pattern, transport, size, "server_mem_mb",
-          metrics.mem_mb, 2);
-    }
+    (void) lib_type;
+    (void) pattern;
+    (void) transport;
+    (void) size;
+    (void) metrics;
 }
 
 template<typename MetricsT>
@@ -397,16 +392,11 @@ inline void print_client_resource_result_lines_common(
   size_t size,
   const MetricsT &metrics)
 {
-    if (metrics.has_cpu_pct) {
-        emit_result_metric_line(
-          lib_type, pattern, transport, size, "client_cpu_pct",
-          metrics.cpu_pct, 2);
-    }
-    if (metrics.has_mem_mb) {
-        emit_result_metric_line(
-          lib_type, pattern, transport, size, "client_mem_mb",
-          metrics.mem_mb, 2);
-    }
+    (void) lib_type;
+    (void) pattern;
+    (void) transport;
+    (void) size;
+    (void) metrics;
 }
 
 inline server_queue_stats_t sample_server_queue_stats(void *send_socket_,

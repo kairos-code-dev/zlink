@@ -29,8 +29,8 @@ struct client_options_t
     std::vector<size_t> sizes;
     int runs;
     int duration;
-    int drain_ms;
-    int size_transition_drain_ms;
+    int completion_wait_ms;
+    int size_transition_completion_wait_ms;
     int io_threads;
     int print_perf_result;
     std::string stop_token;
@@ -45,8 +45,8 @@ struct client_options_t
           sizes (),
           runs (1),
           duration (10),
-          drain_ms (500),
-          size_transition_drain_ms (0),
+          completion_wait_ms (500),
+          size_transition_completion_wait_ms (0),
           io_threads (4),
           print_perf_result (0),
           stop_token ("__zlink_perf_stop__"),
@@ -108,9 +108,11 @@ inline bool parse_options (int argc, char **argv, client_options_t &opt)
     opt.ccu = args.get_int ("--ccu", opt.ccu, 1);
     opt.runs = args.get_int ("--runs", opt.runs, 1);
     opt.duration = args.get_int ("--duration", opt.duration, 1);
-    opt.drain_ms = args.get_int ("--drain-ms", opt.drain_ms, 0);
-    opt.size_transition_drain_ms = args.get_int (
-      "--size-transition-drain-ms", opt.size_transition_drain_ms, 0);
+    opt.completion_wait_ms = args.get_int (
+      "--completion-wait-ms", opt.completion_wait_ms, 0);
+    opt.size_transition_completion_wait_ms = args.get_int (
+      "--size-transition-completion-wait-ms",
+      opt.size_transition_completion_wait_ms, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
     opt.print_perf_result = args.get_int ("--print-perf-result",
                                           opt.print_perf_result, 0);

@@ -189,8 +189,7 @@ inline bool echo_emit_client_results (
   bool fatal,
   unsigned long long active_received,
   unsigned long long latency_count,
-  const bench_latency_stats_t &latency,
-  const bench_multi_resource_metrics_t &metrics)
+  const bench_latency_stats_t &latency)
 {
     if (!pattern || duration_seconds <= 0 || fatal || active_received == 0
         || latency_count == 0) {
@@ -202,7 +201,7 @@ inline bool echo_emit_client_results (
       static_cast<double> (active_received)
       / static_cast<double> (duration_seconds);
     perf_multi_client::print_client_result_lines (
-      pattern, lib_name, transport, msg_size, throughput, latency, metrics);
+      pattern, lib_name, transport, msg_size, throughput, latency);
     return true;
 }
 

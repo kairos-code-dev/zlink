@@ -3,8 +3,6 @@
 #include "../common/perf_multi_client_helpers.hpp"
 #include "../common/perf_multi_handshake.hpp"
 #include "../common/perf_multi_metric_header.hpp"
-#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
-
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
@@ -444,16 +442,6 @@ inline bool run_one_size_benchmark (
     return true;
 }
 
-inline void print_server_resource_metrics (
-  const std::string &lib_name,
-  const std::string &transport,
-  const std::vector<size_t> &sizes,
-  const bench_multi_resource_metrics_t &metrics)
-{
-    print_server_metrics_for_sizes (
-      lib_name, k_pattern, transport, sizes, metrics);
-}
-
 inline int run_server_benchmark (const std::string &lib_name,
                                  const std::string &transport)
 {
@@ -503,7 +491,6 @@ inline int run_server_benchmark (const std::string &lib_name,
         sizes.push_back (64);
     std::cout << "READY," << endpoint << std::endl;
 
-    const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
     bool ok = true;
     for (size_t si = 0; si < sizes.size (); ++si) {
         if (perf_stop_requested ().load (std::memory_order_acquire)) {
@@ -540,10 +527,6 @@ inline int run_server_benchmark (const std::string &lib_name,
             break;
         }
     }
-
-    const bench_multi_resource_metrics_t metrics =
-      bench_multi_finish_resource_probe (sample_start);
-    print_server_resource_metrics (lib_name, transport, sizes, metrics);
 
     perf_stop_requested ().store (true, std::memory_order_release);
     zlink_close (server);

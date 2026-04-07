@@ -3,7 +3,6 @@
 #include "../common/perf_multi_metric_header.hpp"
 #include "../common/perf_multi_spot_handle.hpp"
 #include "../../common/perf_tls_setup.hpp"
-#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
@@ -746,13 +745,11 @@ bool run_phase(spot_server_state_t *state,
 
 void print_server_metrics(const std::string &lib_name,
                           const std::string &transport,
-                          const std::vector<size_t> &sizes,
-                          const bench_multi_resource_metrics_t &metrics)
+                          const std::vector<size_t> &sizes)
 {
     (void) lib_name;
     (void) transport;
     (void) sizes;
-    (void) metrics;
 }
 
 bool run_server_loop(spot_server_state_t *state,
@@ -965,18 +962,6 @@ int run_server_benchmark(const std::string &lib_name,
         zlink_spot_node_destroy(&control_node);
         return 1;
     }
-    if (zlink_publish(control_pub, "__warmup__", NULL, 0, 0) != 0) {
-        if (bench_debug_enabled())
-            std::cerr << "[multi-spot-server] control warmup failed err="
-                      << zlink_errno() << std::endl;
-        perf_destroy_default_spot_handle(&control_pub);
-        perf_destroy_default_spot_handle(&control_sub);
-        perf_destroy_default_spot_handle(&pub);
-        zlink_spot_node_destroy(&node);
-        zlink_spot_node_destroy(&control_node);
-        return 1;
-    }
-
     spot_server_state_t state;
     state.node = node;
     state.pub = pub;
@@ -1060,9 +1045,6 @@ int run_server_benchmark(const std::string &lib_name,
     });
     stdin_watcher.detach();
 
-    const bench_multi_cpu_sample_t sample_start =
-      bench_multi_capture_cpu_sample();
-
     std::cout << "READY," << endpoint << std::endl;
     std::cout << "CONTROL_READY," << control_endpoint << std::endl;
     if (bench_transition_debug_enabled()) {
@@ -1082,9 +1064,7 @@ int run_server_benchmark(const std::string &lib_name,
                   << std::endl;
     }
 
-    const bench_multi_resource_metrics_t metrics =
-      bench_multi_finish_resource_probe(sample_start);
-    print_server_metrics(lib_name, transport, msg_sizes, metrics);
+    print_server_metrics(lib_name, transport, msg_sizes);
     fast_exit_process(ok ? 0 : 1);
     return ok ? 0 : 1;
 }

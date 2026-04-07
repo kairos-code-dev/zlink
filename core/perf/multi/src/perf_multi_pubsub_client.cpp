@@ -1,8 +1,6 @@
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_client_helpers.hpp"
-#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
-
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -123,10 +121,9 @@ bool run_recv_duration (const std::vector<void *> &sockets,
                         size_t msg_size,
                         uint32_t run_id,
                         double *throughput_out,
-                        bench_latency_stats_t *latency_out,
-                        bench_multi_resource_metrics_t *metrics_out)
+                        bench_latency_stats_t *latency_out)
 {
-    if (!throughput_out || !latency_out || !metrics_out || sockets.empty ()
+    if (!throughput_out || !latency_out || sockets.empty ()
         || !poller)
         return false;
 
@@ -145,7 +142,6 @@ bool run_recv_duration (const std::vector<void *> &sockets,
           / 1000.0));
 
     bool active_started = false;
-    bench_multi_cpu_sample_t sample_start;
     auto active_deadline = std::chrono::steady_clock::time_point ();
     std::vector<zlink_poller_event_t> events (sockets.size ());
 
@@ -211,7 +207,6 @@ bool run_recv_duration (const std::vector<void *> &sockets,
                     lat_sum = 0.0;
                     lat_count = 0;
                     lat_samples = bench_latency_sampler_t ();
-                    sample_start = bench_multi_capture_cpu_sample ();
                     active_deadline =
                       std::chrono::steady_clock::now ()
                       + std::chrono::duration_cast<
@@ -239,13 +234,10 @@ bool run_recv_duration (const std::vector<void *> &sockets,
     }
 
     if (!active_started) {
-        *metrics_out = bench_multi_resource_metrics_t ();
         *throughput_out = 0.0;
         *latency_out = bench_latency_stats_t ();
         return true;
     }
-
-    *metrics_out = bench_multi_finish_resource_probe (sample_start);
 
     if (recv_count < 0 || lat_count < 0) {
         if (bench_debug_enabled ()) {
@@ -335,7 +327,6 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
 {
     double throughput = 0.0;
     bench_latency_stats_t latency;
-    bench_multi_resource_metrics_t metrics;
     const bool ok = run_recv_duration (
       sockets,
       poller,
@@ -343,8 +334,7 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
       msg_size,
       k_metric_run_id,
       &throughput,
-      &latency,
-      &metrics);
+      &latency);
     if (!ok) {
         return false;
     }
@@ -355,8 +345,7 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
       transport,
       msg_size,
       throughput,
-      latency,
-      metrics);
+      latency);
 
     return true;
 }

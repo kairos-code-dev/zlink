@@ -3,8 +3,6 @@
 #include "../common/perf_multi_client_helpers.hpp"
 #include "../common/perf_multi_echo_policy.hpp"
 #include "../common/perf_multi_metric_header.hpp"
-#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
-
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -505,8 +503,6 @@ bool run_single_size_case(router_client_state_t *state,
           service_router_slots))
         return false;
 
-    const bench_multi_cpu_sample_t sample_start =
-      bench_multi_capture_cpu_sample();
     if (!perf_multi_echo::echo_wait_phase_duration(
           state,
           static_cast<double>(std::max(1, settings.duration_seconds)),
@@ -516,9 +512,6 @@ bool run_single_size_case(router_client_state_t *state,
 
     state->collect_active.store(false, std::memory_order_release);
     stop_phase(state);
-
-    const bench_multi_resource_metrics_t metrics =
-      bench_multi_finish_resource_probe(sample_start);
     const unsigned long long active_received =
       state->active_received.load(std::memory_order_acquire);
 
@@ -543,8 +536,7 @@ bool run_single_size_case(router_client_state_t *state,
       state->fatal.load(std::memory_order_acquire),
       active_received,
       latency_count,
-      latency,
-      metrics);
+      latency);
 }
 
 int run_client_benchmark(const std::string &lib_name,

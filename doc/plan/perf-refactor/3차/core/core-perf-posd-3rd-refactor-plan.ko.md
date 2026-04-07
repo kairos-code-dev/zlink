@@ -2,8 +2,8 @@
 
 > 현재 상태: `ready -> active` 기준, 기본 perf surface는 `throughput`,
 > `bandwidth`, `latency`, `latency_p95`, `latency_p99`만 남도록 정리되었다.
-> 그러나 문서/테스트/공통 helper/실행 산출물 계층에는 아직 정책 밖 책임과
-> 중복 surface가 남아 있다.
+> 그러나 공통 helper/stream client/bindings/bench/tracked artifact 계층에는
+> 아직 정책 밖 책임과 중복 surface가 남아 있다.
 >
 > 목표: PERF 정책을 그대로 유지하면서, `core/perf`의 남은 중복 파일,
 > 죽은 코드, 얕은 wrapper, tracked artifact를 정리해 전체 복잡도를 실제로
@@ -22,6 +22,11 @@
 
 새로운 컨텍스트에서 이 문서를 시작할 때는 아래를 먼저 확인한다.
 
+- 이 문서는 실행 로그가 아니라, `manager`가 guide를 만들고 `guideloop`가 끝까지
+  따라야 하는 **작업 기준 문서**다.
+- 따라서 이 문서에는 현재 실행 상태, 최근 실패 로그, exit code, “이미 완료됨” 같은
+  실행 시점 정보나 진행 보고를 쓰지 않는다. 그런 정보는 `logs/*.manager.md`,
+  `logs/*.progress.md`로 분리한다.
 - 이 문서는 “baseline 수치 비교” 문서가 아니라 “perf 정책 정렬 + POSD 리팩토링”
   문서다.
 - 이번 단계의 종료 기준은 기존 baseline 대비 성능 우열이 아니다.
@@ -40,9 +45,9 @@
   따라야 한다.
 - `with_zmq`, `with_stream`는 `doc/perf`를 그대로 복제하는 대상이 아니라 로컬
   bench 정책을 먼저 따르되, warmup 제거와 공정 비교 유지 범위에서 정렬한다.
-- full test gate는 리팩토링 도중 수시 확인하는 용도가 아니라, 해당 단계의
-  POSD 리팩토링과 dead code 정리가 끝났다고 판단된 뒤 수행하는 최종 검증이다.
-- 다음 단계로 넘어가기 전 full test의 fail 항목 수는 반드시 0이어야 한다.
+- smoke test gate는 리팩토링 도중 수시 확인하는 용도가 아니라, 해당 단계의
+  POSD 리팩토링과 dead code 정리가 끝났다고 판단된 뒤 수행하는 최종 확인이다.
+- 다음 단계로 넘어가기 전 smoke test의 fail 항목 수는 반드시 0이어야 한다.
 - 작업 중 문서와 코드가 충돌하면 `doc/perf` 정책 문서를 먼저 확인하고, 필요하면
   정책 문서부터 바로잡은 뒤 구현을 진행한다.
 
@@ -83,11 +88,7 @@
 
 ### 2.1 남은 중복/불일치
 
-- [core/perf/README.md](../../../../../core/perf/README.md)는 여전히
-  `--warmup`과 single `recv` 지원을 문서화하고 있다.
-- [core/perf/single/tests/test_multi_run_comparison_policy.py](../../../../../core/perf/single/tests/test_multi_run_comparison_policy.py)는
-  제거된 `cpu_pct`, `mem_mb`, `server_cpu_pct`, `server_mem_mb`를 fixture에
-  계속 포함한다.
+- `core/perf` 문서/테스트와 실행 gate는 같은 stage 안에서 함께 정렬돼야 한다.
 - `core/perf` 하위에는 tracked baseline/sample/analysis artifact가 여전히 남아 있다.
 
 ### 2.2 남은 과대 공통 계층
@@ -150,9 +151,10 @@
 
 ## 4. 실행 순서와 영역별 작업
 
-이번 리팩토링은 아래 **고정 순서**로 진행한다.
+이번 리팩토링의 실제 **top-level 운영 stage 고정 순서**는 아래 11단계를 기준으로
+한다.
 
-1. `core/perf`
+1. `core/perf` 정리
 2. `bindings/cpp/perf`
 3. `bindings/dotnet/perf`
 4. `bindings/java/perf`
@@ -164,9 +166,17 @@
 10. `core/bench/with_stream`
 11. 공통 tracked artifact 정리
 
+단, stage 1인 `core/perf`는 아래 4개의 **내부 substage**를 고정 순서로 진행한다.
+
+- C1. 문서/테스트 수렴
+- C2. queue/probe 계층 감사 후 축소
+- C3. stream common client 정리
+- C4. runner entrypoint 단순화
+
 이 순서를 따르는 이유는 다음과 같다.
 
-- `core/perf`가 정책/측정 surface의 기준 구현이다.
+- `core/perf`가 정책/측정 surface의 기준 구현이므로 stage 1 내부에서 C1~C4를
+  먼저 고정 순서로 정리해야 downstream 변경 증폭이 줄어든다.
 - 각 `bindings/<lang>/perf`는 core perf 정책을 따라야 하는 downstream이며,
   언어별로 작업량과 구조 복잡도가 커서 독립 단계로 다뤄야 한다.
 - `with_zmq`는 비교 bench지만 자체 bench 정책을 가지며, core perf와의 정렬은
@@ -180,7 +190,26 @@
 
 - perf 단순화
 - POSD 기반 리팩토링
-- 단계별 full test gate
+- 반복 리뷰를 통한 리팩토링 이슈 재검출 방지
+- 위 11개 top-level stage를 기준으로 한 단계별 smoke test gate
+
+manager/guideloop 해석 규칙:
+
+- `manager`는 이 문서를 그대로 수정하지 않고, 이 문서에서 stage/substage/gate/
+  완료 정의를 읽어 별도 guide/progress를 만든다.
+- `guideloop`는 guide를 실행하되, stage 소유권과 gate 타이밍은 이 문서 기준으로만
+  해석한다.
+- top-level stage만 다음 stage 진행 여부를 판정한다.
+- `core/perf`의 C1~C4는 stage 1 내부 substage이며, 독립 stage 완료 판정이나 독립
+  smoke gate 소유권을 갖지 않는다.
+
+중요:
+
+- `core/perf`의 C1~C4는 독립 smoke gate 소유 단계가 아니다.
+- `core/perf` smoke test gate는 C1~C4가 모두 끝난 뒤, 즉 stage 1 전체가 구조적으로
+  정리된 시점에 **한 번만** 수행한다.
+- 따라서 C1, C2, C3 중간 상태에서 `run_benchmarks*.sh` 전체 패턴 실행을 돌려
+  “얼마나 깨졌는지 먼저 본다”는 식의 운영은 허용하지 않는다.
 
 단, 영역별로 실제 수정 항목은 다르므로 아래처럼 따로 정의한다.
 
@@ -279,7 +308,7 @@
 ### 4.2 `bindings/<lang>/perf` 작업
 
 `bindings/<lang>/perf`는 하나의 묶음 단계로 처리하지 않는다. 아래 언어별로 각각
-독립 stage를 두고, 앞 언어가 구조적으로 완료되고 full test gate까지 통과해야 다음
+독립 stage를 두고, 앞 언어가 구조적으로 완료되고 smoke test gate까지 통과해야 다음
 언어로 넘어간다. 각 언어 단계는 `core/perf`와 비슷한 크기의 리팩토링 단계로 본다.
 
 적용 대상 언어와 고정 순서는 다음을 기본으로 본다.
@@ -294,7 +323,7 @@
 
 고정 순서:
 
-0. `cpp -> dotnet -> java -> rust -> go -> node -> python`
+- `cpp -> dotnet -> java -> rust -> go -> node -> python`
 
 언어별로 아래 순서를 각각 독립 stage로 진행한다.
 
@@ -302,17 +331,20 @@
 2. old warmup/cpu-mem/queue/debug contract 제거
 3. runner/result/report 구조를 변경된 `doc/perf` 정책에 맞게 정렬
 4. POSD 관점에서 얕은 wrapper/dead code/과대 공통 계층 정리
-5. 해당 language 검증 + core perf full test gate 통과 확인
+5. 해당 language stage의 smoke 테스트 통과 확인
+
+여기서 각 언어 stage의 gate 소유권은 해당 bindings stage 자신에게 있다.
+`core/perf` smoke test gate를 언어 stage의 기본 gate로 재사용하지 않는다.
 
 언어별 stage 명시는 아래와 같이 고정한다.
 
-- 단계 5. `bindings/cpp/perf`
-- 단계 6. `bindings/dotnet/perf`
-- 단계 7. `bindings/java/perf`
-- 단계 8. `bindings/rust/perf`
-- 단계 9. `bindings/go/perf`
-- 단계 10. `bindings/node/perf`
-- 단계 11. `bindings/python/perf`
+- 단계 2. `bindings/cpp/perf`
+- 단계 3. `bindings/dotnet/perf`
+- 단계 4. `bindings/java/perf`
+- 단계 5. `bindings/rust/perf`
+- 단계 6. `bindings/go/perf`
+- 단계 7. `bindings/node/perf`
+- 단계 8. `bindings/python/perf`
 
 #### B1. 언어별 bindings perf 공통 정렬 기준
 
@@ -447,27 +479,39 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 ### 5.0 작업 순서 원칙
 
 - 리팩토링은 병렬로 넓게 벌리지 않고 **단계 하나씩 순차 진행**한다.
-- 각 단계는 아래 루프를 반드시 따른다.
+- 각 top-level stage는 아래 루프를 반드시 따른다.
   1. `doc/perf` 정책 문서 기준으로 현재 구현 불일치를 확인한다.
   2. 확인된 불일치와 dead code/dead branch/dead file을 POSD 기준으로
      리팩토링한다.
   3. perf 정책을 위반하지 않고 측정 의미를 해치지 않는 범위에서, 더 진행할
      POSD 리팩토링이 남아 있지 않은지 다시 확인한다.
   4. 기능 확인과 로컬 검증을 수행한다.
-  5. 위 1~4가 정리된 뒤에만 `core/perf` full test gate를 수행한다.
+  5. 위 1~4가 정리된 뒤에만 해당 stage의 smoke test gate를 수행한다.
   6. 실패가 없을 때만 다음 단계로 진행한다.
-- 한 단계라도 full test gate에서 실패하면 다음 단계로 넘어가지 않고, 해당
+- 한 단계라도 smoke test gate에서 실패하면 다음 단계로 넘어가지 않고, 해당
   단계에서 원인 수정 후 다시 같은 gate를 통과해야 한다.
-- full test gate에서 fail 항목이 **하나라도** 남아 있으면 다음 단계로
+- smoke test gate에서 fail 항목이 **하나라도** 남아 있으면 다음 단계로
   넘어갈 수 없다.
 - `known fail`, `나중에 수정`, `partial success`를 이유로 다음 단계 진행을
   허용하지 않는다.
-- bindings/bench 동기화 단계도 같은 원칙을 따른다. bindings 하나를 수정했으면
-  해당 bindings 검증과 core perf full gate를 함께 확인한 뒤 다음 bindings로
-  넘어간다.
-- full test gate는 “리팩토링 도중 중간 상태를 계속 확인하는 용도”가 아니라,
+- bindings/bench 단계도 같은 원칙을 따른다. 각 stage는 자기 범위의 stage-specific
+  smoke test gate를 통과한 뒤에만 다음 stage로 넘어간다.
+- `core/perf` smoke test gate는 stage 1 전용 gate다.
+- bindings/bench 단계에서는 해당 stage의 전용 smoke 테스트를 기본 gate로 사용한다.
+- smoke test gate는 “리팩토링 도중 중간 상태를 계속 확인하는 용도”가 아니라,
   해당 단계의 POSD 리팩토링과 dead code 정리가 끝났다고 판단된 시점의
-  최종 검증으로 사용한다.
+  최종 확인으로 사용한다.
+- 현재 stage가 `complete`가 되기 전에는 다음 stage를 `in_progress`로 올리지
+  않는다.
+- stage 내부 substage는 구조 정리 순서를 나타내는 작업 단위이지, 별도 stage 상태를
+  갖는 완료 단위가 아니다.
+
+`core/perf` stage의 예외 규칙:
+
+- stage 1은 C1 -> C2 -> C3 -> C4 순서의 내부 substage를 가진다.
+- C1~C3은 구조 정리용 substage이며, 이 시점에는 cheap/local 확인만 허용한다.
+- stage 1의 `core/perf` smoke test gate는 C4까지 끝난 뒤에만 수행한다.
+- C1~C3에서 smoke 검증 범위를 넘는 전체 perf 실행을 먼저 돌리는 운영은 문서 위반이다.
 
 #### 공통 작업 루프
 
@@ -476,16 +520,24 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 1. perf 정책문서대로 현재 구현 확인
 2. POSD 기반 리팩토링
 3. dead code/dead branch/dead file까지 포함해 더 진행할 POSD 리팩토링이 없는지 확인
-4. 기능 확인
-5. full perf 검증
+4. 리뷰를 반복해도 새 리팩토링 이슈가 다시 나오지 않는지 확인
+5. 기능 확인
+6. smoke 검증
 
 - 여기서 `기능 확인`은 build/test/smoke/결과 shape 확인을 뜻한다.
-- `full perf 검증`은 `run_benchmarks*.sh` full run과 회귀 검토를 뜻한다.
-- `full perf 검증`은 해당 영역의 POSD 리팩토링이 사실상 마무리된 뒤에만 수행한다.
+- `smoke 검증`은 현재 stage 소유 범위의 syntax/build/policy test와 모든 지원
+  패턴을 짧게 순회하는 실행 smoke를 뜻한다.
+- `smoke 검증`은 해당 영역의 POSD 리팩토링이 사실상 마무리된 뒤에만 수행한다.
 - 리팩토링은 perf 성능 테스트의 의미를 해치지 않는 선에서만 수행하며,
   `doc/perf` 정책을 위반하는 구조 단순화는 허용하지 않는다.
+- 여기서 `리뷰를 반복해도 새 리팩토링 이슈가 다시 나오지 않는지 확인`은
+  단발성 self-check가 아니라, 같은 stage를 다시 읽고 다시 점검해도
+  “아직 남은 구조 정리 항목”, “문서와 구현의 불일치”, “과대 공통 계층”, “dead code”
+  같은 리팩토링 이슈가 추가로 나오지 않는 상태를 뜻한다.
+- 따라서 test/smoke가 통과해도 반복 리뷰에서 리팩토링 이슈가 다시 나오면
+  그 stage는 완료로 닫지 않는다.
 
-### 단계 1. `core/perf` - C1 문서/테스트 수렴
+### 단계 1 내부 substage C1. `core/perf` 문서/테스트 수렴
 
 - 정책 정합성 확인
   - README/tests가 현재 `doc/perf` 계약과 맞는지 확인한다.
@@ -495,10 +547,11 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
   - 제거된 계약을 다시 살리는 얕은 fixture/wrapper를 걷어낸다.
 - 기능 확인
 - `rg`로 warmup/cpu-mem/legacy recv 문구가 README/tests에 남지 않는지 확인한다.
-- full perf 검증
-  - 단계 완료 후 full test gate를 통과해야 한다.
+- smoke 검증
+  - 이 substage에서는 수행하지 않는다.
+  - C1~C4가 모두 끝난 뒤 stage 1 전체에 대해 한 번 수행한다.
 
-### 단계 2. `core/perf` - C2 queue/probe 계층 감사 후 축소
+### 단계 1 내부 substage C2. `core/perf` queue/probe 계층 감사 후 축소
 
 - 정책 정합성 확인
   - queue/probe 계층이 현재 기본 perf 계약에 실제로 필요한지 확인한다.
@@ -508,10 +561,11 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - 제거가 위험하면 `spot diagnostic local helper` 같은 좁은 소유권으로 이동한다.
 - 기능 확인
   - 제거 후 build/test/smoke가 유지되는지 확인한다.
-- full perf 검증
-  - 단계 완료 후 full test gate를 통과해야 한다.
+- smoke 검증
+  - 이 substage에서는 수행하지 않는다.
+  - C1~C4가 모두 끝난 뒤 stage 1 전체에 대해 한 번 수행한다.
 
-### 단계 3. `core/perf` - C3 stream common client 정리
+### 단계 1 내부 substage C3. `core/perf` stream common client 정리
 
 - 정책 정합성 확인
   - shared STREAM client의 phase/option surface가 `doc/perf`와 맞는지 확인한다.
@@ -521,10 +575,11 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - bindings/bench가 참조하는 공용 client 기준을 먼저 고정한다.
 - 기능 확인
   - shared STREAM client 수정 후 core 측 동작이 유지되는지 확인한다.
-- full perf 검증
-  - 단계 완료 후 full test gate를 통과해야 한다.
+- smoke 검증
+  - 이 substage에서는 수행하지 않는다.
+  - C1~C4가 모두 끝난 뒤 stage 1 전체에 대해 한 번 수행한다.
 
-### 단계 4. `core/perf` - C4 runner entrypoint 단순화
+### 단계 1 내부 substage C4. `core/perf` runner entrypoint 단순화
 
 - 정책 정합성 확인
   - 공식 entrypoint/책임과 현재 shell/python 연결 구조의 불일치를 확인한다.
@@ -534,73 +589,80 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - shell -> python 호출 경로를 한 단계 덜 얕게 만든다.
 - 기능 확인
   - entrypoint 변경 후 옵션/결과/실행 흐름이 유지되는지 확인한다.
-- full perf 검증
-  - 단계 완료 후 full test gate를 통과해야 한다.
+- smoke 검증
+  - C1~C4 전체가 끝난 뒤 stage 1의 `core/perf` smoke test gate를 통과해야 한다.
 
-### 단계 5. `bindings/cpp/perf` 정리
-
-- 정책 정합성 확인
-- POSD 리팩토링
-- 기능 확인
-- full perf 검증
-- B1 공통 정렬 기준을 적용한다.
-- 단계 5가 full test gate를 통과해야 단계 6으로 넘어간다.
-
-### 단계 6. `bindings/dotnet/perf` 정리
+### 단계 2. `bindings/cpp/perf` 정리
 
 - 정책 정합성 확인
 - POSD 리팩토링
 - 기능 확인
-- full perf 검증
+- smoke 검증
+  - 해당 bindings stage의 smoke 테스트를 수행한다.
 - B1 공통 정렬 기준을 적용한다.
-- 단계 6이 full test gate를 통과해야 단계 7로 넘어간다.
+- 단계 2가 smoke test gate를 통과해야 단계 3으로 넘어간다.
 
-### 단계 7. `bindings/java/perf` 정리
+### 단계 3. `bindings/dotnet/perf` 정리
 
 - 정책 정합성 확인
 - POSD 리팩토링
 - 기능 확인
-- full perf 검증
+- smoke 검증
+  - 해당 bindings stage의 smoke 테스트를 수행한다.
 - B1 공통 정렬 기준을 적용한다.
-- 단계 7이 full test gate를 통과해야 단계 8로 넘어간다.
+- 단계 3이 smoke test gate를 통과해야 단계 4로 넘어간다.
 
-### 단계 8. `bindings/rust/perf` 정리
+### 단계 4. `bindings/java/perf` 정리
 
 - 정책 정합성 확인
 - POSD 리팩토링
 - 기능 확인
-- full perf 검증
+- smoke 검증
+  - 해당 bindings stage의 smoke 테스트를 수행한다.
 - B1 공통 정렬 기준을 적용한다.
-- 단계 8이 full test gate를 통과해야 단계 9로 넘어간다.
+- 단계 4가 smoke test gate를 통과해야 단계 5로 넘어간다.
 
-### 단계 9. `bindings/go/perf` 정리
+### 단계 5. `bindings/rust/perf` 정리
 
 - 정책 정합성 확인
 - POSD 리팩토링
 - 기능 확인
-- full perf 검증
+- smoke 검증
+  - 해당 bindings stage의 smoke 테스트를 수행한다.
 - B1 공통 정렬 기준을 적용한다.
-- 단계 9가 full test gate를 통과해야 단계 10으로 넘어간다.
+- 단계 5가 smoke test gate를 통과해야 단계 6으로 넘어간다.
 
-### 단계 10. `bindings/node/perf` 정리
+### 단계 6. `bindings/go/perf` 정리
 
 - 정책 정합성 확인
 - POSD 리팩토링
 - 기능 확인
-- full perf 검증
+- smoke 검증
+  - 해당 bindings stage의 smoke 테스트를 수행한다.
 - B1 공통 정렬 기준을 적용한다.
-- 단계 10이 full test gate를 통과해야 단계 11로 넘어간다.
+- 단계 6이 smoke test gate를 통과해야 단계 7로 넘어간다.
 
-### 단계 11. `bindings/python/perf` 정리
+### 단계 7. `bindings/node/perf` 정리
 
 - 정책 정합성 확인
 - POSD 리팩토링
 - 기능 확인
-- full perf 검증
+- smoke 검증
+  - 해당 bindings stage의 smoke 테스트를 수행한다.
 - B1 공통 정렬 기준을 적용한다.
-- 단계 11이 full test gate를 통과해야 단계 12로 넘어간다.
+- 단계 7이 smoke test gate를 통과해야 단계 8로 넘어간다.
 
-### 단계 12. `core/bench/with_zmq` 정리
+### 단계 8. `bindings/python/perf` 정리
+
+- 정책 정합성 확인
+- POSD 리팩토링
+- 기능 확인
+- smoke 검증
+  - 해당 bindings stage의 smoke 테스트를 수행한다.
+- B1 공통 정렬 기준을 적용한다.
+- 단계 8이 smoke test gate를 통과해야 단계 9로 넘어간다.
+
+### 단계 9. `core/bench/with_zmq` 정리
 
 - 정책 정합성 확인
   - [with_zmq 정책 문서](../../../../../core/bench/with_zmq/README.md) 기준의
@@ -612,15 +674,15 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - bench 전용 개념이 perf 본계약으로 되새어 나오지 않게 경계를 명확히 한다.
 - 기능 확인
   - 비교 bench로서 필요한 기능이 유지되는지 확인한다.
-- full perf 검증
+- smoke 검증
   - `bash -n core/bench/with_zmq/run_benchmarks.sh`
   - `bash -n core/bench/with_zmq/run_benchmarks_multi.sh`
   - `pytest -q core/bench/with_zmq/single/tests/test_run_comparison_policy.py`
-  - `./core/bench/with_zmq/run_benchmarks.sh`
-  - `./core/bench/with_zmq/run_benchmarks_multi.sh`
-  - 단계 완료 후 full test gate를 통과해야 한다.
+  - `./core/bench/with_zmq/run_benchmarks.sh --transports tcp --msg-sizes 64 --runs 1 --duration 1 --results-tag smoke_all`
+  - `./core/bench/with_zmq/run_benchmarks_multi.sh --transports tcp --msg-sizes 64 --runs 1 --clients 4 --warmup 1 --duration 1 --results-tag smoke_multi_all`
+  - 단계 완료 후 smoke test gate를 통과해야 한다.
 
-### 단계 13. `core/bench/with_stream` 정리
+### 단계 10. `core/bench/with_stream` 정리
 
 - 정책 정합성 확인
   - [with_stream 정책 문서](../../../../../core/bench/with_stream/README.md) 기준의
@@ -631,13 +693,13 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - stack별 비교 surface를 유지하되 perf 본계약과 충돌하지 않게 정리한다.
 - 기능 확인
   - 비교 bench로서 필요한 기능이 유지되는지 확인한다.
-- full perf 검증
+- smoke 검증
   - `python3 -m py_compile core/bench/with_stream/run_comparison.py`
   - `bash -n core/bench/with_stream/run_benchmarks.sh`
-  - `./core/bench/with_stream/run_benchmarks.sh`
-  - 단계 완료 후 full test gate를 통과해야 한다.
+  - `./core/bench/with_stream/run_benchmarks.sh --stack all --size 64 --runs 1 --warmup 1 --duration 1`
+  - 단계 완료 후 smoke test gate를 통과해야 한다.
 
-### 단계 14. 공통 tracked artifact 정책 정리
+### 단계 11. 공통 tracked artifact 정책 정리
 
 - 정책 정합성 확인
   - tracked artifact와 공식 runtime output root의 경계를 확인한다.
@@ -647,8 +709,8 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - 필요한 `.gitignore` 및 저장 위치 규칙을 반영한다.
 - 기능 확인
   - 결과 저장/보존 동작이 정책과 모순되지 않는지 확인한다.
-- full perf 검증
-  - 단계 완료 후 최종 full test gate를 통과해야 한다.
+- smoke 검증
+  - 단계 완료 후 최종 smoke test gate를 통과해야 한다.
 
 ## 6. 검증 방법
 
@@ -661,45 +723,81 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
   - `bash -n core/perf/run_benchmarks_multi.sh`
 - Build:
   - `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
-- Performance gates:
-  - `./core/perf/run_benchmarks.sh`
-  - `./core/perf/run_benchmarks_multi.sh`
+- Performance smoke:
+  - `./core/perf/run_benchmarks.sh --transports tcp --msg-sizes 64 --runs 1 --duration 1 --results-tag smoke_single_all`
+  - `./core/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64 --runs 1 --clients 4 --duration 1 --results-tag smoke_multi_all`
   - 결과 파일이 정책 형식으로 생성되는지 확인한다.
   - `status: complete|partial`, 필수 5개 metric line, 결과 table shape를 확인한다.
-  - 최소 단계 1~14 중 현재 작업 대상 단계에서 POSD 리팩토링과 dead code 정리가
-    끝났다고 판단된 완료 시점에만 full run을 수행한다.
-  - full run 전에는 “측정 의미를 해치지 않았는지”, “perf 정책을 위반하지 않는지”를
+  - 현재 작업 중인 top-level stage에서 POSD 리팩토링과 dead code 정리가 끝났다고
+    판단된 완료 시점에만 smoke run을 수행한다.
+  - smoke run 전에는 “측정 의미를 해치지 않았는지”, “perf 정책을 위반하지 않는지”를
     먼저 점검한다.
+- smoke는 runner의 기본 패턴 집합이 현재 stage 소유 범위와 일치하는 경우에는
+    기본 패턴 집합 실행을 사용하고, 그렇지 않은 경우에만 범위를 제한하는 인자를
+    추가하는 방식으로 정의한다.
+- 각 명령은 `runs=1`, 대표 size, 짧은 duration/warmup을 사용한다.
 - Surface audit:
-  - `rg -n "cpu_pct|mem_mb|server_cpu_pct|server_mem_mb|warmup|Q\\.Snd|Q\\.Rcv" core/perf core/bench/with_stream core/bench/with_zmq bindings doc/perf`
+  - core/shared policy audit:
+    `rg -n "cpu_pct|mem_mb|server_cpu_pct|server_mem_mb|warmup|Q\\.Snd|Q\\.Rcv" core/perf bindings doc/perf`
+  - bench-local contract audit:
+    `rg -n "warmup|cpu_pct|mem_mb|server_cpu_pct|server_mem_mb|Q\\.Snd|Q\\.Rcv" core/bench/with_stream core/bench/with_zmq`
+  - bench-local contract audit 결과는 “문자열 존재 여부”만으로 fail 처리하지 말고,
+    각 README의 로컬 bench 정책과 충돌하는지 기준으로 해석한다.
 
-### 6.1 Full Test Gate 정의
+### 6.1 Smoke Test Gate 정의
 
 각 단계에서 POSD 리팩토링과 dead code 정리가 더 이상 남아 있지 않다고 판단된
-시점에 아래를 full test gate로 본다.
+시점에, 현재 stage 소유 범위의 smoke test gate를 수행한다.
+
+stage 1 `core/perf` smoke test gate는 아래를 기준으로 한다.
 
 1. `python3 -m py_compile core/perf/run_comparison.py core/perf/single/run_comparison.py`
 2. `pytest -q core/perf/single/tests`
 3. `bash -n core/perf/run_benchmarks.sh`
 4. `bash -n core/perf/run_benchmarks_multi.sh`
 5. `cmake --build core/build -j4 --target comp_src_spot_server comp_src_stream_server`
-6. `./core/perf/run_benchmarks.sh`
-7. `./core/perf/run_benchmarks_multi.sh`
+6. `./core/perf/run_benchmarks.sh --transports tcp --msg-sizes 64 --runs 1 --duration 1 --results-tag smoke_single_all`
+7. `./core/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64 --runs 1 --clients 4 --duration 1 --results-tag smoke_multi_all`
 
-- 위 1~7에서 실패가 없어야 해당 단계를 통과한 것으로 본다.
+- 위 1~7에서 실패가 없어야 stage 1을 통과한 것으로 본다.
 - 위 1~7 결과에서 fail 항목 수는 반드시 0이어야 한다.
-- bindings/bench 단계에서는 해당 대상 전용 검증을 추가하되, core perf full test
-  gate를 생략하지 않는다.
+- bindings/bench 단계에서는 해당 대상 전용 smoke 테스트를 각 stage의 기본 gate로
+  사용한다.
+- smoke gate의 실행 범위는 문서에 명시한 명령 목록 그 자체를 기준으로 한다.
+- 기본 패턴 집합이 현재 stage 소유 범위와 정확히 일치하는 runner는 `--pattern`
+  또는 `--stack` 생략을 허용한다.
 - `with_zmq` 단계에서는 `core/bench/with_zmq/README.md`의 로컬 bench 계약이
   유지되는지도 함께 확인한다.
 - `with_stream` 단계에서는 `core/bench/with_stream/README.md`의 로컬 bench 계약이
   유지되는지도 함께 확인한다.
-- full test gate에 들어가기 전, 해당 단계는 perf 성능 테스트의 의미를 해치지 않는
+- smoke test gate에 들어가기 전, 해당 단계는 perf 성능 테스트의 의미를 해치지 않는
   선에서 POSD 리팩토링이 마무리되어 있어야 하며 `doc/perf` 정책 위반 상태여서는
   안 된다.
+- stage 1에서는 C1~C4 전체가 끝난 뒤에만 위 smoke test gate를 수행한다.
+
+bindings/bench stage gate 계약:
+
+- 단계 2~8 `bindings/*/perf`:
+  - 각 bindings stage는 해당 언어 perf 디렉터리의 runner/test/smoke 실행을 자기
+    stage의 기본 gate로 사용한다.
+  - 어떤 명령을 gate로 삼을지는 각 언어 디렉터리의 현재 공식 perf runner와 policy
+    test surface를 기준으로 guide에서 구체화한다.
+  - 다른 stage의 smoke gate를 대신 통과했다고 보고 넘어가면 안 된다.
+- 단계 9 `core/bench/with_zmq`:
+  - 이 문서 9단계에 적은 `bash -n`, `pytest`, `run_benchmarks*.sh` 명령 묶음을
+    stage gate로 사용한다.
+- 단계 10 `core/bench/with_stream`:
+  - 이 문서 10단계에 적은 `py_compile`, `bash -n`, `run_benchmarks.sh` 명령 묶음을
+    stage gate로 사용한다.
+- 단계 11 공통 tracked artifact 정리:
+  - tracked artifact 정리 후에는 정책 문서, 저장 위치 규칙, 결과 저장 루트가
+    충돌하지 않는지 확인하는 최종 stage gate를 사용한다.
 
 ## 7. 완료 정의
 
+- 이 문서 기준의 완료 단위는 11개 top-level stage다.
+- stage 1의 C1~C4는 완료 정의를 보조하는 내부 substage이며, 개별 완료 보고나 개별
+  smoke gate 완료로 닫지 않는다.
 - `core/perf` 문서, runner, 테스트가 현재 policy surface와 일치한다.
 - 제거된 metric/phase를 테스트 fixture나 README가 다시 들고 있지 않다.
 - queue/debug/probe 계층이 기본 perf 계약 밖이면 공통 surface에서 제거되거나
@@ -715,6 +813,9 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
   변경 증폭 지점이 남아 있지 않거나, 남아 있어도 제거 비용 대비 복잡도 감소
   이득이 작고 측정 정확성/비교 가능성/성능 비회귀 신뢰도를 추가로 높이지
   못한다는 판단 근거를 설명할 수 있다.
+- 반복 리뷰를 다시 수행해도 새 리팩토링 이슈가 나오지 않아야 한다.
+- 즉 build/test/smoke 통과는 완료의 필요조건일 뿐이며, 반복 리뷰 기준으로도
+  구조 정리와 정책 정합성 이슈가 없어야만 stage를 `complete`로 닫는다.
 
 ## 8. 비범위
 

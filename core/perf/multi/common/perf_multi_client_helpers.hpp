@@ -5,7 +5,6 @@
 #include "perf_common_multi.hpp"
 #include "perf_multi_metric_header.hpp"
 #include "../../common/perf_tls_setup.hpp"
-#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -738,10 +737,9 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
                                   uint32_t run_id,
                                   size_t scratch_capacity,
                                   double *throughput_out,
-                                  bench_latency_stats_t *latency_out,
-                                  bench_multi_resource_metrics_t *metrics_out)
+                                  bench_latency_stats_t *latency_out)
 {
-    if (!throughput_out || !latency_out || !metrics_out)
+    if (!throughput_out || !latency_out)
         return false;
 
     *throughput_out = 0.0;
@@ -754,7 +752,6 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
     long lat_count = 0;
     bench_latency_stats_t active_latency;
 
-    const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
     if (!run_one_way_window_loop (
           recv_sockets,
           settings,
@@ -770,7 +767,6 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
           &active_latency)) {
         return false;
     }
-    *metrics_out = bench_multi_finish_resource_probe (sample_start);
 
     if (recv_count <= 0 || lat_count <= 0) {
         if (bench_debug_enabled()) {
@@ -1076,10 +1072,9 @@ inline bool run_echo_duration (
   bool client_router_send,
   uint32_t run_id,
   double *throughput_out,
-  bench_latency_stats_t *latency_out,
-  bench_multi_resource_metrics_t *metrics_out)
+  bench_latency_stats_t *latency_out)
 {
-    if (!throughput_out || !latency_out || !metrics_out)
+    if (!throughput_out || !latency_out)
         return false;
 
     *throughput_out = 0.0;
@@ -1092,7 +1087,6 @@ inline bool run_echo_duration (
     long lat_count = 0;
     bench_latency_stats_t active_latency;
 
-    const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
     if (!run_echo_window_round_robin (
           sockets,
           settings,
@@ -1113,7 +1107,6 @@ inline bool run_echo_duration (
           &active_latency)) {
         return false;
     }
-    *metrics_out = bench_multi_finish_resource_probe (sample_start);
 
     if (recv_count <= 0 || lat_count <= 0) {
         if (bench_debug_enabled()) {
@@ -1134,25 +1127,13 @@ inline bool run_echo_duration (
     return true;
 }
 
-inline void print_client_resource_result_lines (
-  const char *pattern,
-  const std::string &lib_name,
-  const std::string &transport,
-  size_t msg_size,
-  const bench_multi_resource_metrics_t &metrics)
-{
-    print_client_resource_result_lines_common (
-      lib_name, pattern, transport, msg_size, metrics);
-}
-
 inline void print_client_result_lines (
   const char *pattern,
   const std::string &lib_name,
   const std::string &transport,
   size_t msg_size,
   double throughput,
-  const bench_latency_stats_t &latency,
-  const bench_multi_resource_metrics_t &metrics)
+  const bench_latency_stats_t &latency)
 {
     print_result (
       lib_name,
@@ -1163,9 +1144,6 @@ inline void print_client_result_lines (
       latency.mean_us,
       latency.p95_us,
       latency.p99_us);
-
-    print_client_resource_result_lines (
-      pattern, lib_name, transport, msg_size, metrics);
 }
 
 inline void print_echo_client_result_lines (
@@ -1174,8 +1152,7 @@ inline void print_echo_client_result_lines (
   const std::string &transport,
   size_t msg_size,
   double throughput,
-  const bench_latency_stats_t &latency,
-  const bench_multi_resource_metrics_t &metrics)
+  const bench_latency_stats_t &latency)
 {
     print_client_result_lines (
       pattern,
@@ -1183,8 +1160,7 @@ inline void print_echo_client_result_lines (
       transport,
       msg_size,
       throughput,
-      latency,
-      metrics);
+      latency);
 }
 
 inline std::vector<size_t> resolve_case_msg_sizes (size_t fallback_size)

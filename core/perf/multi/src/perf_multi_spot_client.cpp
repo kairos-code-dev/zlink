@@ -4,8 +4,6 @@
 #include "../common/perf_multi_metric_header.hpp"
 #include "../common/perf_multi_spot_handle.hpp"
 #include "../../common/perf_tls_setup.hpp"
-#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
-
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
@@ -48,7 +46,6 @@ struct spot_client_slot_t
         index(0),
         stop(false),
         phase_trace_msg_size(0),
-        first_warmup_us(0),
         first_active_us(0)
     {
     }
@@ -60,7 +57,6 @@ struct spot_client_slot_t
     size_t index;
     std::atomic<bool> stop;
     std::atomic<size_t> phase_trace_msg_size;
-    std::atomic<uint64_t> first_warmup_us;
     std::atomic<uint64_t> first_active_us;
 };
 
@@ -264,6 +260,11 @@ unsigned int resolve_spot_latency_sample_stride()
 int resolve_spot_ready_settle_ms()
 {
     return resolve_multi_int_env("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000, 0);
+}
+
+int resolve_spot_control_settle_ms()
+{
+    return resolve_multi_int_env("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25, 0);
 }
 
 bool should_sample_spot_latency(unsigned long long sample_index)
@@ -1130,13 +1131,6 @@ bool create_control_spot(ctx_guard_t &ctx,
         }
         return false;
     }
-    if (zlink_publish(state->control_pub, "__warmup__", NULL, 0, 0) != 0) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-spot-client] control warmup publish failed err="
-                      << zlink_errno() << std::endl;
-        }
-        return false;
-    }
     if (zlink_spot_node_connect_peer(state->control_node,
                                      server_control_endpoint.c_str())
         != 0) {
@@ -1150,6 +1144,13 @@ bool create_control_spot(ctx_guard_t &ctx,
     if (zlink_set_subscription(state->control_sub, k_topic) != 0) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] control subscribe failed err="
+                      << zlink_errno() << std::endl;
+        }
+        return false;
+    }
+    if (zlink_publish(state->control_pub, k_topic, NULL, 0, 0) != 0) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] control primer publish failed err="
                       << zlink_errno() << std::endl;
         }
         return false;
@@ -1293,7 +1294,6 @@ void reset_metrics(spot_client_state_t *state, size_t msg_size)
         if (!slot)
             continue;
         slot->phase_trace_msg_size.store(msg_size, std::memory_order_release);
-        slot->first_warmup_us.store(0, std::memory_order_release);
         slot->first_active_us.store(0, std::memory_order_release);
     }
     state->metrics_epoch.fetch_add(1, std::memory_order_acq_rel);
@@ -1304,11 +1304,8 @@ void print_phase_spread_summary(spot_client_state_t *state, size_t msg_size)
     if (!state || !bench_transition_debug_enabled())
         return;
 
-    uint64_t warmup_min_us = 0;
-    uint64_t warmup_max_us = 0;
     uint64_t active_min_us = 0;
     uint64_t active_max_us = 0;
-    size_t warmup_count = 0;
     size_t active_count = 0;
 
     for (size_t i = 0; i < state->slots.size(); ++i) {
@@ -1319,18 +1316,9 @@ void print_phase_spread_summary(spot_client_state_t *state, size_t msg_size)
             continue;
         }
 
-        const uint64_t warmup_us =
-          slot->first_warmup_us.load(std::memory_order_acquire);
         const uint64_t active_us =
           slot->first_active_us.load(std::memory_order_acquire);
 
-        if (warmup_us != 0) {
-            ++warmup_count;
-            if (warmup_min_us == 0 || warmup_us < warmup_min_us)
-                warmup_min_us = warmup_us;
-            if (warmup_us > warmup_max_us)
-                warmup_max_us = warmup_us;
-        }
         if (active_us != 0) {
             ++active_count;
             if (active_min_us == 0 || active_us < active_min_us)
@@ -1342,23 +1330,11 @@ void print_phase_spread_summary(spot_client_state_t *state, size_t msg_size)
 
     const uint64_t start_recv_us =
       state->control_start_recv_us.load(std::memory_order_acquire);
-    const uint64_t warmup_spread_us =
-      warmup_max_us >= warmup_min_us ? warmup_max_us - warmup_min_us : 0;
     const uint64_t active_spread_us =
       active_max_us >= active_min_us ? active_max_us - active_min_us : 0;
 
     std::cerr << "[multi-spot-client] phase spread size=" << msg_size
               << " start_recv_us=" << start_recv_us
-              << " warmup_slots=" << warmup_count
-              << " warmup_first_delta_us="
-              << ((start_recv_us != 0 && warmup_min_us >= start_recv_us)
-                    ? (warmup_min_us - start_recv_us)
-                    : 0)
-              << " warmup_last_delta_us="
-              << ((start_recv_us != 0 && warmup_max_us >= start_recv_us)
-                    ? (warmup_max_us - start_recv_us)
-                    : 0)
-              << " warmup_spread_us=" << warmup_spread_us
               << " active_slots=" << active_count
               << " active_first_delta_us="
               << ((start_recv_us != 0 && active_min_us >= start_recv_us)
@@ -1376,15 +1352,44 @@ bool wait_msg_size_start(spot_client_state_t *state,
                          size_t msg_size,
                          int timeout_ms)
 {
+    const size_t ready_count = state ? state->slots.size() : 0;
     const auto deadline =
       std::chrono::steady_clock::now()
       + std::chrono::milliseconds(std::max(1, timeout_ms));
+    auto next_ready_republish_at = std::chrono::steady_clock::now()
+                                   + std::chrono::milliseconds(50);
 
     while (std::chrono::steady_clock::now() < deadline) {
+        if (wait_for_size_start_signal(state, msg_size, 1)) {
+            const uint64_t start_recv_us =
+              bench_transition_debug_enabled() ? perf_multi_metric::now_us() : 0;
+            {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                state->control_started_msg_size.store(
+                  msg_size, std::memory_order_relaxed);
+                if (start_recv_us != 0) {
+                    state->control_start_recv_us.store(
+                      start_recv_us, std::memory_order_relaxed);
+                }
+                state->seen_msg_size.store(msg_size, std::memory_order_relaxed);
+                state->seen_phase.store(
+                  static_cast<int>(perf_multi_metric::phase_active),
+                  std::memory_order_relaxed);
+            }
+            state->cv.notify_all();
+            return true;
+        }
         if (state->fatal.load(std::memory_order_acquire)
             || state->control_started_msg_size.load(std::memory_order_acquire)
                  == msg_size) {
             return true;
+        }
+
+        if (ready_count > 0
+            && std::chrono::steady_clock::now() >= next_ready_republish_at) {
+            (void) publish_control_ready_count(state, msg_size, ready_count);
+            next_ready_republish_at =
+              std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
         }
 
         bool received = false;
@@ -1440,9 +1445,9 @@ int resolve_spot_phase_timeout_ms(const multi_bench_settings_t &settings,
                    std::max(60000, settings.connect_ready_timeout_ms * 6));
     }
 
-    // Large recv-mode fan-in cases can accumulate a substantial warmup backlog
-    // before the active phase becomes visible on the client. Give the phase
-    // transition enough time to drain queued warmup traffic instead of failing
+    // Large recv-mode fan-in cases can accumulate a substantial ready-to-active
+    // transition backlog before the active phase becomes visible on the client.
+    // Give the phase transition enough time to drain queued traffic instead of failing
     // the benchmark while the service is still making forward progress.
     if (msg_size >= 65536) {
         const int base_large_timeout =
@@ -1549,6 +1554,18 @@ bool run_single_size_case(spot_client_state_t *state,
         }
         return false;
     }
+    const int control_settle_ms = resolve_spot_control_settle_ms();
+    if (control_settle_ms > 0
+        && perf_socket_poll(NULL, 0, control_settle_ms) < 0
+        && zlink_errno() != EINTR) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] control settle failed"
+                      << " size=" << msg_size
+                      << " settle_ms=" << control_settle_ms
+                      << " err=" << zlink_errno() << std::endl;
+        }
+        return false;
+    }
     if (!publish_control_ready_count(state, msg_size, state->slots.size())) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] control ready count publish failed"
@@ -1596,8 +1613,6 @@ bool run_single_size_case(spot_client_state_t *state,
         return false;
     }
 
-    const bench_multi_cpu_sample_t sample_start =
-      bench_multi_capture_cpu_sample();
     if (!wait_spot_sender_window_done(state)) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-client] active wait failed size="
@@ -1613,8 +1628,6 @@ bool run_single_size_case(spot_client_state_t *state,
     if (bench_transition_debug_enabled())
         print_phase_spread_summary(state, msg_size);
 
-    const bench_multi_resource_metrics_t metrics =
-      bench_multi_finish_resource_probe(sample_start);
     bench_latency_stats_t latency;
     double throughput = 0.0;
 
@@ -1646,7 +1659,7 @@ bool run_single_size_case(spot_client_state_t *state,
       / static_cast<double>(std::max(1, settings.duration_seconds));
 
     print_client_result_lines(k_pattern, lib_name, transport, msg_size,
-                              throughput, latency, metrics);
+                              throughput, latency);
     return true;
 }
 

@@ -5,8 +5,6 @@
 #include "perf_common_multi.hpp"
 #include "perf_multi_client_helpers.hpp"
 #include "../../common/perf_tls_setup.hpp"
-#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
-
 #include <atomic>
 #include <cerrno>
 #include <cstring>
@@ -79,11 +77,12 @@ inline void print_server_metrics (
   const relay_server_config_t &config,
   const std::string &lib_name,
   const std::string &transport,
-  const std::vector<size_t> &sizes,
-  const bench_multi_resource_metrics_t &metrics)
+  const std::vector<size_t> &sizes)
 {
-    print_server_metrics_for_sizes (
-      lib_name, config.pattern_name, transport, sizes, metrics);
+    (void) config;
+    (void) lib_name;
+    (void) transport;
+    (void) sizes;
 }
 
 inline bool run_server_loop (const relay_server_config_t &config,
@@ -171,16 +170,10 @@ inline int run_server_benchmark (const relay_server_config_t &config,
     if (sizes.empty ())
         sizes.push_back (64);
 
-    const bench_multi_cpu_sample_t sample_start =
-      bench_multi_capture_cpu_sample ();
-
     std::cout << "READY," << endpoint << std::endl;
 
     const bool loop_ok = run_server_loop (config, server, lib_name, transport);
-
-    const bench_multi_resource_metrics_t metrics =
-      bench_multi_finish_resource_probe (sample_start);
-    print_server_metrics (config, lib_name, transport, sizes, metrics);
+    print_server_metrics (config, lib_name, transport, sizes);
 
     zlink_close (server);
     return loop_ok ? 0 : 1;

@@ -156,8 +156,7 @@ inline bool initialize_client_session(void *node,
     }
 
     session->local_endpoint = local_endpoint;
-    if (zlink_publish(session->pub, "__warmup__", NULL, 0, 0) != 0
-        || zlink_spot_node_connect_peer(node, server_endpoint.c_str())
+    if (zlink_spot_node_connect_peer(node, server_endpoint.c_str())
              != 0
         || zlink_set_subscription(session->sub, topic) != 0) {
         destroy_client_session(session);
@@ -342,8 +341,7 @@ inline bool initialize_server_session(ctx_guard_t &ctx,
 
     session->control_endpoint =
       bind_control_endpoint(session->control_node, transport);
-    if (session->control_endpoint.empty()
-        || zlink_publish(session->control_pub, "__warmup__", NULL, 0, 0) != 0) {
+    if (session->control_endpoint.empty()) {
         destroy_server_session(session);
         return false;
     }

@@ -2,8 +2,6 @@
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_handshake.hpp"
 #include "../common/perf_multi_metric_header.hpp"
-#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
-
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -183,11 +181,11 @@ build_one_way_phases (const multi_bench_settings_t &settings,
 inline void print_server_metrics (
   const std::string &lib_name,
   const std::string &transport,
-  const std::vector<size_t> &sizes,
-  const bench_multi_resource_metrics_t &metrics)
+  const std::vector<size_t> &sizes)
 {
-    print_server_metrics_for_sizes (
-      lib_name, k_pattern, transport, sizes, metrics);
+    (void) lib_name;
+    (void) transport;
+    (void) sizes;
 }
 
 inline bool run_server_loop (void *server,
@@ -423,8 +421,6 @@ inline int run_server_benchmark (const std::string &lib_name,
         static_cast<size_t> (1024),
         std::max<size_t> (max_size, perf_multi_metric::header_size ())),
       's');
-    const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
-
     std::cout << "READY," << endpoint << std::endl;
 
     const bool loop_ok = run_server_loop (
@@ -441,9 +437,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         stdin_watcher.join ();
     }
 
-    const bench_multi_resource_metrics_t metrics =
-      bench_multi_finish_resource_probe (sample_start);
-    print_server_metrics (lib_name, transport, sizes, metrics);
+    print_server_metrics (lib_name, transport, sizes);
 
     zlink_close (server);
 

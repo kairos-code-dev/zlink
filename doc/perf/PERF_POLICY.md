@@ -56,6 +56,11 @@
   - 허용: 언어별 async/runtime, callback 등록 방식, 모듈 분리, 타입 시스템 차이
   - 금지: 측정 anchor point 이동, phase 의미 변경, metric 집합 변경, fail/skip/
     unsupported 의미 변경
+- `core/perf`와 `bindings/<lang>/perf`의 공식 실행 스크립트는 동일한 CLI 옵션
+  의미와 동일한 결과 출력 포맷을 따라야 한다.
+  - 옵션 이름과 의미를 언어별로 바꾸지 않는다.
+  - RESULT line 형식과 Tier 1 5개 metric 의미를 바꾸지 않는다.
+  - 사람이 읽는 테이블 형식과 complete/partial/fail 의미를 바꾸지 않는다.
 - bindings perf는 아래 비교 가능성 체크리스트를 함께 만족해야 한다.
   - 같은 pattern/transport 의미를 측정한다.
   - 같은 metric header / wire protocol contract를 사용한다.

@@ -340,37 +340,37 @@ void run_single_spot_reject_case (const char *self_path_, const char *recv_mode_
 }
 } // namespace
 
-void test_single_spot_process_recv_is_rejected ()
+void test_single_spot_process_recv_smoke ()
 {
-    run_single_spot_reject_case (g_self_path, "recv");
+    (void) run_single_spot_process_case (g_self_path, "recv", "tcp", "64");
 }
 
-void test_single_spot_process_callback_smoke ()
+void test_single_spot_process_callback_is_rejected ()
 {
-    (void) run_single_spot_process_case (g_self_path, "callback", "tcp", "64");
+    run_single_spot_reject_case (g_self_path, "callback");
 }
 
-void test_single_spot_process_callback_tcp_256_keeps_up_with_64 ()
+void test_single_spot_process_recv_tcp_256_keeps_up_with_64 ()
 {
     const double throughput_64 =
-      run_single_spot_process_case (g_self_path, "callback", "tcp", "64");
+      run_single_spot_process_case (g_self_path, "recv", "tcp", "64");
     const double throughput_256 =
-      run_single_spot_process_case (g_self_path, "callback", "tcp", "256");
+      run_single_spot_process_case (g_self_path, "recv", "tcp", "256");
 
     TEST_ASSERT_TRUE (throughput_256 >= throughput_64 * 0.4);
 }
 
-void test_single_spot_process_callback_ws_256_smoke ()
+void test_single_spot_process_recv_ws_256_smoke ()
 {
-    (void) run_single_spot_process_case (g_self_path, "callback", "ws", "256",
+    (void) run_single_spot_process_case (g_self_path, "recv", "ws", "256",
                                          5, 2);
 }
 
-void test_single_spot_process_callback_ws_64_exit_cleanly ()
+void test_single_spot_process_recv_ws_64_exit_cleanly ()
 {
     std::string debug_text;
     const double throughput =
-      run_single_spot_process_case (g_self_path, "callback", "ws", "64", 5, 2,
+      run_single_spot_process_case (g_self_path, "recv", "ws", "64", 5, 2,
                                     &debug_text);
     TEST_ASSERT_TRUE_MESSAGE (throughput > 0.0, debug_text.c_str ());
 }
@@ -379,8 +379,8 @@ int main (int argc, char **argv)
 {
     g_self_path = argc > 0 ? argv[0] : NULL;
     UNITY_BEGIN ();
-    RUN_TEST (test_single_spot_process_recv_is_rejected);
-    RUN_TEST (test_single_spot_process_callback_smoke);
+    RUN_TEST (test_single_spot_process_recv_smoke);
+    RUN_TEST (test_single_spot_process_callback_is_rejected);
     return UNITY_END ();
 }
 

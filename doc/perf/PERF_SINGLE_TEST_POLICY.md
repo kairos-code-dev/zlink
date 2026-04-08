@@ -50,9 +50,9 @@
 #### 프로세스/스레드 모델
 
 single은 **단일 프로세스** 안에서 sender와 receiver를 구동한다.
-패턴에 따라 스레드 모델이 다르다.
+모든 single 패턴은 one-way 측정 surface를 사용한다.
 
-**one-way 패턴** (PAIR, PUBSUB):
+**raw one-way 패턴** (PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER):
 ```
 ┌─ process ────────────────────────────┐
 │  sender thread      recv thread      │
@@ -65,18 +65,17 @@ single은 **단일 프로세스** 안에서 sender와 receiver를 구동한다.
 - recv thread: poller `POLLIN` → `zlink_recv()` DONTWAIT drain 루프.
   throughput/latency 집계를 recv drain 안에서 인라인 수행.
 
-**echo 패턴** (DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER):
+**SPOT one-way 패턴**:
 ```
 ┌─ process ────────────────────────────┐
-│  main thread                         │
-│  poller POLLIN/POLLOUT               │
-│  send → recv response → send → ...  │
-│  (1 RTT = 1 op)                     │
+│  sender thread      recv thread      │
+│  publish loop ───►  poller POLLIN    │
+│                     recv drain       │
+│                     metric 집계      │
 └──────────────────────────────────────┘
 ```
-- 단일 스레드에서 poller 기반 send/recv 교대 수행.
-- send 후 응답을 recv하고 다시 send하는 1:1 RTT 루프.
-- blocking send 대신 poller `POLLOUT` readiness 후 nonblocking send 사용.
+- sender thread는 ready barrier 통과 후 metric header가 포함된 payload를 연속 publish한다.
+- recv thread는 local probe barrier를 닫은 뒤 active payload만 집계한다.
 
 **공통**:
 - `EAGAIN` 기반 pending 관리, send-ready handler 등 multi에서 사용하는

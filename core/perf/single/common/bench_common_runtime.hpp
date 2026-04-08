@@ -216,31 +216,6 @@ inline void apply_single_hwm(void *socket_)
     set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
 }
 
-inline int resolve_single_teardown_settle_ms(const std::string &transport_,
-                                             size_t msg_size_)
-{
-    const int override_ms =
-      parse_positive_env("PERF_SINGLE_TEARDOWN_SETTLE_MS", 0);
-    if (override_ms > 0)
-        return override_ms;
-
-    if (transport_ == "ipc")
-        return msg_size_ >= 262144 ? 200 : (msg_size_ >= 131072 ? 100 : 0);
-    if (transport_ == "ws" || transport_ == "wss" || transport_ == "tls")
-        return 25;
-    return 0;
-}
-
-inline void settle_single_teardown(const std::string &transport_,
-                                   size_t msg_size_)
-{
-    const int settle_ms =
-      resolve_single_teardown_settle_ms(transport_, msg_size_);
-    if (settle_ms <= 0)
-        return;
-    (void) perf_socket_poll(NULL, 0, settle_ms);
-}
-
 inline void apply_single_benchmark_socket_options(void *socket_,
                                                   const std::string &transport_)
 {

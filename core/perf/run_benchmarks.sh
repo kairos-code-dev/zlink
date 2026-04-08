@@ -127,7 +127,7 @@ Options:
 
 Notes:
   - result is saved under results/single/report/ as
-    perf_<platform>_callback_YYYYMMDD_HHMMSS[_<tag>].txt.
+    perf_<platform>_recv_YYYYMMDD_HHMMSS[_<tag>].txt.
   - default build mode is incremental (configure/build without deleting build dir).
   - --output and result save can be used together.
   - run_benchmarks.sh is single-only; run_benchmarks_multi.sh owns multi mode.
@@ -357,7 +357,7 @@ if [[ -n "${RESULTS_DIR}" ]]; then
 fi
 
 TS="$(date +%Y%m%d_%H%M%S)"
-NAME="perf_${PLATFORM}_callback_${TS}"
+NAME="perf_${PLATFORM}_recv_${TS}"
 if [[ -n "${RESULTS_TAG}" ]]; then
   NAME="${NAME}_${RESULTS_TAG}"
 fi
@@ -608,7 +608,7 @@ print_effective_option "build_mode" "${BUILD_MODE}"
 print_effective_option "reuse_build" "$( [[ "${BUILD_MODE}" == "reuse" ]] && echo 1 || echo 0 )"
 print_effective_option "clean_build" "$( [[ "${BUILD_MODE}" == "clean" ]] && echo 1 || echo 0 )"
 print_effective_option "runs" "${RUNS}"
-print_effective_option "recv_mode" "callback"
+print_effective_option "recv_mode" "recv"
 print_effective_option "duration_seconds" "${DISPLAY_DURATION_SECONDS}"
 print_effective_option "hwm" "$(value_or_default "${DISPLAY_HWM}" "default(binary)")"
 print_effective_option "send_hwm" "$(value_or_default "${DISPLAY_SEND_HWM}" "default(binary)")"

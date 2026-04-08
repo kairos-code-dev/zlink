@@ -93,7 +93,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
                     "results_dir": "/tmp/ignored",
                     "results_tag": "",
                     "result_file": "",
-                    "recv": "callback",
+                    "recv": "recv",
                 },
             )()
 
@@ -196,14 +196,14 @@ class RunComparisonPolicyTests(unittest.TestCase):
     def test_result_filename_uses_current_mode_label(self):
         self.assertRegex(
             RC.build_result_filename("tag"),
-            r"^perf_[a-z]+_callback_\d{8}_\d{6}_tag\.txt$",
+            r"^perf_[a-z]+_recv_\d{8}_\d{6}_tag\.txt$",
         )
         self.assertRegex(
             RC.build_result_filename(),
-            r"^perf_[a-z]+_callback_\d{8}_\d{6}\.txt$",
+            r"^perf_[a-z]+_recv_\d{8}_\d{6}\.txt$",
         )
 
-    def test_callback_mode_uses_current_targets(self):
+    def test_recv_mode_uses_current_targets(self):
         self.assertEqual(RC.resolve_binary_name("PAIR"), "perf_pair")
         self.assertEqual(RC.resolve_binary_name("PUBSUB"), "perf_pubsub")
         self.assertEqual(RC.resolve_binary_name("SPOT"), "perf_spot")
@@ -246,7 +246,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
                     "results_dir": "/tmp/ignored",
                     "results_tag": "",
                     "result_file": "",
-                    "recv": "callback",
+                    "recv": "recv",
                 },
             )()
             RC.run_single_test = lambda build_dir, current_lib_dir, binary_name, lib_name, pattern, transport, size, timeout_sec, pin_cpu: (
@@ -335,7 +335,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
                     "results_dir": "/tmp/ignored",
                     "results_tag": "",
                     "result_file": "",
-                    "recv": "callback",
+                    "recv": "recv",
                 },
             )()
             os.environ["PERF_TRANSPORT_TRANSITION_MS"] = "23"
@@ -430,7 +430,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
                     "results_dir": "/tmp/ignored",
                     "results_tag": "",
                     "result_file": "",
-                    "recv": "callback",
+                    "recv": "recv",
                 },
             )()
             os.environ["PERF_TRANSPORT_TRANSITION_MS"] = "23"
@@ -458,7 +458,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
             rc = RC.main()
 
             self.assertEqual(rc, 0)
-            self.assertEqual(sleeps, [6.0])
+            self.assertEqual(sleeps, [30.0])
         finally:
             RC.run_single_test = old_run_single_test
             RC.msg_sizes_for_pattern = old_msg_sizes_for_pattern

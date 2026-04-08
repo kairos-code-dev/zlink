@@ -85,8 +85,8 @@ SUPPORTED_MULTI_RECV_MODES = {
     "DEALER_ROUTER": ("recv",),
     "ROUTER_ROUTER": ("recv",),
     "PUBSUB": ("recv",),
-    "SPOT": ("recv", "callback"),
-    "STREAM": ("recv", "callback"),
+    "SPOT": ("recv",),
+    "STREAM": ("recv",),
 }
 
 MULTI_ENV_ALIAS_MAP = {
@@ -2207,17 +2207,6 @@ def run_sizes_test(
     # each pattern/transport/size case runs in its own isolated server/client
     # process lifecycle. Do not batch multiple sizes into one process pair.
     size_list = list(sizes) if sizes else [64]
-    split_size_transition_ms = max(
-        0,
-        parse_env_int(
-            "PERF_MULTI_SIZE_TRANSITION_MS",
-            3000
-            if transport.lower() == "wss"
-            and normalize_multi_pattern_name(pattern_name)
-            in ("DEALER_ROUTER", "ROUTER_ROUTER")
-            else 0,
-        ),
-    )
 
     if pattern_name in STREAM_VARIANT_PATTERNS:
         server_binary = resolve_stream_server_binary(pattern_name)
@@ -2296,12 +2285,6 @@ def run_sizes_test(
             reason = isolated.get("reason", "size_case_failed")
             merged["reason"] = f"{reason}_size_{size}"
             return merged
-
-        if (
-            split_size_transition_ms > 0
-            and (size_index + 1) < len(size_list)
-        ):
-            time.sleep(split_size_transition_ms / 1000.0)
 
     return merged
 
@@ -2408,7 +2391,6 @@ def _emit_table_row(
     latency=None,
     latency_p95=None,
     latency_p99=None,
-    **_unused,
 ):
     size_w = 8
     tp_w = 16
@@ -3418,7 +3400,7 @@ def build_result_filename(tag=""):
     elif platform_tag.startswith("linux"):
         platform_tag = "linux"
     recv_mode = (os.environ.get("PERF_RECV_MODE", "recv") or "recv").strip().lower()
-    if recv_mode not in ("recv", "callback"):
+    if recv_mode != "recv":
         recv_mode = "recv"
     name = f"perf_{platform_tag}_{recv_mode}_{ts}"
     clean_tag = re.sub(r"[^A-Za-z0-9._-]+", "_", (tag or "").strip())
@@ -3451,7 +3433,7 @@ def parse_args():
         "  --results-dir PATH           Results root directory (default: core/perf/results)\n"
         "  --results-tag NAME           Optional suffix tag for saved filenames\n"
         "  --result-file PATH           Explicit result file path\n"
-        "  --recv MODE                  Receive model: recv|callback (default: recv)\n"
+        "  --recv MODE                  Receive model: recv (default: recv)\n"
         "  --multi-transport-transition-ms N  Transport transition cooldown (ms)\n"
         "  --multi-pattern-transition-ms N    Pattern transition cooldown (ms)\n"
         "  --multi-server-ready-timeout-ms N  Server READY wait timeout (ms)\n"
@@ -3656,8 +3638,8 @@ def parse_args():
     if single_duration_seconds is not None and single_duration_seconds < 1:
         print("Error: --duration must be >= 1.", file=sys.stderr)
         sys.exit(1)
-    if recv_mode not in ("recv", "callback"):
-        print("Error: --recv must be 'recv' or 'callback'.", file=sys.stderr)
+    if recv_mode != "recv":
+        print("Error: --recv must be 'recv'.", file=sys.stderr)
         sys.exit(1)
     for key, value in (
         ("multi-transport-transition-ms", transport_transition_ms),

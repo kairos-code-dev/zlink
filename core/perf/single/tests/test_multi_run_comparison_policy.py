@@ -18,7 +18,7 @@ SPEC.loader.exec_module(RC)
 def multi_args():
     return {
         "num_runs": 1,
-        "recv_mode": "callback",
+        "recv_mode": "recv",
         "server_ready_timeout_ms": 10000,
         "server_shutdown_timeout_ms": 5000,
         "server_bind_port": 0,
@@ -54,10 +54,10 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
     def test_result_filename_uses_current_mode_label(self):
         old_value = os.environ.get("PERF_RECV_MODE")
         try:
-            os.environ["PERF_RECV_MODE"] = "callback"
+            os.environ["PERF_RECV_MODE"] = "recv"
             self.assertRegex(
                 RC.build_result_filename("tag"),
-                r"^perf_[a-z]+_callback_\d{8}_\d{6}_tag\.txt$",
+                r"^perf_[a-z]+_recv_\d{8}_\d{6}_tag\.txt$",
             )
         finally:
             if old_value is None:
@@ -73,19 +73,19 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             ["DEALER_DEALER", "STREAM"],
         )
 
-    def test_collect_unsupported_patterns_matches_current_callback_matrix(self):
+    def test_collect_unsupported_patterns_matches_current_recv_matrix(self):
         self.assertEqual(
             RC.collect_unsupported_patterns(
-                ["SPOT", "STREAM"], "callback"
+                ["SPOT", "STREAM"], "recv"
             ),
             [],
         )
         self.assertEqual(
             RC.collect_unsupported_patterns(
                 ["DEALER_DEALER", "PUBSUB", "SPOT", "STREAM"],
-                "callback",
+                "recv",
             ),
-            ["DEALER_DEALER", "PUBSUB"],
+            [],
         )
 
     def test_multi_connect_concurrency_header_uses_multi_env_name(self):
@@ -212,7 +212,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         finally:
             RC.run_sizes_test_stream_shared = old_stream
 
-    def test_multi_size_transition_sleep_applies_only_between_cases(self):
+    def test_multi_sizes_run_as_isolated_cases_without_transition_sleep(self):
         old_allow_multi = RC.ALLOW_MULTI
         old_split = RC.run_sizes_test_split
         old_sleep = RC.time.sleep
@@ -221,7 +221,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         sleeps = []
         try:
             RC.ALLOW_MULTI = True
-            os.environ["PERF_MULTI_SIZE_TRANSITION_MS"] = "17"
 
             def fake_split(server_name, client_name, lib_name, transport, sizes,
                            pattern_name, result_line_callback=None):
@@ -251,7 +250,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
 
             self.assertEqual(outcome["status"], "success")
             self.assertEqual(calls, [[64], [256], [1024]])
-            self.assertEqual(sleeps, [0.017, 0.017])
+            self.assertEqual(sleeps, [])
         finally:
             RC.ALLOW_MULTI = old_allow_multi
             RC.run_sizes_test_split = old_split

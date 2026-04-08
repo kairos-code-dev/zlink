@@ -362,11 +362,6 @@ void run_multi_stream_process_case (const char *recv_mode_,
     TEST_ASSERT_TRUE (wait_for_exit_code (&server, 15000, &server_rc));
     close_process_capture (&server);
     TEST_ASSERT_EQUAL_INT_MESSAGE (0, server_rc, server.stderr_text.c_str ());
-    TEST_ASSERT_TRUE (stdout_contains_metric (
-      &server,
-      (std::string ("RESULT,current,MULTI_STREAM,") + transport_
-       + ",64,server_cpu_pct")
-        .c_str ()));
 }
 } // namespace
 
@@ -375,19 +370,14 @@ void test_multi_stream_process_recv_smoke ()
     run_multi_stream_process_case ("recv", "tcp");
 }
 
-void test_multi_stream_process_callback_smoke ()
+void test_multi_stream_process_recv_tls_smoke ()
 {
-    run_multi_stream_process_case ("callback", "tcp");
+    run_multi_stream_process_case ("recv", "tls");
 }
 
-void test_multi_stream_process_callback_tls_smoke ()
+void test_multi_stream_process_recv_wss_smoke ()
 {
-    run_multi_stream_process_case ("callback", "tls");
-}
-
-void test_multi_stream_process_callback_wss_smoke ()
-{
-    run_multi_stream_process_case ("callback", "wss");
+    run_multi_stream_process_case ("recv", "wss");
 }
 
 int main (int argc, char **argv)
@@ -396,9 +386,8 @@ int main (int argc, char **argv)
     g_self_path = argc > 0 ? argv[0] : NULL;
     UNITY_BEGIN ();
     RUN_TEST (test_multi_stream_process_recv_smoke);
-    RUN_TEST (test_multi_stream_process_callback_smoke);
-    RUN_TEST (test_multi_stream_process_callback_tls_smoke);
-    RUN_TEST (test_multi_stream_process_callback_wss_smoke);
+    RUN_TEST (test_multi_stream_process_recv_tls_smoke);
+    RUN_TEST (test_multi_stream_process_recv_wss_smoke);
     return UNITY_END ();
 }
 

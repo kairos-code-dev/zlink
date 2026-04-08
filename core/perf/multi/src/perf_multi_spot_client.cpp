@@ -34,12 +34,6 @@ using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::print_client_result_lines;
 using perf_multi_client::resolve_case_msg_sizes;
 
-enum spot_recv_mode_t
-{
-    spot_recv_recv = 0,
-    spot_recv_callback = 1
-};
-
 struct spot_client_slot_t
 {
     spot_client_slot_t() :
@@ -289,24 +283,6 @@ size_t resolve_spot_recv_worker_count(size_t slot_count)
     const size_t scaled =
       std::max<size_t>(4, std::min<size_t>(128, (slot_count + 15) / 16));
     return std::min(slot_count, scaled);
-}
-
-spot_recv_mode_t resolve_spot_run_recv_mode()
-{
-    return multi_perf_callback_mode()
-             ? spot_recv_callback
-             : spot_recv_recv;
-}
-
-const char *spot_recv_mode_name(spot_recv_mode_t mode)
-{
-    switch (mode) {
-        case spot_recv_callback:
-            return "callback";
-        case spot_recv_recv:
-        default:
-            return "recv";
-    }
 }
 
 bool apply_spot_sub_options(void *sub, const multi_bench_settings_t &settings)
@@ -945,7 +921,6 @@ bool create_spot_slots(ctx_guard_t &ctx,
                        const std::string &transport,
                        const std::string &endpoint,
                        const multi_bench_settings_t &settings,
-                       spot_recv_mode_t recv_mode,
                        spot_client_state_t *state,
                        std::vector<spot_client_slot_t *> *slots_out)
 {
@@ -958,7 +933,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
         std::cerr << "[multi-spot-client] create slots begin ts_us="
                   << perf_multi_metric::now_us()
                   << " slots=" << service_clients
-                  << " mode=" << spot_recv_mode_name(recv_mode) << std::endl;
+                  << " mode=recv" << std::endl;
     }
     for (size_t i = 0; i < service_clients; ++i) {
         spot_client_slot_t *slot = new (std::nothrow) spot_client_slot_t();
@@ -985,11 +960,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
             return false;
         }
 
-        if ((recv_mode == spot_recv_callback
-             && zlink_subscribe_handler(slot->handle, &spot_client_sub_handler,
-                                        slot)
-                  != 0)
-            || !apply_spot_sub_options(slot->handle, settings)
+        if (!apply_spot_sub_options(slot->handle, settings)
             || zlink_spot_node_connect_peer(slot->node, endpoint.c_str()) != 0
             || zlink_set_subscription (slot->handle, k_topic)
                  != 0) {
@@ -1020,7 +991,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
                   << perf_multi_metric::now_us()
                   << " slots=" << slots_out->size() << std::endl;
     }
-    if (recv_mode == spot_recv_recv && !start_spot_recv_workers(state))
+    if (!start_spot_recv_workers(state))
         return false;
     return true;
 }
@@ -1416,12 +1387,6 @@ int run_client_benchmark(const std::string &lib_name,
 
     spot_client_state_t state;
     g_client_state = &state;
-    perf_multi_spot_control::start_client_stdin_watcher(
-      &state,
-      [](spot_client_state_t *client_state, size_t start_size) {
-          perf_multi_handshake::signal_start(
-            &client_state->start_gate, start_size);
-      });
     if (!create_control_spot(ctx, transport, control_endpoint, settings,
                              &state)) {
         if (bench_debug_enabled())
@@ -1429,17 +1394,25 @@ int run_client_benchmark(const std::string &lib_name,
                       << std::endl;
         fast_exit_process(1);
     }
-    const spot_recv_mode_t recv_mode = resolve_spot_run_recv_mode();
-    if (!create_spot_slots(ctx, transport, endpoint, settings, recv_mode,
-                           &state,
+    if (!create_spot_slots(ctx, transport, endpoint, settings, &state,
                            &state.slots)) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] create_spot_slots failed"
-                      << " mode=" << spot_recv_mode_name(recv_mode)
+                      << " mode=recv"
                       << std::endl;
         }
         fast_exit_process(1);
     }
+    // Keep control stdin handling dormant until the recv-side setup is ready.
+    // The runner can forward CONTROL_CONNECTED as soon as the client publishes
+    // its endpoint, and deferring the watcher avoids setup-time races without
+    // changing the recv-only benchmark contract.
+    perf_multi_spot_control::start_client_stdin_watcher(
+      &state,
+      [](spot_client_state_t *client_state, size_t start_size) {
+          perf_multi_handshake::signal_start(
+            &client_state->start_gate, start_size);
+      });
 
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
         if (!run_single_size_case(&state, settings, lib_name, transport,

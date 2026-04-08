@@ -196,8 +196,6 @@ Usage: core/perf/run_benchmarks_multi.sh [options]
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
   DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM
-When callback mode is selected without an explicit pattern, default PATTERN is:
-  SPOT,STREAM
 This script invokes the shared comparison runner directly.
 By default, multi-bench uses ready -> active with a 5s duration window.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
@@ -217,9 +215,7 @@ Options:
   --build-dir PATH       Official build directory (must be core/build).
   --output PATH          Tee results to a file.
   --runs N               Iterations per configuration (default: 1).
-  --recv MODE            Receive model: recv|callback (default: recv).
-  --callback             Alias of --recv callback. If --pattern is omitted,
-                         defaults to SPOT,STREAM.
+  --recv MODE            Receive model: recv (default: recv).
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --io-threads N         Legacy alias: set PERF_IO_THREADS for both roles.
   --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS
@@ -384,8 +380,6 @@ SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-${PERF_SERVER_IO_THREADS:-}}"
 CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-${PERF_CLIENT_IO_THREADS:-}}"
 STREAM_SERVER_IO_THREADS="${PERF_MULTI_STREAM_SERVER_IO_THREADS:-${PERF_STREAM_SERVER_IO_THREADS:-}}"
 STREAM_CLIENT_IO_THREADS="${PERF_MULTI_STREAM_CLIENT_IO_THREADS:-${PERF_STREAM_CLIENT_IO_THREADS:-}}"
-CALLBACK_DEFAULT_PATTERNS=("SPOT" "STREAM")
-
 set_build_mode() {
   local next_mode="${1:-}"
   if [[ "${next_mode}" != "incremental" && "${next_mode}" != "reuse" && "${next_mode}" != "clean" ]]; then
@@ -482,9 +476,8 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --callback)
-      RECV_MODE="callback"
-      SCRIPT_ARGS+=( "--recv" "callback" )
-      shift
+      echo "Error: --callback is no longer supported." >&2
+      exit 1
       ;;
     --duration)
       if [[ $# -lt 2 ]]; then
@@ -746,8 +739,8 @@ if ! is_uint "${SERVER_BIND_PORT}" || (( SERVER_BIND_PORT > 65535 )); then
   echo "Error: --server-bind-port must be an integer in range 0..65535." >&2
   exit 1
 fi
-if [[ "${RECV_MODE}" != "recv" && "${RECV_MODE}" != "callback" ]]; then
-  echo "Error: --recv must be 'recv' or 'callback'." >&2
+if [[ "${RECV_MODE}" != "recv" ]]; then
+  echo "Error: --recv must be 'recv'." >&2
   exit 1
 fi
 
@@ -791,8 +784,6 @@ fi
 PATTERNS=("${PATTERN_LIST[@]}")
 if [[ "${#EXPLICIT_PATTERNS[@]}" -gt 0 ]]; then
   PATTERNS=("${EXPLICIT_PATTERNS[@]}")
-elif [[ "${RECV_MODE}" == "callback" ]]; then
-  PATTERNS=("${CALLBACK_DEFAULT_PATTERNS[@]}")
 fi
 
 RUN_BASE_ARGS=()
@@ -941,18 +932,6 @@ if [[ "${#RUN_PATTERNS[@]}" -eq 0 ]]; then
   fi
   print_skip_summary
   exit 0
-fi
-
-if [[ "${RECV_MODE}" == "callback" && "${#RUN_PATTERNS[@]}" -gt 1 ]]; then
-  reordered_patterns=()
-  for pattern in "${RUN_PATTERNS[@]}"; do
-    if [[ "${pattern}" == STREAM_* ]]; then
-      reordered_patterns=("${pattern}" "${reordered_patterns[@]}")
-    else
-      reordered_patterns+=("${pattern}")
-    fi
-  done
-  RUN_PATTERNS=("${reordered_patterns[@]}")
 fi
 
 RUN_ENV+=(PERF_MULTI_TRANSPORT_TRANSITION_MS="${TRANSPORT_TRANSITION_MS}")

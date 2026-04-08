@@ -144,13 +144,13 @@ void test_spot_subject_access_routes_composite_and_node_options ()
     spot_handle_t *handle = as_spot_handle (spot);
     TEST_ASSERT_NOT_NULL (handle);
     TEST_ASSERT_NOT_NULL (handle->node);
+    TEST_ASSERT_NOT_NULL (handle->pub);
 
     const int linger = 27;
     TEST_ASSERT_SUCCESS_ERRNO (
       spot_subject_set_common_option (spot, ZLINK_OPT_LINGER, &linger,
                                       sizeof (linger)));
-    TEST_ASSERT_NULL (handle->pub);
-    TEST_ASSERT_NULL (handle->sub);
+    TEST_ASSERT_NOT_NULL (handle->pub);
 
     TEST_ASSERT_NOT_NULL (resolve_spot_pub_subject_poller_socket (spot));
     TEST_ASSERT_NOT_NULL (resolve_spot_sub_subject_poller_socket (spot));
@@ -197,7 +197,7 @@ void test_spot_subject_access_applies_pending_pub_defaults_on_lazy_create ()
 
     spot_handle_t *handle = as_spot_handle (spot);
     TEST_ASSERT_NOT_NULL (handle);
-    TEST_ASSERT_NULL (handle->pub);
+    TEST_ASSERT_NOT_NULL (handle->pub);
 
     const int sndhwm = 321;
     const int sndtimeo = 654;
@@ -211,7 +211,7 @@ void test_spot_subject_access_applies_pending_pub_defaults_on_lazy_create ()
     TEST_ASSERT_SUCCESS_ERRNO (
       spot_subject_set_pub_option (spot, ZLINK_PUB_OPT_NODROP, &nodrop,
                                    sizeof (nodrop)));
-    TEST_ASSERT_NULL (handle->pub);
+    TEST_ASSERT_NOT_NULL (handle->pub);
 
     int actual = 0;
     size_t actual_size = sizeof (actual);

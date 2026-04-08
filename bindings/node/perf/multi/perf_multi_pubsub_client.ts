@@ -37,7 +37,7 @@ async function main() {
             await new Promise((resolve) => setImmediate(resolve));
             continue;
           }
-          const header = decodeMetricHeader(received.parts[0].toBuffer());
+          const header = decodeMetricHeader(received.parts[0].data);
           if (!header) {
             continue;
           }

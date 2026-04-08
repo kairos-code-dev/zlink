@@ -1,17 +1,13 @@
 # SPDX-License-Identifier: MPL-2.0
 
-"""Regression tests for send operations inside receive callbacks.
+"""Regression tests for blocking sends inside receive callbacks.
 
-The core C API (zlink_send_rid) is thread-safe and supports being called
-from within a zlink_recv_handler callback.  Before the fix in
-_socket_base.py, blocking sends from callbacks could deadlock the socket
-I/O thread because the retry loop waited for I/O events that could only
-be delivered by the same thread.
-
-The fix forces DONTWAIT on sends issued from callback context so the I/O
-thread is never blocked in a retry loop.
+Callback context must not silently change blocking send semantics.
+Blocking send/publish APIs invoked from a receive callback now fail with
+an explicit error instead of being downgraded to non-blocking behavior.
 """
 
+import errno
 import socket
 import threading
 import time
@@ -29,7 +25,7 @@ def _tcp_endpoint():
 
 
 class CallbackSendTests(unittest.TestCase):
-    """Test that routed send works correctly inside an on_receive callback."""
+    """Test callback send/publish behavior is explicit and non-silent."""
 
     def setUp(self):
         try:
@@ -41,8 +37,7 @@ class CallbackSendTests(unittest.TestCase):
         if hasattr(self, "ctx") and self.ctx is not None:
             self.ctx.close()
 
-    def test_router_send_inside_on_receive(self):
-        """router.send(payload, routing_id=rid) inside on_receive must not hang."""
+    def test_router_send_inside_on_receive_raises_explicit_error(self):
         endpoint = _tcp_endpoint()
         router = zlink.RouterSocket(self.ctx)
         dealer = zlink.DealerSocket(self.ctx)
@@ -66,22 +61,15 @@ class CallbackSendTests(unittest.TestCase):
         router.on_receive(on_request)
         dealer.send(b"ping")
 
-        self.assertTrue(done.wait(3.0), "callback timed out -- routed send hung")
-        self.assertEqual(callback_error, [], f"callback raised: {callback_error}")
-
-        reply = dealer.try_recv()
-        if reply is None:
-            time.sleep(0.2)
-            reply = dealer.try_recv()
-        self.assertIsNotNone(reply, "dealer did not receive reply")
-        self.assertEqual(reply.to_bytes_list(), [b"pong"])
-        reply.close()
+        self.assertTrue(done.wait(3.0), "callback timed out")
+        self.assertEqual(len(callback_error), 1, f"callback raised: {callback_error}")
+        self.assertIsInstance(callback_error[0], zlink.ZlinkError)
+        self.assertEqual(callback_error[0].errno, errno.EDEADLK)
 
         dealer.close()
         router.close()
 
-    def test_dealer_send_inside_on_receive(self):
-        """dealer.send(payload) inside on_receive must not hang."""
+    def test_dealer_send_inside_on_receive_raises_explicit_error(self):
         endpoint = _tcp_endpoint()
         router = zlink.RouterSocket(self.ctx)
         dealer = zlink.DealerSocket(self.ctx)
@@ -112,19 +100,15 @@ class CallbackSendTests(unittest.TestCase):
         router.send(b"pong", routing_id=rid)
         request.close()
 
-        self.assertTrue(done.wait(3.0), "callback timed out -- send hung")
-        self.assertEqual(callback_error, [], f"callback raised: {callback_error}")
-
-        # Router should receive the ack
-        ack = router.recv()
-        self.assertEqual(ack.to_bytes_list(), [b"ack"])
-        ack.close()
+        self.assertTrue(done.wait(3.0), "callback timed out")
+        self.assertEqual(len(callback_error), 1, f"callback raised: {callback_error}")
+        self.assertIsInstance(callback_error[0], zlink.ZlinkError)
+        self.assertEqual(callback_error[0].errno, errno.EDEADLK)
 
         dealer.close()
         router.close()
 
-    def test_pair_send_inside_on_receive(self):
-        """pair.send(payload) inside on_receive must not hang."""
+    def test_pair_send_inside_on_receive_raises_explicit_error(self):
         endpoint = _tcp_endpoint()
         sender = zlink.PairSocket(self.ctx)
         receiver = zlink.PairSocket(self.ctx)
@@ -147,65 +131,47 @@ class CallbackSendTests(unittest.TestCase):
         receiver.on_receive(on_message)
         sender.send(b"ping")
 
-        self.assertTrue(done.wait(3.0), "callback timed out -- send hung")
-        self.assertEqual(callback_error, [], f"callback raised: {callback_error}")
-
-        reply = sender.try_recv()
-        if reply is None:
-            time.sleep(0.2)
-            reply = sender.try_recv()
-        self.assertIsNotNone(reply, "sender did not receive reply")
-        self.assertEqual(reply.to_bytes_list(), [b"pong"])
-        reply.close()
+        self.assertTrue(done.wait(3.0), "callback timed out")
+        self.assertEqual(len(callback_error), 1, f"callback raised: {callback_error}")
+        self.assertIsInstance(callback_error[0], zlink.ZlinkError)
+        self.assertEqual(callback_error[0].errno, errno.EDEADLK)
 
         sender.close()
         receiver.close()
 
-    def test_callback_send_with_backpressure_does_not_hang(self):
-        """When pipe is full, send in callback raises instead of deadlocking.
-
-        With router mandatory mode + small HWM, sends that cannot complete
-        immediately must raise an error rather than blocking the I/O thread
-        forever.
-        """
+    def test_spot_publish_inside_on_subscribe_raises_explicit_error(self):
         endpoint = _tcp_endpoint()
-        router = zlink.RouterSocket(self.ctx)
-        dealer = zlink.DealerSocket(self.ctx)
-
-        router.router_options.mandatory = True
-        router.options.send_high_water_mark = 1
-
+        server_node = zlink.SpotNode(self.ctx)
+        client_node = zlink.SpotNode(self.ctx)
+        server_spot = zlink.Spot(server_node)
+        client_spot = zlink.Spot(client_node)
         done = threading.Event()
-        eagain_raised = threading.Event()
+        callback_error = []
 
-        def on_request(received):
-            rid = received.routing_id
+        def on_message(received):
             try:
-                # First send should succeed; subsequent sends may hit HWM.
-                for i in range(20):
-                    router.send(f"msg-{i}".encode(), routing_id=rid)
+                client_spot.publish(b"room:lobby", [b"reply"])
+            except Exception as exc:
+                callback_error.append(exc)
+            finally:
                 done.set()
-            except zlink.ZlinkError:
-                # EAGAIN is expected when the pipe is full -- this is the
-                # correct behaviour instead of hanging.
-                eagain_raised.set()
 
-        router.bind(endpoint)
-        dealer.connect(endpoint)
+        server_node.bind(endpoint)
+        client_node.connect_peer(endpoint)
+        client_spot.set_subscription(b"room:lobby")
+        client_spot.on_subscribe(on_message)
         time.sleep(0.05)
-        router.on_receive(on_request)
-        dealer.send(b"ping")
+        server_spot.publish(b"room:lobby", [b"hello"])
 
-        # Either all sends succeed or we get EAGAIN -- both are acceptable.
-        # The critical thing is that we do NOT time out (which would mean hang).
-        completed = done.wait(3.0) or eagain_raised.wait(0.5)
-        self.assertTrue(
-            completed,
-            "callback timed out -- blocking send from I/O thread hung",
-        )
+        self.assertTrue(done.wait(3.0), "callback timed out")
+        self.assertEqual(len(callback_error), 1, f"callback raised: {callback_error}")
+        self.assertIsInstance(callback_error[0], zlink.ZlinkError)
+        self.assertEqual(callback_error[0].errno, errno.EDEADLK)
 
-        dealer.close()
-        router.close()
+        client_spot.close()
+        server_spot.close()
+        client_node.close()
+        server_node.close()
 
 
 if __name__ == "__main__":

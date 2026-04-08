@@ -2,6 +2,9 @@
 
 # SPOT Topic PUB/SUB (Location-Transparent Publish/Subscribe)
 
+> **Normative status: Authoritative.**
+> 이 가이드는 `core/include/zlink.h` 기준으로 정확하다.
+
 > This guide reflects the recv-first public surface.
 > `SpotNode` and unified `Spot` start in recv model and use
 > `zlink_subscribe_handler()` for the one-way transition to callback model.

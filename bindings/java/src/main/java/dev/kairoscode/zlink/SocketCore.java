@@ -21,6 +21,9 @@ import java.lang.invoke.MethodType;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 final class SocketCore {
     private static final Linker LINKER = Linker.nativeLinker();
@@ -38,13 +41,9 @@ final class SocketCore {
      * Tracks whether the current thread is executing inside a native callback
      * (recv handler, subscribe handler, or send-ready handler).
      *
-     * <p>Blocking sends from a callback run on the socket I/O thread.  If the
-     * send needs to retry (pipe full / EAGAIN), the retry loop blocks on
-     * {@code process_commands} which waits for I/O events that can only be
-     * delivered by the very same I/O thread, causing a deadlock.
-     *
-     * <p>All send paths check this flag and force {@code DONTWAIT} when inside
-     * a callback so the I/O thread is never blocked in a retry loop.
+     * <p>Blocking sends from a callback can deadlock the socket I/O thread.
+     * The public blocking send APIs therefore reject callback usage explicitly
+     * instead of silently downgrading to non-blocking semantics.
      */
     private static final ThreadLocal<Integer> CALLBACK_DEPTH =
         ThreadLocal.withInitial(() -> 0);
@@ -53,11 +52,11 @@ final class SocketCore {
         return CALLBACK_DEPTH.get() > 0;
     }
 
-    private static void enterCallback() {
+    static void enterCallback() {
         CALLBACK_DEPTH.set(CALLBACK_DEPTH.get() + 1);
     }
 
-    private static void leaveCallback() {
+    static void leaveCallback() {
         CALLBACK_DEPTH.set(CALLBACK_DEPTH.get() - 1);
     }
 
@@ -68,6 +67,7 @@ final class SocketCore {
     private SocketMessageHandler receiveHandler;
     private SubscribeHandler subscribeHandler;
     private SendReadyHandler sendReadyHandler;
+    private volatile ExecutorService callbackExecutor;
     private Arena receiveCallbackArena;
     private Arena subscribeCallbackArena;
     private Arena sendReadyCallbackArena;
@@ -245,6 +245,13 @@ final class SocketCore {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
         ensureNoCallbackFailure();
+        ExecutorService executor = callbackExecutor;
+        boolean createdExecutor = false;
+        if (executor == null) {
+            executor = newCallbackExecutor();
+            callbackExecutor = executor;
+            createdExecutor = true;
+        }
         Arena arena = Arena.ofShared();
         MemorySegment stub = LINKER.upcallStub(callbackHandle("handleReceiveCallback",
             MethodType.methodType(void.class, MemorySegment.class,
@@ -260,8 +267,13 @@ final class SocketCore {
             receiveCallbackArena = arena;
             receiveHandler = handler;
         } finally {
-            if (!success)
+            if (!success) {
+                if (createdExecutor) {
+                    callbackExecutor = null;
+                    shutdownExecutor(executor);
+                }
                 closeArena(arena);
+            }
         }
     }
 
@@ -269,6 +281,13 @@ final class SocketCore {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
         ensureNoCallbackFailure();
+        ExecutorService executor = callbackExecutor;
+        boolean createdExecutor = false;
+        if (executor == null) {
+            executor = newCallbackExecutor();
+            callbackExecutor = executor;
+            createdExecutor = true;
+        }
         Arena arena = Arena.ofShared();
         MemorySegment stub = LINKER.upcallStub(callbackHandle(
             "handleSubscribeCallback", MethodType.methodType(void.class,
@@ -285,8 +304,13 @@ final class SocketCore {
             subscribeCallbackArena = arena;
             subscribeHandler = handler;
         } finally {
-            if (!success)
+            if (!success) {
+                if (createdExecutor) {
+                    callbackExecutor = null;
+                    shutdownExecutor(executor);
+                }
                 closeArena(arena);
+            }
         }
     }
 
@@ -294,6 +318,13 @@ final class SocketCore {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
         ensureNoCallbackFailure();
+        ExecutorService executor = callbackExecutor;
+        boolean createdExecutor = false;
+        if (executor == null) {
+            executor = newCallbackExecutor();
+            callbackExecutor = executor;
+            createdExecutor = true;
+        }
         Arena arena = Arena.ofShared();
         MemorySegment stub = LINKER.upcallStub(callbackHandle(
             "handleSendReadyCallback", MethodType.methodType(void.class,
@@ -309,8 +340,13 @@ final class SocketCore {
             sendReadyCallbackArena = arena;
             sendReadyHandler = handler;
         } finally {
-            if (!success)
+            if (!success) {
+                if (createdExecutor) {
+                    callbackExecutor = null;
+                    shutdownExecutor(executor);
+                }
                 closeArena(arena);
+            }
         }
     }
 
@@ -347,6 +383,8 @@ final class SocketCore {
         subscribeHandler = null;
         sendReadyHandler = null;
         callbackFailure = null;
+        shutdownExecutor(callbackExecutor);
+        callbackExecutor = null;
         closeArena(receiveCallbackArena);
         closeArena(subscribeCallbackArena);
         closeArena(sendReadyCallbackArena);
@@ -372,15 +410,34 @@ final class SocketCore {
                                        long partCount,
                                        MemorySegment userdata) {
         SocketMessageHandler handler = receiveHandler;
-        if (handler == null)
+        ExecutorService executor = callbackExecutor;
+        if (handler == null || executor == null)
             return;
-        enterCallback();
-        try (Received received = receivedFromCallback(sourceRid, parts, partCount)) {
-            handler.onMessage(received);
+        CallbackReceivedData snapshot = null;
+        try {
+            snapshot = snapshotReceive(sourceRid, parts, partCount);
+            CallbackReceivedData callbackSnapshot = snapshot;
+            executor.execute(() -> dispatchReceive(handler, callbackSnapshot));
+            snapshot = null;
+        } catch (RejectedExecutionException ex) {
+            recordCallbackFailure(ex);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
-        } finally {
-            leaveCallback();
+        }
+    }
+
+    private void dispatchReceive(SocketMessageHandler handler,
+                                 CallbackReceivedData snapshot) {
+        try {
+            Received received = materializeReceived(snapshot);
+            enterCallback();
+            try (received) {
+                handler.onMessage(received);
+            } finally {
+                leaveCallback();
+            }
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
         }
     }
 
@@ -391,24 +448,53 @@ final class SocketCore {
                                          long partCount,
                                          MemorySegment userdata) {
         SubscribeHandler handler = subscribeHandler;
-        if (handler == null)
+        ExecutorService executor = callbackExecutor;
+        if (handler == null || executor == null)
             return;
-        enterCallback();
-        try (Received received = receivedFromCallback(sourceRid, parts, partCount)) {
-            handler.onMessage(readRoutingId(sourceRid), decodeTopic(topic, topicLen),
-                received);
+        CallbackSubscribeData snapshot = null;
+        try {
+            snapshot = snapshotSubscribe(sourceRid, topic, topicLen, parts,
+                partCount);
+            CallbackSubscribeData callbackSnapshot = snapshot;
+            executor.execute(() -> dispatchSubscribe(handler, callbackSnapshot));
+            snapshot = null;
+        } catch (RejectedExecutionException ex) {
+            recordCallbackFailure(ex);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
-        } finally {
-            leaveCallback();
+        }
+    }
+
+    private void dispatchSubscribe(SubscribeHandler handler,
+                                   CallbackSubscribeData snapshot) {
+        try {
+            Received received = materializeReceived(snapshot);
+            enterCallback();
+            try (received) {
+                handler.onMessage(snapshot.routingId(), snapshot.topicId(),
+                    received);
+            } finally {
+                leaveCallback();
+            }
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
         }
     }
 
     private void handleSendReadyCallback(MemorySegment subject,
                                          MemorySegment userdata) {
         SendReadyHandler handler = sendReadyHandler;
-        if (handler == null)
+        ExecutorService executor = callbackExecutor;
+        if (handler == null || executor == null)
             return;
+        try {
+            executor.execute(() -> dispatchSendReady(handler));
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
+        }
+    }
+
+    private void dispatchSendReady(SendReadyHandler handler) {
         enterCallback();
         try {
             handler.onReady();
@@ -419,19 +505,59 @@ final class SocketCore {
         }
     }
 
-    private Received receivedFromCallback(MemorySegment sourceRid,
-                                          MemorySegment parts,
-                                          long partCount) {
-        Message[] frames = Message.fromOwnedMsgVector(parts, partCount);
-        boolean closed = false;
-        try {
-            NativeMsg.multipartClose(parts, partCount);
-            closed = true;
-            return new Received(readRoutingId(sourceRid), frames);
-        } finally {
-            if (!closed)
-                Message.closeAll(frames);
+    private CallbackReceivedData snapshotReceive(MemorySegment sourceRid,
+                                                 MemorySegment parts,
+                                                 long partCount) {
+        byte[][] snapshotParts = snapshotParts(parts, partCount);
+        NativeMsg.multipartClose(parts, partCount);
+        return new CallbackReceivedData(readRoutingId(sourceRid), snapshotParts);
+    }
+
+    private CallbackSubscribeData snapshotSubscribe(MemorySegment sourceRid,
+                                                    MemorySegment topic,
+                                                    long topicLen,
+                                                    MemorySegment parts,
+                                                    long partCount) {
+        byte[][] snapshotParts = snapshotParts(parts, partCount);
+        NativeMsg.multipartClose(parts, partCount);
+        return new CallbackSubscribeData(readRoutingId(sourceRid),
+            decodeTopic(topic, topicLen), snapshotParts);
+    }
+
+    private static byte[][] snapshotParts(MemorySegment parts, long partCount) {
+        int count = Math.toIntExact(partCount);
+        if (count == 0)
+            return new byte[0][];
+        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+        MemorySegment vector = MemorySegment.ofAddress(parts.address()).reinterpret(
+            msgSize * count);
+        byte[][] snapshot = new byte[count][];
+        for (int i = 0; i < count; i++) {
+            MemorySegment src = vector.asSlice((long) i * msgSize, msgSize);
+            int size = Math.toIntExact(NativeMsg.msgSize(src));
+            byte[] bytes = new byte[size];
+            if (size > 0) {
+                MemorySegment data = NativeMsg.msgData(src).reinterpret(size);
+                MemorySegment.copy(data, 0, MemorySegment.ofArray(bytes), 0,
+                    size);
+            }
+            snapshot[i] = bytes;
         }
+        return snapshot;
+    }
+
+    private static Received materializeReceived(CallbackReceivedData snapshot) {
+        Message[] frames = new Message[snapshot.parts().length];
+        for (int i = 0; i < snapshot.parts().length; i++)
+            frames[i] = Message.copyOf(snapshot.parts()[i]);
+        return new Received(snapshot.routingId(), frames, true);
+    }
+
+    private static Received materializeReceived(CallbackSubscribeData snapshot) {
+        Message[] frames = new Message[snapshot.parts().length];
+        for (int i = 0; i < snapshot.parts().length; i++)
+            frames[i] = Message.copyOf(snapshot.parts()[i]);
+        return new Received(snapshot.routingId(), frames, true);
     }
 
     private static RoutingId readRoutingId(MemorySegment sourceRid) {
@@ -477,4 +603,32 @@ final class SocketCore {
         if (arena != null && arena.scope().isAlive())
             arena.close();
     }
+
+    private static ExecutorService newCallbackExecutor() {
+        return Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "zlink-socket-callback");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
+    private static void closeReceived(Received received) {
+        if (received != null) {
+            try {
+                received.close();
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
+
+    private static void shutdownExecutor(ExecutorService executor) {
+        if (executor != null)
+            executor.shutdown();
+    }
+
+    private record CallbackReceivedData(RoutingId routingId,
+                                        byte[][] parts) {}
+
+    private record CallbackSubscribeData(RoutingId routingId, String topicId,
+                                         byte[][] parts) {}
 }

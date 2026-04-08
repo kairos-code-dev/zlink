@@ -39,6 +39,17 @@ void test_copy_and_move_preserve_payload ()
     assert (moved.to_string () == "copied");
 }
 
+void test_diagnostic_surface_uses_canonical_names ()
+{
+    zlink::message_t msg = zlink::message_t::from_string ("diagnostic");
+    assert (msg.valid ());
+    assert (msg.ref_count () >= 1);
+    assert (msg.get_property ("missing") == NULL);
+
+    std::string value;
+    assert (msg.get_property ("missing", value) == -1);
+}
+
 } // namespace
 
 int main ()
@@ -46,5 +57,6 @@ int main ()
     test_string_roundtrip ();
     test_bytes_roundtrip ();
     test_copy_and_move_preserve_payload ();
+    test_diagnostic_surface_uses_canonical_names ();
     return 0;
 }

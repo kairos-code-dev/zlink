@@ -186,10 +186,9 @@ inline int routed_raw_send(SocketLike &socket,
 }
 
 inline int monitor_recv_nowait(zlink::monitor_handle_t &monitor,
-                               zlink_monitor_event_t *event)
+                               zlink::monitor_event_t *event)
 {
-    const zlink::maybe_t<zlink_socket_monitor_event_t> received =
-      monitor.try_recv();
+    const zlink::maybe_t<zlink::monitor_event_t> received = monitor.try_recv();
     if (!received) {
         errno = EAGAIN;
         return -1;

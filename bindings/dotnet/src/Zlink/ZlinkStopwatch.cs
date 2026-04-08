@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Threading.Tasks;
 using Zlink.Native;
 
 namespace Zlink;
 
-public sealed class ZlinkStopwatch : IDisposable
+public sealed class ZlinkStopwatch : IDisposable, IAsyncDisposable
 {
     private IntPtr _handle;
 
@@ -44,6 +45,12 @@ public sealed class ZlinkStopwatch : IDisposable
         }
         _handle = IntPtr.Zero;
         GC.SuppressFinalize(this);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     ~ZlinkStopwatch()

@@ -124,6 +124,12 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.Spot)(nil), "OnSendReady") {
 		t.Fatalf("Spot should expose OnSendReady")
 	}
+	if hasMethod((*zlink.Spot)(nil), "SetTLSServer") {
+		t.Fatalf("Spot should not expose SetTLSServer")
+	}
+	if hasMethod((*zlink.Spot)(nil), "SetTLSClient") {
+		t.Fatalf("Spot should not expose SetTLSClient")
+	}
 	if hasMethod((*zlink.PubSocket)(nil), "ReceiveSubscriptionEvent") {
 		t.Fatalf("PubSocket should not expose ReceiveSubscriptionEvent")
 	}
@@ -135,6 +141,21 @@ func TestSurfaceCapabilities(t *testing.T) {
 	}
 	if !hasMethod((*zlink.Context)(nil), "RegistryQueryClient") {
 		t.Fatalf("Context should expose RegistryQueryClient")
+	}
+	if !hasMethod((*zlink.Context)(nil), "Options") {
+		t.Fatalf("Context should expose ContextOptions facade")
+	}
+	if hasMethod((*zlink.Context)(nil), "SetThreadNamePrefix") {
+		t.Fatalf("Context should not expose SetThreadNamePrefix")
+	}
+	if hasMethod((*zlink.Context)(nil), "ThreadNamePrefix") {
+		t.Fatalf("Context should not expose ThreadNamePrefix")
+	}
+	if hasMethod((*zlink.Context)(nil), "SetMaxSockets") {
+		t.Fatalf("Context should not expose direct context option setters")
+	}
+	if hasMethod((*zlink.Context)(nil), "MaxSockets") {
+		t.Fatalf("Context should not expose direct context option getters")
 	}
 	if !hasMethod((*zlink.Registry)(nil), "TopologySnapshot") {
 		t.Fatalf("Registry should expose TopologySnapshot")
@@ -153,6 +174,27 @@ func TestSurfaceCapabilities(t *testing.T) {
 	}
 	if !hasMethod((*zlink.Discovery)(nil), "MonitorOpen") {
 		t.Fatalf("Discovery should expose MonitorOpen")
+	}
+	if !hasMethod((*zlink.Registry)(nil), "SetTLSServer") {
+		t.Fatalf("Registry should expose SetTLSServer")
+	}
+	if !hasMethod((*zlink.Registry)(nil), "SetTLSClient") {
+		t.Fatalf("Registry should expose SetTLSClient")
+	}
+	if !hasMethod((*zlink.Discovery)(nil), "SetTLSClient") {
+		t.Fatalf("Discovery should expose SetTLSClient")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "SetTLSServer") {
+		t.Fatalf("SpotNode should expose SetTLSServer")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "SetTLSClient") {
+		t.Fatalf("SpotNode should expose SetTLSClient")
+	}
+	if !hasMethod((*zlink.Message)(nil), "GetProperty") {
+		t.Fatalf("Message should expose GetProperty")
+	}
+	if !hasMethod((*zlink.Message)(nil), "RefCount") {
+		t.Fatalf("Message should expose RefCount")
 	}
 }
 
@@ -201,11 +243,23 @@ func TestSurfaceTypedOptionMethods(t *testing.T) {
 	if !hasMethod((*zlink.PairSocket)(nil), "SetTCPKeepalive") {
 		t.Fatalf("PairSocket should expose typed boolean options")
 	}
-	if !hasMethod((*zlink.Context)(nil), "SetMaxSockets") {
-		t.Fatalf("Context should expose typed context options")
+	if !hasMethod((*zlink.ContextOptions)(nil), "SetMaxSockets") {
+		t.Fatalf("ContextOptions should expose typed context options")
 	}
-	if !hasMethod((*zlink.Context)(nil), "Blocky") {
-		t.Fatalf("Context should expose blocky getters")
+	if !hasMethod((*zlink.ContextOptions)(nil), "Blocky") {
+		t.Fatalf("ContextOptions should expose blocky getters")
+	}
+	if !hasMethod((*zlink.ContextOptions)(nil), "SetThreadSchedulingPolicy") {
+		t.Fatalf("ContextOptions should expose thread scheduling policy setter")
+	}
+	if !hasMethod((*zlink.ContextOptions)(nil), "ThreadSchedulingPolicy") {
+		t.Fatalf("ContextOptions should expose thread scheduling policy getter")
+	}
+	if !hasMethod((*zlink.ContextOptions)(nil), "AddThreadAffinity") {
+		t.Fatalf("ContextOptions should expose thread affinity add")
+	}
+	if !hasMethod((*zlink.ContextOptions)(nil), "RemoveThreadAffinity") {
+		t.Fatalf("ContextOptions should expose thread affinity remove")
 	}
 	if !hasMethod((*zlink.RouterSocket)(nil), "SetMandatory") {
 		t.Fatalf("RouterSocket should expose router-specific options")

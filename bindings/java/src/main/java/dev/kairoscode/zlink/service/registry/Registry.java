@@ -77,6 +77,34 @@ public final class Registry implements AutoCloseable {
         }
     }
 
+    /** Configures server TLS credentials for the registry endpoints. */
+    public void setTlsServer(String certPem, String keyPem,
+                             boolean requireClientCert) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.setTlsServer(handle,
+              NativeHelpers.toCString(arena, certPem),
+              NativeHelpers.toCString(arena, keyPem),
+              requireClientCert ? 1 : 0);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError("zlink_set_tls_server");
+            }
+        }
+    }
+
+    /** Configures client TLS credentials for registry peer links. */
+    public void setTlsClient(String caCertPem, String hostname,
+                             boolean trustSystem) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.setTlsClient(handle,
+              NativeHelpers.toCString(arena, caCertPem),
+              NativeHelpers.toCString(arena, hostname),
+              trustSystem ? 1 : 0);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError("zlink_set_tls_client");
+            }
+        }
+    }
+
     /** Returns a point-in-time registry status snapshot. */
     public RegistryStatus statusSnapshot() {
         try (Arena arena = Arena.ofConfined()) {

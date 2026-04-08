@@ -5,6 +5,7 @@ package dev.kairoscode.zlink.service.discovery;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.MemberPeerEntry;
 import dev.kairoscode.zlink.ServiceRole;
+import dev.kairoscode.zlink.ServiceMonitorEventMask;
 import dev.kairoscode.zlink.ServiceType;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
@@ -98,6 +99,21 @@ public final class Discovery implements AutoCloseable {
         }
     }
 
+    /** Configures client TLS credentials for the discovery registry link. */
+    public void setTlsClient(String caCertPem, String hostname,
+                             boolean trustSystem) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.setTlsClient(handle,
+              NativeHelpers.toCString(arena, caCertPem),
+              NativeHelpers.toCString(arena, hostname),
+              trustSystem ? 1 : 0);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_set_tls_client");
+            }
+        }
+    }
+
     /** Returns the current service-local metadata blob. */
     public byte[] getMetadata() {
         try (Arena arena = Arena.ofConfined()) {
@@ -116,9 +132,16 @@ public final class Discovery implements AutoCloseable {
         }
     }
 
-    /** Opens a service monitor for this discovery handle. */
-    public dev.kairoscode.zlink.ServiceMonitor monitorOpen(int events) {
-        MemorySegment monitor = Native.serviceMonitorOpen(handle, events);
+    /** Opens a service monitor for this discovery handle with all events. */
+    public dev.kairoscode.zlink.ServiceMonitor monitorOpen() {
+        return monitorOpen(ServiceMonitorEventMask.ALL);
+    }
+
+    /** Opens a service monitor for this discovery handle and typed service mask. */
+    public dev.kairoscode.zlink.ServiceMonitor monitorOpen(
+      ServiceMonitorEventMask... events) {
+        MemorySegment monitor = Native.serviceMonitorOpen(handle,
+          resolveMonitorEvents(events));
         if (monitor == null || monitor.address() == 0) {
             throw ZlinkException.fromLastError("zlink_service_monitor_open");
         }
@@ -214,5 +237,17 @@ public final class Discovery implements AutoCloseable {
               MemorySegment.ofArray(bytes), 0, size);
         }
         return bytes;
+    }
+
+    private static int resolveMonitorEvents(ServiceMonitorEventMask... events) {
+        if (events == null || events.length == 0) {
+            return (int) ServiceMonitorEventMask.ALL.getValue();
+        }
+        long mask = 0L;
+        for (ServiceMonitorEventMask event : events) {
+            Objects.requireNonNull(event, "events");
+            mask |= event.getValue();
+        }
+        return Math.toIntExact(mask);
     }
 }

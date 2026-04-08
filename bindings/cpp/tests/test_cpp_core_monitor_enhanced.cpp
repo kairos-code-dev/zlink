@@ -5,14 +5,14 @@
 
 static bool wait_for_event (zlink::monitor_handle_t &monitor_,
                             uint64_t expected_event_,
-                            zlink_monitor_event_t *out_)
+                            zlink::monitor_event_t *out_)
 {
     for (int attempt = 0; attempt < 100; ++attempt) {
         for (;;) {
-            zlink_monitor_event_t ev;
+            zlink::monitor_event_t ev;
             if (monitor_recv_nowait (monitor_, &ev) != 0)
                 break;
-            if (ev.event != expected_event_)
+            if (static_cast<uint64_t> (ev.event) != expected_event_)
                 continue;
             if (out_)
                 *out_ = ev;
@@ -53,18 +53,19 @@ static void test_monitor_open_and_connection_ready ()
 
     assert (client.connect (endpoint) == 0);
 
-    zlink_monitor_event_t ready;
+    zlink::monitor_event_t ready;
     assert (wait_for_event (
       monitor, static_cast<uint64_t> (ZLINK_EVENT_CONNECTION_READY), &ready));
-    assert (ready.routing_id.size > 0);
-    assert (ready.remote_addr[0] != '\0' || ready.local_addr[0] != '\0');
+    assert (ready.routing_id.len () > 0);
+    assert (!ready.remote_address.empty () || !ready.local_address.empty ());
 
     assert (client.close () == 0);
 
-    zlink_monitor_event_t disconnected;
+    zlink::monitor_event_t disconnected;
     assert (wait_for_event (
       monitor, static_cast<uint64_t> (ZLINK_EVENT_DISCONNECTED), &disconnected));
-    assert (disconnected.remote_addr[0] != '\0' || disconnected.local_addr[0] != '\0');
+    assert (!disconnected.remote_address.empty ()
+            || !disconnected.local_address.empty ());
 
     assert (monitor.close () == 0);
 }

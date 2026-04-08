@@ -5,6 +5,9 @@ export const SocketType = Object.freeze({
   ROUTER: 0x1005, XPUB: 0x1006, XSUB: 0x1007, STREAM: 0x1008
 } as const);
 
+export type MonitorEventMask = number;
+export const SOCKET_MONITOR_EVENT_ALL = 0x7FFF;
+
 export const SocketOption = Object.freeze({
   AFFINITY: 0x3001, RATE: 0x3003, RECOVERY_IVL: 0x3004,
   SNDBUF: 0x3005, RCVBUF: 0x3006, FD: 0x3007, EVENTS: 0x3008,

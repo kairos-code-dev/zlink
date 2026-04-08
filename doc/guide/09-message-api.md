@@ -2,6 +2,10 @@
 
 # Message API Reference
 
+> **Normative status: Illustrative — Needs refresh.**
+> 이 가이드는 설명 목적의 문서이며, API 명칭/시그니처의 정확한 기준은
+> `core/include/zlink.h`와 `bindings/README.md`다.
+
 ## 1. Overview
 
 zlink messages are represented by the `zlink_msg_t` structure, which has a fixed size of 64 bytes. Small messages are stored inline (VSM), while large messages are handled via separate allocation (LMSG).
@@ -101,7 +105,7 @@ if (rc == -1) {
 
 ### 3.4 Receiving
 
-Messages are received via handler callbacks registered at socket creation time. The callback provides `zlink_msg_t` parts directly:
+Messages are received via handler callbacks attached to the socket or service handle after creation (via `zlink_recv_handler` or `zlink_subscribe_handler`). The callback provides `zlink_msg_t` parts directly:
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,

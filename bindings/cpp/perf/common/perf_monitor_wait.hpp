@@ -21,7 +21,7 @@ struct monitor_wait_traits;
 template<>
 struct monitor_wait_traits<zlink::monitor_handle_t>
 {
-    typedef zlink_socket_monitor_event_t event_t;
+    typedef zlink::monitor_event_t event_t;
 
     static zlink::maybe_t<event_t> try_recv (zlink::monitor_handle_t &monitor)
     {
@@ -30,7 +30,7 @@ struct monitor_wait_traits<zlink::monitor_handle_t>
 
     static uint64_t event_type (const event_t &event)
     {
-        return event.event;
+        return static_cast<uint64_t> (event.event);
     }
 
     static int64_t value (const event_t &event)
@@ -42,7 +42,7 @@ struct monitor_wait_traits<zlink::monitor_handle_t>
 template<>
 struct monitor_wait_traits<zlink::service_monitor_handle_t>
 {
-    typedef zlink_service_monitor_event_t event_t;
+    typedef zlink::service_event_t event_t;
 
     static zlink::maybe_t<event_t> try_recv (zlink::service_monitor_handle_t &monitor)
     {

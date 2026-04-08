@@ -11,6 +11,8 @@
 //! - **Typed options** per socket type – no raw option bags.
 //! - **Ownership** via RAII: [`Message`] drop calls `zlink_msg_close`;
 //!   `send` consumes messages and suppresses drop.
+//! - **Message diagnostics** via [`Message::get_property`] and
+//!   [`Message::ref_count`].
 //! - **Domain objects**: [`Received`], [`TopicMessage`], [`SubscriptionEvent`],
 //!   [`SendResult`], [`RoutingId`].
 //! - **Socket capability isolation**: each socket type exposes only its own
@@ -30,16 +32,15 @@ pub mod socket;
 
 // -- Public re-exports -------------------------------------------------------
 
-pub use ctx::{Context, has, version};
+pub use ctx::{Context, ContextOptions, has, version};
 pub use domain::{Received, SendResult, SubscriptionEvent, TopicMessage};
 pub use error::ZlinkError;
 pub use message::{IntoMultipart, Message, RoutingId};
 pub use monitor::{
-    MONITOR_EVENT_ALL, MONITOR_EVENT_CONNECTION_READY,
-    SERVICE_MONITOR_EVENT_DISCOVERY_CLOSED, SERVICE_MONITOR_EVENT_DISCOVERY_ERROR,
-    SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED,
-    SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN,
-    SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP,
+    MONITOR_EVENT_ALL, MONITOR_EVENT_CONNECTION_READY, SERVICE_MONITOR_EVENT_DISCOVERY_CLOSED,
+    SERVICE_MONITOR_EVENT_DISCOVERY_ERROR, SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED,
+    SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN, SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP,
+    ServiceMonitorEventMask, SocketMonitorEventMask,
 };
 pub use monitor::{
     MonitorEvent, MonitorSnapshot, MonitorTarget, ServiceEvent, ServiceEventType, ServiceMonitor,

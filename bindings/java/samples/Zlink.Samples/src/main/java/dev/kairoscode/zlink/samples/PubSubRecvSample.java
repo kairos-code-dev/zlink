@@ -14,8 +14,10 @@ public final class PubSubRecvSample {
         try (Context ctx = new Context();
              PubSocket pub = new PubSocket(ctx);
              SubSocket sub = new SubSocket(ctx);
-             var pubMonitor = pub.monitorOpen(SampleSupport.PUBSUB_READY_EVENTS);
-             var subMonitor = sub.monitorOpen(SampleSupport.PUBSUB_READY_EVENTS)) {
+             var pubMonitor = pub.monitorOpen(
+                 dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY);
+             var subMonitor = sub.monitorOpen(
+                 dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY)) {
             pub.bind(endpoint);
             sub.setSubscription(SampleSupport.PUBSUB_TOPIC);
             sub.connect(endpoint);

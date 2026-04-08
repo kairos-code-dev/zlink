@@ -21,7 +21,7 @@ final class PerfTransport {
     static Context newContext(PerfUtil.Config config) {
         Context ctx = new Context();
         if (config.ioThreads() > 0) {
-            ctx.ioThreads(config.ioThreads());
+            ctx.options().ioThreads(config.ioThreads());
         }
         return ctx;
     }
@@ -70,10 +70,9 @@ final class PerfTransport {
     }
 
     static void applyMonitorOptions(MonitorSocket monitor, PerfUtil.Config config) {
-        if (config.monitorHwm() > 0) {
-            monitor.sendHighWaterMark(config.monitorHwm());
-            monitor.receiveHighWaterMark(config.monitorHwm());
-        }
+        // The aligned MonitorSocket surface does not accept generic HWM tuning.
+        // Perf runners keep the hook for parity, but unsupported monitor options
+        // must degrade to a no-op instead of failing startup.
     }
 
     static void applySpotOptions(SpotNode node, PerfUtil.Config config) {

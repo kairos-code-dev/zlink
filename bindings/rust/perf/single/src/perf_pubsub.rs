@@ -19,7 +19,7 @@ fn main() {
     sub_sock.connect(&endpoint).expect("connect");
     sub_sock.set_subscription("").expect("subscribe");
 
-    let mon = SocketMonitor::open(&sub_sock, MONITOR_EVENT_ALL).expect("monitor");
+    let mon = SocketMonitor::open(&sub_sock).expect("monitor");
     common::wait_monitor_ready(&mon);
 
     let collector = common::MetricCollector::new();

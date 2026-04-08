@@ -123,7 +123,6 @@ fi
             --pattern "${pattern}" \
             --transport "${transport}" \
             --msg-size "${size}" \
-            --warmup "${WARMUP}" \
             --duration "${DURATION}" \
             --recv "${RECV_MODE}"
         done

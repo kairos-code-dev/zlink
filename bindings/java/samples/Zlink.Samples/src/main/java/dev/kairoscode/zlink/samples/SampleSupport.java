@@ -6,6 +6,7 @@ import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.ZlinkVersion;
+import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -99,6 +100,11 @@ final class SampleSupport {
             MonitorEventType.CONNECTION_READY.getValue());
     }
 
+    static void waitSpotPeerConnected(SpotNode node) {
+        waitUntil("spot peer connection",
+            () -> node.statusSnapshot().connectedPeerCount() > 0);
+    }
+
     static java.net.Socket connectRawTcp(String endpoint) {
         try {
             InetSocketAddress address = tcpAddress(endpoint);
@@ -162,7 +168,7 @@ final class SampleSupport {
     private static void waitMonitorEvent(MonitorSocket monitor, int eventType) {
         while (true) {
             var event = monitor.recv();
-            if (event.event() == eventType && event.value() > 0) {
+            if (event.event() == eventType) {
                 return;
             }
         }

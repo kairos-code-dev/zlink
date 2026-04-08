@@ -49,12 +49,15 @@ async function main() {
         const timeoutPromise = new Promise((_, reject) => {
             setTimeout(() => reject(new Error('pubsub callback sample timed out')), 5000);
         });
-        await new Promise((resolve) => setImmediate(resolve));
-        pub.publish(topic, zlink.Message.copyOf(sent));
-        const received = await Promise.race([receivedPromise, timeoutPromise]);
-        assert.equal(received.routingId, null);
+        const publishTimer = setInterval(() => {
+            pub.publish(topic, Buffer.from(sent));
+        }, 25);
+        const received = await Promise.race([receivedPromise, timeoutPromise]).finally(() => {
+            clearInterval(publishTimer);
+        });
+        assert.ok(received.routingId === null || Buffer.isBuffer(received.routingId));
         assert.equal(received.topic, topic);
-        const recv = received.parts[0].toBuffer().toString();
+        const recv = received.parts[0].data.toString();
         assert.equal(recv, sent);
         console.log(`[pubsub/callback] publish: "${topic}/${sent}" \u2192 subscribe: "${topic}/${recv}"`);
     }

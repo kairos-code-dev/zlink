@@ -13,7 +13,7 @@ fn main() {
 
     let ctx = Context::new().expect("context");
     let pub_sock = ctx.pub_socket().expect("pub");
-    pub_sock.set_send_hwm(settings.hwm).expect("sndhwm");
+    pub_sock.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
     pub_sock.bind("tcp://0.0.0.0:0").expect("bind");
     let endpoint = pub_sock.last_endpoint().expect("endpoint");
 

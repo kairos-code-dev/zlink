@@ -7,15 +7,15 @@ const { callbackDrainTicks, callbackSendBurstLimit } = require('./perf_callback_
 const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
 const SENDER_ID = Buffer.from('router-perf-sender', 'ascii');
 function partStrings(received) {
-    return received.parts.map((part) => part.toBuffer().toString());
+    return received.parts.map((part) => part.data.toString());
 }
 async function handshake(receiver, sender) {
-    sender.send(RECEIVER_ID, zlink.Message.copyOf('PING'));
+    sender.send(RECEIVER_ID, Buffer.from('PING'));
     const ping = receiver.recv();
     if (ping.routingId === null || partStrings(ping).join(',') !== 'PING') {
         throw new Error('router-router handshake receive failed');
     }
-    receiver.send(SENDER_ID, zlink.Message.copyOf('PONG'));
+    receiver.send(SENDER_ID, Buffer.from('PONG'));
     const pong = sender.recv();
     if (pong.routingId === null || partStrings(pong).join(',') !== 'PONG') {
         throw new Error('router-router handshake reply failed');
@@ -43,7 +43,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
         const stopAtNs = startedAtNs
             + BigInt(Math.floor((options.warmup + options.duration) * 1_000_000_000));
         receiver.onReceive((_, parts) => {
-            const messageBuffer = parts[0].toBuffer();
+            const messageBuffer = parts[0].data;
             const header = decodeMetricHeader(messageBuffer);
             collector.record(header, process.hrtime.bigint());
         });

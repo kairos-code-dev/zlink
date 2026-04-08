@@ -31,7 +31,7 @@ public sealed class ContextOptions
         set => _context.SetOption(ContextOption.ThreadPriority, value);
     }
 
-    public int ThreadSchedPolicy
+    public int ThreadSchedulingPolicy
     {
         get => _context.GetOption(ContextOption.ThreadSchedPolicy);
         set => _context.SetOption(ContextOption.ThreadSchedPolicy, value);
@@ -44,12 +44,6 @@ public sealed class ContextOptions
     }
 
     public int MessageThreadSize => _context.GetOption(ContextOption.MsgTSize);
-
-    public int ThreadNamePrefix
-    {
-        get => _context.GetOption(ContextOption.ThreadNamePrefix);
-        set => _context.SetOption(ContextOption.ThreadNamePrefix, value);
-    }
 
     public bool Blocky
     {

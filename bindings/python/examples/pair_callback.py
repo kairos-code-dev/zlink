@@ -11,8 +11,8 @@ def main():
     with zlink.Context() as ctx:
         with zlink.PairSocket(ctx) as server:
             with zlink.PairSocket(ctx) as client:
-                with server.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as srv_mon:
-                    with client.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as cli_mon:
+                with server.monitor_open(zlink.MonitorEvent.CONNECTION_READY) as srv_mon:
+                    with client.monitor_open(zlink.MonitorEvent.CONNECTION_READY) as cli_mon:
                         server.bind(endpoint)
                         client.connect(endpoint)
                         wait_connected(srv_mon, cli_mon)

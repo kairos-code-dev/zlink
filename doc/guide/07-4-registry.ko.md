@@ -2,6 +2,10 @@
 
 # Registry (중앙 서비스 디렉토리)
 
+> **Normative status: Illustrative — Needs refresh.**
+> 이 가이드는 설명 목적의 문서이며, API 명칭/시그니처의 정확한 기준은
+> `core/include/zlink.h`와 `bindings/README.md`다.
+
 ## 1. 개요
 
 Registry는 zlink 서비스 계층의 중앙 서비스 디렉토리이자 토폴로지 요약 소스다.
@@ -40,7 +44,7 @@ void *discovery = zlink_discovery_new(ctx,
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
 /* === ROUTER socket (server, Discovery-managed) === */
-void *server = zlink_socket_new(ctx, ZLINK_ROUTER);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(server, "tcp://*:5555");
 zlink_socket_attach_discovery(server, discovery);
 
@@ -71,47 +75,24 @@ zlink_registry_set_heartbeat(registry, 5000, 15000);
 zlink_registry_set_broadcast_interval(registry, 30000);
 ```
 
-### 3.3 소켓 옵션
-
-Registry의 내부 소켓에 저수준 소켓 옵션을 적용한다:
-
-```c
-/* Example: set TLS on the PUB socket */
-zlink_registry_setsockopt(registry,
-    ZLINK_REGISTRY_SOCKET_PUB,        /* target socket */
-    ZLINK_TLS_CA_CERT,                /* option */
-    ca_pem, strlen(ca_pem));          /* value */
-```
-
-| 소켓 역할 | 상수 | 용도 |
-|-----------|------|------|
-| PUB | `ZLINK_REGISTRY_SOCKET_PUB` | 서비스 목록 브로드캐스트 |
-| ROUTER | `ZLINK_REGISTRY_SOCKET_ROUTER` | 등록/하트비트 수신 |
-| PEER_SUB | `ZLINK_REGISTRY_SOCKET_PEER_SUB` | 피어 Registry 브로드캐스트 구독 |
-
-### 3.4 클러스터 ID
+### 3.3 클러스터 ID
 
 ```c
 /* Assign a unique ID for cluster synchronization (must be unique per node) */
 zlink_registry_set_id(registry, 1);
 ```
 
-### 3.5 TLS 설정
+### 3.4 TLS 설정
 
-TLS는 해당 내부 소켓의 소켓 옵션을 통해 구성한다:
+TLS는 `zlink_set_tls_server`/`zlink_set_tls_client` API를 통해 Registry
+handle에 직접 구성한다:
 
 ```c
-/* TLS on PUB (broadcast to Discovery) */
-zlink_registry_setsockopt(registry, ZLINK_REGISTRY_SOCKET_PUB,
-    ZLINK_TLS_SERVER_CERT, cert_pem, strlen(cert_pem));
-zlink_registry_setsockopt(registry, ZLINK_REGISTRY_SOCKET_PUB,
-    ZLINK_TLS_SERVER_KEY, key_pem, strlen(key_pem));
+/* TLS server configuration on Registry */
+zlink_set_tls_server(registry, cert_pem, key_pem, 0 /* require_client_cert */);
 
-/* TLS on ROUTER (registration/heartbeat) */
-zlink_registry_setsockopt(registry, ZLINK_REGISTRY_SOCKET_ROUTER,
-    ZLINK_TLS_SERVER_CERT, cert_pem, strlen(cert_pem));
-zlink_registry_setsockopt(registry, ZLINK_REGISTRY_SOCKET_ROUTER,
-    ZLINK_TLS_SERVER_KEY, key_pem, strlen(key_pem));
+/* TLS client configuration (for peer registry connections) */
+zlink_set_tls_client(registry, ca_pem, NULL /* hostname */, 0 /* trust_system */);
 ```
 
 ## 4. 배포 패턴
@@ -159,7 +140,7 @@ void *discovery = zlink_discovery_new(ctx,
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
 /* ROUTER socket (server, Discovery-managed) */
-void *server = zlink_socket_new(ctx, ZLINK_ROUTER);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(server, "tcp://*:5555");
 zlink_socket_attach_discovery(server, discovery);
 
@@ -168,7 +149,7 @@ void *client_disc = zlink_discovery_new(ctx,
     ZLINK_SERVICE_TYPE_SOCKET, "echo-service");
 zlink_discovery_connect_registry(client_disc, "tcp://127.0.0.1:5551");
 
-void *client = zlink_socket_new(ctx, ZLINK_DEALER);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_socket_attach_discovery(client, client_disc);
 
 /* Send request */

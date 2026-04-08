@@ -44,7 +44,8 @@ def parse_client_args(argv, *, pattern, allowed_recv):
     parser.add_argument("--warmup", type=float, default=1.0)
     parser.add_argument("--msg-size", type=int, default=256)
     parser.add_argument("--clients", type=int, default=4)
-    parser.add_argument("--recv", default="recv")
+    default_recv = next(iter(sorted(allowed_recv))) if len(allowed_recv) == 1 else "recv"
+    parser.add_argument("--recv", default=default_recv)
     args = parser.parse_args(argv)
     if args.recv not in allowed_recv:
         raise SystemExit(f"--recv must be one of: {', '.join(sorted(allowed_recv))}")

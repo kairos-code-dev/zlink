@@ -3,12 +3,13 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 using Zlink;
 using Zlink.Native;
 
 namespace Zlink.Service;
 
-public sealed class Registry : IDisposable
+public sealed class Registry : IDisposable, IAsyncDisposable
 {
     private IntPtr _handle;
 
@@ -228,6 +229,12 @@ public sealed class Registry : IDisposable
         NativeMethods.zlink_registry_destroy(ref _handle);
         _handle = IntPtr.Zero;
         GC.SuppressFinalize(this);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     ~Registry()

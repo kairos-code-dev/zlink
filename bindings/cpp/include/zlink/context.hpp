@@ -8,6 +8,34 @@
 namespace zlink
 {
 
+class context_t;
+
+class context_options_t
+{
+  public:
+    explicit context_options_t (context_t &ctx_) : _ctx (ctx_) {}
+
+    ZLINK_CPP_NODISCARD int ioThreads () const;
+    ZLINK_CPP_NODISCARD int ioThreads (int value_);
+    ZLINK_CPP_NODISCARD int maxSockets () const;
+    ZLINK_CPP_NODISCARD int maxSockets (int value_);
+    ZLINK_CPP_NODISCARD int maxMsgSize () const;
+    ZLINK_CPP_NODISCARD int maxMsgSize (int value_);
+    ZLINK_CPP_NODISCARD int threadPriority () const;
+    ZLINK_CPP_NODISCARD int threadPriority (int value_);
+    ZLINK_CPP_NODISCARD int threadSchedulingPolicy () const;
+    ZLINK_CPP_NODISCARD int threadSchedulingPolicy (int value_);
+    ZLINK_CPP_NODISCARD bool blocky () const;
+    ZLINK_CPP_NODISCARD int blocky (bool enabled_);
+    ZLINK_CPP_NODISCARD int socketLimit () const;
+    ZLINK_CPP_NODISCARD int msgTSize () const;
+    ZLINK_CPP_NODISCARD int addThreadAffinity (int cpu_);
+    ZLINK_CPP_NODISCARD int removeThreadAffinity (int cpu_);
+
+  private:
+    context_t &_ctx;
+};
+
 /**
  * @brief RAII wrapper for a zlink context.
  */
@@ -92,13 +120,12 @@ class context_t
         return zlink_ctx_term (ctx);
     }
 
-    /**
-     * @brief Set a context option.
-     * @param option_ Option key.
-     * @param value_ Option value.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int set (context_option option_, int value_)
+    context_options_t options () { return context_options_t (*this); }
+
+  private:
+    friend class context_options_t;
+
+    ZLINK_CPP_NODISCARD int set_option_raw (context_option option_, int value_)
     {
         return _ctx
                  ? zlink_ctx_set (
@@ -106,39 +133,96 @@ class context_t
                  : -1;
     }
 
-    /**
-     * @brief Get a context option.
-     * @param option_ Option key.
-     * @param value_ Output pointer for the value.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int get (context_option option_, int *value_) const
+    ZLINK_CPP_NODISCARD int get_option_raw (context_option option_) const
     {
-        if (!_ctx || !value_)
+        if (!_ctx)
             return -1;
         errno = 0;
-        const int rc =
-          zlink_ctx_get (_ctx, static_cast<zlink_ctx_option_t> (option_));
-        if (rc == -1 && errno != 0)
-            return -1;
-        *value_ = rc;
-        return 0;
+        return zlink_ctx_get (_ctx, static_cast<zlink_ctx_option_t> (option_));
     }
 
-    /**
-     * @brief Get a context option.
-     * @param option_ Option key.
-     * @param value_ Output reference for the value.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int get (context_option option_, int &value_) const
-    {
-        return get (option_, &value_);
-    }
-
-  private:
     void *_ctx;
 };
+
+inline int context_options_t::ioThreads () const
+{
+    return _ctx.get_option_raw (context_option::io_threads);
+}
+
+inline int context_options_t::ioThreads (int value_)
+{
+    return _ctx.set_option_raw (context_option::io_threads, value_);
+}
+
+inline int context_options_t::maxSockets () const
+{
+    return _ctx.get_option_raw (context_option::max_sockets);
+}
+
+inline int context_options_t::maxSockets (int value_)
+{
+    return _ctx.set_option_raw (context_option::max_sockets, value_);
+}
+
+inline int context_options_t::maxMsgSize () const
+{
+    return _ctx.get_option_raw (context_option::max_msgsz);
+}
+
+inline int context_options_t::maxMsgSize (int value_)
+{
+    return _ctx.set_option_raw (context_option::max_msgsz, value_);
+}
+
+inline int context_options_t::threadPriority () const
+{
+    return _ctx.get_option_raw (context_option::thread_priority);
+}
+
+inline int context_options_t::threadPriority (int value_)
+{
+    return _ctx.set_option_raw (context_option::thread_priority, value_);
+}
+
+inline int context_options_t::threadSchedulingPolicy () const
+{
+    return _ctx.get_option_raw (context_option::thread_sched_policy);
+}
+
+inline int context_options_t::threadSchedulingPolicy (int value_)
+{
+    return _ctx.set_option_raw (context_option::thread_sched_policy, value_);
+}
+
+inline bool context_options_t::blocky () const
+{
+    return _ctx.get_option_raw (context_option::blocky) != 0;
+}
+
+inline int context_options_t::blocky (bool enabled_)
+{
+    return _ctx.set_option_raw (context_option::blocky, enabled_ ? 1 : 0);
+}
+
+inline int context_options_t::socketLimit () const
+{
+    return _ctx.get_option_raw (context_option::socket_limit);
+}
+
+inline int context_options_t::msgTSize () const
+{
+    return _ctx.get_option_raw (context_option::msg_t_size);
+}
+
+inline int context_options_t::addThreadAffinity (int cpu_)
+{
+    return _ctx.set_option_raw (context_option::thread_affinity_cpu_add, cpu_);
+}
+
+inline int context_options_t::removeThreadAffinity (int cpu_)
+{
+    return _ctx.set_option_raw (context_option::thread_affinity_cpu_remove, cpu_);
+}
 
 } // namespace zlink
 

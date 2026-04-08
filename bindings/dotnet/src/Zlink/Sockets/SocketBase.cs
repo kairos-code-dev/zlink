@@ -2,13 +2,13 @@
 
 using System;
 using System.ComponentModel;
-using Zlink.Service;
+using System.Threading.Tasks;
 using Zlink.Sockets.Internal;
 
 namespace Zlink;
 
 [EditorBrowsable(EditorBrowsableState.Never)]
-public abstract class SocketBase : IDisposable, IZlinkSocket
+public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
 {
     private readonly SocketKernel _kernel;
 
@@ -38,12 +38,7 @@ public abstract class SocketBase : IDisposable, IZlinkSocket
         _kernel.Unbind(address);
     }
 
-    public void AttachDiscovery(Discovery discovery)
-    {
-        _kernel.AttachDiscovery(discovery);
-    }
-
-    public SocketMonitor MonitorOpen(SocketEvent events)
+    public SocketMonitor MonitorOpen(SocketEvent events = SocketEvent.All)
     {
         EnumValidation.EnsureSocketEvents(events, nameof(events));
         return _kernel.MonitorOpen(events);
@@ -135,5 +130,11 @@ public abstract class SocketBase : IDisposable, IZlinkSocket
     {
         _kernel.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 }

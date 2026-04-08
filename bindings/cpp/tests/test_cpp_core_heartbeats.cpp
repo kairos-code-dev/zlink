@@ -13,9 +13,9 @@ namespace {
 static bool wait_monitor_event (zlink::monitor_handle_t &monitor_, uint64_t event_)
 {
     for (int i = 0; i < 200; ++i) {
-        zlink_monitor_event_t ev;
+        zlink::monitor_event_t ev;
         while (monitor_recv_nowait (monitor_, &ev) == 0) {
-            if (ev.event == event_)
+            if (static_cast<uint64_t> (ev.event) == event_)
                 return true;
         }
         sleep_ms (10);

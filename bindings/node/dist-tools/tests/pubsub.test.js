@@ -44,11 +44,11 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
         clientSpot.setSubscription(topic);
         const deadline = Date.now() + 5000;
         while (Date.now() < deadline) {
-            serverSpot.publish(topic, zlink.Message.copyOf('payload'));
+            serverSpot.publish(topic, 'payload');
             const received = clientSpot.trySubscribe();
             if (received) {
                 assert.equal(received.topic, topic);
-                assert.deepEqual(received.parts.map((part) => part.toBuffer().toString()), ['payload']);
+                assert.deepEqual(received.parts.map((part) => part.data.toString()), ['payload']);
                 return;
             }
             await new Promise((resolve) => setImmediate(resolve));
@@ -239,11 +239,11 @@ test('sub sockets receive Subscribed domain objects and TrySubscribe returns nul
     sub.connect('inproc://subscribed-contract');
     sub.setSubscription('topic');
     assert.equal(sub.trySubscribe(), null);
-    pub.publish('topic', zlink.Message.copyOf('payload'));
+    pub.publish('topic', 'payload');
     const received = sub.subscribe();
     assert.equal(received.topic, 'topic');
     assert.equal(received.routingId, null);
-    assert.deepEqual(received.parts.map((part) => part.toBuffer().toString()), ['payload']);
+    assert.deepEqual(received.parts.map((part) => part.data.toString()), ['payload']);
     sub.close();
     pub.close();
     ctx.close();
@@ -255,7 +255,7 @@ test('onSubscribe delivers topic-aware multipart payloads', async () => {
     pub.bind('inproc://subscribe-handler-contract');
     sub.connect('inproc://subscribe-handler-contract');
     sub.setSubscription('topic');
-    const received = await new Promise((resolve, reject) => {
+    const receivedPromise = new Promise((resolve, reject) => {
         try {
             sub.onSubscribe((routingId, topic, parts) => {
                 resolve({ routingId, topic, parts });
@@ -265,11 +265,13 @@ test('onSubscribe delivers topic-aware multipart payloads', async () => {
             reject(err);
             return;
         }
-        pub.publish('topic', zlink.Message.copyOf('payload'));
     });
-    assert.equal(received.routingId, null);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    pub.publish('topic', 'payload');
+    const received = await receivedPromise;
+    assert.ok(Buffer.isBuffer(received.routingId));
     assert.equal(received.topic, 'topic');
-    assert.deepEqual(received.parts.map((part) => part.toBuffer().toString()), ['payload']);
+    assert.deepEqual(received.parts.map((part) => part.data.toString()), ['payload']);
     sub.close();
     pub.close();
     ctx.close();

@@ -20,9 +20,14 @@ public final class Received implements AutoCloseable {
     private final List<Message> partsView;
 
     public Received(RoutingId routingId, Message[] parts) {
+        this(routingId, parts, false);
+    }
+
+    Received(RoutingId routingId, Message[] parts, boolean trustedParts) {
         this.routingId = routingId;
-        this.parts = Arrays.copyOf(Objects.requireNonNull(parts, "parts"),
-            parts.length);
+        Message[] ownedParts = Objects.requireNonNull(parts, "parts");
+        this.parts = trustedParts ? ownedParts
+            : Arrays.copyOf(ownedParts, ownedParts.length);
         this.partsView = Collections.unmodifiableList(Arrays.asList(this.parts));
     }
 

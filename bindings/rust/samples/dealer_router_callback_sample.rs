@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use zlink::{Context, MONITOR_EVENT_CONNECTION_READY, Message, RoutingId, SocketMonitor};
+use zlink::{Context, Message, RoutingId, SocketMonitor};
 
 pub fn reserve_tcp_port() -> u16 {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -53,10 +53,8 @@ fn main() {
     let rid = RoutingId::new(b"dealer-cb-3").expect("routing id failed");
     dealer.set_routing_id(&rid).expect("set routing id failed");
 
-    let router_mon = SocketMonitor::open(&router, MONITOR_EVENT_CONNECTION_READY)
-        .expect("router monitor open failed");
-    let dealer_mon = SocketMonitor::open(&dealer, MONITOR_EVENT_CONNECTION_READY)
-        .expect("dealer monitor open failed");
+    let router_mon = SocketMonitor::open(&router).expect("router monitor open failed");
+    let dealer_mon = SocketMonitor::open(&dealer).expect("dealer monitor open failed");
 
     router.bind(&endpoint).expect("bind failed");
     dealer.connect(&endpoint).expect("connect failed");
@@ -80,6 +78,7 @@ fn main() {
     dealer.send(msg).expect("send failed");
 
     dealer
+        .common_options()
         .set_recv_timeout(Duration::from_secs(5))
         .expect("set recv timeout failed");
     let response = dealer.recv().expect("dealer recv failed");

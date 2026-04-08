@@ -214,6 +214,67 @@ napi_value create_routing_id_value(napi_env env, const zlink_routing_id_t &rid)
     return out;
 }
 
+napi_value create_message_properties_snapshot(napi_env env,
+                                              const zlink_routing_id_t *routing_id,
+                                              zlink_msg_t *msg)
+{
+    napi_value props;
+    napi_create_object(env, &props);
+
+    const auto set_property = [env, props](const char *name, const char *value) {
+        if (!value)
+            return;
+        napi_value out;
+        napi_create_string_utf8(env, value, NAPI_AUTO_LENGTH, &out);
+        napi_set_named_property(env, props, name, out);
+    };
+
+    const char *routing_id_value = zlink_msg_gets(msg, "Routing-Id");
+    if (!routing_id_value && routing_id && routing_id->size > 0) {
+        napi_value out;
+        napi_create_string_utf8(
+          env,
+          reinterpret_cast<const char *>(routing_id->data),
+          routing_id->size,
+          &out);
+        napi_set_named_property(env, props, "Routing-Id", out);
+        napi_set_named_property(env, props, "Identity", out);
+    } else {
+        set_property("Routing-Id", routing_id_value);
+        if (routing_id_value)
+            set_property("Identity", routing_id_value);
+    }
+
+    if (!routing_id_value)
+        set_property("Identity", zlink_msg_gets(msg, "Identity"));
+
+    set_property("Socket-Type", zlink_msg_gets(msg, "Socket-Type"));
+    set_property("User-Id", zlink_msg_gets(msg, "User-Id"));
+    set_property("Peer-Address", zlink_msg_gets(msg, "Peer-Address"));
+
+    return props;
+}
+
+napi_value create_message_snapshot_value(napi_env env,
+                                        const zlink_routing_id_t *routing_id,
+                                        zlink_msg_t *msg)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+
+    napi_value data;
+    napi_create_buffer_copy(
+      env, zlink_msg_size(msg), zlink_msg_data(msg), NULL, &data);
+    napi_value ref_count;
+    napi_create_int32(env, zlink_msg_refcnt(msg), &ref_count);
+    napi_value props = create_message_properties_snapshot(env, routing_id, msg);
+
+    napi_set_named_property(env, obj, "data", data);
+    napi_set_named_property(env, obj, "refCount", ref_count);
+    napi_set_named_property(env, obj, "properties", props);
+    return obj;
+}
+
 bool build_spot_node_peer_filter(napi_env env,
                                  napi_value value,
                                  zlink_spot_node_peer_filter_t *out)
@@ -848,11 +909,9 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
             napi_value arr;
             napi_create_array_with_length(env, count, &arr);
             for (size_t i = 0; i < count; ++i) {
-                size_t sz = zlink_msg_size(&parts[i]);
-                void *data = zlink_msg_data(&parts[i]);
-                napi_value buf;
-                napi_create_buffer_copy(env, sz, data, NULL, &buf);
-                napi_set_element(env, arr, static_cast<uint32_t>(i), buf);
+                napi_value part =
+                  create_message_snapshot_value(env, &routing_id, &parts[i]);
+                napi_set_element(env, arr, static_cast<uint32_t>(i), part);
             }
             zlink_multipart_close(parts, count);
 
@@ -894,11 +953,9 @@ napi_value spot_try_recv(napi_env env, napi_callback_info info)
             napi_value arr;
             napi_create_array_with_length(env, count, &arr);
             for (size_t i = 0; i < count; ++i) {
-                size_t sz = zlink_msg_size(&parts[i]);
-                void *data = zlink_msg_data(&parts[i]);
-                napi_value buf;
-                napi_create_buffer_copy(env, sz, data, NULL, &buf);
-                napi_set_element(env, arr, static_cast<uint32_t>(i), buf);
+                napi_value part =
+                  create_message_snapshot_value(env, &routing_id, &parts[i]);
+                napi_set_element(env, arr, static_cast<uint32_t>(i), part);
             }
             zlink_multipart_close(parts, count);
 

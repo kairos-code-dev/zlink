@@ -162,7 +162,7 @@ class queue_probe_t
     static unsigned int resolve_sample_every_msgs ();
     static unsigned long long now_ns ();
     static bool read_snapshot (zlink::monitor_handle_t *monitor_,
-                               zlink_monitor_snapshot_t *snapshot_);
+                               zlink::monitor_snapshot_t *snapshot_);
 
     void maybe_sample_send (bool force_);
     void maybe_sample_recv (bool force_);

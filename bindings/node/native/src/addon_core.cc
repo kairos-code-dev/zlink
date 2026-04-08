@@ -15,6 +15,9 @@ namespace {
 static const size_t k_stream_slot_count = 8;
 static const size_t k_recv_handler_slot_count = 8;
 static const size_t k_subscribe_handler_slot_count = 8;
+static const size_t k_send_ready_handler_slot_count = 8;
+static const size_t k_socket_monitor_handler_slot_count = 8;
+static const size_t k_service_monitor_handler_slot_count = 8;
 static const int32_t k_stream_dispatch_none = 0;
 static const int32_t k_stream_dispatch_len32be = 1;
 static const int32_t k_legacy_socket_pair = 0;
@@ -69,6 +72,16 @@ struct subscribe_handler_js_payload_t
     std::vector<std::vector<unsigned char> > parts;
 };
 
+struct socket_monitor_handler_js_payload_t
+{
+    zlink_monitor_event_t event;
+};
+
+struct service_monitor_handler_js_payload_t
+{
+    zlink_service_event_t event;
+};
+
 struct stream_js_state_t
 {
     stream_js_state_t () :
@@ -114,11 +127,52 @@ struct subscribe_handler_js_state_t
     napi_threadsafe_function tsfn;
 };
 
+struct send_ready_handler_js_state_t
+{
+    send_ready_handler_js_state_t () : used (false), socket (NULL), env (NULL), tsfn (NULL) {}
+
+    bool used;
+    void *socket;
+    napi_env env;
+    napi_threadsafe_function tsfn;
+};
+
+struct socket_monitor_handler_js_state_t
+{
+    socket_monitor_handler_js_state_t ()
+      : used (false), monitor (NULL), env (NULL), tsfn (NULL) {}
+
+    bool used;
+    void *monitor;
+    napi_env env;
+    napi_threadsafe_function tsfn;
+};
+
+struct service_monitor_handler_js_state_t
+{
+    service_monitor_handler_js_state_t ()
+      : used (false), monitor (NULL), env (NULL), tsfn (NULL) {}
+
+    bool used;
+    void *monitor;
+    napi_env env;
+    napi_threadsafe_function tsfn;
+};
+
 static std::mutex g_recv_handler_slots_mu;
 static recv_handler_js_state_t g_recv_handler_slots[k_recv_handler_slot_count];
 static std::mutex g_subscribe_handler_slots_mu;
 static subscribe_handler_js_state_t
   g_subscribe_handler_slots[k_subscribe_handler_slot_count];
+static std::mutex g_send_ready_handler_slots_mu;
+static send_ready_handler_js_state_t
+  g_send_ready_handler_slots[k_send_ready_handler_slot_count];
+static std::mutex g_socket_monitor_handler_slots_mu;
+static socket_monitor_handler_js_state_t
+  g_socket_monitor_handler_slots[k_socket_monitor_handler_slot_count];
+static std::mutex g_service_monitor_handler_slots_mu;
+static service_monitor_handler_js_state_t
+  g_service_monitor_handler_slots[k_service_monitor_handler_slot_count];
 
 stream_js_state_t *find_stream_slot_by_socket_unsafe(void *socket)
 {
@@ -170,6 +224,69 @@ subscribe_handler_js_state_t *find_free_subscribe_handler_slot_unsafe()
     return NULL;
 }
 
+send_ready_handler_js_state_t *find_send_ready_handler_slot_by_socket_unsafe(
+  void *socket)
+{
+    for (size_t i = 0; i < k_send_ready_handler_slot_count; ++i) {
+        if (g_send_ready_handler_slots[i].used
+            && g_send_ready_handler_slots[i].socket == socket) {
+            return &g_send_ready_handler_slots[i];
+        }
+    }
+    return NULL;
+}
+
+send_ready_handler_js_state_t *find_free_send_ready_handler_slot_unsafe()
+{
+    for (size_t i = 0; i < k_send_ready_handler_slot_count; ++i) {
+        if (!g_send_ready_handler_slots[i].used)
+            return &g_send_ready_handler_slots[i];
+    }
+    return NULL;
+}
+
+socket_monitor_handler_js_state_t *find_socket_monitor_handler_slot_by_monitor_unsafe(
+  void *monitor)
+{
+    for (size_t i = 0; i < k_socket_monitor_handler_slot_count; ++i) {
+        if (g_socket_monitor_handler_slots[i].used
+            && g_socket_monitor_handler_slots[i].monitor == monitor) {
+            return &g_socket_monitor_handler_slots[i];
+        }
+    }
+    return NULL;
+}
+
+socket_monitor_handler_js_state_t *find_free_socket_monitor_handler_slot_unsafe()
+{
+    for (size_t i = 0; i < k_socket_monitor_handler_slot_count; ++i) {
+        if (!g_socket_monitor_handler_slots[i].used)
+            return &g_socket_monitor_handler_slots[i];
+    }
+    return NULL;
+}
+
+service_monitor_handler_js_state_t *find_service_monitor_handler_slot_by_monitor_unsafe(
+  void *monitor)
+{
+    for (size_t i = 0; i < k_service_monitor_handler_slot_count; ++i) {
+        if (g_service_monitor_handler_slots[i].used
+            && g_service_monitor_handler_slots[i].monitor == monitor) {
+            return &g_service_monitor_handler_slots[i];
+        }
+    }
+    return NULL;
+}
+
+service_monitor_handler_js_state_t *find_free_service_monitor_handler_slot_unsafe()
+{
+    for (size_t i = 0; i < k_service_monitor_handler_slot_count; ++i) {
+        if (!g_service_monitor_handler_slots[i].used)
+            return &g_service_monitor_handler_slots[i];
+    }
+    return NULL;
+}
+
 stream_js_state_t *find_free_stream_slot_unsafe()
 {
     for (size_t i = 0; i < k_stream_slot_count; ++i) {
@@ -209,6 +326,38 @@ void reset_subscribe_handler_slot_unsafe(subscribe_handler_js_state_t *state)
         return;
     state->used = false;
     state->socket = NULL;
+    state->env = NULL;
+    state->tsfn = NULL;
+}
+
+void reset_send_ready_handler_slot_unsafe(send_ready_handler_js_state_t *state)
+{
+    if (!state)
+        return;
+    state->used = false;
+    state->socket = NULL;
+    state->env = NULL;
+    state->tsfn = NULL;
+}
+
+void reset_socket_monitor_handler_slot_unsafe(
+  socket_monitor_handler_js_state_t *state)
+{
+    if (!state)
+        return;
+    state->used = false;
+    state->monitor = NULL;
+    state->env = NULL;
+    state->tsfn = NULL;
+}
+
+void reset_service_monitor_handler_slot_unsafe(
+  service_monitor_handler_js_state_t *state)
+{
+    if (!state)
+        return;
+    state->used = false;
+    state->monitor = NULL;
     state->env = NULL;
     state->tsfn = NULL;
 }
@@ -340,6 +489,13 @@ napi_value create_routing_id_value(napi_env env, const zlink_routing_id_t &rid)
     return create_buffer_copy_or_empty(env, rid.data, rid.size);
 }
 
+napi_value create_message_properties_snapshot(napi_env env,
+                                              const zlink_routing_id_t *routing_id,
+                                              zlink_msg_t *msg);
+napi_value create_message_snapshot_value(napi_env env,
+                                        const zlink_routing_id_t *routing_id,
+                                        zlink_msg_t *msg);
+
 napi_value create_recv_message_value(napi_env env,
                                      const zlink_routing_id_t &routing_id,
                                      zlink_msg_t *parts,
@@ -351,8 +507,8 @@ napi_value create_recv_message_value(napi_env env,
     napi_value parts_array;
     napi_create_array_with_length(env, part_count, &parts_array);
     for (size_t i = 0; i < part_count; ++i) {
-        napi_value part = create_buffer_copy_or_empty(
-          env, zlink_msg_data(&parts[i]), zlink_msg_size(&parts[i]));
+        napi_value part = create_message_snapshot_value(
+          env, &routing_id, &parts[i]);
         napi_set_element(env, parts_array, static_cast<uint32_t>(i), part);
     }
 
@@ -388,6 +544,80 @@ napi_value create_subscription_event_value(napi_env env,
     return obj;
 }
 
+napi_value create_socket_monitor_event_value(napi_env env,
+                                             const zlink_monitor_event_t &event)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+
+    napi_value value;
+    napi_create_int64(env, static_cast<int64_t>(event.event), &value);
+    napi_set_named_property(env, obj, "event", value);
+
+    napi_create_int64(env, static_cast<int64_t>(event.value), &value);
+    napi_set_named_property(env, obj, "value", value);
+
+    napi_value local;
+    napi_create_string_utf8(
+      env, event.local_addr, NAPI_AUTO_LENGTH, &local);
+    napi_set_named_property(env, obj, "local", local);
+
+    napi_value remote;
+    napi_create_string_utf8(
+      env, event.remote_addr, NAPI_AUTO_LENGTH, &remote);
+    napi_set_named_property(env, obj, "remote", remote);
+
+    return obj;
+}
+
+napi_value create_service_monitor_event_value(
+  napi_env env,
+  const zlink_service_event_t &event)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+
+    napi_value value;
+    napi_create_uint32(env, static_cast<uint32_t>(event.service_kind), &value);
+    napi_set_named_property(env, obj, "serviceKind", value);
+
+    napi_create_uint32(env, event.event_type, &value);
+    napi_set_named_property(env, obj, "eventType", value);
+
+    napi_create_int32(env, event.status, &value);
+    napi_set_named_property(env, obj, "status", value);
+
+    napi_create_int32(env, event.error_code, &value);
+    napi_set_named_property(env, obj, "errorCode", value);
+
+    napi_create_uint32(env, event.value, &value);
+    napi_set_named_property(env, obj, "value", value);
+
+    napi_create_uint32(env, event.detail_flags, &value);
+    napi_set_named_property(env, obj, "detailFlags", value);
+
+    napi_value service_name;
+    napi_create_string_utf8(
+      env, event.service_name, NAPI_AUTO_LENGTH, &service_name);
+    napi_set_named_property(env, obj, "serviceName", service_name);
+
+    napi_value endpoint;
+    napi_create_string_utf8(env, event.endpoint, NAPI_AUTO_LENGTH, &endpoint);
+    napi_set_named_property(env, obj, "endpoint", endpoint);
+
+    napi_value routing_id = create_routing_id_value(env, event.routing_id);
+    napi_set_named_property(env, obj, "routingId", routing_id);
+
+    napi_value subject;
+    napi_create_string_utf8(env, event.subject, NAPI_AUTO_LENGTH, &subject);
+    napi_set_named_property(env, obj, "subject", subject);
+
+    napi_create_uint32(env, event.subject_kind, &value);
+    napi_set_named_property(env, obj, "subjectKind", value);
+
+    return obj;
+}
+
 napi_value create_subscribed_value(napi_env env,
                                    const zlink_routing_id_t &routing_id,
                                    const char *topic,
@@ -401,8 +631,8 @@ napi_value create_subscribed_value(napi_env env,
     napi_value parts_array;
     napi_create_array_with_length(env, part_count, &parts_array);
     for (size_t i = 0; i < part_count; ++i) {
-        napi_value part = create_buffer_copy_or_empty(
-          env, zlink_msg_data(&parts[i]), zlink_msg_size(&parts[i]));
+        napi_value part = create_message_snapshot_value(
+          env, &routing_id, &parts[i]);
         napi_set_element(env, parts_array, static_cast<uint32_t>(i), part);
     }
 
@@ -414,6 +644,67 @@ napi_value create_subscribed_value(napi_env env,
     napi_set_named_property(env, obj, "routingId", rid);
     napi_set_named_property(env, obj, "topic", topic_value);
     napi_set_named_property(env, obj, "parts", parts_array);
+    return obj;
+}
+
+napi_value create_message_properties_snapshot(napi_env env,
+                                              const zlink_routing_id_t *routing_id,
+                                              zlink_msg_t *msg)
+{
+    napi_value props;
+    napi_create_object(env, &props);
+
+    const auto set_property = [env, props](const char *name, const char *value) {
+        if (!value)
+            return;
+        napi_value out;
+        napi_create_string_utf8(env, value, NAPI_AUTO_LENGTH, &out);
+        napi_set_named_property(env, props, name, out);
+    };
+
+    set_property("Socket-Type", zlink_msg_gets(msg, "Socket-Type"));
+    set_property("User-Id", zlink_msg_gets(msg, "User-Id"));
+    set_property("Peer-Address", zlink_msg_gets(msg, "Peer-Address"));
+
+    const char *routing_id_value = zlink_msg_gets(msg, "Routing-Id");
+    if (!routing_id_value && routing_id && routing_id->size > 0) {
+        napi_value out;
+        napi_create_string_utf8(
+          env,
+          reinterpret_cast<const char *>(routing_id->data),
+          routing_id->size,
+          &out);
+        napi_set_named_property(env, props, "Routing-Id", out);
+        napi_set_named_property(env, props, "Identity", out);
+    } else {
+        set_property("Routing-Id", routing_id_value);
+        if (routing_id_value)
+            set_property("Identity", routing_id_value);
+    }
+
+    if (!routing_id_value)
+        set_property("Identity", zlink_msg_gets(msg, "Identity"));
+
+    return props;
+}
+
+napi_value create_message_snapshot_value(napi_env env,
+                                        const zlink_routing_id_t *routing_id,
+                                        zlink_msg_t *msg)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+
+    napi_value data;
+    napi_create_buffer_copy(
+      env, zlink_msg_size(msg), zlink_msg_data(msg), NULL, &data);
+    napi_value ref_count;
+    napi_create_int32(env, zlink_msg_refcnt(msg), &ref_count);
+    napi_value props = create_message_properties_snapshot(env, routing_id, msg);
+
+    napi_set_named_property(env, obj, "data", data);
+    napi_set_named_property(env, obj, "refCount", ref_count);
+    napi_set_named_property(env, obj, "properties", props);
     return obj;
 }
 
@@ -607,6 +898,48 @@ void subscribe_handler_tsfn_finalize(napi_env env,
     reset_subscribe_handler_slot_unsafe(state);
 }
 
+void send_ready_handler_tsfn_finalize(napi_env env,
+                                      void *finalize_data,
+                                      void *finalize_hint)
+{
+    (void) env;
+    (void) finalize_hint;
+    send_ready_handler_js_state_t *state =
+      static_cast<send_ready_handler_js_state_t *>(finalize_data);
+    if (!state)
+        return;
+    std::lock_guard<std::mutex> lock(g_send_ready_handler_slots_mu);
+    reset_send_ready_handler_slot_unsafe(state);
+}
+
+void socket_monitor_handler_tsfn_finalize(napi_env env,
+                                          void *finalize_data,
+                                          void *finalize_hint)
+{
+    (void) env;
+    (void) finalize_hint;
+    socket_monitor_handler_js_state_t *state =
+      static_cast<socket_monitor_handler_js_state_t *>(finalize_data);
+    if (!state)
+        return;
+    std::lock_guard<std::mutex> lock(g_socket_monitor_handler_slots_mu);
+    reset_socket_monitor_handler_slot_unsafe(state);
+}
+
+void service_monitor_handler_tsfn_finalize(napi_env env,
+                                           void *finalize_data,
+                                           void *finalize_hint)
+{
+    (void) env;
+    (void) finalize_hint;
+    service_monitor_handler_js_state_t *state =
+      static_cast<service_monitor_handler_js_state_t *>(finalize_data);
+    if (!state)
+        return;
+    std::lock_guard<std::mutex> lock(g_service_monitor_handler_slots_mu);
+    reset_service_monitor_handler_slot_unsafe(state);
+}
+
 void stream_tsfn_call_js(napi_env env,
                          napi_value js_cb,
                          void *context,
@@ -746,6 +1079,60 @@ void subscribe_handler_tsfn_call_js(napi_env env,
     napi_value this_arg;
     napi_get_undefined(env, &this_arg);
     (void) napi_call_function(env, this_arg, js_cb, 3, argv, &recv);
+}
+
+void send_ready_handler_tsfn_call_js(napi_env env,
+                                     napi_value js_cb,
+                                     void *context,
+                                     void *data)
+{
+    std::unique_ptr<int> payload(static_cast<int *>(data));
+    (void) context;
+    if (!env || !js_cb || !payload)
+        return;
+
+    napi_value recv;
+    napi_value this_arg;
+    napi_get_undefined(env, &this_arg);
+    (void) napi_call_function(env, this_arg, js_cb, 0, NULL, &recv);
+}
+
+void socket_monitor_handler_tsfn_call_js(napi_env env,
+                                         napi_value js_cb,
+                                         void *context,
+                                         void *data)
+{
+    std::unique_ptr<socket_monitor_handler_js_payload_t> payload(
+      static_cast<socket_monitor_handler_js_payload_t *>(data));
+    (void) context;
+    if (!env || !js_cb || !payload)
+        return;
+
+    napi_value argv[1];
+    argv[0] = create_socket_monitor_event_value(env, payload->event);
+    napi_value recv;
+    napi_value this_arg;
+    napi_get_undefined(env, &this_arg);
+    (void) napi_call_function(env, this_arg, js_cb, 1, argv, &recv);
+}
+
+void service_monitor_handler_tsfn_call_js(napi_env env,
+                                          napi_value js_cb,
+                                          void *context,
+                                          void *data)
+{
+    std::unique_ptr<service_monitor_handler_js_payload_t> payload(
+      static_cast<service_monitor_handler_js_payload_t *>(data));
+    (void) context;
+    if (!env || !js_cb || !payload)
+        return;
+
+    napi_value argv[1];
+    argv[0] = create_service_monitor_event_value(env, payload->event);
+    napi_value recv;
+    napi_value this_arg;
+    napi_get_undefined(env, &this_arg);
+    (void) napi_call_function(env, this_arg, js_cb, 1, argv, &recv);
 }
 
 std::string make_routing_id_key(const zlink_routing_id_t *rid)
@@ -1037,6 +1424,125 @@ static subscribe_handler_slot_callback_t
 };
 #undef SUBSCRIBE_HANDLER_SLOT_CALLBACK
 
+#define SEND_READY_HANDLER_SLOT_CALLBACK(N) &send_ready_handler_slot_callback<N>
+typedef void (*send_ready_handler_slot_callback_t)(void *, void *);
+template <size_t Slot>
+void send_ready_handler_slot_callback(void *subject_, void *userdata_)
+{
+    (void) userdata_;
+    send_ready_handler_js_state_t *state = &g_send_ready_handler_slots[Slot];
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_send_ready_handler_slots_mu);
+        if (!state->used || !state->tsfn)
+            return;
+        tsfn = state->tsfn;
+    }
+
+    std::unique_ptr<int> payload(new int(1));
+    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
+        == napi_ok) {
+        payload.release();
+    }
+}
+
+#define SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(N) \
+  &socket_monitor_handler_slot_callback<N>
+typedef void (*socket_monitor_handler_slot_callback_t)(const zlink_monitor_event_t *,
+                                                       void *);
+template <size_t Slot>
+void socket_monitor_handler_slot_callback(const zlink_monitor_event_t *event_,
+                                          void *userdata_)
+{
+    (void) userdata_;
+    std::unique_ptr<socket_monitor_handler_js_payload_t> payload(
+      new socket_monitor_handler_js_payload_t());
+    socket_monitor_handler_js_state_t *state = &g_socket_monitor_handler_slots[Slot];
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_socket_monitor_handler_slots_mu);
+        if (!state->used || !state->tsfn)
+            return;
+        tsfn = state->tsfn;
+        if (event_)
+            payload->event = *event_;
+        else
+            memset(&payload->event, 0, sizeof(payload->event));
+    }
+
+    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
+        == napi_ok) {
+        payload.release();
+    }
+}
+static socket_monitor_handler_slot_callback_t
+  g_socket_monitor_handler_slot_callbacks[k_socket_monitor_handler_slot_count] = {
+    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(0),
+    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(1),
+    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(2),
+    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(3),
+    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(4),
+    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(5),
+    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(6),
+    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(7),
+};
+#undef SOCKET_MONITOR_HANDLER_SLOT_CALLBACK
+
+#define SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(N) \
+  &service_monitor_handler_slot_callback<N>
+typedef void (*service_monitor_handler_slot_callback_t)(
+  const zlink_service_event_t *, void *);
+template <size_t Slot>
+void service_monitor_handler_slot_callback(const zlink_service_event_t *event_,
+                                           void *userdata_)
+{
+    (void) userdata_;
+    std::unique_ptr<service_monitor_handler_js_payload_t> payload(
+      new service_monitor_handler_js_payload_t());
+    service_monitor_handler_js_state_t *state =
+      &g_service_monitor_handler_slots[Slot];
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_service_monitor_handler_slots_mu);
+        if (!state->used || !state->tsfn)
+            return;
+        tsfn = state->tsfn;
+        if (event_)
+            payload->event = *event_;
+        else
+            memset(&payload->event, 0, sizeof(payload->event));
+    }
+
+    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
+        == napi_ok) {
+        payload.release();
+    }
+}
+static service_monitor_handler_slot_callback_t
+  g_service_monitor_handler_slot_callbacks[k_service_monitor_handler_slot_count] = {
+    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(0),
+    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(1),
+    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(2),
+    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(3),
+    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(4),
+    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(5),
+    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(6),
+    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(7),
+};
+#undef SERVICE_MONITOR_HANDLER_SLOT_CALLBACK
+static send_ready_handler_slot_callback_t
+  g_send_ready_handler_slot_callbacks[k_send_ready_handler_slot_count] = {
+    SEND_READY_HANDLER_SLOT_CALLBACK(0),
+    SEND_READY_HANDLER_SLOT_CALLBACK(1),
+    SEND_READY_HANDLER_SLOT_CALLBACK(2),
+    SEND_READY_HANDLER_SLOT_CALLBACK(3),
+    SEND_READY_HANDLER_SLOT_CALLBACK(4),
+    SEND_READY_HANDLER_SLOT_CALLBACK(5),
+    SEND_READY_HANDLER_SLOT_CALLBACK(6),
+    SEND_READY_HANDLER_SLOT_CALLBACK(7),
+};
+#undef SEND_READY_HANDLER_SLOT_CALLBACK
+
 bool attach_recv_handler(napi_env env, void *socket, napi_value handler)
 {
     recv_handler_js_state_t *slot = NULL;
@@ -1134,6 +1640,160 @@ bool attach_subscribe_handler(napi_env env, void *socket, napi_value handler)
     return true;
 }
 
+bool attach_send_ready_handler(napi_env env, void *socket, napi_value handler)
+{
+    send_ready_handler_js_state_t *slot = NULL;
+    size_t slot_index = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_send_ready_handler_slots_mu);
+        if (find_send_ready_handler_slot_by_socket_unsafe(socket)) {
+            napi_throw_error(env, NULL, "sendReadyHandler already attached");
+            return false;
+        }
+        slot = find_free_send_ready_handler_slot_unsafe();
+        if (!slot) {
+            napi_throw_error(env, NULL, "no free sendReadyHandler slot");
+            return false;
+        }
+        slot_index = static_cast<size_t>(slot - g_send_ready_handler_slots);
+    }
+
+    napi_value resource_name;
+    napi_create_string_utf8(
+      env, "zlink-send-ready-handler", NAPI_AUTO_LENGTH, &resource_name);
+    napi_threadsafe_function tsfn = NULL;
+    napi_status tsfn_status = napi_create_threadsafe_function(
+      env, handler, NULL, resource_name, 0, 1, slot,
+      send_ready_handler_tsfn_finalize, slot, send_ready_handler_tsfn_call_js,
+      &tsfn);
+    if (tsfn_status != napi_ok) {
+        napi_throw_error(
+          env, NULL, "sendReadyHandler failed to create callback queue");
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_send_ready_handler_slots_mu);
+        slot->used = true;
+        slot->socket = socket;
+        slot->env = env;
+        slot->tsfn = tsfn;
+    }
+
+    int rc = zlink_send_ready_handler(
+      socket, g_send_ready_handler_slot_callbacks[slot_index], slot);
+    if (rc != 0) {
+        release_socket_send_ready_handler_slot(socket);
+        throw_last_error(env, "sendReadyHandler failed");
+        return false;
+    }
+    return true;
+}
+
+bool attach_socket_monitor_handler(napi_env env,
+                                   void *monitor,
+                                   napi_value handler)
+{
+    socket_monitor_handler_js_state_t *slot = NULL;
+    size_t slot_index = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_socket_monitor_handler_slots_mu);
+        if (find_socket_monitor_handler_slot_by_monitor_unsafe(monitor)) {
+            napi_throw_error(env, NULL, "monitorHandler already attached");
+            return false;
+        }
+        slot = find_free_socket_monitor_handler_slot_unsafe();
+        if (!slot) {
+            napi_throw_error(env, NULL, "no free monitorHandler slot");
+            return false;
+        }
+        slot_index = static_cast<size_t>(slot - g_socket_monitor_handler_slots);
+    }
+
+    napi_value resource_name;
+    napi_create_string_utf8(
+      env, "zlink-monitor-handler", NAPI_AUTO_LENGTH, &resource_name);
+    napi_threadsafe_function tsfn = NULL;
+    napi_status tsfn_status = napi_create_threadsafe_function(
+      env, handler, NULL, resource_name, 0, 1, slot,
+      socket_monitor_handler_tsfn_finalize, slot,
+      socket_monitor_handler_tsfn_call_js, &tsfn);
+    if (tsfn_status != napi_ok) {
+        napi_throw_error(
+          env, NULL, "monitorHandler failed to create callback queue");
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_socket_monitor_handler_slots_mu);
+        slot->used = true;
+        slot->monitor = monitor;
+        slot->env = env;
+        slot->tsfn = tsfn;
+    }
+
+    int rc = zlink_socket_monitor_handler(
+      monitor, g_socket_monitor_handler_slot_callbacks[slot_index], slot);
+    if (rc != 0) {
+        release_socket_monitor_handler_slot(monitor);
+        throw_last_error(env, "monitorHandler failed");
+        return false;
+    }
+    return true;
+}
+
+bool attach_service_monitor_handler(napi_env env,
+                                    void *monitor,
+                                    napi_value handler)
+{
+    service_monitor_handler_js_state_t *slot = NULL;
+    size_t slot_index = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_service_monitor_handler_slots_mu);
+        if (find_service_monitor_handler_slot_by_monitor_unsafe(monitor)) {
+            napi_throw_error(env, NULL, "serviceMonitorHandler already attached");
+            return false;
+        }
+        slot = find_free_service_monitor_handler_slot_unsafe();
+        if (!slot) {
+            napi_throw_error(env, NULL, "no free serviceMonitorHandler slot");
+            return false;
+        }
+        slot_index = static_cast<size_t>(slot - g_service_monitor_handler_slots);
+    }
+
+    napi_value resource_name;
+    napi_create_string_utf8(
+      env, "zlink-service-monitor-handler", NAPI_AUTO_LENGTH, &resource_name);
+    napi_threadsafe_function tsfn = NULL;
+    napi_status tsfn_status = napi_create_threadsafe_function(
+      env, handler, NULL, resource_name, 0, 1, slot,
+      service_monitor_handler_tsfn_finalize, slot,
+      service_monitor_handler_tsfn_call_js, &tsfn);
+    if (tsfn_status != napi_ok) {
+        napi_throw_error(
+          env, NULL, "serviceMonitorHandler failed to create callback queue");
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_service_monitor_handler_slots_mu);
+        slot->used = true;
+        slot->monitor = monitor;
+        slot->env = env;
+        slot->tsfn = tsfn;
+    }
+
+    int rc = zlink_service_monitor_handler(
+      monitor, g_service_monitor_handler_slot_callbacks[slot_index], slot);
+    if (rc != 0) {
+        release_service_monitor_handler_slot(monitor);
+        throw_last_error(env, "serviceMonitorHandler failed");
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 void release_socket_recv_handler_slot(void *socket)
@@ -1144,6 +1804,54 @@ void release_socket_recv_handler_slot(void *socket)
 void release_socket_subscribe_handler_slot(void *socket)
 {
     subscribe_handler_release_slot(socket);
+}
+
+void release_socket_send_ready_handler_slot(void *socket)
+{
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_send_ready_handler_slots_mu);
+        send_ready_handler_js_state_t *state =
+          find_send_ready_handler_slot_by_socket_unsafe(socket);
+        if (!state)
+            return;
+        tsfn = state->tsfn;
+        reset_send_ready_handler_slot_unsafe(state);
+    }
+    if (tsfn)
+        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
+}
+
+void release_socket_monitor_handler_slot(void *monitor)
+{
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_socket_monitor_handler_slots_mu);
+        socket_monitor_handler_js_state_t *state =
+          find_socket_monitor_handler_slot_by_monitor_unsafe(monitor);
+        if (!state)
+            return;
+        tsfn = state->tsfn;
+        reset_socket_monitor_handler_slot_unsafe(state);
+    }
+    if (tsfn)
+        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
+}
+
+void release_service_monitor_handler_slot(void *monitor)
+{
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_service_monitor_handler_slots_mu);
+        service_monitor_handler_js_state_t *state =
+          find_service_monitor_handler_slot_by_monitor_unsafe(monitor);
+        if (!state)
+            return;
+        tsfn = state->tsfn;
+        reset_service_monitor_handler_slot_unsafe(state);
+    }
+    if (tsfn)
+        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
 }
 
 bool attach_socket_subscribe_handler(napi_env env, void *socket, napi_value handler)
@@ -1249,6 +1957,21 @@ napi_value ctx_new(napi_env env, napi_callback_info info)
     return ext;
 }
 
+napi_value ctx_shutdown(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *ctx = NULL;
+    napi_get_value_external(env, argv[0], &ctx);
+    int rc = zlink_ctx_shutdown(ctx);
+    if (rc != 0)
+        return throw_last_error(env, "ctx_shutdown failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
 napi_value ctx_term(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
@@ -1262,6 +1985,43 @@ napi_value ctx_term(napi_env env, napi_callback_info info)
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
+}
+
+napi_value ctx_setopt(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *ctx = NULL;
+    napi_get_value_external(env, argv[0], &ctx);
+    int32_t opt = 0;
+    int32_t value = 0;
+    napi_get_value_int32(env, argv[1], &opt);
+    napi_get_value_int32(env, argv[2], &value);
+    int rc = zlink_ctx_set(ctx, static_cast<zlink_ctx_option_t>(opt), value);
+    if (rc != 0)
+        return throw_last_error(env, "ctx_setopt failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value ctx_getopt(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *ctx = NULL;
+    napi_get_value_external(env, argv[0], &ctx);
+    int32_t opt = 0;
+    napi_get_value_int32(env, argv[1], &opt);
+    errno = 0;
+    const int rc = zlink_ctx_get(ctx, static_cast<zlink_ctx_option_t>(opt));
+    if (rc == -1 && errno != 0)
+        return throw_last_error(env, "ctx_getopt failed");
+    napi_value out;
+    napi_create_int32(env, rc, &out);
+    return out;
 }
 
 napi_value socket_new(napi_env env, napi_callback_info info)
@@ -1291,6 +2051,7 @@ napi_value socket_close(napi_env env, napi_callback_info info)
     stream_release_slot(sock);
     recv_handler_release_slot(sock);
     subscribe_handler_release_slot(sock);
+    release_socket_send_ready_handler_slot(sock);
     int rc = zlink_close(sock);
     if (rc != 0)
         return throw_last_error(env, "close failed");
@@ -1358,6 +2119,47 @@ napi_value socket_disconnect(napi_env env, napi_callback_info info)
     int rc = zlink_disconnect(sock, addr.c_str());
     if (rc != 0)
         return throw_last_error(env, "disconnect failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value socket_set_tls_server(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    std::string cert = get_string(env, argv[1]);
+    std::string key = get_string(env, argv[2]);
+    int32_t require_client = 0;
+    if (argc >= 4)
+        napi_get_value_int32(env, argv[3], &require_client);
+    int rc = zlink_set_tls_server(
+      sock, cert.c_str(), key.c_str(), require_client);
+    if (rc != 0)
+        return throw_last_error(env, "socket_set_tls_server failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value socket_set_tls_client(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    std::string ca = get_string(env, argv[1]);
+    std::string host = get_string(env, argv[2]);
+    int32_t trust = 0;
+    if (argc >= 4)
+        napi_get_value_int32(env, argv[3], &trust);
+    int rc = zlink_set_tls_client(sock, ca.c_str(), host.c_str(), trust);
+    if (rc != 0)
+        return throw_last_error(env, "socket_set_tls_client failed");
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
@@ -1862,6 +2664,32 @@ napi_value socket_subscribe_handler(napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value socket_send_ready_handler(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error(
+          env, NULL, "sendReadyHandler requires (socket, handler)");
+        return NULL;
+    }
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[1], &handler_type);
+    if (handler_type != napi_function) {
+        napi_throw_type_error(
+          env, NULL, "sendReadyHandler handler must be a function");
+        return NULL;
+    }
+    if (!attach_send_ready_handler(env, sock, argv[1]))
+        return NULL;
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
 napi_value socket_subscription_event(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
@@ -2274,6 +3102,53 @@ napi_value monitor_open(napi_env env, napi_callback_info info)
     return ext;
 }
 
+napi_value monitor_handler(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *mon = NULL;
+    napi_get_value_external(env, argv[0], &mon);
+
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[1], &handler_type);
+    if (handler_type != napi_function) {
+        napi_throw_type_error(env, NULL, "monitorHandler handler must be a function");
+        return NULL;
+    }
+
+    if (!attach_socket_monitor_handler(env, mon, argv[1]))
+        return NULL;
+
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value service_monitor_handler(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *mon = NULL;
+    napi_get_value_external(env, argv[0], &mon);
+
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[1], &handler_type);
+    if (handler_type != napi_function) {
+        napi_throw_type_error(
+          env, NULL, "serviceMonitorHandler handler must be a function");
+        return NULL;
+    }
+
+    if (!attach_service_monitor_handler(env, mon, argv[1]))
+        return NULL;
+
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
 napi_value monitor_recv(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -2374,6 +3249,8 @@ napi_value monitor_close(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *monitor = NULL;
     napi_get_value_external(env, argv[0], &monitor);
+    release_socket_monitor_handler_slot(monitor);
+    release_service_monitor_handler_slot(monitor);
     void *tmp = monitor;
     int rc = zlink_monitor_close(&tmp);
     if (rc != 0)

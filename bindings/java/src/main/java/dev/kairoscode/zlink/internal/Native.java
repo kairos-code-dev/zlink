@@ -1161,6 +1161,25 @@ public final class Native {
         }
     }
 
+    public static int setTlsServer(MemorySegment handle, MemorySegment cert,
+                                   MemorySegment key, int requireClient) {
+        try {
+            return (int) MH_SET_TLS_SRV.invokeExact(handle, cert, key,
+              requireClient);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_set_tls_server failed", t);
+        }
+    }
+
+    public static int setTlsClient(MemorySegment handle, MemorySegment ca,
+                                   MemorySegment host, int trust) {
+        try {
+            return (int) MH_SET_TLS_CLI.invokeExact(handle, ca, host, trust);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_set_tls_client failed", t);
+        }
+    }
+
     public static int errno() {
         try {
             return (int) MH_ERRNO.invokeExact();

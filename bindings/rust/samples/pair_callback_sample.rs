@@ -3,7 +3,7 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use zlink::{Context, MONITOR_EVENT_CONNECTION_READY, Message, SocketMonitor};
+use zlink::{Context, Message, SocketMonitor};
 
 pub fn reserve_tcp_port() -> u16 {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -63,10 +63,8 @@ fn main() {
         })
         .expect("on_receive failed");
 
-    let server_mon = SocketMonitor::open(&server, MONITOR_EVENT_CONNECTION_READY)
-        .expect("server monitor open failed");
-    let client_mon = SocketMonitor::open(&client, MONITOR_EVENT_CONNECTION_READY)
-        .expect("client monitor open failed");
+    let server_mon = SocketMonitor::open(&server).expect("server monitor open failed");
+    let client_mon = SocketMonitor::open(&client).expect("client monitor open failed");
 
     server.bind(&endpoint).expect("bind failed");
     client.connect(&endpoint).expect("connect failed");

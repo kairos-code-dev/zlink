@@ -51,9 +51,9 @@ async function main() {
     }
 
     for (const part of received.parts) {
-      const payloads = parseFrames(state, part.toBuffer());
+      const payloads = parseFrames(state, part.data);
       for (const payload of payloads) {
-        stream.send(routingId, zlink.Message.copyOf(frame(payload)));
+        stream.send(routingId, Buffer.from(frame(payload)));
       }
     }
   };

@@ -81,4 +81,15 @@ public sealed class test_message
         Assert.Equal(payload, message.GetString());
         Assert.True(message.AsReadOnlySpan().SequenceEqual(Encoding.UTF8.GetBytes(payload)));
     }
+
+    [Fact]
+    public void message_property_accessor_uses_canonical_name()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var message = Message.FromString("property-check");
+
+        Assert.Null(message.GetProperty("Identity"));
+    }
 }

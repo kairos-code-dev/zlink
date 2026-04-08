@@ -26,8 +26,7 @@ public final class SpotCallbackSample {
             String endpoint = publisherNode.statusSnapshot().localEndpoint();
             subscriberNode.connectPeer(endpoint);
             subscriber.setSubscription(SampleSupport.SPOT_TOPIC);
-            SampleSupport.waitUntil("spot peer connection",
-                () -> subscriberNode.statusSnapshot().connectedPeerCount() > 0);
+            SampleSupport.waitSpotPeerConnected(subscriberNode);
 
             subscriber.onSubscribe((routingId, topic, received) -> {
                 try {

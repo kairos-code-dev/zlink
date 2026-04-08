@@ -29,7 +29,7 @@ final class PerfMultiRouterRouter {
         }
         try (Context ctx = PerfUtil.newContext(config);
              RouterSocket server = new RouterSocket(ctx);
-             var monitor = server.monitorOpen(READY_EVENTS)) {
+             var monitor = server.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             server.setRoutingId(SERVER_ID);
             PerfUtil.applyMonitorOptions(monitor, config);
             PerfUtil.applySocketOptions(server, config);
@@ -66,7 +66,7 @@ final class PerfMultiRouterRouter {
         MultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
             Context ctx = PerfUtil.newContext(config);
             try (RouterSocket client = new RouterSocket(ctx);
-                 var monitor = client.monitorOpen(READY_EVENTS)) {
+                 var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY)) {
                 client.setRoutingId(RoutingId.copyOf(
                     ("PERF_CLIENT_" + index).getBytes(StandardCharsets.UTF_8)));
                 client.options().connectRoutingId(SERVER_ID);

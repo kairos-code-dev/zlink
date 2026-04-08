@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Threading.Tasks;
 using Zlink.Native;
 
 namespace Zlink;
 
-public sealed class AtomicCounter : IDisposable
+public sealed class AtomicCounter : IDisposable, IAsyncDisposable
 {
     private IntPtr _handle;
 
@@ -50,6 +51,12 @@ public sealed class AtomicCounter : IDisposable
         NativeMethods.zlink_atomic_counter_destroy(ref _handle);
         _handle = IntPtr.Zero;
         GC.SuppressFinalize(this);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     ~AtomicCounter()

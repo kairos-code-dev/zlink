@@ -5,7 +5,9 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Threading;
 using Zlink;
+using Zlink.Service;
 using TcpListener = System.Net.Sockets.TcpListener;
 
 public static class PerfShared
@@ -46,6 +48,20 @@ public static class PerfShared
     {
         long deltaTicks = Math.Max(0, endTicks - startTicks);
         return deltaTicks / (double)Stopwatch.Frequency;
+    }
+
+    public static bool WaitSpotPeerConnected(SpotNode node, int timeoutMs)
+    {
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        var spin = new SpinWait();
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            if (node.StatusSnapshot().ConnectedPeerCount > 0)
+                return true;
+            spin.SpinOnce();
+        }
+
+        return node.StatusSnapshot().ConnectedPeerCount > 0;
     }
 
     public static void ReservoirSample(List<double> samples, double value,

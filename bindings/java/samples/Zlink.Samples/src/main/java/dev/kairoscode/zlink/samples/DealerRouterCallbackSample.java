@@ -5,6 +5,7 @@ import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.SendResult;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -18,8 +19,10 @@ public final class DealerRouterCallbackSample {
         try (Context ctx = new Context();
              RouterSocket router = new RouterSocket(ctx);
              DealerSocket dealer = new DealerSocket(ctx);
-             var routerMonitor = router.monitorOpen(SampleSupport.CONNECTION_READY_EVENT);
-             var dealerMonitor = dealer.monitorOpen(SampleSupport.CONNECTION_READY_EVENT)) {
+             var routerMonitor = router.monitorOpen(
+                 dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY);
+             var dealerMonitor = dealer.monitorOpen(
+                 dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY)) {
             router.bind(endpoint);
             dealer.connect(endpoint);
             SampleSupport.waitConnected(routerMonitor, dealerMonitor);
@@ -31,7 +34,11 @@ public final class DealerRouterCallbackSample {
                     throw new IllegalStateException("unexpected routed request");
                 }
                 try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
-                    router.send(rid, reply);
+                    SendResult result = router.trySend(rid, reply);
+                    if (result != SendResult.SENT) {
+                        throw new IllegalStateException(
+                            "unexpected routed send result: " + result);
+                    }
                 }
             });
 

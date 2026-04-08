@@ -15,10 +15,11 @@ import {
   materializeSubscribed,
   materializeSubscriptionEvent,
   normalizeMessagePayload,
-  normalizeMultipart
+  normalizeMultipart,
+  wrapMessageParts
 } from './socket/socket_support';
 import type { BufferLike } from './buffer_like';
-import type { MessageLike } from './message';
+import type { MessageLike, MessageSnapshot } from './message';
 
 export type { BufferLike, MessageLike };
 export {
@@ -45,6 +46,7 @@ export type SocketSubscribeHandler = (
   parts: Message[]
 ) => void;
 export type SocketSendReadyHandler = () => void;
+export type SocketMonitorHandler = (event: SocketMonitorEventValue) => void;
 export type SpotSubHandler = SocketSubscribeHandler;
 export type SpotSendReadyHandler = () => void;
 
@@ -66,6 +68,16 @@ function int32Buffer(value: number, name: string): Buffer {
   const buffer = Buffer.allocUnsafe(4);
   buffer.writeInt32LE(value, 0);
   return buffer;
+}
+
+function int32Value(value: number, name: string): number {
+  if (!Number.isInteger(value)) {
+    throw new TypeError(`${name} must be an integer`);
+  }
+  if (value < -2147483648 || value > 2147483647) {
+    throw new RangeError(`${name} must fit in int32`);
+  }
+  return value | 0;
 }
 
 function int64Buffer(value: number | bigint, name: string): Buffer {
@@ -425,45 +437,97 @@ export class SubSocketOptions extends CommonSocketOptions {
   }
 }
 
-function startPollingLoop<T>(
-  isOpen: () => boolean,
-  read: () => T | null,
-  invoke: (value: T) => void
-): void {
-  const tick = (): void => {
-    if (!isOpen()) {
-      return;
-    }
-    try {
-      const value = read();
-      if (value !== null) {
-        invoke(value);
-      }
-    } catch (error) {
-      if (!isOpen()) {
-        return;
-      }
-      setImmediate(() => {
-        throw error;
-      });
-      return;
-    }
-    setImmediate(tick);
-  };
-  setImmediate(tick);
-}
+export class ContextOptions {
+  protected readonly _context: Context;
 
-function startEventPollingLoop<T extends { value?: number }>(
-  isOpen: () => boolean,
-  read: () => T | null,
-  shouldInvoke: (value: T) => boolean,
-  invoke: (value: T) => void
-): void {
-  startPollingLoop(isOpen, read, (value) => {
-    if (shouldInvoke(value)) {
-      invoke(value);
-    }
-  });
+  constructor(context: Context) {
+    this._context = context;
+  }
+
+  get ioThreads(): number {
+    return this._context.getOptionRawInternal(ContextOption.IO_THREADS);
+  }
+
+  set ioThreads(value: number) {
+    this._context.setOptionRawInternal(
+      ContextOption.IO_THREADS,
+      int32Value(value, 'ioThreads')
+    );
+  }
+
+  get maxSockets(): number {
+    return this._context.getOptionRawInternal(ContextOption.MAX_SOCKETS);
+  }
+
+  set maxSockets(value: number) {
+    this._context.setOptionRawInternal(
+      ContextOption.MAX_SOCKETS,
+      int32Value(value, 'maxSockets')
+    );
+  }
+
+  get socketLimit(): number {
+    return this._context.getOptionRawInternal(ContextOption.SOCKET_LIMIT);
+  }
+
+  get maxMsgSize(): number {
+    return this._context.getOptionRawInternal(ContextOption.MAX_MSGSZ);
+  }
+
+  set maxMsgSize(value: number) {
+    this._context.setOptionRawInternal(
+      ContextOption.MAX_MSGSZ,
+      int32Value(value, 'maxMsgSize')
+    );
+  }
+
+  get msgTSize(): number {
+    return this._context.getOptionRawInternal(ContextOption.MSG_T_SIZE);
+  }
+
+  get threadPriority(): number {
+    return this._context.getOptionRawInternal(ContextOption.THREAD_PRIORITY);
+  }
+
+  set threadPriority(value: number) {
+    this._context.setOptionRawInternal(
+      ContextOption.THREAD_PRIORITY,
+      int32Value(value, 'threadPriority')
+    );
+  }
+
+  get threadSchedulingPolicy(): number {
+    return this._context.getOptionRawInternal(ContextOption.THREAD_SCHED_POLICY);
+  }
+
+  set threadSchedulingPolicy(value: number) {
+    this._context.setOptionRawInternal(
+      ContextOption.THREAD_SCHED_POLICY,
+      int32Value(value, 'threadSchedulingPolicy')
+    );
+  }
+
+  get blocky(): boolean {
+    return this._context.getOptionRawInternal(ContextOption.BLOCKY) !== 0;
+  }
+
+  set blocky(value: boolean) {
+    this._context.setOptionRawInternal(ContextOption.BLOCKY, value ? 1 : 0);
+  }
+
+  addThreadAffinity(cpu: number): void {
+    this._context.setOptionRawInternal(
+      ContextOption.THREAD_AFFINITY_CPU_ADD,
+      int32Value(cpu, 'cpu')
+    );
+  }
+
+  removeThreadAffinity(cpu: number): void {
+    this._context.setOptionRawInternal(
+      ContextOption.THREAD_AFFINITY_CPU_REMOVE,
+      int32Value(cpu, 'cpu')
+    );
+  }
 }
 
 export const ContextOption = Object.freeze({
@@ -533,7 +597,9 @@ export const ServiceMonitorEvent = Object.freeze({
   DISCOVERY_SERVICE_UP: 1 << 5,
   DISCOVERY_SERVICE_DOWN: 1 << 6,
   DISCOVERY_PROVIDERS_CHANGED: 1 << 7,
+  ALL: (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 17)
 } as const);
+export type ServiceMonitorEventMask = number;
 export const SpotNodeState = Object.freeze({
   IDLE: 1, CONNECTING: 2, PARTIAL_READY: 3, READY: 4, ERROR: 5
 } as const);
@@ -607,6 +673,8 @@ export class ServiceEvent {
     this.subjectKind = raw.subjectKind;
   }
 }
+
+export type ServiceMonitorHandler = (event: ServiceEvent) => void;
 
 export interface MemberPeerEntry {
   serviceType: number;
@@ -911,7 +979,7 @@ export abstract class PublisherSocketBase extends ConnectableSocketBase {
 }
 
 export abstract class MessageSocketBase extends ConnectableSendSocketBase {
-  private _receiveCallbackInstalled = false;
+  protected _receiveCallbackInstalled = false;
 
   protected constructor(ctx: Context, type: number) {
     super(ctx, type);
@@ -923,7 +991,7 @@ export abstract class MessageSocketBase extends ConnectableSendSocketBase {
     }
     return materializeReceived(
       requireNative().socketRecvMessage(this.nativeHandle(), 0) as {
-        parts: Buffer[];
+        parts: MessageSnapshot[];
         routingId?: Buffer | null;
       }
     );
@@ -938,7 +1006,7 @@ export abstract class MessageSocketBase extends ConnectableSendSocketBase {
 
   private tryRecvForCallback(): Received | null {
     const raw = requireNative().socketTryRecvMessage(this.nativeHandle()) as
-      | { parts: Buffer[]; routingId?: Buffer | null }
+      | { parts: MessageSnapshot[]; routingId?: Buffer | null }
       | null;
     return raw ? materializeReceived(raw) : null;
   }
@@ -947,30 +1015,22 @@ export abstract class MessageSocketBase extends ConnectableSendSocketBase {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
+    requireNative().socketRecvHandler(this.nativeHandle(), (routingId, parts) => {
+      handler(routingId, wrapMessageParts(parts));
+    });
     this._receiveCallbackInstalled = true;
-    startPollingLoop(
-      () => this.nativeHandle() != null,
-      () => this.tryRecvForCallback(),
-      (received) => handler(received.routingId, [...received.parts])
-    );
   }
 
   onSendReady(handler: SocketSendReadyHandler): void {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
-    const monitor = this.monitorOpen(MonitorEvent.CONNECTION_READY);
-    startEventPollingLoop(
-      () => this.nativeHandle() != null,
-      () => monitor.tryRecv(),
-      (event) => event.event === MonitorEvent.CONNECTION_READY,
-      () => handler()
-    );
+    requireNative().socketSendReadyHandler(this.nativeHandle(), handler);
   }
 }
 
 export abstract class RoutedMessageSocketBase extends BaseSocket {
-  private _receiveCallbackInstalled = false;
+  protected _receiveCallbackInstalled = false;
 
   protected constructor(ctx: Context, type: number) {
     super(ctx, type);
@@ -1023,7 +1083,7 @@ export abstract class RoutedMessageSocketBase extends BaseSocket {
     }
     return materializeReceived(
       requireNative().socketRecvMessage(this.nativeHandle(), 0) as {
-        parts: Buffer[];
+        parts: MessageSnapshot[];
         routingId?: Buffer | null;
       }
     );
@@ -1038,7 +1098,7 @@ export abstract class RoutedMessageSocketBase extends BaseSocket {
 
   private tryRecvForCallback(): Received | null {
     const raw = requireNative().socketTryRecvMessage(this.nativeHandle()) as
-      | { parts: Buffer[]; routingId?: Buffer | null }
+      | { parts: MessageSnapshot[]; routingId?: Buffer | null }
       | null;
     return raw ? materializeReceived(raw) : null;
   }
@@ -1047,25 +1107,17 @@ export abstract class RoutedMessageSocketBase extends BaseSocket {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
+    requireNative().socketRecvHandler(this.nativeHandle(), (routingId, parts) => {
+      handler(routingId, wrapMessageParts(parts));
+    });
     this._receiveCallbackInstalled = true;
-    startPollingLoop(
-      () => this.nativeHandle() != null,
-      () => this.tryRecvForCallback(),
-      (received) => handler(received.routingId, [...received.parts])
-    );
   }
 
   onSendReady(handler: SocketSendReadyHandler): void {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
-    const monitor = this.monitorOpen(MonitorEvent.CONNECTION_READY);
-    startEventPollingLoop(
-      () => this.nativeHandle() != null,
-      () => monitor.tryRecv(),
-      (event) => event.event === MonitorEvent.CONNECTION_READY,
-      () => handler()
-    );
+    requireNative().socketSendReadyHandler(this.nativeHandle(), handler);
   }
 }
 
@@ -1110,7 +1162,7 @@ export abstract class SubscriberSocketBase extends ConnectableSocketBase {
     }
     return materializeSubscribed(
       requireNative().socketSubscribeMessage(this.nativeHandle()) as {
-        parts: Buffer[];
+        parts: MessageSnapshot[];
         routingId?: Buffer | null;
         topic: string;
       }
@@ -1126,7 +1178,7 @@ export abstract class SubscriberSocketBase extends ConnectableSocketBase {
 
   private trySubscribeForCallback(): Subscribed | null {
     const raw = requireNative().socketTrySubscribeMessage(this.nativeHandle()) as
-      | { parts: Buffer[]; routingId?: Buffer | null; topic: string }
+      | { parts: MessageSnapshot[]; routingId?: Buffer | null; topic: string }
       | null;
     return raw ? materializeSubscribed(raw) : null;
   }
@@ -1135,12 +1187,10 @@ export abstract class SubscriberSocketBase extends ConnectableSocketBase {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
+    requireNative().socketSubscribeHandler(this.nativeHandle(), (routingId, topic, parts) => {
+      handler(routingId, topic, wrapMessageParts(parts));
+    });
     this._subscribeCallbackInstalled = true;
-    startPollingLoop(
-      () => this.nativeHandle() != null,
-      () => this.trySubscribeForCallback(),
-      (received) => handler(received.routingId, received.topic, [...received.parts])
-    );
   }
 }
 
@@ -1156,13 +1206,7 @@ export class PubSocket extends PublisherSocketBase {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
-    const monitor = this.monitorOpen(MonitorEvent.CONNECTION_READY);
-    startEventPollingLoop(
-      () => this.nativeHandle() != null,
-      () => monitor.tryRecv(),
-      (event) => event.event === MonitorEvent.CONNECTION_READY,
-      () => handler()
-    );
+    requireNative().socketSendReadyHandler(this.nativeHandle(), handler);
   }
 
   attachDiscovery(discovery: Discovery): void {
@@ -1199,13 +1243,7 @@ export class XPubSocket extends PublisherSocketBase {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
-    const monitor = this.monitorOpen(MonitorEvent.CONNECTION_READY);
-    startEventPollingLoop(
-      () => this.nativeHandle() != null,
-      () => monitor.tryRecv(),
-      (event) => event.event === MonitorEvent.CONNECTION_READY,
-      () => handler()
-    );
+    requireNative().socketSendReadyHandler(this.nativeHandle(), handler);
   }
 }
 
@@ -1302,14 +1340,31 @@ export class XSubSocket extends SubscriberSocketBase {
 export class Context {
   /** @internal */
   private _native: unknown | null;
+  readonly options: ContextOptions;
 
   constructor() {
     this._native = requireNative().ctxNew();
+    this.options = new ContextOptions(this);
   }
 
   /** @internal */
   nativeHandle(): unknown {
     return this._native;
+  }
+
+  /** @internal */
+  setOptionRawInternal(option: number, value: number): void {
+    requireNative().ctxSetOpt(this._native, option | 0, value | 0);
+  }
+
+  /** @internal */
+  getOptionRawInternal(option: number): number {
+    return requireNative().ctxGetOpt(this._native, option | 0) as number;
+  }
+
+  shutdown(): void {
+    if (!this._native) return;
+    requireNative().ctxShutdown(this._native);
   }
 
   close(): void {
@@ -1336,25 +1391,31 @@ export class ServiceMonitor {
     return raw ? new ServiceEvent(raw) : null;
   }
 
-  snapshot(): MonitorSnapshot {
-    return requireNative().monitorSnapshot(this._native) as MonitorSnapshot;
-  }
-
-  onEvent(handler: (event: ServiceEvent) => void): void {
+  onEvent(handler: ServiceMonitorHandler): void {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
-    startPollingLoop(
-      () => this._native != null,
-      () => this.tryRecv(),
-      (event) => handler(event)
-    );
+    requireNative().serviceMonitorHandler(this._native, (event: ServiceEventValue) => {
+      handler(new ServiceEvent(event));
+    });
+  }
+
+  snapshot(): MonitorSnapshot {
+    return requireNative().monitorSnapshot(this._native) as MonitorSnapshot;
   }
 
   close(): void {
     if (!this._native) return;
     requireNative().monitorClose(this._native);
     this._native = null;
+  }
+
+  [Symbol.dispose](): void {
+    this.close();
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    this.close();
   }
 }
 
@@ -1415,6 +1476,24 @@ export class Registry {
 
   setBroadcastInterval(intervalMs: number): void {
     requireNative().registrySetBroadcastInterval(this._native, intervalMs | 0);
+  }
+
+  setTlsServer(cert: string, key: string, requireClient = 0): void {
+    requireNative().registrySetTlsServer(
+      this._native,
+      validateCString(cert, 'cert', Number.MAX_SAFE_INTEGER),
+      validateCString(key, 'key', Number.MAX_SAFE_INTEGER),
+      requireClient | 0
+    );
+  }
+
+  setTlsClient(ca: string, host: string, trust = 0): void {
+    requireNative().registrySetTlsClient(
+      this._native,
+      validateCString(ca, 'ca', Number.MAX_SAFE_INTEGER),
+      validateCString(host, 'host', Number.MAX_SAFE_INTEGER),
+      trust | 0
+    );
   }
 
   statusSnapshot(): RegistryStatus {
@@ -1524,6 +1603,15 @@ export class Discovery {
     requireNative().discoveryConnectRegistry(this._native, validateCString(endpoint, 'endpoint'));
   }
 
+  setTlsClient(ca: string, host: string, trust = 0): void {
+    requireNative().discoverySetTlsClient(
+      this._native,
+      validateCString(ca, 'ca', Number.MAX_SAFE_INTEGER),
+      validateCString(host, 'host', Number.MAX_SAFE_INTEGER),
+      trust | 0
+    );
+  }
+
   setValue(value: number): void {
     requireNative().discoverySetValue(this._native, value);
   }
@@ -1555,9 +1643,7 @@ export class Discovery {
     ) as Buffer;
   }
 
-  monitorOpen(
-    events = ServiceMonitorEvent.ERROR | ServiceMonitorEvent.CLOSED
-  ): ServiceMonitor {
+  monitorOpen(events: ServiceMonitorEventMask = ServiceMonitorEvent.ALL): ServiceMonitor {
     return new ServiceMonitor(requireNative().discoveryOpenMonitor(this._native, events | 0));
   }
 
@@ -1607,11 +1693,21 @@ export class SpotNode {
   }
 
   setTlsServer(cert: string, key: string, requireClient = 0): void {
-    requireNative().spotNodeSetTlsServer(this._native, cert, key, requireClient | 0);
+    requireNative().spotNodeSetTlsServer(
+      this._native,
+      validateCString(cert, 'cert', Number.MAX_SAFE_INTEGER),
+      validateCString(key, 'key', Number.MAX_SAFE_INTEGER),
+      requireClient | 0
+    );
   }
 
   setTlsClient(ca: string, host: string, trust = 0): void {
-    requireNative().spotNodeSetTlsClient(this._native, ca, host, trust | 0);
+    requireNative().spotNodeSetTlsClient(
+      this._native,
+      validateCString(ca, 'ca', Number.MAX_SAFE_INTEGER),
+      validateCString(host, 'host', Number.MAX_SAFE_INTEGER),
+      trust | 0
+    );
   }
 
   statusSnapshot(): SpotNodeStatus {
@@ -1643,16 +1739,50 @@ export class SpotNode {
   }
 }
 
+class SpotSocketOptions {
+  private readonly _setSocketOption: (option: number, value: Buffer) => void;
+
+  constructor(setSocketOption: (option: number, value: Buffer) => void) {
+    this._setSocketOption = setSocketOption;
+  }
+
+  setLinger(milliseconds: number): void {
+    this._setSocketOption(SocketOption.LINGER, int32Buffer(milliseconds, 'milliseconds'));
+  }
+
+  setSendHighWaterMark(value: number): void {
+    this._setSocketOption(SocketOption.SNDHWM, int32Buffer(value, 'value'));
+  }
+
+  setReceiveHighWaterMark(value: number): void {
+    this._setSocketOption(SocketOption.RCVHWM, int32Buffer(value, 'value'));
+  }
+
+  setSendTimeout(milliseconds: number): void {
+    this._setSocketOption(SocketOption.SNDTIMEO, int32Buffer(milliseconds, 'milliseconds'));
+  }
+
+  setReceiveTimeout(milliseconds: number): void {
+    this._setSocketOption(SocketOption.RCVTIMEO, int32Buffer(milliseconds, 'milliseconds'));
+  }
+
+  setNoDrop(enabled: boolean): void {
+    this._setSocketOption(SocketOption.XPUB_NODROP, boolAsUint32Buffer(enabled));
+  }
+}
+
 export class Spot {
   /** @internal */
   private _native: unknown | null;
+  private readonly _options: SpotSocketOptions;
+  private _subscribeCallbackInstalled: boolean;
 
   constructor(node: SpotNode) {
     this._native = requireNative().spotNew(node.nativeHandle());
-  }
-
-  private setSocketOption(option: number, value: Buffer): void {
-    requireNative().socketSetOpt(this._native, option | 0, value);
+    this._options = new SpotSocketOptions((option, value) => {
+      requireNative().socketSetOpt(this._native, option | 0, value);
+    });
+    this._subscribeCallbackInstalled = false;
   }
 
   publish(topic: string, payload: MessageLike): void;
@@ -1702,27 +1832,27 @@ export class Spot {
   }
 
   setLinger(milliseconds: number): void {
-    this.setSocketOption(SocketOption.LINGER, int32Buffer(milliseconds, 'milliseconds'));
+    this._options.setLinger(milliseconds);
   }
 
   setSendHighWaterMark(value: number): void {
-    this.setSocketOption(SocketOption.SNDHWM, int32Buffer(value, 'value'));
+    this._options.setSendHighWaterMark(value);
   }
 
   setReceiveHighWaterMark(value: number): void {
-    this.setSocketOption(SocketOption.RCVHWM, int32Buffer(value, 'value'));
+    this._options.setReceiveHighWaterMark(value);
   }
 
   setSendTimeout(milliseconds: number): void {
-    this.setSocketOption(SocketOption.SNDTIMEO, int32Buffer(milliseconds, 'milliseconds'));
+    this._options.setSendTimeout(milliseconds);
   }
 
   setReceiveTimeout(milliseconds: number): void {
-    this.setSocketOption(SocketOption.RCVTIMEO, int32Buffer(milliseconds, 'milliseconds'));
+    this._options.setReceiveTimeout(milliseconds);
   }
 
   setNoDrop(enabled: boolean): void {
-    this.setSocketOption(SocketOption.XPUB_NODROP, boolAsUint32Buffer(enabled));
+    this._options.setNoDrop(enabled);
   }
 
   setSubscription(topicOrPattern: string): void {
@@ -1740,18 +1870,24 @@ export class Spot {
   }
 
   subscribe(): Subscribed {
+    if (this._subscribeCallbackInstalled) {
+      throw callbackModeError('subscribe');
+    }
     return materializeSubscribed(
       requireNative().spotRecv(this._native) as {
         routingId?: Buffer | null;
         topic: string;
-        parts: Buffer[];
+        parts: MessageSnapshot[];
       }
     );
   }
 
   trySubscribe(): Subscribed | null {
+    if (this._subscribeCallbackInstalled) {
+      throw callbackModeError('subscribe');
+    }
     const raw = requireNative().spotTryRecv(this._native) as
-      | { routingId?: Buffer | null; topic: string; parts: Buffer[] }
+      | { routingId?: Buffer | null; topic: string; parts: MessageSnapshot[] }
       | null;
     return raw ? materializeSubscribed(raw) : null;
   }
@@ -1760,11 +1896,10 @@ export class Spot {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
-    startPollingLoop(
-      () => this._native != null,
-      () => this.trySubscribe(),
-      (received) => handler(received.routingId, received.topic, [...received.parts])
-    );
+    requireNative().spotSubscribeHandler(this._native, (routingId, topic, parts) => {
+      handler(routingId, topic, wrapMessageParts(parts));
+    });
+    this._subscribeCallbackInstalled = true;
   }
 
   onSendReady(handler: SpotSendReadyHandler): void {

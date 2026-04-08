@@ -31,6 +31,8 @@ public sealed class test_socket_surface
     {
         Assert.False(HasPublicInstanceMethod(typeof(PairSocket), "SetOption"));
         Assert.False(HasPublicInstanceMethod(typeof(PairSocket), "GetOption"));
+        Assert.False(HasPublicInstanceMethod(typeof(SocketBase),
+            "AttachDiscovery"));
         Assert.False(HasPublicInstanceMethod(typeof(PubSocket), "Recv"));
         Assert.False(HasPublicInstanceMethod(typeof(PubSocket), "Subscribe"));
         Assert.False(HasPublicInstanceMethod(typeof(SubSocket), "Publish"));
@@ -65,6 +67,22 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Disconnect"));
         Assert.False(HasPublicInstanceMethod(typeof(PairSocket),
             nameof(StreamSocket.AttachStreamRaw)));
+        Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
+            nameof(DealerSocket.AttachDiscovery)));
+        Assert.True(HasPublicInstanceMethod(typeof(RouterSocket),
+            nameof(RouterSocket.AttachDiscovery)));
+        Assert.True(HasPublicInstanceMethod(typeof(PubSocket),
+            nameof(PubSocket.AttachDiscovery)));
+        Assert.True(HasPublicInstanceMethod(typeof(SubSocket),
+            nameof(SubSocket.AttachDiscovery)));
+        Assert.False(HasPublicInstanceMethod(typeof(PairSocket),
+            nameof(DealerSocket.AttachDiscovery)));
+        Assert.False(HasPublicInstanceMethod(typeof(StreamSocket),
+            nameof(DealerSocket.AttachDiscovery)));
+        Assert.False(HasPublicInstanceMethod(typeof(XPubSocket),
+            nameof(DealerSocket.AttachDiscovery)));
+        Assert.False(HasPublicInstanceMethod(typeof(XSubSocket),
+            nameof(DealerSocket.AttachDiscovery)));
         Assert.True(HasPublicInstanceMethod(typeof(PairSocket),
             nameof(MessageSocketBase.OnReceive)));
         Assert.True(HasPublicInstanceMethod(typeof(XPubSocket),
@@ -81,6 +99,19 @@ public sealed class test_socket_surface
             nameof(MessageSocketBase.OnReceive)));
         Assert.False(HasPublicInstanceMethod(typeof(PairSocket),
             nameof(SubscriberSocketBase.OnSubscribe)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Context)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(SocketBase)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(SocketMonitor)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(ServiceMonitor)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Message)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Poller)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(AtomicCounter)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(ZlinkStopwatch)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Registry)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Discovery)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(RegistryQueryClient)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(SpotNode)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Spot)));
     }
 
     [Fact]
@@ -110,6 +141,8 @@ public sealed class test_socket_surface
 
         Assert.False(HasPublicInstanceMethod(typeof(Context), "SetOption"));
         Assert.False(HasPublicInstanceMethod(typeof(Context), "GetOption"));
+        Assert.Null(typeof(ContextOptions).GetProperty("ThreadNamePrefix",
+            BindingFlags.Instance | BindingFlags.Public));
 
         Assert.Null(typeof(MessageSocketBase).GetMethod("Recv",
             BindingFlags.Instance | BindingFlags.Public, binder: null,
@@ -128,6 +161,18 @@ public sealed class test_socket_surface
             BindingFlags.Instance | BindingFlags.Public, binder: null,
             types: Type.EmptyTypes, modifiers: null));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "SetOption"));
+        Assert.False(HasPublicInstanceMethod(typeof(Message),
+            "GetPropertyString"));
+        Assert.True(typeof(SocketBase).GetMethod(nameof(SocketBase.MonitorOpen))!
+            .GetParameters()[0].HasDefaultValue);
+        Assert.Equal(SocketEvent.All,
+            typeof(SocketBase).GetMethod(nameof(SocketBase.MonitorOpen))!
+                .GetParameters()[0].DefaultValue);
+        Assert.True(typeof(Discovery).GetMethod(nameof(Discovery.MonitorOpen))!
+            .GetParameters()[0].HasDefaultValue);
+        Assert.Equal(ServiceMonitorEvents.All,
+            typeof(Discovery).GetMethod(nameof(Discovery.MonitorOpen))!
+                .GetParameters()[0].DefaultValue);
     }
 
     [Fact]
@@ -214,6 +259,12 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(ServiceMonitor), "TryReceive"));
         Assert.False(HasPublicInstanceMethod(typeof(ServiceMonitor),
             "AttachHandler"));
+        Assert.True(HasPublicInstanceMethod(typeof(Message), "GetProperty",
+            typeof(string)));
+        Assert.True(HasPublicInstanceMethod(typeof(SocketBase), "MonitorOpen",
+            typeof(SocketEvent)));
+        Assert.True(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen",
+            typeof(ServiceMonitorEvents)));
     }
 
     [Fact]

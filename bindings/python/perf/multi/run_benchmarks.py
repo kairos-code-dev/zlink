@@ -33,7 +33,7 @@ def parse_args(argv):
     parser = argparse.ArgumentParser(prog="run_benchmarks.sh")
     parser.add_argument("--pythonpath", required=True)
     parser.add_argument("--pattern", default="ALL")
-    parser.add_argument("--recv", default="recv")
+    parser.add_argument("--recv", default=None)
     parser.add_argument("--duration", default="5")
     parser.add_argument("--warmup", default="2")
     parser.add_argument("--msg-sizes", default=",".join(DEFAULT_MSG_SIZES))
@@ -62,7 +62,7 @@ def _parse_patterns(value, recv_mode):
     if text == "ALL":
         if recv_mode == "callback":
             return ["SPOT", "STREAM"]
-        return list(DEFAULT_PATTERNS)
+        return [pattern for pattern in DEFAULT_PATTERNS if pattern not in CALLBACK_PATTERNS]
     patterns = [_normalize_pattern(item) for item in value.split(",") if item.strip()]
     if not patterns:
         raise SystemExit("unsupported pattern: ")
@@ -329,12 +329,23 @@ def _build_options(args, patterns, transports, msg_sizes, clients):
 
 def main(argv=None):
     args = parse_args(argv or sys.argv[1:])
-    if args.recv not in {"recv", "callback"}:
+    if args.recv not in {None, "recv", "callback"}:
         raise SystemExit("--recv must be recv or callback")
     patterns = _parse_patterns(args.pattern, args.recv)
     transports = _parse_transports(args.transports)
     msg_sizes = _parse_msg_sizes(args, patterns)
     clients = args.clients or _default_clients(patterns)
+    effective_recv = args.recv
+    if effective_recv is None:
+        effective_recv = "callback" if all(
+            pattern in CALLBACK_PATTERNS for pattern in patterns
+        ) else "recv"
+    if effective_recv == "callback":
+        invalid = [pattern for pattern in patterns if pattern not in CALLBACK_PATTERNS]
+        if invalid:
+            raise SystemExit("--recv callback is only supported for SPOT,STREAM")
+    elif any(pattern in CALLBACK_PATTERNS for pattern in patterns):
+        raise SystemExit("--recv recv is not supported for SPOT,STREAM")
     runs = int(args.runs)
     if runs <= 0:
         raise SystemExit("--runs must be > 0")
@@ -344,6 +355,7 @@ def main(argv=None):
     if RUNNER_LIB.exists():
         env["ZLINK_LIBRARY_PATH"] = str(RUNNER_LIB)
 
+    args.recv = effective_recv
     options = _build_options(args, patterns, transports, msg_sizes, clients)
     sections = [render_effective_options(options), ""]
     emitted_chunks = []

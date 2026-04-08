@@ -21,7 +21,7 @@ final class MessagePlane {
     void send(Message part, SendFlag flags) {
         Objects.requireNonNull(part, "part");
         Objects.requireNonNull(flags, "flags");
-        socket.sendParts(null, List.of(part), flags, false);
+        socket.sendMessageFrame(part, flags);
     }
 
     void send(List<Message> parts) {
@@ -36,7 +36,7 @@ final class MessagePlane {
 
     SendResult trySend(Message part) {
         Objects.requireNonNull(part, "part");
-        return socket.trySendParts(null, List.of(part));
+        return socket.trySendMessageFrame(part);
     }
 
     SendResult trySend(List<Message> parts) {
@@ -51,7 +51,7 @@ final class MessagePlane {
     void send(RoutingId rid, Message part, SendFlag flags) {
         Objects.requireNonNull(part, "part");
         Objects.requireNonNull(flags, "flags");
-        socket.sendParts(rid, List.of(part), flags, false);
+        socket.sendMessageFrame(rid, part, flags);
     }
 
     void send(RoutingId rid, List<Message> parts) {
@@ -66,7 +66,7 @@ final class MessagePlane {
 
     SendResult trySend(RoutingId rid, Message part) {
         Objects.requireNonNull(part, "part");
-        return socket.trySendParts(rid, List.of(part));
+        return socket.trySendMessageFrame(rid, part);
     }
 
     SendResult trySend(RoutingId rid, List<Message> parts) {
@@ -87,7 +87,7 @@ final class MessagePlane {
                 RoutingId rid = Socket.toRoutingId(received.routingId());
                 Message[] parts = Message.fromOwnedMsgVector(received.parts(),
                     received.partCount());
-                return new Received(rid, parts);
+                return new Received(rid, parts, true);
             }
 
             int errno = Native.errno();
@@ -105,7 +105,7 @@ final class MessagePlane {
                 RoutingId rid = Socket.toRoutingId(received.routingId());
                 Message[] parts = Message.fromOwnedMsgVector(received.parts(),
                     received.partCount());
-                return Optional.of(new Received(rid, parts));
+                return Optional.of(new Received(rid, parts, true));
             }
 
             int errno = Native.errno();

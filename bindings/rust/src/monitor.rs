@@ -1,37 +1,103 @@
 use std::ffi::{CStr, c_void};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
+use std::ops::{BitOr, BitOrAssign};
 
-/// Bitmask to subscribe to all socket monitor events.
-pub const MONITOR_EVENT_ALL: u32 = ffi::ZLINK_SOCKET_MONITOR_EVENT_ALL;
+/// Typed bitmask for socket monitor subscriptions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SocketMonitorEventMask(u32);
 
-/// Bitmask for connection-ready-changed monitor events.
-pub const MONITOR_EVENT_CONNECTION_READY: u32 =
-    ffi::ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY;
+impl SocketMonitorEventMask {
+    pub const ALL: Self = Self(ffi::ZLINK_SOCKET_MONITOR_EVENT_ALL);
+    pub const CONNECTION_READY: Self = Self(ffi::ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
 
-/// Bitmask for discovery error service monitor events.
-pub const SERVICE_MONITOR_EVENT_DISCOVERY_ERROR: u32 = ffi::ZLINK_DISCOVERY_MONITOR_EVENT_ERROR;
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+}
 
-/// Bitmask for discovery service-up monitor events.
-pub const SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP: u32 =
-    ffi::ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP;
+impl Default for SocketMonitorEventMask {
+    fn default() -> Self {
+        Self::ALL
+    }
+}
 
-/// Bitmask for discovery service-down monitor events.
-pub const SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN: u32 =
-    ffi::ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN;
+impl BitOr for SocketMonitorEventMask {
+    type Output = Self;
 
-/// Bitmask for discovery providers-changed monitor events.
-pub const SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED: u32 =
-    ffi::ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED;
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
 
-/// Bitmask for discovery closed monitor events.
-pub const SERVICE_MONITOR_EVENT_DISCOVERY_CLOSED: u32 = ffi::ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED;
+impl BitOrAssign for SocketMonitorEventMask {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
+    }
+}
+
+/// Typed bitmask for discovery service monitor subscriptions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ServiceMonitorEventMask(u32);
+
+impl ServiceMonitorEventMask {
+    pub const ALL: Self = Self(
+        ffi::ZLINK_DISCOVERY_MONITOR_EVENT_ERROR
+            | ffi::ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
+            | ffi::ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN
+            | ffi::ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED
+            | ffi::ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED,
+    );
+    pub const ERROR: Self = Self(ffi::ZLINK_DISCOVERY_MONITOR_EVENT_ERROR);
+    pub const SERVICE_UP: Self = Self(ffi::ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP);
+    pub const SERVICE_DOWN: Self = Self(ffi::ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN);
+    pub const PROVIDERS_CHANGED: Self = Self(ffi::ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED);
+    pub const CLOSED: Self = Self(ffi::ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED);
+
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+}
+
+impl Default for ServiceMonitorEventMask {
+    fn default() -> Self {
+        Self::ALL
+    }
+}
+
+impl BitOr for ServiceMonitorEventMask {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl BitOrAssign for ServiceMonitorEventMask {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
+    }
+}
+
+pub const MONITOR_EVENT_ALL: SocketMonitorEventMask = SocketMonitorEventMask::ALL;
+pub const MONITOR_EVENT_CONNECTION_READY: SocketMonitorEventMask =
+    SocketMonitorEventMask::CONNECTION_READY;
+pub const SERVICE_MONITOR_EVENT_DISCOVERY_ERROR: ServiceMonitorEventMask =
+    ServiceMonitorEventMask::ERROR;
+pub const SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP: ServiceMonitorEventMask =
+    ServiceMonitorEventMask::SERVICE_UP;
+pub const SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN: ServiceMonitorEventMask =
+    ServiceMonitorEventMask::SERVICE_DOWN;
+pub const SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED: ServiceMonitorEventMask =
+    ServiceMonitorEventMask::PROVIDERS_CHANGED;
+pub const SERVICE_MONITOR_EVENT_DISCOVERY_CLOSED: ServiceMonitorEventMask =
+    ServiceMonitorEventMask::CLOSED;
 
 use crate::error::{ZlinkError, check_rc};
 use crate::ffi;
 use crate::message::RoutingId;
-use crate::service::ServiceKind;
 use crate::service::Discovery;
+use crate::service::ServiceKind;
 use crate::socket::*;
 
 /// Typed monitor target for socket monitor observation.
@@ -188,13 +254,20 @@ pub struct SocketMonitor {
 unsafe impl Send for SocketMonitor {}
 
 impl SocketMonitor {
-    /// Open a socket monitor for any socket type.
-    ///
-    /// `events` is a bitmask of `ZLINK_SOCKET_MONITOR_EVENT_*` constants.
-    /// Use `MONITOR_EVENT_ALL` for all events.
-    pub fn open<'a>(socket: impl Into<MonitorTarget<'a>>, events: u32) -> Result<Self, ZlinkError> {
+    /// Open a socket monitor for all events.
+    pub fn open<'a>(socket: impl Into<MonitorTarget<'a>>) -> Result<Self, ZlinkError> {
+        Self::open_with_events(socket, SocketMonitorEventMask::ALL)
+    }
+
+    /// Open a socket monitor with an explicit typed event mask.
+    pub(crate) fn open_with_events<'a>(
+        socket: impl Into<MonitorTarget<'a>>,
+        events: SocketMonitorEventMask,
+    ) -> Result<Self, ZlinkError> {
         let target = socket.into();
-        let opts = ffi::zlink_socket_monitor_open_options_t { events };
+        let opts = ffi::zlink_socket_monitor_open_options_t {
+            events: events.bits(),
+        };
         let handle = unsafe { ffi::zlink_socket_monitor_open(target.raw(), &opts) };
         if handle.is_null() {
             return Err(ZlinkError::last());
@@ -318,8 +391,8 @@ impl ServiceEventType {
         self.0
     }
 
-    pub fn contains(self, mask: u32) -> bool {
-        self.0 & mask != 0
+    pub fn contains(self, mask: ServiceMonitorEventMask) -> bool {
+        self.0 & mask.bits() != 0
     }
 
     pub fn is_discovery_error(self) -> bool {
@@ -341,7 +414,6 @@ impl ServiceEventType {
     pub fn is_discovery_closed(self) -> bool {
         self.contains(SERVICE_MONITOR_EVENT_DISCOVERY_CLOSED)
     }
-
 }
 
 impl ServiceEvent {
@@ -375,13 +447,20 @@ pub struct ServiceMonitor {
 unsafe impl Send for ServiceMonitor {}
 
 impl ServiceMonitor {
-    /// Open a service monitor on a discovery handle.
-    pub fn open<'a>(
+    /// Open a service monitor on a discovery handle for all events.
+    pub fn open<'a>(target: impl Into<ServiceMonitorTarget<'a>>) -> Result<Self, ZlinkError> {
+        Self::open_with_events(target, ServiceMonitorEventMask::ALL)
+    }
+
+    /// Open a service monitor with an explicit typed event mask.
+    pub(crate) fn open_with_events<'a>(
         target: impl Into<ServiceMonitorTarget<'a>>,
-        events: u32,
+        events: ServiceMonitorEventMask,
     ) -> Result<Self, ZlinkError> {
         let target = target.into();
-        let opts = ffi::zlink_service_monitor_open_options_t { events };
+        let opts = ffi::zlink_service_monitor_open_options_t {
+            events: events.bits(),
+        };
         let handle = unsafe { ffi::zlink_service_monitor_open(target.raw(), &opts) };
         if handle.is_null() {
             return Err(ZlinkError::last());
@@ -391,24 +470,10 @@ impl ServiceMonitor {
 
     /// Blocking receive of a service event.
     pub fn recv(&self) -> Result<ServiceEvent, ZlinkError> {
-        loop {
-            let mut raw = MaybeUninit::<ffi::zlink_service_monitor_event_t>::uninit();
-            let rc = unsafe { ffi::zlink_service_monitor_recv(self.handle, raw.as_mut_ptr(), 0) };
-            if rc == 0 {
-                let val = unsafe { raw.assume_init() };
-                return Ok(ServiceEvent::from_raw(&val));
-            }
-
-            let errno = unsafe { ffi::zlink_errno() };
-            if errno != libc::EAGAIN {
-                return Err(ZlinkError::last());
-            }
-
-            // The core service-monitor path can transiently surface EAGAIN
-            // even on the blocking entrypoint. Keep the public Rust surface
-            // blocking and only normalize that one case here.
-            std::thread::yield_now();
-        }
+        let mut raw = MaybeUninit::<ffi::zlink_service_monitor_event_t>::uninit();
+        check_rc(unsafe { ffi::zlink_service_monitor_recv(self.handle, raw.as_mut_ptr(), 0) })?;
+        let val = unsafe { raw.assume_init() };
+        Ok(ServiceEvent::from_raw(&val))
     }
 
     /// Non-blocking receive. Returns `None` if no event is pending.

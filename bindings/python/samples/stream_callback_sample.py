@@ -42,7 +42,7 @@ def main():
 
     with zlink.Context() as ctx:
         with zlink.StreamSocket(ctx) as server:
-            with server.open_monitor(zlink.MonitorEvent.ACCEPTED) as server_monitor:
+            with server.monitor_open(zlink.MonitorEvent.ACCEPTED) as server_monitor:
                 done = threading.Event()
                 observed = {}
 

@@ -1,6 +1,7 @@
 package zlink_test
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -235,5 +236,154 @@ func TestCallbackModeConflictsWithDirectRecv(t *testing.T) {
 	case <-delivered:
 	case <-time.After(5 * time.Second):
 		t.Fatalf("callback was not delivered within 5s")
+	}
+}
+
+func TestReceiveCallbackCanUseBlockingSend(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	endpoint := tcpEndpoint(t)
+	server, _ := ctx.PairSocket()
+	client, _ := ctx.PairSocket()
+	defer server.Close()
+	defer client.Close()
+
+	if err := server.Bind(endpoint); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	if err := client.Connect(endpoint); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	sendErrs := make(chan error, 1)
+	if err := server.OnReceive(func(received *zlink.Received) {
+		defer received.Close()
+		reply, err := zlink.NewMessage([]byte("reply-from-callback"))
+		if err != nil {
+			sendErrs <- err
+			return
+		}
+		if err := server.Send(reply); err != nil {
+			_ = reply.Close()
+			sendErrs <- err
+			return
+		}
+		sendErrs <- nil
+	}); err != nil {
+		t.Fatalf("OnReceive() error = %v", err)
+	}
+
+	if err := client.Send(newMessage(t, "request")); err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+
+	select {
+	case err := <-sendErrs:
+		if err != nil {
+			t.Fatalf("callback Send() error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("callback send did not complete within 5s")
+	}
+
+	reply, err := client.Recv()
+	if err != nil {
+		t.Fatalf("Recv() error = %v", err)
+	}
+	defer reply.Close()
+	part, err := reply.SinglePartOrError()
+	if err != nil {
+		t.Fatalf("SinglePartOrError() error = %v", err)
+	}
+	if got := string(part.Data()); got != "reply-from-callback" {
+		t.Fatalf("callback reply = %q, want %q", got, "reply-from-callback")
+	}
+}
+
+func TestReceiveCallbackPanicDoesNotCloseSocketOrStopFutureCallbacks(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	endpoint := tcpEndpoint(t)
+	server, _ := ctx.PairSocket()
+	client, _ := ctx.PairSocket()
+	defer server.Close()
+	defer client.Close()
+
+	if err := server.Bind(endpoint); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	if err := client.Connect(endpoint); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	var calls atomic.Int32
+	delivered := make(chan struct{}, 1)
+	if err := server.OnReceive(func(received *zlink.Received) {
+		switch calls.Add(1) {
+		case 1:
+			panic("callback panic for policy test")
+		default:
+			defer received.Close()
+			delivered <- struct{}{}
+		}
+	}); err != nil {
+		t.Fatalf("OnReceive() error = %v", err)
+	}
+
+	if err := client.Send(newMessage(t, "first")); err != nil {
+		t.Fatalf("Send(first) error = %v", err)
+	}
+	if err := client.Send(newMessage(t, "second")); err != nil {
+		t.Fatalf("Send(second) error = %v", err)
+	}
+
+	select {
+	case <-delivered:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("callback delivery stopped after panic")
+	}
+
+	if got := calls.Load(); got < 2 {
+		t.Fatalf("callback invocation count = %d, want at least 2", got)
+	}
+}
+
+func TestCloseInsideReceiveCallbackDoesNotDeadlock(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	endpoint := tcpEndpoint(t)
+	server, _ := ctx.PairSocket()
+	client, _ := ctx.PairSocket()
+	defer client.Close()
+
+	if err := server.Bind(endpoint); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	if err := client.Connect(endpoint); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	closed := make(chan error, 1)
+	if err := server.OnReceive(func(received *zlink.Received) {
+		defer received.Close()
+		closed <- server.Close()
+	}); err != nil {
+		t.Fatalf("OnReceive() error = %v", err)
+	}
+
+	if err := client.Send(newMessage(t, "close-from-callback")); err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatalf("Close() from callback error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Close() from callback deadlocked")
 	}
 }

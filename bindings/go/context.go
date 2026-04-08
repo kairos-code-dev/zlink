@@ -28,8 +28,13 @@ func RuntimeVersion() Version {
 }
 
 type Context struct {
-	handle unsafe.Pointer
-	closed bool
+	handle  unsafe.Pointer
+	closed  bool
+	options *ContextOptions
+}
+
+type ContextOptions struct {
+	ctx *Context
 }
 
 func NewContext() (*Context, error) {
@@ -37,7 +42,9 @@ func NewContext() (*Context, error) {
 	if handle == nil {
 		return nil, lastError()
 	}
-	return &Context{handle: handle}, nil
+	ctx := &Context{handle: handle}
+	ctx.options = &ContextOptions{ctx: ctx}
+	return ctx, nil
 }
 
 func (c *Context) raw() unsafe.Pointer {
@@ -63,80 +70,79 @@ func (c *Context) Shutdown() error {
 	return checkRC(C.zlink_ctx_shutdown(c.handle))
 }
 
-func (c *Context) SetIOThreads(value int) error {
-	return c.setIntOption(C.ZLINK_IO_THREADS, value)
+func (c *Context) Options() *ContextOptions {
+	if c == nil {
+		return nil
+	}
+	return c.options
 }
 
-func (c *Context) IOThreads() (int, error) {
-	return c.getIntOption(C.ZLINK_IO_THREADS)
+func (o *ContextOptions) SetIOThreads(value int) error {
+	return o.ctx.setIntOption(C.ZLINK_IO_THREADS, value)
 }
 
-func (c *Context) SetMaxSockets(value int) error {
-	return c.setIntOption(C.ZLINK_MAX_SOCKETS, value)
+func (o *ContextOptions) IOThreads() (int, error) {
+	return o.ctx.getIntOption(C.ZLINK_IO_THREADS)
 }
 
-func (c *Context) MaxSockets() (int, error) {
-	return c.getIntOption(C.ZLINK_MAX_SOCKETS)
+func (o *ContextOptions) SetMaxSockets(value int) error {
+	return o.ctx.setIntOption(C.ZLINK_MAX_SOCKETS, value)
 }
 
-func (c *Context) SocketLimit() (int, error) {
-	return c.getIntOption(C.ZLINK_SOCKET_LIMIT)
+func (o *ContextOptions) MaxSockets() (int, error) {
+	return o.ctx.getIntOption(C.ZLINK_MAX_SOCKETS)
 }
 
-func (c *Context) SetThreadPriority(value int) error {
-	return c.setIntOption(C.ZLINK_THREAD_PRIORITY, value)
+func (o *ContextOptions) SocketLimit() (int, error) {
+	return o.ctx.getIntOption(C.ZLINK_SOCKET_LIMIT)
 }
 
-func (c *Context) ThreadPriority() (int, error) {
-	return c.getIntOption(C.ZLINK_THREAD_PRIORITY)
+func (o *ContextOptions) SetThreadPriority(value int) error {
+	return o.ctx.setIntOption(C.ZLINK_THREAD_PRIORITY, value)
 }
 
-func (c *Context) SetThreadSchedPolicy(value int) error {
-	return c.setIntOption(C.ZLINK_THREAD_SCHED_POLICY, value)
+func (o *ContextOptions) ThreadPriority() (int, error) {
+	return o.ctx.getIntOption(C.ZLINK_THREAD_PRIORITY)
 }
 
-func (c *Context) ThreadSchedPolicy() (int, error) {
-	return c.getIntOption(C.ZLINK_THREAD_SCHED_POLICY)
+func (o *ContextOptions) SetThreadSchedulingPolicy(value int) error {
+	return o.ctx.setIntOption(C.ZLINK_THREAD_SCHED_POLICY, value)
 }
 
-func (c *Context) SetMaxMessageSize(value int) error {
-	return c.setIntOption(C.ZLINK_MAX_MSGSZ, value)
+func (o *ContextOptions) ThreadSchedulingPolicy() (int, error) {
+	return o.ctx.getIntOption(C.ZLINK_THREAD_SCHED_POLICY)
 }
 
-func (c *Context) MaxMessageSize() (int, error) {
-	return c.getIntOption(C.ZLINK_MAX_MSGSZ)
+func (o *ContextOptions) SetMaxMessageSize(value int) error {
+	return o.ctx.setIntOption(C.ZLINK_MAX_MSGSZ, value)
 }
 
-func (c *Context) MessageStructSize() (int, error) {
-	return c.getIntOption(C.ZLINK_MSG_T_SIZE)
+func (o *ContextOptions) MaxMessageSize() (int, error) {
+	return o.ctx.getIntOption(C.ZLINK_MAX_MSGSZ)
 }
 
-func (c *Context) AddThreadAffinityCPU(cpu int) error {
-	return c.setIntOption(C.ZLINK_THREAD_AFFINITY_CPU_ADD, cpu)
+func (o *ContextOptions) MessageStructSize() (int, error) {
+	return o.ctx.getIntOption(C.ZLINK_MSG_T_SIZE)
 }
 
-func (c *Context) RemoveThreadAffinityCPU(cpu int) error {
-	return c.setIntOption(C.ZLINK_THREAD_AFFINITY_CPU_REMOVE, cpu)
+func (o *ContextOptions) AddThreadAffinity(cpu int) error {
+	return o.ctx.setIntOption(C.ZLINK_THREAD_AFFINITY_CPU_ADD, cpu)
 }
 
-func (c *Context) SetThreadNamePrefix(value int) error {
-	return c.setIntOption(C.ZLINK_THREAD_NAME_PREFIX, value)
+func (o *ContextOptions) RemoveThreadAffinity(cpu int) error {
+	return o.ctx.setIntOption(C.ZLINK_THREAD_AFFINITY_CPU_REMOVE, cpu)
 }
 
-func (c *Context) ThreadNamePrefix() (int, error) {
-	return c.getIntOption(C.ZLINK_THREAD_NAME_PREFIX)
-}
-
-func (c *Context) SetBlocky(value bool) error {
+func (o *ContextOptions) SetBlocky(value bool) error {
 	raw := 0
 	if value {
 		raw = 1
 	}
-	return c.setIntOption(C.ZLINK_CTX_OPT_BLOCKY, raw)
+	return o.ctx.setIntOption(C.ZLINK_CTX_OPT_BLOCKY, raw)
 }
 
-func (c *Context) Blocky() (bool, error) {
-	value, err := c.getIntOption(C.ZLINK_CTX_OPT_BLOCKY)
+func (o *ContextOptions) Blocky() (bool, error) {
+	value, err := o.ctx.getIntOption(C.ZLINK_CTX_OPT_BLOCKY)
 	return value != 0, err
 }
 

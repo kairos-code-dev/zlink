@@ -648,7 +648,6 @@ else
 fi
 
 RUN_CMD=("${PYTHON_BIN[@]}" "${PERF_COMPARISON_SCRIPT}" "${PATTERN_CSV}" "--build-dir" "${RUNTIME_BUILD_DIR}" "--runs" "${RUNS}")
-RUN_CMD+=("--recv" "${RECV_MODE}")
 if [[ "${PIN_CPU}" -eq 1 ]]; then
   RUN_CMD+=("--pin-cpu")
 fi

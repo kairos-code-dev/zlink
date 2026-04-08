@@ -2,15 +2,17 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Zlink.Native;
 
 namespace Zlink.Service;
 
-public sealed class ServiceMonitor : IDisposable
+public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
 {
     private IntPtr _handle;
     private NativeMethods.ZlinkServiceMonitorHandlerDelegate? _handlerDelegate;
     private Action<ServiceMonitorEvent>? _handler;
+    private SynchronizationContext? _handlerContext;
 
     internal ServiceMonitor(IntPtr handle)
     {
@@ -25,7 +27,9 @@ public sealed class ServiceMonitor : IDisposable
             throw new ArgumentNullException(nameof(handler));
         EnsureNotDisposed();
 
+        SynchronizationContext? context = SynchronizationContext.Current;
         _handler = handler;
+        _handlerContext = context;
         _handlerDelegate = OnNativeEvent;
         int rc = NativeMethods.zlink_service_monitor_handler(_handle,
             _handlerDelegate, IntPtr.Zero);
@@ -35,22 +39,10 @@ public sealed class ServiceMonitor : IDisposable
     public ServiceMonitorEvent Recv()
     {
         EnsureNotDisposed();
-        while (true)
-        {
-            int rc = NativeMethods.zlink_service_monitor_recv(_handle,
-                out var native, 0);
-            if (rc == 0)
-                return ServiceMonitorEvent.FromNative(ref native);
-
-            if (ZlinkException.MapErrorCode(NativeMethods.zlink_errno())
-                == ErrorCode.EAgain)
-            {
-                Thread.Sleep(1);
-                continue;
-            }
-
-            throw ZlinkException.FromLastError();
-        }
+        int rc = NativeMethods.zlink_service_monitor_recv(_handle,
+            out var native, 0);
+        ZlinkException.ThrowIfError(rc);
+        return ServiceMonitorEvent.FromNative(ref native);
     }
 
     public bool TryRecv(out ServiceMonitorEvent? monitorEvent)
@@ -88,6 +80,7 @@ public sealed class ServiceMonitor : IDisposable
         int rc = NativeMethods.zlink_monitor_close(ref _handle);
         ZlinkException.ThrowIfError(rc);
         _handler = null;
+        _handlerContext = null;
         _handlerDelegate = null;
     }
 
@@ -103,6 +96,12 @@ public sealed class ServiceMonitor : IDisposable
         {
             GC.SuppressFinalize(this);
         }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     ~ServiceMonitor()
@@ -125,12 +124,15 @@ public sealed class ServiceMonitor : IDisposable
     private void OnNativeEvent(ref ZlinkServiceEvent native, IntPtr userData)
     {
         Action<ServiceMonitorEvent>? handler = _handler;
+        SynchronizationContext? context = _handlerContext;
         if (handler == null)
             return;
 
         try
         {
-            handler(ServiceMonitorEvent.FromNative(ref native));
+            ServiceMonitorEvent monitorEvent =
+                ServiceMonitorEvent.FromNative(ref native);
+            CallbackDelivery.Post(context, () => handler(monitorEvent));
         }
         catch (Exception ex)
         {

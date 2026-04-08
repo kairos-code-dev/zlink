@@ -5,6 +5,7 @@ import errno
 import sys
 import types
 
+from ._enums import ContextOption
 from ._ffi import ZlinkMsg, ZlinkRoutingId, lib
 
 
@@ -152,6 +153,21 @@ def _msg_size(msg):
     return int(lib().zlink_msg_size(ctypes.byref(msg)))
 
 
+def _msg_refcnt(msg):
+    return int(lib().zlink_msg_refcnt(ctypes.byref(msg)))
+
+
+def _msg_gets(msg, property_name):
+    if not property_name:
+        return None
+    if isinstance(property_name, str):
+        property_name = property_name.encode("utf-8")
+    value = lib().zlink_msg_gets(ctypes.byref(msg), property_name)
+    if not value:
+        return None
+    return value.decode("utf-8", errors="replace")
+
+
 def _msg_to_bytes(msg):
     size = _msg_size(msg)
     if size <= 0:
@@ -279,15 +295,18 @@ class Context:
         self._handle = lib().zlink_ctx_new()
         if not self._handle:
             _raise_last_error()
+        self.options = ContextOptions(self)
 
-    def set(self, option, value):
-        rc = lib().zlink_ctx_set(self._handle, int(option), int(value))
+    def _set_option(self, option, value):
+        rc = lib().zlink_ctx_set(
+            self._handle, int(option), _validated_int32(value)
+        )
         if rc != 0:
             _raise_last_error()
 
-    def get(self, option):
+    def _get_option(self, option):
         rc = lib().zlink_ctx_get(self._handle, int(option))
-        if rc < 0:
+        if rc == -1 and lib().zlink_errno() != 0:
             _raise_last_error()
         return rc
 
@@ -308,6 +327,79 @@ class Context:
 
     def __exit__(self, exc_type, exc, tb):
         self.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.close()
+
+
+class ContextOptions:
+    def __init__(self, context):
+        self._context = context
+
+    @property
+    def ioThreads(self):
+        return self._context._get_option(ContextOption.IO_THREADS)
+
+    @ioThreads.setter
+    def ioThreads(self, value):
+        self._context._set_option(ContextOption.IO_THREADS, value)
+
+    @property
+    def maxSockets(self):
+        return self._context._get_option(ContextOption.MAX_SOCKETS)
+
+    @maxSockets.setter
+    def maxSockets(self, value):
+        self._context._set_option(ContextOption.MAX_SOCKETS, value)
+
+    @property
+    def maxMsgSize(self):
+        return self._context._get_option(ContextOption.MAX_MSGSZ)
+
+    @maxMsgSize.setter
+    def maxMsgSize(self, value):
+        self._context._set_option(ContextOption.MAX_MSGSZ, value)
+
+    @property
+    def threadPriority(self):
+        return self._context._get_option(ContextOption.THREAD_PRIORITY)
+
+    @threadPriority.setter
+    def threadPriority(self, value):
+        self._context._set_option(ContextOption.THREAD_PRIORITY, value)
+
+    @property
+    def threadSchedulingPolicy(self):
+        return self._context._get_option(ContextOption.THREAD_SCHED_POLICY)
+
+    @threadSchedulingPolicy.setter
+    def threadSchedulingPolicy(self, value):
+        self._context._set_option(ContextOption.THREAD_SCHED_POLICY, value)
+
+    @property
+    def blocky(self):
+        return bool(self._context._get_option(ContextOption.CTX_OPT_BLOCKY))
+
+    @blocky.setter
+    def blocky(self, value):
+        self._context._set_option(ContextOption.CTX_OPT_BLOCKY, int(bool(value)))
+
+    @property
+    def socketLimit(self):
+        return self._context._get_option(ContextOption.SOCKET_LIMIT)
+
+    @property
+    def msgTSize(self):
+        return self._context._get_option(ContextOption.MSG_T_SIZE)
+
+    def addThreadAffinity(self, cpu):
+        self._context._set_option(ContextOption.THREAD_AFFINITY_CPU_ADD, cpu)
+
+    def removeThreadAffinity(self, cpu):
+        self._context._set_option(ContextOption.THREAD_AFFINITY_CPU_REMOVE, cpu)
 
 
 class RoutingId:
@@ -363,14 +455,6 @@ class ReceivedMessage:
     def to_bytes(self):
         return _msg_to_bytes(self._native_msg())
 
-    def view(self):
-        native = self._native_msg()
-        ptr = _msg_data_ptr(native)
-        size = _msg_size(native)
-        if not ptr or size <= 0:
-            return memoryview(b"")
-        return memoryview((ctypes.c_ubyte * size).from_address(ptr))
-
     def close(self):
         if self._closed:
             return
@@ -388,6 +472,12 @@ class ReceivedMessage:
     def __exit__(self, exc_type, exc, tb):
         self.close()
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.close()
+
 
 class ReceivedMultipart:
     def __init__(self, owner, routing_id=None):
@@ -397,7 +487,6 @@ class ReceivedMultipart:
             for index in range(owner._part_count)
         )
         self.routing_id = routing_id
-        self.messages = self.parts
 
     def __iter__(self):
         return iter(self.parts)
@@ -417,6 +506,12 @@ class ReceivedMultipart:
     def __exit__(self, exc_type, exc, tb):
         self.close()
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.close()
+
 
 class TopicMessage:
     def __init__(self, topic, owner, routing_id=None):
@@ -427,7 +522,6 @@ class TopicMessage:
             for index in range(owner._part_count)
         )
         self.routing_id = routing_id
-        self.messages = self.parts
 
     def __iter__(self):
         return iter(self.parts)
@@ -445,6 +539,12 @@ class TopicMessage:
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
         self.close()
 
 
@@ -499,20 +599,26 @@ class Message:
         return Message.copy_from(data)
 
     def size(self):
-        return _msg_size(self._msg)
+        return _msg_size(self._msg) if self._valid else 0
 
+    @property
     def data(self):
-        return self.to_bytes()
-
-    def to_bytes(self):
-        return _msg_to_bytes(self._msg)
-
-    def view(self):
+        if not self._valid:
+            return memoryview(b"")
         ptr = _msg_data_ptr(self._msg)
         size = self.size()
         if not ptr or size <= 0:
             return memoryview(b"")
         return memoryview((ctypes.c_ubyte * size).from_address(ptr))
+
+    def to_bytes(self):
+        return _msg_to_bytes(self._msg) if self._valid else b""
+
+    def getProperty(self, name):
+        return _msg_gets(self._msg, name) if self._valid else None
+
+    def refCount(self):
+        return _msg_refcnt(self._msg) if self._valid else -1
 
     def send(self, socket):
         socket.send(self)
@@ -530,4 +636,10 @@ class Message:
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
         self.close()

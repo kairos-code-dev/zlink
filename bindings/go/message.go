@@ -3,6 +3,7 @@
 package zlink
 
 /*
+#include <stdlib.h>
 #include <string.h>
 #include "zlink.h"
 */
@@ -11,6 +12,7 @@ import "C"
 import (
 	"bytes"
 	"encoding/hex"
+	"strings"
 	"unsafe"
 )
 
@@ -126,6 +128,25 @@ func (m *Message) RefCount() int {
 		return 0
 	}
 	return int(C.zlink_msg_refcnt(&m.msg))
+}
+
+func (m *Message) GetProperty(name string) (string, bool, error) {
+	if m == nil || m.closed {
+		return "", false, stateError("message is closed")
+	}
+	if name == "" {
+		return "", false, validationError("property name must not be empty")
+	}
+	if strings.IndexByte(name, 0) >= 0 {
+		return "", false, validationError("property name contains null byte")
+	}
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
+	value := C.zlink_msg_gets(&m.msg, cname)
+	if value == nil {
+		return "", false, nil
+	}
+	return C.GoString(value), true, nil
 }
 
 func (m *Message) moved() {

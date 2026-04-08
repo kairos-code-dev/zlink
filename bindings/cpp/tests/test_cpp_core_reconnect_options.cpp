@@ -9,9 +9,9 @@ bool expect_monitor_event (zlink::monitor_handle_t &monitor_,
     const auto deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
     while (std::chrono::steady_clock::now () < deadline) {
-        zlink_monitor_event_t ev;
+        zlink::monitor_event_t ev;
         while (monitor_recv_nowait (monitor_, &ev) == 0) {
-            if (ev.event == expected_event_)
+            if (static_cast<uint64_t> (ev.event) == expected_event_)
                 return true;
         }
         sleep_ms (10);
@@ -24,7 +24,7 @@ bool has_no_monitor_event (zlink::monitor_handle_t &monitor_, int timeout_ms_)
     const auto deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
     while (std::chrono::steady_clock::now () < deadline) {
-        zlink_monitor_event_t ev;
+        zlink::monitor_event_t ev;
         if (monitor_recv_nowait (monitor_, &ev) == 0)
             return false;
         sleep_ms (10);

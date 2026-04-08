@@ -1,3 +1,4 @@
+use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::slice;
 
@@ -91,6 +92,34 @@ impl Message {
     /// Interpret the payload as a UTF-8 string.
     pub fn as_str(&self) -> Result<&str, std::str::Utf8Error> {
         std::str::from_utf8(self.data())
+    }
+
+    /// Read a string property from the native message metadata.
+    ///
+    /// Returns `Ok(None)` when the property is absent. The lookup name is
+    /// validated eagerly so empty names and interior NUL bytes fail fast.
+    pub fn get_property(&self, name: &str) -> Result<Option<String>, ZlinkError> {
+        if name.is_empty() {
+            return Err(ZlinkError::validation("property name must not be empty"));
+        }
+        let c_name = CString::new(name)
+            .map_err(|_| ZlinkError::validation("property name contains null byte"))?;
+        let ptr = unsafe { ffi::zlink_msg_gets(&self.inner, c_name.as_ptr()) };
+        if ptr.is_null() {
+            return Ok(None);
+        }
+        let value = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        Ok(Some(value))
+    }
+
+    /// Return the native storage reference count for the message.
+    ///
+    /// This is a diagnostic helper only. It does not affect ownership or
+    /// message lifetime.
+    pub fn ref_count(&self) -> i32 {
+        unsafe { ffi::zlink_msg_refcnt(&self.inner) }
     }
 
     /// Construct from a raw `zlink_msg_t` whose ownership is being transferred

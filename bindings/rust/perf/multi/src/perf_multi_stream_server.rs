@@ -14,9 +14,9 @@ fn main() {
 
     let ctx = Context::new().expect("context");
     let stream = ctx.stream_socket().expect("stream");
-    stream.set_recv_hwm(settings.hwm).expect("rcvhwm");
-    stream.set_send_hwm(settings.hwm).expect("sndhwm");
-    stream.set_notify(true).expect("notify");
+    stream.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
+    stream.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
+    stream.stream_options().set_notify(true).expect("notify");
     stream.bind("tcp://0.0.0.0:0").expect("bind");
     let endpoint = stream.last_endpoint().expect("endpoint");
 

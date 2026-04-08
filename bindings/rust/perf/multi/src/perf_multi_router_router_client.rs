@@ -23,11 +23,11 @@ fn main() {
 
     for i in 0..settings.clients {
         let sock = ctx.router_socket().expect("router");
-        sock.set_send_hwm(settings.hwm).expect("sndhwm");
-        sock.set_recv_hwm(settings.hwm).expect("rcvhwm");
+        sock.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
+        sock.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
         let crid = RoutingId::new(format!("perf-rr-c{i}").as_bytes()).expect("crid");
         sock.set_routing_id(&crid).expect("set rid");
-        sock.set_connect_routing_id(&server_rid).expect("connect rid");
+        sock.router_options().set_connect_routing_id(&server_rid).expect("connect rid");
         sock.connect(&args.endpoint).expect("connect");
         poller.add_socket(&sock, i, POLLIN).expect("poller add");
         sockets.push(sock);

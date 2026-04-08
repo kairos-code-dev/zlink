@@ -10,6 +10,7 @@ import (
 func TestCommonTypedOptions(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
+	opts := ctx.Options()
 
 	socket, _ := ctx.PairSocket()
 	defer socket.Close()
@@ -38,22 +39,16 @@ func TestCommonTypedOptions(t *testing.T) {
 	if err := socket.SetIPv6(false); err != nil {
 		t.Fatalf("SetIPv6() error = %v", err)
 	}
-	if err := ctx.SetMaxSockets(1024); err != nil {
+	if err := opts.SetMaxSockets(1024); err != nil {
 		t.Fatalf("SetMaxSockets() error = %v", err)
 	}
-	if got, err := ctx.MaxSockets(); err != nil || got != 1024 {
+	if got, err := opts.MaxSockets(); err != nil || got != 1024 {
 		t.Fatalf("MaxSockets() = (%d, %v), want (1024, nil)", got, err)
 	}
-	if err := ctx.SetThreadNamePrefix(1234); err != nil {
-		t.Fatalf("SetThreadNamePrefix() error = %v", err)
-	}
-	if got, err := ctx.ThreadNamePrefix(); err != nil || got != 1234 {
-		t.Fatalf("ThreadNamePrefix() = (%d, %v), want (1234, nil)", got, err)
-	}
-	if err := ctx.SetBlocky(false); err != nil {
+	if err := opts.SetBlocky(false); err != nil {
 		t.Fatalf("SetBlocky() error = %v", err)
 	}
-	if got, err := ctx.Blocky(); err != nil || got {
+	if got, err := opts.Blocky(); err != nil || got {
 		t.Fatalf("Blocky() = (%v, %v), want (false, nil)", got, err)
 	}
 }

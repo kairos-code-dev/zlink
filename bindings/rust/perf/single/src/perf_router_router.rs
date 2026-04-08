@@ -18,13 +18,16 @@ fn main() {
     sender.set_routing_id(&sender_rid).expect("set rid");
     let receiver_rid = RoutingId::new(b"perf-rr-receiver").expect("rid");
     receiver.set_routing_id(&receiver_rid).expect("set rid");
-    sender.set_connect_routing_id(&receiver_rid).expect("connect rid");
+    sender
+        .router_options()
+        .set_connect_routing_id(&receiver_rid)
+        .expect("connect rid");
 
     receiver.bind(&bind_endpoint).expect("bind");
     let endpoint = receiver.last_endpoint().unwrap_or(bind_endpoint);
     sender.connect(&endpoint).expect("connect");
 
-    let mon = SocketMonitor::open(&sender, MONITOR_EVENT_ALL).expect("monitor");
+    let mon = SocketMonitor::open(&sender).expect("monitor");
     common::wait_monitor_ready(&mon);
 
     let collector = common::MetricCollector::new();

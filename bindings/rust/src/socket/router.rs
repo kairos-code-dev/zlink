@@ -79,7 +79,7 @@ impl RouterSocket {
 
     // -- ROUTER-specific typed options -------------------------------------
 
-    pub fn set_mandatory(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub(crate) fn set_mandatory(&self, enabled: bool) -> Result<(), ZlinkError> {
         set_router_bool(
             self.inner.handle,
             ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_MANDATORY,
@@ -87,7 +87,7 @@ impl RouterSocket {
         )
     }
 
-    pub fn set_handover(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub(crate) fn set_handover(&self, enabled: bool) -> Result<(), ZlinkError> {
         set_router_bool(
             self.inner.handle,
             ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_HANDOVER,
@@ -95,7 +95,7 @@ impl RouterSocket {
         )
     }
 
-    pub fn set_probe(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub(crate) fn set_probe(&self, enabled: bool) -> Result<(), ZlinkError> {
         set_router_bool(
             self.inner.handle,
             ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_PROBE,
@@ -103,7 +103,7 @@ impl RouterSocket {
         )
     }
 
-    pub fn set_connect_routing_id(&self, id: &RoutingId) -> Result<(), ZlinkError> {
+    pub(crate) fn set_connect_routing_id(&self, id: &RoutingId) -> Result<(), ZlinkError> {
         check_rc(unsafe {
             ffi::zlink_set_router_option(
                 self.inner.handle,

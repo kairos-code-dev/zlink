@@ -20,6 +20,7 @@ import java.util.Objects;
 /** Lifecycle and topology facade for the current unified spot node model. */
 public final class SpotNode implements AutoCloseable {
     private MemorySegment handle;
+    private final SpotNodeSocketOptions socketOptions = new SpotNodeSocketOptions();
 
     /** Creates a spot node owned by the supplied context. */
     public SpotNode(Context ctx) {
@@ -108,11 +109,11 @@ public final class SpotNode implements AutoCloseable {
     }
 
     void sendHwm(int value) {
-        setPubOption(SocketOption.SNDHWM, value);
+        socketOptions.setPubIntOption(SocketOption.SNDHWM, value);
     }
 
     void recvHwm(int value) {
-        setSubOption(SocketOption.RCVHWM, value);
+        socketOptions.setSubIntOption(SocketOption.RCVHWM, value);
     }
 
     /** Returns the current node status snapshot. */
@@ -238,28 +239,27 @@ public final class SpotNode implements AutoCloseable {
         return (int) value;
     }
 
-    private void setPubOption(SocketOption option, int value) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.setSockOpt(Native.spotNodeDefaultPub(handle), option.getValue(),
-                nativeValue,
-                Integer.BYTES);
-            if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_set_option");
-            }
+    private final class SpotNodeSocketOptions {
+        void setPubIntOption(SocketOption option, int value) {
+            setIntOption(Native.spotNodeDefaultPub(handle), option, value);
         }
-    }
 
-    private void setSubOption(SocketOption option, int value) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.setSockOpt(Native.spotNodeDefaultSub(handle), option.getValue(),
-                nativeValue,
-                Integer.BYTES);
-            if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_set_option");
+        void setSubIntOption(SocketOption option, int value) {
+            setIntOption(Native.spotNodeDefaultSub(handle), option, value);
+        }
+
+        private void setIntOption(MemorySegment socketHandle,
+                                  SocketOption option,
+                                  int value) {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
+                nativeValue.set(ValueLayout.JAVA_INT, 0, value);
+                int rc = Native.setSockOpt(socketHandle, option.getValue(),
+                    nativeValue,
+                    Integer.BYTES);
+                if (rc != 0) {
+                    throw ZlinkException.fromLastError("zlink_set_option");
+                }
             }
         }
     }

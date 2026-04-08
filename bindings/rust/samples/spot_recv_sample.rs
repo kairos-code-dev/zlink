@@ -2,21 +2,9 @@
 
 use std::time::{Duration, Instant};
 
-use zlink::{Context, Message, Spot, SpotNode};
+mod sample_support;
 
-fn wait_until<F>(mut predicate: F, timeout: Duration, description: &str)
-where
-    F: FnMut() -> bool,
-{
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if predicate() {
-            return;
-        }
-        std::thread::yield_now();
-    }
-    panic!("timed out waiting for {description}");
-}
+use zlink::{Context, Message, Spot, SpotNode};
 
 fn main() {
     let ctx = Context::new().expect("context creation failed");
@@ -25,30 +13,16 @@ fn main() {
     let subscriber_node = SpotNode::new(&ctx).expect("subscriber node failed");
     let publisher = Spot::new(&publisher_node).expect("publisher spot failed");
     let subscriber = Spot::new(&subscriber_node).expect("subscriber spot failed");
+    let endpoint = sample_support::tcp_endpoint();
 
-    publisher_node
-        .bind("tcp://127.0.0.1:0")
-        .expect("bind failed");
-    let endpoint = publisher_node
-        .last_endpoint()
-        .expect("last_endpoint failed");
+    publisher_node.bind(&endpoint).expect("bind failed");
     subscriber_node
         .connect_peer(&endpoint)
         .expect("connect_peer failed");
     subscriber
         .set_subscription("room:lobby")
         .expect("set_subscription failed");
-
-    wait_until(
-        || {
-            subscriber_node
-                .status_snapshot()
-                .map(|status| status.connected_peer_count > 0)
-                .unwrap_or(false)
-        },
-        Duration::from_secs(5),
-        "spot peer connection",
-    );
+    sample_support::wait_spot_peer_connected(&subscriber_node, Duration::from_secs(5));
 
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut message = None;

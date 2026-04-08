@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
+using Zlink.Service;
+
 namespace Zlink;
 
 public sealed class DealerSocket : MessageSocketBase
@@ -10,5 +12,10 @@ public sealed class DealerSocket : MessageSocketBase
         : base(context, SocketType.Dealer)
     {
         DealerOptions = new DealerSocketOptions(this);
+    }
+
+    public void AttachDiscovery(Discovery discovery)
+    {
+        Kernel.AttachDiscovery(discovery);
     }
 }

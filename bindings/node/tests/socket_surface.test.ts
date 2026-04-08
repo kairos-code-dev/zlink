@@ -122,6 +122,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
   const monitor = stream.monitorOpen(zlink.MonitorEvent.ALL);
   assert.equal(typeof monitor.recv, 'function');
   assert.equal(typeof monitor.tryRecv, 'function');
+  assert.equal(typeof monitor.onEvent, 'function');
   monitor.close();
 
   stream.close();

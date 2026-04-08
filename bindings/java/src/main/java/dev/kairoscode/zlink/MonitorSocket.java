@@ -3,9 +3,6 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
-import dev.kairoscode.zlink.options.SocketOptionKey;
-import dev.kairoscode.zlink.options.SocketOptions;
-import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.util.Optional;
 
@@ -36,28 +33,8 @@ public final class MonitorSocket implements AutoCloseable {
         }
     }
 
-    void setOption(SocketOptionKey<Integer> option, int value) {
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment valueBuf = arena.allocate(java.lang.foreign.ValueLayout.JAVA_INT);
-            valueBuf.set(java.lang.foreign.ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.setSockOpt(handle, option.optionId(), valueBuf,
-                java.lang.foreign.ValueLayout.JAVA_INT.byteSize());
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_setsockopt");
-        }
-    }
-
-    public void sendHighWaterMark(int value) {
-        setOption(SocketOptions.SNDHWM, value);
-    }
-
-    public void receiveHighWaterMark(int value) {
-        setOption(SocketOptions.RCVHWM, value);
-    }
-
     public MonitorSnapshot snapshot() {
-        try (Arena arena = Arena.ofConfined()) {
+        try (java.lang.foreign.Arena arena = java.lang.foreign.Arena.ofConfined()) {
             MemorySegment out = arena.allocate(
               dev.kairoscode.zlink.internal.NativeLayouts.MONITOR_SNAPSHOT_LAYOUT);
             int rc = Native.monitorSnapshot(handle, out);

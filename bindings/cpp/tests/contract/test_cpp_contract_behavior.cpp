@@ -258,8 +258,7 @@ void test_socket_monitor_try_receive_returns_empty_without_event ()
 
     zlink::monitor_handle_t monitor = socket.monitor_handle ();
     assert (monitor.valid ());
-    const zlink::maybe_t<zlink_socket_monitor_event_t> event =
-      monitor.try_recv ();
+    const zlink::maybe_t<zlink::monitor_event_t> event = monitor.try_recv ();
     assert (!event);
     assert (monitor.close () == 0);
 }
@@ -271,11 +270,10 @@ void test_service_monitor_try_receive_returns_empty_without_event ()
       ctx, zlink::service_type::spot, "behavior-monitor");
     assert (discovery.valid ());
 
-    zlink::service_monitor_handle_t monitor (
-      discovery, zlink::service_monitor_event::discovery_service_up);
+    zlink::service_monitor_handle_t monitor = discovery.monitor_open (
+      zlink::service_monitor_event::discovery_service_up);
     assert (monitor.valid ());
-    const zlink::maybe_t<zlink_service_monitor_event_t> event =
-      monitor.try_recv ();
+    const zlink::maybe_t<zlink::service_event_t> event = monitor.try_recv ();
     assert (!event);
     assert (monitor.close () == 0);
 }

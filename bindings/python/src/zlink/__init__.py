@@ -2,6 +2,7 @@
 
 from ._core import (
     Context,
+    ContextOptions,
     Message,
     Received,
     Subscribed,
@@ -104,6 +105,7 @@ def version():
 __all__ = [
     "version",
     "Context",
+    "ContextOptions",
     "CommonSocketOptions",
     "DealerSocketOptions",
     "StreamSocketOptions",

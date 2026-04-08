@@ -2,7 +2,7 @@
 
 import ctypes
 
-from ._enums import RegistryState, ServiceRole, TopologySource, TopologyState
+from ._enums import RegistryState, ServiceMonitorMask, ServiceRole, TopologySource, TopologyState
 from ._ffi import (
     ZlinkMemberPeerEntry,
     ZlinkMsg,
@@ -262,6 +262,33 @@ class Registry:
         if rc != 0:
             _raise_last_error()
 
+    def set_tls_server(self, cert: str, key: str, require_client_cert: bool = False):
+        rc = lib().zlink_set_tls_server(
+            self._handle,
+            _validated_c_string_text(cert, field="cert"),
+            _validated_c_string_text(key, field="key"),
+            int(require_client_cert),
+        )
+        if rc != 0:
+            _raise_last_error()
+
+    def set_tls_client(
+        self, ca_cert: str | None, hostname: str | None, trust_system: bool = False
+    ):
+        ca_value = (
+            None
+            if ca_cert is None
+            else _validated_c_string_text(ca_cert, field="ca_cert")
+        )
+        host_value = (
+            None if hostname is None else _validated_c_string_text(hostname, field="hostname")
+        )
+        rc = lib().zlink_set_tls_client(
+            self._handle, ca_value, host_value, int(trust_system)
+        )
+        if rc != 0:
+            _raise_last_error()
+
     def set_heartbeat(self, interval_ms: int, timeout_ms: int):
         rc = lib().zlink_registry_set_heartbeat(
             self._handle,
@@ -398,6 +425,12 @@ class Registry:
     def __exit__(self, exc_type, exc, tb):
         self.close()
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.close()
+
 
 class Discovery:
     def __init__(self, ctx, service_type, service_name: str):
@@ -478,7 +511,24 @@ class Discovery:
         finally:
             lib().zlink_msg_close(ctypes.byref(msg))
 
-    def open_monitor(self, events):
+    def set_tls_client(
+        self, ca_cert: str | None, hostname: str | None, trust_system: bool = False
+    ):
+        ca_value = (
+            None
+            if ca_cert is None
+            else _validated_c_string_text(ca_cert, field="ca_cert")
+        )
+        host_value = (
+            None if hostname is None else _validated_c_string_text(hostname, field="hostname")
+        )
+        rc = lib().zlink_set_tls_client(
+            self._handle, ca_value, host_value, int(trust_system)
+        )
+        if rc != 0:
+            _raise_last_error()
+
+    def monitor_open(self, events=ServiceMonitorMask.ALL):
         from ._monitor import open_service_monitor
 
         return open_service_monitor(self, events)
@@ -496,6 +546,12 @@ class Discovery:
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
         self.close()
 
 
@@ -534,4 +590,10 @@ class RegistryQueryClient:
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
         self.close()

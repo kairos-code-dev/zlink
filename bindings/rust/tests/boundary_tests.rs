@@ -39,7 +39,7 @@ fn duration_overflow_fails() {
     let huge = Duration::from_millis(i32::MAX as u64 + 1);
     let ctx = Context::new().unwrap();
     let sock = ctx.pair_socket().unwrap();
-    let result = sock.set_linger(huge);
+    let result = sock.common_options().set_linger(huge);
     assert!(result.is_err(), "duration overflow must be rejected");
 }
 
@@ -48,7 +48,7 @@ fn duration_max_accepted() {
     let max_ok = Duration::from_millis(i32::MAX as u64);
     let ctx = Context::new().unwrap();
     let sock = ctx.pair_socket().unwrap();
-    let result = sock.set_linger(max_ok);
+    let result = sock.common_options().set_linger(max_ok);
     assert!(result.is_ok(), "i32::MAX ms duration must be accepted");
 }
 

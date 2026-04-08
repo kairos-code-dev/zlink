@@ -16,11 +16,11 @@
 이 문서의 의도는 다음과 같다.
 - 언어별로 이름만 비슷하고 의미가 다른 API를 없앤다.
 - 같은 능력을 여러 방식으로 중복 노출하는 얕은 표면을 없앤다.
-- raw option bag, legacy convenience, 암묵적 ownership, 숨은 failure path를
+- raw option bag, 불필요한 편의 래퍼, 암묵적 ownership, 숨은 오류 경로를
   줄인다.
 - binding 사용자가 internal sequencing, native 세부사항, hidden transport
   switch를 알지 않아도 되게 만든다.
-- POSD 원칙에 맞는 깊은 모듈과 낮은 change amplification 구조를 유도한다.
+- POSD 원칙에 맞는 깊은 모듈과 낮은 변경 파급(change amplification) 구조를 유도한다.
 - correctness뿐 아니라 비용 모델, 샘플 품질, 테스트 가능성까지 공통 기준으로
   묶는다.
 
@@ -56,7 +56,7 @@
 - raw option bag은 public에 노출하지 않는다.
 - 바인딩은 코어의 상태 오류를 추론하지 않는다.
 - 입력 값의 형식, 범위, overflow, truncation 위험은 바인딩이 먼저 막는다.
-- 구조는 POSD 원칙에 따라 깊은 모듈, 정보 은닉, 낮은 change amplification을
+- 구조는 POSD 원칙에 따라 깊은 모듈, 정보 은닉, 낮은 변경 파급을
   우선한다.
 - 이 문서는 의미 계약을 우선 정의한다.
 - 언어별 표면은 각 언어 관례에 맞게 달라질 수 있지만, 의미 계약은 같아야
@@ -76,7 +76,7 @@
 - 바인딩 설계는 John Ousterhout의 POSD 원칙을 따른다.
 - public API는 사용자가 알아야 할 개념 수를 줄여야 한다.
 - 내부 구현 복잡도는 facade, value object, domain object 뒤로 숨겨야 한다.
-- shallow wrapper는 지양한다.
+- 얕은 래퍼(shallow wrapper)는 지양한다.
   - 단순히 native 함수 이름만 바꾸고 새 의미를 추가하지 못하는 public
     wrapper는 늘리지 않는다.
 - 같은 능력을 여러 타입과 여러 이름으로 반복 노출하지 않는다.
@@ -84,7 +84,7 @@
   - 예: routing id 길이 제한
   - 예: send failure contract
   - 예: typed option ownership
-- 시간 순서에 의존하는 temporal decomposition을 줄인다.
+- 시간 순서에 의존하는 분해(temporal decomposition)를 줄인다.
   - 예: 사용자가 `setOption` 조합 순서를 기억해야 하는 API 금지
 - public API는 “무엇을 할 수 있는지”를 드러내고, “내부에서 어떻게 배선되는지”를
   드러내지 않아야 한다.
@@ -166,9 +166,9 @@
 
 ### Multipart Only
 - send/receive public surface는 multipart 기준으로 통일한다.
-- single-message receive convenience overload는 public에 두지 않는다.
-- 단일 part 전송 convenience는 허용할 수 있다.
-  - 예: `send(Message part)`는 `send(List<Message> parts)`의 얇은 convenience
+- 단일 메시지 수신 편의 오버로드는 public에 두지 않는다.
+- 단일 part 전송 편의 메서드는 허용할 수 있다.
+  - 예: `send(Message part)`는 `send(List<Message> parts)`의 간편 오버로드
 - 수신 결과는 언어에 맞는 도메인 객체 또는 동등한 multipart 표현으로
   반환한다.
 
@@ -185,7 +185,7 @@
 
 ### Explicit Non-Blocking Send Outcome
 - non-blocking send 계열은 `bool` 하나로 성공/실패를 숨기지 않는다.
-- send 실패 원인 구분이 코어에 있다면 그대로 enum으로 surface 한다.
+- send 실패 원인 구분이 코어에 있다면 그대로 enum으로 노출한다.
 - 표준 send 결과 enum:
 
 ```text
@@ -194,23 +194,22 @@ Backpressured
 NotReady
 ```
 
-- managed layer는 errno heuristic으로 `Backpressured`와 `NotReady`를
-  추론하지 않는다.
+- 바인딩은 errno 추정으로 `Backpressured`와 `NotReady`를 구분하지 않는다.
 - 이 구분은 코어가 직접 제공해야 한다.
 
 ### Send Failure Contract
 - blocking send 계열:
   - `send`, `publish`, routed `send`
   - 성공 시 정상 반환
-  - 실패 시 반드시 예외 또는 언어별 오류 경로로 surface 한다
+  - 실패 시 반드시 예외 또는 언어별 오류 경로로 전달한다
   - 실패를 `false`, `null`, empty result로 숨기지 않는다
 - non-blocking send 계열:
   - `trySend`, `tryPublish`
   - `Backpressured`, `NotReady`는 정상 결과값으로 반환한다
-  - `EAGAIN` 계열 외의 오류는 반드시 예외 또는 언어별 오류 경로로 surface 한다
-  - managed layer가 send 실패 원인을 임의 해석해서 예외를 삼키면 안 된다
+  - `EAGAIN` 계열 외의 오류는 반드시 예외 또는 언어별 오류 경로로 전달한다
+  - 바인딩이 send 실패 원인을 임의로 해석해서 예외를 삼키면 안 된다
 - binding helper, wrapper, sample 코드도 blocking send 실패를 무시하거나
-  swallow 하면 안 된다
+  무시하면 안 된다
 
 ### Receive Outcome
 - non-blocking receive 계열은 “데이터 없음”만 정상 경로로 표현한다.
@@ -235,7 +234,7 @@ NotReady
   - `SendResult`
 - 결과 객체는 payload shape, ownership, optional routing metadata를 함께
   설명해야 한다.
-- convenience는 결과 객체 메서드로 둔다.
+- 편의 기능은 결과 객체 메서드로 둔다.
   - 예: `singlePartOrThrow()`
 
 ## Socket Type Capability Policy
@@ -690,7 +689,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 - facade 내 option 값 타입은 Option Value Types 정책을 따른다.
 
 ### Option Value Types
-- option 값은 가능한 한 의미 기반 타입으로 surface 한다.
+- option 값은 가능한 한 의미 기반 타입으로 노출한다.
 - 정책:
   - `0/1` 옵션: `boolean`
   - 유한 상태 집합: `enum`
@@ -707,9 +706,9 @@ RegistryQueryClient (원격 토폴로지 조회)
   - 숨은 payload 복사
   - 숨은 배열/리스트 재할당
   - 불필요한 UTF-8 인코딩/디코딩
-  - managed layer의 중복 포장
+  - 바인딩 레이어의 중복 포장
   - 결과를 만들기 위한 불필요한 boxing/unboxing
-- convenience API는 canonical path보다 비용이 더 크면 문서화해야 한다.
+- 편의 API는 기본 경로보다 비용이 더 크면 문서화해야 한다.
 - callback path와 direct receive path는 payload shape뿐 아니라 비용 모델도
   과도하게 벌어지면 안 된다.
 - zero-copy, borrowed, owned 경로가 다르면 ownership과 함께 비용 모델도
@@ -721,7 +720,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 ## Boundary Cost Policy
 - 경계 검증은 가장 이른 안전한 위치에서 한 번 수행하는 것을 우선한다.
 - 같은 검증을 여러 레이어에서 반복하면 이유가 명확해야 한다.
-- 고정 크기 native struct에 들어가는 값은 truncation 대신 fail-fast 한다.
+- 고정 크기 native struct에 들어가는 값은 truncation 대신 즉시 오류를 반환한다.
 - 문자열, topic, routing id, metadata 같은 경계 값은 다음을 함께 고려한다.
   - 길이 상한
   - 인코딩 비용
@@ -731,10 +730,10 @@ RegistryQueryClient (원격 토폴로지 조회)
 
   | 필드 | C struct 크기 | 바인딩 검증 책임 |
   |------|--------------|----------------|
-  | `RoutingId` | `data[255]` | 값 객체 생성 시 255바이트 초과 fail-fast |
-  | topic / filter | C 문자열 (null-terminated) | 바인딩은 embedded null 문자 포함 시 fail-fast. 길이 상한은 core가 처리하므로 바인딩에서 별도 길이 검증하지 않는다 |
-  | service_name | `char[256]` | 255바이트 초과 fail-fast |
-  | endpoint | `char[256]` | 255바이트 초과 fail-fast |
+  | `RoutingId` | `data[255]` | 값 객체 생성 시 255바이트 초과 시 즉시 오류 반환 |
+  | topic / filter | C 문자열 (null-terminated) | 바인딩은 embedded null 문자 포함 시 즉시 오류 반환. 길이 상한은 core가 처리하므로 바인딩에서 별도 길이 검증하지 않는다 |
+  | service_name | `char[256]` | 255바이트 초과 시 즉시 오류 반환 |
+  | endpoint | `char[256]` | 255바이트 초과 시 즉시 오류 반환 |
   | metadata | `zlink_msg_t` (가변) | core가 처리, 바인딩은 null 검증만 |
 
 - 바인딩은 고정 크기 필드에 들어가는 값이 상한을 넘으면 truncation 없이
@@ -774,7 +773,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 ### Binding Validation vs Native Error
 - 입력 값의 형식/범위 오류는 바인딩이 즉시 막는다.
 - socket 상태, 연결 상태, transport 상태, protocol 상태 오류는 코어가
-  결정하고 바인딩은 그대로 surface 한다.
+  결정하고 바인딩은 그대로 caller에 전달한다.
 
 ### Binding Must Validate
 - truncation 가능성이 있는 값
@@ -801,11 +800,106 @@ RegistryQueryClient (원격 토폴로지 조회)
 - socket type/state/runtime 문제
 - transport, TLS, endpoint, protocol 오류
 
-이 경우 바인딩은 native 오류를 예외로 surface 한다.
+이 경우 바인딩은 native 오류를 언어별 예외로 변환하여 caller에 전달한다.
 - Java: `ZlinkException`
 - .NET: `ZlinkException`
 - Go: `error` (`ZlinkError` 또는 동등한 typed error)
 - Rust: `Result<T, ZlinkError>`
+- Node: `ZlinkError` (extends `Error`)
+- Python: `ZlinkError` (extends `Exception`)
+
+### Error Code 표
+
+zlink 에서 사용하는 주요 errno 코드와 의미. 바인딩은 이 코드를 언어별
+예외/오류 타입에 매핑하여 caller 가 원인을 구분할 수 있게 한다.
+
+#### POSIX 표준 errno
+
+POSIX 에서 해당 상수가 정의되지 않은 플랫폼에서는 `ZLINK_HAUSNUMERO` 기반
+대체 값을 사용한다. 바인딩은 상수 이름으로 비교해야 하며 정수 값에 직접
+의존하면 안 된다.
+
+| errno | 대체 값 (POSIX 미정의 시) | 의미 | 대표 발생 상황 |
+|-------|-------------------------|------|--------------|
+| `ENOTSUP` | HAUSNUMERO + 1 | 지원하지 않는 작업 | 해당 소켓 타입에서 불가능한 작업 |
+| `EPROTONOSUPPORT` | HAUSNUMERO + 2 | 프로토콜 미지원 | 지원하지 않는 프로토콜 요청 |
+| `ENOBUFS` | HAUSNUMERO + 3 | 버퍼 공간 부족 | 내부 버퍼 할당 실패 |
+| `ENETDOWN` | HAUSNUMERO + 4 | 네트워크가 다운됨 | transport 레이어 장애 |
+| `EADDRINUSE` | HAUSNUMERO + 5 | 주소가 이미 사용 중 | bind 시 endpoint 충돌 |
+| `EADDRNOTAVAIL` | HAUSNUMERO + 6 | 주소를 사용할 수 없음 | 잘못된 endpoint 형식 |
+| `ECONNREFUSED` | HAUSNUMERO + 7 | 연결 거부됨 | 대상이 연결을 거부 |
+| `EINPROGRESS` | HAUSNUMERO + 8 | 작업 진행 중 | 비동기 연결 진행 중 |
+| `ENOTSOCK` | HAUSNUMERO + 9 | 소켓이 아닌 대상 | 잘못된 handle 전달 |
+| `EMSGSIZE` | HAUSNUMERO + 10 | 메시지 크기 초과 | 메시지가 설정된 최대 크기 초과 |
+| `EAFNOSUPPORT` | HAUSNUMERO + 11 | 주소 체계 미지원 | 지원하지 않는 주소 체계 |
+| `ENETUNREACH` | HAUSNUMERO + 12 | 네트워크에 도달 불가 | 라우팅 불가 |
+| `ECONNABORTED` | HAUSNUMERO + 13 | 연결이 중단됨 | 연결이 비정상 종료 |
+| `ECONNRESET` | HAUSNUMERO + 14 | 연결이 재설정됨 | peer 가 연결을 강제 종료 |
+| `ENOTCONN` | HAUSNUMERO + 15 | 연결되지 않은 상태 | 연결 전에 send/recv 시도 |
+| `ETIMEDOUT` | HAUSNUMERO + 16 | 작업 시간 초과 | request reply timeout, 연결 timeout |
+| `EHOSTUNREACH` | HAUSNUMERO + 17 | 대상에 도달할 수 없음 | peer 미연결, 라우팅 불가 |
+| `ENETRESET` | HAUSNUMERO + 18 | 네트워크가 재설정됨 | 네트워크 연결 끊김 |
+| `EAGAIN` | (POSIX 표준) | 자원이 일시적으로 사용 불가 | non-blocking send 시 HWM 도달 (backpressure) |
+| `EINVAL` | (POSIX 표준) | 잘못된 인자 | 범위 초과, 잘못된 옵션 값 |
+| `ECANCELED` | (POSIX 표준) | 작업이 취소됨 | caller 가 request 를 취소 |
+
+`ZLINK_HAUSNUMERO` 값은 `156384712` 이다.
+
+#### zlink 전용 errno
+
+zlink 고유 오류 코드. POSIX errno 와 충돌하지 않도록 `ZLINK_HAUSNUMERO`
+기반 오프셋을 사용한다.
+
+| 대체 값 | 상수 | 의미 | 대표 발생 상황 |
+|--------|------|------|--------------|
+| HAUSNUMERO + 51 | `EFSM` | 유한 상태 기계 오류 | 소켓 상태에서 허용되지 않는 작업 (예: callback 모드에서 direct recv) |
+| HAUSNUMERO + 52 | `ENOCOMPATPROTO` | 호환되지 않는 프로토콜 | 서로 다른 프로토콜 버전의 peer 연결 |
+| HAUSNUMERO + 53 | `ETERM` | 컨텍스트/소켓 종료 | context 또는 소켓이 close 된 상태에서 작업 시도 |
+| HAUSNUMERO + 54 | `EMTHREAD` | I/O 스레드 부족 | context 의 I/O 스레드가 부족 |
+
+#### 언어별 ErrorCode 매핑
+
+각 바인딩은 errno 정수값을 언어별 enum 으로 매핑하여 타입 안전한 오류 구분을
+제공한다.
+
+| 언어 | enum 타입 | 접근 방식 |
+|------|----------|----------|
+| Java | `ErrorCode` enum | `ZlinkException.getErrorCode()` |
+| .NET | `ErrorCode` enum | `ZlinkException.ErrorCode` |
+| Go | `ErrorKind` enum | `ZlinkError.Kind` (native/validation/state) + `Code` |
+| Rust | `i32` code | `ZlinkError.code()` |
+| Node | `number` errno | `ZlinkError.errno` |
+| Python | `int` errno + `ErrorCode` enum | `ZlinkError.errno`, `ZlinkError.error_code` |
+| C++ | `int` errno | `ZlinkError.code()` |
+
+### Request-Reply Error Policy
+- `request()` 는 blocking send 계열과 동일한 예외 정책을 따른다.
+  별도 `RequestError` 타입을 도입하지 않는다.
+- backpressure 는 caller 에 예외로 노출하지 않는다. 내부에서 writable 될
+  때까지 비동기 대기한 후 전송한다. 기존 `send()` 의 backpressure 처리와
+  동일하다.
+- timeout 은 send 대기 + reply 대기를 합산한 **전체 경과 시간**에 적용된다.
+  send 대기 중 timeout 초과 시에도 `ETIMEDOUT` 으로 처리한다.
+- request-reply 실패 시 errno 매핑:
+
+  | 실패 원인 | errno | 설명 |
+  |----------|-------|------|
+  | timeout (send 대기 + reply 대기 합산) | `ETIMEDOUT` | 전체 경과 시간 초과 |
+  | send 오류 (EAGAIN 외) | 해당 errno | transport/protocol 오류 |
+  | caller 취소 | `ECANCELED` | caller 가 request 를 취소함 |
+  | 소켓 close | `ETERM` | request 대기 중 소켓 close 또는 close 후 호출 |
+
+- 언어별 표현:
+  - Java: `ZlinkException(errno)` — `getErrorCode()` 로 원인 구분
+  - .NET: `ZlinkException(errno)` — `Errno` property
+  - Go: `ZlinkError{Code: errno}` — `Code` 필드
+  - Rust: `Err(ZlinkError{code: errno})` — `code` 필드
+  - Node: `ZlinkError` — `errno` property
+  - Python: `ZlinkError(errno)` — `errno` attribute
+- `reply()` 는 `request()` 와 동일하게 async send 를 사용한다. backpressure
+  시 writable 될 때까지 비동기 대기한다. 실패 시 `ZlinkError(errno)` 예외.
+  callback 내에서 호출 시 코루틴 suspend 가 발생할 수 있으며, 이것은
+  기존 callback 내 `send()` 호출과 동일한 주의사항이다.
 
 ## Length and Range Boundary Policy
 - 검증 책임은 두 층으로 나눈다.
@@ -836,7 +930,7 @@ RegistryQueryClient (원격 토폴로지 조회)
   - send 실패: restore 가능한 경로와 consume되는 경로를 혼동하지 않는다.
   - recv: native가 생성한 메시지의 ownership을 바인딩이 넘겨받는다. 바인딩이
     해제 책임을 진다.
-  - 생성 후 미전송: 바인딩이 직접 생성한 메시지를 send하지 않았다면 반드시
+  - 생성 후 미전송: 바인딩이 직접 생성한 메시지를 전송하지 않았다면 반드시
     명시적으로 close/해제해야 한다. GC가 managed wrapper만 수거할 뿐, native
     메모리는 해제하지 않으므로 누수가 발생한다.
 - callback delivery와 direct receive는 동일한 payload shape를 가져야 한다.
@@ -1103,28 +1197,28 @@ RegistryQueryClient (원격 토폴로지 조회)
   - `tryPublish` → explicit outcome 반환
 
 ### Send Failure Contract Tests
-- blocking `send` failure가 예외 또는 언어별 오류 경로로 surface 되는지 확인
-- blocking `publish` failure가 예외 또는 언어별 오류 경로로 surface 되는지 확인
+- blocking `send` failure가 예외 또는 언어별 오류 경로로 caller에 전달되는지 확인
+- blocking `publish` failure가 예외 또는 언어별 오류 경로로 caller에 전달되는지 확인
 - `trySend` backpressure 결과 확인
 - `trySend` not-ready 결과 확인
 - `tryPublish` backpressure 또는 not-ready 결과 확인
-- `EAGAIN` 외 오류가 `try*`에서 swallow 되지 않는지 확인
+- `EAGAIN` 외 오류가 `try*`에서 무시되지 않는지 확인
 
 ### Receive Failure Contract Tests
-- callback mode와 direct recv 충돌 시 native 계약대로 surface 되는지 확인
+- callback mode와 direct recv 충돌 시 native 계약대로 오류가 전달되는지 확인
 - direct recv 불가 상태에서 empty/null로 숨기지 않는지 확인
 - `EAGAIN`만 empty/non-success 결과로 처리되는지 확인
 
 ### Boundary Validation Tests
 - `RoutingId` 최대 길이 경계 (255바이트 OK)
-- `RoutingId` 초과 길이 fail-fast (256바이트 이상 → 예외)
+- `RoutingId` 초과 길이 즉시 오류 반환 (256바이트 이상 → 예외)
 - `Duration -> int millis` overflow 경계
 - offset/length bounds 검증
 - null 불가 인자 검증
 - enum 범위 밖 값 검증
-- `service_name` 255바이트 초과 fail-fast (고정 크기 `char[256]`)
-- `endpoint` 255바이트 초과 fail-fast (고정 크기 `char[256]`)
-- topic/filter에 embedded null 문자 포함 시 fail-fast
+- `service_name` 255바이트 초과 즉시 오류 반환 (고정 크기 `char[256]`)
+- `endpoint` 255바이트 초과 즉시 오류 반환 (고정 크기 `char[256]`)
+- topic/filter에 embedded null 문자 포함 시 즉시 오류 반환
 
 ### Option Tests
 - common option typed getter/setter
@@ -1148,7 +1242,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 ### Note: Performance and Sample Verification
 - 성능 회귀 검증은 Perf Policy (`doc/perf/`)가 담당한다. Test Matrix에 중복하지
   않는다.
-- sample/helper의 canonical API 준수, send 실패 swallow 방지, legacy surface
+- sample/helper의 canonical API 준수, send 실패 무시 방지, legacy surface
   우회 방지는 Review Checklist에서 검증한다. 자동화 테스트 항목이 아니다.
 
 ## Sample Policy
@@ -1227,15 +1321,15 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../doc/perf/PERF_POLICY.md)에서 전
 - raw option bag이 public에 남아 있지 않은가
 - option 값이 enum/boolean/value object로 승격되었는가
 - 타입별 capability가 제대로 닫혀 있는가
-- blocking send 실패가 예외 또는 오류 경로로 반드시 surface 되는가
+- blocking send 실패가 예외 또는 오류 경로로 반드시 caller에 전달되는가
 - `trySend`가 `Backpressured`/`NotReady`만 결과값으로 반환하고 나머지를 숨기지 않는가
 - binding이 truncation/overflow를 선검증하는가
-- native 상태 오류를 managed layer가 임의 추론하지 않는가
+- native 상태 오류를 바인딩이 임의로 추론하지 않는가
 - reflection test와 behavior test가 같이 있는가
 - 값 객체 검증과 호출 직전 검증의 책임 위치가 설명 가능한가
 - legacy flag 타입이 public contract에서 제거되었는가
 - sample code가 canonical API만 사용하는가
-- helper가 blocking send 실패를 swallow 하지 않는가
+- helper가 blocking send 실패를 무시하지 않는가
 - helper가 deprecated/legacy surface를 우회 호출하지 않는가
 
 ## POSD-Based Implementation Completion Policy
@@ -1275,11 +1369,11 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../doc/perf/PERF_POLICY.md)에서 전
 - POSD deep module 원칙에 따라 public 타입의 깊이를 확보한다.
 - 각 public 타입이 단순 pass-through가 아니라 내부에서 검증, ownership,
   shape 규칙을 캡슐화하는지 확인한다.
-- shallow wrapper 판별 기준:
+- 얕은 래퍼 판별 기준:
   - native 함수를 1:1로 감싸기만 하고 새 의미를 추가하지 않는가
   - 호출자가 native 계약(시퀀스, 크기, 인코딩)을 알아야 사용할 수 있는가
   - 동일 규칙이 여러 소켓 타입에 중복 구현되어 있는가
-- shallow wrapper를 발견하면:
+- 얕은 래퍼를 발견하면:
   - 검증을 값 객체 또는 facade 내부로 이동한다
   - 중복 규칙을 한 모듈에 모은다
   - pass-through만 하는 public 타입은 제거하거나 internal에 병합한다
@@ -1288,7 +1382,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../doc/perf/PERF_POLICY.md)에서 전
   - monitor event가 raw int → typed event surface로 승격한다
   - option value가 raw int → enum/boolean/Duration으로 승격한다
 
-#### 4단계: Change Amplification 제거
+#### 4단계: 변경 파급 제거
 - 같은 규칙이 여러 곳에 흩어진 지점을 찾아서 한 모듈에 모은다.
 - 판별 기준:
   - 정책 하나가 바뀌면 2개 이상의 파일을 고쳐야 하는가
@@ -1298,7 +1392,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../doc/perf/PERF_POLICY.md)에서 전
   - blocking/non-blocking 분기가 소켓 타입마다 별도 구현
   - option validation이 각 option setter마다 별도 구현
 
-#### 5단계: Information Hiding 강화
+#### 5단계: 정보 은닉 강화
 - public API가 native 세부사항을 노출하는 지점을 찾아서 facade 뒤로 숨긴다.
 - 판별 기준:
   - 사용자가 errno, flag 상수, native struct 크기를 알아야 하는가
@@ -1328,11 +1422,11 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../doc/perf/PERF_POLICY.md)에서 전
 
 ### 리팩터링 판단 기준
 - 다음 질문에 "예"이면 리팩터링이 필요한 지점이다.
-  - 이 public 타입을 제거하면 사용자가 잃는 것이 없는가 → shallow wrapper
-  - 이 규칙을 고치면 3개 이상의 파일을 건드려야 하는가 → change amplification
-  - 사용자가 이 API를 쓰려면 다른 API의 내부 동작을 알아야 하는가 → information leak
+  - 이 public 타입을 제거하면 사용자가 잃는 것이 없는가 → 얕은 래퍼
+  - 이 규칙을 고치면 3개 이상의 파일을 건드려야 하는가 → 변경 파급
+  - 사용자가 이 API를 쓰려면 다른 API의 내부 동작을 알아야 하는가 → 정보 누출
   - 같은 능력이 2개 이상의 이름으로 노출되는가 → 중복 surface
-  - 사용자가 호출 순서를 기억해야 올바르게 동작하는가 → temporal decomposition
+  - 사용자가 호출 순서를 기억해야 올바르게 동작하는가 → 시간 순서 의존
 
 ### 리팩터링 종료 조건
 - 리팩터링은 아래 조건이 모두 충족될 때까지 반복한다.
@@ -1359,15 +1453,15 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../doc/perf/PERF_POLICY.md)에서 전
    - Callback API Policy의 canonical 이름 3개(`onReceive`, `onSubscribe`,
      `onSendReady`)가 해당 소켓에 존재한다.
 
-3. **Shallow wrapper 제거**
+3. **얕은 래퍼 제거**
    - native 함수를 1:1로 감싸기만 하는 public 타입이 없다.
    - 모든 public 타입이 검증, ownership, shape 규칙 중 하나 이상을 캡슐화한다.
 
-4. **Change amplification 해소**
+4. **변경 파급 해소**
    - 동일 규칙이 2개 이상의 모듈에 중복 구현되어 있지 않다.
    - 정책 변경 시 수정해야 할 파일이 1개다.
 
-5. **Information hiding 확보**
+5. **정보 은닉 확보**
    - public API에 raw option bag, raw flag, raw native struct, raw errno가
      노출되지 않는다.
    - 사용자가 internal sequencing을 알지 않아도 API를 올바르게 사용할 수 있다.
@@ -1442,8 +1536,8 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../doc/perf/PERF_POLICY.md)에서 전
   - `recv()` / `tryRecv()` canonical surface 유지 여부 확인
 - callback API
   - callback payload shape가 direct receive shape와 동일한지 재확인
-- single-message convenience
-  - public receive/subscribe convenience overload 잔존 여부 점검
+- 단일 메시지 편의 메서드
+  - public receive/subscribe 편의 오버로드 잔존 여부 점검
 
 ### Option Surface Follow-Ups
 - raw option bag 잔존 여부 조사
@@ -1453,9 +1547,9 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../doc/perf/PERF_POLICY.md)에서 전
 
 ### Error Contract Follow-Ups
 - binding validation 예외와 native 예외가 혼재된 경로 조사
-- managed layer가 errno를 임의 해석하는 경로 조사
+- 바인딩이 errno를 임의로 해석하는 경로 조사
 - `EAGAIN` 외 오류를 잘못 empty/bool 경로로 숨기는 코드 조사
-- blocking send 실패를 무시하거나 swallow 하는 helper/sample 조사
+- blocking send 실패를 무시하는 helper/sample 조사
 
 ### Performance Follow-Ups
 - hot path send/recv 경로의 숨은 복사 조사
@@ -1463,18 +1557,18 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../doc/perf/PERF_POLICY.md)에서 전
   할당 조사
 - callback path와 direct path 비용 차이 조사
 - string/topic/routing-id 변환의 인코딩/디코딩 비용 조사
-- sample과 helper가 느린 fallback 경로를 canonical usage처럼 노출하는지 조사
+- sample과 helper가 느린 대체 경로를 기본 사용법처럼 노출하는지 조사
 
 ### POSD Follow-Ups
-- shallow wrapper만 제공하는 public 타입 조사
-- 한 규칙이 여러 모듈에 흩어진 change amplification 지점 조사
+- 얕은 래퍼만 제공하는 public 타입 조사
+- 한 규칙이 여러 모듈에 흩어진 변경 파급 지점 조사
 - 사용자가 internal sequencing을 알아야 하는 temporal API 조사
 - facade 뒤로 숨길 수 있는 raw/native 개념 누수 지점 조사
 
 ### Ownership and Callback Follow-Ups
 - send failure restore 경로와 consume 경로가 문서와 일치하는지 점검
 - callback 후 frame validity 계약 재검증
-- callback mode와 direct recv 충돌 시 native 계약대로 surface 되는지 점검
+- callback mode와 direct recv 충돌 시 native 계약대로 오류가 전달되는지 점검
 
 ### Test Follow-Ups
 - public surface 변경마다 reflection test 존재 여부 확인

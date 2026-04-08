@@ -62,7 +62,7 @@ impl XPubSocket {
 
     // -- XPUB-specific typed options ---------------------------------------
 
-    pub fn set_verbose(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub(crate) fn set_verbose(&self, enabled: bool) -> Result<(), ZlinkError> {
         set_pub_bool(
             self.inner.handle,
             ffi::zlink_pub_option_t::ZLINK_PUB_OPT_VERBOSE,
@@ -70,7 +70,7 @@ impl XPubSocket {
         )
     }
 
-    pub fn set_verboser(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub(crate) fn set_verboser(&self, enabled: bool) -> Result<(), ZlinkError> {
         set_pub_bool(
             self.inner.handle,
             ffi::zlink_pub_option_t::ZLINK_PUB_OPT_VERBOSER,
@@ -78,7 +78,7 @@ impl XPubSocket {
         )
     }
 
-    pub fn set_nodrop(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub(crate) fn set_nodrop(&self, enabled: bool) -> Result<(), ZlinkError> {
         set_pub_bool(
             self.inner.handle,
             ffi::zlink_pub_option_t::ZLINK_PUB_OPT_NODROP,
@@ -86,7 +86,7 @@ impl XPubSocket {
         )
     }
 
-    pub fn set_manual(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub(crate) fn set_manual(&self, enabled: bool) -> Result<(), ZlinkError> {
         set_pub_bool(
             self.inner.handle,
             ffi::zlink_pub_option_t::ZLINK_PUB_OPT_MANUAL,

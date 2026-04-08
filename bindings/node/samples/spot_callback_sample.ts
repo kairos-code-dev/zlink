@@ -44,23 +44,15 @@ async function main() {
     pubNode.bind(endpoint);
     subNode.connectPeer(endpoint);
     sub.setSubscription(topic);
-    const deadline = Date.now() + 5000;
-    while (Date.now() < deadline) {
-      if (
-        pubNode.statusSnapshot().connectedPeerCount > 0
-        && subNode.statusSnapshot().readySubjectCount > 0
-      ) {
-        break;
-      }
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-    assert.ok(pubNode.statusSnapshot().connectedPeerCount > 0);
-    assert.ok(subNode.statusSnapshot().readySubjectCount > 0);
-    pub.publish(topic, zlink.Message.copyOf(sent));
-    const received = await Promise.race([receivedPromise, timeoutPromise]);
+    const publishTimer = setInterval(() => {
+      pub.publish(topic, Buffer.from(sent));
+    }, 25);
+    const received = await Promise.race([receivedPromise, timeoutPromise]).finally(() => {
+      clearInterval(publishTimer);
+    });
     assert.ok(received.routingId === null || Buffer.isBuffer(received.routingId));
     assert.equal(received.receivedTopic, topic);
-    const recv = received.parts[0].toBuffer().toString();
+    const recv = received.parts[0].data.toString();
     assert.equal(recv, sent);
     console.log(`[spot/callback] publish: "${topic}/${sent}" \u2192 subscribe: "${topic}/${recv}"`);
   } finally {

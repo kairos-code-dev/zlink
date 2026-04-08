@@ -10,29 +10,15 @@
 namespace zlink
 {
 
+namespace service
+{
+class discovery_t;
+}
+
 class service_monitor_handle_t
 {
   public:
     service_monitor_handle_t () : _monitor (NULL) {}
-
-    explicit service_monitor_handle_t (void *monitor_) : _monitor (monitor_) {}
-
-    explicit service_monitor_handle_t (
-      void *target_, service_monitor_event events_ = service_monitor_event::all)
-        : _monitor (NULL)
-    {
-        zlink_service_monitor_open_options_t options;
-        options.events =
-          static_cast<zlink_service_monitor_event_mask_t> (events_);
-        _monitor = zlink_service_monitor_open (target_, &options);
-    }
-
-    explicit service_monitor_handle_t (
-      service::discovery_t &discovery_,
-      service_monitor_event events_ = service_monitor_event::all)
-        : service_monitor_handle_t (discovery_.handle (), events_)
-    {
-    }
 
     ~service_monitor_handle_t () { (void) close (); }
 
@@ -58,47 +44,57 @@ class service_monitor_handle_t
     service_monitor_handle_t &
     operator= (const service_monitor_handle_t &) = delete;
 
-    static service_monitor_handle_t
-    open (void *target_, service_monitor_event events_ = service_monitor_event::all)
-    {
-        return service_monitor_handle_t (target_, events_);
-    }
-
     bool valid () const noexcept { return _monitor != NULL; }
 
     void *handle () noexcept { return _monitor; }
     const void *handle () const noexcept { return _monitor; }
 
-    int on_event (zlink_service_monitor_handler_fn handler_,
-                  void *userdata_ = NULL)
+    int on_event (service_event_handler_fn handler_, void *userdata_ = NULL)
     {
-        return zlink_service_monitor_handler (_monitor, handler_, userdata_);
+        if (!handler_) {
+            errno = EINVAL;
+            return -1;
+        }
+        service_event_handler_fn previous_handler = _event_handler;
+        void *previous_userdata = _event_userdata;
+        _event_handler = handler_;
+        _event_userdata = userdata_;
+        const int rc = zlink_service_monitor_handler (
+          _monitor, &service_monitor_handle_t::event_trampoline, this);
+        if (rc != 0) {
+            _event_handler = previous_handler;
+            _event_userdata = previous_userdata;
+        }
+        return rc;
     }
 
-    ZLINK_CPP_NODISCARD zlink_service_monitor_event_t recv ()
+    ZLINK_CPP_NODISCARD service_event_t recv ()
     {
-        zlink_service_monitor_event_t event;
+        zlink_service_event_t event;
         const int rc = zlink_service_monitor_recv (_monitor, &event, 0);
         throw_on_error (rc);
-        return event;
+        return service_event_t (event);
     }
 
-    ZLINK_CPP_NODISCARD maybe_t<zlink_service_monitor_event_t> try_recv ()
+    ZLINK_CPP_NODISCARD maybe_t<service_event_t> try_recv ()
     {
-        zlink_service_monitor_event_t event;
+        zlink_service_event_t event;
         const int rc =
           zlink_service_monitor_recv (_monitor, &event, ZLINK_DONTWAIT);
         if (rc == 0)
-            return maybe_t<zlink_service_monitor_event_t> (event);
+            return maybe_t<service_event_t> (service_event_t (event));
         if (errno == EAGAIN)
-            return maybe_t<zlink_service_monitor_event_t> ();
+            return maybe_t<service_event_t> ();
         throw_on_error (rc);
-        return maybe_t<zlink_service_monitor_event_t> ();
+        return maybe_t<service_event_t> ();
     }
 
-    int snapshot (zlink_monitor_snapshot_t &snapshot_) const
+    ZLINK_CPP_NODISCARD monitor_snapshot_t snapshot () const
     {
-        return zlink_monitor_snapshot (_monitor, &snapshot_);
+        zlink_monitor_snapshot_t snapshot;
+        const int rc = zlink_monitor_snapshot (_monitor, &snapshot);
+        throw_on_error (rc);
+        return monitor_snapshot_t (snapshot);
     }
 
     int close () noexcept
@@ -108,19 +104,43 @@ class service_monitor_handle_t
 
         void *monitor = _monitor;
         const int rc = zlink_monitor_close (&monitor);
-        if (rc == 0)
+        if (rc == 0) {
             _monitor = NULL;
+            _event_handler = NULL;
+            _event_userdata = NULL;
+        }
         return rc;
     }
 
   private:
+    explicit service_monitor_handle_t (void *monitor_) : _monitor (monitor_) {}
+
+    friend class service::discovery_t;
+
+    static void event_trampoline (const zlink_service_event_t *event_,
+                                  void *userdata_)
+    {
+        service_monitor_handle_t *self =
+          static_cast<service_monitor_handle_t *> (userdata_);
+        if (!self || !self->_event_handler || !event_)
+            return;
+        service_event_t event (*event_);
+        self->_event_handler (&event, self->_event_userdata);
+    }
+
     void *_monitor;
+    service_event_handler_fn _event_handler = NULL;
+    void *_event_userdata = NULL;
 };
 
 inline service_monitor_handle_t
 service::discovery_t::monitor_open (service_monitor_event events_)
 {
-    return service_monitor_handle_t (*this, events_);
+    zlink_service_monitor_open_options_t options;
+    options.events =
+      static_cast<zlink_service_monitor_event_mask_t> (events_);
+    return service_monitor_handle_t (
+      zlink_service_monitor_open (handle (), &options));
 }
 
 } // namespace zlink

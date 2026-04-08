@@ -2,6 +2,10 @@
 
 # Service Discovery
 
+> **Normative status: Illustrative — Needs refresh.**
+> 이 가이드는 설명 목적의 문서이며, API 명칭/시그니처의 정확한 기준은
+> `core/include/zlink.h`와 `bindings/README.md`다.
+
 ## 1. 개요
 
 마이크로서비스 환경에서 서비스들은 통신을 위해 상대방의 네트워크
@@ -237,7 +241,7 @@ void *discovery = zlink_discovery_new(ctx,
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Create a PUB socket and attach it to Discovery */
-void *pub = zlink_socket_new(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:9100");
 zlink_socket_attach_discovery(pub, discovery);
 /* Discovery registers the PUB endpoint and manages heartbeats.

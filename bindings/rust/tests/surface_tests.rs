@@ -106,7 +106,7 @@ fn xsub_socket_has_subscribe_no_send() {
     sock.set_subscription("").unwrap();
 
     let _ = sock.try_subscribe();
-    let _ = sock.topics_count();
+    let _ = sock.sub_options().topics_count();
     sock.on_subscribe(|_topic_message| {}).unwrap();
 }
 
@@ -184,10 +184,17 @@ fn socket_monitor_has_recv_try_recv() {
     let sock = ctx.pair_socket().unwrap();
     sock.bind("inproc://surface-monitor").unwrap();
 
-    let mon = SocketMonitor::open(&sock, MONITOR_EVENT_ALL).unwrap();
+    let mon = SocketMonitor::open(&sock).unwrap();
 
     // Monitor exposes recv() and try_recv()
     let _ = mon.try_recv();
+}
+
+#[test]
+fn message_diagnostic_surface_exists() {
+    let msg = Message::from_bytes(b"surface").unwrap();
+    let _ = msg.ref_count();
+    let _ = msg.get_property("missing");
 }
 
 // ---------------------------------------------------------------------------

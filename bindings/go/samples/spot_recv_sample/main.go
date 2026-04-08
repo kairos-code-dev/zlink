@@ -34,11 +34,7 @@ func main() {
 	samplecommon.MustStep("publisherNode.Bind", publisherNode.Bind(endpoint))
 	samplecommon.MustStep("subscriberNode.ConnectPeer", subscriberNode.ConnectPeer(endpoint))
 	samplecommon.MustStep("subscriber.SetSubscription", subscriber.SetSubscription(topic))
-
-	samplecommon.WaitUntil(5*time.Second, "spot peer connection", func() bool {
-		status, err := subscriberNode.StatusSnapshot()
-		return err == nil && status != nil && status.ConnectedPeerCount > 0
-	})
+	samplecommon.WaitSpotPeerConnected(subscriberNode, 5*time.Second)
 
 	var message *zlink.TopicMessage
 	deadline := time.Now().Add(5 * time.Second)

@@ -3,11 +3,12 @@
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Zlink.Native;
 
 namespace Zlink;
 
-public sealed class Message : IDisposable
+public sealed class Message : IDisposable, IAsyncDisposable
 {
     private ZlinkMsg _msg;
     private bool _valid;
@@ -152,7 +153,7 @@ public sealed class Message : IDisposable
         return encoding.GetString(AsReadOnlySpan());
     }
 
-    public string? GetPropertyString(string property)
+    public string? GetProperty(string property)
     {
         EnsureValid();
         IntPtr ptr = NativeMethods.zlink_msg_gets(ref _msg, property);
@@ -165,6 +166,12 @@ public sealed class Message : IDisposable
     {
         Close();
         GC.SuppressFinalize(this);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     ~Message()

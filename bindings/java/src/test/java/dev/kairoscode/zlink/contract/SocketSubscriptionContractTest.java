@@ -37,15 +37,14 @@ public class SocketSubscriptionContractTest {
     public void publishUsesCanonicalTopicPath() throws Exception {
         TestSupport.assumeNative();
 
-        int readyEvents = MonitorEventType.CONNECTION_READY.getValue();
         CountDownLatch delivered = new CountDownLatch(1);
         AtomicReference<String> topic = new AtomicReference<>();
         AtomicReference<byte[]> payload = new AtomicReference<>();
         try (Context ctx = new Context();
              PubSocket pub = new PubSocket(ctx);
              SubSocket sub = new SubSocket(ctx);
-             var pubMonitor = pub.monitorOpen(readyEvents);
-             var subMonitor = sub.monitorOpen(readyEvents)) {
+             var pubMonitor = pub.monitorOpen(MonitorEventType.CONNECTION_READY);
+             var subMonitor = sub.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             String endpoint = TestSupport.inprocEndpoint("publish-contract");
             sub.onSubscribe((routingId, receivedTopic, received) -> {
                 try (received) {
@@ -77,12 +76,11 @@ public class SocketSubscriptionContractTest {
     public void subscribePullsTopicAwareMessage() {
         TestSupport.assumeNative();
 
-        int readyEvents = MonitorEventType.CONNECTION_READY.getValue();
         try (Context ctx = new Context();
              PubSocket pub = new PubSocket(ctx);
              SubSocket sub = new SubSocket(ctx);
-             var pubMonitor = pub.monitorOpen(readyEvents);
-             var subMonitor = sub.monitorOpen(readyEvents)) {
+             var pubMonitor = pub.monitorOpen(MonitorEventType.CONNECTION_READY);
+             var subMonitor = sub.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             String endpoint = TestSupport.inprocEndpoint("subscribe-contract");
             pub.bind(endpoint);
             sub.setSubscription("topic-b");

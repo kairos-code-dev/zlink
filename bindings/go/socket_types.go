@@ -100,15 +100,15 @@ func (s *socketCore) Close() error {
 
 func (s *socketCore) releaseCallbacks() {
 	if s.recvHandle != 0 {
-		s.recvHandle.Delete()
+		releaseCallbackHandle(s.recvHandle)
 		s.recvHandle = 0
 	}
 	if s.subscribeHandle != 0 {
-		s.subscribeHandle.Delete()
+		releaseCallbackHandle(s.subscribeHandle)
 		s.subscribeHandle = 0
 	}
 	if s.sendReadyHandle != 0 {
-		s.sendReadyHandle.Delete()
+		releaseCallbackHandle(s.sendReadyHandle)
 		s.sendReadyHandle = 0
 	}
 }
@@ -160,18 +160,14 @@ func (s *socketCore) getStringOption(option C.zlink_option_t, capHint int) (stri
 }
 
 func (s *socketCore) setOption(option C.zlink_option_t, ptr unsafe.Pointer, size C.size_t) error {
-	if s == nil || s.closed {
+	if s == nil {
 		return stateError("socket is closed")
 	}
-	return checkRC(C.zlink_set_option(s.handle, option, ptr, size))
+	return setNativeOption(s.handle, s.closed, "socket is closed", option, ptr, size)
 }
 
 func (s *socketCore) setDurationOption(option C.zlink_option_t, value time.Duration) error {
-	ms, err := durationToMillis(value)
-	if err != nil {
-		return err
-	}
-	return s.setIntOption(option, ms)
+	return setNativeDurationOption(s.handle, s.closed, "socket is closed", option, value)
 }
 
 func (s *socketCore) withCString(value string, fn func(*C.char) error) error {
@@ -514,20 +510,11 @@ func (s *connectionSocket) LastEndpoint() (string, error) {
 }
 
 func (s *connectionSocket) setPubBoolOption(option C.zlink_pub_option_t, value bool) error {
-	var raw C.int
-	if value {
-		raw = 1
-	}
-	return checkRC(C.zlink_set_pub_option(s.raw(), option, unsafe.Pointer(&raw), C.size_t(C.sizeof_int)))
+	return setNativePubBoolOption(s.raw(), s.socketCore.closed, "socket is closed", option, value)
 }
 
 func (s *connectionSocket) getPubBoolOption(option C.zlink_pub_option_t) (bool, error) {
-	var raw C.int
-	size := C.size_t(C.sizeof_int)
-	if err := checkRC(C.zlink_get_pub_option(s.raw(), option, unsafe.Pointer(&raw), &size)); err != nil {
-		return false, err
-	}
-	return raw != 0, nil
+	return getNativePubBoolOption(s.raw(), s.socketCore.closed, "socket is closed", option)
 }
 
 func (s *connectionSocket) getPubIntOption(option C.zlink_pub_option_t) (int, error) {
@@ -652,13 +639,15 @@ func (s *directSocket) OnReceive(handler func(*Received)) error {
 	if handler == nil {
 		return validationError("receive handler must not be nil")
 	}
-	if s.recvHandle != 0 {
-		s.recvHandle.Delete()
-	}
-	handle := cgo.NewHandle(recvCallback(handler))
+	state := newRecvCallbackState(recvCallback(handler))
+	handle := cgo.NewHandle(state)
 	if err := checkRC(C.zlink_recv_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
+		state.close()
 		handle.Delete()
 		return err
+	}
+	if s.recvHandle != 0 {
+		releaseCallbackHandle(s.recvHandle)
 	}
 	s.recvHandle = handle
 	return nil
@@ -815,13 +804,15 @@ func (s *subscribeSocket) OnSubscribe(handler func(*TopicMessage)) error {
 	if handler == nil {
 		return validationError("subscribe handler must not be nil")
 	}
-	if s.subscribeHandle != 0 {
-		s.subscribeHandle.Delete()
-	}
-	handle := cgo.NewHandle(subscribeCallback(handler))
+	state := newSubscribeCallbackState(subscribeCallback(handler))
+	handle := cgo.NewHandle(state)
 	if err := checkRC(C.zlink_subscribe_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
+		state.close()
 		handle.Delete()
 		return err
+	}
+	if s.subscribeHandle != 0 {
+		releaseCallbackHandle(s.subscribeHandle)
 	}
 	s.subscribeHandle = handle
 	return nil
@@ -847,13 +838,15 @@ func (s *connectionSocket) setSendReady(handler func()) error {
 	if handler == nil {
 		return validationError("send-ready handler must not be nil")
 	}
-	if s.sendReadyHandle != 0 {
-		s.sendReadyHandle.Delete()
-	}
-	handle := cgo.NewHandle(sendReadyCallback(handler))
+	state := newSendReadyCallbackState(sendReadyCallback(handler))
+	handle := cgo.NewHandle(state)
 	if err := checkRC(C.zlink_send_ready_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
+		state.close()
 		handle.Delete()
 		return err
+	}
+	if s.sendReadyHandle != 0 {
+		releaseCallbackHandle(s.sendReadyHandle)
 	}
 	s.sendReadyHandle = handle
 	return nil

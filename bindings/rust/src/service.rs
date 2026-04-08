@@ -59,6 +59,24 @@ impl Registry {
         check_rc(unsafe { ffi::zlink_registry_set_broadcast_interval(self.handle, interval_ms) })
     }
 
+    pub fn set_tls_server(
+        &self,
+        cert_pem: &str,
+        key_pem: &str,
+        require_client_cert: bool,
+    ) -> Result<(), ZlinkError> {
+        set_tls_server(self.handle, cert_pem, key_pem, require_client_cert)
+    }
+
+    pub fn set_tls_client(
+        &self,
+        ca_cert_pem: &str,
+        hostname: &str,
+        trust_system: bool,
+    ) -> Result<(), ZlinkError> {
+        set_tls_client(self.handle, ca_cert_pem, hostname, trust_system)
+    }
+
     pub fn close(&mut self) -> Result<(), ZlinkError> {
         destroy_handle(&mut self.handle, ffi::zlink_registry_destroy)
     }
@@ -642,8 +660,8 @@ impl Discovery {
         Ok(unsafe { Message::from_raw(msg.assume_init()) })
     }
 
-    pub fn monitor_open(&self, events: u32) -> Result<crate::monitor::ServiceMonitor, ZlinkError> {
-        crate::monitor::ServiceMonitor::open(self, events)
+    pub fn monitor_open(&self) -> Result<crate::monitor::ServiceMonitor, ZlinkError> {
+        crate::monitor::ServiceMonitor::open(self)
     }
 
     pub fn member_peers(&self) -> Result<Vec<MemberPeerEntry>, ZlinkError> {
@@ -688,6 +706,15 @@ impl Discovery {
             )
         })?;
         Ok(unsafe { Message::from_raw(msg.assume_init()) })
+    }
+
+    pub fn set_tls_client(
+        &self,
+        ca_cert_pem: &str,
+        hostname: &str,
+        trust_system: bool,
+    ) -> Result<(), ZlinkError> {
+        set_tls_client(self.handle, ca_cert_pem, hostname, trust_system)
     }
 
     #[allow(dead_code)]
@@ -747,6 +774,24 @@ impl SpotNode {
 
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ZlinkError> {
         check_rc(unsafe { ffi::zlink_spot_node_attach_discovery(self.handle, discovery.raw()) })
+    }
+
+    pub fn set_tls_server(
+        &self,
+        cert_pem: &str,
+        key_pem: &str,
+        require_client_cert: bool,
+    ) -> Result<(), ZlinkError> {
+        set_tls_server(self.handle, cert_pem, key_pem, require_client_cert)
+    }
+
+    pub fn set_tls_client(
+        &self,
+        ca_cert_pem: &str,
+        hostname: &str,
+        trust_system: bool,
+    ) -> Result<(), ZlinkError> {
+        set_tls_client(self.handle, ca_cert_pem, hostname, trust_system)
     }
 
     pub fn status_snapshot(&self) -> Result<SpotNodeStatus, ZlinkError> {
@@ -1038,8 +1083,11 @@ impl RegistryQueryClient {
         check_rc(unsafe { ffi::zlink_registry_query_client_connect(self.handle, c.as_ptr()) })
     }
 
-    pub fn snapshot(&self) -> Result<Vec<RegistryTopologyEntry>, ZlinkError> {
-        self.snapshot_query_opt(None)
+    pub fn snapshot(
+        &self,
+        filter: Option<&RegistryTopologyFilter>,
+    ) -> Result<Vec<RegistryTopologyEntry>, ZlinkError> {
+        self.snapshot_query_opt(filter)
     }
 
     pub fn close(&mut self) -> Result<(), ZlinkError> {
@@ -1169,6 +1217,42 @@ fn fixed_cstring(value: &str, label: &str) -> Result<CString, ZlinkError> {
         )));
     }
     CString::new(value).map_err(|_| ZlinkError::validation(format!("{label} contains null byte")))
+}
+
+fn set_tls_server(
+    handle: *mut c_void,
+    cert_pem: &str,
+    key_pem: &str,
+    require_client_cert: bool,
+) -> Result<(), ZlinkError> {
+    let cert = fixed_cstring(cert_pem, "cert_pem")?;
+    let key = fixed_cstring(key_pem, "key_pem")?;
+    check_rc(unsafe {
+        ffi::zlink_set_tls_server(
+            handle,
+            cert.as_ptr(),
+            key.as_ptr(),
+            if require_client_cert { 1 } else { 0 },
+        )
+    })
+}
+
+fn set_tls_client(
+    handle: *mut c_void,
+    ca_cert_pem: &str,
+    hostname: &str,
+    trust_system: bool,
+) -> Result<(), ZlinkError> {
+    let ca = fixed_cstring(ca_cert_pem, "ca_cert_pem")?;
+    let host = fixed_cstring(hostname, "hostname")?;
+    check_rc(unsafe {
+        ffi::zlink_set_tls_client(
+            handle,
+            ca.as_ptr(),
+            host.as_ptr(),
+            if trust_system { 1 } else { 0 },
+        )
+    })
 }
 
 fn destroy_handle(

@@ -717,6 +717,106 @@ inline service_monitor_event operator| (service_monitor_event a,
       static_cast<uint32_t> (a) | static_cast<uint32_t> (b));
 }
 
+struct monitor_event_t
+{
+    monitor_event_t ()
+        : event (monitor_event::closed), value (0), routing_id (), local_address (),
+          remote_address ()
+    {
+    }
+
+    explicit monitor_event_t (const zlink_monitor_event_t &native_)
+        : event (static_cast<monitor_event> (native_.event)),
+          value (native_.value),
+          routing_id (native_.routing_id.data, native_.routing_id.size),
+          local_address (native_.local_addr),
+          remote_address (native_.remote_addr)
+    {
+    }
+
+    monitor_event event;
+    uint64_t value;
+    routing_id_t routing_id;
+    std::string local_address;
+    std::string remote_address;
+};
+
+struct monitor_snapshot_t
+{
+    monitor_snapshot_t ()
+        : state_flags (0), detail_flags (0), snd_pending_msgs (0),
+          rcv_pending_msgs (0)
+    {
+    }
+
+    explicit monitor_snapshot_t (const zlink_monitor_snapshot_t &native_)
+        : state_flags (native_.state_flags),
+          detail_flags (native_.detail_flags),
+          snd_pending_msgs (native_.snd_pending_msgs),
+          rcv_pending_msgs (native_.rcv_pending_msgs)
+    {
+    }
+
+    bool ready () const noexcept
+    {
+        return (state_flags & ZLINK_MONITOR_STATE_READY) != 0u;
+    }
+
+    bool closed () const noexcept
+    {
+        return (state_flags & ZLINK_MONITOR_STATE_CLOSED) != 0u;
+    }
+
+    uint32_t state_flags;
+    uint32_t detail_flags;
+    uint64_t snd_pending_msgs;
+    uint64_t rcv_pending_msgs;
+};
+
+struct service_event_t
+{
+    service_event_t ()
+        : kind (service_kind::socket), event_type (0), status (0),
+          error_code (0), value (0), detail_flags (0), service_name (),
+          endpoint (), routing_id (), subject (),
+          subject_kind (service_event_subject_kind::none)
+    {
+    }
+
+    explicit service_event_t (const zlink_service_event_t &native_)
+        : kind (static_cast<zlink::service_kind> (native_.service_kind)),
+          event_type (native_.event_type),
+          status (native_.status),
+          error_code (native_.error_code),
+          value (native_.value),
+          detail_flags (native_.detail_flags),
+          service_name (native_.service_name),
+          endpoint (native_.endpoint),
+          routing_id (native_.routing_id.data, native_.routing_id.size),
+          subject (native_.subject),
+          subject_kind (
+            static_cast<service_event_subject_kind> (native_.subject_kind))
+    {
+    }
+
+    zlink::service_kind kind;
+    uint32_t event_type;
+    int32_t status;
+    int32_t error_code;
+    uint32_t value;
+    zlink_service_event_detail_mask_t detail_flags;
+    std::string service_name;
+    std::string endpoint;
+    routing_id_t routing_id;
+    std::string subject;
+    service_event_subject_kind subject_kind;
+};
+
+using monitor_event_handler_fn = void (*) (const monitor_event_t *event_,
+                                           void *userdata_);
+using service_event_handler_fn = void (*) (const service_event_t *event_,
+                                           void *userdata_);
+
 enum class registry_socket_role : int
 {
     pub = 1,

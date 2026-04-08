@@ -15,9 +15,9 @@ test('routing id accepts 255-byte maximum and rejects overflow', () => {
   assert.doesNotThrow(() => dealer.setRoutingId(maxRoutingId));
 
   assert.throws(() => dealer.setRoutingId(overflowRoutingId), /at most 255 bytes/);
-  assert.throws(() => router.send(overflowRoutingId, zlink.Message.empty()), /at most 255 bytes/);
-  assert.throws(() => router.trySend(overflowRoutingId, zlink.Message.empty()), /at most 255 bytes/);
-  assert.throws(() => stream.send(overflowRoutingId, zlink.Message.empty()), /at most 255 bytes/);
+  assert.throws(() => router.send(overflowRoutingId, Buffer.alloc(0)), /at most 255 bytes/);
+  assert.throws(() => router.trySend(overflowRoutingId, Buffer.alloc(0)), /at most 255 bytes/);
+  assert.throws(() => stream.send(overflowRoutingId, Buffer.alloc(0)), /at most 255 bytes/);
 
   stream.close();
   router.close();

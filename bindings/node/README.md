@@ -8,6 +8,7 @@ Aligned Node bindings for `libzlink`.
   `new StreamSocket(ctx)`
 - `new PubSocket(ctx)`, `new XPubSocket(ctx)`
 - `new SubSocket(ctx)`, `new XSubSocket(ctx)`
+- `Context.options: ContextOptions`, `Context.shutdown()`, `Context.close()`
 - connection lifecycle: `bind(endpoint)`, `unbind(endpoint)`
 - connectable sockets: `connect(endpoint)`, `disconnect(endpoint)`
 - discovery attachment: `attachDiscovery(discovery)` on `DealerSocket`,
@@ -25,6 +26,8 @@ Aligned Node bindings for `libzlink`.
 - `XPubSocket`: `receiveSubscriptionEvent()`,
   `tryReceiveSubscriptionEvent()`
 - `StreamSocket`: `setRoutingId()`, `getRoutingId()`
+- TLS helpers: `setTlsServer(cert, key, requireClient?)`,
+  `setTlsClient(ca, host, trust?)` on sockets, `Registry`, and `SpotNode`
 - canonical option facades:
   - `CommonSocketOptions`
   - `DealerSocketOptions`
@@ -32,11 +35,19 @@ Aligned Node bindings for `libzlink`.
   - `StreamSocketOptions`
   - `PubSocketOptions`
   - `SubSocketOptions`
+- context option facade: `ContextOptions`
 - socket option access: `socket.options.*`
-- monitors: `recv()`, `tryRecv()`
+- monitors: `monitorOpen(events?)` with default `ALL`, then `recv()`,
+  `tryRecv()`, `onEvent()`
 
-`Message.copyOf()` copies payload ownership into the message.
-`Message.wrap()` keeps the caller-owned buffer as the payload source.
+`Context.options` should be configured immediately after constructing the
+context and before creating sockets.
+
+`Message.fromBuffer()` is the canonical constructor. `Message.data` and
+`Message.size` expose the canonical payload view. `Message.close()`,
+`Symbol.dispose`, and `Symbol.asyncDispose` are the cleanup hooks.
+`Message.getProperty(name)` and `Message.refCount()` expose diagnostic
+metadata on canonical receive results.
 Canonical raw sockets intentionally hide opposite-direction methods, so
 `PubSocket` does not expose `send()` or `recv()`, `SubSocket` does not expose
 `send()`, and `StreamSocket` does not expose `connect()` or active stream
@@ -74,19 +85,23 @@ raw socket TLS convenience helpers, raw publish(topic, payload).
 
 `Discovery` uses `connectRegistry()`, `setValue()` / `getValue()`,
 `setMetadata()` / `getMetadata()`, `memberPeers()`,
-`memberPeerMetadata()`, `monitorOpen()`.
+`memberPeerMetadata()`, `monitorOpen(events?)`, `setTlsClient()`.
 
 `SpotNode` uses `bind()`, `connectPeer()` / `disconnectPeer()`,
 `attachDiscovery()`, `statusSnapshot()`, `peersSnapshot()`,
-`peersQuery()`, `subjectsSnapshot(filter?)`.
+`peersQuery()`, `subjectsSnapshot(filter?)`, `setTlsServer()`,
+`setTlsClient()`.
 
 `Registry` uses `bind()`, `setId()`, `addPeer()`, `setHeartbeat()`,
-`setBroadcastInterval()`, `statusSnapshot()`,
-`serviceSummarySnapshot(filter?)`, `memberPeers()`,
-`memberPeerMetadata()`, `topologySnapshot()`, `topologyQuery(filter?)`.
+`setBroadcastInterval()`, `setTlsServer()`, `setTlsClient()`,
+`statusSnapshot()`,
+  `serviceSummarySnapshot(filter?)`, `memberPeers()`,
+  `memberPeerMetadata()`, `topologySnapshot()`, `topologyQuery(filter?)`.
 
 `RegistryQueryClient` uses `connect()` and `snapshot(filter?)`.
 
+`SocketMonitor` uses `recv()`, `tryRecv()`, `onEvent()`, `snapshot()`,
+`close()`.
 `ServiceMonitor` uses `recv()`, `tryRecv()`, `onEvent()`, `snapshot()`,
 `close()`. Service monitor events are returned as typed `ServiceEvent`
 objects.

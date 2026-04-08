@@ -35,9 +35,18 @@ async function main() {
         const topic = 'prices';
         const sent = '101.25';
         sub.setSubscription(topic);
-        pub.publish(topic, zlink.Message.copyOf(sent));
-        const received = sub.subscribe();
-        const recv = received.parts[0].toBuffer().toString();
+        const deadline = Date.now() + 5000;
+        let received = null;
+        while (Date.now() < deadline) {
+            pub.publish(topic, Buffer.from(sent));
+            received = sub.trySubscribe();
+            if (received !== null) {
+                break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        assert.notEqual(received, null);
+        const recv = received.parts[0].data.toString();
         assert.equal(received.topic, topic);
         assert.equal(recv, sent);
         console.log(`[pubsub/recv] publish: "${topic}/${sent}" \u2192 subscribe: "${topic}/${recv}"`);

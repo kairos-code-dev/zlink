@@ -25,16 +25,19 @@ import (
 )
 
 const (
-	MonitorEventAll             = uint32(C.ZLINK_SOCKET_MONITOR_EVENT_ALL)
-	MonitorEventConnectionReady = uint32(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY)
+	MonitorEventAll             MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_ALL)
+	MonitorEventConnectionReady MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY)
 
-	ServiceMonitorEventAll                       = ServiceMonitorEventError | ServiceMonitorEventClosed | ServiceMonitorEventDiscoveryServiceUp | ServiceMonitorEventDiscoveryServiceDown | ServiceMonitorEventDiscoveryProvidersChanged
-	ServiceMonitorEventError                     = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_ERROR)
-	ServiceMonitorEventClosed                    = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_CLOSED)
-	ServiceMonitorEventDiscoveryServiceUp        = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP)
-	ServiceMonitorEventDiscoveryServiceDown      = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN)
-	ServiceMonitorEventDiscoveryProvidersChanged = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED)
+	ServiceMonitorEventAll                       ServiceMonitorEventMask = ServiceMonitorEventError | ServiceMonitorEventClosed | ServiceMonitorEventDiscoveryServiceUp | ServiceMonitorEventDiscoveryServiceDown | ServiceMonitorEventDiscoveryProvidersChanged
+	ServiceMonitorEventError                     ServiceMonitorEventMask = ServiceMonitorEventMask(C.ZLINK_SERVICE_MONITOR_EVENT_ERROR)
+	ServiceMonitorEventClosed                    ServiceMonitorEventMask = ServiceMonitorEventMask(C.ZLINK_SERVICE_MONITOR_EVENT_CLOSED)
+	ServiceMonitorEventDiscoveryServiceUp        ServiceMonitorEventMask = ServiceMonitorEventMask(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP)
+	ServiceMonitorEventDiscoveryServiceDown      ServiceMonitorEventMask = ServiceMonitorEventMask(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN)
+	ServiceMonitorEventDiscoveryProvidersChanged ServiceMonitorEventMask = ServiceMonitorEventMask(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED)
 )
+
+type MonitorEventMask uint32
+type ServiceMonitorEventMask uint32
 
 type MonitorEvent struct {
 	Event      uint64
@@ -99,36 +102,40 @@ type ServiceMonitor struct {
 	callback cgo.Handle
 }
 
-func OpenSocketMonitor(socket SocketTarget, events uint32) (*SocketMonitor, error) {
+func resolveMonitorEvents(events []MonitorEventMask) MonitorEventMask {
+	if len(events) == 0 {
+		return MonitorEventAll
+	}
+	var mask MonitorEventMask
+	for _, event := range events {
+		mask |= event
+	}
+	return mask
+}
+
+func resolveServiceMonitorEvents(events []ServiceMonitorEventMask) ServiceMonitorEventMask {
+	if len(events) == 0 {
+		return ServiceMonitorEventAll
+	}
+	var mask ServiceMonitorEventMask
+	for _, event := range events {
+		mask |= event
+	}
+	return mask
+}
+
+func OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*SocketMonitor, error) {
 	if socket == nil {
 		return nil, validationError("monitor target must not be nil")
 	}
 	options := C.zlink_socket_monitor_open_options_t{
-		events: C.zlink_socket_monitor_event_mask_t(events),
+		events: C.zlink_socket_monitor_event_mask_t(resolveMonitorEvents(events)),
 	}
 	handle := C.zlink_socket_monitor_open(socket.raw(), &options)
 	if handle == nil {
 		return nil, lastError()
 	}
 	return &SocketMonitor{handle: handle}, nil
-}
-
-func OpenServiceMonitor(target any, events uint32) (*ServiceMonitor, error) {
-	var handle unsafe.Pointer
-	switch t := target.(type) {
-	case *Discovery:
-		handle = t.raw()
-	default:
-		return nil, validationError("unsupported service monitor target type %T", target)
-	}
-	options := C.zlink_service_monitor_open_options_t{
-		events: C.zlink_service_monitor_event_mask_t(events),
-	}
-	monitor := C.zlink_service_monitor_open(handle, &options)
-	if monitor == nil {
-		return nil, lastError()
-	}
-	return &ServiceMonitor{handle: monitor}, nil
 }
 
 func (m *SocketMonitor) Recv() (*MonitorEvent, error) {
@@ -168,13 +175,15 @@ func (m *SocketMonitor) OnEvent(handler func(*MonitorEvent)) error {
 	if handler == nil {
 		return validationError("monitor handler must not be nil")
 	}
-	if m.callback != 0 {
-		m.callback.Delete()
-	}
-	handle := cgo.NewHandle(handler)
+	state := newMonitorCallbackState(handler)
+	handle := cgo.NewHandle(state)
 	if err := checkRC(C.zlink_socket_monitor_handler_go_local(m.handle, C.uintptr_t(handle))); err != nil {
+		state.close()
 		handle.Delete()
 		return err
+	}
+	if m.callback != 0 {
+		releaseCallbackHandle(m.callback)
 	}
 	m.callback = handle
 	return nil
@@ -189,7 +198,7 @@ func (m *SocketMonitor) Close() error {
 		return err
 	}
 	if m.callback != 0 {
-		m.callback.Delete()
+		releaseCallbackHandle(m.callback)
 		m.callback = 0
 	}
 	m.handle = nil
@@ -233,13 +242,15 @@ func (m *ServiceMonitor) OnEvent(handler func(*ServiceMonitorEvent)) error {
 	if handler == nil {
 		return validationError("service monitor handler must not be nil")
 	}
-	if m.callback != 0 {
-		m.callback.Delete()
-	}
-	handle := cgo.NewHandle(handler)
+	state := newServiceMonitorCallbackState(handler)
+	handle := cgo.NewHandle(state)
 	if err := checkRC(C.zlink_service_monitor_handler_go_local(m.handle, C.uintptr_t(handle))); err != nil {
+		state.close()
 		handle.Delete()
 		return err
+	}
+	if m.callback != 0 {
+		releaseCallbackHandle(m.callback)
 	}
 	m.callback = handle
 	return nil
@@ -254,7 +265,7 @@ func (m *ServiceMonitor) Close() error {
 		return err
 	}
 	if m.callback != 0 {
-		m.callback.Delete()
+		releaseCallbackHandle(m.callback)
 		m.callback = 0
 	}
 	m.handle = nil
@@ -289,12 +300,24 @@ func serviceMonitorEventFromC(raw C.zlink_service_monitor_event_t) *ServiceMonit
 
 //export goZlinkMonitorTrampoline
 func goZlinkMonitorTrampoline(event *C.zlink_monitor_event_t, userdata C.uintptr_t) {
-	handler := cgo.Handle(userdata).Value().(func(*MonitorEvent))
-	handler(monitorEventFromC(*event))
+	state := cgo.Handle(userdata).Value().(*monitorCallbackState)
+	payload := monitorEventFromC(*event)
+	state.dispatcher.enqueue(&callbackTask{
+		label: "socket-monitor",
+		invoke: func() {
+			state.handler(payload)
+		},
+	})
 }
 
 //export goZlinkServiceMonitorTrampoline
 func goZlinkServiceMonitorTrampoline(event *C.zlink_service_event_t, userdata C.uintptr_t) {
-	handler := cgo.Handle(userdata).Value().(func(*ServiceMonitorEvent))
-	handler(serviceMonitorEventFromC(*event))
+	state := cgo.Handle(userdata).Value().(*serviceMonitorCallbackState)
+	payload := serviceMonitorEventFromC(*event)
+	state.dispatcher.enqueue(&callbackTask{
+		label: "service-monitor",
+		invoke: func() {
+			state.handler(payload)
+		},
+	})
 }

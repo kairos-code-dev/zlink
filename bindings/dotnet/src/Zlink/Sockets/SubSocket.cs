@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
+using Zlink.Service;
+
 namespace Zlink;
 
 public sealed class SubSocket : SubscriberSocketBase
@@ -10,5 +12,10 @@ public sealed class SubSocket : SubscriberSocketBase
         : base(context, SocketType.Sub)
     {
         SubOptions = new SubSocketOptions(this);
+    }
+
+    public void AttachDiscovery(Discovery discovery)
+    {
+        Kernel.AttachDiscovery(discovery);
     }
 }

@@ -23,7 +23,7 @@ void test_zmp_metadata_enabled ()
     zlink::message_t msg;
     assert (recv_msg_with_timeout (server, msg, 2000) == 1);
 
-    const char *sock_type = msg.gets ("Socket-Type");
+    const char *sock_type = msg.get_property ("Socket-Type");
     assert (sock_type != NULL);
     assert (std::string (sock_type) == "PAIR");
 }
@@ -48,7 +48,7 @@ void test_zmp_metadata_disabled ()
     assert (recv_msg_with_timeout (server, msg, 2000) == 1);
 
     errno = 0;
-    const char *sock_type = msg.gets ("Socket-Type");
+    const char *sock_type = msg.get_property ("Socket-Type");
     assert (sock_type == NULL);
     assert (zlink_errno () == EINVAL);
 }

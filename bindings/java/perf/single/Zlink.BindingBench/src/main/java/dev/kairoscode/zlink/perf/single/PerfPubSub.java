@@ -32,7 +32,7 @@ final class PerfPubSub {
         Context subCtx = sharedContext ? pubCtx : PerfUtil.newContext(config);
         try (PubSocket pub = new PubSocket(pubCtx);
              SubSocket sub = new SubSocket(subCtx);
-             var subMonitor = sub.monitorOpen(READY_EVENTS)) {
+             var subMonitor = sub.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             PerfUtil.applyMonitorOptions(subMonitor, config);
             sub.onSubscribe((routingId, recvTopic, received) -> {
                 try (received) {

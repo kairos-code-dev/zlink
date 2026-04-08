@@ -9,6 +9,7 @@ import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.TestSupport;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
@@ -25,15 +26,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Regression tests for send operations inside receive callbacks.
  *
- * <p>The core C API ({@code zlink_send_rid} / {@code zlink_send}) is
- * thread-safe and supports being called from within a
- * {@code zlink_recv_handler} callback.  Before the fix in Socket/SocketCore,
- * blocking sends from callbacks could deadlock the socket I/O thread
- * because the retry loop waited for I/O events that could only be
- * delivered by the very same thread.
- *
- * <p>The fix forces {@code DONTWAIT} on sends issued from callback
- * context so the I/O thread is never blocked in a retry loop.
+ * <p>Blocking send APIs are explicitly rejected from callback context. Callers
+ * that need callback-safe send behavior must use the explicit {@code try*}
+ * APIs instead of relying on an implicit blocking-mode downgrade.
  */
 public class CallbackSendContractTest {
 
@@ -50,9 +45,8 @@ public class CallbackSendContractTest {
              DealerSocket dealer = new DealerSocket(ctx)) {
 
             String endpoint = TestSupport.tcpEndpoint();
-            int connReady = MonitorEventType.CONNECTION_READY.getValue();
-            try (var routerMon = router.monitorOpen(connReady);
-                 var dealerMon = dealer.monitorOpen(connReady)) {
+            try (var routerMon = router.monitorOpen(MonitorEventType.CONNECTION_READY);
+                 var dealerMon = dealer.monitorOpen(MonitorEventType.CONNECTION_READY)) {
                 router.bind(endpoint);
                 dealer.connect(endpoint);
                 routerMon.recv();
@@ -68,16 +62,12 @@ public class CallbackSendContractTest {
                     assertNotNull(rid,
                         "router must receive routing id from dealer");
                     try (Message reply = Message.copyOfUtf8("pong")) {
-                        router.send(rid, reply);
+                        assertEquals(SendResult.SENT, router.trySend(rid, reply));
                     }
                 } catch (Throwable t) {
                     callbackError.set(t);
                 }
             });
-
-            try (Message request = Message.copyOfUtf8("ping")) {
-                dealer.send(request);
-            }
 
             // Dealer receives the reply via callback.
             dealer.onReceive(received -> {
@@ -90,6 +80,10 @@ public class CallbackSendContractTest {
                     replyReceived.countDown();
                 }
             });
+
+            try (Message request = Message.copyOfUtf8("ping")) {
+                dealer.send(request);
+            }
 
             assertTrue(replyReceived.await(
                     TestSupport.DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS),
@@ -114,9 +108,8 @@ public class CallbackSendContractTest {
              PairSocket right = new PairSocket(ctx)) {
 
             String endpoint = TestSupport.tcpEndpoint();
-            int connReady = MonitorEventType.CONNECTION_READY.getValue();
-            try (var leftMon = left.monitorOpen(connReady);
-                 var rightMon = right.monitorOpen(connReady)) {
+            try (var leftMon = left.monitorOpen(MonitorEventType.CONNECTION_READY);
+                 var rightMon = right.monitorOpen(MonitorEventType.CONNECTION_READY)) {
                 left.bind(endpoint);
                 right.connect(endpoint);
                 leftMon.recv();
@@ -130,7 +123,7 @@ public class CallbackSendContractTest {
                     assertEquals("ping",
                         new String(data, StandardCharsets.UTF_8));
                     try (Message reply = Message.copyOfUtf8("pong")) {
-                        right.send(reply);
+                        assertEquals(SendResult.SENT, right.trySend(reply));
                     }
                 } catch (Throwable t) {
                     callbackError.set(t);
@@ -177,9 +170,8 @@ public class CallbackSendContractTest {
              DealerSocket dealer = new DealerSocket(ctx)) {
 
             String endpoint = TestSupport.tcpEndpoint();
-            int connReady = MonitorEventType.CONNECTION_READY.getValue();
-            try (var routerMon = router.monitorOpen(connReady);
-                 var dealerMon = dealer.monitorOpen(connReady)) {
+            try (var routerMon = router.monitorOpen(MonitorEventType.CONNECTION_READY);
+                 var dealerMon = dealer.monitorOpen(MonitorEventType.CONNECTION_READY)) {
                 router.bind(endpoint);
                 dealer.connect(endpoint);
                 routerMon.recv();
@@ -196,7 +188,7 @@ public class CallbackSendContractTest {
                     String index = payload.substring("request-".length());
                     try (Message reply =
                              Message.copyOfUtf8("reply-" + index)) {
-                        router.send(rid, reply);
+                        assertEquals(SendResult.SENT, router.trySend(rid, reply));
                     }
                 } catch (Throwable t) {
                     if (callbackError.get() == null)
@@ -229,6 +221,60 @@ public class CallbackSendContractTest {
                 "multi-round callback+send timed out");
             assertNull(callbackError.get(),
                 "callback raised: " + callbackError.get());
+        }
+    }
+
+    @Test
+    public void blockingSendInsideOnReceiveIsRejectedExplicitly() throws Exception {
+        TestSupport.assumeNative();
+
+        CountDownLatch callbackObserved = new CountDownLatch(1);
+        AtomicReference<Throwable> callbackError = new AtomicReference<>();
+        AtomicReference<String> rejectionMessage = new AtomicReference<>();
+
+        try (Context ctx = new Context();
+             PairSocket left = new PairSocket(ctx);
+             PairSocket right = new PairSocket(ctx)) {
+
+            String endpoint = TestSupport.tcpEndpoint();
+            try (var leftMon = left.monitorOpen(MonitorEventType.CONNECTION_READY);
+                 var rightMon = right.monitorOpen(MonitorEventType.CONNECTION_READY)) {
+                left.bind(endpoint);
+                right.connect(endpoint);
+                leftMon.recv();
+                rightMon.recv();
+            }
+
+            right.onReceive(received -> {
+                try {
+                    try (Message reply = Message.copyOfUtf8("pong")) {
+                        try {
+                            right.send(reply);
+                            throw new IllegalStateException(
+                                "blocking send in callback must be rejected");
+                        } catch (IllegalStateException ex) {
+                            rejectionMessage.set(ex.getMessage());
+                        }
+                    }
+                } catch (Throwable t) {
+                    callbackError.set(t);
+                } finally {
+                    callbackObserved.countDown();
+                }
+            });
+
+            try (Message request = Message.copyOfUtf8("ping")) {
+                left.send(request);
+            }
+
+            assertTrue(callbackObserved.await(
+                    TestSupport.DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS),
+                "callback rejection timed out");
+            assertNull(callbackError.get(),
+                "callback raised: " + callbackError.get());
+            assertNotNull(rejectionMessage.get());
+            assertTrue(rejectionMessage.get().contains("blocking send"));
+            assertTrue(rejectionMessage.get().contains("callback context"));
         }
     }
 }

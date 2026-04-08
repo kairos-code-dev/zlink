@@ -17,6 +17,11 @@ pub struct Context {
     handle: *mut c_void,
 }
 
+/// Typed facade over `zlink_ctx_*` options.
+pub struct ContextOptions<'a> {
+    context: &'a Context,
+}
+
 unsafe impl Send for Context {}
 unsafe impl Sync for Context {}
 
@@ -36,65 +41,22 @@ impl Context {
         check_rc(unsafe { ffi::zlink_ctx_shutdown(self.handle) })
     }
 
-    // -- Typed context options ---------------------------------------------
-
-    /// Set the number of I/O threads (default: 1).
-    pub fn set_io_threads(&self, threads: i32) -> Result<(), ZlinkError> {
-        check_rc(unsafe {
-            ffi::zlink_ctx_set(
-                self.handle,
-                ffi::zlink_ctx_option_t::ZLINK_IO_THREADS,
-                threads,
-            )
-        })
+    /// Access typed context options.
+    pub fn options(&self) -> ContextOptions<'_> {
+        ContextOptions { context: self }
     }
 
-    /// Get the number of I/O threads.
-    pub fn io_threads(&self) -> Result<i32, ZlinkError> {
-        let v =
-            unsafe { ffi::zlink_ctx_get(self.handle, ffi::zlink_ctx_option_t::ZLINK_IO_THREADS) };
-        if v == -1 {
+    pub(crate) fn set_int_option(&self, option: i32, value: i32) -> Result<(), ZlinkError> {
+        check_rc(unsafe { ffi::zlink_ctx_set(self.handle, raw_option(option), value) })
+    }
+
+    pub(crate) fn get_int_option(&self, option: i32) -> Result<i32, ZlinkError> {
+        let value = unsafe { ffi::zlink_ctx_get(self.handle, raw_option(option)) };
+        if value == -1 {
             Err(ZlinkError::last())
         } else {
-            Ok(v)
+            Ok(value)
         }
-    }
-
-    /// Set the maximum number of sockets (default: 4095).
-    pub fn set_max_sockets(&self, max: i32) -> Result<(), ZlinkError> {
-        check_rc(unsafe {
-            ffi::zlink_ctx_set(self.handle, ffi::zlink_ctx_option_t::ZLINK_MAX_SOCKETS, max)
-        })
-    }
-
-    /// Get the maximum number of sockets.
-    pub fn max_sockets(&self) -> Result<i32, ZlinkError> {
-        let v =
-            unsafe { ffi::zlink_ctx_get(self.handle, ffi::zlink_ctx_option_t::ZLINK_MAX_SOCKETS) };
-        if v == -1 {
-            Err(ZlinkError::last())
-        } else {
-            Ok(v)
-        }
-    }
-
-    /// Set whether sockets block on close when there are pending messages
-    /// (default: true).
-    pub fn set_blocky(&self, blocky: bool) -> Result<(), ZlinkError> {
-        check_rc(unsafe {
-            ffi::zlink_ctx_set(
-                self.handle,
-                ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_BLOCKY,
-                if blocky { 1 } else { 0 },
-            )
-        })
-    }
-
-    /// Set the maximum message size (0 = unlimited, default).
-    pub fn set_max_msg_size(&self, size: i32) -> Result<(), ZlinkError> {
-        check_rc(unsafe {
-            ffi::zlink_ctx_set(self.handle, ffi::zlink_ctx_option_t::ZLINK_MAX_MSGSZ, size)
-        })
     }
 
     // -- Socket factories --------------------------------------------------
@@ -142,6 +104,100 @@ impl Context {
     pub fn stream_socket(&self) -> Result<StreamSocket, ZlinkError> {
         StreamSocket::new(self)
     }
+}
+
+impl<'a> ContextOptions<'a> {
+    pub fn io_threads(&self) -> Result<i32, ZlinkError> {
+        self.context
+            .get_int_option(ffi::zlink_ctx_option_t::ZLINK_IO_THREADS as i32)
+    }
+
+    pub fn set_io_threads(&self, threads: i32) -> Result<(), ZlinkError> {
+        self.context
+            .set_int_option(ffi::zlink_ctx_option_t::ZLINK_IO_THREADS as i32, threads)
+    }
+
+    pub fn max_sockets(&self) -> Result<i32, ZlinkError> {
+        self.context
+            .get_int_option(ffi::zlink_ctx_option_t::ZLINK_MAX_SOCKETS as i32)
+    }
+
+    pub fn set_max_sockets(&self, max: i32) -> Result<(), ZlinkError> {
+        self.context
+            .set_int_option(ffi::zlink_ctx_option_t::ZLINK_MAX_SOCKETS as i32, max)
+    }
+
+    pub fn socket_limit(&self) -> Result<i32, ZlinkError> {
+        self.context
+            .get_int_option(ffi::zlink_ctx_option_t::ZLINK_SOCKET_LIMIT as i32)
+    }
+
+    pub fn thread_priority(&self) -> Result<i32, ZlinkError> {
+        self.context.get_int_option(3)
+    }
+
+    pub fn set_thread_priority(&self, priority: i32) -> Result<(), ZlinkError> {
+        self.context.set_int_option(3, priority)
+    }
+
+    pub fn thread_scheduling_policy(&self) -> Result<i32, ZlinkError> {
+        self.context
+            .get_int_option(ffi::zlink_ctx_option_t::ZLINK_THREAD_SCHED_POLICY as i32)
+    }
+
+    pub fn set_thread_scheduling_policy(&self, policy: i32) -> Result<(), ZlinkError> {
+        self.context.set_int_option(
+            ffi::zlink_ctx_option_t::ZLINK_THREAD_SCHED_POLICY as i32,
+            policy,
+        )
+    }
+
+    pub fn max_msg_size(&self) -> Result<i32, ZlinkError> {
+        self.context
+            .get_int_option(ffi::zlink_ctx_option_t::ZLINK_MAX_MSGSZ as i32)
+    }
+
+    pub fn set_max_msg_size(&self, size: i32) -> Result<(), ZlinkError> {
+        self.context
+            .set_int_option(ffi::zlink_ctx_option_t::ZLINK_MAX_MSGSZ as i32, size)
+    }
+
+    pub fn msg_t_size(&self) -> Result<i32, ZlinkError> {
+        self.context
+            .get_int_option(ffi::zlink_ctx_option_t::ZLINK_MSG_T_SIZE as i32)
+    }
+
+    pub fn blocky(&self) -> Result<bool, ZlinkError> {
+        Ok(self
+            .context
+            .get_int_option(ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_BLOCKY as i32)?
+            != 0)
+    }
+
+    pub fn set_blocky(&self, blocky: bool) -> Result<(), ZlinkError> {
+        self.context.set_int_option(
+            ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_BLOCKY as i32,
+            if blocky { 1 } else { 0 },
+        )
+    }
+
+    pub fn add_thread_affinity(&self, cpu: i32) -> Result<(), ZlinkError> {
+        self.context.set_int_option(
+            ffi::zlink_ctx_option_t::ZLINK_THREAD_AFFINITY_CPU_ADD as i32,
+            cpu,
+        )
+    }
+
+    pub fn remove_thread_affinity(&self, cpu: i32) -> Result<(), ZlinkError> {
+        self.context.set_int_option(
+            ffi::zlink_ctx_option_t::ZLINK_THREAD_AFFINITY_CPU_REMOVE as i32,
+            cpu,
+        )
+    }
+}
+
+fn raw_option(value: i32) -> ffi::zlink_ctx_option_t {
+    unsafe { std::mem::transmute(value) }
 }
 
 impl Drop for Context {

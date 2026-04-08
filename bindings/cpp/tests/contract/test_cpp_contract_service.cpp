@@ -3,6 +3,7 @@
 #include "support.hpp"
 
 #include <cstdint>
+#include <type_traits>
 
 namespace {
 
@@ -112,7 +113,7 @@ template<typename T> class has_on_event_t
     template<typename U>
     static auto test (int)
       -> decltype (std::declval<U &> ().on_event (
-                      static_cast<zlink_service_monitor_handler_fn> (NULL),
+                      static_cast<zlink::service_event_handler_fn> (NULL),
                       static_cast<void *> (NULL)),
                     std::true_type ());
 
@@ -148,6 +149,8 @@ static_assert (has_close_t<zlink::service_monitor_handle_t>::value,
                "service_monitor_handle_t must expose close");
 static_assert (has_on_event_t<zlink::service_monitor_handle_t>::value,
                "service_monitor_handle_t must expose on_event");
+static_assert (!std::is_constructible<zlink::service_monitor_handle_t, void *>::value,
+               "service_monitor_handle_t must not expose a raw void* constructor");
 
 void test_registry_query_and_discovery_metadata ()
 {

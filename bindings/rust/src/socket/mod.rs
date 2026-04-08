@@ -489,42 +489,26 @@ impl SocketInner {
     }
 
     pub fn set_linger(&self, d: Duration) -> Result<(), ZlinkError> {
-        set_int_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_LINGER,
-            duration_to_millis(d)?,
-        )
+        set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_LINGER, d)
     }
 
     pub fn set_send_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
-        set_int_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_SNDTIMEO,
-            duration_to_millis(d)?,
-        )
+        set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDTIMEO, d)
     }
 
     pub fn set_recv_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
-        set_int_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_RCVTIMEO,
-            duration_to_millis(d)?,
-        )
+        set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVTIMEO, d)
     }
 
     pub fn set_reconnect_interval(&self, d: Duration) -> Result<(), ZlinkError> {
-        set_int_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_RECONNECT_IVL,
-            duration_to_millis(d)?,
-        )
+        set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RECONNECT_IVL, d)
     }
 
     pub fn set_reconnect_interval_max(&self, d: Duration) -> Result<(), ZlinkError> {
-        set_int_opt(
+        set_duration_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_RECONNECT_IVL_MAX,
-            duration_to_millis(d)?,
+            d,
         )
     }
 
@@ -553,10 +537,10 @@ impl SocketInner {
     }
 
     pub fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ZlinkError> {
-        set_int_opt(
+        set_bool_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_TCP_KEEPALIVE,
-            if enabled { 1 } else { 0 },
+            enabled,
         )
     }
 
@@ -585,74 +569,58 @@ impl SocketInner {
     }
 
     pub fn set_tcp_nodelay(&self, enabled: bool) -> Result<(), ZlinkError> {
-        set_int_opt(
+        set_bool_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_TCP_NODELAY,
-            if enabled { 1 } else { 0 },
+            enabled,
         )
     }
 
     pub fn set_ipv6(&self, enabled: bool) -> Result<(), ZlinkError> {
-        set_int_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_IPV6,
-            if enabled { 1 } else { 0 },
-        )
+        set_bool_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_IPV6, enabled)
     }
 
     pub fn set_immediate(&self, enabled: bool) -> Result<(), ZlinkError> {
-        set_int_opt(
+        set_bool_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_IMMEDIATE,
-            if enabled { 1 } else { 0 },
+            enabled,
         )
     }
 
     pub fn set_conflate(&self, enabled: bool) -> Result<(), ZlinkError> {
-        set_int_opt(
+        set_bool_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_CONFLATE,
-            if enabled { 1 } else { 0 },
+            enabled,
         )
     }
 
     pub fn set_connect_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
-        set_int_opt(
+        set_duration_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_CONNECT_TIMEOUT,
-            duration_to_millis(d)?,
+            d,
         )
     }
 
     pub fn set_handshake_interval(&self, d: Duration) -> Result<(), ZlinkError> {
-        set_int_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_HANDSHAKE_IVL,
-            duration_to_millis(d)?,
-        )
+        set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_HANDSHAKE_IVL, d)
     }
 
     pub fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ZlinkError> {
-        set_int_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_IVL,
-            duration_to_millis(d)?,
-        )
+        set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_IVL, d)
     }
 
     pub fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ZlinkError> {
-        set_int_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_TTL,
-            duration_to_millis(d)?,
-        )
+        set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_TTL, d)
     }
 
     pub fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
-        set_int_opt(
+        set_duration_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_TIMEOUT,
-            duration_to_millis(d)?,
+            d,
         )
     }
 
@@ -880,6 +848,22 @@ fn set_int_opt(
     })
 }
 
+fn set_bool_opt(
+    handle: *mut c_void,
+    opt: ffi::zlink_option_t,
+    enabled: bool,
+) -> Result<(), ZlinkError> {
+    set_int_opt(handle, opt, if enabled { 1 } else { 0 })
+}
+
+fn set_duration_opt(
+    handle: *mut c_void,
+    opt: ffi::zlink_option_t,
+    duration: Duration,
+) -> Result<(), ZlinkError> {
+    set_int_opt(handle, opt, duration_to_millis(duration)?)
+}
+
 fn get_int_opt(handle: *mut c_void, opt: ffi::zlink_option_t) -> Result<i32, ZlinkError> {
     let mut value: i32 = 0;
     let mut len = std::mem::size_of::<i32>();
@@ -911,43 +895,43 @@ macro_rules! impl_base_socket {
             pub fn last_endpoint(&self) -> Result<String, ZlinkError> {
                 self.inner.last_endpoint()
             }
-            pub fn set_linger(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_linger(&self, d: Duration) -> Result<(), ZlinkError> {
                 self.inner.set_linger(d)
             }
-            pub fn set_max_msg_size(&self, bytes: i64) -> Result<(), ZlinkError> {
+            pub(crate) fn set_max_msg_size(&self, bytes: i64) -> Result<(), ZlinkError> {
                 self.inner.set_max_msg_size(bytes)
             }
-            pub fn set_backlog(&self, value: i32) -> Result<(), ZlinkError> {
+            pub(crate) fn set_backlog(&self, value: i32) -> Result<(), ZlinkError> {
                 self.inner.set_backlog(value)
             }
-            pub fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ZlinkError> {
+            pub(crate) fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ZlinkError> {
                 self.inner.set_tcp_keepalive(enabled)
             }
-            pub fn set_tcp_nodelay(&self, enabled: bool) -> Result<(), ZlinkError> {
+            pub(crate) fn set_tcp_nodelay(&self, enabled: bool) -> Result<(), ZlinkError> {
                 self.inner.set_tcp_nodelay(enabled)
             }
-            pub fn set_ipv6(&self, enabled: bool) -> Result<(), ZlinkError> {
+            pub(crate) fn set_ipv6(&self, enabled: bool) -> Result<(), ZlinkError> {
                 self.inner.set_ipv6(enabled)
             }
-            pub fn set_immediate(&self, enabled: bool) -> Result<(), ZlinkError> {
+            pub(crate) fn set_immediate(&self, enabled: bool) -> Result<(), ZlinkError> {
                 self.inner.set_immediate(enabled)
             }
-            pub fn set_reconnect_interval(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_reconnect_interval(&self, d: Duration) -> Result<(), ZlinkError> {
                 self.inner.set_reconnect_interval(d)
             }
-            pub fn set_reconnect_interval_max(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_reconnect_interval_max(&self, d: Duration) -> Result<(), ZlinkError> {
                 self.inner.set_reconnect_interval_max(d)
             }
-            pub fn set_connect_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_connect_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
                 self.inner.set_connect_timeout(d)
             }
-            pub fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ZlinkError> {
                 self.inner.set_heartbeat_interval(d)
             }
-            pub fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ZlinkError> {
                 self.inner.set_heartbeat_ttl(d)
             }
-            pub fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
                 self.inner.set_heartbeat_timeout(d)
             }
             pub fn set_tls_server(
@@ -1023,16 +1007,16 @@ macro_rules! impl_send_options {
     ($ty:ident) => {
         #[allow(dead_code)]
         impl $ty {
-            pub fn set_send_hwm(&self, value: i32) -> Result<(), ZlinkError> {
+            pub(crate) fn set_send_hwm(&self, value: i32) -> Result<(), ZlinkError> {
                 self.inner.set_send_hwm(value)
             }
-            pub fn send_hwm(&self) -> Result<i32, ZlinkError> {
+            pub(crate) fn send_hwm(&self) -> Result<i32, ZlinkError> {
                 self.inner.send_hwm()
             }
-            pub fn set_send_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_send_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
                 self.inner.set_send_timeout(d)
             }
-            pub fn set_send_buffer_size(&self, bytes: i32) -> Result<(), ZlinkError> {
+            pub(crate) fn set_send_buffer_size(&self, bytes: i32) -> Result<(), ZlinkError> {
                 self.inner.set_send_buffer_size(bytes)
             }
         }
@@ -1044,16 +1028,16 @@ macro_rules! impl_recv_options {
     ($ty:ident) => {
         #[allow(dead_code)]
         impl $ty {
-            pub fn set_recv_hwm(&self, value: i32) -> Result<(), ZlinkError> {
+            pub(crate) fn set_recv_hwm(&self, value: i32) -> Result<(), ZlinkError> {
                 self.inner.set_recv_hwm(value)
             }
-            pub fn recv_hwm(&self) -> Result<i32, ZlinkError> {
+            pub(crate) fn recv_hwm(&self) -> Result<i32, ZlinkError> {
                 self.inner.recv_hwm()
             }
-            pub fn set_recv_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_recv_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
                 self.inner.set_recv_timeout(d)
             }
-            pub fn set_recv_buffer_size(&self, bytes: i32) -> Result<(), ZlinkError> {
+            pub(crate) fn set_recv_buffer_size(&self, bytes: i32) -> Result<(), ZlinkError> {
                 self.inner.set_recv_buffer_size(bytes)
             }
         }

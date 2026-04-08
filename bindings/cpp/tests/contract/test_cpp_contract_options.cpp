@@ -84,6 +84,35 @@ template<typename T> class has_sub_socket_options_facade_t
     static const bool value = decltype (test<T> (0))::value;
 };
 
+template<typename T> class has_context_options_facade_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (std::declval<U &> ().ioThreads (),
+                    std::declval<U &> ().ioThreads (1),
+                    std::declval<U &> ().maxSockets (),
+                    std::declval<U &> ().maxSockets (1),
+                    std::declval<U &> ().maxMsgSize (),
+                    std::declval<U &> ().maxMsgSize (1),
+                    std::declval<U &> ().threadPriority (),
+                    std::declval<U &> ().threadPriority (1),
+                    std::declval<U &> ().threadSchedulingPolicy (),
+                    std::declval<U &> ().threadSchedulingPolicy (1),
+                    std::declval<U &> ().blocky (),
+                    std::declval<U &> ().blocky (true),
+                    std::declval<U &> ().socketLimit (),
+                    std::declval<U &> ().msgTSize (),
+                    std::declval<U &> ().addThreadAffinity (0),
+                    std::declval<U &> ().removeThreadAffinity (0),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
 template<typename SpotT> class has_typed_pub_option_set_t
 {
   private:
@@ -136,6 +165,9 @@ static_assert (has_pub_socket_options_facade_t<
 static_assert (has_sub_socket_options_facade_t<
                  zlink::sub_socket_options_t>::value,
                "sub_socket_options_t must exist");
+static_assert (has_context_options_facade_t<
+                 zlink::context_options_t>::value,
+               "context_options_t must exist");
 
 template<typename SocketT> class has_typed_router_option_set_t
 {
@@ -176,11 +208,18 @@ static_assert (has_typed_router_option_get_t<zlink::router_socket_t>::value,
 void test_context_options ()
 {
     zlink::context_t ctx;
-    assert (ctx.set (zlink::context_option::blocky, 0) == 0);
+    zlink::context_options_t options = ctx.options ();
+    assert (options.blocky (false) == 0);
+    assert (!options.blocky ());
 
-    int blocky = -1;
-    assert (ctx.get (zlink::context_option::blocky, blocky) == 0);
-    assert (blocky == 0);
+    assert (options.ioThreads (2) == 0);
+    assert (options.ioThreads () == 2);
+    assert (options.maxSockets (128) == 0);
+    assert (options.maxSockets () == 128);
+    assert (options.addThreadAffinity (0) == 0);
+    assert (options.removeThreadAffinity (0) == 0);
+    assert (options.socketLimit () >= options.maxSockets ());
+    assert (options.msgTSize () > 0);
 }
 
 void test_socket_common_and_router_options ()

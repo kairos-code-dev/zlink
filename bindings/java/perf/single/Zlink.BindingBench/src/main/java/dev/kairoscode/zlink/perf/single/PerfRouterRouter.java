@@ -34,8 +34,8 @@ final class PerfRouterRouter {
         Context senderCtx = sharedContext ? receiverCtx : PerfUtil.newContext(config);
         try (RouterSocket receiver = new RouterSocket(receiverCtx);
              RouterSocket sender = new RouterSocket(senderCtx);
-             var receiverMonitor = receiver.monitorOpen(READY_EVENTS);
-             var senderMonitor = sender.monitorOpen(READY_EVENTS)) {
+             var receiverMonitor = receiver.monitorOpen(MonitorEventType.CONNECTION_READY);
+             var senderMonitor = sender.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             Duration readyTimeout = Duration.ofMillis(config.connectReadyTimeoutMs());
             PerfUtil.applyMonitorOptions(receiverMonitor, config);
             PerfUtil.applyMonitorOptions(senderMonitor, config);

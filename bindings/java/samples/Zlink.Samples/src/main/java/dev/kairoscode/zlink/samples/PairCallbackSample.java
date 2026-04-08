@@ -16,8 +16,10 @@ public final class PairCallbackSample {
         try (Context ctx = new Context();
              PairSocket server = new PairSocket(ctx);
              PairSocket client = new PairSocket(ctx);
-             var serverMonitor = server.monitorOpen(SampleSupport.CONNECTION_READY_EVENT);
-             var clientMonitor = client.monitorOpen(SampleSupport.CONNECTION_READY_EVENT)) {
+             var serverMonitor = server.monitorOpen(
+                 dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY);
+             var clientMonitor = client.monitorOpen(
+                 dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY)) {
             server.bind(endpoint);
             client.connect(endpoint);
             SampleSupport.waitConnected(serverMonitor, clientMonitor);

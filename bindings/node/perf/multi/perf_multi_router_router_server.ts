@@ -26,7 +26,7 @@ async function main() {
           continue;
         }
         if (received.routingId) {
-          router.send(received.routingId, received.parts.map((part) => part.toBuffer()));
+          router.send(received.routingId, received.parts.map((part) => part.data));
         }
       }
     })();

@@ -78,6 +78,20 @@ func (n *SpotNode) DisconnectPeer(endpoint string) error {
 	})
 }
 
+func (n *SpotNode) SetTLSServer(certPath string, keyPath string, requireClientCert bool) error {
+	if n == nil || n.closed {
+		return stateError("spot node is closed")
+	}
+	return setTLSServer(n.raw(), certPath, keyPath, requireClientCert)
+}
+
+func (n *SpotNode) SetTLSClient(caCertPath string, hostname string, trustSystem bool) error {
+	if n == nil || n.closed {
+		return stateError("spot node is closed")
+	}
+	return setTLSClient(n.raw(), caCertPath, hostname, trustSystem)
+}
+
 func (n *SpotNode) Spot() (*Spot, error) {
 	if n == nil || n.closed {
 		return nil, stateError("spot node is closed")
@@ -150,22 +164,24 @@ func (s *spotCore) Close() error {
 }
 
 func (s *spotCore) setOption(option C.zlink_option_t, ptr unsafe.Pointer, size C.size_t) error {
-	if s == nil || s.closed {
+	if s == nil {
 		return stateError("spot is closed")
 	}
-	return checkRC(C.zlink_set_option(s.handle, option, ptr, size))
+	return setNativeOption(s.handle, s.closed, "spot is closed", option, ptr, size)
 }
 
 func (s *spotCore) setIntOption(option C.zlink_option_t, value int32) error {
-	return s.setOption(option, unsafe.Pointer(&value), C.size_t(C.sizeof_int))
+	if s == nil {
+		return stateError("spot is closed")
+	}
+	return setNativeIntOption(s.handle, s.closed, "spot is closed", option, value)
 }
 
 func (s *spotCore) setDurationOption(option C.zlink_option_t, value time.Duration) error {
-	ms, err := durationToMillis(value)
-	if err != nil {
-		return err
+	if s == nil {
+		return stateError("spot is closed")
 	}
-	return s.setIntOption(option, ms)
+	return setNativeDurationOption(s.handle, s.closed, "spot is closed", option, value)
 }
 
 func (s *spotCore) withCString(value string, fn func(*C.char) error) error {
@@ -219,11 +235,10 @@ func (s *Spot) SetSendTimeout(value time.Duration) error {
 }
 
 func (s *Spot) SetNoDrop(value bool) error {
-	var raw C.int
-	if value {
-		raw = 1
+	if s == nil || s.core == nil {
+		return stateError("spot is closed")
 	}
-	return checkRC(C.zlink_set_pub_option(s.raw(), C.ZLINK_PUB_OPT_NODROP, unsafe.Pointer(&raw), C.size_t(C.sizeof_int)))
+	return setNativePubBoolOption(s.raw(), s.core.closed, "spot is closed", C.ZLINK_PUB_OPT_NODROP, value)
 }
 
 func (s *Spot) Publish(topic string, parts ...*Message) error {
@@ -276,20 +291,6 @@ func (s *Spot) TryPublish(topic string, parts ...*Message) (SendResult, error) {
 	return sendResult, nil
 }
 
-func (s *Spot) SetTLSServer(certPath string, keyPath string, requireClientCert bool) error {
-	if s == nil || s.core == nil || s.core.closed {
-		return stateError("spot is closed")
-	}
-	return setTLSServer(s.raw(), certPath, keyPath, requireClientCert)
-}
-
-func (s *Spot) SetTLSClient(caCertPath string, hostname string, trustSystem bool) error {
-	if s == nil || s.core == nil || s.core.closed {
-		return stateError("spot is closed")
-	}
-	return setTLSClient(s.raw(), caCertPath, hostname, trustSystem)
-}
-
 func (s *Spot) SetSubscription(filter string) error {
 	return s.core.withCString(filter, func(cstr *C.char) error {
 		return checkRC(C.zlink_set_subscription(s.raw(), cstr))
@@ -318,13 +319,15 @@ func (s *Spot) OnSubscribe(handler func(*TopicMessage)) error {
 	if handler == nil {
 		return validationError("subscribe handler must not be nil")
 	}
-	if s.core.subscribeHandle != 0 {
-		s.core.subscribeHandle.Delete()
-	}
-	handle := cgo.NewHandle(subscribeCallback(handler))
+	state := newSubscribeCallbackState(subscribeCallback(handler))
+	handle := cgo.NewHandle(state)
 	if err := checkRC(C.zlink_spot_subscribe_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
+		state.close()
 		handle.Delete()
 		return err
+	}
+	if s.core.subscribeHandle != 0 {
+		releaseCallbackHandle(s.core.subscribeHandle)
 	}
 	s.core.subscribeHandle = handle
 	return nil
@@ -337,13 +340,15 @@ func (s *Spot) OnSendReady(handler func()) error {
 	if s == nil || s.core == nil || s.core.closed {
 		return stateError("spot is closed")
 	}
-	if s.core.sendReadyHandle != 0 {
-		s.core.sendReadyHandle.Delete()
-	}
-	handle := cgo.NewHandle(sendReadyCallback(handler))
+	state := newSendReadyCallbackState(sendReadyCallback(handler))
+	handle := cgo.NewHandle(state)
 	if err := checkRC(C.zlink_spot_send_ready_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
+		state.close()
 		handle.Delete()
 		return err
+	}
+	if s.core.sendReadyHandle != 0 {
+		releaseCallbackHandle(s.core.sendReadyHandle)
 	}
 	s.core.sendReadyHandle = handle
 	return nil

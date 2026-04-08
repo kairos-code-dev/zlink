@@ -1,6 +1,7 @@
 package dev.kairoscode.zlink.contract;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.ContextOptions;
 import dev.kairoscode.zlink.TestSupport;
 import java.lang.reflect.Method;
 import org.junit.jupiter.api.Test;
@@ -16,22 +17,36 @@ public class ContextContractTest {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context()) {
+            ContextOptions options = ctx.options();
+            assertTrue(hasPublicMethod(Context.class, "options"));
+            assertEquals(ContextOptions.class, options.getClass());
             assertFalse(hasPublicMethod(Context.class, "setOption"));
             assertFalse(hasPublicMethod(Context.class, "getOption"));
-            assertDoesNotThrow(() -> ctx.ioThreads(2));
-            assertEquals(2, ctx.ioThreads());
-            assertTrue(ctx.socketLimit() >= ctx.maxSockets());
-            assertDoesNotThrow(() -> ctx.blocky(true));
-            assertTrue(ctx.blocky());
-            assertDoesNotThrow(() -> ctx.blocky(false));
-            assertFalse(ctx.blocky());
-            assertTrue(ctx.messageStructSize() > 0);
+            assertFalse(hasPublicMethod(Context.class, "ioThreads"));
+            assertFalse(hasPublicMethod(Context.class, "maxSockets"));
+            assertFalse(hasPublicMethod(Context.class, "threadSchedPolicy"));
+            assertFalse(hasPublicMethod(Context.class, "messageStructSize"));
+            assertFalse(hasPublicMethod(ContextOptions.class, "addThreadAffinityCpu"));
+            assertFalse(hasPublicMethod(ContextOptions.class, "removeThreadAffinityCpu"));
+            assertTrue(hasPublicMethod(ContextOptions.class, "addThreadAffinity", int.class));
+            assertTrue(hasPublicMethod(ContextOptions.class, "removeThreadAffinity", int.class));
+            assertDoesNotThrow(() -> options.ioThreads(2));
+            assertEquals(2, options.ioThreads());
+            assertTrue(options.socketLimit() >= options.maxSockets());
+            assertDoesNotThrow(() -> options.blocky(true));
+            assertTrue(options.blocky());
+            assertDoesNotThrow(() -> options.blocky(false));
+            assertFalse(options.blocky());
+            assertTrue(options.msgTSize() > 0);
         }
     }
 
-    private static boolean hasPublicMethod(Class<?> type, String name) {
+    private static boolean hasPublicMethod(Class<?> type, String name,
+                                           Class<?>... parameterTypes) {
         for (Method method : type.getMethods()) {
-            if (method.getName().equals(name))
+            if (method.getName().equals(name)
+                && java.util.Arrays.equals(method.getParameterTypes(),
+                    parameterTypes))
                 return true;
         }
         return false;

@@ -21,8 +21,8 @@ fn main() {
 
     for i in 0..settings.clients {
         let sock = ctx.dealer_socket().expect("dealer");
-        sock.set_send_hwm(settings.hwm).expect("sndhwm");
-        sock.set_recv_hwm(settings.hwm).expect("rcvhwm");
+        sock.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
+        sock.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
         sock.connect(&args.endpoint).expect("connect");
         poller.add_socket(&sock, i, POLLIN).expect("poller add");
         sockets.push(sock);

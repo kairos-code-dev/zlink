@@ -15,7 +15,7 @@ fn main() {
     let mut sockets: Vec<SubSocket> = Vec::with_capacity(settings.clients);
     for i in 0..settings.clients {
         let sub = ctx.sub_socket().expect("sub");
-        sub.set_recv_hwm(settings.hwm).expect("rcvhwm");
+        sub.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
         sub.connect(&args.endpoint).expect("connect");
         sub.set_subscription("").expect("subscribe");
         poller.add_socket(&sub, i, POLLIN).expect("poller add");

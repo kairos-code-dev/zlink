@@ -15,7 +15,7 @@ func TestRuntimeVersionIsAvailable(t *testing.T) {
 
 func TestContextLifecycle(t *testing.T) {
 	ctx := newContext(t)
-	if _, err := ctx.IOThreads(); err != nil {
+	if _, err := ctx.Options().IOThreads(); err != nil {
 		t.Fatalf("IOThreads() error = %v", err)
 	}
 	if err := ctx.Shutdown(); err != nil {

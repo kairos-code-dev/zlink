@@ -38,6 +38,22 @@ public class CommonSocketOptions {
         socket.setOption(SocketOptions.RCVHWM, value);
     }
 
+    public int sendBuffer() {
+        return socket.getOption(SocketOptions.SNDBUF);
+    }
+
+    public void sendBuffer(int value) {
+        socket.setOption(SocketOptions.SNDBUF, value);
+    }
+
+    public int recvBuffer() {
+        return socket.getOption(SocketOptions.RCVBUF);
+    }
+
+    public void recvBuffer(int value) {
+        socket.setOption(SocketOptions.RCVBUF, value);
+    }
+
     public Duration sendTimeout() {
         return Duration.ofMillis(socket.getOption(SocketOptions.SNDTIMEO));
     }
@@ -54,6 +70,15 @@ public class CommonSocketOptions {
     public void recvTimeout(Duration value) {
         Objects.requireNonNull(value, "value");
         socket.setOption(SocketOptions.RCVTIMEO, toIntMillis(value, "value"));
+    }
+
+    public Duration handshakeInterval() {
+        return Duration.ofMillis(socket.getOption(SocketOptions.HANDSHAKE_IVL));
+    }
+
+    public void handshakeInterval(Duration value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.HANDSHAKE_IVL, toIntMillis(value, "value"));
     }
 
     public boolean immediate() {
@@ -119,6 +144,14 @@ public class CommonSocketOptions {
 
     public void tcpKeepaliveInterval(int value) {
         socket.setOption(SocketOptions.TCP_KEEPALIVE_INTVL, value);
+    }
+
+    public int tcpMaxRt() {
+        return socket.getOption(SocketOptions.TCP_MAXRT);
+    }
+
+    public void tcpMaxRt(int value) {
+        socket.setOption(SocketOptions.TCP_MAXRT, value);
     }
 
     public Duration heartbeatInterval() {

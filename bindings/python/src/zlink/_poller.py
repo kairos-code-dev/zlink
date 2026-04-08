@@ -106,6 +106,12 @@ class Poller:
     def __exit__(self, exc_type, exc, tb):
         self.close()
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.close()
+
     def _remove_item(self, predicate):
         for key, item in list(self._items.items()):
             if predicate(item):

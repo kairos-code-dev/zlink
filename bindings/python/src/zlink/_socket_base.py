@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
+import errno
+import queue
 import threading
-import warnings
 
-from ._enums import SendResult, SocketOption, SocketType
+from ._enums import MonitorEvent, SendResult, SocketOption, SocketType
 from ._ffi import ZlinkMsg, lib
 from ._core import (
     Message,
@@ -31,11 +32,11 @@ from ._core import (
     _validated_int32,
     _validated_routing_id_bytes,
     _send_buffer,
+    ZlinkError,
 )
 
-_DONTWAIT = 0x0001
-
 _callback_depth = threading.local()
+_CALLBACK_SENTINEL = object()
 
 
 def _in_callback():
@@ -50,25 +51,19 @@ def _leave_callback():
     _callback_depth.depth = getattr(_callback_depth, "depth", 0) - 1
 
 
-def _callback_send_flags(flags):
-    """When inside a callback, force DONTWAIT to prevent deadlock.
-
-    Blocking sends from a callback run on the socket I/O thread.  If the
-    send needs to retry (pipe full / EAGAIN), the retry loop blocks on
-    ``process_commands`` -- which waits for I/O events that can only be
-    delivered by the very same I/O thread, causing a deadlock.
-
-    Forcing ``DONTWAIT`` avoids the retry loop.  If the pipe is full the
-    send returns immediately with EAGAIN, which the binding surfaces as
-    an exception instead of hanging forever.
-    """
+def _ensure_not_in_callback(operation):
     if _in_callback():
-        return int(flags) | _DONTWAIT
-    return int(flags)
+        raise ZlinkError(
+            errno.EDEADLK,
+            f"{operation} is not allowed from receive callback context",
+        )
 
 
-def _compat_warning(message):
-    warnings.warn(message, DeprecationWarning, stacklevel=3)
+def _clone_received_owner(parts_ptr, part_count):
+    parts_array = (ZlinkMsg * part_count)()
+    for index in range(part_count):
+        parts_array[index] = _clone_native_msg(parts_ptr[index])
+    return _ReceivedPartsOwner(parts_array, part_count)
 
 
 def _native_socket_type(sock_type):
@@ -274,6 +269,12 @@ class _SocketHandle:
         if rc != 0:
             _raise_last_error()
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.close()
+
 
 class _BaseSocket:
     _socket_type_value = None
@@ -316,10 +317,19 @@ class _BaseSocket:
         self._socket_type = socket_type
         self._recv_handler = None
         self._recv_handler_cb = None
+        self._recv_handler_thread = None
+        self._recv_handler_stop = None
+        self._recv_handler_queue = None
         self._subscribe_handler = None
         self._subscribe_handler_cb = None
+        self._subscribe_handler_thread = None
+        self._subscribe_handler_stop = None
+        self._subscribe_handler_queue = None
         self._send_ready_handler = None
         self._send_ready_handler_cb = None
+        self._send_ready_handler_thread = None
+        self._send_ready_handler_stop = None
+        self._send_ready_handler_queue = None
         self.options = CommonSocketOptions(self)
 
     @property
@@ -349,12 +359,12 @@ class _BaseSocket:
             _raise_last_error()
 
     def _send_native_parts(self, native_parts, flags):
+        _ensure_not_in_callback("blocking send")
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
-        effective_flags = _callback_send_flags(flags)
-        rc = lib().zlink_send(self._handle, parts_array, part_count, effective_flags)
+        rc = lib().zlink_send(self._handle, parts_array, part_count, int(flags))
         if rc < 0:
             for index in range(part_count):
                 lib().zlink_msg_close(ctypes.byref(parts_array[index]))
@@ -362,14 +372,14 @@ class _BaseSocket:
         return rc
 
     def _send_native_parts_to_routing_id(self, routing_id, native_parts, flags):
+        _ensure_not_in_callback("blocking send")
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
         target = _copy_routing_id(routing_id)
-        effective_flags = _callback_send_flags(flags)
         rc = lib().zlink_send_rid(
-            self._handle, ctypes.byref(target), parts_array, part_count, effective_flags
+            self._handle, ctypes.byref(target), parts_array, part_count, int(flags)
         )
         if rc < 0:
             for index in range(part_count):
@@ -488,41 +498,103 @@ class _BaseSocket:
     def on_send_ready(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
+        if self._send_ready_handler_thread is not None:
+            raise RuntimeError("handler is already attached")
+
+        stop = threading.Event()
+        events = queue.SimpleQueue()
+        self._send_ready_handler = handler
+        self._send_ready_handler_stop = stop
+        self._send_ready_handler_queue = events
 
         def _callback(_, __):
-            _enter_callback()
-            try:
-                handler(self)
-            except Exception:
-                _report_unhandled_callback_exception(handler)
-            finally:
-                _leave_callback()
+            if stop.is_set():
+                return
+            events.put(None)
 
         callback = _SOCKET_SEND_READY_HANDLER(_callback)
         rc = lib().zlink_send_ready_handler(self._handle, callback, None)
         if rc != 0:
             _raise_last_error()
-        self._send_ready_handler = handler
         self._send_ready_handler_cb = callback
+        def _dispatch():
+            while True:
+                item = events.get()
+                if item is _CALLBACK_SENTINEL:
+                    return
+                _enter_callback()
+                try:
+                    handler(self)
+                except Exception:
+                    _report_unhandled_callback_exception(handler)
+                finally:
+                    _leave_callback()
 
-    def set_send_ready_handler(self, handler):
-        _compat_warning(
-            "set_send_ready_handler() is deprecated; use on_send_ready() instead"
-        )
-        self.on_send_ready(handler)
+        thread = threading.Thread(target=_dispatch, name="zlink-socket-send-ready")
+        thread.daemon = True
+        self._send_ready_handler_thread = thread
+        thread.start()
 
-    def open_monitor(self, events=0xFFFF):
+    def monitor_open(self, events=MonitorEvent.ALL):
         from ._monitor import open_socket_monitor
 
         return open_socket_monitor(self, events)
 
     def close(self):
         self._recv_handler = None
+        recv_stop = self._recv_handler_stop
+        recv_thread = self._recv_handler_thread
+        recv_queue = self._recv_handler_queue
+        if recv_stop is not None:
+            recv_stop.set()
+        if recv_queue is not None:
+            recv_queue.put(_CALLBACK_SENTINEL)
+        if (
+            recv_thread is not None
+            and recv_thread.is_alive()
+            and recv_thread is not threading.current_thread()
+        ):
+            recv_thread.join(timeout=1.0)
         self._recv_handler_cb = None
+        self._recv_handler_thread = None
+        self._recv_handler_stop = None
+        self._recv_handler_queue = None
         self._subscribe_handler = None
+        subscribe_stop = self._subscribe_handler_stop
+        subscribe_thread = self._subscribe_handler_thread
+        subscribe_queue = self._subscribe_handler_queue
+        if subscribe_stop is not None:
+            subscribe_stop.set()
+        if subscribe_queue is not None:
+            subscribe_queue.put(_CALLBACK_SENTINEL)
+        if (
+            subscribe_thread is not None
+            and subscribe_thread.is_alive()
+            and subscribe_thread is not threading.current_thread()
+        ):
+            subscribe_thread.join(timeout=1.0)
         self._subscribe_handler_cb = None
+        self._subscribe_handler_thread = None
+        self._subscribe_handler_stop = None
+        self._subscribe_handler_queue = None
         self._send_ready_handler = None
+        send_ready_stop = self._send_ready_handler_stop
+        send_ready_thread = self._send_ready_handler_thread
+        send_ready_queue = self._send_ready_handler_queue
+        if send_ready_stop is not None:
+            send_ready_stop.set()
+        if send_ready_queue is not None:
+            send_ready_queue.put(_CALLBACK_SENTINEL)
+        if (
+            send_ready_thread is not None
+            and send_ready_thread.is_alive()
+            and send_ready_thread is not threading.current_thread()
+        ):
+            send_ready_thread.join(timeout=1.0)
         self._send_ready_handler_cb = None
+        self._send_ready_handler_thread = None
+        self._send_ready_handler_stop = None
+        self._send_ready_handler_queue = None
         self._socket_handle.close()
 
     def __enter__(self):
@@ -683,38 +755,57 @@ class _MessageSocket(_Socket):
     def on_receive(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
+        if self._recv_handler_thread is not None:
+            raise RuntimeError("handler is already attached")
+
+        stop = threading.Event()
+        events = queue.SimpleQueue()
+        self._recv_handler = handler
+        self._recv_handler_stop = stop
+        self._recv_handler_queue = events
 
         def _callback(routing_id_ptr, parts_ptr, part_count, _):
-            routing_id = None
-            if routing_id_ptr:
-                routing_id = _routing_id_bytes(routing_id_ptr.contents)
-            received = Received(
-                _ReceivedPartsOwner(parts_ptr, int(part_count)),
-                routing_id,
-            )
-            _enter_callback()
+            if stop.is_set():
+                return
             try:
-                handler(received)
+                routing_id = None
+                if routing_id_ptr:
+                    routing_id = _routing_id_bytes(routing_id_ptr.contents)
+                received = Received(
+                    _clone_received_owner(parts_ptr, int(part_count)),
+                    routing_id,
+                )
+                events.put(received)
             except Exception:
-                try:
-                    received.close()
-                finally:
-                    _report_unhandled_callback_exception(handler)
-            else:
-                received.close()
-            finally:
-                _leave_callback()
+                _report_unhandled_callback_exception(handler)
 
         callback = _SOCKET_RECV_HANDLER(_callback)
         rc = lib().zlink_recv_handler(self._handle, callback, None)
         if rc != 0:
             _raise_last_error()
-        self._recv_handler = handler
         self._recv_handler_cb = callback
+        def _dispatch():
+            while True:
+                item = events.get()
+                if item is _CALLBACK_SENTINEL:
+                    return
+                _enter_callback()
+                try:
+                    handler(item)
+                except Exception:
+                    try:
+                        item.close()
+                    finally:
+                        _report_unhandled_callback_exception(handler)
+                else:
+                    item.close()
+                finally:
+                    _leave_callback()
 
-    def set_recv_handler(self, handler):
-        _compat_warning("set_recv_handler() is deprecated; use on_receive() instead")
-        self.on_receive(handler)
+        thread = threading.Thread(target=_dispatch, name="zlink-socket-recv")
+        thread.daemon = True
+        self._recv_handler_thread = thread
+        thread.start()
 
 
 class _RoutedMessageSocket(_MessageSocket):
@@ -741,14 +832,14 @@ class _RoutedMessageSocket(_MessageSocket):
 
 class _PublisherSocket(_Socket):
     def publish(self, topic, payload):
+        _ensure_not_in_callback("blocking publish")
         topic_bytes = _validated_c_string_bytes(topic, field="topic")
         native_parts = self._native_parts_from_payload(payload)
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
-        effective_flags = _callback_send_flags(0)
-        rc = lib().zlink_publish(self._handle, topic_bytes, parts_array, part_count, effective_flags)
+        rc = lib().zlink_publish(self._handle, topic_bytes, parts_array, part_count, 0)
         if rc < 0:
             for index in range(part_count):
                 lib().zlink_msg_close(ctypes.byref(parts_array[index]))
@@ -816,35 +907,58 @@ class _SubscriberSocket(_Socket):
     def on_subscribe(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
+        if self._subscribe_handler_thread is not None:
+            raise RuntimeError("handler is already attached")
+
+        stop = threading.Event()
+        events = queue.SimpleQueue()
+        self._subscribe_handler = handler
+        self._subscribe_handler_stop = stop
+        self._subscribe_handler_queue = events
 
         def _callback(routing_id_ptr, topic_ptr, topic_len, parts_ptr, part_count, _):
-            routing_id = None
-            if routing_id_ptr:
-                routing_id = _routing_id_bytes(routing_id_ptr.contents)
-            topic = b""
-            if topic_ptr and topic_len:
-                topic = ctypes.string_at(topic_ptr, topic_len)
-            received = Subscribed(
-                topic,
-                _ReceivedPartsOwner(parts_ptr, int(part_count)),
-                routing_id,
-            )
-            _enter_callback()
+            if stop.is_set():
+                return
             try:
-                handler(received)
+                routing_id = None
+                if routing_id_ptr:
+                    routing_id = _routing_id_bytes(routing_id_ptr.contents)
+                topic = b""
+                if topic_ptr and topic_len:
+                    topic = ctypes.string_at(topic_ptr, topic_len)
+                received = Subscribed(
+                    topic,
+                    _clone_received_owner(parts_ptr, int(part_count)),
+                    routing_id,
+                )
+                events.put(received)
             except Exception:
-                try:
-                    received.close()
-                finally:
-                    _report_unhandled_callback_exception(handler)
-            else:
-                received.close()
-            finally:
-                _leave_callback()
+                _report_unhandled_callback_exception(handler)
 
         callback = _SOCKET_SUBSCRIBE_HANDLER(_callback)
         rc = lib().zlink_subscribe_handler(self._handle, callback, None)
         if rc != 0:
             _raise_last_error()
-        self._subscribe_handler = handler
         self._subscribe_handler_cb = callback
+        def _dispatch():
+            while True:
+                item = events.get()
+                if item is _CALLBACK_SENTINEL:
+                    return
+                _enter_callback()
+                try:
+                    handler(item)
+                except Exception:
+                    try:
+                        item.close()
+                    finally:
+                        _report_unhandled_callback_exception(handler)
+                else:
+                    item.close()
+                finally:
+                    _leave_callback()
+
+        thread = threading.Thread(target=_dispatch, name="zlink-socket-subscribe")
+        thread.daemon = True
+        self._subscribe_handler_thread = thread
+        thread.start()

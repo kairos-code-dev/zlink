@@ -43,7 +43,22 @@ async function reservePort() {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     return address.port;
 }
+async function waitForSpotSubscriberReady(slot, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (slot.node.statusSnapshot().readySubjectCount > 0) {
+            return;
+        }
+        await new Promise((resolve) => setImmediate(resolve));
+    }
+    throw new Error(`spot client ready timeout: ${JSON.stringify({
+        status: slot.node.statusSnapshot(),
+        peers: slot.node.peersSnapshot(),
+        subjects: slot.node.subjectsSnapshot()
+    })}`);
+}
 module.exports = {
     parseMultiArgs: parseArgs,
-    reservePort
+    reservePort,
+    waitForSpotSubscriberReady
 };

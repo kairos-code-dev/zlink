@@ -55,7 +55,7 @@ impl XSubSocket {
         SubSocketOptions::new(self)
     }
 
-    pub fn topics_count(&self) -> Result<i32, ZlinkError> {
+    pub(crate) fn topics_count(&self) -> Result<i32, ZlinkError> {
         let mut v: i32 = 0;
         let mut len = std::mem::size_of::<i32>();
         check_rc(unsafe {

@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { normalizeBufferLike } from '../buffer_like';
-import { Message, Received, Subscribed, SubscriptionEvent } from '../message';
+import {
+  Message,
+  Received,
+  Subscribed,
+  SubscriptionEvent,
+  type MessageSnapshot
+} from '../message';
 import { requireNative } from '../native';
 import { ReceiveFlag } from './constants';
 import type { BufferLike } from '../buffer_like';
@@ -39,7 +45,7 @@ export function recvMessage(
     return requireNative().socketRecv(socket.nativeHandle(), arg0 | 0, 0) as Buffer;
   }
   const raw = requireNative().socketRecvMessage(socket.nativeHandle(), arg0 | 0) as {
-    parts: Buffer[];
+    parts: MessageSnapshot[];
     routingId?: Buffer | null;
     hasMore?: boolean;
   };
@@ -73,22 +79,26 @@ export function recvMsgInto(
 export { normalizeBufferLike };
 
 export function wrapMessageParts(parts: readonly Buffer[]): Message[] {
-  return parts.map((part) => Message.wrap(part));
+  return parts.map((part) => Message.fromBuffer(part));
 }
 
 export function materializeReceived(raw: {
-  parts: readonly Buffer[];
+  parts: readonly MessageSnapshot[];
   routingId?: Buffer | null;
 }): Received {
-  return new Received(wrapMessageParts(raw.parts), raw.routingId ?? null);
+  return new Received(materializeMessageParts(raw.parts), raw.routingId ?? null);
 }
 
 export function materializeSubscribed(raw: {
   topic: string;
-  parts: readonly Buffer[];
+  parts: readonly MessageSnapshot[];
   routingId?: Buffer | null;
 }): Subscribed {
-  return new Subscribed(raw.topic, wrapMessageParts(raw.parts), raw.routingId ?? null);
+  return new Subscribed(
+    raw.topic,
+    materializeMessageParts(raw.parts),
+    raw.routingId ?? null
+  );
 }
 
 export function materializeSubscriptionEvent(raw: {
@@ -97,4 +107,8 @@ export function materializeSubscriptionEvent(raw: {
   routingId?: Buffer | null;
 }): SubscriptionEvent {
   return new SubscriptionEvent(raw.topic, raw.subscribed, raw.routingId ?? null);
+}
+
+function materializeMessageParts(parts: readonly MessageSnapshot[]): readonly Message[] {
+  return Object.freeze(parts.map((part) => Message.fromSnapshot(part)));
 }

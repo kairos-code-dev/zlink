@@ -27,3 +27,9 @@ bindings/dotnet/_site/index.html
 - Socket types, message types, domain objects
 - Service wrappers in `Zlink.Service`
 - Internal/native types (`Zlink.Native`) are excluded
+
+## Contract Notes
+
+- Public resource-owning types support both `Dispose()` and `DisposeAsync()`.
+- `SocketBase.MonitorOpen()` and `Discovery.MonitorOpen()` default to `All`
+  when the event mask is omitted.

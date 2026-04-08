@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Threading.Tasks;
 using Zlink.Native;
 
 namespace Zlink;
 
-public sealed class Context : IDisposable
+public sealed class Context : IDisposable, IAsyncDisposable
 {
     private IntPtr _handle;
 
@@ -53,6 +54,12 @@ public sealed class Context : IDisposable
         NativeMethods.zlink_ctx_term(_handle);
         _handle = IntPtr.Zero;
         GC.SuppressFinalize(this);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     ~Context()

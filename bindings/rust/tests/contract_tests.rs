@@ -17,10 +17,13 @@ fn context_create_and_drop() {
 #[test]
 fn context_typed_options() {
     let ctx = Context::new().unwrap();
-    ctx.set_io_threads(2).unwrap();
-    assert_eq!(ctx.io_threads().unwrap(), 2);
-    ctx.set_max_sockets(512).unwrap();
-    assert_eq!(ctx.max_sockets().unwrap(), 512);
+    let options = ctx.options();
+    options.set_io_threads(2).unwrap();
+    assert_eq!(options.io_threads().unwrap(), 2);
+    options.set_max_sockets(512).unwrap();
+    assert_eq!(options.max_sockets().unwrap(), 512);
+    assert!(options.socket_limit().unwrap() > 0);
+    assert!(options.msg_t_size().unwrap() > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +81,26 @@ fn message_with_size() {
 fn message_as_str() {
     let msg = Message::from_bytes(b"hello").unwrap();
     assert_eq!(msg.as_str().unwrap(), "hello");
+}
+
+#[test]
+fn message_diagnostic_properties() {
+    let msg = Message::from_bytes(b"diagnostic").unwrap();
+    assert!(msg.ref_count() >= 1);
+    assert_eq!(msg.get_property("missing").unwrap(), None);
+}
+
+#[test]
+fn message_get_property_validates_input() {
+    let msg = Message::from_bytes(b"diagnostic").unwrap();
+
+    let empty = msg.get_property("");
+    assert!(empty.is_err());
+    assert_eq!(empty.unwrap_err().code(), libc::EINVAL);
+
+    let nul = msg.get_property("bad\0name");
+    assert!(nul.is_err());
+    assert_eq!(nul.unwrap_err().code(), libc::EINVAL);
 }
 
 #[test]

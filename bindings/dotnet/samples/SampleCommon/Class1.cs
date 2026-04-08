@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using Zlink;
+using Zlink.Service;
 
 namespace SampleCommon;
 
@@ -86,6 +87,14 @@ public static class SampleSupport
         }
 
         throw new TimeoutException(message);
+    }
+
+    public static void WaitSpotPeerConnected(SpotNode node, int timeoutMs = 5000)
+    {
+        WaitOrThrow(
+            () => node.StatusSnapshot().ConnectedPeerCount > 0,
+            timeoutMs,
+            "spot peer connection");
     }
 
     public static string ReceiveUtf8(MessageSocketBase socket, int timeoutMs)

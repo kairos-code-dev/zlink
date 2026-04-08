@@ -96,11 +96,11 @@ inline bool wait_for_socket_monitor_event (zlink::monitor_handle_t &monitor_,
         if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
             continue;
 
-        const zlink::maybe_t<zlink_socket_monitor_event_t> event =
+        const zlink::maybe_t<zlink::monitor_event_t> event =
           monitor_.try_recv ();
         if (!event)
             continue;
-        if (event->event != event_type_)
+        if (static_cast<uint64_t> (event->event) != event_type_)
             continue;
         if (value_ >= 0 && static_cast<int64_t> (event->value) != value_)
             continue;
@@ -128,7 +128,7 @@ wait_for_service_monitor_event (zlink::service_monitor_handle_t &monitor_,
         if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
             continue;
 
-        const zlink::maybe_t<zlink_service_monitor_event_t> event =
+        const zlink::maybe_t<zlink::service_event_t> event =
           monitor_.try_recv ();
         if (!event)
             continue;
@@ -161,7 +161,7 @@ wait_for_service_monitor_event_endpoint (
         if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
             continue;
 
-        const zlink::maybe_t<zlink_service_monitor_event_t> event =
+        const zlink::maybe_t<zlink::service_event_t> event =
           monitor_.try_recv ();
         if (!event)
             continue;
@@ -186,9 +186,8 @@ wait_for_service_monitor_state (zlink::service_monitor_handle_t &monitor_,
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
 
     while (std::chrono::steady_clock::now () < deadline) {
-        zlink_monitor_snapshot_t snapshot;
-        if (monitor_.snapshot (snapshot) == 0
-            && (snapshot.state_flags & state_flags_) == state_flags_) {
+        const zlink::monitor_snapshot_t snapshot = monitor_.snapshot ();
+        if ((snapshot.state_flags & state_flags_) == state_flags_) {
             return true;
         }
 

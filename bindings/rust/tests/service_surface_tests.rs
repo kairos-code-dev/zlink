@@ -13,9 +13,7 @@ fn reserve_tcp_port() -> u16 {
 fn discovery_service_monitor_and_member_surfaces_exist() {
     let ctx = Context::new().unwrap();
     let discovery = Discovery::new(&ctx, ServiceType::Spot, "svc").unwrap();
-    let _ = discovery
-        .monitor_open(SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP)
-        .unwrap();
+    let _ = discovery.monitor_open().unwrap();
     let _ = discovery.member_peers().unwrap();
 }
 
@@ -28,6 +26,8 @@ fn spot_node_snapshot_surfaces_exist() {
     let _ = node.status_snapshot().unwrap();
     let _ = node.peers_snapshot().unwrap();
     let _ = node.subjects_snapshot().unwrap();
+    let _ = node.set_tls_server("cert", "key", false);
+    let _ = node.set_tls_client("ca", "localhost", true);
 }
 
 #[test]
@@ -85,12 +85,22 @@ fn registry_snapshot_and_query_surfaces_exist() {
     let _ = registry.status_snapshot().unwrap();
     let _ = registry.service_summary_snapshot().unwrap();
     let _ = registry.topology_snapshot().unwrap();
+    let _ = registry.set_tls_server("cert", "key", false);
+    let _ = registry.set_tls_client("ca", "localhost", true);
 }
 
 #[test]
 fn registry_query_client_surface_exists() {
     let ctx = Context::new().unwrap();
-    let _client = RegistryQueryClient::new(&ctx).unwrap();
+    let client = RegistryQueryClient::new(&ctx).unwrap();
+    let _ = client.snapshot(None);
+}
+
+#[test]
+fn discovery_tls_client_surface_exists() {
+    let ctx = Context::new().unwrap();
+    let discovery = Discovery::new(&ctx, ServiceType::Spot, "svc-tls").unwrap();
+    let _ = discovery.set_tls_client("ca", "localhost", true);
 }
 
 #[test]

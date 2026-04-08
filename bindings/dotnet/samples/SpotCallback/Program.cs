@@ -33,10 +33,7 @@ subscriber.OnSubscribe((receivedTopic, parts) =>
     }
 });
 subscriber.SetSubscription(topic);
-SampleSupport.WaitOrThrow(
-    () => subNode.StatusSnapshot().ConnectedPeerCount > 0,
-    5000,
-    "spot peer connection");
+SampleSupport.WaitSpotPeerConnected(subNode);
 
 DateTime deadline = DateTime.UtcNow.AddSeconds(5);
 while (!signal.IsSet && DateTime.UtcNow < deadline)

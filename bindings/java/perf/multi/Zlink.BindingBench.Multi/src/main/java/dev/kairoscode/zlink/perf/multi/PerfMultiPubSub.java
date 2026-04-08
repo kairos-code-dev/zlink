@@ -30,7 +30,7 @@ final class PerfMultiPubSub {
         }
         try (Context ctx = PerfUtil.newContext(config);
              PubSocket pub = new PubSocket(ctx);
-             var monitor = pub.monitorOpen(READY_EVENTS)) {
+             var monitor = pub.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             PerfUtil.applyMonitorOptions(monitor, config);
             PerfUtil.applySocketOptions(pub, config);
             PerfUtil.configureServerTls(pub, config.transport());
@@ -66,7 +66,7 @@ final class PerfMultiPubSub {
             AtomicBoolean localStopped = new AtomicBoolean(false);
             try (Context ctx = PerfUtil.newContext(config);
                  SubSocket sub = new SubSocket(ctx);
-                 var subMonitor = sub.monitorOpen(READY_EVENTS)) {
+                 var subMonitor = sub.monitorOpen(MonitorEventType.CONNECTION_READY)) {
                 PerfUtil.applyMonitorOptions(subMonitor, config);
                 PerfUtil.applySocketOptions(sub, config);
                 sub.onSubscribe((routingId, topic, received) -> {

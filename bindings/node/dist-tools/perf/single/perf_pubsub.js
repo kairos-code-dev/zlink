@@ -25,7 +25,7 @@ async function runPubSubBenchmark(msgSize, options) {
         const stopAtNs = startedAtNs
             + BigInt(Math.floor((options.warmup + options.duration) * 1_000_000_000));
         sub.onSubscribe((_, __, parts) => {
-            const messageBuffer = parts[0].toBuffer();
+            const messageBuffer = parts[0].data;
             const header = decodeMetricHeader(messageBuffer);
             collector.record(header, process.hrtime.bigint());
         });

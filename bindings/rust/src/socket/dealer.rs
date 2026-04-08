@@ -72,17 +72,29 @@ impl DealerSocket {
         DealerSocketOptions::new(self)
     }
 
-    pub fn set_probe(&self, enabled: bool) -> Result<(), ZlinkError> {
-        let v: i32 = if enabled { 1 } else { 0 };
-        check_rc(unsafe {
-            ffi::zlink_set_dealer_option(
-                self.inner.handle,
-                ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_PROBE,
-                &v as *const i32 as *const c_void,
-                std::mem::size_of::<i32>(),
-            )
-        })
+    pub(crate) fn set_probe(&self, enabled: bool) -> Result<(), ZlinkError> {
+        set_dealer_bool_option(
+            self.inner.handle,
+            ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_PROBE,
+            enabled,
+        )
     }
+}
+
+fn set_dealer_bool_option(
+    handle: *mut c_void,
+    option: ffi::zlink_dealer_option_t,
+    enabled: bool,
+) -> Result<(), ZlinkError> {
+    let value: i32 = if enabled { 1 } else { 0 };
+    check_rc(unsafe {
+        ffi::zlink_set_dealer_option(
+            handle,
+            option,
+            &value as *const i32 as *const c_void,
+            std::mem::size_of::<i32>(),
+        )
+    })
 }
 
 impl_base_socket!(DealerSocket);

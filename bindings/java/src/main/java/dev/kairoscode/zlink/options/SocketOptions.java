@@ -136,6 +136,12 @@ public final class SocketOptions {
     public static final SocketOptionKey<byte[]> XPUB_WELCOME_MSG_BYTES =
       SocketOptionKey.bytes("XPUB_WELCOME_MSG_BYTES", SocketOption.XPUB_WELCOME_MSG,
         false, true, 0);
+    public static final SocketOptionKey<byte[]> PUB_APPROVE_SUBSCRIBE_BYTES =
+      SocketOptionKey.bytes("PUB_APPROVE_SUBSCRIBE_BYTES",
+        SocketOption.PUB_APPROVE_SUBSCRIBE, false, true, 0);
+    public static final SocketOptionKey<byte[]> PUB_REJECT_SUBSCRIBE_BYTES =
+      SocketOptionKey.bytes("PUB_REJECT_SUBSCRIBE_BYTES",
+        SocketOption.PUB_REJECT_SUBSCRIBE, false, true, 0);
 
     public static final SocketOptionKey<Integer> STREAM_NOTIFY =
       SocketOptionKey.int32("STREAM_NOTIFY", SocketOption.STREAM_NOTIFY,
@@ -199,9 +205,6 @@ public final class SocketOptions {
     public static final SocketOptionKey<Integer> XPUB_MANUAL_LAST_VALUE =
       SocketOptionKey.int32("XPUB_MANUAL_LAST_VALUE", SocketOption.XPUB_MANUAL_LAST_VALUE,
         true, true);
-    public static final SocketOptionKey<Integer> ONLY_FIRST_SUBSCRIBE =
-      SocketOptionKey.int32("ONLY_FIRST_SUBSCRIBE", SocketOption.ONLY_FIRST_SUBSCRIBE,
-        true, true);
     public static final SocketOptionKey<Integer> TOPICS_COUNT =
       SocketOptionKey.int32("TOPICS_COUNT", SocketOption.TOPICS_COUNT,
         true, false);
@@ -234,7 +237,9 @@ public final class SocketOptions {
         TLS_CERT, TLS_KEY, TLS_CA, TLS_VERIFY,
         TLS_REQUIRE_CLIENT_CERT, TLS_HOSTNAME, TLS_TRUST_SYSTEM,
         TLS_PASSWORD,
-        XPUB_MANUAL_LAST_VALUE, ONLY_FIRST_SUBSCRIBE, TOPICS_COUNT,
+        XPUB_MANUAL_LAST_VALUE,
+        PUB_APPROVE_SUBSCRIBE_BYTES, PUB_REJECT_SUBSCRIBE_BYTES,
+        TOPICS_COUNT,
         ZMP_METADATA, ZMP_METADATA_BYTES
       ));
 

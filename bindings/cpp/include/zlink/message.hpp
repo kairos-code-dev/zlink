@@ -228,7 +228,7 @@ class message_t
      * @brief Get the storage reference count.
      * @return Reference count, or -1 when invalid.
      */
-    int refcnt () const noexcept
+    int ref_count () const noexcept
     {
         return _valid ? zlink_msg_refcnt (&_msg) : -1;
     }
@@ -238,7 +238,7 @@ class message_t
      * @param property_ Property name.
      * @return Property string or `NULL` on failure.
      */
-    const char *gets (const std::string &property_) const
+    const char *get_property (const std::string &property_) const
     {
         if (!_valid || property_.empty ())
             return NULL;
@@ -251,9 +251,9 @@ class message_t
      * @param out_ Output string.
      * @return 0 on success, -1 on failure.
      */
-    int gets (const std::string &property_, std::string &out_) const
+    int get_property (const std::string &property_, std::string &out_) const
     {
-        const char *value = gets (property_);
+        const char *value = get_property (property_);
         if (!value)
             return -1;
         out_.assign (value);

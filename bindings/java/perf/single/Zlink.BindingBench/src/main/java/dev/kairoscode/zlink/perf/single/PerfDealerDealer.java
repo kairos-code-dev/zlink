@@ -25,8 +25,8 @@ final class PerfDealerDealer {
         try (Context ctx = PerfUtil.newContext(config);
              DealerSocket receiver = new DealerSocket(ctx);
              DealerSocket sender = new DealerSocket(ctx);
-             var receiverMonitor = receiver.monitorOpen(READY_EVENTS);
-             var senderMonitor = sender.monitorOpen(READY_EVENTS)) {
+             var receiverMonitor = receiver.monitorOpen(MonitorEventType.CONNECTION_READY);
+             var senderMonitor = sender.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             Duration readyTimeout = Duration.ofMillis(config.connectReadyTimeoutMs());
             PerfUtil.applyMonitorOptions(receiverMonitor, config);
             PerfUtil.applyMonitorOptions(senderMonitor, config);

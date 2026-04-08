@@ -12,7 +12,7 @@ fn socket_monitor_try_recv_empty() {
     let sock = ctx.pair_socket().unwrap();
     sock.bind("inproc://mon-empty").unwrap();
 
-    let mon = SocketMonitor::open(&sock, MONITOR_EVENT_ALL).unwrap();
+    let mon = SocketMonitor::open(&sock).unwrap();
     let result = mon.try_recv().unwrap();
     let _ = result;
 }
@@ -23,7 +23,7 @@ fn socket_monitor_observes_connection() {
     let server = ctx.pair_socket().unwrap();
     server.bind("inproc://mon-connect").unwrap();
 
-    let mon = SocketMonitor::open(&server, MONITOR_EVENT_ALL).unwrap();
+    let mon = SocketMonitor::open(&server).unwrap();
 
     let client = ctx.pair_socket().unwrap();
     client.connect("inproc://mon-connect").unwrap();
@@ -55,7 +55,7 @@ fn socket_monitor_blocking_recv_success() {
     let server = ctx.pair_socket().unwrap();
     server.bind("inproc://mon-blocking-recv").unwrap();
 
-    let mon = SocketMonitor::open(&server, MONITOR_EVENT_ALL).unwrap();
+    let mon = SocketMonitor::open(&server).unwrap();
 
     // Trigger a connection from another thread so blocking recv has data
     let ctx2_handle = ctx.pair_socket().unwrap();
@@ -78,7 +78,7 @@ fn socket_monitor_snapshot() {
     let sock = ctx.pair_socket().unwrap();
     sock.bind("inproc://mon-snapshot").unwrap();
 
-    let mon = SocketMonitor::open(&sock, MONITOR_EVENT_ALL).unwrap();
+    let mon = SocketMonitor::open(&sock).unwrap();
     let snap = mon.snapshot().unwrap();
     // Verify snapshot fields are accessible
     let _ = snap.is_ready();
@@ -96,7 +96,7 @@ fn socket_monitor_callback() {
     let server = ctx.pair_socket().unwrap();
     server.bind("inproc://mon-callback").unwrap();
 
-    let mut mon = SocketMonitor::open(&server, MONITOR_EVENT_ALL).unwrap();
+    let mut mon = SocketMonitor::open(&server).unwrap();
     let called = Arc::new(AtomicBool::new(false));
     let called_clone = called.clone();
 

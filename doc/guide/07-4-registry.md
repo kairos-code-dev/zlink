@@ -2,6 +2,10 @@
 
 # Registry (Central Service Directory)
 
+> **Normative status: Illustrative — Needs refresh.**
+> 이 가이드는 설명 목적의 문서이며, API 명칭/시그니처의 정확한 기준은
+> `core/include/zlink.h`와 `bindings/README.md`다.
+
 ## 1. Overview
 
 Registry is the central service directory and topology summary source for
@@ -19,9 +23,9 @@ Discovery instances.
 
 **Registry is thread-safe.** A single Registry handle can be used
 concurrently from multiple threads. Configuration APIs (`set_id`, `add_peer`,
-`set_heartbeat`, `set_broadcast_interval`, `setsockopt`) must be called
+`set_heartbeat`, `set_broadcast_interval`) must be called
 before `bind`. Topology query APIs (`topology_snapshot`, `topology_query`,
-`member_peers_snapshot`, `member_peers_query`) are safe to call from any
+`member_peers`) are safe to call from any
 thread at any time after bind.
 
 ## 2. Quick Start
@@ -43,7 +47,7 @@ void *discovery = zlink_discovery_new(ctx,
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
 /* === ROUTER socket (server, Discovery-managed) === */
-void *server = zlink_socket_new(ctx, ZLINK_ROUTER);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(server, "tcp://*:5555");
 zlink_socket_attach_discovery(server, discovery);
 
@@ -74,47 +78,24 @@ zlink_registry_set_heartbeat(registry, 5000, 15000);
 zlink_registry_set_broadcast_interval(registry, 30000);
 ```
 
-### 3.3 Socket Options
-
-Apply low-level socket options to the Registry's internal sockets:
-
-```c
-/* Example: set TLS on the PUB socket */
-zlink_registry_setsockopt(registry,
-    ZLINK_REGISTRY_SOCKET_PUB,        /* target socket */
-    ZLINK_TLS_CA_CERT,                /* option */
-    ca_pem, strlen(ca_pem));          /* value */
-```
-
-| Socket Role | Constant | Purpose |
-|-------------|----------|---------|
-| PUB | `ZLINK_REGISTRY_SOCKET_PUB` | Broadcasts the service list |
-| ROUTER | `ZLINK_REGISTRY_SOCKET_ROUTER` | Receives registrations and heartbeats |
-| PEER_SUB | `ZLINK_REGISTRY_SOCKET_PEER_SUB` | Subscribes to peer registry broadcasts |
-
-### 3.4 Cluster ID
+### 3.3 Cluster ID
 
 ```c
 /* Assign a unique ID for cluster synchronization (must be unique per node) */
 zlink_registry_set_id(registry, 1);
 ```
 
-### 3.5 TLS Configuration
+### 3.4 TLS Configuration
 
-TLS is configured through socket options on the appropriate internal socket:
+TLS is configured through the `zlink_set_tls_server`/`zlink_set_tls_client`
+API on the Registry handle:
 
 ```c
-/* TLS on PUB (broadcast to Discovery) */
-zlink_registry_setsockopt(registry, ZLINK_REGISTRY_SOCKET_PUB,
-    ZLINK_TLS_SERVER_CERT, cert_pem, strlen(cert_pem));
-zlink_registry_setsockopt(registry, ZLINK_REGISTRY_SOCKET_PUB,
-    ZLINK_TLS_SERVER_KEY, key_pem, strlen(key_pem));
+/* TLS server configuration on Registry */
+zlink_set_tls_server(registry, cert_pem, key_pem, 0 /* require_client_cert */);
 
-/* TLS on ROUTER (registration/heartbeat) */
-zlink_registry_setsockopt(registry, ZLINK_REGISTRY_SOCKET_ROUTER,
-    ZLINK_TLS_SERVER_CERT, cert_pem, strlen(cert_pem));
-zlink_registry_setsockopt(registry, ZLINK_REGISTRY_SOCKET_ROUTER,
-    ZLINK_TLS_SERVER_KEY, key_pem, strlen(key_pem));
+/* TLS client configuration (for peer registry connections) */
+zlink_set_tls_client(registry, ca_pem, NULL /* hostname */, 0 /* trust_system */);
 ```
 
 ## 4. Deployment Patterns
@@ -162,7 +143,7 @@ void *discovery = zlink_discovery_new(ctx,
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
 /* ROUTER socket (server, Discovery-managed) */
-void *server = zlink_socket_new(ctx, ZLINK_ROUTER);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(server, "tcp://*:5555");
 zlink_socket_attach_discovery(server, discovery);
 
@@ -171,7 +152,7 @@ void *client_disc = zlink_discovery_new(ctx,
     ZLINK_SERVICE_TYPE_SOCKET, "echo-service");
 zlink_discovery_connect_registry(client_disc, "tcp://127.0.0.1:5551");
 
-void *client = zlink_socket_new(ctx, ZLINK_DEALER);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_socket_attach_discovery(client, client_disc);
 
 /* Send request */

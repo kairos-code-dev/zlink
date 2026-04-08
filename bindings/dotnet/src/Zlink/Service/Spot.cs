@@ -6,12 +6,14 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Zlink;
 using Zlink.Native;
 
 namespace Zlink.Service;
 
-public sealed class SpotNode : IDisposable
+public sealed class SpotNode : IDisposable, IAsyncDisposable
 {
     private IntPtr _handle;
     public SpotNodePublisherOptions PublisherOptions { get; }
@@ -216,6 +218,12 @@ public sealed class SpotNode : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
+    }
+
     ~SpotNode()
     {
         Dispose();
@@ -319,7 +327,7 @@ public sealed class SpotNode : IDisposable
 
 }
 
-public sealed class Spot : IDisposable
+public sealed class Spot : IDisposable, IAsyncDisposable
 {
     private static readonly NativeMethods.ZlinkFreeFnDelegate BorrowedBufferFree =
         OnBorrowedBufferFree;
@@ -341,6 +349,8 @@ public sealed class Spot : IDisposable
     private readonly bool _ownsHandle;
     private SpotSubHandler? _subscribeHandler;
     private Action? _sendReadyHandler;
+    private SynchronizationContext? _subscribeHandlerContext;
+    private SynchronizationContext? _sendReadyHandlerContext;
     private NativeMethods.ZlinkSubscribeHandlerDelegate? _subscribeHandlerNative;
     private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
     private readonly ConcurrentDictionary<string, byte[]> _topicCache =
@@ -504,12 +514,14 @@ public sealed class Spot : IDisposable
             throw new ArgumentNullException(nameof(handler));
         EnsureNotDisposed();
 
+        SynchronizationContext? context = SynchronizationContext.Current;
         var native = new NativeMethods.ZlinkSubscribeHandlerDelegate(
             OnNativeSubscribe);
         int rc = NativeMethods.zlink_subscribe_handler(_handle, native,
             IntPtr.Zero);
         ZlinkException.ThrowIfError(rc);
         _subscribeHandler = handler;
+        _subscribeHandlerContext = context;
         _subscribeHandlerNative = native;
     }
 
@@ -519,12 +531,14 @@ public sealed class Spot : IDisposable
             throw new ArgumentNullException(nameof(handler));
         EnsureNotDisposed();
 
+        SynchronizationContext? context = SynchronizationContext.Current;
         var native = new NativeMethods.ZlinkSendReadyHandlerDelegate(
             OnNativeSendReady);
         int rc = NativeMethods.zlink_send_ready_handler(_handle, native,
             IntPtr.Zero);
         ZlinkException.ThrowIfError(rc);
         _sendReadyHandler = handler;
+        _sendReadyHandlerContext = context;
         _sendReadyHandlerNative = native;
     }
 
@@ -544,9 +558,17 @@ public sealed class Spot : IDisposable
 
         _subscribeHandler = null;
         _sendReadyHandler = null;
+        _subscribeHandlerContext = null;
+        _sendReadyHandlerContext = null;
         _subscribeHandlerNative = null;
         _sendReadyHandlerNative = null;
         GC.SuppressFinalize(this);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     ~Spot()
@@ -651,6 +673,7 @@ public sealed class Spot : IDisposable
         }
 
         Message[]? managedParts = null;
+        SynchronizationContext? context = _subscribeHandlerContext;
         bool delivered = false;
         try
         {
@@ -662,7 +685,8 @@ public sealed class Spot : IDisposable
             parts = IntPtr.Zero;
             partCount = 0;
             delivered = true;
-            handler(topicId, managedParts);
+            CallbackDelivery.Post(context,
+                () => handler(topicId, managedParts));
         }
         catch (Exception ex)
         {
@@ -683,12 +707,13 @@ public sealed class Spot : IDisposable
     private void OnNativeSendReady(IntPtr subject, IntPtr userData)
     {
         Action? handler = _sendReadyHandler;
+        SynchronizationContext? context = _sendReadyHandlerContext;
         if (handler == null)
             return;
 
         try
         {
-            handler();
+            CallbackDelivery.Post(context, handler);
         }
         catch (Exception ex)
         {

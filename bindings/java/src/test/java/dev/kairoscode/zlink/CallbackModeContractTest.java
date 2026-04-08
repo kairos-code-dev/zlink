@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -27,6 +28,9 @@ public class CallbackModeContractTest {
         CountDownLatch delivered = new CountDownLatch(1);
         AtomicReference<Message> deliveredPart = new AtomicReference<>();
         AtomicReference<byte[]> payload = new AtomicReference<>();
+        AtomicReference<Thread> callbackThread = new AtomicReference<>();
+        AtomicReference<Throwable> callbackError = new AtomicReference<>();
+        Thread testThread = Thread.currentThread();
 
         try (Context ctx = new Context();
              PairSocket left = new PairSocket(ctx);
@@ -36,9 +40,15 @@ public class CallbackModeContractTest {
             right.connect(endpoint);
 
             left.onReceive(received -> {
-                deliveredPart.set(received.singlePartOrThrow());
-                payload.set(received.singlePartOrThrow().toByteArray());
-                delivered.countDown();
+                try {
+                    callbackThread.set(Thread.currentThread());
+                    deliveredPart.set(received.singlePartOrThrow());
+                    payload.set(received.singlePartOrThrow().toByteArray());
+                } catch (Throwable t) {
+                    callbackError.set(t);
+                } finally {
+                    delivered.countDown();
+                }
             });
 
             try (Message outbound = Message.copyOfUtf8("callback-body")) {
@@ -51,6 +61,12 @@ public class CallbackModeContractTest {
                 payload.get());
             assertNotNull(deliveredPart.get());
             assertFalse(deliveredPart.get().valid());
+            assertNull(callbackError.get(), "callback raised: "
+                + callbackError.get());
+            assertNotNull(callbackThread.get());
+            assertTrue(callbackThread.get() != testThread);
+            assertTrue(callbackThread.get().getName().startsWith(
+                "zlink-socket-callback"));
             assertThrows(ZlinkException.class, left::tryRecv);
         }
     }
@@ -62,6 +78,9 @@ public class CallbackModeContractTest {
         CountDownLatch delivered = new CountDownLatch(1);
         AtomicReference<String> topic = new AtomicReference<>();
         AtomicReference<byte[]> payload = new AtomicReference<>();
+        AtomicReference<Thread> callbackThread = new AtomicReference<>();
+        AtomicReference<Throwable> callbackError = new AtomicReference<>();
+        Thread testThread = Thread.currentThread();
 
         try (Context ctx = new Context();
             XPubSocket pub = new XPubSocket(ctx);
@@ -73,9 +92,15 @@ public class CallbackModeContractTest {
             sub.setSubscription("alpha");
             sub.connect(endpoint);
             sub.onSubscribe((routingId, deliveredTopic, received) -> {
-                topic.set(deliveredTopic);
-                payload.set(received.singlePartOrThrow().toByteArray());
-                delivered.countDown();
+                try {
+                    callbackThread.set(Thread.currentThread());
+                    topic.set(deliveredTopic);
+                    payload.set(received.singlePartOrThrow().toByteArray());
+                } catch (Throwable t) {
+                    callbackError.set(t);
+                } finally {
+                    delivered.countDown();
+                }
             });
 
             SubscriptionEvent event = pub.receiveSubscriptionEvent();
@@ -85,9 +110,15 @@ public class CallbackModeContractTest {
 
             assertTrue(delivered.await(TestSupport.DEFAULT_TIMEOUT_MS,
                 TimeUnit.MILLISECONDS));
+            assertNull(callbackError.get(), "callback raised: "
+                + callbackError.get());
             assertEquals("alpha", topic.get());
             assertArrayEquals("payload".getBytes(StandardCharsets.UTF_8),
                 payload.get());
+            assertNotNull(callbackThread.get());
+            assertTrue(callbackThread.get() != testThread);
+            assertTrue(callbackThread.get().getName().startsWith(
+                "zlink-socket-callback"));
         }
     }
 

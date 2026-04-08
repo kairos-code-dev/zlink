@@ -12,12 +12,12 @@ test('pair sockets send and receive multipart through canonical api', () => {
   left.bind('inproc://multipart-contract');
   right.connect('inproc://multipart-contract');
   right.send([
-    zlink.Message.copyOf('a'),
-    zlink.Message.wrap(Buffer.from('b'))
+    'a',
+    Buffer.from('b')
   ]);
 
   const received = left.recv();
-  assert.deepEqual(received.parts.map((part) => part.toBuffer().toString()), ['a', 'b']);
+  assert.deepEqual(received.parts.map((part) => part.data.toString()), ['a', 'b']);
 
   right.close();
   left.close();

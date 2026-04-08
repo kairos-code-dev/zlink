@@ -14,8 +14,10 @@ public final class DealerRouterRecvSample {
         try (Context ctx = new Context();
              RouterSocket router = new RouterSocket(ctx);
              DealerSocket dealer = new DealerSocket(ctx);
-             var routerMonitor = router.monitorOpen(SampleSupport.CONNECTION_READY_EVENT);
-             var dealerMonitor = dealer.monitorOpen(SampleSupport.CONNECTION_READY_EVENT)) {
+             var routerMonitor = router.monitorOpen(
+                 dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY);
+             var dealerMonitor = dealer.monitorOpen(
+                 dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY)) {
             router.bind(endpoint);
             dealer.connect(endpoint);
             SampleSupport.waitConnected(routerMonitor, dealerMonitor);

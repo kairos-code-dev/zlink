@@ -15,10 +15,21 @@ async function reservePort() {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     return port;
 }
+async function waitFor(deadlineMs, read) {
+    const deadline = Date.now() + deadlineMs;
+    while (Date.now() < deadline) {
+        const value = read();
+        if (value) {
+            return value;
+        }
+        await new Promise((resolve) => setImmediate(resolve));
+    }
+    return null;
+}
 test('socket monitor exposes recv and tryRecv with empty path', () => {
     const ctx = new zlink.Context();
     const socket = new zlink.PairSocket(ctx);
-    const monitor = socket.monitorOpen(zlink.MonitorEvent.ALL);
+    const monitor = socket.monitorOpen();
     assert.equal(monitor.tryRecv(), null);
     monitor.close();
     socket.close();
@@ -29,7 +40,7 @@ test('socket monitor receives bind state events', async () => {
     const endpoint = `tcp://127.0.0.1:${port}`;
     const ctx = new zlink.Context();
     const socket = new zlink.PairSocket(ctx);
-    const monitor = socket.monitorOpen(zlink.MonitorEvent.ALL);
+    const monitor = socket.monitorOpen();
     let client;
     try {
         socket.bind(endpoint);
@@ -37,6 +48,39 @@ test('socket monitor receives bind state events', async () => {
         await once(client, 'connect');
         const event = monitor.recv();
         assert.equal(event.event, zlink.MonitorEvent.LISTENING);
+    }
+    finally {
+        if (client) {
+            client.destroy();
+        }
+        monitor.close();
+        socket.close();
+        ctx.close();
+    }
+});
+test('socket monitor onEvent receives bind state events', async () => {
+    const port = await reservePort();
+    const endpoint = `tcp://127.0.0.1:${port}`;
+    const ctx = new zlink.Context();
+    const socket = new zlink.PairSocket(ctx);
+    const monitor = socket.monitorOpen();
+    let client;
+    try {
+        const eventPromise = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('socket monitor onEvent timeout'));
+            }, 5000);
+            monitor.onEvent((event) => {
+                clearTimeout(timeout);
+                resolve(event);
+            });
+        });
+        socket.bind(endpoint);
+        client = net.createConnection({ host: '127.0.0.1', port });
+        await once(client, 'connect');
+        const event = await eventPromise;
+        assert.equal(event.event, zlink.MonitorEvent.LISTENING);
+        assert.throws(() => monitor.recv(), /busy|state|current/i);
     }
     finally {
         if (client) {
@@ -66,32 +110,51 @@ test('discovery service monitor reports service-up events', async () => {
     const pubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const routerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const serviceEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const monitor = discovery.monitorOpen(zlink.ServiceMonitorEvent.DISCOVERY_SERVICE_UP
-        | zlink.ServiceMonitorEvent.ERROR);
+    const monitor = discovery.monitorOpen(zlink.ServiceMonitorEvent.ALL);
     try {
         registry.bind(pubEndpoint, routerEndpoint);
         discovery.connectRegistry(routerEndpoint);
         node.attachDiscovery(discovery);
+        node.bind(serviceEndpoint);
+        const event = await waitFor(5000, () => monitor.tryRecv());
+        assert.ok(event);
+        assert.equal(event.eventType, zlink.ServiceMonitorEvent.DISCOVERY_SERVICE_UP);
+        assert.equal(event.serviceName, 'monitor-service-up');
+    }
+    finally {
+        monitor.close();
+        discovery.close();
+        registry.close();
+        ctx.close();
+    }
+});
+test('discovery service monitor onEvent reports service-up events', async () => {
+    const ctx = new zlink.Context();
+    const registry = new zlink.Registry(ctx);
+    const discovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'monitor-service-up');
+    const node = new zlink.SpotNode(ctx);
+    const pubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const routerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const serviceEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const monitor = discovery.monitorOpen(zlink.ServiceMonitorEvent.ALL);
+    try {
         const eventPromise = new Promise((resolve, reject) => {
-            const timeoutId = setTimeout(() => {
-                reject(new Error('discovery service monitor timeout'));
+            const timeout = setTimeout(() => {
+                reject(new Error('discovery service monitor onEvent timeout'));
             }, 5000);
             monitor.onEvent((event) => {
-                if (event.eventType === zlink.ServiceMonitorEvent.ERROR) {
-                    clearTimeout(timeoutId);
-                    reject(new Error(`discovery monitor error: ${JSON.stringify(event)}`));
-                    return;
-                }
-                if (event.eventType === zlink.ServiceMonitorEvent.DISCOVERY_SERVICE_UP) {
-                    clearTimeout(timeoutId);
-                    resolve(event);
-                }
+                clearTimeout(timeout);
+                resolve(event);
             });
         });
+        registry.bind(pubEndpoint, routerEndpoint);
+        discovery.connectRegistry(routerEndpoint);
+        node.attachDiscovery(discovery);
         node.bind(serviceEndpoint);
         const event = await eventPromise;
         assert.equal(event.eventType, zlink.ServiceMonitorEvent.DISCOVERY_SERVICE_UP);
         assert.equal(event.serviceName, 'monitor-service-up');
+        assert.throws(() => monitor.tryRecv(), /busy|state|current/i);
     }
     finally {
         monitor.close();

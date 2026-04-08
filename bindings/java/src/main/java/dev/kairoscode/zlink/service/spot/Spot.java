@@ -28,6 +28,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Unified spot service handle aligned to the current core publish/subscribe
@@ -73,6 +76,7 @@ public final class Spot implements AutoCloseable {
     private Arena sendReadyCallbackArena;
     private MemorySegment subscribeCallbackStub = MemorySegment.NULL;
     private MemorySegment sendReadyCallbackStub = MemorySegment.NULL;
+    private volatile ExecutorService callbackExecutor;
     private volatile RuntimeException callbackFailure;
 
     /** Creates a unified spot facade bound to the supplied node. */
@@ -98,12 +102,12 @@ public final class Spot implements AutoCloseable {
     /** Publishes one payload part on the topic. */
     public void publish(String topicId, Message part) {
         Objects.requireNonNull(part, "part");
-        publish(topicId, List.of(part));
+        publishInternal(topicId, part, false);
     }
 
     public SendResult tryPublish(String topicId, Message part) {
         Objects.requireNonNull(part, "part");
-        return tryPublish(topicId, List.of(part));
+        return publishInternal(topicId, part, true);
     }
 
     /** Publishes a multipart payload on the topic. */
@@ -115,9 +119,50 @@ public final class Spot implements AutoCloseable {
         return publishInternal(topicId, parts, true);
     }
 
+    private SendResult publishInternal(String topicId, Message part,
+                                       boolean nonBlocking) {
+        Objects.requireNonNull(topicId, "topicId");
+        Objects.requireNonNull(part, "part");
+        if (!nonBlocking && InternalAccess.inCallback()) {
+            throw new IllegalStateException(
+                "blocking publish is not supported from callback context; use tryPublish");
+        }
+        while (true) {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment topic = topicCString(topicId);
+                MemorySegment msg = arena.allocate(MSG_SIZE);
+                MemorySegment resultOut = arena.allocate(ValueLayout.JAVA_INT);
+                int initRc = NativeMsg.msgInit(msg);
+                if (initRc != 0)
+                    throw ZlinkException.fromLastError("zlink_msg_init");
+                InternalAccess.messageCopyTo(part, msg);
+                int rc = nonBlocking
+                    ? Native.tryPublish(handle, topic, msg, 1, resultOut)
+                    : Native.publish(handle, topic, msg, 1, 0);
+                if (nonBlocking) {
+                    if (rc == 0)
+                        return SendResult.fromNativeValue(
+                          resultOut.get(ValueLayout.JAVA_INT, 0));
+                } else {
+                    if (rc != 0)
+                        throw ZlinkException.fromLastError("zlink_publish");
+                    return SendResult.SENT;
+                }
+            }
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            throw ZlinkException.fromLastError("zlink_publish");
+        }
+    }
+
     private SendResult publishInternal(String topicId, List<Message> parts,
                                        boolean nonBlocking) {
         int partCount = validateMessages(parts, "parts");
+        if (!nonBlocking && InternalAccess.inCallback()) {
+            throw new IllegalStateException(
+                "blocking publish is not supported from callback context; use tryPublish");
+        }
         while (true) {
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment topic = topicCString(topicId);
@@ -188,6 +233,13 @@ public final class Spot implements AutoCloseable {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
         ensureNoCallbackFailure();
+        ExecutorService executor = callbackExecutor;
+        boolean createdExecutor = false;
+        if (executor == null) {
+            executor = newCallbackExecutor();
+            callbackExecutor = executor;
+            createdExecutor = true;
+        }
         Arena arena = Arena.ofShared();
         MemorySegment stub = LINKER.upcallStub(callbackHandle(
           "handleSubscribeCallback", MethodType.methodType(void.class,
@@ -205,8 +257,13 @@ public final class Spot implements AutoCloseable {
             subscribeCallbackStub = stub;
             subscribeHandler = handler;
         } finally {
-            if (!success)
+            if (!success) {
+                if (createdExecutor) {
+                    callbackExecutor = null;
+                    shutdownExecutor(executor);
+                }
                 closeArena(arena);
+            }
         }
     }
 
@@ -215,6 +272,13 @@ public final class Spot implements AutoCloseable {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
         ensureNoCallbackFailure();
+        ExecutorService executor = callbackExecutor;
+        boolean createdExecutor = false;
+        if (executor == null) {
+            executor = newCallbackExecutor();
+            callbackExecutor = executor;
+            createdExecutor = true;
+        }
         Arena arena = Arena.ofShared();
         MemorySegment stub = LINKER.upcallStub(callbackHandle(
           "handleSendReadyCallback", MethodType.methodType(void.class,
@@ -231,8 +295,13 @@ public final class Spot implements AutoCloseable {
             sendReadyCallbackStub = stub;
             sendReadyHandler = handler;
         } finally {
-            if (!success)
+            if (!success) {
+                if (createdExecutor) {
+                    callbackExecutor = null;
+                    shutdownExecutor(executor);
+                }
                 closeArena(arena);
+            }
         }
     }
 
@@ -248,19 +317,28 @@ public final class Spot implements AutoCloseable {
 
     @Override
     public void close() {
+        ExecutorService executor = callbackExecutor;
+        Arena subscribeArena = subscribeCallbackArena;
+        Arena readyArena = sendReadyCallbackArena;
         subscribeHandler = null;
         sendReadyHandler = null;
         callbackFailure = null;
-        closeArena(subscribeCallbackArena);
-        closeArena(sendReadyCallbackArena);
+        callbackExecutor = null;
         subscribeCallbackArena = null;
         sendReadyCallbackArena = null;
+        MemorySegment subscribeStub = subscribeCallbackStub;
+        MemorySegment readyStub = sendReadyCallbackStub;
         subscribeCallbackStub = MemorySegment.NULL;
         sendReadyCallbackStub = MemorySegment.NULL;
         if (handle != null && handle.address() != 0) {
             Native.spotDestroy(handle);
             handle = MemorySegment.NULL;
         }
+        shutdownExecutor(executor);
+        closeArena(subscribeArena);
+        closeArena(readyArena);
+        subscribeStub = MemorySegment.NULL;
+        readyStub = MemorySegment.NULL;
         topicCache.clear();
         topicScratch.remove();
         topicScratchCapacity.remove();
@@ -317,12 +395,34 @@ public final class Spot implements AutoCloseable {
                                          long partCount,
                                          MemorySegment userdata) {
         SubscribeHandler handler = subscribeHandler;
-        if (handler == null)
+        ExecutorService executor = callbackExecutor;
+        if (handler == null || executor == null)
             return;
-        try (Received received = receivedFromCallback(sourceRid, parts,
-               partCount)) {
-            handler.onMessage(readRoutingId(sourceRid), decodeTopic(topic,
-              topicLen), received);
+        CallbackSubscribeData snapshot = null;
+        try {
+            snapshot = snapshotSubscribe(sourceRid, topic, topicLen, parts,
+                partCount);
+            CallbackSubscribeData callbackSnapshot = snapshot;
+            executor.execute(() -> dispatchSubscribe(handler, callbackSnapshot));
+            snapshot = null;
+        } catch (RejectedExecutionException ex) {
+            recordCallbackFailure(ex);
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
+        }
+    }
+
+    private void dispatchSubscribe(SubscribeHandler handler,
+                                   CallbackSubscribeData snapshot) {
+        try {
+            Received received = materializeReceived(snapshot);
+            InternalAccess.enterCallback();
+            try (received) {
+                handler.onMessage(snapshot.routingId(), snapshot.topicId(),
+                    received);
+            } finally {
+                InternalAccess.leaveCallback();
+            }
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
         }
@@ -331,29 +431,67 @@ public final class Spot implements AutoCloseable {
     private void handleSendReadyCallback(MemorySegment subject,
                                          MemorySegment userdata) {
         SendReadyHandler handler = sendReadyHandler;
-        if (handler == null)
+        ExecutorService executor = callbackExecutor;
+        if (handler == null || executor == null)
             return;
         try {
-            handler.onReady();
+            executor.execute(() -> dispatchSendReady(handler));
+        } catch (RejectedExecutionException ex) {
+            recordCallbackFailure(ex);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
         }
     }
 
-    private static Received receivedFromCallback(MemorySegment sourceRid,
-                                                 MemorySegment parts,
-                                                 long partCount) {
-        Message[] frames = InternalAccess.messageFromOwnedMsgVector(parts,
-            partCount);
-        boolean closed = false;
+    private void dispatchSendReady(SendReadyHandler handler) {
+        InternalAccess.enterCallback();
         try {
-            NativeMsg.multipartClose(parts, partCount);
-            closed = true;
-            return new Received(readRoutingId(sourceRid), frames);
+            handler.onReady();
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
         } finally {
-            if (!closed)
-                Message.closeAll(frames);
+            InternalAccess.leaveCallback();
         }
+    }
+
+    private static CallbackSubscribeData snapshotSubscribe(MemorySegment sourceRid,
+                                                           MemorySegment topic,
+                                                           long topicLen,
+                                                           MemorySegment parts,
+                                                           long partCount) {
+        byte[][] snapshotParts = snapshotParts(parts, partCount);
+        NativeMsg.multipartClose(parts, partCount);
+        return new CallbackSubscribeData(readRoutingId(sourceRid),
+            decodeTopic(topic, topicLen), snapshotParts);
+    }
+
+    private static byte[][] snapshotParts(MemorySegment parts, long partCount) {
+        int count = Math.toIntExact(partCount);
+        if (count == 0)
+            return new byte[0][];
+        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+        MemorySegment vector = MemorySegment.ofAddress(parts.address()).reinterpret(
+            msgSize * count);
+        byte[][] snapshot = new byte[count][];
+        for (int i = 0; i < count; i++) {
+            MemorySegment src = vector.asSlice((long) i * msgSize, msgSize);
+            int size = Math.toIntExact(NativeMsg.msgSize(src));
+            byte[] bytes = new byte[size];
+            if (size > 0) {
+                MemorySegment data = NativeMsg.msgData(src).reinterpret(size);
+                MemorySegment.copy(data, 0, MemorySegment.ofArray(bytes), 0,
+                    size);
+            }
+            snapshot[i] = bytes;
+        }
+        return snapshot;
+    }
+
+    private static Received materializeReceived(CallbackSubscribeData snapshot) {
+        Message[] frames = new Message[snapshot.parts().length];
+        for (int i = 0; i < snapshot.parts().length; i++)
+            frames[i] = Message.copyOf(snapshot.parts()[i]);
+        return new Received(snapshot.routingId(), frames);
     }
 
     private static RoutingId readRoutingId(MemorySegment sourceRid) {
@@ -446,6 +584,31 @@ public final class Spot implements AutoCloseable {
         if (arena != null && arena.scope().isAlive())
             arena.close();
     }
+
+    private static void closeReceived(Received received) {
+        if (received != null) {
+            try {
+                received.close();
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
+
+    private static ExecutorService newCallbackExecutor() {
+        return Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "zlink-spot-callback");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
+    private static void shutdownExecutor(ExecutorService executor) {
+        if (executor != null)
+            executor.shutdown();
+    }
+
+    private record CallbackSubscribeData(RoutingId routingId, String topicId,
+                                         byte[][] parts) {}
 
     private MemorySegment topicCString(String topic) {
         Objects.requireNonNull(topic, "topic");

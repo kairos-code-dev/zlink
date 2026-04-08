@@ -20,7 +20,7 @@ fn main() {
     let endpoint = router.last_endpoint().unwrap_or(bind_endpoint);
     dealer.connect(&endpoint).expect("connect");
 
-    let mon = SocketMonitor::open(&dealer, MONITOR_EVENT_ALL).expect("monitor");
+    let mon = SocketMonitor::open(&dealer).expect("monitor");
     common::wait_monitor_ready(&mon);
 
     let collector = common::MetricCollector::new();

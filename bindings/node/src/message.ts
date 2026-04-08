@@ -3,27 +3,51 @@
 import { normalizeBufferLike } from './buffer_like';
 import type { BufferLike } from './buffer_like';
 
+/** @internal */
+export interface MessageSnapshot {
+  data: Buffer;
+  refCount?: number;
+  properties?: Readonly<Record<string, string>>;
+}
+
+function normalizeMessageProperties(
+  properties?: Readonly<Record<string, string>>
+): Readonly<Record<string, string>> {
+  if (!properties) {
+    return EMPTY_PROPERTIES;
+  }
+  return Object.isFrozen(properties) ? properties : Object.freeze(properties);
+}
+
+const EMPTY_PROPERTIES: Readonly<Record<string, string>> = Object.freeze({});
+
 export class Message {
   private readonly _buffer: Buffer;
-  private readonly _borrowed: boolean;
+  private readonly _refCount: number;
+  private readonly _properties: Readonly<Record<string, string>>;
 
-  private constructor(buffer: Buffer, borrowed: boolean) {
+  private constructor(
+    buffer: Buffer,
+    refCount = 1,
+    properties?: Readonly<Record<string, string>>
+  ) {
     this._buffer = buffer;
-    this._borrowed = borrowed === true;
+    this._refCount = refCount | 0;
+    this._properties = normalizeMessageProperties(properties);
     Object.freeze(this);
   }
 
-  static copyOf(data: BufferLike | string, encoding: BufferEncoding = 'utf8'): Message {
-    if (typeof data === 'string') return new Message(Buffer.from(data, encoding), false);
-    return new Message(Buffer.from(normalizeBufferLike(data, 'data')), false);
+  static fromBuffer(buffer: BufferLike): Message {
+    return new Message(normalizeBufferLike(buffer, 'buffer'));
   }
 
-  static wrap(buffer: BufferLike): Message {
-    return new Message(normalizeBufferLike(buffer, 'buffer'), true);
-  }
-
-  static empty(): Message {
-    return new Message(Buffer.alloc(0), false);
+  /** @internal */
+  static fromSnapshot(snapshot: MessageSnapshot): Message {
+    return new Message(
+      snapshot.data,
+      snapshot.refCount ?? 1,
+      snapshot.properties
+    );
   }
 
   /** @internal */
@@ -31,12 +55,35 @@ export class Message {
     return this._buffer;
   }
 
-  toBuffer(): Buffer {
-    return this._borrowed ? this._buffer : Buffer.from(this._buffer);
+  get data(): Buffer {
+    return this._buffer;
   }
 
-  byteLength(): number {
+  get size(): number {
     return this._buffer.length;
+  }
+
+  getProperty(name: string): string | null {
+    if (typeof name !== 'string') {
+      throw new TypeError('property name must be a string');
+    }
+    return Object.prototype.hasOwnProperty.call(this._properties, name)
+      ? this._properties[name]
+      : null;
+  }
+
+  refCount(): number {
+    return this._refCount;
+  }
+
+  close(): void {}
+
+  [Symbol.dispose](): void {
+    this.close();
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    this.close();
   }
 }
 
@@ -45,7 +92,7 @@ export class Received {
   readonly routingId: Buffer | null;
 
   constructor(parts: readonly Message[], routingId: Buffer | null = null) {
-    this.parts = Object.freeze(parts.slice());
+    this.parts = Object.isFrozen(parts) ? parts : Object.freeze(parts.slice());
     this.routingId = routingId;
   }
 
@@ -67,7 +114,7 @@ export class Subscribed {
   constructor(topic: string, parts: readonly Message[], routingId: Buffer | null = null) {
     this.routingId = routingId;
     this.topic = topic;
-    this.parts = Object.freeze(parts.slice());
+    this.parts = Object.isFrozen(parts) ? parts : Object.freeze(parts.slice());
   }
 
   singlePartOrThrow(): Message {

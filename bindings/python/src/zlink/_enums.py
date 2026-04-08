@@ -158,6 +158,13 @@ class ServiceMonitorMask(IntFlag):
     DISCOVERY_SERVICE_DOWN = 1 << 6
     DISCOVERY_PROVIDERS_CHANGED = 1 << 7
     CLOSED = 1 << 17
+    ALL = (
+        ERROR
+        | DISCOVERY_SERVICE_UP
+        | DISCOVERY_SERVICE_DOWN
+        | DISCOVERY_PROVIDERS_CHANGED
+        | CLOSED
+    )
 
 
 class RegistrySocketRole(IntEnum):

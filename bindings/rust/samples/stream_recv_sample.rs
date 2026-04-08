@@ -50,8 +50,7 @@ fn main() {
     let stream = ctx.stream_socket().expect("stream socket failed");
     stream.bind("tcp://127.0.0.1:0").expect("bind failed");
     let endpoint = stream.last_endpoint().expect("last_endpoint failed");
-    let stream_mon =
-        SocketMonitor::open(&stream, zlink::MONITOR_EVENT_ALL).expect("stream monitor open failed");
+    let stream_mon = SocketMonitor::open(&stream).expect("stream monitor open failed");
 
     let tcp_addr = endpoint.strip_prefix("tcp://").unwrap();
     let mut tcp_client = TcpStream::connect(tcp_addr).expect("tcp connect failed");

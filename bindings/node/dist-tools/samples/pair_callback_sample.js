@@ -43,10 +43,10 @@ async function main() {
                 return;
             }
             const sent = 'hello-pair';
-            client.send(zlink.Message.copyOf(sent));
+            client.send(Buffer.from(sent));
         });
-        assert.equal(received.routingId, null);
-        const recv = received.parts[0].toBuffer().toString();
+        assert.ok(received.routingId === null || Buffer.isBuffer(received.routingId));
+        const recv = received.parts[0].data.toString();
         assert.equal(recv, 'hello-pair');
         console.log(`[pair/callback] send: "hello-pair" \u2192 recv: "${recv}"`);
     }

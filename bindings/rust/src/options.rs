@@ -17,7 +17,7 @@ impl<'a, T> CommonSocketOptions<'a, T> {
     }
 }
 
-pub trait CommonSocketOptionAccess {
+pub(crate) trait CommonSocketOptionAccess {
     fn set_linger(&self, d: Duration) -> Result<(), ZlinkError>;
     fn set_send_hwm(&self, value: i32) -> Result<(), ZlinkError>;
     fn send_hwm(&self) -> Result<i32, ZlinkError>;
@@ -78,6 +78,7 @@ impl_common_access!(
     StreamSocket
 );
 
+#[allow(private_bounds)]
 impl<'a, T> CommonSocketOptions<'a, T>
 where
     T: CommonSocketOptionAccess,
@@ -192,7 +193,7 @@ impl<'a> StreamSocketOptions<'a> {
     }
 }
 
-pub trait PubSocketOptionAccess {
+pub(crate) trait PubSocketOptionAccess {
     fn set_verbose(&self, enabled: bool) -> Result<(), ZlinkError>;
     fn set_verboser(&self, enabled: bool) -> Result<(), ZlinkError>;
     fn set_nodrop(&self, enabled: bool) -> Result<(), ZlinkError>;
@@ -239,6 +240,7 @@ impl<'a, T> PubSocketOptions<'a, T> {
     }
 }
 
+#[allow(private_bounds)]
 impl<'a, T> PubSocketOptions<'a, T>
 where
     T: PubSocketOptionAccess,
@@ -257,7 +259,7 @@ where
     }
 }
 
-pub trait SubSocketOptionAccess {
+pub(crate) trait SubSocketOptionAccess {
     fn topics_count(&self) -> Result<i32, ZlinkError>;
 }
 
@@ -283,6 +285,7 @@ impl<'a, T> SubSocketOptions<'a, T> {
     }
 }
 
+#[allow(private_bounds)]
 impl<'a, T> SubSocketOptions<'a, T>
 where
     T: SubSocketOptionAccess,

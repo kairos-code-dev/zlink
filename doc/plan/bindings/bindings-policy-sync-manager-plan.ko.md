@@ -83,13 +83,13 @@
 
 | 대상 | 1단계 정책 구현 | 1단계 감독 리뷰 | 2단계 POSD 리팩토링 | 2단계 감독 리뷰 | 검증 확인 | 최종 상태 |
 |------|------------------|------------------|----------------------|------------------|-----------|-----------|
-| `bindings/cpp` | pending | pending | pending | pending | pending | pending |
-| `bindings/dotnet` | pending | pending | pending | pending | pending | pending |
-| `bindings/go` | pending | pending | pending | pending | pending | pending |
-| `bindings/java` | pending | pending | pending | pending | pending | pending |
-| `bindings/node` | pending | pending | pending | pending | pending | pending |
-| `bindings/python` | pending | pending | pending | pending | pending | pending |
-| `bindings/rust` | pending | pending | pending | pending | pending | pending |
+| `bindings/cpp` | done | done | done | done | done | done |
+| `bindings/dotnet` | done | done | done | done | done | done |
+| `bindings/go` | done | done | done | done | done | done |
+| `bindings/java` | done | done | done | done | done | done |
+| `bindings/node` | done | done | done | done | done | done |
+| `bindings/python` | done | done | done | done | done | done |
+| `bindings/rust` | done | done | done | done | done | done |
 
 ## 3. 작업 순서
 

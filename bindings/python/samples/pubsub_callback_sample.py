@@ -47,8 +47,8 @@ def main():
     with zlink.Context() as ctx:
         with zlink.XPubSocket(ctx) as publisher:
             with zlink.SubSocket(ctx) as subscriber:
-                with publisher.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as publisher_monitor:
-                    with subscriber.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as subscriber_monitor:
+                with publisher.monitor_open(zlink.MonitorEvent.CONNECTION_READY) as publisher_monitor:
+                    with subscriber.monitor_open(zlink.MonitorEvent.CONNECTION_READY) as subscriber_monitor:
                         publisher.bind(endpoint)
                         subscriber.connect(endpoint)
                         subscriber.set_subscription(b"prices")

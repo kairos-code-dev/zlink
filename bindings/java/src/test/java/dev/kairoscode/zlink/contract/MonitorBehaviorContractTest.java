@@ -18,13 +18,12 @@ public class MonitorBehaviorContractTest {
     public void blockingRecvReturnsObservedLifecycleEvent() throws Exception {
         TestSupport.assumeNative();
 
-        int events = MonitorEventType.LISTENING.getValue()
-            | MonitorEventType.ACCEPTED.getValue()
-            | MonitorEventType.CONNECTED.getValue();
         try (Context ctx = new Context();
              PairSocket server = new PairSocket(ctx);
              PairSocket client = new PairSocket(ctx);
-             var serverMonitor = server.monitorOpen(events)) {
+             var serverMonitor = server.monitorOpen(
+               MonitorEventType.LISTENING, MonitorEventType.ACCEPTED,
+               MonitorEventType.CONNECTED)) {
             CompletableFuture<MonitorEvent> eventFuture =
                 CompletableFuture.supplyAsync(serverMonitor::recv);
 
@@ -50,7 +49,7 @@ public class MonitorBehaviorContractTest {
         try (Context ctx = new Context();
              PairSocket server = new PairSocket(ctx);
              PairSocket client = new PairSocket(ctx);
-             var monitor = server.monitorOpen(MonitorEventType.LISTENING.getValue())) {
+             var monitor = server.monitorOpen(MonitorEventType.LISTENING)) {
             String endpoint = TestSupport.tcpEndpoint();
             server.bind(endpoint);
             client.connect(endpoint);

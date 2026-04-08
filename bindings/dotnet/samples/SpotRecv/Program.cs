@@ -16,10 +16,7 @@ pubNode.Bind("tcp://127.0.0.1:0");
 string endpoint = pubNode.LastEndpoint;
 subNode.ConnectPeer(endpoint);
 subscriber.SetSubscription(topic);
-SampleSupport.WaitOrThrow(
-    () => subNode.StatusSnapshot().ConnectedPeerCount > 0,
-    5000,
-    "spot peer connection");
+SampleSupport.WaitSpotPeerConnected(subNode);
 
 DateTime deadline = DateTime.UtcNow.AddSeconds(5);
 while (DateTime.UtcNow < deadline)
@@ -28,13 +25,10 @@ while (DateTime.UtcNow < deadline)
         publisher.Publish(topic, message);
     if (subscriber.TrySubscribe(out Subscribed? subscribed))
     {
-        using (subscribed)
-        {
-            string receivedTopic = subscribed.Topic;
-            string receivedPayload = subscribed.SinglePartOrThrow().GetString();
-            Console.WriteLine($"[spot/recv] publish: \"{topic}/{payload}\" -> subscribe: \"{receivedTopic}/{receivedPayload}\"");
-            return;
-        }
+        string receivedTopic = subscribed!.Topic;
+        string receivedPayload = subscribed.SinglePartOrThrow().GetString();
+        Console.WriteLine($"[spot/recv] publish: \"{topic}/{payload}\" -> subscribe: \"{receivedTopic}/{receivedPayload}\"");
+        return;
     }
 }
 throw new InvalidOperationException("spot delivery timed out");

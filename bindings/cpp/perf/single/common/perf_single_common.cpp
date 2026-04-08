@@ -102,9 +102,10 @@ bool bench_debug_enabled ()
 
 void apply_ctx_options (zlink::context_t &ctx_)
 {
+    zlink::context_options_t options = ctx_.options ();
     const int io_threads = parse_positive_env ("PERF_IO_THREADS", 0);
     if (io_threads > 0)
-        (void) ctx_.set (zlink::context_option::io_threads, io_threads);
+        (void) options.ioThreads (io_threads);
 
     int max_sockets = parse_positive_env ("PERF_MAX_SOCKETS", 0);
     if (max_sockets <= 0) {
@@ -115,7 +116,7 @@ void apply_ctx_options (zlink::context_t &ctx_)
         }
     }
     if (max_sockets > 0)
-        (void) ctx_.set (zlink::context_option::max_sockets, max_sockets);
+        (void) options.maxSockets (max_sockets);
 }
 
 bool set_sockopt_int (perf_socket_t &socket_,
@@ -326,9 +327,9 @@ queue_probe_t::queue_probe_t (perf_socket_t *send_socket_,
       _rcv_seen (false)
 {
     if (_send_socket)
-        _send_monitor = zlink::monitor_handle_t (*_send_socket);
+        _send_monitor = zlink::monitor_handle_t::open (*_send_socket);
     if (_recv_socket)
-        _recv_monitor = zlink::monitor_handle_t (*_recv_socket);
+        _recv_monitor = zlink::monitor_handle_t::open (*_recv_socket);
 }
 
 unsigned long long queue_probe_t::resolve_sample_interval_ns ()
@@ -354,11 +355,15 @@ unsigned long long queue_probe_t::now_ns ()
 }
 
 bool queue_probe_t::read_snapshot (zlink::monitor_handle_t *monitor_,
-                                   zlink_monitor_snapshot_t *snapshot_)
+                                   zlink::monitor_snapshot_t *snapshot_)
 {
     if (!monitor_ || !snapshot_ || !monitor_->valid ())
         return false;
-    return monitor_->snapshot (*snapshot_) == 0;
+    zlink_monitor_snapshot_t native;
+    if (zlink_monitor_snapshot (monitor_->handle (), &native) != 0)
+        return false;
+    *snapshot_ = zlink::monitor_snapshot_t (native);
+    return true;
 }
 
 void queue_probe_t::sample_send_if_due ()
@@ -402,7 +407,7 @@ void queue_probe_t::maybe_sample_send (bool force_)
     }
     _send_last_sample_ns = now;
 
-    zlink_monitor_snapshot_t snapshot;
+    zlink::monitor_snapshot_t snapshot;
     if (!read_snapshot (&_send_monitor, &snapshot))
         return;
     if ((snapshot.detail_flags & ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS)
@@ -438,7 +443,7 @@ void queue_probe_t::maybe_sample_recv (bool force_)
     }
     _recv_last_sample_ns = now;
 
-    zlink_monitor_snapshot_t snapshot;
+    zlink::monitor_snapshot_t snapshot;
     if (!read_snapshot (&_recv_monitor, &snapshot))
         return;
     if ((snapshot.detail_flags & ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS)

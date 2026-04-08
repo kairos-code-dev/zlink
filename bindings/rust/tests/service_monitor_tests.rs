@@ -9,9 +9,7 @@ use zlink::*;
 fn discovery_open_monitor_exposes_public_service_monitor_surface() {
     let ctx = Context::new().unwrap();
     let discovery = Discovery::new(&ctx, ServiceType::Spot, "svc-mon-open").unwrap();
-    let monitor = discovery
-        .monitor_open(SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP)
-        .unwrap();
+    let monitor = discovery.monitor_open().unwrap();
 
     assert!(monitor.try_recv().unwrap().is_none());
 }
@@ -20,9 +18,7 @@ fn discovery_open_monitor_exposes_public_service_monitor_surface() {
 fn discovery_service_monitor_callback_surface_exists() {
     let ctx = Context::new().unwrap();
     let discovery = Discovery::new(&ctx, ServiceType::Spot, "svc-mon-callback").unwrap();
-    let mut monitor = discovery
-        .monitor_open(SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP)
-        .unwrap();
+    let mut monitor = discovery.monitor_open().unwrap();
     let (tx, rx) = mpsc::channel();
     monitor
         .on_event(move |event| {

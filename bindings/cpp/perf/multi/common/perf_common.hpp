@@ -88,13 +88,14 @@ class ctx_guard_t
   public:
     ctx_guard_t () : _ctx (), _skip_term (false)
     {
+        zlink::context_options_t options = _ctx.options ();
         const int io_threads = bench_io_threads ();
         if (io_threads > 0)
-            (void) _ctx.set (zlink::context_option::io_threads, io_threads);
+            (void) options.ioThreads (io_threads);
 
         const int max_sockets = bench_max_sockets ();
         if (max_sockets > 0)
-            (void) _ctx.set (zlink::context_option::max_sockets, max_sockets);
+            (void) options.maxSockets (max_sockets);
 
     }
 
@@ -131,7 +132,7 @@ struct connect_monitor_t
 {
     connect_monitor_t () : monitor () {}
 
-    std::unique_ptr<zlink::monitor_socket_t> monitor;
+    std::unique_ptr<zlink::monitor_handle_t> monitor;
 };
 
 struct server_queue_stats_t
@@ -202,13 +203,14 @@ inline bool open_socket_monitor (perf_socket_t &socket,
                                  zlink::monitor_event events,
                                  connect_monitor_t &out)
 {
-    zlink::monitor_socket_t monitor (zlink::monitor_handle_t::open (socket, events));
+    zlink::monitor_handle_t monitor (
+      zlink::monitor_handle_t::open (socket, events));
     if (!monitor.valid ())
         return false;
 
     configure_perf_monitor_socket (monitor.handle ());
 
-    out.monitor.reset (new zlink::monitor_socket_t (std::move (monitor)));
+    out.monitor.reset (new zlink::monitor_handle_t (std::move (monitor)));
     return true;
 }
 
@@ -219,7 +221,7 @@ inline bool open_connect_monitor (perf_socket_t &socket, connect_monitor_t &out)
 }
 
 // Migrated to unified perf::wait_socket_monitor_event in
-// common/perf_monitor_wait.hpp (monitor_socket_t overload).
+// common/perf_monitor_wait.hpp (monitor_handle_t overload).
 using ::perf::wait_socket_monitor_event;
 
 inline int poll_connect_ready_count (connect_monitor_t &mon)
@@ -229,11 +231,11 @@ inline int poll_connect_ready_count (connect_monitor_t &mon)
 
     int ready = 0;
     for (;;) {
-        const zlink::maybe_t<zlink_socket_monitor_event_t> ev =
-          mon.monitor->try_recv();
+        const zlink::maybe_t<zlink::monitor_event_t> ev =
+          mon.monitor->try_recv ();
         if (!ev)
             break;
-        if (ev->event
+        if (static_cast<uint64_t> (ev->event)
             == static_cast<uint64_t> (zlink::monitor_event::connection_ready)) {
             ++ready;
         }

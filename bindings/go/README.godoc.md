@@ -32,10 +32,16 @@ The exported Go package reflects the shared bindings policy in
 - non-blocking methods use `Try*`
 - non-blocking send returns `(SendResult, error)`
 - non-blocking receive returns `(value, ok, error)`
+- message diagnostics expose `GetProperty` and `RefCount`
+- context options are exposed via `Context.Options()` and `ContextOptions`
 - typed domain objects are used for `Message`, `RoutingID`, `Received`,
   `TopicMessage`, `SubscriptionEvent`, and `MonitorEvent`
 - raw option bags and raw flags are not exposed publicly
 - socket-specific capabilities are exposed only on concrete socket types
+- service monitor entry points are discovery-only
+- monitor open APIs take typed masks and default to `ALL` when omitted
+- callback delivery hops off native callback threads onto Go-managed
+  dispatcher goroutines before user handlers run
 
 ## Verification Entry Points
 

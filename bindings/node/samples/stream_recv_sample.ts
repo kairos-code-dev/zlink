@@ -32,10 +32,10 @@ async function main() {
 
     const received = stream.recv();
     assert.ok(Buffer.isBuffer(received.routingId));
-    const recv = received.parts[0].toBuffer().toString();
+    const recv = received.parts[0].data.toString();
     assert.equal(recv, sent);
 
-    stream.send(received.routingId, zlink.Message.copyOf(sent));
+    stream.send(received.routingId, Buffer.from(sent));
     const [reply] = await once(client, 'data');
     assert.equal(reply.toString(), sent);
     console.log(`[stream/recv] send: "${sent}" \u2192 recv: "${recv}"`);

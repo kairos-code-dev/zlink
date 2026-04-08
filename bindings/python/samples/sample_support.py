@@ -81,3 +81,11 @@ def wait_until(predicate, timeout_ms=5000, description="condition"):
         if predicate():
             return
     raise TimeoutError(f"timed out waiting for {description}")
+
+
+def wait_spot_peer_connected(node, timeout_ms=5000):
+    wait_until(
+        lambda: node.status_snapshot().connected_peer_count >= 1,
+        timeout_ms=timeout_ms,
+        description="spot peer connection",
+    )

@@ -12,7 +12,7 @@ fn main() {
 
     let ctx = Context::new().expect("context");
     let server = ctx.dealer_socket().expect("dealer");
-    server.set_recv_hwm(settings.hwm).expect("rcvhwm");
+    server.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
     server.bind("tcp://0.0.0.0:0").expect("bind");
     let endpoint = server.last_endpoint().expect("endpoint");
 

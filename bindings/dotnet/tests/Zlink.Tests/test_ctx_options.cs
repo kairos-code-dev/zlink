@@ -50,14 +50,11 @@ public sealed class test_ctx_options
             return;
 
         using var ctx = new Context();
-        ctx.Options.ThreadSchedPolicy = 0;
-        Assert.Equal(0, ctx.Options.ThreadSchedPolicy);
+        ctx.Options.ThreadSchedulingPolicy = 0;
+        Assert.Equal(0, ctx.Options.ThreadSchedulingPolicy);
 
         ctx.Options.AddThreadAffinityCpu(0);
         ctx.Options.RemoveThreadAffinityCpu(0);
-
-        ctx.Options.ThreadNamePrefix = 1234;
-        Assert.Equal(1234, ctx.Options.ThreadNamePrefix);
     }
 
     [Fact]

@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
+import errno
+import queue
+import threading
 
+from ._enums import MonitorEvent, ServiceMonitorMask
 from ._ffi import (
     ZlinkMonitorSnapshot,
     ZlinkMonitorEvent,
@@ -12,12 +16,10 @@ from ._ffi import (
 )
 from ._core import (
     ZlinkError,
-    _is_eagain,
     _raise_last_error,
     _report_unhandled_callback_exception,
     _routing_id_bytes,
 )
-from ._poller import Poller
 from ._socket_base import _enter_callback, _leave_callback
 
 
@@ -83,6 +85,7 @@ class ServiceMonitorEvent:
 ServiceEvent = ServiceMonitorEvent
 
 
+_CALLBACK_SENTINEL = object()
 _SOCKET_MONITOR_HANDLER = ctypes.CFUNCTYPE(
     None, ctypes.POINTER(ZlinkMonitorEvent), ctypes.c_void_p
 )
@@ -95,24 +98,74 @@ class _BaseMonitor:
     def __init__(self, handle):
         self._handle = handle
         self._handler = None
+        self._handler_thread = None
+        self._handler_stop = None
+        self._handler_queue = None
         self._handler_cb = None
         if not self._handle:
             _raise_last_error()
 
-    def _is_ready(self):
-        with Poller() as poller:
-            poller.add_socket(self, 1)
-            try:
-                return bool(poller.poll(0))
-            except ZlinkError as exc:
-                if _is_eagain(exc):
-                    return False
-                raise
-
     def try_recv(self):
-        if not self._is_ready():
-            return None
-        return self.recv()
+        try:
+            return self.recv()
+        except ZlinkError as exc:
+            if exc.errno == errno.EAGAIN:
+                return None
+            raise
+
+    def _start_event_dispatch(self, handler):
+        if handler is None:
+            raise ValueError("handler must not be None")
+        if self._handler_thread is not None:
+            raise RuntimeError("handler is already attached")
+
+        stop = threading.Event()
+        events = queue.SimpleQueue()
+        self._handler = handler
+        self._handler_stop = stop
+
+        if isinstance(self, MonitorSocket):
+            decode = MonitorSocket._decode_event
+            native_handler = _SOCKET_MONITOR_HANDLER
+            register = lib().zlink_socket_monitor_handler
+        else:
+            decode = ServiceMonitor._decode_event
+            native_handler = _SERVICE_MONITOR_HANDLER
+            register = lib().zlink_service_monitor_handler
+
+        def _callback(event_ptr, _):
+            if stop.is_set():
+                return
+            try:
+                event = decode(event_ptr.contents)
+                events.put(event)
+            except Exception:
+                _report_unhandled_callback_exception(handler)
+
+        callback = native_handler(_callback)
+        rc = register(self._handle, callback, None)
+        if rc != 0:
+            _raise_last_error()
+        self._handler_cb = callback
+        self._handler_queue = events
+
+        def _loop():
+            while True:
+                event = events.get()
+                if event is _CALLBACK_SENTINEL:
+                    return
+                _enter_callback()
+                try:
+                    handler(event)
+                except Exception:
+                    _report_unhandled_callback_exception(handler)
+                finally:
+                    _leave_callback()
+
+        thread = threading.Thread(target=_loop, name="zlink-monitor-event")
+        thread.daemon = True
+        self._handler_thread = thread
+        thread.start()
 
     def snapshot(self):
         snapshot = ZlinkMonitorSnapshot()
@@ -131,7 +184,23 @@ class _BaseMonitor:
         if not self._handle:
             return
         self._handler = None
+        stop = self._handler_stop
+        thread = self._handler_thread
+        events = self._handler_queue
+        if stop is not None:
+            stop.set()
+        if events is not None:
+            events.put(_CALLBACK_SENTINEL)
+        if (
+            thread is not None
+            and thread.is_alive()
+            and thread is not threading.current_thread()
+        ):
+            thread.join(timeout=1.0)
+        self._handler_stop = None
+        self._handler_thread = None
         self._handler_cb = None
+        self._handler_queue = None
         handle = ctypes.c_void_p(self._handle)
         rc = lib().zlink_monitor_close(ctypes.byref(handle))
         self._handle = None
@@ -142,6 +211,12 @@ class _BaseMonitor:
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
         self.close()
 
 
@@ -163,26 +238,20 @@ class MonitorSocket(_BaseMonitor):
             _raise_last_error()
         return self._decode_event(native)
 
-    def on_event(self, handler):
-        if handler is None:
-            raise ValueError("handler must not be None")
-
-        def _callback(event_ptr, _):
-            event = self._decode_event(event_ptr.contents)
-            _enter_callback()
-            try:
-                handler(event)
-            except Exception:
-                _report_unhandled_callback_exception(handler)
-            finally:
-                _leave_callback()
-
-        callback = _SOCKET_MONITOR_HANDLER(_callback)
-        rc = lib().zlink_socket_monitor_handler(self._handle, callback, None)
+    def try_recv(self):
+        native = ZlinkMonitorEvent()
+        rc = lib().zlink_socket_monitor_recv(self._handle, ctypes.byref(native), 1)
         if rc != 0:
-            _raise_last_error()
-        self._handler = handler
-        self._handler_cb = callback
+            try:
+                _raise_last_error()
+            except ZlinkError as exc:
+                if exc.errno == errno.EAGAIN:
+                    return None
+                raise
+        return self._decode_event(native)
+
+    def on_event(self, handler):
+        self._start_event_dispatch(handler)
 
 
 class ServiceMonitor(_BaseMonitor):
@@ -209,36 +278,30 @@ class ServiceMonitor(_BaseMonitor):
             _raise_last_error()
         return self._decode_event(native)
 
-    def on_event(self, handler):
-        if handler is None:
-            raise ValueError("handler must not be None")
-
-        def _callback(event_ptr, _):
-            event = self._decode_event(event_ptr.contents)
-            _enter_callback()
-            try:
-                handler(event)
-            except Exception:
-                _report_unhandled_callback_exception(handler)
-            finally:
-                _leave_callback()
-
-        callback = _SERVICE_MONITOR_HANDLER(_callback)
-        rc = lib().zlink_service_monitor_handler(self._handle, callback, None)
+    def try_recv(self):
+        native = ZlinkServiceEvent()
+        rc = lib().zlink_service_monitor_recv(self._handle, ctypes.byref(native), 1)
         if rc != 0:
-            _raise_last_error()
-        self._handler = handler
-        self._handler_cb = callback
+            try:
+                _raise_last_error()
+            except ZlinkError as exc:
+                if exc.errno == errno.EAGAIN:
+                    return None
+                raise
+        return self._decode_event(native)
+
+    def on_event(self, handler):
+        self._start_event_dispatch(handler)
 
 
-def open_socket_monitor(socket, events):
+def open_socket_monitor(socket, events=MonitorEvent.ALL):
     options = ZlinkSocketMonitorOpenOptions()
     options.events = int(events)
     handle = lib().zlink_socket_monitor_open(socket._handle, ctypes.byref(options))
     return MonitorSocket(handle)
 
 
-def open_service_monitor(service, events):
+def open_service_monitor(service, events=ServiceMonitorMask.ALL):
     options = ZlinkServiceMonitorOpenOptions()
     options.events = int(events)
     handle = lib().zlink_service_monitor_open(service._handle, ctypes.byref(options))

@@ -1,8 +1,6 @@
 import argparse
-import contextlib
-import importlib.util
-import io
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -92,46 +90,32 @@ def _run_pattern(args, env, pattern, msg_size):
     entry = ROOT / f"perf_{pattern.lower()}.py"
     if not entry.exists():
         raise SystemExit(f"unsupported pattern: {pattern}")
-    old_pythonpath = os.environ.get("PYTHONPATH")
-    inserted_path = env["PYTHONPATH"]
-    inserted = False
-    os.environ["PYTHONPATH"] = env["PYTHONPATH"]
-    if env.get("ZLINK_LIBRARY_PATH"):
-        os.environ["ZLINK_LIBRARY_PATH"] = env["ZLINK_LIBRARY_PATH"]
-    if inserted_path not in sys.path:
-        sys.path.insert(0, inserted_path)
-        inserted = True
-    capture = io.StringIO()
-    module_name = f"_python_perf_single_{pattern.lower()}"
-    spec = importlib.util.spec_from_file_location(module_name, entry)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    try:
-        with contextlib.redirect_stdout(capture):
-            module.main(
-                [
-                    "--duration",
-                    args.duration,
-                    "--warmup",
-                    args.warmup,
-                    "--msg-size",
-                    msg_size,
-                    "--recv",
-                    args.recv,
-                ]
-            )
-    finally:
-        if inserted:
-            try:
-                sys.path.remove(inserted_path)
-            except ValueError:
-                pass
-        if old_pythonpath is None:
-            os.environ.pop("PYTHONPATH", None)
-        else:
-            os.environ["PYTHONPATH"] = old_pythonpath
-    return capture.getvalue().strip()
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(entry),
+            "--duration",
+            args.duration,
+            "--warmup",
+            args.warmup,
+            "--msg-size",
+            msg_size,
+            "--recv",
+            args.recv,
+        ],
+        cwd=str(ROOT.parent.parent),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=90,
+        check=True,
+    )
+    chunks = []
+    if result.stdout:
+        chunks.append(result.stdout.strip())
+    if result.stderr:
+        chunks.append(result.stderr.strip())
+    return "\n".join(chunk for chunk in chunks if chunk)
 
 
 def _build_options(args, patterns, transports, msg_sizes):

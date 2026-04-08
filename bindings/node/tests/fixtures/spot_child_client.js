@@ -29,7 +29,7 @@ async function main() {
     while (Date.now() < deadline) {
       const received = spot.trySubscribe();
       if (received) {
-        console.log(`RECEIVED,${received.topic},${received.parts[0].toBuffer().toString()}`);
+        console.log(`RECEIVED,${received.topic},${received.parts[0].data.toString()}`);
         return;
       }
       await new Promise((resolve) => setImmediate(resolve));

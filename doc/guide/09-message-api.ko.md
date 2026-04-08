@@ -2,6 +2,10 @@
 
 # Message API 상세
 
+> **Normative status: Illustrative — Needs refresh.**
+> 이 가이드는 설명 목적의 문서이며, API 명칭/시그니처의 정확한 기준은
+> `core/include/zlink.h`와 `bindings/README.md`다.
+
 ## 1. 개요
 
 zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이다.

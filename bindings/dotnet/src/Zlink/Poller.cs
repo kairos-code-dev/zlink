@@ -2,11 +2,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Zlink.Native;
 
 namespace Zlink;
 
-public sealed class Poller : IDisposable
+public sealed class Poller : IDisposable, IAsyncDisposable
 {
     private static readonly string[] RequiredExports = new[]
     {
@@ -228,6 +229,12 @@ public sealed class Poller : IDisposable
         _itemsByUserData.Clear();
         _nativeEvents = Array.Empty<ZlinkPollerEvent>();
         GC.SuppressFinalize(this);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     ~Poller()

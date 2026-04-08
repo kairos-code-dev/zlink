@@ -20,3 +20,6 @@ bindings/cpp/doxygen/html/index.html
 - Public C++ wrapper headers in `include/zlink/`
 - Service wrappers in `include/zlink/services/`
 - Runtime/helper wrappers (`context_t`, `socket_t`, `message_t`, `poller_t`, etc.)
+- `context_t::options()` exposes the typed `context_options_t` facade
+- `message_t` diagnostics use `get_property()` and `ref_count()`
+- `service_monitor_handle_t` is discovery-only; `monitor_handle_t` stays socket-only

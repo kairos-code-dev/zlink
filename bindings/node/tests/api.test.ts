@@ -86,6 +86,55 @@ test('removed receiver stays removed from aligned api', () => {
   assert.equal(zlink.Receiver, undefined);
 });
 
+test('context options, shutdown, and tls facades follow the aligned surface', () => {
+  const ctx = new zlink.Context();
+  const pair = new zlink.PairSocket(ctx);
+  const registry = new zlink.Registry(ctx);
+  const discovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'surface-tls');
+  const node = new zlink.SpotNode(ctx);
+
+  assert.equal(typeof ctx.shutdown, 'function');
+  assert.equal(typeof ctx.options, 'object');
+  assert.equal(typeof ctx.options.ioThreads, 'number');
+  assert.equal(typeof ctx.options.maxSockets, 'number');
+  assert.equal(typeof ctx.options.socketLimit, 'number');
+  assert.equal(typeof ctx.options.maxMsgSize, 'number');
+  assert.equal(typeof ctx.options.msgTSize, 'number');
+  assert.equal(typeof ctx.options.threadPriority, 'number');
+  assert.equal(typeof ctx.options.threadSchedulingPolicy, 'number');
+  assert.equal(typeof ctx.options.blocky, 'boolean');
+
+  ctx.options.ioThreads = ctx.options.ioThreads;
+  ctx.options.maxSockets = ctx.options.maxSockets;
+  ctx.options.maxMsgSize = ctx.options.maxMsgSize;
+  ctx.options.blocky = ctx.options.blocky;
+
+  assert.equal(typeof pair.setTlsServer, 'function');
+  assert.equal(typeof pair.setTlsClient, 'function');
+  assert.equal(typeof registry.setTlsServer, 'function');
+  assert.equal(typeof registry.setTlsClient, 'function');
+  assert.equal(typeof discovery.setTlsServer, 'undefined');
+  assert.equal(typeof discovery.setTlsClient, 'function');
+  assert.equal(typeof node.setTlsServer, 'function');
+  assert.equal(typeof node.setTlsClient, 'function');
+
+  assert.throws(() => pair.setTlsServer(Buffer.from('cert'), 'key'), /cert/);
+  assert.throws(() => pair.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
+  assert.throws(() => registry.setTlsServer(Buffer.from('cert'), 'key'), /cert/);
+  assert.throws(() => registry.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
+  assert.throws(() => discovery.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
+  assert.throws(() => node.setTlsServer(Buffer.from('cert'), 'key'), /cert/);
+  assert.throws(() => node.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
+  assert.equal(typeof zlink.Message.fromBuffer(Buffer.from('message')).close, 'function');
+
+  node.close();
+  discovery.close();
+  registry.close();
+  pair.close();
+  ctx.shutdown();
+  ctx.close();
+});
+
 test('spot close leaves spot node alive and discovery close tears down attached participants', () => {
   const ctx = new zlink.Context();
   const standaloneNode = new zlink.SpotNode(ctx);

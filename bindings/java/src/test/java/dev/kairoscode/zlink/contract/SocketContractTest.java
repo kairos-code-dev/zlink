@@ -12,6 +12,7 @@ import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.ServiceMonitor;
+import dev.kairoscode.zlink.ServiceMonitorEventMask;
 import dev.kairoscode.zlink.ServiceType;
 import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.SubSocket;
@@ -22,6 +23,7 @@ import dev.kairoscode.zlink.XPubSocket;
 import dev.kairoscode.zlink.XSubSocket;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.service.discovery.Discovery;
+import dev.kairoscode.zlink.service.registry.Registry;
 import dev.kairoscode.zlink.service.spot.Spot;
 import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Constructor;
@@ -71,13 +73,13 @@ public class SocketContractTest {
     public void publishAndSubscribeUseCanonicalTopicAwareSurface() {
         TestSupport.assumeNative();
 
-        int readyEvents = dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY
-            .getValue();
         try (Context ctx = new Context();
              PubSocket pub = new PubSocket(ctx);
              SubSocket sub = new SubSocket(ctx);
-             var pubMonitor = pub.monitorOpen(readyEvents);
-             var subMonitor = sub.monitorOpen(readyEvents)) {
+             var pubMonitor = pub.monitorOpen(
+               dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY);
+             var subMonitor = sub.monitorOpen(
+               dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY)) {
             String endpoint = TestSupport.inprocEndpoint("socket-pubsub-contract");
             pub.bind(endpoint);
             sub.setSubscription("socket-topic");
@@ -115,6 +117,51 @@ public class SocketContractTest {
 
             assertDoesNotThrow(() -> router.setTlsServer(cert, key, true));
             assertDoesNotThrow(() -> router.setTlsClient(ca, "localhost", true));
+        }
+    }
+
+    @Test
+    public void serviceLayerTlsAndMonitorSurfaceAreCanonical() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             Registry registry = new Registry(ctx);
+             Discovery discovery = new Discovery(ctx, ServiceType.SOCKET,
+               "svc-tls");
+             PairSocket socket = new PairSocket(ctx)) {
+            assertTrue(hasPublicMethod(Registry.class, "setTlsServer",
+                String.class, String.class, boolean.class));
+            assertTrue(hasPublicMethod(Registry.class, "setTlsClient",
+                String.class, String.class, boolean.class));
+            assertFalse(hasPublicMethod(Discovery.class, "setTlsServer",
+                String.class, String.class, boolean.class));
+            assertTrue(hasPublicMethod(Discovery.class, "setTlsClient",
+                String.class, String.class, boolean.class));
+            assertTrue(hasPublicMethod(PairSocket.class, "monitorOpen"));
+            assertTrue(hasPublicMethod(PairSocket.class, "monitorOpen",
+                dev.kairoscode.zlink.MonitorEventType[].class));
+            assertFalse(hasPublicMethod(PairSocket.class, "monitorOpen",
+                int.class));
+            assertTrue(hasPublicMethod(Discovery.class, "monitorOpen"));
+            assertTrue(hasPublicMethod(Discovery.class, "monitorOpen",
+                ServiceMonitorEventMask[].class));
+            assertFalse(hasPublicMethod(Discovery.class, "monitorOpen",
+                int.class));
+
+            String cert = Path.of("tests/certs/server.crt").toAbsolutePath().toString();
+            String key = Path.of("tests/certs/server.key").toAbsolutePath().toString();
+            String ca = Path.of("tests/certs/ca.crt").toAbsolutePath().toString();
+            assertDoesNotThrow(() -> registry.setTlsServer(cert, key, true));
+            assertDoesNotThrow(() -> registry.setTlsClient(ca, "localhost", true));
+            assertDoesNotThrow(() -> discovery.setTlsClient(ca, "localhost", true));
+            assertDoesNotThrow(() -> {
+                try (var monitor = socket.monitorOpen()) {
+                    assertTrue(monitor.snapshot().sndPendingMsgs() >= 0L);
+                }
+                try (var serviceMonitor = discovery.monitorOpen()) {
+                    assertDoesNotThrow(serviceMonitor::tryRecv);
+                }
+            });
         }
     }
 
@@ -167,8 +214,12 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(PairSocket.class, "setSockOpt"));
             assertFalse(hasPublicMethod(PairSocket.class, "getSockOptInt"));
             assertFalse(hasPublicMethod(MonitorSocket.class, "setOption"));
+            assertFalse(hasPublicMethod(MonitorSocket.class, "sendHighWaterMark"));
+            assertFalse(hasPublicMethod(MonitorSocket.class, "receiveHighWaterMark"));
             assertFalse(hasPublicMethod(Context.class, "handle"));
             assertFalse(hasPublicMethod(Discovery.class, "handle"));
+            assertFalse(hasPublicMethod(Discovery.class, "setTlsServer",
+                String.class, String.class, boolean.class));
             assertFalse(hasPublicMethod(Spot.class, "handle"));
             assertFalse(hasPublicMethod(Spot.class, "monitorOpen", int.class));
             assertFalse(hasPublicMethod(dev.kairoscode.zlink.service.spot.SpotNode.class,
@@ -193,6 +244,11 @@ public class SocketContractTest {
                 MemorySegment.class, long.class));
             assertFalse(hasPublicMethod(Message.class, "fromOwnedMsgVector",
                 MemorySegment.class, long.class));
+            assertFalse(hasPublicMethod(Message.class, "property",
+                String.class));
+            assertTrue(hasPublicMethod(Message.class, "getProperty",
+                String.class));
+            assertTrue(hasPublicMethod(Message.class, "refCount"));
             assertFalse(hasPublicMethod(XPubSocket.class, "subscriptionEvent"));
             assertFalse(hasPublicConstructor(ServiceMonitor.class,
                 MemorySegment.class));
@@ -209,8 +265,18 @@ public class SocketContractTest {
             assertTrue(hasPublicMethod(PubSocketOptions.class, "verboser"));
             assertTrue(hasPublicMethod(PubSocketOptions.class, "noDrop"));
             assertTrue(hasPublicMethod(PubSocketOptions.class, "manual"));
+            assertTrue(hasPublicMethod(PubSocketOptions.class, "manualLastValue"));
+            assertTrue(hasPublicMethod(PubSocketOptions.class,
+                "approveSubscribe", RoutingId.class));
+            assertTrue(hasPublicMethod(PubSocketOptions.class,
+                "rejectSubscribe", RoutingId.class));
+            assertTrue(hasPublicMethod(PubSocketOptions.class, "welcomeMsg"));
+            assertTrue(hasPublicMethod(PubSocketOptions.class, "topicsCount"));
+            assertFalse(hasPublicMethod(PubSocket.class, "advancedOptions"));
+            assertFalse(hasPublicMethod(XPubSocket.class, "advancedOptions"));
+            assertEquals(PubSocketOptions.class, xpub.options().getClass());
             assertDoesNotThrow(() -> xpub.options().manual(true));
-            assertFalse(xpub.options().manual());
+            assertTrue(xpub.options().manual());
             assertDoesNotThrow(() -> xpub.options().verbose(true));
             assertDoesNotThrow(() -> xpub.options().verboser(true));
             assertDoesNotThrow(() -> xpub.options().noDrop(true));

@@ -183,6 +183,63 @@ public sealed class test_spot_pubsub_basic
         Assert.Equal("node-callback", receivedPayload);
     }
 
+    [Fact]
+    public void spot_subscribe_callback_hops_to_registered_context()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+        if (!CoreTestSupport.IsTransportSupported("tcp"))
+            return;
+
+        using var ctx = new Context();
+        using var pubNode = new SpotNode(ctx);
+        using var subNode = new SpotNode(ctx);
+        using var publisher = new Spot(pubNode);
+        using var subscriber = new Spot(subNode);
+        using var receivedSignal = new ManualResetEventSlim(false);
+        using var callbackContext = new SingleThreadSynchronizationContext();
+
+        string? receivedPayload = null;
+        int callbackThreadId = -1;
+
+        callbackContext.Invoke(() =>
+        {
+            subscriber.OnSubscribe((topic, parts) =>
+            {
+                callbackThreadId = Environment.CurrentManagedThreadId;
+                try
+                {
+                    if (parts.Length == 1)
+                        receivedPayload = parts[0].GetString();
+                }
+                finally
+                {
+                    foreach (Message part in parts)
+                        part.Dispose();
+                    receivedSignal.Set();
+                }
+            });
+        });
+
+        string endpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-callback-context");
+        pubNode.Bind(endpoint);
+        subNode.ConnectPeer(endpoint);
+        subscriber.SetSubscription("spot:callback");
+
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(5000);
+        while (DateTime.UtcNow < deadline && !receivedSignal.IsSet)
+        {
+            using Message message = Message.FromString("node-callback");
+            _ = publisher.TryPublish("spot:callback", message);
+            receivedSignal.Wait(10);
+        }
+
+        Assert.True(receivedSignal.IsSet, "spot subscribe callback timeout");
+        Assert.Equal(callbackContext.ThreadId, callbackThreadId);
+        Assert.Equal("node-callback", receivedPayload);
+    }
+
     private static string? TryReceiveSpotUtf8(Spot subscriber)
     {
         if (!subscriber.TrySubscribe(out Subscribed? subscribed))

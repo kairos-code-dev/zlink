@@ -37,10 +37,10 @@ async function main() {
     }
 
     const sent = 'hello-pair';
-    client.send(zlink.Message.copyOf(sent));
+    client.send(Buffer.from(sent));
 
     const received = server.recv();
-    const recv = received.parts[0].toBuffer().toString();
+    const recv = received.parts[0].data.toString();
     assert.equal(recv, sent);
     console.log(`[pair/recv] send: "${sent}" \u2192 recv: "${recv}"`);
   } finally {

@@ -39,14 +39,18 @@ public final class Message implements AutoCloseable {
     private boolean more;
     private Object zeroCopyAnchor;
 
-    private Message(boolean raw) {
-        this.arena = Arena.ofConfined();
+    private Message(Arena arena, boolean raw) {
+        this.arena = Objects.requireNonNull(arena, "arena");
         this.msg = arena.allocate(NativeLayouts.MSG_LAYOUT);
         this.valid = false;
         this.closed = false;
         this.recvArmed = false;
         this.more = false;
         this.zeroCopyAnchor = null;
+    }
+
+    private Message(boolean raw) {
+        this(Arena.ofConfined(), raw);
     }
 
     public Message() {
@@ -460,7 +464,7 @@ public final class Message implements AutoCloseable {
 
     static Message[] fromMsgVector(MemorySegment partsAddr, long count,
                                    Message[] reusable) {
-        return moveFromMsgVector(partsAddr, count, reusable, true);
+        return moveFromMsgVector(partsAddr, count, reusable, true, false);
     }
 
     static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count) {
@@ -469,13 +473,19 @@ public final class Message implements AutoCloseable {
 
     static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count,
                                         Message[] reusable) {
-        return moveFromMsgVector(partsAddr, count, reusable, false);
+        return moveFromMsgVector(partsAddr, count, reusable, false, false);
+    }
+
+    static Message[] fromOwnedMsgVectorShared(MemorySegment partsAddr,
+                                              long count) {
+        return moveFromMsgVector(partsAddr, count, null, false, true);
     }
 
     private static Message[] moveFromMsgVector(MemorySegment partsAddr,
                                                long count,
                                                Message[] reusable,
-                                               boolean closeSourceVector) {
+                                               boolean closeSourceVector,
+                                               boolean sharedArena) {
         if (partsAddr == null || partsAddr.address() == 0 || count <= 0)
             return new Message[0];
         if (count > Integer.MAX_VALUE)
@@ -503,7 +513,18 @@ public final class Message implements AutoCloseable {
                 MemorySegment src = parts.asSlice((long) i * msgSize, msgSize);
                 Message msg = out[i];
                 if (msg == null || !msg.isReusable()) {
-                    msg = new Message();
+                    msg = new Message(sharedArena ? Arena.ofShared()
+                        : Arena.ofConfined(), false);
+                    int initRc = NativeMsg.msgInit(msg.msg);
+                    if (initRc != 0) {
+                        msg.arena.close();
+                        msg.closed = true;
+                        throw ZlinkException.fromLastError("zlink_msg_init");
+                    }
+                    msg.valid = true;
+                    msg.recvArmed = true;
+                    msg.more = false;
+                    msg.zeroCopyAnchor = null;
                     out[i] = msg;
                 }
                 int rc = NativeMsg.msgMove(msg.msg, src);
@@ -603,7 +624,7 @@ public final class Message implements AutoCloseable {
         }
     }
 
-    public String property(String key) {
+    public String getProperty(String key) {
         Objects.requireNonNull(key, "key");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeKey = arena.allocateFrom(key, StandardCharsets.UTF_8);

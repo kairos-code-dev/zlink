@@ -200,19 +200,9 @@ internal static class PerfSpotClient
 
     private static bool WaitForSlotsReady(List<SpotClientSlot> slots, int timeoutMs)
     {
-        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        var spin = new SpinWait();
         for (int i = 0; i < slots.Count; i++)
         {
-            while (Stopwatch.GetTimestamp() < deadlineTicks)
-            {
-                if (slots[i].Node.StatusSnapshot().ConnectedPeerCount > 0)
-                    break;
-
-                spin.SpinOnce();
-            }
-
-            if (slots[i].Node.StatusSnapshot().ConnectedPeerCount == 0)
+            if (!WaitSpotPeerConnected(slots[i].Node, timeoutMs))
                 return false;
         }
 

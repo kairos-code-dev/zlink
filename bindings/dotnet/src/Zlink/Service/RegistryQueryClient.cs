@@ -2,11 +2,12 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Zlink.Native;
 
 namespace Zlink.Service;
 
-public sealed class RegistryQueryClient : IDisposable
+public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
 {
     private IntPtr _handle;
 
@@ -85,6 +86,12 @@ public sealed class RegistryQueryClient : IDisposable
         NativeMethods.zlink_registry_query_destroy(ref _handle);
         _handle = IntPtr.Zero;
         GC.SuppressFinalize(this);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     ~RegistryQueryClient()

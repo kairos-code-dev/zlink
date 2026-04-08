@@ -14,8 +14,8 @@ fn main() {
 
     let ctx = Context::new().expect("context");
     let router = ctx.router_socket().expect("router");
-    router.set_recv_hwm(settings.hwm).expect("rcvhwm");
-    router.set_send_hwm(settings.hwm).expect("sndhwm");
+    router.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
+    router.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
     router.bind("tcp://0.0.0.0:0").expect("bind");
     let endpoint = router.last_endpoint().expect("endpoint");
 

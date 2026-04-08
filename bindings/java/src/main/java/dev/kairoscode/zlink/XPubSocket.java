@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 public final class XPubSocket extends Socket {
-    private final XPubSocketOptions options = new XPubSocketOptions(this);
+    private final PubSocketOptions options = new PubSocketOptions(this);
 
     public XPubSocket(Context ctx) {
         super(ctx, SocketType.XPUB);
@@ -26,5 +26,5 @@ public final class XPubSocket extends Socket {
     }
     public void onSubscribe(SubscribeHandler handler) { super.onSubscribe(handler); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
-    @Override public XPubSocketOptions options() { return options; }
+    @Override public PubSocketOptions options() { return options; }
 }

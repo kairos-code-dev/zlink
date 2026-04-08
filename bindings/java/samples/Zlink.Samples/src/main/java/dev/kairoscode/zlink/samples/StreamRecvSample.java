@@ -13,7 +13,9 @@ public final class StreamRecvSample {
 
         try (Context ctx = new Context();
              StreamSocket server = new StreamSocket(ctx);
-             var monitor = server.monitorOpen(SampleSupport.STREAM_READY_EVENTS)) {
+             var monitor = server.monitorOpen(
+                 dev.kairoscode.zlink.MonitorEventType.ACCEPTED,
+                 dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY)) {
             server.bind(endpoint);
             try (var rawClient = SampleSupport.connectRawTcp(endpoint)) {
                 SampleSupport.waitStreamConnected(monitor);

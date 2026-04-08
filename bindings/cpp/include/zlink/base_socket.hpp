@@ -227,18 +227,8 @@ class base_socket_t : public socket_handle_t
     monitor_handle_t
     monitor_handle (monitor_event events_ = monitor_event::all) const
     {
-        zlink_socket_monitor_open_options_t options;
-        options.events =
-          static_cast<zlink_socket_monitor_event_mask_t> (events_);
-        return monitor_handle_t (
-          zlink_socket_monitor_open (const_cast<void *> (handle ()), &options));
-    }
-
-    service_monitor_handle_t
-    service_monitor_handle (
-      service_monitor_event events_ = service_monitor_event::all) const
-    {
-        return service_monitor_handle_t (const_cast<void *> (handle ()), events_);
+        return monitor_handle_t::open (
+          *this, events_);
     }
 
     ZLINK_CPP_NODISCARD int

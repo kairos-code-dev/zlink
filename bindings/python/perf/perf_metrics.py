@@ -141,7 +141,7 @@ def tcp_endpoint(prefix="perf"):
 def wait_socket_event(socket_obj, event_mask, *, timeout_ms=DEFAULT_READY_TIMEOUT_MS):
     zlink_mod = _require_zlink()
     deadline = time.perf_counter() + (timeout_ms / 1000.0)
-    with socket_obj.open_monitor(event_mask) as monitor:
+    with socket_obj.monitor_open(event_mask) as monitor:
         with zlink_mod.Poller() as poller:
             poller.add_socket(monitor, zlink_mod.PollEvent.POLLIN)
             while True:

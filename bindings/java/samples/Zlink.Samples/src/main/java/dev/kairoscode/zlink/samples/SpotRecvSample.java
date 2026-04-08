@@ -21,8 +21,7 @@ public final class SpotRecvSample {
             String endpoint = publisherNode.statusSnapshot().localEndpoint();
             subscriberNode.connectPeer(endpoint);
             subscriber.setSubscription(SampleSupport.SPOT_TOPIC);
-            SampleSupport.waitUntil("spot peer connection",
-                () -> subscriberNode.statusSnapshot().connectedPeerCount() > 0);
+            SampleSupport.waitSpotPeerConnected(subscriberNode);
 
             Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
             while (Instant.now().isBefore(deadline)) {

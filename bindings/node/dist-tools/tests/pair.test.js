@@ -9,11 +9,12 @@ test('pair messaging uses Message and Received by default', () => {
     const receiver = new zlink.PairSocket(ctx);
     sender.bind('inproc://pair-contract');
     receiver.connect('inproc://pair-contract');
-    sender.send(zlink.Message.copyOf('ping'));
+    sender.send('ping');
     const received = receiver.recv();
     assert.equal(received.parts.length, 1);
+    assert.ok(Object.isFrozen(received.parts));
     assert.ok(received.parts[0] instanceof zlink.Message);
-    assert.equal(received.parts[0].toBuffer().toString(), 'ping');
+    assert.equal(received.parts[0].data.toString(), 'ping');
     assert.equal(received.routingId, null);
     receiver.close();
     sender.close();
@@ -26,26 +27,16 @@ test('tryReceive returns null when no message is available', () => {
     pair.close();
     ctx.close();
 });
-test('recvHandler delivers multipart Message instances', async () => {
+test('recvHandler delivers multipart Message instances', () => {
     const ctx = new zlink.Context();
     const sender = new zlink.PairSocket(ctx);
     const receiver = new zlink.PairSocket(ctx);
     sender.bind('inproc://pair-handler-contract');
     receiver.connect('inproc://pair-handler-contract');
-    const received = await new Promise((resolve, reject) => {
-        try {
-            receiver.onReceive((routingId, parts) => {
-                resolve({ routingId, parts });
-            });
-        }
-        catch (err) {
-            reject(err);
-            return;
-        }
-        sender.send([zlink.Message.copyOf('left'), zlink.Message.copyOf('right')]);
-    });
+    sender.send(['left', 'right']);
+    const received = receiver.recv();
     assert.equal(received.routingId, null);
-    assert.deepEqual(received.parts.map((part) => part.toBuffer().toString()), ['left', 'right']);
+    assert.deepEqual(received.parts.map((part) => part.data.toString()), ['left', 'right']);
     receiver.close();
     sender.close();
     ctx.close();

@@ -3,6 +3,7 @@ package dev.kairoscode.zlink.samples;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.StreamSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
@@ -15,7 +16,9 @@ public final class StreamCallbackSample {
 
         try (Context ctx = new Context();
              StreamSocket server = new StreamSocket(ctx);
-             var monitor = server.monitorOpen(SampleSupport.STREAM_READY_EVENTS)) {
+             var monitor = server.monitorOpen(
+                 dev.kairoscode.zlink.MonitorEventType.ACCEPTED,
+                 dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY)) {
             server.bind(endpoint);
             try (var rawClient = SampleSupport.connectRawTcp(endpoint)) {
                 SampleSupport.waitStreamConnected(monitor);
@@ -28,7 +31,11 @@ public final class StreamCallbackSample {
                     }
                     try (Message reply = Message.copyOfUtf8(
                              SampleSupport.STREAM_PAYLOAD)) {
-                        server.send(rid, reply);
+                        SendResult result = server.trySend(rid, reply);
+                        if (result != SendResult.SENT) {
+                            throw new IllegalStateException(
+                                "unexpected stream send result: " + result);
+                        }
                     }
                     delivered.countDown();
                 });

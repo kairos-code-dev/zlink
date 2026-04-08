@@ -2,15 +2,18 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Threading;
+using System.Threading.Tasks;
 using Zlink.Native;
 
 namespace Zlink;
 
-public sealed class SocketMonitor : IDisposable
+public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 {
     private IntPtr _handle;
     private NativeMethods.ZlinkMonitorHandlerDelegate? _handlerDelegate;
     private Action<SocketMonitorEvent>? _handler;
+    private SynchronizationContext? _handlerContext;
 
     internal SocketMonitor(IntPtr handle)
     {
@@ -27,7 +30,9 @@ public sealed class SocketMonitor : IDisposable
             throw new ArgumentNullException(nameof(handler));
         EnsureNotDisposed();
 
+        SynchronizationContext? context = SynchronizationContext.Current;
         _handler = handler;
+        _handlerContext = context;
         _handlerDelegate = OnNativeEvent;
         int rc = NativeMethods.zlink_socket_monitor_handler(_handle,
             _handlerDelegate, IntPtr.Zero);
@@ -78,6 +83,7 @@ public sealed class SocketMonitor : IDisposable
         int rc = NativeMethods.zlink_monitor_close(ref _handle);
         ZlinkException.ThrowIfError(rc);
         _handler = null;
+        _handlerContext = null;
         _handlerDelegate = null;
     }
 
@@ -93,6 +99,12 @@ public sealed class SocketMonitor : IDisposable
         {
             GC.SuppressFinalize(this);
         }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     ~SocketMonitor()
@@ -115,12 +127,14 @@ public sealed class SocketMonitor : IDisposable
     private void OnNativeEvent(ref ZlinkMonitorEvent native, IntPtr userData)
     {
         Action<SocketMonitorEvent>? handler = _handler;
+        SynchronizationContext? context = _handlerContext;
         if (handler == null)
             return;
 
         try
         {
-            handler(SocketMonitorEvent.FromNative(ref native));
+            SocketMonitorEvent monitorEvent = SocketMonitorEvent.FromNative(ref native);
+            CallbackDelivery.Post(context, () => handler(monitorEvent));
         }
         catch (Exception ex)
         {

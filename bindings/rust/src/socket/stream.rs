@@ -82,31 +82,53 @@ impl StreamSocket {
 
     // -- STREAM-specific typed options -------------------------------------
 
-    pub fn set_notify(&self, enabled: bool) -> Result<(), ZlinkError> {
-        let v: i32 = if enabled { 1 } else { 0 };
-        check_rc(unsafe {
-            ffi::zlink_set_stream_option(
-                self.inner.handle,
-                ffi::zlink_stream_option_t::ZLINK_STREAM_OPT_NOTIFY,
-                &v as *const i32 as *const c_void,
-                std::mem::size_of::<i32>(),
-            )
-        })
+    pub(crate) fn set_notify(&self, enabled: bool) -> Result<(), ZlinkError> {
+        set_stream_bool_option(
+            self.inner.handle,
+            ffi::zlink_stream_option_t::ZLINK_STREAM_OPT_NOTIFY,
+            enabled,
+        )
     }
 
-    pub fn notify(&self) -> Result<bool, ZlinkError> {
-        let mut v: i32 = 0;
-        let mut len = std::mem::size_of::<i32>();
-        check_rc(unsafe {
-            ffi::zlink_get_stream_option(
-                self.inner.handle,
-                ffi::zlink_stream_option_t::ZLINK_STREAM_OPT_NOTIFY,
-                &mut v as *mut i32 as *mut c_void,
-                &mut len,
-            )
-        })?;
-        Ok(v != 0)
+    pub(crate) fn notify(&self) -> Result<bool, ZlinkError> {
+        get_stream_bool_option(
+            self.inner.handle,
+            ffi::zlink_stream_option_t::ZLINK_STREAM_OPT_NOTIFY,
+        )
     }
+}
+
+fn set_stream_bool_option(
+    handle: *mut c_void,
+    option: ffi::zlink_stream_option_t,
+    enabled: bool,
+) -> Result<(), ZlinkError> {
+    let value: i32 = if enabled { 1 } else { 0 };
+    check_rc(unsafe {
+        ffi::zlink_set_stream_option(
+            handle,
+            option,
+            &value as *const i32 as *const c_void,
+            std::mem::size_of::<i32>(),
+        )
+    })
+}
+
+fn get_stream_bool_option(
+    handle: *mut c_void,
+    option: ffi::zlink_stream_option_t,
+) -> Result<bool, ZlinkError> {
+    let mut value: i32 = 0;
+    let mut len = std::mem::size_of::<i32>();
+    check_rc(unsafe {
+        ffi::zlink_get_stream_option(
+            handle,
+            option,
+            &mut value as *mut i32 as *mut c_void,
+            &mut len,
+        )
+    })?;
+    Ok(value != 0)
 }
 
 impl_base_socket!(StreamSocket);

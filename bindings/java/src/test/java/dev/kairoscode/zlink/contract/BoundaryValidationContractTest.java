@@ -35,7 +35,7 @@ public class BoundaryValidationContractTest {
              RouterSocket router = new RouterSocket(ctx)) {
             CommonSocketOptions options = router.options();
             assertThrows(IllegalArgumentException.class,
-                () -> options.receiveTimeout(Duration.ofMillis((long) Integer.MAX_VALUE + 1)));
+                () -> options.recvTimeout(Duration.ofMillis((long) Integer.MAX_VALUE + 1)));
             assertThrows(IllegalArgumentException.class,
                 () -> options.sendTimeout(Duration.ofMillis((long) Integer.MIN_VALUE - 1)));
         }

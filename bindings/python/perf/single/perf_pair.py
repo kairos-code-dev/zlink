@@ -49,6 +49,9 @@ def main(argv=None):
                     client.send(stamp_payload(payload, phase=1))
 
                 metrics_sink.deactivate()
+                # Give the native I/O thread a brief window to flush any
+                # in-flight callbacks before teardown closes the socket.
+                time.sleep(0.05)
                 count, latencies = metrics_sink.finish()
                 if count == 0:
                     raise RuntimeError("pair benchmark did not receive any message")

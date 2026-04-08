@@ -26,7 +26,7 @@ final class PerfMultiDealerRouter {
         }
         try (Context ctx = PerfUtil.newContext(config);
              RouterSocket server = new RouterSocket(ctx);
-             var monitor = server.monitorOpen(READY_EVENTS)) {
+             var monitor = server.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             PerfUtil.applyMonitorOptions(monitor, config);
             PerfUtil.applySocketOptions(server, config);
             PerfUtil.configureServerTls(server, config.transport());
@@ -62,7 +62,7 @@ final class PerfMultiDealerRouter {
         MultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
             try (Context ctx = PerfUtil.newContext(config);
                  DealerSocket client = new DealerSocket(ctx);
-                 var monitor = client.monitorOpen(READY_EVENTS)) {
+                 var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY)) {
                 PerfUtil.applyMonitorOptions(monitor, config);
                 PerfUtil.applySocketOptions(client, config);
                 PerfUtil.configureClientTls(client, config.transport());

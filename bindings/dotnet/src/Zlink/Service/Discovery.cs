@@ -2,19 +2,14 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Zlink;
 using Zlink.Native;
 
 namespace Zlink.Service;
 
-public sealed class Discovery : IDisposable
+public sealed class Discovery : IDisposable, IAsyncDisposable
 {
-    private const ServiceMonitorEvents DefaultMonitorEvents =
-        ServiceMonitorEvents.Error
-        | ServiceMonitorEvents.DiscoveryServiceUp
-        | ServiceMonitorEvents.DiscoveryServiceDown
-        | ServiceMonitorEvents.DiscoveryProvidersChanged
-        | ServiceMonitorEvents.Closed;
     private IntPtr _handle;
 
     public Discovery(Context context, ServiceType serviceType, string serviceName)
@@ -123,7 +118,7 @@ public sealed class Discovery : IDisposable
     }
 
     public ServiceMonitor MonitorOpen(
-        ServiceMonitorEvents events = DefaultMonitorEvents)
+        ServiceMonitorEvents events = ServiceMonitorEvents.All)
     {
         EnsureNotDisposed();
         EnumValidation.EnsureServiceMonitorEvents(events, nameof(events));
@@ -150,6 +145,12 @@ public sealed class Discovery : IDisposable
         NativeMethods.zlink_discovery_destroy(ref _handle);
         _handle = IntPtr.Zero;
         GC.SuppressFinalize(this);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     ~Discovery()

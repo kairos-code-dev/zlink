@@ -95,6 +95,13 @@ func WaitUntil(timeout time.Duration, description string, predicate func() bool)
 	Must(fmt.Errorf("timed out waiting for %s", description))
 }
 
+func WaitSpotPeerConnected(node *zlink.SpotNode, timeout time.Duration) {
+	WaitUntil(timeout, "spot peer connection", func() bool {
+		status, err := node.StatusSnapshot()
+		return err == nil && status != nil && status.ConnectedPeerCount > 0
+	})
+}
+
 func WaitServiceEvent(monitor *zlink.ServiceMonitor, eventMask uint32) *zlink.ServiceMonitorEvent {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {

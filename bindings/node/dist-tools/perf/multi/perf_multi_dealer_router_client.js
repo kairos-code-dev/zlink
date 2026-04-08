@@ -40,7 +40,7 @@ async function main() {
                 stampPayload(activePayloads[i], { phase: 0, runId, msgSize: options.msgSize });
                 dealers[i].send(activePayloads[i]);
                 const echoed = dealers[i].recv();
-                collector.record(decodeMetricHeader(echoed.parts[0].toBuffer()), process.hrtime.bigint());
+                collector.record(decodeMetricHeader(echoed.parts[0].data), process.hrtime.bigint());
             }
         }
         const result = await collector.finish();

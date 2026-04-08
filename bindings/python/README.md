@@ -19,12 +19,18 @@ API directly. The public contract is:
 - blocking APIs use direct names like `send`, `recv`, `publish`, `subscribe`
 - non-blocking APIs use `try*` names like `try_send`, `try_recv`,
   `try_publish`, `try_subscribe`
+- `Context` exposes typed `ContextOptions` instead of raw `set/get`
+- `Message` exposes zero-copy `data` plus diagnostic `getProperty` and
+  `refCount`
 - receive and subscribe return domain objects such as `Received`,
   `Subscribed`, `TopicMessage`, `RoutingId`, and `SubscriptionEvent`
 - raw public option bags like `setsockopt` and `getsockopt` are not exposed
 - typed option families are exposed through properties and capability objects
-- monitor sockets use canonical `recv()` and `try_recv()` entrypoints
-- service monitors use `recv()`, `try_recv()`, and `on_event()`
+- monitor sockets use canonical `monitor_open()`, `recv()`, and `try_recv()` entrypoints
+- service monitors use canonical `monitor_open()`, `recv()`, `try_recv()`, and `on_event()`
+- monitor and service-monitor callback delivery uses a Python-managed dispatcher thread
+  rather than a native callback trampoline
+- resource-owning types support sync and async context manager cleanup
 - `*_READY_CHANGED` monitor events do not expose aggregate ready counts
 - monitor snapshots are state/queue inspection surfaces, not ready-count gates
 - callback registration uses canonical names `on_receive`, `on_subscribe`,
@@ -94,11 +100,15 @@ policy requires it:
 - `RoutingId` enforces the native 255-byte maximum
 - typed integer options fail on signed/unsigned overflow instead of truncating
 - send/receive convenience does not change the multipart-only contract
+- blocking send/publish inside receive callbacks raises an explicit error instead of
+  silently degrading to non-blocking behavior; use `try_send` / `try_publish` for
+  explicit non-blocking behavior
 
 ## Typed Options
 
 The canonical Python option facades are:
 
+- `ContextOptions`
 - `CommonSocketOptions`
 - `RouterSocketOptions`
 - `DealerSocketOptions`

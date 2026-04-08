@@ -401,8 +401,25 @@ func (d *Discovery) MemberPeerMetadata(serviceRole ServiceRole, endpoint string)
 	return msg, nil
 }
 
-func (d *Discovery) MonitorOpen(events uint32) (*ServiceMonitor, error) {
-	return OpenServiceMonitor(d, events)
+func (d *Discovery) MonitorOpen(events ...ServiceMonitorEventMask) (*ServiceMonitor, error) {
+	if d == nil || d.closed {
+		return nil, stateError("discovery is closed")
+	}
+	options := C.zlink_service_monitor_open_options_t{
+		events: C.zlink_service_monitor_event_mask_t(resolveServiceMonitorEvents(events)),
+	}
+	monitor := C.zlink_service_monitor_open(d.raw(), &options)
+	if monitor == nil {
+		return nil, lastError()
+	}
+	return &ServiceMonitor{handle: monitor}, nil
+}
+
+func (d *Discovery) SetTLSClient(caCertPath string, hostname string, trustSystem bool) error {
+	if d == nil || d.closed {
+		return stateError("discovery is closed")
+	}
+	return setTLSClient(d.raw(), caCertPath, hostname, trustSystem)
 }
 
 func (r *Registry) Bind(pubEndpoint string, routerEndpoint string) error {
@@ -412,6 +429,20 @@ func (r *Registry) Bind(pubEndpoint string, routerEndpoint string) error {
 	return withCStringPair(pubEndpoint, routerEndpoint, func(pubC *C.char, routerC *C.char) error {
 		return checkRC(C.zlink_registry_bind(r.raw(), pubC, routerC))
 	})
+}
+
+func (r *Registry) SetTLSServer(certPath string, keyPath string, requireClientCert bool) error {
+	if r == nil || r.closed {
+		return stateError("registry is closed")
+	}
+	return setTLSServer(r.raw(), certPath, keyPath, requireClientCert)
+}
+
+func (r *Registry) SetTLSClient(caCertPath string, hostname string, trustSystem bool) error {
+	if r == nil || r.closed {
+		return stateError("registry is closed")
+	}
+	return setTLSClient(r.raw(), caCertPath, hostname, trustSystem)
 }
 
 func (r *Registry) SetId(registryID uint32) error {

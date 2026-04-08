@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist');
 const { createMetricCollector, decodeMetricHeader, summarizeMetrics } = require('../common/perf_metrics');
-const { parseMultiArgs } = require('./perf_multi_common');
+const { parseMultiArgs, waitForSpotSubscriberReady } = require('./perf_multi_common');
 const TOPIC = 'perf.topic';
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
@@ -24,7 +24,7 @@ async function main() {
         timeoutId = setTimeout(resolve, Math.ceil((options.warmup + options.duration + 2) * 1000));
     });
     const handleDelivery = (received) => {
-        const header = decodeMetricHeader(received.parts[0].toBuffer());
+        const header = decodeMetricHeader(received.parts[0].data);
         if (!header) {
             return;
         }
@@ -37,20 +37,6 @@ async function main() {
             return;
         }
         collector.record(header, process.hrtime.bigint());
-    };
-    const waitForSubDeliveryReady = async (slot, timeoutMs) => {
-        const deadline = Date.now() + timeoutMs;
-        while (Date.now() < deadline) {
-            if (slot.node.statusSnapshot().readySubjectCount > 0) {
-                return;
-            }
-            await new Promise((resolve) => setImmediate(resolve));
-        }
-        throw new Error(`spot client ready timeout: ${JSON.stringify({
-            status: slot.node.statusSnapshot(),
-            peers: slot.node.peersSnapshot(),
-            subjects: slot.node.subjectsSnapshot()
-        })}`);
     };
     try {
         for (let i = 0; i < options.clients; i += 1) {
@@ -92,7 +78,7 @@ async function main() {
             }
         }
         for (const slot of slots) {
-            await waitForSubDeliveryReady(slot, 10000);
+            await waitForSpotSubscriberReady(slot, 10000);
             console.error(`spot client ready: ${JSON.stringify({
                 status: slot.node.statusSnapshot(),
                 peers: slot.node.peersSnapshot(),

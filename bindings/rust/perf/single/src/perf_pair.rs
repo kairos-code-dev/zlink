@@ -18,7 +18,7 @@ fn main() {
     let endpoint = receiver.last_endpoint().unwrap_or(bind_endpoint);
     sender.connect(&endpoint).expect("connect");
 
-    let mon = SocketMonitor::open(&sender, MONITOR_EVENT_ALL).expect("monitor");
+    let mon = SocketMonitor::open(&sender).expect("monitor");
     common::wait_monitor_ready(&mon);
 
     let collector = common::MetricCollector::new();

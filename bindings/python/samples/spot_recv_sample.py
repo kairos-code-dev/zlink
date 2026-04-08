@@ -1,5 +1,5 @@
 import zlink
-from sample_support import wait_until
+from sample_support import wait_spot_peer_connected, wait_until
 
 def main():
     with zlink.Context() as ctx:
@@ -10,10 +10,7 @@ def main():
                         pub_node.bind("tcp://127.0.0.1:0")
                         endpoint = pub_node.last_endpoint()
                         sub_node.connect_peer(endpoint)
-                        wait_until(
-                            lambda: sub_node.status_snapshot().connected_peer_count >= 1,
-                            description="spot connection readiness",
-                        )
+                        wait_spot_peer_connected(sub_node)
 
                         sub_spot.set_subscription(b"room:lobby")
                         observed = {}

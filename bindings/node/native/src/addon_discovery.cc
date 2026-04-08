@@ -1081,6 +1081,48 @@ napi_value registry_setsockopt(napi_env env, napi_callback_info info)
     return NULL;
 }
 
+napi_value registry_set_tls_server(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *registry = NULL;
+    napi_get_value_external(env, argv[0], &registry);
+    std::string cert = get_string(env, argv[1]);
+    std::string key = get_string(env, argv[2]);
+    int32_t require_client = 0;
+    if (argc >= 4)
+        napi_get_value_int32(env, argv[3], &require_client);
+    int rc = zlink_set_tls_server(
+      registry, cert.c_str(), key.c_str(), require_client);
+    if (rc != 0)
+        return throw_last_error(env, "registry_set_tls_server failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value registry_set_tls_client(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *registry = NULL;
+    napi_get_value_external(env, argv[0], &registry);
+    std::string ca = get_string(env, argv[1]);
+    std::string host = get_string(env, argv[2]);
+    int32_t trust_system = 0;
+    if (argc >= 4)
+        napi_get_value_int32(env, argv[3], &trust_system);
+    int rc = zlink_set_tls_client(
+      registry, ca.c_str(), host.c_str(), trust_system);
+    if (rc != 0)
+        return throw_last_error(env, "registry_set_tls_client failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
 napi_value discovery_set_tls_client(napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
@@ -1091,11 +1133,33 @@ napi_value discovery_set_tls_client(napi_env env, napi_callback_info info)
     std::string ca = get_string(env, argv[1]);
     std::string host = get_string(env, argv[2]);
     int32_t trust_system = 0;
-    napi_get_value_int32(env, argv[3], &trust_system);
+    if (argc >= 4)
+        napi_get_value_int32(env, argv[3], &trust_system);
     int rc =
       zlink_set_tls_client(discovery, ca.c_str(), host.c_str(), trust_system);
     if (rc != 0)
         return throw_last_error(env, "discovery_set_tls_client failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value discovery_set_tls_server(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *discovery = NULL;
+    napi_get_value_external(env, argv[0], &discovery);
+    std::string cert = get_string(env, argv[1]);
+    std::string key = get_string(env, argv[2]);
+    int32_t require_client = 0;
+    if (argc >= 4)
+        napi_get_value_int32(env, argv[3], &require_client);
+    int rc = zlink_set_tls_server(
+      discovery, cert.c_str(), key.c_str(), require_client);
+    if (rc != 0)
+        return throw_last_error(env, "discovery_set_tls_server failed");
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;

@@ -177,8 +177,8 @@ fn dealer_router_send_from_callback() {
 
     // Establish connection before installing callback -- required for the
     // router's internal routing-id handshake to complete in recv mode.
-    let router_mon = SocketMonitor::open(&router, MONITOR_EVENT_CONNECTION_READY).unwrap();
-    let dealer_mon = SocketMonitor::open(&dealer, MONITOR_EVENT_CONNECTION_READY).unwrap();
+    let router_mon = SocketMonitor::open(&router).unwrap();
+    let dealer_mon = SocketMonitor::open(&dealer).unwrap();
     router.bind(&endpoint).unwrap();
     dealer.connect(&endpoint).unwrap();
     router_mon.recv().unwrap();
@@ -214,7 +214,10 @@ fn dealer_router_send_from_callback() {
     assert!(!result.1.timed_out(), "callback did not fire within 5s");
 
     // Dealer receives the reply sent from within the router callback.
-    dealer.set_recv_timeout(Duration::from_secs(5)).unwrap();
+    dealer
+        .common_options()
+        .set_recv_timeout(Duration::from_secs(5))
+        .unwrap();
     let response = dealer.recv().unwrap();
     assert_eq!(response.parts()[0].data(), b"reply-42");
 }
@@ -227,8 +230,8 @@ fn pair_send_from_callback() {
     let mut server = ctx.pair_socket().unwrap();
     let client = ctx.pair_socket().unwrap();
 
-    let server_mon = SocketMonitor::open(&server, MONITOR_EVENT_CONNECTION_READY).unwrap();
-    let client_mon = SocketMonitor::open(&client, MONITOR_EVENT_CONNECTION_READY).unwrap();
+    let server_mon = SocketMonitor::open(&server).unwrap();
+    let client_mon = SocketMonitor::open(&client).unwrap();
     server.bind(&endpoint).unwrap();
     client.connect(&endpoint).unwrap();
     server_mon.recv().unwrap();
@@ -251,7 +254,10 @@ fn pair_send_from_callback() {
     client
         .send(Message::from_bytes(b"ping-pair").unwrap())
         .unwrap();
-    client.set_recv_timeout(Duration::from_secs(5)).unwrap();
+    client
+        .common_options()
+        .set_recv_timeout(Duration::from_secs(5))
+        .unwrap();
     let response = client.recv().unwrap();
     assert_eq!(response.parts()[0].data(), b"pong-pair");
 }

@@ -28,7 +28,8 @@ final class TopicPlane {
 
     void publish(String topicId, Message part, SendFlag flags) {
         Objects.requireNonNull(part, "part");
-        publish(topicId, List.of(part), flags);
+        validateTopicUtf8(topicId, "topicId");
+        socket.publishMessageFrame(topicId, part, flags);
     }
 
     void publish(String topicId, List<Message> parts) {
@@ -45,7 +46,8 @@ final class TopicPlane {
 
     SendResult tryPublish(String topicId, Message part) {
         Objects.requireNonNull(part, "part");
-        return tryPublish(topicId, List.of(part));
+        validateTopicUtf8(topicId, "topicId");
+        return socket.tryPublishMessageFrame(topicId, part);
     }
 
     SendResult tryPublish(String topicId, List<Message> parts) {

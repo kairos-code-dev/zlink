@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { requireNative } from '../native';
-import type { MonitorSnapshot, SocketMonitorEventValue } from '../index';
+import type {
+  MonitorSnapshot,
+  SocketMonitorEventValue,
+  SocketMonitorHandler
+} from '../index';
 
 export class MonitorSocket {
   /** @internal */
@@ -19,6 +23,13 @@ export class MonitorSocket {
     return requireNative().monitorTryRecv(this._native) as SocketMonitorEventValue | null;
   }
 
+  onEvent(handler: SocketMonitorHandler): void {
+    if (typeof handler !== 'function') {
+      throw new TypeError('handler must be a function');
+    }
+    requireNative().monitorHandler(this._native, handler);
+  }
+
   snapshot(): MonitorSnapshot {
     return requireNative().monitorSnapshot(this._native) as MonitorSnapshot;
   }
@@ -27,5 +38,13 @@ export class MonitorSocket {
     if (!this._native) return;
     requireNative().monitorClose(this._native);
     this._native = null;
+  }
+
+  [Symbol.dispose](): void {
+    this.close();
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    this.close();
   }
 }

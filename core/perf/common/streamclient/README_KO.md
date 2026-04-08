@@ -34,7 +34,6 @@ core/build/bin/perf_stream_client \
   --ccu 10000 \
   --duration 5 \
   --io-threads 4 \
-  --print-perf-result 2 \
   --send-stop-token 1
 ```
 

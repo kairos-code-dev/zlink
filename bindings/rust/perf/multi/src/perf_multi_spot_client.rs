@@ -24,8 +24,7 @@ fn main() {
 
     std::thread::sleep(Duration::from_millis(500));
 
-    let deadline = Instant::now()
-        + Duration::from_secs(settings.warmup_seconds + settings.duration_seconds + 20);
+    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds + 20);
 
     let mut latency_stats = common::LatencyStats::new();
     let mut active_count: u64 = 0;
@@ -47,7 +46,7 @@ fn main() {
             loop {
                 match sockets[i].try_subscribe() {
                     Ok(Some(topic_msg)) => {
-                        let data = topic_msg.parts()[0].data();
+                        let data = common::callback_payload(topic_msg.parts());
                         if common::is_stop_token(data) { stop_seen = true; break; }
                         let phase = common::decode_phase(data);
                         if phase == common::PHASE_ACTIVE {

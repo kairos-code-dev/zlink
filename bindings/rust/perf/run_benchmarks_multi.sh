@@ -10,14 +10,14 @@ source "$HOME/.cargo/env" 2>/dev/null || true
 
 PATTERN="ALL"
 RECV_MODE="recv"
-DURATION="${PERF_SINGLE_DURATION_SECONDS:-5}"
-WARMUP="${PERF_SINGLE_WARMUP_SECONDS:-2}"
+DURATION="${PERF_MULTI_DURATION_SECONDS:-5}"
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp}"
 RUNS="${PERF_RUNS:-1}"
 CLIENTS="${PERF_MULTI_CLIENTS:-100}"
 RESULTS_DIR="${PERF_RESULTS_DIR:-${SCRIPT_DIR}/results/multi/report}"
 RESULTS_TAG="${PERF_RESULTS_TAG:-}"
+OUTPUT_FILE=""
 
 print_help() {
     cat <<'EOF'
@@ -28,13 +28,13 @@ Options:
   --pattern NAME
   --recv MODE
   --duration N
-  --warmup N
   --msg-sizes LIST
   --transports LIST
   --runs N
   --clients N
   --results-dir PATH
   --results-tag NAME
+  --output PATH
 
 Notes:
   - MULTI_STREAM uses the shared core perf_stream_client required by policy.
@@ -50,57 +50,148 @@ while [[ $# -gt 0 ]]; do
         --pattern)     PATTERN="$2";     shift 2 ;;
         --recv)        RECV_MODE="$2";   shift 2 ;;
         --duration)    DURATION="$2";    shift 2 ;;
-        --warmup)      WARMUP="$2";      shift 2 ;;
         --msg-sizes)   MSG_SIZES="$2";   shift 2 ;;
         --transports)  TRANSPORTS="$2";  shift 2 ;;
         --runs)        RUNS="$2";        shift 2 ;;
         --clients)     CLIENTS="$2";     shift 2 ;;
         --results-dir) RESULTS_DIR="$2"; shift 2 ;;
         --results-tag) RESULTS_TAG="$2"; shift 2 ;;
-        *)             shift ;;
+        --output)      OUTPUT_FILE="$2"; shift 2 ;;
+        --build-dir|--io-threads|--server-io-threads|--client-io-threads|--hwm|--send-hwm|--recv-hwm|--sndbuf|--rcvbuf|--sndtimeo|--rcvtimeo|--send-timeout-ms|--recv-timeout-ms|--connect-concurrency|--transport-transition-ms|--pattern-transition-ms|--server-ready-timeout-ms|--connect-ready-timeout-ms|--monitor-hwm|--server-shutdown-timeout-ms|--server-bind-port)
+            shift 2 ;;
+        --reuse-build|--clean-build|--pin-cpu) shift ;;
+        *)             echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
 
-PLATFORM="linux"
+case "$(uname -s)" in
+    Linux*)  PLATFORM="linux" ;;
+    Darwin*) PLATFORM="macos" ;;
+    MINGW*|MSYS*|CYGWIN*) PLATFORM="windows" ;;
+    *)       PLATFORM="linux" ;;
+esac
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 TAG_SUFFIX=""; [[ -n "${RESULTS_TAG}" ]] && TAG_SUFFIX="_${RESULTS_TAG}"
 RESULTS_FILE="${RESULTS_DIR}/perf_${PLATFORM}_${RECV_MODE}_${TIMESTAMP}${TAG_SUFFIX}.txt"
 mkdir -p "${RESULTS_DIR}"
 
+prune_reports() {
+    local report_dir="$1"
+    local max_files="${PERF_RESULTS_MAX_FILES:-100}"
+    if [[ ! "${max_files}" =~ ^[0-9]+$ ]] || [[ "${max_files}" -lt 1 ]]; then
+        echo "PERF_RESULTS_MAX_FILES must be >= 1" >&2
+        exit 1
+    fi
+
+    local count
+    count="$(find "${report_dir}" -maxdepth 1 -type f -name 'perf_*.txt' | wc -l | tr -d ' ')"
+    if [[ -z "${count}" || "${count}" -le "${max_files}" ]]; then
+        return
+    fi
+    find "${report_dir}" -maxdepth 1 -type f -name 'perf_*.txt' -printf '%f\n' \
+        | sort \
+        | head -n "$((count - max_files))" \
+        | while read -r old_file; do
+            rm -f "${report_dir}/${old_file}"
+        done
+}
+
+normalize_patterns() {
+    local raw="${1:-ALL}"
+    local recv_mode="${2:-recv}"
+    python3 - "${raw}" "${recv_mode}" <<'PY'
+import sys
+
+raw = sys.argv[1].upper()
+recv_mode = sys.argv[2].lower()
+allowed = {
+    "DEALER_DEALER",
+    "DEALER_ROUTER",
+    "ROUTER_ROUTER",
+    "PUBSUB",
+    "SPOT",
+    "STREAM",
+}
+
+if raw == "ALL":
+    if recv_mode == "callback":
+        print("MULTI_SPOT,MULTI_STREAM")
+    else:
+        print("MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM")
+    raise SystemExit(0)
+
+items = []
+for token in raw.split(","):
+    value = token.strip()
+    if not value:
+        continue
+    if value.startswith("MULTI_"):
+        value = value[len("MULTI_"):]
+    if value not in allowed:
+        raise SystemExit(f"unsupported multi pattern: {value}")
+    if recv_mode == "callback" and value not in {"SPOT", "STREAM"}:
+        raise SystemExit(f"callback recv mode is unsupported for pattern MULTI_{value}")
+    items.append(f"MULTI_{value}")
+
+if not items:
+    raise SystemExit("no valid multi pattern specified")
+
+print(",".join(items))
+PY
+}
+
 export PERF_MULTI_CLIENTS="${CLIENTS}"
-export PERF_SINGLE_DURATION_SECONDS="${DURATION}"
-export PERF_SINGLE_WARMUP_SECONDS="${WARMUP}"
+export PERF_MULTI_DURATION_SECONDS="${DURATION}"
 export LD_LIBRARY_PATH="${PROJECT_DIR}/native/linux-x86_64:${LD_LIBRARY_PATH:-}"
 
-echo "Building multi perf binaries..."
-(cd "${SCRIPT_DIR}/multi" && cargo build --release --quiet 2>/dev/null || true)
+(cd "${SCRIPT_DIR}/multi" && cargo build --release --quiet)
 BIN_DIR="${SCRIPT_DIR}/multi/target/release"
 
-if [[ "${PATTERN}" == "ALL" ]]; then
-    PATTERNS=("MULTI_DEALER_DEALER" "MULTI_DEALER_ROUTER" "MULTI_ROUTER_ROUTER" "MULTI_PUBSUB" "MULTI_SPOT" "MULTI_STREAM")
-else
-    IFS=',' read -ra PATTERNS <<< "${PATTERN}"
-fi
+PATTERN="$(normalize_patterns "${PATTERN}" "${RECV_MODE}")"
+IFS=',' read -ra PATTERNS <<< "${PATTERN}"
 
 IFS=',' read -ra SIZE_LIST <<< "${MSG_SIZES}"
 IFS=',' read -ra TRANSPORT_LIST <<< "${TRANSPORTS}"
 
 SERVER_READY_TIMEOUT=10
+SERVER_SHUTDOWN_TIMEOUT=5
 
-# Output both to stdout and results file
-exec > >(tee -a "${RESULTS_FILE}") 2>&1
+TMP_METRICS="$(mktemp)"
+TMP_CASES="$(mktemp)"
+trap 'rm -f "${TMP_METRICS}" "${TMP_CASES}"' EXIT
+METRICS_REGEX='^(throughput|bandwidth|latency|latency_p95|latency_p99)$'
 
-echo "## Effective Options (start)"
-echo "  pattern:   ${PATTERN}"
-echo "  recv:      ${RECV_MODE}"
-echo "  duration:  ${DURATION}s"
-echo "  warmup:    ${WARMUP}s"
-echo "  msg_sizes: ${MSG_SIZES}"
-echo "  transports: ${TRANSPORTS}"
-echo "  clients:   ${CLIENTS}"
-echo "  runs:      ${RUNS}"
-echo "## Effective Options (end)"
-echo ""
+wait_for_pid() {
+    local pid="$1"
+    local timeout_seconds="$2"
+    local deadline=$((SECONDS + timeout_seconds))
+    while kill -0 "${pid}" 2>/dev/null; do
+        if (( SECONDS >= deadline )); then
+            return 1
+        fi
+        sleep 0.1
+    done
+    return 0
+}
+
+shutdown_server() {
+    local pid="$1"
+    local control_fd="$2"
+
+    if kill -0 "${pid}" 2>/dev/null; then
+        printf 'STOP\n' >&"${control_fd}" || true
+        exec {control_fd}>&- || true
+        if wait_for_pid "${pid}" "${SERVER_SHUTDOWN_TIMEOUT}"; then
+            return
+        fi
+        kill "${pid}" 2>/dev/null || true
+        if wait_for_pid "${pid}" 2; then
+            return
+        fi
+        kill -9 "${pid}" 2>/dev/null || true
+        wait "${pid}" 2>/dev/null || true
+    fi
+}
 
 for run in $(seq 1 "${RUNS}"); do
     [[ "${RUNS}" -gt 1 ]] && echo "--- Run ${run}/${RUNS} ---"
@@ -133,12 +224,15 @@ for run in $(seq 1 "${RUNS}"); do
 
         for transport in "${TRANSPORT_LIST[@]}"; do
             for size in "${SIZE_LIST[@]}"; do
-                echo ""
-                echo ">> ${pat} transport=${transport} size=${size} clients=${CLIENTS}"
-
+                case_status="success"
+                case_reason=""
                 SRV_OUT=$(mktemp)
-                "${SERVER_BIN}" "${transport}" "${size}" > "${SRV_OUT}" 2>&1 &
+                SERVER_FIFO="$(mktemp -u)"
+                mkfifo "${SERVER_FIFO}"
+                "${SERVER_BIN}" "${transport}" "${size}" < "${SERVER_FIFO}" > "${SRV_OUT}" 2>&1 &
                 SERVER_PID=$!
+                exec {SERVER_CONTROL_FD}> "${SERVER_FIFO}"
+                rm -f "${SERVER_FIFO}"
 
                 # Wait for READY
                 ENDPOINT=""
@@ -153,42 +247,230 @@ for run in $(seq 1 "${RUNS}"); do
                 done
 
                 if [[ -z "${ENDPOINT}" ]]; then
-                    echo "FAIL,rust,${pat},${transport},${size},server_ready_timeout"
-                    kill "${SERVER_PID}" 2>/dev/null || true
-                    wait "${SERVER_PID}" 2>/dev/null || true
+                    case_status="fail"
+                    case_reason="server_ready_timeout"
+                    shutdown_server "${SERVER_PID}" "${SERVER_CONTROL_FD}"
                     rm -f "${SRV_OUT}"
+                    printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
                     continue
                 fi
 
                 if [[ "${pat}" == "MULTI_STREAM" ]]; then
                     if [[ ! -x "${STREAM_CLIENT}" ]]; then
-                        echo "FAIL,rust,${pat},${transport},${size},missing_shared_stream_client"
+                        case_status="fail"
+                        case_reason="missing_shared_stream_client"
+                        OUTPUT=""
                     else
-                        "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
-                            --sizes "${size}" --runs 1 --warmup "${WARMUP}" \
+                        if ! OUTPUT="$("${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
+                            --sizes "${size}" --runs 1 \
                             --duration "${DURATION}" --ccu "${CLIENTS}" \
-                            --print-perf-result 2 --send-stop-token 1 \
-                            --endpoint "${ENDPOINT}" 2>&1 \
-                            | sed 's/^RESULT,current,STREAM,/RESULT,current,MULTI_STREAM,/' || \
-                            echo "FAIL,rust,${pat},${transport},${size},client_error"
+                            --send-stop-token 1 \
+                            --endpoint "${ENDPOINT}" 2>&1)"; then
+                            case_status="fail"
+                            case_reason="binary_exit"
+                        else
+                            OUTPUT="$(printf '%s\n' "${OUTPUT}" | sed 's/^RESULT,current,STREAM,/RESULT,current,MULTI_STREAM,/')"
+                        fi
                     fi
                 else
-                    "${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT}" 2>&1 || \
-                        echo "FAIL,rust,${pat},${transport},${size},client_error"
+                    if ! OUTPUT="$("${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT}" 2>&1)"; then
+                        case_status="fail"
+                        case_reason="binary_exit"
+                    fi
                 fi
 
-                kill "${SERVER_PID}" 2>/dev/null || true
-                wait "${SERVER_PID}" 2>/dev/null || true
-                grep "^RESULT" "${SRV_OUT}" 2>/dev/null || true
+                shutdown_server "${SERVER_PID}" "${SERVER_CONTROL_FD}"
                 rm -f "${SRV_OUT}"
-
-                sleep 1
+                if [[ "${case_status}" == "success" ]]; then
+                    unsupported_line="$(printf '%s\n' "${OUTPUT}" | awk -F',' '/^UNSUPPORTED,/ {print; exit}')"
+                    if [[ -n "${unsupported_line}" ]]; then
+                        case_status="unsupported"
+                        case_reason="${unsupported_line}"
+                    fi
+                fi
+                if [[ "${case_status}" == "success" ]]; then
+                    skip_line="$(printf '%s\n' "${OUTPUT}" | awk -F',' '/^SKIP,/ {print; exit}')"
+                    if [[ -n "${skip_line}" ]]; then
+                        case_status="skip"
+                        case_reason="${skip_line}"
+                    fi
+                fi
+                while IFS= read -r line; do
+                    [[ "${line}" == RESULT,* ]] || continue
+                    IFS=',' read -r tag lib result_pattern result_transport result_size metric value <<< "${line}"
+                    [[ "${metric}" =~ ${METRICS_REGEX} ]] || continue
+                    printf '%s,%s,%s,%s,%s,%s\n' \
+                        "${pat}" "${transport}" "${size}" "${run}" "${metric}" "${value}" >> "${TMP_METRICS}"
+                done <<< "${OUTPUT}"
+                REQUIRED_COUNT="$(printf '%s\n' "${OUTPUT}" | awk -F',' '/^RESULT,/ && ($6=="throughput" || $6=="bandwidth" || $6=="latency" || $6=="latency_p95" || $6=="latency_p99") {count++} END {print count+0}')"
+                if [[ "${case_status}" == "success" && "${REQUIRED_COUNT}" -ne 5 ]]; then
+                    case_status="fail"
+                    case_reason="missing_required_result_lines run=${run}"
+                fi
+                printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
             done
-            sleep 1
         done
-        sleep 1
     done
 done
 
-echo ""
-echo "Results saved to: ${RESULTS_FILE}"
+python3 - "${TMP_METRICS}" "${TMP_CASES}" "${RESULTS_FILE}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
+  "${RECV_MODE}" "${CLIENTS}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" <<'PY'
+import csv
+import math
+import sys
+from collections import defaultdict
+
+metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, recv_mode, clients, runs, duration, results_tag, output_path = sys.argv[1:]
+runs = int(runs)
+required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
+rows = defaultdict(lambda: defaultdict(list))
+cases = {}
+patterns = []
+pattern_transports = defaultdict(list)
+pattern_sizes = defaultdict(list)
+
+with open(metrics_path, newline="", encoding="utf-8") as f:
+    reader = csv.reader(f)
+    for pattern, transport, size, run, metric, value in reader:
+        key = (pattern, transport, int(size))
+        if pattern not in patterns:
+            patterns.append(pattern)
+        if transport not in pattern_transports[pattern]:
+            pattern_transports[pattern].append(transport)
+        if int(size) not in pattern_sizes[pattern]:
+            pattern_sizes[pattern].append(int(size))
+        try:
+            rows[key][metric].append(float(value))
+        except ValueError:
+            rows[key][metric].append(math.nan)
+
+with open(cases_path, newline="", encoding="utf-8") as f:
+    reader = csv.reader(f)
+    for pattern, transport, size, status, reason in reader:
+        size = int(size)
+        cases[(pattern, transport, size)] = (status, reason)
+        if pattern not in patterns:
+            patterns.append(pattern)
+        if transport not in pattern_transports[pattern]:
+            pattern_transports[pattern].append(transport)
+        if size not in pattern_sizes[pattern]:
+            pattern_sizes[pattern].append(size)
+
+for pattern in pattern_sizes:
+    pattern_sizes[pattern].sort()
+
+def median(values):
+    usable = [v for v in values if not math.isnan(v)]
+    if not usable:
+        return math.nan
+    usable.sort()
+    mid = len(usable) // 2
+    if len(usable) % 2:
+        return usable[mid]
+    return (usable[mid - 1] + usable[mid]) / 2.0
+
+def fmt_rate(value):
+    return "N/A" if math.isnan(value) else f"{value / 1000.0:.2f} Kmsg/s"
+
+def fmt_bandwidth(value):
+    return "N/A" if math.isnan(value) else f"{value:.2f} MB/s"
+
+def fmt_latency_ms(value):
+    return "N/A" if math.isnan(value) else f"{value:.2f} ms"
+
+def fmt_metric(value):
+    return "N/A" if math.isnan(value) else f"{value:.2f}"
+
+expected = 0
+actual = 0
+lines = []
+result_lines = []
+failures = []
+
+def emit(line=""):
+    lines.append(line)
+
+def emit_effective_options(section):
+    emit(f"## Effective Options ({section})")
+    emit("- suite: multi")
+    emit(f"- runs: {runs}")
+    emit(f"- patterns: {pattern_csv}")
+    emit(f"- transports: {transports_csv}")
+    emit(f"- msg_sizes: {msg_sizes_csv}")
+    emit(f"- recv_mode: {recv_mode}")
+    emit(f"- clients: {clients}")
+    emit("- pin_cpu: off")
+    emit(f"- duration_seconds: {duration}")
+    if results_tag:
+        emit(f"- results_tag: {results_tag}")
+    emit("")
+
+emit_effective_options("start")
+emit("===============================================================================")
+emit("")
+
+for pattern_index, pattern in enumerate(patterns):
+    if pattern_index:
+        emit("===============================================================================")
+        emit("")
+    emit(f"## PATTERN: {pattern}")
+    emit("")
+    for transport in pattern_transports[pattern]:
+        emit(f"### Transport: {transport}")
+        emit("| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |")
+        emit("|------|------------|-----------|--------------|-------------|-------------|")
+        for size in pattern_sizes[pattern]:
+            key = (pattern, transport, size)
+            status, reason = cases.get(key, ("fail", "missing_case_status"))
+            if status in {"unsupported", "skip"}:
+                emit(
+                    f"| {size}B | {status.upper()} | {status.upper()} | "
+                    f"{status.upper()} | {status.upper()} | {status.upper()} |"
+                )
+                continue
+
+            expected += 5
+            metric_values = {metric: median(rows[key].get(metric, [])) for metric in required_metrics}
+            complete_case = all(len(rows[key].get(metric, [])) == runs for metric in required_metrics)
+            if complete_case:
+                actual += 5
+                emit(
+                    f"| {size}B | {fmt_rate(metric_values['throughput'])} | "
+                    f"{fmt_bandwidth(metric_values['bandwidth'])} | "
+                    f"{fmt_latency_ms(metric_values['latency'])} | "
+                    f"{fmt_latency_ms(metric_values['latency_p95'])} | "
+                    f"{fmt_latency_ms(metric_values['latency_p99'])} |"
+                )
+                for metric in required_metrics:
+                    result_lines.append(
+                        f"RESULT,current,{pattern},{transport},{size},{metric},{fmt_metric(metric_values[metric])}"
+                    )
+            else:
+                emit("| {}B | FAIL | FAIL | FAIL | FAIL | FAIL |".format(size))
+                failures.append(f"{pattern} current {transport} {size}B: {reason or 'missing_result_lines'}")
+        emit("")
+
+for line in result_lines:
+    emit(line)
+
+emit("")
+emit_effective_options("result")
+emit("## Completion")
+emit(f"- status: {'complete' if expected == actual else 'partial'}")
+emit(f"- expected_result_lines: {expected}")
+emit(f"- actual_result_lines: {actual}")
+emit("")
+emit("## Failures")
+for failure in failures:
+    emit(f"- {failure}")
+
+text = "\n".join(lines) + "\n"
+with open(report_path, "w", encoding="utf-8") as f:
+    f.write(text)
+if output_path:
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(text)
+sys.stdout.write(text)
+PY
+
+prune_reports "${RESULTS_DIR}"

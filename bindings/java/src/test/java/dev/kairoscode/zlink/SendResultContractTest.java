@@ -15,7 +15,7 @@ public class SendResultContractTest {
 
         try (Context ctx = new Context();
              SubSocket sub = new SubSocket(ctx)) {
-            sub.options().receiveTimeoutMillis(10);
+            sub.options().recvTimeout(java.time.Duration.ofMillis(10));
             assertTrue(sub.trySubscribe().isEmpty());
         }
     }

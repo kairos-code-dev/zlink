@@ -1,5 +1,5 @@
 //! MULTI_SPOT server: one-way PUB sender through SPOT facade.
-//! Sends warmup → active → stop token. POLLOUT for backpressure.
+//! Sends active → stop token. POLLOUT for backpressure.
 
 mod common;
 
@@ -28,14 +28,14 @@ fn main() {
     let mut seq: u64 = 1;
 
     send_phase(&pub_sock, &poller, &mut buf, &mut seq, msg_size,
-               common::PHASE_WARMUP, Duration::from_secs(settings.warmup_seconds));
-    send_phase(&pub_sock, &poller, &mut buf, &mut seq, msg_size,
                common::PHASE_ACTIVE, Duration::from_secs(settings.duration_seconds));
 
-    let stop = Message::from_bytes(common::STOP_TOKEN).expect("stop");
-    let _ = pub_sock.publish("S", stop);
+    let stop_deadline = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < stop_deadline {
+        let stop = Message::from_bytes(common::STOP_TOKEN).expect("stop");
+        let _ = pub_sock.publish("S", stop);
+    }
 
-    common::print_server_queue_metrics("MULTI_SPOT", &args.transport);
 }
 
 fn send_phase(pub_sock: &PubSocket, poller: &Poller, buf: &mut [u8], seq: &mut u64, msg_size: usize,

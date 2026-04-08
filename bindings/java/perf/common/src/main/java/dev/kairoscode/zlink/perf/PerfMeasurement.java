@@ -12,7 +12,6 @@ import java.util.Locale;
 import java.util.UUID;
 
 final class PerfMeasurement {
-    private static final int GENERIC_MAGIC = 0x50455246; // PERF
     private static final long BASE_EPOCH_US = System.currentTimeMillis() * 1_000L;
     private static final long BASE_NANO = System.nanoTime();
 
@@ -25,7 +24,7 @@ final class PerfMeasurement {
 
     static Message payload(int size, byte phase, long sentNanoTime) {
         long nowUs = BASE_EPOCH_US + (sentNanoTime - BASE_NANO) / 1_000L;
-        return payload(GENERIC_MAGIC, size, phase, 0, 0L, nowUs);
+        return payload(0x50455246, size, phase, 0, 0L, nowUs);
     }
 
     static byte phase(Message message) {

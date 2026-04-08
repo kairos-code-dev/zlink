@@ -105,17 +105,12 @@ fn main() {
         }
     };
 
-    run_phase(common::PHASE_WARMUP, Duration::from_secs(settings.warmup_seconds),
-              &sockets, &server_rid, &poller, &mut buf, &mut seq,
-              &mut inflight, &mut send_backpressure,
-              &mut 0u64, &mut common::LatencyStats::new());
-
     run_phase(common::PHASE_ACTIVE, Duration::from_secs(settings.duration_seconds),
               &sockets, &server_rid, &poller, &mut buf, &mut seq,
               &mut inflight, &mut send_backpressure,
               &mut active_count, &mut latency_stats);
 
-    if let Some(sock) = sockets.first() {
+    for sock in &sockets {
         let stop = Message::from_bytes(common::STOP_TOKEN).expect("stop");
         let _ = sock.send(&server_rid, stop);
     }

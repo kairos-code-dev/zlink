@@ -1,0 +1,43 @@
+## Effective Options (start)
+- suite: single
+- runs: 1
+- patterns: SPOT
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: stage5_spot_probe_r4
+
+===============================================================================
+
+## PATTERN: SPOT
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean | Lat.P95 | Lat.P99 |
+|------|------------|-----------|----------|---------|---------|
+| 64B | 1840.86 Kmsg/s | 117.81 MB/s | 407.54 us | 520.00 us | 665.00 us |
+
+RESULT,current,SPOT,tcp,64,throughput,1840859.00
+RESULT,current,SPOT,tcp,64,bandwidth,117.81
+RESULT,current,SPOT,tcp,64,latency,407.54
+RESULT,current,SPOT,tcp,64,latency_p95,520.00
+RESULT,current,SPOT,tcp,64,latency_p99,665.00
+
+## Effective Options (result)
+- suite: single
+- runs: 1
+- patterns: SPOT
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: stage5_spot_probe_r4
+
+## Completion
+- status: complete
+- expected_result_lines: 5
+- actual_result_lines: 5
+
+## Failures

@@ -522,8 +522,9 @@ bindings/cpp/perf/run_benchmarks_multi.sh --pattern ALL --msg-sizes 64
 - `--pattern ALL`로 해당 suite의 전체 패턴을 순회한다.
 - transport는 기본값(전체)을 사용한다.
 - smoke 통과 기준: 전 조합이 `fail` 없이 완료 (`status=complete`).
-- 리팩토링, 신규 바인딩 추가, CI 검증 시 full perf 전에 smoke를 먼저 실행하여
-  기본 경로를 검증한다.
+- 리팩토링 단계마다 single/multi smoke를 실행하여 기본 경로를 검증한다.
+- 모든 리팩토링이 마무리된 뒤 최종 성능 검증 단계에서 full perf를 실행한다.
+- 신규 바인딩 추가, CI 검증 시에도 full perf 전에 smoke를 먼저 실행한다.
 
 ### 3.3 통합 실행
 
@@ -939,8 +940,10 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 ### 7.6.1 성능 비회귀 우선
 
 - 구조 변경은 single/multi 기준 성능을 저하시켜서는 안 된다.
-- 각 리팩토링 단계는 full single + multi perf 실행으로 기준선 비회귀를 확인한 뒤
-  다음 단계로 진행한다.
+- 각 리팩토링 단계는 single + multi smoke 테스트로 기본 경로가 깨지지 않았는지
+  확인한 뒤 다음 단계로 진행한다.
+- 모든 리팩토링 단계가 끝난 뒤 최종 검증으로 full single + multi perf 실행을
+  수행해 기준선 비회귀를 확인한다.
 - 코드 품질이 개선되더라도 throughput/latency가 회귀하면 해당 변경을 수용하지
   않는다.
 
@@ -996,9 +999,11 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 
 - 각 리팩토링 단계는 아래 게이트를 통과해야 한다.
   1. 기능 게이트: `run_test_lanes.sh`
-  2. 성능 게이트: full single + multi perf 실행, 회귀 없음
+  2. 성능 게이트: single + multi smoke 테스트 통과
   3. hot-path 게이트: 측정 경로에 새 lock/alloc/log 없음
 - 현재 단계 게이트를 통과하기 전에는 다음 단계를 시작하지 않는다.
+- 모든 리팩토링 단계가 끝난 뒤에는 최종 성능 게이트로 full single + multi perf를
+  실행해 회귀가 없는지 확인한다.
 
 ---
 

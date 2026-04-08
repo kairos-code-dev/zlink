@@ -4,6 +4,7 @@ package dev.kairoscode.zlink.perf.multi;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.perf.PerfCallbackMetrics;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
@@ -15,36 +16,37 @@ import java.util.concurrent.TimeUnit;
 
 final class PerfMultiSpot {
     private static final String TOPIC = "perf.topic";
+    private static final Duration STABILIZATION = Duration.ofSeconds(1);
+    private static final Duration CONTROL_SETTLE = Duration.ofMillis(25);
 
     private PerfMultiSpot() {
     }
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
-        try (Context ctx = new Context();
+        try (Context ctx = PerfUtil.newContext(config);
              SpotNode node = new SpotNode(ctx);
-             Spot publisher = new Spot(node)) {
-            configureNodeTlsServer(node, config.transport());
+            Spot publisher = new Spot(node)) {
+            PerfUtil.applySpotOptions(node, config);
+            PerfUtil.configureServerTls(node, config.transport());
             node.bind(config.endpoint());
             PerfUtil.waitForReadySignal(config.controlPort());
-            long warmupEnd = System.nanoTime() + config.warmupSeconds() * 1_000_000_000L;
-            while (System.nanoTime() < warmupEnd) {
-                try (Message m = PerfUtil.payload(config.size(), (byte) 2, System.nanoTime())) {
-                    publisher.publish(TOPIC, List.of(m));
-                }
-            }
+            sleepQuietly(CONTROL_SETTLE);
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
-                try (Message m = PerfUtil.payload(config.size(), (byte) 0, System.nanoTime())) {
+                try (Message m = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
                     publisher.publish(TOPIC, List.of(m));
                 }
             }
-            for (int i = 0; i < config.clients(); i++) {
-                try (Message m = PerfUtil.payload(config.size(), (byte) 1, System.nanoTime())) {
+            int stopBurst = Math.max(16, config.clients() * 8);
+            for (int i = 0; i < stopBurst; i++) {
+                try (Message m = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_STOP, System.nanoTime())) {
                     publisher.publish(TOPIC, List.of(m));
                 }
             }
             return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
-                config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, Double.NaN, Double.NaN);
+                config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
         }
     }
 
@@ -52,27 +54,28 @@ final class PerfMultiSpot {
         CountDownLatch finishedClients = new CountDownLatch(config.clients());
         CountDownLatch ready = new CountDownLatch(config.clients());
         CountDownLatch go = new CountDownLatch(1);
-        PerfUtil.Metrics metrics = new PerfUtil.Metrics();
-        MultiSendLoops.runClients(config.clients(), (index, warmup, duration) ->
-            new Thread(() -> runClientSlot(config, index, warmup, duration,
+        PerfCallbackMetrics metrics = PerfUtil.callbackMetrics("multi-spot-metrics");
+        MultiSendLoops.runClients(config.clients(), (index, duration) ->
+            new Thread(() -> runClientSlot(config, index, duration,
                 finishedClients, ready, go, metrics), "multi-spot-client-" + index),
-            config.warmupSeconds(), config.durationSeconds());
+            config.durationSeconds());
         return metrics.finishMulti(config);
     }
 
     private static void runClientSlot(PerfUtil.Config config, int index,
-                                      int warmup, int duration,
+                                      int duration,
                                       CountDownLatch finishedClients,
                                       CountDownLatch ready,
                                       CountDownLatch go,
-                                      PerfUtil.Metrics metrics) {
+                                      PerfCallbackMetrics metrics) {
         CountDownLatch localDone = new CountDownLatch(1);
         AtomicBoolean localStopped = new AtomicBoolean(false);
-        try (Context ctx = new Context();
+        try (Context ctx = PerfUtil.newContext(config);
              SpotNode node = new SpotNode(ctx);
              Spot subscriber = new Spot(node);
         ) {
-            configureNodeTlsClient(node, config.transport());
+            PerfUtil.applySpotOptions(node, config);
+            PerfUtil.configureClientTls(node, config.transport());
             if ("callback".equalsIgnoreCase(config.recvMode())) {
                 subscriber.onSubscribe((routingId, topic, received) -> {
                     if (received == null) {
@@ -80,28 +83,29 @@ final class PerfMultiSpot {
                     }
                     try (received) {
                         handleDelivery(localDone, localStopped, finishedClients,
-                            metrics, received);
+                            metrics, config.size(), received);
                     }
                 });
             }
             node.connectPeer(config.endpoint());
             subscriber.setSubscription(TOPIC);
+            sleepQuietly(STABILIZATION);
             ready.countDown();
             if (ready.getCount() == 0L) {
-                metrics.startResourceWindow();
+                metrics.startActiveWindow();
                 PerfUtil.sendReadySignal(config.controlPort());
                 go.countDown();
             }
             PerfUtil.await(go, "spot start", Duration.ofSeconds(10));
             if ("callback".equalsIgnoreCase(config.recvMode())) {
                 waitForStopOrDeadline(localDone, Duration.ofSeconds(
-                    warmup + duration + 10L));
+                    duration + 10L));
                 return;
             }
             while (localDone.getCount() > 0L) {
                 try (var received = subscriber.subscribe()) {
                     handleDelivery(localDone, localStopped, finishedClients,
-                        metrics, received);
+                        metrics, config.size(), received);
                 }
             }
         }
@@ -110,42 +114,48 @@ final class PerfMultiSpot {
     private static void handleDelivery(CountDownLatch localDone,
                                        AtomicBoolean localStopped,
                                        CountDownLatch finishedClients,
-                                       PerfUtil.Metrics metrics,
+                                       PerfCallbackMetrics metrics,
+                                       int expectedSize,
                                        dev.kairoscode.zlink.Received received) {
         if (received == null || received.parts().isEmpty()) {
             return;
         }
         handleDelivery(localDone, localStopped, finishedClients, metrics,
-            received.firstPart());
+            expectedSize, received.firstPart());
     }
 
     private static void handleDelivery(CountDownLatch localDone,
                                        AtomicBoolean localStopped,
                                        CountDownLatch finishedClients,
-                                       PerfUtil.Metrics metrics,
+                                       PerfCallbackMetrics metrics,
+                                       int expectedSize,
                                        dev.kairoscode.zlink.TopicMessage received) {
         if (received == null || received.parts().isEmpty()) {
             return;
         }
         handleDelivery(localDone, localStopped, finishedClients, metrics,
-            received.firstPart());
+            expectedSize, received.firstPart());
     }
 
     private static void handleDelivery(CountDownLatch localDone,
                                        AtomicBoolean localStopped,
                                        CountDownLatch finishedClients,
-                                       PerfUtil.Metrics metrics,
+                                       PerfCallbackMetrics metrics,
+                                       int expectedSize,
                                        Message payload) {
-        byte phase = PerfUtil.phase(payload);
-        if (phase == 1) {
+        PerfUtil.Header header = PerfUtil.decodeHeader(payload, expectedSize);
+        if (header == null) {
+            return;
+        }
+        if (header.phase() == PerfUtil.PHASE_STOP) {
             if (localStopped.compareAndSet(false, true)) {
                 finishedClients.countDown();
                 localDone.countDown();
             }
             return;
         }
-        if (phase == 0) {
-            metrics.recordMillis(PerfUtil.latencyMillis(payload));
+        if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+            metrics.recordMicros(header.latencyMicros());
         }
     }
 
@@ -159,22 +169,13 @@ final class PerfMultiSpot {
         }
     }
 
-    private static void configureNodeTlsServer(SpotNode node, String transport) {
-        if (!"tls".equals(transport) && !"wss".equals(transport)) {
-            return;
+    private static void sleepQuietly(Duration duration) {
+        try {
+            Thread.sleep(duration.toMillis());
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("spot multi barrier interrupted", ex);
         }
-        node.setTlsServer(java.nio.file.Path.of("tests/certs/server.crt")
-            .toAbsolutePath().toString(),
-            java.nio.file.Path.of("tests/certs/server.key")
-                .toAbsolutePath().toString(),
-            false);
     }
 
-    private static void configureNodeTlsClient(SpotNode node, String transport) {
-        if (!"tls".equals(transport) && !"wss".equals(transport)) {
-            return;
-        }
-        node.setTlsClient(java.nio.file.Path.of("tests/certs/ca.crt")
-            .toAbsolutePath().toString(), "localhost", true);
-    }
 }

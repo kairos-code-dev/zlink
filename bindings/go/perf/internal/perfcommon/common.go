@@ -108,7 +108,7 @@ func DialEndpoint(endpoint string) net.Conn {
 	return conn
 }
 
-func OpenMonitor(socket any) *zlink.SocketMonitor {
+func OpenMonitor(socket zlink.SocketTarget) *zlink.SocketMonitor {
 	mon, err := zlink.OpenSocketMonitor(socket, zlink.MonitorEventConnectionReady)
 	Must(err)
 	return mon
@@ -146,7 +146,6 @@ func PreparePayload(size int) []byte {
 	return make([]byte, size)
 }
 
-
 func NewMessage(payload []byte) *zlink.Message {
 	msg, err := zlink.NewMessage(payload)
 	Must(err)
@@ -165,4 +164,3 @@ func IsTransient(err error) bool {
 	zerr, ok := err.(*zlink.ZlinkError)
 	return ok && (zerr.Code == 4 || zerr.Code == 11)
 }
-

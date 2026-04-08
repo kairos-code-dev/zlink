@@ -37,22 +37,12 @@ fn main() {
     // Wait for connections to be ready
     std::thread::sleep(Duration::from_millis(500));
 
-    let warmup_dur = Duration::from_secs(settings.warmup_seconds);
     let active_dur = Duration::from_secs(settings.duration_seconds);
     let msg_size = args.msg_size;
     let mut buf = vec![0u8; msg_size.max(common::HEADER_SIZE)];
     let mut seq: u64 = 1;
     let mut latency_stats = common::LatencyStats::new();
 
-    // -- Warmup phase --------------------------------------------------------
-    run_send_phase(
-        &sockets, &mut states, &poller,
-        &mut buf, &mut seq, msg_size,
-        common::PHASE_WARMUP, warmup_dur,
-        &mut None,
-    );
-
-    // -- Active phase --------------------------------------------------------
     let mut active_count: u64 = 0;
     run_send_phase(
         &sockets, &mut states, &poller,
@@ -61,8 +51,8 @@ fn main() {
         &mut Some((&mut active_count, &mut latency_stats)),
     );
 
-    // -- Send stop token from first socket -----------------------------------
-    if let Some(sock) = sockets.first() {
+    // -- Send stop token from every client socket -----------------------------
+    for sock in &sockets {
         let stop_msg = Message::from_bytes(common::STOP_TOKEN).expect("stop msg");
         let _ = sock.send(stop_msg);
     }

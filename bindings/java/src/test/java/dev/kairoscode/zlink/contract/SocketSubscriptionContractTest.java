@@ -4,7 +4,6 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PubSocket;
-import dev.kairoscode.zlink.SubscriptionEntry;
 import dev.kairoscode.zlink.SubscriptionEvent;
 import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.TestSupport;
@@ -12,7 +11,6 @@ import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.XPubSocket;
 import dev.kairoscode.zlink.XSubSocket;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -24,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SocketSubscriptionContractTest {
     @Test
-    public void subscriptionsSnapshotReflectsDedicatedHelpers() {
+    public void subscriptionHelpersRemainCanonicalWithoutSnapshotSurface() {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
@@ -32,10 +30,6 @@ public class SocketSubscriptionContractTest {
             sub.setSubscription("topic-a");
             sub.setSubscription("topic-b");
             sub.unsetSubscription("topic-b");
-
-            List<SubscriptionEntry> entries = sub.subscriptions();
-            assertEquals(1, entries.size());
-            assertEquals("topic-a", entries.get(0).filter());
         }
     }
 

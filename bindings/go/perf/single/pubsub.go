@@ -27,8 +27,8 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(err)
 
 	stats := perfcommon.NewStats()
-	stopAt := time.Now().Add(cfg.warmup + cfg.duration)
-	activeAt := time.Now().Add(cfg.warmup)
+	stopAt := time.Now().Add(cfg.duration)
+	activeAt := time.Now()
 
 	if cfg.recvMode == "callback" {
 		perfcommon.Must(subscriber.OnSubscribe(func(message *zlink.TopicMessage) {

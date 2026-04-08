@@ -1,0 +1,43 @@
+## Effective Options (start)
+- suite: single
+- runs: 1
+- patterns: DEALER_ROUTER
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: stage5_dr_probe_r2
+
+===============================================================================
+
+## PATTERN: DEALER_ROUTER
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean | Lat.P95 | Lat.P99 |
+|------|------------|-----------|----------|---------|---------|
+| 64B | 3404.05 Kmsg/s | 217.86 MB/s | 195.76 us | 241.00 us | 377.00 us |
+
+RESULT,current,DEALER_ROUTER,tcp,64,throughput,3404052.00
+RESULT,current,DEALER_ROUTER,tcp,64,bandwidth,217.86
+RESULT,current,DEALER_ROUTER,tcp,64,latency,195.76
+RESULT,current,DEALER_ROUTER,tcp,64,latency_p95,241.00
+RESULT,current,DEALER_ROUTER,tcp,64,latency_p99,377.00
+
+## Effective Options (result)
+- suite: single
+- runs: 1
+- patterns: DEALER_ROUTER
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: stage5_dr_probe_r2
+
+## Completion
+- status: complete
+- expected_result_lines: 5
+- actual_result_lines: 5
+
+## Failures

@@ -120,7 +120,7 @@ $DefaultPatterns = @(
     "ROUTER_ROUTER",
     "PUBSUB",
     "SPOT",
-    "STREAM",
+    "STREAM"
 )
 
 function Add-UniquePattern {

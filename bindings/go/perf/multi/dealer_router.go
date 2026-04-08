@@ -23,7 +23,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 	startMultiRouterEchoServer(router)
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
 
 	type dealerClient struct {
 		ctx     *zlink.Context

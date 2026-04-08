@@ -13,19 +13,19 @@ from ._core import (
     _validated_routing_id_bytes,
 )
 from ._socket_base import (
-    BindSocket,
-    DealerOptionSocket,
-    EndpointSocket,
-    MessageSocket,
-    PublisherOptionSocket,
-    PublisherSocket,
-    RoutingIdSocket,
-    RoutedMessageSocket,
-    RouterOptionSocket,
-    Socket,
-    StreamOptionSocket,
-    SubscriberOptionSocket,
-    SubscriberSocket,
+    _BindSocket,
+    _DealerOptionSocket,
+    _EndpointSocket,
+    _MessageSocket,
+    _PublisherOptionSocket,
+    _PublisherSocket,
+    _RoutingIdSocket,
+    _RoutedMessageSocket,
+    _RouterOptionSocket,
+    _Socket,
+    _StreamOptionSocket,
+    _SubscriberOptionSocket,
+    _SubscriberSocket,
 )
 
 
@@ -122,19 +122,19 @@ class RouterSocketOptions:
         self._socket._connect_routing_id_option = typed_routing_id
 
 
-class PairSocket(EndpointSocket, MessageSocket):
+class PairSocket(_EndpointSocket, _MessageSocket):
     _socket_type_value = SocketType.PAIR
 
 
-class DealerSocket(EndpointSocket, DealerOptionSocket, RoutingIdSocket, MessageSocket):
+class DealerSocket(_EndpointSocket, _DealerOptionSocket, _RoutingIdSocket, _MessageSocket):
     _socket_type_value = SocketType.DEALER
 
 
 class RouterSocket(
-    EndpointSocket,
-    RouterOptionSocket,
-    RoutingIdSocket,
-    RoutedMessageSocket,
+    _EndpointSocket,
+    _RouterOptionSocket,
+    _RoutingIdSocket,
+    _RoutedMessageSocket,
 ):
     _socket_type_value = SocketType.ROUTER
 
@@ -143,11 +143,11 @@ class RouterSocket(
         return RouterSocketOptions(self)
 
 
-class StreamSocket(BindSocket, StreamOptionSocket, RoutingIdSocket, RoutedMessageSocket):
+class StreamSocket(_BindSocket, _StreamOptionSocket, _RoutingIdSocket, _RoutedMessageSocket):
     _socket_type_value = SocketType.STREAM
 
 
-class PubSocket(EndpointSocket, PublisherOptionSocket, PublisherSocket):
+class PubSocket(_EndpointSocket, _PublisherOptionSocket, _PublisherSocket):
     _socket_type_value = SocketType.PUB
 
     @property
@@ -155,11 +155,11 @@ class PubSocket(EndpointSocket, PublisherOptionSocket, PublisherSocket):
         return PubSocketOptions(self)
 
 
-class SubSocket(EndpointSocket, SubscriberOptionSocket, SubscriberSocket):
+class SubSocket(_EndpointSocket, _SubscriberOptionSocket, _SubscriberSocket):
     _socket_type_value = SocketType.SUB
 
 
-class XPubSocket(EndpointSocket, PublisherOptionSocket, PublisherSocket):
+class XPubSocket(_EndpointSocket, _PublisherOptionSocket, _PublisherSocket):
     _socket_type_value = SocketType.XPUB
 
     @property
@@ -199,7 +199,7 @@ class XPubSocket(EndpointSocket, PublisherOptionSocket, PublisherSocket):
             raise
 
 
-class XSubSocket(EndpointSocket, SubscriberOptionSocket, SubscriberSocket):
+class XSubSocket(_EndpointSocket, _SubscriberOptionSocket, _SubscriberSocket):
     _socket_type_value = SocketType.XSUB
 
 
@@ -213,4 +213,4 @@ for _socket_type, _socket_cls in (
     (SocketType.XPUB, XPubSocket),
     (SocketType.XSUB, XSubSocket),
 ):
-    Socket.register_socket_type(_socket_type, _socket_cls)
+    _Socket.register_socket_type(_socket_type, _socket_cls)

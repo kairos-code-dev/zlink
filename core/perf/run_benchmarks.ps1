@@ -7,14 +7,13 @@ param(
     [string]$ResultsDir = "",
     [string]$ResultsTag = "",
     [string]$Recv = "",
-    [Alias("duration")]
     [string]$Duration = "",
     [string]$Hwm = "",
     [string]$SendHwm = "",
     [string]$RecvHwm = "",
-    [Alias("sndtimeo", "SendTimeoutMs")]
+    [Alias("SendTimeoutMs")]
     [string]$Sndtimeo = "",
-    [Alias("rcvtimeo", "RecvTimeoutMs")]
+    [Alias("RecvTimeoutMs")]
     [string]$Rcvtimeo = "",
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
@@ -34,7 +33,6 @@ Measure current zlink single-pattern performance.
 Options:
   -Help                        Show this help.
   -Pattern NAME                Pattern list (comma-separated) or ALL.
-                               In multi mode, STREAM/STREAMS map to STREAM.
   -BuildDir PATH               Build directory (default: core\build\windows-x64).
   -Build                       Force clean build (default is reuse-build).
   -OutputFile PATH             Tee console logs to a file.
@@ -54,9 +52,10 @@ Options:
   -PinCpu                      Enable PERF_TASKSET=1.
 
 Notes:
-  - result is saved under results\<single|multi>\report\.
+  - result is saved under results\single\report\.
   - reuse-build is always enabled unless -Build is provided.
   - -OutputFile and report output can be used together.
+  - run_benchmarks.ps1 is single-only; use run_benchmarks_multi.ps1 for multi mode.
 "@
 }
 
@@ -109,15 +108,12 @@ if ($Transports -and $Transports -notmatch '^[a-z]+(,[a-z]+)*$') {
 if (-not $ResultsTag) {
     $ResultsTag = $env:PERF_RESULTS_TAG
 }
-$AllowMulti = ($env:PERF_ALLOW_MULTI -eq "1")
-$MultiPatternCount = 0
-$SinglePatternCount = 0
+if ($env:PERF_ALLOW_MULTI -eq "1") {
+    throw "multi benchmarks are handled by core\\perf\\run_benchmarks_multi.ps1."
+}
 $SinglePatterns = @("PAIR", "PUBSUB", "DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "SPOT")
-$MultiPatterns = @("DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "PUBSUB", "SPOT", "STREAM")
 $SinglePatternSet = @{}
 foreach ($name in $SinglePatterns) { $SinglePatternSet[$name] = $true }
-$MultiPatternSet = @{}
-foreach ($name in $MultiPatterns) { $MultiPatternSet[$name] = $true }
 
 if ($Runs -lt 1) {
     throw "Runs must be >= 1."
@@ -148,11 +144,7 @@ if (-not $BuildDir.StartsWith($RootDir, [System.StringComparison]::OrdinalIgnore
     throw "Build directory must be inside repo root: $RootDir"
 }
 
-$BenchComparisonScript = if ($AllowMulti) {
-    Join-Path $ScriptDir "run_comparison.py"
-} else {
-    Join-Path $ScriptDir "single\run_comparison.py"
-}
+$BenchComparisonScript = Join-Path $ScriptDir "single\run_comparison.py"
 $BenchComparisonScript = [System.IO.Path]::GetFullPath($BenchComparisonScript)
 if (-not (Test-Path $BenchComparisonScript)) {
     throw "comparison script not found: $BenchComparisonScript"
@@ -164,46 +156,19 @@ if (-not $Pattern) {
 
 $PatternList = @()
 if ($Pattern.Trim().ToUpperInvariant() -eq "ALL") {
-    if ($AllowMulti) {
-        $PatternList = @($MultiPatterns)
-        $MultiPatternCount = $PatternList.Count
-    } else {
-        $PatternList = @($SinglePatterns)
-        $SinglePatternCount = $PatternList.Count
-    }
+    $PatternList = @($SinglePatterns)
     $Pattern = ($PatternList -join ",")
 } else {
     $PatternList = $Pattern.Split(",") | ForEach-Object { $_.Trim().ToUpperInvariant() } | Where-Object { $_ -ne "" }
-    if ($AllowMulti) {
-        $PatternList = $PatternList | ForEach-Object {
-            switch ($_) {
-                "STREAM" { "STREAM"; break }
-                "STREAMS" { "STREAM"; break }
-                default { $_; break }
-            }
-        }
-    }
     if ($PatternList.Count -eq 0) {
         throw "Error: no valid pattern specified."
     }
     foreach ($p in $PatternList) {
-        if ($AllowMulti) {
-            if (-not $MultiPatternSet.ContainsKey($p)) {
-                throw "Unsupported multi pattern: $p"
-            }
-            $MultiPatternCount += 1
-        } else {
-            if (-not $SinglePatternSet.ContainsKey($p)) {
-                throw "Unsupported single pattern: $p"
-            }
-            $SinglePatternCount += 1
+        if (-not $SinglePatternSet.ContainsKey($p)) {
+            throw "Unsupported single pattern: $p"
         }
     }
     $Pattern = ($PatternList -join ",")
-}
-
-if ($MultiPatternCount -gt 0 -and $SinglePatternCount -gt 0) {
-    throw "cannot mix single and multi patterns in one run."
 }
 
 $NeedResultsDir = $true
@@ -220,7 +185,7 @@ $Name = "perf_windows_${Recv}_${Timestamp}"
 if ($ResultsTag) {
     $Name = "${Name}_${ResultsTag}"
 }
-$ResultSuite = if ($MultiPatternCount -gt 0) { "multi" } else { "single" }
+$ResultSuite = "single"
 $ResultFile = Join-Path (Join-Path (Join-Path $ResultsDir $ResultSuite) "report") "${Name}.txt"
 if ($OutputFile) {
     $OutputFile = [System.IO.Path]::GetFullPath($OutputFile)

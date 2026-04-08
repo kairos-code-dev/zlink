@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using Xunit;
@@ -213,5 +214,60 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(ServiceMonitor), "TryReceive"));
         Assert.False(HasPublicInstanceMethod(typeof(ServiceMonitor),
             "AttachHandler"));
+    }
+
+    [Fact]
+    public void generic_socket_management_surface_uses_public_interface()
+    {
+        Assert.Equal(typeof(IZlinkSocket),
+            typeof(Runtime).GetMethod(nameof(Runtime.Proxy))!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IZlinkSocket),
+            typeof(Runtime).GetMethod(nameof(Runtime.ProxySteerable))!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IZlinkSocket),
+            typeof(Poller).GetMethod(nameof(Poller.Add),
+                new[] { typeof(IZlinkSocket), typeof(PollEvents), typeof(object) })!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IZlinkSocket),
+            typeof(Poller).GetMethod(nameof(Poller.Modify))!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IZlinkSocket),
+            typeof(Poller).GetMethod(nameof(Poller.Remove),
+                new[] { typeof(IZlinkSocket) })!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IZlinkSocket),
+            typeof(PollEvent).GetProperty(nameof(PollEvent.Socket))!.PropertyType);
+        Assert.NotNull(typeof(ZlinkPoll).GetMethod(nameof(ZlinkPoll.Poll),
+            new[]
+            {
+                typeof(IReadOnlyList<IZlinkSocket>),
+                typeof(IReadOnlyList<PollEvents>),
+                typeof(Span<PollEvents>),
+                typeof(int)
+            }));
+    }
+
+    [Fact]
+    public void abstract_socket_base_types_are_hidden_from_intellisense()
+    {
+        Type[] hiddenTypes =
+        {
+            typeof(SocketBase),
+            typeof(ConnectableSocketBase),
+            typeof(MessageSocketBase),
+            typeof(PublisherSocketBase),
+            typeof(RoutedMessageSocketBase),
+            typeof(ConnectableRoutedMessageSocketBase),
+            typeof(SubscriberSocketBase)
+        };
+
+        foreach (Type hiddenType in hiddenTypes)
+        {
+            EditorBrowsableAttribute? attribute =
+                hiddenType.GetCustomAttribute<EditorBrowsableAttribute>();
+            Assert.NotNull(attribute);
+            Assert.Equal(EditorBrowsableState.Never, attribute!.State);
+        }
     }
 }

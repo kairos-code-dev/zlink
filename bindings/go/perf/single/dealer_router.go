@@ -38,7 +38,7 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 
 	stats := perfcommon.NewStats()
 	payload := perfcommon.PreparePayload(cfg.msgSize)
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
 
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampPayload(payload)

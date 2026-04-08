@@ -1,0 +1,103 @@
+## Effective Options (start)
+- suite: single
+- runs: 1
+- patterns: ALL
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: stage5_single_tcp_smoke_r2
+
+===============================================================================
+
+## PATTERN: PAIR
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean | Lat.P95 | Lat.P99 |
+|------|------------|-----------|----------|---------|---------|
+| 64B | 3464.48 Kmsg/s | 221.73 MB/s | 186.42 us | 239.00 us | 296.00 us |
+
+## PATTERN: PUBSUB
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean | Lat.P95 | Lat.P99 |
+|------|------------|-----------|----------|---------|---------|
+| 64B | 1278.40 Kmsg/s | 81.82 MB/s | 165.72 us | 270.00 us | 352.00 us |
+
+## PATTERN: DEALER_DEALER
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean | Lat.P95 | Lat.P99 |
+|------|------------|-----------|----------|---------|---------|
+| 64B | 3481.12 Kmsg/s | 222.79 MB/s | 184.70 us | 230.00 us | 295.00 us |
+
+## PATTERN: DEALER_ROUTER
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean | Lat.P95 | Lat.P99 |
+|------|------------|-----------|----------|---------|---------|
+| 64B | 3436.21 Kmsg/s | 219.92 MB/s | 189.94 us | 227.00 us | 254.00 us |
+
+## PATTERN: ROUTER_ROUTER
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean | Lat.P95 | Lat.P99 |
+|------|------------|-----------|----------|---------|---------|
+| 64B | 1258.00 Kmsg/s | 80.51 MB/s | 107.91 us | 177.00 us | 306.00 us |
+
+## PATTERN: SPOT
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean | Lat.P95 | Lat.P99 |
+|------|------------|-----------|----------|---------|---------|
+| 64B | 1830.58 Kmsg/s | 117.16 MB/s | 421.28 us | 534.00 us | 642.00 us |
+
+RESULT,current,PAIR,tcp,64,throughput,3464481.00
+RESULT,current,PAIR,tcp,64,bandwidth,221.73
+RESULT,current,PAIR,tcp,64,latency,186.42
+RESULT,current,PAIR,tcp,64,latency_p95,239.00
+RESULT,current,PAIR,tcp,64,latency_p99,296.00
+RESULT,current,PUBSUB,tcp,64,throughput,1278404.00
+RESULT,current,PUBSUB,tcp,64,bandwidth,81.82
+RESULT,current,PUBSUB,tcp,64,latency,165.72
+RESULT,current,PUBSUB,tcp,64,latency_p95,270.00
+RESULT,current,PUBSUB,tcp,64,latency_p99,352.00
+RESULT,current,DEALER_DEALER,tcp,64,throughput,3481124.00
+RESULT,current,DEALER_DEALER,tcp,64,bandwidth,222.79
+RESULT,current,DEALER_DEALER,tcp,64,latency,184.70
+RESULT,current,DEALER_DEALER,tcp,64,latency_p95,230.00
+RESULT,current,DEALER_DEALER,tcp,64,latency_p99,295.00
+RESULT,current,DEALER_ROUTER,tcp,64,throughput,3436212.00
+RESULT,current,DEALER_ROUTER,tcp,64,bandwidth,219.92
+RESULT,current,DEALER_ROUTER,tcp,64,latency,189.94
+RESULT,current,DEALER_ROUTER,tcp,64,latency_p95,227.00
+RESULT,current,DEALER_ROUTER,tcp,64,latency_p99,254.00
+RESULT,current,ROUTER_ROUTER,tcp,64,throughput,1258000.00
+RESULT,current,ROUTER_ROUTER,tcp,64,bandwidth,80.51
+RESULT,current,ROUTER_ROUTER,tcp,64,latency,107.91
+RESULT,current,ROUTER_ROUTER,tcp,64,latency_p95,177.00
+RESULT,current,ROUTER_ROUTER,tcp,64,latency_p99,306.00
+RESULT,current,SPOT,tcp,64,throughput,1830579.00
+RESULT,current,SPOT,tcp,64,bandwidth,117.16
+RESULT,current,SPOT,tcp,64,latency,421.28
+RESULT,current,SPOT,tcp,64,latency_p95,534.00
+RESULT,current,SPOT,tcp,64,latency_p99,642.00
+
+## Effective Options (result)
+- suite: single
+- runs: 1
+- patterns: ALL
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: stage5_single_tcp_smoke_r2
+
+## Completion
+- status: complete
+- expected_result_lines: 30
+- actual_result_lines: 30
+
+## Failures

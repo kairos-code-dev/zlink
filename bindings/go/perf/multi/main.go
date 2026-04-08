@@ -11,7 +11,6 @@ type multiConfig struct {
 	pattern   string
 	transport string
 	msgSize   int
-	warmup    time.Duration
 	duration  time.Duration
 	recvMode  string
 	clients   int
@@ -21,7 +20,6 @@ var (
 	multiPattern   = flag.String("pattern", "MULTI_PUBSUB", "")
 	multiTransport = flag.String("transport", "tcp", "")
 	multiSize      = flag.Int("msg-size", 64, "")
-	multiWarmup    = flag.Int("warmup", 2, "")
 	multiDuration  = flag.Int("duration", 5, "")
 	multiRecv      = flag.String("recv", "recv", "")
 	multiClients   = flag.Int("clients", 100, "")
@@ -34,7 +32,6 @@ func main() {
 		*multiPattern,
 		*multiTransport,
 		*multiSize,
-		*multiWarmup,
 		*multiDuration,
 		*multiRecv,
 		*multiClients,
@@ -43,7 +40,6 @@ func main() {
 		pattern:   loaded.Pattern,
 		transport: loaded.Transport,
 		msgSize:   loaded.MsgSize,
-		warmup:    loaded.Warmup,
 		duration:  loaded.Duration,
 		recvMode:  loaded.RecvMode.String(),
 		clients:   loaded.Clients,

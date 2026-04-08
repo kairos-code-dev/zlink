@@ -7,6 +7,17 @@ import (
 	"zlink"
 )
 
+var (
+	_ zlink.SocketTarget = (*zlink.PairSocket)(nil)
+	_ zlink.SocketTarget = (*zlink.PubSocket)(nil)
+	_ zlink.SocketTarget = (*zlink.SubSocket)(nil)
+	_ zlink.SocketTarget = (*zlink.DealerSocket)(nil)
+	_ zlink.SocketTarget = (*zlink.RouterSocket)(nil)
+	_ zlink.SocketTarget = (*zlink.XPubSocket)(nil)
+	_ zlink.SocketTarget = (*zlink.XSubSocket)(nil)
+	_ zlink.SocketTarget = (*zlink.StreamSocket)(nil)
+)
+
 func hasMethod(target any, name string) bool {
 	typ := reflect.TypeOf(target)
 	_, ok := typ.MethodByName(name)

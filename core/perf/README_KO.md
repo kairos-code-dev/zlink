@@ -1,6 +1,6 @@
 # Core PERF 벤치마크 스크립트
 
-`core/perf` 실행 진입점은 두 개이며 하나의 공통 comparison runner를 공유한다.
+`core/perf`는 벤치마크 실행 진입점과 그 동작을 정의하는 정책 문서의 인덱스다.
 
 - `run_benchmarks.sh`: single suite
 - `run_benchmarks_multi.sh`: multi suite
@@ -11,8 +11,6 @@
 - [PERF_SINGLE_TEST_POLICY.md](../../doc/perf/PERF_SINGLE_TEST_POLICY.md)
 - [PERF_MULTI_TEST_POLICY.md](../../doc/perf/PERF_MULTI_TEST_POLICY.md)
 
-공식 결과는 `core/perf/results/.../report/` 아래에 저장한다.
-
 핵심 규칙:
 
 - `run_benchmarks.sh`는 single suite를 소유하고 single comparison runner로 넘긴다.
@@ -21,7 +19,9 @@
 - 기본 perf surface는 `throughput`, `bandwidth`, `latency`,
   `latency_p95`, `latency_p99` 다섯 개다.
 
-빠른 예시:
+공식 결과는 `core/perf/results/.../report/` 아래에 저장한다.
+
+예시:
 
 ```bash
 ./core/perf/run_benchmarks.sh --build-dir /home/hep7/project/kairos/zlink/core/build

@@ -1,0 +1,43 @@
+## Effective Options (start)
+- suite: single
+- runs: 1
+- patterns: ROUTER_ROUTER
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: stage5_rr_probe_r1
+
+===============================================================================
+
+## PATTERN: ROUTER_ROUTER
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean | Lat.P95 | Lat.P99 |
+|------|------------|-----------|----------|---------|---------|
+| 64B | 1283.00 Kmsg/s | 82.11 MB/s | 102.35 us | 180.00 us | 284.00 us |
+
+RESULT,current,ROUTER_ROUTER,tcp,64,throughput,1283000.00
+RESULT,current,ROUTER_ROUTER,tcp,64,bandwidth,82.11
+RESULT,current,ROUTER_ROUTER,tcp,64,latency,102.35
+RESULT,current,ROUTER_ROUTER,tcp,64,latency_p95,180.00
+RESULT,current,ROUTER_ROUTER,tcp,64,latency_p99,284.00
+
+## Effective Options (result)
+- suite: single
+- runs: 1
+- patterns: ROUTER_ROUTER
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: stage5_rr_probe_r1
+
+## Completion
+- status: complete
+- expected_result_lines: 5
+- actual_result_lines: 5
+
+## Failures

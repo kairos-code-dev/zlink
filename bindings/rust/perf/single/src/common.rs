@@ -1,7 +1,7 @@
 //! Shared perf utilities – metric header, latency stats, phase control.
 //!
 //! Follows doc/perf/PERF_SINGLE_TEST_POLICY.md:
-//!   - ready → warmup(duration) → active(duration)
+//!   - ready → active(duration)
 //!   - callback-only recv model
 //!   - metric header in payload for latency measurement
 #![allow(dead_code)]
@@ -13,7 +13,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 // Layout matches core/perf single metric header:
 //   [0..4]   magic     u32 LE  0x53504631 ("SPF1")
 //   [4..8]   run_id    u32 LE
-//   [8..12]  phase     u32 LE  (0=active, 1=warmup)
+//   [8..12]  phase     u32 LE  (0=active, 1=stop, 2=probe)
 //   [12..16] msg_size  u32 LE
 //   [16..24] seq       u64 LE
 //   [24..32] sent_ts   u64 LE  (microseconds since epoch)
@@ -21,7 +21,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 pub const HEADER_SIZE: usize = 32;
 pub const MAGIC: u32 = 0x5350_4631; // "SPF1"
 pub const PHASE_ACTIVE: u32 = 0;
-pub const PHASE_WARMUP: u32 = 1;
+pub const PHASE_STOP: u32 = 1;
+pub const PHASE_PROBE: u32 = 2;
 
 pub fn encode_header(buf: &mut [u8], phase: u32, msg_size: u32, seq: u64) {
     buf[0..4].copy_from_slice(&MAGIC.to_le_bytes());
@@ -41,7 +42,7 @@ pub fn decode_sent_ts(data: &[u8]) -> u64 {
 
 pub fn decode_phase(data: &[u8]) -> u32 {
     if data.len() < HEADER_SIZE {
-        return PHASE_WARMUP;
+        return u32::MAX;
     }
     u32::from_le_bytes(data[8..12].try_into().unwrap())
 }
@@ -199,6 +200,31 @@ impl CompletionSignal {
         *done = true;
         condvar.notify_all();
     }
+
+    pub fn is_done(&self) -> bool {
+        let (lock, _) = &*self.state;
+        *lock.lock().unwrap()
+    }
+
+    pub fn wait_timeout(&self, timeout: Duration, label: &str) {
+        let deadline = Instant::now() + timeout;
+        let (lock, condvar) = &*self.state;
+        let mut done = lock.lock().unwrap();
+
+        while !*done {
+            let now = Instant::now();
+            if now >= deadline {
+                panic!("{label} did not finish before timeout");
+            }
+
+            let remaining = deadline.saturating_duration_since(now);
+            let (guard, wait_result) = condvar.wait_timeout(done, remaining).unwrap();
+            done = guard;
+            if wait_result.timed_out() && !*done {
+                panic!("{label} did not finish before timeout");
+            }
+        }
+    }
 }
 
 pub struct CompletionGuard {
@@ -223,11 +249,13 @@ impl Drop for CompletionGuard {
 pub fn wait_monitor_ready(mon: &zlink::SocketMonitor) {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
-        if Instant::now() > deadline { break; }
+        if Instant::now() > deadline {
+            panic!("single perf connection-ready gate timed out");
+        }
         match mon.try_recv() {
-            Ok(Some(ev)) if ev.is_connection_ready() || ev.is_accepted() => break,
+            Ok(Some(ev)) if ev.is_connection_ready() => break,
             Ok(Some(_)) => continue,
-            Ok(None) => { std::thread::sleep(Duration::from_millis(10)); }
+            Ok(None) => std::thread::yield_now(),
             Err(_) => break,
         }
     }
@@ -243,16 +271,19 @@ pub fn handle_recv(data: &[u8], stats: &std::sync::Mutex<LatencyStats>) {
     }
 }
 
+pub fn callback_payload<'a>(parts: &'a [Message]) -> &'a [u8] {
+    parts.last().map(|part| part.data()).unwrap_or(&[])
+}
+
 // -- Send loop ---------------------------------------------------------------
 // Core single perf uses blocking send in the sender thread.
 // The sender must not set a send timeout – blocking is the intended behavior
 // so that natural backpressure throttles the sender.
 use zlink::{Message, SendResult};
 
-/// One-way send loop: warmup → active.
+/// One-way send loop: active only.
 /// `send_fn` performs the blocking send (may be plain or routed).
 pub fn send_loop<S, T>(
-    warmup: Duration,
     active: Duration,
     msg_size: usize,
     send_fn: S,
@@ -263,15 +294,6 @@ pub fn send_loop<S, T>(
 {
     let mut seq: u64 = 0;
     let mut buf = vec![0u8; msg_size.max(HEADER_SIZE)];
-
-    // Warmup
-    let warmup_end = Instant::now() + warmup;
-    while Instant::now() < warmup_end {
-        encode_header(&mut buf, PHASE_WARMUP, msg_size as u32, seq);
-        let msg = Message::from_bytes(&buf).expect("msg");
-        send_fn(msg);
-        seq += 1;
-    }
 
     // Active
     let active_end = Instant::now() + active;
@@ -285,24 +307,8 @@ pub fn send_loop<S, T>(
 }
 
 /// Common receiver-side finish gate: wait for the sender window plus grace.
-pub fn wait_finished(signal: &CompletionSignal, warmup: u64, active: u64) {
-    let deadline = Instant::now() + Duration::from_secs(warmup + active + 20);
-    let (lock, condvar) = &*signal.state;
-    let mut done = lock.lock().unwrap();
-
-    while !*done {
-        let now = Instant::now();
-        if now >= deadline {
-            panic!("single perf sender did not finish before timeout");
-        }
-
-        let remaining = deadline.saturating_duration_since(now);
-        let (guard, wait_result) = condvar.wait_timeout(done, remaining).unwrap();
-        done = guard;
-        if wait_result.timed_out() && !*done {
-            panic!("single perf sender did not finish before timeout");
-        }
-    }
+pub fn wait_finished(signal: &CompletionSignal, active: u64) {
+    signal.wait_timeout(Duration::from_secs(active + 20), "single perf sender");
 }
 
 // -- CLI config --------------------------------------------------------------
@@ -312,7 +318,6 @@ pub struct PerfConfig {
     pub transport: String,
     pub recv_mode: String,
     pub size: usize,
-    pub warmup_seconds: u64,
     pub duration_seconds: u64,
 }
 
@@ -320,7 +325,6 @@ impl PerfConfig {
     pub fn from_env_and_args() -> Self {
         let args: Vec<String> = std::env::args().collect();
         let mut size = 64;
-        let mut warmup = 2u64;
         let mut duration = 5u64;
         let mut transport = "inproc".to_string();
         let mut pattern = "PAIR".to_string();
@@ -332,10 +336,6 @@ impl PerfConfig {
             match args[i].as_str() {
                 "--msg-size" if i + 1 < args.len() => {
                     size = args[i + 1].parse().unwrap();
-                    i += 2;
-                }
-                "--warmup" if i + 1 < args.len() => {
-                    warmup = args[i + 1].parse().unwrap();
                     i += 2;
                 }
                 "--duration" if i + 1 < args.len() => {
@@ -350,7 +350,7 @@ impl PerfConfig {
                     pattern = args[i + 1].clone();
                     i += 2;
                 }
-                "--recv-mode" if i + 1 < args.len() => {
+                "--recv" if i + 1 < args.len() => {
                     recv_mode = args[i + 1].clone();
                     i += 2;
                 }
@@ -365,7 +365,6 @@ impl PerfConfig {
             transport,
             recv_mode,
             size,
-            warmup_seconds: warmup,
             duration_seconds: duration,
         }
     }
@@ -373,8 +372,11 @@ impl PerfConfig {
     pub fn endpoint(&self, suffix: &str) -> String {
         match self.transport.as_str() {
             "inproc" => format!("inproc://perf-{suffix}"),
-            "ipc" => format!("ipc:///tmp/zlink-perf-{suffix}-{}", std::process::id()),
-            "tcp" => "tcp://127.0.0.1:0".to_string(),
+            "ipc" => "ipc://*".to_string(),
+            "ws" => "ws://127.0.0.1:*".to_string(),
+            "wss" => "wss://127.0.0.1:*".to_string(),
+            "tls" => "tls://127.0.0.1:*".to_string(),
+            "tcp" => "tcp://127.0.0.1:*".to_string(),
             _ => format!("inproc://perf-{suffix}"),
         }
     }

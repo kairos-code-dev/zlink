@@ -2,10 +2,13 @@
 
 package dev.kairoscode.zlink.perf;
 
+import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.MonitorEvent;
 import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.service.spot.SpotNode;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
@@ -13,6 +16,14 @@ import java.util.concurrent.TimeUnit;
 
 final class PerfTransport {
     private PerfTransport() {
+    }
+
+    static Context newContext(PerfUtil.Config config) {
+        Context ctx = new Context();
+        if (config.ioThreads() > 0) {
+            ctx.ioThreads(config.ioThreads());
+        }
+        return ctx;
     }
 
     static void configureServerTls(Socket socket, String transport) {
@@ -41,6 +52,32 @@ final class PerfTransport {
             return;
         }
         node.setTlsClient(cert("ca.crt"), "localhost", true);
+    }
+
+    static void applySocketOptions(Socket socket, PerfUtil.Config config) {
+        if (config.sendHwm() > 0) {
+            socket.options().sendHwm(config.sendHwm());
+        }
+        if (config.recvHwm() > 0) {
+            socket.options().recvHwm(config.recvHwm());
+        }
+        if (config.sendTimeoutMs() >= 0) {
+            socket.options().sendTimeout(Duration.ofMillis(config.sendTimeoutMs()));
+        }
+        if (config.recvTimeoutMs() >= 0) {
+            socket.options().recvTimeout(Duration.ofMillis(config.recvTimeoutMs()));
+        }
+    }
+
+    static void applyMonitorOptions(MonitorSocket monitor, PerfUtil.Config config) {
+        if (config.monitorHwm() > 0) {
+            monitor.sendHighWaterMark(config.monitorHwm());
+            monitor.receiveHighWaterMark(config.monitorHwm());
+        }
+    }
+
+    static void applySpotOptions(SpotNode node, PerfUtil.Config config) {
+        // SpotNode public API intentionally exposes topology/lifecycle only.
     }
 
     static void await(CountDownLatch latch, String label, Duration timeout) {
@@ -132,6 +169,16 @@ final class PerfTransport {
     }
 
     private static String cert(String name) {
-        return java.nio.file.Path.of("tests", "certs", name).toAbsolutePath().toString();
+        Path cwd = Path.of("").toAbsolutePath().normalize();
+        Path current = cwd;
+        while (current != null) {
+            Path candidate = current.resolve("tests").resolve("certs").resolve(name);
+            if (Files.exists(candidate)) {
+                return candidate.toAbsolutePath().toString();
+            }
+            current = current.getParent();
+        }
+        return cwd.resolve("tests").resolve("certs").resolve(name)
+            .toAbsolutePath().toString();
     }
 }

@@ -1,0 +1,39 @@
+## Effective Options (start)
+- suite: single
+- runs: 2
+- patterns: PAIR
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: rust_policy_pair_runs2
+
+===============================================================================
+
+## PATTERN: PAIR
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean | Lat.P95 | Lat.P99 |
+|------|------------|-----------|----------|---------|---------|
+| 64B | FAIL | FAIL | FAIL | FAIL | FAIL |
+
+
+## Effective Options (result)
+- suite: single
+- runs: 2
+- patterns: PAIR
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: rust_policy_pair_runs2
+
+## Completion
+- status: partial
+- expected_result_lines: 5
+- actual_result_lines: 0
+
+## Failures
+- PAIR current tcp 64B: binary_exit

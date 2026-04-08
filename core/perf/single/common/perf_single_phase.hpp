@@ -4,8 +4,6 @@
 #include "perf_single_metric_queue.hpp"
 #include "perf_single_metric_header.hpp"
 
-#include <algorithm>
-#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
@@ -208,6 +206,15 @@ inline unsigned long long single_load_phase_received (
 }
 
 template <typename StateT>
+inline unsigned long long single_load_phase_processed (
+  const StateT &state_, perf_single_metric::phase_t phase_)
+{
+    return phase_ == perf_single_metric::phase_active
+             ? single_load_counter (state_.active_processed)
+             : 0;
+}
+
+template <typename StateT>
 inline bool single_wait_for_phase_processed (StateT &state_,
                                              perf_single_metric::phase_t phase_,
                                              unsigned long long expected_count_,
@@ -224,7 +231,7 @@ inline bool single_wait_for_phase_processed (StateT &state_,
     std::unique_lock<std::mutex> lock (state_.mutex);
     single_phase_wait_arm_scope_t<StateT> phase_wait_arm (state_);
     unsigned long long observed =
-      single_load_phase_received (state_, phase_);
+      single_load_phase_processed (state_, phase_);
 
     while (std::chrono::steady_clock::now () < deadline) {
         if (single_load_flag (state_.fatal))
@@ -236,26 +243,26 @@ inline bool single_wait_for_phase_processed (StateT &state_,
           deadline, std::chrono::steady_clock::now () + idle_window);
         const bool advanced = state_.cv.wait_until (
           lock, idle_deadline, [&state_, phase_, observed, expected_count_]() {
-              return single_load_flag (state_.fatal)
-                     || single_load_phase_received (state_, phase_)
+                     return single_load_flag (state_.fatal)
+                     || single_load_phase_processed (state_, phase_)
                           >= expected_count_
-                     || single_load_phase_received (state_, phase_) != observed;
+                     || single_load_phase_processed (state_, phase_) != observed;
           });
         if (single_load_flag (state_.fatal))
             return false;
 
         const unsigned long long current =
-          single_load_phase_received (state_, phase_);
+          single_load_phase_processed (state_, phase_);
         if (current >= expected_count_)
             return true;
         if (!advanced)
-            return current > 0;
+            return false;
 
         observed = current;
     }
 
     return !single_load_flag (state_.fatal)
-           && single_load_phase_received (state_, phase_) > 0;
+           && single_load_phase_processed (state_, phase_) >= expected_count_;
 }
 
 inline int single_phase_completion_timeout_ms (int duration_s_,
@@ -265,54 +272,10 @@ inline int single_phase_completion_timeout_ms (int duration_s_,
     return std::max (5000, std::max (duration_ms, recv_timeout_ms_ * 10));
 }
 
-inline std::string resolve_single_perf_recv_mode ()
-{
-    const char *env = std::getenv ("PERF_RECV_MODE");
-    if (!env || !*env)
-        return "callback";
-
-    std::string mode (env);
-    std::transform (mode.begin (), mode.end (), mode.begin (), ::tolower);
-    if (mode != "recv" && mode != "callback")
-        return "callback";
-    return mode;
-}
-
-inline bool single_perf_callback_mode ()
-{
-    return resolve_single_perf_recv_mode () == "callback";
-}
-
-inline bool single_perf_callback_supported_for_pattern (const char *pattern)
-{
-    return pattern && *pattern;
-}
-
-inline bool single_perf_recv_supported_for_pattern (const char *pattern)
-{
-    return pattern
-           && (std::string (pattern) == "SPOT"
-               || std::string (pattern) == "PUBSUB");
-}
-
 inline bool single_perf_validate_recv_mode_for_pattern (const char *pattern)
 {
     if (!pattern || !*pattern)
         return false;
-
-    const std::string mode = resolve_single_perf_recv_mode ();
-    if (mode == "callback"
-        && !single_perf_callback_supported_for_pattern (pattern)) {
-        std::cerr << "policy violation: --recv callback unsupported for "
-                  << pattern << std::endl;
-        return false;
-    }
-
-    if (mode == "recv" && !single_perf_recv_supported_for_pattern (pattern)) {
-        std::cerr << "policy violation: --recv recv unsupported for "
-                  << pattern << std::endl;
-        return false;
-    }
 
     return true;
 }

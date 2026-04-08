@@ -2,6 +2,11 @@ plugins {
     application
 }
 
+val perfBuildDir = providers.gradleProperty("zlinkPerfBuildDir").orNull
+if (!perfBuildDir.isNullOrBlank()) {
+    layout.buildDirectory.set(file(perfBuildDir))
+}
+
 repositories {
     mavenCentral()
 }
@@ -26,13 +31,17 @@ dependencies {
 application {
     applicationName = "zlink-java-perf-multi"
     mainClass.set("dev.kairoscode.zlink.perf.multi.PerfMain")
-    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+    applicationDefaultJvmArgs = listOf(
+        "--enable-native-access=ALL-UNNAMED",
+        "-server",
+        "-XX:TieredStopAtLevel=1",
+    )
 }
 
 tasks.withType<JavaExec>().configureEach {
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "-server", "-XX:TieredStopAtLevel=1")
 }
 
 tasks.named<JavaExec>("run") {
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "-server", "-XX:TieredStopAtLevel=1")
 }

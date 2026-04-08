@@ -42,14 +42,7 @@ PATTERN_TO_BINARY = {
     "SPOT": "perf_spot",
 }
 
-SUPPORTED_RECV_MODES = {
-    "PAIR": ("callback",),
-    "PUBSUB": ("callback",),
-    "DEALER_DEALER": ("callback",),
-    "DEALER_ROUTER": ("callback",),
-    "ROUTER_ROUTER": ("callback",),
-    "SPOT": ("callback",),
-}
+SINGLE_RECV_MODE = "callback"
 
 DEFAULT_MSG_SIZES_STANDARD = [64, 256, 1024, 65536, 131072, 262144]
 DEFAULT_MSG_SIZES_STREAM = [64, 256, 1024, 65536]
@@ -249,16 +242,9 @@ def sanitize_suffix(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]+", "_", value.strip())
 
 
-def resolve_recv_mode(value: str) -> str:
-    recv_mode = (value or "callback").strip().lower()
-    if recv_mode not in ("recv", "callback"):
-        raise ValueError(f"invalid recv mode: {value}")
-    return recv_mode
-
-
-def build_result_filename(recv_mode: str, tag: str = "") -> str:
+def build_result_filename(tag: str = "") -> str:
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    name = f"perf_{platform_tag()}_{resolve_recv_mode(recv_mode)}_{stamp}"
+    name = f"perf_{platform_tag()}_{SINGLE_RECV_MODE}_{stamp}"
     clean_tag = sanitize_suffix(tag)
     if clean_tag:
         name = f"{name}_{clean_tag}"
@@ -693,31 +679,16 @@ def parse_pattern_arg(pattern_arg: str) -> List[str]:
     return ordered
 
 
-def resolve_binary_name(pattern: str, recv_mode: str) -> str:
-    supported = SUPPORTED_RECV_MODES.get(pattern, ())
-    if recv_mode not in supported:
-        raise ValueError(
-            f"pattern {pattern} does not support --recv {recv_mode}"
-        )
+def resolve_binary_name(pattern: str) -> str:
     return PATTERN_TO_BINARY[pattern]
 
 
-def collect_unsupported_patterns(
-    patterns: Iterable[str], recv_mode: str
-) -> List[str]:
-    unsupported = []
-    for pattern in patterns:
-        if recv_mode not in SUPPORTED_RECV_MODES.get(pattern, ()):
-            unsupported.append(pattern)
-    return unsupported
-
-
 def collect_missing_patterns(
-    build_dir: str, patterns: Iterable[str], recv_mode: str
+    build_dir: str, patterns: Iterable[str]
 ) -> List[str]:
     missing = []
     for pattern in patterns:
-        binary_name = resolve_binary_name(pattern, recv_mode)
+        binary_name = resolve_binary_name(pattern)
         binary_path = os.path.join(build_dir, binary_name + EXE_SUFFIX)
         if not os.path.exists(binary_path):
             missing.append(pattern)
@@ -725,11 +696,11 @@ def collect_missing_patterns(
 
 
 def collect_missing_build_targets(
-    build_dir: str, patterns: Iterable[str], recv_mode: str
+    build_dir: str, patterns: Iterable[str]
 ) -> List[str]:
     targets = []
     for pattern in patterns:
-        binary_name = resolve_binary_name(pattern, recv_mode)
+        binary_name = resolve_binary_name(pattern)
         binary_path = os.path.join(build_dir, binary_name + EXE_SUFFIX)
         if not os.path.exists(binary_path):
             targets.append(binary_name)
@@ -819,7 +790,7 @@ def build_single_option_items(
     io_threads = max(1, parse_env_int("PERF_IO_THREADS", 1))
     items: List[Tuple[str, str]] = [
         ("runs", str(args.runs)),
-        ("recv_mode", args.recv),
+        ("recv_mode", SINGLE_RECV_MODE),
         ("duration_seconds", str(parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5))),
         ("timeout_seconds", str(timeout_sec)),
         ("io_threads", str(io_threads)),
@@ -853,7 +824,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--results-dir", default=DEFAULT_RESULTS_DIR)
     parser.add_argument("--results-tag", default="")
     parser.add_argument("--result-file", default="")
-    parser.add_argument("--recv", default=env_get("PERF_RECV_MODE") or "callback")
     return parser.parse_args()
 
 
@@ -871,12 +841,6 @@ def main() -> int:
     if args.duration is not None and args.duration < 1:
         print("Error: --duration must be >= 1.", file=sys.stderr)
         return 1
-    try:
-        args.recv = resolve_recv_mode(args.recv)
-    except ValueError:
-        print("Error: --recv must be 'recv' or 'callback'.", file=sys.stderr)
-        return 1
-    os.environ["PERF_RECV_MODE"] = args.recv
     if args.duration is not None:
         os.environ["PERF_SINGLE_DURATION_SECONDS"] = str(args.duration)
 
@@ -884,15 +848,6 @@ def main() -> int:
         patterns = parse_pattern_arg(args.pattern)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
-        return 1
-
-    unsupported_patterns = collect_unsupported_patterns(patterns, args.recv)
-    if unsupported_patterns:
-        print(
-            "Error: unsupported --recv mode for single patterns: "
-            + ", ".join(sorted(set(unsupported_patterns))),
-            file=sys.stderr,
-        )
         return 1
 
     if IS_WINDOWS:
@@ -921,7 +876,7 @@ def main() -> int:
         or env_flag_enabled("PERF_SKIP_AUTO_BUILD")
     )
 
-    missing_patterns = collect_missing_patterns(build_dir, patterns, args.recv)
+    missing_patterns = collect_missing_patterns(build_dir, patterns)
     if missing_patterns:
         if no_autobuild:
             print(
@@ -940,13 +895,13 @@ def main() -> int:
             print("  missing: " + ", ".join(missing_patterns), file=sys.stderr)
             return 1
 
-        targets = collect_missing_build_targets(build_dir, patterns, args.recv)
+        targets = collect_missing_build_targets(build_dir, patterns)
         build_rc = run_cmake_build(cmake_build_dir, targets)
         if build_rc != 0:
             print(f"Error: auto-build failed with exit code {build_rc}", file=sys.stderr)
             return build_rc
 
-    missing_patterns = collect_missing_patterns(build_dir, patterns, args.recv)
+    missing_patterns = collect_missing_patterns(build_dir, patterns)
     if missing_patterns:
         print(
             "Error: current benchmark binaries are missing for patterns: "
@@ -960,7 +915,7 @@ def main() -> int:
     result_file = args.result_file
     if not result_file:
         result_file = os.path.join(
-            result_dir, build_result_filename(args.recv, args.results_tag)
+            result_dir, build_result_filename(args.results_tag)
         )
     result_parent = os.path.dirname(result_file)
     if result_parent:
@@ -994,9 +949,13 @@ def main() -> int:
     combo_results: Dict[Tuple[str, str, int], ComboRecord] = {}
     run_warnings: List[str] = []
     table_lines: List[str] = []
+    transport_transition_ms = max(
+        0,
+        parse_env_int("PERF_TRANSPORT_TRANSITION_MS", 3000),
+    )
 
     for pattern in patterns:
-        binary_name = resolve_binary_name(pattern, args.recv)
+        binary_name = resolve_binary_name(pattern)
         transports = pattern_transports.get(pattern, [])
         sizes = pattern_sizes.get(pattern, [])
 
@@ -1025,7 +984,8 @@ def main() -> int:
         print(bench_line)
         table_lines.append(bench_line)
 
-        for transport in transports:
+        for transport_idx, transport in enumerate(transports):
+            has_next_transport = (transport_idx + 1) < len(transports)
             testing_line = f"    Testing {transport}:"
             print(testing_line)
             table_lines.append(testing_line)
@@ -1214,6 +1174,18 @@ def main() -> int:
             done_line = f"    Testing {transport}: Done"
             print(done_line)
             table_lines.append(done_line)
+            if transport_transition_ms > 0 and has_next_transport:
+                cooldown_ms = transport_transition_ms
+                next_transport = transports[transport_idx + 1]
+                if next_transport == "inproc" and transport in ("ws", "wss"):
+                    # `inproc` is the most sensitive follow-up transport after
+                    # websocket teardown; give it a longer settle window so the
+                    # broad single matrix does not inherit a stale websocket tail.
+                    cooldown_ms = max(cooldown_ms, 30000)
+                cooldown_line = f"    [transport cooldown {cooldown_ms}ms]"
+                print(cooldown_line)
+                table_lines.append(cooldown_line)
+                time.sleep(cooldown_ms / 1000.0)
 
             if FAIL_FAST and all_failures:
                 break

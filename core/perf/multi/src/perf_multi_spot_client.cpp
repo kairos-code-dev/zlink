@@ -1,8 +1,11 @@
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_client_helpers.hpp"
+#include "../common/perf_multi_handshake.hpp"
 #include "../common/perf_multi_metric_header.hpp"
+#include "../common/perf_multi_spot_control.hpp"
 #include "../common/perf_multi_spot_handle.hpp"
+#include "../common/perf_multi_spot_handshake.hpp"
 #include "../../common/perf_tls_setup.hpp"
 #include <algorithm>
 #include <atomic>
@@ -82,6 +85,7 @@ struct spot_client_state_t
         control_start_recv_us(0),
         seen_msg_size(0),
         seen_phase(static_cast<int>(perf_multi_metric::phase_unknown)),
+        start_gate(),
         recv_workers_stop(false),
         metrics_epoch(1)
     {
@@ -96,10 +100,7 @@ struct spot_client_state_t
     std::vector<spot_recv_worker_t *> recv_workers;
     std::mutex mutex;
     std::condition_variable cv;
-    std::mutex start_wait_mutex;
-    std::condition_variable start_wait_cv;
     std::mutex metrics_mutex;
-    std::set<size_t> pending_start_sizes;
     std::vector<spot_thread_metrics_t *> thread_metrics;
     std::atomic<size_t> expected_msg_size;
     std::atomic<uint64_t> active_duration_us;
@@ -114,6 +115,7 @@ struct spot_client_state_t
     std::atomic<uint64_t> control_start_recv_us;
     std::atomic<size_t> seen_msg_size;
     std::atomic<int> seen_phase;
+    perf_multi_handshake::start_signal_state_t start_gate;
     std::atomic<bool> recv_workers_stop;
     std::atomic<uint64_t> metrics_epoch;
 };
@@ -317,33 +319,6 @@ bool apply_spot_sub_options(void *sub, const multi_bench_settings_t &settings)
            == 0;
 }
 
-bool apply_spot_control_options(void *pub,
-                                void *sub,
-                                const multi_bench_settings_t &settings)
-{
-    if (!pub || !sub)
-        return false;
-
-    const int timeout_ms = std::max(1000, settings.connect_ready_timeout_ms);
-    const int nodrop = 1;
-    apply_benchmark_socket_options(pub, settings.hwm, "tcp");
-    apply_benchmark_socket_options(sub, settings.hwm, "tcp");
-
-    if (zlink_set_option(pub, ZLINK_OPT_SNDTIMEO, &timeout_ms,
-                            sizeof(timeout_ms))
-             != 0
-        || zlink_set_pub_option(pub, ZLINK_PUB_OPT_NODROP, &nodrop,
-                                sizeof(nodrop))
-             != 0
-        || zlink_set_option(sub, ZLINK_OPT_RCVTIMEO, &timeout_ms,
-                            sizeof(timeout_ms))
-             != 0) {
-        return false;
-    }
-
-    return true;
-}
-
 bool wait_for_spot_ready_settle(spot_client_state_t *state)
 {
     if (!state)
@@ -370,166 +345,13 @@ bool wait_for_spot_ready_settle(spot_client_state_t *state)
     return true;
 }
 
-bool parse_control_start(const void *data, size_t size, size_t *msg_size_out)
-{
-    static const char prefix[] = "START,";
-    if (!data || !msg_size_out
-        || size < (sizeof(prefix) - 1)
-        || std::memcmp(data, prefix, sizeof(prefix) - 1) != 0) {
-        return false;
-    }
-
-    std::string line(static_cast<const char *>(data), size);
-    char *end = NULL;
-    const unsigned long long parsed =
-      std::strtoull(line.c_str() + (sizeof(prefix) - 1), &end, 10);
-    if (!end || *end != '\0' || parsed == 0)
-        return false;
-
-    *msg_size_out = static_cast<size_t>(parsed);
-    return true;
-}
-
-bool parse_control_connected(const void *data, size_t size)
-{
-    static const char payload[] = "CONNECTED";
-    return data && size == (sizeof(payload) - 1)
-           && std::memcmp(data, payload, sizeof(payload) - 1) == 0;
-}
-
-bool parse_control_connected_line(const std::string &line)
-{
-    static const char prefix[] = "CONTROL_CONNECTED,";
-    return line.compare(0, sizeof(prefix) - 1, prefix) == 0;
-}
-
-void notify_size_start(spot_client_state_t *state, size_t msg_size)
-{
-    if (!state || msg_size == 0)
-        return;
-
-    {
-        std::lock_guard<std::mutex> lock(state->start_wait_mutex);
-        state->pending_start_sizes.insert(msg_size);
-    }
-    state->start_wait_cv.notify_all();
-}
-
-bool wait_for_size_start_signal(spot_client_state_t *state,
-                                size_t msg_size,
-                                int timeout_ms)
-{
-    if (!state || msg_size == 0)
-        return false;
-
-    std::unique_lock<std::mutex> lock(state->start_wait_mutex);
-    if (state->pending_start_sizes.erase(msg_size) != 0)
-        return true;
-
-    const bool signaled = state->start_wait_cv.wait_for(
-      lock,
-      std::chrono::milliseconds(std::max(1, timeout_ms)),
-      [state, msg_size]() {
-          return state->fatal.load(std::memory_order_acquire)
-                 || state->pending_start_sizes.count(msg_size) != 0;
-      });
-    return signaled && state->pending_start_sizes.erase(msg_size) != 0;
-}
-
-bool publish_control_ready(spot_client_slot_t *slot,
-                           size_t msg_size,
-                           int /*send_ready_timeout_ms*/)
-{
-    (void) slot;
-    (void) msg_size;
-    errno = EINVAL;
-    return false;
-}
-
-bool publish_control_ready(spot_client_state_t *state,
-                           size_t slot_index,
-                           size_t msg_size)
-{
-    if (!state || !state->control_pub || msg_size == 0) {
-        errno = EINVAL;
-        return false;
-    }
-
-    char payload[128];
-    const int payload_len = std::snprintf(payload,
-                                          sizeof(payload),
-                                          "READY,%lu,%lu",
-                                          static_cast<unsigned long>(msg_size),
-                                          static_cast<unsigned long>(slot_index));
-    if (payload_len <= 0
-        || static_cast<size_t>(payload_len) >= sizeof(payload)) {
-        errno = EMSGSIZE;
-        return false;
-    }
-
-    zlink_msg_t part;
-    if (zlink_msg_init_size(&part, static_cast<size_t>(payload_len)) != 0)
-        return false;
-
-    std::memcpy(zlink_msg_data(&part), payload, static_cast<size_t>(payload_len));
-    const int rc = zlink_publish(state->control_pub, k_topic, &part, 1, 0);
-    const int saved_errno = rc == 0 ? 0 : errno;
-    (void) zlink_msg_close(&part);
-    if (rc == 0 && bench_transition_debug_enabled()) {
-        zlink_spot_node_status_t status;
-        std::memset(&status, 0, sizeof(status));
-        std::cerr << "[multi-spot-client] ready publish ts_us="
-                  << perf_multi_metric::now_us()
-                  << " size=" << msg_size
-                  << " slot=" << slot_index;
-        if (state->control_node
-            && zlink_spot_node_status_snapshot(state->control_node, &status)
-                 == 0) {
-            std::cerr << " active=" << status.active_peer_count
-                      << " connected=" << status.connected_peer_count
-                      << " ready_subjects=" << status.ready_subject_count;
-        }
-        std::cerr << std::endl;
-    }
-    if (rc == 0)
-        return true;
-
-    errno = saved_errno;
-    return false;
-}
-
 bool publish_control_ready_count(spot_client_state_t *state,
                                  size_t msg_size,
                                  size_t ready_count)
 {
-    if (!state || !state->control_pub || msg_size == 0 || ready_count == 0) {
-        errno = EINVAL;
-        return false;
-    }
-
-    char payload[128];
-    const int payload_len = std::snprintf(payload,
-                                          sizeof(payload),
-                                          "READY_COUNT,%lu,%lu",
-                                          static_cast<unsigned long>(msg_size),
-                                          static_cast<unsigned long>(ready_count));
-    if (payload_len <= 0
-        || static_cast<size_t>(payload_len) >= sizeof(payload)) {
-        errno = EMSGSIZE;
-        return false;
-    }
-
-    zlink_msg_t part;
-    if (zlink_msg_init_size(&part, static_cast<size_t>(payload_len)) != 0)
-        return false;
-    std::memcpy(zlink_msg_data(&part), payload, static_cast<size_t>(payload_len));
-    const int rc = zlink_publish(state->control_pub, k_topic, &part, 1, 0);
-    const int saved_errno = rc == 0 ? 0 : errno;
-    (void) zlink_msg_close(&part);
-    if (rc == 0)
-        return true;
-    errno = saved_errno;
-    return false;
+    return state
+           && perf_multi_spot_control::publish_ready_count(
+             state->control_pub, k_topic, msg_size, ready_count);
 }
 
 std::string bind_client_spot_endpoint(void *node,
@@ -687,9 +509,9 @@ void handle_spot_client_parts(const char *topic,
     }
 
     size_t started_size = 0;
-    if (parse_control_start(zlink_msg_data(&parts[0]),
-                            zlink_msg_size(&parts[0]),
-                            &started_size)) {
+    if (perf_multi_spot_handshake::parse_start_command(zlink_msg_data(&parts[0]),
+                                                       zlink_msg_size(&parts[0]),
+                                                       &started_size)) {
         const uint64_t start_recv_us =
           bench_transition_debug_enabled() ? perf_multi_metric::now_us() : 0;
         {
@@ -992,54 +814,25 @@ bool start_spot_recv_workers(spot_client_state_t *state)
 
 bool recv_one_control_message(spot_client_state_t *state, bool *received)
 {
-    if (!state || !state->control_sub)
+    if (!state)
         return false;
 
-    if (received)
-        *received = false;
-
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    char topic[256];
-    size_t topic_len = sizeof(topic) - 1;
-    const int rc =
-      zlink_subscribe(state->control_sub,
-                      &parts,
-                      &part_count,
-                      ZLINK_DONTWAIT,
-                      topic,
-                      &topic_len);
-    if (rc != 0) {
-        const int err = zlink_errno() != 0 ? zlink_errno() : errno;
-        if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK
-            || err == ETIMEDOUT) {
-            return true;
-        }
+    std::string payload;
+    if (!perf_multi_spot_control::receive_control_payload(
+          state->control_sub, k_topic, &payload, received)) {
         return false;
     }
 
-    if (received)
-        *received = true;
-
     size_t started_size = 0;
-    if (topic_len > 0 && topic[topic_len - 1] == '\0')
-        --topic_len;
-    if (topic_len == k_topic_len
-        && std::memcmp(topic, k_topic, k_topic_len) == 0
-        && part_count > 0
-        && parse_control_connected(zlink_msg_data(&parts[0]),
-                                   zlink_msg_size(&parts[0]))) {
+    if (perf_multi_spot_handshake::parse_control_connected(payload.data(),
+                                                           payload.size())) {
         state->control_link_ready.store(true, std::memory_order_release);
-        perf_close_multipart(parts, part_count);
         state->cv.notify_all();
         return true;
     }
-    if (topic_len == k_topic_len
-        && std::memcmp(topic, k_topic, k_topic_len) == 0
-        && part_count > 0
-        && parse_control_start(zlink_msg_data(&parts[0]),
-                               zlink_msg_size(&parts[0]),
-                               &started_size)) {
+    if (perf_multi_spot_handshake::parse_start_command(payload.data(),
+                                                       payload.size(),
+                                                       &started_size)) {
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             state->control_started_msg_size.store(started_size,
@@ -1056,36 +849,13 @@ bool recv_one_control_message(spot_client_state_t *state, bool *received)
         }
         state->cv.notify_all();
     }
-
-    perf_close_multipart(parts, part_count);
     return true;
 }
 
 bool wait_for_control_link_ready(spot_client_state_t *state, int timeout_ms)
 {
-    if (!state)
-        return false;
-    if (state->control_link_ready.load(std::memory_order_acquire))
-        return true;
-
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1, timeout_ms));
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (state->control_link_ready.load(std::memory_order_acquire))
-            return true;
-        bool received = false;
-        if (!recv_one_control_message(state, &received))
-            return false;
-        if (state->control_link_ready.load(std::memory_order_acquire))
-            return true;
-        zlink_pollitem_t item = {NULL, 0, 0, 0};
-        if (zlink_poll(&item, 0, 5) < 0 && zlink_errno() != EINTR)
-            return false;
-    }
-
-    errno = ETIMEDOUT;
-    return false;
+    return perf_multi_spot_control::wait_for_control_link_ready(
+      state, timeout_ms, recv_one_control_message);
 }
 
 bool create_control_spot(ctx_guard_t &ctx,
@@ -1116,8 +886,8 @@ bool create_control_spot(ctx_guard_t &ctx,
         zlink_spot_node_destroy(&state->control_node);
         return false;
     }
-    if (!apply_spot_control_options(state->control_pub, state->control_sub,
-                                    settings)) {
+    if (!perf_multi_spot_control::apply_control_options(
+          state->control_pub, state->control_sub, settings)) {
         return false;
     }
 
@@ -1164,30 +934,11 @@ bool create_control_spot(ctx_guard_t &ctx,
 
 bool ensure_control_connected(spot_client_state_t *state)
 {
-    if (!state || !state->control_node || state->server_control_endpoint.empty())
-        return false;
-
-    if (state->control_connected.load(std::memory_order_acquire))
-        return true;
-
-    if (zlink_spot_node_connect_peer(state->control_node,
-                                     state->server_control_endpoint.c_str())
-        != 0) {
-        return false;
-    }
-
-    state->control_connected.store(true, std::memory_order_release);
-    return true;
-}
-
-void disconnect_control_peer(spot_client_state_t *state)
-{
-    if (!state || !state->control_node || state->server_control_endpoint.empty())
-        return;
-
-    (void) zlink_spot_node_disconnect_peer(state->control_node,
-                                           state->server_control_endpoint.c_str());
-    state->control_connected.store(false, std::memory_order_release);
+    return state
+           && perf_multi_spot_control::ensure_connected(
+             state->control_node,
+             state->server_control_endpoint,
+             &state->control_connected);
 }
 
 bool create_spot_slots(ctx_guard_t &ctx,
@@ -1360,7 +1111,9 @@ bool wait_msg_size_start(spot_client_state_t *state,
                                    + std::chrono::milliseconds(50);
 
     while (std::chrono::steady_clock::now() < deadline) {
-        if (wait_for_size_start_signal(state, msg_size, 1)) {
+        if (perf_multi_handshake::wait_for_start(&state->start_gate,
+                                                 msg_size,
+                                                 1)) {
             const uint64_t start_recv_us =
               bench_transition_debug_enabled() ? perf_multi_metric::now_us() : 0;
             {
@@ -1414,17 +1167,8 @@ bool wait_phase_start(spot_client_state_t *state,
                       perf_multi_metric::phase_t expected_phase,
                       int timeout_ms)
 {
-    std::unique_lock<std::mutex> lock(state->mutex);
-    return state->cv.wait_for(
-      lock,
-      std::chrono::milliseconds(std::max(1, timeout_ms)),
-      [state, msg_size, expected_phase]() {
-          return state->fatal.load(std::memory_order_acquire)
-                 || (state->seen_msg_size.load(std::memory_order_acquire)
-                       == msg_size
-                     && state->seen_phase.load(std::memory_order_acquire)
-                          == static_cast<int>(expected_phase));
-      });
+    return perf_multi_spot_control::wait_for_phase(
+      state, msg_size, static_cast<int>(expected_phase), timeout_ms);
 }
 
 int resolve_spot_phase_timeout_ms(const multi_bench_settings_t &settings,
@@ -1471,25 +1215,6 @@ int resolve_spot_phase_timeout_ms(const multi_bench_settings_t &settings,
     return resolve_multi_int_env("PERF_MULTI_SPOT_PHASE_TIMEOUT_MS",
                                  timeout_ms,
                                  1);
-}
-
-bool wait_phase_duration(spot_client_state_t *state, double seconds)
-{
-    if (seconds <= 0.0)
-        return true;
-
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-          std::chrono::duration<double>(seconds));
-
-    std::unique_lock<std::mutex> lock(state->mutex);
-    while (!state->fatal.load(std::memory_order_acquire)) {
-        if (state->cv.wait_until(lock, deadline) == std::cv_status::timeout)
-            break;
-    }
-
-    return !state->fatal.load(std::memory_order_acquire);
 }
 
 bool wait_spot_sender_window_done(spot_client_state_t *state)
@@ -1691,34 +1416,12 @@ int run_client_benchmark(const std::string &lib_name,
 
     spot_client_state_t state;
     g_client_state = &state;
-    std::thread stdin_watcher([&state]() {
-        std::string line;
-        while (std::getline(std::cin, line)) {
-            if (bench_transition_debug_enabled()) {
-                std::cerr << "[multi-spot-client] stdin line ts_us="
-                          << perf_multi_metric::now_us()
-                          << " line=" << line << std::endl;
-            }
-            size_t start_size = 0;
-            if (parse_control_connected_line(line)) {
-                state.control_link_ready.store(true,
-                                               std::memory_order_release);
-                state.cv.notify_all();
-                continue;
-            }
-            if (parse_control_start(line.data(), line.size(), &start_size)) {
-                notify_size_start(&state, start_size);
-                continue;
-            }
-            if (line == "STOP" || line == "QUIT") {
-                state.fatal.store(true, std::memory_order_release);
-                state.cv.notify_all();
-                state.start_wait_cv.notify_all();
-                return;
-            }
-        }
-    });
-    stdin_watcher.detach();
+    perf_multi_spot_control::start_client_stdin_watcher(
+      &state,
+      [](spot_client_state_t *client_state, size_t start_size) {
+          perf_multi_handshake::signal_start(
+            &client_state->start_gate, start_size);
+      });
     if (!create_control_spot(ctx, transport, control_endpoint, settings,
                              &state)) {
         if (bench_debug_enabled())

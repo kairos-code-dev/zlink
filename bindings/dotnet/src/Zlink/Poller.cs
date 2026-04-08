@@ -54,23 +54,23 @@ public sealed class Poller : IDisposable
         }
     }
 
-    public void Add(SocketBase socket, PollEvents events, object? tag = null)
+    public void Add(IZlinkSocket socket, PollEvents events, object? tag = null)
     {
         EnsureNotDisposed();
-        if (socket == null)
-            throw new ArgumentNullException(nameof(socket));
+        SocketBase concreteSocket = SocketInterop.RequireSocket(socket,
+            nameof(socket));
         EnumValidation.EnsurePollEvents(events, nameof(events));
 
         IntPtr userData = AllocateUserData();
-        int rc = NativeMethods.zlink_poller_add(_handle, socket.Handle,
+        int rc = NativeMethods.zlink_poller_add(_handle, concreteSocket.Handle,
             userData, (short)events);
         if (rc != 0)
         {
             ReleaseUserData(userData);
             ZlinkException.ThrowIfError(rc);
         }
-        RegisterItem(new PollItem(PollItemKind.Socket, socket, userData,
-            socket.Handle, 0, events, tag));
+        RegisterItem(new PollItem(PollItemKind.Socket, concreteSocket, userData,
+            concreteSocket.Handle, 0, events, tag));
     }
 
     public void AddFd(int fd, PollEvents events, object? tag = null)
@@ -90,19 +90,19 @@ public sealed class Poller : IDisposable
             fd, events, tag));
     }
 
-    public void Modify(SocketBase socket, PollEvents events)
+    public void Modify(IZlinkSocket socket, PollEvents events)
     {
         EnsureNotDisposed();
-        if (socket == null)
-            throw new ArgumentNullException(nameof(socket));
+        SocketBase concreteSocket = SocketInterop.RequireSocket(socket,
+            nameof(socket));
         EnumValidation.EnsurePollEvents(events, nameof(events));
 
-        int index = FindSocket(socket.Handle);
+        int index = FindSocket(concreteSocket.Handle);
         if (index < 0)
             throw new ArgumentException("socket is not registered",
                 nameof(socket));
 
-        int rc = NativeMethods.zlink_poller_modify(_handle, socket.Handle,
+        int rc = NativeMethods.zlink_poller_modify(_handle, concreteSocket.Handle,
             (short)events);
         ZlinkException.ThrowIfError(rc);
         _items[index].Events = events;
@@ -123,17 +123,17 @@ public sealed class Poller : IDisposable
         _items[index].Events = events;
     }
 
-    public bool Remove(SocketBase socket)
+    public bool Remove(IZlinkSocket socket)
     {
         EnsureNotDisposed();
-        if (socket == null)
-            throw new ArgumentNullException(nameof(socket));
+        SocketBase concreteSocket = SocketInterop.RequireSocket(socket,
+            nameof(socket));
 
-        int index = FindSocket(socket.Handle);
+        int index = FindSocket(concreteSocket.Handle);
         if (index < 0)
             return false;
 
-        int rc = NativeMethods.zlink_poller_remove(_handle, socket.Handle);
+        int rc = NativeMethods.zlink_poller_remove(_handle, concreteSocket.Handle);
         ZlinkException.ThrowIfError(rc);
         UnregisterItem(index);
         return true;
@@ -349,7 +349,7 @@ public sealed class Poller : IDisposable
 
     private sealed class PollItem
     {
-        public PollItem(PollItemKind kind, SocketBase? socket, IntPtr userData,
+        public PollItem(PollItemKind kind, IZlinkSocket? socket, IntPtr userData,
             IntPtr socketHandle, int fd, PollEvents events, object? tag)
         {
             Kind = kind;
@@ -362,7 +362,7 @@ public sealed class Poller : IDisposable
         }
 
         public PollItemKind Kind { get; }
-        public SocketBase? Socket { get; }
+        public IZlinkSocket? Socket { get; }
         public IntPtr UserData { get; }
         public IntPtr SocketHandle { get; }
         public int Fd { get; }
@@ -374,7 +374,7 @@ public sealed class Poller : IDisposable
 
 public readonly struct PollEvent
 {
-    public PollEvent(SocketBase? socket, int? fd, object? tag, PollEvents events,
+    public PollEvent(IZlinkSocket? socket, int? fd, object? tag, PollEvents events,
         PollEvents revents)
     {
         Socket = socket;
@@ -384,7 +384,7 @@ public readonly struct PollEvent
         Revents = revents;
     }
 
-    public SocketBase? Socket { get; }
+    public IZlinkSocket? Socket { get; }
     public int? Fd { get; }
     public object? Tag { get; }
     public PollEvents Events { get; }

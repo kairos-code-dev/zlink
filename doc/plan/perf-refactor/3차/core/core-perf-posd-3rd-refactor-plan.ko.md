@@ -9,6 +9,20 @@
 > 죽은 코드, 얕은 wrapper, tracked artifact를 정리해 전체 복잡도를 실제로
 > 줄인다.
 >
+> 현재 완료 상태:
+>
+> - stage 1 `core/perf`: complete
+> - stage 2 `bindings/cpp/perf`: complete
+> - stage 3 `bindings/dotnet/perf`: complete
+> - stage 4 `bindings/java/perf`: complete
+> - stage 5 `bindings/rust/perf`: complete
+> - stage 6 `bindings/go/perf`: pending
+> - stage 7 `bindings/node/perf`: pending
+> - stage 8 `bindings/python/perf`: pending
+> - stage 9 `core/bench/with_zmq`: pending
+> - stage 10 `core/bench/with_stream`: pending
+> - stage 11 공통 tracked artifact 정리: pending
+>
 > 최상위 목적: perf의 본래 목적은 벤치 코드 자체를 보기 좋게 만드는 것이 아니라,
 > **라이브러리 자체의 성능을 정확하게 측정하고, 성능 향상 여부와 성능 회귀
 > 여부를 신뢰 가능하게 확인하는 것**이다. 모든 리팩토링은 이 목적을 보조해야
@@ -479,15 +493,29 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 ### 5.0 작업 순서 원칙
 
 - 리팩토링은 병렬로 넓게 벌리지 않고 **단계 하나씩 순차 진행**한다.
-- 각 top-level stage는 아래 루프를 반드시 따른다.
-  1. `doc/perf` 정책 문서 기준으로 현재 구현 불일치를 확인한다.
-  2. 확인된 불일치와 dead code/dead branch/dead file을 POSD 기준으로
-     리팩토링한다.
-  3. perf 정책을 위반하지 않고 측정 의미를 해치지 않는 범위에서, 더 진행할
-     POSD 리팩토링이 남아 있지 않은지 다시 확인한다.
-  4. 기능 확인과 로컬 검증을 수행한다.
-  5. 위 1~4가 정리된 뒤에만 해당 stage의 smoke test gate를 수행한다.
-  6. 실패가 없을 때만 다음 단계로 진행한다.
+- 각 top-level stage는 아래 **5단계 완료 루프**를 반드시 같은 순서로 따른다.
+  1. 정책 불일치 수정
+     - `doc/perf` 정책 문서 기준으로 현재 구현 불일치를 먼저 찾고 바로 수정한다.
+  2. POSD 리팩토링
+     - 확인된 불일치와 dead code/dead branch/dead file을 POSD 기준으로 줄인다.
+  3. 반복 리뷰
+     - 같은 stage를 다시 읽고 다시 점검해도 새 리팩토링 이슈가 다시 나오지
+       않는지 반복 확인한다.
+     - 같은 반복 리뷰 안에서 `@doc/perf`의 모든 관련 정책을 실제로 지키는지도
+       다시 확인한다.
+  4. 더 줄일 항목이 없는지 재확인
+     - perf 정책을 위반하지 않고 측정 의미를 해치지 않는 범위에서, 더 진행할
+       POSD 리팩토링이 남아 있지 않은지 다시 확인한다.
+     - 이 재확인에는 `@doc/perf` 정책 위반이 새로 드러나지 않는지도 포함한다.
+  5. gate 통과
+     - 기능 확인과 로컬 검증을 마친 뒤, 해당 stage의 smoke test gate를 수행한다.
+     - gate에서 실패가 없을 때만 다음 stage로 진행한다.
+- 중요:
+  - stage N 이 `complete` 로 명시되기 전에는 stage N+1 을 시작하지 않는다.
+  - 일부 감사, 사전 탐색, 다음 stage 후보 파일 열람도 stage 전환으로 간주하므로
+    금지한다.
+  - 반드시 현재 stage 안에서 정책 리뷰, POSD 리뷰, 잔여 항목 재확인, gate를 모두
+    끝낸 뒤에만 다음 stage heading 으로 내려간다.
 - 한 단계라도 smoke test gate에서 실패하면 다음 단계로 넘어가지 않고, 해당
   단계에서 원인 수정 후 다시 같은 gate를 통과해야 한다.
 - smoke test gate에서 fail 항목이 **하나라도** 남아 있으면 다음 단계로
@@ -515,14 +543,20 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 
 #### 공통 작업 루프
 
-모든 영역은 아래 순서를 공통 작업 루프로 사용한다.
+모든 영역은 아래 **5단계 완료 루프**를 공통 작업 루프로 사용한다.
 
-1. perf 정책문서대로 현재 구현 확인
+1. 정책 불일치 수정
+   - perf 정책문서대로 현재 구현을 확인하고 불일치를 먼저 수정한다.
 2. POSD 기반 리팩토링
-3. dead code/dead branch/dead file까지 포함해 더 진행할 POSD 리팩토링이 없는지 확인
-4. 리뷰를 반복해도 새 리팩토링 이슈가 다시 나오지 않는지 확인
-5. 기능 확인
-6. smoke 검증
+   - dead code/dead branch/dead file까지 포함해 구조를 줄인다.
+3. 반복 리뷰
+   - 리뷰를 반복해도 새 리팩토링 이슈가 다시 나오지 않는지 확인한다.
+   - 같은 반복 리뷰에서 `@doc/perf`의 관련 정책을 모두 다시 대조한다.
+4. 더 줄일 항목이 없는지 재확인
+   - 추가 POSD 리팩토링이 정말 남아 있지 않은지 다시 확인한다.
+   - 추가 정책 위반이나 정책-구현 불일치가 남아 있지 않은지도 다시 확인한다.
+5. gate 통과
+   - 기능 확인 후 smoke 검증을 수행하고, fail 0일 때만 다음 stage로 진행한다.
 
 - 여기서 `기능 확인`은 build/test/smoke/결과 shape 확인을 뜻한다.
 - `smoke 검증`은 현재 stage 소유 범위의 syntax/build/policy test와 모든 지원
@@ -534,10 +568,53 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
   단발성 self-check가 아니라, 같은 stage를 다시 읽고 다시 점검해도
   “아직 남은 구조 정리 항목”, “문서와 구현의 불일치”, “과대 공통 계층”, “dead code”
   같은 리팩토링 이슈가 추가로 나오지 않는 상태를 뜻한다.
+- 여기서 문서와 구현의 불일치에는 `@doc/perf` 정책 문서 전체와의 불일치도
+  포함한다.
+- 따라서 반복 리뷰는 POSD 이슈만 다시 보는 절차가 아니라, `@doc/perf`의 관련 정책을
+  다시 대조해 policy miss가 추가로 나오지 않는지도 함께 확인하는 절차다.
 - 따라서 test/smoke가 통과해도 반복 리뷰에서 리팩토링 이슈가 다시 나오면
   그 stage는 완료로 닫지 않는다.
+- 따라서 test/smoke가 통과해도 반복 리뷰에서 `@doc/perf` 정책 위반이나 정책-구현
+  불일치가 다시 나오면 그 stage는 완료로 닫지 않는다.
+
+각 stage/substage의 bullet도 아래 **5단계 완료 루프**를 그대로 따른다고 해석한다.
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+   - POSD 이슈와 `@doc/perf` 정책 준수를 함께 다시 확인
+4. 더 줄일 항목이 없는지 재확인
+   - POSD 잔재와 정책 위반 잔재가 함께 없는지 재확인
+5. gate 통과
 
 ### 단계 1 내부 substage C1. `core/perf` 문서/테스트 수렴
+
+상태: complete
+
+체크리스트:
+
+- [x] 정책 불일치 수정
+- [x] POSD 리팩토링
+- [x] 반복 리뷰
+- [x] 더 줄일 항목이 없는지 재확인
+- [x] substage 범위의 local gate 확인
+
+현재 반영된 작업:
+
+- [x] README 2종을 정책 요약 index 수준으로 축약
+- [x] policy test fixture를 Tier 1 5개 metric 기준으로 정리
+- [x] 제거된 queue metric 부재를 검증하는 테스트 추가
+- [x] Python policy test와 syntax 확인 완료
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
+   - 이 substage는 독립 smoke gate가 아니라 cheap/local 확인만 수행하고,
+     stage 1 gate는 C1~C4 전체 완료 후 한 번만 수행한다.
 
 - 정책 정합성 확인
   - README/tests가 현재 `doc/perf` 계약과 맞는지 확인한다.
@@ -553,6 +630,33 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 
 ### 단계 1 내부 substage C2. `core/perf` queue/probe 계층 감사 후 축소
 
+상태: complete
+
+체크리스트:
+
+- [x] 정책 불일치 수정
+- [x] POSD 리팩토링
+- [x] 반복 리뷰
+- [x] 더 줄일 항목이 없는지 재확인
+- [x] substage 범위의 local gate 확인
+
+현재 반영된 작업:
+
+- [x] `bench_common.hpp`에서 과도한 공통 include 축소
+- [x] 기본 perf 결과 surface에서 legacy queue metric 재노출 방지
+- [x] queue/probe call graph 재감사 완료
+- [x] 공용 queue/probe surface 완전 축소 완료
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
+   - 이 substage는 독립 smoke gate가 아니라 cheap/local 확인만 수행하고,
+     stage 1 gate는 C1~C4 전체 완료 후 한 번만 수행한다.
+
 - 정책 정합성 확인
   - queue/probe 계층이 현재 기본 perf 계약에 실제로 필요한지 확인한다.
 - queue probe 관련 타입/함수의 실제 call graph를 정리한다.
@@ -566,6 +670,33 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
   - C1~C4가 모두 끝난 뒤 stage 1 전체에 대해 한 번 수행한다.
 
 ### 단계 1 내부 substage C3. `core/perf` stream common client 정리
+
+상태: complete
+
+체크리스트:
+
+- [x] 정책 불일치 수정
+- [x] POSD 리팩토링
+- [x] 반복 리뷰
+- [x] 더 줄일 항목이 없는지 재확인
+- [x] substage 범위의 local gate 확인
+
+현재 반영된 작업:
+
+- [x] shared STREAM client 문서에서 `ready -> active` 기준 명시
+- [x] `drain` 명칭을 `completion wait` 기준으로 정리
+- [x] size transition completion wait 명칭 정리
+- [x] old contract 재주입 여부 반복 리뷰 완료
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
+   - 이 substage는 독립 smoke gate가 아니라 cheap/local 확인만 수행하고,
+     stage 1 gate는 C1~C4 전체 완료 후 한 번만 수행한다.
 
 - 정책 정합성 확인
   - shared STREAM client의 phase/option surface가 `doc/perf`와 맞는지 확인한다.
@@ -581,6 +712,36 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 
 ### 단계 1 내부 substage C4. `core/perf` runner entrypoint 단순화
 
+상태: complete
+
+체크리스트:
+
+- [x] 정책 불일치 수정
+- [x] POSD 리팩토링
+- [x] 반복 리뷰
+- [x] 더 줄일 항목이 없는지 재확인
+- [x] stage 1 gate 통과
+
+현재 반영된 작업:
+
+- [x] multi shell이 single shell을 재호출하지 않도록 직접 Python engine 호출로 정리
+- [x] single PowerShell entrypoint를 single-only surface로 고정
+- [x] single bash entrypoint에서 dead `--recv` surface 제거
+- [x] single callback worker processed-count drain을 실제 processed 기준으로 정렬
+- [x] single runner dead recv-mode helper/signature 잔재 제거
+- [x] SPOT 중복 callback-mode check 제거
+- [x] `core/perf` smoke gate 최종 재실행 통과
+- [x] stage 1 반복 리뷰 후 최종 gate 재확인 완료
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
+   - C1~C4 전체가 끝난 뒤 stage 1의 `core/perf` smoke test gate를 통과해야 한다.
+
 - 정책 정합성 확인
   - 공식 entrypoint/책임과 현재 shell/python 연결 구조의 불일치를 확인한다.
 - POSD 리팩토링
@@ -594,6 +755,24 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 
 ### 단계 2. `bindings/cpp/perf` 정리
 
+상태: complete
+
+체크리스트:
+
+- [x] 정책 불일치 수정
+- [x] POSD 리팩토링
+- [x] 반복 리뷰
+- [x] 더 줄일 항목이 없는지 재확인
+- [x] stage gate 통과
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
+
 - 정책 정합성 확인
 - POSD 리팩토링
 - 기능 확인
@@ -602,7 +781,46 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - B1 공통 정렬 기준을 적용한다.
 - 단계 2가 smoke test gate를 통과해야 단계 3으로 넘어간다.
 
+현재 반영된 작업:
+
+- [x] `bindings/cpp/perf/run_binding_single.sh`에서 single dead `--recv`
+      surface 제거 및 callback-only entrypoint 고정
+- [x] `bindings/cpp/perf/single/common/*`과 single pattern 소스의 dead
+      `queue_probe`/queue stats surface 제거
+- [x] `bindings/cpp/perf/single`의 dead `phase_warmup`/`warmup_count`
+      분기와 시그니처 제거
+- [x] `bindings/cpp/perf/multi/common/perf_common.hpp`의 server queue metric
+      RESULT surface 제거
+- [x] `bindings/cpp/perf/multi/common/perf_stream_session.hpp`와
+      `multi/src/perf_stream_server.cpp`의 stdin `QUEUE,<size>` probe path 제거
+- [x] `bindings/cpp/perf/multi` server 출력의 dead queue metric line 제거
+- [x] `bindings/cpp/perf/run_binding_multi.sh`의 unbound
+      `WARMUP_SECONDS` 출력 제거
+- [x] `bindings/cpp/perf/run_binding_single.sh`가 multi 위임 실행 시 실제
+      `recv_mode`를 표시하도록 정렬
+- [x] single/multi runner syntax 확인, python wrapper py_compile, 관련 C++
+      target build 재확인 완료
+- [x] `bindings/cpp/perf` smoke gate 재실행 통과
+
 ### 단계 3. `bindings/dotnet/perf` 정리
+
+상태: complete
+
+체크리스트:
+
+- [x] 정책 불일치 수정
+- [x] POSD 리팩토링
+- [x] 반복 리뷰
+- [x] 더 줄일 항목이 없는지 재확인
+- [x] stage gate 통과
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
 
 - 정책 정합성 확인
 - POSD 리팩토링
@@ -612,7 +830,51 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - B1 공통 정렬 기준을 적용한다.
 - 단계 3이 smoke test gate를 통과해야 단계 4로 넘어간다.
 
+현재 반영된 작업:
+
+- single entrypoint에서 dead `--recv` / `--warmup` surface를 제거하고,
+  single callback-only 계약과 README 설명을 정렬했다.
+- multi runner에서 old stream client path / completion status / result count
+  계산을 정리하고, `status=complete|partial`, `expected_result_lines`,
+  `actual_result_lines`, `## Failures` 출력을 `doc/perf` 계약에 맞췄다.
+- multi DEALER_ROUTER / ROUTER_ROUTER client는 warmup drain 단계를 제거하고
+  public `TryRecv` surface로 수신을 단순화해 `ready -> active` anchor를
+  core와 같은 의미로 맞췄다.
+- multi DEALER_ROUTER / ROUTER_ROUTER server는 routed payload의 마지막 frame만
+  기준으로 echo하고 fresh message를 재구성해 multipart/reuse 의존을 제거했다.
+- multi STREAM server는 stdin EOF 종료를 제거하고 stop token 종료 계약을
+  복구해 shared core stream client와 다시 맞췄다.
+- stage 3 반복 리뷰에서 `doc/perf/PERF_POLICY.md`,
+  `doc/perf/PERF_SINGLE_TEST_POLICY.md`,
+  `doc/perf/PERF_MULTI_TEST_POLICY.md` 와 다시 대조해 runner/report/status
+  surface와 pattern contract를 재확인했다.
+- stage 3 gate 재실행:
+  - `bash -n bindings/dotnet/perf/single/run_benchmarks.sh bindings/dotnet/perf/multi/run_benchmarks.sh bindings/dotnet/perf/run_benchmarks.sh bindings/dotnet/perf/run_benchmarks_multi.sh`
+  - `python3 -m py_compile bindings/dotnet/perf/run_comparison.py bindings/dotnet/perf/single/run_comparison.py bindings/dotnet/perf/multi/run_comparison.py`
+  - `dotnet build bindings/dotnet/perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj -c Release`
+  - `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release`
+  - `./bindings/dotnet/perf/run_benchmarks.sh --msg-sizes 64 --runs 1 --duration 1 --results-tag smoke_single_all_r3`
+  - `./bindings/dotnet/perf/run_benchmarks_multi.sh --msg-sizes 64 --runs 1 --clients 4 --warmup 1 --duration 1 --results-tag smoke_multi_all_r6`
+
 ### 단계 4. `bindings/java/perf` 정리
+
+상태: complete
+
+체크리스트:
+
+- [x] 정책 불일치 수정
+- [x] POSD 리팩토링
+- [x] 반복 리뷰
+- [x] 더 줄일 항목이 없는지 재확인
+- [x] stage gate 통과
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
 
 - 정책 정합성 확인
 - POSD 리팩토링
@@ -622,7 +884,56 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - B1 공통 정렬 기준을 적용한다.
 - 단계 4가 smoke test gate를 통과해야 단계 5로 넘어간다.
 
+현재 반영된 작업:
+
+- `bindings/java/perf/common`에서 old warmup/cpu-mem RESULT contract를 제거했다.
+  - `PerfArgs`가 `--warmup`을 더 이상 받지 않는다.
+  - `PerfReport`와 `PerfMetricsCollector`가 Tier 1 5개 metric만 출력한다.
+  - `PerfUtil` phase 상수를 `ACTIVE/STOP/PROBE` 의미로 정리했다.
+- `bindings/java/perf/single`에서 callback-only `ready -> active` 흐름으로 다시 정렬했다.
+  - single runner에서 warmup 옵션과 cpu/mem/queue surface를 제거했다.
+  - `PAIR/DEALER_DEALER/DEALER_ROUTER`는 active-only sender loop로 축소했다.
+  - `PUBSUB`의 `preflight/primed` 단계를 제거했다.
+  - `ROUTER_ROUTER`는 monitor-ready 뒤 단발 self-check 1회만 남겼다.
+  - `SPOT`은 local probe-based ready barrier로 정렬했다.
+- `bindings/java/perf/multi`에서 old warmup surface와 잘못된 측정 의미를 정리했다.
+  - multi runner에서 warmup 옵션, cpu/mem/queue metric, `--print-perf-result` 의존을 제거했다.
+  - `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`를 실제 echo server/client 측정으로 교체했다.
+  - `MULTI_DEALER_DEALER`, `MULTI_PUBSUB`, `MULTI_SPOT`은 active-only phase로 다시 맞췄다.
+  - `MULTI_SPOT`에는 policy가 허용한 stabilization/control-settle barrier를 넣었다.
+  - `MULTI_STREAM`은 stdin EOF를 stop으로 보지 않게 바꾸고 stop-token echo를 제거했다.
+- Java perf TLS cert path를 repo `tests/certs` 기준으로 다시 찾도록 고쳤다.
+- stage 4 gate 재실행:
+  - `bash -n bindings/java/perf/run_benchmarks.sh bindings/java/perf/run_benchmarks_multi.sh bindings/java/perf/single/run_benchmarks.sh bindings/java/perf/multi/run_benchmarks.sh`
+  - `gradle -q :perf-single:compileJava :perf-multi:compileJava`
+  - `gradle -q :perf-single:installDist :perf-multi:installDist`
+  - `./bindings/java/perf/run_benchmarks.sh --transports tcp --msg-sizes 64 --runs 1 --duration 1 --results-tag stage4_single_tcp_smoke_r2`
+  - `./bindings/java/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64 --runs 1 --clients 4 --duration 1 --results-tag stage4_multi_tcp_smoke_r1`
+  - 반복 리뷰 probe:
+    - `./bindings/java/perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_ROUTER --transports tcp --msg-sizes 64 --runs 1 --clients 4 --duration 1 --results-tag stage4_dr_probe_r1`
+    - `./bindings/java/perf/run_benchmarks_multi.sh --pattern MULTI_ROUTER_ROUTER --transports tcp --msg-sizes 64 --runs 1 --clients 4 --duration 1 --results-tag stage4_rr_probe_r1`
+    - `./bindings/java/perf/run_benchmarks_multi.sh --pattern MULTI_SPOT --recv callback --transports tcp --msg-sizes 64 --runs 1 --clients 4 --duration 1 --results-tag stage4_spot_cb_probe_r2`
+    - `./bindings/java/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM --recv callback --transports tcp --msg-sizes 64 --runs 1 --clients 4 --duration 1 --results-tag stage4_stream_cb_probe_r1`
+
 ### 단계 5. `bindings/rust/perf` 정리
+
+상태: complete
+
+체크리스트:
+
+- [x] 정책 불일치 수정
+- [x] POSD 리팩토링
+- [x] 반복 리뷰
+- [x] 더 줄일 항목이 없는지 재확인
+- [x] stage gate 통과
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
 
 - 정책 정합성 확인
 - POSD 리팩토링
@@ -632,7 +943,55 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - B1 공통 정렬 기준을 적용한다.
 - 단계 5가 smoke test gate를 통과해야 단계 6으로 넘어간다.
 
+현재 반영된 작업:
+
+- `bindings/rust/perf/single`에서 old warmup surface와 `tcp://...:0` 직접
+  connect 잔재를 제거하고, bind 후 resolved endpoint를 사용하도록 정렬했다.
+- single runner는 `--recv callback`만 허용하도록 고정했고, `report/` 100파일
+  보존 정책을 추가했다.
+- single raw 패턴 callback path는 multipart payload의 마지막 frame만을 metric
+  header로 해석하도록 고쳤다.
+- single `PUBSUB`는 subscriber `CONNECTION_READY` gate와 stop-frame drain으로
+  `ready -> active`를 다시 맞췄다.
+- single `SPOT`은 publisher/subscriber node 분리 + local probe barrier로
+  ready 판정을 복구했다.
+- `bindings/rust/perf/multi`에서 old warmup/queue RESULT surface를 제거하고,
+  `PERF_MULTI_*` 환경 변수와 5-metric report/completion format으로 정렬했다.
+- multi runner는 callback 허용 범위를 `MULTI_SPOT`,`MULTI_STREAM`으로 제한하고,
+  `report/` 보존 정책(`PERF_RESULTS_MAX_FILES`, 기본 100)을 추가했다.
+- stage 5 반복 리뷰에서 `doc/perf/PERF_POLICY.md`,
+  `doc/perf/PERF_SINGLE_TEST_POLICY.md`,
+  `doc/perf/PERF_MULTI_TEST_POLICY.md`와 다시 대조해 Rust single/multi의
+  ready/active, RESULT/report, callback mode 범위를 재확인했다.
+- stage 5 gate 재실행:
+  - `bash -n bindings/rust/perf/run_benchmarks.sh bindings/rust/perf/run_benchmarks_multi.sh`
+  - `cargo build --release` in `bindings/rust/perf/single`
+  - `cargo build --release` in `bindings/rust/perf/multi`
+  - `./bindings/rust/perf/run_benchmarks.sh --transports tcp --msg-sizes 64 --runs 1 --duration 1 --results-tag stage5_single_tcp_smoke_r2`
+  - `./bindings/rust/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64 --runs 1 --clients 4 --duration 1 --results-tag stage5_multi_tcp_smoke_r2`
+  - 반복 리뷰 probe:
+    - `./bindings/rust/perf/run_benchmarks_multi.sh --pattern MULTI_SPOT --recv callback --transports tcp --msg-sizes 64 --runs 1 --clients 4 --duration 1 --results-tag stage5_multi_spot_cb_probe_r1`
+    - `./bindings/rust/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM --recv callback --transports tcp --msg-sizes 64 --runs 1 --clients 4 --duration 1 --results-tag stage5_multi_stream_cb_probe_r1`
+
 ### 단계 6. `bindings/go/perf` 정리
+
+상태: pending
+
+체크리스트:
+
+- [ ] 정책 불일치 수정
+- [ ] POSD 리팩토링
+- [ ] 반복 리뷰
+- [ ] 더 줄일 항목이 없는지 재확인
+- [ ] stage gate 통과
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
 
 - 정책 정합성 확인
 - POSD 리팩토링
@@ -644,6 +1003,24 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 
 ### 단계 7. `bindings/node/perf` 정리
 
+상태: pending
+
+체크리스트:
+
+- [ ] 정책 불일치 수정
+- [ ] POSD 리팩토링
+- [ ] 반복 리뷰
+- [ ] 더 줄일 항목이 없는지 재확인
+- [ ] stage gate 통과
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
+
 - 정책 정합성 확인
 - POSD 리팩토링
 - 기능 확인
@@ -654,6 +1031,24 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 
 ### 단계 8. `bindings/python/perf` 정리
 
+상태: pending
+
+체크리스트:
+
+- [ ] 정책 불일치 수정
+- [ ] POSD 리팩토링
+- [ ] 반복 리뷰
+- [ ] 더 줄일 항목이 없는지 재확인
+- [ ] stage gate 통과
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
+
 - 정책 정합성 확인
 - POSD 리팩토링
 - 기능 확인
@@ -663,6 +1058,24 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 - 단계 8이 smoke test gate를 통과해야 단계 9로 넘어간다.
 
 ### 단계 9. `core/bench/with_zmq` 정리
+
+상태: pending
+
+체크리스트:
+
+- [ ] 정책 불일치 수정
+- [ ] POSD 리팩토링
+- [ ] 반복 리뷰
+- [ ] 더 줄일 항목이 없는지 재확인
+- [ ] stage gate 통과
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
 
 - 정책 정합성 확인
   - [with_zmq 정책 문서](../../../../../core/bench/with_zmq/README.md) 기준의
@@ -684,6 +1097,24 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
 
 ### 단계 10. `core/bench/with_stream` 정리
 
+상태: pending
+
+체크리스트:
+
+- [ ] 정책 불일치 수정
+- [ ] POSD 리팩토링
+- [ ] 반복 리뷰
+- [ ] 더 줄일 항목이 없는지 재확인
+- [ ] stage gate 통과
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
+
 - 정책 정합성 확인
   - [with_stream 정책 문서](../../../../../core/bench/with_stream/README.md) 기준의
     로컬 bench 계약과 `doc/perf` 공통 원칙의 경계를 먼저 확정한다.
@@ -700,6 +1131,24 @@ warmup 의존을 제거하는 것이고, 그 다음 POSD 기준으로 구조를 
   - 단계 완료 후 smoke test gate를 통과해야 한다.
 
 ### 단계 11. 공통 tracked artifact 정책 정리
+
+상태: pending
+
+체크리스트:
+
+- [ ] 정책 불일치 수정
+- [ ] POSD 리팩토링
+- [ ] 반복 리뷰
+- [ ] 더 줄일 항목이 없는지 재확인
+- [ ] stage gate 통과
+
+적용 순서:
+
+1. 정책 불일치 수정
+2. POSD 리팩토링
+3. 반복 리뷰
+4. 더 줄일 항목이 없는지 재확인
+5. gate 통과
 
 - 정책 정합성 확인
   - tracked artifact와 공식 runtime output root의 경계를 확인한다.

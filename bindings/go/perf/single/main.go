@@ -11,7 +11,6 @@ type benchmarkConfig struct {
 	pattern   string
 	transport string
 	msgSize   int
-	warmup    time.Duration
 	duration  time.Duration
 	recvMode  string
 }
@@ -20,7 +19,6 @@ var (
 	pattern   = flag.String("pattern", "PAIR", "")
 	transport = flag.String("transport", "tcp", "")
 	msgSize   = flag.Int("msg-size", 64, "")
-	warmup    = flag.Int("warmup", 2, "")
 	duration  = flag.Int("duration", 5, "")
 	recvMode  = flag.String("recv", "callback", "")
 )
@@ -32,7 +30,6 @@ func main() {
 		*pattern,
 		*transport,
 		*msgSize,
-		*warmup,
 		*duration,
 		*recvMode,
 	)
@@ -40,7 +37,6 @@ func main() {
 		pattern:   loaded.Pattern,
 		transport: loaded.Transport,
 		msgSize:   loaded.MsgSize,
-		warmup:    loaded.Warmup,
 		duration:  loaded.Duration,
 		recvMode:  loaded.RecvMode.String(),
 	}

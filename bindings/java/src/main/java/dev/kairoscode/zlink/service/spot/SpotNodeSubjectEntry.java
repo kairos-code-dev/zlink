@@ -2,18 +2,20 @@
 
 package dev.kairoscode.zlink.service.spot;
 
+import dev.kairoscode.zlink.ServiceEventSubjectKind;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
-public record SpotNodeSubjectEntry(int role, String subject, int subjectKind,
+public record SpotNodeSubjectEntry(SpotRole role, String subject,
+                                   ServiceEventSubjectKind subjectKind,
                                    int readyPeerCount, int activePeerCount,
                                    long lastChangedMs) {
     static SpotNodeSubjectEntry fromNative(MemorySegment segment) {
         return new SpotNodeSubjectEntry(
-          segment.get(ValueLayout.JAVA_INT, 0),
+          SpotRole.fromValue(segment.get(ValueLayout.JAVA_INT, 0)),
           NativeHelpers.fromCString(segment.asSlice(4, 256), 256),
-          segment.get(ValueLayout.JAVA_INT, 260),
+          ServiceEventSubjectKind.fromValue(segment.get(ValueLayout.JAVA_INT, 260)),
           segment.get(ValueLayout.JAVA_INT, 264),
           segment.get(ValueLayout.JAVA_INT, 268),
           segment.get(ValueLayout.JAVA_LONG, 272));

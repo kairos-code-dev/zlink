@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink.service.spot;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.SocketOption;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
@@ -40,11 +41,6 @@ public final class SpotNode implements AutoCloseable {
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_spot_node_bind");
         }
-    }
-
-    /** Returns the resolved endpoint after bind (supports ephemeral port 0). */
-    public String lastEndpoint() {
-        return statusSnapshot().localEndpoint();
     }
 
     /** Connects one peer spot node endpoint. */
@@ -85,10 +81,6 @@ public final class SpotNode implements AutoCloseable {
     /** Configures server TLS credentials on the node transport surface. */
     public void setTlsServer(String certPem, String keyPem,
                              boolean requireClientCert) {
-        if (requireClientCert) {
-            throw new UnsupportedOperationException(
-              "spot node TLS server does not expose client-cert mode");
-        }
         try (Arena arena = Arena.ofConfined()) {
             int rc = Native.spotNodeSetTlsServer(handle,
               NativeHelpers.toCString(arena, certPem),
@@ -113,6 +105,14 @@ public final class SpotNode implements AutoCloseable {
                   "zlink_spot_node_set_tls_client");
             }
         }
+    }
+
+    void sendHwm(int value) {
+        setPubOption(SocketOption.SNDHWM, value);
+    }
+
+    void recvHwm(int value) {
+        setSubOption(SocketOption.RCVHWM, value);
     }
 
     /** Returns the current node status snapshot. */
@@ -236,5 +236,31 @@ public final class SpotNode implements AutoCloseable {
         if (value > Integer.MAX_VALUE)
             return Integer.MAX_VALUE;
         return (int) value;
+    }
+
+    private void setPubOption(SocketOption option, int value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
+            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
+            int rc = Native.setSockOpt(Native.spotNodeDefaultPub(handle), option.getValue(),
+                nativeValue,
+                Integer.BYTES);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError("zlink_set_option");
+            }
+        }
+    }
+
+    private void setSubOption(SocketOption option, int value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
+            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
+            int rc = Native.setSockOpt(Native.spotNodeDefaultSub(handle), option.getValue(),
+                nativeValue,
+                Integer.BYTES);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError("zlink_set_option");
+            }
+        }
     }
 }

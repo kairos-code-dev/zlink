@@ -20,7 +20,7 @@ not to provide demo code or hide the hot path behind a complex harness.
 - `multi --recv callback` is allowed only for `MULTI_SPOT` and `MULTI_STREAM`.
 - Unsupported `--recv callback` pattern requests fail immediately. Silent skip or
   fallback is not allowed.
-- `--runs` is supported on both suites and reports averaged metrics per
+- `--runs` is supported on both suites and reports median metrics per
   pattern/transport/size configuration.
 - Perf hot paths must keep the messaging loop visible in each pattern file.
 - Perf runners must not turn slow fallback paths into the canonical measurement
@@ -87,6 +87,6 @@ policy-supported modes and save the measured output in the documented format.
 ## Smoke
 
 ```bash
-./perf/run_benchmarks.sh --pattern PAIR --transports tcp --msg-sizes 64 --warmup 1 --duration 1
-./perf/run_benchmarks_multi.sh --pattern MULTI_SPOT --recv callback --transports tcp --msg-sizes 64 --clients 4 --warmup 1 --duration 1
+./perf/run_benchmarks.sh --pattern PAIR --transports tcp --msg-sizes 64 --duration 1
+./perf/run_benchmarks_multi.sh --pattern MULTI_SPOT --recv callback --transports tcp --msg-sizes 64 --clients 4 --duration 1
 ```

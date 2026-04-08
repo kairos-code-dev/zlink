@@ -210,10 +210,10 @@ public class SocketContractTest {
             assertTrue(hasPublicMethod(PubSocketOptions.class, "noDrop"));
             assertTrue(hasPublicMethod(PubSocketOptions.class, "manual"));
             assertDoesNotThrow(() -> xpub.options().manual(true));
+            assertFalse(xpub.options().manual());
             assertDoesNotThrow(() -> xpub.options().verbose(true));
             assertDoesNotThrow(() -> xpub.options().verboser(true));
             assertDoesNotThrow(() -> xpub.options().noDrop(true));
-            assertDoesNotThrow(() -> xpub.options().welcomeMessage("hello"));
             assertEquals(SubSocketOptions.class, sub.options().getClass());
             assertTrue(hasPublicMethod(SubSocketOptions.class, "topicsCount"));
             assertEquals(0, sub.options().topicsCount());
@@ -221,8 +221,8 @@ public class SocketContractTest {
             assertEquals(0, xsub.options().topicsCount());
             assertDoesNotThrow(() -> stream.options().notify(true));
             assertTrue(stream.options().notifyEnabled());
-            assertDoesNotThrow(() -> pair.options().receiveTimeoutMillis(10));
-            assertEquals(10, pair.options().receiveTimeoutMillis());
+            assertDoesNotThrow(() -> pair.options().recvTimeout(Duration.ofMillis(10)));
+            assertEquals(Duration.ofMillis(10), pair.options().recvTimeout());
             assertDoesNotThrow(() -> pair.options().sendTimeout(Duration.ofMillis(20)));
             assertEquals(Duration.ofMillis(20), pair.options().sendTimeout());
         }

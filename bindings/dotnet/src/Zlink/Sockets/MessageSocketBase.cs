@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System.Collections.Generic;
+using System.ComponentModel;
 using Zlink.Sockets.Internal;
 
 namespace Zlink;
 
+[EditorBrowsable(EditorBrowsableState.Never)]
 public abstract class MessageSocketBase : ConnectableSocketBase
 {
     internal MessageSocketBase(Context context, SocketType type)

@@ -1,5 +1,10 @@
 #include "../common/bench_common.hpp"
+#include "../common/perf_single_latency.hpp"
 #include "../common/perf_single_metric_header.hpp"
+#include "../common/perf_single_metric_queue.hpp"
+#include "../common/perf_single_metric_worker.hpp"
+#include "../common/perf_single_monitor.hpp"
+#include "../common/perf_single_phase.hpp"
 
 #include <zlink.h>
 
@@ -30,6 +35,7 @@ struct pubsub_callback_state_t
         active_deadline_us(0),
         fatal(false),
         active_received(0),
+        active_processed(0),
         callback_queue(NULL)
     {
     }
@@ -40,6 +46,7 @@ struct pubsub_callback_state_t
     std::atomic<uint64_t> active_deadline_us;
     std::atomic<bool> fatal;
     std::atomic<unsigned long long> active_received;
+    std::atomic<unsigned long long> active_processed;
     latency_stats_builder_t latency;
     single_callback_metric_queue_t *callback_queue;
     std::mutex mutex;
@@ -174,6 +181,7 @@ bool run_active_phase(void *pub_socket,
       + std::chrono::seconds(duration_s > 0 ? duration_s : 1);
     state->fatal.store(false, std::memory_order_release);
     state->active_received.store(0, std::memory_order_release);
+    state->active_processed.store(0, std::memory_order_release);
     state->active_deadline_us.store(
       perf_single_metric::now_us()
         + static_cast<uint64_t>(std::max(1, duration_s) * 1000000ULL),
@@ -192,10 +200,12 @@ bool run_active_phase(void *pub_socket,
         ++sent_count;
     }
 
+    const unsigned long long expected_processed_count =
+      state->active_received.load(std::memory_order_acquire);
     const bool completed = single_wait_for_phase_processed(
       *state,
       perf_single_metric::phase_active,
-      sent_count,
+      expected_processed_count,
       single_phase_completion_timeout_ms(duration_s, recv_timeout_ms));
     if (!completed || state->fatal.load(std::memory_order_acquire))
         return false;
@@ -219,6 +229,12 @@ void run_pubsub(const std::string &transport,
     auto print_fail = [&]() {
         print_fail_result(lib_name, "PUBSUB", transport, msg_size);
     };
+    const size_t payload_size =
+      std::max<size_t>(msg_size, perf_single_metric::header_size());
+    std::vector<char> payload(payload_size, 'a');
+    pubsub_callback_state_t state;
+    single_callback_metric_queue_t callback_queue(k_metric_queue_capacity);
+    single_metric_worker_t<pubsub_callback_state_t> metric_worker;
     ctx_guard_t ctx;
     if (!ctx.valid()) {
         print_fail();
@@ -238,13 +254,6 @@ void run_pubsub(const std::string &transport,
         print_fail();
         return;
     }
-
-    const size_t payload_size =
-      std::max<size_t>(msg_size, perf_single_metric::header_size());
-    std::vector<char> payload(payload_size, 'a');
-    pubsub_callback_state_t state;
-    single_callback_metric_queue_t callback_queue(k_metric_queue_capacity);
-    single_metric_worker_t<pubsub_callback_state_t> metric_worker;
     state.run_id = static_cast<uint32_t>(perf_single_metric::now_us());
     state.msg_size = msg_size;
     state.payload_size = payload_size;
@@ -274,10 +283,12 @@ void run_pubsub(const std::string &transport,
                           &received,
                           &latency_stats)) {
         stop_single_metric_worker(&metric_worker);
+        settle_single_teardown(transport, msg_size);
         print_fail();
         return;
     }
     stop_single_metric_worker(&metric_worker);
+    settle_single_teardown(transport, msg_size);
     print_result(lib_name,
                  "PUBSUB",
                  transport,

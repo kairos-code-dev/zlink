@@ -777,41 +777,6 @@ def parse_result_line(line, transport, expected_sizes):
     return (line_transport, line_size, metric, value), None
 
 
-def parse_result_connect_line(line, transport, expected_sizes):
-    if not line.startswith("RESULT_CONNECT,"):
-        return None, None
-
-    parts = line.strip().split(",")
-    if len(parts) != 11:
-        return (
-            None,
-            f"ignored malformed RESULT_CONNECT line (field_count={len(parts)}): {line.strip()}",
-        )
-
-    try:
-        line_transport = parts[3].strip().lower()
-        line_size = int(parts[4].strip())
-        ok_label = parts[5].strip().lower()
-        ok_value = float(parts[6].strip())
-        fail_label = parts[7].strip().lower()
-        fail_value = float(parts[8].strip())
-        target_label = parts[9].strip().lower()
-        target_value = float(parts[10].strip())
-    except ValueError:
-        return None, f"ignored malformed RESULT_CONNECT numeric field: {line.strip()}"
-
-    if ok_label != "connect_ok" or fail_label != "connect_fail" or target_label != "connect_target":
-        return (
-            None,
-            f"ignored malformed RESULT_CONNECT labels: {line.strip()}",
-        )
-
-    if line_transport != transport.lower() or line_size not in expected_sizes:
-        return None, None
-
-    return (line_transport, line_size, ok_value, fail_value, target_value), None
-
-
 def _emit_result_metric_callback(
     result_line_callback, line_transport, line_size, metric_name, value
 ):
@@ -837,24 +802,7 @@ def emit_result_metrics_from_line(
         )
         return
 
-    connect_line, _ = parse_result_connect_line(line, transport, expected_sizes)
-    if not connect_line:
-        return
-
-    line_transport, line_size, ok_value, fail_value, target_value = connect_line
-    _emit_result_metric_callback(
-        result_line_callback, line_transport, line_size, "connect_ok", ok_value
-    )
-    _emit_result_metric_callback(
-        result_line_callback, line_transport, line_size, "connect_fail", fail_value
-    )
-    _emit_result_metric_callback(
-        result_line_callback,
-        line_transport,
-        line_size,
-        "connect_target",
-        target_value,
-    )
+    return
 
 
 def parse_special_token(line):
@@ -1599,17 +1547,6 @@ def run_sizes_test_stream_shared(
             if warning:
                 warnings.append(warning)
             if not parsed_line:
-                connect_line, connect_warning = parse_result_connect_line(
-                    line, transport, expected_sizes
-                )
-                if connect_warning:
-                    warnings.append(connect_warning)
-                if not connect_line:
-                    continue
-                line_transport, line_size, ok_value, fail_value, target_value = connect_line
-                parsed[f"{line_transport}|{line_size}|connect_ok"] = ok_value
-                parsed[f"{line_transport}|{line_size}|connect_fail"] = fail_value
-                parsed[f"{line_transport}|{line_size}|connect_target"] = target_value
                 continue
 
             line_transport, line_size, metric, value = parsed_line
@@ -1621,10 +1558,6 @@ def run_sizes_test_stream_shared(
                         f"{pattern_name} {transport} {line_size}B {metric}"
                     )
             parsed[key] = value
-
-        for sz in sizes:
-            connect_target_key = f"{transport}|{sz}|connect_target"
-            parsed.setdefault(connect_target_key, float(clients_int))
 
         token_status, token_reason = detect_special_status(
             combined_stdout, lib_name, pattern_name, transport
@@ -2648,23 +2581,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         lat_value, lat95_value, lat99_value
                     )
 
-                    if pattern_name in STREAM_VARIANT_PATTERNS:
-                        connect_ok_key = f"{tr}|{sz}|connect_ok"
-                        connect_target_key = f"{tr}|{sz}|connect_target"
-                        connect_ok_value = live_metrics.get(connect_ok_key)
-                        connect_target_value = live_metrics.get(connect_target_key)
-                        if connect_ok_value is None or connect_target_value is None:
-                            return
-                        connect_ok_int = int(round(float(connect_ok_value)))
-                        connect_target_int = int(round(float(connect_target_value)))
-                        if connect_target_int <= 0:
-                            connect_target_int = pattern_default_clients(
-                                pattern_name, tr
-                            )
-                        connect_required_int = max(1, connect_target_int)
-                        if connect_ok_int < connect_required_int:
-                            return
-
                     emit_size_row(
                         sz,
                         "success",
@@ -2752,8 +2668,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     lat_key = f"{tr}|{sz}|latency"
                     lat95_key = f"{tr}|{sz}|{LATENCY_P95_METRIC}"
                     lat99_key = f"{tr}|{sz}|{LATENCY_P99_METRIC}"
-                    connect_ok_key = f"{tr}|{sz}|connect_ok"
-                    connect_target_key = f"{tr}|{sz}|connect_target"
 
                     missing = []
                     if tp_key not in parsed:
@@ -2785,47 +2699,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         if FAIL_FAST:
                             return final_stats, failures
                         continue
-
-                    if pattern_name in STREAM_VARIANT_PATTERNS:
-                        connect_ok_value = parsed.get(connect_ok_key)
-                        connect_target_value = parsed.get(connect_target_key)
-                        if connect_ok_value is None or connect_target_value is None:
-                            run_failed_sizes.add(sz)
-                            failures.append(
-                                (
-                                    pattern_name,
-                                    lib_name,
-                                    tr,
-                                    sz,
-                                    "missing_connect_stats",
-                                )
-                            )
-                            if sz not in live_emitted_sizes:
-                                emit_size_row(sz, "fail")
-                            if FAIL_FAST:
-                                return final_stats, failures
-                            continue
-
-                        connect_ok_int = int(round(float(connect_ok_value)))
-                        connect_target_int = int(round(float(connect_target_value)))
-                        if connect_target_int <= 0:
-                            connect_target_int = pattern_default_clients(
-                                pattern_name, tr
-                            )
-                        connect_required_int = max(1, connect_target_int)
-                        if connect_ok_int < connect_required_int:
-                            run_failed_sizes.add(sz)
-                            reason = (
-                                "connect_not_enough_ok_"
-                                f"{connect_ok_int}_target_{connect_target_int}"
-                                f"_min_{connect_required_int}"
-                            )
-                            failures.append((pattern_name, lib_name, tr, sz, reason))
-                            if sz not in live_emitted_sizes:
-                                emit_size_row(sz, "fail")
-                            if FAIL_FAST:
-                                return final_stats, failures
-                            continue
 
                     if sz in live_emitted_sizes:
                         continue
@@ -2882,13 +2755,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
             for key in expected_keys:
                 vals = metrics_raw.get(key, [])
                 final_stats[key] = statistics.median(vals) if vals else 0
-            for sz in sizes:
-                for optional_metric in ("connect_ok", "connect_fail", "connect_target"):
-                    optional_key = f"{tr}|{sz}|{optional_metric}"
-                    vals = metrics_raw.get(optional_key, [])
-                    if vals:
-                        final_stats[optional_key] = statistics.median(vals)
-
             if show_run_labels:
                 emit("      median:")
                 _emit_table_header(emit, True, "        ")

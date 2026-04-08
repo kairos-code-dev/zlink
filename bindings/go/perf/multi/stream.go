@@ -23,12 +23,12 @@ func runMultiStream(cfg multiConfig) perfcommon.Result {
 	startMultiStreamEchoServer(server, cfg.recvMode)
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
 
 	var wg sync.WaitGroup
 	for i := 0; i < cfg.clients; i++ {
 		conn := perfcommon.DialEndpoint(endpoint)
-		perfcommon.Must(conn.SetDeadline(time.Now().Add(cfg.warmup + cfg.duration + 5*time.Second)))
+		perfcommon.Must(conn.SetDeadline(time.Now().Add(cfg.duration + 5*time.Second)))
 		wg.Add(1)
 		go func(c io.ReadWriteCloser) {
 			defer wg.Done()

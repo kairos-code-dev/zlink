@@ -8,7 +8,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
 public record ServiceEvent(ServiceKind serviceKind,
-                           long eventType,
+                           ServiceEventType eventType,
                            int status,
                            int errorCode,
                            long value,
@@ -17,7 +17,7 @@ public record ServiceEvent(ServiceKind serviceKind,
                            String endpoint,
                            RoutingId routingId,
                            String subject,
-                           int subjectKind) {
+                           ServiceEventSubjectKind subjectKind) {
     static ServiceEvent fromNative(MemorySegment event) {
         int kindValue = event.get(ValueLayout.JAVA_INT,
           NativeLayouts.SERVICE_EVENT_SERVICE_KIND_OFFSET);
@@ -33,8 +33,8 @@ public record ServiceEvent(ServiceKind serviceKind,
         }
         return new ServiceEvent(
           ServiceKind.fromValue(kindValue),
-          Integer.toUnsignedLong(event.get(ValueLayout.JAVA_INT,
-            NativeLayouts.SERVICE_EVENT_EVENT_TYPE_OFFSET)),
+          ServiceEventType.fromValue(Integer.toUnsignedLong(event.get(
+            ValueLayout.JAVA_INT, NativeLayouts.SERVICE_EVENT_EVENT_TYPE_OFFSET))),
           event.get(ValueLayout.JAVA_INT, NativeLayouts.SERVICE_EVENT_STATUS_OFFSET),
           event.get(ValueLayout.JAVA_INT,
             NativeLayouts.SERVICE_EVENT_ERROR_CODE_OFFSET),
@@ -49,7 +49,7 @@ public record ServiceEvent(ServiceKind serviceKind,
           routingSize == 0 ? null : RoutingId.copyOf(routing),
           NativeHelpers.fromCString(event.asSlice(
             NativeLayouts.SERVICE_EVENT_SUBJECT_OFFSET, 256), 256),
-          event.get(ValueLayout.JAVA_INT,
-            NativeLayouts.SERVICE_EVENT_SUBJECT_KIND_OFFSET));
+          ServiceEventSubjectKind.fromValue(event.get(ValueLayout.JAVA_INT,
+            NativeLayouts.SERVICE_EVENT_SUBJECT_KIND_OFFSET)));
     }
 }

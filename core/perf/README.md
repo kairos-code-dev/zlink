@@ -1,6 +1,7 @@
 # Core PERF Benchmark Scripts
 
-`core/perf` is driven by two entrypoints that share one comparison runner:
+`core/perf` is an execution index for the benchmark entrypoints and the
+policy documents that define their behavior.
 
 - `run_benchmarks.sh` for the single suite
 - `run_benchmarks_multi.sh` for the multi suite
@@ -11,8 +12,6 @@ Source of truth:
 - [PERF_SINGLE_TEST_POLICY.md](../../doc/perf/PERF_SINGLE_TEST_POLICY.md)
 - [PERF_MULTI_TEST_POLICY.md](../../doc/perf/PERF_MULTI_TEST_POLICY.md)
 
-The scripts write official reports under `core/perf/results/.../report/`.
-
 Key behavior:
 
 - `run_benchmarks.sh` owns the single suite and dispatches the single comparison runner.
@@ -21,7 +20,9 @@ Key behavior:
 - The default perf surface is the Tier 1 set: `throughput`, `bandwidth`,
   `latency`, `latency_p95`, `latency_p99`.
 
-Quick examples:
+Official reports are written under `core/perf/results/.../report/`.
+
+Examples:
 
 ```bash
 ./core/perf/run_benchmarks.sh --build-dir /home/hep7/project/kairos/zlink/core/build
@@ -47,5 +48,5 @@ Quick examples:
   --transports tcp
 ```
 
-Refer to the policy documents above for full phase rules, supported pattern
+Refer to the policy documents above for phase rules, supported pattern
 matrices, and result semantics.

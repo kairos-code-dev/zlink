@@ -33,7 +33,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(subscriber.SetSubscription("bench."))
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
 	ready := make(chan struct{}, 1)
 
 	if cfg.recvMode == "callback" {

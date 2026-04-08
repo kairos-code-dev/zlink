@@ -1,0 +1,43 @@
+## Effective Options (start)
+- suite: single
+- runs: 1
+- patterns: PUBSUB
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: stage5_pubsub_probe_r2
+
+===============================================================================
+
+## PATTERN: PUBSUB
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean | Lat.P95 | Lat.P99 |
+|------|------------|-----------|----------|---------|---------|
+| 64B | 1283.00 Kmsg/s | 82.11 MB/s | 172.21 us | 319.00 us | 437.00 us |
+
+RESULT,current,PUBSUB,tcp,64,throughput,1283000.00
+RESULT,current,PUBSUB,tcp,64,bandwidth,82.11
+RESULT,current,PUBSUB,tcp,64,latency,172.21
+RESULT,current,PUBSUB,tcp,64,latency_p95,319.00
+RESULT,current,PUBSUB,tcp,64,latency_p99,437.00
+
+## Effective Options (result)
+- suite: single
+- runs: 1
+- patterns: PUBSUB
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: stage5_pubsub_probe_r2
+
+## Completion
+- status: complete
+- expected_result_lines: 5
+- actual_result_lines: 5
+
+## Failures

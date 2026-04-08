@@ -1,7 +1,7 @@
 #ifndef PERF_STREAM_CLIENT_OPTIONS_HPP
 #define PERF_STREAM_CLIENT_OPTIONS_HPP
 
-// CLI option parsing, per-case metrics collection, and result output helpers.
+// CLI option parsing, per-case metrics collection, and stop-token helpers.
 // Provides:
 //   client_options_t       - all benchmark parameters with sensible defaults
 //   case_metrics_t         - per-size result accumulator (throughput, latency, errors)
@@ -18,7 +18,6 @@
 #include <vector>
 
 // All CLI-configurable benchmark parameters.
-// Default values match typical local benchmark usage.
 struct client_options_t
 {
     std::string transport;
@@ -32,7 +31,6 @@ struct client_options_t
     int completion_wait_ms;
     int size_transition_completion_wait_ms;
     int io_threads;
-    int print_perf_result;
     std::string stop_token;
     int send_stop_token;
 
@@ -48,7 +46,6 @@ struct client_options_t
           completion_wait_ms (500),
           size_transition_completion_wait_ms (0),
           io_threads (4),
-          print_perf_result (0),
           stop_token ("__zlink_perf_stop__"),
           send_stop_token (0)
     {
@@ -114,8 +111,6 @@ inline bool parse_options (int argc, char **argv, client_options_t &opt)
       "--size-transition-completion-wait-ms",
       opt.size_transition_completion_wait_ms, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
-    opt.print_perf_result = args.get_int ("--print-perf-result",
-                                          opt.print_perf_result, 0);
     opt.stop_token = args.get_string ("--stop-token", opt.stop_token.c_str ());
     opt.send_stop_token = args.get_int ("--send-stop-token",
                                         opt.send_stop_token, 0);

@@ -13,38 +13,173 @@ public class CommonSocketOptions {
         this.socket = socket;
     }
 
-    public int receiveTimeoutMillis() {
-        return socket.getOption(SocketOptions.RCVTIMEO);
+    public Duration linger() {
+        return Duration.ofMillis(socket.getOption(SocketOptions.LINGER));
     }
 
-    public Duration receiveTimeout() {
-        return Duration.ofMillis(receiveTimeoutMillis());
+    public void linger(Duration value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.LINGER, toIntMillis(value, "value"));
     }
 
-    public void receiveTimeoutMillis(int timeoutMillis) {
-        socket.setOption(SocketOptions.RCVTIMEO, timeoutMillis);
+    public int sendHwm() {
+        return socket.getOption(SocketOptions.SNDHWM);
     }
 
-    public void receiveTimeout(Duration timeout) {
-        Objects.requireNonNull(timeout, "timeout");
-        receiveTimeoutMillis(toIntMillis(timeout, "timeout"));
+    public void sendHwm(int value) {
+        socket.setOption(SocketOptions.SNDHWM, value);
     }
 
-    public int sendTimeoutMillis() {
-        return socket.getOption(SocketOptions.SNDTIMEO);
+    public int recvHwm() {
+        return socket.getOption(SocketOptions.RCVHWM);
+    }
+
+    public void recvHwm(int value) {
+        socket.setOption(SocketOptions.RCVHWM, value);
     }
 
     public Duration sendTimeout() {
-        return Duration.ofMillis(sendTimeoutMillis());
+        return Duration.ofMillis(socket.getOption(SocketOptions.SNDTIMEO));
     }
 
-    public void sendTimeoutMillis(int timeoutMillis) {
-        socket.setOption(SocketOptions.SNDTIMEO, timeoutMillis);
+    public void sendTimeout(Duration value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.SNDTIMEO, toIntMillis(value, "value"));
     }
 
-    public void sendTimeout(Duration timeout) {
-        Objects.requireNonNull(timeout, "timeout");
-        sendTimeoutMillis(toIntMillis(timeout, "timeout"));
+    public Duration recvTimeout() {
+        return Duration.ofMillis(socket.getOption(SocketOptions.RCVTIMEO));
+    }
+
+    public void recvTimeout(Duration value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.RCVTIMEO, toIntMillis(value, "value"));
+    }
+
+    public boolean immediate() {
+        return socket.getOption(SocketOptions.IMMEDIATE) != 0;
+    }
+
+    public void immediate(boolean enabled) {
+        socket.setOption(SocketOptions.IMMEDIATE, enabled ? 1 : 0);
+    }
+
+    public Duration connectTimeout() {
+        return Duration.ofMillis(socket.getOption(SocketOptions.CONNECT_TIMEOUT));
+    }
+
+    public void connectTimeout(Duration value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.CONNECT_TIMEOUT, toIntMillis(value, "value"));
+    }
+
+    public boolean ipv6() {
+        return socket.getOption(SocketOptions.IPV6) != 0;
+    }
+
+    public void ipv6(boolean enabled) {
+        socket.setOption(SocketOptions.IPV6, enabled ? 1 : 0);
+    }
+
+    public boolean tcpNoDelay() {
+        return socket.getOption(SocketOptions.TCP_NODELAY) != 0;
+    }
+
+    public void tcpNoDelay(boolean enabled) {
+        socket.setOption(SocketOptions.TCP_NODELAY, enabled ? 1 : 0);
+    }
+
+    public int tcpKeepalive() {
+        return socket.getOption(SocketOptions.TCP_KEEPALIVE);
+    }
+
+    public void tcpKeepalive(int value) {
+        socket.setOption(SocketOptions.TCP_KEEPALIVE, value);
+    }
+
+    public int tcpKeepaliveCount() {
+        return socket.getOption(SocketOptions.TCP_KEEPALIVE_CNT);
+    }
+
+    public void tcpKeepaliveCount(int value) {
+        socket.setOption(SocketOptions.TCP_KEEPALIVE_CNT, value);
+    }
+
+    public int tcpKeepaliveIdle() {
+        return socket.getOption(SocketOptions.TCP_KEEPALIVE_IDLE);
+    }
+
+    public void tcpKeepaliveIdle(int value) {
+        socket.setOption(SocketOptions.TCP_KEEPALIVE_IDLE, value);
+    }
+
+    public int tcpKeepaliveInterval() {
+        return socket.getOption(SocketOptions.TCP_KEEPALIVE_INTVL);
+    }
+
+    public void tcpKeepaliveInterval(int value) {
+        socket.setOption(SocketOptions.TCP_KEEPALIVE_INTVL, value);
+    }
+
+    public Duration heartbeatInterval() {
+        return Duration.ofMillis(socket.getOption(SocketOptions.HEARTBEAT_IVL));
+    }
+
+    public void heartbeatInterval(Duration value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.HEARTBEAT_IVL, toIntMillis(value, "value"));
+    }
+
+    public Duration heartbeatTtl() {
+        return Duration.ofMillis(socket.getOption(SocketOptions.HEARTBEAT_TTL));
+    }
+
+    public void heartbeatTtl(Duration value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.HEARTBEAT_TTL, toIntMillis(value, "value"));
+    }
+
+    public Duration heartbeatTimeout() {
+        return Duration.ofMillis(socket.getOption(SocketOptions.HEARTBEAT_TIMEOUT));
+    }
+
+    public void heartbeatTimeout(Duration value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.HEARTBEAT_TIMEOUT, toIntMillis(value, "value"));
+    }
+
+    public long maxMsgSize() {
+        return socket.getOption(SocketOptions.MAXMSGSIZE);
+    }
+
+    public void maxMsgSize(long value) {
+        socket.setOption(SocketOptions.MAXMSGSIZE, value);
+    }
+
+    public int backlog() {
+        return socket.getOption(SocketOptions.BACKLOG);
+    }
+
+    public void backlog(int value) {
+        socket.setOption(SocketOptions.BACKLOG, value);
+    }
+
+    public Duration reconnectInterval() {
+        return Duration.ofMillis(socket.getOption(SocketOptions.RECONNECT_IVL));
+    }
+
+    public void reconnectInterval(Duration value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.RECONNECT_IVL, toIntMillis(value, "value"));
+    }
+
+    public Duration reconnectIntervalMax() {
+        return Duration.ofMillis(socket.getOption(SocketOptions.RECONNECT_IVL_MAX));
+    }
+
+    public void reconnectIntervalMax(Duration value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.RECONNECT_IVL_MAX, toIntMillis(value, "value"));
     }
 
     private static int toIntMillis(Duration timeout, String name) {

@@ -1,0 +1,43 @@
+## Effective Options (start)
+- suite: single
+- runs: 2
+- patterns: PAIR
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: rust_policy_pair_runs2_r2
+
+===============================================================================
+
+## PATTERN: PAIR
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean | Lat.P95 | Lat.P99 |
+|------|------------|-----------|----------|---------|---------|
+| 64B | 3467.47 Kmsg/s | 221.92 MB/s | 184.36 us | 222.50 us | 262.00 us |
+
+RESULT,current,PAIR,tcp,64,throughput,3467474.00
+RESULT,current,PAIR,tcp,64,bandwidth,221.92
+RESULT,current,PAIR,tcp,64,latency,184.36
+RESULT,current,PAIR,tcp,64,latency_p95,222.50
+RESULT,current,PAIR,tcp,64,latency_p99,262.00
+
+## Effective Options (result)
+- suite: single
+- runs: 2
+- patterns: PAIR
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: rust_policy_pair_runs2_r2
+
+## Completion
+- status: complete
+- expected_result_lines: 5
+- actual_result_lines: 5
+
+## Failures

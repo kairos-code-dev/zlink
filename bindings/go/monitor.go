@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	MonitorEventAll              = uint32(C.ZLINK_SOCKET_MONITOR_EVENT_ALL)
+	MonitorEventAll             = uint32(C.ZLINK_SOCKET_MONITOR_EVENT_ALL)
 	MonitorEventConnectionReady = uint32(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY)
 
 	ServiceMonitorEventAll                       = ServiceMonitorEventError | ServiceMonitorEventClosed | ServiceMonitorEventDiscoveryServiceUp | ServiceMonitorEventDiscoveryServiceDown | ServiceMonitorEventDiscoveryProvidersChanged
@@ -99,32 +99,14 @@ type ServiceMonitor struct {
 	callback cgo.Handle
 }
 
-func OpenSocketMonitor(socket any, events uint32) (*SocketMonitor, error) {
-	var socketHandle unsafe.Pointer
-	switch s := socket.(type) {
-	case *PairSocket:
-		socketHandle = s.raw()
-	case *PubSocket:
-		socketHandle = s.raw()
-	case *SubSocket:
-		socketHandle = s.raw()
-	case *DealerSocket:
-		socketHandle = s.raw()
-	case *RouterSocket:
-		socketHandle = s.raw()
-	case *XPubSocket:
-		socketHandle = s.raw()
-	case *XSubSocket:
-		socketHandle = s.raw()
-	case *StreamSocket:
-		socketHandle = s.raw()
-	default:
-		return nil, validationError("unsupported monitor target type %T", socket)
+func OpenSocketMonitor(socket SocketTarget, events uint32) (*SocketMonitor, error) {
+	if socket == nil {
+		return nil, validationError("monitor target must not be nil")
 	}
 	options := C.zlink_socket_monitor_open_options_t{
 		events: C.zlink_socket_monitor_event_mask_t(events),
 	}
-	handle := C.zlink_socket_monitor_open(socketHandle, &options)
+	handle := C.zlink_socket_monitor_open(socket.raw(), &options)
 	if handle == nil {
 		return nil, lastError()
 	}

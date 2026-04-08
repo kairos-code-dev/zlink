@@ -8,7 +8,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
 public record SpotNodeStatus(String serviceName, String localEndpoint,
-                             RoutingId nodeRoutingId, int state,
+                             RoutingId nodeRoutingId, SpotNodeState state,
                              int configuredPeerCount, int activePeerCount,
                              int connectedPeerCount, int subjectCount,
                              int readySubjectCount, int lastError,
@@ -24,7 +24,7 @@ public record SpotNodeStatus(String serviceName, String localEndpoint,
           NativeHelpers.fromCString(segment.asSlice(0, 256), 256),
           NativeHelpers.fromCString(segment.asSlice(256, 256), 256),
           RoutingId.copyOf(routing),
-          segment.get(ValueLayout.JAVA_INT, 768),
+          SpotNodeState.fromValue(segment.get(ValueLayout.JAVA_INT, 768)),
           segment.get(ValueLayout.JAVA_INT, 772),
           segment.get(ValueLayout.JAVA_INT, 776),
           segment.get(ValueLayout.JAVA_INT, 780),

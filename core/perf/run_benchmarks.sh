@@ -79,7 +79,6 @@ PIN_CPU=0
 PERF_IO_THREADS="${PERF_IO_THREADS:-}"
 PERF_MSG_SIZES="${PERF_MSG_SIZES:-}"
 PERF_TRANSPORTS="${PERF_TRANSPORTS:-}"
-RECV_MODE="${PERF_RECV_MODE:-callback}"
 SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
 SINGLE_HWM="${PERF_SINGLE_HWM:-}"
 SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
@@ -111,7 +110,6 @@ Options:
   --results-dir PATH          Override result root directory.
   --results-tag NAME          Optional tag in saved result filename.
   --runs N                    Iterations per pattern/transport/size (default: 1).
-  --recv MODE                 Receive model: callback (default: callback).
   --duration N                Override single duration seconds (default: 5).
   --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
   --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
@@ -129,7 +127,7 @@ Options:
 
 Notes:
   - result is saved under results/single/report/ as
-    perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt.
+    perf_<platform>_callback_YYYYMMDD_HHMMSS[_<tag>].txt.
   - default build mode is incremental (configure/build without deleting build dir).
   - --output and result save can be used together.
   - run_benchmarks.sh is single-only; run_benchmarks_multi.sh owns multi mode.
@@ -181,10 +179,6 @@ while [[ $# -gt 0 ]]; do
     --runs)
       RUNS="${2:-}"
       RUNS_EXPLICIT=1
-      shift
-      ;;
-    --recv)
-      RECV_MODE="${2:-}"
       shift
       ;;
     --duration)
@@ -345,11 +339,6 @@ if [[ -z "${RUNS}" || ! "${RUNS}" =~ ^[0-9]+$ || "${RUNS}" -lt 1 ]]; then
   echo "Runs must be a positive integer." >&2
   exit 1
 fi
-if [[ "${RECV_MODE}" != "recv" && "${RECV_MODE}" != "callback" ]]; then
-  echo "recv mode must be 'recv' or 'callback'." >&2
-  exit 1
-fi
-
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
 ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
 PERF_COMPARISON_SCRIPT="$(realpath -m "${PERF_COMPARISON_SCRIPT}")"
@@ -368,7 +357,7 @@ if [[ -n "${RESULTS_DIR}" ]]; then
 fi
 
 TS="$(date +%Y%m%d_%H%M%S)"
-NAME="perf_${PLATFORM}_${RECV_MODE}_${TS}"
+NAME="perf_${PLATFORM}_callback_${TS}"
 if [[ -n "${RESULTS_TAG}" ]]; then
   NAME="${NAME}_${RESULTS_TAG}"
 fi
@@ -524,7 +513,6 @@ fi
 
 PATTERN_CSV="$(IFS=,; echo "${PATTERN_LIST[*]}")"
 RUN_CMD=("${PYTHON_BIN[@]}" "${PERF_COMPARISON_SCRIPT}" "${PATTERN_CSV}" "--build-dir" "${BUILD_DIR}" "--runs" "${RUNS}")
-RUN_CMD+=("--recv" "${RECV_MODE}")
 if [[ "${PIN_CPU}" -eq 1 ]]; then
   RUN_CMD+=("--pin-cpu")
 fi
@@ -542,7 +530,6 @@ RUN_CMD+=("--result-file" "${RESULT_FILE}")
 
 RUN_ENV=()
 RUN_ENV+=(PYTHONUNBUFFERED=1)
-RUN_ENV+=(PERF_RECV_MODE="${RECV_MODE}")
 if [[ -n "${PERF_IO_THREADS}" ]]; then
   RUN_ENV+=(PERF_IO_THREADS="${PERF_IO_THREADS}")
 fi
@@ -621,7 +608,7 @@ print_effective_option "build_mode" "${BUILD_MODE}"
 print_effective_option "reuse_build" "$( [[ "${BUILD_MODE}" == "reuse" ]] && echo 1 || echo 0 )"
 print_effective_option "clean_build" "$( [[ "${BUILD_MODE}" == "clean" ]] && echo 1 || echo 0 )"
 print_effective_option "runs" "${RUNS}"
-print_effective_option "recv_mode" "${RECV_MODE}"
+print_effective_option "recv_mode" "callback"
 print_effective_option "duration_seconds" "${DISPLAY_DURATION_SECONDS}"
 print_effective_option "hwm" "$(value_or_default "${DISPLAY_HWM}" "default(binary)")"
 print_effective_option "send_hwm" "$(value_or_default "${DISPLAY_SEND_HWM}" "default(binary)")"

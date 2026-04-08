@@ -1,5 +1,10 @@
 #include "../common/bench_common.hpp"
+#include "../common/perf_single_latency.hpp"
 #include "../common/perf_single_metric_header.hpp"
+#include "../common/perf_single_metric_queue.hpp"
+#include "../common/perf_single_metric_worker.hpp"
+#include "../common/perf_single_monitor.hpp"
+#include "../common/perf_single_phase.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -26,16 +31,6 @@ static const char *k_pattern = "SPOT";
 static const char *k_topic = "bench";
 static const size_t k_metric_queue_capacity = 65536;
 
-bool validate_spot_target_recv_mode ()
-{
-    if (!single_perf_callback_mode ()) {
-        std::cerr << "policy violation: perf_spot requires --recv callback"
-                  << std::endl;
-        return false;
-    }
-    return true;
-}
-
 int current_process_id ()
 {
 #if !defined(_WIN32)
@@ -53,6 +48,7 @@ struct spot_client_state_t
         active_deadline_us (0),
         fatal (false),
         active_received (0),
+        active_processed (0),
         callback_queue (NULL)
     {
     }
@@ -62,6 +58,7 @@ struct spot_client_state_t
     std::atomic<uint64_t> active_deadline_us;
     std::atomic<bool> fatal;
     std::atomic<unsigned long long> active_received;
+    std::atomic<unsigned long long> active_processed;
     latency_stats_builder_t latency;
     single_callback_metric_queue_t *callback_queue;
     std::mutex mutex;
@@ -166,6 +163,7 @@ bool wait_for_spot_ready_barrier (void *pub_,
       + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
 
     state_.active_received.store (0, std::memory_order_release);
+    state_.active_processed.store (0, std::memory_order_release);
     std::vector<char> probe_payload (
       std::max (msg_size_, perf_single_metric::header_size ()), 'p');
 
@@ -261,6 +259,7 @@ bool run_active_window (void *pub_,
 
     client_state_.fatal.store (false, std::memory_order_release);
     client_state_.active_received.store (0, std::memory_order_release);
+    client_state_.active_processed.store (0, std::memory_order_release);
     client_state_.active_deadline_us.store (
       perf_single_metric::now_us ()
         + static_cast<uint64_t> (std::max (1, duration_s_) * 1000000ULL),
@@ -291,16 +290,21 @@ bool run_active_window (void *pub_,
     const int drain_timeout_ms =
       single_phase_completion_timeout_ms (
         duration_s_, resolve_single_recv_timeout_ms ());
+    const unsigned long long expected_processed_count =
+      client_state_.active_received.load (std::memory_order_acquire);
     const bool drained = single_wait_for_phase_processed (
       client_state_,
       perf_single_metric::phase_active,
-      sent_count,
+      expected_processed_count,
       drain_timeout_ms);
     if (!drained || client_state_.fatal.load (std::memory_order_acquire)) {
         if (bench_debug_enabled ()) {
             std::cerr << "[perf-spot] phase drain failed sent=" << sent_count
-                      << " processed="
+                      << " received="
                       << single_load_phase_received (
+                           client_state_, perf_single_metric::phase_active)
+                      << " processed="
+                      << single_load_phase_processed (
                            client_state_, perf_single_metric::phase_active)
                       << " fatal="
                       << (client_state_.fatal.load (
@@ -510,8 +514,6 @@ int main (int argc, char **argv)
     if (argc < 4)
         return 1;
     if (!single_perf_validate_recv_mode_for_pattern (k_pattern))
-        return 1;
-    if (!validate_spot_target_recv_mode ())
         return 1;
 
     const std::string lib_name = argv[1];

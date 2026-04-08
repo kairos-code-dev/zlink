@@ -1,0 +1,45 @@
+## Effective Options (start)
+- suite: multi
+- runs: 1
+- patterns: MULTI_SPOT
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- clients: 4
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: stage5_multi_spot_cb_probe_r1
+
+===============================================================================
+
+## PATTERN: MULTI_SPOT
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 384.90 Kmsg/s | 24.63 MB/s | 132.84 ms | 466.78 ms | 493.07 ms |
+
+RESULT,current,MULTI_SPOT,tcp,64,throughput,384900.00
+RESULT,current,MULTI_SPOT,tcp,64,bandwidth,24.63
+RESULT,current,MULTI_SPOT,tcp,64,latency,132.84
+RESULT,current,MULTI_SPOT,tcp,64,latency_p95,466.78
+RESULT,current,MULTI_SPOT,tcp,64,latency_p99,493.07
+
+## Effective Options (result)
+- suite: multi
+- runs: 1
+- patterns: MULTI_SPOT
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: callback
+- clients: 4
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: stage5_multi_spot_cb_probe_r1
+
+## Completion
+- status: complete
+- expected_result_lines: 5
+- actual_result_lines: 5
+
+## Failures

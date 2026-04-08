@@ -68,7 +68,8 @@ public class CallbackModeContractTest {
              SubSocket sub = new SubSocket(ctx)) {
             String endpoint = TestSupport.tcpEndpoint();
             pub.bind(endpoint);
-            pub.options().receiveTimeoutMillis(TestSupport.DEFAULT_TIMEOUT_MS);
+            pub.options().recvTimeout(java.time.Duration.ofMillis(
+                TestSupport.DEFAULT_TIMEOUT_MS));
             sub.setSubscription("alpha");
             sub.connect(endpoint);
             sub.onSubscribe((routingId, deliveredTopic, received) -> {

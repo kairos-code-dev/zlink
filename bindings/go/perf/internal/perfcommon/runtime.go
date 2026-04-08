@@ -14,8 +14,8 @@ type BenchmarkWindow struct {
 func NewBenchmarkWindow(warmup, duration time.Duration) BenchmarkWindow {
 	now := time.Now()
 	return BenchmarkWindow{
-		StopAt:   now.Add(warmup + duration),
-		ActiveAt: now.Add(warmup),
+		StopAt:   now.Add(duration),
+		ActiveAt: now,
 	}
 }
 

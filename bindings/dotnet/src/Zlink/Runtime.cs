@@ -46,32 +46,39 @@ public static class Runtime
         NativeMethods.zlink_sleep((int)Math.Ceiling(totalSeconds));
     }
 
-    public static int Proxy(SocketBase frontend, SocketBase backend,
-        SocketBase? capture = null)
+    public static int Proxy(IZlinkSocket frontend, IZlinkSocket backend,
+        IZlinkSocket? capture = null)
     {
-        if (frontend == null)
-            throw new ArgumentNullException(nameof(frontend));
-        if (backend == null)
-            throw new ArgumentNullException(nameof(backend));
+        SocketBase frontendSocket = SocketInterop.RequireSocket(frontend,
+            nameof(frontend));
+        SocketBase backendSocket = SocketInterop.RequireSocket(backend,
+            nameof(backend));
+        SocketBase? captureSocket = capture == null
+            ? null
+            : SocketInterop.RequireSocket(capture, nameof(capture));
 
-        int rc = NativeMethods.zlink_proxy(frontend.Handle, backend.Handle,
-            capture?.Handle ?? IntPtr.Zero);
+        int rc = NativeMethods.zlink_proxy(frontendSocket.Handle,
+            backendSocket.Handle, captureSocket?.Handle ?? IntPtr.Zero);
         ZlinkException.ThrowIfError(rc);
         return rc;
     }
 
-    public static int ProxySteerable(SocketBase frontend, SocketBase backend,
-        SocketBase control, SocketBase? capture = null)
+    public static int ProxySteerable(IZlinkSocket frontend, IZlinkSocket backend,
+        IZlinkSocket control, IZlinkSocket? capture = null)
     {
-        if (frontend == null)
-            throw new ArgumentNullException(nameof(frontend));
-        if (backend == null)
-            throw new ArgumentNullException(nameof(backend));
-        if (control == null)
-            throw new ArgumentNullException(nameof(control));
+        SocketBase frontendSocket = SocketInterop.RequireSocket(frontend,
+            nameof(frontend));
+        SocketBase backendSocket = SocketInterop.RequireSocket(backend,
+            nameof(backend));
+        SocketBase controlSocket = SocketInterop.RequireSocket(control,
+            nameof(control));
+        SocketBase? captureSocket = capture == null
+            ? null
+            : SocketInterop.RequireSocket(capture, nameof(capture));
 
-        int rc = NativeMethods.zlink_proxy_steerable(frontend.Handle,
-            backend.Handle, capture?.Handle ?? IntPtr.Zero, control.Handle);
+        int rc = NativeMethods.zlink_proxy_steerable(frontendSocket.Handle,
+            backendSocket.Handle, captureSocket?.Handle ?? IntPtr.Zero,
+            controlSocket.Handle);
         ZlinkException.ThrowIfError(rc);
         return rc;
     }

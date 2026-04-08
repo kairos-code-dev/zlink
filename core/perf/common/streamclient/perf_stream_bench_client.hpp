@@ -221,26 +221,7 @@ class bench_client_t : public bench_client_iface_t
             for (size_t i = 0; i < opt.sizes.size (); ++i) {
                 const size_t size = opt.sizes[i];
                 case_metrics_t m = run_case (size);
-                const char *pass_text = m.pass ? "PASS" : "FAIL";
-                if (opt.print_perf_result <= 1) {
-                    std::printf (
-                      "RESULT size=%zu run=%d throughput_bps=%.2f throughput_mib_s=%.2f "
-                      "mean_us=%.2f p50_us=%.2f p95_us=%.2f p99_us=%.2f connect_ok=%ld "
-                      "connect_fail=%ld send_err=%ld recv_err=%ld timeout=%ld "
-                      "size_mismatch=%ld "
-                      "pass_fail=%s\n",
-                      size, run_idx, m.throughput_bps, m.throughput_mib_s, m.mean_us, m.p50_us,
-                      m.p95_us, m.p99_us, m.connect_ok, m.connect_fail, m.send_error,
-                      m.recv_error, m.timeout_error, m.size_mismatch, pass_text);
-                }
-                if (opt.print_perf_result > 0) {
-                    std::printf (
-                      "RESULT_CONNECT,current,%s,%s,%zu,connect_ok,%ld,connect_fail,%ld,"
-                      "connect_target,%d\n",
-                      opt.pattern.c_str (), opt.transport.c_str (), size,
-                      m.connect_ok, m.connect_fail, std::max (1, opt.ccu));
-                }
-                if (opt.print_perf_result > 0 && m.pass) {
+                if (m.pass) {
                     const double throughput =
                       size > 0
                         ? (m.throughput_bps / static_cast<double> (size))
@@ -273,7 +254,7 @@ class bench_client_t : public bench_client_iface_t
                 if (!m.pass)
                     all_pass = false;
                 if ((i + 1) < opt.sizes.size ())
-                    run_size_transition_drain ();
+                    run_size_transition_completion_wait ();
             }
         }
 
@@ -349,8 +330,8 @@ class bench_client_t : public bench_client_iface_t
         const long remaining =
           outstanding_total.fetch_sub (1, std::memory_order_relaxed) - 1;
         if (remaining <= 0) {
-            std::lock_guard<std::mutex> lk (drain_mu);
-            drain_cv.notify_all ();
+            std::lock_guard<std::mutex> lk (completion_wait_mu);
+            completion_wait_cv.notify_all ();
         }
         if (!collect_metrics.load (std::memory_order_acquire))
             return;
@@ -387,8 +368,8 @@ class bench_client_t : public bench_client_iface_t
               outstanding_total.fetch_sub (count, std::memory_order_relaxed)
               - count;
             if (remaining <= 0) {
-                std::lock_guard<std::mutex> lk (drain_mu);
-                drain_cv.notify_all ();
+                std::lock_guard<std::mutex> lk (completion_wait_mu);
+                completion_wait_cv.notify_all ();
             }
         }
     }
@@ -522,13 +503,13 @@ class bench_client_t : public bench_client_iface_t
 
     int effective_phase_completion_ms (size_t size) const
     {
-        int drain_ms = std::max (0, opt.drain_ms);
+        int completion_wait_ms = std::max (0, opt.completion_wait_ms);
         // Large frames leave a longer tail of in-flight echoes in callback
-        // mode. The default short drain is enough for small frames but not for
-        // the 64KiB policy size at high CCU.
+        // mode. The default short completion wait is enough for small frames
+        // but not for the 64KiB policy size at high CCU.
         if (size >= 65536)
-            drain_ms = std::max (drain_ms, 5000);
-        return drain_ms;
+            completion_wait_ms = std::max (completion_wait_ms, 5000);
+        return completion_wait_ms;
     }
 
     // Run the active window, then stop and wait for in-flight ops to finish.
@@ -552,17 +533,18 @@ class bench_client_t : public bench_client_iface_t
         mode.store (phase_ready, std::memory_order_release);
         collect_metrics.store (false, std::memory_order_release);
 
-        const int drain_ms = effective_phase_completion_ms (
+        const int completion_wait_ms = effective_phase_completion_ms (
           phase_size.load (std::memory_order_acquire));
-        if (drain_ms > 0) {
-            const auto drain_deadline =
+        if (completion_wait_ms > 0) {
+            const auto completion_wait_deadline =
               std::chrono::steady_clock::now ()
-              + std::chrono::milliseconds (drain_ms);
+              + std::chrono::milliseconds (completion_wait_ms);
             long remaining = 0;
             {
-                std::unique_lock<std::mutex> lk (drain_mu);
+                std::unique_lock<std::mutex> lk (completion_wait_mu);
                 while (outstanding_total.load (std::memory_order_relaxed) > 0) {
-                    if (drain_cv.wait_until (lk, drain_deadline)
+                    if (completion_wait_cv.wait_until (
+                          lk, completion_wait_deadline)
                         == std::cv_status::timeout)
                         break;
                 }
@@ -579,18 +561,19 @@ class bench_client_t : public bench_client_iface_t
     }
 
     // Brief completion wait between size transitions.
-    void run_size_transition_drain ()
+    void run_size_transition_completion_wait ()
     {
-        const int drain_ms = std::max (0, opt.size_transition_drain_ms);
-        if (drain_ms <= 0)
+        const int completion_wait_ms =
+          std::max (0, opt.size_transition_completion_wait_ms);
+        if (completion_wait_ms <= 0)
             return;
 
-        const auto drain_deadline =
+        const auto completion_wait_deadline =
           std::chrono::steady_clock::now ()
-          + std::chrono::milliseconds (drain_ms);
-        std::unique_lock<std::mutex> lk (drain_mu);
+          + std::chrono::milliseconds (completion_wait_ms);
+        std::unique_lock<std::mutex> lk (completion_wait_mu);
         while (outstanding_total.load (std::memory_order_relaxed) > 0) {
-            if (drain_cv.wait_until (lk, drain_deadline)
+            if (completion_wait_cv.wait_until (lk, completion_wait_deadline)
                 == std::cv_status::timeout)
                 break;
         }
@@ -637,7 +620,7 @@ class bench_client_t : public bench_client_iface_t
     }
 
     // --- Per-size benchmark execution ---
-    // resize → active → drain → collect metrics
+    // resize → active → completion wait → collect metrics
     case_metrics_t run_case (size_t size)
     {
         const long connect_target = static_cast<long> (std::max (1, opt.ccu));
@@ -740,8 +723,8 @@ class bench_client_t : public bench_client_iface_t
     std::mutex connect_sched_mu;       // serializes schedule_connects()
     std::mutex connect_mu;             // guards connect_cv wait
     std::condition_variable connect_cv;
-    std::mutex drain_mu;
-    std::condition_variable drain_cv;
+    std::mutex completion_wait_mu;
+    std::condition_variable completion_wait_cv;
 
     // --- Phase state (atomics read by I/O threads) ---
     std::atomic<int> mode;             // phase_mode_t

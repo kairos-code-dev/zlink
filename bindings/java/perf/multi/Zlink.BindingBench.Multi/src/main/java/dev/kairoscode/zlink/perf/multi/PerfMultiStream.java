@@ -27,12 +27,13 @@ final class PerfMultiStream {
         Object pendingLock = new Object();
         Thread controlWatcher = startControlWatcher(stopRequested, pendingLock);
 
-        try (Context ctx = new Context();
+        try (Context ctx = PerfUtil.newContext(config);
              StreamSocket server = new StreamSocket(ctx)) {
+            PerfUtil.applySocketOptions(server, config);
             PerfUtil.configureServerTls(server, config.transport());
             server.options().notify(true);
-            server.options().sendTimeoutMillis(0);
-            server.options().receiveTimeoutMillis(0);
+            server.options().sendTimeout(java.time.Duration.ZERO);
+            server.options().recvTimeout(java.time.Duration.ZERO);
             server.bind(config.endpoint());
             server.onSendReady(() -> {
                 synchronized (pendingLock) {
@@ -75,7 +76,7 @@ final class PerfMultiStream {
                 flushPending(server, pending);
             }
             return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
-                config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, Double.NaN, Double.NaN);
+                config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
         }
     }
 
@@ -101,11 +102,6 @@ final class PerfMultiStream {
                 }
             } catch (Exception ex) {
                 throw new IllegalStateException("stream control watcher failed", ex);
-            } finally {
-                stopRequested.set(true);
-                synchronized (pendingLock) {
-                    pendingLock.notifyAll();
-                }
             }
         }, "stream-control");
         watcher.setDaemon(true);
@@ -120,6 +116,9 @@ final class PerfMultiStream {
         }
         byte[] payload = received.firstPart().toByteArray();
         if (payload.length == 0) {
+            return;
+        }
+        if (isStopTokenPayload(payload)) {
             return;
         }
         pending.addLast(new PendingReply(received.routingId(), payload));
@@ -142,5 +141,23 @@ final class PerfMultiStream {
 
     private record PendingReply(dev.kairoscode.zlink.RoutingId routingId,
                                 byte[] payload) {
+    }
+
+    private static boolean isStopTokenPayload(byte[] payload) {
+        byte[] stop = "STOP".getBytes(StandardCharsets.UTF_8);
+        byte[] quit = "QUIT".getBytes(StandardCharsets.UTF_8);
+        return matchesToken(payload, stop) || matchesToken(payload, quit);
+    }
+
+    private static boolean matchesToken(byte[] payload, byte[] token) {
+        if (payload.length != token.length) {
+            return false;
+        }
+        for (int i = 0; i < token.length; i++) {
+            if (payload[i] != token[i]) {
+                return false;
+            }
+        }
+        return true;
     }
 }

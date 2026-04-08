@@ -32,12 +32,11 @@ public class PubSocketOptions extends CommonSocketOptions {
         socket.setOption(SocketOptions.XPUB_NODROP, enabled ? 1 : 0);
     }
 
-    public void manual(boolean enabled) {
-        socket.setOption(SocketOptions.XPUB_MANUAL, enabled ? 1 : 0);
+    public boolean manual() {
+        return socket.getOption(SocketOptions.XPUB_MANUAL) != 0;
     }
 
-    public void welcomeMessage(String value) {
-        java.util.Objects.requireNonNull(value, "value");
-        socket.setOption(SocketOptions.XPUB_WELCOME_MSG, value);
+    public void manual(boolean enabled) {
+        socket.setOption(SocketOptions.XPUB_MANUAL, enabled ? 1 : 0);
     }
 }

@@ -1,5 +1,5 @@
 //! PUB/SUB multi server: PUB sender with POLLOUT backpressure.
-//! Sends warmup → active → drain → stop.
+//! Sends active → stop.
 
 mod common;
 
@@ -29,19 +29,14 @@ fn main() {
     let mut buf = vec![0u8; msg_size.max(common::HEADER_SIZE)];
     let mut seq: u64 = 1;
 
-    // Warmup
-    send_phase(&pub_sock, &poller, &mut buf, &mut seq, msg_size,
-               common::PHASE_WARMUP, Duration::from_secs(settings.warmup_seconds));
-
-    // Active
     send_phase(&pub_sock, &poller, &mut buf, &mut seq, msg_size,
                common::PHASE_ACTIVE, Duration::from_secs(settings.duration_seconds));
 
-    // Drain/stop token
-    let stop_msg = Message::from_bytes(common::STOP_TOKEN).expect("stop");
-    let _ = pub_sock.publish("P", stop_msg);
-
-    common::print_server_queue_metrics("MULTI_PUBSUB", &args.transport);
+    let stop_deadline = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < stop_deadline {
+        let stop_msg = Message::from_bytes(common::STOP_TOKEN).expect("stop");
+        let _ = pub_sock.publish("P", stop_msg);
+    }
 
     // Wait for stdin STOP from orchestrator
     common::wait_for_stop_stdin();

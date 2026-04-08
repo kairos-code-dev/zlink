@@ -18,7 +18,7 @@ public final class SpotRecvSample {
              Spot publisher = new Spot(publisherNode);
              Spot subscriber = new Spot(subscriberNode)) {
             publisherNode.bind("tcp://127.0.0.1:0");
-            String endpoint = publisherNode.lastEndpoint();
+            String endpoint = publisherNode.statusSnapshot().localEndpoint();
             subscriberNode.connectPeer(endpoint);
             subscriber.setSubscription(SampleSupport.SPOT_TOPIC);
             SampleSupport.waitUntil("spot peer connection",

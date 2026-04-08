@@ -7,11 +7,13 @@
 pub mod backpressure;
 
 use std::time::{SystemTime, UNIX_EPOCH};
+use zlink::Message;
 
 pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";
 pub const HEADER_SIZE: usize = 32;
 pub const PHASE_ACTIVE: u32 = 0;
-pub const PHASE_WARMUP: u32 = 1;
+pub const PHASE_STOP: u32 = 1;
+pub const PHASE_PROBE: u32 = 2;
 pub const MAGIC: u32 = 0x4d50_4631; // "MPF1"
 
 pub fn encode_header(buf: &mut [u8], phase: u32, msg_size: u32, seq: u64) {
@@ -48,11 +50,15 @@ pub fn decode_header(data: &[u8]) -> Option<MetricHeader> {
 }
 
 pub fn decode_phase(data: &[u8]) -> u32 {
-    decode_header(data).map(|header| header.phase).unwrap_or(PHASE_WARMUP)
+    decode_header(data).map(|header| header.phase).unwrap_or(u32::MAX)
 }
 
 pub fn decode_sent_ts(data: &[u8]) -> u64 {
     decode_header(data).map(|header| header.sent_ts).unwrap_or(0)
+}
+
+pub fn callback_payload<'a>(parts: &'a [Message]) -> &'a [u8] {
+    parts.last().map(|part| part.data()).unwrap_or(&[])
 }
 
 pub fn now_us() -> u64 {
@@ -158,17 +164,10 @@ pub fn print_ready(endpoint: &str) {
     std::io::stdout().flush().ok();
 }
 
-pub fn print_server_queue_metrics(pattern: &str, transport: &str) {
-    let key = format!("RESULT,current,{pattern},{transport},0");
-    println!("{key},server_cpu_pct,0.0");
-    println!("{key},server_mem_mb,0.0");
-}
-
 // -- Settings from env -------------------------------------------------------
 
 pub struct MultiSettings {
     pub clients: usize,
-    pub warmup_seconds: u64,
     pub duration_seconds: u64,
     pub hwm: i32,
     pub sndtimeo_ms: i32,
@@ -179,11 +178,10 @@ impl MultiSettings {
     pub fn from_env() -> Self {
         Self {
             clients: env_or("PERF_MULTI_CLIENTS", 100),
-            warmup_seconds: env_or("PERF_SINGLE_WARMUP_SECONDS", 2) as u64,
-            duration_seconds: env_or("PERF_SINGLE_DURATION_SECONDS", 5) as u64,
+            duration_seconds: env_or("PERF_MULTI_DURATION_SECONDS", 5) as u64,
             hwm: env_or("PERF_MULTI_HWM", 100) as i32,
-            sndtimeo_ms: env_or("PERF_SINGLE_SNDTIMEO_MS", 200) as i32,
-            rcvtimeo_ms: env_or("PERF_SINGLE_RCVTIMEO_MS", 200) as i32,
+            sndtimeo_ms: env_or("PERF_MULTI_SNDTIMEO_MS", 200) as i32,
+            rcvtimeo_ms: env_or("PERF_MULTI_RCVTIMEO_MS", 200) as i32,
         }
     }
 }

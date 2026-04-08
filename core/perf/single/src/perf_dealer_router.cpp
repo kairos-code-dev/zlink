@@ -1,5 +1,10 @@
 #include "../common/bench_common.hpp"
+#include "../common/perf_single_latency.hpp"
 #include "../common/perf_single_metric_header.hpp"
+#include "../common/perf_single_metric_queue.hpp"
+#include "../common/perf_single_metric_worker.hpp"
+#include "../common/perf_single_monitor.hpp"
+#include "../common/perf_single_phase.hpp"
 #include <zlink.h>
 #include <algorithm>
 #include <atomic>
@@ -18,6 +23,7 @@ struct dealer_router_callback_state_t
         active_deadline_us (0),
         fatal (false),
         active_received (0),
+        active_processed (0),
         callback_queue (NULL)
     {}
 
@@ -27,6 +33,7 @@ struct dealer_router_callback_state_t
     std::atomic<uint64_t> active_deadline_us;
     std::atomic<bool> fatal;
     std::atomic<unsigned long long> active_received;
+    std::atomic<unsigned long long> active_processed;
     latency_stats_builder_t latency;
     single_callback_metric_queue_t *callback_queue;
     std::mutex mutex;
@@ -113,6 +120,7 @@ inline bool run_active_phase (void *dealer,
       + std::chrono::seconds (duration_s > 0 ? duration_s : 1);
     state->fatal.store (false, std::memory_order_release);
     state->active_received.store (0, std::memory_order_release);
+    state->active_processed.store (0, std::memory_order_release);
     state->active_deadline_us.store (
       perf_single_metric::now_us ()
         + static_cast<uint64_t> (std::max (1, duration_s) * 1000000ULL),
@@ -166,10 +174,12 @@ inline bool run_active_phase (void *dealer,
 
     const int drain_timeout_ms =
       single_phase_completion_timeout_ms (duration_s, recv_timeout_ms);
+    const unsigned long long expected_processed_count =
+      state->active_received.load (std::memory_order_acquire);
     const bool drained = single_wait_for_phase_processed (
       *state,
       perf_single_metric::phase_active,
-      successful_send_count,
+      expected_processed_count,
       drain_timeout_ms);
 
     if (send_failed || !drained
@@ -199,6 +209,12 @@ void run_dealer_router (const std::string &transport,
         print_fail_result (lib_name, "DEALER_ROUTER", transport, msg_size);
     };
 
+    const size_t payload_size =
+      std::max<size_t> (msg_size, perf_single_metric::header_size ());
+    std::vector<char> payload (payload_size, 'a');
+    dealer_router_callback_state_t callback_state;
+    single_callback_metric_queue_t callback_queue (65536);
+    single_metric_worker_t<dealer_router_callback_state_t> metric_worker;
     ctx_guard_t ctx;
     if (!ctx.valid ()) {
         print_fail ();
@@ -211,13 +227,6 @@ void run_dealer_router (const std::string &transport,
         print_fail ();
         return;
     }
-
-    const size_t payload_size =
-      std::max<size_t> (msg_size, perf_single_metric::header_size ());
-    std::vector<char> payload (payload_size, 'a');
-    dealer_router_callback_state_t callback_state;
-    single_callback_metric_queue_t callback_queue (65536);
-    single_metric_worker_t<dealer_router_callback_state_t> metric_worker;
 
     callback_state.run_id =
       static_cast<uint32_t> (perf_single_metric::now_us ());
@@ -259,10 +268,12 @@ void run_dealer_router (const std::string &transport,
                            &received,
                            &latency_stats)) {
         stop_single_metric_worker (&metric_worker);
+        settle_single_teardown (transport, msg_size);
         print_fail ();
         return;
     }
     stop_single_metric_worker (&metric_worker);
+    settle_single_teardown (transport, msg_size);
 
     const double throughput =
       static_cast<double> (received) / static_cast<double> (duration_s);

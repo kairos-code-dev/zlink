@@ -36,8 +36,11 @@ def tier1_metrics(value):
         (RC.LATENCY_P99_METRIC, value),
     )
 
-
 class MultiRunComparisonPolicyTests(unittest.TestCase):
+    def test_multi_required_result_metrics_are_tier1_only(self):
+        self.assertEqual(RC.REQUIRED_RESULT_METRICS, tuple(name for name, _ in tier1_metrics(1.0)))
+        self.assertEqual(RC.REQUIRED_RESULT_METRIC_COUNT, 5)
+
     def test_multi_default_msg_sizes_include_64b(self):
         self.assertEqual(
             RC.MSG_SIZES,
@@ -366,12 +369,61 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                 )
 
             output = stdout.getvalue()
-            self.assertNotIn("Q.Snd.Max", output)
-            self.assertNotIn("Q.Rcv.Max", output)
-            self.assertNotIn("Q.Rcv.End", output)
             self.assertIn("Testing tcp | 64B:", output)
             self.assertIn("Testing tcp | 256B:", output)
             self.assertNotIn("Testing tcp | 64B,256B:", output)
+        finally:
+            RC.ALLOW_MULTI = old_allow_multi
+            RC.run_sizes_test = old_run_sizes_test
+            os.environ.clear()
+            os.environ.update(old_env)
+
+    def test_multi_collect_data_omits_legacy_queue_metrics(self):
+        old_allow_multi = RC.ALLOW_MULTI
+        old_run_sizes_test = RC.run_sizes_test
+        old_env = os.environ.copy()
+        try:
+            RC.ALLOW_MULTI = True
+            os.environ["PERF_RUN_COOLDOWN_MS"] = "0"
+            os.environ["PERF_TRANSPORT_TRANSITION_MS"] = "0"
+
+            def fake_run_sizes_test(binary_name, lib_name, transport, sizes,
+                                    pattern_name, result_line_callback=None):
+                for size in sizes:
+                    if result_line_callback is not None:
+                        for metric_name, value in tier1_metrics(1.0):
+                            result_line_callback(transport, size, metric_name, value)
+                return {
+                    "status": "success",
+                    "parsed": {
+                        "tcp|64|throughput": 1.0,
+                        "tcp|64|bandwidth": 1.0,
+                        "tcp|64|latency": 1.0,
+                        "tcp|64|latency_p95": 1.0,
+                        "tcp|64|latency_p99": 1.0,
+                    },
+                    "timed_out": False,
+                    "returncode": 0,
+                    "reason": "",
+                    "warnings": [],
+                }
+
+            RC.run_sizes_test = fake_run_sizes_test
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                RC.collect_data(
+                    "ignored",
+                    "current",
+                    "PUBSUB",
+                    1,
+                    transports=["tcp"],
+                    table_lines=[],
+                )
+
+            output = stdout.getvalue()
+            for metric_name in ("Q.Snd.Max", "Q.Rcv.Max", "Q.Rcv.End"):
+                self.assertNotIn(metric_name, output)
         finally:
             RC.ALLOW_MULTI = old_allow_multi
             RC.run_sizes_test = old_run_sizes_test

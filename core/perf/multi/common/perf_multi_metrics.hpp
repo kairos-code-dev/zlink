@@ -192,35 +192,6 @@ inline void print_result(const std::string &lib_type,
               << std::endl;
 }
 
-inline void emit_result_metric_line(const std::string &lib_type,
-                                    const std::string &pattern,
-                                    const std::string &transport,
-                                    size_t size,
-                                    const char *metric_name,
-                                    double value,
-                                    int precision)
-{
-    std::cout << "RESULT," << lib_type << "," << pattern << ","
-              << transport << "," << size << "," << metric_name << ","
-              << std::fixed << std::setprecision(precision) << value
-              << std::endl;
-}
-
-template<typename MetricsT>
-inline void print_server_resource_result_lines(
-  const std::string &lib_type,
-  const std::string &pattern,
-  const std::string &transport,
-  size_t size,
-  const MetricsT &metrics)
-{
-    (void) lib_type;
-    (void) pattern;
-    (void) transport;
-    (void) size;
-    (void) metrics;
-}
-
 template<typename MetricsT>
 inline void print_server_metrics_for_sizes(
   const std::string &lib_type,
@@ -229,24 +200,10 @@ inline void print_server_metrics_for_sizes(
   const std::vector<size_t> &sizes,
   const MetricsT &metrics)
 {
-    for (size_t i = 0; i < sizes.size(); ++i) {
-        print_server_resource_result_lines(
-          lib_type, pattern, transport, sizes[i], metrics);
-    }
-}
-
-template<typename MetricsT>
-inline void print_client_resource_result_lines_common(
-  const std::string &lib_type,
-  const std::string &pattern,
-  const std::string &transport,
-  size_t size,
-  const MetricsT &metrics)
-{
     (void) lib_type;
     (void) pattern;
     (void) transport;
-    (void) size;
+    (void) sizes;
     (void) metrics;
 }
 

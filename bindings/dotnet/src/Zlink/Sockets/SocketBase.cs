@@ -7,7 +7,8 @@ using Zlink.Sockets.Internal;
 
 namespace Zlink;
 
-public abstract class SocketBase : IDisposable
+[EditorBrowsable(EditorBrowsableState.Never)]
+public abstract class SocketBase : IDisposable, IZlinkSocket
 {
     private readonly SocketKernel _kernel;
 

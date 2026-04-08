@@ -10,6 +10,7 @@ import warnings
 from pathlib import Path
 
 import zlink
+from zlink import _socket_base
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,6 +64,22 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertFalse(hasattr(zlink, "SendFlag"))
         self.assertFalse(hasattr(zlink, "ReceiveFlag"))
         self.assertFalse(hasattr(zlink, "StreamDispatchMode"))
+
+    def test_internal_socket_base_module_uses_internal_only_names(self):
+        self.assertFalse(hasattr(_socket_base, "Socket"))
+        self.assertFalse(hasattr(_socket_base, "BindSocket"))
+        self.assertFalse(hasattr(_socket_base, "ConnectSocket"))
+        self.assertFalse(hasattr(_socket_base, "EndpointSocket"))
+        self.assertFalse(hasattr(_socket_base, "RoutingIdSocket"))
+        self.assertFalse(hasattr(_socket_base, "DealerOptionSocket"))
+        self.assertFalse(hasattr(_socket_base, "RouterOptionSocket"))
+        self.assertFalse(hasattr(_socket_base, "StreamOptionSocket"))
+        self.assertFalse(hasattr(_socket_base, "PublisherOptionSocket"))
+        self.assertFalse(hasattr(_socket_base, "SubscriberOptionSocket"))
+        self.assertFalse(hasattr(_socket_base, "MessageSocket"))
+        self.assertFalse(hasattr(_socket_base, "RoutedMessageSocket"))
+        self.assertFalse(hasattr(_socket_base, "PublisherSocket"))
+        self.assertFalse(hasattr(_socket_base, "SubscriberSocket"))
 
     def test_message_copy_from_copies_input(self):
         source = bytearray(b"alpha")

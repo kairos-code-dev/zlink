@@ -8,7 +8,7 @@ use zlink::*;
 
 fn main() {
     let config = common::PerfConfig::from_env_and_args();
-    let endpoint = config.endpoint("dealer-router");
+    let bind_endpoint = config.endpoint("dealer-router");
 
     let ctx = Context::new().expect("context");
     let mut router = ctx.router_socket().expect("router");
@@ -16,7 +16,8 @@ fn main() {
     let rid = RoutingId::new(b"perf-dealer").expect("rid");
     dealer.set_routing_id(&rid).expect("set rid");
 
-    router.bind(&endpoint).expect("bind");
+    router.bind(&bind_endpoint).expect("bind");
+    let endpoint = router.last_endpoint().unwrap_or(bind_endpoint);
     dealer.connect(&endpoint).expect("connect");
 
     let mon = SocketMonitor::open(&dealer, MONITOR_EVENT_ALL).expect("monitor");
@@ -29,22 +30,21 @@ fn main() {
     let sc = stats.clone();
 
     router.on_receive(move |received| {
-        common::handle_recv(received.parts()[0].data(), &sc);
+        common::handle_recv(common::callback_payload(received.parts()), &sc);
     }).expect("on_receive");
 
-    let w = Duration::from_secs(config.warmup_seconds);
     let a = Duration::from_secs(config.duration_seconds);
     let sz = config.size;
 
     let t = thread::spawn(move || {
         let _guard = common::CompletionGuard::new(sender_done);
-        common::send_loop(w, a, sz,
+        common::send_loop(a, sz,
             |msg| { let _ = dealer.send(msg); },
             |msg| dealer.try_send(msg),
         );
     });
 
-    common::wait_finished(&finished, config.warmup_seconds, config.duration_seconds);
+    common::wait_finished(&finished, config.duration_seconds);
     t.join().expect("join");
 
     let result = collector.finish();

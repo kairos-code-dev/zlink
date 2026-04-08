@@ -4,8 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OFFICIAL_BUILD_DIR="${ROOT_DIR}/core/build"
+PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
 PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM"
 TRANSPORTS="tcp,tls,ws,wss"
+MSG_SIZES="${PERF_MSG_SIZES:-}"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
 
 SECONDS=0
@@ -411,7 +413,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: ${arg} requires a value." >&2
         exit 1
       fi
-      SCRIPT_ARGS+=( "$1" "$2" )
+      TRANSPORTS="${2}"
       shift 2
       ;;
     --msg-sizes)
@@ -420,7 +422,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: ${arg} requires a value." >&2
         exit 1
       fi
-      SCRIPT_ARGS+=( "$1" "$2" )
+      MSG_SIZES="${2}"
       shift 2
       ;;
     --pattern)
@@ -795,23 +797,6 @@ fi
 
 RUN_BASE_ARGS=()
 RUN_BASE_ARGS+=(--duration "${DURATION_SECONDS}")
-if [[ "${HAS_EXPLICIT_TRANSPORT}" -eq 0 ]]; then
-  if [[ -n "${PERF_TRANSPORTS:-}" ]]; then
-    RUN_BASE_ARGS+=(--transports "${PERF_TRANSPORTS}")
-  else
-    RUN_BASE_ARGS+=(--transports "${TRANSPORTS}")
-  fi
-fi
-if [[ "${HAS_EXPLICIT_MSG_SIZES}" -eq 0 ]]; then
-  if [[ -n "${PERF_MSG_SIZES:-}" ]]; then
-    RUN_BASE_ARGS+=(--msg-sizes "${PERF_MSG_SIZES}")
-  fi
-fi
-if [[ "${BUILD_MODE}" == "reuse" ]]; then
-  RUN_BASE_ARGS+=(--reuse-build)
-elif [[ "${BUILD_MODE}" == "clean" ]]; then
-  RUN_BASE_ARGS+=(--clean-build)
-fi
 if [[ "${HAS_EXPLICIT_RUNS}" -eq 0 ]]; then
   RUN_BASE_ARGS+=(--runs "1")
 fi
@@ -826,6 +811,10 @@ RUN_ENV+=(PERF_POLICY="1")
 RUN_ENV+=(PERF_RECV_MODE="${RECV_MODE}")
 RUN_ENV+=(PERF_RESULTS_DIR="${RESULTS_DIR_OVERRIDE}")
 RUN_ENV+=(PERF_MULTI_DURATION_SECONDS="${DURATION_SECONDS}")
+RUN_ENV+=(PERF_TRANSPORTS="${TRANSPORTS}")
+if [[ -n "${MSG_SIZES}" ]]; then
+  RUN_ENV+=(PERF_MSG_SIZES="${MSG_SIZES}")
+fi
 RUN_ENV+=(PERF_MULTI_RUN_COOLDOWN_MS="${RUN_COOLDOWN_MS}")
 RUN_ENV+=(PERF_MULTI_TRANSPORT_TRANSITION_MS="${TRANSPORT_TRANSITION_MS}")
 RUN_ENV+=(PERF_MULTI_PATTERN_TRANSITION_MS="${PATTERN_TRANSITION_MS}")
@@ -1008,9 +997,9 @@ if PERF_ALLOW_MULTI=1 \
   env "${RUN_ENV[@]}" \
   "${PYTHON_BIN[@]}" \
   "${PERF_COMPARISON_SCRIPT}" \
+  "${PATTERN_CSV}" \
   "${RUN_BASE_ARGS[@]}" \
-  "${SCRIPT_ARGS[@]}" \
-  --pattern "${PATTERN_CSV}"; then
+  "${SCRIPT_ARGS[@]}"; then
   :
 else
   RUN_EXIT_CODE=$?

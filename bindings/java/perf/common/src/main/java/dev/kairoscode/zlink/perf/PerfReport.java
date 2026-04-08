@@ -31,12 +31,7 @@ final class PerfReport {
             metricLine(key, "bandwidth", result.bandwidth),
             metricLine(key, "latency", result.latencyMean),
             metricLine(key, "latency_p95", result.latencyP95),
-            metricLine(key, "latency_p99", result.latencyP99),
-            metricLine(key, "cpu_pct", result.cpuPct),
-            metricLine(key, "mem_mb", result.memMb),
-            metricLine(key, "snd_pending_max", 0.0d),
-            metricLine(key, "rcv_pending_max", 0.0d),
-            metricLine(key, "rcv_pending_end", 0.0d));
+            metricLine(key, "latency_p99", result.latencyP99));
     }
 
     static Path ensureResultsDir(Path root, String suite, String leaf) {
@@ -60,7 +55,7 @@ final class PerfReport {
     }
 
     private static String metric(double value) {
-        return Double.isNaN(value) ? "N/A" : String.format(Locale.ROOT, "%.2f", value);
+        return Double.isNaN(value) ? "N/A" : String.format(Locale.ROOT, "%.3f", value);
     }
 
     private static String sanitize(String value) {

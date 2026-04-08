@@ -4,6 +4,7 @@ package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.options.SocketOptionKey;
+import dev.kairoscode.zlink.options.SocketOptions;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.util.Optional;
@@ -45,6 +46,14 @@ public final class MonitorSocket implements AutoCloseable {
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_setsockopt");
         }
+    }
+
+    public void sendHighWaterMark(int value) {
+        setOption(SocketOptions.SNDHWM, value);
+    }
+
+    public void receiveHighWaterMark(int value) {
+        setOption(SocketOptions.RCVHWM, value);
     }
 
     public MonitorSnapshot snapshot() {

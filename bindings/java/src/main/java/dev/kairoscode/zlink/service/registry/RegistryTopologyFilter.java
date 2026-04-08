@@ -14,7 +14,8 @@ import java.lang.foreign.ValueLayout;
 public record RegistryTopologyFilter(ServiceKind serviceKind,
                                      ServiceRole serviceRole,
                                      String serviceName, RoutingId routingId,
-                                     int state, int source) {
+                                     TopologyState state,
+                                     TopologySource source) {
     MemorySegment toNative(Arena arena) {
         MemorySegment segment = arena.allocate(
           NativeLayouts.REGISTRY_TOPOLOGY_FILTER_LAYOUT);
@@ -35,8 +36,8 @@ public record RegistryTopologyFilter(ServiceKind serviceKind,
                   265, bytes.length);
             }
         }
-        segment.set(ValueLayout.JAVA_INT, 520, state);
-        segment.set(ValueLayout.JAVA_INT, 524, source);
+        segment.set(ValueLayout.JAVA_INT, 520, state == null ? 0 : state.getValue());
+        segment.set(ValueLayout.JAVA_INT, 524, source == null ? 0 : source.getValue());
         return segment;
     }
 }

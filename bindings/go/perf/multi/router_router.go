@@ -26,8 +26,8 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 	startMultiRouterEchoServer(server)
 
 	stats := perfcommon.NewStats()
-	stopAt := time.Now().Add(cfg.warmup + cfg.duration)
-	activeAt := time.Now().Add(cfg.warmup)
+	stopAt := time.Now().Add(cfg.duration)
+	activeAt := time.Now()
 
 	type routerClient struct {
 		ctx     *zlink.Context

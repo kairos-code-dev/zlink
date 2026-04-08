@@ -3,12 +3,6 @@
 
 #include "../../common/perf_infra.hpp"
 #include "../../common/perf_tls_setup.hpp"
-#include "perf_single_metric_header.hpp"
-#include "perf_single_latency.hpp"
-#include "perf_single_metric_queue.hpp"
-#include "perf_single_phase.hpp"
-#include "perf_single_metric_worker.hpp"
-#include "perf_single_monitor.hpp"
 
 #include <chrono>
 #include <condition_variable>

@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use zlink::*;
 
 fn main() {
-    let args = common::MultiArgs::parse();
+    let _args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
 
     let ctx = Context::new().expect("context");
@@ -26,7 +26,7 @@ fn main() {
     poller.add_socket(&stream, 0, POLLIN).expect("poller add");
 
     let deadline = Instant::now()
-        + Duration::from_secs(settings.warmup_seconds + settings.duration_seconds + 30);
+        + Duration::from_secs(settings.duration_seconds + 30);
 
     let mut stop_seen = false;
     let mut pending: VecDeque<(RoutingId, Vec<u8>)> = VecDeque::new();
@@ -81,6 +81,4 @@ fn main() {
             Err(_) => break,
         }
     }
-
-    common::print_server_queue_metrics("MULTI_STREAM", &args.transport);
 }

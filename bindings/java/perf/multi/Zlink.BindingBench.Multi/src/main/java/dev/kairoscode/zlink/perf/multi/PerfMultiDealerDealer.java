@@ -21,24 +21,29 @@ final class PerfMultiDealerDealer {
         if (!"recv".equalsIgnoreCase(config.recvMode())) {
             return PerfUtil.Result.unsupported("callback_not_allowed", config);
         }
-        try (Context ctx = new Context();
+        try (Context ctx = PerfUtil.newContext(config);
              DealerSocket server = new DealerSocket(ctx);
              var monitor = server.monitorOpen(READY_EVENTS)) {
+            PerfUtil.applyMonitorOptions(monitor, config);
+            PerfUtil.applySocketOptions(server, config);
             PerfUtil.configureServerTls(server, config.transport());
             server.bind(config.endpoint());
             PerfUtil.waitForReadySignal(config.controlPort());
             PerfUtil.waitForMonitorEvent(monitor, READY_EVENTS, config.clients(),
-                Duration.ofSeconds(20), "dealer/dealer server ready");
+                Duration.ofMillis(config.connectReadyTimeoutMs()), "dealer/dealer server ready");
             PerfUtil.Metrics metrics = new PerfUtil.Metrics();
-            metrics.startResourceWindow();
+            metrics.startActiveWindow();
             int stops = 0;
             while (stops < config.clients()) {
                 try (var received = server.recv()) {
-                    byte phase = PerfUtil.phase(received.firstPart());
-                    if (phase == 1) {
+                    PerfUtil.Header header = PerfUtil.decodeHeader(received.firstPart(), config.size());
+                    if (header == null) {
+                        continue;
+                    }
+                    if (header.phase() == PerfUtil.PHASE_STOP) {
                         stops++;
-                    } else if (phase == 0) {
-                        metrics.recordMillis(PerfUtil.latencyMillis(received.firstPart()));
+                    } else if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                        metrics.recordMicros(header.latencyMicros());
                     }
                 }
             }
@@ -49,38 +54,36 @@ final class PerfMultiDealerDealer {
     static PerfUtil.Result runClient(PerfUtil.Config config) {
         CountDownLatch connected = new CountDownLatch(config.clients());
         CountDownLatch go = new CountDownLatch(1);
-        MultiSendLoops.runClients(config.clients(), (index, warmup, duration) -> new Thread(() -> {
-            try (Context ctx = new Context();
+        MultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
+            try (Context ctx = PerfUtil.newContext(config);
                  DealerSocket client = new DealerSocket(ctx);
                  var monitor = client.monitorOpen(READY_EVENTS)) {
+                PerfUtil.applyMonitorOptions(monitor, config);
+                PerfUtil.applySocketOptions(client, config);
                 PerfUtil.configureClientTls(client, config.transport());
                 client.connect(config.endpoint());
                 PerfUtil.waitForMonitorEvent(monitor, READY_EVENTS, 1,
-                    Duration.ofSeconds(20), "dealer/dealer client ready");
+                    Duration.ofMillis(config.connectReadyTimeoutMs()), "dealer/dealer client ready");
                 connected.countDown();
                 if (connected.getCount() == 0L) {
                     PerfUtil.sendReadySignal(config.controlPort());
                     go.countDown();
                 }
                 PerfUtil.await(go, "dealer/dealer start", java.time.Duration.ofSeconds(10));
-                long warmupEnd = System.nanoTime() + warmup * 1_000_000_000L;
-                while (System.nanoTime() < warmupEnd) {
-                    try (Message m = PerfUtil.payload(config.size(), (byte) 2, System.nanoTime())) {
-                        client.send(List.of(m));
-                    }
-                }
                 long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
                 while (System.nanoTime() < activeEnd) {
-                    try (Message m = PerfUtil.payload(config.size(), (byte) 0, System.nanoTime())) {
+                    try (Message m = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
                         client.send(List.of(m));
                     }
                 }
-                try (Message m = PerfUtil.payload(config.size(), (byte) 1, System.nanoTime())) {
+                try (Message m = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_STOP, System.nanoTime())) {
                     client.send(List.of(m));
                 }
             }
-        }, "multi-dd-client-" + index), config.warmupSeconds(), config.durationSeconds());
+        }, "multi-dd-client-" + index), config.durationSeconds());
         return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
-            config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, Double.NaN, Double.NaN);
+            config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
     }
 }

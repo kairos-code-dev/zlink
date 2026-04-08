@@ -6,7 +6,7 @@ import dev.kairoscode.zlink.internal.NativeHelpers;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
-public record RegistryStatus(int registryId, String bindEndpoint, int state,
+public record RegistryStatus(int registryId, String bindEndpoint, RegistryState state,
                              int topologyEntryCount, int peerRegistryCount,
                              int connectedPeerRegistryCount, long listSeq,
                              int lastError, long lastChangedMs) {
@@ -14,7 +14,7 @@ public record RegistryStatus(int registryId, String bindEndpoint, int state,
         return new RegistryStatus(
           segment.get(ValueLayout.JAVA_INT, 0),
           NativeHelpers.fromCString(segment.asSlice(4, 256), 256),
-          segment.get(ValueLayout.JAVA_INT, 260),
+          RegistryState.fromValue(segment.get(ValueLayout.JAVA_INT, 260)),
           segment.get(ValueLayout.JAVA_INT, 264),
           segment.get(ValueLayout.JAVA_INT, 268),
           segment.get(ValueLayout.JAVA_INT, 272),

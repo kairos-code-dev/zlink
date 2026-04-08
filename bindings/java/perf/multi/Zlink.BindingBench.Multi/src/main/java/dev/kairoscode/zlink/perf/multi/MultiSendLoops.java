@@ -13,11 +13,11 @@ final class MultiSendLoops {
     }
 
     static void runClients(int clientCount, ClientFactory factory,
-                           int warmupSeconds, int durationSeconds) {
+                           int durationSeconds) {
         List<Thread> threads = new ArrayList<>(clientCount);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         for (int i = 0; i < clientCount; i++) {
-            Thread thread = factory.create(i, warmupSeconds, durationSeconds);
+            Thread thread = factory.create(i, durationSeconds);
             thread.setUncaughtExceptionHandler((current, error) ->
                 failure.compareAndSet(null, error));
             threads.add(thread);
@@ -25,7 +25,7 @@ final class MultiSendLoops {
         }
         for (int i = 0; i < threads.size(); i++) {
             PerfUtil.join(threads.get(i), "multi client " + i, Duration.ofSeconds(
-                warmupSeconds + durationSeconds + 20L));
+                durationSeconds + 20L));
         }
         Throwable error = failure.get();
         if (error != null) {
@@ -34,6 +34,6 @@ final class MultiSendLoops {
     }
 
     interface ClientFactory {
-        Thread create(int index, int warmupSeconds, int durationSeconds);
+        Thread create(int index, int durationSeconds);
     }
 }

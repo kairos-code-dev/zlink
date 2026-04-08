@@ -29,7 +29,7 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
 	recvStopAt := window.StopAt.Add(500 * time.Millisecond)
 
 	type dealerClient struct {

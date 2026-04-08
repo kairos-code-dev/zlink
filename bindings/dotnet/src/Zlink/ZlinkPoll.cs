@@ -15,14 +15,15 @@ public static class ZlinkPoll
     [ThreadStatic]
     private static ZlinkPollItemWindows[]? _windowsItems;
 
-    public static int Poll(IReadOnlyList<SocketBase> sockets,
+    public static int Poll(IReadOnlyList<IZlinkSocket> sockets,
         IReadOnlyList<PollEvents> events, Span<PollEvents> revents,
         int timeoutMs)
     {
         if (sockets == null)
             throw new ArgumentNullException(nameof(sockets));
-        return PollSocketsCore(sockets.Count, i => sockets[i].Handle, events,
-            revents, timeoutMs);
+        return PollSocketsCore(sockets.Count,
+            i => SocketInterop.RequireSocket(sockets[i], nameof(sockets)).Handle,
+            events, revents, timeoutMs);
     }
 
     public static int Poll(IReadOnlyList<SocketMonitor> monitors,

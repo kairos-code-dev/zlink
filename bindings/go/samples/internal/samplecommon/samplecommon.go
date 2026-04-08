@@ -40,7 +40,7 @@ func DialEndpoint(endpoint string) net.Conn {
 	return conn
 }
 
-func OpenMonitor(socket any) *zlink.SocketMonitor {
+func OpenMonitor(socket zlink.SocketTarget) *zlink.SocketMonitor {
 	mon, err := zlink.OpenSocketMonitor(socket, zlink.MonitorEventConnectionReady)
 	Must(err)
 	return mon

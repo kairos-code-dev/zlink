@@ -177,12 +177,6 @@ inline int resolve_multi_int_env (const char *env_name,
       env_name, NULL, default_value, min_value);
 }
 
-inline bool multi_perf_callback_supported_for_pattern (const char *pattern)
-{
-    const std::string normalized = normalize_multi_pattern_name (pattern);
-    return normalized == "SPOT" || normalized == "STREAM";
-}
-
 inline std::string resolve_multi_perf_recv_mode ()
 {
     const char *env =
@@ -192,41 +186,19 @@ inline std::string resolve_multi_perf_recv_mode ()
 
     std::string mode (env);
     std::transform (mode.begin (), mode.end (), mode.begin (), ::tolower);
-    if (mode != "recv" && mode != "callback") {
-        std::cerr << "policy violation: invalid --recv mode " << mode
+    if (mode != "recv") {
+        std::cerr << "policy violation: multi perf supports recv only"
                   << std::endl;
         std::exit (1);
     }
-    if (mode == "callback") {
-        const char *pattern =
-          resolve_multi_env_value ("PERF_MULTI_PATTERN", "PERF_PATTERN");
-        if (pattern && *pattern
-            && !multi_perf_callback_supported_for_pattern (pattern)) {
-            std::cerr << "policy violation: --recv callback unsupported for "
-                      << pattern << std::endl;
-            std::exit (1);
-        }
-    }
-    return mode;
-}
-
-inline bool multi_perf_callback_mode ()
-{
-    return resolve_multi_perf_recv_mode () == "callback";
+    return "recv";
 }
 
 inline bool multi_perf_validate_recv_mode_for_pattern (const char *pattern)
 {
     if (!pattern || !*pattern)
         return false;
-
-    if (resolve_multi_perf_recv_mode () == "callback"
-        && !multi_perf_callback_supported_for_pattern (pattern)) {
-        std::cerr << "policy violation: --recv callback unsupported for "
-                  << pattern << std::endl;
-        return false;
-    }
-
+    (void) resolve_multi_perf_recv_mode ();
     return true;
 }
 

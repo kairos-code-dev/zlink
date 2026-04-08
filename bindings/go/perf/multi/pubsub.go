@@ -25,7 +25,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(publisher.Bind(endpoint))
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
 
 	subs := make([]*zlink.SubSocket, 0, cfg.clients)
 	for i := 0; i < cfg.clients; i++ {

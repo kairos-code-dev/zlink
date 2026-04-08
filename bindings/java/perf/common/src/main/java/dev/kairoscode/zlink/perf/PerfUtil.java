@@ -5,15 +5,17 @@ package dev.kairoscode.zlink.perf;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.Socket;
+import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 
 public final class PerfUtil {
-    public static final int PHASE_UNKNOWN = 0;
-    public static final int PHASE_WARMUP = 1;
-    public static final int PHASE_ACTIVE = 2;
+    public static final int PHASE_UNKNOWN = -1;
+    public static final int PHASE_ACTIVE = 0;
+    public static final int PHASE_STOP = 1;
+    public static final int PHASE_PROBE = 2;
     public static final int HEADER_SIZE = 32;
 
     private PerfUtil() {
@@ -23,13 +25,23 @@ public final class PerfUtil {
         String pattern,
         String transport,
         int size,
-        int warmupSeconds,
         int durationSeconds,
         String recvMode,
         String endpoint,
         int clients,
-        int controlPort
+        int controlPort,
+        int ioThreads,
+        int sendHwm,
+        int recvHwm,
+        int sendTimeoutMs,
+        int recvTimeoutMs,
+        int monitorHwm,
+        int connectReadyTimeoutMs,
+        int connectConcurrency
     ) {
+    }
+
+    public record Header(byte phase, long latencyMicros) {
     }
 
     public static final class Result {
@@ -43,13 +55,10 @@ public final class PerfUtil {
         final double latencyMean;
         final double latencyP95;
         final double latencyP99;
-        final double cpuPct;
-        final double memMb;
 
         public Result(String status, String reason, String pattern, String transport,
                       int size, double throughput, double bandwidth,
-                      double latencyMean, double latencyP95, double latencyP99,
-                      double cpuPct, double memMb) {
+                      double latencyMean, double latencyP95, double latencyP99) {
             this.status = status;
             this.reason = reason;
             this.pattern = pattern;
@@ -60,14 +69,12 @@ public final class PerfUtil {
             this.latencyMean = latencyMean;
             this.latencyP95 = latencyP95;
             this.latencyP99 = latencyP99;
-            this.cpuPct = cpuPct;
-            this.memMb = memMb;
         }
 
         public static Result unsupported(String reason, Config config) {
             return new Result("unsupported", reason, config.pattern(),
                 config.transport(), config.size(), 0.0d, 0.0d, 0.0d, 0.0d,
-                0.0d, Double.NaN, Double.NaN);
+                0.0d);
         }
 
         public String status() {
@@ -82,8 +89,8 @@ public final class PerfUtil {
     public static final class Metrics {
         private final PerfMetricsCollector delegate = new PerfMetricsCollector();
 
-        public void startResourceWindow() {
-            delegate.startResourceWindow();
+        public void startActiveWindow() {
+            delegate.startActiveWindow();
         }
 
         public synchronized void recordMicros(long value) {
@@ -131,6 +138,10 @@ public final class PerfUtil {
         return PerfMeasurement.latencyMillis(message);
     }
 
+    public static Header decodeHeader(Message message, int expectedSize) {
+        return PerfMetricHeader.decode(message, expectedSize);
+    }
+
     public static String endpoint(String transport, String token) {
         return PerfMeasurement.endpoint(transport, token);
     }
@@ -159,6 +170,18 @@ public final class PerfUtil {
         PerfTransport.configureClientTls(node, transport);
     }
 
+    public static Context newContext(Config config) {
+        return PerfTransport.newContext(config);
+    }
+
+    public static void applySocketOptions(Socket socket, Config config) {
+        PerfTransport.applySocketOptions(socket, config);
+    }
+
+    public static void applySpotOptions(SpotNode node, Config config) {
+        PerfTransport.applySpotOptions(node, config);
+    }
+
     public static void await(CountDownLatch latch, String label, Duration timeout) {
         PerfTransport.await(latch, label, timeout);
     }
@@ -171,6 +194,10 @@ public final class PerfUtil {
                                            int expectedCount, Duration timeout,
                                            String label) {
         PerfTransport.waitForMonitorEvent(monitor, expectedMask, expectedCount, timeout, label);
+    }
+
+    public static void applyMonitorOptions(MonitorSocket monitor, Config config) {
+        PerfTransport.applyMonitorOptions(monitor, config);
     }
 
     public static void waitForReadySignal(int port) {
@@ -191,5 +218,9 @@ public final class PerfUtil {
 
     public static long nowUs() {
         return PerfMeasurement.nowUs();
+    }
+
+    public static PerfCallbackMetrics callbackMetrics(String workerName) {
+        return new PerfCallbackMetrics(workerName);
     }
 }

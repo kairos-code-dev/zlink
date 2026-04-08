@@ -1,0 +1,115 @@
+## Effective Options (start)
+- suite: multi
+- runs: 1
+- patterns: MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: recv
+- clients: 4
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: rust_policy_multi_shutdown_r6
+
+===============================================================================
+
+## PATTERN: MULTI_DEALER_DEALER
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 2974.25 Kmsg/s | 190.35 MB/s | 0.00 ms | 0.00 ms | 0.00 ms |
+
+===============================================================================
+
+## PATTERN: MULTI_DEALER_ROUTER
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 28.69 Kmsg/s | 1.84 MB/s | 0.14 ms | 0.23 ms | 0.34 ms |
+
+===============================================================================
+
+## PATTERN: MULTI_ROUTER_ROUTER
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 34.34 Kmsg/s | 2.20 MB/s | 0.11 ms | 0.18 ms | 0.27 ms |
+
+===============================================================================
+
+## PATTERN: MULTI_PUBSUB
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 380.65 Kmsg/s | 24.36 MB/s | 134.55 ms | 467.78 ms | 494.13 ms |
+
+===============================================================================
+
+## PATTERN: MULTI_SPOT
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 378.25 Kmsg/s | 24.21 MB/s | 135.62 ms | 468.85 ms | 495.44 ms |
+
+===============================================================================
+
+## PATTERN: MULTI_STREAM
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 37.49 Kmsg/s | 4.80 MB/s | 106.59 ms | 165.00 ms | 245.00 ms |
+
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,throughput,2974246.00
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,bandwidth,190.35
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency,0.00
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency_p95,0.00
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency_p99,0.00
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,throughput,28694.00
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,bandwidth,1.84
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency,0.14
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency_p95,0.23
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency_p99,0.34
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,throughput,34344.00
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,bandwidth,2.20
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency,0.11
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency_p95,0.18
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency_p99,0.27
+RESULT,current,MULTI_PUBSUB,tcp,64,throughput,380650.00
+RESULT,current,MULTI_PUBSUB,tcp,64,bandwidth,24.36
+RESULT,current,MULTI_PUBSUB,tcp,64,latency,134.55
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p95,467.78
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p99,494.13
+RESULT,current,MULTI_SPOT,tcp,64,throughput,378250.00
+RESULT,current,MULTI_SPOT,tcp,64,bandwidth,24.21
+RESULT,current,MULTI_SPOT,tcp,64,latency,135.62
+RESULT,current,MULTI_SPOT,tcp,64,latency_p95,468.85
+RESULT,current,MULTI_SPOT,tcp,64,latency_p99,495.44
+RESULT,current,MULTI_STREAM,tcp,64,throughput,37491.00
+RESULT,current,MULTI_STREAM,tcp,64,bandwidth,4.80
+RESULT,current,MULTI_STREAM,tcp,64,latency,106.59
+RESULT,current,MULTI_STREAM,tcp,64,latency_p95,165.00
+RESULT,current,MULTI_STREAM,tcp,64,latency_p99,245.00
+
+## Effective Options (result)
+- suite: multi
+- runs: 1
+- patterns: MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM
+- transports: tcp
+- msg_sizes: 64
+- recv_mode: recv
+- clients: 4
+- pin_cpu: off
+- duration_seconds: 1
+- results_tag: rust_policy_multi_shutdown_r6
+
+## Completion
+- status: complete
+- expected_result_lines: 30
+- actual_result_lines: 30
+
+## Failures

@@ -532,11 +532,11 @@ class _BaseSocket:
         self.close()
 
 
-class Socket(_BaseSocket):
+class _Socket(_BaseSocket):
     _dispatch = {}
 
     def __new__(cls, context, sock_type=None):
-        if cls is Socket:
+        if cls is _Socket:
             target_cls = cls._dispatch.get(_native_socket_type(sock_type))
             if target_cls is None:
                 raise ValueError(f"unsupported socket type: {sock_type!r}")
@@ -548,7 +548,7 @@ class Socket(_BaseSocket):
         cls._dispatch[_native_socket_type(sock_type)] = socket_cls
 
 
-class BindSocket(Socket):
+class _BindSocket(_Socket):
     def bind(self, endpoint: str):
         rc = lib().zlink_bind(
             self._handle,
@@ -566,7 +566,7 @@ class BindSocket(Socket):
             _raise_last_error()
 
 
-class ConnectSocket(Socket):
+class _ConnectSocket(_Socket):
     def connect(self, endpoint: str):
         rc = lib().zlink_connect(
             self._handle,
@@ -584,11 +584,11 @@ class ConnectSocket(Socket):
             _raise_last_error()
 
 
-class EndpointSocket(BindSocket, ConnectSocket):
+class _EndpointSocket(_BindSocket, _ConnectSocket):
     pass
 
 
-class RoutingIdSocket(Socket):
+class _RoutingIdSocket(_Socket):
     def set_routing_id(self, routing_id):
         self._set_routing_id_raw(routing_id)
 
@@ -596,7 +596,7 @@ class RoutingIdSocket(Socket):
         return self._get_routing_id_raw()
 
 
-class DealerOptionSocket(Socket):
+class _DealerOptionSocket(_Socket):
     def _set_dealer_option(self, option, value):
         self._set_raw_option(lib().zlink_set_dealer_option, option, value)
 
@@ -605,7 +605,7 @@ class DealerOptionSocket(Socket):
         return DealerSocketOptions(self)
 
 
-class RouterOptionSocket(Socket):
+class _RouterOptionSocket(_Socket):
     def _set_router_option(self, option, value):
         self._set_raw_option(lib().zlink_set_router_option, option, value)
 
@@ -625,7 +625,7 @@ class RouterOptionSocket(Socket):
         return self._get_router_option(option, size)
 
 
-class StreamOptionSocket(Socket):
+class _StreamOptionSocket(_Socket):
     def _set_stream_option(self, option, value):
         self._set_raw_option(lib().zlink_set_stream_option, option, value)
 
@@ -637,7 +637,7 @@ class StreamOptionSocket(Socket):
         return StreamSocketOptions(self)
 
 
-class PublisherOptionSocket(Socket):
+class _PublisherOptionSocket(_Socket):
     def _set_pub_option(self, option, value):
         self._set_raw_option(lib().zlink_set_pub_option, option, value)
 
@@ -645,7 +645,7 @@ class PublisherOptionSocket(Socket):
         return self._get_raw_option(lib().zlink_get_pub_option, option, size)
 
 
-class SubscriberOptionSocket(Socket):
+class _SubscriberOptionSocket(_Socket):
     def _set_sub_option(self, option, value):
         self._set_raw_option(lib().zlink_set_sub_option, option, value)
 
@@ -657,7 +657,7 @@ class SubscriberOptionSocket(Socket):
         return SubSocketOptions(self)
 
 
-class MessageSocket(Socket):
+class _MessageSocket(_Socket):
     def send(self, payload):
         self._send_native_parts(self._native_parts_from_payload(payload), 0)
 
@@ -717,7 +717,7 @@ class MessageSocket(Socket):
         self.on_receive(handler)
 
 
-class RoutedMessageSocket(MessageSocket):
+class _RoutedMessageSocket(_MessageSocket):
     def send(self, payload, *, routing_id=None):
         if routing_id is None:
             return super().send(payload)
@@ -739,7 +739,7 @@ class RoutedMessageSocket(MessageSocket):
         )
 
 
-class PublisherSocket(Socket):
+class _PublisherSocket(_Socket):
     def publish(self, topic, payload):
         topic_bytes = _validated_c_string_bytes(topic, field="topic")
         native_parts = self._native_parts_from_payload(payload)
@@ -766,7 +766,7 @@ class PublisherSocket(Socket):
         )
 
 
-class SubscriberSocket(Socket):
+class _SubscriberSocket(_Socket):
     def _subscribe_once(self, flags):
         routing_id = ZlinkRoutingId()
         parts = ctypes.POINTER(ZlinkMsg)()

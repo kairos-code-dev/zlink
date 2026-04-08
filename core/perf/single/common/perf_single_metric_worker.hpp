@@ -24,6 +24,9 @@ inline void single_account_metric_event (
             ? static_cast<double> (now_us - event_.sent_ts_us)
             : 0.0;
         state_->latency.add (latency_us);
+        single_increment_counter (state_->active_processed);
+        if (single_phase_wait_notify_armed (*state_))
+            state_->cv.notify_all ();
     }
 }
 

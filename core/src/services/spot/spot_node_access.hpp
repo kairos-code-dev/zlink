@@ -30,6 +30,14 @@ struct spot_node_access_t
     static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
     static int disconnect_peer (spot_node_t *node_,
                                 const char *peer_endpoint_);
+    static int set_node_option (spot_node_t *node_,
+                                zlink_spot_node_option_t option_,
+                                const void *optval_,
+                                size_t optvallen_);
+    static int get_node_option (spot_node_t *node_,
+                                zlink_spot_node_option_t option_,
+                                void *optval_,
+                                size_t *optvallen_);
     static int begin_close_or_fail_busy (spot_node_t *node_);
     static void cancel_close (spot_node_t *node_);
     static int destroy (spot_node_t *node_);

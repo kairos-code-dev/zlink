@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "services/spot/spot_node_batch_option_policy.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -63,6 +64,7 @@ static void refresh_runtime_sub_hwm (spot_runtime_t *runtime_,
         (void) runtime_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
                                                 &value, sizeof (value));
 }
+
 }
 
 spot_node_default_handles_t::spot_node_default_handles_t () :
@@ -430,6 +432,59 @@ int spot_node_t::set_sub_option (int option_,
 
     if (option_ == ZLINK_SPOT_SUB_OPT_RCVHWM)
         refresh_runtime_sub_hwm (_runtime, optval_, optvallen_);
+    return 0;
+}
+
+int spot_node_t::set_node_option (int option_,
+                                  const void *optval_,
+                                  size_t optvallen_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!_runtime || !optval_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    spot_node_batch_config_t config = _runtime->peer_batch_config_snapshot ();
+    const spot_node_batch_option_binding_t *binding =
+      resolve_spot_node_batch_option_binding (option_);
+    if (!binding
+        || !apply_spot_node_batch_option_value (&config, binding, optval_,
+                                                optvallen_)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    _runtime->set_peer_batch_config (config);
+    return 0;
+}
+
+int spot_node_t::get_node_option (int option_,
+                                  void *optval_,
+                                  size_t *optvallen_) const
+{
+    service_public_api_scope_t admission (
+      const_cast<service_public_api_guard_t &> (_public_api));
+    if (!admission.acquired ())
+        return -1;
+    if (!_runtime || !optval_ || !optvallen_ || *optvallen_ < sizeof (int)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const spot_node_batch_config_t config = _runtime->peer_batch_config_snapshot ();
+    int value = 0;
+    const spot_node_batch_option_binding_t *binding =
+      resolve_spot_node_batch_option_binding (option_);
+    if (!binding || !read_spot_node_batch_option_value (config, binding, &value)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memcpy (optval_, &value, sizeof (value));
+    *optvallen_ = sizeof (value);
     return 0;
 }
 

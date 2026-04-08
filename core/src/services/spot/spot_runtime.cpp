@@ -62,6 +62,7 @@ static bool spot_shutdown_debug_enabled_local ()
 {
     return std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN") != NULL;
 }
+
 }
 
 spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
@@ -96,6 +97,19 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     sub_fanout_endpoint = buf;
     snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.ctrl", node_id);
     data_ctrl_endpoint = buf;
+}
+
+spot_node_batch_config_t spot_runtime_t::peer_batch_config_snapshot () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (peer_batch_config_sync));
+    return peer_batch_config;
+}
+
+void spot_runtime_t::set_peer_batch_config (
+  const spot_node_batch_config_t &config_)
+{
+    scoped_lock_t lock (peer_batch_config_sync);
+    peer_batch_config = config_;
 }
 
 int spot_runtime_t::create_attachment (int kind_,

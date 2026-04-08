@@ -725,21 +725,37 @@ flush 가 `mesh_pub` writability 를 기다리는 동안 sender 는 추가 ingre
 
 ## 설정 인터페이스
 
-### public API surface 변경 없음
+### public SpotNode option surface
 
-v1 은 별도 `zlink_spot_node_option_t` enum 을 도입하지 않는다.
-기존 인터페이스 리뷰 문서에서 "`spot_node` 는 별도 option namespace 를 갖지
-않는다"고 확정한 방향을 유지한다.
+v1 은 `SpotNode` 전용 batching 설정을 위해 **별도 `zlink_spot_node_option_t`
+enum 과 option 설정/조회 함수**를 제공한다.
 
-batching 설정은 **internal control-path setter** 로만 제어한다.
-public C API surface 는 변경하지 않는다.
+즉 batching 설정은:
 
-### internal setter
+- `spot_node` handle 에 적용되는 public option 으로 노출된다
+- 일반 socket common option namespace 와 분리된 `SpotNode` 전용 option 으로 다룬다
+- 기존 `publish/recv/callback` 계약은 유지하되, batching on/off 및 tuning 값은
+  운영자가 public API 로 제어할 수 있어야 한다
 
-internal 구현에서 사용하는 설정 항목:
+권장 surface 예:
+
+```c
+int zlink_spot_node_set_option (void *node_,
+                                zlink_spot_node_option_t option_,
+                                const void *optval_,
+                                size_t optvallen_);
+
+int zlink_spot_node_get_option (void *node_,
+                                zlink_spot_node_option_t option_,
+                                void *optval_,
+                                size_t *optvallen_);
+```
+
+### internal runtime config
+
+public option surface 의 backing state 로 core 내부에서는 아래 config 를 유지한다.
 
 ```cpp
-// core internal — public header 에 노출하지 않음
 struct spot_node_batch_config_t {
     bool   enabled;                     // default: false
     int    delay_ms;                    // topic bucket 최대 지연
@@ -752,21 +768,56 @@ struct spot_node_batch_config_t {
 ```
 
 - 이 struct 는 `spot_node` 생성 시 기본값으로 초기화된다.
-- `enabled` 만 runtime 변경을 허용한다. 나머지는 data-plane start 전 설정.
-- 나중에 public option surface 가 필요해지면 기존 인터페이스 리뷰 문서를
-  먼저 업데이트한 뒤 진행한다.
+- public `zlink_spot_node_set_option()` 호출은 이 internal config 를 갱신한다.
+- `enabled` 만 runtime 변경을 허용한다. 나머지는 data-plane start 전 설정한다.
+
+### public option 항목
+
+예시 enum 항목:
+
+```c
+typedef enum zlink_spot_node_option_t {
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_MESSAGES,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_BYTES,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_BYPASS_BYTES,
+    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_MESSAGES_PER_TURN,
+    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN
+} zlink_spot_node_option_t;
+```
 
 ### 설정 항목 의미
 
-| 항목 | 의미 | 값 범위 |
-|------|------|---------|
-| `enabled` | peer batching on/off | `true` / `false` |
-| `delay_ms` | topic bucket 최대 지연 시간 | `0` 이상 |
-| `max_messages` | batch 당 최대 logical message 수 | `1` 이상 |
-| `max_bytes` | batch 당 최대 `batch_body_encoded_bytes` | `1` 이상 |
-| `bypass_bytes` | 이 크기(`logical_message_encoded_bytes`) 이상 단일 message 는 bypass | `1` 이상 |
-| `unbatch_max_messages_per_turn` | 한 turn 에 decode/emit 할 최대 logical message 수 | `1` 이상 |
-| `unbatch_max_bytes_per_turn` | 한 turn 에 decode/emit 할 최대 byte 수 | `1` 이상 |
+| public option | internal field | 의미 | 값 범위 |
+|------|------|------|---------|
+| `ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE` | `enabled` | peer batching on/off | `true` / `false` |
+| `ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS` | `delay_ms` | topic bucket 최대 지연 시간 | `0` 이상 |
+| `ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_MESSAGES` | `max_messages` | batch 당 최대 logical message 수 | `1` 이상 |
+| `ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_BYTES` | `max_bytes` | batch 당 최대 `batch_body_encoded_bytes` | `1` 이상 |
+| `ZLINK_SPOT_NODE_OPT_PEER_BATCH_BYPASS_BYTES` | `bypass_bytes` | 이 크기(`logical_message_encoded_bytes`) 이상 단일 message 는 bypass | `1` 이상 |
+| `ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_MESSAGES_PER_TURN` | `unbatch_max_messages_per_turn` | 한 turn 에 decode/emit 할 최대 logical message 수 | `1` 이상 |
+| `ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN` | `unbatch_max_bytes_per_turn` | 한 turn 에 decode/emit 할 최대 byte 수 | `1` 이상 |
+
+### 기본값
+
+v1 기본값은 아래로 고정한다.
+
+| public option | 기본값 |
+|------|---------|
+| `ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE` | `false` |
+| `ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS` | `20` |
+| `ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_MESSAGES` | `32` |
+| `ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_BYTES` | `65536` |
+| `ZLINK_SPOT_NODE_OPT_PEER_BATCH_BYPASS_BYTES` | `65536` |
+| `ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_MESSAGES_PER_TURN` | `32` |
+| `ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN` | `65536` |
+
+추가 규칙:
+
+- `bypass_bytes` 기본값은 `max_bytes` 와 동일하다
+- `enabled=false` 가 기본이며, opt-in 으로만 batching 을 활성화한다
+- 구현은 `spot_node` 생성 시 위 기본값으로 초기화되어야 한다
 
 
 ## 기본값 제안

@@ -1050,6 +1050,7 @@ set(spot-sources
     src/services/spot/spot_subject_poller.cpp
     src/services/spot/spot_subject_publish.cpp
     src/services/spot/spot_subject_query.cpp
+    src/services/spot/spot_node_batch_option_policy.cpp
     src/services/spot/spot_node_access.cpp
     src/services/spot/spot_node.cpp
     src/services/spot/spot_node_control.cpp

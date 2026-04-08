@@ -4,6 +4,7 @@
 
 #include "api/service_api_internal.hpp"
 #include "api/zlink_option_internal.hpp"
+#include "services/spot/spot_node_access.hpp"
 
 int zlink_set_router_option (void *handle_,
                              zlink_router_option_t option_,
@@ -195,4 +196,26 @@ int zlink_get_sub_option (void *handle_,
 
     return zlink_service_get_sub_option (handle_, option_, socket_option,
                                          optval_, optvallen_);
+}
+
+int zlink_set_spot_node_option (void *handle_,
+                                zlink_spot_node_option_t option_,
+                                const void *optval_,
+                                size_t optvallen_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (handle_);
+    return node ? zlink::spot_node_access_t::set_node_option (
+                    node, option_, optval_, optvallen_)
+                : -1;
+}
+
+int zlink_get_spot_node_option (void *handle_,
+                                zlink_spot_node_option_t option_,
+                                void *optval_,
+                                size_t *optvallen_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (handle_);
+    return node ? zlink::spot_node_access_t::get_node_option (
+                    node, option_, optval_, optvallen_)
+                : -1;
 }

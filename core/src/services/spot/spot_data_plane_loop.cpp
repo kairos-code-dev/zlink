@@ -114,6 +114,7 @@ bool handle_ctrl_event (socket_base_t *socket_,
 
 bool handle_mesh_event (socket_base_t *socket_,
                         spot_node_t *node_,
+                        spot_runtime_t *runtime_,
                         spot_data_plane_runtime_state_t *state_,
                         spot_data_plane_protocol_state_t *protocol_state_,
                         bool *running_out_,
@@ -123,8 +124,8 @@ bool handle_mesh_event (socket_base_t *socket_,
         return false;
 
     if (spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
-          state_->mesh_xsub, state_->fanout, state_->peer_ctrl_pub, node_,
-          protocol_state_)
+          state_->mesh_xsub, state_->fanout, state_->peer_ctrl_pub, runtime_,
+          node_, protocol_state_)
         != 0) {
         *fatal_errno_out_ = errno;
         *running_out_ = false;
@@ -134,6 +135,7 @@ bool handle_mesh_event (socket_base_t *socket_,
 
 bool handle_ingress_event (socket_base_t *socket_,
                            spot_node_t *node_,
+                           spot_runtime_t *runtime_,
                            spot_data_plane_runtime_state_t *state_,
                            bool *running_out_,
                            int *fatal_errno_out_)
@@ -142,7 +144,8 @@ bool handle_ingress_event (socket_base_t *socket_,
         return false;
 
     if (spot_data_plane_forwarder_t::recv_and_forward_ingress (
-          state_->ingress, state_->mesh_pub, state_->fanout, node_)
+          state_->ingress, state_->mesh_pub, state_->fanout, runtime_, state_,
+          node_)
         != 0) {
         *fatal_errno_out_ = errno;
         *running_out_ = false;
@@ -173,13 +176,14 @@ int dispatch_ready_events (const socket_poller_t::event_t *events_,
                 continue;
             }
 
-            if (handle_ctrl_event (socket, node_, runtime_, state_,
+                if (handle_ctrl_event (socket, node_, runtime_, state_,
                                    protocol_state_, running_out_,
                                    &fatal_errno)
-                || handle_mesh_event (socket, node_, state_, protocol_state_,
+                || handle_mesh_event (socket, node_, runtime_, state_,
+                                      protocol_state_,
                                       running_out_, &fatal_errno)
-                || handle_ingress_event (socket, node_, state_, running_out_,
-                                         &fatal_errno)) {
+                || handle_ingress_event (socket, node_, runtime_, state_,
+                                         running_out_, &fatal_errno)) {
                 if (!*running_out_)
                     break;
             }
@@ -234,6 +238,31 @@ int resolve_data_plane_poll_timeout_ms (uint64_t next_bootstrap_ms_)
              ? INT_MAX
              : static_cast<int> (remaining_ms);
 }
+
+int resolve_effective_poll_timeout_ms (
+  const spot_runtime_t *runtime_,
+  const spot_data_plane_runtime_state_t *state_,
+  uint64_t next_bootstrap_ms_)
+{
+    int timeout_ms = resolve_data_plane_poll_timeout_ms (next_bootstrap_ms_);
+    if (!runtime_ || !state_)
+        return timeout_ms;
+
+    const spot_node_batch_config_t config = runtime_->peer_batch_config_snapshot ();
+    const uint64_t next_flush_ms =
+      spot_data_plane_forwarder_t::next_flush_deadline_ms (state_, config);
+    if (next_flush_ms == 0)
+        return timeout_ms;
+
+    const uint64_t now_ms = clock_t ().now_ms ();
+    const int flush_timeout_ms =
+      next_flush_ms <= now_ms
+        ? 0
+        : static_cast<int> (
+            std::min<uint64_t> (next_flush_ms - now_ms,
+                                static_cast<uint64_t> (INT_MAX)));
+    return timeout_ms < flush_timeout_ms ? timeout_ms : flush_timeout_ms;
+}
 }
 
 int spot_data_plane_loop_t::run_until_shutdown (
@@ -255,6 +284,20 @@ int spot_data_plane_loop_t::run_until_shutdown (
     while (running) {
         service_runtime_sockets (runtime_, state_);
 
+        if (spot_data_plane_protocol_t::resume_pending_unbatch (
+              state_->fanout, runtime_, protocol_state_ptr)
+            != 0) {
+            fatal_errno = errno;
+            break;
+        }
+
+        if (spot_data_plane_forwarder_t::flush_due_buckets (
+              runtime_, state_, state_->mesh_pub, clock_t ().now_ms ())
+            != 0) {
+            fatal_errno = errno;
+            break;
+        }
+
         if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
             fatal_errno = errno;
             break;
@@ -262,8 +305,10 @@ int spot_data_plane_loop_t::run_until_shutdown (
 
         socket_poller_t::event_t events[5];
         const int rc =
-          state_->poller->wait (events, 5,
-                       resolve_data_plane_poll_timeout_ms (next_bootstrap_ms));
+          state_->poller->wait (
+            events, 5,
+            resolve_effective_poll_timeout_ms (runtime_, state_,
+                                               next_bootstrap_ms));
         if (rc < 0) {
             if (errno == EAGAIN || errno == EINTR)
                 continue;
@@ -284,6 +329,13 @@ int spot_data_plane_loop_t::run_until_shutdown (
             running = false;
             break;
         }
+    }
+
+    if (fatal_errno == 0
+        && spot_data_plane_forwarder_t::flush_all_buckets (
+             runtime_, state_, state_->mesh_pub)
+             != 0) {
+        fatal_errno = errno;
     }
 
     return fatal_errno;
@@ -308,6 +360,16 @@ int spot_data_plane_loop_t::run_once (
     if (!state_->poller)
         return EFAULT;
     service_runtime_sockets (runtime_, state_);
+
+    if (spot_data_plane_protocol_t::resume_pending_unbatch (
+          state_->fanout, runtime_, protocol_state_)
+        != 0)
+        return errno;
+
+    if (spot_data_plane_forwarder_t::flush_due_buckets (
+          runtime_, state_, state_->mesh_pub, clock_t ().now_ms ())
+        != 0)
+        return errno;
 
     if (drain_peer_ctrl_messages (node_, state_, protocol_state_) != 0)
         return errno;

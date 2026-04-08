@@ -62,6 +62,12 @@ class spot_node_t : public discovery_observer_t
     int set_sub_option (int option_,
                         const void *optval_,
                         size_t optvallen_);
+    int set_node_option (int option_,
+                         const void *optval_,
+                         size_t optvallen_);
+    int get_node_option (int option_,
+                         void *optval_,
+                         size_t *optvallen_) const;
     pub_defaults_t load_pub_defaults () const;
     sub_defaults_t load_sub_defaults () const;
 

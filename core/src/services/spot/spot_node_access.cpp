@@ -59,6 +59,22 @@ int spot_node_access_t::disconnect_peer (spot_node_t *node_,
     return node_ ? node_->disconnect_peer_pub (peer_endpoint_) : -1;
 }
 
+int spot_node_access_t::set_node_option (spot_node_t *node_,
+                                         zlink_spot_node_option_t option_,
+                                         const void *optval_,
+                                         size_t optvallen_)
+{
+    return node_ ? node_->set_node_option (option_, optval_, optvallen_) : -1;
+}
+
+int spot_node_access_t::get_node_option (spot_node_t *node_,
+                                         zlink_spot_node_option_t option_,
+                                         void *optval_,
+                                         size_t *optvallen_)
+{
+    return node_ ? node_->get_node_option (option_, optval_, optvallen_) : -1;
+}
+
 int spot_node_access_t::begin_close_or_fail_busy (spot_node_t *node_)
 {
     return node_ && node_->public_api_guard ().begin_close_or_fail_busy () ? 0

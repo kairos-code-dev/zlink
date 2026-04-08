@@ -80,10 +80,13 @@ struct spot_runtime_t
     int abortive_stop ();
     size_t live_socket_slot_count () const;
     size_t attachment_count () const;
+    spot_node_batch_config_t peer_batch_config_snapshot () const;
+    void set_peer_batch_config (const spot_node_batch_config_t &config_);
 
     spot_node_t *owner;
     mutable mutex_t ctrl_sync;
     mutable mutex_t control_state_sync;
+    mutable mutex_t peer_batch_config_sync;
     socket_base_t *data_ctrl_front;
     socket_base_t *data_ctrl_back;
     socket_base_t *mesh_pub;
@@ -103,6 +106,7 @@ struct spot_runtime_t
     bool faulted;
     int fault_errno;
     bool abortive_shutdown;
+    spot_node_batch_config_t peer_batch_config;
     mutable mutex_t attachment_sync;
     uint64_t data_plane_task_id_value;
     bool data_plane_running;

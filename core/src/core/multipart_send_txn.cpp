@@ -56,6 +56,8 @@ static int send_frames_once (zlink::socket_base_t *socket_,
 static int send_prefixed_once (zlink::socket_base_t *socket_,
                                const void *prefix_data_,
                                size_t prefix_size_,
+                               int prefix_frame_flags_,
+                               bool rollback_started_,
                                zlink_msg_t *parts_,
                                size_t part_count_,
                                int flags_,
@@ -68,8 +70,8 @@ static int send_frames_once_routed (zlink::socket_base_t *socket_,
                                     int flags_,
                                     zlink::socket_public_send_scope_t &scope_)
 {
-    return send_prefixed_once (socket_, routing_id_->data, routing_id_->size,
-                               parts_, part_count_, flags_, scope_);
+    return send_prefixed_once (socket_, routing_id_->data, routing_id_->size, 0,
+                               false, parts_, part_count_, flags_, scope_);
 }
 
 static int send_publish_once (zlink::socket_base_t *socket_,
@@ -119,6 +121,8 @@ static int send_publish_once (zlink::socket_base_t *socket_,
 static int send_prefixed_once (zlink::socket_base_t *socket_,
                                const void *prefix_data_,
                                size_t prefix_size_,
+                               int prefix_frame_flags_,
+                               bool rollback_started_,
                                zlink_msg_t *parts_,
                                size_t part_count_,
                                int flags_,
@@ -133,10 +137,13 @@ static int send_prefixed_once (zlink::socket_base_t *socket_,
 
     const bool has_payload = part_count_ > 0;
     if (socket_->send_scoped (&prefix_msg,
-                              (has_payload ? ZLINK_SNDMORE : 0) | flags_,
+                              (has_payload ? ZLINK_SNDMORE : 0) | flags_
+                                | prefix_frame_flags_,
                               scope_)
         != 0) {
         const int err = errno;
+        if (rollback_started_)
+            (void) socket_->rollback_scoped (scope_);
         (void) prefix_msg.close ();
         errno = err;
         return -1;
@@ -278,8 +285,77 @@ int zlink::logical_multipart_send_prefixed (socket_base_t *socket_,
     if (!send_scope.acquired ())
         return -1;
 
-    return send_prefixed_once (socket_, prefix_data_, prefix_size_, parts_,
-                               part_count_, flags_, send_scope);
+    return send_prefixed_once (socket_, prefix_data_, prefix_size_, 0, false,
+                               parts_, part_count_, flags_, send_scope);
+}
+
+int zlink::logical_multipart_send_prefixed_frame (socket_base_t *socket_,
+                                                  const void *prefix_data_,
+                                                  size_t prefix_size_,
+                                                  int prefix_frame_flags_,
+                                                  zlink_msg_t *parts_,
+                                                  size_t part_count_,
+                                                  int flags_)
+{
+    if (!socket_ || !parts_ || part_count_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink::socket_public_send_scope_t send_scope (
+      socket_->lifecycle_coordinator (),
+      socket_->direct_send_needs_public_api_sync ());
+    if (!send_scope.acquired ())
+        return -1;
+
+    return send_prefixed_once (socket_, prefix_data_, prefix_size_,
+                               prefix_frame_flags_, false, parts_, part_count_,
+                               flags_, send_scope);
+}
+
+int zlink::logical_multipart_send_routed_prefixed_frame (
+  socket_base_t *socket_,
+  const zlink_routing_id_t *routing_id_,
+  const void *prefix_data_,
+  size_t prefix_size_,
+  int prefix_frame_flags_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  int flags_)
+{
+    if (!socket_ || !routing_id_ || !parts_ || part_count_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink::socket_public_send_scope_t send_scope (
+      socket_->lifecycle_coordinator (), true);
+    if (!send_scope.acquired ())
+        return -1;
+
+    zlink::msg_t routing_msg;
+    if (routing_msg.init_size (routing_id_->size) != 0)
+        return -1;
+    if (routing_id_->size > 0)
+        memcpy (routing_msg.data (), routing_id_->data, routing_id_->size);
+
+    if (socket_->send_scoped (&routing_msg, ZLINK_SNDMORE | flags_, send_scope)
+        != 0) {
+        const int err = errno;
+        (void) routing_msg.close ();
+        errno = err;
+        return -1;
+    }
+    (void) routing_msg.close ();
+
+    if (send_prefixed_once (socket_, prefix_data_, prefix_size_,
+                            prefix_frame_flags_, true, parts_, part_count_,
+                            flags_, send_scope)
+        != 0)
+        return -1;
+
+    errno = 0;
+    return 0;
 }
 
 int zlink::logical_multipart_publish (socket_base_t *socket_,

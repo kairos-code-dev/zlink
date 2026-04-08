@@ -70,6 +70,18 @@ void wait_and_send_messages (sender_probe_t *probe_)
         }
     }
 }
+
+void assert_request_info (const zlink_msg_t *msg_,
+                          uint8_t expected_type_,
+                          uint64_t expected_correlation_id_)
+{
+    uint8_t type = 0xff;
+    uint64_t correlation_id = UINT64_MAX;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_get_request_info (msg_, &type, &correlation_id));
+    TEST_ASSERT_EQUAL_UINT8 (expected_type_, type);
+    TEST_ASSERT_EQUAL_UINT64 (expected_correlation_id_, correlation_id);
+}
 }
 
 SETUP_TEARDOWN_TESTCONTEXT
@@ -584,6 +596,185 @@ void test_public_inproc_router_recv_keeps_source_rid_across_reset ()
     zlink_multipart_close (received, part_count);
 }
 
+void test_public_inproc_request_roundtrip_keeps_payload_and_request_info ()
+{
+    void *left = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *right = test_context_socket (ZLINK_SOCKET_PAIR);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (left, "inproc://public_inproc_request_roundtrip"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (right, "inproc://public_inproc_request_roundtrip"));
+
+    zlink_msg_t outbound;
+    const char payload[] = "request";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&outbound, sizeof (payload) - 1));
+    memcpy (zlink_msg_data (&outbound), payload, sizeof (payload) - 1);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_set_request (&outbound, 42));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (right, &outbound, 1, 0));
+
+    zlink_msg_t *received = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (left, NULL, &received, &part_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    assert_request_info (&received[0], ZLINK_MSG_TYPE_REQUEST, 42);
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (payload) - 1, zlink_msg_size (&received[0]));
+    TEST_ASSERT_EQUAL_MEMORY (payload, zlink_msg_data (&received[0]),
+                              sizeof (payload) - 1);
+    zlink_multipart_close (received, part_count);
+}
+
+void test_public_inproc_reply_roundtrip_keeps_payload_and_request_info ()
+{
+    void *left = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *right = test_context_socket (ZLINK_SOCKET_PAIR);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (left, "inproc://public_inproc_reply_roundtrip"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (right, "inproc://public_inproc_reply_roundtrip"));
+
+    zlink_msg_t outbound;
+    const char payload[] = "reply";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&outbound, sizeof (payload) - 1));
+    memcpy (zlink_msg_data (&outbound), payload, sizeof (payload) - 1);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_set_reply (&outbound, 77));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (right, &outbound, 1, 0));
+
+    zlink_msg_t *received = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (left, NULL, &received, &part_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    assert_request_info (&received[0], ZLINK_MSG_TYPE_REPLY, 77);
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (payload) - 1, zlink_msg_size (&received[0]));
+    TEST_ASSERT_EQUAL_MEMORY (payload, zlink_msg_data (&received[0]),
+                              sizeof (payload) - 1);
+    zlink_multipart_close (received, part_count);
+}
+
+void test_public_inproc_data_payload_matching_envelope_stays_data ()
+{
+    void *left = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *right = test_context_socket (ZLINK_SOCKET_PAIR);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (left, "inproc://public_inproc_request_false_positive"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (right, "inproc://public_inproc_request_false_positive"));
+
+    const unsigned char payload[] = {
+      'Z', 'R', 'R', 'P', 1, static_cast<unsigned char> (ZLINK_MSG_TYPE_REQUEST),
+      0,   0,   0,   0,   0, 0, 0, 42};
+    zlink_msg_t outbound;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&outbound, sizeof (payload)));
+    memcpy (zlink_msg_data (&outbound), payload, sizeof (payload));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (right, &outbound, 1, 0));
+
+    zlink_msg_t *received = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (left, NULL, &received, &part_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    assert_request_info (&received[0], ZLINK_MSG_TYPE_DATA, 0);
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (payload), zlink_msg_size (&received[0]));
+    TEST_ASSERT_EQUAL_MEMORY (payload, zlink_msg_data (&received[0]),
+                              sizeof (payload));
+    zlink_multipart_close (received, part_count);
+}
+
+void test_public_inproc_request_multipart_preserves_part_count ()
+{
+    void *left = test_context_socket (ZLINK_SOCKET_DEALER);
+    void *right = test_context_socket (ZLINK_SOCKET_DEALER);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (left, "inproc://public_inproc_request_multipart"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (right, "inproc://public_inproc_request_multipart"));
+
+    zlink_msg_t parts[2];
+    const char head[] = "head";
+    const char body[] = "body";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&parts[0], sizeof (head) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&parts[1], sizeof (body) - 1));
+    memcpy (zlink_msg_data (&parts[0]), head, sizeof (head) - 1);
+    memcpy (zlink_msg_data (&parts[1]), body, sizeof (body) - 1);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_set_request (&parts[0], 555));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (right, parts, 2, 0));
+
+    zlink_msg_t *received = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (left, NULL, &received, &part_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (2, part_count);
+    assert_request_info (&received[0], ZLINK_MSG_TYPE_REQUEST, 555);
+    assert_request_info (&received[1], ZLINK_MSG_TYPE_DATA, 0);
+    TEST_ASSERT_EQUAL_MEMORY (head, zlink_msg_data (&received[0]),
+                              sizeof (head) - 1);
+    TEST_ASSERT_EQUAL_MEMORY (body, zlink_msg_data (&received[1]),
+                              sizeof (body) - 1);
+    zlink_multipart_close (received, part_count);
+}
+
+void test_public_inproc_router_request_reply_preserves_routing_id_and_info ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+
+    const char routing_id[] = "RR";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (dealer, routing_id, sizeof (routing_id) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (router, "inproc://public_inproc_router_request_reply"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (dealer, "inproc://public_inproc_router_request_reply"));
+
+    zlink_msg_t request;
+    const char request_payload[] = "ping";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&request, sizeof (request_payload) - 1));
+    memcpy (zlink_msg_data (&request), request_payload,
+            sizeof (request_payload) - 1);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_set_request (&request, 9001));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (dealer, &request, 1, 0));
+
+    zlink_routing_id_t source_rid;
+    zlink_msg_t *received = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv (router, &source_rid, &received, &part_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (routing_id) - 1, source_rid.size);
+    TEST_ASSERT_EQUAL_MEMORY (routing_id, source_rid.data,
+                              sizeof (routing_id) - 1);
+    assert_request_info (&received[0], ZLINK_MSG_TYPE_REQUEST, 9001);
+    TEST_ASSERT_EQUAL_MEMORY (request_payload, zlink_msg_data (&received[0]),
+                              sizeof (request_payload) - 1);
+    zlink_multipart_close (received, part_count);
+
+    zlink_msg_t reply;
+    const char reply_payload[] = "pong";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&reply, sizeof (reply_payload) - 1));
+    memcpy (zlink_msg_data (&reply), reply_payload, sizeof (reply_payload) - 1);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_set_reply (&reply, 9001));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_rid (router, &source_rid, &reply, 1, 0));
+
+    zlink_msg_t *reply_parts = NULL;
+    size_t reply_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv (dealer, NULL, &reply_parts, &reply_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (1, reply_count);
+    assert_request_info (&reply_parts[0], ZLINK_MSG_TYPE_REPLY, 9001);
+    TEST_ASSERT_EQUAL_MEMORY (reply_payload, zlink_msg_data (&reply_parts[0]),
+                              sizeof (reply_payload) - 1);
+    zlink_multipart_close (reply_parts, reply_count);
+}
+
 void test_public_inproc_pair_send_failure_consumes_all_parts ()
 {
     void *right = test_context_socket (ZLINK_SOCKET_PAIR);
@@ -777,5 +968,13 @@ int main (void)
       test_public_inproc_router_recv_multipart_with_source_rid_blocking);
     RUN_TEST (
       test_public_inproc_router_recv_keeps_source_rid_across_reset);
+    RUN_TEST (
+      test_public_inproc_request_roundtrip_keeps_payload_and_request_info);
+    RUN_TEST (
+      test_public_inproc_reply_roundtrip_keeps_payload_and_request_info);
+    RUN_TEST (test_public_inproc_data_payload_matching_envelope_stays_data);
+    RUN_TEST (test_public_inproc_request_multipart_preserves_part_count);
+    RUN_TEST (
+      test_public_inproc_router_request_reply_preserves_routing_id_and_info);
     return UNITY_END ();
 }

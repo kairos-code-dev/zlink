@@ -2,6 +2,7 @@
 
 > **상태**: Draft
 > **소비자**: [`bindings/REQUEST_REPLY_SPEC.md`](../../../bindings/REQUEST_REPLY_SPEC.md)
+> **관련 문서**: [`MSG_METADATA_SPEC.md`](MSG_METADATA_SPEC.md) — 범용 per-message metadata
 
 ---
 
@@ -163,7 +164,20 @@ core의 recv 경로가 수신 메시지에서 envelope를 자동으로 파싱한
 - envelope가 존재하지 않으면 `msg_type=DATA`, `correlation_id=0`으로
   설정한다 (기존 동작과 동일).
 - envelope 파싱 실패(손상 등)가 정상 DATA 메시지를 깨뜨리면 안 된다.
-  파싱은 false positive를 만들지 않는 방식으로 구현한다.
+  v1 파싱은 zlink-managed peer 간 정상 송수신 경로에서 false positive를
+  만들지 않는 방식으로 구현한다.
+
+### 6.2.1 v1 범위와 한계
+
+- v1의 request-reply envelope는 zlink core가 관리하는 private wire
+  convention이다.
+- v1 구현은 zlink의 public send/recv 경로가 생성한 envelope를 안정적으로
+  round-trip하는 것을 목표로 한다.
+- foreign peer 또는 raw peer가 v1 envelope와 동일한 multipart/frame bytes를
+  의도적으로 구성해 전송하는 경우까지 false positive 0을 보장하는 것은
+  v1의 범위에 포함하지 않는다.
+- 즉 v1의 "false positive 없음"은 정상적인 zlink-managed transport 경로
+  기준의 계약이다.
 
 ### 6.3 Encoding 세부사항
 
@@ -172,7 +186,8 @@ exact wire encoding은 core 내부 구현 세부사항이다.
 
 - DATA 메시지의 wire payload는 변경되지 않는다.
 - REQUEST/REPLY 메시지의 사용자 payload는 변경되지 않는다.
-- envelope는 사용자 payload와 절대 혼동되지 않는다.
+- v1에서 envelope는 zlink-managed peer 간 정상 wire 경로에서 사용자 payload와
+  혼동되지 않는다.
 - multipart 메시지에서 envelope는 사용자 part count에 영향을 주지 않는다.
   사용자가 `zlink_msg_get_request_info()`로 조회한 뒤 payload parts를
   처리할 때, envelope에 의한 추가 part가 보이면 안 된다.
@@ -183,6 +198,18 @@ exact wire encoding은 core 내부 구현 세부사항이다.
 - multipart의 내부 frame 구조를 활용
 
 어떤 방식이든 위 의미 계약을 만족하면 된다.
+
+### 6.4 후속 방향 (v2)
+
+- foreign/raw peer까지 포함해 false positive를 구조적으로 0으로 만들려면,
+  envelope를 단순 payload prefix나 일반 multipart 관례에 두지 않고
+  protocol/transport 레벨의 reserved marker로 올려야 한다.
+- 예:
+  - decoder-visible reserved frame kind
+  - transport-private frame attribute
+  - session/encoder/decoder가 함께 이해하는 protocol-level marker
+- 이는 wire compatibility 검토 범위가 커지므로 v1 범위에는 포함하지 않고,
+  v2 설계 과제로 둔다.
 
 ---
 

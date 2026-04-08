@@ -356,6 +356,23 @@ class socket_base_t : public own_t,
                                                 size_t part_count_,
                                                 int flags_,
                                                 int route_ready_retry_ms_);
+    friend int logical_multipart_send_prefixed_frame (
+      socket_base_t *socket_,
+      const void *prefix_data_,
+      size_t prefix_size_,
+      int prefix_frame_flags_,
+      zlink_msg_t *parts_,
+      size_t part_count_,
+      int flags_);
+    friend int logical_multipart_send_routed_prefixed_frame (
+      socket_base_t *socket_,
+      const zlink_routing_id_t *routing_id_,
+      const void *prefix_data_,
+      size_t prefix_size_,
+      int prefix_frame_flags_,
+      zlink_msg_t *parts_,
+      size_t part_count_,
+      int flags_);
     friend int logical_multipart_publish (socket_base_t *socket_,
                                           const char *topic_,
                                           zlink_msg_t *parts_,

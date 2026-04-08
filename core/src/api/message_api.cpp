@@ -6,6 +6,41 @@
 #include "core/msg.hpp"
 #include "core/recv_tls_view.hpp"
 
+namespace
+{
+zlink::msg_t *validated_msg (zlink_msg_t *msg_)
+{
+    if (!msg_) {
+        errno = EINVAL;
+        return NULL;
+    }
+
+    zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (msg_);
+    if (!msg->check ()) {
+        errno = EINVAL;
+        return NULL;
+    }
+
+    return msg;
+}
+
+const zlink::msg_t *validated_msg (const zlink_msg_t *msg_)
+{
+    if (!msg_) {
+        errno = EINVAL;
+        return NULL;
+    }
+
+    const zlink::msg_t *msg = reinterpret_cast<const zlink::msg_t *> (msg_);
+    if (!msg->check ()) {
+        errno = EINVAL;
+        return NULL;
+    }
+
+    return msg;
+}
+}
+
 int zlink_msg_init (zlink_msg_t *msg_)
 {
     return (reinterpret_cast<zlink::msg_t *> (msg_))->init ();
@@ -43,6 +78,44 @@ int zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_)
 {
     return (reinterpret_cast<zlink::msg_t *> (dest_))
       ->copy (*reinterpret_cast<zlink::msg_t *> (src_));
+}
+
+int zlink_msg_set_request (zlink_msg_t *msg_, uint64_t correlation_id_)
+{
+    zlink::msg_t *msg = validated_msg (msg_);
+    if (!msg)
+        return -1;
+
+    msg->set_request_info (ZLINK_MSG_TYPE_REQUEST, correlation_id_);
+    errno = 0;
+    return 0;
+}
+
+int zlink_msg_set_reply (zlink_msg_t *msg_, uint64_t correlation_id_)
+{
+    zlink::msg_t *msg = validated_msg (msg_);
+    if (!msg)
+        return -1;
+
+    msg->set_request_info (ZLINK_MSG_TYPE_REPLY, correlation_id_);
+    errno = 0;
+    return 0;
+}
+
+int zlink_msg_get_request_info (const zlink_msg_t *msg_,
+                                uint8_t *type_out_,
+                                uint64_t *correlation_id_out_)
+{
+    const zlink::msg_t *msg = validated_msg (msg_);
+    if (!msg)
+        return -1;
+
+    if (type_out_)
+        *type_out_ = msg->request_type ();
+    if (correlation_id_out_)
+        *correlation_id_out_ = msg->request_correlation_id ();
+    errno = 0;
+    return 0;
 }
 
 void *zlink_msg_data (zlink_msg_t *msg_)

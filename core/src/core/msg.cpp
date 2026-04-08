@@ -95,6 +95,11 @@ zlink::msg_t::content_t *decode_slice_hint (void *hint_, bool *lmsg_owner_out_)
     return reinterpret_cast<zlink::msg_t::content_t *> (encoded
                                                         & ~slice_lmsg_flag);
 }
+
+enum : uint8_t
+{
+    request_type_data = 0
+};
 }
 
 bool zlink::msg_t::check () const
@@ -129,6 +134,8 @@ int zlink::msg_t::init ()
     _u.vsm.type = type_vsm;
     _u.vsm.flags = 0;
     _u.vsm.size = 0;
+    _u.vsm.msg_type = request_type_data;
+    _u.vsm.correlation_id = 0;
     _u.vsm.group.sgroup.group[0] = '\0';
     _u.vsm.group.type = group_type_short;
     _u.vsm.routing_id = 0;
@@ -142,6 +149,8 @@ int zlink::msg_t::init_size (size_t size_)
         _u.vsm.type = type_vsm;
         _u.vsm.flags = 0;
         _u.vsm.size = static_cast<unsigned char> (size_);
+        _u.vsm.msg_type = request_type_data;
+        _u.vsm.correlation_id = 0;
         _u.vsm.group.sgroup.group[0] = '\0';
         _u.vsm.group.type = group_type_short;
         _u.vsm.routing_id = 0;
@@ -149,6 +158,8 @@ int zlink::msg_t::init_size (size_t size_)
         _u.lmsg.metadata = NULL;
         _u.lmsg.type = type_lmsg;
         _u.lmsg.flags = 0;
+        _u.lmsg.msg_type = request_type_data;
+        _u.lmsg.correlation_id = 0;
         _u.lmsg.group.sgroup.group[0] = '\0';
         _u.lmsg.group.type = group_type_short;
         _u.lmsg.routing_id = 0;
@@ -309,6 +320,8 @@ int zlink::msg_t::init_external_storage (content_t *content_,
     _u.zclmsg.metadata = NULL;
     _u.zclmsg.type = type_zclmsg;
     _u.zclmsg.flags = 0;
+    _u.zclmsg.msg_type = request_type_data;
+    _u.zclmsg.correlation_id = 0;
     _u.zclmsg.group.sgroup.group[0] = '\0';
     _u.zclmsg.group.type = group_type_short;
     _u.zclmsg.routing_id = 0;
@@ -337,6 +350,8 @@ int zlink::msg_t::init_data (void *data_,
         _u.cmsg.metadata = NULL;
         _u.cmsg.type = type_cmsg;
         _u.cmsg.flags = 0;
+        _u.cmsg.msg_type = request_type_data;
+        _u.cmsg.correlation_id = 0;
         _u.cmsg.data = data_;
         _u.cmsg.size = size_;
         _u.cmsg.group.sgroup.group[0] = '\0';
@@ -346,6 +361,8 @@ int zlink::msg_t::init_data (void *data_,
         _u.lmsg.metadata = NULL;
         _u.lmsg.type = type_lmsg;
         _u.lmsg.flags = 0;
+        _u.lmsg.msg_type = request_type_data;
+        _u.lmsg.correlation_id = 0;
         _u.lmsg.group.sgroup.group[0] = '\0';
         _u.lmsg.group.type = group_type_short;
         _u.lmsg.routing_id = 0;
@@ -370,6 +387,8 @@ int zlink::msg_t::init_delimiter ()
     _u.delimiter.metadata = NULL;
     _u.delimiter.type = type_delimiter;
     _u.delimiter.flags = 0;
+    _u.delimiter.msg_type = request_type_data;
+    _u.delimiter.correlation_id = 0;
     _u.delimiter.group.sgroup.group[0] = '\0';
     _u.delimiter.group.type = group_type_short;
     _u.delimiter.routing_id = 0;
@@ -381,6 +400,8 @@ int zlink::msg_t::init_join ()
     _u.base.metadata = NULL;
     _u.base.type = type_join;
     _u.base.flags = 0;
+    _u.base.msg_type = request_type_data;
+    _u.base.correlation_id = 0;
     _u.base.group.sgroup.group[0] = '\0';
     _u.base.group.type = group_type_short;
     _u.base.routing_id = 0;
@@ -392,6 +413,8 @@ int zlink::msg_t::init_leave ()
     _u.base.metadata = NULL;
     _u.base.type = type_leave;
     _u.base.flags = 0;
+    _u.base.msg_type = request_type_data;
+    _u.base.correlation_id = 0;
     _u.base.group.sgroup.group[0] = '\0';
     _u.base.group.type = group_type_short;
     _u.base.routing_id = 0;
@@ -611,6 +634,30 @@ uint32_t zlink::msg_t::refcnt_value () const
     }
 
     return 1;
+}
+
+uint8_t zlink::msg_t::request_type () const
+{
+    zlink_assert (check ());
+    return _u.base.msg_type;
+}
+
+uint64_t zlink::msg_t::request_correlation_id () const
+{
+    zlink_assert (check ());
+    return _u.base.correlation_id;
+}
+
+void zlink::msg_t::set_request_info (uint8_t type_, uint64_t correlation_id_)
+{
+    zlink_assert (check ());
+    _u.base.msg_type = type_;
+    _u.base.correlation_id = correlation_id_;
+}
+
+void zlink::msg_t::reset_request_info ()
+{
+    set_request_info (request_type_data, 0);
 }
 
 void zlink::msg_t::shrink (size_t new_size_)

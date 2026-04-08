@@ -14,6 +14,14 @@
 
 namespace
 {
+enum : uint8_t
+{
+    rr_envelope_version = 1
+};
+
+const unsigned char rr_envelope_magic[] = {'Z', 'R', 'R', 'P'};
+const size_t rr_envelope_size = sizeof (rr_envelope_magic) + 1 + 1 + 8;
+
 int validate_send_parts (zlink_msg_t *parts_, size_t part_count_)
 {
     if ((!parts_ && part_count_ > 0) || part_count_ == 0) {
@@ -68,6 +76,54 @@ bool try_extract_router_target_rid (const zlink_msg_t *part_,
     out_->size = static_cast<uint8_t> (size);
     memcpy (out_->data, msg->data (), size);
     return true;
+}
+
+bool is_request_reply_type (uint8_t type_)
+{
+    return type_ == ZLINK_MSG_TYPE_REQUEST || type_ == ZLINK_MSG_TYPE_REPLY;
+}
+
+bool first_part_has_request_reply (zlink_msg_t *parts_, size_t part_count_)
+{
+    if (!parts_ || part_count_ == 0)
+        return false;
+
+    zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (&parts_[0]);
+    return msg->check () && is_request_reply_type (msg->request_type ());
+}
+
+void encode_u64_be (uint64_t value_, unsigned char *out_)
+{
+    for (int i = 7; i >= 0; --i) {
+        out_[i] = static_cast<unsigned char> (value_ & 0xffu);
+        value_ >>= 8;
+    }
+}
+
+int encode_request_reply_envelope (const zlink::msg_t &src_, zlink::msg_t *dst_)
+{
+    if (!dst_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const uint8_t type = src_.request_type ();
+    if (!is_request_reply_type (type)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (dst_->init_size (rr_envelope_size) != 0)
+        return -1;
+
+    unsigned char *out = static_cast<unsigned char *> (dst_->data ());
+    memcpy (out, rr_envelope_magic, sizeof (rr_envelope_magic));
+    out[sizeof (rr_envelope_magic)] = rr_envelope_version;
+    out[sizeof (rr_envelope_magic) + 1] = type;
+    encode_u64_be (src_.request_correlation_id (),
+                   out + sizeof (rr_envelope_magic) + 2);
+    dst_->set_flags (zlink::msg_t::command);
+    return 0;
 }
 
 int s_sendmsg (socket_handle_t handle_,
@@ -275,6 +331,22 @@ int send_socket_unrouted_parts (socket_handle_t handle_,
         return -1;
     }
 
+    if (first_part_has_request_reply (parts_, part_count_)) {
+        zlink::msg_t envelope;
+        if (encode_request_reply_envelope (
+              *reinterpret_cast<zlink::msg_t *> (&parts_[0]), &envelope)
+            != 0)
+            return -1;
+
+        const int rc = zlink::logical_multipart_send_prefixed_frame (
+          handle_.socket, envelope.data (), envelope.size (),
+          zlink::msg_t::command, parts_, part_count_, flags_);
+        const int saved_errno = errno;
+        (void) envelope.close ();
+        errno = saved_errno;
+        return rc;
+    }
+
     if (part_count_ == 1) {
         const int rc = s_sendmsg (handle_, &parts_[0], flags_ & ZLINK_DONTWAIT);
         if (rc < 0)
@@ -311,6 +383,22 @@ int send_socket_routed_parts (socket_handle_t handle_,
     if (type != ZLINK_CORE_SOCKET_ROUTER) {
         errno = ENOTSUP;
         return -1;
+    }
+
+    if (first_part_has_request_reply (parts_, part_count_)) {
+        zlink::msg_t envelope;
+        if (encode_request_reply_envelope (
+              *reinterpret_cast<zlink::msg_t *> (&parts_[0]), &envelope)
+            != 0)
+            return -1;
+
+        const int rc = zlink::logical_multipart_send_routed_prefixed_frame (
+          handle_.socket, target_rid_, envelope.data (), envelope.size (),
+          zlink::msg_t::command, parts_, part_count_, flags_);
+        const int saved_errno = errno;
+        (void) envelope.close ();
+        errno = saved_errno;
+        return rc;
     }
 
     if (part_count_ == 1) {

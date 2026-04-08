@@ -5,6 +5,7 @@
 
 #include <stddef.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #include "utils/config.hpp"
 #include "utils/err.hpp"
@@ -101,6 +102,10 @@ class msg_t
     void *data ();
     size_t size () const;
     uint32_t refcnt_value () const;
+    uint8_t request_type () const;
+    uint64_t request_correlation_id () const;
+    void set_request_info (uint8_t type_, uint64_t correlation_id_);
+    void reset_request_info ();
     unsigned char flags () const;
     void set_flags (unsigned char flags_);
     void reset_flags (unsigned char flags_);
@@ -160,7 +165,9 @@ class msg_t
     enum
     {
         max_vsm_size =
-          msg_t_size - (sizeof (metadata_t *) + 3 + 16 + sizeof (uint32_t))
+          msg_t_size
+          - (sizeof (metadata_t *) + sizeof (uint64_t) + 4 + 16
+             + sizeof (uint32_t))
     };
     enum
     {
@@ -234,21 +241,26 @@ class msg_t
         struct
         {
             metadata_t *metadata;
+            uint64_t correlation_id;
             unsigned char unused[msg_t_size
-                                 - (sizeof (metadata_t *) + 2
+                                 - (sizeof (metadata_t *) + sizeof (uint64_t)
+                                    + 3
                                     + sizeof (uint32_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
+            unsigned char msg_type;
             uint32_t routing_id;
             group_t group;
         } base;
         struct
         {
             metadata_t *metadata;
+            uint64_t correlation_id;
             unsigned char data[max_vsm_size];
             unsigned char size;
             unsigned char type;
             unsigned char flags;
+            unsigned char msg_type;
             uint32_t routing_id;
             group_t group;
         } vsm;
@@ -256,12 +268,15 @@ class msg_t
         {
             metadata_t *metadata;
             content_t *content;
+            uint64_t correlation_id;
             unsigned char
               unused[msg_t_size
-                     - (sizeof (metadata_t *) + sizeof (content_t *) + 2
+                     - (sizeof (metadata_t *) + sizeof (content_t *)
+                        + sizeof (uint64_t) + 3
                         + sizeof (uint32_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
+            unsigned char msg_type;
             uint32_t routing_id;
             group_t group;
         } lmsg;
@@ -269,12 +284,15 @@ class msg_t
         {
             metadata_t *metadata;
             content_t *content;
+            uint64_t correlation_id;
             unsigned char
               unused[msg_t_size
-                     - (sizeof (metadata_t *) + sizeof (content_t *) + 2
+                     - (sizeof (metadata_t *) + sizeof (content_t *)
+                        + sizeof (uint64_t) + 3
                         + sizeof (uint32_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
+            unsigned char msg_type;
             uint32_t routing_id;
             group_t group;
         } zclmsg;
@@ -283,23 +301,29 @@ class msg_t
             metadata_t *metadata;
             void *data;
             size_t size;
+            uint64_t correlation_id;
             unsigned char unused[msg_t_size
                                  - (sizeof (metadata_t *) + sizeof (void *)
-                                    + sizeof (size_t) + 2 + sizeof (uint32_t)
+                                    + sizeof (size_t) + sizeof (uint64_t) + 3
+                                    + sizeof (uint32_t)
                                     + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
+            unsigned char msg_type;
             uint32_t routing_id;
             group_t group;
         } cmsg;
         struct
         {
             metadata_t *metadata;
+            uint64_t correlation_id;
             unsigned char unused[msg_t_size
-                                 - (sizeof (metadata_t *) + 2
+                                 - (sizeof (metadata_t *) + sizeof (uint64_t)
+                                    + 3
                                     + sizeof (uint32_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
+            unsigned char msg_type;
             uint32_t routing_id;
             group_t group;
         } delimiter;

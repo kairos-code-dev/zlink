@@ -1,7 +1,0 @@
-## Effective Options (start)
-  pattern:   MULTI_DEALER_DEALER
-  recv:      recv
-  clients:   5
-
-
->> MULTI_DEALER_DEALER transport=tcp size=64 clients=5

@@ -219,6 +219,7 @@ local.tar.gz
 # Local benchmark outputs
 core/bench/**/results/
 bindings/*/benchwithzlink/results/
+bindings/*/perf/results/
 core/tests/scenario/**/result/
 
 # Refactor execution logs

@@ -1152,169 +1152,45 @@ RegistryQueryClient (원격 토폴로지 조회)
 - 바인딩 샘플을 추가, 수정, 리뷰할 때는 위 문서를 기준으로 판단한다.
 
 ## Perf Policy
-- perf 코드는 데모가 아니라 바인딩 라이브러리의 성능을 측정하고 개선하기 위한
-  코드다.
-- perf 의 1차 목적은 바인딩 레이어의 비용을 드러내고, 병목과 회귀를 식별하고,
-  개선 작업의 전후 차이를 측정하는 것이다.
-- perf 코드는 다음 기준을 반드시 따른다.
-  - `core/perf` 에서 제공하는 패턴과 시나리오를 기준으로 한다
-  - `doc/perf` 정책을 준수한다
-- perf 코드를 작성하거나 리뷰할 때는 반드시 다음 정책 문서를 읽고 준수해야
-  한다.
-  - [`doc/perf/PERF_POLICY.md`](../doc/perf/PERF_POLICY.md) — 공통 perf 정책
-  - [`doc/perf/PERF_SINGLE_TEST_POLICY.md`](../doc/perf/PERF_SINGLE_TEST_POLICY.md) — single suite 정책
-  - [`doc/perf/PERF_MULTI_TEST_POLICY.md`](../doc/perf/PERF_MULTI_TEST_POLICY.md) — multi suite 정책
-- core perf가 C API 형태로 제공되더라도, 각 언어 perf 코드는 성능 테스트의
-  목적을 해치지 않는 범위에서 해당 언어의 스타일에 맞게 작성한다.
-- 즉 perf 코드는 다음 둘을 동시에 만족해야 한다.
-  - core perf와 비교 가능한 시나리오
-  - 각 언어 사용자에게 자연스러운 스타일
+
+perf 코드는 데모가 아니라 바인딩 라이브러리의 성능을 측정하고 개선하기 위한
+코드다. perf 의 1차 목적은 바인딩 레이어의 비용을 드러내고, 병목과 회귀를
+식별하고, 개선 작업의 전후 차이를 측정하는 것이다.
+
+**perf 정책의 단일 기준은 `doc/perf/` 정책 문서다.** CLI 옵션, 기본값, 출력
+포맷, RESULT line 형식, 패턴/transport matrix, phase 규칙, 결과 저장, 실패
+처리, 환경 변수 등 모든 세부 규격은 아래 문서를 따른다. 본 섹션에서 중복
+정의하지 않는다.
+
+- [`doc/perf/PERF_POLICY.md`](../doc/perf/PERF_POLICY.md) — 공통 perf 정책
+  (공통 원칙, 디렉터리 구조, RESULT 형식, 결과 저장, 출력 형식, 실패 처리,
+  환경 변수, 리팩토링 원칙, 언어별 적용 범위)
+- [`doc/perf/PERF_SINGLE_TEST_POLICY.md`](../doc/perf/PERF_SINGLE_TEST_POLICY.md) — single suite 정책
+- [`doc/perf/PERF_MULTI_TEST_POLICY.md`](../doc/perf/PERF_MULTI_TEST_POLICY.md) — multi suite 정책
+
+### 바인딩 perf 원칙
+
+- perf 코드는 `doc/perf` 정책을 준수한다.
+- `core/perf` 에서 제공하는 패턴과 시나리오를 기준으로 한다.
+- core perf와 비교 가능한 시나리오를 유지하면서, 각 언어 스타일에 맞게 작성한다.
+- 측정 anchor point, phase 의미, metric 집합, RESULT line 의미를 바꾸지 않는다.
 - perf 정책은 성능 측정 surface를 공식 제공하는 바인딩에서는 `Required`다.
-- perf 코드를 아직 제공하지 않는 바인딩에는 `Target`으로 본다.
+  perf 코드를 아직 제공하지 않는 바인딩에는 `Target`으로 본다.
 
-### Perf Design Rules
-- perf 코드는 바인딩 성능을 측정하는 코드여야 한다.
-- benchmark harness 자체의 복잡도, 불필요한 helper, 과도한 추상화로 핵심
-  비용이 가려지면 안 된다.
-- 핵심 로직의 가시성이 높아야 한다.
-- send/recv/publish/subscribe/callback 핵심 경로가 perf 파일 본문에서
-  직접 읽혀야 한다.
-- 느린 fallback path, extra logging, debug-only conversion을 perf hot path에
-  넣으면 안 된다.
-- perf 는 correctness 예제가 아니라 cost measurement 코드이므로, 편의성보다
-  측정 충실도를 우선한다.
+### 바인딩 API Spec 문서
 
-### Perf Structure Rules
-- 각 perf 패턴은 별도 파일로 제공해야 한다.
-- 한 파일이 여러 messaging 패턴을 섞으면 안 된다.
-- 패턴별 파일 분리 예:
-  - pair throughput/latency
-  - pubsub throughput/latency
-  - routed messaging throughput/latency
-  - stream throughput/latency
-  - callback delivery cost
-- direct recv 패턴과 callback 패턴도 가능하면 별도 파일로 분리한다.
-- 파일명만 보고 어떤 패턴의 perf 인지 알 수 있어야 한다.
+각 바인딩의 API surface, recv/callback 모델, perf 적용 패턴은 아래 문서를 참조한다.
 
-### Perf Alignment Rules
-- 각 언어 perf 는 `core/perf` 의 목적과 형태를 기준으로 맞춘다.
-- 다만 구현 표면은 각 언어 스타일을 반영할 수 있다.
-  - C++: RAII, typed wrapper
-  - .NET: idiomatic object model
-  - Java: domain object / typed API
-  - Go: idiomatic Go (explicit error, struct, interface)
-  - Rust: idiomatic Rust (ownership, Result, newtype)
-  - Node/Python: 해당 언어 관례
-- 단, 언어 스타일을 반영한다는 이유로 측정 대상이 바뀌면 안 된다.
-- perf 간 비교 가능성을 유지하려면 다음을 맞춰야 한다.
-  - 메시징 패턴
-  - 측정 단위
-  - warmup / run 구조
-  - 성공 조건과 종료 조건
-
-### Perf Script Interface Rules
-- 각 바인딩은 `core/perf`와 동일한 실행 스크립트 인터페이스를 제공해야 한다.
-- 스크립트 형태, CLI 옵션, 기본값, 출력 포맷, 결과 파일 naming이 core와
-  일치해야 한다.
-- 바인딩이 독자적인 옵션 이름, 기본값, 출력 형식을 만들면 안 된다.
-
-#### 실행 스크립트 형태
-- 실행 스크립트는 `bindings/<언어>/perf/` 디렉토리에 위치해야 한다.
-- 각 바인딩 perf 디렉토리에 다음 entry point를 제공한다.
-  - `perf/run_benchmarks.sh` — single suite
-  - `perf/run_benchmarks_multi.sh` — multi suite
-- Windows 지원이 필요한 경우 `.ps1` 도 함께 제공한다.
-- 스크립트는 해당 언어 빌드/런타임을 내부에서 처리하고, 사용자에게는
-  core와 동일한 CLI 인터페이스를 노출해야 한다.
-
-#### CLI 옵션
-- core/perf 스크립트가 제공하는 공통 옵션을 동일한 이름과 의미로 지원한다.
-- 공통 옵션:
-
-| 옵션 | 의미 |
-|------|------|
-| `--pattern` | 패턴 목록 (comma-separated 또는 `ALL`) |
-| `--recv` | 수신 모델 (`recv` 또는 `callback`) |
-| `--duration` | active measurement 구간 (초) |
-| `--warmup` | warmup 구간 (초) |
-| `--msg-sizes` | 메시지 크기 목록 (comma-separated) |
-| `--transports` | transport 목록 (comma-separated) |
-| `--runs` | 반복 횟수 |
-| `--results-dir` | 결과 디렉토리 경로 |
-| `--results-tag` | 결과 파일 이름 태그 |
-
-- multi suite 추가 옵션:
-
-| 옵션 | 의미 |
-|------|------|
-| `--clients` | client 소켓 수 |
-
-- 옵션 이름을 바인딩별로 다르게 만들면 안 된다.
-  - 예: `--message-size`, `--size`, `--msg_size` 등으로 변형 금지
-
-#### 기본값
-- 기본값은 `core/perf` 기본값을 단일 기준으로 따른다.
-- 바인딩이 다른 기본값을 사용하면 안 된다.
-- single suite 기본값:
-
-| 항목 | 기본값 |
-|------|--------|
-| duration | `5`초 |
-| warmup | `2`초 |
-| recv | `callback` |
-| msg_sizes | `64, 256, 1024, 65536, 131072, 262144` |
-
-- multi suite 기본값:
-
-| 항목 | 기본값 |
-|------|--------|
-| duration | `5`초 |
-| warmup | `2`초 |
-| recv | `recv` |
-| clients | `100` (STREAM: `10000`) |
-| msg_sizes | `64, 256, 1024, 65536, 131072, 262144` (STREAM: `64, 256, 1024, 65536`) |
-
-#### 출력 포맷
-- 출력 구조는 core/perf와 동일해야 한다.
-- `## Effective Options (start)` 헤더를 반드시 포함한다.
-- RESULT line 형식:
-  ```
-  RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
-  ```
-- 필수 metric:
-  - `throughput` — Kmsg/s 또는 Kops/s
-  - `bandwidth` — MB/s
-  - `latency` — mean
-  - `latency_p95` — 95th percentile
-  - `latency_p99` — 99th percentile
-- 마크다운 테이블도 core와 동일한 형태로 출력한다.
-
-#### 결과 파일
-- 결과 파일은 다음 디렉토리에 저장한다.
-  - `results/{single|multi}/report/`
-- 파일 이름 형식:
-  ```
-  perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt
-  ```
-- `<platform>`: `linux`, `windows`, `macos`
-- `<recv_mode>`: 실제 사용된 모드 (`recv` 또는 `callback`)
-- `<tag>`: `--results-tag` 값 (선택)
-
-### Perf Verification Requirements
-- perf 코드는 실제 측정 가능한 실행 entry를 제공해야 한다.
-- perf 실행 경로는 문서화되어야 한다.
-- 새로운 perf 추가 시 다음을 확인해야 한다.
-  - 개별 perf 실행 가능
-  - 패턴 설명 가능
-  - 핵심 메시징 경로가 보이는지 확인
-  - core perf / doc perf 정책과 충돌하지 않는지 확인
+| 바인딩 | API Spec | recv/callback |
+|--------|----------|---------------|
+| Node.js | [`NODE_API_SPEC.md`](NODE_API_SPEC.md) | recv only |
+| Python | [`PYTHON_API_SPEC.md`](PYTHON_API_SPEC.md) | recv only |
 
 ### Perf Review Checklist
+
 - 이 perf 가 바인딩 라이브러리 비용을 측정하고 있는가
-- harness 복잡도가 핵심 비용을 가리고 있지 않은가
-- 핵심 로직 가시성이 충분한가
+- 핵심 send/recv/callback 경로가 perf 파일 본문에서 직접 읽히는가
 - 각 패턴이 별도 파일로 분리되어 있는가
-- 언어 스타일은 반영하되 측정 목적을 해치지 않았는가
 - `core/perf` 패턴과 정렬되어 있는가
 - `doc/perf` 정책을 준수하는가
 

@@ -10,6 +10,14 @@
 > `bindings/go`, `bindings/node`, `bindings/python`)에 동일한 기준으로 적용한다.
 > 단, 각 언어의 구현 완성도와 지원 패턴 범위는 다를 수 있으므로 실제 parity
 > 수준은 언어별로 점검/정렬 대상이 된다.
+>
+> **언어별 적용 범위**:
+> - **전체 적용 (recv + callback)**: `core`(C), `bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/rust`, `bindings/go`
+> - **recv only 적용**: `bindings/node`, `bindings/python` —
+>   이 언어들은 런타임 특성(single-threaded event loop, GIL)으로 인해
+>   callback 모델 없이 **recv 모드만** 사용한다.
+>   single/multi 모두 `--recv recv`로 실행하며, callback 전용 패턴 테스트는
+>   수행하지 않는다.
 
 ---
 
@@ -17,12 +25,12 @@
 
 | 문서 | 설명 |
 |------|------|
-| **PERF_POLICY.md** (본 문서) | 공통 디렉터리 구조, 통합 실행, 비교 스크립트 |
-| [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) | single-client 벤치마크 측정 기준, 패턴, phase, 환경 변수 |
-| [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) | multi-client 벤치마크 측정 기준, 패턴, phase, 환경 변수 |
+| **PERF_POLICY.md** (본 문서) | 공통 원칙, 디렉터리 구조, RESULT 형식, 결과 저장, 출력 형식, 실패 처리, 환경 변수(공통), 리팩토링 원칙 |
+| [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) | single suite 전용: callback-only 모델, phase, 패턴/transport, single 전용 환경 변수 |
+| [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) | multi suite 전용: 프로세스 모델, backpressure, throughput/latency 측정, 패턴/transport, multi 전용 환경 변수 |
 
-- 측정 방법, 패턴별 상세, phase 제어, 환경 변수 등은 각 개별 정책 문서를 참조한다.
-- 본 문서는 **공통 구조**와 **통합 실행 방법**만 기술한다.
+- 양 suite에 공통으로 적용되는 모든 규칙은 본 문서에서 관리한다.
+- 개별 정책 문서는 해당 suite **전용** 규칙만 기술하며, 공통 규칙은 본 문서를 참조한다.
 - 각 바인딩의 실행 스크립트 경로는 `perf/single/` 및 `perf/multi/`에 위치한다.
 
 ## 1.1 공통 원칙
@@ -70,6 +78,10 @@
 - bindings perf는 “binding 라이브러리 성능”을 측정해야 한다. 따라서 core native
   perf 바이너리를 단순 wrapper로 다시 호출해 결과만 중계하는 방식은 정책 준수
   구현으로 보지 않는다.
+- managed runtime 바인딩(Java, .NET 등)은 size마다 프로세스를 재시작하므로,
+  런타임 옵션으로 시작 비용을 최소화해야 한다.
+  - Java: `-server`, `-XX:TieredStopAtLevel=1` 등
+  - .NET: ReadyToRun (R2R), `DOTNET_TieredCompilation=0` 등
 - backpressure 검증은 기본 perf surface가 아니라 `core/tests/integration`
   으로 분리한다. one-way backpressure 통합 범위는 `DEALER_DEALER`,
   `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `SPOT` 이며,
@@ -84,10 +96,9 @@
       send 수행.
     - poller가 recv/send 양쪽의 readiness 제어를 담당한다.
   - **callback 모델** (`--recv callback`):
-    - callback 모델은 모든 패턴의 일반 옵션이 아니다.
-    - single suite는 callback 모드만 기본 테스트 대상으로 둔다.
-    - multi suite는 recv 모드만 기본 테스트 대상으로 둔다.
-    - dual-mode 예외는 multi `SPOT` / `STREAM`만 허용한다.
+    - single suite는 callback 모드만 사용한다.
+    - multi suite는 recv 모드를 기본으로 하되, `SPOT` / `STREAM`은
+      callback 모드도 추가 지원한다.
     - `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
       callback 전용 파일명이나 별도 public pattern 이름을 정책에 추가하지
       않는다.
@@ -133,23 +144,31 @@
   start gate로 사용하지 않는다.
 - perf 연결 준비/handshake는 pattern별로 나눈다.
   - 일반 raw 패턴: low-cost monitor event `CONNECTION_READY`
-  - SPOT: explicit `READY/START` barrier protocol
+  - SPOT:
+    - single: local probe-based ready barrier
+    - multi: explicit control handshake barrier
 - raw perf ready gate는 expected client 수만큼 `CONNECTION_READY` 수신으로
   판정한다.
 - SPOT perf ready gate는 monitor event 나 snapshot 이 아니라 benchmark control
   protocol 로 판정한다.
+- single SPOT 은 service monitor 대신 local pub/sub probe 를 사용한다.
+  sender 가 metric header가 찍힌 probe payload 를 publish 하고, callback recv
+  쪽에서 첫 유효 수신을 확인하면 ready 로 판정한다.
 - multi SPOT barrier 의 `READY` 는 `connect_peer()` 직후 즉시 보내지 않는다.
-  local benchmark network 정책으로, 각 client spot 이 connect setup 을 끝낸 뒤
-  고정 stabilization window(기본 1초)를 거쳐 server spot 으로 `READY` 를
-  전송한다. server 는 expected client 수만큼 `READY` 를 받은 뒤 `START` 를
-  broadcast 한다.
-- 위 stabilization window 는 SPOT perf barrier 의 일부이며, raw pattern 의
-  monitor ready gate 와 동일한 public 계약으로 취급하지 않는다.
+  local benchmark network 정책으로, 각 client spot 이 control link ready 와
+  local connect setup 을 끝낸 뒤 stabilization window(기본 1초)를 거쳐
+  server control plane 으로 `READY_COUNT` 를 전송한다. server 는
+  expected client 수만큼 `READY` unit 을 모은 뒤 `START` 를 broadcast 한다.
+- multi SPOT 의 짧은 control settle 은 control socket connect 직후 publish
+  순서를 정렬하기 위한 barrier 내부 절차다. raw pattern 의 monitor ready gate 와
+  동일한 public 계약으로 취급하지 않는다.
 - `setup_connected_pair()` 같은 helper는 raw pattern 의 `CONNECTION_READY`
   counting 만 캡슐화한 경우에만 허용된다.
 - `wait_ready()` 같은 helper는 허용한다. 단:
   - raw pattern 에서는 `CONNECTION_READY` counting 만 수행해야 한다.
-  - SPOT 에서는 explicit `READY/START` barrier 만 수행해야 한다.
+  - single SPOT 에서는 local probe-based ready barrier 만 수행해야 한다.
+  - multi SPOT 에서는 control handshake(`CONNECTED`/`READY_COUNT`/`START`)
+    barrier 만 수행해야 한다.
   - delivery-ready event, service monitor, snapshot polling 을 helper 뒤에
     숨기면 안 된다.
 - suite별 정책 문서는 pattern별 low-cost ready gate event를 명시해야 한다.
@@ -157,12 +176,17 @@
   quorum 완화, 보정용 handshake 단계)을 두지 않는다.
 - perf start gate 구현에서 아래를 금지한다.
   - `sleep`/`msleep`/고정 지연
+    - 예외: `multi SPOT` barrier 내부의 stabilization/control-settle 절차는
+      본 문서와 suite 정책에 명시된 경우에 한해 허용한다. 이는 별도 public
+      gate나 일반 ready phase로 승격하지 않는다.
   - monitor snapshot polling
   - ad-hoc retry loop
 - perf lifecycle에서 아래와 같은 **벤치 단계**를 새로 만들지 않는다.
   - `preflight`
   - `prime`
   - `settle`
+    - 예외: `multi SPOT` barrier 내부 settle은 별도 lifecycle phase가 아니라
+      control handshake의 내부 절차로만 허용한다.
   - `stable`
   - `quiet`
   - `quiescent`
@@ -173,8 +197,8 @@
 - raw pattern 의 ready gate event 는
   [`doc/guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
   raw socket monitoring 절을 단일 기준으로 따른다.
-- SPOT 은 service monitor 를 사용하지 않으며, perf-ready 는 barrier protocol 로만
-  정의한다.
+- SPOT 은 service monitor 를 사용하지 않으며, perf-ready 는 suite별 benchmark
+  barrier protocol 로만 정의한다.
 - monitor event rename:
   - raw socket ready event 는 `CONNECTION_READY` 이다.
 - routing 검증이 필요한 패턴(예: ROUTER)은 monitor-ready 이후
@@ -357,6 +381,34 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 | STREAM / MULTI_STREAM | `recv` | 기본 recv 루프 | 기존 소켓 recv API로 메시지 수신 |
 | STREAM / MULTI_STREAM | `callback` | callback dispatch | stream dispatch callback API로 수신 |
 
+#### Server Per-Connection 프레임 재조립
+
+STREAM 소켓은 raw TCP 데이터를 수신하므로, 하나의 `recv` 호출이 len32be
+프레임 경계와 일치하지 않을 수 있다(부분 프레임, 다중 프레임 등). server는
+connection(routing_id) 별로 수신 바이트를 누적하여 완전한 프레임을 재조립해야
+한다.
+
+```text
+per-connection reassembly:
+  1. recv → routing_id + raw data chunk
+  2. routing_id별 재조립 버퍼에 append
+  3. 버퍼에서 완전한 len32be 프레임 파싱:
+     ┌─ 4B length header ─┐
+     │ payload_length      │ → payload_length 바이트 대기
+     └────────────────────┘
+  4. 완전한 프레임이면 echo send (동일 routing_id로)
+  5. 남은 partial data는 버퍼에 유지 → 다음 recv에서 이어서 조립
+```
+
+| 항목 | 규칙 |
+|------|------|
+| 재조립 단위 | routing_id (connection) 별 독립 버퍼 |
+| 프레임 파싱 | `[4B big-endian length][payload]` — length header가 완전히 도착한 뒤 payload length 바이트를 추가 대기 |
+| echo 시점 | 완전한 프레임 1개가 재조립되면 즉시 해당 routing_id로 echo send |
+| partial 처리 | recv 경계와 프레임 경계가 불일치할 수 있으므로 partial data를 connection 버퍼에 보존 |
+| connection 정리 | routing_id에 대한 zero-length recv(연결 종료)시 해당 버퍼 제거 |
+| recv/callback 공통 | 양쪽 모드 모두 동일한 per-connection 재조립 로직을 적용 |
+
 - client의 wire protocol을 len32be로 통일하는 이유: 서버 수신 방식만 다르고 client는 동일한 공통 바이너리를 사용하므로, 테스트 용이성과 비교 공정성을 위해 client 측 framing을 len32be로 고정한다.
 - 이 프로토콜은 multi suite에 적용된다. single suite에서는 STREAM 테스트를 수행하지 않는다.
 - legacy callback-named / len32be-named STREAM 패턴은 삭제 대상이다. public
@@ -397,7 +449,7 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 ### 2.3 저장 단위
 
 - 스크립트 1회 실행 = 1개 결과 파일. 실행에서 측정된 모든 패턴/transport/size 조합의 결과가 하나의 파일에 기록된다.
-  - **예외**: multi에서 preflight(nofile/memory) 검사로 모든 패턴이 skip되면 결과 파일 없이 `exit 0`한다.
+  - **예외**: multi에서 nofile/memory guard로 모든 패턴이 skip되면 결과 파일 없이 `exit 0`한다.
 
 ---
 

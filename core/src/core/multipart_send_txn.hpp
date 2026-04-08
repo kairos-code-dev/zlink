@@ -38,6 +38,30 @@ int logical_multipart_send_routed_prefixed_frame (
   size_t part_count_,
   int flags_);
 
+int logical_multipart_send_prefixed_frames (socket_base_t *socket_,
+                                            const void *prefix1_data_,
+                                            size_t prefix1_size_,
+                                            int prefix1_frame_flags_,
+                                            const void *prefix2_data_,
+                                            size_t prefix2_size_,
+                                            int prefix2_frame_flags_,
+                                            zlink_msg_t *parts_,
+                                            size_t part_count_,
+                                            int flags_);
+
+int logical_multipart_send_routed_prefixed_frames (
+  socket_base_t *socket_,
+  const zlink_routing_id_t *routing_id_,
+  const void *prefix1_data_,
+  size_t prefix1_size_,
+  int prefix1_frame_flags_,
+  const void *prefix2_data_,
+  size_t prefix2_size_,
+  int prefix2_frame_flags_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  int flags_);
+
 int logical_multipart_send_prefixed (socket_base_t *socket_,
                                      const void *prefix_data_,
                                      size_t prefix_size_,

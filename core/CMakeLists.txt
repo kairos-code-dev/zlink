@@ -973,7 +973,9 @@ set(api-sources
     src/api/zlink_utils.cpp)
 
 set(core-sources
+    src/core/message_envelope.cpp
     src/core/msg.cpp
+    src/core/user_metadata.cpp
     src/core/multipart_send_txn.cpp
     src/core/recv_internal.cpp
     src/core/send_internal.cpp

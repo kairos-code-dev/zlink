@@ -7,6 +7,7 @@
 #include "api/service_api_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/socket_message_api_internal.hpp"
+#include "core/message_envelope.hpp"
 #include "core/msg.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "utils/err.hpp"
@@ -14,14 +15,6 @@
 
 namespace
 {
-enum : uint8_t
-{
-    rr_envelope_version = 1
-};
-
-const unsigned char rr_envelope_magic[] = {'Z', 'R', 'R', 'P'};
-const size_t rr_envelope_size = sizeof (rr_envelope_magic) + 1 + 1 + 8;
-
 int validate_send_parts (zlink_msg_t *parts_, size_t part_count_)
 {
     if ((!parts_ && part_count_ > 0) || part_count_ == 0) {
@@ -78,52 +71,101 @@ bool try_extract_router_target_rid (const zlink_msg_t *part_,
     return true;
 }
 
-bool is_request_reply_type (uint8_t type_)
-{
-    return type_ == ZLINK_MSG_TYPE_REQUEST || type_ == ZLINK_MSG_TYPE_REPLY;
-}
-
 bool first_part_has_request_reply (zlink_msg_t *parts_, size_t part_count_)
 {
     if (!parts_ || part_count_ == 0)
         return false;
 
     zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (&parts_[0]);
-    return msg->check () && is_request_reply_type (msg->request_type ());
+    return msg->check () && zlink::message_has_request_reply_envelope (*msg);
 }
 
-void encode_u64_be (uint64_t value_, unsigned char *out_)
+bool first_part_has_user_metadata (zlink_msg_t *parts_, size_t part_count_)
 {
-    for (int i = 7; i >= 0; --i) {
-        out_[i] = static_cast<unsigned char> (value_ & 0xffu);
-        value_ >>= 8;
-    }
+    if (!parts_ || part_count_ == 0)
+        return false;
+
+    zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (&parts_[0]);
+    return msg->check () && zlink::message_has_user_metadata_envelope (*msg);
 }
 
-int encode_request_reply_envelope (const zlink::msg_t &src_, zlink::msg_t *dst_)
+int send_parts_with_internal_headers (socket_handle_t handle_,
+                                      const zlink_routing_id_t *target_rid_,
+                                      zlink_msg_t *parts_,
+                                      size_t part_count_,
+                                      zlink_send_flags_t flags_,
+                                      bool routed_)
 {
-    if (!dst_) {
-        errno = EFAULT;
+    const zlink::msg_t &first =
+      *reinterpret_cast<zlink::msg_t *> (&parts_[0]);
+    const bool has_rr = zlink::message_has_request_reply_envelope (first);
+    const bool has_metadata = zlink::message_has_user_metadata_envelope (first);
+
+    if (!has_rr && !has_metadata)
+        return routed_
+                 ? zlink::logical_multipart_send_routed (
+                     handle_.socket, target_rid_, parts_, part_count_, flags_)
+                 : zlink::logical_multipart_send (handle_.socket, parts_,
+                                                 part_count_, flags_);
+
+    zlink::msg_t rr_envelope;
+    zlink::msg_t metadata_envelope;
+    const bool need_rr_close = has_rr;
+    const bool need_metadata_close = has_metadata;
+
+    if (has_rr && zlink::encode_request_reply_envelope (first, &rr_envelope) != 0)
+        return -1;
+    if (has_metadata
+        && zlink::encode_user_metadata_envelope (first, &metadata_envelope)
+             != 0) {
+        const int saved_errno = errno;
+        if (need_rr_close)
+            (void) rr_envelope.close ();
+        errno = saved_errno;
         return -1;
     }
 
-    const uint8_t type = src_.request_type ();
-    if (!is_request_reply_type (type)) {
-        errno = EINVAL;
-        return -1;
+    int rc = 0;
+    if (has_rr && has_metadata) {
+        rc = routed_
+               ? zlink::logical_multipart_send_routed_prefixed_frames (
+                   handle_.socket, target_rid_, rr_envelope.data (),
+                   rr_envelope.size (), zlink::msg_t::command,
+                   metadata_envelope.data (), metadata_envelope.size (),
+                   zlink::msg_t::command, parts_, part_count_, flags_)
+               : zlink::logical_multipart_send_prefixed_frames (
+                   handle_.socket, rr_envelope.data (), rr_envelope.size (),
+                   zlink::msg_t::command, metadata_envelope.data (),
+                   metadata_envelope.size (), zlink::msg_t::command, parts_,
+                   part_count_, flags_);
+    } else if (has_rr) {
+        rc = routed_
+               ? zlink::logical_multipart_send_routed_prefixed_frame (
+                   handle_.socket, target_rid_, rr_envelope.data (),
+                   rr_envelope.size (), zlink::msg_t::command, parts_,
+                   part_count_, flags_)
+               : zlink::logical_multipart_send_prefixed_frame (
+                   handle_.socket, rr_envelope.data (), rr_envelope.size (),
+                   zlink::msg_t::command, parts_, part_count_, flags_);
+    } else {
+        rc = routed_
+               ? zlink::logical_multipart_send_routed_prefixed_frame (
+                   handle_.socket, target_rid_, metadata_envelope.data (),
+                   metadata_envelope.size (), zlink::msg_t::command, parts_,
+                   part_count_, flags_)
+               : zlink::logical_multipart_send_prefixed_frame (
+                   handle_.socket, metadata_envelope.data (),
+                   metadata_envelope.size (), zlink::msg_t::command, parts_,
+                   part_count_, flags_);
     }
 
-    if (dst_->init_size (rr_envelope_size) != 0)
-        return -1;
-
-    unsigned char *out = static_cast<unsigned char *> (dst_->data ());
-    memcpy (out, rr_envelope_magic, sizeof (rr_envelope_magic));
-    out[sizeof (rr_envelope_magic)] = rr_envelope_version;
-    out[sizeof (rr_envelope_magic) + 1] = type;
-    encode_u64_be (src_.request_correlation_id (),
-                   out + sizeof (rr_envelope_magic) + 2);
-    dst_->set_flags (zlink::msg_t::command);
-    return 0;
+    const int saved_errno = errno;
+    if (need_rr_close)
+        (void) rr_envelope.close ();
+    if (need_metadata_close)
+        (void) metadata_envelope.close ();
+    errno = saved_errno;
+    return rc;
 }
 
 int s_sendmsg (socket_handle_t handle_,
@@ -331,21 +373,10 @@ int send_socket_unrouted_parts (socket_handle_t handle_,
         return -1;
     }
 
-    if (first_part_has_request_reply (parts_, part_count_)) {
-        zlink::msg_t envelope;
-        if (encode_request_reply_envelope (
-              *reinterpret_cast<zlink::msg_t *> (&parts_[0]), &envelope)
-            != 0)
-            return -1;
-
-        const int rc = zlink::logical_multipart_send_prefixed_frame (
-          handle_.socket, envelope.data (), envelope.size (),
-          zlink::msg_t::command, parts_, part_count_, flags_);
-        const int saved_errno = errno;
-        (void) envelope.close ();
-        errno = saved_errno;
-        return rc;
-    }
+    if (first_part_has_request_reply (parts_, part_count_)
+        || first_part_has_user_metadata (parts_, part_count_))
+        return send_parts_with_internal_headers (handle_, NULL, parts_,
+                                                 part_count_, flags_, false);
 
     if (part_count_ == 1) {
         const int rc = s_sendmsg (handle_, &parts_[0], flags_ & ZLINK_DONTWAIT);
@@ -385,21 +416,10 @@ int send_socket_routed_parts (socket_handle_t handle_,
         return -1;
     }
 
-    if (first_part_has_request_reply (parts_, part_count_)) {
-        zlink::msg_t envelope;
-        if (encode_request_reply_envelope (
-              *reinterpret_cast<zlink::msg_t *> (&parts_[0]), &envelope)
-            != 0)
-            return -1;
-
-        const int rc = zlink::logical_multipart_send_routed_prefixed_frame (
-          handle_.socket, target_rid_, envelope.data (), envelope.size (),
-          zlink::msg_t::command, parts_, part_count_, flags_);
-        const int saved_errno = errno;
-        (void) envelope.close ();
-        errno = saved_errno;
-        return rc;
-    }
+    if (first_part_has_request_reply (parts_, part_count_)
+        || first_part_has_user_metadata (parts_, part_count_))
+        return send_parts_with_internal_headers (handle_, target_rid_, parts_,
+                                                 part_count_, flags_, true);
 
     if (part_count_ == 1) {
         const int rc = handle_.socket->send_routed (
@@ -569,7 +589,9 @@ int zlink_send (void *s_,
     if (socket) {
         socket_handle_t handle = make_socket_handle (socket);
         if (part_count_ == 1
-            && is_singlepart_fast_socket_type (socket->socket_type ())) {
+            && is_singlepart_fast_socket_type (socket->socket_type ())
+            && !first_part_has_request_reply (parts_, part_count_)
+            && !first_part_has_user_metadata (parts_, part_count_)) {
             return send_socket_singlepart_fast (handle, &parts_[0], flags_);
         }
         return send_socket_parts (handle, NULL, parts_, part_count_, flags_);

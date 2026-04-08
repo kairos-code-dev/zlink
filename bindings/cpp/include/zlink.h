@@ -273,6 +273,12 @@ typedef struct zlink_routing_id_t
 
 typedef void (zlink_free_fn) (void *data_, void *hint_);
 
+#define ZLINK_MSG_TYPE_DATA 0
+#define ZLINK_MSG_TYPE_REQUEST 1
+#define ZLINK_MSG_TYPE_REPLY 2
+#define ZLINK_MSG_METADATA_KEY_USER_MIN 0x0100
+#define ZLINK_MSG_METADATA_VALUE_MAX 65535
+
 /** @brief Initialize an empty message. Must be closed with zlink_msg_close(). */
 ZLINK_EXPORT int zlink_msg_init (zlink_msg_t *msg_);
 
@@ -321,6 +327,30 @@ ZLINK_EXPORT int zlink_msg_move (zlink_msg_t *dest_, zlink_msg_t *src_);
  * reference count rather than duplicating the payload buffer.
  */
 ZLINK_EXPORT int zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
+
+/** @brief Mark this message as a request with the given correlation id. */
+ZLINK_EXPORT int zlink_msg_set_request (zlink_msg_t *msg_,
+                                        uint64_t correlation_id_);
+
+/** @brief Mark this message as a reply with the given correlation id. */
+ZLINK_EXPORT int zlink_msg_set_reply (zlink_msg_t *msg_,
+                                      uint64_t correlation_id_);
+
+/** @brief Get request-reply metadata associated with this message. */
+ZLINK_EXPORT int zlink_msg_get_request_info (const zlink_msg_t *msg_,
+                                             uint8_t *type_out_,
+                                             uint64_t *correlation_id_out_);
+
+/** @brief Set a per-message metadata key/value pair. */
+ZLINK_EXPORT int zlink_msg_set_metadata (zlink_msg_t *msg_,
+                                         uint16_t key_,
+                                         const void *value_,
+                                         size_t value_size_);
+
+/** @brief Lookup a per-message metadata value by key. */
+ZLINK_EXPORT const void *zlink_msg_get_metadata (const zlink_msg_t *msg_,
+                                                 uint16_t key_,
+                                                 size_t *size_);
 
 /** @brief Return a pointer to the message data buffer. */
 ZLINK_EXPORT void *zlink_msg_data (zlink_msg_t *msg_);

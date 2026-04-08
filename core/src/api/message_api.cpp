@@ -2,6 +2,8 @@
 
 #include "utils/precompiled.hpp"
 
+#include <zlink.h>
+
 #include "protocol/metadata.hpp"
 #include "core/msg.hpp"
 #include "core/recv_tls_view.hpp"
@@ -116,6 +118,40 @@ int zlink_msg_get_request_info (const zlink_msg_t *msg_,
         *correlation_id_out_ = msg->request_correlation_id ();
     errno = 0;
     return 0;
+}
+
+int zlink_msg_set_metadata (zlink_msg_t *msg_,
+                            uint16_t key_,
+                            const void *value_,
+                            size_t value_size_)
+{
+    zlink::msg_t *msg = validated_msg (msg_);
+    if (!msg)
+        return -1;
+
+    if (key_ < ZLINK_MSG_METADATA_KEY_USER_MIN
+        || (value_ != NULL && value_size_ > ZLINK_MSG_METADATA_VALUE_MAX)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (msg->set_user_metadata (key_, value_, value_ ? value_size_ : 0) != 0)
+        return -1;
+
+    errno = 0;
+    return 0;
+}
+
+const void *zlink_msg_get_metadata (const zlink_msg_t *msg_,
+                                    uint16_t key_,
+                                    size_t *size_)
+{
+    const zlink::msg_t *msg =
+      reinterpret_cast<const zlink::msg_t *> (msg_);
+    if (!msg_ || !msg->check ())
+        return NULL;
+
+    return msg->get_user_metadata (key_, size_);
 }
 
 void *zlink_msg_data (zlink_msg_t *msg_)

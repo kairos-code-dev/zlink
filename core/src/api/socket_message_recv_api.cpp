@@ -8,20 +8,13 @@
 #include "api/service_api_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/socket_message_api_internal.hpp"
+#include "core/message_envelope.hpp"
 #include "core/msg.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
 
 namespace
 {
-enum : uint8_t
-{
-    rr_envelope_version = 1
-};
-
-const unsigned char rr_envelope_magic[] = {'Z', 'R', 'R', 'P'};
-const size_t rr_envelope_size = sizeof (rr_envelope_magic) + 1 + 1 + 8;
-
 bool is_direct_public_recv_fast_type (int type_)
 {
     return type_ == ZLINK_CORE_SOCKET_PAIR || type_ == ZLINK_CORE_SOCKET_DEALER;
@@ -37,89 +30,6 @@ bool frame_has_more (const zlink_msg_t &msg_)
     return (reinterpret_cast<const zlink::msg_t *> (&msg_)->flags ()
             & zlink::msg_t::more)
            != 0;
-}
-
-uint64_t decode_u64_be (const unsigned char *in_)
-{
-    uint64_t value = 0;
-    for (size_t i = 0; i < 8; ++i)
-        value = (value << 8) | in_[i];
-    return value;
-}
-
-bool try_decode_request_reply_envelope (const zlink_msg_t &frame_,
-                                        uint8_t *type_out_,
-                                        uint64_t *correlation_id_out_)
-{
-    if (!frame_has_more (frame_))
-        return false;
-
-    if (zlink_msg_size (&frame_) != rr_envelope_size)
-        return false;
-
-    const unsigned char *data = static_cast<const unsigned char *> (
-      zlink_msg_data (&const_cast<zlink_msg_t &> (frame_)));
-    if (memcmp (data, rr_envelope_magic, sizeof (rr_envelope_magic)) != 0)
-        return false;
-    if (data[sizeof (rr_envelope_magic)] != rr_envelope_version)
-        return false;
-
-    const uint8_t type = data[sizeof (rr_envelope_magic) + 1];
-    if (type != ZLINK_MSG_TYPE_REQUEST && type != ZLINK_MSG_TYPE_REPLY)
-        return false;
-
-    if (type_out_)
-        *type_out_ = type;
-    if (correlation_id_out_)
-        *correlation_id_out_ =
-          decode_u64_be (data + sizeof (rr_envelope_magic) + 2);
-    return true;
-}
-
-void set_request_reply_info (zlink_msg_t *msg_,
-                             uint8_t type_,
-                             uint64_t correlation_id_)
-{
-    if (!msg_)
-        return;
-    zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (msg_);
-    if (!msg->check ())
-        return;
-    msg->set_request_info (type_, correlation_id_);
-}
-
-int decode_request_reply_from_reserved_first (void *socket_, zlink_msg_t *msg_)
-{
-    if (!socket_ || !msg_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    uint8_t request_type = ZLINK_MSG_TYPE_DATA;
-    uint64_t correlation_id = 0;
-    if (!try_decode_request_reply_envelope (*msg_, &request_type,
-                                            &correlation_id))
-        return 0;
-
-    zlink_msg_close (msg_);
-    zlink_msg_init (msg_);
-    zlink_msg_t payload;
-    zlink_msg_init (&payload);
-    if (zlink::recv_followup_msg_socket (
-          static_cast<zlink::socket_base_t *> (socket_), &payload)
-        < 0) {
-        zlink_msg_close (&payload);
-        return -1;
-    }
-
-    if (zlink_msg_move (msg_, &payload) != 0) {
-        zlink_msg_close (&payload);
-        errno = EFAULT;
-        return -1;
-    }
-
-    set_request_reply_info (msg_, request_type, correlation_id);
-    return 0;
 }
 
 void close_recv_parts (zlink_msg_t *parts_, size_t part_count_)
@@ -227,25 +137,8 @@ int export_payload_sequence (void *socket_,
         return -1;
     }
 
-    uint8_t request_type = ZLINK_MSG_TYPE_DATA;
-    uint64_t correlation_id = 0;
-    if (try_decode_request_reply_envelope (*first_payload_, &request_type,
-                                           &correlation_id)) {
-        zlink_msg_close (first_payload_);
-        zlink_msg_init (first_payload_);
-        zlink_msg_t payload;
-        zlink_msg_init (&payload);
-        if (zlink::recv_followup_msg_socket (socket, &payload) < 0) {
-            zlink_msg_close (&payload);
-            return -1;
-        }
-        if (zlink_msg_move (first_payload_, &payload) != 0) {
-            zlink_msg_close (&payload);
-            errno = EFAULT;
-            return -1;
-        }
-        set_request_reply_info (first_payload_, request_type, correlation_id);
-    }
+    if (zlink::strip_internal_message_envelopes (socket, first_payload_) != 0)
+        return -1;
 
     if (!frame_has_more (*first_payload_))
         return zlink::recv_tls_view::export_single (first_payload_, parts_out_,
@@ -458,7 +351,7 @@ int recv_socket_parts (socket_handle_t handle_,
             < 0)
             return -1;
 
-        if (decode_request_reply_from_reserved_first (handle_.socket, first_slot)
+        if (zlink::strip_internal_message_envelopes (handle_.socket, first_slot)
             != 0)
             return -1;
 
@@ -489,7 +382,7 @@ int recv_socket_parts (socket_handle_t handle_,
             < 0)
             return -1;
 
-        if (decode_request_reply_from_reserved_first (handle_.socket, first_slot)
+        if (zlink::strip_internal_message_envelopes (handle_.socket, first_slot)
             != 0)
             return -1;
 

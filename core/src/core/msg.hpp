@@ -6,11 +6,13 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <vector>
 
 #include "utils/config.hpp"
 #include "utils/err.hpp"
 #include "utils/fd.hpp"
 #include "utils/atomic_counter.hpp"
+#include "core/user_metadata.hpp"
 #include "protocol/metadata.hpp"
 
 //  Group functionality (originally from draft API)
@@ -112,6 +114,16 @@ class msg_t
     metadata_t *metadata () const;
     void set_metadata (metadata_t *metadata_);
     void reset_metadata ();
+    user_metadata_t *user_metadata () const;
+    bool has_user_metadata () const;
+    int set_user_metadata (uint16_t key_,
+                           const void *value_,
+                           size_t value_size_);
+    const void *get_user_metadata (uint16_t key_, size_t *size_out_) const;
+    size_t user_metadata_encoded_size () const;
+    int encode_user_metadata (unsigned char *out_, size_t out_size_) const;
+    int decode_user_metadata (const unsigned char *data_, size_t size_);
+    void reset_user_metadata ();
     bool is_routing_id () const;
     bool is_credential () const;
     bool is_delimiter () const;
@@ -166,7 +178,8 @@ class msg_t
     {
         max_vsm_size =
           msg_t_size
-          - (sizeof (metadata_t *) + sizeof (uint64_t) + 4 + 16
+          - (sizeof (metadata_t *) + sizeof (user_metadata_t *)
+             + sizeof (uint64_t) + 4 + 16
              + sizeof (uint32_t))
     };
     enum
@@ -241,10 +254,12 @@ class msg_t
         struct
         {
             metadata_t *metadata;
+            user_metadata_t *user_metadata;
             uint64_t correlation_id;
             unsigned char unused[msg_t_size
-                                 - (sizeof (metadata_t *) + sizeof (uint64_t)
-                                    + 3
+                                 - (sizeof (metadata_t *)
+                                    + sizeof (user_metadata_t *)
+                                    + sizeof (uint64_t) + 3
                                     + sizeof (uint32_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
@@ -255,6 +270,7 @@ class msg_t
         struct
         {
             metadata_t *metadata;
+            user_metadata_t *user_metadata;
             uint64_t correlation_id;
             unsigned char data[max_vsm_size];
             unsigned char size;
@@ -267,12 +283,13 @@ class msg_t
         struct
         {
             metadata_t *metadata;
-            content_t *content;
+            user_metadata_t *user_metadata;
             uint64_t correlation_id;
+            content_t *content;
             unsigned char
               unused[msg_t_size
-                     - (sizeof (metadata_t *) + sizeof (content_t *)
-                        + sizeof (uint64_t) + 3
+                     - (sizeof (metadata_t *) + sizeof (user_metadata_t *)
+                        + sizeof (uint64_t) + sizeof (content_t *) + 3
                         + sizeof (uint32_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
@@ -283,12 +300,13 @@ class msg_t
         struct
         {
             metadata_t *metadata;
-            content_t *content;
+            user_metadata_t *user_metadata;
             uint64_t correlation_id;
+            content_t *content;
             unsigned char
               unused[msg_t_size
-                     - (sizeof (metadata_t *) + sizeof (content_t *)
-                        + sizeof (uint64_t) + 3
+                     - (sizeof (metadata_t *) + sizeof (user_metadata_t *)
+                        + sizeof (uint64_t) + sizeof (content_t *) + 3
                         + sizeof (uint32_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
@@ -299,12 +317,15 @@ class msg_t
         struct
         {
             metadata_t *metadata;
+            user_metadata_t *user_metadata;
+            uint64_t correlation_id;
             void *data;
             size_t size;
-            uint64_t correlation_id;
             unsigned char unused[msg_t_size
-                                 - (sizeof (metadata_t *) + sizeof (void *)
-                                    + sizeof (size_t) + sizeof (uint64_t) + 3
+                                 - (sizeof (metadata_t *)
+                                    + sizeof (user_metadata_t *)
+                                    + sizeof (uint64_t) + sizeof (void *)
+                                    + sizeof (size_t) + 3
                                     + sizeof (uint32_t)
                                     + sizeof (group_t))];
             unsigned char type;
@@ -316,10 +337,12 @@ class msg_t
         struct
         {
             metadata_t *metadata;
+            user_metadata_t *user_metadata;
             uint64_t correlation_id;
             unsigned char unused[msg_t_size
-                                 - (sizeof (metadata_t *) + sizeof (uint64_t)
-                                    + 3
+                                 - (sizeof (metadata_t *)
+                                    + sizeof (user_metadata_t *)
+                                    + sizeof (uint64_t) + 3
                                     + sizeof (uint32_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;

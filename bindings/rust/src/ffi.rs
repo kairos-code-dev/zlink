@@ -27,6 +27,12 @@ pub struct zlink_routing_id_t {
 
 pub type zlink_free_fn = unsafe extern "C" fn(data: *mut c_void, hint: *mut c_void);
 
+pub const ZLINK_MSG_TYPE_DATA: u8 = 0;
+pub const ZLINK_MSG_TYPE_REQUEST: u8 = 1;
+pub const ZLINK_MSG_TYPE_REPLY: u8 = 2;
+pub const ZLINK_MSG_METADATA_KEY_USER_MIN: u16 = 0x0100;
+pub const ZLINK_MSG_METADATA_VALUE_MAX: usize = 65535;
+
 // ---------------------------------------------------------------------------
 // Context options
 // ---------------------------------------------------------------------------
@@ -634,6 +640,24 @@ unsafe extern "C" {
     pub fn zlink_msg_close(msg: *mut zlink_msg_t) -> c_int;
     pub fn zlink_msg_move(dest: *mut zlink_msg_t, src: *mut zlink_msg_t) -> c_int;
     pub fn zlink_msg_copy(dest: *mut zlink_msg_t, src: *mut zlink_msg_t) -> c_int;
+    pub fn zlink_msg_set_request(msg: *mut zlink_msg_t, correlation_id: u64) -> c_int;
+    pub fn zlink_msg_set_reply(msg: *mut zlink_msg_t, correlation_id: u64) -> c_int;
+    pub fn zlink_msg_get_request_info(
+        msg: *const zlink_msg_t,
+        type_out: *mut u8,
+        correlation_id_out: *mut u64,
+    ) -> c_int;
+    pub fn zlink_msg_set_metadata(
+        msg: *mut zlink_msg_t,
+        key: u16,
+        value: *const c_void,
+        value_size: usize,
+    ) -> c_int;
+    pub fn zlink_msg_get_metadata(
+        msg: *const zlink_msg_t,
+        key: u16,
+        size_out: *mut usize,
+    ) -> *const c_void;
     pub fn zlink_msg_data(msg: *mut zlink_msg_t) -> *mut c_void;
     pub fn zlink_msg_size(msg: *const zlink_msg_t) -> usize;
     pub fn zlink_msg_refcnt(msg: *const zlink_msg_t) -> c_int;

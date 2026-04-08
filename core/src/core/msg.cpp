@@ -15,7 +15,6 @@
 #include "utils/err.hpp"
 
 #include <climits>
-#include <vector>
 
 //  Check whether the sizes of public representation of the message (zlink_msg_t)
 //  and private representation of the message (zlink::msg_t) match.
@@ -131,6 +130,7 @@ int zlink::msg_t::init (void *data_,
 int zlink::msg_t::init ()
 {
     _u.vsm.metadata = NULL;
+    _u.vsm.user_metadata = NULL;
     _u.vsm.type = type_vsm;
     _u.vsm.flags = 0;
     _u.vsm.size = 0;
@@ -146,6 +146,7 @@ int zlink::msg_t::init_size (size_t size_)
 {
     if (size_ <= max_vsm_size) {
         _u.vsm.metadata = NULL;
+        _u.vsm.user_metadata = NULL;
         _u.vsm.type = type_vsm;
         _u.vsm.flags = 0;
         _u.vsm.size = static_cast<unsigned char> (size_);
@@ -156,6 +157,7 @@ int zlink::msg_t::init_size (size_t size_)
         _u.vsm.routing_id = 0;
     } else {
         _u.lmsg.metadata = NULL;
+        _u.lmsg.user_metadata = NULL;
         _u.lmsg.type = type_lmsg;
         _u.lmsg.flags = 0;
         _u.lmsg.msg_type = request_type_data;
@@ -318,6 +320,7 @@ int zlink::msg_t::init_external_storage (content_t *content_,
     zlink_assert (NULL != content_);
 
     _u.zclmsg.metadata = NULL;
+    _u.zclmsg.user_metadata = NULL;
     _u.zclmsg.type = type_zclmsg;
     _u.zclmsg.flags = 0;
     _u.zclmsg.msg_type = request_type_data;
@@ -348,6 +351,7 @@ int zlink::msg_t::init_data (void *data_,
     //  Initialize constant message if there's no need to deallocate
     if (ffn_ == NULL) {
         _u.cmsg.metadata = NULL;
+        _u.cmsg.user_metadata = NULL;
         _u.cmsg.type = type_cmsg;
         _u.cmsg.flags = 0;
         _u.cmsg.msg_type = request_type_data;
@@ -359,6 +363,7 @@ int zlink::msg_t::init_data (void *data_,
         _u.cmsg.routing_id = 0;
     } else {
         _u.lmsg.metadata = NULL;
+        _u.lmsg.user_metadata = NULL;
         _u.lmsg.type = type_lmsg;
         _u.lmsg.flags = 0;
         _u.lmsg.msg_type = request_type_data;
@@ -385,6 +390,7 @@ int zlink::msg_t::init_data (void *data_,
 int zlink::msg_t::init_delimiter ()
 {
     _u.delimiter.metadata = NULL;
+    _u.delimiter.user_metadata = NULL;
     _u.delimiter.type = type_delimiter;
     _u.delimiter.flags = 0;
     _u.delimiter.msg_type = request_type_data;
@@ -398,6 +404,7 @@ int zlink::msg_t::init_delimiter ()
 int zlink::msg_t::init_join ()
 {
     _u.base.metadata = NULL;
+    _u.base.user_metadata = NULL;
     _u.base.type = type_join;
     _u.base.flags = 0;
     _u.base.msg_type = request_type_data;
@@ -411,6 +418,7 @@ int zlink::msg_t::init_join ()
 int zlink::msg_t::init_leave ()
 {
     _u.base.metadata = NULL;
+    _u.base.user_metadata = NULL;
     _u.base.type = type_leave;
     _u.base.flags = 0;
     _u.base.msg_type = request_type_data;
@@ -501,6 +509,11 @@ int zlink::msg_t::close ()
         _u.base.metadata = NULL;
     }
 
+    if (_u.base.user_metadata != NULL) {
+        LIBZLINK_DELETE (_u.base.user_metadata);
+        _u.base.user_metadata = NULL;
+    }
+
     if (_u.base.group.type == group_type_long) {
         if (!_u.base.group.lgroup.content->refcnt.sub (1)) {
             //  We used "placement new" operator to initialize the reference
@@ -550,6 +563,16 @@ int zlink::msg_t::copy (msg_t &src_)
     if (unlikely (rc < 0))
         return rc;
 
+    user_metadata_t *cloned_user_metadata = NULL;
+    if (src_._u.base.user_metadata != NULL) {
+        cloned_user_metadata =
+          new (std::nothrow) user_metadata_t (*src_._u.base.user_metadata);
+        if (!cloned_user_metadata) {
+            errno = ENOMEM;
+            return -1;
+        }
+    }
+
     // The initial reference count, when a non-shared message is initially
     // shared (between the original and the copy we create here).
     const atomic_counter_t::integer_t initial_shared_refcnt = 2;
@@ -572,6 +595,7 @@ int zlink::msg_t::copy (msg_t &src_)
         src_._u.base.group.lgroup.content->refcnt.add (1);
 
     *this = src_;
+    _u.base.user_metadata = cloned_user_metadata;
 
     return 0;
 }
@@ -719,6 +743,83 @@ void zlink::msg_t::reset_metadata ()
             LIBZLINK_DELETE (_u.base.metadata);
         }
         _u.base.metadata = NULL;
+    }
+}
+
+zlink::user_metadata_t *zlink::msg_t::user_metadata () const
+{
+    return _u.base.user_metadata;
+}
+
+bool zlink::msg_t::has_user_metadata () const
+{
+    return _u.base.user_metadata != NULL && !_u.base.user_metadata->empty ();
+}
+
+int zlink::msg_t::set_user_metadata (uint16_t key_,
+                                     const void *value_,
+                                     size_t value_size_)
+{
+    zlink_assert (check ());
+
+    if (!_u.base.user_metadata) {
+        _u.base.user_metadata = new (std::nothrow) user_metadata_t ();
+        if (!_u.base.user_metadata) {
+            errno = ENOMEM;
+            return -1;
+        }
+    }
+
+    const void *stored_value = value_ ? value_ : NULL;
+    const size_t stored_size = value_ ? value_size_ : 0;
+    return _u.base.user_metadata->set (key_, stored_value, stored_size);
+}
+
+const void *zlink::msg_t::get_user_metadata (uint16_t key_,
+                                             size_t *size_out_) const
+{
+    if (!_u.base.user_metadata)
+        return NULL;
+    return _u.base.user_metadata->get (key_, size_out_);
+}
+
+size_t zlink::msg_t::user_metadata_encoded_size () const
+{
+    return _u.base.user_metadata ? _u.base.user_metadata->encoded_size () : 0;
+}
+
+int zlink::msg_t::encode_user_metadata (unsigned char *out_,
+                                        size_t out_size_) const
+{
+    if (!_u.base.user_metadata) {
+        errno = EINVAL;
+        return -1;
+    }
+    return _u.base.user_metadata->encode (out_, out_size_);
+}
+
+int zlink::msg_t::decode_user_metadata (const unsigned char *data_, size_t size_)
+{
+    reset_user_metadata ();
+    _u.base.user_metadata = new (std::nothrow) user_metadata_t ();
+    if (!_u.base.user_metadata) {
+        errno = ENOMEM;
+        return -1;
+    }
+    if (_u.base.user_metadata->decode (data_, size_) != 0) {
+        const int saved_errno = errno;
+        reset_user_metadata ();
+        errno = saved_errno;
+        return -1;
+    }
+    return 0;
+}
+
+void zlink::msg_t::reset_user_metadata ()
+{
+    if (_u.base.user_metadata) {
+        LIBZLINK_DELETE (_u.base.user_metadata);
+        _u.base.user_metadata = NULL;
     }
 }
 

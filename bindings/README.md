@@ -95,6 +95,12 @@
 ## Public Surface Rules
 
 ### Base Type Exposure
+- 가능하면 컴파일 단계에서 사용자가 concrete socket type만 직접 쓰게 해야 한다.
+- 사용자가 generic root base, raw compat base, shared base를 concrete socket
+  type 대신 직접 쓰는 구조는 피한다.
+- static typed binding은 public type/export/visibility를 이용해 이 규칙을
+  강제해야 한다.
+- dynamic binding은 export 제한과 surface test로 같은 규칙을 강제해야 한다.
 - generic root base 또는 raw compat base는 공통 lifecycle과 공통 관리 기능만
   외부에 노출한다.
 - capability-specific shared base는 모든 descendant가 공통으로 가지는 능력만
@@ -1179,12 +1185,13 @@ perf 코드는 데모가 아니라 바인딩 라이브러리의 성능을 측정
 
 ### 바인딩 API Spec 문서
 
-각 바인딩의 API surface, recv/callback 모델, perf 적용 패턴은 아래 문서를 참조한다.
+각 바인딩의 API surface는 아래 문서를 참조한다.
+perf 정책은 [`doc/perf/PERF_POLICY.md`](../doc/perf/PERF_POLICY.md)에서 전 언어 공통으로 관리한다.
 
-| 바인딩 | API Spec | recv/callback |
-|--------|----------|---------------|
-| Node.js | [`NODE_API_SPEC.md`](NODE_API_SPEC.md) | recv only |
-| Python | [`PYTHON_API_SPEC.md`](PYTHON_API_SPEC.md) | recv only |
+| 바인딩 | API Spec |
+|--------|----------|
+| Node.js | [`NODE_API_SPEC.md`](NODE_API_SPEC.md) |
+| Python | [`PYTHON_API_SPEC.md`](PYTHON_API_SPEC.md) |
 
 ### Perf Review Checklist
 

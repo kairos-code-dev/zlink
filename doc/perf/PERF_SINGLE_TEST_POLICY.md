@@ -27,7 +27,7 @@
 | 항목 | 기준 |
 |------|------|
 | 측정 모델 | ready + active(duration) |
-| throughput | `active 수신 건수 / active 시간(초)` |
+| throughput | one-way: `active 수신 건수 / active 시간(초)` (msg/s), echo: `active RTT 완료 수 / active 시간(초)` (ops/s) |
 | latency | active 구간 수신 payload header timestamp 기반 |
 | 대표값 | runs > 1일 때 metric별 median |
 | 저장 경로 | `perf/results/single/report/` 단일 |
@@ -37,36 +37,52 @@
 - cpu/mem은 single 기본 perf surface와 RESULT 계약에 포함하지 않는다.
 - `single`의 공식 lifecycle은 `ready -> active`다.
 - size 변경 시마다 별도 프로세스로 실행하여 케이스 간 메트릭 오염을 방지한다.
-- ready bool/count를 복사하기 위한 별도 state struct, heap alloc, mutex/cv,
-  callback wrapper 계층은 만들지 않는다.
+- ready bool/count를 복사하기 위한 별도 state struct, heap alloc, mutex/cv 계층은
+  만들지 않는다.
 - 한 줄 요약: `single = ready + active`
 
-### 1.1 수신 모델 (callback only)
+### 1.1 I/O 모델 (recv only)
 
-- **callback 모델** (`--recv callback`)만 허용한다.
+- **recv 모델**만 허용한다.
 - `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
-  `ROUTER_ROUTER`, `SPOT` 전부 callback only다.
-- callback 모드를 이유로 별도 callback 파일명이나 별도 public pattern 이름을
-  두지 않는다.
-- recv: `zlink_recv_handler()` 등록 → 라이브러리가 I/O thread에서 callback
-  dispatch. `zlink_recv()` / `zlink_msg_recv()` 동기 recv API는 측정 경로에
-  사용하지 않는다.
-- callback hot path는 메시지에서 metric header와 timestamp 등 필요한 최소
-  메타데이터만 추출해 bounded queue로 전달한다. `zlink_msg_t` handle,
-  payload pointer, multipart parts 소유권을 callback 밖으로 넘기지 않는다.
-- callback dispatch thread는 phase별 receive count 증가와 metric event
-  enqueue까지만 수행한다.
-- send: sender는 active 구간 동안 blocking send를 연속 수행한다.
-- throughput/latency 집계, phase window 판정, 결과 출력용 통계 계산은
-  callback 안에서 직접 수행하지 않고 전용 worker가 queue를 drain하며
-  처리한다. single callback 모델에서는 app thread가 sender loop를 구동하고,
-  callback worker가 수신 집계를 담당한다.
-- latency sample 계산, percentile sample 축적, processed-count 완료 대기는
-  callback 밖 전용 worker가 맡는다.
-- phase 종료 보장은 별도 bench phase가 아니라 내부 processed-count drain으로
-  처리한다.
-- poller는 single 측정 경로에서 사용하지 않는다.
-- 지원하지 않는 single pattern에서 허용 범위 밖 mode를 주면 즉시 실패한다.
+  `ROUTER_ROUTER`, `SPOT` 전부 recv only다.
+
+#### 프로세스/스레드 모델
+
+single은 **단일 프로세스** 안에서 sender와 receiver를 구동한다.
+패턴에 따라 스레드 모델이 다르다.
+
+**one-way 패턴** (PAIR, PUBSUB):
+```
+┌─ process ────────────────────────────┐
+│  sender thread      recv thread      │
+│  blocking send ──►  poller POLLIN    │
+│  (연속)             recv drain       │
+│                     metric 집계      │
+└──────────────────────────────────────┘
+```
+- sender thread: blocking send 연속 수행. HWM 도달 시 자연 backpressure.
+- recv thread: poller `POLLIN` → `zlink_recv()` DONTWAIT drain 루프.
+  throughput/latency 집계를 recv drain 안에서 인라인 수행.
+
+**echo 패턴** (DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER):
+```
+┌─ process ────────────────────────────┐
+│  main thread                         │
+│  poller POLLIN/POLLOUT               │
+│  send → recv response → send → ...  │
+│  (1 RTT = 1 op)                     │
+└──────────────────────────────────────┘
+```
+- 단일 스레드에서 poller 기반 send/recv 교대 수행.
+- send 후 응답을 recv하고 다시 send하는 1:1 RTT 루프.
+- blocking send 대신 poller `POLLOUT` readiness 후 nonblocking send 사용.
+
+**공통**:
+- `EAGAIN` 기반 pending 관리, send-ready handler 등 multi에서 사용하는
+  backpressure 메커니즘은 single에 적용하지 않는다.
+- latency sample 계산, percentile sample 축적은 recv 루프 내에서 처리한다.
+- phase 종료 보장은 내부 processed-count drain으로 처리한다.
 
 ### 1.2 실행 계약 불변식
 
@@ -114,9 +130,8 @@
 - pattern별 low-cost ready event는 single 측정의 공식 start gate다. benchmark
   시작 전 준비 판정은 monitoring event로 해결하고, perf 파일 안의 커스텀
   handshake loop, sleep, monitor snapshot polling으로 대체하지 않는다.
-- 패턴 파일에서는 callback plumbing을 직접 노출하기보다 공통 helper를 통해
-  `wait_*ready*()` 형태로 감싸도 된다. 이 경우에도 ready source는 반드시
-  위 표의 pattern contract 와 일치해야 한다.
+- 패턴 파일에서는 공통 helper를 통해 `wait_*ready*()` 형태로 감싸도 된다.
+  이 경우에도 ready source는 반드시 위 표의 pattern contract 와 일치해야 한다.
 - active에서만 throughput/latency를 계산한다.
 - `single`은 별도 settle/prime/idle-drain phase를 두지 않는다.
 - 다음 size는 별도 프로세스로 다시 시작한다.
@@ -139,7 +154,7 @@ active 구간 집계는 payload에 기록된 metric header를 기준으로만 �
 ## 3. 유효성 판정 (single 전용)
 
 > 상태 분류(success / unsupported / skip / fail), retry 금지, UNSUPPORTED 오용 금지
-> 등 공통 실패 처리 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md) 참조.
+> 등 공통 실패 처리 정책은 [PERF_POLICY.md § 7](PERF_POLICY.md) 참조.
 
 ### 3.1 완료 판정
 
@@ -167,19 +182,18 @@ status   = (expected == actual) ? "complete" : "partial"
 
 ## 4. 결과 저장 (single 전용)
 
-> 파일명 형식(`perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt`),
+> 파일명 형식(`perf_<lang>_<suite>_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt`),
 > 저장 경로(`<suite>/report/`), 보존 정책(최대 100파일) 등 공통 규칙은
 > [PERF_POLICY.md § 2.1–2.3, § 4.3](PERF_POLICY.md) 참조.
 
 결과 파일에는 아래가 순서대로 기록된다.
 
-1. `## Effective Options (start)` — 불릿 목록 형식
+1. `## Effective Options (start)` — 불릿 목록 형식 (lang, suite, runs, patterns, transports, msg_sizes, pin_cpu)
 2. 패턴/트랜스포트별 실행 로그 및 테이블
 3. `## Effective Options (result)` — 불릿 목록 형식
 4. Completion (`status`, `expected_result_lines`, `actual_result_lines`)
 
-- `Effective Options`에는 `recv_mode` 항목이 반드시 포함되어야 하며, 실제 실행에
-  사용된 `--recv` 값(`recv` 또는 `callback`)을 기록해야 한다.
+- `Effective Options`에는 `lang`과 `suite` 항목이 반드시 포함되어야 한다.
 - `tmp/`, `baseline/` 디렉터리는 single 정책에서 사용하지 않는다.
 - single 엔진은 최대 파일 수를 100으로 하드코딩한다 (`PERF_RESULTS_MAX_FILES` 미참조).
 
@@ -205,7 +219,6 @@ status   = (expected == actual) ? "complete" : "partial"
 | `--io-threads N` | context I/O threads | 환경/기본값 |
 | `--msg-sizes LIST` | 메시지 크기 목록 | 정책 기본값 |
 | `--transports LIST` | transport 목록 | 패턴 기본값 |
-| `--recv MODE` | recv 모델 선택. single은 `callback`만 허용 | `callback` |
 | `--hwm N` | 송수신 HWM 공통 fallback | 1000 |
 | `--send-hwm N` | 송신 HWM 우선값 | `--hwm` |
 | `--recv-hwm N` | 수신 HWM 우선값 | `--hwm` |
@@ -237,18 +250,16 @@ status   = (expected == actual) ? "complete" : "partial"
 
 | 패턴 | 허용 mode |
 |------|-----------|
-| PAIR | `callback` |
-| PUBSUB | `callback` |
-| DEALER_DEALER | `callback` |
-| DEALER_ROUTER | `callback` |
-| ROUTER_ROUTER | `callback` |
-| SPOT | `callback` |
+| PAIR | `recv` |
+| PUBSUB | `recv` |
+| DEALER_DEALER | `recv` |
+| DEALER_ROUTER | `recv` |
+| ROUTER_ROUTER | `recv` |
+| SPOT | `recv` |
 
 정책:
 
-- single의 유일한 테스트 mode는 callback이다.
-- callback 모드를 이유로 별도 callback 파일명이나 별도 public pattern 이름을
-  정책에 추가하지 않는다.
+- single의 유일한 테스트 mode는 recv이다.
 
 #### ready gate 기준
 
@@ -270,7 +281,7 @@ SPOT 에서는 local probe barrier 로 판정한다. perf는 추가 precondition
 - single policy 는 delivery-ready event gate 도 사용하지 않는다.
 - single SPOT 은 service monitor 를 사용하지 않는다.
 - single SPOT 은 local pub/sub setup 완료 후 sender 가 metric header가 찍힌
-  probe payload 를 publish 하고, callback recv 측이 첫 유효 payload 를 확인하면
+  probe payload 를 publish 하고, recv 측이 첫 유효 payload 를 확인하면
   ready 를 닫는다.
 
 #### 패턴 방향 분류
@@ -299,7 +310,7 @@ SPOT 에서는 local probe barrier 로 판정한다. perf는 추가 precondition
 > 공통 환경 변수(`PERF_DEBUG`, `PERF_IO_THREADS`, `PERF_MSG_SIZES`,
 > `PERF_TRANSPORTS`, `PERF_TASKSET`, `PERF_FAIL_FAST`,
 > `PERF_DISABLE_RESOURCE_METRICS`, `PERF_MAX_SOCKETS`)는
-> [PERF_POLICY.md § 9](PERF_POLICY.md) 참조.
+> [PERF_POLICY.md § 8](PERF_POLICY.md) 참조.
 
 ### 7.1 phase/timeout
 

@@ -33,14 +33,12 @@
 | 기본 runs | 1 |
 
 - 목적: 벤치 코드가 병목이 되지 않게 유지하면서, 선택된 I/O 모델의 성능을 측정한다.
-- 한 줄 요약
-  - recv 모델: `multi = poller POLLIN drain + POLLOUT backpressure`
-  - callback 모델: `multi = callback recv + bounded queue + metric worker + send_ready_handler backpressure`
+- 한 줄 요약: `multi = poller POLLIN drain + POLLOUT backpressure`
   - backpressure 전략: `echo 서버: deque, echo 클라이언트/one-way sender: bool 플래그`
 
-### 1.1 I/O 모델 (`--recv` 옵션)
+### 1.1 I/O 모델
 
-- **recv 모델** (기본, `--recv recv`):
+- **recv 모델**:
   - recv: poller `POLLIN` readiness 감지 → `zlink_recv()` / `zlink_msg_recv()`
     비동기 drain 루프 (react 방식). poller가 readable을 알려주면 수신 가능한
     만큼 drain한다.
@@ -50,62 +48,30 @@
   - app thread가 poller event loop를 직접 구동하며, `POLLIN` / `POLLOUT`
     이벤트에 따라 recv drain과 send 재개를 처리한다.
   - `send_ready_handler`는 사용하지 않는다.
-- **callback 모델** (`--recv callback`):
-  - multi suite의 기본 테스트 모드는 recv다.
-  - multi에서 dual-mode 예외는 `MULTI_SPOT`, `MULTI_STREAM`만 허용한다.
-  - `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
-    callback 전용 파일명이나 별도 public pattern 이름을 정책에 추가하지 않는다.
-  - recv: pattern별 callback API 등록 → 메시지 도착 시 I/O thread에서 콜백
-    호출. `zlink_recv()` / `zlink_msg_recv()` 동기 수신 API는 측정 경로에
-    사용하지 않는다.
-  - callback hot path는 메시지에서 metric header와 timestamp 등 필요한 최소
-    메타데이터만 추출해 bounded queue로 enqueue한다. `zlink_msg_t` handle,
-    payload pointer, multipart parts 소유권은 callback 밖으로 넘기지 않는다.
-  - send: protocol상 즉시 echo/ack가 필요한 경우에만 recv callback 안에서
-    `send(DONTWAIT)`를 호출할 수 있다. callback 중 same-handle send는
-    thread-safe socket plan에 의해 공식 허용된다.
-  - send backpressure: `zlink_send_ready_handler()` 등록 → writable
-    transition 시 callback으로 통지. `EAGAIN` 시 역할별 전략을 적용한다 (§ 1.2 참조).
-  - throughput/latency 집계, phase window 판정, 결과 출력용 통계 계산은
-    callback 안에서 직접 수행하지 않고 metric worker가 queue를 drain하며
-    처리한다.
-  - app thread는 setup/phase 제어/teardown을 담당하고, 측정 구간에서는
-    I/O thread callback과 metric worker가 역할을 분리한다.
-  - poller는 사용하지 않는다.
-- multi 일반 pattern은 recv only다.
-- `MULTI_SPOT`, `MULTI_STREAM`만 `recv` / `callback` dual-mode 예외를 둔다.
-- 지원하지 않는 multi pattern에서 `--recv callback`을 주면 즉시 실패한다.
-- `while (send 실패)` 식의 즉시 재시도는 양쪽 모델 모두 금지한다.
+- multi 전체 pattern은 recv only다.
+- `while (send 실패)` 식의 즉시 재시도는 금지한다.
 
 ### 1.2 Backpressure 전략
 
-역할별, 양쪽 모델 공통 — 통지 메커니즘만 다름:
+역할별 backpressure 전략:
 
 - **echo 서버** (소켓 1개 × 클라이언트 N개):
   - `EAGAIN` 시 per-socket pending deque에 메시지를 저장한다.
   - pending이 있는 동안 새 send는 pending deque에 추가만 한다.
-  - recv 모델: poller `POLLOUT` readiness에서 pending deque를 `EAGAIN`까지 drain한다.
-  - callback 모델: send-ready callback에서 pending deque를 `EAGAIN`까지 drain한다.
+  - poller `POLLOUT` readiness에서 pending deque를 `EAGAIN`까지 drain한다.
   - 소켓 1개로 N개 클라이언트를 처리하므로, EAGAIN 중에도 다른 클라이언트의 메시지가 도착할 수 있어 deque가 필요하다.
 - **echo 클라이언트** (per-socket, inflight 1):
   - `EAGAIN` 시 `bool send_pending` 플래그만 설정한다.
-  - recv 모델: poller `POLLOUT` readiness에서 플래그 확인 후 재전송한다.
-  - callback 모델: send-ready callback에서 플래그 확인 후 재전송한다.
+  - poller `POLLOUT` readiness에서 플래그 확인 후 재전송한다.
   - 응답 수신 → 다음 전송의 1:1 대응이므로 deque 불필요하다.
 - **one-way sender** (단일 흐름):
   - `EAGAIN` 시 `bool send_pending` 플래그만 설정한다.
-  - recv 모델: poller `POLLOUT` readiness에서 플래그 확인 후 재전송한다.
-  - callback 모델: send-ready callback에서 플래그 확인 후 재전송한다.
+  - poller `POLLOUT` readiness에서 플래그 확인 후 재전송한다.
 - **one-way receiver**: send 없음, backpressure 불필요.
 
 ### 1.3 동시성
 
-- callback 모델: recv callback과 send-ready callback은 동일 소켓에 대해 직렬화된다
-  (같은 I/O thread). 이 직렬화는 same-socket send/pending 보호에는 충분하지만,
-  callback과 metric worker 사이의 handoff까지 없애주지는 않으므로 metric event
-  전달에는 bounded queue를 사용한다.
-- recv 모델: app thread가 poller event loop를 단일 스레드로 구동하므로
-  동일하게 직렬화된다.
+- app thread가 poller event loop를 단일 스레드로 구동하므로 직렬화된다.
 
 ### 1.4 성능 참고
 
@@ -153,7 +119,7 @@ perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
 - multi SPOT 의 짧은 control settle 은 control socket connect 직후 publish
   순서를 정렬하기 위한 barrier 내부 절차다. raw pattern 의 monitor ready gate 와
   동일한 public 계약으로 취급하지 않는다.
-- ready bool/count를 callback state에 복사하기 위한 구조체, heap alloc,
+- ready bool/count를 복사하기 위한 별도 구조체, heap alloc,
   mutex/cv wrapper, pattern별 별도 ready monitor 계층은 만들지 않는다.
 - `READY,<endpoint>` / `CLIENT_READY,<msg_size>` 같은 stdout 제어 메시지는
   runner와 프로세스 순서를 맞추기 위한 외부 orchestration 신호일 뿐이다.
@@ -414,8 +380,7 @@ perf/multi/
 ```
 
 - 모든 패턴은 `_server.cpp` / `_client.cpp` **별도 소스 파일 / 별도 바이너리**로 작성한다.
-- `recv`와 `callback`을 이유로 별도 callback server 파일이나 별도 public
-  pattern 이름을 정책에 추가하지 않는다.
+- 별도 모델 구분용 server 파일이나 별도 public pattern 이름을 추가하지 않는다.
 - 공통 로직(settings 해석, RESULT 출력, TLS 설정 등)은 multi common 계층에 유지한다. 단, 정책은 공통 로직의 정확한 파일명이나 파일 배치를 고정하지 않는다.
 
 ---
@@ -602,7 +567,7 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 
 > 상태 분류(success / unsupported / skip / fail), retry 금지,
 > UNSUPPORTED 오용 금지, inflight 금지 등 공통 실패 처리 정책은
-> [PERF_POLICY.md § 8](PERF_POLICY.md) 참조.
+> [PERF_POLICY.md § 7](PERF_POLICY.md) 참조.
 
 ### 6.1 상태 판정 토큰
 
@@ -699,11 +664,8 @@ MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MUL
 | Node | `perf_multi_<pattern>_server.js` | `perf_multi_<pattern>_client.js` | `perf_multi_stream_server.js` |
 | Python | `perf_multi_<pattern>_server.py` | `perf_multi_<pattern>_client.py` | `perf_multi_stream_server.py` |
 
-- STREAM 계열은 public pattern 이름을 `stream` 하나만 사용하고, recv mode는
-  `--recv`로만 선택한다.
-- `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
-- callback 모드를 이유로 `_callback_server` 같은 별도 public file naming 규칙을
-  정책에 추가하지 않는다.
+- STREAM 계열은 public pattern 이름을 `stream` 하나만 사용한다.
+- 별도 모델 구분용 파일명 규칙을 추가하지 않는다.
 - 공통 유틸리티 파일도 `perf_` 접두어: `perf_common.hpp`, `PerfCommon.cs`, `PerfUtil.java`, `perf_common.py` 등
 - 실행 스크립트: bindings는 `multi/run_benchmarks.sh` / `.ps1`, core는 `run_benchmarks_multi.sh` / `.ps1` ([PERF_POLICY.md § 3.1](PERF_POLICY.md) 참조)
 - 파일 분리 대신 단일 runner를 사용하는 경우에도 실행 시점에서는 반드시 server/client 별도 프로세스로 동작해야 하며 READY/RESULT 프로토콜은 동일하게 준수한다.
@@ -718,32 +680,25 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | MULTI_DEALER_ROUTER | `*_dealer_router_server.cpp` | `comp_src_dealer_router_server` | `*_dealer_router_client.cpp` | `comp_src_dealer_router_client` |
 | MULTI_ROUTER_ROUTER | `*_router_router_server.cpp` | `comp_src_router_router_server` | `*_router_router_client.cpp` | `comp_src_router_router_client` |
 | MULTI_PUBSUB | `*_pubsub_server.cpp` | `comp_src_pubsub_server` | `*_pubsub_client.cpp` | `comp_src_pubsub_client` |
-| MULTI_SPOT (`--recv recv\|callback`) | `*_spot_server.cpp` | `comp_src_spot_server` | `*_spot_client.cpp` | `comp_src_spot_client` |
-| MULTI_STREAM (`--recv recv\|callback`) | `*_stream_server.cpp` | `comp_src_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
+| MULTI_SPOT | `*_spot_server.cpp` | `comp_src_spot_server` | `*_spot_client.cpp` | `comp_src_spot_client` |
+| MULTI_STREAM | `*_stream_server.cpp` | `comp_src_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
-> STREAM client 예외(core): `MULTI_STREAM` client는 [PERF_POLICY.md § 8.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. public pattern은 `MULTI_STREAM` 하나만 유지하고, mode는 `--recv`로만 선택한다.
+> STREAM client 예외(core): `MULTI_STREAM` client는 [PERF_POLICY.md § 7.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. public pattern은 `MULTI_STREAM` 하나만 유지한다.
 
 #### MULTI_STREAM 계열 패턴
 
 > **STREAM 소켓은 multi suite에서만 테스트한다.** single suite에서는 STREAM 테스트를 수행하지 않는다.
 
-| 패턴 | `--recv` | server 수신 방식 | 설명 |
-|------|----------|-----------------|------|
-| MULTI_STREAM | `recv` | recv loop | 기존 소켓 recv API로 수신 |
-| MULTI_STREAM | `callback` | callback dispatch | stream dispatch callback API로 수신 |
-
-- STREAM 계열은 동일한 transport, size, clients 설정을 공유하며, recv/callback
-  두 mode를 모두 지원해야 한다.
+- MULTI_STREAM server는 poller + recv drain 루프로 수신한다.
 - **Wire protocol**: client는 `[4B length (big-endian)][payload]` (len32be framing)으로 통일한다. server 수신 방식만 패턴별로 다르다. 상세는 [PERF_POLICY.md § 2.0.3 Wire Protocol](PERF_POLICY.md)을 참조한다.
 - **Server per-connection 프레임 재조립**: STREAM 소켓은 raw TCP 데이터를
   수신하므로, recv 경계가 len32be 프레임 경계와 일치하지 않을 수 있다.
   server는 routing_id(connection)별 재조립 버퍼를 유지하여 완전한 프레임을
-  조립한 뒤 echo해야 한다. recv/callback 양쪽 모드 모두 동일한 재조립 로직을
-  적용한다. 상세는 [PERF_POLICY.md § 2.0.3 Server Per-Connection 프레임 재조립](PERF_POLICY.md)을 참조한다.
+  조립한 뒤 echo해야 한다. 상세는 [PERF_POLICY.md § 2.0.3 Server Per-Connection 프레임 재조립](PERF_POLICY.md)을 참조한다.
 - 수신 방식만 다르므로 throughput/latency 차이를 직접 비교할 수 있다.
 - `MULTI_STREAM_LEN32BE`는 삭제되었다. 문서, 스크립트, 빌드 설정, 코드에 잔존 구현이 있으면 모두 삭제해야 하며, 삭제된 패턴을 alias/legacy path로 유지하지 않는다.
-- MULTI_STREAM의 server 프로세스는 recv/callback mode와 무관하게 반드시 zlink
+- MULTI_STREAM의 server 프로세스는 반드시 zlink
   STREAM 소켓으로 `bind`해야 하며, DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로
   대체할 수 없다.
 - client 프로세스는 raw transport(`tcp`,`tls`,`ws`,`wss`)로 `connect`해야 하며, zlink STREAM 소켓의 client `connect()` 경로를 사용하지 않는다.
@@ -804,7 +759,6 @@ run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
 | `--client-io-threads N` | 클라이언트 io threads (Linux sh만 지원) | non-stream=2, stream=4 |
 | `--msg-sizes LIST` | 메시지 크기 목록 (쉼표 구분). STREAM 계열은 § 8.2 참조 | `64,256,1024,65536,131072,262144` (STREAM: `64,256,1024,65536`) |
 | `--transports LIST` | transport 목록 (쉼표 구분) | `tcp,tls,ws,wss` |
-| `--recv MODE` | recv 모델 선택: `recv` (기본) 또는 `callback` | `recv` |
 | `--output PATH` | 결과를 파일에 동시 출력 (tee) | stdout만 |
 | `--results-dir PATH` | 결과 저장 루트 디렉터리 override | `perf/results` |
 | `--results-tag NAME` | 결과 파일명에 태그 추가 | 없음 |
@@ -845,9 +799,6 @@ core/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
 # 여러 패턴
 core/perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_DEALER,MULTI_PUBSUB
 
-# callback 모델로 실행 가능한 multi 패턴
-core/perf/run_benchmarks_multi.sh --pattern MULTI_SPOT --recv callback
-
 # 클라이언트 수/메시지 크기 제한
 core/perf/run_benchmarks_multi.sh --clients 1000 --msg-sizes 64,1024
 
@@ -886,8 +837,8 @@ core/perf/run_benchmarks_multi.sh --duration 10
 ./core/build/linux-x64/bin/comp_src_stream_server current tcp
 ./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
-# 예시: MULTI_STREAM (callback mode)
-./core/build/linux-x64/bin/comp_src_stream_server current tcp --recv callback
+# 예시: MULTI_STREAM
+./core/build/linux-x64/bin/comp_src_stream_server current tcp
 ./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 ```
 
@@ -1034,7 +985,7 @@ core/perf/run_benchmarks_multi.sh --duration 10
 
 결과 파일에는 아래가 순서대로 기록된다.
 
-1. `## Effective Options (start)` — 불릿 목록 형식 (runs, patterns, transports, msg_sizes, recv_mode, clients, pin_cpu, duration_seconds)
+1. `## Effective Options (start)` — 불릿 목록 형식 (lang, suite, runs, patterns, transports, msg_sizes, clients, pin_cpu, duration_seconds)
 2. 패턴/트랜스포트별 실행 로그 및 테이블
 3. `## Effective Options (result)` — 불릿 목록 형식
 4. Completion (`status`, `expected_result_lines`, `actual_result_lines`)
@@ -1046,7 +997,7 @@ core/perf/run_benchmarks_multi.sh --duration 10
 > 공통 환경 변수(`PERF_DEBUG`, `PERF_IO_THREADS`, `PERF_MSG_SIZES`,
 > `PERF_TRANSPORTS`, `PERF_TASKSET`, `PERF_FAIL_FAST`,
 > `PERF_DISABLE_RESOURCE_METRICS`, `PERF_MAX_SOCKETS`)는
-> [PERF_POLICY.md § 9](PERF_POLICY.md) 참조.
+> [PERF_POLICY.md § 8](PERF_POLICY.md) 참조.
 
 ### 12.1 Phase 제어
 
@@ -1116,7 +1067,7 @@ core/perf/run_benchmarks_multi.sh --duration 10
 | `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 | 100 |
 | `PERF_CAPTURE_MAX_BYTES` | 프로세스 stdout 캡처 최대 바이트 | 4194304 (4MB) |
 
-> **삭제된 환경 변수**: `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 삭제 대상이다. 구현에 존재하면 제거해야 한다. Retry 금지 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md) 참조.
+> **삭제된 환경 변수**: `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 삭제 대상이다. 구현에 존재하면 제거해야 한다. Retry 금지 정책은 [PERF_POLICY.md § 7](PERF_POLICY.md) 참조.
 
 ---
 
@@ -1134,7 +1085,7 @@ core/perf/run_benchmarks_multi.sh --duration 10
 | 송신 버퍼 | active 시작 전 사전 할당, duration 내 재사용 | 매 send마다 `std::vector` 생성/resize |
 | 수신 버퍼 | 고정 크기 버퍼 또는 pool | 매 recv마다 동적 할당 |
 | 수신 데이터 | 필요한 metric header만 추출 후 경량 event로 전달 | 수신 payload 전체를 별도 컨테이너에 복사 |
-| dispatch callback | timestamp/phase 추출 후 bounded queue에 POD event enqueue | `zlink_msg_t` handle, payload pointer, 대형 버퍼를 queue에 push |
+| recv hot path | timestamp/phase 추출 후 인라인 집계 | 수신 payload 전체를 별도 컨테이너에 push |
 | routing_id | 필요 시 고정 버퍼에 1회 저장 | 매 메시지마다 `std::vector<unsigned char>` 할당 |
 | 카운터/통계 | `std::atomic<int64_t>`, bounded SPSC queue의 경량 event | active 구간마다 heap 할당이 필요한 동적 컨테이너 push |
 
@@ -1164,9 +1115,9 @@ pattern별 공식 start contract 를 사용한다.
 
 ### 13.3 코어 로직 인라인 (multi 보충)
 
-> 기본 인라인 원칙은 [PERF_POLICY.md § 8.5](PERF_POLICY.md) 참조.
+> 기본 인라인 원칙은 [PERF_POLICY.md § 7.5](PERF_POLICY.md) 참조.
 
-- **server 바이너리**: 소켓 생성, bind, recv callback/send-ready handler 등록,
+- **server 바이너리**: 소켓 생성, bind, poller 등록, recv drain, send backpressure,
   phase 제어가 각 파일에 인라인으로 존재해야 한다.
 - **client 바이너리**: 소켓 생성, connect, monitor-ready gate, send/recv API
   호출이 각 파일에 인라인으로 존재해야 한다.

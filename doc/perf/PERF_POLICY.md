@@ -1,8 +1,8 @@
 # zlink Performance Test Policy (통합)
 
 > **적용 범위**: zlink 전체 (core + bindings)
-> **Policy Version**: 1.9
-> **Date**: 2026-03-21
+> **Policy Version**: 2.0
+> **Date**: 2026-04-08
 > **Scope**: zlink 성능 테스트 통합 정책 — 공통 구조, 통합 실행, 비교 스크립트
 >
 > 본 정책은 `perf/`의 C++ 벤치마크와 in-repo perf 자산이 존재하는 바인딩
@@ -12,12 +12,10 @@
 > 수준은 언어별로 점검/정렬 대상이 된다.
 >
 > **언어별 적용 범위**:
-> - **전체 적용 (recv + callback)**: `core`(C), `bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/rust`, `bindings/go`
-> - **recv only 적용**: `bindings/node`, `bindings/python` —
->   이 언어들은 런타임 특성(single-threaded event loop, GIL)으로 인해
->   callback 모델 없이 **recv 모드만** 사용한다.
->   single/multi 모두 `--recv recv`로 실행하며, callback 전용 패턴 테스트는
->   수행하지 않는다.
+> - **전체 적용 (recv only)**: `core`(C), `bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/rust`, `bindings/go`, `bindings/node`, `bindings/python`
+> - perf는 poller + recv 경로만 측정한다. callback 경로의 동기화 비용(TSFN, GIL, mutex 등)은
+>   언어별 런타임 메커니즘이 달라 일관된 비교 기준이 불가능하므로 perf에서 제외한다.
+>   callback 정합성 검증은 `core/tests/integration`에서 수행한다.
 
 ---
 
@@ -26,7 +24,7 @@
 | 문서 | 설명 |
 |------|------|
 | **PERF_POLICY.md** (본 문서) | 공통 원칙, 디렉터리 구조, RESULT 형식, 결과 저장, 출력 형식, 실패 처리, 환경 변수(공통), 리팩토링 원칙 |
-| [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) | single suite 전용: callback-only 모델, phase, 패턴/transport, single 전용 환경 변수 |
+| [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) | single suite 전용: recv 모델, phase, 패턴/transport, single 전용 환경 변수 |
 | [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) | multi suite 전용: 프로세스 모델, backpressure, throughput/latency 측정, 패턴/transport, multi 전용 환경 변수 |
 
 - 양 suite에 공통으로 적용되는 모든 규칙은 본 문서에서 관리한다.
@@ -61,18 +59,18 @@
   - RESULT line 확정 위치
 - bindings perf는 측정 anchor와 결과 의미를 core와 동일하게 유지해야 하지만,
   구현 스타일은 언어별 특성에 맞게 작성할 수 있다.
-  - 허용: 언어별 async/runtime, callback 등록 방식, 모듈 분리, 타입 시스템 차이
+  - 허용: 언어별 async/runtime, 모듈 분리, 타입 시스템 차이
   - 금지: 측정 anchor point 이동, phase 의미 변경, metric 집합 변경, fail/skip/
     unsupported 의미 변경
 - `core/perf`와 `bindings/<lang>/perf`의 공식 실행 스크립트는 동일한 CLI 옵션
   의미와 동일한 결과 출력 포맷을 따라야 한다.
   - 옵션 이름과 의미를 언어별로 바꾸지 않는다.
-  - RESULT line 형식과 Tier 1 5개 metric 의미를 바꾸지 않는다.
+  - RESULT line 형식과 필수 5개 metric (throughput, bandwidth, latency, latency_p95, latency_p99) 의미를 바꾸지 않는다.
   - 사람이 읽는 테이블 형식과 complete/partial/fail 의미를 바꾸지 않는다.
 - bindings perf는 아래 비교 가능성 체크리스트를 함께 만족해야 한다.
   - 같은 pattern/transport 의미를 측정한다.
   - 같은 metric header / wire protocol contract를 사용한다.
-  - 같은 Tier 1 5개 metric과 같은 RESULT line 의미를 사용한다.
+  - 같은 필수 5개 metric (throughput, bandwidth, latency, latency_p95, latency_p99)과 같은 RESULT line 의미를 사용한다.
   - 같은 fail/skip/unsupported/complete/partial 의미를 사용한다.
   - hot path가 실제 binding public API를 통과한다.
 - bindings perf는 “binding 라이브러리 성능”을 측정해야 한다. 따라서 core native
@@ -88,44 +86,67 @@
   `STREAM`, echo, `PAIR` 은 제외한다.
 - 실제 오류는 즉시 `fail` 처리한다.
 - `EAGAIN`은 오류가 아니라 flow-control 상태로 취급한다.
-- perf 측정용 I/O 경로는 두 가지 모델을 지원한다.
-  - **recv 모델** (`--recv recv`):
-    - recv: poller `POLLIN` readiness 감지 → 비동기 `zlink_recv()` /
-      `zlink_msg_recv()` drain 루프 (react 방식).
-    - send backpressure: poller `POLLOUT` readiness 감지 → writable 상태에서만
-      send 수행.
-    - poller가 recv/send 양쪽의 readiness 제어를 담당한다.
-  - **callback 모델** (`--recv callback`):
-    - single suite는 callback 모드만 사용한다.
-    - multi suite는 recv 모드를 기본으로 하되, `SPOT` / `STREAM`은
-      callback 모드도 추가 지원한다.
-    - `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
-      callback 전용 파일명이나 별도 public pattern 이름을 정책에 추가하지
-      않는다.
-    - recv: pattern별 callback API 등록 → 라이브러리가 I/O thread에서 callback
-      dispatch.
-    - callback hot path는 메시지 수명/집계를 오래 붙들지 않고, 필요한 최소
-      metric event만 추출해 bounded queue로 넘긴다.
-    - throughput/latency/phase window 집계는 callback 밖 metric worker가
-      수행한다. single callback은 전용 worker를 사용하고, multi callback은
-      metric worker와 app thread가 역할을 분리한다.
-    - send backpressure는 `zlink_send_ready_handler()`를 포함한 callback 모델의
-      보조 메커니즘으로 사용하며, callback 모델의 본체는 `recv callback +
-      bounded queue + metric worker`다.
-    - 단, single callback은 전용 sender가 active 구간 동안 blocking send를
-      수행하는 모델을 기본으로 하며, `zlink_send_ready_handler()`는 single
-      callback의 필수 계약이 아니다. `send_ready_handler` 기반 backpressure는
-      multi callback 또는 single의 별도 nonblocking variant가 있을 때만 적용한다.
-    - poller는 사용하지 않는다.
-- 실행 스크립트의 `--recv` 옵션으로 모델을 선택한다.
-  - single 기본값: `callback`
-  - multi 기본값: `recv`
-- 지원하지 않는 pattern에서 `--recv callback`을 지정하면 policy violation으로
-  즉시 실패해야 한다. silent fallback은 금지한다.
-- 같은 측정 구간에서 두 모델의 recv/send 메커니즘을 섞지 않는다.
-- 단, 두 모델은 동일한 metric header decode, phase 판정, throughput/latency
-  집계 엔진을 공유하는 방향으로 구현해야 한다. 모델 차이는 event source
-  (`recv` drain vs callback dispatch) 에서만 남겨야 한다.
+- perf 측정용 I/O 경로는 **recv 모델**만 사용한다.
+  - recv: poller `POLLIN` readiness 감지 → 비동기 `zlink_recv()` /
+    `zlink_msg_recv()` drain 루프 (react 방식).
+  - send (single): blocking send. HWM 도달 시 자연 backpressure.
+    단일 프로세스에서 sender/receiver를 구동하므로 nonblocking 제어 불필요.
+  - send (multi): nonblocking send + poller `POLLOUT` readiness 감지.
+    서버가 N개 클라이언트를 한 poller에서 처리하므로 EAGAIN 시 pending
+    deque/flag에 저장하고 POLLOUT에서 재개.
+  - poller는 recv readiness 감지에 공통 사용하고, send backpressure는
+    suite별로 위 방식을 따른다.
+- callback 경로는 perf에서 측정하지 않는다. callback의 동기화 메커니즘(TSFN,
+  GIL, mutex 등)은 언어별 런타임에 의존하므로 일관된 비교 기준이 불가능하다.
+  callback 정합성 검증은 core 통합테스트에서 수행한다.
+
+### 1.1.1 Metric Header Wire Format
+
+모든 언어에서 동일한 metric header를 사용해야 언어 간 결과 비교가 가능하다.
+metric header는 benchmark payload의 선두에 고정 크기로 인코딩된다.
+
+```text
+offset  size  type       field         설명
+─────────────────────────────────────────────────────────
+ 0       4    uint32_le  magic         고정값 0x5A4C4E4B ("ZLNK")
+ 4       4    uint32_le  run_id        실행 식별자
+ 8       1    uint8      phase         0=warmup, 1=active, 2=cooldown
+ 9       4    uint32_le  msg_size      메시지 크기 (bytes)
+13       8    uint64_le  seq           메시지 시퀀스 번호
+21       8    int64_le   sent_ts_us    송신 시점 (microseconds, epoch)
+─────────────────────────────────────────────────────────
+total: 29 bytes (고정)
+```
+
+- 모든 필드는 **little-endian**이다.
+- payload가 29바이트 미만이면 metric header를 포함할 수 없으므로 perf 최소
+  메시지 크기는 29바이트 이상이어야 한다. 실제 정책 기본값은 64바이트부터 시작.
+- header 이후 나머지 바이트는 패딩(0 또는 임의값)이며 측정에 사용하지 않는다.
+- 수신 측은 `magic` 필드로 유효 perf 메시지를 판별하고, `phase == 1`(active)인
+  메시지만 throughput/latency 집계에 포함한다.
+
+**phase 값과 lifecycle 매핑**:
+
+| phase 값 | 이름 | lifecycle 단계 | 설명 |
+|----------|------|---------------|------|
+| 0 | warmup | ready 구간 | ready gate 통과 전 송신되는 메시지. 수신 측은 집계에서 제외 |
+| 1 | active | active 구간 | 측정 대상. throughput/latency 집계에 포함 |
+| 2 | cooldown | active 종료 후 | sender가 duration 만료 후 보내는 종료 신호. 수신 측은 집계에서 제외 |
+
+- sender는 ready gate 통과 전까지 `phase=0`으로 송신하고, active 시작 시
+  `phase=1`로 전환하며, duration 만료 시 `phase=2`로 전환한다.
+- receiver는 `phase=1` 메시지만 집계하므로, warmup/cooldown 메시지가
+  측정 결과를 오염시키지 않는다.
+
+**run_id 생성 규칙**:
+
+- `run_id`는 프로세스 시작 시 **랜덤 uint32**를 1회 생성한다.
+- 같은 프로세스 내 모든 메시지는 동일한 `run_id`를 사용한다.
+- receiver는 `run_id`가 일치하는 메시지만 유효 perf 메시지로 인식한다.
+  다른 `run_id`의 메시지(이전 실행 잔여 등)는 무시한다.
+
+### 1.1.2 Hot Path 및 Ready Gate 규칙
+
 - setup/handshake 단계의 bounded validation 1회는 허용하되, 측정 구간으로
   들어가기 전에 종료되어야 한다.
 - hot loop 안에서는 아래를 금지한다.
@@ -152,7 +173,7 @@
 - SPOT perf ready gate는 monitor event 나 snapshot 이 아니라 benchmark control
   protocol 로 판정한다.
 - single SPOT 은 service monitor 대신 local pub/sub probe 를 사용한다.
-  sender 가 metric header가 찍힌 probe payload 를 publish 하고, callback recv
+  sender 가 metric header가 찍힌 probe payload 를 publish 하고, recv
   쪽에서 첫 유효 수신을 확인하면 ready 로 판정한다.
 - multi SPOT barrier 의 `READY` 는 `connect_peer()` 직후 즉시 보내지 않는다.
   local benchmark network 정책으로, 각 client spot 이 control link ready 와
@@ -225,10 +246,6 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`�
   - median/최종 report 저장
 - 바이너리 내부에서 측정 hot path를 흐리게 하는 report formatting, 문자열 조합,
   동적 집계 컨테이너 orchestration 로직을 추가하면 안 된다.
-- callback 기반 측정에서 callback dispatch thread는 phase별 count 증가와
-  최소 metric event enqueue까지만 수행한다. throughput/latency 계산,
-  sample aggregation, 완료 대기는 callback 밖 worker에서 처리해야 하며,
-  패턴별 예외를 두지 않는다.
 - perf 기본 HWM 정책은 단순성을 우선한다. perf가 여는 benchmark socket은
   역할별 예외 없이 동일한 `hwm` budget을 사용하고, 각 socket에
   `SNDHWM`, `RCVHWM` 을 함께 설정한다.
@@ -330,9 +347,8 @@ perf/                                       # bindings/<lang>/perf/
 
 - 모든 벤치마크 소스 파일은 **`perf_`** 접두어를 사용한다 (PascalCase 언어는 `Perf` 접두어).
 - 기본 패턴: `perf_<pattern>` — 각 언어의 명명 컨벤션을 적용한다.
-- `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
-- callback 모드를 이유로 별도 callback 파일명이나 별도 public pattern 이름을
-  정책에 추가하지 않는다.
+- perf는 recv 모델만 사용하므로 별도 모델 구분용 파일명이나 pattern 이름을
+  추가하지 않는다.
 - **예외**: 공통 유틸리티 헤더는 `perf_` 접두어 없이 명명할 수 있다 (예: `bench_common.hpp`, `perf_common.hpp`).
 - 상세 파일명 규칙은 개별 정책 문서를 참조한다:
   - Single: [PERF_SINGLE_TEST_POLICY.md § 10.1](PERF_SINGLE_TEST_POLICY.md)
@@ -346,8 +362,10 @@ perf/                                       # bindings/<lang>/perf/
 | C++ binding | `perf/single/` | `perf/multi/` | `perf_dispatch.hpp` |
 | .NET | `perf/single/Zlink.BindingBench/` | `perf/multi/<project>/` 또는 `perf/single/Zlink.BindingBench/` 내 multi role entrypoint | `PerfCommon.cs` |
 | Java | `perf/single/<project>/` | `perf/multi/<project>/` 또는 `perf/single/<project>/` 내 multi role entrypoint | `PerfUtil.java` |
+| Rust | `perf/single/` | `perf/multi/` | `perf/common/` |
+| Go | `perf/single/` | `perf/multi/` | `perf/common/` |
 | Node | `perf/single/` | `perf/multi/` | `perf/common/` |
-| Python | 미구현 | 미구현 | - |
+| Python | `perf/single/` | `perf/multi/` | `perf/common/` |
 
 - 컴파일 언어 바인딩(C++/.NET/Java)은 소스 트리 분리 대신 단일 runner에서 `--multi-server`/`--multi-client` role 분기를 제공해도 된다. 이 경우에도 결과 형식, 운영 모드, server/client 프로세스 모델은 동일하게 준수해야 한다.
 
@@ -374,12 +392,7 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 ```
 
 - **client**: 모든 STREAM 패턴에서 동일한 공통 raw client를 사용하며, `[4B length (big-endian)][payload]` 형식으로 송신한다. 수신(echo)도 동일한 framing으로 읽는다.
-- **server**: zlink STREAM 소켓으로 bind한 뒤, 수신 방식에 따라 2가지 패턴으로 분기한다:
-
-| 패턴 | `--recv` | server 수신 방식 | 설명 |
-|------|----------|-----------------|------|
-| STREAM / MULTI_STREAM | `recv` | 기본 recv 루프 | 기존 소켓 recv API로 메시지 수신 |
-| STREAM / MULTI_STREAM | `callback` | callback dispatch | stream dispatch callback API로 수신 |
+- **server**: zlink STREAM 소켓으로 bind한 뒤, poller + recv drain 루프로 수신한다.
 
 #### Server Per-Connection 프레임 재조립
 
@@ -407,22 +420,22 @@ per-connection reassembly:
 | echo 시점 | 완전한 프레임 1개가 재조립되면 즉시 해당 routing_id로 echo send |
 | partial 처리 | recv 경계와 프레임 경계가 불일치할 수 있으므로 partial data를 connection 버퍼에 보존 |
 | connection 정리 | routing_id에 대한 zero-length recv(연결 종료)시 해당 버퍼 제거 |
-| recv/callback 공통 | 양쪽 모드 모두 동일한 per-connection 재조립 로직을 적용 |
+| 재조립 로직 | recv 모드에서 per-connection 재조립 로직을 적용 |
 
 - client의 wire protocol을 len32be로 통일하는 이유: 서버 수신 방식만 다르고 client는 동일한 공통 바이너리를 사용하므로, 테스트 용이성과 비교 공정성을 위해 client 측 framing을 len32be로 고정한다.
 - 이 프로토콜은 multi suite에 적용된다. single suite에서는 STREAM 테스트를 수행하지 않는다.
 - legacy callback-named / len32be-named STREAM 패턴은 삭제 대상이다. public
-  policy surface에서는 `STREAM` / `MULTI_STREAM` + `--recv recv|callback`
-  조합만 사용한다.
+  policy surface에서는 `STREAM` / `MULTI_STREAM`만 사용한다.
 
 ### 2.1 결과 저장 규칙
 
 | 항목 | 규칙 |
 |------|------|
-| 파일명 형식 | `perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt` |
+| 파일명 형식 | `perf_<lang>_<suite>_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt` |
 | 날짜 디렉터리 | 사용하지 않음 (파일명에 날짜/시간 포함) |
+| `<lang>` | `core`, `cpp`, `dotnet`, `java`, `rust`, `go`, `node`, `python` |
+| `<suite>` | `single`, `multi` |
 | `<platform>` | `linux`, `windows`, `macos` |
-| `<recv_mode>` | `recv`, `callback` |
 | `<tag>` | `--results-tag` 옵션으로 지정 (선택) |
 
 ### 2.2 보존 정책
@@ -485,7 +498,34 @@ bindings/cpp/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
 >
 > core는 single/multi 스크립트가 같은 디렉터리에 있으므로 `_multi` 접미어로 구분한다. bindings는 언어별 디렉터리에서 policy-compliant 실행기를 직접 제공해야 한다.
 
-### 3.2 통합 실행
+### 3.2 Smoke 테스트
+
+perf smoke 테스트는 전체 패턴과 전체 transport를 대상으로 하되,
+메시지 크기를 64B 하나로 고정하여 빠르게 전 경로의 정상 동작을 검증하는
+실행이다. 성능 수치 자체보다 **모든 패턴/transport 조합이 fail 없이
+통과하는지**를 확인하는 것이 목적이다.
+
+```bash
+# core smoke (single)
+core/perf/run_benchmarks.sh --pattern ALL --msg-sizes 64
+
+# core smoke (multi)
+core/perf/run_benchmarks_multi.sh --pattern ALL --msg-sizes 64
+
+# bindings smoke (예: cpp)
+bindings/cpp/perf/run_benchmarks.sh --pattern ALL --msg-sizes 64
+bindings/cpp/perf/run_benchmarks_multi.sh --pattern ALL --msg-sizes 64
+```
+
+- single과 multi 각각 실행한다.
+- `--msg-sizes 64`로 64B 단일 크기만 측정한다.
+- `--pattern ALL`로 해당 suite의 전체 패턴을 순회한다.
+- transport는 기본값(전체)을 사용한다.
+- smoke 통과 기준: 전 조합이 `fail` 없이 완료 (`status=complete`).
+- 리팩토링, 신규 바인딩 추가, CI 검증 시 full perf 전에 smoke를 먼저 실행하여
+  기본 경로를 검증한다.
+
+### 3.3 통합 실행
 
 실행 엔트리포인트는 wrapper 스크립트다 (§ 3.1 정책 준수 실행기 테이블 참조).
 - core single: `run_benchmarks.sh` / `.ps1`
@@ -503,7 +543,7 @@ core/perf/run_benchmarks_multi.sh --pattern ALL
 # core: 특정 패턴만
 core/perf/run_benchmarks.sh --pattern PAIR,PUBSUB
 
-# core: single 기본 모드(callback)로 실행
+# core: single 실행
 core/perf/run_benchmarks.sh --pattern PAIR
 
 # core: 태그 추가
@@ -514,7 +554,7 @@ bindings/java/perf/run_benchmarks.sh --pattern ALL
 bindings/java/perf/run_benchmarks_multi.sh --pattern ALL
 ```
 
-### 3.3 통합 실행 옵션
+### 3.4 통합 실행 옵션
 
 | 옵션 | 설명 | 기본값 |
 |------|------|--------|
@@ -529,14 +569,7 @@ bindings/java/perf/run_benchmarks_multi.sh --pattern ALL
 | `--results-tag NAME` | 결과 파일명 태그 | 없음 |
 | `--msg-sizes LIST` | 메시지 크기 목록 | suite별 기본값 |
 | `--transports LIST` | transport 목록 | suite별 기본값 |
-| `--recv MODE` | recv 모델 선택. single은 `callback`만 허용, multi 기본값은 `recv`. dual-mode 예외는 multi=`SPOT`/`STREAM`만 허용 | suite별 기본값 |
 
-- `--recv` 옵션은 측정 구간의 수신 경로를 결정한다. `recv`는 동기 recv +
-  poller 기반, `callback`은 recv handler callback 기반이다.
-- single은 callback only다.
-- multi는 recv only를 기본으로 하고 `SPOT`/`STREAM`만 `recv`/`callback`
-  예외를 둔다.
-- monitor 관련 검증은 suite와 무관하게 callback 기준으로만 수행한다.
 - suite별 고유 옵션(`--clients` 등)은 개별 스크립트 호출 시 전달한다.
 
 ---
@@ -551,11 +584,12 @@ bindings/java/perf/run_benchmarks_multi.sh --pattern ALL
 
 ```text
 ## Effective Options (start)
+- lang: core
+- suite: single
 - runs: 1
 - patterns: PAIR, SPOT
 - transports: tcp, tls, ws, wss
 - msg_sizes: 64, 256, 1024, 65536, 131072, 262144
-- recv_mode: recv
 - pin_cpu: off
 
 ===============================================================================
@@ -563,15 +597,16 @@ bindings/java/perf/run_benchmarks_multi.sh --pattern ALL
 ## PATTERN: PAIR (one-way)
 
 ### Transport: tcp
-| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | CPU% | Mem MB |
-|----------|------------------|-----------|--------------|--------------|--------------|------|--------|
-| 64B      |   523.40 Kmsg/s  | 33.5 MB/s |   12.35 us   |   18.20 us   |   21.40 us   | 48.2 |   12.3 |
-| 1024B    |   120.30 Kmsg/s  | 123.2 MB/s|   52.10 us   |   70.55 us   |   92.10 us   | 52.1 |   14.1 |
+| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 |
+|----------|------------------|-----------|--------------|--------------|--------------|
+| 64B      |   523.40 Kmsg/s  | 33.5 MB/s |   12.35 us   |   18.20 us   |   21.40 us   |
+| 1024B    |   120.30 Kmsg/s  | 123.2 MB/s|   52.10 us   |   70.55 us   |   92.10 us   |
 ```
 
 - **실행 옵션 헤더 + TABLE**을 저장한다.
 - `## Effective Options (start)` / `## Effective Options (result)` 섹션은 실행 시 사용된 옵션을 불릿 목록으로 출력한다. report/ 파일과 stdout 모두에 포함해야 한다.
-- `recv_mode` 항목은 필수이며, 실제 실행에 사용된 `--recv` 값(`recv` 또는 `callback`)을 그대로 기록해야 한다.
+- `lang` 항목은 필수이며, 실행한 바인딩을 기록한다 (`core`, `cpp`, `dotnet`, `java`, `rust`, `go`, `node`, `python`).
+- `suite` 항목은 필수이며, `single` 또는 `multi`를 기록한다.
 
 ### 4.2 RESULT line 형식
 
@@ -581,7 +616,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 | metric | 설명 | 필수 |
 |--------|------|------|
-| `throughput` | echo 패턴: 왕복 완료 수 (`ops/s`), one-way 패턴: 단방향 수신 수 (`msg/s`) | MUST |
+| `throughput` | echo 패턴: 왕복 완료 수 (`ops/s`, 1 op = send + recv response 1회 완료), one-way 패턴: 단방향 수신 수 (`msg/s`) | MUST |
 | `bandwidth` | 네트워크 전송량 (MB/s) — multi echo: `throughput × size × 2 / 1,000,000`, 그 외(single 전체 + multi one-way): `throughput × size / 1,000,000` | MUST |
 | `latency` | 레이턴시 (us) | MUST |
 | `latency_p95` | 레이턴시 95th percentile (us) | MUST |
@@ -595,8 +630,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 결과는 항상 `<suite>/report/`에 저장된다 (complete/partial 무관).
 
-- 파일명 형식: `perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt`
-- `<recv_mode>`는 실제 실행에 사용된 `--recv` 값이며 `recv` 또는 `callback`이다.
+- 파일명 형식: `perf_<lang>_<suite>_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt`
 - 완료 판정 기준: `expected == actual` (throughput + bandwidth + latency + latency_p95 + latency_p99 RESULT line 기준, 조합당 5줄).
 
 ---
@@ -609,11 +643,12 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 ```text
 ## Effective Options (start)
+- lang: core
+- suite: single
 - runs: 1
 - patterns: PAIR, SPOT
 - transports: tcp, tls, ws, wss
 - msg_sizes: 64, 256, 1024, 65536, 131072, 262144
-- recv_mode: recv
 - pin_cpu: off
 
 ===============================================================================
@@ -621,10 +656,10 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ## PATTERN: PAIR (one-way)
 
 ### Transport: tcp
-| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | CPU% | Mem MB |
-|----------|------------------|-----------|--------------|--------------|--------------|------|--------|
-| 64B      |   523.40 Kmsg/s  | 33.5 MB/s |   12.35 us   |   18.20 us   |   21.40 us   | 48.2 |   12.3 |
-| 1024B    |   312.50 Kmsg/s  | 320.0 MB/s|   18.44 us   |   27.55 us   |   33.10 us   | 52.1 |   14.1 |
+| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 |
+|----------|------------------|-----------|--------------|--------------|--------------|
+| 64B      |   523.40 Kmsg/s  | 33.5 MB/s |   12.35 us   |   18.20 us   |   21.40 us   |
+| 1024B    |   312.50 Kmsg/s  | 320.0 MB/s|   18.44 us   |   27.55 us   |   33.10 us   |
 
 
 ===============================================================================
@@ -666,7 +701,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | 조건 | 항상 출력 (`PERF_DEBUG`와 무관) |
 
 - 컬럼 순서 및 형식은 § 5.1 결과 테이블과 동일하다.
-- 바이너리 stderr는 stdout 결과에 통합하지 않지만, multi 엔진(`run_comparison.py`)은 stderr에서 `protocol not supported` 문자열을 감지하여 `unsupported` 자동 분류에 활용한다 (§ 8.4 참조).
+- 바이너리 stderr는 stdout 결과에 통합하지 않지만, multi 엔진(`run_comparison.py`)은 stderr에서 `protocol not supported` 문자열을 감지하여 `unsupported` 자동 분류에 활용한다 (§ 7.4 참조).
 
 상세 형식은 suite별 정책 문서를 참조한다:
 - Single: [PERF_SINGLE_TEST_POLICY.md § 6.3](PERF_SINGLE_TEST_POLICY.md)
@@ -718,18 +753,16 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 ---
 
----
-
-## 7. 리소스 메트릭 수집
+## 6. 리소스 메트릭 수집
 
 - 이번 정책의 기본 perf surface와 RESULT 계약에는 cpu/mem 계열 메트릭을 포함하지 않는다.
 - cpu/mem 수집이 필요하면 별도 진단 작업으로 분리하고, 기본 runner/binary/output 계약과 섞지 않는다.
 
 ---
 
-## 8. 실패 처리 정책 (공통 필수)
+## 7. 실패 처리 정책 (공통 필수)
 
-### 8.1 Retry(재시도) 금지
+### 7.1 Retry(재시도) 금지
 
 벤치마크 실행 스크립트 및 바이너리에 **retry/재시도 로직을 구현하지 않는다**.
 
@@ -741,7 +774,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 - **이유**: 재시도는 실패 원인을 숨긴다. 벤치마크 실패는 라이브러리 또는 환경의 실제 문제를 반영하며, 재시도로 통과시키면 회귀가 감지되지 않는다.
 
-### 8.2 Inflight/Outstanding 옵션 금지
+### 7.2 Inflight/Outstanding 옵션 금지
 
 벤치마크 바이너리 및 스크립트에 **inflight, outstanding, in-flight 제한 옵션**을 두지 않는다.
 
@@ -755,7 +788,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 - one-way 패턴에서는 응답이 없으므로 outstanding 개념 자체가 성립하지 않는다.
 - echo 패턴에서는 클라이언트 측 per-socket pending 제어(1:1 send-recv)와 소켓 HWM이 자연 backpressure를 제공하므로 별도의 outstanding 제한이 불필요하다.
 
-### 8.3 실패 시 대응 절차
+### 7.3 실패 시 대응 절차
 
 | 단계 | 행동 |
 |------|------|
@@ -769,7 +802,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 - core 라이브러리 버그를 발견하면 "perf만 통과시키는 우회"를 금지한다. 반드시
   재현 테스트를 추가해 버그를 고정한 뒤, core 수정과 함께 해결해야 한다.
 
-### 8.4 UNSUPPORTED 오용 금지
+### 7.4 UNSUPPORTED 오용 금지
 
 정책 문서(§10.3 / §11.3)에 **정의된 transport**가 실행 시 실패하면 반드시 `fail`로 보고해야 한다. `UNSUPPORTED`로 보고하여 실패를 숨기는 것을 **금지**한다.
 
@@ -785,7 +818,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 - **stderr 기반 자동 분류**: 바이너리 stderr에 `protocol not supported` 문자열이 포함되면 multi 실행 엔진(`run_comparison.py`)이 해당 조합을 `unsupported`로 자동 분류한다. single 엔진(`single/run_comparison.py`)은 stderr 문자열 기반 분류를 수행하지 않으며 stdout `UNSUPPORTED` 토큰만 인식한다.
 - 실패를 `UNSUPPORTED`로 위장하면 회귀(regression)가 감지되지 않으므로 엄격히 금지한다.
 
-### 8.5 공통화 경계 원칙
+### 7.5 공통화 경계 원칙
 
 perf 구현의 공통화 기준은 **코드 중복 제거 자체가 아니라 benchmark 의미 보존과
 전체 복잡도 감소**다. 공통 helper는 지원 인프라를 숨길 수는 있지만, 패턴의
@@ -823,7 +856,6 @@ perf 구현의 공통화 기준은 **코드 중복 제거 자체가 아니라 be
 | latency 샘플 집계 | header timestamp 기반 샘플 수집 |
 | p95/p99 계산 | latency 분포 대표값 계산 |
 | 메트릭 보정/출력 계약 | latency triplet 보정, metric naming, RESULT line 계약 유지 |
-| CPU / 메모리 수집 | 리소스 메트릭 수집 및 보고 형식 |
 
 이 항목들은 결과 해석과 조합 간 비교 가능성을 결정하는 **측정 계약**이므로
 선택적 공통화가 아니라 **공통 구현 강제 대상**으로 본다.
@@ -843,8 +875,7 @@ perf 구현의 공통화 기준은 **코드 중복 제거 자체가 아니라 be
 - routing frame 조립/해석
 - `EAGAIN` 이후 pending flag / pending deque 처리 전략 (패턴별 backpressure
   방식이 다를 때)
-- `recv + poller` 와 `callback + bounded queue + metric worker` 중 어떤 실행
-  경로를 쓰는지
+- `recv + poller` 실행 경로가 명시적으로 드러나는지
 - ready gate 통과 이후 benchmark를 시작하는 실제 조건
 - 소켓/handle 생성 및 연결 방식
 
@@ -895,7 +926,7 @@ poller event loop, latency 집계 등의 **공통 골격이 95% 이상 동일**�
 
 ---
 
-## 8.6 리팩토링 원칙 (공통)
+## 7.6 리팩토링 원칙 (공통)
 
 > 참조:
 > [`doc/plan/refactor/00-core-system-posd-refactor-plan.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/refactor/00-core-system-posd-refactor-plan.ko.md),
@@ -905,7 +936,7 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 적용한다. `core/perf/README*.md`는 사용 방법만 설명하며, 설계/리팩토링 기준은
 본 정책 문서가 source of truth다.
 
-### 8.6.1 성능 비회귀 우선
+### 7.6.1 성능 비회귀 우선
 
 - 구조 변경은 single/multi 기준 성능을 저하시켜서는 안 된다.
 - 각 리팩토링 단계는 full single + multi perf 실행으로 기준선 비회귀를 확인한 뒤
@@ -913,14 +944,14 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 - 코드 품질이 개선되더라도 throughput/latency가 회귀하면 해당 변경을 수용하지
   않는다.
 
-### 8.6.2 복잡도 감소가 목적이다
+### 7.6.2 복잡도 감소가 목적이다
 
 - 리팩토링은 코드를 옮기는 작업이 아니라 전체 복잡도를 줄이는 작업이어야 한다.
 - 얕은 wrapper, pass-through 계층, config flag 기반 분기로 간접비만 늘리는
   구조를 제거한다.
 - 각 계층은 단순 위임이 아니라 서로 다른 추상화를 제공해야 한다.
 
-### 8.6.3 깊은 모듈과 명확한 ownership
+### 7.6.3 깊은 모듈과 명확한 ownership
 
 - 넓은 호출 표면의 작은 함수 다발보다, 좁은 인터페이스와 풍부한 내부를 가진
   모듈을 선호한다.
@@ -928,40 +959,40 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
   authoritative close owner를 가져야 한다.
 - lifecycle, ownership, invariant는 몇 문장으로 설명 가능해야 한다.
 
-### 8.6.4 정보 은닉
+### 7.6.4 정보 은닉
 
 - benchmark 바이너리는 라이브러리 내부 구조에 의존하지 않아야 한다.
 - 패턴별 측정 의미와 프로세스 관리, 결과 포맷팅, 파일 I/O 같은 메커니즘을
   분리한다.
 - phase machinery나 transport 내부를 패턴 수준 측정 코드에 노출하지 않는다.
 
-### 8.6.5 retry / workaround / 인위적 흐름 제어 금지
+### 7.6.5 retry / workaround / 인위적 흐름 제어 금지
 
 - 스크립트와 바이너리에 retry 로직을 넣지 않는다.
 - inflight/outstanding 제한 옵션으로 측정 의미를 왜곡하지 않는다.
 - 실패를 `UNSUPPORTED`나 우회 로직으로 숨기지 않는다.
 - 실패는 실제 신호로 취급하고 근본 원인을 수정한다.
 
-### 8.6.6 죽은 코드와 레거시 옵션 정리
+### 7.6.6 죽은 코드와 레거시 옵션 정리
 
 - 미사용 코드, retry 관련 변수, inflight 관련 변수, orphan helper는
   리팩토링 과정에서 제거한다.
 - compatibility shim, `_unused` 류의 이름 변경, `// removed` 주석으로
   잔존물을 남기지 않는다.
 
-### 8.6.7 구조로 오용을 방지한다
+### 7.6.7 구조로 오용을 방지한다
 
 - 정책 문서나 런타임 검사에만 의존하지 말고 타입과 API 설계로 오용을 막는다.
 - 예: RAII guard, enum-typed phase state, compile-time pattern/transport
   validation.
 
-### 8.6.8 변경 증폭을 줄인다
+### 7.6.8 변경 증폭을 줄인다
 
 - 새 pattern 추가는 새 소스 파일과 transport matrix entry 정도로 끝나야 한다.
 - 새 transport 추가가 pattern-level 코드를 건드리게 만들면 경계가 잘못된 것이다.
 - 한 곳의 변경이 여러 곳을 강제로 수정하게 만들면 추상화를 다시 설계해야 한다.
 
-### 8.6.9 단계별 게이트
+### 7.6.9 단계별 게이트
 
 - 각 리팩토링 단계는 아래 게이트를 통과해야 한다.
   1. 기능 게이트: `run_test_lanes.sh`
@@ -971,7 +1002,7 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 
 ---
 
-## 9. 환경 변수 (공통)
+## 8. 환경 변수 (공통)
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|

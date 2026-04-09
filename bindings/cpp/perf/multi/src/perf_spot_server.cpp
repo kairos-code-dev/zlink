@@ -388,11 +388,9 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
               perf_metric::phase_t phase,
               std::chrono::steady_clock::duration duration) {
               const bench_multi_cpu_sample_t resource_probe_start =
-                phase == perf_metric::phase_warmup
-                  ? bench_multi_cpu_sample_t()
-                  : perf::multi::start_resource_probe();
+                perf::multi::start_resource_probe();
               const bool ok = run_phase(spot, current_size, seq, phase, duration);
-              if (ok && phase == perf_metric::phase_active) {
+              if (ok) {
                   const bench_multi_resource_metrics_t resource_metrics =
                     perf::multi::finish_resource_probe(resource_probe_start);
                   perf::multi::print_server_resource_metrics(

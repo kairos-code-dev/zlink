@@ -45,6 +45,30 @@ Fields:
 | 3 | SUBSCRIBE | 0x08 | 구독 요청 |
 | 4 | CANCEL | 0x10 | 구독 취소 |
 
+### 2.3 Internal Envelope Frame
+
+메시지가 request-reply 필드(`msg_type` / `correlation_id`) 또는 per-message
+metadata를 가지고 있으면, send 경로가 사용자 payload frame 앞에 internal
+envelope frame을 prepend한다. 이 frame은 `command` 메시지 타입을 사용하며
+application에 투명하다.
+
+- request-reply나 metadata가 없는 메시지는 추가 frame이 없다. overhead 0.
+- recv 경로(`strip_internal_message_envelopes`)가 envelope frame을 감지하여
+  strip하고, `msg_type`, `correlation_id`, metadata를 메시지 내부 상태에
+  복원한 후 application에 전달한다.
+- `zlink_msg_data()` / `zlink_msg_size()`는 항상 사용자 payload만 반환한다.
+
+prepend될 수 있는 envelope frame:
+
+| Frame | 조건 | 내용 |
+|-------|------|------|
+| Request-reply envelope | `msg_type != DATA` | type (u8) + correlation_id (u64) = 9바이트 |
+| Metadata envelope | metadata count > 0 | 인코딩된 key-value entries |
+
+둘 다 선택적이며 독립적이다. 하나의 메시지에 request-reply와 metadata
+envelope이 동시에 존재할 수 있다. 둘 다 있으면 request-reply envelope frame이
+먼저, metadata frame이 다음, 사용자 payload frame이 마지막 순서로 전송된다.
+
 ## 3. 핸드셰이크
 
 ### 3.1 시퀀스

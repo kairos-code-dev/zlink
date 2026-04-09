@@ -515,8 +515,6 @@ bool callback_receiver_t::attach (perf_socket_t &socket_,
 {
     _socket = &socket_;
     _queue_probe = queue_probe_;
-    if (_socket->on_receive(&callback_receiver_t::recv_handler, this) != 0)
-        return false;
     if (_worker.joinable ())
         return true;
 
@@ -556,19 +554,35 @@ bool callback_receiver_t::finish_phase (unsigned long long expected_count_,
                                         unsigned long long *received_out_,
                                         latency_stats_t *latency_out_)
 {
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (recv_timeout_ms_ > 0 ? recv_timeout_ms_ : 200);
-
     std::unique_lock<std::mutex> lock (_result_mutex);
-    while (_received_count < expected_count_
-           && !_failed.load (std::memory_order_acquire)) {
-        if (_result_cv.wait_until (lock, deadline) == std::cv_status::timeout)
-            break;
+    const auto wait_span =
+      std::chrono::milliseconds (recv_timeout_ms_ > 0 ? recv_timeout_ms_ : 200);
+
+    if (expected_count_ == 0) {
+        unsigned long long last_count = _received_count;
+        auto deadline = std::chrono::steady_clock::now () + wait_span;
+        while (!_failed.load (std::memory_order_acquire)) {
+            if (_received_count != last_count) {
+                last_count = _received_count;
+                deadline = std::chrono::steady_clock::now () + wait_span;
+                continue;
+            }
+            if (std::chrono::steady_clock::now () >= deadline)
+                break;
+            (void) _result_cv.wait_until (lock, deadline);
+        }
+    } else {
+        const auto deadline = std::chrono::steady_clock::now () + wait_span;
+        while (_received_count < expected_count_
+               && !_failed.load (std::memory_order_acquire)) {
+            if (_result_cv.wait_until (lock, deadline) == std::cv_status::timeout)
+                break;
+        }
+        if (_received_count < expected_count_)
+            return false;
     }
 
-    if (_received_count < expected_count_
-        || _failed.load (std::memory_order_acquire)) {
+    if (_failed.load (std::memory_order_acquire) || _received_count == 0) {
         return false;
     }
 
@@ -637,39 +651,85 @@ bool callback_receiver_t::push_event (const event_t &event_)
 
 void callback_receiver_t::worker_loop ()
 {
-    for (;;) {
-        event_t event;
-        {
-            std::unique_lock<std::mutex> lock (_queue_mutex);
-            while (_queue_count == 0 && !_stop_worker)
-                _queue_cv.wait (lock);
-            if (_queue_count == 0 && _stop_worker)
-                break;
+    if (!_socket)
+        return;
 
-            event = _queue[_queue_head];
-            _queue_head = (_queue_head + 1) % _queue.size ();
-            --_queue_count;
+    zlink::poller_t poller;
+    if (poller.add (*_socket, zlink::poll_event::pollin) != 0) {
+        _failed.store (true, std::memory_order_release);
+        return;
+    }
+
+    std::vector<zlink::poll_event_t> events (1);
+    while (!_stop_worker && !_failed.load (std::memory_order_acquire)) {
+        const int poll_rc = poller.wait_all (events, 5);
+        if (poll_rc < 0) {
+            const int err = errno;
+            if (err == EINTR || err == EAGAIN)
+                continue;
+            _failed.store (true, std::memory_order_release);
+            return;
         }
-
-        std::lock_guard<std::mutex> lock (_result_mutex);
-        if (event.token != _result_token)
+        if (poll_rc == 0)
             continue;
-        if (!event.header_ok
-            || !perf_single_metric::is_expected (
-              event.header, event.run_id, event.phase, event.msg_size)) {
+
+        if ((events[0].revents & static_cast<short> (zlink::poll_event::pollin))
+            == 0) {
             continue;
         }
 
-        ++_received_count;
-        if (event.active) {
-            const uint64_t now = perf_single_metric::now_us ();
-            const double latency_us =
-              now >= event.header.sent_ts_us
-                ? static_cast<double> (now - event.header.sent_ts_us)
-                : 0.0;
-            _latency_builder.add (latency_us);
+        for (;;) {
+            zlink::received_t received;
+            const int rc = _socket->receive (received, zlink::recv_flag::dontwait);
+            if (rc != 0) {
+                if (errno == EAGAIN || errno == EINTR)
+                    break;
+                _failed.store (true, std::memory_order_release);
+                return;
+            }
+
+            const zlink::message_t *payload = NULL;
+            if (received.parts.size () == 1) {
+                payload = &received.parts[0];
+            } else if (received.parts.size () == 2
+                       && received.parts[0].size () == 0) {
+                payload = &received.parts[1];
+            }
+            if (!payload)
+                continue;
+
+            perf_single_metric::header_t header;
+            if (!perf_single_metric::decode_payload_header (
+                  payload->data (), payload->size (), &header)) {
+                continue;
+            }
+
+            std::lock_guard<std::mutex> lock (_result_mutex);
+            if (_stop_worker || _result_token == 0)
+                continue;
+            if (!perf_single_metric::is_expected (
+                  header,
+                  _current_run_id.load (std::memory_order_acquire),
+                  static_cast<perf_single_metric::phase_t> (
+                    _current_phase.load (std::memory_order_acquire)),
+                  _current_msg_size.load (std::memory_order_acquire))) {
+                continue;
+            }
+
+            if (_queue_probe)
+                _queue_probe->sample_recv_if_due ();
+
+            ++_received_count;
+            if (_current_active.load (std::memory_order_acquire)) {
+                const uint64_t now = perf_single_metric::now_us ();
+                const double latency_us =
+                  now >= header.sent_ts_us
+                    ? static_cast<double> (now - header.sent_ts_us)
+                    : 0.0;
+                _latency_builder.add (latency_us);
+            }
+            _result_cv.notify_all ();
         }
-        _result_cv.notify_all ();
     }
 }
 
@@ -738,7 +798,7 @@ bool run_callback_phase (callback_receiver_t &receiver_,
         return false;
 
     if (!receiver_.finish_phase (
-          sent_count, recv_timeout_ms_, received_out_, latency_out_)) {
+          0ULL, recv_timeout_ms_, received_out_, latency_out_)) {
         return false;
     }
 
@@ -749,6 +809,8 @@ bool run_callback_phase (callback_receiver_t &receiver_,
 
 subscribe_callback_receiver_t::subscribe_callback_receiver_t ()
     : _queue_probe (NULL),
+      _socket (NULL),
+      _spot (NULL),
       _queue (
         static_cast<size_t> (parse_positive_env (
           "PERF_SINGLE_CALLBACK_QUEUE_CAP", 262144))),
@@ -787,11 +849,8 @@ bool subscribe_callback_receiver_t::attach_socket (perf_socket_t &socket_,
                                                    queue_probe_t *queue_probe_)
 {
     _queue_probe = queue_probe_;
-    if (socket_.on_subscribe(
-          &subscribe_callback_receiver_t::subscribe_handler, this)
-        != 0) {
-        return false;
-    }
+    _socket = &socket_;
+    _spot = NULL;
 
     if (_worker.joinable ())
         return true;
@@ -809,11 +868,8 @@ bool subscribe_callback_receiver_t::attach_spot (zlink::service::spot_t &spot_,
                                                  queue_probe_t *queue_probe_)
 {
     _queue_probe = queue_probe_;
-    if (spot_.on_subscribe(
-          &subscribe_callback_receiver_t::subscribe_handler, this)
-        != 0) {
-        return false;
-    }
+    _socket = NULL;
+    _spot = &spot_;
 
     if (_worker.joinable ())
         return true;
@@ -959,39 +1015,97 @@ bool subscribe_callback_receiver_t::push_event (const event_t &event_)
 
 void subscribe_callback_receiver_t::worker_loop ()
 {
-    for (;;) {
-        event_t event;
-        {
-            std::unique_lock<std::mutex> lock (_queue_mutex);
-            while (_queue_count == 0 && !_stop_worker)
-                _queue_cv.wait (lock);
-            if (_queue_count == 0 && _stop_worker)
-                break;
-
-            event = _queue[_queue_head];
-            _queue_head = (_queue_head + 1) % _queue.size ();
-            --_queue_count;
+    zlink::poller_t poller;
+    if (_socket) {
+        if (poller.add (*_socket, zlink::poll_event::pollin) != 0) {
+            _failed.store (true, std::memory_order_release);
+            return;
         }
+    } else if (_spot) {
+        if (poller.add (*_spot, zlink::poll_event::pollin) != 0) {
+            _failed.store (true, std::memory_order_release);
+            return;
+        }
+    } else {
+        return;
+    }
 
-        std::lock_guard<std::mutex> lock (_result_mutex);
-        if (event.token != _result_token || event.topic != _expected_topic)
+    std::vector<zlink::poll_event_t> events (1);
+    while (!_stop_worker && !_failed.load (std::memory_order_acquire)) {
+        const int poll_rc = poller.wait_all (events, 5);
+        if (poll_rc < 0) {
+            const int err = errno;
+            if (err == EINTR || err == EAGAIN)
+                continue;
+            _failed.store (true, std::memory_order_release);
+            return;
+        }
+        if (poll_rc == 0)
             continue;
-        if (!event.header_ok
-            || !perf_single_metric::is_expected (
-              event.header, event.run_id, event.phase, event.msg_size)) {
+
+        if ((events[0].revents & static_cast<short> (zlink::poll_event::pollin))
+            == 0) {
             continue;
         }
 
-        ++_received_count;
-        if (event.active) {
-            const uint64_t now = perf_single_metric::now_us ();
-            const double latency_us =
-              now >= event.header.sent_ts_us
-                ? static_cast<double> (now - event.header.sent_ts_us)
-                : 0.0;
-            _latency_builder.add (latency_us);
+        for (;;) {
+            zlink::subscribed_t received;
+            int rc = -1;
+            if (_socket) {
+                rc = _socket->subscribe (received, zlink::recv_flag::dontwait);
+            } else if (_spot) {
+                const zlink::maybe_t<zlink::subscribed_t> maybe =
+                  _spot->try_subscribe ();
+                if (maybe) {
+                    received = std::move (*maybe);
+                    rc = 0;
+                } else {
+                    rc = -1;
+                }
+            }
+            if (rc != 0) {
+                if (errno == EAGAIN || errno == EINTR)
+                    break;
+                _failed.store (true, std::memory_order_release);
+                return;
+            }
+
+            perf_single_metric::header_t received_header;
+            if (received.topic != _expected_topic
+                || received.parts.size () != 1
+                || !perf_single_metric::decode_payload_header (
+                  received.parts[0].data (),
+                  received.parts[0].size (),
+                  &received_header)) {
+                continue;
+            }
+
+            std::lock_guard<std::mutex> lock (_result_mutex);
+            if (_stop_worker || _result_token == 0)
+                continue;
+            if (!perf_single_metric::is_expected (
+                  received_header,
+                  _current_run_id.load (std::memory_order_acquire),
+                  static_cast<perf_single_metric::phase_t> (
+                    _current_phase.load (std::memory_order_acquire)),
+                  _current_msg_size.load (std::memory_order_acquire))) {
+                continue;
+            }
+
+            if (_queue_probe)
+                _queue_probe->sample_recv_if_due ();
+
+            ++_received_count;
+            if (_current_active.load (std::memory_order_acquire)) {
+                const uint64_t now = perf_single_metric::now_us ();
+                const double latency_us =
+                  now >= received_header.sent_ts_us
+                    ? static_cast<double> (now - received_header.sent_ts_us)
+                    : 0.0;
+                _latency_builder.add (latency_us);
+            }
+            _result_cv.notify_all ();
         }
-        _result_cv.notify_all ();
     }
 }
 
@@ -1070,10 +1184,7 @@ bool run_subscribe_callback_phase (subscribe_callback_receiver_t &receiver_,
     }
 
     if (!receiver_.finish_phase (
-          active ? 0ULL : sent_count,
-          recv_timeout_ms_,
-          received_out_,
-          latency_out_)) {
+          0ULL, recv_timeout_ms_, received_out_, latency_out_)) {
         if (debug_enabled)
             std::cerr << "subscribe_phase: finish_phase failed" << std::endl;
         return false;

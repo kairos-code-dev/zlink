@@ -10,35 +10,39 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicLong;
 
 final class PerfMeasurement {
     private static final long BASE_EPOCH_US = System.currentTimeMillis() * 1_000L;
     private static final long BASE_NANO = System.nanoTime();
+    private static final int RUN_ID = nextRunId();
+    private static final AtomicLong SEQ = new AtomicLong();
 
     private PerfMeasurement() {
     }
 
     static int runId() {
-        return (int) (System.nanoTime() & 0x7fff_ffffL);
+        return RUN_ID;
     }
 
     static Message payload(int size, byte phase, long sentNanoTime) {
         long nowUs = BASE_EPOCH_US + (sentNanoTime - BASE_NANO) / 1_000L;
-        return payload(0x50455246, size, phase, 0, 0L, nowUs);
+        return payload(0x5A4C4E4B, size, phase, RUN_ID, SEQ.getAndIncrement(), nowUs);
     }
 
     static byte phase(Message message) {
         if (message == null || message.size() < PerfUtil.HEADER_SIZE) {
             return (byte) PerfUtil.PHASE_UNKNOWN;
         }
-        return (byte) message.readIntLe(8);
+        return (byte) (message.readIntLe(8) & 0xFF);
     }
 
     static long latencyMicros(Message message) {
         if (message == null || message.size() < PerfUtil.HEADER_SIZE) {
             return 0L;
         }
-        return Math.max(0L, nowUs() - message.readLongLe(24));
+        return Math.max(0L, nowUs() - message.readLongLe(21));
     }
 
     static double latencyMillis(Message message) {
@@ -74,7 +78,7 @@ final class PerfMeasurement {
         ByteBuffer buffer = ByteBuffer.allocate(capacity).order(ByteOrder.LITTLE_ENDIAN);
         buffer.putInt(magic);
         buffer.putInt(runId);
-        buffer.putInt(phase);
+        buffer.put((byte) phase);
         buffer.putInt(size);
         buffer.putLong(seq);
         buffer.putLong(sentTsUs);
@@ -83,6 +87,11 @@ final class PerfMeasurement {
         }
         buffer.flip();
         return Message.copyOf(buffer);
+    }
+
+    private static int nextRunId() {
+        int value = ThreadLocalRandom.current().nextInt();
+        return value == 0 ? 1 : value;
     }
 
     private static int freePort() {

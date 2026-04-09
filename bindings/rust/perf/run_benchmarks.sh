@@ -8,7 +8,6 @@ source "$HOME/.cargo/env" 2>/dev/null || true
 
 # -- Defaults (matching core/perf) -------------------------------------------
 PATTERN="ALL"
-RECV_MODE="callback"
 DURATION="${PERF_SINGLE_DURATION_SECONDS:-5}"
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp}"
@@ -24,7 +23,6 @@ Usage: bindings/rust/perf/run_benchmarks.sh [options]
 Options:
   -h, --help
   --pattern NAME
-  --recv MODE
   --duration N
   --msg-sizes LIST
   --transports LIST
@@ -43,7 +41,6 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         --pattern)   PATTERN="$2";   shift 2 ;;
-        --recv)      RECV_MODE="$2"; shift 2 ;;
         --duration)  DURATION="$2";  shift 2 ;;
         --msg-sizes) MSG_SIZES="$2"; shift 2 ;;
         --transports) TRANSPORTS="$2"; shift 2 ;;
@@ -56,11 +53,6 @@ while [[ $# -gt 0 ]]; do
         *)           echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
-
-if [[ "${RECV_MODE}" != "callback" ]]; then
-    echo "single suite supports only --recv callback" >&2
-    exit 1
-fi
 
 # -- Platform ----------------------------------------------------------------
 case "$(uname -s)" in
@@ -75,7 +67,7 @@ TAG_SUFFIX=""
 if [[ -n "${RESULTS_TAG}" ]]; then
     TAG_SUFFIX="_${RESULTS_TAG}"
 fi
-RESULTS_FILE="${RESULTS_DIR}/perf_${PLATFORM}_${RECV_MODE}_${TIMESTAMP}${TAG_SUFFIX}.txt"
+RESULTS_FILE="${RESULTS_DIR}/perf_rust_single_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
 mkdir -p "${RESULTS_DIR}"
 
 prune_reports() {
@@ -135,8 +127,7 @@ for pat in "${PATTERNS[@]}"; do
                     --pattern "${pat}" \
                     --transport "${transport}" \
                     --msg-size "${size}" \
-                    --duration "${DURATION}" \
-                    --recv "${RECV_MODE}" 2>&1)"; then
+                    --duration "${DURATION}" 2>&1)"; then
                     case_status="fail"
                     case_reason="binary_exit"
                     break
@@ -173,13 +164,13 @@ for pat in "${PATTERNS[@]}"; do
 done
 
 python3 - "${TMP_METRICS}" "${TMP_CASES}" "${RESULTS_FILE}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
-  "${RECV_MODE}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" <<'PY'
+  "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" <<'PY'
 import csv
 import math
 import sys
 from collections import defaultdict
 
-metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, recv_mode, runs, duration, results_tag, output_path = sys.argv[1:]
+metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, output_path = sys.argv[1:]
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 rows = defaultdict(lambda: defaultdict(list))
@@ -251,12 +242,12 @@ def emit(line=""):
 
 def emit_effective_options(section):
     emit(f"## Effective Options ({section})")
+    emit("- lang: rust")
     emit("- suite: single")
     emit(f"- runs: {runs}")
     emit(f"- patterns: {pattern_csv}")
     emit(f"- transports: {transports_csv}")
     emit(f"- msg_sizes: {msg_sizes_csv}")
-    emit(f"- recv_mode: {recv_mode}")
     emit("- pin_cpu: off")
     emit(f"- duration_seconds: {duration}")
     if results_tag:

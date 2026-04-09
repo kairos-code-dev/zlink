@@ -6,15 +6,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 function buildEffectiveOptions(options, extraLines) {
+  const patterns = options.patterns || options.pattern || '-';
   const lines = [
-    `- pattern: ${options.pattern}`,
-    `- recv_mode: ${options.recv}`,
+    `- lang: ${options.lang}`,
+    `- suite: ${options.suite}`,
+    `- runs: ${options.runs}`,
+    `- patterns: ${patterns}`,
+    `- transports: ${(options.transports || []).join(',') || '-'}`,
+    `- msg_sizes: ${options.msgSizes.join(',')}`,
     `- duration_seconds: ${options.duration}`,
     `- warmup_seconds: ${options.warmup}`,
-    `- msg_sizes: ${options.msgSizes.join(',')}`,
-    `- runs: ${options.runs}`,
-    `- transports: ${(options.transports || []).join(',') || '-'}`,
-    `- results_dir: ${options.resultsDir}`
+    `- results_dir: ${options.resultsDir}`,
+    `- pin_cpu: ${options.pinCpu ? 'on' : 'off'}`
   ];
   if (typeof options.clients !== 'undefined') {
     lines.push(`- clients: ${options.clients}`);
@@ -29,17 +32,23 @@ function buildEffectiveOptions(options, extraLines) {
 }
 
 function throughputUnit(pattern) {
-  return pattern.includes('STREAM') ? 'Kops/s' : 'Kmsg/s';
+  return pattern === 'MULTI_DEALER_ROUTER'
+    || pattern === 'MULTI_ROUTER_ROUTER'
+    || pattern === 'MULTI_STREAM'
+    ? 'Kops/s'
+    : 'Kmsg/s';
 }
 
-function formatTableRows(rows) {
+function formatTableRows(rows, suite) {
+  const latencyUnit = suite === 'multi' ? 'ms' : 'us';
   return [
-    '| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |',
-    '|------|------------|-----------|--------------|-------------|-------------|',
+    `| Size | Throughput | Bandwidth | Lat.Mean(${latencyUnit}) | Lat.P95(${latencyUnit}) | Lat.P99(${latencyUnit}) |`,
+    '|------|------------|-----------|----------------|---------------|---------------|',
     ...rows.map((row) => {
       const throughput = `${(row.metrics.throughput / 1000).toFixed(2)} ${throughputUnit(row.pattern)}`;
       const bandwidth = `${row.metrics.bandwidth.toFixed(2)} MB/s`;
-      return `| ${row.msgSize}B | ${throughput} | ${bandwidth} | ${(row.metrics.latency / 1000).toFixed(3)} | ${(row.metrics.latency_p95 / 1000).toFixed(3)} | ${(row.metrics.latency_p99 / 1000).toFixed(3)} |`;
+      const latencyScale = suite === 'multi' ? 1000 : 1;
+      return `| ${row.msgSize}B | ${throughput} | ${bandwidth} | ${(row.metrics.latency / latencyScale).toFixed(2)} | ${(row.metrics.latency_p95 / latencyScale).toFixed(2)} | ${(row.metrics.latency_p99 / latencyScale).toFixed(2)} |`;
     })
   ];
 }
@@ -60,19 +69,32 @@ function retainLatestFiles(dir, maxFiles) {
   }
 }
 
-function writeReport(reportDir, recvMode, resultLines, options, extraSections) {
+function platformName() {
+  if (process.platform === 'win32') {
+    return 'windows';
+  }
+  if (process.platform === 'darwin') {
+    return 'macos';
+  }
+  return 'linux';
+}
+
+function writeReport(reportDir, lang, suite, resultLines, options, extraSections) {
   fs.mkdirSync(reportDir, { recursive: true });
-  retainLatestFiles(reportDir, 100);
+  const maxFiles = suite === 'multi'
+    ? Number(process.env.PERF_RESULTS_MAX_FILES || 100)
+    : 100;
+  retainLatestFiles(reportDir, Number.isFinite(maxFiles) && maxFiles > 0 ? maxFiles : 100);
   const stamp = formatTimestamp(new Date());
   const tag = options.resultsTag ? `_${options.resultsTag}` : '';
   const file = path.join(
     reportDir,
-    `perf_linux_${recvMode}_${stamp}${tag}.txt`
+    `perf_${lang}_${suite}_${platformName()}_${stamp}${tag}.txt`
   );
   const sections = Array.isArray(extraSections) ? extraSections : [];
   const content = [
     '## Effective Options (start)',
-    ...buildEffectiveOptions({ ...options, recv: recvMode }),
+    ...buildEffectiveOptions({ ...options, lang, suite }),
     '',
     ...sections,
     ...(sections.length > 0 ? [''] : []),
@@ -80,7 +102,7 @@ function writeReport(reportDir, recvMode, resultLines, options, extraSections) {
     ...resultLines,
     '',
     '## Effective Options (result)',
-    ...buildEffectiveOptions({ ...options, recv: recvMode }),
+    ...buildEffectiveOptions({ ...options, lang, suite }),
     `- result_lines: ${resultLines.length}`,
     '## Status Summary',
     `- result_lines: ${resultLines.length}`,

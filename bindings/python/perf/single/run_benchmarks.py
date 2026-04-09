@@ -13,12 +13,21 @@ from perf_common import (
 
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_PATTERNS = ("PAIR", "PUBSUB", "DEALER_ROUTER", "SPOT")
+DEFAULT_PATTERNS = (
+    "PAIR",
+    "PUBSUB",
+    "DEALER_DEALER",
+    "DEALER_ROUTER",
+    "ROUTER_ROUTER",
+    "SPOT",
+)
 DEFAULT_MSG_SIZES = ("64", "256", "1024", "65536", "131072", "262144")
 SUPPORTED_TRANSPORTS = {
     "PAIR": ("tcp",),
-    "PUBSUB": ("inproc",),
+    "PUBSUB": ("tcp",),
+    "DEALER_DEALER": ("inproc",),
     "DEALER_ROUTER": ("inproc",),
+    "ROUTER_ROUTER": ("inproc",),
     "SPOT": ("inproc",),
 }
 
@@ -27,7 +36,6 @@ def parse_args(argv):
     parser = argparse.ArgumentParser(prog="run_benchmarks.sh")
     parser.add_argument("--pythonpath", required=True)
     parser.add_argument("--pattern", default="ALL")
-    parser.add_argument("--recv", default="callback")
     parser.add_argument("--duration", default="5")
     parser.add_argument("--warmup", default="2")
     parser.add_argument("--msg-sizes", default=",".join(DEFAULT_MSG_SIZES))
@@ -100,8 +108,6 @@ def _run_pattern(args, env, pattern, msg_size):
             args.warmup,
             "--msg-size",
             msg_size,
-            "--recv",
-            args.recv,
         ],
         cwd=str(ROOT.parent.parent),
         env=env,
@@ -120,20 +126,19 @@ def _run_pattern(args, env, pattern, msg_size):
 
 def _build_options(args, patterns, transports, msg_sizes):
     return {
+        "lang": "python",
+        "suite": "single",
         "runs": args.runs,
-        "recv_mode": args.recv,
-        "duration_seconds": args.duration,
-        "warmup_seconds": args.warmup,
         "patterns": ",".join(patterns),
         "transports": ",".join(transports),
         "msg_sizes": ",".join(msg_sizes),
+        "duration_seconds": args.duration,
+        "warmup_seconds": args.warmup,
     }
 
 
 def main(argv=None):
     args = parse_args(argv or sys.argv[1:])
-    if args.recv != "callback":
-        raise SystemExit("--recv must be callback for python single perf")
     patterns = _parse_patterns(args.pattern)
     transports = _parse_transports(args.transports)
     msg_sizes = _parse_msg_sizes(args)
@@ -155,18 +160,17 @@ def main(argv=None):
                 emitted_chunks.append(output)
                 sections.append(output)
     rows = parse_result_lines("\n".join(emitted_chunks))
+    expected_result_lines = len(configs) * runs * 5
     sections.extend(["", render_markdown_summary(rows), "", "## Effective Options (result)"])
-    sections.append(f"- recv_mode: {args.recv}")
-    sections.append(f"- result_lines: {len(rows)}")
-    sections.append(
-        f"- status: {'complete' if len(rows) == len(configs) * runs * 5 else 'partial'}"
-    )
+    sections.append(f"- status: {'complete' if len(rows) == expected_result_lines else 'partial'}")
+    sections.append(f"- expected_result_lines: {expected_result_lines}")
+    sections.append(f"- actual_result_lines: {len(rows)}")
     final_output = "\n".join(section for section in sections if section is not None).rstrip() + "\n"
     print(final_output, end="")
 
     report_path = build_report_path(
+        lang="python",
         suite="single",
-        recv_mode=args.recv,
         results_dir=args.results_dir or None,
         tag=args.results_tag or None,
     )

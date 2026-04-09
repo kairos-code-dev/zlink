@@ -404,6 +404,59 @@ typedef struct zlink_spot_node_subject_filter_t
 2. `zlink_spot_node_peers_snapshot()` -- 피어 연결 상태를 점검합니다.
 3. `zlink_spot_node_subjects_snapshot()` -- subject readiness를 확인합니다.
 
+## SpotNode Peer Publish Batching 옵션
+
+SpotNode는 peer publish 경로의 선택적 내부 batching을 제공합니다.
+이 옵션들은 SpotNode handle에서 `zlink_set_option()`으로 설정합니다.
+
+### zlink_spot_node_option_t
+
+```c
+typedef enum zlink_spot_node_option_t {
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE                  = 0x3601,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS                = 0x3602,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_MESSAGES            = 0x3603,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_BYTES               = 0x3604,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_BYPASS_BYTES            = 0x3605,
+    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_MESSAGES_PER_TURN = 0x3606,
+    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN    = 0x3607,
+} zlink_spot_node_option_t;
+```
+
+| 옵션 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `PEER_BATCH_ENABLE` | `int` (bool) | 0 (비활성) | peer publish batching 활성화. homogeneous deployment에서 운영자 opt-in. |
+| `PEER_BATCH_DELAY_MS` | `int` | 20 | topic bucket flush 최대 지연 (ms). |
+| `PEER_BATCH_MAX_MESSAGES` | `int` | 32 | topic bucket당 최대 메시지 수. |
+| `PEER_BATCH_MAX_BYTES` | `int` | 65536 | topic bucket당 최대 바이트. |
+| `PEER_BATCH_BYPASS_BYTES` | `int` | 65536 | 이 encoded 크기 이상 메시지는 batching을 우회하여 즉시 전송. |
+| `PEER_UNBATCH_MAX_MESSAGES_PER_TURN` | `int` | 32 | receiver측 I/O turn당 최대 unbatch 메시지 수. |
+| `PEER_UNBATCH_MAX_BYTES_PER_TURN` | `int` | 65536 | receiver측 I/O turn당 최대 unbatch 바이트. |
+
+사용법:
+
+```c
+void *node = zlink_spot_node_new(ctx);
+
+int enabled = 1;
+zlink_set_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
+                 &enabled, sizeof(enabled));
+
+int delay_ms = 10;
+zlink_set_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS,
+                 &delay_ms, sizeof(delay_ms));
+
+zlink_spot_node_bind(node, "tcp://*:9000");
+```
+
+**v1 제약:** mesh의 모든 SpotNode가 동일 세대 binary를 실행해야 합니다
+(homogeneous deployment). runtime capability negotiation은 없습니다.
+
+**반환값:** `zlink_set_option` / `zlink_get_option`은 성공 시 0, 실패 시 -1을
+반환합니다 (errno가 설정됨).
+
+**스레드 안전성:** 옵션은 bind/connect 전에 설정해야 합니다.
+
 ## 제거된 public API
 
 다음 계열은 현재 public SPOT surface에 포함되지 않습니다.

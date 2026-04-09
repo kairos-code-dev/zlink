@@ -41,10 +41,8 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
       perf::multi::start_resource_probe ();
     perf::multi::print_ready (endpoint);
 
-    const int warmup_seconds = settings.warmup_seconds > 0 ? settings.warmup_seconds : 0;
     const int active_seconds = settings.duration_seconds > 0 ? settings.duration_seconds : 1;
-    const int deadline_seconds =
-      warmup_seconds + active_seconds + 2;
+    const int deadline_seconds = active_seconds + 2;
 
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::seconds (deadline_seconds);

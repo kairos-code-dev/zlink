@@ -261,7 +261,27 @@ public enum SpotNodeOption
 {
     PubMode = 1,
     PubQueueHwm = 2,
-    PubQueueFullPolicy = 3
+    PubQueueFullPolicy = 3,
+    PeerBatchEnable = 0x3601,
+    PeerBatchDelayMs = 0x3602,
+    PeerBatchMaxMessages = 0x3603,
+    PeerBatchMaxBytes = 0x3604,
+    PeerBatchBypassBytes = 0x3605,
+    PeerUnbatchMaxMessagesPerTurn = 0x3606,
+    PeerUnbatchMaxBytesPerTurn = 0x3607
+}
+
+public enum MessageType : byte
+{
+    Data = 0,
+    Request = 1,
+    Reply = 2
+}
+
+public static class MessageMetadata
+{
+    public const ushort KeyUserMin = 0x0100;
+    public const ushort ValueMax = 65535;
 }
 
 public enum SpotNodePubMode

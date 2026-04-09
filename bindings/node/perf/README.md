@@ -24,8 +24,6 @@ Current implemented scope:
   - `DEALER_ROUTER`
   - `ROUTER_ROUTER`
   - `SPOT`
-- single recv mode:
-  - `callback` only
 - multi patterns:
   - `MULTI_DEALER_DEALER`
   - `MULTI_DEALER_ROUTER`
@@ -33,21 +31,12 @@ Current implemented scope:
   - `MULTI_PUBSUB`
   - `MULTI_SPOT`
   - `MULTI_STREAM`
-- multi recv modes:
-  - `MULTI_DEALER_DEALER`: `recv`
-  - `MULTI_DEALER_ROUTER`: `recv`
-  - `MULTI_ROUTER_ROUTER`: `recv`
-  - `MULTI_PUBSUB`: `recv`
-  - `MULTI_SPOT`: `recv`, `callback`
-  - `MULTI_STREAM`: `recv`, `callback`
 
 Current alignment notes:
 
-- single runner rejects `--recv` values other than `callback`
-- multi runner rejects callback mode for patterns other than `MULTI_SPOT` and
-  `MULTI_STREAM`
-- `MULTI_STREAM` uses the shared core `perf_stream_client` path required by the
-  perf policy and execution guide
+- both runners are recv-only and follow the policy metric header / RESULT
+  contract
+- `MULTI_STREAM` uses the Node public API client/server pair in this tree
 - result files are written under the shared `perf/results/{single,multi}/report`
   layout required by policy
 - benchmark code is split by pattern file, and the entry scripts select the

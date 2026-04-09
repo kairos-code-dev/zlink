@@ -18,13 +18,23 @@ func runDealerDealer(cfg benchmarkConfig) perfcommon.Result {
 	client, err := ctx.DealerSocket()
 	perfcommon.Must(err)
 	defer client.Close()
+	serverMon := perfcommon.OpenMonitor(server)
+	defer serverMon.Close()
+	clientMon := perfcommon.OpenMonitor(client)
+	defer clientMon.Close()
 
-	endpoint := perfcommon.UniqueTCPEndpoint("perf-dealer-dealer")
-	perfcommon.Must(server.Bind(endpoint))
+	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
+	perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
+	perfcommon.ApplySingleHWM(server)
+	perfcommon.ApplySingleHWM(client)
+	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-dealer-dealer")
 	perfcommon.Must(client.Connect(endpoint))
-	perfcommon.Must(client.SetRecvTimeout(500 * time.Millisecond))
-	perfcommon.Must(client.SetSendTimeout(500 * time.Millisecond))
-	startDealerEchoServer(server, cfg.recvMode)
+	perfcommon.ApplySingleBenchmarkSocketOptions(server, cfg.transport)
+	perfcommon.ApplySingleBenchmarkSocketOptions(client, cfg.transport)
+	perfcommon.WaitConnected(serverMon, clientMon)
+	perfcommon.Must(client.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
+	perfcommon.Must(client.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
+	startDealerEchoServer(server)
 
 	stats := perfcommon.NewStats()
 	payload := perfcommon.PreparePayload(cfg.msgSize)
@@ -55,16 +65,8 @@ func runDealerDealer(cfg benchmarkConfig) perfcommon.Result {
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
 
-func startDealerEchoServer(server *zlink.DealerSocket, recvMode string) {
-	if recvMode == "callback" {
-		perfcommon.Must(server.OnReceive(func(received *zlink.Received) {
-			defer received.Close()
-			perfcommon.Must(server.Send(perfcommon.CloneMessages(received.Parts())...))
-		}))
-		return
-	}
-
-	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
+func startDealerEchoServer(server *zlink.DealerSocket) {
+	perfcommon.Must(server.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 	go func() {
 		for {
 			received, err := server.Recv()
@@ -78,7 +80,6 @@ func startDealerEchoServer(server *zlink.DealerSocket, recvMode string) {
 			if err != nil && !perfcommon.IsTransient(err) {
 				perfcommon.Must(err)
 			}
-			perfcommon.Must(received.Close())
 		}
 	}()
 }

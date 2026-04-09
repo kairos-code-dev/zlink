@@ -10,9 +10,6 @@ public final class PerfMain {
 
     public static void main(String[] args) {
         PerfUtil.Config config = PerfUtil.parseSingleArgs(args);
-        if (!"callback".equalsIgnoreCase(config.recvMode())) {
-            throw new IllegalArgumentException("single suite supports only callback recv");
-        }
         PerfUtil.Result result = switch (config.pattern()) {
             case "PAIR" -> PerfPair.run(config);
             case "PUBSUB" -> PerfPubSub.run(config);

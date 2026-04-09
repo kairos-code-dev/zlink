@@ -7,7 +7,6 @@ internal static partial class PerfRunner
     internal enum PerfRecvMode
     {
         Recv = 0,
-        Callback = 1,
     }
 
     internal static readonly byte[] MultiStopToken =
@@ -35,22 +34,9 @@ internal static partial class PerfRunner
     internal static PerfRecvMode ResolveMultiRecvMode(PerfOptions options,
         string pattern)
     {
-        string raw = options.RecvMode;
-        if (raw.Equals("recv", StringComparison.OrdinalIgnoreCase))
-            return PerfRecvMode.Recv;
-        if (raw.Equals("callback", StringComparison.OrdinalIgnoreCase))
-        {
-            string normalized = NormalizePerfPattern(pattern);
-            if (normalized == "SPOT" || normalized == "STREAM")
-                return PerfRecvMode.Callback;
-            throw new ArgumentException(
-                $"callback recv mode is unsupported for pattern {normalized}.",
-                nameof(pattern));
-        }
-
-        throw new ArgumentException(
-            $"Unknown recv mode '{raw}'. Expected recv or callback.",
-            nameof(pattern));
+        _ = options;
+        _ = pattern;
+        return PerfRecvMode.Recv;
     }
 
     internal static int ResolveClients(PerfOptions options)
@@ -335,11 +321,9 @@ internal static partial class PerfRunner
     internal static void PrintServerQueueMetrics(string pattern, string transport,
         int size, ServerQueueStats stats)
     {
-        Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},server_snd_pending_max,{stats.SndPendingMax:F2}");
-        Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},server_rcv_pending_max,{stats.RcvPendingMax:F2}");
-        Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},server_rcv_pending_end,{stats.RcvPendingEnd:F2}");
+        _ = pattern;
+        _ = transport;
+        _ = size;
+        _ = stats;
     }
 }

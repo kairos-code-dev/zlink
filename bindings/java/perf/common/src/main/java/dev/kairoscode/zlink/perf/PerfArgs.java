@@ -16,7 +16,7 @@ final class PerfArgs {
         String transport = args[1].toLowerCase(Locale.ROOT);
         int size = Integer.parseInt(args[2]);
         int duration = 5;
-        String recv = "callback";
+        String recv = "recv";
         int ioThreads = intEnv("PERF_IO_THREADS", 0);
         int sendHwm = intEnv("PERF_SINGLE_SNDHWM",
             intEnv("PERF_SINGLE_HWM", 0));
@@ -30,7 +30,13 @@ final class PerfArgs {
         for (int i = 3; i + 1 < args.length; i += 2) {
             switch (args[i]) {
                 case "--duration" -> duration = Integer.parseInt(args[i + 1]);
-                case "--recv" -> recv = args[i + 1];
+                case "--recv" -> {
+                    recv = args[i + 1];
+                    if (!"recv".equalsIgnoreCase(recv)) {
+                        throw new IllegalArgumentException(
+                            "single suite supports only recv");
+                    }
+                }
                 case "--io-threads" -> ioThreads = Integer.parseInt(args[i + 1]);
                 case "--send-hwm" -> sendHwm = Integer.parseInt(args[i + 1]);
                 case "--recv-hwm" -> recvHwm = Integer.parseInt(args[i + 1]);
@@ -85,7 +91,13 @@ final class PerfArgs {
         for (int i = 4; i + 1 < args.length; i += 2) {
             switch (args[i]) {
                 case "--duration" -> duration = Integer.parseInt(args[i + 1]);
-                case "--recv" -> recv = args[i + 1];
+                case "--recv" -> {
+                    recv = args[i + 1];
+                    if (!"recv".equalsIgnoreCase(recv)) {
+                        throw new IllegalArgumentException(
+                            "multi suite supports only recv");
+                    }
+                }
                 case "--endpoint" -> endpoint = args[i + 1];
                 case "--clients" -> clients = Integer.parseInt(args[i + 1]);
                 case "--control-port" -> controlPort = Integer.parseInt(args[i + 1]);

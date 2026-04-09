@@ -26,16 +26,13 @@ DEFAULT_PATTERNS = (
 )
 DEFAULT_MSG_SIZES = ("64", "256", "1024", "65536", "131072", "262144")
 DEFAULT_STREAM_MSG_SIZES = ("64", "256", "1024", "65536")
-CALLBACK_PATTERNS = {"SPOT", "STREAM"}
 
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(prog="run_benchmarks.sh")
     parser.add_argument("--pythonpath", required=True)
     parser.add_argument("--pattern", default="ALL")
-    parser.add_argument("--recv", default=None)
     parser.add_argument("--duration", default="5")
-    parser.add_argument("--warmup", default="2")
     parser.add_argument("--msg-sizes", default=",".join(DEFAULT_MSG_SIZES))
     parser.add_argument("--transports", default="tcp")
     parser.add_argument("--runs", default="1")
@@ -57,22 +54,16 @@ def _normalize_pattern(value):
     return pattern
 
 
-def _parse_patterns(value, recv_mode):
+def _parse_patterns(value):
     text = value.strip().upper()
     if text == "ALL":
-        if recv_mode == "callback":
-            return ["SPOT", "STREAM"]
-        return [pattern for pattern in DEFAULT_PATTERNS if pattern not in CALLBACK_PATTERNS]
+        return list(DEFAULT_PATTERNS)
     patterns = [_normalize_pattern(item) for item in value.split(",") if item.strip()]
     if not patterns:
         raise SystemExit("unsupported pattern: ")
     unknown = [pattern for pattern in patterns if pattern not in DEFAULT_PATTERNS]
     if unknown:
         raise SystemExit(f"unsupported pattern: {unknown[0]}")
-    if recv_mode == "callback":
-        invalid = [pattern for pattern in patterns if pattern not in CALLBACK_PATTERNS]
-        if invalid:
-            raise SystemExit("--recv callback is only supported for SPOT,STREAM")
     return patterns
 
 
@@ -193,8 +184,6 @@ def _run_pattern(args, env, pattern, msg_size, clients):
             str(server_path),
             "--clients",
             clients,
-            "--recv",
-            args.recv,
             "--msg-size",
             msg_size,
         ],
@@ -227,23 +216,23 @@ def _run_pattern(args, env, pattern, msg_size, clients):
                     "tcp",
                     "--pattern",
                     "STREAM",
-                    "--sizes",
-                    msg_size,
-                    "--runs",
-                    "1",
-                    "--warmup",
-                    str(args.warmup),
-                    "--duration",
-                    str(args.duration),
-                    "--ccu",
-                    clients,
-                    "--print-perf-result",
-                    "2",
-                    "--send-stop-token",
-                    "1",
-                    "--endpoint",
-                    endpoint,
-                ],
+                "--sizes",
+                msg_size,
+                "--runs",
+                "1",
+                "--duration",
+                str(args.duration),
+                "--ccu",
+                clients,
+                "--io-threads",
+                "4",
+                "--print-perf-result",
+                "1",
+                "--send-stop-token",
+                "0",
+                "--endpoint",
+                endpoint,
+            ],
                 cwd=str(ROOT.parent.parent.parent.parent),
                 env=env,
                 capture_output=True,
@@ -265,14 +254,10 @@ def _run_pattern(args, env, pattern, msg_size, clients):
                 endpoint,
                 "--duration",
                 args.duration,
-                "--warmup",
-                args.warmup,
                 "--msg-size",
                 msg_size,
                 "--clients",
                 clients,
-                "--recv",
-                args.recv,
             ],
             cwd=str(ROOT.parent.parent),
             env=env,
@@ -316,36 +301,23 @@ def _run_pattern(args, env, pattern, msg_size, clients):
 
 def _build_options(args, patterns, transports, msg_sizes, clients):
     return {
+        "lang": "python",
+        "suite": "multi",
         "runs": args.runs,
-        "recv_mode": args.recv,
-        "duration_seconds": args.duration,
-        "warmup_seconds": args.warmup,
         "patterns": ",".join(f"MULTI_{pattern}" for pattern in patterns),
         "transports": ",".join(transports),
         "msg_sizes": ",".join(msg_sizes),
         "clients": clients,
+        "duration_seconds": args.duration,
     }
 
 
 def main(argv=None):
     args = parse_args(argv or sys.argv[1:])
-    if args.recv not in {None, "recv", "callback"}:
-        raise SystemExit("--recv must be recv or callback")
-    patterns = _parse_patterns(args.pattern, args.recv)
+    patterns = _parse_patterns(args.pattern)
     transports = _parse_transports(args.transports)
     msg_sizes = _parse_msg_sizes(args, patterns)
     clients = args.clients or _default_clients(patterns)
-    effective_recv = args.recv
-    if effective_recv is None:
-        effective_recv = "callback" if all(
-            pattern in CALLBACK_PATTERNS for pattern in patterns
-        ) else "recv"
-    if effective_recv == "callback":
-        invalid = [pattern for pattern in patterns if pattern not in CALLBACK_PATTERNS]
-        if invalid:
-            raise SystemExit("--recv callback is only supported for SPOT,STREAM")
-    elif any(pattern in CALLBACK_PATTERNS for pattern in patterns):
-        raise SystemExit("--recv recv is not supported for SPOT,STREAM")
     runs = int(args.runs)
     if runs <= 0:
         raise SystemExit("--runs must be > 0")
@@ -355,7 +327,6 @@ def main(argv=None):
     if RUNNER_LIB.exists():
         env["ZLINK_LIBRARY_PATH"] = str(RUNNER_LIB)
 
-    args.recv = effective_recv
     options = _build_options(args, patterns, transports, msg_sizes, clients)
     sections = [render_effective_options(options), ""]
     emitted_chunks = []
@@ -368,19 +339,17 @@ def main(argv=None):
                         emitted_chunks.append(output)
                         sections.append(output)
     rows = parse_result_lines("\n".join(emitted_chunks))
-    sections.extend(["", render_markdown_summary(rows), "", "## Effective Options (result)"])
-    sections.append(f"- recv_mode: {args.recv}")
-    sections.append(f"- result_lines: {len(rows)}")
     expected_result_lines = len(patterns) * len(transports) * len(msg_sizes) * runs * 5
-    sections.append(
-        f"- status: {'complete' if len(rows) == expected_result_lines else 'partial'}"
-    )
+    sections.extend(["", render_markdown_summary(rows), "", "## Effective Options (result)"])
+    sections.append(f"- status: {'complete' if len(rows) == expected_result_lines else 'partial'}")
+    sections.append(f"- expected_result_lines: {expected_result_lines}")
+    sections.append(f"- actual_result_lines: {len(rows)}")
     final_output = "\n".join(section for section in sections if section is not None).rstrip() + "\n"
     print(final_output, end="")
 
     report_path = build_report_path(
+        lang="python",
         suite="multi",
-        recv_mode=args.recv,
         results_dir=args.results_dir or None,
         tag=args.results_tag or None,
     )

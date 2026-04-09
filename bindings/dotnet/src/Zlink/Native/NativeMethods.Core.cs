@@ -120,6 +120,26 @@ internal static partial class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string property);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_set_request(ref ZlinkMsg msg,
+        ulong correlationId);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_set_reply(ref ZlinkMsg msg,
+        ulong correlationId);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_get_request_info(ref ZlinkMsg msg,
+        out byte typeOut, out ulong correlationIdOut);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_set_metadata(ref ZlinkMsg msg,
+        ushort key, IntPtr value, nuint valueSize);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_msg_get_metadata(ref ZlinkMsg msg,
+        ushort key, out nuint size);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void zlink_multipart_close(IntPtr parts, nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

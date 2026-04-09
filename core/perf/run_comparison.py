@@ -22,6 +22,7 @@ SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 BUILD_CONFIG_DIRS = ("Release", "Debug", "RelWithDebInfo", "MinSizeRel")
 RUN_STARTED_AT = time.time()
+RESULT_LANG = "core"
 
 LATENCY_P95_METRIC = "latency_p95"
 LATENCY_P99_METRIC = "latency_p99"
@@ -867,15 +868,15 @@ def pattern_default_clients(pattern_name, transport=None):
 
 
 def pattern_default_hwm(pattern_name):
-    return 1000
+    if normalize_multi_pattern_name(pattern_name) in STREAM_VARIANT_PATTERNS:
+        return 10
+    return 100
 
 
 def pattern_default_io_threads(pattern_name):
     if pattern_name in STREAM_VARIANT_PATTERNS:
         return 4
-    if normalize_multi_pattern_name(pattern_name) == "SPOT":
-        return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 4))
-    return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 4))
+    return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 2))
 
 
 def resolve_pattern_connect_concurrency(clients):
@@ -3110,7 +3111,6 @@ def build_effective_option_items(args, selected_patterns):
 
     items = [
         ("runs", str(num_runs)),
-        ("recv_mode", args["recv_mode"]),
         (
             "patterns",
             ",".join(display_pattern_name(pattern) for pattern in selected_patterns)
@@ -3318,6 +3318,8 @@ def build_effective_option_items(args, selected_patterns):
 
 def print_effective_options(label, option_items):
     print(f"\n## Effective Options ({label})")
+    print(f"- lang: {RESULT_LANG}")
+    print(f"- suite: {'multi' if ALLOW_MULTI else 'single'}")
     for key, value in option_items:
         print(f"- {key}: {value}")
 
@@ -3399,10 +3401,8 @@ def build_result_filename(tag=""):
         platform_tag = "windows"
     elif platform_tag.startswith("linux"):
         platform_tag = "linux"
-    recv_mode = (os.environ.get("PERF_RECV_MODE", "recv") or "recv").strip().lower()
-    if recv_mode != "recv":
-        recv_mode = "recv"
-    name = f"perf_{platform_tag}_{recv_mode}_{ts}"
+    suite = "multi" if ALLOW_MULTI else "single"
+    name = f"perf_{RESULT_LANG}_{suite}_{platform_tag}_{ts}"
     clean_tag = re.sub(r"[^A-Za-z0-9._-]+", "_", (tag or "").strip())
     if clean_tag:
         name = f"{name}_{clean_tag}"
@@ -3433,7 +3433,6 @@ def parse_args():
         "  --results-dir PATH           Results root directory (default: core/perf/results)\n"
         "  --results-tag NAME           Optional suffix tag for saved filenames\n"
         "  --result-file PATH           Explicit result file path\n"
-        "  --recv MODE                  Receive model: recv (default: recv)\n"
         "  --multi-transport-transition-ms N  Transport transition cooldown (ms)\n"
         "  --multi-pattern-transition-ms N    Pattern transition cooldown (ms)\n"
         "  --multi-server-ready-timeout-ms N  Server READY wait timeout (ms)\n"
@@ -3451,7 +3450,7 @@ def parse_args():
     results_dir = os.environ.get("PERF_RESULTS_DIR", "").strip()
     results_tag = os.environ.get("PERF_RESULTS_TAG", "").strip()
     result_file = ""
-    recv_mode = (os.environ.get("PERF_RECV_MODE", "recv") or "recv").strip().lower()
+    recv_mode = "recv"
     transport_transition_ms = max(
         0, parse_env_int("PERF_TRANSPORT_TRANSITION_MS", 3000)
     )
@@ -3532,14 +3531,6 @@ def parse_args():
                 sys.exit(1)
             result_file = sys.argv[i + 1].strip()
             i += 1
-        elif arg == "--recv":
-            if i + 1 >= len(sys.argv):
-                print("Error: --recv requires a value.", file=sys.stderr)
-                sys.exit(1)
-            recv_mode = sys.argv[i + 1].strip().lower()
-            i += 1
-        elif arg.startswith("--recv="):
-            recv_mode = arg.split("=", 1)[1].strip().lower()
         elif arg == "--multi-transport-transition-ms":
             if i + 1 >= len(sys.argv):
                 print(
@@ -3637,9 +3628,6 @@ def parse_args():
         sys.exit(1)
     if single_duration_seconds is not None and single_duration_seconds < 1:
         print("Error: --duration must be >= 1.", file=sys.stderr)
-        sys.exit(1)
-    if recv_mode != "recv":
-        print("Error: --recv must be 'recv'.", file=sys.stderr)
         sys.exit(1)
     for key, value in (
         ("multi-transport-transition-ms", transport_transition_ms),

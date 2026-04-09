@@ -4,15 +4,20 @@
 
 const path = require('node:path');
 const { Worker } = require('node:worker_threads');
+const { performance } = require('node:perf_hooks');
 
-const METRIC_MAGIC = 0x5a4c5046;
-const HEADER_SIZE = 24;
+const METRIC_MAGIC = 0x5a4c4e4b;
+const HEADER_SIZE = 29;
+
+function currentEpochUs() {
+  return BigInt(Math.round((performance.timeOrigin + performance.now()) * 1000));
+}
 
 function createPayload(size) {
-  if (!Number.isInteger(size) || size <= 0) {
+  if (!Number.isInteger(size) || size < HEADER_SIZE) {
     throw new Error(`invalid payload size: ${size}`);
   }
-  const payload = Buffer.alloc(Math.max(size, HEADER_SIZE));
+  const payload = Buffer.alloc(size);
   for (let i = HEADER_SIZE; i < payload.length; i += 1) {
     payload[i] = 0x61 + (i % 23);
   }
@@ -20,13 +25,12 @@ function createPayload(size) {
 }
 
 function applyMetricHeader(buffer, values) {
-  buffer.writeUInt32BE(METRIC_MAGIC, 0);
-  buffer.writeUInt32BE(values.msgSize >>> 0, 4);
-  buffer.writeUInt32BE(values.runId >>> 0, 8);
-  buffer.writeUInt8(values.phase & 0xff, 12);
-  buffer.writeUInt8(0, 13);
-  buffer.writeUInt16BE(HEADER_SIZE, 14);
-  buffer.writeBigUInt64BE(values.sentAtNs, 16);
+  buffer.writeUInt32LE(METRIC_MAGIC, 0);
+  buffer.writeUInt32LE(values.runId >>> 0, 4);
+  buffer.writeUInt8(values.phase & 0xff, 8);
+  buffer.writeUInt32LE(values.msgSize >>> 0, 9);
+  buffer.writeBigUInt64LE(BigInt(values.seq ?? 0), 13);
+  buffer.writeBigInt64LE(BigInt(values.sentTsUs ?? currentEpochUs()), 21);
 }
 
 function stampPayload(buffer, values) {
@@ -34,7 +38,8 @@ function stampPayload(buffer, values) {
     phase: values.phase,
     runId: values.runId,
     msgSize: values.msgSize,
-    sentAtNs: process.hrtime.bigint()
+    seq: values.seq,
+    sentTsUs: values.sentTsUs
   });
 }
 
@@ -42,28 +47,25 @@ function decodeMetricHeader(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length < HEADER_SIZE) {
     return null;
   }
-  if (buffer.readUInt32BE(0) !== METRIC_MAGIC) {
-    return null;
-  }
-  const headerSize = buffer.readUInt16BE(14);
-  if (headerSize !== HEADER_SIZE) {
+  if (buffer.readUInt32LE(0) !== METRIC_MAGIC) {
     return null;
   }
   return {
     magic: METRIC_MAGIC,
-    msgSize: buffer.readUInt32BE(4),
-    runId: buffer.readUInt32BE(8),
-    phase: buffer.readUInt8(12),
-    sentAtNs: buffer.readBigUInt64BE(16)
+    runId: buffer.readUInt32LE(4),
+    phase: buffer.readUInt8(8),
+    msgSize: buffer.readUInt32LE(9),
+    seq: buffer.readBigUInt64LE(13),
+    sentTsUs: buffer.readBigInt64LE(21)
   };
 }
 
-function latencyUsFromPayload(buffer, receivedAtNs = process.hrtime.bigint()) {
+function latencyUsFromPayload(buffer, receivedAtUs = currentEpochUs()) {
   const header = decodeMetricHeader(buffer);
   if (!header) {
     return 0;
   }
-  return Number(receivedAtNs - header.sentAtNs) / 1000;
+  return Number(receivedAtUs - header.sentTsUs);
 }
 
 function percentile(sortedValues, q) {
@@ -77,10 +79,10 @@ function percentile(sortedValues, q) {
   return sortedValues[index];
 }
 
-function computeMetrics(latenciesUs, durationSeconds, msgSize) {
+function computeMetrics(latenciesUs, durationSeconds, msgSize, bandwidthMultiplier = 1) {
   const count = latenciesUs.length;
   const throughput = durationSeconds > 0 ? count / durationSeconds : 0;
-  const bandwidth = throughput * msgSize / 1_000_000;
+  const bandwidth = throughput * msgSize * bandwidthMultiplier / 1_000_000;
   const sorted = latenciesUs.slice().sort((a, b) => a - b);
   const latency = count > 0 ? sorted.reduce((sum, value) => sum + value, 0) / count : 0;
   const latencyP95 = percentile(sorted, 0.95);
@@ -95,8 +97,19 @@ function computeMetrics(latenciesUs, durationSeconds, msgSize) {
   };
 }
 
+function isEchoPattern(pattern) {
+  return pattern === 'MULTI_DEALER_ROUTER'
+    || pattern === 'MULTI_ROUTER_ROUTER'
+    || pattern === 'MULTI_STREAM';
+}
+
 function summarizeMetrics(pattern, transport, msgSize, latenciesUs, durationSeconds) {
-  const metrics = computeMetrics(latenciesUs, durationSeconds, msgSize);
+  const metrics = computeMetrics(
+    latenciesUs,
+    durationSeconds,
+    msgSize,
+    isEchoPattern(pattern) ? 2 : 1
+  );
   return Object.entries(metrics).map(([metric, value]) =>
     `RESULT,current,${pattern},${transport},${msgSize},${metric},${value.toFixed(2)}`
   );
@@ -168,8 +181,8 @@ function createMetricCollector(config) {
         msgSize: header.msgSize,
         runId: header.runId,
         phase: header.phase,
-        sentAtNs: header.sentAtNs,
-        receivedAtNs
+        sentTsUs: header.sentTsUs,
+        receivedAtUs: receivedAtNs
       });
     },
     async finish() {
@@ -215,6 +228,7 @@ module.exports = {
   createPayload,
   createRunId,
   decodeMetricHeader,
+  currentEpochUs,
   latencyUsFromPayload,
   primaryMetricsFromResultLines,
   sleepImmediate,

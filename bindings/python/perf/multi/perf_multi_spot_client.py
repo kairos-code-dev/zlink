@@ -5,58 +5,59 @@ import time
 import zlink
 
 from perf_multi_common import (
-    CallbackMetrics,
     TOPIC,
+    latency_us_from_message,
+    is_active_message,
     parse_client_args,
     print_result_lines,
     result_metrics,
+    safe_poll,
 )
 
 
-def _make_client(ctx, endpoint, index):
-    node = zlink.SpotNode(ctx)
-    node.set_routing_id(f"SPOT-CLIENT-{index}".encode("ascii"))
-    node.connect_peer(endpoint)
-    spot = node.wrap_handle()
-    spot.set_subscription(TOPIC)
-    return node, spot
-
-
 def main(argv=None):
-    args = parse_client_args(
-        argv or sys.argv[1:], pattern="spot", allowed_recv={"callback"}
-    )
+    args = parse_client_args(argv or sys.argv[1:], pattern="spot")
     clients = []
-    metrics_sink = CallbackMetrics()
+    latencies = []
+    count = 0
 
     with zlink.Context() as ctx:
         try:
             for index in range(args.clients):
-                node, spot = _make_client(ctx, args.endpoint, index)
+                node = zlink.SpotNode(ctx)
+                node.set_routing_id(f"SPOT-CLIENT-{index}".encode("ascii"))
+                node.connect_peer(args.endpoint)
+                spot = node.wrap_handle()
+                spot.set_subscription(TOPIC)
                 clients.append((node, spot))
-            for _, spot in clients:
-                spot.on_subscribe(
-                    lambda message: metrics_sink.on_payload(
-                        message.to_bytes_list()[0]
-                    )
-                )
 
-            warmup_deadline = time.perf_counter() + args.warmup
-            while time.perf_counter() < warmup_deadline:
-                time.sleep(0.01)
-            metrics_sink.activate()
             started = time.perf_counter()
-            time.sleep(args.duration)
-            metrics_sink.deactivate()
+            deadline = started + args.duration
+            with zlink.Poller() as poller:
+                for _, spot in clients:
+                    poller.add_socket(spot, zlink.PollEvent.POLLIN)
+                while time.perf_counter() < deadline:
+                    safe_poll(poller, 50)
+                    for _, spot in clients:
+                        while True:
+                            received = spot.try_subscribe()
+                            if received is None:
+                                break
+                            with received:
+                                data = received.to_bytes_list()[0]
+                                if not is_active_message(
+                                    data,
+                                    expected_msg_size=args.msg_size,
+                                    run_id=None,
+                                ):
+                                    continue
+                                latencies.append(latency_us_from_message(data))
+                                count += 1
 
-            if not metrics_sink.wait_ready(1.0):
-                raise RuntimeError('spot client did not receive any message')
-            count, latencies = metrics_sink.finish()
-            elapsed = args.duration
             metrics = result_metrics(
                 count=count,
                 msg_size=args.msg_size,
-                elapsed_s=max(elapsed, 0.001),
+                elapsed_s=max(args.duration, time.perf_counter() - started),
                 latencies_us=latencies,
             )
             print_result_lines("MULTI_SPOT", "tcp", args.msg_size, metrics)

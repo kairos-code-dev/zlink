@@ -125,9 +125,9 @@ public static class PerfShared
         double bandwidth = (throughput * size * bandwidthMultiplier) / 1_000_000.0;
         WriteMetric("throughput", throughput);
         WriteMetric("bandwidth", bandwidth);
-        WriteMetric("latency", latencyUs / 1000.0);
-        WriteMetric("latency_p95", latencyP95Us / 1000.0);
-        WriteMetric("latency_p99", latencyP99Us / 1000.0);
+        WriteMetric("latency", latencyUs);
+        WriteMetric("latency_p95", latencyP95Us);
+        WriteMetric("latency_p99", latencyP99Us);
         return;
 
         void WriteMetric(string metric, double value)

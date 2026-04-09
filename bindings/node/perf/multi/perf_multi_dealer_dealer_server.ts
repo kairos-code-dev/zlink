@@ -7,9 +7,11 @@ const zlink = require('../../dist');
 const {
   createMetricCollector,
   decodeMetricHeader,
+  currentEpochUs,
   summarizeMetrics
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
+const { drainRecvSocket } = require('./perf_multi_runtime');
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
@@ -23,20 +25,14 @@ async function main() {
 
   try {
     server.bind(options.endpoint);
-    (async () => {
-      while (!stop) {
-        const received = server.tryRecv();
-        if (!received) {
-          await new Promise((resolve) => setImmediate(resolve));
-          continue;
-        }
+    const recvTask = drainRecvSocket(
+      server,
+      (received) => {
         const header = decodeMetricHeader(received.parts[0].data);
-        if (!header || header.phase === 1) {
-          continue;
-        }
-        collector.record(header, process.hrtime.bigint());
-      }
-    })();
+        collector.record(header, currentEpochUs());
+      },
+      () => stop
+    );
 
     console.log(`READY,${options.endpoint}`);
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -47,6 +43,7 @@ async function main() {
       }
     }
 
+    await recvTask;
     const result = await collector.finish();
     const resultLines = summarizeMetrics(
       'MULTI_DEALER_DEALER',

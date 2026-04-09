@@ -143,34 +143,6 @@ void run_pattern_spot (const std::string &transport,
     const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_us ());
     uint64_t seq = 1;
 
-    int warmup_default = 200;
-    if (msg_size >= 65536)
-        warmup_default = 20;
-    const int warmup_count =
-      perf::single::resolve_bench_count ("PERF_WARMUP_COUNT", warmup_default);
-
-    unsigned long long warmup_received = 0;
-    if (!perf::single::run_subscribe_callback_phase (receiver_cb,
-                                                     &send_spot_payload,
-                                                     &pub_spot,
-                                                     payload,
-                                                     msg_size,
-                                                     run_id,
-                                                     seq,
-                                                     perf_single_metric::phase_warmup,
-                                                     warmup_count,
-                                                     0,
-                                                     perf::single::resolve_single_recv_timeout_ms (),
-                                                     k_topic,
-                                                     &warmup_received,
-                                                     NULL)) {
-        if (perf_debug_enabled ())
-            std::cerr << "spot: warmup phase failed" << std::endl;
-        perf::single::print_fail_result (
-          lib_name, "SPOT", transport, msg_size, &queue_probe);
-        return;
-    }
-
     const int duration_s =
       std::max (1, perf::single::resolve_single_duration_seconds ());
     unsigned long long received = 0;

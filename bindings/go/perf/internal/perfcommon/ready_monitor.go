@@ -16,28 +16,19 @@ func waitMonitorReady(
 	deadline := time.Now().Add(timeout)
 	readyEvents := 0
 	for time.Now().Before(deadline) && readyEvents < minEvents {
-		type result struct {
-			event *zlink.MonitorEvent
-			err   error
-		}
-		recvDone := make(chan result, 1)
-		go func() {
-			event, err := monitor.Recv()
-			recvDone <- result{event: event, err: err}
-		}()
-
-		select {
-		case outcome := <-recvDone:
-			if outcome.err == nil {
-				readyEvents++
+		event, ok, err := monitor.TryRecv()
+		if err != nil {
+			if IsTransient(err) {
+				time.Sleep(50 * time.Millisecond)
 				continue
 			}
-			if IsTransient(outcome.err) {
-				continue
-			}
-			return outcome.err
-		case <-time.After(DefaultSocketTimeout):
+			return err
 		}
+		if !ok || event == nil {
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
+		readyEvents++
 	}
 	if readyEvents >= minEvents {
 		return nil

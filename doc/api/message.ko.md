@@ -137,7 +137,7 @@ int zlink_msg_close (zlink_msg_t *msg_);
 
 **스레드 안전성:** 스레드 안전하지 않습니다.
 
-**참고:** `zlink_msg_init`, `zlink_msgv_close`
+**참고:** `zlink_msg_init`, `zlink_multipart_close`
 
 ---
 
@@ -281,12 +281,12 @@ const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_);
 
 ---
 
-### zlink_msgv_close
+### zlink_multipart_close
 
 멀티파트 메시지 배열의 모든 파트를 닫습니다.
 
 ```c
-void zlink_msgv_close (zlink_msg_t *parts, size_t part_count);
+void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 ```
 
 `parts` 배열의 각 요소에 대해 `zlink_msg_close()`를 호출하는 편의 함수입니다.
@@ -298,3 +298,161 @@ void zlink_msgv_close (zlink_msg_t *parts, size_t part_count);
 **스레드 안전성:** 스레드 안전하지 않습니다.
 
 **참고:** `zlink_msg_close`
+
+---
+
+## Request-Reply Envelope
+
+메시지별 request-reply 필드를 위한 상수와 함수입니다. 이 필드는 send 시
+core가 자동으로 wire envelope에 직렬화하고, recv 시 자동으로 파싱하여
+복원합니다. 바인딩은 이 값으로 dispatch만 하면 됩니다.
+
+### 상수
+
+```c
+#define ZLINK_MSG_TYPE_DATA     0
+#define ZLINK_MSG_TYPE_REQUEST  1
+#define ZLINK_MSG_TYPE_REPLY    2
+```
+
+| 상수 | 값 | 설명 |
+|------|---|------|
+| `ZLINK_MSG_TYPE_DATA` | 0 | 기본값. wire에 envelope 없음. |
+| `ZLINK_MSG_TYPE_REQUEST` | 1 | Request 메시지. |
+| `ZLINK_MSG_TYPE_REPLY` | 2 | Reply 메시지. |
+
+### zlink_msg_set_request
+
+메시지를 REQUEST로 설정합니다.
+
+```c
+int zlink_msg_set_request (zlink_msg_t *msg_, uint64_t correlation_id_);
+```
+
+`msg_type`을 `ZLINK_MSG_TYPE_REQUEST`로, `correlation_id`를 지정된 값으로
+동시에 설정합니다. send 시 core가 자동으로 request-reply envelope를
+wire에 직렬화합니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:** `msg_`가 NULL이거나 초기화되지 않으면 `EINVAL`.
+
+**스레드 안전성:** 스레드 안전하지 않습니다.
+
+**참고:** `zlink_msg_set_reply`, `zlink_msg_get_request_info`
+
+---
+
+### zlink_msg_set_reply
+
+메시지를 REPLY로 설정합니다.
+
+```c
+int zlink_msg_set_reply (zlink_msg_t *msg_, uint64_t correlation_id_);
+```
+
+`msg_type`을 `ZLINK_MSG_TYPE_REPLY`로, `correlation_id`를 지정된 값으로
+동시에 설정합니다. correlation_id는 원본 request의 correlation_id와
+동일한 값을 사용합니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:** `msg_`가 NULL이거나 초기화되지 않으면 `EINVAL`.
+
+**스레드 안전성:** 스레드 안전하지 않습니다.
+
+**참고:** `zlink_msg_set_request`, `zlink_msg_get_request_info`
+
+---
+
+### zlink_msg_get_request_info
+
+메시지의 request-reply 정보를 조회합니다.
+
+```c
+int zlink_msg_get_request_info (const zlink_msg_t *msg_,
+                                uint8_t *type_out_,
+                                uint64_t *correlation_id_out_);
+```
+
+`msg_type`과 `correlation_id`를 한 번의 호출로 반환합니다. `type_out_`이
+`ZLINK_MSG_TYPE_DATA`(0)이면 `correlation_id_out_` 값은 무의미합니다.
+출력 포인터가 NULL이면 해당 필드를 생략합니다.
+
+recv 후 이 함수를 호출하면 core가 wire envelope에서 파싱한 msg_type과
+correlation_id를 얻을 수 있습니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:** `msg_`가 NULL이거나 초기화되지 않으면 `EINVAL`.
+
+**스레드 안전성:** 스레드 안전하지 않습니다.
+
+**참고:** `zlink_msg_set_request`, `zlink_msg_set_reply`
+
+---
+
+## Per-Message Metadata
+
+개별 메시지에 application 정의 key-value metadata를 첨부하는 함수입니다.
+metadata는 send 시 wire에 직렬화되고 recv 시 복원됩니다.
+ZMP 프로토콜 메타데이터(`zlink_msg_gets`)와는 완전히 별개의 namespace입니다.
+
+### 상수
+
+```c
+#define ZLINK_MSG_METADATA_KEY_USER_MIN   0x0100
+#define ZLINK_MSG_METADATA_VALUE_MAX      65535
+```
+
+| 상수 | 값 | 설명 |
+|------|---|------|
+| `ZLINK_MSG_METADATA_KEY_USER_MIN` | 0x0100 | 사용자 정의 key 최소값. 미만은 예약 대역. |
+| `ZLINK_MSG_METADATA_VALUE_MAX` | 65535 | 단일 항목 최대 value 크기 (바이트). |
+
+### zlink_msg_set_metadata
+
+메시지에 metadata key-value를 설정합니다.
+
+```c
+int zlink_msg_set_metadata (zlink_msg_t *msg_, uint16_t key_,
+                            const void *value_, size_t value_size_);
+```
+
+metadata 항목을 설정하거나 덮어씁니다. 이 함수를 한 번이라도 호출하면
+send 시 metadata header가 wire에 추가됩니다. `0x0000`~`0x00FF` 범위의
+key는 zlink 내부 예약이므로 `EINVAL`로 거부됩니다. `value_ = NULL`을
+전달하면 길이 0 값을 설정합니다 (키 존재 자체가 의미).
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:**
+- `EINVAL`: `msg_`가 NULL, `key_` < 0x0100, 또는 `value_size_`가
+  `ZLINK_MSG_METADATA_VALUE_MAX` 초과.
+- `ENOMEM`: heap 할당 실패.
+
+**스레드 안전성:** 스레드 안전하지 않습니다.
+
+**참고:** `zlink_msg_get_metadata`
+
+---
+
+### zlink_msg_get_metadata
+
+메시지에서 metadata 값을 조회합니다.
+
+```c
+const void *zlink_msg_get_metadata (const zlink_msg_t *msg_,
+                                    uint16_t key_, size_t *size_);
+```
+
+`key_`에 연결된 값의 포인터를 반환합니다. 키가 없으면 NULL을 반환합니다.
+반환된 포인터는 메시지가 유효하고 동일 key에 `zlink_msg_set_metadata()`를
+다시 호출하지 않는 동안만 유효합니다. `size_ = NULL`을 전달하면 길이
+출력을 생략합니다.
+
+**반환값:** 값 바이트 포인터. 키가 없으면 NULL.
+
+**스레드 안전성:** 스레드 안전하지 않습니다.
+
+**참고:** `zlink_msg_set_metadata`

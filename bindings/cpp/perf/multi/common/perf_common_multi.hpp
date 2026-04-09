@@ -85,42 +85,17 @@ inline bool callback_supported_for_pattern (const char *pattern)
 
 inline std::string resolve_multi_perf_recv_mode ()
 {
-    const char *env = std::getenv ("PERF_RECV_MODE");
-    if (!env || !*env)
-        return "recv";
-
-    std::string mode (env);
-    std::transform (
-      mode.begin (), mode.end (), mode.begin (), [](unsigned char c_) {
-          return static_cast<char> (std::tolower (c_));
-      });
-
-    if (mode != "recv" && mode != "callback") {
-        std::cerr << "policy violation: invalid --recv mode " << mode
-                  << std::endl;
-        std::exit (1);
-    }
-
-    return mode;
+    return "recv";
 }
 
 inline bool multi_perf_callback_mode ()
 {
-    return resolve_multi_perf_recv_mode () == "callback";
+    return false;
 }
 
 inline bool multi_perf_validate_recv_mode_for_pattern (const char *pattern)
 {
-    if (!pattern || !*pattern)
-        return false;
-
-    if (multi_perf_callback_mode () && !callback_supported_for_pattern (pattern)) {
-        std::cerr << "policy violation: --recv callback unsupported for "
-                  << pattern << std::endl;
-        return false;
-    }
-
-    return true;
+    return pattern && *pattern;
 }
 
 inline size_t resolve_multi_default_clients (const std::string &pattern)
@@ -156,9 +131,8 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
       "PERF_SNDHWM", "PERF_MULTI_SNDHWM", out.hwm, 1);
     out.rcvhwm = parse_positive_env_alias (
       "PERF_RCVHWM", "PERF_MULTI_RCVHWM", out.hwm, 1);
-    out.warmup_seconds = parse_positive_env_alias (
-      "PERF_WARMUP_SECONDS", "PERF_MULTI_WARMUP_SECONDS", 2, 0);
-    out.active_warmup = parse_positive_env ("PERF_ACTIVE_WARMUP", 0) > 0 ? 1 : 0;
+    out.warmup_seconds = 0;
+    out.active_warmup = 0;
     out.duration_seconds = parse_positive_env_alias (
       "PERF_DURATION_SECONDS", "PERF_MULTI_DURATION_SECONDS", 5, 1);
     out.client_poll_timeout_ms = parse_positive_env (

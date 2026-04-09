@@ -18,9 +18,9 @@ func runMultiStream(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(err)
 	defer server.Close()
 
-	endpoint := perfcommon.UniqueTCPEndpoint("perf-multi-stream")
-	perfcommon.Must(server.Bind(endpoint))
-	startMultiStreamEchoServer(server, cfg.recvMode)
+	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
+	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-multi-stream")
+	startMultiStreamEchoServer(server)
 
 	stats := perfcommon.NewStats()
 	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
@@ -55,16 +55,7 @@ func runMultiStream(cfg multiConfig) perfcommon.Result {
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
 
-func startMultiStreamEchoServer(server *zlink.StreamSocket, recvMode string) {
-	if recvMode == "callback" {
-		perfcommon.Must(server.OnReceive(func(received *zlink.Received) {
-			defer received.Close()
-			perfcommon.Must(server.SendTo(received.RoutingID(),
-				perfcommon.CloneMessages(received.Parts())...))
-		}))
-		return
-	}
-
+func startMultiStreamEchoServer(server *zlink.StreamSocket) {
 	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
 	go func() {
 		for {

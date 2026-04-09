@@ -59,8 +59,6 @@ void run_pattern_pair (const std::string &transport,
     (void) conn_socket.sock ().set_option (
       zlink::socket_options::sndtimeo, perf::single::resolve_single_send_timeout_ms ());
 
-    const int warmup_count =
-      perf::single::resolve_bench_count ("PERF_SINGLE_WARMUP_COUNT", 1000);
     const int duration_s = perf::single::resolve_single_duration_seconds ();
     std::vector<char> payload (
       std::max<size_t> (msg_size, perf_single_metric::header_size ()), '\0');
@@ -75,25 +73,6 @@ void run_pattern_pair (const std::string &transport,
     }
 
     uint64_t seq = 0;
-    unsigned long long warmup_received = 0;
-    if (!perf::single::run_callback_phase (receiver_cb,
-                                           &send_single_part,
-                                           &conn_socket.sock (),
-                                           payload,
-                                           payload_size,
-                                           1,
-                                           seq,
-                                           perf_single_metric::phase_warmup,
-                                           warmup_count,
-                                           duration_s,
-                                           recv_timeout,
-                                           &warmup_received,
-                                           NULL)) {
-        perf::single::print_fail_result (
-          lib_name, "PAIR", transport, msg_size, &queue_probe);
-        return;
-    }
-
     perf::single::latency_stats_t latency;
     unsigned long long active_received = 0;
     if (!perf::single::run_callback_phase (receiver_cb,
@@ -104,7 +83,7 @@ void run_pattern_pair (const std::string &transport,
                                            1,
                                            seq,
                                            perf_single_metric::phase_active,
-                                           warmup_count,
+                                           0,
                                            duration_s,
                                            recv_timeout,
                                            &active_received,

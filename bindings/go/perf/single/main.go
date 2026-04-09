@@ -12,7 +12,6 @@ type benchmarkConfig struct {
 	transport string
 	msgSize   int
 	duration  time.Duration
-	recvMode  string
 }
 
 var (
@@ -20,7 +19,6 @@ var (
 	transport = flag.String("transport", "tcp", "")
 	msgSize   = flag.Int("msg-size", 64, "")
 	duration  = flag.Int("duration", 5, "")
-	recvMode  = flag.String("recv", "callback", "")
 )
 
 func main() {
@@ -31,14 +29,12 @@ func main() {
 		*transport,
 		*msgSize,
 		*duration,
-		*recvMode,
 	)
 	cfg := benchmarkConfig{
 		pattern:   loaded.Pattern,
 		transport: loaded.Transport,
 		msgSize:   loaded.MsgSize,
 		duration:  loaded.Duration,
-		recvMode:  loaded.RecvMode.String(),
 	}
 
 	var result perfcommon.Result

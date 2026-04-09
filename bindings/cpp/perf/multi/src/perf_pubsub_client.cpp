@@ -23,7 +23,6 @@ static const char *k_topic = "bench";
 static const uint32_t k_run_id = 1;
 struct phase_config_t
 {
-    int warmup_seconds;
     int active_seconds;
 };
 
@@ -66,7 +65,6 @@ class pubsub_client_bench_t
         _sockets.reserve (_settings.clients);
         _poll_events.reserve (_settings.clients);
 
-        _phase_cfg.warmup_seconds = std::max (0, _settings.warmup_seconds);
         _phase_cfg.active_seconds = std::max (1, _settings.duration_seconds);
     }
 
@@ -77,11 +75,6 @@ class pubsub_client_bench_t
 
         std::cout << "CLIENT_READY," << _msg_size << std::endl;
 
-        if (!run_phase (perf_metric::phase_warmup,
-                        std::chrono::seconds (_phase_cfg.warmup_seconds),
-                        &_result.warmup_count,
-                        NULL))
-            return false;
         _resource_probe_start = perf::multi::start_resource_probe ();
         if (!run_phase (perf_metric::phase_active,
                         std::chrono::seconds (_phase_cfg.active_seconds),
@@ -186,8 +179,7 @@ class pubsub_client_bench_t
         unsigned long long count = 0;
         const bool active_phase = phase == perf_metric::phase_active;
         auto deadline = std::chrono::steady_clock::now () + duration;
-        const int active_search_extension_seconds =
-          std::max (2, _phase_cfg.warmup_seconds + 1);
+        const int active_search_extension_seconds = 2;
         const auto active_search_deadline =
           deadline + std::chrono::seconds (active_search_extension_seconds);
         bool active_started = !active_phase;

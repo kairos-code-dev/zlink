@@ -589,5 +589,128 @@ zlink_send_rid(router, &target_rid, parts, part_count, 0);
 > **Legacy:** `zlink_msg_send()`는 아직 header에 존재하지만 제거 예정이다.
 > 모든 call site를 `zlink_send()`에 parts array를 전달하는 방식으로 migration한다.
 
+## 11. Request-Reply Envelope
+
+메시지에 request-reply 필드(`msg_type`, `correlation_id`)를 설정하면 core가
+send 시 자동으로 wire envelope에 직렬화하고, recv 시 자동으로 파싱하여
+복원한다. DATA 메시지(기본값)는 envelope overhead가 0이다.
+
+### Request/Reply 설정
+
+```c
+/* correlation_id = 1001로 REQUEST 전송 */
+zlink_msg_t req;
+zlink_msg_init_size(&req, 13);
+memcpy(zlink_msg_data(&req), "get_portfolio", 13);
+zlink_msg_set_request(&req, 1001);
+zlink_send(dealer, &req, 1, 0);
+
+/* 응답 측: 동일한 correlation_id로 REPLY 생성 */
+zlink_msg_t reply;
+zlink_msg_init_size(&reply, 4);
+memcpy(zlink_msg_data(&reply), "done", 4);
+zlink_msg_set_reply(&reply, 1001);
+zlink_send_rid(router, &source_rid, &reply, 1, 0);
+```
+
+### Request-Reply 정보 읽기
+
+```c
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    uint8_t msg_type;
+    uint64_t correlation_id;
+    zlink_msg_get_request_info(&parts[0], &msg_type, &correlation_id);
+
+    if (msg_type == ZLINK_MSG_TYPE_REQUEST) {
+        /* correlation_id로 request dispatch */
+    } else if (msg_type == ZLINK_MSG_TYPE_REPLY) {
+        /* correlation_id로 pending request 매칭 */
+    }
+    /* msg_type == ZLINK_MSG_TYPE_DATA: 일반 메시지, envelope 없음 */
+
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+```
+
+### 핵심 사항
+
+- `zlink_msg_init()` 후 msg_type은 DATA, correlation_id는 0이다.
+- `set_request` 후 `set_reply` 호출(또는 반대) 시 마지막 호출이 우선한다.
+- `msg_copy` / `msg_move`는 request-reply 필드도 함께 복사/이동한다.
+- `msg_data()` / `msg_size()`는 사용자 payload만 반환한다. envelope 미포함.
+- DATA 메시지는 wire overhead가 0이다 (envelope 미생성).
+
+## 12. Per-Message Metadata
+
+각 메시지에 application 정의 key-value metadata를 첨부할 수 있다.
+metadata는 send 시 wire에 직렬화되고 recv 시 복원된다.
+ZMP 프로토콜 메타데이터(`zlink_msg_gets`)와는 독립적이다.
+
+### Metadata 설정
+
+```c
+/* Application 정의 metadata key */
+enum my_meta {
+    META_TRACE_ID  = 0x0100,
+    META_PRIORITY  = 0x0101,
+    META_TIMESTAMP = 0x0102,
+};
+
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 11);
+memcpy(zlink_msg_data(&msg), "hello world", 11);
+
+/* trace-id 첨부 */
+uint8_t trace_id[16] = { /* ... */ };
+zlink_msg_set_metadata(&msg, META_TRACE_ID, trace_id, 16);
+
+/* priority 첨부 */
+uint8_t priority = 3;
+zlink_msg_set_metadata(&msg, META_PRIORITY, &priority, 1);
+
+zlink_send(socket, &msg, 1, 0);
+```
+
+### Metadata 읽기
+
+```c
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    size_t trace_len;
+    const void *trace = zlink_msg_get_metadata(&parts[0],
+                                                META_TRACE_ID, &trace_len);
+    if (trace) {
+        /* trace_id 바이트 사용 (trace, trace_len) */
+    }
+
+    size_t prio_len;
+    const void *prio = zlink_msg_get_metadata(&parts[0],
+                                               META_PRIORITY, &prio_len);
+    if (prio && prio_len == 1) {
+        uint8_t priority = *(const uint8_t *)prio;
+        /* priority 사용 */
+    }
+
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+```
+
+### 핵심 사항
+
+- key `0x0000`~`0x00FF`는 zlink 예약. 사용자 key는 `0x0100`부터 시작.
+- metadata가 없는 메시지는 wire overhead가 0이다.
+- `msg_copy`는 metadata를 깊은 복사한다. `msg_move`는 metadata를 이동한다 (source는 비워진다).
+- `msg_close`는 metadata 저장소를 해제한다.
+- `msg_data()` / `msg_size()`는 사용자 payload만 반환한다. metadata header 미포함.
+- `get_metadata`는 없는 key에 대해 NULL을 반환한다 (오류 아님).
+- metadata와 request-reply 필드는 독립적이며 같은 메시지에 공존할 수 있다.
+
 ---
 [← Routing ID](08-routing-id.ko.md) | [Performance →](10-performance.ko.md)

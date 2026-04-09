@@ -2,7 +2,8 @@
 
 import { requireNative } from './native';
 import { normalizeBufferLike } from './buffer_like';
-import { Message, Received, Subscribed, SubscriptionEvent } from './message';
+import { Message, Received, Subscribed, SubscriptionEvent, MsgType, METADATA_KEY_USER_MIN, METADATA_VALUE_MAX } from './message';
+import type { RequestInfo } from './message';
 import {
   SocketType,
   SocketOption
@@ -29,8 +30,12 @@ export {
   SubscriptionEvent,
   MonitorSocket,
   SocketType,
-  SocketOption
+  SocketOption,
+  MsgType,
+  METADATA_KEY_USER_MIN,
+  METADATA_VALUE_MAX
 };
+export type { RequestInfo };
 
 export const SendResult = Object.freeze({
   Sent: 0,

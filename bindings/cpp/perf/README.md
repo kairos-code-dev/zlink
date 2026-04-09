@@ -36,12 +36,11 @@ Policy references:
 ```bash
 # single smoke
 bindings/cpp/perf/run_benchmarks.sh \
-  --pattern PAIR --transports tcp --msg-sizes 64 --runs 1
+  --pattern ALL --msg-sizes 64 --reuse-build
 
 # multi smoke
 bindings/cpp/perf/run_benchmarks_multi.sh \
-  --pattern MULTI_DEALER_DEALER --transports tcp --msg-sizes 64 \
-  --runs 1 --clients 10 --warmup 1 --duration 1
+  --pattern ALL --msg-sizes 64 --reuse-build
 ```
 
 ## Result Paths

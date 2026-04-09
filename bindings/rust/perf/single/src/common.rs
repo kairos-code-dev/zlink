@@ -1,50 +1,87 @@
-//! Shared perf utilities – metric header, latency stats, phase control.
+//! Shared perf utilities - metric header, latency stats, phase control.
 //!
 //! Follows doc/perf/PERF_SINGLE_TEST_POLICY.md:
-//!   - ready → active(duration)
-//!   - callback-only recv model
+//!   - ready -> active(duration)
+//!   - recv-only model
 //!   - metric header in payload for latency measurement
 #![allow(dead_code)]
 
+use std::sync::OnceLock;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-// -- Metric header (32 bytes) ------------------------------------------------
-// Layout matches core/perf single metric header:
-//   [0..4]   magic     u32 LE  0x53504631 ("SPF1")
-//   [4..8]   run_id    u32 LE
-//   [8..12]  phase     u32 LE  (0=active, 1=stop, 2=probe)
-//   [12..16] msg_size  u32 LE
-//   [16..24] seq       u64 LE
-//   [24..32] sent_ts   u64 LE  (microseconds since epoch)
+// -- Metric header (29 bytes) ------------------------------------------------
+// Layout matches doc/perf/PERF_POLICY.md:
+//   [0..4]   magic      u32 LE  0x5A4C4E4B ("ZLNK")
+//   [4..8]   run_id     u32 LE
+//   [8]      phase      u8      (0=warmup, 1=active, 2=cooldown)
+//   [9..13]  msg_size   u32 LE
+//   [13..21] seq        u64 LE
+//   [21..29] sent_ts    i64 LE  (microseconds since epoch)
 
-pub const HEADER_SIZE: usize = 32;
-pub const MAGIC: u32 = 0x5350_4631; // "SPF1"
-pub const PHASE_ACTIVE: u32 = 0;
-pub const PHASE_STOP: u32 = 1;
-pub const PHASE_PROBE: u32 = 2;
+pub const HEADER_SIZE: usize = 29;
+pub const MAGIC: u32 = 0x5A4C_4E4B; // "ZLNK"
+pub const PHASE_WARMUP: u8 = 0;
+pub const PHASE_ACTIVE: u8 = 1;
+pub const PHASE_COOLDOWN: u8 = 2;
 
-pub fn encode_header(buf: &mut [u8], phase: u32, msg_size: u32, seq: u64) {
-    buf[0..4].copy_from_slice(&MAGIC.to_le_bytes());
-    buf[4..8].copy_from_slice(&0u32.to_le_bytes()); // run_id
-    buf[8..12].copy_from_slice(&phase.to_le_bytes());
-    buf[12..16].copy_from_slice(&msg_size.to_le_bytes());
-    buf[16..24].copy_from_slice(&seq.to_le_bytes());
-    buf[24..32].copy_from_slice(&now_us().to_le_bytes());
+fn process_run_id() -> u32 {
+    static RUN_ID: OnceLock<u32> = OnceLock::new();
+    *RUN_ID.get_or_init(|| {
+        let pid = std::process::id();
+        let stamp = now_us() as u32;
+        stamp ^ pid.rotate_left(13)
+    })
 }
 
-pub fn decode_sent_ts(data: &[u8]) -> u64 {
+pub fn encode_header(buf: &mut [u8], phase: u8, msg_size: u32, seq: u64) {
+    buf[0..4].copy_from_slice(&MAGIC.to_le_bytes());
+    buf[4..8].copy_from_slice(&process_run_id().to_le_bytes());
+    buf[8] = phase;
+    buf[9..13].copy_from_slice(&msg_size.to_le_bytes());
+    buf[13..21].copy_from_slice(&seq.to_le_bytes());
+    buf[21..29].copy_from_slice(&(now_us() as i64).to_le_bytes());
+}
+
+pub fn decode_run_id(data: &[u8]) -> u32 {
     if data.len() < HEADER_SIZE {
         return 0;
     }
-    u64::from_le_bytes(data[24..32].try_into().unwrap())
+    u32::from_le_bytes(data[4..8].try_into().unwrap())
 }
 
-pub fn decode_phase(data: &[u8]) -> u32 {
+pub fn decode_msg_size(data: &[u8]) -> u32 {
     if data.len() < HEADER_SIZE {
-        return u32::MAX;
+        return 0;
     }
-    u32::from_le_bytes(data[8..12].try_into().unwrap())
+    u32::from_le_bytes(data[9..13].try_into().unwrap())
+}
+
+pub fn decode_sent_ts(data: &[u8]) -> i64 {
+    if data.len() < HEADER_SIZE {
+        return 0;
+    }
+    i64::from_le_bytes(data[21..29].try_into().unwrap())
+}
+
+pub fn decode_phase(data: &[u8]) -> u8 {
+    if data.len() < HEADER_SIZE {
+        return u8::MAX;
+    }
+    data[8]
+}
+
+pub fn is_valid_active_message(data: &[u8], expected_size: usize) -> bool {
+    if data.len() < HEADER_SIZE {
+        return false;
+    }
+    decode_phase(data) == PHASE_ACTIVE
+        && decode_msg_size(data) as usize == expected_size
+        && decode_run_id(data) == process_run_id()
+}
+
+pub fn message_payload<'a>(parts: &'a [Message]) -> &'a [u8] {
+    parts.last().map(|part| part.data()).unwrap_or(&[])
 }
 
 pub fn now_us() -> u64 {
@@ -261,18 +298,13 @@ pub fn wait_monitor_ready(mon: &zlink::SocketMonitor) {
     }
 }
 
-/// Shared callback body: decode phase and record active latency only.
-pub fn handle_recv(data: &[u8], stats: &std::sync::Mutex<LatencyStats>) {
-    let phase = decode_phase(data);
-    if phase == PHASE_ACTIVE {
+/// Record active-phase latency if the payload matches the expected run.
+pub fn handle_recv(data: &[u8], expected_size: usize, stats: &std::sync::Mutex<LatencyStats>) {
+    if is_valid_active_message(data, expected_size) {
         let sent_ts = decode_sent_ts(data);
-        let latency = now_us().saturating_sub(sent_ts);
+        let latency = (now_us() as i64).saturating_sub(sent_ts).max(0) as u64;
         stats.lock().unwrap().record(latency);
     }
-}
-
-pub fn callback_payload<'a>(parts: &'a [Message]) -> &'a [u8] {
-    parts.last().map(|part| part.data()).unwrap_or(&[])
 }
 
 // -- Send loop ---------------------------------------------------------------
@@ -286,6 +318,7 @@ use zlink::{Message, SendResult};
 pub fn send_loop<S, T>(
     active: Duration,
     msg_size: usize,
+    phase: u8,
     send_fn: S,
     _try_send_fn: T,
 ) where
@@ -298,12 +331,11 @@ pub fn send_loop<S, T>(
     // Active
     let active_end = Instant::now() + active;
     while Instant::now() < active_end {
-        encode_header(&mut buf, PHASE_ACTIVE, msg_size as u32, seq);
+        encode_header(&mut buf, phase, msg_size as u32, seq);
         let msg = Message::from_bytes(&buf).expect("msg");
         send_fn(msg);
         seq += 1;
     }
-
 }
 
 /// Common receiver-side finish gate: wait for the sender window plus grace.
@@ -316,7 +348,6 @@ pub fn wait_finished(signal: &CompletionSignal, active: u64) {
 pub struct PerfConfig {
     pub pattern: String,
     pub transport: String,
-    pub recv_mode: String,
     pub size: usize,
     pub duration_seconds: u64,
 }
@@ -328,8 +359,6 @@ impl PerfConfig {
         let mut duration = 5u64;
         let mut transport = "inproc".to_string();
         let mut pattern = "PAIR".to_string();
-        let mut recv_mode =
-            std::env::var("PERF_RECV_MODE").unwrap_or_else(|_| "callback".to_string());
 
         let mut i = 1;
         while i < args.len() {
@@ -350,20 +379,13 @@ impl PerfConfig {
                     pattern = args[i + 1].clone();
                     i += 2;
                 }
-                "--recv" if i + 1 < args.len() => {
-                    recv_mode = args[i + 1].clone();
-                    i += 2;
-                }
                 _ => { i += 1; }
             }
         }
 
-        validate_callback_recv_mode(&recv_mode);
-
         Self {
             pattern,
             transport,
-            recv_mode,
             size,
             duration_seconds: duration,
         }
@@ -379,11 +401,5 @@ impl PerfConfig {
             "tcp" => "tcp://127.0.0.1:*".to_string(),
             _ => format!("inproc://perf-{suffix}"),
         }
-    }
-}
-
-fn validate_callback_recv_mode(recv_mode: &str) {
-    if recv_mode != "callback" {
-        panic!("single perf requires callback recv mode, got `{recv_mode}`");
     }
 }

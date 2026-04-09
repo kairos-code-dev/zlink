@@ -235,20 +235,11 @@ internal static partial class PerfRunner
     internal static void PrintSingleProcessMetrics(string pattern, string transport,
         int size, TimeSpan cpuStart, Stopwatch wall)
     {
-        var process = Process.GetCurrentProcess();
-        process.Refresh();
-        TimeSpan cpuEnd = process.TotalProcessorTime;
-        double cpuSec = Math.Max(0.0, (cpuEnd - cpuStart).TotalSeconds);
-        double wallSec = Math.Max(1e-9, wall.Elapsed.TotalSeconds);
-        double ncpu = Math.Max(1, Environment.ProcessorCount);
-        double cpuPct = (cpuSec / (wallSec * ncpu)) * 100.0;
-        double memMb = process.WorkingSet64 / (1024.0 * 1024.0);
-
-        Console.WriteLine($"RESULT,current,{pattern},{transport},{size},cpu_pct,{cpuPct}");
-        Console.WriteLine($"RESULT,current,{pattern},{transport},{size},mem_mb,{memMb}");
-        Console.WriteLine($"RESULT,current,{pattern},{transport},{size},snd_pending_max,0");
-        Console.WriteLine($"RESULT,current,{pattern},{transport},{size},rcv_pending_max,0");
-        Console.WriteLine($"RESULT,current,{pattern},{transport},{size},rcv_pending_end,0");
+        _ = pattern;
+        _ = transport;
+        _ = size;
+        _ = cpuStart;
+        _ = wall;
     }
 
 }

@@ -4,7 +4,6 @@ package dev.kairoscode.zlink.perf.multi;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.perf.PerfCallbackMetrics;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
@@ -12,7 +11,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfMultiSpot {
     private static final String TOPIC = "perf.topic";
@@ -25,7 +24,7 @@ final class PerfMultiSpot {
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         try (Context ctx = PerfUtil.newContext(config);
              SpotNode node = new SpotNode(ctx);
-            Spot publisher = new Spot(node)) {
+             Spot publisher = new Spot(node)) {
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             node.bind(config.endpoint());
@@ -38,10 +37,9 @@ final class PerfMultiSpot {
                     publisher.publish(TOPIC, List.of(m));
                 }
             }
-            int stopBurst = Math.max(16, config.clients() * 8);
-            for (int i = 0; i < stopBurst; i++) {
+            for (int i = 0; i < Math.max(16, config.clients() * 8); i++) {
                 try (Message m = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_STOP, System.nanoTime())) {
+                         (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
                     publisher.publish(TOPIC, List.of(m));
                 }
             }
@@ -54,39 +52,30 @@ final class PerfMultiSpot {
         CountDownLatch finishedClients = new CountDownLatch(config.clients());
         CountDownLatch ready = new CountDownLatch(config.clients());
         CountDownLatch go = new CountDownLatch(1);
-        PerfCallbackMetrics metrics = PerfUtil.callbackMetrics("multi-spot-metrics");
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        PerfUtil.Metrics metrics = new PerfUtil.Metrics();
         MultiSendLoops.runClients(config.clients(), (index, duration) ->
-            new Thread(() -> runClientSlot(config, index, duration,
-                finishedClients, ready, go, metrics), "multi-spot-client-" + index),
+            new Thread(() -> runClientSlot(config, duration, finishedClients,
+                ready, go, metrics, failure), "multi-spot-client-" + index),
             config.durationSeconds());
+        if (failure.get() != null) {
+            throw new IllegalStateException("spot client failed", failure.get());
+        }
         return metrics.finishMulti(config);
     }
 
-    private static void runClientSlot(PerfUtil.Config config, int index,
-                                      int duration,
+    private static void runClientSlot(PerfUtil.Config config, int duration,
                                       CountDownLatch finishedClients,
                                       CountDownLatch ready,
                                       CountDownLatch go,
-                                      PerfCallbackMetrics metrics) {
-        CountDownLatch localDone = new CountDownLatch(1);
+                                      PerfUtil.Metrics metrics,
+                                      AtomicReference<Throwable> failure) {
         AtomicBoolean localStopped = new AtomicBoolean(false);
         try (Context ctx = PerfUtil.newContext(config);
              SpotNode node = new SpotNode(ctx);
-             Spot subscriber = new Spot(node);
-        ) {
+             Spot subscriber = new Spot(node)) {
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureClientTls(node, config.transport());
-            if ("callback".equalsIgnoreCase(config.recvMode())) {
-                subscriber.onSubscribe((routingId, topic, received) -> {
-                    if (received == null) {
-                        return;
-                    }
-                    try (received) {
-                        handleDelivery(localDone, localStopped, finishedClients,
-                            metrics, config.size(), received);
-                    }
-                });
-            }
             node.connectPeer(config.endpoint());
             subscriber.setSubscription(TOPIC);
             sleepQuietly(STABILIZATION);
@@ -97,75 +86,41 @@ final class PerfMultiSpot {
                 go.countDown();
             }
             PerfUtil.await(go, "spot start", Duration.ofSeconds(10));
-            if ("callback".equalsIgnoreCase(config.recvMode())) {
-                waitForStopOrDeadline(localDone, Duration.ofSeconds(
-                    duration + 10L));
-                return;
-            }
-            while (localDone.getCount() > 0L) {
+            while (finishedClients.getCount() > 0L) {
                 try (var received = subscriber.subscribe()) {
-                    handleDelivery(localDone, localStopped, finishedClients,
-                        metrics, config.size(), received);
+                    handleDelivery(received, localStopped, finishedClients,
+                        metrics, config.size());
+                    if (localStopped.get()) {
+                        return;
+                    }
                 }
             }
+        } catch (Throwable ex) {
+            failure.compareAndSet(null, ex);
         }
     }
 
-    private static void handleDelivery(CountDownLatch localDone,
+    private static void handleDelivery(dev.kairoscode.zlink.TopicMessage received,
                                        AtomicBoolean localStopped,
                                        CountDownLatch finishedClients,
-                                       PerfCallbackMetrics metrics,
-                                       int expectedSize,
-                                       dev.kairoscode.zlink.Received received) {
+                                       PerfUtil.Metrics metrics,
+                                       int expectedSize) {
         if (received == null || received.parts().isEmpty()) {
             return;
         }
-        handleDelivery(localDone, localStopped, finishedClients, metrics,
-            expectedSize, received.firstPart());
-    }
-
-    private static void handleDelivery(CountDownLatch localDone,
-                                       AtomicBoolean localStopped,
-                                       CountDownLatch finishedClients,
-                                       PerfCallbackMetrics metrics,
-                                       int expectedSize,
-                                       dev.kairoscode.zlink.TopicMessage received) {
-        if (received == null || received.parts().isEmpty()) {
-            return;
-        }
-        handleDelivery(localDone, localStopped, finishedClients, metrics,
-            expectedSize, received.firstPart());
-    }
-
-    private static void handleDelivery(CountDownLatch localDone,
-                                       AtomicBoolean localStopped,
-                                       CountDownLatch finishedClients,
-                                       PerfCallbackMetrics metrics,
-                                       int expectedSize,
-                                       Message payload) {
+        Message payload = received.firstPart();
         PerfUtil.Header header = PerfUtil.decodeHeader(payload, expectedSize);
         if (header == null) {
             return;
         }
-        if (header.phase() == PerfUtil.PHASE_STOP) {
+        if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
             if (localStopped.compareAndSet(false, true)) {
                 finishedClients.countDown();
-                localDone.countDown();
             }
             return;
         }
         if (header.phase() == PerfUtil.PHASE_ACTIVE) {
             metrics.recordMicros(header.latencyMicros());
-        }
-    }
-
-    private static void waitForStopOrDeadline(CountDownLatch localDone,
-                                              Duration timeout) {
-        try {
-            localDone.await(timeout.toNanos(), TimeUnit.NANOSECONDS);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("spot multi callback interrupted", ex);
         }
     }
 
@@ -177,5 +132,4 @@ final class PerfMultiSpot {
             throw new IllegalStateException("spot multi barrier interrupted", ex);
         }
     }
-
 }

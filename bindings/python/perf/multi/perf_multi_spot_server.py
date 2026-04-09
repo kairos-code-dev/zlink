@@ -12,7 +12,6 @@ from perf_multi_common import TOPIC, new_payload, stamp_payload, tcp_endpoint
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--clients", type=int, default=4)
-    parser.add_argument("--recv", default="recv")
     parser.add_argument("--msg-size", type=int, default=256)
     args = parser.parse_args(argv or sys.argv[1:])
 
@@ -31,10 +30,9 @@ def main(argv=None):
             node.set_routing_id(b"SPOT-SERVER")
             node.bind(endpoint)
             with node.wrap_handle() as spot:
-                spot.on_send_ready(lambda _: None)
                 print(f"READY,{endpoint}", flush=True)
                 while not stop.is_set():
-                    spot.publish(TOPIC, stamp_payload(payload))
+                    spot.publish(TOPIC, stamp_payload(payload, phase=1))
                     time.sleep(0.001)
                 sys.stdout.flush()
                 os._exit(0)

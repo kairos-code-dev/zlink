@@ -1,16 +1,19 @@
 import sys
+import threading
 import time
 import uuid
 
 import zlink
 
 from perf_common import (
-    CallbackMetrics,
+    benchmark_run_id,
+    latency_us_from_message,
+    is_active_message,
     new_payload,
     parse_single_args,
-    payload_phase,
     print_result_lines,
     result_metrics,
+    safe_poll,
     stamp_payload,
 )
 
@@ -19,46 +22,77 @@ def main(argv=None):
     args = parse_single_args(argv or sys.argv[1:], pattern="spot")
     payload = new_payload(args.msg_size)
     topic = f"bench.{uuid.uuid4().hex}".encode("ascii")
-    metrics_sink = CallbackMetrics(phase_filter=1)
+    run_id = benchmark_run_id()
+    lock = threading.Lock()
+    state = {"active_sent": 0, "active_count": 0, "latencies": []}
+    ready_event = threading.Event()
 
+    def send_loop(spot):
+        while not ready_event.is_set():
+            spot.publish(topic, [stamp_payload(payload, phase=0)])
+            ready_event.wait(0.001)
+
+        warmup_end = time.perf_counter() + args.warmup
+        while time.perf_counter() < warmup_end:
+            spot.publish(topic, [stamp_payload(payload, phase=0)])
+
+        active_end = time.perf_counter() + args.duration
+        while time.perf_counter() < active_end:
+            spot.publish(topic, [stamp_payload(payload, phase=1)])
+            with lock:
+                state["active_sent"] += 1
     with zlink.Context() as ctx:
-        with zlink.SpotNode(ctx) as node:
-            with zlink.Spot(node) as spot:
-                def on_message(received):
-                    data = received.to_bytes_list()[0]
-                    metrics_sink.on_payload(data, phase=payload_phase(data))
+        with zlink.SpotNode(ctx) as pub_node:
+            with zlink.SpotNode(ctx) as sub_node:
+                with zlink.Spot(pub_node) as pub_spot:
+                    with zlink.Spot(sub_node) as sub_spot:
+                        endpoint = "inproc://py-perf-spot"
+                        pub_node.bind(endpoint)
+                        sub_node.connect_peer(endpoint)
+                        sub_spot.set_subscription(topic)
 
-                spot.on_subscribe(on_message)
-                spot.on_send_ready(lambda _: None)
-                spot.set_subscription(topic)
+                        sender = threading.Thread(target=send_loop, args=(pub_spot,), daemon=True)
+                        sender.start()
+                        drain_deadline = time.perf_counter() + args.duration + 1.0
 
-                warmup_ready = False
-                warmup_deadline = time.perf_counter() + args.warmup
-                while time.perf_counter() < warmup_deadline:
-                    spot.publish(topic, [stamp_payload(payload, phase=0)])
-                    warmup_ready = metrics_sink.wait_ready(0) or warmup_ready
+                        with zlink.Poller() as poller:
+                            poller.add_socket(sub_spot, zlink.PollEvent.POLLIN)
+                            while True:
+                                safe_poll(poller, 50)
+                                while True:
+                                    received = sub_spot.try_subscribe()
+                                    if received is None:
+                                        break
+                                    with received:
+                                        data = received.to_bytes_list()[0]
+                                        if not ready_event.is_set():
+                                            ready_event.set()
+                                        if not is_active_message(
+                                            data,
+                                            expected_msg_size=args.msg_size,
+                                            run_id=run_id,
+                                        ):
+                                            continue
+                                        with lock:
+                                            state["active_count"] += 1
+                                        state["latencies"].append(
+                                            latency_us_from_message(data)
+                                        )
+                                if time.perf_counter() >= drain_deadline:
+                                    break
 
-                if not warmup_ready:
-                    raise RuntimeError("spot benchmark did not receive any warmup message")
-
-                metrics_sink.activate()
-                started = time.perf_counter()
-                deadline = started + args.duration
-                while time.perf_counter() < deadline:
-                    spot.publish(topic, [stamp_payload(payload, phase=1)])
-
-                metrics_sink.deactivate()
-                count, latencies = metrics_sink.finish()
-                if count == 0:
-                    raise RuntimeError("spot benchmark did not receive any message")
-                elapsed = time.perf_counter() - started
-                metrics = result_metrics(
-                    count=count,
-                    msg_size=args.msg_size,
-                    elapsed_s=elapsed,
-                    latencies_us=latencies,
-                )
-                print_result_lines("SPOT", "inproc", args.msg_size, metrics)
+                        sender.join()
+                        if state["active_count"] == 0:
+                            raise RuntimeError(
+                                "spot benchmark did not receive any active message"
+                            )
+                        metrics = result_metrics(
+                            count=state["active_count"],
+                            msg_size=args.msg_size,
+                            elapsed_s=args.duration,
+                            latencies_us=state["latencies"],
+                        )
+                        print_result_lines("SPOT", "inproc", args.msg_size, metrics)
 
 
 if __name__ == "__main__":

@@ -57,6 +57,8 @@ STREAM_SIZE_PATTERNS = set()
 
 DEFAULT_RESULTS_DIR = os.path.join(PERF_DIR, "results")
 DEFAULT_MAX_RESULT_FILES = 100
+RESULT_LANG = "core"
+RESULT_SUITE = "single"
 LATENCY_P95_METRIC = "latency_p95"
 LATENCY_P99_METRIC = "latency_p99"
 REQUIRED_RESULT_METRICS = (
@@ -244,7 +246,7 @@ def sanitize_suffix(value: str) -> str:
 
 def build_result_filename(tag: str = "") -> str:
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    name = f"perf_{platform_tag()}_{SINGLE_RECV_MODE}_{stamp}"
+    name = f"perf_{RESULT_LANG}_{RESULT_SUITE}_{platform_tag()}_{stamp}"
     clean_tag = sanitize_suffix(tag)
     if clean_tag:
         name = f"{name}_{clean_tag}"
@@ -514,8 +516,8 @@ def build_bench_cmd(binary_path: str, args: List[str], pin_cpu: bool) -> List[st
 
 def single_table_header_line() -> str:
     return (
-        "| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |"
-        "   Lat.P95(ms) |   Lat.P99(ms) |"
+        "| Size     |       Throughput |    Bandwidth |  Lat.Mean(us) |"
+        "   Lat.P95(us) |   Lat.P99(us) |"
     )
 
 
@@ -720,7 +722,7 @@ def format_bandwidth(bandwidth_mb_s: float) -> str:
 
 
 def format_latency_ms(latency_us: float) -> str:
-    return f"{latency_us / 1000.0:8.2f} ms"
+    return f"{latency_us:8.2f} us"
 
 
 def build_pattern_table_lines(
@@ -733,8 +735,8 @@ def build_pattern_table_lines(
     for transport in transports:
         lines.append(f"### Transport: {transport}")
         lines.append(
-            "| Size   |       Throughput |    Bandwidth | Lat.Mean(ms) |"
-            "  Lat.P95(ms) |  Lat.P99(ms) |"
+            "| Size   |       Throughput |    Bandwidth | Lat.Mean(us) |"
+            "  Lat.P95(us) |  Lat.P99(us) |"
         )
         lines.append(
             "|--------|------------------|--------------|-------------|-------------|-------------|"
@@ -790,7 +792,6 @@ def build_single_option_items(
     io_threads = max(1, parse_env_int("PERF_IO_THREADS", 1))
     items: List[Tuple[str, str]] = [
         ("runs", str(args.runs)),
-        ("recv_mode", SINGLE_RECV_MODE),
         ("duration_seconds", str(parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5))),
         ("timeout_seconds", str(timeout_sec)),
         ("io_threads", str(io_threads)),
@@ -808,6 +809,8 @@ def build_single_option_items(
 
 def print_effective_options(label: str, items: List[Tuple[str, str]]) -> None:
     print(f"\n## Effective Options ({label})")
+    print(f"- lang: {RESULT_LANG}")
+    print(f"- suite: {RESULT_SUITE}")
     for key, value in items:
         print(f"- {key}: {value}")
 

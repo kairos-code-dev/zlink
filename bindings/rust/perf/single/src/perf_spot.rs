@@ -1,9 +1,9 @@
-//! Single SPOT throughput/latency benchmark (callback-only).
+//! Single SPOT throughput/latency benchmark.
 
 mod common;
 
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use zlink::*;
 
 fn reserve_tcp_port() -> u16 {
@@ -37,60 +37,61 @@ fn main() {
 
     let collector = common::MetricCollector::new();
     let stats = collector.shared();
-    let finished = common::CompletionSignal::new();
     let ready = common::CompletionSignal::new();
-    let sender_done = finished.clone();
-    let sc = stats.clone();
-    let ready_cb = ready.clone();
-    let finished_cb = finished.clone();
+    let ready_seen = ready.clone();
 
-    subscriber.on_subscribe(move |topic_msg| {
-        let data = common::callback_payload(topic_msg.parts());
-        let phase = common::decode_phase(data);
-        if phase == common::PHASE_PROBE {
-            ready_cb.signal_done();
-            return;
-        }
-        if phase == common::PHASE_STOP {
-            finished_cb.signal_done();
-            return;
-        }
-        common::handle_recv(data, &sc);
-    }).expect("on_subscribe");
     subscriber.set_subscription(&topic).expect("subscribe");
+    let receiver_thread = thread::spawn(move || {
+        loop {
+            match subscriber.subscribe() {
+                Ok(topic_msg) => {
+                    let data = common::message_payload(topic_msg.parts());
+                    let phase = common::decode_phase(data);
+                    if phase == common::PHASE_WARMUP {
+                        ready_seen.signal_done();
+                        continue;
+                    }
+                    if phase == common::PHASE_ACTIVE {
+                        common::handle_recv(data, config.size, &stats);
+                        continue;
+                    }
+                    if phase == common::PHASE_COOLDOWN {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
 
     let mut probe_buf = vec![0u8; config.size.max(common::HEADER_SIZE)];
-    common::encode_header(&mut probe_buf, common::PHASE_PROBE, config.size as u32, 0);
-    let probe_deadline = std::time::Instant::now() + Duration::from_secs(10);
+    common::encode_header(&mut probe_buf, common::PHASE_WARMUP, config.size as u32, 0);
+    let probe_deadline = Instant::now() + Duration::from_secs(10);
     while !ready.is_done() {
-        if std::time::Instant::now() >= probe_deadline {
+        if Instant::now() >= probe_deadline {
             panic!("spot local probe ready did not finish before timeout");
         }
         let probe = Message::from_bytes(&probe_buf).expect("probe");
         publisher.publish(&topic, probe).expect("probe publish");
-        std::thread::yield_now();
+        thread::yield_now();
     }
 
     let a = Duration::from_secs(config.duration_seconds);
     let sz = config.size;
-    let send_topic = topic.clone();
-
-    let t = thread::spawn(move || {
-        let _guard = common::CompletionGuard::new(sender_done);
-        common::send_loop(a, sz,
-            |msg| { let _ = publisher.publish(&send_topic, msg); },
-            |msg| publisher.try_publish(&send_topic, msg),
-        );
-        for _ in 0..16 {
-            let mut stop_buf = vec![0u8; sz.max(common::HEADER_SIZE)];
-            common::encode_header(&mut stop_buf, common::PHASE_STOP, sz as u32, 0);
-            let stop = Message::from_bytes(&stop_buf).expect("stop msg");
-            let _ = publisher.publish(&send_topic, stop);
-        }
-    });
-
-    common::wait_finished(&finished, config.duration_seconds);
-    t.join().expect("join");
+    common::send_loop(
+        a,
+        sz,
+        common::PHASE_ACTIVE,
+        |msg| {
+            let _ = publisher.publish(&topic, msg);
+        },
+        |msg| publisher.try_publish(&topic, msg),
+    );
+    let mut cooldown_buf = vec![0u8; sz.max(common::HEADER_SIZE)];
+    common::encode_header(&mut cooldown_buf, common::PHASE_COOLDOWN, sz as u32, 0);
+    let cooldown = Message::from_bytes(&cooldown_buf).expect("cooldown");
+    let _ = publisher.publish(&topic, cooldown);
+    receiver_thread.join().expect("join");
 
     let result = collector.finish();
     common::print_result("SPOT", &config.transport, config.size, config.duration_seconds, &result);

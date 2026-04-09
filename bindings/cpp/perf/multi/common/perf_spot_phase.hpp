@@ -28,10 +28,6 @@ inline bool run_spot_server_cases(const multi_bench_settings_t &settings,
             || !wait_ready_fn(msg_size)
             || !publish_start_fn(msg_size)
             || !run_phase_fn(msg_size,
-                             perf_metric::phase_warmup,
-                             std::chrono::seconds(
-                               std::max(0, settings.warmup_seconds)))
-            || !run_phase_fn(msg_size,
                              perf_metric::phase_active,
                              std::chrono::seconds(
                                std::max(1, settings.duration_seconds)))) {

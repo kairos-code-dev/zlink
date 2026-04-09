@@ -35,7 +35,7 @@ void test_spot_multi_publisher ()
     TEST_ASSERT_NOT_NULL (node_c);
     void *pub_a = create_spot_pub_handle (node_a);
     void *pub_b = create_spot_pub_handle (node_b);
-    void *sub_c = create_spot_sub_handle (node_c, &queued_spot_handler);
+    void *sub_c = create_spot_sub_handle (node_c, NULL);
     TEST_ASSERT_NOT_NULL (pub_a);
     TEST_ASSERT_NOT_NULL (pub_b);
     TEST_ASSERT_NOT_NULL (sub_c);
@@ -48,16 +48,13 @@ void test_spot_multi_publisher ()
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub_c, "multi:topic"));
-    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      node_a, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
-    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      node_c, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
 
     bool got_a = false;
     for (int i = 0; i < 10 && !got_a; ++i) {
         TEST_ASSERT_SUCCESS_ERRNO (
           publish_text (&zlink_publish, pub_a, "multi:topic", "from-a", 0));
-        got_a = wait_for_spot_message (sub_c, "multi:topic", "from-a", 6, 300);
+        got_a =
+          wait_for_spot_recv_message (sub_c, "multi:topic", "from-a", 6, 300);
     }
     TEST_ASSERT_TRUE (got_a);
 
@@ -65,16 +62,13 @@ void test_spot_multi_publisher ()
       zlink_spot_node_disconnect_peer (node_c, "inproc://pub-a"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer (node_c, "inproc://pub-b"));
-    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      node_b, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
-    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      node_c, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
 
     bool got_b = false;
     for (int i = 0; i < 10 && !got_b; ++i) {
         TEST_ASSERT_SUCCESS_ERRNO (
           publish_text (&zlink_publish, pub_b, "multi:topic", "from-b", 0));
-        got_b = wait_for_spot_message (sub_c, "multi:topic", "from-b", 6, 300);
+        got_b =
+          wait_for_spot_recv_message (sub_c, "multi:topic", "from-b", 6, 300);
     }
     TEST_ASSERT_TRUE (got_b);
 

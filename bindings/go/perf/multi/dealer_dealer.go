@@ -10,10 +10,6 @@ import (
 )
 
 func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
-	if cfg.recvMode != "recv" {
-		perfcommon.Must(fmt.Errorf("multi dealer/dealer supports only recv mode, got %q", cfg.recvMode))
-	}
-
 	serverCtx, err := zlink.NewContext()
 	perfcommon.Must(err)
 	defer serverCtx.Close()
@@ -23,10 +19,6 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 	defer server.Close()
 	serverMon := perfcommon.OpenMonitor(server)
 	defer serverMon.Close()
-
-	endpoint := perfcommon.UniqueTCPEndpoint("perf-multi-dealer-dealer")
-	perfcommon.Must(server.Bind(endpoint))
-	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
 
 	stats := perfcommon.NewStats()
 	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
@@ -38,12 +30,16 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 		mon    *zlink.SocketMonitor
 	}
 	clients := make([]dealerClient, 0, cfg.clients)
+	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
+	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-multi-dealer-dealer")
+	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
 	for i := 0; i < cfg.clients; i++ {
 		clientCtx, err := zlink.NewContext()
 		perfcommon.Must(err)
 		client, err := clientCtx.DealerSocket()
 		perfcommon.Must(err)
 		clientMon := perfcommon.OpenMonitor(client)
+		perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
 		perfcommon.Must(client.Connect(endpoint))
 		perfcommon.Must(client.SetSendTimeout(500 * time.Millisecond))
 		perfcommon.WaitConnected(serverMon, clientMon)

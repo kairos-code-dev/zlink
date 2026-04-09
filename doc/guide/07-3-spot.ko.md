@@ -314,7 +314,64 @@ SPOT의 내부 구현은 data plane과 control plane이 분리된 모듈 구조�
 멀티파트 publish는 공통 `multipart_send_txn` 모듈을 사용하여
 whole-message 보장(전체 성공 또는 전체 실패)을 제공한다.
 
-## 6. 전달 정책
+## 6. Peer Publish Batching
+
+SpotNode는 peer publish 경로(`mesh_pub`)에서 작은 메시지를 topic별로
+모아 하나의 batch frame으로 보내는 내부 최적화를 지원한다.
+receiver는 batch를 내부적으로 풀어서 기존과 동일한 logical message를
+callback/recv 경로로 전달한다.
+
+이것은 **투명한 내부 최적화**이다. application이 보는 publish/subscribe/callback
+계약은 변경되지 않는다. receiver는 동일한 logical message를 동일한 순서로 받는다.
+
+### 활성화
+
+batching은 기본값 disabled이다. SpotNode의 `PEER_BATCH_ENABLE` 옵션으로
+활성화한다:
+
+```c
+int enabled = 1;
+zlink_set_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
+                 &enabled, sizeof(enabled));
+```
+
+**v1 제약:** mesh에 참여하는 모든 SpotNode가 동일 세대 binary여야 한다
+(homogeneous deployment). runtime capability negotiation은 없다.
+mixed-version mesh에서 활성화하면 batch frame을 일반 메시지로 오해석할 수 있다.
+
+### 설정
+
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `PEER_BATCH_ENABLE` | false | peer batching 활성화 (운영자 opt-in) |
+| `PEER_BATCH_DELAY_MS` | 20 | topic bucket flush 최대 지연 (ms) |
+| `PEER_BATCH_MAX_MESSAGES` | 32 | bucket당 최대 메시지 수 |
+| `PEER_BATCH_MAX_BYTES` | 65536 | bucket당 최대 바이트 |
+| `PEER_BATCH_BYPASS_BYTES` | 65536 | 이 크기 이상 메시지는 즉시 전송 |
+| `PEER_UNBATCH_MAX_MESSAGES_PER_TURN` | 32 | I/O turn당 unbatch 최대 메시지 수 |
+| `PEER_UNBATCH_MAX_BYTES_PER_TURN` | 65536 | I/O turn당 unbatch 최대 바이트 |
+
+### 동작
+
+- **로컬 fanout**은 항상 즉시 전달된다. batching은 peer 경로에만 적용된다.
+- **같은 topic 내 순서**는 batch, bypass, flush 모든 경로에서 보존된다.
+- **대형 메시지** (>= `BYPASS_BYTES`)는 즉시 전송된다. 같은 topic에
+  pending bucket이 있으면 순서 유지를 위해 먼저 flush한다.
+- **Flush 조건:** delay timeout, max messages, max bytes, shutdown/drain.
+
+### Wire 형식
+
+batch frame은 원래 topic subject를 그대로 사용한다 (reserved internal subject 없음).
+batch frame은 정확히 3개의 part로 구성된다:
+
+1. **Header** (12바이트): magic `0x31544253` ("SBT1"), version, flags, header_size
+2. **Metadata** (16바이트): message_count, total_payload_bytes, encoded_bytes, reserved
+3. **Body** (가변): 연결된 encoded logical message stream
+
+receiver는 magic, version, header_size를 검증한 후에만 batch로 처리한다.
+매칭되지 않는 frame은 일반 메시지로 처리된다.
+
+## 7. 전달 정책
 
 - 로컬 publish (`spot`) → 로컬 SPOT Sub 분배 + PUB 송출 (원격 전파)
 - 원격 수신 (SUB) → 로컬 SPOT Sub 분배만 (재발행 없음)
@@ -328,7 +385,7 @@ whole-message 보장(전체 성공 또는 전체 실패)을 제공한다.
 SPOT은 live pub/sub이며, durable delivery, ack/retry, exactly-once,
 late join에 대한 과거 메시지 재전송은 보장하지 않는다.
 
-## 7. 정리
+## 8. 정리
 
 ```c
 zlink_spot_destroy(&spot);

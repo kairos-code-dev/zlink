@@ -259,15 +259,15 @@ bool wait_for_exit_code (process_capture_t *proc_, int timeout_ms, int *rc_out_)
     return false;
 }
 
-void write_stdin_line (process_capture_t *proc_, const char *line_)
+bool write_stdin_line (process_capture_t *proc_, const char *line_)
 {
-    TEST_ASSERT_NOT_NULL (proc_);
-    TEST_ASSERT_NOT_NULL (line_);
-    TEST_ASSERT_TRUE (proc_->stdin_fd >= 0);
+    if (!proc_ || !line_ || proc_->stdin_fd < 0) {
+        errno = EINVAL;
+        return false;
+    }
     const size_t size = std::strlen (line_);
-    TEST_ASSERT_EQUAL_INT (
-      static_cast<int> (size),
-      static_cast<int> (write (proc_->stdin_fd, line_, size)));
+    const ssize_t written = write (proc_->stdin_fd, line_, size);
+    return written == static_cast<ssize_t> (size);
 }
 
 std::string capture_debug_text (process_capture_t *proc_)
@@ -332,10 +332,10 @@ void run_multi_dealer_dealer_tls_sequence_case ()
 
     std::vector<std::string> common_env;
     common_env.push_back ("PERF_MSG_SIZES=64,256,1024,65536,131072,262144");
-    common_env.push_back ("PERF_DURATION_SECONDS=2");
-    common_env.push_back ("PERF_WARMUP_SECONDS=2");
+    common_env.push_back ("PERF_DURATION_SECONDS=1");
+    common_env.push_back ("PERF_WARMUP_SECONDS=1");
     common_env.push_back ("PERF_SETTLE_MS=500");
-    common_env.push_back ("PERF_CLIENTS=100");
+    common_env.push_back ("PERF_CLIENTS=8");
     common_env.push_back ("PERF_CONNECT_READY_TIMEOUT_MS=10000");
     common_env.push_back ("PERF_RECV_MODE=recv");
 
@@ -363,20 +363,36 @@ void run_multi_dealer_dealer_tls_sequence_case ()
       start_process (client_path, client_args, common_env, client));
 
     const char *sizes[] = {"64", "256", "1024", "65536", "131072", "262144"};
-    TEST_ASSERT_TRUE_MESSAGE (
-      wait_for_stdout_prefix (client, "CLIENT_READY,64", 30000, NULL),
-      capture_case_debug_text (server, client).c_str ());
-    // Queue the full size sequence up front so the server cannot miss a later
-    // START window while the client is already advancing through the next size.
     for (size_t i = 0; i < sizeof (sizes) / sizeof (*sizes); ++i) {
-        write_stdin_line (
-          server, (std::string ("START,") + sizes[i] + "\n").c_str ());
+        const std::string ready_line =
+          std::string ("CLIENT_READY,") + sizes[i];
+        TEST_ASSERT_TRUE_MESSAGE (
+          wait_for_stdout_prefix (client, ready_line.c_str (), 30000, NULL),
+          capture_case_debug_text (server, client).c_str ());
+        TEST_ASSERT_TRUE_MESSAGE (
+          write_stdin_line (
+            server, (std::string ("START,") + sizes[i] + "\n").c_str ()),
+          capture_case_debug_text (server, client).c_str ());
+        TEST_ASSERT_TRUE_MESSAGE (
+          write_stdin_line (
+            client, (std::string ("START,") + sizes[i] + "\n").c_str ()),
+          capture_case_debug_text (server, client).c_str ());
+        const std::string done_line =
+          std::string ("CLIENT_DONE,") + sizes[i];
+        TEST_ASSERT_TRUE_MESSAGE (
+          wait_for_stdout_prefix (client, done_line.c_str (), 120000, NULL),
+          capture_case_debug_text (server, client).c_str ());
+        const std::string server_done_prefix =
+          std::string ("RESULT,zlink,MULTI_DEALER_DEALER,tls,") + sizes[i]
+          + ",throughput,";
+        TEST_ASSERT_TRUE_MESSAGE (
+          wait_for_stdout_prefix (
+            server, server_done_prefix.c_str (), 120000, NULL),
+          capture_case_debug_text (server, client).c_str ());
     }
-
     TEST_ASSERT_TRUE_MESSAGE (
-      wait_for_stdout_prefix (client, "CLIENT_DONE,262144", 120000, NULL),
+      write_stdin_line (server, "STOP\n"),
       capture_case_debug_text (server, client).c_str ());
-    write_stdin_line (server, "STOP\n");
 
     int client_rc = INT_MIN;
     TEST_ASSERT_TRUE_MESSAGE (

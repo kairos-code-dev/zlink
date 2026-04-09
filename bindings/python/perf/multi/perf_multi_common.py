@@ -9,13 +9,13 @@ if perf_dir_text not in sys.path:
     sys.path.insert(0, perf_dir_text)
 
 from perf_metrics import (
-    CallbackMetrics,
+    benchmark_run_id,
     build_report_path,
     ensure_report_path,
     latency_us_from_message,
     new_payload,
+    is_active_message,
     parse_result_lines,
-    payload_phase,
     platform_name,
     print_result_lines,
     render_effective_options,
@@ -25,9 +25,7 @@ from perf_metrics import (
     safe_poll,
     stamp_payload,
     tcp_endpoint,
-    wait_connected_pair,
-    wait_pubsub_ready,
-    wait_send_ready,
+    wait_monitor_event,
     wait_socket_event,
     write_report,
 )
@@ -37,19 +35,14 @@ TOPIC = b"bench"
 DEFAULT_READY_TIMEOUT_MS = 5000
 
 
-def parse_client_args(argv, *, pattern, allowed_recv):
+def parse_client_args(argv, *, pattern):
     parser = argparse.ArgumentParser(prog=f"perf_multi_{pattern.lower()}_client.py")
     parser.add_argument("--endpoint", required=True)
     parser.add_argument("--duration", type=float, default=2.0)
-    parser.add_argument("--warmup", type=float, default=1.0)
     parser.add_argument("--msg-size", type=int, default=256)
     parser.add_argument("--clients", type=int, default=4)
-    default_recv = next(iter(sorted(allowed_recv))) if len(allowed_recv) == 1 else "recv"
-    parser.add_argument("--recv", default=default_recv)
     args = parser.parse_args(argv)
-    if args.recv not in allowed_recv:
-        raise SystemExit(f"--recv must be one of: {', '.join(sorted(allowed_recv))}")
-    if args.duration <= 0 or args.warmup < 0 or args.msg_size < 16 or args.clients <= 0:
+    if args.duration <= 0 or args.msg_size < 16 or args.clients <= 0:
         raise SystemExit("invalid perf arguments")
     return args
 
@@ -57,7 +50,6 @@ def parse_client_args(argv, *, pattern, allowed_recv):
 def parse_server_args(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument("--clients", type=int, default=4)
-    parser.add_argument("--recv", default="recv")
     parser.add_argument("--msg-size", type=int, default=256)
     return parser.parse_args(argv)
 

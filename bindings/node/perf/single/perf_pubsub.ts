@@ -8,69 +8,67 @@ const {
   createPayload,
   createRunId,
   decodeMetricHeader,
+  currentEpochUs,
   sleepImmediate,
   stampPayload
 } = require('../common/perf_metrics');
-const {
-  callbackDrainTicks,
-  callbackSendBurstLimit
-} = require('./perf_callback_policy');
+const { drainRecvSocket, waitForConnectionReady } = require('./perf_single_common');
 
 async function runPubSubBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
   const pub = new zlink.PubSocket(ctx);
   const sub = new zlink.SubSocket(ctx);
-  const endpoint = `inproc://perf-pubsub-${process.pid}-${msgSize}`;
-  const topic = 'perf:pubsub';
+    const endpoint = `inproc://perf-pubsub-${process.pid}-${msgSize}`;
+    const topic = 'perf:pubsub';
 
-  try {
-    pub.bind(endpoint);
-    sub.connect(endpoint);
-    sub.setSubscription(topic);
+    try {
+      pub.bind(endpoint);
+      sub.setSubscription(topic);
+      await waitForConnectionReady(sub, () => sub.connect(endpoint));
 
     const startedAtNs = process.hrtime.bigint();
     const runId = createRunId();
     const collector = createMetricCollector({ runId, msgSize });
     const payload = createPayload(msgSize);
-    const sendBurstLimit = callbackSendBurstLimit(msgSize);
-    const drainTicks = callbackDrainTicks(msgSize);
+    let seq = 1n;
     const warmupUntilNs = startedAtNs
       + BigInt(Math.floor(options.warmup * 1_000_000_000));
     const stopAtNs = startedAtNs
       + BigInt(Math.floor((options.warmup + options.duration) * 1_000_000_000));
+    let stop = false;
 
-    sub.onSubscribe((_, __, parts) => {
-      const messageBuffer = parts[0].data;
-      const header = decodeMetricHeader(messageBuffer);
-      collector.record(header, process.hrtime.bigint());
-    });
+    const recvTask = drainRecvSocket(
+      sub,
+      (received) => {
+        const header = decodeMetricHeader(received.parts[0].data);
+        collector.record(header, currentEpochUs());
+      },
+      () => stop
+    );
 
-    let turns = 0;
     while (process.hrtime.bigint() < stopAtNs) {
-      for (
-        let i = 0;
-        i < sendBurstLimit && process.hrtime.bigint() < stopAtNs;
-        i += 1
-      ) {
+      for (let i = 0; i < 256 && process.hrtime.bigint() < stopAtNs; i += 1) {
         stampPayload(payload, {
-          phase: process.hrtime.bigint() < warmupUntilNs ? 2 : 0,
+          phase: process.hrtime.bigint() < warmupUntilNs ? 0 : 1,
           runId,
-          msgSize
+          msgSize,
+          seq
         });
         if (pub.tryPublish(topic, payload) !== zlink.SendResult.Sent) {
           break;
         }
+        seq += 1n;
       }
-      turns += 1;
-      if (msgSize >= 65536 || (turns & 0x03) === 0) {
+      if ((Number(seq) & 0x03) === 0) {
         await sleepImmediate();
       }
     }
 
-    for (let i = 0; i < drainTicks; i += 1) {
+    for (let i = 0; i < 4; i += 1) {
       await sleepImmediate();
     }
-
+    stop = true;
+    await recvTask;
     const result = await collector.finish();
     return result.latenciesUs;
   } finally {

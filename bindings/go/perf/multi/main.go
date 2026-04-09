@@ -12,7 +12,6 @@ type multiConfig struct {
 	transport string
 	msgSize   int
 	duration  time.Duration
-	recvMode  string
 	clients   int
 }
 
@@ -21,7 +20,6 @@ var (
 	multiTransport = flag.String("transport", "tcp", "")
 	multiSize      = flag.Int("msg-size", 64, "")
 	multiDuration  = flag.Int("duration", 5, "")
-	multiRecv      = flag.String("recv", "recv", "")
 	multiClients   = flag.Int("clients", 100, "")
 )
 
@@ -33,7 +31,6 @@ func main() {
 		*multiTransport,
 		*multiSize,
 		*multiDuration,
-		*multiRecv,
 		*multiClients,
 	)
 	cfg := multiConfig{
@@ -41,7 +38,6 @@ func main() {
 		transport: loaded.Transport,
 		msgSize:   loaded.MsgSize,
 		duration:  loaded.Duration,
-		recvMode:  loaded.RecvMode.String(),
 		clients:   loaded.Clients,
 	}
 

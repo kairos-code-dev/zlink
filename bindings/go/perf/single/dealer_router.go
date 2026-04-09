@@ -26,15 +26,15 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 	rid, err := zlink.NewRoutingID([]byte("perf-dealer"))
 	perfcommon.Must(err)
 
-	endpoint := perfcommon.UniqueTCPEndpoint("perf-dealer-router")
-	perfcommon.Must(router.Bind(endpoint))
+	perfcommon.Must(perfcommon.ConfigureTLSServer(router, cfg.transport))
+	perfcommon.Must(perfcommon.ConfigureTLSClient(dealer, cfg.transport))
+	endpoint := perfcommon.BindAndResolveEndpoint(router, cfg.transport, "perf-dealer-router")
 	perfcommon.Must(dealer.SetRoutingID(rid))
 	perfcommon.Must(dealer.Connect(endpoint))
 	perfcommon.WaitConnected(routerMon, dealerMon)
-	perfcommon.Must(dealer.SetRecvTimeout(500 * time.Millisecond))
-	perfcommon.Must(dealer.SetSendTimeout(500 * time.Millisecond))
-	startRouterEchoServer(router, cfg.recvMode)
-	waitForDealerRouterReady(dealer)
+	perfcommon.Must(dealer.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
+	perfcommon.Must(dealer.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
+	startRouterEchoServer(router)
 
 	stats := perfcommon.NewStats()
 	payload := perfcommon.PreparePayload(cfg.msgSize)
@@ -90,17 +90,8 @@ func waitForDealerRouterReady(dealer *zlink.DealerSocket) {
 	}))
 }
 
-func startRouterEchoServer(router *zlink.RouterSocket, recvMode string) {
-	if recvMode == "callback" {
-		perfcommon.Must(router.OnReceive(func(received *zlink.Received) {
-			defer received.Close()
-			perfcommon.Must(router.SendTo(received.RoutingID(),
-				perfcommon.CloneMessages(received.Parts())...))
-		}))
-		return
-	}
-
-	perfcommon.Must(router.SetRecvTimeout(500 * time.Millisecond))
+func startRouterEchoServer(router *zlink.RouterSocket) {
+	perfcommon.Must(router.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 	go func() {
 		for {
 			received, err := router.Recv()
@@ -115,7 +106,6 @@ func startRouterEchoServer(router *zlink.RouterSocket, recvMode string) {
 			if err != nil && !perfcommon.IsTransient(err) {
 				perfcommon.Must(err)
 			}
-			perfcommon.Must(received.Close())
 		}
 	}()
 }

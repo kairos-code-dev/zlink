@@ -41,7 +41,7 @@ fn main() {
 
     // -- Helper: try send on socket i ----------------------------------------
     let try_send_one = |i: usize, sockets: &[DealerSocket], buf: &mut [u8],
-                        seq: &mut u64, phase: u32, poller: &Poller,
+                        seq: &mut u64, phase: u8, poller: &Poller,
                         inflight: &mut [bool],
                         send_backpressure: &mut [common::backpressure::SocketBackpressure]| -> bool {
         if inflight[i] { return true; } // waiting for echo
@@ -63,7 +63,7 @@ fn main() {
     };
 
     // -- Phase runner --------------------------------------------------------
-    let run_phase = |phase: u32, duration: Duration, sockets: &[DealerSocket],
+    let run_phase = |phase: u8, duration: Duration, sockets: &[DealerSocket],
                      poller: &Poller, buf: &mut [u8], seq: &mut u64,
                      inflight: &mut [bool],
                      send_backpressure: &mut [common::backpressure::SocketBackpressure],
@@ -96,7 +96,7 @@ fn main() {
                                 if phase == common::PHASE_ACTIVE {
                                     let data = received.parts()[0].data();
                                     let sent_ts = common::decode_sent_ts(data);
-                                    let rtt = common::now_us().saturating_sub(sent_ts) as f64;
+                                    let rtt = common::now_us().saturating_sub(sent_ts.max(0) as u64) as f64;
                                     lat.record_us(rtt);
                                     *count += 1;
                                 }

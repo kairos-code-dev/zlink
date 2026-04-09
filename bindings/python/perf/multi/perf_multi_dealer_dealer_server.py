@@ -11,7 +11,6 @@ from perf_multi_common import tcp_endpoint
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--clients", type=int, default=4)
-    parser.add_argument("--recv", default="recv")
     parser.add_argument("--msg-size", type=int, default=256)
     args = parser.parse_args(argv or sys.argv[1:])
 

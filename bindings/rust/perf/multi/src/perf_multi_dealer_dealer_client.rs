@@ -79,7 +79,7 @@ fn run_send_phase(
     buf: &mut [u8],
     seq: &mut u64,
     msg_size: usize,
-    phase: u32,
+    phase: u8,
     duration: Duration,
     metrics: &mut Option<(&mut u64, &mut common::LatencyStats)>,
 ) {

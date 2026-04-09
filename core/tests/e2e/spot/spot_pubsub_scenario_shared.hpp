@@ -74,6 +74,11 @@ bool wait_for_spot_message (void *spot_sub_,
                             const char *expected_payload_,
                             size_t expected_payload_size_,
                             int timeout_ms_);
+bool wait_for_spot_recv_message (void *spot_sub_,
+                                 const char *expected_topic_,
+                                 const char *expected_payload_,
+                                 size_t expected_payload_size_,
+                                 int timeout_ms_);
 bool wait_for_node_message (void *node_,
                             const char *expected_topic_,
                             const char *expected_payload_,

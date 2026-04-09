@@ -26,6 +26,12 @@ sourceSets {
 dependencies {
     implementation(project(":"))
     compileOnly("io.netty:netty-buffer:4.1.100.Final")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+}
+
+tasks.test {
+    useJUnitPlatform()
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "-server", "-XX:TieredStopAtLevel=1")
 }
 
 application {

@@ -43,14 +43,14 @@ class ReadmeAlignmentTests(unittest.TestCase):
         self.assertIn("doc/perf/PERF_SINGLE_TEST_POLICY.md", readme)
         self.assertIn("doc/perf/PERF_MULTI_TEST_POLICY.md", readme)
         self.assertIn("`PAIR`: `tcp`", readme)
-        self.assertIn("`PUBSUB`: `inproc`", readme)
+        self.assertIn("`PUBSUB`: `tcp`", readme)
         self.assertIn("MULTI_STREAM", readme)
         self.assertIn("RESULT,current", readme)
         self.assertIn("## Effective Options (start)", readme)
         self.assertIn("--msg-sizes", readme)
-        self.assertIn("perf_<platform>_<recv_mode>", readme)
+        self.assertIn("perf_<lang>_<suite>_<platform>", readme)
 
-    def test_multi_perf_readme_documents_result_names_and_callback_subset(self):
+    def test_multi_perf_readme_documents_result_names_and_recv_only_surface(self):
         readme = (ROOT / "perf" / "multi" / "README.md").read_text(
             encoding="utf-8"
         )
@@ -58,7 +58,7 @@ class ReadmeAlignmentTests(unittest.TestCase):
         self.assertIn("MULTI_DEALER_ROUTER", readme)
         self.assertIn("MULTI_ROUTER_ROUTER", readme)
         self.assertIn("MULTI_SPOT", readme)
-        self.assertIn("callback", readme)
+        self.assertIn("recv path only", readme)
         self.assertIn("SPOT", readme)
         self.assertIn("STREAM", readme)
-        self.assertIn("results/multi/report/perf_<platform>_<recv_mode>", readme)
+        self.assertIn("results/multi/report/perf_<lang>_<suite>_<platform>", readme)

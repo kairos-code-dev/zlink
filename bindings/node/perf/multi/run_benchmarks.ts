@@ -3,7 +3,6 @@
 'use strict';
 
 const path = require('node:path');
-const fs = require('node:fs');
 const { once } = require('node:events');
 const { spawn } = require('node:child_process');
 const {
@@ -27,16 +26,6 @@ const {
   waitForLine
 } = require('./perf_multi_orchestrator');
 
-const STREAM_CLIENT = path.join(
-  process.cwd(),
-  '..',
-  '..',
-  'core',
-  'build',
-  'bin',
-  'perf_stream_client'
-);
-
 function usage() {
   console.log(`Usage: bindings/node/perf/run_benchmarks_multi.sh [options]
 
@@ -48,16 +37,15 @@ Options:
   --results-dir PATH    Override result root directory.
   --results-tag NAME    Optional tag in saved result filename.
   --runs N              Iterations per configuration (default: 1).
-  --recv MODE           Receive model: recv|callback (default: recv).
   --duration N          Override multi duration seconds (default: 5).
   --warmup N            Override multi warmup seconds (default: 2).
   --msg-sizes LIST      Comma-separated sizes.
   --transports LIST     Comma-separated transports (default: tcp).
-  --clients N           Override number of client sockets per pattern (default: 100, stream=10000).
+  --clients N           Override number of client sockets per pattern (default: 8).
 
 Notes:
   - result is saved under perf/results/multi/report/ as
-    perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt.`);
+    perf_node_multi_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt.`);
 }
 
 function attachStreamClientCapture(child, resultLines) {
@@ -68,8 +56,8 @@ function attachStreamClientCapture(child, resultLines) {
       if (!line) {
         continue;
       }
-      if (line.startsWith('RESULT,current,STREAM,')) {
-        resultLines.push(line.replace(',STREAM,', ',MULTI_STREAM,'));
+      if (line.startsWith('RESULT,current,')) {
+        resultLines.push(line);
         continue;
       }
       console.log(line);
@@ -85,10 +73,6 @@ function attachStreamClientCapture(child, resultLines) {
 }
 
 async function spawnSharedStreamPair(args) {
-  if (!fs.existsSync(STREAM_CLIENT)) {
-    throw new Error(`shared stream client not found: ${STREAM_CLIENT}`);
-  }
-
   const serverPath = path.join(__dirname, 'perf_multi_stream_server.js');
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const resultLines = [];
@@ -97,8 +81,7 @@ async function spawnSharedStreamPair(args) {
     '--msg-size', String(args.msgSize),
     '--warmup', String(args.warmup),
     '--duration', String(args.duration),
-    '--clients', String(args.clients),
-    '--recv', args.recv
+    '--clients', String(args.clients)
   ];
   const server = spawn(process.execPath, [serverPath, ...serverArgs], {
     cwd: process.cwd(),
@@ -108,21 +91,18 @@ async function spawnSharedStreamPair(args) {
   attachProcessCapture(server, resultLines);
   await waitForLine(server, `READY,${endpoint}`, 'perf_multi_stream_server.js', 5000);
 
+  const clientPath = path.join(__dirname, 'perf_multi_stream_client.js');
   const clientArgs = [
-    '--transport', 'tcp',
-    '--pattern', 'STREAM',
-    '--sizes', String(args.msgSize),
-    '--runs', '1',
+    '--endpoint', endpoint,
+    '--msg-size', String(args.msgSize),
     '--warmup', String(args.warmup),
     '--duration', String(args.duration),
-    '--ccu', String(args.clients),
-    '--print-perf-result', '2',
-    '--send-stop-token', '1',
-    '--endpoint', endpoint
+    '--clients', String(args.clients)
   ];
-  const client = spawn(STREAM_CLIENT, clientArgs, {
+  const client = spawn(process.execPath, [clientPath, ...clientArgs], {
     cwd: process.cwd(),
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['pipe', 'pipe', 'pipe'],
+    detached: true
   });
   attachStreamClientCapture(client, resultLines);
   const [code] = await once(client, 'exit');
@@ -138,48 +118,38 @@ const MULTI_PATTERN_RUNNERS = {
   MULTI_DEALER_DEALER: {
     server: 'perf_multi_dealer_dealer_server.js',
     client: 'perf_multi_dealer_dealer_client.js',
-    recv: 'recv'
   },
   MULTI_PUBSUB: {
     server: 'perf_multi_pubsub_server.js',
     client: 'perf_multi_pubsub_client.js',
-    recv: 'recv'
   },
   MULTI_DEALER_ROUTER: {
     server: 'perf_multi_dealer_router_server.js',
     client: 'perf_multi_dealer_router_client.js',
-    recv: 'recv'
   },
   MULTI_ROUTER_ROUTER: {
     server: 'perf_multi_router_router_server.js',
     client: 'perf_multi_router_router_client.js',
-    recv: 'recv'
   },
   MULTI_SPOT: {
     server: 'perf_multi_spot_server.js',
-    client: 'perf_multi_spot_client.js',
-    recv: ['recv', 'callback']
+    client: 'perf_multi_spot_client.js'
   },
   MULTI_STREAM: {
-    run: spawnSharedStreamPair,
-    recv: ['recv', 'callback']
+    run: spawnSharedStreamPair
   }
 };
 
-function assertMultiRecvAllowed(patternName, recvMode) {
+function assertMultiPatternAllowed(patternName) {
   const runner = MULTI_PATTERN_RUNNERS[patternName];
   if (!runner) {
     throw new Error(`unsupported multi pattern: ${patternName}`);
-  }
-  const allowed = Array.isArray(runner.recv) ? runner.recv : [runner.recv];
-  if (!allowed.includes(recvMode)) {
-    throw new Error(`${patternName} supports only --recv ${allowed.join('|')}`);
   }
   return runner;
 }
 
 async function runMultiPattern(patternName, options, msgSize) {
-  const runner = assertMultiRecvAllowed(patternName, options.recv);
+  const runner = assertMultiPatternAllowed(patternName);
   if (typeof runner.run === 'function') {
     return runner.run({ ...options, pattern: patternName, msgSize, clients: options.clients });
   }
@@ -194,7 +164,6 @@ async function runMultiPattern(patternName, options, msgSize) {
 async function main() {
   const options = parseCommonArgs(process.argv.slice(2), {
     pattern: 'ALL',
-    recv: 'recv',
     duration: 5,
     warmup: 2,
     msgSizes: defaultMultiMsgSizes(['MULTI_DEALER_DEALER'], false),
@@ -217,10 +186,6 @@ async function main() {
   if (defaultClients !== null) {
     options.clients = defaultClients;
   }
-
-  if (options.recv !== 'recv' && options.recv !== 'callback') {
-    throw new Error('multi perf supports --recv recv|callback');
-  }
   if (options.transports.some((transport) => transport !== 'tcp')) {
     throw new Error('multi perf currently supports only --transports tcp');
   }
@@ -228,9 +193,9 @@ async function main() {
   const resultLines = [];
   const reportSections = [];
   console.log('## Effective Options (start)');
-  for (const line of buildEffectiveOptions(options, [
-    '- default_clients: 100',
-    '- default_stream_clients: 10000'
+  for (const line of buildEffectiveOptions({ ...options, lang: 'node', suite: 'multi', patterns: patternNames.join(',') }, [
+    '- default_clients: 8',
+    '- default_stream_clients: 8'
   ])) {
     console.log(line);
   }
@@ -249,10 +214,19 @@ async function main() {
     }
 
     if (patternRows.length > 0) {
-      const tableLines = formatTableRows(patternRows);
+      const tableLines = formatTableRows(patternRows, 'multi');
+      const needsSeparator = reportSections.length > 0;
+      if (needsSeparator) {
+        reportSections.push('===============================================================================');
+        reportSections.push('');
+      }
       reportSections.push(`## PATTERN: ${patternName}`);
       reportSections.push(...tableLines);
       reportSections.push('');
+      if (needsSeparator) {
+        console.log('===============================================================================');
+        console.log('');
+      }
       console.log(`## PATTERN: ${patternName}`);
       for (const line of tableLines) {
         console.log(line);
@@ -274,9 +248,10 @@ async function main() {
 
   const report = writeReport(
     path.join(options.resultsDir, 'multi', 'report'),
-    options.recv,
+    'node',
+    'multi',
     resultLines,
-    options,
+    { ...options, patterns: patternNames.join(',') },
     reportSections
   );
   console.log(`report=${report}`);

@@ -18,8 +18,8 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(err)
 	defer router.Close()
 
-	endpoint := perfcommon.UniqueTCPEndpoint("perf-multi-dealer-router")
-	perfcommon.Must(router.Bind(endpoint))
+	perfcommon.Must(perfcommon.ConfigureTLSServer(router, cfg.transport))
+	endpoint := perfcommon.BindAndResolveEndpoint(router, cfg.transport, "perf-multi-dealer-router")
 	startMultiRouterEchoServer(router)
 
 	stats := perfcommon.NewStats()
@@ -37,6 +37,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 		dealer, err := clientCtx.DealerSocket()
 		perfcommon.Must(err)
 		dealerMon := perfcommon.OpenMonitor(dealer)
+		perfcommon.Must(perfcommon.ConfigureTLSClient(dealer, cfg.transport))
 
 		rid, err := zlink.NewRoutingID([]byte(fmt.Sprintf("dealer-%06d", i)))
 		perfcommon.Must(err)

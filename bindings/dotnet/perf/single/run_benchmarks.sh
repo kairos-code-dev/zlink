@@ -8,7 +8,6 @@ RESULTS_ROOT="${DOTNET_DIR}/perf/results"
 PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-}"
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
-RECV_MODE="${PERF_RECV_MODE:-callback}"
 WARMUP="${PERF_SINGLE_WARMUP_SECONDS:-2}"
 DURATION="${PERF_SINGLE_DURATION_SECONDS:-5}"
 RUNS="${PERF_RUNS:-1}"
@@ -25,7 +24,6 @@ Measure current zlink .NET binding single-pattern performance.
 Options:
   -h, --help            Show this help.
   --pattern NAME        Pattern list (comma-separated) or ALL.
-  --recv MODE           Receive model: callback only (default: callback).
   --duration N          Active duration seconds (default: 5).
   --warmup N            Warmup duration seconds (default: 2).
   --msg-sizes LIST      Message size list (default: 64,256,1024,65536,131072,262144).
@@ -36,7 +34,7 @@ Options:
 
 Notes:
   - result is saved under results/single/report/ as
-    perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt.
+    perf_dotnet_single_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt.
 USAGE
 }
 
@@ -122,11 +120,6 @@ required = [
     "latency",
     "latency_p95",
     "latency_p99",
-    "cpu_pct",
-    "mem_mb",
-    "snd_pending_max",
-    "rcv_pending_max",
-    "rcv_pending_end",
 ]
 rows = OrderedDict()
 with open(sys.argv[1], encoding="utf-8") as handle:
@@ -139,12 +132,18 @@ with open(sys.argv[1], encoding="utf-8") as handle:
         rows.setdefault(size, {})
         rows[size][metric] = row[6]
 
-print("      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | CPU% | Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |")
-print("      |----------|------------------|--------------|---------------|---------------|---------------|------|--------|-----------|-----------|-----------|")
+print("      | Size     |       Throughput |   Bandwidth |   Lat.Mean |    Lat.P95 |    Lat.P99 |")
+print("      |----------|------------------|-------------|------------|------------|------------|")
 for size, metrics in rows.items():
     values = [metrics.get(metric, "NA") for metric in required]
+    throughput = float(values[0]) / 1000.0
+    bandwidth = float(values[1])
+    latency = float(values[2])
+    latency_p95 = float(values[3])
+    latency_p99 = float(values[4])
     print(
-        f"      | {size}B | {values[0]} | {values[1]} | {values[2]} | {values[3]} | {values[4]} | {values[5]} | {values[6]} | {values[7]} | {values[8]} | {values[9]} |"
+        f"      | {size}B | {throughput:>16.2f} Kmsg/s | {bandwidth:>10.2f} MB/s |"
+        f" {latency:>10.2f} us | {latency_p95:>10.2f} us | {latency_p99:>10.2f} us |"
     )
 PY
     print_line "${table_line}"
@@ -163,7 +162,6 @@ import csv
 import sys
 
 required = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
-optional = ["cpu_pct", "mem_mb", "snd_pending_max", "rcv_pending_max", "rcv_pending_end"]
 found = {}
 with open(sys.argv[1], encoding="utf-8", errors="replace") as handle:
     reader = csv.reader(handle)
@@ -174,7 +172,7 @@ with open(sys.argv[1], encoding="utf-8", errors="replace") as handle:
             continue
         if row[2] != sys.argv[2] or row[3] != sys.argv[3] or row[4] != sys.argv[4]:
             continue
-        if row[5] in required or row[5] in optional:
+        if row[5] in required:
             found[row[5]] = row
 
 missing = [metric for metric in required if metric not in found]
@@ -183,9 +181,6 @@ if missing:
 
 for metric in required:
     print(",".join(found[metric]))
-for metric in optional:
-    if metric in found:
-        print(",".join(found[metric]))
 PY
 }
 
@@ -201,10 +196,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --msg-sizes)
       MSG_SIZES="${2:-}"
-      shift
-      ;;
-    --recv)
-      RECV_MODE="${2:-}"
       shift
       ;;
     --warmup)
@@ -240,11 +231,6 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ "${RECV_MODE}" != "callback" ]]; then
-  echo "single suite supports only --recv callback." >&2
-  exit 1
-fi
-
 validate_uint "--warmup" "${WARMUP}"
 validate_uint "--duration" "${DURATION}"
 validate_uint "--runs" "${RUNS}"
@@ -274,7 +260,7 @@ mkdir -p "${RESULTS_ROOT}/single/tmp" "${RESULTS_ROOT}/single/report" \
 
 platform="$(normalize_platform)"
 timestamp="$(date +%Y%m%d_%H%M%S)"
-report_base="perf_${platform}_${RECV_MODE}_${timestamp}"
+report_base="perf_dotnet_single_${platform}_${timestamp}"
 if [[ -n "${RESULTS_TAG}" ]]; then
   report_base="${report_base}_${RESULTS_TAG}"
 fi
@@ -282,13 +268,15 @@ REPORT="${RESULTS_ROOT}/single/report/${report_base}.txt"
 : > "${REPORT}"
 
 print_line "## Effective Options (start)"
+print_line "- lang: dotnet"
+print_line "- suite: single"
 print_line "- runs: ${RUNS}"
-print_line "- recv_mode: ${RECV_MODE}"
 print_line "- duration_seconds: ${DURATION}"
 print_line "- warmup_seconds: ${WARMUP}"
 print_line "- patterns: ${PATTERN}"
 print_line "- transports: ${TRANSPORTS}"
 print_line "- msg_sizes: ${MSG_SIZES}"
+print_line "- pin_cpu: off"
 print_line ""
 
 IFS=',' read -r -a patterns <<< "${PATTERN}"
@@ -297,6 +285,7 @@ IFS=',' read -r -a msg_sizes <<< "${MSG_SIZES}"
 
 status=0
 result_lines=0
+expected_result_lines=0
 for (( run_index=1; run_index<=RUNS; run_index++ )); do
   for pattern in "${patterns[@]}"; do
     pattern="${pattern//[[:space:]]/}"
@@ -312,11 +301,11 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
       for size in "${msg_sizes[@]}"; do
         size="${size//[[:space:]]/}"
         [[ -n "${size}" ]] || continue
+        expected_result_lines=$((expected_result_lines + 5))
 
         tmp_log="${RESULTS_ROOT}/single/tmp/${pattern,,}_${transport}_${size}_run${run_index}.log"
-        echo "RUN pattern=${pattern} transport=${transport} size=${size} recv=${RECV_MODE} run=${run_index}"
-        if PERF_RECV_MODE="${RECV_MODE}" \
-          PERF_SINGLE_WARMUP_SECONDS="${WARMUP}" \
+        echo "RUN pattern=${pattern} transport=${transport} size=${size} run=${run_index}"
+        if PERF_SINGLE_WARMUP_SECONDS="${WARMUP}" \
           PERF_SINGLE_DURATION_SECONDS="${DURATION}" \
           PERF_CONFIGURATION="${CONFIGURATION}" \
           dotnet run -c "${CONFIGURATION}" --no-restore --project "${PROJECT}" -- \
@@ -345,8 +334,17 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
 done
 
 print_line "## Effective Options (result)"
-print_line "- recv_mode: ${RECV_MODE}"
-print_line "- result_lines: ${result_lines}"
+print_line "- lang: dotnet"
+print_line "- suite: single"
+print_line "- runs: ${RUNS}"
+print_line "- duration_seconds: ${DURATION}"
+print_line "- warmup_seconds: ${WARMUP}"
+print_line "- patterns: ${PATTERN}"
+print_line "- transports: ${TRANSPORTS}"
+print_line "- msg_sizes: ${MSG_SIZES}"
+print_line "- pin_cpu: off"
+print_line "- expected_result_lines: ${expected_result_lines}"
+print_line "- actual_result_lines: ${result_lines}"
 print_line "- status: $( [[ "${status}" -eq 0 ]] && printf 'complete' || printf 'failed' )"
 
 echo "saved report: ${REPORT}"

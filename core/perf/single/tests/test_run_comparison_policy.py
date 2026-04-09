@@ -196,11 +196,11 @@ class RunComparisonPolicyTests(unittest.TestCase):
     def test_result_filename_uses_current_mode_label(self):
         self.assertRegex(
             RC.build_result_filename("tag"),
-            r"^perf_[a-z]+_recv_\d{8}_\d{6}_tag\.txt$",
+            r"^perf_core_single_[a-z]+_\d{8}_\d{6}_tag\.txt$",
         )
         self.assertRegex(
             RC.build_result_filename(),
-            r"^perf_[a-z]+_recv_\d{8}_\d{6}\.txt$",
+            r"^perf_core_single_[a-z]+_\d{8}_\d{6}\.txt$",
         )
 
     def test_recv_mode_uses_current_targets(self):

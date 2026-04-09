@@ -7,7 +7,6 @@ RESULTS_ROOT="${ROOT_DIR}/results"
 PATTERN="ALL"
 TRANSPORTS=""
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
-RECV_MODE="callback"
 RUNS=1
 DURATION="${PERF_SINGLE_DURATION_SECONDS:-5}"
 RESULTS_TAG=""
@@ -31,7 +30,6 @@ Options:
   --pattern NAME         Pattern list or ALL.
   --transports LIST      Transport list override.
   --msg-sizes LIST       Payload sizes.
-  --recv MODE            callback only.
   --runs N               Iterations per pattern/transport/size.
   --duration N           Active duration seconds.
   --build-dir PATH       Build directory override.
@@ -55,7 +53,6 @@ while [[ $# -gt 0 ]]; do
     --pattern) PATTERN="${2:-}"; shift ;;
     --transports) TRANSPORTS="${2:-}"; shift ;;
     --msg-sizes) MSG_SIZES="${2:-}"; shift ;;
-    --recv) RECV_MODE="${2:-}"; shift ;;
     --runs) RUNS="${2:-}"; shift ;;
     --duration) DURATION="${2:-}"; shift ;;
     --build-dir) BUILD_DIR="${2:-}"; shift ;;
@@ -76,11 +73,6 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
-
-if [[ "${RECV_MODE}" != "callback" ]]; then
-  echo "single suite only supports --recv callback" >&2
-  exit 1
-fi
 
 if ! [[ "${RUNS}" =~ ^[0-9]+$ ]] || [[ "${RUNS}" -lt 1 ]]; then
   echo "--runs must be >= 1" >&2
@@ -177,7 +169,7 @@ fi
 
 platform="$(detect_platform)"
 timestamp="$(date +%Y%m%d_%H%M%S)"
-report="${RESULTS_ROOT}/single/report/perf_${platform}_${RECV_MODE}_${timestamp}"
+report="${RESULTS_ROOT}/single/report/perf_java_single_${platform}_${timestamp}"
 if [[ -n "${RESULTS_TAG}" ]]; then
   report="${report}_${RESULTS_TAG}"
 fi
@@ -210,7 +202,7 @@ for pattern in "${patterns[@]}"; do
     for size in "${msg_sizes[@]}"; do
       for ((run=1; run<=RUNS; run++)); do
         cmd=("${runner_cmd[@]}" "${pattern}" "${transport}" "${size}" \
-          --duration "${DURATION}" --recv "${RECV_MODE}")
+          --duration "${DURATION}")
         if [[ -n "${IO_THREADS}" ]]; then
           cmd+=(--io-threads "${IO_THREADS}")
         fi
@@ -243,7 +235,7 @@ for pattern in "${patterns[@]}"; do
 done
 
 python3 - "${tmp_metrics}" "${report}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
-  "${RECV_MODE}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${PIN_CPU}" \
+  "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${PIN_CPU}" \
   "${IO_THREADS}" "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" \
   "${RCVTIMEO_MS}" "${OUTPUT_PATH}" <<'PY'
 import csv
@@ -251,7 +243,7 @@ import math
 import sys
 from collections import defaultdict
 
-metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, recv_mode, runs, duration, results_tag, pin_cpu, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, output_path = sys.argv[1:]
+metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, pin_cpu, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, output_path = sys.argv[1:]
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 all_metrics = required_metrics
@@ -315,12 +307,12 @@ def emit(line=""):
 
 def emit_effective_options(section):
     emit(f"## Effective Options ({section})")
+    emit("- lang: java")
     emit("- suite: single")
     emit(f"- runs: {runs}")
     emit(f"- patterns: {pattern_csv}")
     emit(f"- transports: {transports_csv or 'default-per-pattern'}")
     emit(f"- msg_sizes: {msg_sizes_csv}")
-    emit(f"- recv_mode: {recv_mode}")
     emit(f"- pin_cpu: {'on' if pin_cpu == '1' else 'off'}")
     emit(f"- io_threads: {io_threads or 'default(binding)'}")
     emit(f"- hwm: {hwm or 'default(binding)'}")

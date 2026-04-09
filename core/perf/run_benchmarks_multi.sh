@@ -215,20 +215,19 @@ Options:
   --build-dir PATH       Official build directory (must be core/build).
   --output PATH          Tee results to a file.
   --runs N               Iterations per configuration (default: 1).
-  --recv MODE            Receive model: recv (default: recv).
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --io-threads N         Legacy alias: set PERF_IO_THREADS for both roles.
   --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS
-                         (default: 4).
+                         (default: non-stream=2, stream=4).
   --client-io-threads N  Set PERF_MULTI_CLIENT_IO_THREADS
-                         (default: 4).
+                         (default: non-stream=2, stream=4).
   --msg-sizes LIST       Comma-separated message sizes
                          (default: 64,256,1024,65536,131072,262144;
                          STREAM: 64,256,1024,65536).
   --transports LIST      Comma-separated transports.
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override number of client sockets per pattern (default: 100, stream=10000).
-  --hwm N                Override PERF_MULTI_HWM (default: 1000 in binary).
+  --hwm N                Override PERF_MULTI_HWM (default: 100, stream=10 in binary).
   --send-hwm N           Override PERF_MULTI_SNDHWM (fallback: --hwm).
   --recv-hwm N           Override PERF_MULTI_RCVHWM (fallback: --hwm).
   --sndbuf SIZE          Override PERF_MULTI_SNDBUF (e.g. 64b, 1k, 64k).
@@ -264,7 +263,7 @@ Environment:
                             Estimated memory per client socket for guard
 Notes:
   - result is saved under results/multi/report/ as
-    perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt.
+    perf_core_multi_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt.
   - default build mode is incremental (configure/build without deleting build dir).
 USAGE
 }
@@ -344,7 +343,6 @@ HAS_EXPLICIT_RESULTS_DIR=0
 BUILD_MODE="incremental"
 BUILD_MODE_EXPLICIT=0
 DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-${PERF_DURATION_SECONDS:-5}}"
-RECV_MODE="${PERF_RECV_MODE:-recv}"
 CLIENTS="${PERF_MULTI_CLIENTS:-${PERF_CLIENTS:-}}"
 EFFECTIVE_DEFAULT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
 EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
@@ -465,19 +463,6 @@ while [[ $# -gt 0 ]]; do
       HAS_EXPLICIT_RUNS=1
       SCRIPT_ARGS+=( "$1" )
       shift
-      ;;
-    --recv)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: $1 requires a value." >&2
-        exit 1
-      fi
-      RECV_MODE="${2}"
-      SCRIPT_ARGS+=( "$1" "$2" )
-      shift 2
-      ;;
-    --callback)
-      echo "Error: --callback is no longer supported." >&2
-      exit 1
       ;;
     --duration)
       if [[ $# -lt 2 ]]; then
@@ -739,11 +724,6 @@ if ! is_uint "${SERVER_BIND_PORT}" || (( SERVER_BIND_PORT > 65535 )); then
   echo "Error: --server-bind-port must be an integer in range 0..65535." >&2
   exit 1
 fi
-if [[ "${RECV_MODE}" != "recv" ]]; then
-  echo "Error: --recv must be 'recv'." >&2
-  exit 1
-fi
-
 for (( idx=0; idx<${#SCRIPT_ARGS[@]}; ++idx )); do
   if [[ "${SCRIPT_ARGS[idx]}" != "--build-dir" ]]; then
     continue
@@ -799,7 +779,6 @@ fi
 RUN_ENV=()
 RUN_ENV+=(PERF_ALLOW_MULTI="1")
 RUN_ENV+=(PERF_POLICY="1")
-RUN_ENV+=(PERF_RECV_MODE="${RECV_MODE}")
 RUN_ENV+=(PERF_RESULTS_DIR="${RESULTS_DIR_OVERRIDE}")
 RUN_ENV+=(PERF_MULTI_DURATION_SECONDS="${DURATION_SECONDS}")
 RUN_ENV+=(PERF_TRANSPORTS="${TRANSPORTS}")
@@ -951,7 +930,6 @@ PATTERN_CSV_DISPLAY="$(
 )"
 echo "=== Running multi benchmark: ${PATTERN_CSV_DISPLAY} ==="
 echo "    duration=${DURATION_SECONDS}s"
-echo "    recv_mode=${RECV_MODE}"
 RUN_EXIT_CODE=0
 if [[ ! -f "${PERF_COMPARISON_SCRIPT}" ]]; then
   echo "Error: comparison script not found: ${PERF_COMPARISON_SCRIPT}" >&2

@@ -26,7 +26,9 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(err)
 	defer subscriber.Close()
 
-	endpoint := perfcommon.UniqueTCPEndpoint("perf-spot")
+	endpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot")
+	perfcommon.Must(perfcommon.ConfigureTLSServer(publisherNode, cfg.transport))
+	perfcommon.Must(perfcommon.ConfigureTLSClient(subscriberNode, cfg.transport))
 	perfcommon.Must(publisher.SetNoDrop(true))
 	perfcommon.Must(publisherNode.Bind(endpoint))
 	perfcommon.Must(subscriberNode.ConnectPeer(endpoint))
@@ -34,24 +36,8 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 
 	stats := perfcommon.NewStats()
 	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
-	ready := make(chan struct{}, 1)
-
-	if cfg.recvMode == "callback" {
-		perfcommon.Must(subscriber.OnSubscribe(func(message *zlink.TopicMessage) {
-			defer message.Close()
-			select {
-			case ready <- struct{}{}:
-			default:
-			}
-			part, err := message.SinglePartOrError()
-			if err != nil {
-				return
-			}
-			perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
-		}))
-	}
-
-	waitForSpotReady(publisher, subscriber, cfg.recvMode, ready)
+	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
+	waitForSpotReady(publisher, subscriber)
 
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
@@ -66,15 +52,13 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 		if result != zlink.SendResultSent {
 			time.Sleep(250 * time.Microsecond)
 		}
-		if cfg.recvMode == "recv" {
-			drainSpotOnce(subscriber, stats, window.ActiveAt)
-		}
+		drainSpotOnce(subscriber, stats, window.ActiveAt)
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
 
-func waitForSpotReady(publisher *zlink.Spot, subscriber *zlink.Spot, recvMode string, ready <-chan struct{}) {
+func waitForSpotReady(publisher *zlink.Spot, subscriber *zlink.Spot) {
 	payload := perfcommon.PreparePayload(64)
 	perfcommon.Must(perfcommon.WaitReady(perfcommon.ReadyConfig{
 		Name: "spot perf endpoint",
@@ -89,14 +73,6 @@ func waitForSpotReady(publisher *zlink.Spot, subscriber *zlink.Spot, recvMode st
 			}
 			if result != zlink.SendResultSent {
 				time.Sleep(250 * time.Microsecond)
-				return false, nil
-			}
-			if recvMode == "callback" {
-				select {
-				case <-ready:
-					return true, nil
-				case <-time.After(250 * time.Millisecond):
-				}
 				return false, nil
 			}
 			if drainSpotOnce(subscriber, nil, time.Now().Add(24*time.Hour)) {

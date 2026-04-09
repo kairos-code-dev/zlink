@@ -15,11 +15,10 @@ not to provide demo code or hide the hot path behind a complex harness.
 
 ## Policy Summary
 
-- `single` is callback-only. `--recv recv` is a policy error.
-- `multi` defaults to `--recv recv`.
-- `multi --recv callback` is allowed only for `MULTI_SPOT` and `MULTI_STREAM`.
-- Unsupported `--recv callback` pattern requests fail immediately. Silent skip or
-  fallback is not allowed.
+- `single` and `multi` are recv-only.
+- `--recv` is not part of the supported wrapper surface.
+- Unsupported recv-mode requests fail immediately. Silent skip or fallback is
+  not allowed.
 - `--runs` is supported on both suites and reports median metrics per
   pattern/transport/size configuration.
 - Perf hot paths must keep the messaging loop visible in each pattern file.
@@ -79,8 +78,8 @@ readable and reviewable.
 Normal verification should use the wrapper scripts because they enforce the
 policy-supported modes and save the measured output in the documented format.
 
-- Single: callback receive path only
-- Multi: `recv` by default, `callback` only for `MULTI_SPOT` and `MULTI_STREAM`
+- Single: recv-only receive path
+- Multi: recv-only receive path
 - Multi STREAM uses the shared core stream client path required by policy.
 - Both suites print the same report body to stdout and to the saved report file.
 
@@ -88,5 +87,5 @@ policy-supported modes and save the measured output in the documented format.
 
 ```bash
 ./perf/run_benchmarks.sh --pattern PAIR --transports tcp --msg-sizes 64 --duration 1
-./perf/run_benchmarks_multi.sh --pattern MULTI_SPOT --recv callback --transports tcp --msg-sizes 64 --clients 4 --duration 1
+./perf/run_benchmarks_multi.sh --pattern MULTI_SPOT --transports tcp --msg-sizes 64 --clients 4 --duration 1
 ```

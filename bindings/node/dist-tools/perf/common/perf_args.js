@@ -26,7 +26,6 @@ function parseStringList(value, fallback) {
 function parseCommonArgs(argv, defaults) {
     const options = {
         pattern: defaults.pattern,
-        recv: defaults.recv,
         duration: defaults.duration,
         warmup: defaults.warmup,
         msgSizes: defaults.msgSizes,
@@ -45,10 +44,6 @@ function parseCommonArgs(argv, defaults) {
         const arg = argv[i];
         if (arg === '--pattern') {
             options.pattern = argv[i + 1];
-            i += 1;
-        }
-        else if (arg === '--recv') {
-            options.recv = argv[i + 1];
             i += 1;
         }
         else if (arg === '--duration') {
@@ -148,9 +143,7 @@ function defaultMultiClients(patternNames, explicitClients) {
     if (explicitClients) {
         return null;
     }
-    const onlyStream = patternNames.length > 0
-        && patternNames.every((name) => name === 'MULTI_STREAM');
-    return onlyStream ? 10000 : 100;
+    return 8;
 }
 module.exports = {
     DEFAULT_MULTI_TRANSPORTS,

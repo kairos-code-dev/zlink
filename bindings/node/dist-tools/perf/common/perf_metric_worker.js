@@ -13,13 +13,13 @@ parentPort.on('message', (message) => {
             rejected += 1;
             return;
         }
-        if (message.phase !== 0) {
+        if (message.phase !== 1) {
             return;
         }
-        const receivedAtNs = BigInt(message.receivedAtNs);
-        const sentAtNs = BigInt(message.sentAtNs);
+        const receivedAtUs = BigInt(message.receivedAtUs);
+        const sentTsUs = BigInt(message.sentTsUs);
         accepted += 1;
-        latenciesUs.push(Number(receivedAtNs - sentAtNs) / 1000);
+        latenciesUs.push(Number(receivedAtUs - sentTsUs));
         return;
     }
     if (message.type === 'finish') {

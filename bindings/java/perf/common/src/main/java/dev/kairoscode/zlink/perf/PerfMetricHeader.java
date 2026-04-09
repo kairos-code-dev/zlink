@@ -5,7 +5,7 @@ package dev.kairoscode.zlink.perf;
 import dev.kairoscode.zlink.Message;
 
 final class PerfMetricHeader {
-    private static final int GENERIC_MAGIC = 0x50455246; // PERF
+    private static final int GENERIC_MAGIC = 0x5A4C4E4B; // ZLNK
 
     private PerfMetricHeader() {
     }
@@ -17,16 +17,16 @@ final class PerfMetricHeader {
         if (message.readIntLe(0) != GENERIC_MAGIC) {
             return null;
         }
-        int phase = message.readIntLe(8);
-        if (phase != PerfUtil.PHASE_ACTIVE
-            && phase != PerfUtil.PHASE_STOP
-            && phase != PerfUtil.PHASE_PROBE) {
+        int phase = message.readIntLe(8) & 0xFF;
+        if (phase != PerfUtil.PHASE_WARMUP
+            && phase != PerfUtil.PHASE_ACTIVE
+            && phase != PerfUtil.PHASE_COOLDOWN) {
             return null;
         }
-        if (message.readIntLe(12) != expectedSize) {
+        if (message.readIntLe(9) != expectedSize) {
             return null;
         }
-        long sentTsUs = message.readLongLe(24);
+        long sentTsUs = message.readLongLe(21);
         long latencyMicros = Math.max(0L, PerfUtil.nowUs() - sentTsUs);
         return new PerfUtil.Header((byte) phase, latencyMicros);
     }

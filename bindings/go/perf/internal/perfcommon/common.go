@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -47,8 +48,8 @@ func (s *Stats) Snapshot(duration time.Duration, msgSize int) Result {
 	sort.Float64s(s.latUs)
 	count := atomic.LoadUint64(&s.count)
 	return Result{
-		Throughput: float64(count) / duration.Seconds() / 1000.0,
-		Bandwidth:  float64(count*uint64(msgSize)) / duration.Seconds() / (1024.0 * 1024.0),
+		Throughput: float64(count) / duration.Seconds(),
+		Bandwidth:  float64(count*uint64(msgSize)) / duration.Seconds() / 1_000_000.0,
 		Latency:    percentile(s.latUs, 50),
 		LatencyP95: percentile(s.latUs, 95),
 		LatencyP99: percentile(s.latUs, 99),
@@ -61,11 +62,6 @@ func PrintResult(pattern, transport string, msgSize int, result Result) {
 	fmt.Printf("RESULT,current,%s,%s,%d,latency,%.2f\n", pattern, transport, msgSize, result.Latency)
 	fmt.Printf("RESULT,current,%s,%s,%d,latency_p95,%.2f\n", pattern, transport, msgSize, result.LatencyP95)
 	fmt.Printf("RESULT,current,%s,%s,%d,latency_p99,%.2f\n", pattern, transport, msgSize, result.LatencyP99)
-	fmt.Println("| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |")
-	fmt.Println("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |")
-	fmt.Printf("| current | %s | %s | %d | %.2f | %.2f | %.2f | %.2f | %.2f |\n",
-		pattern, transport, msgSize, result.Throughput, result.Bandwidth,
-		result.Latency, result.LatencyP95, result.LatencyP99)
 }
 
 func Must(err error) {
@@ -75,37 +71,137 @@ func Must(err error) {
 	}
 }
 
-func ValidateCommon(transport string, msgSize int, recvMode string) {
+func ValidateCommon(transport string, msgSize int) {
 	if msgSize < 8 {
 		Must(fmt.Errorf("msg-size must be >= 8, got %d", msgSize))
 	}
-	if recvMode != "recv" && recvMode != "callback" {
-		Must(fmt.Errorf("unsupported recv mode %q", recvMode))
+	if strings.TrimSpace(transport) == "" {
+		Must(fmt.Errorf("transport must not be empty"))
 	}
-	if transport != "tcp" {
-		Must(fmt.Errorf("unsupported transport %q: go perf currently supports tcp only", transport))
+}
+
+func DebugEnabled() bool {
+	return os.Getenv("PERF_DEBUG") != ""
+}
+
+const BenchmarkSocketTimeout = 10 * time.Second
+
+func resolveSingleSocketHWM(send bool) int {
+	base := 1000
+	if send {
+		return base
 	}
+	return base
+}
+
+type hwmSocket interface {
+	SetSendHWM(int) error
+	SetRecvHWM(int) error
+}
+
+type benchmarkSocket interface {
+	SetLinger(time.Duration) error
+	SetSendTimeout(time.Duration) error
+	SetRecvTimeout(time.Duration) error
+}
+
+func ApplySingleHWM(socket hwmSocket) {
+	if socket == nil {
+		return
+	}
+	sndhwm := resolveSingleSocketHWM(true)
+	rcvhwm := resolveSingleSocketHWM(false)
+	Must(socket.SetSendHWM(sndhwm))
+	Must(socket.SetRecvHWM(rcvhwm))
+}
+
+func ApplySingleBenchmarkSocketOptions(socket benchmarkSocket, transport string) {
+	if socket == nil {
+		return
+	}
+	if transport == "pgm" || transport == "epgm" {
+		return
+	}
+	Must(socket.SetLinger(0))
+	if transport == "inproc" || transport == "wss" {
+		return
+	}
+	Must(socket.SetSendTimeout(BenchmarkSocketTimeout))
+	Must(socket.SetRecvTimeout(BenchmarkSocketTimeout))
 }
 
 func UniqueTCPEndpoint(prefix string) string {
-	id := atomic.AddUint64(&endpointCounter, 1)
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	Must(err)
-	addr := listener.Addr().(*net.TCPAddr)
-	_ = listener.Close()
-	_ = prefix
-	_ = id
-	return fmt.Sprintf("tcp://127.0.0.1:%d", addr.Port)
+	return UniqueEndpoint("tcp", prefix)
 }
 
-func DialEndpoint(endpoint string) net.Conn {
-	addr := strings.TrimPrefix(endpoint, "tcp://")
-	if idx := strings.IndexByte(addr, '?'); idx >= 0 {
-		addr = addr[:idx]
+type boundEndpointSocket interface {
+	Bind(string) error
+	LastEndpoint() (string, error)
+}
+
+func BindEndpoint(transport, prefix string) string {
+	id := atomic.AddUint64(&endpointCounter, 1)
+	switch transport {
+	case "tcp", "tls", "ws", "wss":
+		return fmt.Sprintf("%s://127.0.0.1:*", transport)
+	case "inproc":
+		return fmt.Sprintf("inproc://%s-%d-%d", prefix, os.Getpid(), id)
+	case "ipc":
+		return "ipc://*"
+	default:
+		return fmt.Sprintf("%s://%s-%d-%d", transport, prefix, os.Getpid(), id)
 	}
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+}
+
+func BindAndResolveEndpoint(sock boundEndpointSocket, transport, prefix string) string {
+	if sock == nil {
+		Must(fmt.Errorf("bind socket must not be nil"))
+	}
+	endpoint := BindEndpoint(transport, prefix)
+	if os.Getenv("PERF_DEBUG") != "" {
+		fmt.Fprintf(os.Stderr, "bind start transport=%s endpoint=%q\n", transport, endpoint)
+	}
+	Must(sock.Bind(endpoint))
+	if transport == "inproc" {
+		return endpoint
+	}
+	resolved, err := sock.LastEndpoint()
 	Must(err)
-	return conn
+	resolved = strings.TrimRight(resolved, "\x00")
+	if transport == "ws" || transport == "wss" {
+		resolved = strings.TrimRight(resolved, "/")
+	}
+	if transport == "tls" || transport == "wss" {
+		resolved = strings.Replace(resolved, "://127.0.0.1:", "://localhost:", 1)
+	}
+	if os.Getenv("PERF_DEBUG") != "" {
+		fmt.Fprintf(os.Stderr, "bind resolved transport=%s endpoint=%q resolved=%q\n", transport, endpoint, resolved)
+	}
+	return resolved
+}
+
+func UniqueEndpoint(transport, prefix string) string {
+	id := atomic.AddUint64(&endpointCounter, 1)
+	switch transport {
+	case "tcp", "ws":
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		Must(err)
+		addr := listener.Addr().(*net.TCPAddr)
+		_ = listener.Close()
+		return fmt.Sprintf("%s://127.0.0.1:%d", transport, addr.Port)
+	case "tls", "wss":
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		Must(err)
+		addr := listener.Addr().(*net.TCPAddr)
+		_ = listener.Close()
+		return fmt.Sprintf("%s://127.0.0.1:%d", transport, addr.Port)
+	case "inproc":
+		return fmt.Sprintf("inproc://%s-%d-%d", prefix, os.Getpid(), id)
+	case "ipc":
+		return fmt.Sprintf("ipc://%s", filepath.Join(os.TempDir(), fmt.Sprintf("%s-%d-%d.sock", prefix, os.Getpid(), id)))
+	default:
+		return fmt.Sprintf("%s://%s-%d-%d", transport, prefix, os.Getpid(), id)
+	}
 }
 
 func OpenMonitor(socket zlink.SocketTarget) *zlink.SocketMonitor {
@@ -117,26 +213,19 @@ func OpenMonitor(socket zlink.SocketTarget) *zlink.SocketMonitor {
 func WaitMonitorEvent(mon *zlink.SocketMonitor) *zlink.MonitorEvent {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		type result struct {
-			event *zlink.MonitorEvent
-			err   error
-		}
-		ch := make(chan result, 1)
-		go func() {
-			event, err := mon.Recv()
-			ch <- result{event: event, err: err}
-		}()
-		select {
-		case out := <-ch:
-			if out.err == nil {
-				return out.event
-			}
-			if zerr, ok := out.err.(*zlink.ZlinkError); ok && zerr.Code == 4 {
+		event, ok, err := mon.TryRecv()
+		if err != nil {
+			if zerr, ok := err.(*zlink.ZlinkError); ok && zerr.Code == 4 {
+				time.Sleep(50 * time.Millisecond)
 				continue
 			}
-			Must(out.err)
-		case <-time.After(500 * time.Millisecond):
+			Must(err)
 		}
+		if !ok || event == nil {
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
+		return event
 	}
 	Must(fmt.Errorf("timed out waiting for monitor event"))
 	return nil

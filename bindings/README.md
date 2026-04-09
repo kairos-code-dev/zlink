@@ -658,6 +658,125 @@ RegistryQueryClient (원격 토폴로지 조회)
 - callback을 `null`/`None`으로 설정하여 해제하는 것은 허용하지 않는다.
   callback 해제는 socket close로만 이루어진다.
 
+## Core API Additions
+
+이 섹션은 `core/include/zlink.h`에 추가된 core API를 정리한다.
+각 바인딩은 이 API를 언어별 typed surface로 노출해야 한다.
+
+### Message Request-Reply Envelope
+
+메시지에 request-reply 필드(msg_type, correlation_id)를 설정/조회하는 API.
+core가 send 시 자동으로 wire envelope를 직렬화하고, recv 시 자동으로 파싱하여
+복원한다. 바인딩은 dispatch만 하면 된다.
+
+#### 상수
+
+```c
+#define ZLINK_MSG_TYPE_DATA     0
+#define ZLINK_MSG_TYPE_REQUEST  1
+#define ZLINK_MSG_TYPE_REPLY    2
+```
+
+#### C API
+
+```c
+int zlink_msg_set_request (zlink_msg_t *msg_, uint64_t correlation_id_);
+int zlink_msg_set_reply (zlink_msg_t *msg_, uint64_t correlation_id_);
+int zlink_msg_get_request_info (const zlink_msg_t *msg_,
+                                uint8_t *type_out_,
+                                uint64_t *correlation_id_out_);
+```
+
+#### 바인딩 규칙
+
+- 세 함수 모두 public surface에 노출한다.
+- `msg_type` 상수는 언어별 enum/constant로 노출한다.
+- `set_request` / `set_reply`는 msg_type과 correlation_id를 동시에 설정한다.
+  개별 setter로 분리하지 않는다.
+- `get_request_info`는 msg_type과 correlation_id를 한 번에 반환한다.
+  언어별로 tuple, struct, domain object 등 자연스러운 형태를 사용한다.
+- NULL msg 입력 시 EINVAL. 바인딩은 null-check를 선행할 수 있다.
+- `type_out_` 또는 `correlation_id_out_`이 NULL이면 해당 출력만 생략한다.
+
+### Per-Message Metadata
+
+메시지에 사용자 정의 key(uint16)-value(binary) 쌍을 설정/조회하는 API.
+메시지마다 다른 값을 보낼 수 있다. ZMP 프로토콜 메타데이터(`zlink_msg_gets`)와
+완전히 별개의 namespace다.
+
+#### 상수
+
+```c
+#define ZLINK_MSG_METADATA_KEY_USER_MIN   0x0100
+#define ZLINK_MSG_METADATA_VALUE_MAX      65535
+```
+
+#### C API
+
+```c
+int zlink_msg_set_metadata (zlink_msg_t *msg_, uint16_t key_,
+                            const void *value_, size_t value_size_);
+const void *zlink_msg_get_metadata (const zlink_msg_t *msg_,
+                                    uint16_t key_, size_t *size_);
+```
+
+#### Key 대역
+
+| 대역 | 범위 | 용도 |
+|------|------|------|
+| zlink 내부 예약 | `0x0000` ~ `0x00FF` | 사용 시 `EINVAL` |
+| 사용자 정의 | `0x0100` ~ `0xFFFF` | application 자유 사용 |
+
+#### 바인딩 규칙
+
+- 두 함수 모두 public surface에 노출한다.
+- key < `0x0100` 설정 시 바인딩 레벨에서도 검증하여 예외/오류를 던진다.
+- value는 binary(byte array/Buffer/bytes 등)로 노출한다.
+- `get_metadata`는 키가 없으면 NULL/null/None을 반환한다.
+- 반환된 value 포인터는 메시지가 유효한 동안만 사용할 수 있다.
+  바인딩이 언어 특성에 따라 복사본을 반환하는 것은 허용한다.
+- `has_metadata`, `remove_metadata`, `metadata_count`는 제공하지 않는다.
+
+### SpotNode Peer Publish Batching Options
+
+SpotNode 내부 peer publish 경로의 batching 최적화 옵션.
+기본값 disabled. public contract(publish/subscribe/callback)은 변경 없다.
+
+#### 옵션 enum
+
+```c
+typedef enum zlink_spot_node_option_t {
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE                  = 0x3601,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS                = 0x3602,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_MESSAGES            = 0x3603,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_BYTES               = 0x3604,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_BYPASS_BYTES            = 0x3605,
+    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_MESSAGES_PER_TURN = 0x3606,
+    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN    = 0x3607,
+} zlink_spot_node_option_t;
+```
+
+#### 기본값
+
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `PEER_BATCH_ENABLE` | `false` | batching 활성화 (운영자 opt-in) |
+| `PEER_BATCH_DELAY_MS` | `20` | topic bucket flush 최대 지연 (ms) |
+| `PEER_BATCH_MAX_MESSAGES` | `32` | bucket당 최대 메시지 수 |
+| `PEER_BATCH_MAX_BYTES` | `65536` | bucket당 최대 바이트 |
+| `PEER_BATCH_BYPASS_BYTES` | `65536` | 이 크기 이상 메시지는 즉시 전송 |
+| `PEER_UNBATCH_MAX_MESSAGES_PER_TURN` | `32` | turn당 unbatch 최대 메시지 수 |
+| `PEER_UNBATCH_MAX_BYTES_PER_TURN` | `65536` | turn당 unbatch 최대 바이트 |
+
+#### 바인딩 규칙
+
+- SpotNode의 typed option facade로 노출한다.
+- raw `setOption/getOption` bag으로 노출하지 않는다.
+- `PEER_BATCH_ENABLE`은 boolean으로 노출한다.
+- 나머지는 정수(int)로 노출한다.
+- v1은 homogeneous deployment만 지원한다. capability negotiation은 없다.
+- application-visible batch API가 아니다. 내부 최적화 옵션이다.
+
 ## Option Policy
 
 ### Public Option Surface

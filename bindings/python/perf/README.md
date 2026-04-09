@@ -36,11 +36,10 @@ pattern-specific costs.
 
 ## Single Suite
 
-Single-suite measurements use the callback receive path only and expose the
-official shared CLI:
+Single-suite measurements use the recv path only and expose the official
+shared CLI:
 
 - `--pattern`
-- `--recv`
 - `--duration`
 - `--warmup`
 - `--msg-sizes`
@@ -53,13 +52,15 @@ Patterns:
 
 - `PAIR`
 - `PUBSUB`
+- `DEALER_DEALER`
 - `DEALER_ROUTER`
+- `ROUTER_ROUTER`
 - `SPOT`
 
 Current transport matrix:
 
 - `PAIR`: `tcp`
-- `PUBSUB`: `inproc`
+- `PUBSUB`: `tcp`
 - `DEALER_ROUTER`: `inproc`
 - `SPOT`: `inproc`
 
@@ -77,11 +78,6 @@ Patterns:
 - `MULTI_PUBSUB`
 - `MULTI_SPOT`
 - `MULTI_STREAM`
-
-Receive modes:
-
-- `recv`: all multi patterns
-- `callback`: `MULTI_SPOT`, `MULTI_STREAM`
 
 Shared component contract:
 
@@ -118,11 +114,11 @@ Runner output and saved reports include:
 - `RESULT,current,...` lines
 - a markdown summary table
 - result files under `results/{single|multi}/report/`
-- filenames shaped as `perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt`
+- filenames shaped as `perf_<lang>_<suite>_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt`
 
 ## Smoke
 
 ```bash
-./perf/run_benchmarks.sh --pattern PAIR --msg-sizes 64 --warmup 0.1 --duration 0.2
-./perf/run_benchmarks_multi.sh --pattern PUBSUB --msg-sizes 64 --clients 2 --warmup 0.1 --duration 0.2
+./perf/run_benchmarks.sh --pattern PAIR --msg-sizes 64 --duration 0.2
+./perf/run_benchmarks_multi.sh --pattern PUBSUB --msg-sizes 64 --clients 2 --duration 0.2
 ```

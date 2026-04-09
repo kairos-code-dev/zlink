@@ -39,7 +39,7 @@ fn main() {
 }
 
 fn send_phase(pub_sock: &PubSocket, poller: &Poller, buf: &mut [u8], seq: &mut u64, msg_size: usize,
-              phase: u32, duration: Duration) {
+              phase: u8, duration: Duration) {
     let deadline = Instant::now() + duration;
     let mut backpressure = SocketBackpressure::new();
     while Instant::now() < deadline {

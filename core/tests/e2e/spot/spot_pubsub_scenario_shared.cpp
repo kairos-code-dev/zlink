@@ -400,10 +400,13 @@ static bool wait_for_spot_node_status (
     while (std::chrono::steady_clock::now () < deadline) {
         zlink_spot_node_status_t snapshot;
         if (zlink_spot_node_status_snapshot (node_, &snapshot) == 0) {
+            const uint32_t required_peers =
+              min_ready_peer_count_ > 0 ? min_ready_peer_count_ : 1U;
             const bool pub_ready = snapshot.local_endpoint[0] != '\0';
             const bool sub_ready =
-              snapshot.active_peer_count >= min_ready_peer_count_
-              && snapshot.subject_count > 0;
+              snapshot.subject_count > 0
+              && (snapshot.ready_subject_count > 0
+                  || snapshot.connected_peer_count >= required_peers);
 
             if (required_flags_ == 0
                 && ((role_ == ZLINK_SPOT_ROLE_PUB && pub_ready)
@@ -439,10 +442,13 @@ static bool wait_for_spot_node_status (
         fflush (stderr);
     }
 
+    const uint32_t required_peers =
+      min_ready_peer_count_ > 0 ? min_ready_peer_count_ : 1U;
     const bool pub_ready = snapshot.local_endpoint[0] != '\0';
     const bool sub_ready =
-      snapshot.active_peer_count >= min_ready_peer_count_
-      && snapshot.subject_count > 0;
+      snapshot.subject_count > 0
+      && (snapshot.ready_subject_count > 0
+          || snapshot.connected_peer_count >= required_peers);
     if (required_flags_ == 0)
         return role_ == ZLINK_SPOT_ROLE_PUB ? pub_ready : sub_ready;
     if ((required_flags_ & ZLINK_MONITOR_STATE_READY) == 0)
@@ -580,10 +586,59 @@ bool wait_for_node_message (void *node_,
       });
 }
 
+bool wait_for_spot_recv_message (void *spot_sub_,
+                                 const char *expected_topic_,
+                                 const char *expected_payload_,
+                                 size_t expected_payload_size_,
+                                 int timeout_ms_)
+{
+    if (!spot_sub_ || !expected_topic_ || !expected_payload_
+        || timeout_ms_ <= 0) {
+        return false;
+    }
+
+    const size_t expected_topic_size = strlen (expected_topic_);
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        char topic[256] = {0};
+        size_t topic_len = sizeof (topic);
+        const int rc = zlink_subscribe (spot_sub_, NULL, &parts, &part_count,
+                                        topic, &topic_len, ZLINK_DONTWAIT);
+        if (rc == 0) {
+            const bool topic_ok =
+              topic_len == expected_topic_size
+              && memcmp (topic, expected_topic_, expected_topic_size) == 0;
+            const bool payload_ok =
+              parts && part_count == 1
+              && zlink_msg_size (&parts[0]) == expected_payload_size_
+              && memcmp (zlink_msg_data (&parts[0]), expected_payload_,
+                         expected_payload_size_)
+                   == 0;
+            if (parts)
+                zlink_multipart_close (parts, part_count);
+            if (topic_ok && payload_ok)
+                return true;
+            continue;
+        }
+
+        const int err = zlink_errno ();
+        if (err != EAGAIN && err != EINTR)
+            return false;
+        msleep (10);
+    }
+
+    return false;
+}
+
 void run_spot_peer_tcp_test ()
 {
     const char *topic = "tcp:test";
     const char *payload = "tcp-msg";
+    const char *warmup_payload = "tcp-warmup";
     const char *bind_prefix = "tcp://127.0.0.1:";
 
     step_log ("spot peer transport: create ctx");
@@ -596,7 +651,7 @@ void run_spot_peer_tcp_test ()
     void *node_b = create_spot_node (ctx, "spot-test");
     TEST_ASSERT_NOT_NULL (node_b);
     void *pub = create_spot_pub_handle (node_a);
-    void *sub = create_spot_sub_handle (node_b, &queued_spot_handler);
+    void *sub = create_spot_sub_handle (node_b, NULL);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
     char endpoint_a[MAX_SOCKET_STRING] = {0};
@@ -616,10 +671,23 @@ void run_spot_peer_tcp_test ()
 
     step_log ("spot peer transport: subscribe node_b");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, topic));
-    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      node_a, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_READY, 1, 3000));
-    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      node_b, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 3000));
+    step_log ("spot peer transport: warm delivery path");
+    {
+        const std::chrono::steady_clock::time_point deadline =
+          std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
+        bool ready = false;
+        while (std::chrono::steady_clock::now () < deadline) {
+            TEST_ASSERT_SUCCESS_ERRNO (
+              publish_text (&zlink_publish, pub, topic, warmup_payload, 0));
+            if (wait_for_spot_recv_message (sub, topic, warmup_payload,
+                                            strlen (warmup_payload), 100)) {
+                ready = true;
+                break;
+            }
+            msleep (10);
+        }
+        TEST_ASSERT_TRUE (ready);
+    }
 
     zlink_msg_t parts[1];
     const size_t payload_size = strlen (payload);
@@ -632,7 +700,7 @@ void run_spot_peer_tcp_test ()
 
     step_log ("spot peer transport: wait delivery");
     TEST_ASSERT_TRUE (
-      wait_for_spot_message (sub, topic, payload, payload_size, 2000));
+      wait_for_spot_recv_message (sub, topic, payload, payload_size, 2000));
 
     step_log ("spot peer transport: disconnect peer");
     TEST_ASSERT_SUCCESS_ERRNO (

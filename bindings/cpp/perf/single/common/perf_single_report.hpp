@@ -123,6 +123,7 @@ inline void print_result (const std::string &lib_type,
                           double latency_p99,
                           const queue_stats_t &queue_stats)
 {
+    (void) queue_stats;
     print_result (lib_type,
                   pattern,
                   transport,
@@ -131,7 +132,6 @@ inline void print_result (const std::string &lib_type,
                   latency,
                   latency_p95,
                   latency_p99);
-    print_queue_metrics (lib_type, pattern, transport, size, queue_stats);
 }
 
 inline void print_fail_result (const std::string &lib_type,
@@ -149,10 +149,8 @@ inline void print_fail_result (const std::string &lib_type,
                                size_t size,
                                queue_probe_t *queue_probe_)
 {
-    if (!queue_probe_)
-        return;
-    const queue_stats_t queue_stats = sample_queue_stats (queue_probe_);
-    print_queue_metrics (lib_type, pattern, transport, size, queue_stats);
+    (void) queue_probe_;
+    print_fail_result (lib_type, pattern, transport, size);
 }
 
 #endif

@@ -73,14 +73,14 @@
 
 | 대상 | 1단계 스펙 구현 | 1단계 감독 리뷰 | 2단계 리팩토링 | 2단계 감독 리뷰 | smoke 확인 | 최종 상태 |
 |------|------------------|------------------|----------------|------------------|------------|-----------|
-| `core/perf` | pending | pending | pending | pending | pending | pending |
-| `bindings/cpp/perf` | pending | pending | pending | pending | pending | pending |
-| `bindings/dotnet/perf` | pending | pending | pending | pending | pending | pending |
-| `bindings/go/perf` | pending | pending | pending | pending | pending | pending |
-| `bindings/java/perf` | pending | pending | pending | pending | pending | pending |
-| `bindings/node/perf` | pending | pending | pending | pending | pending | pending |
-| `bindings/python/perf` | pending | pending | pending | pending | pending | pending |
-| `bindings/rust/perf` | pending | pending | pending | pending | pending | pending |
+| `core/perf` | done | done | done | done | done | done |
+| `bindings/cpp/perf` | done | done | rework | rework | done | rework |
+| `bindings/dotnet/perf` | done | done | in_progress | in_progress | done | in_progress |
+| `bindings/go/perf` | in_progress | pending | pending | pending | blocked | blocked |
+| `bindings/java/perf` | in_progress | pending | pending | pending | blocked | blocked |
+| `bindings/node/perf` | rework | rework | pending | pending | failed | rework |
+| `bindings/python/perf` | done | done | in_progress | in_progress | done | in_progress |
+| `bindings/rust/perf` | done | done | in_progress | in_progress | done | in_progress |
 
 ## 3. 작업 순서
 

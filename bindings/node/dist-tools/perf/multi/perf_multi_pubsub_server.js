@@ -5,20 +5,6 @@ const readline = require('node:readline');
 const zlink = require('../../dist');
 const { createPayload, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-async function waitPubReady(pub) {
-    const monitor = pub.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
-    try {
-        while (true) {
-            const event = monitor.recv();
-            if (event.event === zlink.MonitorEvent.CONNECTION_READY) {
-                return;
-            }
-        }
-    }
-    finally {
-        monitor.close();
-    }
-}
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -31,25 +17,28 @@ async function main() {
         console.log(`READY,${options.endpoint}`);
         const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         for await (const line of rl) {
-            if (line !== 'GO') {
+            if (line !== `START,${options.msgSize}`) {
                 continue;
             }
-            await waitPubReady(pub);
+            let seq = 1n;
             const warmupUntil = process.hrtime.bigint() + BigInt(Math.floor(options.warmup * 1_000_000_000));
             while (process.hrtime.bigint() < warmupUntil) {
-                stampPayload(warmupPayload, { phase: 2, runId: 0, msgSize: options.msgSize });
+                stampPayload(warmupPayload, { phase: 0, runId: 0, msgSize: options.msgSize, seq });
                 pub.publish('perf.topic', warmupPayload);
+                seq += 1n;
                 await sleepImmediate();
             }
             const activeUntil = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
             while (process.hrtime.bigint() < activeUntil) {
-                stampPayload(activePayload, { phase: 0, runId: 0, msgSize: options.msgSize });
+                stampPayload(activePayload, { phase: 1, runId: 0, msgSize: options.msgSize, seq });
                 pub.publish('perf.topic', activePayload);
+                seq += 1n;
                 await sleepImmediate();
             }
             for (let i = 0; i < options.clients; i += 1) {
-                stampPayload(stopPayload, { phase: 1, runId: 0, msgSize: options.msgSize });
+                stampPayload(stopPayload, { phase: 2, runId: 0, msgSize: options.msgSize, seq });
                 pub.publish('perf.topic', stopPayload);
+                seq += 1n;
             }
             break;
         }

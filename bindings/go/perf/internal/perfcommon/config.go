@@ -10,7 +10,6 @@ type SingleConfig struct {
 	Transport string
 	MsgSize   int
 	Duration  time.Duration
-	RecvMode  RecvMode
 }
 
 type MultiConfig struct {
@@ -18,32 +17,29 @@ type MultiConfig struct {
 	Transport string
 	MsgSize   int
 	Duration  time.Duration
-	RecvMode  RecvMode
 	Clients   int
 }
 
-func LoadSingleConfig(pattern, transport string, msgSize, duration int, recvMode string) SingleConfig {
+func LoadSingleConfig(pattern, transport string, msgSize, duration int) SingleConfig {
 	cfg := SingleConfig{
 		Pattern:   strings.ToUpper(pattern),
 		Transport: strings.ToLower(transport),
 		MsgSize:   msgSize,
 		Duration:  time.Duration(duration) * time.Second,
-		RecvMode:  RecvMode(strings.ToLower(recvMode)),
 	}
-	ValidateCommon(cfg.Transport, cfg.MsgSize, cfg.RecvMode.String())
+	ValidateCommon(cfg.Transport, cfg.MsgSize)
 	return cfg
 }
 
-func LoadMultiConfig(pattern, transport string, msgSize, duration int, recvMode string, clients int) MultiConfig {
+func LoadMultiConfig(pattern, transport string, msgSize, duration int, clients int) MultiConfig {
 	cfg := MultiConfig{
 		Pattern:   strings.ToUpper(pattern),
 		Transport: strings.ToLower(transport),
 		MsgSize:   msgSize,
 		Duration:  time.Duration(duration) * time.Second,
-		RecvMode:  RecvMode(strings.ToLower(recvMode)),
 		Clients:   clients,
 	}
-	ValidateCommon(cfg.Transport, cfg.MsgSize, cfg.RecvMode.String())
+	ValidateCommon(cfg.Transport, cfg.MsgSize)
 	if cfg.Clients <= 0 {
 		Must(&invalidClientCountError{Clients: cfg.Clients})
 	}

@@ -162,30 +162,22 @@ internal static partial class PerfRunner
         double latencyP99Us)
     {
         double bandwidth = BandwidthMbps(pattern, throughput, size);
-        double latencyMs = UsToMs(latencyUs);
-        double latencyP95Ms = UsToMs(latencyP95Us);
-        double latencyP99Ms = UsToMs(latencyP99Us);
         Console.WriteLine(
             $"RESULT,current,{pattern},{transport},{size},throughput,{FormatMetric(throughput)}");
         Console.WriteLine(
             $"RESULT,current,{pattern},{transport},{size},bandwidth,{FormatMetric(bandwidth)}");
         Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency,{FormatMetric(latencyMs)}");
+            $"RESULT,current,{pattern},{transport},{size},latency,{FormatMetric(latencyUs)}");
         Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency_p95,{FormatMetric(latencyP95Ms)}");
+            $"RESULT,current,{pattern},{transport},{size},latency_p95,{FormatMetric(latencyP95Us)}");
         Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency_p99,{FormatMetric(latencyP99Ms)}");
+            $"RESULT,current,{pattern},{transport},{size},latency_p99,{FormatMetric(latencyP99Us)}");
     }
 
     private static double BandwidthMbps(string pattern, double throughput, int size)
     {
         double multiplier = IsEchoPattern(pattern) ? 2.0 : 1.0;
         return (throughput * size * multiplier) / 1_000_000.0;
-    }
-
-    private static double UsToMs(double latencyUs)
-    {
-        return latencyUs / 1000.0;
     }
 
     private static string FormatMetric(double value)

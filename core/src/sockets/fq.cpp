@@ -15,12 +15,41 @@ zlink::fq_t::~fq_t ()
     zlink_assert (_pipes.empty ());
 }
 
-bool zlink::fq_t::has_pipe (pipe_t *pipe_)
+bool zlink::fq_t::try_get_pipe_index (pipe_t *pipe_,
+                                      pipes_t::size_type *index_out_)
 {
-    const pipes_t::size_type index = _pipes.index (pipe_);
-    if (index >= _pipes.size ())
+    if (!pipe_)
         return false;
-    return _pipes[index] == pipe_;
+
+    const int claimed_index =
+      static_cast<array_item_t<1> *> (pipe_)->get_array_index ();
+    if (claimed_index < 0)
+        return false;
+
+    const pipes_t::size_type index =
+      static_cast<pipes_t::size_type> (claimed_index);
+    if (index >= _pipes.size () || _pipes[index] != pipe_)
+        return false;
+
+    if (index_out_)
+        *index_out_ = index;
+    return true;
+}
+
+void zlink::fq_t::normalize_state ()
+{
+    const pipes_t::size_type size = _pipes.size ();
+    if (_active > size)
+        _active = size;
+
+    if (_active == 0) {
+        _current = 0;
+        _more = false;
+        return;
+    }
+
+    if (_current >= _active)
+        _current = 0;
 }
 
 void zlink::fq_t::attach (pipe_t *pipe_)
@@ -32,10 +61,11 @@ void zlink::fq_t::attach (pipe_t *pipe_)
 
 void zlink::fq_t::deactivate (pipe_t *pipe_)
 {
-    if (!has_pipe (pipe_))
-        return;
+    normalize_state ();
 
-    const pipes_t::size_type index = _pipes.index (pipe_);
+    pipes_t::size_type index = 0;
+    if (!try_get_pipe_index (pipe_, &index))
+        return;
     if (index >= _active)
         return;
 
@@ -47,10 +77,11 @@ void zlink::fq_t::deactivate (pipe_t *pipe_)
 
 void zlink::fq_t::pipe_terminated (pipe_t *pipe_)
 {
-    if (!has_pipe (pipe_))
-        return;
+    normalize_state ();
 
-    const pipes_t::size_type index = _pipes.index (pipe_);
+    pipes_t::size_type index = 0;
+    if (!try_get_pipe_index (pipe_, &index))
+        return;
 
     //  Remove the pipe from the list; adjust number of active pipes
     //  accordingly.
@@ -61,14 +92,16 @@ void zlink::fq_t::pipe_terminated (pipe_t *pipe_)
             _current = 0;
     }
     _pipes.erase (pipe_);
+    normalize_state ();
 }
 
 void zlink::fq_t::activated (pipe_t *pipe_)
 {
-    if (!has_pipe (pipe_))
-        return;
+    normalize_state ();
 
-    const pipes_t::size_type index = _pipes.index (pipe_);
+    pipes_t::size_type index = 0;
+    if (!try_get_pipe_index (pipe_, &index))
+        return;
     if (index < _active)
         return;
 
@@ -84,9 +117,14 @@ int zlink::fq_t::recv (msg_t *msg_)
 
 int zlink::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
 {
+    normalize_state ();
+
     //  Deallocate old content of the message.
     int rc = msg_->close ();
-    errno_assert (rc == 0);
+    if (unlikely (rc != 0)) {
+        rc = msg_->init ();
+        errno_assert (rc == 0);
+    }
 
     //  Round-robin over the pipes to get the next message.
     while (_active > 0) {
@@ -107,8 +145,10 @@ int zlink::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
             return 0;
         }
 
-        //  A pipe can disappear while a multipart message is being torn down.
-        //  Surface that as a protocol error instead of aborting the process.
+        //  Internal routed envelopes are multipart on the wire. If the pipe
+        //  disappears between frames during teardown, drop the partial message
+        //  and surface a transient miss instead of aborting or surfacing a
+        //  spurious protocol failure to callers.
         if (_more) {
             _more = false;
             _active--;
@@ -117,7 +157,7 @@ int zlink::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
                 _current = 0;
             rc = msg_->init ();
             errno_assert (rc == 0);
-            errno = EPROTO;
+            errno = EAGAIN;
             return -1;
         }
 
@@ -137,6 +177,8 @@ int zlink::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
 
 bool zlink::fq_t::has_in ()
 {
+    normalize_state ();
+
     //  There are subsequent parts of the partly-read message available.
     if (_more)
         return true;

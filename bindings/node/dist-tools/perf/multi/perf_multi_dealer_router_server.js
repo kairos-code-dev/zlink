@@ -4,27 +4,20 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../dist');
 const { parseMultiArgs } = require('./perf_multi_common');
+const { drainRecvSocket } = require('./perf_multi_runtime');
 async function main() {
-    const options = parseMultiArgs(process.argv.slice(2), { msgSize: undefined, warmup: undefined, duration: undefined, clients: undefined, recv: undefined });
+    const options = parseMultiArgs(process.argv.slice(2), { msgSize: undefined, warmup: undefined, duration: undefined, clients: undefined });
     const ctx = new zlink.Context();
     const router = new zlink.RouterSocket(ctx);
     let stop = false;
-    let receiveLoop = null;
     try {
         router.bind(options.endpoint);
-        console.log(`READY,${options.endpoint}`);
-        receiveLoop = (async () => {
-            while (!stop) {
-                const received = router.tryRecv();
-                if (!received) {
-                    await new Promise((resolve) => setImmediate(resolve));
-                    continue;
-                }
-                if (received.routingId) {
-                    router.send(received.routingId, received.parts.map((part) => part.data));
-                }
+        const receiveLoop = drainRecvSocket(router, (received) => {
+            if (received.routingId) {
+                router.send(received.routingId, received.parts.map((part) => part.data));
             }
-        })();
+        }, () => stop);
+        console.log(`READY,${options.endpoint}`);
         const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         for await (const line of rl) {
             if (line === 'STOP') {
@@ -32,11 +25,9 @@ async function main() {
                 break;
             }
         }
+        await receiveLoop;
     }
     finally {
-        if (receiveLoop) {
-            await receiveLoop;
-        }
         router.close();
         ctx.close();
     }

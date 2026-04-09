@@ -194,10 +194,7 @@ Usage: bindings/cpp/perf/run_benchmarks_multi.sh [options]
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
   DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM
-When callback mode is selected without an explicit pattern, default PATTERN is:
-  SPOT,STREAM
 By default, this wrapper runs current zlink only.
-By default, multi-bench keeps warmup at 2s and duration window at 5s.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
 
 Options:
@@ -211,7 +208,6 @@ Options:
   --build-dir PATH       Official build directory (must be core/build).
   --output PATH          Tee results to a file.
   --runs N               Iterations per configuration (default: 1).
-  --recv MODE            Receive model: recv|callback (default: recv).
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --io-threads N         Legacy alias: set PERF_IO_THREADS for both roles.
   --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS
@@ -220,7 +216,6 @@ Options:
                          (default: 4).
   --msg-sizes LIST       Comma-separated message sizes.
   --transports LIST      Comma-separated transports.
-  --warmup N             Optional override for multi warmup seconds (default 2).
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override number of client sockets per pattern (default: 100, stream=10000).
   --hwm N                Override PERF_MULTI_HWM (default: 100, stream=10 in binary).
@@ -259,7 +254,7 @@ Environment:
                             Estimated memory per client socket for guard
 Notes:
   - result is saved under results/multi/report/ as
-    perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt.
+    perf_cpp_multi_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt.
   - default build mode is incremental (configure/build without deleting build dir).
 USAGE
 }
@@ -338,9 +333,7 @@ HAS_EXPLICIT_RUNS=0
 HAS_EXPLICIT_RESULTS_DIR=0
 BUILD_MODE="incremental"
 BUILD_MODE_EXPLICIT=0
-WARMUP_SECONDS="${PERF_MULTI_WARMUP_SECONDS:-${PERF_WARMUP_SECONDS:-2}}"
 DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-${PERF_DURATION_SECONDS:-5}}"
-RECV_MODE="${PERF_RECV_MODE:-recv}"
 CLIENTS="${PERF_MULTI_CLIENTS:-${PERF_CLIENTS:-}}"
 EFFECTIVE_DEFAULT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
 EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
@@ -377,7 +370,6 @@ SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-${PERF_SERVER_IO_THREADS:-}}"
 CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-${PERF_CLIENT_IO_THREADS:-}}"
 STREAM_SERVER_IO_THREADS="${PERF_MULTI_STREAM_SERVER_IO_THREADS:-${PERF_STREAM_SERVER_IO_THREADS:-}}"
 STREAM_CLIENT_IO_THREADS="${PERF_MULTI_STREAM_CLIENT_IO_THREADS:-${PERF_STREAM_CLIENT_IO_THREADS:-}}"
-CALLBACK_DEFAULT_PATTERNS=("SPOT" "STREAM")
 
 set_build_mode() {
   local next_mode="${1:-}"
@@ -464,23 +456,6 @@ while [[ $# -gt 0 ]]; do
       HAS_EXPLICIT_RUNS=1
       SCRIPT_ARGS+=( "$1" )
       shift
-      ;;
-    --recv)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: $1 requires a value." >&2
-        exit 1
-      fi
-      RECV_MODE="${2}"
-      SCRIPT_ARGS+=( "$1" "$2" )
-      shift 2
-      ;;
-    --warmup)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: $1 requires a value." >&2
-        exit 1
-      fi
-      WARMUP_SECONDS="${2}"
-      shift 2
       ;;
     --duration)
       if [[ $# -lt 2 ]]; then
@@ -742,11 +717,6 @@ if ! is_uint "${SERVER_BIND_PORT}" || (( SERVER_BIND_PORT > 65535 )); then
   echo "Error: --server-bind-port must be an integer in range 0..65535." >&2
   exit 1
 fi
-if [[ "${RECV_MODE}" != "recv" && "${RECV_MODE}" != "callback" ]]; then
-  echo "Error: --recv must be 'recv' or 'callback'." >&2
-  exit 1
-fi
-
 for (( idx=0; idx<${#SCRIPT_ARGS[@]}; ++idx )); do
   if [[ "${SCRIPT_ARGS[idx]}" != "--build-dir" ]]; then
     continue
@@ -787,8 +757,6 @@ fi
 PATTERNS=("${PATTERN_LIST[@]}")
 if [[ "${#EXPLICIT_PATTERNS[@]}" -gt 0 ]]; then
   PATTERNS=("${EXPLICIT_PATTERNS[@]}")
-elif [[ "${RECV_MODE}" == "callback" ]]; then
-  PATTERNS=("${CALLBACK_DEFAULT_PATTERNS[@]}")
 fi
 
 RUN_BASE_ARGS=()
@@ -821,9 +789,7 @@ fi
 RUN_ENV=()
 RUN_ENV+=(PERF_ALLOW_MULTI="1")
 RUN_ENV+=(PERF_POLICY="1")
-RUN_ENV+=(PERF_RECV_MODE="${RECV_MODE}")
 RUN_ENV+=(PERF_RESULTS_DIR="${RESULTS_DIR_OVERRIDE}")
-RUN_ENV+=(PERF_MULTI_WARMUP_SECONDS="${WARMUP_SECONDS}")
 RUN_ENV+=(PERF_MULTI_DURATION_SECONDS="${DURATION_SECONDS}")
 RUN_ENV+=(PERF_MULTI_RUN_COOLDOWN_MS="${RUN_COOLDOWN_MS}")
 RUN_ENV+=(PERF_MULTI_TRANSPORT_TRANSITION_MS="${TRANSPORT_TRANSITION_MS}")
@@ -957,18 +923,6 @@ if [[ "${#RUN_PATTERNS[@]}" -eq 0 ]]; then
   exit 0
 fi
 
-if [[ "${RECV_MODE}" == "callback" && "${#RUN_PATTERNS[@]}" -gt 1 ]]; then
-  reordered_patterns=()
-  for pattern in "${RUN_PATTERNS[@]}"; do
-    if [[ "${pattern}" == STREAM_* ]]; then
-      reordered_patterns=("${pattern}" "${reordered_patterns[@]}")
-    else
-      reordered_patterns+=("${pattern}")
-    fi
-  done
-  RUN_PATTERNS=("${reordered_patterns[@]}")
-fi
-
 if [[ -n "${CONNECT_CONCURRENCY}" ]]; then
   RUN_ENV+=(PERF_MULTI_CONNECT_CONCURRENCY="${CONNECT_CONCURRENCY}")
 fi
@@ -983,8 +937,8 @@ PATTERN_CSV_DISPLAY="$(
   echo "${local_items[*]}"
 )"
 echo "=== Running multi benchmark: ${PATTERN_CSV_DISPLAY} ==="
-echo "    warmup=${WARMUP_SECONDS}s duration=${DURATION_SECONDS}s"
-echo "    recv_mode=${RECV_MODE}"
+echo "    lang=cpp suite=multi"
+echo "    duration=${DURATION_SECONDS}s"
 RUN_EXIT_CODE=0
 if PERF_ALLOW_MULTI=1 \
   PERF_SUPPRESS_TOTAL_TIME=1 \

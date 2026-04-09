@@ -11,7 +11,6 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
     $arg = $ArgsList[$i]
     switch ($arg) {
         "--clients" { $PassArgs += "--multi-clients"; $PassArgs += $ArgsList[$i + 1]; $i++; continue }
-        "--warmup" { $PassArgs += "--multi-warmup-seconds"; $PassArgs += $ArgsList[$i + 1]; $i++; continue }
         "--duration" { $PassArgs += "--multi-duration-seconds"; $PassArgs += $ArgsList[$i + 1]; $i++; continue }
         "--hwm" { $PassArgs += "--multi-hwm"; $PassArgs += $ArgsList[$i + 1]; $i++; continue }
         default { $PassArgs += $arg }

@@ -9,7 +9,6 @@ RESULTS_ROOT="${ROOT_DIR}/results"
 PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
-RECV_MODE="recv"
 CLIENTS="${PERF_MULTI_CLIENTS:-100}"
 RUNS=1
 DURATION="${PERF_MULTI_DURATION_SECONDS:-5}"
@@ -51,7 +50,6 @@ Options:
   --pattern NAME         Pattern list or ALL.
   --transports LIST      Transport list override.
   --msg-sizes LIST       Payload sizes.
-  --recv MODE            recv|callback.
   --clients N            Client count.
   --runs N               Iterations per pattern/transport/size.
   --duration N           Active duration seconds.
@@ -86,7 +84,6 @@ while [[ $# -gt 0 ]]; do
     --pattern) PATTERN="${2:-}"; shift ;;
     --transports) TRANSPORTS="${2:-}"; shift ;;
     --msg-sizes) MSG_SIZES="${2:-}"; explicit_msg_sizes=1; shift ;;
-    --recv) RECV_MODE="${2:-}"; shift ;;
     --clients) CLIENTS="${2:-}"; explicit_clients=1; shift ;;
     --runs) RUNS="${2:-}"; shift ;;
     --duration) DURATION="${2:-}"; shift ;;
@@ -119,11 +116,6 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ "${RECV_MODE}" != "recv" && "${RECV_MODE}" != "callback" ]]; then
-  echo "multi suite supports only --recv recv|callback" >&2
-  exit 1
-fi
-
 if ! [[ "${RUNS}" =~ ^[0-9]+$ ]] || [[ "${RUNS}" -lt 1 ]]; then
   echo "--runs must be >= 1" >&2
   exit 1
@@ -151,11 +143,7 @@ for numeric_opt in SNDTIMEO_MS RCVTIMEO_MS CONNECT_READY_TIMEOUT_MS TRANSPORT_TR
 done
 
 if [[ "${PATTERN}" == "ALL" ]]; then
-  if [[ "${RECV_MODE}" == "callback" ]]; then
-    PATTERN="MULTI_SPOT,MULTI_STREAM"
-  else
-    PATTERN="MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM"
-  fi
+  PATTERN="MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM"
 fi
 
 detect_platform() {
@@ -182,6 +170,10 @@ default_msg_sizes_for_pattern() {
 
 default_clients_for_pattern() {
   local pattern="$1"
+  if [[ "${pattern}" == "MULTI_DEALER_DEALER" && "${explicit_clients}" -eq 0 ]]; then
+    echo "1"
+    return
+  fi
   if [[ "${pattern}" == "MULTI_STREAM" && "${CLIENTS}" == "100" ]]; then
     echo "${STREAM_DEFAULT_CLIENTS}"
   else
@@ -262,11 +254,7 @@ wait_for_pid_or_kill() {
 }
 
 validate_pattern_mode() {
-  local bare_pattern="$1"
-  if [[ "${RECV_MODE}" == "callback" && "${bare_pattern}" != "SPOT" && "${bare_pattern}" != "STREAM" ]]; then
-    echo "${bare_pattern} does not support --recv callback in multi suite" >&2
-    exit 1
-  fi
+  return 0
 }
 
 normalize_multi_pattern() {
@@ -545,7 +533,7 @@ fi
 
 platform="$(detect_platform)"
 timestamp="$(date +%Y%m%d_%H%M%S)"
-report="${RESULTS_ROOT}/multi/report/perf_${platform}_${RECV_MODE}_${timestamp}"
+report="${RESULTS_ROOT}/multi/report/perf_java_multi_${platform}_${timestamp}"
 if [[ -n "${RESULTS_TAG}" ]]; then
   report="${report}_${RESULTS_TAG}"
 fi
@@ -692,7 +680,7 @@ for pattern_index in "${!patterns[@]}"; do
           endpoint="$(pick_endpoint "${transport}" "${bare_pattern}")"
           exec 3<>"${fifo}"
           stream_server_cmd=("${runner_prefix[@]}" "${RUNNER}" --multi-server "${pattern}" "${transport}" "${size}" \
-            --recv "${RECV_MODE}" --endpoint "${endpoint}" --clients "${pattern_clients}" \
+            --endpoint "${endpoint}" --clients "${pattern_clients}" \
             --duration "${DURATION}" --control-port 0 \
             --io-threads "${pattern_server_io_threads}" \
             --sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}" \
@@ -747,7 +735,7 @@ s.close()
 PY
 )"
         server_cmd=("${runner_prefix[@]}" "${RUNNER}" --multi-server "${pattern}" "${transport}" "${size}" \
-          --recv "${RECV_MODE}" --endpoint "${endpoint}" --clients "${pattern_clients}" \
+          --endpoint "${endpoint}" --clients "${pattern_clients}" \
           --duration "${DURATION}" --control-port "${control_port}" \
           --io-threads "${pattern_server_io_threads}" \
           --sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}" \
@@ -762,7 +750,7 @@ PY
         "${server_cmd[@]}" >"${server_log}" 2>&1 &
         server_pid=$!
         client_cmd=("${runner_prefix[@]}" "${RUNNER}" --multi-client "${pattern}" "${transport}" "${size}" \
-          --recv "${RECV_MODE}" --endpoint "${endpoint}" --clients "${pattern_clients}" \
+          --endpoint "${endpoint}" --clients "${pattern_clients}" \
           --duration "${DURATION}" --control-port "${control_port}" \
           --io-threads "${pattern_client_io_threads}" \
           --sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}" \
@@ -778,7 +766,8 @@ PY
         wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
         metric_log="${server_log}"
         if [[ "${bare_pattern}" == "DEALER_ROUTER" || "${bare_pattern}" == "ROUTER_ROUTER" \
-           || "${bare_pattern}" == "PUBSUB" || "${bare_pattern}" == "SPOT" ]]; then
+           || "${bare_pattern}" == "PUBSUB" || "${bare_pattern}" == "SPOT" \
+           || "${bare_pattern}" == "STREAM" ]]; then
           metric_log="${client_log}"
         fi
         status_record="$(case_status "${pattern}" "${transport}" "${size}" "${metric_log}")"
@@ -829,7 +818,7 @@ PY
 done
 
 python3 - "${tmp_metrics}" "${report}" "${requested_patterns}" "${TRANSPORTS}" "${display_msg_sizes}" \
-  "${RECV_MODE}" "${display_clients}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" \
+  "${display_clients}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" \
   "${PIN_CPU}" "${display_server_io_threads}" "${display_client_io_threads}" \
   "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" \
   "${CONNECT_READY_TIMEOUT_MS}" "${MONITOR_HWM}" "${SERVER_BIND_PORT}" \
@@ -839,7 +828,7 @@ import math
 import sys
 from collections import defaultdict
 
-metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, recv_mode, clients, runs, duration, results_tag, pin_cpu, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, connect_ready_timeout_ms, monitor_hwm, server_bind_port, connect_concurrency, progress_path = sys.argv[1:]
+metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, pin_cpu, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, connect_ready_timeout_ms, monitor_hwm, server_bind_port, connect_concurrency, progress_path = sys.argv[1:]
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 all_metrics = required_metrics
@@ -904,12 +893,12 @@ def emit(line=""):
 
 def emit_effective_options(section):
     emit(f"## Effective Options ({section})")
+    emit("- lang: java")
     emit("- suite: multi")
     emit(f"- runs: {runs}")
     emit(f"- patterns: {pattern_csv}")
     emit(f"- transports: {transports_csv}")
     emit(f"- msg_sizes: {msg_sizes_csv}")
-    emit(f"- recv_mode: {recv_mode}")
     emit(f"- clients: {clients}")
     emit(f"- pin_cpu: {'on' if pin_cpu == '1' else 'off'}")
     emit(f"- server_io_threads: {server_io_threads}")

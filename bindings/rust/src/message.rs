@@ -114,6 +114,70 @@ impl Message {
         Ok(Some(value))
     }
 
+    // -- Request-Reply Envelope -----------------------------------------------
+
+    /// Mark this message as a REQUEST with the given correlation ID.
+    pub fn set_request(&mut self, correlation_id: u64) -> Result<(), ZlinkError> {
+        check_rc(unsafe { ffi::zlink_msg_set_request(&mut self.inner, correlation_id) })
+    }
+
+    /// Mark this message as a REPLY with the given correlation ID.
+    pub fn set_reply(&mut self, correlation_id: u64) -> Result<(), ZlinkError> {
+        check_rc(unsafe { ffi::zlink_msg_set_reply(&mut self.inner, correlation_id) })
+    }
+
+    /// Retrieve the request-reply type and correlation ID.
+    ///
+    /// Returns `(msg_type, correlation_id)` where `msg_type` is 0 (DATA),
+    /// 1 (REQUEST), or 2 (REPLY).
+    pub fn request_info(&self) -> Result<(u8, u64), ZlinkError> {
+        let mut msg_type: u8 = 0;
+        let mut correlation_id: u64 = 0;
+        check_rc(unsafe {
+            ffi::zlink_msg_get_request_info(
+                &self.inner,
+                &mut msg_type,
+                &mut correlation_id,
+            )
+        })?;
+        Ok((msg_type, correlation_id))
+    }
+
+    // -- Per-Message Metadata -------------------------------------------------
+
+    /// Set a metadata key-value pair on this message.
+    ///
+    /// Keys below `0x0100` are reserved and will return an error.
+    pub fn set_metadata(&mut self, key: u16, value: &[u8]) -> Result<(), ZlinkError> {
+        check_rc(unsafe {
+            ffi::zlink_msg_set_metadata(
+                &mut self.inner,
+                key,
+                if value.is_empty() {
+                    std::ptr::null()
+                } else {
+                    value.as_ptr() as *const _
+                },
+                value.len(),
+            )
+        })
+    }
+
+    /// Retrieve a metadata value by key.
+    ///
+    /// Returns `None` if the key is absent.
+    pub fn get_metadata(&self, key: u16) -> Option<&[u8]> {
+        let mut size: usize = 0;
+        let ptr = unsafe {
+            ffi::zlink_msg_get_metadata(&self.inner, key, &mut size)
+        };
+        if ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { slice::from_raw_parts(ptr as *const u8, size) })
+        }
+    }
+
     /// Return the native storage reference count for the message.
     ///
     /// This is a diagnostic helper only. It does not affect ownership or

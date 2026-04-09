@@ -44,8 +44,8 @@ final class PerfReport {
         return dir;
     }
 
-    static String resultFileName(String platform, String recvMode, String tag) {
-        String base = "perf_" + platform + "_" + recvMode + "_"
+    static String resultFileName(String lang, String suite, String platform, String tag) {
+        String base = "perf_" + lang + "_" + suite + "_" + platform + "_"
             + LocalDateTime.now().format(FILE_TS);
         return tag == null || tag.isBlank() ? base + ".txt" : base + "_" + tag + ".txt";
     }

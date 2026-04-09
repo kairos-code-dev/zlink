@@ -28,15 +28,20 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 	clientID, err := zlink.NewRoutingID([]byte("ROUTER2"))
 	perfcommon.Must(err)
 
-	endpoint := perfcommon.UniqueTCPEndpoint("perf-router-router")
+	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
+	perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
+	perfcommon.ApplySingleHWM(server)
+	perfcommon.ApplySingleHWM(client)
+	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-router-router")
 	perfcommon.Must(server.SetRoutingID(serverID))
 	perfcommon.Must(client.SetRoutingID(clientID))
 	perfcommon.Must(client.SetConnectRoutingID(serverID))
-	perfcommon.Must(server.Bind(endpoint))
 	perfcommon.Must(client.Connect(endpoint))
 	perfcommon.WaitConnected(serverMon, clientMon)
-	perfcommon.Must(client.SetRecvTimeout(500 * time.Millisecond))
-	perfcommon.Must(client.SetSendTimeout(500 * time.Millisecond))
+	perfcommon.ApplySingleBenchmarkSocketOptions(server, cfg.transport)
+	perfcommon.ApplySingleBenchmarkSocketOptions(client, cfg.transport)
+	perfcommon.Must(client.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
+	perfcommon.Must(client.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
 	startRouterRouterEchoServer(server)
 	waitForRouterRouterReady(client, serverID)
 
@@ -59,6 +64,9 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 				continue
 			}
 			perfcommon.Must(err)
+		}
+		if reply == nil {
+			continue
 		}
 		part, err := reply.SinglePartOrError()
 		perfcommon.Must(err)
@@ -95,9 +103,25 @@ func waitForRouterRouterReady(client *zlink.RouterSocket, serverID zlink.Routing
 }
 
 func startRouterRouterEchoServer(server *zlink.RouterSocket) {
-	perfcommon.Must(server.OnReceive(func(received *zlink.Received) {
-		defer received.Close()
-		perfcommon.Must(server.SendTo(received.RoutingID(),
-			perfcommon.CloneMessages(received.Parts())...))
-	}))
+	perfcommon.Must(server.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
+	go func() {
+		for {
+			received, err := server.Recv()
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					continue
+				}
+				return
+			}
+			if received == nil {
+				continue
+			}
+			err = server.SendTo(received.RoutingID(),
+				perfcommon.CloneMessages(received.Parts())...)
+			if err != nil && !perfcommon.IsTransient(err) {
+				perfcommon.Must(err)
+			}
+			perfcommon.Must(received.Close())
+		}
+	}()
 }

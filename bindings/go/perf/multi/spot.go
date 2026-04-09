@@ -25,7 +25,8 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	defer publisher.Close()
 	perfcommon.Must(publisher.SetNoDrop(true))
 
-	endpoint := perfcommon.UniqueTCPEndpoint("perf-multi-spot")
+	endpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot")
+	perfcommon.Must(perfcommon.ConfigureTLSServer(publisherNode, cfg.transport))
 	perfcommon.Must(publisherNode.Bind(endpoint))
 
 	stats := perfcommon.NewStats()
@@ -39,20 +40,9 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 		perfcommon.Must(err)
 		spot, err := node.Spot()
 		perfcommon.Must(err)
+		perfcommon.Must(perfcommon.ConfigureTLSClient(node, cfg.transport))
 		perfcommon.Must(node.ConnectPeer(endpoint))
 		perfcommon.Must(spot.SetSubscription("bench."))
-		if cfg.recvMode == "callback" {
-			index := i
-			perfcommon.Must(spot.OnSubscribe(func(message *zlink.TopicMessage) {
-				defer message.Close()
-				tracker.signal(index)
-				part, err := message.SinglePartOrError()
-				if err != nil {
-					return
-				}
-				perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
-			}))
-		}
 		subs = append(subs, multiSpotSubscriber{node: node, spot: spot})
 	}
 	defer func() {
@@ -62,7 +52,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 		}
 	}()
 
-	waitForMultiSpotReady(publisher, subs, cfg.recvMode, tracker)
+	waitForMultiSpotReady(publisher, subs, tracker)
 
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
@@ -77,9 +67,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 		if result != zlink.SendResultSent {
 			time.Sleep(250 * time.Microsecond)
 		}
-		if cfg.recvMode == "recv" {
-			_ = drainMultiSpotOnce(subs, stats, window.ActiveAt, tracker)
-		}
+		_ = drainMultiSpotOnce(subs, stats, window.ActiveAt, tracker)
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)

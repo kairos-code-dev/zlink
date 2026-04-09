@@ -12,7 +12,7 @@ internal static class PerfSpotClient
     internal static int Run(PerfOptions options)
     {
         SpotClientConfig config = BuildConfig(options);
-        PerfRecvMode recvMode = ResolveMultiRecvMode(options, Pattern);
+        _ = ResolveMultiRecvMode(options, Pattern);
 
         using var ctx = new Context();
         ApplyMultiClientContextOptions(ctx, options);
@@ -28,8 +28,8 @@ internal static class PerfSpotClient
 
             for (int i = 0; i < config.ClientCount; i++)
             {
-                SpotClientSlot slot = CreateSlot(ctx, config, recvMode,
-                    serverEndpoint, options);
+                SpotClientSlot slot = CreateSlot(ctx, config, serverEndpoint,
+                    options);
                 slots.Add(slot);
             }
 
@@ -44,9 +44,6 @@ internal static class PerfSpotClient
                 Console.Error.WriteLine("multi_client_error:no_ready_connections");
                 return 2;
             }
-
-            if (recvMode == PerfRecvMode.Callback)
-                return RunCallbackMode(slots, config);
             return RunRecvMode(slots, config);
         }
         finally
@@ -77,90 +74,8 @@ internal static class PerfSpotClient
         return 0;
     }
 
-    private static int RunCallbackMode(List<SpotClientSlot> slots,
-        SpotClientConfig config)
-    {
-        Console.WriteLine($"CLIENT_READY,{config.Size}");
-        long startDeadline = DeadlineTicksFromMilliseconds(
-            config.ConnectReadyTimeoutMs);
-        var spin = new SpinWait();
-        while (Stopwatch.GetTimestamp() < startDeadline)
-        {
-            bool sawStart = false;
-            bool failed = false;
-            for (int i = 0; i < slots.Count; i++)
-            {
-                if (slots[i].CallbackState!.Fatal)
-                    failed = true;
-                if (slots[i].CallbackState!.SawAnyPhase)
-                    sawStart = true;
-            }
-
-            if (failed)
-            {
-                Console.Error.WriteLine("multi_client_error:spot_callback_failed");
-                return 2;
-            }
-            if (sawStart)
-                break;
-            spin.SpinOnce();
-        }
-
-        bool ready = false;
-        for (int i = 0; i < slots.Count; i++)
-            ready |= slots[i].CallbackState!.SawAnyPhase;
-        if (!ready)
-        {
-            Console.Error.WriteLine("multi_client_error:no_msg_size_start");
-            return 2;
-        }
-
-        long benchStartTicks = Stopwatch.GetTimestamp();
-        long benchDeadlineTicks = benchStartTicks
-            + (long)Math.Max(1, config.DurationSeconds) * Stopwatch.Frequency;
-        spin = new SpinWait();
-        while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
-        {
-            bool failed = false;
-            for (int i = 0; i < slots.Count; i++)
-            {
-                if (slots[i].CallbackState!.Fatal)
-                {
-                    failed = true;
-                    break;
-                }
-            }
-
-            if (failed)
-            {
-                Console.Error.WriteLine("multi_client_error:spot_callback_failed");
-                return 2;
-            }
-
-            spin.SpinOnce();
-        }
-
-        var samples = new List<double>(Math.Max(0, config.LatencySampleCap));
-        long measureCount = 0;
-        for (int i = 0; i < slots.Count; i++)
-        {
-            SpotCallbackState state = slots[i].CallbackState!;
-            measureCount += state.MeasureCount;
-            state.AppendSamples(samples);
-        }
-
-        var activeStats = new SpotClientActiveStats(measureCount,
-            benchStartTicks, Stopwatch.GetTimestamp());
-        SpotClientResult result = ComputeResult(activeStats, samples,
-            config.DurationSeconds);
-        PrintResult(Pattern, config.Transport, config.Size, result.Throughput,
-            result.LatencyUs, result.LatencyP95Us, result.LatencyP99Us);
-        return 0;
-    }
-
     private static SpotClientSlot CreateSlot(Context ctx,
-        SpotClientConfig config, PerfRecvMode recvMode, string serverEndpoint,
-        PerfOptions options)
+        SpotClientConfig config, string serverEndpoint, PerfOptions options)
     {
         var node = new SpotNode(ctx);
         try
@@ -172,18 +87,7 @@ internal static class PerfSpotClient
             {
                 node.ConnectPeer(serverEndpoint);
                 subscriber.SetSubscription("bench");
-                if (recvMode == PerfRecvMode.Callback)
-                {
-                    var callbackState = new SpotCallbackState(
-                        config.Size, config.LatencySampleCap);
-                    subscriber.OnSubscribe((_, parts) =>
-                    {
-                        callbackState.OnMessage(parts);
-                    });
-                    return new SpotClientSlot(node, subscriber, callbackState);
-                }
-
-                return new SpotClientSlot(node, subscriber, null);
+                return new SpotClientSlot(node, subscriber);
             }
             catch
             {
@@ -498,100 +402,16 @@ internal static class PerfSpotClient
         internal uint Rng;
     }
 
-    private sealed class SpotCallbackState
-    {
-        private readonly int _expectedMsgSize;
-        private readonly double[] _samples;
-        private int _sampleWriteIndex;
-        private int _sawAnyPhase;
-        private int _fatal;
-        private long _measureCount;
-
-        internal SpotCallbackState(int expectedMsgSize, int latencySampleCap)
-        {
-            _expectedMsgSize = expectedMsgSize;
-            _samples = new double[Math.Max(1, latencySampleCap)];
-            _sampleWriteIndex = 0;
-            _sawAnyPhase = 0;
-            _fatal = 0;
-            _measureCount = 0;
-        }
-
-        internal bool SawAnyPhase => Volatile.Read(ref _sawAnyPhase) != 0;
-        internal bool Fatal => Volatile.Read(ref _fatal) != 0;
-        internal long MeasureCount => Interlocked.Read(ref _measureCount);
-
-        internal void OnMessage(Message[] parts)
-        {
-            try
-            {
-                if (parts.Length != 1)
-                    return;
-                if (!TryDecodeMetricHeader(parts[0].AsReadOnlySpan(),
-                        out PerfMetricHeader header))
-                {
-                    return;
-                }
-
-                if (header.RunId != ExpectedRunId
-                    || header.MsgSize != (uint)_expectedMsgSize)
-                {
-                    return;
-                }
-
-                Volatile.Write(ref _sawAnyPhase, 1);
-                if (header.Phase != (uint)PerfPhase.Active)
-                    return;
-
-                Interlocked.Increment(ref _measureCount);
-                if (header.SentTsUs == 0)
-                    return;
-                ulong nowUs = EpochUs();
-                if (nowUs < header.SentTsUs)
-                    return;
-                AddSample(nowUs - header.SentTsUs);
-            }
-            catch
-            {
-                Volatile.Write(ref _fatal, 1);
-            }
-            finally
-            {
-                for (int i = 0; i < parts.Length; i++)
-                    parts[i].Dispose();
-            }
-        }
-
-        internal void AddSample(double latencyUs)
-        {
-            int index = Interlocked.Increment(ref _sampleWriteIndex) - 1;
-            if ((uint)index >= (uint)_samples.Length)
-                return;
-            _samples[index] = latencyUs;
-        }
-
-        internal void AppendSamples(List<double> destination)
-        {
-            int count = Math.Min(Volatile.Read(ref _sampleWriteIndex),
-                _samples.Length);
-            for (int i = 0; i < count; i++)
-                destination.Add(_samples[i]);
-        }
-    }
-
     private sealed class SpotClientSlot : IDisposable
     {
-        internal SpotClientSlot(SpotNode node, Spot subscriber,
-            SpotCallbackState? callbackState)
+        internal SpotClientSlot(SpotNode node, Spot subscriber)
         {
             Node = node;
             Subscriber = subscriber;
-            CallbackState = callbackState;
         }
 
         internal SpotNode Node { get; }
         internal Spot Subscriber { get; }
-        internal SpotCallbackState? CallbackState { get; }
 
         public void Dispose()
         {

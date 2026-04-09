@@ -67,8 +67,6 @@ class PerfMultiRunnerTests(unittest.TestCase):
                 "PUBSUB",
                 "--duration",
                 "0.2",
-                "--warmup",
-                "0.1",
                 "--msg-sizes",
                 "64",
                 "--clients",
@@ -91,8 +89,6 @@ class PerfMultiRunnerTests(unittest.TestCase):
                 "SPOT",
                 "--duration",
                 "0.2",
-                "--warmup",
-                "0.1",
                 "--msg-sizes",
                 "64",
                 "--clients",
@@ -116,8 +112,6 @@ class PerfMultiRunnerTests(unittest.TestCase):
                     "PUBSUB",
                     "--duration",
                     "0.2",
-                    "--warmup",
-                    "0.1",
                     "--msg-sizes",
                     "64",
                     "--clients",
@@ -135,12 +129,12 @@ class PerfMultiRunnerTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
             self.assertIn("## Effective Options (start)", result.stdout)
             self.assertIn("| Pattern | Transport | Size |", result.stdout)
-            reports = list(Path(tmpdir).glob("perf_linux_recv_*_smoke.txt"))
+            reports = list(Path(tmpdir).glob("perf_python_multi_linux_*_smoke.txt"))
             self.assertEqual(len(reports), 1)
             report_text = reports[0].read_text(encoding="utf-8")
             self.assertIn("RESULT,current,MULTI_PUBSUB,tcp,64,throughput,", report_text)
             self.assertRegex(
                 reports[0].name,
-                r"^perf_linux_recv_\d{8}_\d{6}_smoke\.txt$",
+                r"^perf_python_multi_linux_\d{8}_\d{6}_smoke\.txt$",
             )
             self.assert_no_python_perf_server_process()

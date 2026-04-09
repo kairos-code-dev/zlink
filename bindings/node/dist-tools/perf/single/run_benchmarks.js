@@ -28,7 +28,6 @@ Options:
   --results-dir PATH    Override result root directory.
   --results-tag NAME    Optional tag in saved result filename.
   --runs N              Iterations per configuration (default: 1).
-  --recv MODE           Receive model: callback (default: callback).
   --duration N          Override single duration seconds (default: 5).
   --warmup N            Override single warmup seconds (default: 2).
   --msg-sizes LIST      Comma-separated sizes (default: 64,256,1024,65536,131072,262144).
@@ -36,13 +35,11 @@ Options:
 
 Notes:
   - result is saved under perf/results/single/report/ as
-    perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt.
-  - single suite supports callback mode only.`);
+    perf_node_single_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt.`);
 }
 async function main() {
     const options = parseCommonArgs(process.argv.slice(2), {
         pattern: 'ALL',
-        recv: 'callback',
         duration: 5,
         warmup: 2,
         msgSizes: defaultSingleMsgSizes(),
@@ -53,9 +50,6 @@ async function main() {
         usage();
         return;
     }
-    if (options.recv !== 'callback') {
-        throw new Error('single perf supports only --recv callback');
-    }
     if (options.transports.some((transport) => transport !== 'inproc')) {
         throw new Error('single perf currently supports only --transports inproc');
     }
@@ -63,7 +57,7 @@ async function main() {
     const resultLines = [];
     const reportSections = [];
     console.log('## Effective Options (start)');
-    for (const line of buildEffectiveOptions(options)) {
+    for (const line of buildEffectiveOptions({ ...options, lang: 'node', suite: 'single', patterns: names.join(',') })) {
         console.log(line);
     }
     console.log('');
@@ -84,11 +78,18 @@ async function main() {
             const row = { pattern: name, msgSize, metrics };
             patternRows.push(row);
         }
+        const needsSeparator = reportSections.length > 0;
+        if (needsSeparator) {
+            reportSections.push('===============================================================================');
+            reportSections.push('');
+            console.log('===============================================================================');
+            console.log('');
+        }
         reportSections.push(`## PATTERN: ${name}`);
-        reportSections.push(...formatTableRows(patternRows));
+        reportSections.push(...formatTableRows(patternRows, 'single'));
         reportSections.push('');
         console.log(`## PATTERN: ${name}`);
-        for (const line of formatTableRows(patternRows)) {
+        for (const line of formatTableRows(patternRows, 'single')) {
             console.log(line);
         }
         console.log('');
@@ -103,7 +104,7 @@ async function main() {
     console.log(`- status: ${resultLines.length > 0 ? 'complete' : 'partial'}`);
     console.log(`- expected_result_lines: ${resultLines.length}`);
     console.log(`- actual_result_lines: ${resultLines.length}`);
-    const report = writeReport(path.join(options.resultsDir, 'single', 'report'), options.recv, resultLines, options, reportSections);
+    const report = writeReport(path.join(options.resultsDir, 'single', 'report'), 'node', 'single', resultLines, { ...options, patterns: names.join(',') }, reportSections);
     console.log(`report=${report}`);
 }
 main().catch((error) => {

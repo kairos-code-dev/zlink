@@ -35,10 +35,6 @@ def main(argv=None):
         with zlink.StreamSocket(ctx) as server:
             server.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
-            if args.recv == 'callback':
-                server.on_receive(lambda received: handle_chunk(received, server))
-                stop.wait()
-                return
             with zlink.Poller() as poller:
                 poller.add_socket(server, zlink.PollEvent.POLLIN)
                 while not stop.is_set():

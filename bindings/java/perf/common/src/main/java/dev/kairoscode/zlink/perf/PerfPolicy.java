@@ -7,20 +7,10 @@ final class PerfPolicy {
     }
 
     static void validateMultiRecvMode(PerfUtil.Config config) {
-        String pattern = config.pattern();
         String recvMode = config.recvMode();
-        if ("SPOT".equals(pattern) || "STREAM".equals(pattern)) {
-            if (!"recv".equalsIgnoreCase(recvMode)
-                && !"callback".equalsIgnoreCase(recvMode)) {
-                throw new IllegalArgumentException(
-                    "unsupported recv mode for " + pattern + ": " + recvMode
-                        + " (expected recv or callback)");
-            }
-            return;
-        }
         if (!"recv".equalsIgnoreCase(recvMode)) {
             throw new IllegalArgumentException(
-                "unsupported recv mode for " + pattern + ": " + recvMode
+                "unsupported recv mode for " + config.pattern() + ": " + recvMode
                     + " (expected recv)");
         }
     }

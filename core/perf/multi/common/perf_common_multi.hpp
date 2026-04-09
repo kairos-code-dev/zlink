@@ -92,11 +92,11 @@ inline std::string normalize_multi_pattern_name (const char *pattern)
 
 inline int resolve_default_hwm (const char *pattern, int clients)
 {
-    const int default_hwm = 1000;
     (void) clients;
     const std::string normalized = normalize_multi_pattern_name (pattern);
-    (void) normalized;
-    return default_hwm;
+    if (normalized == "STREAM")
+        return 10;
+    return 100;
 }
 
 inline int resolve_default_clients (const char *pattern)

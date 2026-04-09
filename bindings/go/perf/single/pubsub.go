@@ -18,10 +18,20 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	subscriber, err := ctx.SubSocket()
 	perfcommon.Must(err)
 	defer subscriber.Close()
+	pubMon := perfcommon.OpenMonitor(publisher)
+	defer pubMon.Close()
+	subMon := perfcommon.OpenMonitor(subscriber)
+	defer subMon.Close()
 
-	endpoint := perfcommon.UniqueTCPEndpoint("perf-pubsub")
-	perfcommon.Must(publisher.Bind(endpoint))
+	perfcommon.Must(perfcommon.ConfigureTLSServer(publisher, cfg.transport))
+	perfcommon.Must(perfcommon.ConfigureTLSClient(subscriber, cfg.transport))
+	perfcommon.ApplySingleHWM(publisher)
+	perfcommon.ApplySingleHWM(subscriber)
+	endpoint := perfcommon.BindAndResolveEndpoint(publisher, cfg.transport, "perf-pubsub")
 	perfcommon.Must(subscriber.Connect(endpoint))
+	perfcommon.ApplySingleBenchmarkSocketOptions(publisher, cfg.transport)
+	perfcommon.ApplySingleBenchmarkSocketOptions(subscriber, cfg.transport)
+	perfcommon.WaitConnected(pubMon, subMon)
 	perfcommon.Must(subscriber.SetSubscription("bench."))
 	_, err = publisher.ReceiveSubscriptionEvent()
 	perfcommon.Must(err)
@@ -29,36 +39,22 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	stats := perfcommon.NewStats()
 	stopAt := time.Now().Add(cfg.duration)
 	activeAt := time.Now()
-
-	if cfg.recvMode == "callback" {
-		perfcommon.Must(subscriber.OnSubscribe(func(message *zlink.TopicMessage) {
-			defer message.Close()
-			part, err := message.SinglePartOrError()
+	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
+	go func() {
+		for time.Now().Before(stopAt) {
+			message, err := subscriber.Subscribe()
 			if err != nil {
-				return
+				continue
 			}
-			if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
-				stats.Add(sentAt)
-			}
-		}))
-	} else {
-		perfcommon.Must(subscriber.SetRecvTimeout(500 * time.Millisecond))
-		go func() {
-			for time.Now().Before(stopAt) {
-				message, err := subscriber.Subscribe()
-				if err != nil {
-					continue
+			part, err := message.SinglePartOrError()
+			if err == nil {
+				if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
+					stats.Add(sentAt)
 				}
-				part, err := message.SinglePartOrError()
-				if err == nil {
-					if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
-						stats.Add(sentAt)
-					}
-				}
-				_ = message.Close()
 			}
-		}()
-	}
+			_ = message.Close()
+		}
+	}()
 
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(stopAt) {

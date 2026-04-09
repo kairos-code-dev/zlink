@@ -6,11 +6,10 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${ROOT_DIR}"
 
 PATTERN="ALL"
-RECV_MODE="callback"
 DURATION="5"
 WARMUP="2"
 MSG_SIZES="64,256,1024,65536,131072,262144"
-TRANSPORTS="tcp"
+TRANSPORTS=""
 RUNS="1"
 RESULTS_DIR="${SCRIPT_DIR}/results/single/report"
 RESULTS_TAG=""
@@ -22,7 +21,6 @@ Usage: bindings/go/perf/run_benchmarks.sh [options]
 
 Options:
   --pattern NAME
-  --recv MODE
   --duration N
   --warmup N
   --msg-sizes LIST
@@ -48,7 +46,6 @@ Options:
   -h, --help
 
 Notes:
-  - Go perf currently supports tcp transport only.
   - Supported single patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT
 USAGE
 }
@@ -57,7 +54,6 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --pattern) PATTERN="$2"; shift 2 ;;
-    --recv) RECV_MODE="$2"; shift 2 ;;
     --duration) DURATION="$2"; shift 2 ;;
     --warmup) WARMUP="$2"; shift 2 ;;
     --msg-sizes) MSG_SIZES="$2"; shift 2 ;;
@@ -87,48 +83,81 @@ TAG_SUFFIX=""
 if [[ -n "${RESULTS_TAG}" ]]; then
   TAG_SUFFIX="_${RESULTS_TAG}"
 fi
-RESULTS_FILE="${RESULTS_DIR}/perf_${PLATFORM}_${RECV_MODE}_${TIMESTAMP}${TAG_SUFFIX}.txt"
+RESULTS_FILE="${RESULTS_DIR}/perf_go_single_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
 mkdir -p "${RESULTS_DIR}"
 
 IFS=',' read -r -a SIZES <<< "${MSG_SIZES}"
-IFS=',' read -r -a XPORTS <<< "${TRANSPORTS}"
 if [[ "${PATTERN}" == "ALL" ]]; then
   PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER" "SPOT")
 else
   IFS=',' read -r -a PATTERNS <<< "${PATTERN}"
 fi
 
-tee_args=("${RESULTS_FILE}")
-if [[ -n "${OUTPUT_FILE}" ]]; then
-  tee_args+=("${OUTPUT_FILE}")
+if [[ -n "${TRANSPORTS}" ]]; then
+  IFS=',' read -r -a XPORTS_FILTER <<< "${TRANSPORTS}"
+else
+  XPORTS_FILTER=()
 fi
+
+pattern_transports() {
+  case "$1" in
+    SPOT) echo "tcp tls ws wss" ;;
+    *)
+      if [[ "${PLATFORM}" == "windows" ]]; then
+        echo "tcp tls ws wss inproc"
+      else
+        echo "tcp tls ws wss inproc ipc"
+      fi
+      ;;
+  esac
+}
+
+transport_enabled() {
+  local transport="$1"
+  if [[ "${#XPORTS_FILTER[@]}" -eq 0 ]]; then
+    return 0
+  fi
+  local candidate
+  for candidate in "${XPORTS_FILTER[@]}"; do
+    if [[ "${candidate}" == "${transport}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 {
   echo "## Effective Options (start)"
-  echo "  pattern:   ${PATTERN}"
-  echo "  recv:      ${RECV_MODE}"
-  echo "  duration:  ${DURATION}s"
-  echo "  warmup:    ${WARMUP}s"
-  echo "  msg_sizes: ${MSG_SIZES}"
-  echo "  transports: ${TRANSPORTS}"
-  echo "  runs:      ${RUNS}"
+  echo "- lang: go"
+  echo "- suite: single"
+  echo "- pattern: ${PATTERN}"
+  echo "- duration: ${DURATION}s"
+  echo "- warmup: ${WARMUP}s"
+  echo "- msg_sizes: ${MSG_SIZES}"
+  echo "- transports: ${TRANSPORTS:-auto}"
+  echo "- runs: ${RUNS}"
   echo "## Effective Options (end)"
   echo
 
   for run in $(seq 1 "${RUNS}"); do
     for pattern in "${PATTERNS[@]}"; do
-      for transport in "${XPORTS[@]}"; do
+      read -r -a PATTERN_XPORTS <<< "$(pattern_transports "${pattern}")"
+      for transport in "${PATTERN_XPORTS[@]}"; do
+        if ! transport_enabled "${transport}"; then
+          continue
+        fi
         for size in "${SIZES[@]}"; do
-          go run ./perf/single \
-            --pattern "${pattern}" \
-            --transport "${transport}" \
-            --msg-size "${size}" \
-            --duration "${DURATION}" \
-            --recv "${RECV_MODE}"
+          script -qec "go run ./perf/single --pattern ${pattern} --transport ${transport} --msg-size ${size} --duration ${DURATION}" /dev/null
         done
       done
     done
   done
-} | tee "${tee_args[@]}"
+} > "${RESULTS_FILE}"
+
+if [[ -n "${OUTPUT_FILE}" ]]; then
+  cp "${RESULTS_FILE}" "${OUTPUT_FILE}"
+fi
+
+cat "${RESULTS_FILE}"
 
 echo "Results saved to: ${RESULTS_FILE}"

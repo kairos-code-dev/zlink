@@ -46,16 +46,12 @@ public sealed record PerfOptions(
         if (args.Length < 3)
             return false;
 
-        string recvMode = PerfEnv.ReadString("PERF_RECV_MODE", "callback");
-        if (!recvMode.Equals("callback", StringComparison.OrdinalIgnoreCase))
-            return false;
-
         string pattern = PerfShared.NormalizePattern(args[0]);
         string transport = args[1];
         if (!int.TryParse(args[2], out int size))
             return false;
 
-        options = CreateSingle(pattern, transport, Math.Max(1, size), recvMode);
+        options = CreateSingle(pattern, transport, Math.Max(1, size), "recv");
         return true;
     }
 
@@ -70,9 +66,8 @@ public sealed record PerfOptions(
             if (!int.TryParse(args[3], out int size))
                 return false;
 
-            string recvMode = FindOption(args, "--recv", "recv");
             options = CreateMulti(PerfExecutionKind.MultiServer, pattern,
-                transport, Math.Max(1, size), string.Empty, recvMode);
+                transport, Math.Max(1, size), string.Empty, "recv");
             return true;
         }
 
@@ -84,14 +79,13 @@ public sealed record PerfOptions(
             if (!int.TryParse(args[3], out int size))
                 return false;
 
-            string recvMode = FindOption(args, "--recv", "recv");
             string endpoint = FindOption(args, "--endpoint", string.Empty);
             endpoint = endpoint?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(endpoint))
                 return false;
 
             options = CreateMulti(PerfExecutionKind.MultiClient, pattern,
-                transport, Math.Max(1, size), endpoint, recvMode);
+                transport, Math.Max(1, size), endpoint, "recv");
             return true;
         }
 
@@ -137,7 +131,7 @@ public sealed record PerfOptions(
 
     public static PerfOptions FromSinglePattern(string pattern)
     {
-        return CreateSingle(pattern, string.Empty, 1, "callback");
+        return CreateSingle(pattern, string.Empty, 1, "recv");
     }
 
     public static PerfOptions CreateMulti(PerfExecutionKind kind, string pattern,
@@ -181,7 +175,7 @@ public sealed record PerfOptions(
     public static PerfOptions FromMultiPattern(string pattern)
     {
         return CreateMulti(PerfExecutionKind.MultiServer, pattern,
-            string.Empty, 1, string.Empty, PerfEnv.ReadString("PERF_RECV_MODE", "recv"));
+            string.Empty, 1, string.Empty, "recv");
     }
 
     public int ResolveSingleHwm(string specificName)

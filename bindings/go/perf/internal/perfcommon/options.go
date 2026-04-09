@@ -2,18 +2,7 @@ package perfcommon
 
 import "time"
 
-type RecvMode string
-
-const (
-	RecvModeRecv     RecvMode = "recv"
-	RecvModeCallback RecvMode = "callback"
-
-	DefaultSocketTimeout = 500 * time.Millisecond
-)
-
-func (m RecvMode) String() string {
-	return string(m)
-}
+const DefaultSocketTimeout = 500 * time.Millisecond
 
 func ConfigureRoundTripSocket(socket interface {
 	SetRecvTimeout(time.Duration) error

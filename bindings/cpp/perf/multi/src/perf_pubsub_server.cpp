@@ -166,18 +166,6 @@ bool perf_pubsub_server (const std::string &transport, size_t msg_size)
                     msg_size,
                     run_id,
                     seq,
-                    perf_metric::phase_warmup,
-                    std::chrono::seconds (std::max (0, settings.warmup_seconds)),
-                    true,
-                    settings))
-        return false;
-    if (!run_phase (publisher.sock (),
-                    poller,
-                    events,
-                    payload,
-                    msg_size,
-                    run_id,
-                    seq,
                     perf_metric::phase_active,
                     std::chrono::seconds (std::max (1, settings.duration_seconds)),
                     true,

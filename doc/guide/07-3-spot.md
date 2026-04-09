@@ -318,7 +318,67 @@ internal changes stay within narrow boundaries.
 Multipart publish uses the shared `multipart_send_txn` module to provide
 whole-message guarantees (all-or-nothing).
 
-## 6. Delivery Policy
+## 6. Peer Publish Batching
+
+SpotNode supports optional internal batching of small messages on the peer
+publish path (`mesh_pub`). When enabled, the sender accumulates small
+messages per topic into a single batch frame before sending to peers.
+The receiver unpacks the batch internally and delivers individual logical
+messages through the normal callback/recv path.
+
+This is a **transparent internal optimization** -- application-visible
+publish/subscribe/callback contracts are unchanged. The receiver sees the
+same logical messages in the same order.
+
+### Enabling
+
+Batching is disabled by default. To enable, set the `PEER_BATCH_ENABLE`
+option on SpotNode before bind:
+
+```c
+int enabled = 1;
+zlink_set_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
+                 &enabled, sizeof(enabled));
+```
+
+**v1 constraint:** All SpotNodes in the mesh must be the same binary
+generation (homogeneous deployment). There is no runtime capability
+negotiation. Enabling batching in a mixed-version mesh may cause
+misinterpretation of batch frames.
+
+### Configuration
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `PEER_BATCH_ENABLE` | false | Enable peer batching (operator opt-in) |
+| `PEER_BATCH_DELAY_MS` | 20 | Max delay before topic bucket flush (ms) |
+| `PEER_BATCH_MAX_MESSAGES` | 32 | Max messages per bucket before flush |
+| `PEER_BATCH_MAX_BYTES` | 65536 | Max bytes per bucket before flush |
+| `PEER_BATCH_BYPASS_BYTES` | 65536 | Messages at or above this size bypass batching |
+| `PEER_UNBATCH_MAX_MESSAGES_PER_TURN` | 32 | Max messages to unbatch per I/O turn |
+| `PEER_UNBATCH_MAX_BYTES_PER_TURN` | 65536 | Max bytes to unbatch per I/O turn |
+
+### Behavior
+
+- **Local fanout** is always immediate -- batching applies only to the peer path.
+- **Same-topic ordering** is preserved across batch, bypass, and flush paths.
+- **Oversized messages** (>= `BYPASS_BYTES`) are sent immediately. If a
+  pending bucket exists for the same topic, it is flushed first to maintain order.
+- **Flush triggers:** delay timeout, max messages, max bytes, or shutdown/drain.
+
+### Wire Format
+
+Batch frames use the original topic subject (no reserved internal subject).
+A batch frame consists of exactly 3 parts:
+
+1. **Header** (12 bytes): magic `0x31544253` ("SBT1"), version, flags, header_size
+2. **Metadata** (16 bytes): message_count, total_payload_bytes, encoded_bytes, reserved
+3. **Body** (variable): concatenated encoded logical messages
+
+The receiver validates magic, version, and header_size before treating a
+frame as a batch. Non-matching frames are processed as regular messages.
+
+## 7. Delivery Policy
 
 - Local publish (`spot`) distributes to local SPOT Subs + sends out via PUB (remote propagation)
 - Remote receive (SUB) distributes to local SPOT Subs only (no re-publishing)
@@ -333,7 +393,7 @@ whole-message guarantees (all-or-nothing).
 SPOT is a live pub/sub system. It does not guarantee durable delivery,
 ack/retry, exactly-once semantics, or past message replay for late joiners.
 
-## 7. Cleanup
+## 8. Cleanup
 
 ```c
 zlink_spot_destroy(&spot);

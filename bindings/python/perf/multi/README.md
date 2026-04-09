@@ -45,20 +45,16 @@ required by the perf policy and execution guide.
 ## Transport And Receive Modes
 
 - transport: `tcp`
-- `recv` mode: all patterns
-- `callback` mode: `MULTI_SPOT`, `MULTI_STREAM`
 
-The allowed callback subset is intentionally narrow because the suite should
-reflect the real public cost model, not force callback support where the public
-surface is not canonical.
+The suite uses the recv path only.
 
 ## Verification
 
 Normal smoke path:
 
 ```bash
-./perf/multi/run_benchmarks.sh --pattern PUBSUB --msg-sizes 64 --clients 2 --warmup 0.1 --duration 0.2
+./perf/multi/run_benchmarks.sh --pattern PUBSUB --msg-sizes 64 --clients 2 --duration 0.2
 ```
 
 Output must contain `RESULT,current,...` lines for the selected pattern.
-Saved reports must use `results/multi/report/perf_<platform>_<recv_mode>_...txt`.
+Saved reports must use `results/multi/report/perf_<lang>_<suite>_<platform>_...txt`.

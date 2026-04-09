@@ -91,6 +91,10 @@ async function waitForExit(processRef) {
   return code;
 }
 
+async function flushProcessOutput() {
+  await new Promise((resolve) => setTimeout(resolve, 50));
+}
+
 async function terminateProcessTree(processRef, timeoutMs = 5000) {
   if (processRef.exitCode !== null || processRef.signalCode !== null) {
     return;
@@ -181,42 +185,37 @@ async function spawnMultiPair(serverScript, clientScript, args) {
   const clientPath = path.join(__dirname, clientScript);
   const resultLines = [];
   let endpoint;
+  let controlEndpoint;
   let sharedArgs;
   let server;
 
   if (args.pattern === 'MULTI_SPOT') {
-    const basePort = 32000 + ((process.pid % 1000) * 8);
-    let started = false;
-    let lastError = null;
-    for (let offset = 0; offset < 64; offset += 1) {
-      const port = nextSpotCandidatePort(basePort, offset, 64);
-      endpoint = `tcp://127.0.0.1:${port}`;
-      sharedArgs = [
-        '--endpoint', endpoint,
-        '--msg-size', String(args.msgSize),
-        '--warmup', String(args.warmup),
-        '--duration', String(args.duration),
-        '--clients', String(args.clients),
-        '--recv', args.recv
-      ];
-      server = spawn(process.execPath, [serverPath, ...sharedArgs], {
-        cwd: process.cwd(),
-        stdio: ['pipe', 'pipe', 'pipe'],
-        detached: true
-      });
-      attachProcessCapture(server, resultLines);
-      try {
-        await waitForLine(server, `READY,${endpoint}`, serverScript, 3000);
-        started = true;
-        break;
-      } catch (error) {
-        lastError = error;
-        await terminateProcessTree(server, 1000);
+    endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    controlEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    sharedArgs = [
+      '--endpoint', endpoint,
+      '--control-endpoint', controlEndpoint,
+      '--msg-size', String(args.msgSize),
+      '--warmup', String(args.warmup),
+      '--duration', String(args.duration),
+      '--clients', String(args.clients)
+    ];
+    server = spawn(process.execPath, [serverPath, ...sharedArgs], {
+      cwd: process.cwd(),
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: true
+    });
+    collectLines(server.stdout, (line) => {
+      if (!line.startsWith('CONTROL_CONNECTED,')) {
+        return;
       }
-    }
-    if (!started) {
-      throw lastError || new Error('failed to start spot server');
-    }
+      if (client && client.stdin.writable) {
+        client.stdin.write(`${line}\n`);
+      }
+    });
+    attachProcessCapture(server, resultLines);
+    await waitForLine(server, `READY,${endpoint}`, serverScript, 5000);
+    await waitForLine(server, `CONTROL_READY,${controlEndpoint}`, serverScript, 5000);
   } else {
     const port = await reservePort();
     endpoint = `tcp://127.0.0.1:${port}`;
@@ -225,8 +224,7 @@ async function spawnMultiPair(serverScript, clientScript, args) {
       '--msg-size', String(args.msgSize),
       '--warmup', String(args.warmup),
       '--duration', String(args.duration),
-      '--clients', String(args.clients),
-      '--recv', args.recv
+      '--clients', String(args.clients)
     ];
     server = spawn(process.execPath, [serverPath, ...sharedArgs], {
       cwd: process.cwd(),
@@ -239,20 +237,27 @@ async function spawnMultiPair(serverScript, clientScript, args) {
 
   const client = spawn(process.execPath, [clientPath, ...sharedArgs], {
     cwd: process.cwd(),
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [args.pattern === 'MULTI_SPOT' ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     detached: true
   });
+  if (args.pattern === 'MULTI_SPOT') {
+    collectLines(client.stdout, (line) => {
+      if (!line.startsWith('CLIENT_CONTROL_ENDPOINT,')) {
+        return;
+      }
+      const endpoint = line.slice('CLIENT_CONTROL_ENDPOINT,'.length);
+      if (endpoint && server.stdin.writable) {
+        server.stdin.write(`CONNECT_CONTROL,${endpoint}\n`);
+      }
+    });
+  }
   attachProcessCapture(client, resultLines);
   const clientReadyLine = args.pattern === 'MULTI_SPOT'
     ? `CLIENT_READY,${args.msgSize}`
     : 'CLIENT_READY';
   await waitForLine(client, clientReadyLine, clientScript, 10000);
 
-  if (args.pattern === 'MULTI_SPOT') {
-    server.stdin.write(`START,${args.msgSize}\n`);
-  } else {
-    server.stdin.write('GO\n');
-  }
+  server.stdin.write(`START,${args.msgSize}\n`);
   const firstExit = await Promise.race([
     waitForExit(client).then((code) => ({ side: 'client', code })),
     waitForExit(server).then((code) => ({ side: 'server', code }))
@@ -265,9 +270,11 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     await Promise.allSettled([terminateProcessTree(server, 1000), terminateProcessTree(client, 1000)]);
     throw new Error(`client failed (${clientScript}): ${firstExit.code}`);
   }
+  await flushProcessOutput();
 
   try {
     await stopServer(server, serverScript);
+    await flushProcessOutput();
     return resultLines;
   } finally {
     await Promise.allSettled([terminateProcessTree(server, 1000), terminateProcessTree(client, 1000)]);

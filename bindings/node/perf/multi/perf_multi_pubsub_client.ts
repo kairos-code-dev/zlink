@@ -6,9 +6,11 @@ const zlink = require('../../dist');
 const {
   createMetricCollector,
   decodeMetricHeader,
+  currentEpochUs,
   summarizeMetrics
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
+const { drainRecvSocket, waitForConnectionReady } = require('./perf_multi_runtime');
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
@@ -29,30 +31,31 @@ async function main() {
     for (let i = 0; i < options.clients; i += 1) {
       const sub = new zlink.SubSocket(ctx);
       sub.setSubscription('perf.topic');
-      sub.connect(options.endpoint);
-      (async () => {
-        while (!stop) {
-          const received = sub.trySubscribe();
-          if (!received) {
-            await new Promise((resolve) => setImmediate(resolve));
-            continue;
-          }
-          const header = decodeMetricHeader(received.parts[0].data);
-          if (!header) {
-            continue;
-          }
-          if (header.phase === 1) {
-            stopCount += 1;
-            if (stopCount >= options.clients) {
-              stopResolve();
-            }
-            continue;
-          }
-          collector.record(header, process.hrtime.bigint());
-        }
-      })();
       subs.push(sub);
     }
+
+    for (const sub of subs) {
+      await waitForConnectionReady(sub, () => sub.connect(options.endpoint));
+    }
+
+    const recvTasks = subs.map((sub) => drainRecvSocket(
+      sub,
+      (received) => {
+        const header = decodeMetricHeader(received.parts[0].data);
+        if (!header) {
+          return;
+        }
+        if (header.phase === 2) {
+          stopCount += 1;
+          if (stopCount >= options.clients) {
+            stopResolve();
+          }
+          return;
+        }
+        collector.record(header, currentEpochUs());
+      },
+      () => stop
+    ));
 
     console.log('CLIENT_READY');
     await Promise.race([
@@ -60,6 +63,7 @@ async function main() {
       new Promise((resolve) => setTimeout(resolve, Math.ceil((options.warmup + options.duration + 2) * 1000)))
     ]);
     stop = true;
+    await Promise.all(recvTasks);
     const result = await collector.finish();
     const resultLines = summarizeMetrics(
       'MULTI_PUBSUB',

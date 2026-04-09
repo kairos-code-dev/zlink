@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../dist');
 const { parseMultiArgs } = require('./perf_multi_common');
+const { drainRecvSocket } = require('./perf_multi_runtime');
 function frame(buffer) {
     const framed = Buffer.allocUnsafe(buffer.length + 4);
     framed.writeUInt32BE(buffer.length, 0);
@@ -51,28 +52,8 @@ async function main() {
     };
     try {
         stream.bind(options.endpoint);
-        if (options.recv === 'callback') {
-            stream.onReceive((routingId, parts) => {
-                processReceived({ routingId, parts });
-            });
-        }
+        receiveLoop = drainRecvSocket(stream, processReceived, () => stop);
         console.log(`READY,${options.endpoint}`);
-        if (options.recv !== 'callback') {
-            receiveLoop = (async () => {
-                while (!stop) {
-                    try {
-                        const received = stream.recv();
-                        processReceived(received);
-                    }
-                    catch (error) {
-                        if (stop) {
-                            return;
-                        }
-                        throw error;
-                    }
-                }
-            })();
-        }
         const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         for await (const line of rl) {
             if (line === 'STOP') {
@@ -84,12 +65,9 @@ async function main() {
     }
     finally {
         if (receiveLoop) {
-            await receiveLoop.catch(() => { });
+            await receiveLoop;
         }
-        try {
-            stream.close();
-        }
-        catch (_) { }
+        stream.close();
         ctx.close();
     }
 }

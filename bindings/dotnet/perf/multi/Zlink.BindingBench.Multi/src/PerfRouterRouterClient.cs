@@ -196,10 +196,11 @@ internal static class PerfRouterRouterClient
             + (long)Math.Max(readyTimeoutMs, 100) * Stopwatch.Frequency / 1000;
         while (HasPendingReplies(slots))
         {
-            int timeoutMs = Math.Min(pollTimeoutMs,
-                RemainingMilliseconds(deadlineTicks));
+            int timeoutMs = RemainingMilliseconds(deadlineTicks);
+            if (pollTimeoutMs > 0)
+                timeoutMs = Math.Min(pollTimeoutMs, timeoutMs);
             if (timeoutMs <= 0)
-                return false;
+                timeoutMs = 1;
             if (PollSocketEvents(pollManager, sockets, eventMasks,
                     timeoutMs) <= 0)
                 continue;

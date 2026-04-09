@@ -21,6 +21,8 @@ class fq_t
     fq_t ();
     ~fq_t ();
 
+    typedef array_t<pipe_t, 1> pipes_t;
+
     void attach (pipe_t *pipe_);
     void deactivate (pipe_t *pipe_);
     void activated (pipe_t *pipe_);
@@ -31,10 +33,8 @@ class fq_t
     bool has_in ();
 
   private:
-    bool has_pipe (pipe_t *pipe_);
-
-    //  Inbound pipes.
-    typedef array_t<pipe_t, 1> pipes_t;
+    bool try_get_pipe_index (pipe_t *pipe_, pipes_t::size_type *index_out_);
+    void normalize_state ();
     pipes_t _pipes;
 
     //  Number of active pipes. All the active pipes are located at the

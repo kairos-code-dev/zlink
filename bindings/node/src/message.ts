@@ -3,11 +3,31 @@
 import { normalizeBufferLike } from './buffer_like';
 import type { BufferLike } from './buffer_like';
 
+/** Message type constants for request-reply envelope. */
+export const MsgType = Object.freeze({
+  Data: 0,
+  Request: 1,
+  Reply: 2,
+} as const);
+
+/** Minimum user-defined metadata key. */
+export const METADATA_KEY_USER_MIN = 0x0100;
+/** Maximum metadata value size in bytes. */
+export const METADATA_VALUE_MAX = 65535;
+
+/** Request-reply information extracted from a message. */
+export interface RequestInfo {
+  readonly msgType: number;
+  readonly correlationId: bigint;
+}
+
 /** @internal */
 export interface MessageSnapshot {
   data: Buffer;
   refCount?: number;
   properties?: Readonly<Record<string, string>>;
+  requestInfo?: RequestInfo;
+  metadata?: Readonly<Map<number, Buffer>>;
 }
 
 function normalizeMessageProperties(
@@ -20,20 +40,27 @@ function normalizeMessageProperties(
 }
 
 const EMPTY_PROPERTIES: Readonly<Record<string, string>> = Object.freeze({});
+const EMPTY_METADATA: Readonly<Map<number, Buffer>> = Object.freeze(new Map<number, Buffer>());
 
 export class Message {
   private readonly _buffer: Buffer;
   private readonly _refCount: number;
   private readonly _properties: Readonly<Record<string, string>>;
+  private readonly _requestInfo: RequestInfo;
+  private readonly _metadata: Readonly<Map<number, Buffer>>;
 
   private constructor(
     buffer: Buffer,
     refCount = 1,
-    properties?: Readonly<Record<string, string>>
+    properties?: Readonly<Record<string, string>>,
+    requestInfo?: RequestInfo,
+    metadata?: Readonly<Map<number, Buffer>>
   ) {
     this._buffer = buffer;
     this._refCount = refCount | 0;
     this._properties = normalizeMessageProperties(properties);
+    this._requestInfo = requestInfo ?? { msgType: MsgType.Data, correlationId: BigInt(0) };
+    this._metadata = metadata ?? EMPTY_METADATA;
     Object.freeze(this);
   }
 
@@ -46,7 +73,9 @@ export class Message {
     return new Message(
       snapshot.data,
       snapshot.refCount ?? 1,
-      snapshot.properties
+      snapshot.properties,
+      snapshot.requestInfo,
+      snapshot.metadata
     );
   }
 
@@ -70,6 +99,16 @@ export class Message {
     return Object.prototype.hasOwnProperty.call(this._properties, name)
       ? this._properties[name]
       : null;
+  }
+
+  /** Get request-reply information (msgType and correlationId). */
+  getRequestInfo(): RequestInfo {
+    return this._requestInfo;
+  }
+
+  /** Get a metadata value by key. Returns null if absent. */
+  getMetadata(key: number): Buffer | null {
+    return this._metadata.get(key) ?? null;
   }
 
   refCount(): number {

@@ -13,10 +13,12 @@ import java.util.concurrent.CountDownLatch;
 
 public final class PerfUtil {
     public static final int PHASE_UNKNOWN = -1;
-    public static final int PHASE_ACTIVE = 0;
-    public static final int PHASE_STOP = 1;
-    public static final int PHASE_PROBE = 2;
-    public static final int HEADER_SIZE = 32;
+    public static final int PHASE_WARMUP = 0;
+    public static final int PHASE_ACTIVE = 1;
+    public static final int PHASE_COOLDOWN = 2;
+    @Deprecated public static final int PHASE_STOP = PHASE_COOLDOWN;
+    @Deprecated public static final int PHASE_PROBE = PHASE_WARMUP;
+    public static final int HEADER_SIZE = 29;
 
     private PerfUtil() {
     }
@@ -212,8 +214,13 @@ public final class PerfUtil {
         return PerfReport.ensureResultsDir(root, suite, leaf);
     }
 
+    public static String resultFileName(String lang, String suite, String platform, String tag) {
+        return PerfReport.resultFileName(lang, suite, platform, tag);
+    }
+
+    @Deprecated
     public static String resultFileName(String platform, String recvMode, String tag) {
-        return PerfReport.resultFileName(platform, recvMode, tag);
+        return PerfReport.resultFileName("java", recvMode, platform, tag);
     }
 
     public static long nowUs() {

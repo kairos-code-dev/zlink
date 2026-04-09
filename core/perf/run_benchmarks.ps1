@@ -6,7 +6,6 @@ param(
     [switch]$Build,
     [string]$ResultsDir = "",
     [string]$ResultsTag = "",
-    [string]$Recv = "",
     [string]$Duration = "",
     [string]$Hwm = "",
     [string]$SendHwm = "",
@@ -39,7 +38,6 @@ Options:
   -ResultsDir PATH             Override result root directory.
   -ResultsTag NAME             Optional tag in saved result filename.
   -Runs N                      Iterations per pattern/transport/size (default: 1).
-  -Recv MODE                   Receive model: recv (default: recv).
   -Duration N                  Override single duration seconds (default: 5).
   -Hwm N                       Override PERF_SINGLE_HWM (default: 1000 in binary).
   -SendHwm N                   Override PERF_SINGLE_SNDHWM (fallback: -Hwm).
@@ -67,16 +65,6 @@ if ($Help) {
 $UseReuseBuild = -not $Build.IsPresent
 if ($IoThreads -and $IoThreads -notmatch '^\d+$') {
     throw "IoThreads must be a non-negative integer."
-}
-if (-not $Recv) {
-    $Recv = $env:PERF_RECV_MODE
-}
-if (-not $Recv) {
-    $Recv = "recv"
-}
-$Recv = $Recv.Trim().ToLowerInvariant()
-if ($Recv -ne "recv") {
-    throw "Recv must be 'recv'."
 }
 if ($Duration -and $Duration -notmatch '^\d+$') {
     throw "Duration must be a positive integer."
@@ -181,7 +169,7 @@ if ($ResultsDir) {
 
 $ResultFile = ""
 $Timestamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
-$Name = "perf_windows_${Recv}_${Timestamp}"
+$Name = "perf_core_single_windows_${Timestamp}"
 if ($ResultsTag) {
     $Name = "${Name}_${ResultsTag}"
 }
@@ -354,9 +342,6 @@ if (-not $PythonExe) {
 Write-Host "Using Python: $PythonExe"
 
 $RunArgs = @($Pattern, "--build-dir", $BuildDir, "--runs", $Runs.ToString())
-if ($Recv) {
-    $RunArgs += @("--recv", $Recv)
-}
 if ($PinCpu) {
     $RunArgs += "--pin-cpu"
 }
@@ -370,7 +355,6 @@ if ($ResultsTag) {
 $RunArgs += @("--result-file", $ResultFile)
 
 $RunEnv = @{}
-$RunEnv["PERF_RECV_MODE"] = $Recv
 if (-not $IoThreads) { $IoThreads = $env:PERF_IO_THREADS }
 if (-not $MsgSizes) { $MsgSizes = $env:PERF_MSG_SIZES }
 if (-not $Transports) { $Transports = $env:PERF_TRANSPORTS }
@@ -457,7 +441,6 @@ Show-EffectiveOption "build_mode" $BuildMode
 Show-EffectiveOption "reuse_build" $(if ($UseReuseBuild) { "1" } else { "0" })
 Show-EffectiveOption "clean_build" $(if ($UseReuseBuild) { "0" } else { "1" })
 Show-EffectiveOption "runs" $Runs.ToString()
-Show-EffectiveOption "recv_mode" $Recv
 Show-EffectiveOption "duration_seconds" $Duration
 Show-EffectiveOption "hwm" (Get-ValueOrDefault -Value $Hwm -DefaultValue "default(binary)")
 Show-EffectiveOption "send_hwm" (Get-ValueOrDefault -Value $EffectiveSendHwm -DefaultValue "default(binary)")

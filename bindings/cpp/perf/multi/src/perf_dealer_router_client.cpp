@@ -25,7 +25,6 @@ static const char k_payload_fill = 'r';
 
 struct phase_config_t
 {
-    int warmup_seconds;
     int active_seconds;
 };
 
@@ -83,19 +82,12 @@ class dealer_router_client_bench_t
         _socket_states.reserve (_settings.clients);
         _poll_events.reserve (_settings.clients);
 
-        _phase_cfg.warmup_seconds = std::max (0, _settings.warmup_seconds);
         _phase_cfg.active_seconds = std::max (1, _settings.duration_seconds);
     }
 
     bool run ()
     {
         if (!setup_sockets ())
-            return false;
-
-        if (!run_phase (perf_metric::phase_warmup,
-                        _phase_cfg.warmup_seconds,
-                        &_result.warmup_count,
-                        NULL))
             return false;
 
         _resource_probe_start = perf::multi::start_resource_probe ();

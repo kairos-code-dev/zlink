@@ -21,8 +21,8 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	pubMon := perfcommon.OpenMonitor(publisher)
 	defer pubMon.Close()
 
-	endpoint := perfcommon.UniqueTCPEndpoint("perf-multi-pubsub")
-	perfcommon.Must(publisher.Bind(endpoint))
+	perfcommon.Must(perfcommon.ConfigureTLSServer(publisher, cfg.transport))
+	endpoint := perfcommon.BindAndResolveEndpoint(publisher, cfg.transport, "perf-multi-pubsub")
 
 	stats := perfcommon.NewStats()
 	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
@@ -34,6 +34,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 			perfcommon.Must(fmt.Errorf("multi pubsub create sub socket[%d]: %w", i, err))
 		}
 		subs = append(subs, sub)
+		perfcommon.Must(perfcommon.ConfigureTLSClient(sub, cfg.transport))
 		if err := sub.SetRecvHWM(100); err != nil {
 			perfcommon.Must(fmt.Errorf("multi pubsub set recv hwm[%d]: %w", i, err))
 		}
@@ -47,17 +48,6 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 			perfcommon.Must(fmt.Errorf("multi pubsub subscribe[%d]: %w", i, err))
 		}
 
-		if cfg.recvMode == "callback" {
-			perfcommon.Must(sub.OnSubscribe(func(message *zlink.TopicMessage) {
-				defer message.Close()
-				part, err := message.SinglePartOrError()
-				if err != nil {
-					return
-				}
-				perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
-			}))
-			continue
-		}
 	}
 	defer func() {
 		for _, sub := range subs {
@@ -67,25 +57,23 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	recvDone := make(chan struct{})
-	if cfg.recvMode == "recv" {
-		go func() {
-			defer close(recvDone)
-			for time.Now().Before(window.StopAt) {
-				if !drainMultiPubSubAvailable(subs, stats, window.ActiveAt, window.StopAt) {
-					time.Sleep(50 * time.Microsecond)
-				}
+	go func() {
+		defer close(recvDone)
+		for time.Now().Before(window.StopAt) {
+			if !drainMultiPubSubAvailable(subs, stats, window.ActiveAt, window.StopAt) {
+				time.Sleep(50 * time.Microsecond)
 			}
-		}()
-	}
+		}
+	}()
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampPayload(payload)
 		msg, err := zlink.NewMessage(payload)
 		if err != nil {
 			perfcommon.Must(fmt.Errorf(
-				"multi pubsub create payload message size=%d clients=%d recv=%s: %w",
+				"multi pubsub create payload message size=%d clients=%d transport=%s: %w",
 				cfg.msgSize,
 				cfg.clients,
-				cfg.recvMode,
+				cfg.transport,
 				err,
 			))
 		}
@@ -95,10 +83,10 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 				continue
 			}
 			perfcommon.Must(fmt.Errorf(
-				"multi pubsub publish size=%d clients=%d recv=%s: %w",
+				"multi pubsub publish size=%d clients=%d transport=%s: %w",
 				cfg.msgSize,
 				cfg.clients,
-				cfg.recvMode,
+				cfg.transport,
 				err,
 			))
 		}
@@ -106,9 +94,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 			time.Sleep(250 * time.Microsecond)
 		}
 	}
-	if cfg.recvMode == "recv" {
-		<-recvDone
-	}
+	<-recvDone
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
 

@@ -4,7 +4,9 @@ package dev.kairoscode.zlink.perf.multi;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.SendResult;
+import dev.kairoscode.zlink.SocketPollSet;
 import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.io.BufferedReader;
@@ -13,7 +15,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class PerfMultiStream {
@@ -21,67 +22,57 @@ final class PerfMultiStream {
     }
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
-        PerfUtil.validateMultiRecvMode(config);
         AtomicBoolean stopRequested = new AtomicBoolean(false);
         ArrayDeque<PendingReply> pending = new ArrayDeque<>();
         Object pendingLock = new Object();
         Thread controlWatcher = startControlWatcher(stopRequested, pendingLock);
 
         try (Context ctx = PerfUtil.newContext(config);
-             StreamSocket server = new StreamSocket(ctx)) {
+             StreamSocket server = new StreamSocket(ctx);
+             SocketPollSet pollSet = SocketPollSet.fromSockets(
+                 List.of(server), PollEventType.POLLIN.getValue())) {
             PerfUtil.applySocketOptions(server, config);
             PerfUtil.configureServerTls(server, config.transport());
             server.options().notify(true);
             server.options().sendTimeout(java.time.Duration.ZERO);
             server.options().recvTimeout(java.time.Duration.ZERO);
             server.bind(config.endpoint());
-            server.onSendReady(() -> {
-                synchronized (pendingLock) {
-                    flushPending(server, pending);
-                }
-            });
 
-            if ("callback".equalsIgnoreCase(config.recvMode())) {
-                server.onReceive(received -> {
-                    try (received) {
-                        synchronized (pendingLock) {
-                            enqueueReply(received, pending);
-                            flushPending(server, pending);
+            while (!stopRequested.get() || !pending.isEmpty()) {
+                synchronized (pendingLock) {
+                    pollSet.setEvents(0, pending.isEmpty()
+                        ? PollEventType.POLLIN.getValue()
+                        : PollEventType.POLLIN.getValue()
+                        | PollEventType.POLLOUT.getValue());
+                }
+                pollSet.poll(100);
+                if (pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
+                    while (true) {
+                        var maybe = server.tryRecv();
+                        if (maybe.isEmpty()) {
+                            break;
+                        }
+                        try (var received = maybe.orElseThrow()) {
+                            synchronized (pendingLock) {
+                                enqueueReply(received, pending);
+                            }
                         }
                     }
-                });
-                PerfUtil.join(controlWatcher, "stream control watcher",
-                    Duration.ofSeconds(30));
-            } else if ("recv".equalsIgnoreCase(config.recvMode())) {
-                while (!stopRequested.get()) {
-                    Optional<dev.kairoscode.zlink.Received> maybe = server.tryRecv();
-                    if (maybe.isEmpty()) {
-                        synchronized (pendingLock) {
-                            flushPending(server, pending);
-                        }
-                        continue;
-                    }
-                    try (var received = maybe.orElseThrow()) {
-                        synchronized (pendingLock) {
-                            enqueueReply(received, pending);
-                        }
-                    }
+                }
+                if (pollSet.isReady(0, PollEventType.POLLOUT.getValue())) {
                     synchronized (pendingLock) {
                         flushPending(server, pending);
                     }
                 }
             }
-
-            synchronized (pendingLock) {
-                flushPending(server, pending);
-            }
             return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
                 config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
+        } finally {
+            controlWatcher.interrupt();
         }
     }
 
     static PerfUtil.Result runClient(PerfUtil.Config config) {
-        PerfUtil.validateMultiRecvMode(config);
         return PerfUtil.Result.unsupported("shared_core_stream_client", config);
     }
 
@@ -115,10 +106,7 @@ final class PerfMultiStream {
             return;
         }
         byte[] payload = received.firstPart().toByteArray();
-        if (payload.length == 0) {
-            return;
-        }
-        if (isStopTokenPayload(payload)) {
+        if (payload.length == 0 || isStopTokenPayload(payload)) {
             return;
         }
         pending.addLast(new PendingReply(received.routingId(), payload));

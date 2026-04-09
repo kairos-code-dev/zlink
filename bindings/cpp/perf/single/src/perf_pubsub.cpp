@@ -98,28 +98,6 @@ void run_pattern_pubsub (const std::string &transport,
     const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_us ());
     uint64_t seq = 1;
 
-    const int warmup_count =
-      perf::single::resolve_bench_count ("PERF_WARMUP_COUNT", 1000);
-    unsigned long long warmup_received = 0;
-    if (!perf::single::run_subscribe_callback_phase (receiver_cb,
-                                                     &send_pubsub_payload,
-                                                     &publisher_socket,
-                                                     payload,
-                                                     msg_size,
-                                                     run_id,
-                                                     seq,
-                                                     perf_single_metric::phase_warmup,
-                                                     warmup_count,
-                                                     0,
-                                                     recv_timeout,
-                                                     k_topic,
-                                                     &warmup_received,
-                                                     NULL)) {
-        perf::single::print_fail_result (
-          lib_name, "PUBSUB", transport, msg_size, &queue_probe);
-        return;
-    }
-
     const int duration_s =
       std::max (1, perf::single::resolve_single_duration_seconds ());
     unsigned long long received = 0;

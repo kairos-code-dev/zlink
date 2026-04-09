@@ -9,7 +9,6 @@ STREAM_CLIENT="${REPO_DIR}/core/build/bin/perf_stream_client"
 source "$HOME/.cargo/env" 2>/dev/null || true
 
 PATTERN="ALL"
-RECV_MODE="recv"
 DURATION="${PERF_MULTI_DURATION_SECONDS:-5}"
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp}"
@@ -26,7 +25,6 @@ Usage: bindings/rust/perf/run_benchmarks_multi.sh [options]
 Options:
   -h, --help
   --pattern NAME
-  --recv MODE
   --duration N
   --msg-sizes LIST
   --transports LIST
@@ -48,7 +46,6 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         --pattern)     PATTERN="$2";     shift 2 ;;
-        --recv)        RECV_MODE="$2";   shift 2 ;;
         --duration)    DURATION="$2";    shift 2 ;;
         --msg-sizes)   MSG_SIZES="$2";   shift 2 ;;
         --transports)  TRANSPORTS="$2";  shift 2 ;;
@@ -72,7 +69,7 @@ case "$(uname -s)" in
 esac
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 TAG_SUFFIX=""; [[ -n "${RESULTS_TAG}" ]] && TAG_SUFFIX="_${RESULTS_TAG}"
-RESULTS_FILE="${RESULTS_DIR}/perf_${PLATFORM}_${RECV_MODE}_${TIMESTAMP}${TAG_SUFFIX}.txt"
+RESULTS_FILE="${RESULTS_DIR}/perf_rust_multi_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
 mkdir -p "${RESULTS_DIR}"
 
 prune_reports() {
@@ -98,12 +95,10 @@ prune_reports() {
 
 normalize_patterns() {
     local raw="${1:-ALL}"
-    local recv_mode="${2:-recv}"
-    python3 - "${raw}" "${recv_mode}" <<'PY'
+    python3 - "${raw}" <<'PY'
 import sys
 
 raw = sys.argv[1].upper()
-recv_mode = sys.argv[2].lower()
 allowed = {
     "DEALER_DEALER",
     "DEALER_ROUTER",
@@ -114,10 +109,7 @@ allowed = {
 }
 
 if raw == "ALL":
-    if recv_mode == "callback":
-        print("MULTI_SPOT,MULTI_STREAM")
-    else:
-        print("MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM")
+    print("MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM")
     raise SystemExit(0)
 
 items = []
@@ -129,8 +121,6 @@ for token in raw.split(","):
         value = value[len("MULTI_"):]
     if value not in allowed:
         raise SystemExit(f"unsupported multi pattern: {value}")
-    if recv_mode == "callback" and value not in {"SPOT", "STREAM"}:
-        raise SystemExit(f"callback recv mode is unsupported for pattern MULTI_{value}")
     items.append(f"MULTI_{value}")
 
 if not items:
@@ -147,7 +137,7 @@ export LD_LIBRARY_PATH="${PROJECT_DIR}/native/linux-x86_64:${LD_LIBRARY_PATH:-}"
 (cd "${SCRIPT_DIR}/multi" && cargo build --release --quiet)
 BIN_DIR="${SCRIPT_DIR}/multi/target/release"
 
-PATTERN="$(normalize_patterns "${PATTERN}" "${RECV_MODE}")"
+PATTERN="$(normalize_patterns "${PATTERN}")"
 IFS=',' read -ra PATTERNS <<< "${PATTERN}"
 
 IFS=',' read -ra SIZE_LIST <<< "${MSG_SIZES}"
@@ -218,7 +208,7 @@ for run in $(seq 1 "${RUNS}"); do
                 SERVER_BIN="${BIN_DIR}/perf_multi_stream_server"
                 CLIENT_BIN="" ;;
             *)
-                echo "UNSUPPORTED,rust,${pat},unknown,pattern not implemented"
+                echo "UNSUPPORTED,rust,${pat},unknown"
                 continue ;;
         esac
 
@@ -314,13 +304,13 @@ for run in $(seq 1 "${RUNS}"); do
 done
 
 python3 - "${TMP_METRICS}" "${TMP_CASES}" "${RESULTS_FILE}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
-  "${RECV_MODE}" "${CLIENTS}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" <<'PY'
+  "${CLIENTS}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" <<'PY'
 import csv
 import math
 import sys
 from collections import defaultdict
 
-metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, recv_mode, clients, runs, duration, results_tag, output_path = sys.argv[1:]
+metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, output_path = sys.argv[1:]
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 rows = defaultdict(lambda: defaultdict(list))
@@ -392,12 +382,12 @@ def emit(line=""):
 
 def emit_effective_options(section):
     emit(f"## Effective Options ({section})")
+    emit("- lang: rust")
     emit("- suite: multi")
     emit(f"- runs: {runs}")
     emit(f"- patterns: {pattern_csv}")
     emit(f"- transports: {transports_csv}")
     emit(f"- msg_sizes: {msg_sizes_csv}")
-    emit(f"- recv_mode: {recv_mode}")
     emit(f"- clients: {clients}")
     emit("- pin_cpu: off")
     emit(f"- duration_seconds: {duration}")

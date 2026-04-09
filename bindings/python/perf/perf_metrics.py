@@ -1,12 +1,10 @@
 import importlib
 import math
 import os
-import queue
 import socket
 import statistics
 import struct
 import sys
-import threading
 import time
 import uuid
 from datetime import datetime
@@ -14,85 +12,92 @@ from pathlib import Path
 
 
 DEFAULT_READY_TIMEOUT_MS = 5000
-DEFAULT_QUEUE_CAPACITY = 65536
+HEADER_MAGIC = 0x5A4C4E4B
+HEADER_FORMAT = "<IIBIQq"
+HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 _zlink = None
+_run_id = None
+_seq = 0
 
 
-class CallbackMetrics:
-    def __init__(self, *, capacity=DEFAULT_QUEUE_CAPACITY, phase_filter=None):
-        self._queue = queue.Queue(maxsize=capacity)
-        self._active = threading.Event()
-        self._stop = threading.Event()
-        self._ready = threading.Event()
-        self._count = 0
-        self._latencies = []
-        self._error = None
-        self._phase_filter = phase_filter
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
+def _current_run_id():
+    global _run_id
+    if _run_id is None:
+        _run_id = uuid.uuid4().int & 0xFFFFFFFF
+    return _run_id
 
-    def _run(self):
-        while not self._stop.is_set() or not self._queue.empty():
-            try:
-                sample = self._queue.get(timeout=0.1)
-            except queue.Empty:
-                continue
-            self._count += 1
-            self._latencies.append(sample)
-            self._queue.task_done()
 
-    @property
-    def count(self):
-        return self._count
+def benchmark_run_id():
+    return _current_run_id()
 
-    @property
-    def latencies(self):
-        return list(self._latencies)
 
-    def on_payload(self, payload, phase=None):
-        self._ready.set()
-        if self._phase_filter is not None and phase != self._phase_filter:
-            return
-        if not self._active.is_set() or self._error is not None:
-            return
-        try:
-            self._queue.put_nowait(latency_us_from_message(payload))
-        except queue.Full:
-            self._error = RuntimeError("callback metric queue overflow")
+def _next_seq():
+    global _seq
+    seq = _seq
+    _seq += 1
+    return seq
 
-    def activate(self):
-        self._active.set()
 
-    def deactivate(self):
-        self._active.clear()
-
-    def wait_ready(self, timeout_s):
-        return self._ready.wait(timeout_s)
-
-    def finish(self):
-        self._stop.set()
-        self._queue.join()
-        self._thread.join(timeout=1.0)
-        if self._error is not None:
-            raise self._error
-        return self.count, self.latencies
+def decode_header(data):
+    if len(data) < HEADER_SIZE:
+        return None
+    magic, run_id, phase, msg_size, seq, sent_ts_us = struct.unpack_from(
+        HEADER_FORMAT, data, 0
+    )
+    return {
+        "magic": magic,
+        "run_id": run_id,
+        "phase": phase,
+        "msg_size": msg_size,
+        "seq": seq,
+        "sent_ts_us": sent_ts_us,
+    }
 
 
 def latency_us_from_message(data):
-    sent_ns = struct.unpack_from("!Q", data, 0)[0]
-    return (time.perf_counter_ns() - sent_ns) / 1000.0
+    header = decode_header(data)
+    if header is None or header["magic"] != HEADER_MAGIC:
+        raise RuntimeError("invalid perf message header")
+    now_us = time.time_ns() // 1000
+    return float(now_us - header["sent_ts_us"])
+
+
+def is_active_message(data, *, expected_msg_size=None, run_id=None):
+    header = decode_header(data)
+    if header is None:
+        return False
+    if header["magic"] != HEADER_MAGIC:
+        return False
+    if header["phase"] != 1:
+        return False
+    if expected_msg_size is not None and header["msg_size"] != expected_msg_size:
+        return False
+    if run_id is not None and header["run_id"] != run_id:
+        return False
+    return True
 
 
 def payload_phase(data):
-    if len(data) < 12:
+    header = decode_header(data)
+    if header is None:
         return 0
-    return struct.unpack_from("!I", data, 8)[0]
+    return header["phase"]
 
 
-def stamp_payload(payload, phase=0):
-    struct.pack_into("!Q", payload, 0, time.perf_counter_ns())
-    if len(payload) >= 12:
-        struct.pack_into("!I", payload, 8, int(phase))
+def stamp_payload(payload, phase=0, *, run_id=None, seq=None):
+    header_run_id = _current_run_id() if run_id is None else (run_id & 0xFFFFFFFF)
+    header_seq = _next_seq() if seq is None else seq
+    struct.pack_into(
+        HEADER_FORMAT,
+        payload,
+        0,
+        HEADER_MAGIC,
+        header_run_id,
+        int(phase),
+        len(payload),
+        int(header_seq),
+        int(time.time_ns() // 1000),
+    )
     return payload
 
 
@@ -140,46 +145,38 @@ def tcp_endpoint(prefix="perf"):
 
 def wait_socket_event(socket_obj, event_mask, *, timeout_ms=DEFAULT_READY_TIMEOUT_MS):
     zlink_mod = _require_zlink()
-    deadline = time.perf_counter() + (timeout_ms / 1000.0)
     with socket_obj.monitor_open(event_mask) as monitor:
-        with zlink_mod.Poller() as poller:
-            poller.add_socket(monitor, zlink_mod.PollEvent.POLLIN)
-            while True:
-                remaining_ms = max(0, int((deadline - time.perf_counter()) * 1000))
-                if remaining_ms == 0:
+        return wait_monitor_event(monitor, event_mask, timeout_ms=timeout_ms)
+
+
+def wait_monitor_event(monitor, event_mask, *, timeout_ms=DEFAULT_READY_TIMEOUT_MS):
+    zlink_mod = _require_zlink()
+    deadline = time.perf_counter() + (timeout_ms / 1000.0)
+    with zlink_mod.Poller() as poller:
+        poller.add_socket(monitor, zlink_mod.PollEvent.POLLIN)
+        while True:
+            remaining_ms = max(0, int((deadline - time.perf_counter()) * 1000))
+            if remaining_ms == 0:
+                raise RuntimeError(
+                    f"timed out waiting for socket monitor event {int(event_mask)}"
+                )
+            try:
+                events = poller.poll(remaining_ms)
+            except zlink_mod.ZlinkError as exc:
+                if exc.errno == 11:
+                    events = []
+                else:
+                    raise
+            if not events:
+                if time.perf_counter() >= deadline:
                     raise RuntimeError(
                         f"timed out waiting for socket monitor event {int(event_mask)}"
                     )
-                try:
-                    events = poller.poll(remaining_ms)
-                except zlink_mod.ZlinkError as exc:
-                    if exc.errno == 11:
-                        events = []
-                    else:
-                        raise
-                if not events:
-                    if time.perf_counter() >= deadline:
-                        raise RuntimeError(
-                            f"timed out waiting for socket monitor event {int(event_mask)}"
-                        )
-                    continue
-                event = monitor.recv()
-                if int(event.event) != int(event_mask):
-                    continue
-                if getattr(event, "value", 1) > 0:
-                    return event
-
-
-def wait_send_ready(socket_obj, *, timeout_s=DEFAULT_READY_TIMEOUT_MS / 1000.0):
-    ready = threading.Event()
-
-    def _mark_ready(_):
-        ready.set()
-
-    socket_obj.on_send_ready(_mark_ready)
-    if not ready.wait(timeout_s):
-        raise RuntimeError("timed out waiting for send-ready")
-    return ready
+                continue
+            event = monitor.recv()
+            if not (int(event.event) & int(event_mask)):
+                continue
+            return event
 
 
 def _require_zlink():
@@ -208,14 +205,6 @@ def _wait_for_poll_event(socket_obj, events, *, timeout_ms):
         raise RuntimeError(f"timed out waiting for poll event {int(events)}")
 
 
-def wait_pubsub_ready(publisher, subscriber, *, timeout_ms=DEFAULT_READY_TIMEOUT_MS):
-    _wait_for_poll_event(publisher, _require_zlink().PollEvent.POLLOUT, timeout_ms=timeout_ms)
-
-
-def wait_connected_pair(left, right, *, timeout_ms=DEFAULT_READY_TIMEOUT_MS):
-    _wait_for_poll_event(right, _require_zlink().PollEvent.POLLOUT, timeout_ms=timeout_ms)
-
-
 # ---------------------------------------------------------------------------
 # Reporting helpers (shared by single & multi runners)
 # ---------------------------------------------------------------------------
@@ -237,20 +226,20 @@ def resolve_results_dir(base_dir, suite):
     return Path(base_dir)
 
 
-def build_report_path(*, suite, recv_mode, results_dir=None, tag=None):
+def build_report_path(*, lang, suite, results_dir=None, tag=None):
     report_dir = resolve_results_dir(results_dir, suite)
     report_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     suffix = f'_{tag}' if tag else ''
-    return report_dir / f'perf_{platform_name()}_{recv_mode}_{timestamp}{suffix}.txt'
+    return report_dir / f'perf_{lang}_{suite}_{platform_name()}_{timestamp}{suffix}.txt'
 
 
-def ensure_report_path(suite, recv_mode, tag=None):
+def ensure_report_path(lang, suite, tag=None):
     report_dir = Path(__file__).resolve().parent / 'results' / suite / 'report'
     report_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     suffix = f'_{tag}' if tag else ''
-    return report_dir / f'perf_{platform_name()}_{recv_mode}_{timestamp}{suffix}.txt'
+    return report_dir / f'perf_{lang}_{suite}_{platform_name()}_{timestamp}{suffix}.txt'
 
 
 def write_report(path, *, options, output, status, expected_result_lines, actual_result_lines):

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"time"
 
 	"zlink"
@@ -18,67 +20,120 @@ func runPair(cfg benchmarkConfig) perfcommon.Result {
 	client, err := ctx.PairSocket()
 	perfcommon.Must(err)
 	defer client.Close()
+	serverMon := perfcommon.OpenMonitor(server)
+	defer serverMon.Close()
+	clientMon := perfcommon.OpenMonitor(client)
+	defer clientMon.Close()
 
-	endpoint := perfcommon.UniqueTCPEndpoint("perf-pair")
-	perfcommon.Must(server.Bind(endpoint))
+	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
+	perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
+	perfcommon.ApplySingleHWM(server)
+	perfcommon.ApplySingleHWM(client)
+	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-pair")
 	perfcommon.Must(client.Connect(endpoint))
-	perfcommon.Must(client.SetRecvTimeout(500 * time.Millisecond))
-	perfcommon.Must(client.SetSendTimeout(500 * time.Millisecond))
-	startPairEchoServer(server, cfg.recvMode)
+	perfcommon.ApplySingleBenchmarkSocketOptions(server, cfg.transport)
+	perfcommon.ApplySingleBenchmarkSocketOptions(client, cfg.transport)
+	perfcommon.WaitConnected(serverMon, clientMon)
+	startPairEchoServer(server, cfg.transport)
 
 	stats := perfcommon.NewStats()
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
+	usePollingRecv := true
 
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampPayload(payload)
 		err := client.Send(perfcommon.NewMessage(payload))
 		if err != nil {
+			if perfcommon.DebugEnabled() {
+				fmt.Fprintf(os.Stderr, "pair client send error: %v\n", err)
+			}
 			if perfcommon.IsTransient(err) {
 				continue
 			}
 			perfcommon.Must(err)
 		}
-		reply, err := client.Recv()
-		if err != nil {
-			if perfcommon.IsTransient(err) {
+		var reply *zlink.Received
+		if usePollingRecv {
+			reply, err = client.Recv()
+			if err != nil {
+				if perfcommon.DebugEnabled() {
+					fmt.Fprintf(os.Stderr, "pair client recv error: %v\n", err)
+				}
+				if perfcommon.IsTransient(err) {
+					continue
+				}
+				perfcommon.Must(err)
+			}
+			if reply == nil {
 				continue
 			}
-			perfcommon.Must(err)
 		}
 		part, err := reply.SinglePartOrError()
 		perfcommon.Must(err)
 		perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
-		perfcommon.Must(reply.Close())
+		if err := reply.Close(); err != nil {
+			if perfcommon.DebugEnabled() {
+				fmt.Fprintf(os.Stderr, "pair client reply close error: %v\n", err)
+			}
+			perfcommon.Must(err)
+		}
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
 
-func startPairEchoServer(server *zlink.PairSocket, recvMode string) {
-	if recvMode == "callback" {
-		perfcommon.Must(server.OnReceive(func(received *zlink.Received) {
-			defer received.Close()
-			perfcommon.Must(server.Send(perfcommon.CloneMessages(received.Parts())...))
-		}))
-		return
-	}
-
-	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
+func startPairEchoServer(server *zlink.PairSocket, transport string) {
+	usePollingRecv := true
 	go func() {
+		iter := 0
 		for {
-			received, err := server.Recv()
-			if err != nil {
-				if perfcommon.IsTransient(err) {
+			var received *zlink.Received
+			var err error
+			if usePollingRecv {
+				received, err = server.Recv()
+				if err != nil {
+					if perfcommon.DebugEnabled() {
+						fmt.Fprintf(os.Stderr, "pair server recv error: %v\n", err)
+					}
+					if perfcommon.IsTransient(err) {
+						continue
+					}
+					return
+				}
+				if received == nil {
 					continue
 				}
-				return
+			} else {
+				received, err = server.Recv()
+				if err != nil {
+					if perfcommon.DebugEnabled() {
+						fmt.Fprintf(os.Stderr, "pair server recv error: %v\n", err)
+					}
+					if perfcommon.IsTransient(err) {
+						time.Sleep(100 * time.Microsecond)
+						continue
+					}
+					return
+				}
+			}
+			iter++
+			if perfcommon.DebugEnabled() && iter%10000 == 0 {
+				fmt.Fprintf(os.Stderr, "pair server received %d messages\n", iter)
 			}
 			err = server.Send(perfcommon.CloneMessages(received.Parts())...)
 			if err != nil && !perfcommon.IsTransient(err) {
+				if perfcommon.DebugEnabled() {
+					fmt.Fprintf(os.Stderr, "pair server send error: %v\n", err)
+				}
 				perfcommon.Must(err)
 			}
-			perfcommon.Must(received.Close())
+			if err := received.Close(); err != nil {
+				if perfcommon.DebugEnabled() {
+					fmt.Fprintf(os.Stderr, "pair server received close error: %v\n", err)
+				}
+				perfcommon.Must(err)
+			}
 		}
 	}()
 }

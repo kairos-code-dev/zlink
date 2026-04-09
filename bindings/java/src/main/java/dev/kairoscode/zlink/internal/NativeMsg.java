@@ -75,6 +75,16 @@ public final class NativeMsg {
             FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSG_REFCNT = downcall("zlink_msg_refcnt",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_MSG_SET_REQUEST = downcall("zlink_msg_set_request",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_MSG_SET_REPLY = downcall("zlink_msg_set_reply",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_MSG_GET_REQUEST_INFO = downcall("zlink_msg_get_request_info",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_MSG_SET_METADATA = downcall("zlink_msg_set_metadata",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_MSG_GET_METADATA = downcall("zlink_msg_get_metadata",
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSG_GETS = downcall("zlink_msg_gets",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSGV_CLOSE = downcallAny(
@@ -155,6 +165,46 @@ public final class NativeMsg {
             return (int) MH_MSG_REFCNT.invokeExact(msg);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_msg_refcnt failed", t);
+        }
+    }
+
+    public static int msgSetRequest(MemorySegment msg, long correlationId) {
+        try {
+            return (int) MH_MSG_SET_REQUEST.invokeExact(msg, correlationId);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_msg_set_request failed", t);
+        }
+    }
+
+    public static int msgSetReply(MemorySegment msg, long correlationId) {
+        try {
+            return (int) MH_MSG_SET_REPLY.invokeExact(msg, correlationId);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_msg_set_reply failed", t);
+        }
+    }
+
+    public static int msgGetRequestInfo(MemorySegment msg, MemorySegment typeOut, MemorySegment correlationIdOut) {
+        try {
+            return (int) MH_MSG_GET_REQUEST_INFO.invokeExact(msg, typeOut, correlationIdOut);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_msg_get_request_info failed", t);
+        }
+    }
+
+    public static int msgSetMetadata(MemorySegment msg, short key, MemorySegment value, long valueSize) {
+        try {
+            return (int) MH_MSG_SET_METADATA.invokeExact(msg, key, value, valueSize);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_msg_set_metadata failed", t);
+        }
+    }
+
+    public static MemorySegment msgGetMetadata(MemorySegment msg, short key, MemorySegment sizeOut) {
+        try {
+            return (MemorySegment) MH_MSG_GET_METADATA.invokeExact(msg, key, sizeOut);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_msg_get_metadata failed", t);
         }
     }
 

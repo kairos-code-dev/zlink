@@ -82,9 +82,7 @@ PIN_CPU=0
 PERF_IO_THREADS="${PERF_IO_THREADS:-}"
 PERF_MSG_SIZES="${PERF_MSG_SIZES:-}"
 PERF_TRANSPORTS="${PERF_TRANSPORTS:-}"
-RECV_MODE="${PERF_RECV_MODE:-callback}"
 SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
-SINGLE_WARMUP_SECONDS="${PERF_SINGLE_WARMUP_SECONDS:-2}"
 SINGLE_HWM="${PERF_SINGLE_HWM:-}"
 SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
 SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
@@ -115,9 +113,7 @@ Options:
   --results-dir PATH          Override result root directory.
   --results-tag NAME          Optional tag in saved result filename.
   --runs N                    Iterations per pattern/transport/size (default: 1).
-  --recv MODE                 Receive model: callback (default: callback).
   --duration N                Override single duration seconds (default: 5).
-  --warmup N                  Override single warmup seconds (default: 2).
   --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
   --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
   --recv-hwm N                Override PERF_SINGLE_RCVHWM (fallback: --hwm).
@@ -134,7 +130,7 @@ Options:
 
 Notes:
   - result is saved under results/<single|multi>/report/ as
-    perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt.
+    perf_cpp_<suite>_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt.
   - default build mode is incremental (configure/build without deleting build dir).
   - --output and result save can be used together.
   - single mode rejects multi patterns; run_benchmarks_multi.sh enables multi mode.
@@ -228,16 +224,8 @@ while [[ $# -gt 0 ]]; do
       RUNS_EXPLICIT=1
       shift
       ;;
-    --recv)
-      RECV_MODE="${2:-}"
-      shift
-      ;;
     --duration)
       SINGLE_DURATION_SECONDS="${2:-}"
-      shift
-      ;;
-    --warmup)
-      SINGLE_WARMUP_SECONDS="${2:-}"
       shift
       ;;
     --hwm)
@@ -389,10 +377,6 @@ if [[ -n "${SINGLE_DURATION_SECONDS}" && ( ! "${SINGLE_DURATION_SECONDS}" =~ ^[0
   echo "duration must be a positive integer." >&2
   exit 1
 fi
-if [[ -n "${SINGLE_WARMUP_SECONDS}" && ( ! "${SINGLE_WARMUP_SECONDS}" =~ ^[0-9]+$ || "${SINGLE_WARMUP_SECONDS}" -lt 1 ) ]]; then
-  echo "warmup must be a positive integer." >&2
-  exit 1
-fi
 if [[ -n "${SINGLE_HWM}" && ( ! "${SINGLE_HWM}" =~ ^[0-9]+$ || "${SINGLE_HWM}" -lt 1 ) ]]; then
   echo "hwm must be a positive integer." >&2
   exit 1
@@ -421,10 +405,6 @@ if [[ -z "${RUNS}" || ! "${RUNS}" =~ ^[0-9]+$ || "${RUNS}" -lt 1 ]]; then
   echo "Runs must be a positive integer." >&2
   exit 1
 fi
-if [[ "${RECV_MODE}" != "recv" && "${RECV_MODE}" != "callback" ]]; then
-  echo "recv mode must be 'recv' or 'callback'." >&2
-  exit 1
-fi
 
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
 ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
@@ -443,14 +423,14 @@ if [[ -n "${RESULTS_DIR}" ]]; then
   RESULTS_DIR="$(realpath -m "${RESULTS_DIR}")"
 fi
 
-TS="$(date +%Y%m%d_%H%M%S)"
-NAME="perf_${PLATFORM}_${RECV_MODE}_${TS}"
-if [[ -n "${RESULTS_TAG}" ]]; then
-  NAME="${NAME}_${RESULTS_TAG}"
-fi
 RESULT_SUITE="single"
 if (( PATTERN_COUNT > 0 )); then
   RESULT_SUITE="multi"
+fi
+TS="$(date +%Y%m%d_%H%M%S)"
+NAME="perf_cpp_${RESULT_SUITE}_${PLATFORM}_${TS}"
+if [[ -n "${RESULTS_TAG}" ]]; then
+  NAME="${NAME}_${RESULTS_TAG}"
 fi
 RESULT_FILE="${RESULTS_DIR}/${RESULT_SUITE}/report/${NAME}.txt"
 
@@ -667,7 +647,6 @@ RUN_CMD+=("--result-file" "${RESULT_FILE}")
 
 RUN_ENV=()
 RUN_ENV+=(PYTHONUNBUFFERED=1)
-RUN_ENV+=(PERF_RECV_MODE="${RECV_MODE}")
 if [[ -n "${PERF_IO_THREADS}" ]]; then
   RUN_ENV+=(PERF_IO_THREADS="${PERF_IO_THREADS}")
 fi
@@ -679,9 +658,6 @@ if [[ -n "${PERF_TRANSPORTS}" ]]; then
 fi
 if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_DURATION_SECONDS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_DURATION_SECONDS="${SINGLE_DURATION_SECONDS}")
-fi
-if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_WARMUP_SECONDS}" ]]; then
-  RUN_ENV+=(PERF_SINGLE_WARMUP_SECONDS="${SINGLE_WARMUP_SECONDS}")
 fi
 if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_HWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_HWM="${SINGLE_HWM}")
@@ -734,7 +710,6 @@ if [[ -z "${ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM:-}" && -n "${EFFECTIVE_SEND_HWM}
 fi
 DISPLAY_PATTERN_CSV="${PATTERN_CSV}"
 DISPLAY_DURATION_SECONDS="${SINGLE_DURATION_SECONDS}"
-DISPLAY_WARMUP_SECONDS="${SINGLE_WARMUP_SECONDS}"
 DISPLAY_HWM="${SINGLE_HWM}"
 DISPLAY_SEND_HWM="${EFFECTIVE_SEND_HWM}"
 DISPLAY_RECV_HWM="${EFFECTIVE_RECV_HWM}"
@@ -745,7 +720,6 @@ DISPLAY_RCVTIMEO_MS="${SINGLE_RCVTIMEO_MS}"
 if [[ "${PERF_ALLOW_MULTI:-0}" == "1" ]]; then
   DISPLAY_PATTERN_CSV="$(display_pattern_csv "${PATTERN_LIST[@]}")"
   DISPLAY_DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-${SINGLE_DURATION_SECONDS}}"
-  DISPLAY_WARMUP_SECONDS="${PERF_MULTI_WARMUP_SECONDS:-${SINGLE_WARMUP_SECONDS}}"
   DISPLAY_HWM="${PERF_MULTI_HWM:-}"
   DISPLAY_SEND_HWM="${PERF_MULTI_SNDHWM:-${DISPLAY_HWM}}"
   DISPLAY_RECV_HWM="${PERF_MULTI_RCVHWM:-${DISPLAY_HWM}}"
@@ -768,9 +742,9 @@ print_effective_option "build_mode" "${BUILD_MODE}"
 print_effective_option "reuse_build" "$( [[ "${BUILD_MODE}" == "reuse" ]] && echo 1 || echo 0 )"
 print_effective_option "clean_build" "$( [[ "${BUILD_MODE}" == "clean" ]] && echo 1 || echo 0 )"
 print_effective_option "runs" "${RUNS}"
-print_effective_option "recv_mode" "${RECV_MODE}"
+print_effective_option "lang" "cpp"
+print_effective_option "suite" "${RESULT_SUITE}"
 print_effective_option "duration_seconds" "${DISPLAY_DURATION_SECONDS}"
-print_effective_option "warmup_seconds" "${DISPLAY_WARMUP_SECONDS}"
 print_effective_option "hwm" "$(value_or_default "${DISPLAY_HWM}" "default(binary)")"
 print_effective_option "send_hwm" "$(value_or_default "${DISPLAY_SEND_HWM}" "default(binary)")"
 print_effective_option "recv_hwm" "$(value_or_default "${DISPLAY_RECV_HWM}" "default(binary)")"

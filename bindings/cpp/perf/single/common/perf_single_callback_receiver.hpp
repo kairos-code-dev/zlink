@@ -129,6 +129,8 @@ class subscribe_callback_receiver_t
     void worker_loop ();
 
     queue_probe_t *_queue_probe;
+    perf_socket_t *_socket;
+    zlink::service::spot_t *_spot;
     std::vector<event_t> _queue;
     size_t _queue_head;
     size_t _queue_tail;

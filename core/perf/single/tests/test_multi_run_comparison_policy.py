@@ -52,18 +52,15 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         )
 
     def test_result_filename_uses_current_mode_label(self):
-        old_value = os.environ.get("PERF_RECV_MODE")
+        old_allow_multi = RC.ALLOW_MULTI
         try:
-            os.environ["PERF_RECV_MODE"] = "recv"
+            RC.ALLOW_MULTI = True
             self.assertRegex(
                 RC.build_result_filename("tag"),
-                r"^perf_[a-z]+_recv_\d{8}_\d{6}_tag\.txt$",
+                r"^perf_core_multi_[a-z]+_\d{8}_\d{6}_tag\.txt$",
             )
         finally:
-            if old_value is None:
-                os.environ.pop("PERF_RECV_MODE", None)
-            else:
-                os.environ["PERF_RECV_MODE"] = old_value
+            RC.ALLOW_MULTI = old_allow_multi
 
     def test_expand_pattern_aliases_ordered_preserves_request_order(self):
         self.assertEqual(
@@ -118,9 +115,9 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                 os.environ.pop(key, None)
             self.assertEqual(RC.pattern_default_clients("DEALER_DEALER"), 100)
             self.assertEqual(RC.pattern_default_clients("STREAM"), 10000)
-            self.assertEqual(RC.pattern_default_hwm("DEALER_DEALER"), 1000)
-            self.assertEqual(RC.pattern_default_hwm("STREAM"), 1000)
-            self.assertEqual(RC.pattern_default_io_threads("DEALER_DEALER"), 4)
+            self.assertEqual(RC.pattern_default_hwm("DEALER_DEALER"), 100)
+            self.assertEqual(RC.pattern_default_hwm("STREAM"), 10)
+            self.assertEqual(RC.pattern_default_io_threads("DEALER_DEALER"), 2)
             self.assertEqual(RC.pattern_default_io_threads("STREAM"), 4)
         finally:
             RC.ALLOW_MULTI = old_allow_multi

@@ -6,7 +6,6 @@ param(
     [switch]$Build,
     [string]$ResultsDir = "",
     [string]$ResultsTag = "",
-    [string]$Recv = "recv",
     [switch]$Callback,
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
@@ -63,9 +62,8 @@ Options:
   -Build                       Force clean build (default is reuse-build).
   -ResultsDir PATH             Override result root directory.
   -ResultsTag NAME             Optional tag appended to result filename.
-  -Recv MODE                   Receive model: recv (default: recv).
   -IoThreads N                 Set PERF_IO_THREADS.
-                               Default multi io-threads are 4.
+                               Default multi io-threads are non-stream=2, stream=4.
   -MsgSizes LIST               Comma-separated sizes.
   -Transports LIST             Comma-separated transports.
   -PinCpu                      Enable PERF_TASKSET=1.
@@ -103,10 +101,7 @@ if ($ServerBindPort -lt 0 -or $ServerBindPort -gt 65535) {
     throw "ServerBindPort must be in range 0..65535."
 }
 if ($IoThreads -and $IoThreads -notmatch '^\d+$') { throw "IoThreads must be a non-negative integer." }
-if (-not $Recv) { $Recv = "recv" }
-$Recv = $Recv.Trim().ToLowerInvariant()
 if ($Callback.IsPresent) { throw "-Callback is no longer supported." }
-if ($Recv -ne "recv") { throw "Recv must be 'recv'." }
 if ($Hwm -and ($Hwm -notmatch '^\d+$' -or [int]$Hwm -lt 1)) { throw "Hwm must be a positive integer." }
 if ($SendHwm -and ($SendHwm -notmatch '^\d+$' -or [int]$SendHwm -lt 1)) { throw "SendHwm must be a positive integer." }
 if ($RecvHwm -and ($RecvHwm -notmatch '^\d+$' -or [int]$RecvHwm -lt 1)) { throw "RecvHwm must be a positive integer." }
@@ -192,8 +187,7 @@ if (-not (Test-Path $BenchComparisonScript)) {
 $RunEnv = @{}
 $RunEnv["PERF_ALLOW_MULTI"] = "1"
 $RunEnv["PERF_POLICY"] = "1"
-$RunEnv["PERF_RECV_MODE"] = $Recv
-$RunEnv["PERF_MULTI_DEFAULT_IO_THREADS"] = "4"
+$RunEnv["PERF_MULTI_DEFAULT_IO_THREADS"] = "2"
 $RunEnv["PERF_MULTI_DURATION_SECONDS"] = $Duration.ToString()
 $RunEnv["PERF_MULTI_SNDTIMEO_MS"] = $SendTimeoutMs
 $RunEnv["PERF_MULTI_RCVTIMEO_MS"] = $RecvTimeoutMs
@@ -265,7 +259,6 @@ $RunArgs = @(
     $PatternCsv,
     "--build-dir", $BuildDir,
     "--runs", $Runs.ToString(),
-    "--recv", $Recv,
     "--duration", $Duration.ToString()
 )
 if ($ResultsDir) { $RunArgs += @("--results-dir", $ResultsDir) }

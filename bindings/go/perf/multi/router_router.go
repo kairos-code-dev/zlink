@@ -20,9 +20,9 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 
 	serverID, err := zlink.NewRoutingID([]byte("SERVER"))
 	perfcommon.Must(err)
-	endpoint := perfcommon.UniqueTCPEndpoint("perf-multi-router-router")
+	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
 	perfcommon.Must(server.SetRoutingID(serverID))
-	perfcommon.Must(server.Bind(endpoint))
+	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-multi-router-router")
 	startMultiRouterEchoServer(server)
 
 	stats := perfcommon.NewStats()
@@ -41,6 +41,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 		client, err := clientCtx.RouterSocket()
 		perfcommon.Must(err)
 		clientMon := perfcommon.OpenMonitor(client)
+		perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
 
 		clientID, err := zlink.NewRoutingID([]byte(fmt.Sprintf("router-%06d", i)))
 		perfcommon.Must(err)

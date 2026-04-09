@@ -1349,6 +1349,9 @@ bindings/README.md Naming Policy를 따른다. canonical 이름:
 - send 오류 시 코루틴 버전과 콜백 버전 모두 동일한 오류 종류 확인
 
 ### Regression Tests
+
+#### Dispatch / Pending Map 회귀
+
 - request timeout 후 뒤늦게 도착한 reply가 discard되는지 확인
   (다음 request의 reply로 잘못 매칭되지 않아야 함)
 - 다수 concurrent request 중 일부만 timeout되고 나머지는 정상 resolve 확인
@@ -1363,6 +1366,36 @@ bindings/README.md Naming Policy를 따른다. canonical 이름:
 - 콜백 버전에서 callback 내 예외가 소켓 상태를 오염시키지 않는지 확인
 - default timeout 변경 후 기존 pending request에 영향 없이
   새 request에만 적용되는지 확인
+
+#### Dispatch와 Envelope Interaction 회귀
+
+> core C API의 envelope 단위/Wire 테스트는
+> [`MSG_REQUEST_REPLY_SPEC.md`](../doc/spec/message/MSG_REQUEST_REPLY_SPEC.md)
+> 섹션 10,
+> [`MSG_METADATA_SPEC.md`](../doc/spec/message/MSG_METADATA_SPEC.md)
+> 섹션 13에 정의한다.
+> 이 섹션은 바인딩 dispatch 레이어와 envelope이 결합될 때 깨질 수 있는
+> 시나리오만 다룬다.
+
+- dispatch owner가 recv한 메시지에서 `get_request_info`로 추출한
+  msg_type/correlation_id가 pending map lookup/onRequest 분기에 정확히
+  사용되는지 확인 (envelope strip 후 dispatch 로직에 값이 전달되어야 함)
+- dispatch 활성 상태에서 DATA 메시지의 payload가 envelope 검사에 의해
+  변형되지 않는지 확인 (DATA payload를 envelope로 오인하면 안 됨)
+- REQUEST 메시지에 per-message metadata가 동시에 설정된 경우,
+  dispatch가 msg_type으로 REQUEST를 정확히 인식하고 metadata도
+  사용자에게 전달되는지 확인
+- REPLY 메시지에 per-message metadata가 동시에 설정된 경우,
+  pending map에서 correlation_id로 정확히 매칭되고 metadata도
+  resolve된 결과에 포함되는지 확인
+- onRequest handler에 전달된 메시지에서 사용자가 `getMetadata`로
+  metadata를 읽을 수 있는지 확인 (dispatch가 metadata를 소비하지 않아야 함)
+- multipart REQUEST + metadata → dispatch → onRequest handler에
+  part count가 보존되고 metadata도 접근 가능한지 확인
+- correlation_id가 0인 REQUEST 메시지가 정상 dispatch되는지 확인
+  (0은 DATA의 기본값이지만 msg_type이 REQUEST이면 유효한 request)
+- 대량 concurrent request 중 일부가 metadata를 포함하고 일부는 포함하지
+  않을 때, pending map 매칭과 metadata 전달이 각각 독립적으로 정확한지 확인
 
 ---
 

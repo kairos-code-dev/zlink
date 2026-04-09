@@ -2016,7 +2016,11 @@ def run_sizes_test_split(
                 return
             done_size = parse_client_done_size(line)
             if done_size is not None:
-                if done_size == final_size and done_size not in stop_requested_sizes:
+                if (
+                    normalize_multi_pattern_name(pattern_name) != "DEALER_DEALER"
+                    and done_size == final_size
+                    and done_size not in stop_requested_sizes
+                ):
                     try:
                         if server_proc.stdin:
                             server_proc.stdin.write("STOP\n")

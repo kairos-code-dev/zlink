@@ -146,13 +146,6 @@ inline bool run_send_window (const std::vector<void *> &sockets,
 
     std::vector<uint8_t> send_pending (sockets.size (), 0);
     std::vector<zlink_pollitem_t> poll_items (sockets.size ());
-    for (size_t i = 0; i < sockets.size (); ++i) {
-        send_pending[i] = 1;
-        poll_items[i].socket = sockets[i];
-        poll_items[i].fd = 0;
-        poll_items[i].events = ZLINK_POLLOUT;
-        poll_items[i].revents = 0;
-    }
 
     if (bench_transition_debug_enabled ()) {
         std::cerr << "[multi-dealer-dealer-client] send window begin phase="
@@ -162,17 +155,62 @@ inline bool run_send_window (const std::vector<void *> &sockets,
 
     while (!g_stop_requested.load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < deadline) {
-        for (size_t i = 0; i < poll_items.size (); ++i)
-            poll_items[i].revents = 0;
+        bool progressed = false;
+        size_t pending_count = 0;
+        for (size_t i = 0; i < sockets.size (); ++i) {
+            if (send_pending[i] != 0) {
+                ++pending_count;
+                continue;
+            }
+
+            while (!g_stop_requested.load (std::memory_order_acquire)
+                   && std::chrono::steady_clock::now () < deadline) {
+                const send_status_t send_rc = send_one_message (
+                  sockets[i],
+                  payload_size,
+                  run_id,
+                  phase,
+                  msg_size,
+                  (*seq)++);
+                if (send_rc == send_status_ok) {
+                    progressed = true;
+                    continue;
+                }
+                if (send_rc == send_status_blocked) {
+                    send_pending[i] = 1;
+                    ++pending_count;
+                    break;
+                }
+                return false;
+            }
+        }
+
+        if (std::chrono::steady_clock::now () >= deadline)
+            continue;
+        if (pending_count == 0)
+            continue;
+
+        size_t poll_count = 0;
+        for (size_t i = 0; i < sockets.size (); ++i) {
+            if (send_pending[i] == 0)
+                continue;
+            poll_items[poll_count].socket = sockets[i];
+            poll_items[poll_count].fd = 0;
+            poll_items[poll_count].events = ZLINK_POLLOUT;
+            poll_items[poll_count].revents = 0;
+            ++poll_count;
+        }
 
         const long remaining_ms =
           std::chrono::duration_cast<std::chrono::milliseconds> (
             deadline - std::chrono::steady_clock::now ())
             .count ();
+        const int poll_timeout_ms =
+          progressed ? 0 : (remaining_ms > 0 ? remaining_ms : 0);
         const int poll_rc = perf_socket_poll (
-          &poll_items[0],
-          static_cast<int> (poll_items.size ()),
-          remaining_ms > 0 ? remaining_ms : 0);
+          poll_count > 0 ? &poll_items[0] : NULL,
+          static_cast<int> (poll_count),
+          poll_timeout_ms);
         if (poll_rc < 0) {
             if (zlink_errno () == EINTR)
                 continue;
@@ -181,23 +219,15 @@ inline bool run_send_window (const std::vector<void *> &sockets,
         if (poll_rc == 0)
             continue;
 
-        for (size_t i = 0; i < sockets.size (); ++i) {
-            if ((poll_items[i].revents & ZLINK_POLLOUT) == 0
-                || send_pending[i] == 0) {
+        for (size_t i = 0; i < poll_count; ++i) {
+            if ((poll_items[i].revents & ZLINK_POLLOUT) == 0)
                 continue;
+            for (size_t si = 0; si < sockets.size (); ++si) {
+                if (sockets[si] == poll_items[i].socket) {
+                    send_pending[si] = 0;
+                    break;
+                }
             }
-
-            const send_status_t send_rc = send_one_message (
-              sockets[i],
-              payload_size,
-              run_id,
-              phase,
-              msg_size,
-              (*seq)++);
-            if (send_rc == send_status_blocked)
-                continue;
-            if (send_rc == send_status_fatal)
-                return false;
         }
     }
 
@@ -289,16 +319,6 @@ inline int run_client_benchmark (const std::string &lib_name,
         return 1;
     }
     close_client_monitors (&monitors);
-
-    if (transport == "tls" || transport == "ws" || transport == "wss") {
-        const int settle_ms =
-          std::max (250, std::min (2000, settings.connect_ready_timeout_ms / 4));
-        if (perf_socket_poll (NULL, 0, settle_ms) < 0
-            && zlink_errno () != EINTR) {
-            close_client_sockets (&sockets);
-            return 1;
-        }
-    }
 
     g_stop_requested.store (false, std::memory_order_release);
     install_signal_handlers ();

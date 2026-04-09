@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OFFICIAL_BUILD_DIR="${ROOT_DIR}/core/build"
+NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
+MAKE_BIN="$(command -v gmake || command -v make)"
 PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
 PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM"
 TRANSPORTS="tcp,tls,ws,wss"
@@ -37,6 +39,13 @@ print_total_time() {
   echo "Total benchmark time: $(format_elapsed "${elapsed}") (${elapsed}s, exit=${status})"
 }
 trap 'print_total_time $?' EXIT
+
+IS_WINDOWS=0
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    IS_WINDOWS=1
+    ;;
+esac
 
 is_uint() {
   local value="${1:-}"
@@ -917,6 +926,89 @@ RUN_ENV+=(PERF_MULTI_TRANSPORT_TRANSITION_MS="${TRANSPORT_TRANSITION_MS}")
 
 if [[ -n "${CONNECT_CONCURRENCY}" ]]; then
   RUN_ENV+=(PERF_MULTI_CONNECT_CONCURRENCY="${CONNECT_CONCURRENCY}")
+fi
+
+BUILD_DIR="${OFFICIAL_BUILD_DIR}"
+case "${BUILD_MODE}" in
+  reuse)
+    if [[ ! -d "${BUILD_DIR}" ]]; then
+      echo "Error: --reuse-build requires an existing build directory: ${BUILD_DIR}" >&2
+      exit 1
+    fi
+    echo "Reusing build directory: ${BUILD_DIR}"
+    ;;
+  clean)
+    echo "Cleaning build directory: ${BUILD_DIR}"
+    rm -rf "${BUILD_DIR}"
+    ;;
+  incremental)
+    if [[ -d "${BUILD_DIR}" ]]; then
+      echo "Using incremental build directory: ${BUILD_DIR}"
+    else
+      echo "Creating build directory: ${BUILD_DIR}"
+    fi
+    ;;
+  *)
+    echo "Error: invalid build mode: ${BUILD_MODE}" >&2
+    exit 1
+    ;;
+esac
+
+CMAKE_SOURCE_DIR="${ROOT_DIR}"
+if [[ "${BUILD_MODE}" != "reuse" && -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
+  CACHE_CMAKE_SOURCE="$(
+    sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" \
+      | tail -n 1
+  )"
+  if [[ -n "${CACHE_CMAKE_SOURCE}" && "${CACHE_CMAKE_SOURCE}" != "${CMAKE_SOURCE_DIR}" ]]; then
+    echo "Build cache source mismatch detected:"
+    echo "  cache source: ${CACHE_CMAKE_SOURCE}"
+    echo "  required source: ${CMAKE_SOURCE_DIR}"
+    echo "Resetting build directory: ${BUILD_DIR}"
+    rm -rf "${BUILD_DIR}"
+  fi
+fi
+
+echo "Using CMake source directory: ${CMAKE_SOURCE_DIR}"
+
+if [[ "${BUILD_MODE}" != "reuse" ]]; then
+  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+    CMAKE_GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
+    CMAKE_ARCH="${CMAKE_ARCH:-x64}"
+    cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
+      -G "${CMAKE_GENERATOR}" \
+      -A "${CMAKE_ARCH}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DENABLE_LTO=OFF \
+      -DBUILD_BENCHMARKS=ON \
+      -DZLINK_BUILD_TESTS=OFF \
+      -DZLINK_BUILD_BENCH_ZMQ=OFF \
+      -DZLINK_BUILD_BENCH_ZLINK=ON \
+      -DZLINK_BUILD_BENCH_BEAST=OFF \
+      -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
+      -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
+      -DZLINK_CXX_STANDARD=17
+  else
+    cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_MAKE_PROGRAM="${MAKE_BIN}" \
+      -DENABLE_LTO=OFF \
+      -DBUILD_BENCHMARKS=ON \
+      -DZLINK_BUILD_TESTS=OFF \
+      -DZLINK_BUILD_BENCH_ZMQ=OFF \
+      -DZLINK_BUILD_BENCH_ZLINK=ON \
+      -DZLINK_BUILD_BENCH_BEAST=OFF \
+      -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
+      -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
+      -DZLINK_CXX_STANDARD=17
+  fi
+
+  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+    cmake --build "${BUILD_DIR}" --config Release
+  else
+    bash "${NORMALIZE_TIMESTAMPS_SH}" "${BUILD_DIR}"
+    cmake --build "${BUILD_DIR}"
+  fi
 fi
 
 PATTERN_CSV="$(IFS=,; echo "${RUN_PATTERNS[*]}")"

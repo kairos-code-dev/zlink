@@ -2,7 +2,6 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const path = require('node:path');
-const { once } = require('node:events');
 const { spawn } = require('node:child_process');
 const { buildEffectiveOptions, defaultMultiClients, defaultMultiMsgSizes, DEFAULT_MULTI_TRANSPORTS, formatTableRows, parseCommonArgs, primaryMetricsFromResultLines, resolveMultiPatternNames, writeReport } = require('../common/perf_metrics');
 const { reservePort, } = require('./perf_multi_common');
@@ -27,29 +26,6 @@ Options:
 Notes:
   - result is saved under perf/results/multi/report/ as
     perf_node_multi_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt.`);
-}
-function attachStreamClientCapture(child, resultLines) {
-    child.stdout.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => {
-        for (const rawLine of chunk.split(/\r?\n/)) {
-            const line = rawLine.trim();
-            if (!line) {
-                continue;
-            }
-            if (line.startsWith('RESULT,current,')) {
-                resultLines.push(line);
-                continue;
-            }
-            console.log(line);
-        }
-    });
-    child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (chunk) => {
-        const text = String(chunk).trim();
-        if (text) {
-            console.error(text);
-        }
-    });
 }
 async function spawnSharedStreamPair(args) {
     const serverPath = path.join(__dirname, 'perf_multi_stream_server.js');
@@ -82,8 +58,10 @@ async function spawnSharedStreamPair(args) {
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: true
     });
-    attachStreamClientCapture(client, resultLines);
-    const [code] = await once(client, 'exit');
+    attachProcessCapture(client, resultLines, 'RESULT,current,');
+    const [code] = await new Promise((resolve) => {
+        client.once('exit', (...args) => resolve(args));
+    });
     if (code !== 0) {
         throw new Error(`shared stream client failed: ${code}`);
     }
@@ -182,7 +160,7 @@ async function main() {
             resultLines.push(...lines);
         }
         if (patternRows.length > 0) {
-            const tableLines = formatTableRows(patternRows, 'multi');
+            const tableLines = formatTableRows(patternRows);
             const needsSeparator = reportSections.length > 0;
             if (needsSeparator) {
                 reportSections.push('===============================================================================');

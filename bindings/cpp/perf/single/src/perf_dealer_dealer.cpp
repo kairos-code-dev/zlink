@@ -65,12 +65,10 @@ void run_pattern_dealer_dealer (const std::string &transport,
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
 
-    perf::single::queue_probe_t queue_probe (&conn_socket.sock (),
-                                             &bind_socket.sock ());
     perf::single::callback_receiver_t receiver_cb;
-    if (!receiver_cb.attach (bind_socket.sock (), &queue_probe)) {
+    if (!receiver_cb.attach (bind_socket.sock ())) {
         perf::single::print_fail_result (
-          lib_name, "DEALER_DEALER", transport, msg_size, &queue_probe);
+          lib_name, "DEALER_DEALER", transport, msg_size);
         return;
     }
 
@@ -95,7 +93,7 @@ void run_pattern_dealer_dealer (const std::string &transport,
                                            &received,
                                            &latency)) {
         perf::single::print_fail_result (
-          lib_name, "DEALER_DEALER", transport, msg_size, &queue_probe);
+          lib_name, "DEALER_DEALER", transport, msg_size);
         return;
     }
 
@@ -108,8 +106,7 @@ void run_pattern_dealer_dealer (const std::string &transport,
                                 throughput,
                                 latency.mean_ns,
                                 latency.p95_ns,
-                                latency.p99_ns,
-                                perf::single::sample_queue_stats (&queue_probe));
+                                latency.p99_ns);
 }
 
 int main (int argc, char **argv)

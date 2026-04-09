@@ -9,30 +9,23 @@ if perf_dir_text not in sys.path:
     sys.path.insert(0, perf_dir_text)
 
 from perf_metrics import (
-    benchmark_run_id,
     build_report_path,
-    ensure_report_path,
     latency_ns_from_message,
     new_payload,
     is_active_message,
     parse_result_lines,
-    platform_name,
     print_result_lines,
     render_effective_options,
     render_markdown_summary,
-    resolve_results_dir,
     result_metrics,
     safe_poll,
     stamp_payload,
     tcp_endpoint,
     wait_monitor_event,
-    wait_socket_event,
-    write_report,
 )
 
 
 TOPIC = b"bench"
-DEFAULT_READY_TIMEOUT_MS = 5000
 
 
 def parse_client_args(argv, *, pattern):
@@ -52,10 +45,6 @@ def parse_server_args(argv):
     parser.add_argument("--clients", type=int, default=4)
     parser.add_argument("--msg-size", type=int, default=256)
     return parser.parse_args(argv)
-
-
-def new_payload(size):
-    return bytearray(size)
 
 
 def encode_len32be(payload):

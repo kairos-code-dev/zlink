@@ -120,17 +120,17 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_STREAM_ATTACH = unsupportedLegacyDowncall("zlink_stream_attach",
+    private static final MethodHandle MH_STREAM_ATTACH = downcall("zlink_stream_attach",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_STREAM_ATTACH_RAW = unsupportedLegacyDowncall("zlink_stream_attach_raw",
+    private static final MethodHandle MH_STREAM_ATTACH_RAW = downcall("zlink_stream_attach_raw",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_STREAM_ATTACH_LEN32BE = unsupportedLegacyDowncall("zlink_stream_attach_len32be",
+    private static final MethodHandle MH_STREAM_ATTACH_LEN32BE = downcall("zlink_stream_attach_len32be",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_STREAM_DETACH = unsupportedLegacyDowncall("zlink_stream_detach",
+    private static final MethodHandle MH_STREAM_DETACH = downcall("zlink_stream_detach",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_STREAM_SEND = unsupportedLegacyDowncall("zlink_stream_send",
+    private static final MethodHandle MH_STREAM_SEND = downcall("zlink_stream_send",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_STREAM_SEND_MSG = unsupportedLegacyDowncall("zlink_stream_send_msg",
+    private static final MethodHandle MH_STREAM_SEND_MSG = downcall("zlink_stream_send_msg",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SOCKET_PEER_ROUTING_ID =
       unsupportedLegacyDowncall("zlink_socket_peer_routing_id",

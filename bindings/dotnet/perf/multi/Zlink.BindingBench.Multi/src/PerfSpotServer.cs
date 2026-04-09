@@ -12,7 +12,6 @@ internal static class PerfSpotServer
     internal static int Run(PerfOptions options)
     {
         SpotServerConfig config = BuildConfig(options);
-        _ = ResolveMultiRecvMode(options, Pattern);
         var control = new ControlState();
 
         using var ctx = new Context();
@@ -202,8 +201,8 @@ internal static class PerfSpotServer
     private static void TryConfigureSpotPublisherSocket(SpotNode node,
         PerfOptions options, int sndTimeoutMs, int rcvTimeoutMs)
     {
-        int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", options);
-        int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", options);
+        int sndHwm = options.ResolveMultiHwm("PERF_SNDHWM");
+        int rcvHwm = options.ResolveMultiHwm("PERF_RCVHWM");
         int xpubNoDrop = options.SpotXpubNoDrop > 0 ? 1 : 0;
         TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,
             SocketOptions.Linger, 0);

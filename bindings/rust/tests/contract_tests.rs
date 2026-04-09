@@ -173,7 +173,9 @@ fn request_reply_wrapper_roundtrip() {
     let dealer_socket = ctx.dealer_socket().unwrap();
     let router_send_handle = router_socket.send_handle();
     router_socket.bind("inproc://rust-request-reply").unwrap();
-    dealer_socket.connect("inproc://rust-request-reply").unwrap();
+    dealer_socket
+        .connect("inproc://rust-request-reply")
+        .unwrap();
 
     let router = RequestRouter::new(router_socket).unwrap();
     let dealer = RequestDealer::new(dealer_socket).unwrap();
@@ -189,15 +191,16 @@ fn request_reply_wrapper_roundtrip() {
         assert_eq!(msg_type, 1);
         let mut reply = Message::from_bytes(b"pong").unwrap();
         reply.set_reply(correlation_id).unwrap();
-        router_send_handle.send_to(&routing_id, vec![reply]).unwrap();
+        router_send_handle
+            .send_to(&routing_id, vec![reply])
+            .unwrap();
         done_flag.store(true, std::sync::atomic::Ordering::SeqCst);
     });
 
     dealer.request_callback_with_timeout(
         Message::from_bytes(b"ping").unwrap(),
         move |result| {
-            let payload = result
-                .map(|reply| reply.single_part().unwrap().data().to_vec());
+            let payload = result.map(|reply| reply.single_part().unwrap().data().to_vec());
             reply_tx.send(payload).unwrap();
         },
         std::time::Duration::from_secs(2),
@@ -211,7 +214,10 @@ fn request_reply_wrapper_roundtrip() {
     }
     assert!(done.load(std::sync::atomic::Ordering::SeqCst));
     assert_eq!(
-        reply_rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap().unwrap(),
+        reply_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap()
+            .unwrap(),
         b"pong"
     );
 }
@@ -229,7 +235,9 @@ fn request_router_preserves_data_recv_surface() {
         .unwrap();
 
     let router = RequestRouter::new(router_socket).unwrap();
-    dealer_socket.send(vec![Message::from_bytes(b"plain-data").unwrap()]).unwrap();
+    dealer_socket
+        .send(vec![Message::from_bytes(b"plain-data").unwrap()])
+        .unwrap();
 
     let received = router.recv().unwrap();
     let part = received.single_part().unwrap();

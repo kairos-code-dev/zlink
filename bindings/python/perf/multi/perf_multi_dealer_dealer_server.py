@@ -21,16 +21,13 @@ def main(argv=None):
             for sock, endpoint in zip(sockets, endpoints):
                 sock.bind(endpoint)
 
-            def make_worker(sock):
-                def worker():
-                    while True:
-                        with sock.recv() as received:
-                            sock.send(received.to_bytes_list()[0])
-
-                return worker
-
             for sock in sockets:
-                threading.Thread(target=make_worker(sock), daemon=True).start()
+                def worker(current_sock=sock):
+                    while True:
+                        with current_sock.recv() as received:
+                            current_sock.send(received.to_bytes_list()[0])
+
+                threading.Thread(target=worker, daemon=True).start()
 
             print(f"READY,{';'.join(endpoints)}", flush=True)
             sys.stdin.readline()

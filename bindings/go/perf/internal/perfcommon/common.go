@@ -251,5 +251,5 @@ func CloneMessages(parts []*zlink.Message) []*zlink.Message {
 
 func IsTransient(err error) bool {
 	zerr, ok := err.(*zlink.ZlinkError)
-	return ok && (zerr.Code == 4 || zerr.Code == 11)
+	return ok && (zerr.Code == 4 || zerr.Code == 11 || zerr.Code == 14)
 }

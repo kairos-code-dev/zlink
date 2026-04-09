@@ -20,9 +20,7 @@ from perf_multi_common import (
 def main(argv=None):
     args = parse_client_args(argv or sys.argv[1:], pattern="dealer_router")
     payload = new_payload(args.msg_size)
-    count = 0
-    latencies = []
-    lock = threading.Lock()
+    results = [None] * args.clients
 
     with zlink.Context() as ctx:
         sockets = [zlink.DealerSocket(ctx) for _ in range(args.clients)]
@@ -39,8 +37,8 @@ def main(argv=None):
                 for monitor in monitors:
                     wait_monitor_event(monitor, zlink.MonitorEvent.CONNECTION_READY)
 
-                def worker(sock):
-                    nonlocal count
+                def worker(sock, slot):
+                    local_latencies = []
                     deadline = time.perf_counter() + args.duration
                     while time.perf_counter() < deadline:
                         sock.send(stamp_payload(payload, phase=1))
@@ -52,20 +50,24 @@ def main(argv=None):
                                 run_id=None,
                             ):
                                 continue
-                            sample = latency_ns_from_message(data)
-                        with lock:
-                            count += 1
-                            latencies.append(sample)
+                            local_latencies.append(latency_ns_from_message(data))
+                    results[slot] = local_latencies
 
-                threads = [threading.Thread(target=worker, args=(sock,)) for sock in sockets]
+                threads = [
+                    threading.Thread(target=worker, args=(sock, index))
+                    for index, sock in enumerate(sockets)
+                ]
                 started = time.perf_counter()
                 for thread in threads:
                     thread.start()
                 for thread in threads:
                     thread.join()
                 elapsed = time.perf_counter() - started
+                latencies = []
+                for bucket in results:
+                    latencies.extend(bucket or [])
                 metrics = result_metrics(
-                    count=count,
+                    count=len(latencies),
                     msg_size=args.msg_size,
                     elapsed_s=max(args.duration, elapsed),
                     latencies_ns=latencies,

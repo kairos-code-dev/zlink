@@ -38,7 +38,7 @@ final class SingleSendLoops {
         }, "single-perf-sender");
     }
 
-    private static void runWithRetry(SendAction action) {
+    static void runWithRetry(SendAction action) {
         long deadline = System.nanoTime() + 2_000_000_000L;
         int attempts = 0;
         while (true) {

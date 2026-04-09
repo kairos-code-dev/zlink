@@ -78,8 +78,9 @@ fn main() {
         request_done_tx.send(()).expect("request done send failed");
     });
 
-    let reply = block_on(dealer.request(Message::from_bytes(b"ping").expect("request message failed")))
-        .expect("dealer request failed");
+    let reply =
+        block_on(dealer.request(Message::from_bytes(b"ping").expect("request message failed")))
+            .expect("dealer request failed");
     assert_eq!(reply.parts()[0].as_str().unwrap_or("?"), "pong");
     request_done_rx
         .recv_timeout(Duration::from_secs(2))

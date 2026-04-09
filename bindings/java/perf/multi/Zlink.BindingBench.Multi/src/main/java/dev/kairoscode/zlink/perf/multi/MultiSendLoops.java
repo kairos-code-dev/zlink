@@ -25,7 +25,7 @@ final class MultiSendLoops {
         }
         for (int i = 0; i < threads.size(); i++) {
             PerfUtil.join(threads.get(i), "multi client " + i, Duration.ofSeconds(
-                durationSeconds + 20L));
+                durationSeconds + 30L));
         }
         Throwable error = failure.get();
         if (error != null) {

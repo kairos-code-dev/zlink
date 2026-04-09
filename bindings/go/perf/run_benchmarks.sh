@@ -147,7 +147,11 @@ transport_enabled() {
           continue
         fi
         for size in "${SIZES[@]}"; do
-          script -qec "go run ./perf/single --pattern ${pattern} --transport ${transport} --msg-size ${size} --duration ${DURATION}" /dev/null
+          go run ./perf/single \
+            --pattern "${pattern}" \
+            --transport "${transport}" \
+            --msg-size "${size}" \
+            --duration "${DURATION}"
         done
       done
     done

@@ -171,10 +171,6 @@ default_msg_sizes_for_pattern() {
 
 default_clients_for_pattern() {
   local pattern="$1"
-  if [[ "${pattern}" == "MULTI_DEALER_DEALER" && "${explicit_clients}" -eq 0 ]]; then
-    echo "1"
-    return
-  fi
   if [[ "${pattern}" == "MULTI_STREAM" && "${CLIENTS}" == "100" ]]; then
     echo "${STREAM_DEFAULT_CLIENTS}"
   else

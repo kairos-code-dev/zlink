@@ -1,6 +1,8 @@
 package main
 
 import (
+	"runtime"
+	"sync"
 	"time"
 
 	"zlink"
@@ -28,13 +30,19 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(router, cfg.transport))
 	perfcommon.Must(perfcommon.ConfigureTLSClient(dealer, cfg.transport))
+	perfcommon.ApplySingleHWM(router)
+	perfcommon.ApplySingleHWM(dealer)
 	endpoint := perfcommon.BindAndResolveEndpoint(router, cfg.transport, "perf-dealer-router")
 	perfcommon.Must(dealer.SetRoutingID(rid))
 	perfcommon.Must(dealer.Connect(endpoint))
 	perfcommon.WaitConnected(routerMon, dealerMon)
+	perfcommon.ApplySingleBenchmarkSocketOptions(router, cfg.transport)
+	perfcommon.ApplySingleBenchmarkSocketOptions(dealer, cfg.transport)
 	perfcommon.Must(dealer.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 	perfcommon.Must(dealer.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
-	startRouterEchoServer(router)
+	stopRouterEchoServer := startRouterEchoServer(router)
+	defer stopRouterEchoServer()
+	waitForDealerRouterReady(dealer)
 
 	stats := perfcommon.NewStats()
 	payload := perfcommon.PreparePayload(cfg.msgSize)
@@ -58,15 +66,20 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 		}
 		part, err := reply.SinglePartOrError()
 		perfcommon.Must(err)
+		runtime.KeepAlive(reply)
 		perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
-		perfcommon.Must(reply.Close())
+		if err := reply.Close(); err != nil {
+			perfcommon.Must(err)
+		}
+		runtime.KeepAlive(part)
+		runtime.KeepAlive(reply)
 	}
-
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
 
 func waitForDealerRouterReady(dealer *zlink.DealerSocket) {
 	payload := perfcommon.PreparePayload(64)
+	readyHits := 0
 	perfcommon.Must(perfcommon.WaitReady(perfcommon.ReadyConfig{
 		Name: "dealer/router perf endpoint",
 		Probe: func() (bool, error) {
@@ -85,27 +98,51 @@ func waitForDealerRouterReady(dealer *zlink.DealerSocket) {
 				}
 				return false, err
 			}
-			return true, reply.Close()
+			if err := reply.Close(); err != nil {
+				return false, err
+			}
+			runtime.KeepAlive(reply)
+			readyHits++
+			return readyHits >= 2, nil
 		},
 	}))
 }
 
-func startRouterEchoServer(router *zlink.RouterSocket) {
-	perfcommon.Must(router.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
+func startRouterEchoServer(router *zlink.RouterSocket) func() {
+	perfcommon.Must(router.SetRecvTimeout(500 * time.Millisecond))
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
-			received, err := router.Recv()
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			received, ok, err := router.TryRecv()
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					continue
 				}
 				return
 			}
+			if !ok || received == nil {
+				continue
+			}
 			err = router.SendTo(received.RoutingID(),
 				perfcommon.CloneMessages(received.Parts())...)
 			if err != nil && !perfcommon.IsTransient(err) {
 				perfcommon.Must(err)
 			}
+			if err := received.Close(); err != nil {
+				perfcommon.Must(err)
+			}
 		}
 	}()
+	return func() {
+		close(stop)
+		wg.Wait()
+	}
 }

@@ -18,7 +18,7 @@ internal static class PerfRouterRouterClient
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
         int latencySampleCap = ResolveMultiLatencySampleCap(options);
         int clientCount = ResolveMultiClients(options);
-        int pollTimeoutMs = ResolveEffectiveMultiClientPollTimeoutMs(options);
+        int pollTimeoutMs = Math.Max(0, options.ClientPollTimeoutMs);
         string endpoint = options.Endpoint;
         ReadOnlySpan<byte> serverRoutingId = "SERVER"u8;
 

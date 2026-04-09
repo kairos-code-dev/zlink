@@ -1,8 +1,16 @@
 # Message Request-Reply 필드 — Core C API Spec
 
-> **상태**: Draft
+> **상태**: Historical Draft
 > **소비자**: [`bindings/REQUEST_REPLY_SPEC.md`](../../../bindings/REQUEST_REPLY_SPEC.md)
-> **관련 문서**: [`MSG_METADATA_SPEC.md`](MSG_METADATA_SPEC.md) — 범용 per-message metadata
+> **관련 문서**:
+> [`MSG_METADATA_SPEC.md`](MSG_METADATA_SPEC.md) — 범용 per-message metadata,
+> [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식,
+> [`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md) — 현재 request-reply 기준안,
+> [`SOCKET_REQUEST_REPLY_API_SPEC.md`](SOCKET_REQUEST_REPLY_API_SPEC.md) — socket 레벨 request-reply API
+>
+> 이 문서의 설계안은 현재 채택하지 않았다.
+> 현재 기준은 message-level field 가 아니라
+> ZMP request-reply protocol envelope 와 socket request API 다.
 
 ---
 
@@ -338,3 +346,40 @@ extended header 내부의 request-reply envelope encoding:
 
 - `set_request`/`set_reply`를 호출하지 않은 메시지는 기존과 동일하게 동작
 - 기존 테스트 suite 전체가 회귀 없이 통과
+
+---
+
+## 현재 변경 방향
+
+위 본문은 기존에 검토했던
+`zlink_msg_t` 내부 필드 기반 request-reply 안을 설명한 기록으로 남긴다.
+
+다만 현재 기준에서는 request-reply 를
+`message` 레벨이 아니라 `ZMP` 위의 상위 프로토콜 레벨에서 처리한다.
+
+정리:
+
+- `msg_type`, `correlation_id` 를 `zlink_msg_t` 내부 필드로 두는 안은 내린다
+- `zlink_msg_set_request()`, `zlink_msg_set_reply()`,
+  `zlink_msg_get_request_info()` 같은 message-level API 는
+  기준안으로 채택하지 않는다
+- request-reply 구분과 correlation 정보는
+  request-reply protocol envelope 에서 정의한다
+- core `message` 계층은 payload 컨테이너 역할에 집중한다
+
+지원 방향:
+
+- request-reply 는 `ZMP` transport 위의 별도 protocol envelope 로 지원한다
+- 이 envelope 는 최소한 protocol id, version, message type,
+  correlation id, payload 시작 위치를 정의해야 한다
+- multipart 메시지에서는 envelope 와 payload 경계를
+  request-reply 문서에서 분명히 정의해야 한다
+- `ROUTER` 계열에서는 transport `routing_id` 와
+  request-reply correlation 의미를 분리해서 다룬다
+
+즉 이 문서는 "기존 검토안 기록"으로 유지하고,
+실제 구현 기준은
+[`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md)
+와
+[`SOCKET_REQUEST_REPLY_API_SPEC.md`](SOCKET_REQUEST_REPLY_API_SPEC.md)
+에서 다시 정리한다.

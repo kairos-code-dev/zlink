@@ -16,9 +16,7 @@ from perf_multi_common import (
 )
 
 
-def _drain_ready(
-    poller, active, latencies, *, expected_msg_size, deadline=None
-):
+def _drain_ready(poller, latencies, *, expected_msg_size, deadline=None):
     count = 0
     events = safe_poll(poller, 50)
     for event in events:
@@ -30,16 +28,15 @@ def _drain_ready(
             if received is None:
                 break
             with received:
-                if active:
-                    data = received.to_bytes_list()[0]
-                    if not is_active_message(
-                        data,
-                        expected_msg_size=expected_msg_size,
-                        run_id=None,
-                    ):
-                        continue
-                    latencies.append(latency_ns_from_message(data))
-                    count += 1
+                data = received.to_bytes_list()[0]
+                if not is_active_message(
+                    data,
+                    expected_msg_size=expected_msg_size,
+                    run_id=None,
+                ):
+                    continue
+                latencies.append(latency_ns_from_message(data))
+                count += 1
     return count
 
 
@@ -75,7 +72,6 @@ def main(argv=None):
                     while time.perf_counter() < deadline:
                         count += _drain_ready(
                             poller,
-                            True,
                             latencies,
                             expected_msg_size=args.msg_size,
                             deadline=deadline,

@@ -11,8 +11,14 @@ fn main() {
     let bind_endpoint = config.endpoint("pair");
 
     let ctx = Context::new().expect("context");
-    let mut receiver = ctx.pair_socket().expect("receiver");
+    let receiver = ctx.pair_socket().expect("receiver");
     let sender = ctx.pair_socket().expect("sender");
+
+    if matches!(config.transport.as_str(), "tls" | "wss") {
+        let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
+        common::setup_raw_tls_server(&receiver, &tls).expect("receiver tls");
+        common::setup_raw_tls_client(&sender, &tls).expect("sender tls");
+    }
 
     receiver.bind(&bind_endpoint).expect("bind");
     let endpoint = receiver.last_endpoint().unwrap_or(bind_endpoint);
@@ -81,7 +87,6 @@ fn main() {
         |msg| {
             let _ = sender.send(msg);
         },
-        |msg| sender.try_send(msg),
     );
     sender_done.signal_done();
     receiver_thread.join().expect("join");

@@ -1,6 +1,12 @@
 # Message Metadata — Core C API Spec
 
-> **상태**: Draft
+> **상태**: Historical Draft
+> **관련 문서**:
+> [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
+>
+> 이 문서의 설계안은 현재 채택하지 않았다.
+> 현재 기준은 message-level metadata 를 유지하지 않는 방향이다.
+> 현재 구현 기준은 관련 ZMP protocol 문서와 계획 문서를 참고한다.
 
 ---
 
@@ -588,3 +594,23 @@ auto [ptr, len] = msg.get_metadata(static_cast<uint16_t>(MyMeta::TraceId));
 - metadata 없는 메시지의 send/recv throughput 변화 없음 확인
 - metadata 1개 설정 시 overhead 측정
 - metadata 10개 설정 시 overhead 측정
+
+---
+
+## 현재 변경 방향
+
+위 본문은 기존에 검토했던 `zlink_msg_t` 수준의
+범용 per-message metadata 안을 설명한 기록으로 남긴다.
+
+다만 현재 기준에서는 이 방향을 채택하지 않는다.
+
+정리:
+
+- core 가 `zlink_msg_t` 수준의 범용 metadata 저장/조회 기능을 제공하는 안은 내린다
+- metadata 가 필요하면 application 이 payload 또는 multipart 구조로 직접 표현한다
+- request-reply, SPOT routed 같은 상위 의미는
+  metadata 나 `zlink_msg_t` 내부 필드가 아니라
+  각 프로토콜 레벨에서 처리한다
+
+즉 이 문서는 "기존 검토안 기록"으로 유지하고,
+실제 구현 기준 문서로 직접 사용하지 않는다.

@@ -1,5 +1,13 @@
 # Spot Routed Message Spec
 
+> 이 문서는 현재 개발 라운드에서 구현 기준으로 쓰는 작업 스펙이다.
+> 구현과 테스트가 끝난 뒤 공개 API 기준은 `doc/api` 문서에 반영한다.
+> **관련 문서**:
+> [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
+> [`ZMP_SPOT_ROUTED_PROTOCOL.md`](ZMP_SPOT_ROUTED_PROTOCOL.md) — SPOT routed protocol envelope
+> [`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md) — request-reply protocol envelope
+> [`SOCKET_REQUEST_REPLY_API_SPEC.md`](SOCKET_REQUEST_REPLY_API_SPEC.md) — socket request-reply API
+
 ## 목적
 
 현재 SPOT 은 위치투명 토픽 발행/구독에 맞춰 설계되어 있다.
@@ -33,6 +41,7 @@
 - 목적지가 원격이면 노드 간 `ROUTER` 소켓으로 직접 보낸다.
 - 이 경로는 기존 subscribe 처리와는 별개의 routed send/recv 경로다.
 - `spot -> spot`, `spot -> router`, `router -> spot` 을 모두 지원한다.
+- 직접 전달 경로 위에서 `request/reply` 를 함께 지원한다.
 - `SpotNode` 와 `Spot` 은 각각 자기 계층의 대표 `routing_id` 를 가진다.
 
 
@@ -47,7 +56,7 @@
 - 목적지 구분
 - routed send/recv 규칙
 - discovery/registry 와의 연결 방식
-- 공개 API 초안
+- 공개 API
 - 실패 처리, 모니터링, 순서 보장 기본 규칙
 
 이 스펙이 다루지 않는 범위:
@@ -130,6 +139,7 @@
 - routed 메시지는 기존 subscriber 에게 전달하지 않는다
 - routed 메시지는 별도의 recv 표면과 callback 표면으로 받는다
 - publish/subscribe 의미와 routed 의미를 같은 API 에 섞지 않는다
+- request/reply 는 routed payload 안의 별도 상위 프로토콜로 처리한다
 
 
 ## 용어
@@ -142,9 +152,8 @@
 | `route receiver` | 직접 전달 메시지를 받는 로컬 수신자 |
 | `spot routing_id` | 같은 `SpotNode` 안의 개별 `Spot` 주소 |
 | `router rid` | 일반 `ROUTER` peer 식별자 |
-| `source kind` | 수신 메시지의 송신자 종류. `spot` 또는 `router` |
 | `destination class` | 목적지 종류. `spot` 또는 `router` |
-| `dispatcher event` | payload 를 직접 넘기지 않고 "지금 읽을 수 있음"만 알리는 이벤트 |
+| `event notification` | payload 를 직접 넘기지 않고 "지금 읽을 수 있음"만 알리는 이벤트 |
 
 
 ## 범위 밖 항목
@@ -183,6 +192,195 @@
 중요한 점은
 직접 전달 기능이 기존 토픽 기능을 대체하는 것이 아니라,
 같은 `SpotNode` 안에 별도 경로로 추가된다는 점이다.
+
+
+## SPOT Request-Reply
+
+### 목적
+
+SPOT 직접 전달 위에서도 request-reply 를 사용할 수 있어야 한다.
+이유는 SPOT 이 결국 `ROUTER` 기반 메시징 위에 올라가고,
+특정 `Spot` 또는 특정 `ROUTER` 로 요청 1건을 보내고
+그 응답 1건을 기다리는 패턴이 필요하기 때문이다.
+
+이 기능은 기존 socket request-reply 와 별도 의미를 만들지 않는다.
+같은 request-reply envelope 를 그대로 재사용하고,
+그 바깥에 SPOT routed envelope 를 한 겹 더 두는 방식으로 정리한다.
+
+### 계층 순서
+
+SPOT request 메시지는 아래 순서로 해석한다.
+
+```text
+[router transport envelope if needed]
+[spot routed protocol envelope]
+[request-reply protocol envelope]
+[payload]
+```
+
+즉 받는 쪽은 먼저 SPOT routed envelope 로 목적지를 해석하고,
+그 다음 payload 앞부분의 request-reply envelope 로
+request 인지 reply 인지와 request seq 를 해석한다.
+
+### 지원 방향
+
+아래 세 방향을 모두 지원한다.
+
+- `spot -> spot request/reply`
+- `spot -> router request/reply`
+- `router -> spot request/reply`
+
+이때 request/reply 의미는
+[`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md)
+를 그대로 따른다.
+
+### 공개 표면 방향
+
+SPOT 쪽에도 socket request-reply 와 비슷한 공개 표면이 필요하다.
+
+최소한 아래 세 가지가 있어야 한다.
+
+- `spot.request(...)`
+- `spot.reply(...)`
+- `spot.request_handler(...)`
+- `spot.request_recv(...)`
+
+C API 방향은 아래와 같다.
+
+```c
+typedef void (*zlink_spot_reply_handler_fn)(
+    int errno,
+    zlink_msg_t *parts,
+    size_t part_count,
+    void *userdata);
+
+typedef void (*zlink_spot_request_handler_fn)(
+    const zlink_routing_id_t *source_rid,
+    const zlink_routing_id_t *spot_rid,
+    uint64_t request_seq,
+    zlink_msg_t *parts,
+    size_t part_count,
+    void *userdata);
+
+typedef enum zlink_spot_option_t {
+    ...
+    ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS = ...,
+} zlink_spot_option_t;
+
+int zlink_set_spot_option(
+    void *spot,
+    zlink_spot_option_t option,
+    const void *optval,
+    size_t optvallen);
+
+int zlink_get_spot_option(
+    void *spot,
+    zlink_spot_option_t option,
+    void *optval,
+    size_t *optvallen);
+
+int zlink_spot_request_spot(
+    void *spot,
+    const zlink_routing_id_t *dest_node_rid,
+    const zlink_routing_id_t *dest_spot_rid,
+    zlink_msg_t *parts,
+    size_t part_count,
+    uint32_t timeout_ms,
+    zlink_spot_reply_handler_fn handler,
+    void *userdata);
+
+int zlink_spot_request_router(
+    void *spot,
+    const zlink_routing_id_t *peer_rid,
+    zlink_msg_t *parts,
+    size_t part_count,
+    uint32_t timeout_ms,
+    zlink_spot_reply_handler_fn handler,
+    void *userdata);
+
+int zlink_spot_reply_spot(
+    void *spot,
+    const zlink_routing_id_t *dest_node_rid,
+    const zlink_routing_id_t *dest_spot_rid,
+    uint64_t request_seq,
+    zlink_msg_t *parts,
+    size_t part_count);
+
+int zlink_spot_reply_router(
+    void *spot,
+    const zlink_routing_id_t *peer_rid,
+    uint64_t request_seq,
+    zlink_msg_t *parts,
+    size_t part_count);
+
+int zlink_spot_request_handler(
+    void *spot,
+    zlink_spot_request_handler_fn handler,
+    void *userdata);
+
+int zlink_spot_request_recv(
+    void *spot,
+    const zlink_routing_id_t **source_rid_out,
+    const zlink_routing_id_t **spot_rid_out,
+    uint64_t *request_seq_out,
+    zlink_msg_t **parts_out,
+    size_t *part_count_out);
+```
+
+설명:
+
+- request timeout 기본값은 `Spot` 전용 option 으로 설정한다
+- `Spot` 은 `zlink_set_spot_option()` 으로 `ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS` 를 설정한다
+
+예:
+
+```c
+uint32_t timeout_ms = 1000;
+
+zlink_set_spot_option(
+    spot,
+    ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS,
+    &timeout_ms,
+    sizeof(timeout_ms));
+```
+
+handler 필드 규칙:
+
+- 이 handler 의 두 address 필드는 "reply target 주소 슬롯"으로 해석한다
+- `router` 에서 온 request 이면 `source_rid = router peer rid`, `spot_rid = empty` 다
+- `spot` 에서 온 request 이면 `source_rid = source node rid`, `spot_rid = source spot rid` 다
+- `request_seq` 는 두 경우 모두 항상 있어야 한다
+- 두 address 필드가 모두 비어 있으면 잘못된 요청이다
+
+`request_recv(...)` 도 같은 정보 모델을 쓴다.
+
+- `source_rid_out`, `spot_rid_out`, `request_seq_out` 의 의미는
+  `request_handler(...)` 의 같은 이름 파라미터와 같다
+- callback 기반 수신과 pull 기반 수신이 서로 다른 주소 해석 규칙을 가지면 안 된다
+
+핵심 규칙:
+
+- 같은 `Spot` 에서 여러 request 를 동시에 outstanding 상태로 둘 수 있어야 한다
+- 각 request 는 request seq 로 구분한다
+- reply 도착 순서는 request 송신 순서와 같을 필요가 없다
+- high-level `request()` 완료는 첫 reply 1건으로 끝난다
+- 같은 request seq 의 추가 reply 는 무시하고 카운터만 올릴 수 있다
+- `spot.reply(...)` 는 `ctx` 가 아니라 목적지 주소와 `request_seq` 를 직접 받는다
+- handler 에서 `spot_rid` 가 비어 있으면 `zlink_spot_reply_router(...)` 를 써야 한다
+- handler 에서 `spot_rid` 가 있으면 `zlink_spot_reply_spot(...)` 를 써야 한다
+- 위 규칙과 다른 reply 함수를 쓰면 `EINVAL` 로 즉시 실패해야 한다
+- `spot` 에서 온 request 와 `router` 에서 온 request 는 서로 다른 recv 함수로 나누지 않는다
+- `spot.request_handler(...)` 와 `spot.request_recv(...)` 는 같은 request 수신 plane 을 공유한다
+
+### 구현 순서 메모
+
+request-reply 는 먼저 `ROUTER/DEALER` core 작업을 끝낸 뒤
+그 위에 SPOT request-reply 를 얹는 순서가 자연스럽다.
+
+timeout 은
+SPOT request/reply 의 마지막 단계에서 붙인다.
+즉 처음에는 routing 과 request seq matching 을 먼저 닫고,
+timeout 정책은 맨 마지막에 추가한다.
 
 
 ## 최종 방향
@@ -328,9 +526,8 @@ routed 메시지는 pub/sub 메시지와 다르다.
 - 수신 지점은 `SpotNode` 안의 target `Spot` routed recv 경로다
 
 
-## 공개 API 초안
+## 공개 API
 
-여기 적는 API 이름은 스펙 초안이다.
 중요한 점은 토픽 API 와 직접 전달 API 를 분리하는 것이다.
 
 또 한 가지 중요한 기준이 있다.
@@ -346,29 +543,16 @@ routed 메시지는 pub/sub 메시지와 다르다.
 
 - `SpotNode`: 토폴로지와 수명주기를 소유한다
 - `Spot`: 기존 토픽 발행/구독용 통합 인터페이스다
-- `SpotRoute`: `Spot` 에 귀속된 직접 전달 인터페이스다
-
-### 생성
-
-```c
-void *zlink_spot_route_of(void *spot);
-```
+- routed send/recv, request/reply, timer 는 모두 기존 `Spot` handle 위에 직접 얹는다
 
 해석 규칙:
 
-- `zlink_spot_route_of(spot)` 는 해당 `Spot` 과 연결된 borrowed route handle 을 돌려준다
 - `SpotNode` 는 내부적으로 routed router send/recv 를 수행하지만,
   node 수준의 public routed send/recv 표면은 노출하지 않는다
-- routed public surface 는 `Spot` 에 연결된 handle 로만 연다
-- dispatcher 모델에서는 `Spot` handle 만 받아도
-  `zlink_spot_route_of(spot)` 로 route recv 표면에 접근할 수 있어야 한다
-- 같은 `Spot` 에 대해 얻는 route handle 은 모두 같은 routed recv 경로를 함께 쓴다
-- 즉 같은 `Spot` 에 연결된 routed recv queue, callback mode, dispatcher mode 는
-  모든 route handle 사이에서 같이 공유된다
-- 따라서 한 route handle 에서 `recv` 를 소비하면
-  다른 route handle 에서 같은 메시지를 다시 볼 수 없다
-- `EBUSY` 같은 수신 모델 충돌 규칙도
-  같은 `Spot` 의 route handle 전체에 적용한다
+- routed public surface 는 별도 borrowed facade 가 아니라 기존 `Spot` handle 에 직접 연다
+- 따라서 같은 `Spot` 에 대한 routed recv queue, callback mode, event mode 는
+  모두 그 `Spot` handle 하나에 귀속된다
+- `EBUSY` 같은 수신 모델 충돌 규칙도 같은 `Spot` handle 기준으로 적용한다
 
 ### 노드 주소 설정/조회
 
@@ -388,42 +572,30 @@ int zlink_get_routing_id(void *handle,
 
 ### 직접 송신
 
-다만 실제 공개 API 는
-송신 방향이 드러나는 함수들로 나누는 편이 더 안전하다.
-
-권장 형태:
+직접 송신 API 는
+송신 방향이 드러나는 함수들로 나눈다.
 
 ```c
-int zlink_spot_route_send_router(void *route,
-                                 const zlink_routing_id_t *peer_rid,
-                                 zlink_msg_t *parts,
-                                 size_t part_count,
-                                 zlink_send_flags_t flags);
-
-int zlink_spot_route_send_spot(void *route,
-                               const zlink_routing_id_t *dest_node_rid,
-                               const zlink_routing_id_t *dest_spot_rid,
-                               zlink_msg_t *parts,
-                               size_t part_count,
-                               zlink_send_flags_t flags);
-
-int zlink_router_send_spot(void *router,
-                           const zlink_routing_id_t *dest_node_rid,
-                           const zlink_routing_id_t *dest_spot_rid,
+int zlink_spot_send_router(void *spot,
+                           const zlink_routing_id_t *peer_rid,
                            zlink_msg_t *parts,
                            size_t part_count,
                            zlink_send_flags_t flags);
+
+int zlink_spot_send_spot(void *spot,
+                         const zlink_routing_id_t *dest_node_rid,
+                         const zlink_routing_id_t *dest_spot_rid,
+                         zlink_msg_t *parts,
+                         size_t part_count,
+                         zlink_send_flags_t flags);
 ```
 
-이유:
+이 표면을 쓰는 이유는 다음과 같다.
 
 - 사용자가 `spot -> router`, `spot -> spot`, `router -> spot` 을
   함수 이름만 보고 바로 구분할 수 있다
 - 바인딩에서 더 읽기 쉬운 이름으로 그대로 노출하기 쉽다
 - 잘못된 조합을 API 표면에서 줄일 수 있다
-
-즉 이 문서의 `zlink_spot_route_send(... kind ...)` 는
-실제 public API 는 위 세 함수로 분리하는 쪽을 우선한다
 
 추가 규칙:
 
@@ -434,28 +606,23 @@ int zlink_router_send_spot(void *router,
 ### 직접 수신
 
 ```c
-typedef enum zlink_spot_route_source_kind_t {
-    ZLINK_SPOT_ROUTE_SOURCE_SPOT = 1,
-    ZLINK_SPOT_ROUTE_SOURCE_ROUTER = 2
-} zlink_spot_route_source_kind_t;
-
-int zlink_spot_route_recv(void *route,
-                          zlink_spot_route_source_kind_t *source_kind_out,
-                          zlink_routing_id_t *source_primary_rid_out,
-                          zlink_routing_id_t *source_secondary_rid_out,
-                          zlink_msg_t **parts_out,
-                          size_t *part_count_out,
-                          int flags);
+int zlink_spot_recv(void *spot,
+                    const zlink_routing_id_t **source_rid_out,
+                    const zlink_routing_id_t **spot_rid_out,
+                    zlink_msg_t **parts_out,
+                    size_t *part_count_out,
+                    int flags);
 ```
 
 기본 규칙은 다음과 같다.
 
 - routed 메시지만 이 recv 표면으로 돌려준다
 - 기존 SPOT subscribe 메시지는 이 recv 표면으로 노출하지 않는다
-- `source_kind=spot` 이면 `source_primary_rid_out=node_rid`,
-  `source_secondary_rid_out=spot_rid` 로 해석한다
-- `source_kind=router` 이면 `source_primary_rid_out=router_rid`,
-  `source_secondary_rid_out` 는 비운다
+- 두 address 출력 필드는 "reply target 주소 슬롯"으로 해석한다
+- `router` 에서 온 메시지이면 `source_rid_out = router peer rid`,
+  `spot_rid_out = empty` 다
+- `spot` 에서 온 메시지이면 `source_rid_out = source node rid`,
+  `spot_rid_out = source spot rid` 다
 - 사용하지 않는 출력 값은 비워서 돌려준다
 
 ownership 규칙은 기존 `zlink_recv()` 와 같은 방식으로 맞춘다.
@@ -470,17 +637,16 @@ ownership 규칙은 기존 `zlink_recv()` 와 같은 방식으로 맞춘다.
 ### 직접 수신 콜백
 
 ```c
-typedef void (*zlink_spot_route_handler_fn)(
-    zlink_spot_route_source_kind_t source_kind,
-    const zlink_routing_id_t *source_primary_rid,
-    const zlink_routing_id_t *source_secondary_rid,
+typedef void (*zlink_spot_handler_fn)(
+    const zlink_routing_id_t *source_rid,
+    const zlink_routing_id_t *spot_rid,
     zlink_msg_t *parts,
     size_t part_count,
     void *userdata);
 
-int zlink_spot_route_handler(void *route,
-                             zlink_spot_route_handler_fn handler,
-                             void *userdata);
+int zlink_spot_handler(void *spot,
+                       zlink_spot_handler_fn handler,
+                       void *userdata);
 ```
 
 직접 수신 콜백은 routed recv 표면에만 적용한다.
@@ -499,8 +665,8 @@ int zlink_spot_route_handler(void *route,
 
 - subscribe callback 을 등록하면 기존 subscribe `recv` 는 막힌다
 - subscribe `recv` 를 사용하는 동안 subscribe callback 등록은 막힌다
-- routed callback 을 등록하면 `zlink_spot_route_recv()` 는 막힌다
-- `zlink_spot_route_recv()` 를 사용하는 동안 routed callback 등록은 막힌다
+- routed callback 을 등록하면 `zlink_spot_recv()` 는 막힌다
+- `zlink_spot_recv()` 를 사용하는 동안 routed callback 등록은 막힌다
 
 이유:
 
@@ -508,20 +674,20 @@ int zlink_spot_route_handler(void *route,
 - 어느 쪽이 먼저 메시지를 가져가는지 모호해진다
 - 바인딩과 샘플에서 동작 설명이 복잡해진다
 
-권장 동작:
+규칙:
 
-- 충돌하는 수신 모델을 등록하거나 호출하면 `EBUSY` 또는 `EOPNOTSUPP` 계열로 실패시킨다
+- 충돌하는 수신 모델을 등록하거나 호출하면 `EBUSY` 로 실패시킨다
 - 한 표면에서는 하나의 수신 모델만 활성화한다
 
 여기서 말하는 `callback` 은
 메시지 payload 를 직접 전달하는 delivery callback 을 뜻한다.
 
-`dispatcher event callback` 은 delivery callback 이 아니다.
-따라서 dispatcher event 모델은
+`event callback` 은 delivery callback 이 아니다.
+따라서 event 모델은
 같은 표면의 `recv` 와 함께 사용하는 것을 허용한다.
 
 
-## Dispatcher 기반 단일 스레드 처리
+## Event 기반 단일 스레드 처리
 
 ### 왜 이 모델이 필요한가
 
@@ -534,29 +700,29 @@ int zlink_spot_route_handler(void *route,
 
 이 스펙에서 권장하는 모델은 다음과 같다.
 
-- dispatcher 가 여러 `Spot` 과 `SpotTimer` 를 감시한다
-- dispatcher event callback 은 "이 spot 또는 timer 에 읽을 것이 있다"는 사실만 알려준다
+- event handler 가 `Spot` 과 `SpotTimer` 의 readable 상태를 알려준다
+- event callback 은 "이 spot 또는 timer 에 읽을 것이 있다"는 사실만 알려준다
 - 사용자는 그 callback 안에서 `zlink_subscribe()`,
-  `zlink_spot_route_recv()`, `zlink_spot_timer_recv()` 를 호출한다
-- 공용 상태 변경은 그 dispatcher thread 안에서만 수행한다
+  `zlink_spot_recv()`, `zlink_spot_timer_recv()` 를 호출한다
+- 공용 상태 변경은 그 event loop thread 안에서만 수행한다
 
 즉 권장 수신 모델은
 "callback 직접 처리"보다
-"dispatcher event + recv" 쪽이다.
+"event callback + recv" 쪽이다.
 
 ### 권장 원칙
 
-- dispatcher event callback 은 메시지 payload 자체를 직접 넘기지 않는다
-- dispatcher event callback 은 "지금 읽을 것이 있다"는 사실만 알려준다
-- 실제 메시지 소비는 사용자가 같은 dispatcher thread 에서
+- event callback 은 메시지 payload 자체를 직접 넘기지 않는다
+- event callback 은 "지금 읽을 것이 있다"는 사실만 알려준다
+- 실제 메시지 소비는 사용자가 같은 event loop thread 에서
   `recv` 또는 `zlink_subscribe()` 로 수행한다
-- dispatcher callback 은 하나의 thread 에서만 호출되도록 보장하는 것을 권장한다
+- event callback 은 하나의 thread 에서만 호출되도록 보장하는 것을 권장한다
 
 이렇게 하면
 공용 객체 접근을 단일 스레드로 몰아
 동기화 문제를 단순하게 만들 수 있다.
 
-### dispatcher 이벤트 종류
+### event 종류
 
 최소한 아래 세 이벤트를 구분할 수 있어야 한다.
 
@@ -574,11 +740,11 @@ typedef enum zlink_spot_dispatch_event_t {
 } zlink_spot_dispatch_event_t;
 ```
 
-### dispatcher 표면 초안
+### event 표면 초안
 
-이 스펙은 `recv`, 직접 delivery `callback`, `dispatcher` 세 public 모델을 모두 허용한다.
+이 스펙은 `recv`, 직접 delivery `callback`, `event` 세 public 모델을 모두 허용한다.
 그중 공용 상태를 한 thread 에서 처리해야 하는 애플리케이션에는
-`Spot` 단위 dispatcher helper 를 권장한다.
+`Spot` 귀속 event handler 모델을 권장한다.
 
 다만 이 말은 generic poller 사용을 금지한다는 뜻은 아니다.
 
@@ -594,53 +760,38 @@ typedef enum zlink_spot_dispatch_event_t {
 - ready 된 handle 이 "무슨 종류의 readable 인가"를 쉽게 알고 싶은 경우
 
 그래서 이 스펙은 generic poller 도 허용하지만,
-사용자에게 권장하는 상위 표면으로는 `dispatcher event callback` 모델을 둔다.
+사용자에게 권장하는 상위 표면으로는 `event callback` 모델을 둔다.
 
 예시:
 
 ```c
-void *zlink_spot_dispatcher_new(void);
-int zlink_spot_dispatcher_destroy(void **dispatcher_p);
-
-int zlink_spot_dispatcher_add_spot(void *dispatcher,
-                                   void *spot,
-                                   void *userdata);
-int zlink_spot_dispatcher_remove_spot(void *dispatcher,
-                                      void *spot);
-
-int zlink_spot_dispatcher_add_timer(void *dispatcher,
-                                    void *timer,
-                                    void *userdata);
-int zlink_spot_dispatcher_remove_timer(void *dispatcher,
-                                       void *timer);
-
-typedef void (*zlink_spot_dispatcher_handler_fn)(
+typedef void (*zlink_spot_dispatch_event_handler_fn)(
     void *handle,
     zlink_spot_dispatch_event_t event,
     void *userdata);
 
-int zlink_spot_dispatcher_handler(void *dispatcher,
-                                  zlink_spot_dispatcher_handler_fn handler,
-                                  void *userdata);
+int zlink_spot_dispatch_event_handler(
+    void *spot,
+    zlink_spot_dispatch_event_handler_fn handler,
+    void *userdata);
 ```
 
 기본 방향:
 
-- dispatcher 등록 단위는 `Spot` 과 `SpotTimer` 다
+- event handler 는 `Spot` 하나에 귀속된다
 - callback 의 `handle` 은 읽을 것이 생긴 `Spot` 또는 `SpotTimer` 다
 - 사용자는 callback 안에서 해당 handle 에 맞는 recv 함수를 직접 호출한다
 - 내부 구현은 필요하면 `zlink_poller_*` 를 사용할 수 있다
-- 하지만 공개 계약은 `dispatcher event callback + recv` 모델로 설명한다
+- 하지만 공개 계약은 `event callback + recv` 모델로 설명한다
 
 `Spot` 에 대한 `ROUTE_READABLE` 이벤트는
-같은 `Spot` 에 연결된 route handle 에 읽을 routed 메시지가 생겼다는 뜻이다.
+같은 `Spot` 에 읽을 routed 메시지가 생겼다는 뜻이다.
 이 경우 사용자는 아래처럼 처리한다.
 
 - callback 의 `handle` 을 `Spot` 으로 해석한다
-- `zlink_spot_route_of(spot)` 로 borrowed route handle 을 얻는다
-- 그 route handle 에 대해 `zlink_spot_route_recv()` 를 호출한다
+- 그 `Spot` 에 대해 routed recv 함수를 직접 호출한다
 
-dispatcher event 모델도
+event 모델도
 같은 수신 표면의 직접 callback delivery 와는 섞지 않는 것을 권장한다.
 
 예:
@@ -652,26 +803,25 @@ dispatcher event 모델도
 - timer callback delivery 를 쓰는 `SpotTimer` 에서는
   `TIMER_READABLE` 기반 `zlink_spot_timer_recv()` 소비를 함께 쓰지 않는다
 
-즉 dispatcher 모델을 선택했다면
+즉 event 모델을 선택했다면
 그 표면에서는 event 알림 + `recv` 조합으로 일관되게 사용하는 편이 가장 단순하다.
 
-### dispatcher callback 안에서의 처리 방식
+### event callback 안에서의 처리 방식
 
 권장 처리 방식은 다음과 같다.
 
 - `SUB_READABLE` 이면 해당 `Spot` 에 대해 `zlink_subscribe()` 를 호출한다
-- `ROUTE_READABLE` 이면 해당 `Spot` 에 연결된 route 표면에 대해
-  `zlink_spot_route_recv()` 를 호출한다
+- `ROUTE_READABLE` 이면 해당 `Spot` 에 대해 `zlink_spot_recv()` 를 호출한다
 - `TIMER_READABLE` 이면 해당 `SpotTimer` 에 대해
   `zlink_spot_timer_recv()` 를 호출한다
 - 각 callback 안에서 가능한 만큼 recv 하거나,
-  dispatcher 정책에 맞춰 한 개씩 읽는다
+  event loop 정책에 맞춰 한 개씩 읽는다
 
 예시 흐름:
 
 ```text
-dispatcher event callback
--> single-thread dispatcher loop
+event callback
+-> single-thread event loop
 -> user calls subscribe recv or route recv or timer recv
 -> user updates shared object on the same thread
 ```
@@ -679,13 +829,11 @@ dispatcher event callback
 짧은 사용 예시는 아래와 같다.
 
 ```c
-zlink_spot_dispatcher_add_spot(dispatcher, spot, userdata);
-zlink_spot_dispatcher_add_timer(dispatcher, timer, userdata);
-zlink_spot_dispatcher_handler(dispatcher, on_spot_event, userdata);
+zlink_spot_dispatch_event_handler(spot, on_spot_event, userdata);
 
 // on_spot_event(handle, event, userdata)
 //   SUB_READABLE    -> zlink_subscribe(spot, ...)
-//   ROUTE_READABLE  -> zlink_spot_route_recv(zlink_spot_route_of(spot), ...)
+//   ROUTE_READABLE  -> zlink_spot_recv(spot, ...)
 //   TIMER_READABLE  -> zlink_spot_timer_recv(timer, ...)
 ```
 
@@ -695,7 +843,7 @@ zlink_spot_dispatcher_handler(dispatcher, on_spot_event, userdata);
 - subscribe, routed recv, timer recv 를 같은 이벤트 루프에서 처리할 수 있다
 - 직접 delivery callback 을 쓰지 않으면
   실제 상태 변경을 한 스레드에서 수행하기 쉬워진다
-- 사용자는 `Spot` 단위로 dispatcher 에 등록해서 편하게 사용할 수 있다
+- 사용자는 `Spot` 단위로 event handler 를 붙여서 편하게 사용할 수 있다
 - 사용자는 "도착 알림"과 "실제 메시지 소비"를 분리해서 이해할 수 있다
 
 ### 요약
@@ -712,21 +860,21 @@ zlink_spot_dispatcher_handler(dispatcher, on_spot_event, userdata);
 하지만 공용 상태를 안전하게 다뤄야 하는 애플리케이션에는
 아래 모델을 기본 선택으로 권장한다.
 
-- dispatcher 가 여러 `Spot` 과 `SpotTimer` 를 감시한다
-- dispatcher event callback 은 readable 이벤트만 알린다
-- 실제 메시지는 `zlink_subscribe()`, `zlink_spot_route_recv()`,
+- event handler 는 `Spot` 과 그에 귀속된 `SpotTimer` 의 readable 상태를 알린다
+- event callback 은 readable 이벤트만 알린다
+- 실제 메시지는 `zlink_subscribe()`, `zlink_spot_recv()`,
   `zlink_spot_timer_recv()` 로 읽는다
-- 상태 변경은 dispatcher 의 단일 스레드에서 처리한다
+- 상태 변경은 event loop 의 단일 스레드에서 처리한다
 
 ### 주의사항
 
-- 이 dispatcher 기반 모델은
+- 이 event 기반 모델은
   기존 subscribe callback, routed callback, timer callback 을
   대체하는 강제 모델은 아니다
 - 다만 공용 상태를 안전하게 다뤄야 하는 애플리케이션에는
-  callback 직접 처리보다 이 dispatcher 기반 모델을 우선 권장한다
+  callback 직접 처리보다 이 event 기반 모델을 우선 권장한다
 - sample 과 문서에서는
-  `recv` 모델, `callback` 모델, `dispatcher event + recv` 모델을
+  `recv` 모델, `callback` 모델, `event callback + recv` 모델을
   서로 구분해서 설명하는 것이 좋다
 
 
@@ -735,7 +883,7 @@ zlink_spot_dispatcher_handler(dispatcher, on_spot_event, userdata);
 ### 기본 입장
 
 `Spot` 은 raw socket 보다 복합적인 서비스 라이브러리 성격이 강하므로,
-dispatcher 와 함께 동작하는 timer 기능을 제공하는 것은 자연스럽다.
+event loop 와 함께 동작하는 timer 기능을 제공하는 것은 자연스럽다.
 
 즉 timer 자체는 이 스펙의 방향과 어긋나지 않는다.
 
@@ -746,13 +894,13 @@ binding 경계에서 callback 을 얼마나 자주 넘느냐에 있다.
 ### timer 표면 초안
 
 timer 는 `Spot` 에 연결되고,
-dispatcher 에서는 `SpotTimer` 단위 이벤트로 노출한다.
+event loop 에서는 `SpotTimer` 단위 이벤트로 노출한다.
 
 여기서 말하는 timer 는 기존 generic `zlink_timers_*` 를 대체하는 것이 아니다.
 역할이 다르다.
 
 - `zlink_timers_*`: socket/spot 바깥에서도 쓸 수 있는 범용 timer set
-- `SpotTimer`: `Spot` 수명주기와 dispatcher event 모델에 맞춘 spot 소유 timer
+- `SpotTimer`: `Spot` 수명주기와 event callback 모델에 맞춘 spot 소유 timer
 
 즉 public 의미는 spot 소유 service timer 이고,
 내부 구현은 필요하면 기존 `zlink_timers_*` 를 재사용할 수 있다.
@@ -764,7 +912,7 @@ void *zlink_spot_timer_new(void *spot);
 int zlink_spot_timer_destroy(void **timer_p);
 int zlink_spot_timer_start(void *timer,
                            uint64_t interval_ns,
-                           int repeat);
+                           uint64_t repeat_count);
 int zlink_spot_timer_stop(void *timer);
 int zlink_spot_timer_recv(void *timer,
                           uint64_t *expired_count_out,
@@ -783,7 +931,10 @@ int zlink_spot_timer_handler(void *timer,
 
 - timer 생성과 수명주기는 연결된 `Spot` 런타임에 속한다
 - 만료 판정은 spot 런타임 내부에서 수행한다
-- dispatcher 는 `TIMER_READABLE` 이벤트만 알려준다
+- `repeat_count = 0` 이면 사용자가 중지할 때까지 같은 간격으로 계속 반복한다
+- `repeat_count = 1` 이면 한 번만 실행한다
+- `repeat_count > 1` 이면 지정한 횟수만큼 반복한 뒤 멈춘다
+- event callback 은 `TIMER_READABLE` 이벤트만 알려준다
 - 실제 만료 횟수 소비는 `zlink_spot_timer_recv()` 로 수행한다
 - timer callback delivery 를 쓰고 싶으면 `zlink_spot_timer_handler()` 를 쓸 수 있다
 
@@ -825,49 +976,47 @@ managed bindings 에서는
 - callback 안에서 수행하는 작업량
 - runtime 별 지터와 GC 영향
 
-timer 표면에서도 수신 모델 충돌 규칙은 동일하게 적용하는 편이 좋다.
+timer 표면에서도 수신 모델 충돌 규칙은 동일하게 적용한다.
 
-- timer callback delivery 를 쓰면 `zlink_spot_timer_recv()` 같은 pull 모델은 함께 쓰지 않는다
-- `zlink_spot_timer_recv()` 기반으로 쓰면 timer callback delivery 는 등록하지 않는다
+- timer callback delivery 를 등록하면 `zlink_spot_timer_recv()` 는 막힌다
+- `zlink_spot_timer_recv()` 를 사용하는 동안 timer callback delivery 등록은 막힌다
+- 충돌하는 timer 수신 모델을 등록하거나 호출하면 `EBUSY` 로 실패시킨다
 
 ### 권장 문구
 
 정리하면 timer 지원 정책은 아래처럼 이해하면 된다.
 
-- `Spot` 은 dispatcher 와 함께 쓰는 timer 기능을 제공할 수 있다
+- `Spot` 은 event loop 와 함께 쓰는 timer 기능을 제공할 수 있다
 - C/C++ 에서는 상대적으로 자유롭게 사용할 수 있다
 - managed bindings 에서는 `8ms ~ 33ms` 정도를 일반 권장 범위로 본다
 - 그보다 더 짧은 주기는 비금지이지만, workload 기준으로 충분한 측정과 검증이 필요하다
 
 
-## 왜 `SpotRoute` 를 따로 두는가
+## 왜 별도 routed facade 를 두지 않는가
 
-직접 전달 API 를 기존 `Spot` 에 섞지 않는 이유는 다음과 같다.
+현재 기준에서는 직접 전달 API 를 별도 facade 로 분리하지 않는다.
+그 이유는 다음과 같다.
 
-- 기존 `publish/subscribe` 개념을 그대로 유지하기 쉽다
-- 수신 모델이 헷갈리지 않는다
-- 토픽 수신, 직접 수신, timer 수신을 dispatcher 표면에서 분리할 수 있다
-- `routing_id` 의미 충돌을 막을 수 있다
-- 문서와 바인딩 표면이 단순해진다
+- `Spot` 하나로 topic, routed, request-reply 표면을 함께 설명하는 편이 수명주기와 ownership 이 단순하다
+- borrowed facade 를 하나 더 만들면 recv plane, callback mode, event mode 설명이 오히려 복잡해진다
+- `Spot` 에 이미 `routing_id` 가 있으므로 직접 전달 표면을 같은 handle 에 두는 편이 더 자연스럽다
 
 정리하면:
 
-- `Spot` 은 토픽 메시지용
-- `SpotRoute` 는 `Spot` 에 귀속된 직접 전달용
-- `SpotTimer` 는 `Spot` 에 붙는 timer 용
+- `Spot` 은 topic, routed, request-reply 표면을 함께 가진다
+- `SpotTimer` 는 `Spot` 에 붙는 timer 용이다
 
 
 ## 공개 send API 의미
 
-공개 routed send API 는 아래 세 개를 둔다.
+공개 routed send API 는 아래 두 개를 둔다.
 
-- `zlink_spot_route_send_router()`
-- `zlink_spot_route_send_spot()`
-- `zlink_router_send_spot()`
+- `zlink_spot_send_router()`
+- `zlink_spot_send_spot()`
 
 이 함수들은 이름이 비슷해 보여도 목적지가 다르다.
 
-### `zlink_spot_route_send_router()`
+### `zlink_spot_send_router()`
 
 이 함수는
 이미 연결된 `ROUTER` peer 의 `routing_id` 를 대상으로 보내는 함수다.
@@ -879,12 +1028,12 @@ timer 표면에서도 수신 모델 충돌 규칙은 동일하게 적용하는 �
 - 이미 알고 있는 `ROUTER` peer identity 로 바로 보낸다
 - SPOT publish/subscribe 의미를 갖지 않는다
 - 받는 쪽 generic `ROUTER` 는 기존 `zlink_recv()` 또는 그와 같은 raw ROUTER recv 표면으로 받는다
-- 이 경우 routed-message 여부는 body 의 `frame0` 프로토콜 식별자로 구분한다
+- 이 경우 routed-message 여부는 protocol envelope 의 식별자로 구분한다
 - payload ownership 규칙은 기존 raw `ROUTER` recv 규칙을 그대로 따른다
 - 즉 `spot -> router` 는 generic `ROUTER` 쪽에 새 전용 recv API 를 추가하지 않아도,
-  기존 raw `ROUTER` recv 위에서 프로토콜 식별자로 구분할 수 있어야 한다
+  기존 raw `ROUTER` recv 위에서 protocol envelope 를 읽어 구분할 수 있어야 한다
 
-### `zlink_spot_route_send_spot()`
+### `zlink_spot_send_spot()`
 
 이 함수는
 다른 `SpotNode` 의 routed router endpoint 로 보내는 함수다.
@@ -896,17 +1045,9 @@ timer 표면에서도 수신 모델 충돌 규칙은 동일하게 적용하는 �
 - 도착한 메시지는 대상 `SpotNode` 안의 target `Spot` routed recv 표면으로 들어간다
 - 기존 subscribe 경로로 들어가지 않는다
 
-### `zlink_router_send_spot()`
-
-이 함수는
-일반 `ROUTER` 소켓에서 `SpotNode` 의 routed endpoint 로 보내는 함수다.
-
-특징:
-
-- 목적지는 `dest_node_rid` 와 `dest_spot_rid` 다
-- 일반 `ROUTER` peer 가 `SpotNode` 안의 target `Spot` routed recv 경로로 메시지를 보낼 때 쓴다
-- 수신한 `SpotNode` 는 target `Spot` routed recv 표면에서
-  이 메시지를 `source_kind=router` 로 구분해서 돌려준다
+`router -> spot` 송신 공개 API 는 socket 계열 기능이므로
+[`SOCKET_REQUEST_REPLY_API_SPEC.md`](SOCKET_REQUEST_REPLY_API_SPEC.md)
+문서에서 함께 다룬다.
 
 
 ## recv 식별자 해석 규칙
@@ -932,7 +1073,7 @@ timer 표면에서도 수신 모델 충돌 규칙은 동일하게 적용하는 �
 
 ## 일반 ROUTER send 와의 구분
 
-이 스펙의 `SpotRoute` send 는
+이 스펙의 `Spot` routed send 는
 일반 `ROUTER` 소켓의 peer-directed send 와는 다른 기능이다.
 
 차이:
@@ -945,25 +1086,18 @@ timer 표면에서도 수신 모델 충돌 규칙은 동일하게 적용하는 �
 예시:
 
 ```c
-int zlink_spot_route_send_router(void *route,
-                                 const zlink_routing_id_t *peer_rid,
-                                 zlink_msg_t *parts,
-                                 size_t part_count,
-                                 zlink_send_flags_t flags);
-
-int zlink_spot_route_send_spot(void *route,
-                               const zlink_routing_id_t *dest_node_rid,
-                               const zlink_routing_id_t *dest_spot_rid,
-                               zlink_msg_t *parts,
-                               size_t part_count,
-                               zlink_send_flags_t flags);
-
-int zlink_router_send_spot(void *router,
-                           const zlink_routing_id_t *dest_node_rid,
-                           const zlink_routing_id_t *dest_spot_rid,
+int zlink_spot_send_router(void *spot,
+                           const zlink_routing_id_t *peer_rid,
                            zlink_msg_t *parts,
                            size_t part_count,
                            zlink_send_flags_t flags);
+
+int zlink_spot_send_spot(void *spot,
+                         const zlink_routing_id_t *dest_node_rid,
+                         const zlink_routing_id_t *dest_spot_rid,
+                         zlink_msg_t *parts,
+                         size_t part_count,
+                         zlink_send_flags_t flags);
 ```
 
 중요한 점은
@@ -1022,124 +1156,22 @@ router.sendSpot(destNodeId, destSpotRid, parts)
 
 ## 전송 형식
 
-### 기본 원칙
-
 원격 직접 전달은 `ROUTER` 소켓끼리 multipart 메시지로 주고받는다.
-다만 아래 프레임 정의는
-`ROUTER` transport 가 내부적으로 사용하는 peer addressing envelope 를
-벗긴 뒤의 "프로토콜 payload" 를 설명한다.
+다만 source/destination 주소 정보는
+메시지 header 가 아니라 직접 전달 프로토콜 envelope 로 싣는다.
 
-즉:
+전송 형식의 정확한 wire 정의는
+[`ZMP_SPOT_ROUTED_PROTOCOL.md`](ZMP_SPOT_ROUTED_PROTOCOL.md)
+를 기준으로 본다.
 
-- 실제 wire 에는 `ROUTER` 송신 대상 식별용 envelope 가 앞에 붙을 수 있다
-- 그 envelope 형식과 peer 선택은 `node_router` 구현이 내부적으로 관리한다
-- 아래 `frame0..N` 규칙은 envelope 뒤에 오는 routed-message protocol body 에 적용한다
+이 문서에서는 아래 사항만 상위 동작 관점에서 전제로 둔다.
 
-전송 형식:
-
-```text
-frame0 = 직접 전달 프로토콜 식별자
-frame1 = 버전
-frame2 = source class
-frame3 = source node rid or empty
-frame4 = source spot rid or source router rid
-frame5 = destination class
-frame6 = destination node rid or empty
-frame7 = destination spot rid or destination router rid
-frame8..N = 실제 payload part 들
-```
-
-방향별 해석은 아래와 같다.
-
-### `spot -> spot`
-
-```text
-frame2 = "spot"
-frame3 = source node rid
-frame4 = source spot rid
-frame5 = "spot"
-frame6 = dest node rid
-frame7 = dest spot rid
-```
-
-### `spot -> router`
-
-```text
-frame2 = "spot"
-frame3 = source node rid
-frame4 = source spot rid
-frame5 = "router"
-frame6 = empty
-frame7 = dest router rid
-```
-
-### `router -> spot`
-
-```text
-frame2 = "router"
-frame3 = empty
-frame4 = empty or optional debug router rid
-frame5 = "spot"
-frame6 = dest node rid
-frame7 = dest spot rid
-```
-
-### 프로토콜 식별자
-
-토픽 메시지와 섞이지 않도록 별도의 식별자를 사용한다.
-
-요구사항:
-
-- `__zlink.spot.ctrl.*` 와 관계없어야 한다
-- 토픽 payload 와 혼동되면 안 된다
-- 일반 `ROUTER` 데이터와 구분할 수 있어야 한다
-
-예시:
-
-```text
-\x00zlink.spot.route.v1\x00
-```
-
-### source class 와 destination class 값
-
-`source class` 와 `destination class` 에는 다음 둘 중 하나를 넣는다.
-
-- `"spot"`
-- `"router"`
-
-읽기 쉬운 문자열을 사용한다.
-
-### routed endpoint 프레임 규칙
-
-- `spot -> spot` 또는 `router -> spot` 메시지에는 `dest_spot_rid` 가 들어가야 한다
-- 일반 `router` peer 대상 메시지에는 `dest_spot_rid` 가 없다
-- 비어 있는 routed endpoint 식별자는 허용하지 않는다
-
-### 보낸 쪽 주소 검증
-
-받는 쪽은 transport 가 제공한 실제 peer identity 를
-source of truth 로 사용해야 한다.
-
-규칙:
-
-- `spot -> spot` 에서는 source node/spot 정보가
-  protocol body 와 peer metadata 규칙을 함께 만족해야 한다
-- `router -> spot` 에서 `source_router_rid` 는 transport peer identity 에서 얻는다
-- `router -> spot` body 안의 source router rid 값은
-  보내는 쪽이 자기 자신이라고 주장한 값으로 보고 신뢰하지 않는다
-- body 에 진단용 source rid 를 실었다면,
-  실제 transport peer identity 와 다를 때 그 값은 버린다
-- 최소한 잘못된 형식의 프레임은 반드시 버려야 한다
-
-`spot -> spot` 에 대한 구체 규칙은 아래와 같다.
-
-- transport peer 는 먼저 어느 원격 `SpotNode` 인지 식별할 수 있어야 한다
-- body 의 `source node rid` 는 그 peer 가 광고한 node `routing_id` 와 같아야 한다
-- body 의 `source spot rid` 는 그 node 가 광고한 spot 목록 안에 있어야 한다
-- peer 종류가 `spot` 목적지를 해석할 수 없는 peer 로 보이면 메시지를 버린다
-- body 의 `source node rid` 가 peer metadata 와 다르면 메시지를 버린다
-- body 의 `source spot rid` 가 그 node 에 없는 값이면 메시지를 버린다
-- 위 조건 중 하나라도 어기면 오류 카운터를 올리고 메시지를 버린다
+- 실제 wire 앞에는 `ROUTER` 송신 대상 식별용 transport envelope 가 붙을 수 있다
+- source/destination 주소는 transport envelope 뒤의 SPOT routed protocol envelope 에 실린다
+- request-reply 를 함께 쓰면 SPOT routed envelope 뒤에 request-reply envelope 가 온다
+- 일반 `ROUTER` 는 기존 `zlink_recv()` 로 받은 뒤 protocol envelope 를 읽어
+  source 주소를 reply 또는 follow-up `router -> spot` 송신에 사용할 수 있어야 한다
+- `spot -> spot` 에서는 source node/spot 정보가 peer metadata 와 함께 검증되어야 한다
 
 
 ## 로컬 처리 규칙
@@ -1309,6 +1341,26 @@ transport 가 허용하는 범위 안에서 보낸 순서를 유지하는 것을
 반면 "target `Spot` 가 실제로 없었다"는 이유만으로
 로컬 send 만 즉시 실패시키는 계약은 두지 않는다.
 
+### request 대상 `Spot` 이 없는 경우
+
+`spot -> spot request` 또는 `router -> spot request` 가
+대상 `SpotNode` 까지는 정상적으로 도착했지만
+`dest_spot_rid` 와 일치하는 target `Spot` 이 없으면
+이 경우는 timeout 이 아니라 명시적 request 실패로 처리한다.
+
+규칙:
+
+- 대상 `SpotNode` 는 request 를 drop 하지 않는다
+- 대상 `SpotNode` 는 같은 reply 경로로 request-reply `error reply` 를 돌려보낸다
+- 이때 `errno` 값은 `ENOENT` 다
+- requester 쪽 high-level completion 은 `errno = ENOENT` 로 완료된다
+- 이 규칙은 local delivery 와 remote delivery 에 동일하게 적용한다
+
+즉 `spot not found` 는
+"응답이 오지 않음"이 아니라
+"대상 node 에는 도착했지만 target `Spot` 이 없음"을 뜻한다.
+그래서 timeout 과 구분해야 한다.
+
 
 ## 큐와 혼잡 제어
 
@@ -1370,16 +1422,17 @@ transport 가 허용하는 범위 안에서 보낸 순서를 유지하는 것을
 - `peer_rid` 가 비어 있지 않아야 한다
 - 길이 제한을 지켜야 한다
 
-### 수신 프레임 검사
+### 수신 envelope 검사
 
 받는 쪽은 다음과 같은 잘못된 메시지를 버려야 한다.
 
-- frame 개수가 부족한 경우
-- 프로토콜 식별자 또는 버전이 맞지 않는 경우
+- protocol id 가 없거나 맞지 않는 경우
+- protocol version 이 맞지 않는 경우
+- routed envelope 조합이 허용된 규칙과 맞지 않는 경우
 - source 또는 destination 식별자가 비어 있는 경우
-- source kind 또는 destination class 가 맞지 않는 경우
+- source class 또는 destination class 가 맞지 않는 경우
 - `spot` 목적지인데 `dest_spot_rid` 가 비어 있는 경우
-- `router` 목적지인데 spot 전용 프레임 구성이 섞인 경우
+- `router` 목적지인데 `destination_node_rid` 가 비어 있지 않은 경우
 
 이런 잘못된 메시지 하나 때문에
 노드 전체를 fault 상태로 만들지 않는다.
@@ -1437,8 +1490,15 @@ routed recv 경로와 SPOT subscriber 양쪽에 동시에 보이면
 - 원격 `spot -> spot` 송신/수신
 - `spot -> router` 송신/수신
 - `router -> spot` 송신/수신
+- `spot -> spot request/reply`
+- `spot -> router request/reply`
+- `router -> spot request/reply`
+- 같은 `Spot` 에서 여러 request 를 동시에 outstanding 상태로 둘 수 있는지 확인
+- reply 순서가 바뀌어도 `request_seq` 로 올바르게 매칭되는지 확인
+- 첫 reply 이후의 extra reply 가 high-level request 완료를 다시 일으키지 않는지 확인
 - 잘못된 `dest_spot_rid` 거부
-- 잘못된 직접 전달 프레임 버리기
+- 존재하지 않는 `dest_spot_rid` request 는 timeout 이 아니라 `ENOENT` error reply 로 완료되어야 한다
+- 잘못된 직접 전달 envelope 버리기
 - 로컬 target `Spot` 부재가 send 의미를 바꾸지 않는지 확인
 - 원격 목적지 미해결 시 실패
 - 토픽 전달과 직접 전달 사이 상대 순서 비보장 확인
@@ -1449,7 +1509,7 @@ routed recv 경로와 SPOT subscriber 양쪽에 동시에 보이면
 
 구현 전에 이름과 표면을 다음처럼 확정해야 한다.
 
-- 공개 인터페이스 이름을 `SpotRoute` 로 할지 `SpotRouter` 로 할지
+- 직접 전달 표면을 별도 facade 없이 `Spot` handle 위에 직접 둘지
 - 직접 수신 API 에 peer transport 정보를 함께 보여줄지
 - registry topology API 가 node `routing_id` 와 spot `routing_id` 를 어떻게 노출할지
 - status/peer snapshot 에 routed-message 상태를 어떤 필드 이름으로 노출할지
@@ -1468,3 +1528,45 @@ SPOT 의 직접 전달 기능은
 - 원격 노드와는 `ROUTER` 소켓으로 직접 통신할 수 있다
 - `spot -> spot`, `spot -> router`, `router -> spot` 을 모두 지원할 수 있다
 - 주소 의미 충돌과 재전파 루프를 막을 수 있다
+
+---
+
+## 현재 변경 방향
+
+위 본문은 SPOT 직접 전달 기능의 전체 설계 방향을 설명하는 기준 문서로 유지한다.
+
+다만 현재 기준에서는 source/destination 주소나
+request/reply 같은 상위 의미를
+`zlink_msg_t` 내부 필드나 message header 확장으로 올리지 않는다.
+
+정리:
+
+- SPOT 직접 전달의 source/destination 정보는
+  `ZMP` transport 위의 SPOT routed protocol envelope 에 둔다
+- `spot -> router` 수신자는 기존 `ROUTER` recv 표면에서
+  이 protocol envelope 를 읽어 해석한다
+- transport `routing_id` 와 application-level source/destination 주소는
+  서로 다른 계층으로 구분한다
+- 공통 전송 형식은
+  [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) 를 따른다
+
+지원 방향:
+
+- `spot -> spot`, `spot -> router`, `router -> spot` 은
+  모두 같은 SPOT routed protocol envelope 체계 안에서 정의한다
+- 이 envelope 는 최소한 protocol id, version,
+  source class, source node rid, source spot rid,
+  destination class, destination node rid,
+  destination spot rid 또는 destination router rid 를 포함해야 한다
+- generic `ROUTER` 는 기존 recv 표면으로 메시지를 받은 뒤
+  routed protocol envelope 를 읽어 source node/spot return address 를 얻는다
+- `SpotNode` 는 같은 envelope 규칙으로 local handoff 와 remote handoff 를
+  일관되게 처리해야 한다
+
+즉 이 문서는 계속 유효한 설계 문서로 두되,
+구현 시에는 message-level 확장보다
+protocol-level envelope 방향을 우선 기준으로 해석한다.
+
+실제 envelope 형식 기준은
+[`ZMP_SPOT_ROUTED_PROTOCOL.md`](ZMP_SPOT_ROUTED_PROTOCOL.md)
+를 따른다.

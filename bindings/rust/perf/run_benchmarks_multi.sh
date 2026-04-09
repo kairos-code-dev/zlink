@@ -115,6 +115,28 @@ allowed = {
     "STREAM",
 }
 
+if raw == "ALL":
+    print("MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM")
+    raise SystemExit(0)
+
+items = []
+for token in raw.split(","):
+    value = token.strip()
+    if not value:
+        continue
+    if value.startswith("MULTI_"):
+        value = value[len("MULTI_"):]
+    if value not in allowed:
+        raise SystemExit(f"unsupported multi pattern: {value}")
+    items.append(f"MULTI_{value}")
+
+if not items:
+    raise SystemExit("no valid multi pattern specified")
+
+print(",".join(items))
+PY
+}
+
 ensure_core_stream_client() {
     if [[ "${REUSE_BUILD}" -eq 1 ]]; then
         if [[ ! -x "${STREAM_CLIENT}" ]]; then
@@ -136,28 +158,6 @@ ensure_core_stream_client() {
         -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
         -DZLINK_CXX_STANDARD=17 >/dev/null
     cmake --build "${CORE_BUILD_DIR}" --target perf_stream_client >/dev/null
-}
-
-if raw == "ALL":
-    print("MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM")
-    raise SystemExit(0)
-
-items = []
-for token in raw.split(","):
-    value = token.strip()
-    if not value:
-        continue
-    if value.startswith("MULTI_"):
-        value = value[len("MULTI_"):]
-    if value not in allowed:
-        raise SystemExit(f"unsupported multi pattern: {value}")
-    items.append(f"MULTI_{value}")
-
-if not items:
-    raise SystemExit("no valid multi pattern specified")
-
-print(",".join(items))
-PY
 }
 
 export PERF_MULTI_CLIENTS="${CLIENTS}"

@@ -3,7 +3,6 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.Threading;
 using Zlink;
 
 internal static partial class PerfRunner
@@ -115,31 +114,6 @@ internal static partial class PerfRunner
         SendFlags flags = SendFlags.None)
     {
         return socket.Send(buffer, flags);
-    }
-
-    internal static bool WaitUntil(Func<bool> check, int timeoutMs,
-        int intervalMs = 1)
-    {
-        long deadlineTicks = Stopwatch.GetTimestamp()
-            + (long)Math.Max(1, timeoutMs) * Stopwatch.Frequency / 1000;
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
-        {
-            try
-            {
-                if (check())
-                    return true;
-            }
-            catch
-            {
-            }
-
-            if (intervalMs > 0)
-                Thread.Sleep(intervalMs);
-            else
-                Thread.Yield();
-        }
-
-        return false;
     }
 
     internal static bool IsEchoPattern(string pattern)

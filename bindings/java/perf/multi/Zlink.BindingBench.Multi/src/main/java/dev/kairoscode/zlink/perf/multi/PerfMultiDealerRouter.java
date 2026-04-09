@@ -97,8 +97,9 @@ final class PerfMultiDealerRouter {
                                  (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
                             sendUntilSent(client, pollSet, List.of(request));
                         }
-                        pollSet.setEvents(0, PollEventType.POLLIN.getValue());
-                        pollSet.poll(-1);
+                        if (!awaitReadable(pollSet, activeEnd)) {
+                            break;
+                        }
                         while (true) {
                             Optional<dev.kairoscode.zlink.Received> maybe = client.tryRecv();
                             if (maybe.isEmpty()) {
@@ -133,5 +134,21 @@ final class PerfMultiDealerRouter {
             pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
             pollSet.poll(-1);
         }
+    }
+
+    private static boolean awaitReadable(SocketPollSet pollSet, long deadlineNs) {
+        while (System.nanoTime() < deadlineNs) {
+            try {
+                pollSet.setEvents(0, PollEventType.POLLIN.getValue());
+                if (pollSet.poll(5) > 0) {
+                    return true;
+                }
+            } catch (dev.kairoscode.zlink.ZlinkException ex) {
+                if (ex.errno() != 11 && ex.errno() != 4) {
+                    throw ex;
+                }
+            }
+        }
+        return false;
     }
 }

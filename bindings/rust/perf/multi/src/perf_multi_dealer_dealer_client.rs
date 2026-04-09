@@ -25,6 +25,10 @@ fn main() {
     for i in 0..settings.clients {
         let sock = ctx.dealer_socket().expect("dealer");
         sock.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
+        if matches!(args.transport.as_str(), "tls" | "wss") {
+            let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
+            common::setup_raw_tls_client(&sock, &tls).expect("client tls");
+        }
         sock.connect(&args.endpoint).expect("connect");
         poller.add_socket(&sock, i, 0).expect("poller add"); // start with no events
         states.push(SocketState {
@@ -50,12 +54,6 @@ fn main() {
         common::PHASE_ACTIVE, active_dur,
         &mut Some((&mut active_count, &mut latency_stats)),
     );
-
-    // -- Send stop token from every client socket -----------------------------
-    for sock in &sockets {
-        let stop_msg = Message::from_bytes(common::STOP_TOKEN).expect("stop msg");
-        let _ = sock.send(stop_msg);
-    }
 
     // -- Print results -------------------------------------------------------
     let stats = latency_stats.finish();

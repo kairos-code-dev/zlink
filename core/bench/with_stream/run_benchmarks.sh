@@ -1021,6 +1021,24 @@ ensure_cppserver_build_dir()
     fi
 }
 
+build_core_tests_helper_target()
+{
+    local helper="$1"
+    gmake -C "${BUILD_DIR}" \
+        -f "core/tests/CMakeFiles/${helper}.dir/build.make" \
+        "core/tests/CMakeFiles/${helper}.dir/build" >/dev/null
+}
+
+build_core_tests_stream_target()
+{
+    local target="$1"
+    build_core_tests_helper_target "unity" || return 1
+    build_core_tests_helper_target "testutil" || return 1
+    gmake -C "${BUILD_DIR}" \
+        -f "core/tests/CMakeFiles/${target}.dir/build.make" \
+        "core/tests/CMakeFiles/${target}.dir/build" >/dev/null
+}
+
 try_build_stack()
 {
     local stack="$1"
@@ -1030,21 +1048,21 @@ try_build_stack()
             if [[ "${BUILD_MODE}" == "reuse" ]]; then
                 [[ -f "${ASIO_BIN}" ]]
             else
-                cmake --build "${BUILD_DIR}" --target test_scenario_stream_asio -j"$(nproc)" >/dev/null
+                build_core_tests_stream_target "test_scenario_stream_asio"
             fi
             ;;
         zlink)
             if [[ "${BUILD_MODE}" == "reuse" ]]; then
                 [[ -f "${ZLINK_BIN}" ]]
             else
-                cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink -j"$(nproc)" >/dev/null
+                build_core_tests_stream_target "test_scenario_stream_zlink"
             fi
             ;;
         zmq)
             if [[ "${BUILD_MODE}" == "reuse" ]]; then
                 [[ -f "${ZMQ_BIN}" ]]
             else
-                cmake --build "${BUILD_DIR}" --target test_scenario_stream_zmq -j"$(nproc)" >/dev/null
+                build_core_tests_stream_target "test_scenario_stream_zmq"
             fi
             ;;
         cppserver)

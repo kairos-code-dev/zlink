@@ -16,6 +16,12 @@ fn main() {
     let rid = RoutingId::new(b"perf-dealer").expect("rid");
     dealer.set_routing_id(&rid).expect("set rid");
 
+    if matches!(config.transport.as_str(), "tls" | "wss") {
+        let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
+        common::setup_raw_tls_server(&router, &tls).expect("router tls");
+        common::setup_raw_tls_client(&dealer, &tls).expect("dealer tls");
+    }
+
     router.bind(&bind_endpoint).expect("bind");
     let endpoint = router.last_endpoint().unwrap_or(bind_endpoint);
     dealer.connect(&endpoint).expect("connect");
@@ -82,7 +88,6 @@ fn main() {
         |msg| {
             let _ = dealer.send(msg);
         },
-        |msg| dealer.try_send(msg),
     );
     sender_done.signal_done();
     receiver_thread.join().expect("join");

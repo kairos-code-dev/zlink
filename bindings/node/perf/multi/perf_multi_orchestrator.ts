@@ -7,10 +7,6 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 const { reservePort } = require('./perf_multi_common');
 
-function nextSpotCandidatePort(basePort, offset, attempts) {
-  return basePort + (offset % attempts);
-}
-
 function collectLines(stream, onLine) {
   let buffered = '';
   stream.setEncoding('utf8');
@@ -62,7 +58,7 @@ async function waitForLine(processRef, expected, label, timeoutMs) {
   });
 }
 
-function attachProcessCapture(child, resultLines) {
+function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
   child.__waiters = [];
   child.__seenLines = [];
   collectLines(child.stdout, (line) => {
@@ -72,7 +68,7 @@ function attachProcessCapture(child, resultLines) {
         return;
       }
     }
-    if (line.startsWith('RESULT,')) {
+    if (line.startsWith(resultPrefix)) {
       resultLines.push(line);
       return;
     }

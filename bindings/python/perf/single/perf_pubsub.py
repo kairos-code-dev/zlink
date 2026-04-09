@@ -26,8 +26,7 @@ def main(argv=None):
     args = parse_single_args(argv or sys.argv[1:], pattern="pubsub")
     payload = new_payload(args.msg_size)
     run_id = benchmark_run_id()
-    lock = threading.Lock()
-    state = {"active_sent": 0, "active_count": 0, "latencies": []}
+    latencies = []
 
     def send_loop(publisher):
         warmup_end = time.perf_counter() + args.warmup
@@ -37,8 +36,6 @@ def main(argv=None):
         active_end = time.perf_counter() + args.duration
         while time.perf_counter() < active_end:
             publisher.publish(TOPIC, stamp_payload(payload, phase=1))
-            with lock:
-                state["active_sent"] += 1
     with zlink.Context() as ctx:
         with zlink.XPubSocket(ctx) as publisher:
             with zlink.SubSocket(ctx) as subscriber:
@@ -88,22 +85,18 @@ def main(argv=None):
                                             run_id=run_id,
                                         ):
                                             continue
-                                        with lock:
-                                            state["active_count"] += 1
-                                        state["latencies"].append(
-                                            latency_ns_from_message(data)
-                                        )
+                                        latencies.append(latency_ns_from_message(data))
                                 if time.perf_counter() >= drain_deadline:
                                     break
 
                         sender.join()
-                if state["active_count"] == 0:
+                if not latencies:
                     raise RuntimeError("pubsub benchmark did not receive any active message")
                 metrics = result_metrics(
-                    count=state["active_count"],
+                    count=len(latencies),
                     msg_size=args.msg_size,
                     elapsed_s=args.duration,
-                    latencies_ns=state["latencies"],
+                    latencies_ns=latencies,
                 )
                 print_result_lines("PUBSUB", "tcp", args.msg_size, metrics)
 

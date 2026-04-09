@@ -13,20 +13,16 @@ from perf_metrics import (
     latency_ns_from_message,
     new_payload,
     parse_result_lines,
-    platform_name,
     print_result_lines,
     is_active_message,
     render_effective_options,
     render_markdown_summary,
-    resolve_results_dir,
     result_metrics,
     safe_poll,
     stamp_payload,
     tcp_endpoint,
     unique_endpoint,
     wait_monitor_event,
-    wait_socket_event,
-    write_report,
 )
 
 

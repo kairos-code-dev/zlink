@@ -112,4 +112,4 @@
 |------|------|
 | [spec/spot/README.md](spec/spot/README.md) | SPOT 상세 스펙 인덱스 |
 | [spec/spot/SPOT_PEER_PUBLISH_BATCHING_SPEC.md](spec/spot/SPOT_PEER_PUBLISH_BATCHING_SPEC.md) | SpotNode peer publish batching 스펙 |
-| [spec/spot/SPOT_ROUTED_MESSAGE_SPEC.md](spec/spot/SPOT_ROUTED_MESSAGE_SPEC.md) | SpotNode 기반 routed message 스펙 |
+| [plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md](plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md) | 개발 중 기준으로 쓰는 SpotNode 기반 routed message 작업 스펙 |

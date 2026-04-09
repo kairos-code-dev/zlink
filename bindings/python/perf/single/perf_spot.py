@@ -23,8 +23,7 @@ def main(argv=None):
     payload = new_payload(args.msg_size)
     topic = f"bench.{uuid.uuid4().hex}".encode("ascii")
     run_id = benchmark_run_id()
-    lock = threading.Lock()
-    state = {"active_sent": 0, "active_count": 0, "latencies": []}
+    latencies = []
     ready_event = threading.Event()
 
     def send_loop(spot):
@@ -39,8 +38,6 @@ def main(argv=None):
         active_end = time.perf_counter() + args.duration
         while time.perf_counter() < active_end:
             spot.publish(topic, [stamp_payload(payload, phase=1)])
-            with lock:
-                state["active_sent"] += 1
     with zlink.Context() as ctx:
         with zlink.SpotNode(ctx) as pub_node:
             with zlink.SpotNode(ctx) as sub_node:
@@ -73,24 +70,20 @@ def main(argv=None):
                                             run_id=run_id,
                                         ):
                                             continue
-                                        with lock:
-                                            state["active_count"] += 1
-                                        state["latencies"].append(
-                                            latency_ns_from_message(data)
-                                        )
+                                        latencies.append(latency_ns_from_message(data))
                                 if time.perf_counter() >= drain_deadline:
                                     break
 
                         sender.join()
-                        if state["active_count"] == 0:
+                        if not latencies:
                             raise RuntimeError(
                                 "spot benchmark did not receive any active message"
                             )
                         metrics = result_metrics(
-                            count=state["active_count"],
+                            count=len(latencies),
                             msg_size=args.msg_size,
                             elapsed_s=args.duration,
-                            latencies_ns=state["latencies"],
+                            latencies_ns=latencies,
                         )
                         print_result_lines("SPOT", "inproc", args.msg_size, metrics)
 

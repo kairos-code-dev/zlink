@@ -1,6 +1,8 @@
 package main
 
 import (
+	"runtime"
+	"sync"
 	"time"
 
 	"zlink"
@@ -42,7 +44,8 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.ApplySingleBenchmarkSocketOptions(client, cfg.transport)
 	perfcommon.Must(client.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 	perfcommon.Must(client.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
-	startRouterRouterEchoServer(server)
+	stopRouterRouterEchoServer := startRouterRouterEchoServer(server)
+	defer stopRouterRouterEchoServer()
 	waitForRouterRouterReady(client, serverID)
 
 	stats := perfcommon.NewStats()
@@ -70,8 +73,11 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 		}
 		part, err := reply.SinglePartOrError()
 		perfcommon.Must(err)
+		runtime.KeepAlive(reply)
 		perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
 		perfcommon.Must(reply.Close())
+		runtime.KeepAlive(part)
+		runtime.KeepAlive(reply)
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
@@ -97,23 +103,36 @@ func waitForRouterRouterReady(client *zlink.RouterSocket, serverID zlink.Routing
 				}
 				return false, err
 			}
-			return true, reply.Close()
+			if err := reply.Close(); err != nil {
+				return false, err
+			}
+			runtime.KeepAlive(reply)
+			return true, nil
 		},
 	}))
 }
 
-func startRouterRouterEchoServer(server *zlink.RouterSocket) {
-	perfcommon.Must(server.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
+func startRouterRouterEchoServer(server *zlink.RouterSocket) func() {
+	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
-			received, err := server.Recv()
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			received, ok, err := server.TryRecv()
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					continue
 				}
 				return
 			}
-			if received == nil {
+			if !ok || received == nil {
 				continue
 			}
 			err = server.SendTo(received.RoutingID(),
@@ -122,6 +141,11 @@ func startRouterRouterEchoServer(server *zlink.RouterSocket) {
 				perfcommon.Must(err)
 			}
 			perfcommon.Must(received.Close())
+			runtime.KeepAlive(received)
 		}
 	}()
+	return func() {
+		close(stop)
+		wg.Wait()
+	}
 }

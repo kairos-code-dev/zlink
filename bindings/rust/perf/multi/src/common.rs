@@ -1,20 +1,19 @@
 //! Multi perf common utilities.
 //! Protocol: server prints "READY,<endpoint>", client receives endpoint via CLI.
 //! Stop: client sends STOP_TOKEN, server detects and exits.
-#![allow(dead_code)]
 
 #[path = "backpressure.rs"]
 pub mod backpressure;
 
 use std::sync::OnceLock;
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
+use zlink::{DealerSocket, PairSocket, PubSocket, RouterSocket, SubSocket, ZlinkError};
 use zlink::Message;
 
 pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";
 pub const HEADER_SIZE: usize = 29;
-pub const PHASE_WARMUP: u8 = 0;
 pub const PHASE_ACTIVE: u8 = 1;
-pub const PHASE_COOLDOWN: u8 = 2;
 pub const MAGIC: u32 = 0x5A4C_4E4B; // "ZLNK"
 
 fn process_run_id() -> u32 {
@@ -35,44 +34,25 @@ pub fn encode_header(buf: &mut [u8], phase: u8, msg_size: u32, seq: u64) {
     buf[21..29].copy_from_slice(&(now_ns() as i64).to_le_bytes());
 }
 
-pub struct MetricHeader {
-    pub magic: u32,
-    pub run_id: u32,
-    pub phase: u8,
-    pub msg_size: u32,
-    pub seq: u64,
-    pub sent_ts_ns: i64,
-}
-
-pub fn decode_header(data: &[u8]) -> Option<MetricHeader> {
-    if data.len() < HEADER_SIZE {
-        return None;
-    }
-
-    Some(MetricHeader {
-        magic: u32::from_le_bytes(data[0..4].try_into().unwrap()),
-        run_id: u32::from_le_bytes(data[4..8].try_into().unwrap()),
-        phase: data[8],
-        msg_size: u32::from_le_bytes(data[9..13].try_into().unwrap()),
-        seq: u64::from_le_bytes(data[13..21].try_into().unwrap()),
-        sent_ts_ns: i64::from_le_bytes(data[21..29].try_into().unwrap()),
-    })
-}
-
 pub fn decode_phase(data: &[u8]) -> u8 {
-    decode_header(data).map(|header| header.phase).unwrap_or(u8::MAX)
+    if data.len() < HEADER_SIZE {
+        return u8::MAX;
+    }
+    data[8]
 }
 
 pub fn decode_msg_size(data: &[u8]) -> u32 {
-    decode_header(data).map(|header| header.msg_size).unwrap_or(0)
-}
-
-pub fn decode_run_id(data: &[u8]) -> u32 {
-    decode_header(data).map(|header| header.run_id).unwrap_or(0)
+    if data.len() < HEADER_SIZE {
+        return 0;
+    }
+    u32::from_le_bytes(data[9..13].try_into().unwrap())
 }
 
 pub fn decode_sent_ts_ns(data: &[u8]) -> i64 {
-    decode_header(data).map(|header| header.sent_ts_ns).unwrap_or(0)
+    if data.len() < HEADER_SIZE {
+        return 0;
+    }
+    i64::from_le_bytes(data[21..29].try_into().unwrap())
 }
 
 pub fn message_payload<'a>(parts: &'a [Message]) -> &'a [u8] {
@@ -81,6 +61,115 @@ pub fn message_payload<'a>(parts: &'a [Message]) -> &'a [u8] {
 
 pub fn now_ns() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64
+}
+
+pub struct TlsPaths {
+    pub cert: String,
+    pub key: String,
+    pub ca: String,
+}
+
+pub trait RawTlsSocket {
+    fn set_tls_cert(&self, cert: &str) -> Result<(), ZlinkError>;
+    fn set_tls_key(&self, key: &str) -> Result<(), ZlinkError>;
+    fn set_tls_ca(&self, ca: &str) -> Result<(), ZlinkError>;
+    fn set_tls_hostname(&self, hostname: &str) -> Result<(), ZlinkError>;
+    fn set_tls_trust_system(&self, trust_system: bool) -> Result<(), ZlinkError>;
+}
+
+macro_rules! impl_raw_tls_socket {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl RawTlsSocket for $ty {
+                fn set_tls_cert(&self, cert: &str) -> Result<(), ZlinkError> {
+                    <$ty>::set_tls_cert(self, cert)
+                }
+                fn set_tls_key(&self, key: &str) -> Result<(), ZlinkError> {
+                    <$ty>::set_tls_key(self, key)
+                }
+                fn set_tls_ca(&self, ca: &str) -> Result<(), ZlinkError> {
+                    <$ty>::set_tls_ca(self, ca)
+                }
+                fn set_tls_hostname(&self, hostname: &str) -> Result<(), ZlinkError> {
+                    <$ty>::set_tls_hostname(self, hostname)
+                }
+                fn set_tls_trust_system(&self, trust_system: bool) -> Result<(), ZlinkError> {
+                    <$ty>::set_tls_trust_system(self, trust_system)
+                }
+            }
+        )+
+    };
+}
+
+impl_raw_tls_socket!(PairSocket, PubSocket, DealerSocket, RouterSocket, SubSocket);
+
+fn resolve_perf_tls_paths_from(start: &Path) -> Option<TlsPaths> {
+    let mut cur = if start.is_file() {
+        start.parent()?.to_path_buf()
+    } else {
+        start.to_path_buf()
+    };
+
+    loop {
+        for candidate in [
+            cur.join("bindings").join("cpp").join("tests").join("certs").join("gen"),
+            cur.join("bindings").join("rust").join("tests").join("certs").join("gen"),
+            cur.join("bindings").join("java").join("tests").join("certs"),
+            cur.join("bindings").join("dotnet").join("tests").join("certs"),
+            cur.join("tests").join("certs").join("gen"),
+        ] {
+            if candidate.join("server.crt").is_file()
+                && candidate.join("server.key").is_file()
+                && candidate.join("ca.crt").is_file()
+            {
+                return Some(TlsPaths {
+                    cert: candidate.join("server.crt").to_string_lossy().into_owned(),
+                    key: candidate.join("server.key").to_string_lossy().into_owned(),
+                    ca: candidate.join("ca.crt").to_string_lossy().into_owned(),
+                });
+            }
+        }
+
+        let parent = match cur.parent() {
+            Some(parent) => parent.to_path_buf(),
+            None => break,
+        };
+        if parent == cur {
+            break;
+        }
+        cur = parent;
+    }
+
+    None
+}
+
+pub fn resolve_perf_tls_paths() -> Option<TlsPaths> {
+    if let Ok(cwd) = std::env::current_dir() {
+        if let Some(paths) = resolve_perf_tls_paths_from(&cwd) {
+            return Some(paths);
+        }
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(paths) = resolve_perf_tls_paths_from(&exe) {
+            return Some(paths);
+        }
+    }
+
+    None
+}
+
+pub fn setup_raw_tls_server<S: RawTlsSocket>(socket: &S, tls: &TlsPaths) -> Result<(), ZlinkError> {
+    socket.set_tls_cert(&tls.cert)?;
+    socket.set_tls_key(&tls.key)?;
+    Ok(())
+}
+
+pub fn setup_raw_tls_client<S: RawTlsSocket>(socket: &S, tls: &TlsPaths) -> Result<(), ZlinkError> {
+    socket.set_tls_ca(&tls.ca)?;
+    socket.set_tls_hostname("localhost")?;
+    socket.set_tls_trust_system(false)?;
+    Ok(())
 }
 
 pub fn is_stop_token(data: &[u8]) -> bool {
@@ -134,7 +223,6 @@ pub struct StatsResult {
 
 #[derive(Default)]
 pub struct PhaseResult {
-    pub count: u64,
     pub throughput: f64,
     pub bandwidth: f64,
     pub latency_mean_ns: f64,
@@ -150,14 +238,7 @@ pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> 
     };
     let bandwidth = throughput * size as f64 / 1_000_000.0;
 
-    PhaseResult {
-        count: stats.count,
-        throughput,
-        bandwidth,
-        latency_mean_ns: stats.mean_ns,
-        latency_p95_ns: stats.p95_ns,
-        latency_p99_ns: stats.p99_ns,
-    }
+    PhaseResult { throughput, bandwidth, latency_mean_ns: stats.mean_ns, latency_p95_ns: stats.p95_ns, latency_p99_ns: stats.p99_ns }
 }
 
 // -- RESULT output -----------------------------------------------------------
@@ -188,8 +269,6 @@ pub struct MultiSettings {
     pub clients: usize,
     pub duration_seconds: u64,
     pub hwm: i32,
-    pub sndtimeo_ms: i32,
-    pub rcvtimeo_ms: i32,
 }
 
 impl MultiSettings {
@@ -198,8 +277,6 @@ impl MultiSettings {
             clients: env_or("PERF_MULTI_CLIENTS", 100),
             duration_seconds: env_or("PERF_MULTI_DURATION_SECONDS", 5) as u64,
             hwm: env_or("PERF_MULTI_HWM", 100) as i32,
-            sndtimeo_ms: env_or("PERF_MULTI_SNDTIMEO_MS", 200) as i32,
-            rcvtimeo_ms: env_or("PERF_MULTI_RCVTIMEO_MS", 200) as i32,
         }
     }
 }

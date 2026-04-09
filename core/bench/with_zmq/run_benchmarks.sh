@@ -106,6 +106,7 @@ SINGLE_BUILD_TARGETS=(
   comp_std_zmq_router_router
   comp_zlink_router_router
 )
+SELECTED_BUILD_TARGETS=()
 
 usage() {
   cat <<'USAGE'
@@ -296,6 +297,48 @@ for i in "${!PATTERN_LIST[@]}"; do
       ;;
   esac
 done
+
+for pattern_name in "${PATTERN_LIST[@]}"; do
+  case "${pattern_name}" in
+    PAIR)
+      SELECTED_BUILD_TARGETS+=(
+        comp_std_zmq_pair
+        comp_zlink_pair
+      )
+      ;;
+    PUBSUB)
+      SELECTED_BUILD_TARGETS+=(
+        comp_std_zmq_pubsub
+        comp_zlink_pubsub
+      )
+      ;;
+    DEALER_DEALER)
+      SELECTED_BUILD_TARGETS+=(
+        comp_std_zmq_dealer_dealer
+        comp_zlink_dealer_dealer
+      )
+      ;;
+    DEALER_ROUTER)
+      SELECTED_BUILD_TARGETS+=(
+        comp_std_zmq_dealer_router
+        comp_zlink_dealer_router
+      )
+      ;;
+    ROUTER_ROUTER)
+      SELECTED_BUILD_TARGETS+=(
+        comp_std_zmq_router_router
+        comp_zlink_router_router
+      )
+      ;;
+    *)
+      ;;
+  esac
+done
+
+if [[ "${#SELECTED_BUILD_TARGETS[@]}" -eq 0 ]]; then
+  echo "Error: no build targets selected for patterns: ${PATTERN}" >&2
+  exit 1
+fi
 
 if [[ -n "${IO_THREADS}" && ! "${IO_THREADS}" =~ ^[0-9]+$ ]]; then
   echo "io-threads must be a non-negative integer." >&2
@@ -496,7 +539,7 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
       -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
       -DZLINK_CXX_STANDARD=17
-    cmake --build "${BUILD_DIR}" --config Release --target "${SINGLE_BUILD_TARGETS[@]}"
+    cmake --build "${BUILD_DIR}" --config Release --target "${SELECTED_BUILD_TARGETS[@]}"
   else
     cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
       -DCMAKE_BUILD_TYPE=Release \
@@ -509,7 +552,7 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
       -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
       -DZLINK_CXX_STANDARD=17
-    cmake --build "${BUILD_DIR}" --target "${SINGLE_BUILD_TARGETS[@]}"
+    cmake --build "${BUILD_DIR}" --target "${SELECTED_BUILD_TARGETS[@]}"
   fi
 fi
 

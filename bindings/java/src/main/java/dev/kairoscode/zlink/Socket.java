@@ -146,6 +146,14 @@ public abstract class Socket implements AutoCloseable {
         socketCore.attachDiscovery(discovery);
     }
 
+    void attachStreamRaw(StreamPacketHandler handler) {
+        socketCore.attachStreamRaw(handler);
+    }
+
+    void detachStream() {
+        socketCore.detachStream();
+    }
+
     void setSockOpt(SocketOption option, byte[] value) {
         socketCore.setSockOpt(option, value);
     }

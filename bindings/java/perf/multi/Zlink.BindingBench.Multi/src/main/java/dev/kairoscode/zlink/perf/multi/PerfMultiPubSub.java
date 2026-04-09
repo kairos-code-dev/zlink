@@ -54,7 +54,6 @@ final class PerfMultiPubSub {
     }
 
     static PerfUtil.Result runClient(PerfUtil.Config config) {
-        CountDownLatch finishedClients = new CountDownLatch(config.clients());
         CountDownLatch connected = new CountDownLatch(config.clients());
         CountDownLatch go = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -78,10 +77,14 @@ final class PerfMultiPubSub {
                     go.countDown();
                 }
                 PerfUtil.await(go, "pubsub start", Duration.ofSeconds(10));
+                long finishDeadline = System.nanoTime()
+                    + Duration.ofSeconds(config.durationSeconds() + 20L).toNanos();
                 try (SocketPollSet pollSet = SocketPollSet.fromSockets(
                     List.of(sub), PollEventType.POLLIN.getValue())) {
-                    while (finishedClients.getCount() > 0L) {
-                        pollSet.poll(-1);
+                    while (System.nanoTime() < finishDeadline) {
+                        if (!awaitReadable(pollSet, finishDeadline)) {
+                            break;
+                        }
                         while (true) {
                             Optional<dev.kairoscode.zlink.TopicMessage> maybe = sub.trySubscribe();
                             if (maybe.isEmpty()) {
@@ -94,7 +97,6 @@ final class PerfMultiPubSub {
                                     continue;
                                 }
                                 if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                                    finishedClients.countDown();
                                     return;
                                 }
                                 if (header.phase() == PerfUtil.PHASE_ACTIVE) {
@@ -112,5 +114,21 @@ final class PerfMultiPubSub {
             throw new IllegalStateException("pubsub client failed", failure.get());
         }
         return metrics.finishMulti(config);
+    }
+
+    private static boolean awaitReadable(SocketPollSet pollSet, long deadlineNs) {
+        while (System.nanoTime() < deadlineNs) {
+            try {
+                pollSet.setEvents(0, PollEventType.POLLIN.getValue());
+                if (pollSet.poll(5) > 0) {
+                    return true;
+                }
+            } catch (dev.kairoscode.zlink.ZlinkException ex) {
+                if (ex.errno() != 11 && ex.errno() != 4) {
+                    throw ex;
+                }
+            }
+        }
+        return false;
     }
 }

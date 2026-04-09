@@ -10,7 +10,7 @@ class callback_receiver_t
     callback_receiver_t (const callback_receiver_t &) = delete;
     callback_receiver_t &operator= (const callback_receiver_t &) = delete;
 
-    bool attach (perf_socket_t &socket_, queue_probe_t *queue_probe_);
+    bool attach (perf_socket_t &socket_);
     bool begin_phase (uint32_t run_id_,
                       perf_single_metric::phase_t phase_,
                       size_t msg_size_,
@@ -50,7 +50,6 @@ class callback_receiver_t
     void worker_loop ();
 
     perf_socket_t *_socket;
-    queue_probe_t *_queue_probe;
     std::vector<event_t> _queue;
     size_t _queue_head;
     size_t _queue_tail;
@@ -84,8 +83,8 @@ class subscribe_callback_receiver_t
     subscribe_callback_receiver_t &
     operator= (const subscribe_callback_receiver_t &) = delete;
 
-    bool attach_socket (perf_socket_t &socket_, queue_probe_t *queue_probe_);
-    bool attach_spot (zlink::service::spot_t &spot_, queue_probe_t *queue_probe_);
+    bool attach_socket (perf_socket_t &socket_);
+    bool attach_spot (zlink::service::spot_t &spot_);
     bool begin_phase (uint32_t run_id_,
                       perf_single_metric::phase_t phase_,
                       size_t msg_size_,
@@ -128,7 +127,6 @@ class subscribe_callback_receiver_t
     bool push_event (const event_t &event_);
     void worker_loop ();
 
-    queue_probe_t *_queue_probe;
     perf_socket_t *_socket;
     zlink::service::spot_t *_spot;
     std::vector<event_t> _queue;

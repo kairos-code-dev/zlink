@@ -79,21 +79,6 @@ int resolve_single_socket_hwm (bool send_)
                  : parse_positive_env ("PERF_SINGLE_RCVHWM", base_hwm);
 }
 
-int resolve_single_queue_sample_ms ()
-{
-    return parse_positive_env ("PERF_SINGLE_QUEUE_SAMPLE_MS", 100);
-}
-
-int resolve_single_queue_sample_every_msgs ()
-{
-    return parse_positive_env ("PERF_SINGLE_QUEUE_SAMPLE_EVERY_MSGS", 64);
-}
-
-int resolve_bench_count (const char *env_name, int default_value)
-{
-    return parse_positive_env (env_name, default_value);
-}
-
 bool bench_debug_enabled ()
 {
     static const bool enabled = std::getenv ("PERF_DEBUG") != NULL;
@@ -273,11 +258,6 @@ void settle ()
     std::this_thread::sleep_for (std::chrono::milliseconds (SETTLE_TIME_MS));
 }
 
-bool connect_checked (perf_socket_t &socket_, const std::string &endpoint)
-{
-    return socket_.connect (endpoint) == 0;
-}
-
 bool setup_connected_pair (perf_socket_t &bind_socket_,
                            perf_socket_t &connect_socket_,
                            const std::string &transport_,
@@ -295,7 +275,7 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
       bind_and_resolve_endpoint (bind_socket_, transport_, id_);
     if (endpoint.empty ())
         return false;
-    if (!connect_checked (connect_socket_, endpoint))
+    if (connect_socket_.connect (endpoint) != 0)
         return false;
 
     apply_single_benchmark_socket_options (bind_socket_, transport_);
@@ -304,179 +284,8 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
     return true;
 }
 
-// wait_socket_monitor_event / wait_service_monitor_event removed:
-// now provided by unified header common/perf_monitor_wait.hpp,
-// imported via using-declarations in perf_single_common.hpp.
-
-queue_probe_t::queue_probe_t (perf_socket_t *send_socket_,
-                              perf_socket_t *recv_socket_)
-    : _send_socket (send_socket_),
-      _recv_socket (recv_socket_),
-      _send_monitor (),
-      _recv_monitor (),
-      _sample_interval_ns (resolve_sample_interval_ns ()),
-      _sample_every_msgs (resolve_sample_every_msgs ()),
-      _send_last_sample_ns (0),
-      _recv_last_sample_ns (0),
-      _send_msgs_since_sample (0),
-      _recv_msgs_since_sample (0),
-      _snd_pending_max (0),
-      _rcv_pending_max (0),
-      _rcv_pending_end (0),
-      _snd_seen (false),
-      _rcv_seen (false)
-{
-    if (_send_socket)
-        _send_monitor = zlink::monitor_handle_t::open (*_send_socket);
-    if (_recv_socket)
-        _recv_monitor = zlink::monitor_handle_t::open (*_recv_socket);
-}
-
-unsigned long long queue_probe_t::resolve_sample_interval_ns ()
-{
-    const int sample_ms = resolve_single_queue_sample_ms ();
-    const unsigned long long clamped_ms =
-      static_cast<unsigned long long> (sample_ms > 0 ? sample_ms : 100);
-    return clamped_ms * 1000000ULL;
-}
-
-unsigned int queue_probe_t::resolve_sample_every_msgs ()
-{
-    const int value = resolve_single_queue_sample_every_msgs ();
-    return static_cast<unsigned int> (value > 0 ? value : 64);
-}
-
-unsigned long long queue_probe_t::now_ns ()
-{
-    return static_cast<unsigned long long> (
-      std::chrono::duration_cast<std::chrono::nanoseconds> (
-        std::chrono::steady_clock::now ().time_since_epoch ())
-        .count ());
-}
-
-bool queue_probe_t::read_snapshot (zlink::monitor_handle_t *monitor_,
-                                   zlink::monitor_snapshot_t *snapshot_)
-{
-    if (!monitor_ || !snapshot_ || !monitor_->valid ())
-        return false;
-    zlink_monitor_snapshot_t native;
-    if (zlink_monitor_snapshot (monitor_->handle (), &native) != 0)
-        return false;
-    *snapshot_ = zlink::monitor_snapshot_t (native);
-    return true;
-}
-
-void queue_probe_t::sample_send_if_due ()
-{
-    maybe_sample_send (false);
-}
-
-void queue_probe_t::sample_recv_if_due ()
-{
-    maybe_sample_recv (false);
-}
-
-void queue_probe_t::force_sample_send ()
-{
-    maybe_sample_send (true);
-}
-
-void queue_probe_t::force_sample_recv ()
-{
-    maybe_sample_recv (true);
-}
-
-void queue_probe_t::maybe_sample_send (bool force_)
-{
-    if (!_send_socket)
-        return;
-
-    if (force_) {
-        _send_msgs_since_sample = 0;
-    } else if (_sample_every_msgs > 1) {
-        ++_send_msgs_since_sample;
-        if (_send_msgs_since_sample < _sample_every_msgs)
-            return;
-        _send_msgs_since_sample = 0;
-    }
-
-    const unsigned long long now = now_ns ();
-    if (!force_ && _send_last_sample_ns > 0
-        && now - _send_last_sample_ns < _sample_interval_ns) {
-        return;
-    }
-    _send_last_sample_ns = now;
-
-    zlink::monitor_snapshot_t snapshot;
-    if (!read_snapshot (&_send_monitor, &snapshot))
-        return;
-    if ((snapshot.detail_flags & ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS)
-        == 0) {
-        return;
-    }
-
-    const unsigned long long pending =
-      static_cast<unsigned long long> (snapshot.snd_pending_msgs);
-    if (!_snd_seen || pending > _snd_pending_max)
-        _snd_pending_max = pending;
-    _snd_seen = true;
-}
-
-void queue_probe_t::maybe_sample_recv (bool force_)
-{
-    if (!_recv_socket)
-        return;
-
-    if (force_) {
-        _recv_msgs_since_sample = 0;
-    } else if (_sample_every_msgs > 1) {
-        ++_recv_msgs_since_sample;
-        if (_recv_msgs_since_sample < _sample_every_msgs)
-            return;
-        _recv_msgs_since_sample = 0;
-    }
-
-    const unsigned long long now = now_ns ();
-    if (!force_ && _recv_last_sample_ns > 0
-        && now - _recv_last_sample_ns < _sample_interval_ns) {
-        return;
-    }
-    _recv_last_sample_ns = now;
-
-    zlink::monitor_snapshot_t snapshot;
-    if (!read_snapshot (&_recv_monitor, &snapshot))
-        return;
-    if ((snapshot.detail_flags & ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS)
-        == 0) {
-        return;
-    }
-
-    const unsigned long long pending =
-      static_cast<unsigned long long> (snapshot.rcv_pending_msgs);
-    if (!_rcv_seen || pending > _rcv_pending_max)
-        _rcv_pending_max = pending;
-    _rcv_pending_end = pending;
-    _rcv_seen = true;
-}
-
-queue_stats_t queue_probe_t::snapshot () const
-{
-    queue_stats_t out;
-    if (_snd_seen) {
-        out.has_snd_pending = true;
-        out.snd_pending_max = static_cast<double> (_snd_pending_max);
-    }
-    if (_rcv_seen) {
-        out.has_rcv_pending = true;
-        out.rcv_pending_max = static_cast<double> (_rcv_pending_max);
-        out.rcv_pending_end = static_cast<double> (_rcv_pending_end);
-    }
-    return out;
-}
-
 callback_receiver_t::callback_receiver_t ()
     : _socket (NULL),
-      _queue_probe (NULL),
       _queue (
         static_cast<size_t> (parse_positive_env (
           "PERF_SINGLE_CALLBACK_QUEUE_CAP", 262144))),
@@ -510,11 +319,9 @@ callback_receiver_t::~callback_receiver_t ()
         _worker.join ();
 }
 
-bool callback_receiver_t::attach (perf_socket_t &socket_,
-                                  queue_probe_t *queue_probe_)
+bool callback_receiver_t::attach (perf_socket_t &socket_)
 {
     _socket = &socket_;
-    _queue_probe = queue_probe_;
     if (_worker.joinable ())
         return true;
 
@@ -627,9 +434,6 @@ void callback_receiver_t::recv_handler (const zlink_routing_id_t *,
         }
     }
 
-    if (event.active && self->_queue_probe)
-        self->_queue_probe->sample_recv_if_due ();
-
     if (!self->push_event (event))
         self->_failed.store (true, std::memory_order_release);
 
@@ -715,9 +519,6 @@ void callback_receiver_t::worker_loop ()
                   _current_msg_size.load (std::memory_order_acquire))) {
                 continue;
             }
-
-            if (_queue_probe)
-                _queue_probe->sample_recv_if_due ();
 
             ++_received_count;
             if (_current_active.load (std::memory_order_acquire)) {
@@ -808,8 +609,7 @@ bool run_callback_phase (callback_receiver_t &receiver_,
 }
 
 subscribe_callback_receiver_t::subscribe_callback_receiver_t ()
-    : _queue_probe (NULL),
-      _socket (NULL),
+    : _socket (NULL),
       _spot (NULL),
       _queue (
         static_cast<size_t> (parse_positive_env (
@@ -845,10 +645,8 @@ subscribe_callback_receiver_t::~subscribe_callback_receiver_t ()
         _worker.join ();
 }
 
-bool subscribe_callback_receiver_t::attach_socket (perf_socket_t &socket_,
-                                                   queue_probe_t *queue_probe_)
+bool subscribe_callback_receiver_t::attach_socket (perf_socket_t &socket_)
 {
-    _queue_probe = queue_probe_;
     _socket = &socket_;
     _spot = NULL;
 
@@ -864,10 +662,8 @@ bool subscribe_callback_receiver_t::attach_socket (perf_socket_t &socket_,
     return true;
 }
 
-bool subscribe_callback_receiver_t::attach_spot (zlink::service::spot_t &spot_,
-                                                 queue_probe_t *queue_probe_)
+bool subscribe_callback_receiver_t::attach_spot (zlink::service::spot_t &spot_)
 {
-    _queue_probe = queue_probe_;
     _socket = NULL;
     _spot = &spot_;
 
@@ -991,9 +787,6 @@ void subscribe_callback_receiver_t::subscribe_handler (
         }
     }
 
-    if (event.active && self->_queue_probe)
-        self->_queue_probe->sample_recv_if_due ();
-
     if (!self->push_event (event))
         self->_failed.store (true, std::memory_order_release);
 
@@ -1091,9 +884,6 @@ void subscribe_callback_receiver_t::worker_loop ()
                   _current_msg_size.load (std::memory_order_acquire))) {
                 continue;
             }
-
-            if (_queue_probe)
-                _queue_probe->sample_recv_if_due ();
 
             ++_received_count;
             if (_current_active.load (std::memory_order_acquire)) {

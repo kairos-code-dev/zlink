@@ -33,19 +33,20 @@ final class PerfMultiStream {
                  List.of(server), PollEventType.POLLIN.getValue())) {
             PerfUtil.applySocketOptions(server, config);
             PerfUtil.configureServerTls(server, config.transport());
-            server.options().notify(true);
             server.options().sendTimeout(java.time.Duration.ZERO);
             server.options().recvTimeout(java.time.Duration.ZERO);
             server.bind(config.endpoint());
 
-            while (!stopRequested.get() || !pending.isEmpty()) {
+            while (!stopRequested.get()) {
                 synchronized (pendingLock) {
                     pollSet.setEvents(0, pending.isEmpty()
                         ? PollEventType.POLLIN.getValue()
                         : PollEventType.POLLIN.getValue()
                         | PollEventType.POLLOUT.getValue());
                 }
-                pollSet.poll(100);
+                if (!pollReady(pollSet, 100)) {
+                    continue;
+                }
                 if (pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
                     while (true) {
                         var maybe = server.tryRecv();
@@ -135,6 +136,24 @@ final class PerfMultiStream {
         byte[] stop = "STOP".getBytes(StandardCharsets.UTF_8);
         byte[] quit = "QUIT".getBytes(StandardCharsets.UTF_8);
         return matchesToken(payload, stop) || matchesToken(payload, quit);
+    }
+
+    private static boolean pollReady(SocketPollSet pollSet, int timeoutMs) {
+        long deadlineNs = System.nanoTime() + Duration.ofMillis(timeoutMs).toNanos();
+        while (System.nanoTime() < deadlineNs) {
+            try {
+                pollSet.setEvents(0, PollEventType.POLLIN.getValue()
+                    | PollEventType.POLLOUT.getValue());
+                if (pollSet.poll(5) > 0) {
+                    return true;
+                }
+            } catch (dev.kairoscode.zlink.ZlinkException ex) {
+                if (ex.errno() != 11 && ex.errno() != 4) {
+                    throw ex;
+                }
+            }
+        }
+        return false;
     }
 
     private static boolean matchesToken(byte[] payload, byte[] token) {

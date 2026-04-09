@@ -86,10 +86,10 @@ async function main() {
             console.log('');
         }
         reportSections.push(`## PATTERN: ${name}`);
-        reportSections.push(...formatTableRows(patternRows, 'single'));
+        reportSections.push(...formatTableRows(patternRows));
         reportSections.push('');
         console.log(`## PATTERN: ${name}`);
-        for (const line of formatTableRows(patternRows, 'single')) {
+        for (const line of formatTableRows(patternRows)) {
             console.log(line);
         }
         console.log('');

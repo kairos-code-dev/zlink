@@ -32,7 +32,7 @@ internal static class PerfStreamServer
             return 0;
         }
 
-        int ioTimeoutMs = ResolveStreamIoTimeoutMs(options);
+        int ioTimeoutMs = options.StreamTimeoutMs;
         int pendingCapacity = ResolvePendingCapacity(options);
         string endpoint = MultiEndpointFor(options.Transport, "multi-stream",
             options);
@@ -60,8 +60,6 @@ internal static class PerfStreamServer
         int rc = 0;
         while (Volatile.Read(ref control.StopRequested) == 0)
         {
-            EmitRequestedQueueProbe(server, options.Transport, size, control);
-
             poller.Modify(server, pendingCount > 0
                 ? PollEvents.PollIn | PollEvents.PollOut
                 : PollEvents.PollIn);
@@ -99,8 +97,6 @@ internal static class PerfStreamServer
             }
         }
 
-        ServerQueueStats finalStats = SampleServerQueueStats(server);
-        PrintServerQueueMetrics(Pattern, options.Transport, size, finalStats);
         return rc;
     }
 
@@ -113,12 +109,6 @@ internal static class PerfStreamServer
                 string? line;
                 while ((line = Console.In.ReadLine()) != null)
                 {
-                    if (TryParseQueueProbe(line, out int requestedSize))
-                    {
-                        Interlocked.Exchange(ref control.QueueProbeSize, requestedSize);
-                        Interlocked.Exchange(ref control.QueueProbePending, 1);
-                        continue;
-                    }
                     if (line == "STOP" || line == "QUIT")
                     {
                         Interlocked.Exchange(ref control.StopRequested, 1);
@@ -135,31 +125,10 @@ internal static class PerfStreamServer
         watcher.Start();
     }
 
-    private static bool TryParseQueueProbe(string line, out int size)
-    {
-        size = 0;
-        if (string.IsNullOrWhiteSpace(line)
-            || !line.StartsWith("QUEUE,", StringComparison.Ordinal))
-            return false;
-        return int.TryParse(line.AsSpan("QUEUE,".Length), out size) && size > 0;
-    }
-
-    private static void EmitRequestedQueueProbe(SocketBase server,
-        string transport, int fallbackSize, ControlState control)
-    {
-        if (Interlocked.Exchange(ref control.QueueProbePending, 0) == 0)
-            return;
-        int size = (int)Math.Max(1L, Interlocked.Read(ref control.QueueProbeSize));
-        if (size <= 0)
-            size = fallbackSize;
-        PrintServerQueueMetrics(Pattern, transport, size,
-            SampleServerQueueStats(server));
-    }
-
     private static int ResolvePendingCapacity(PerfOptions options)
     {
-        int clients = ResolveClients(options);
-        int hwm = ResolveHwm(options);
+        int clients = options.Clients;
+        int hwm = options.MultiHwm;
         long capacity = Math.Max(64L, Math.Max(clients, Math.Max(1, hwm)) * 2L);
         return capacity > int.MaxValue ? int.MaxValue : (int)capacity;
     }
@@ -386,7 +355,5 @@ internal static class PerfStreamServer
     private sealed class ControlState
     {
         internal int StopRequested;
-        internal long QueueProbeSize;
-        internal int QueueProbePending;
     }
 }

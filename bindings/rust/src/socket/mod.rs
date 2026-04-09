@@ -661,14 +661,54 @@ impl SocketInner {
             CString::new(cert).map_err(|_| ZlinkError::validation("cert contains null byte"))?;
         let c_key =
             CString::new(key).map_err(|_| ZlinkError::validation("key contains null byte"))?;
-        check_rc(unsafe {
+        match check_rc(unsafe {
             ffi::zlink_set_tls_server(
                 self.handle,
                 c_cert.as_ptr(),
                 c_key.as_ptr(),
                 if require_client_cert { 1 } else { 0 },
             )
-        })
+        }) {
+            Ok(()) => Ok(()),
+            Err(err) if err.code() == libc::EFAULT => {
+                self.set_tls_cert(cert)?;
+                self.set_tls_key(key)?;
+                set_bool_opt(
+                    self.handle,
+                    ffi::zlink_option_t::ZLINK_OPT_TLS_REQUIRE_CLIENT_CERT,
+                    require_client_cert,
+                )
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    pub fn set_tls_cert(&self, cert: &str) -> Result<(), ZlinkError> {
+        set_string_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_TLS_CERT, cert)
+    }
+
+    pub fn set_tls_key(&self, key: &str) -> Result<(), ZlinkError> {
+        set_string_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_TLS_KEY, key)
+    }
+
+    pub fn set_tls_ca(&self, ca_cert: &str) -> Result<(), ZlinkError> {
+        set_string_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_TLS_CA, ca_cert)
+    }
+
+    pub fn set_tls_hostname(&self, hostname: &str) -> Result<(), ZlinkError> {
+        set_string_opt(
+            self.handle,
+            ffi::zlink_option_t::ZLINK_OPT_TLS_HOSTNAME,
+            hostname,
+        )
+    }
+
+    pub fn set_tls_trust_system(&self, trust_system: bool) -> Result<(), ZlinkError> {
+        set_bool_opt(
+            self.handle,
+            ffi::zlink_option_t::ZLINK_OPT_TLS_TRUST_SYSTEM,
+            trust_system,
+        )
     }
 
     pub fn set_tls_client(
@@ -681,14 +721,22 @@ impl SocketInner {
             .map_err(|_| ZlinkError::validation("ca_cert contains null byte"))?;
         let c_host = CString::new(hostname)
             .map_err(|_| ZlinkError::validation("hostname contains null byte"))?;
-        check_rc(unsafe {
+        match check_rc(unsafe {
             ffi::zlink_set_tls_client(
                 self.handle,
                 c_ca.as_ptr(),
                 c_host.as_ptr(),
                 if trust_system { 1 } else { 0 },
             )
-        })
+        }) {
+            Ok(()) => Ok(()),
+            Err(err) if err.code() == libc::EFAULT => {
+                self.set_tls_ca(ca_cert)?;
+                self.set_tls_hostname(hostname)?;
+                self.set_tls_trust_system(trust_system)
+            }
+            Err(err) => Err(err),
+        }
     }
 
     pub fn close(&mut self) -> Result<(), ZlinkError> {
@@ -864,6 +912,23 @@ fn set_duration_opt(
     set_int_opt(handle, opt, duration_to_millis(duration)?)
 }
 
+fn set_string_opt(
+    handle: *mut c_void,
+    opt: ffi::zlink_option_t,
+    value: &str,
+) -> Result<(), ZlinkError> {
+    let c_value =
+        CString::new(value).map_err(|_| ZlinkError::validation("value contains null byte"))?;
+    check_rc(unsafe {
+        ffi::zlink_set_option(
+            handle,
+            opt,
+            c_value.as_ptr() as *const c_void,
+            value.len() + 1,
+        )
+    })
+}
+
 fn get_int_opt(handle: *mut c_void, opt: ffi::zlink_option_t) -> Result<i32, ZlinkError> {
     let mut value: i32 = 0;
     let mut len = std::mem::size_of::<i32>();
@@ -933,6 +998,21 @@ macro_rules! impl_base_socket {
             }
             pub(crate) fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
                 self.inner.set_heartbeat_timeout(d)
+            }
+            pub fn set_tls_cert(&self, cert: &str) -> Result<(), ZlinkError> {
+                self.inner.set_tls_cert(cert)
+            }
+            pub fn set_tls_key(&self, key: &str) -> Result<(), ZlinkError> {
+                self.inner.set_tls_key(key)
+            }
+            pub fn set_tls_ca(&self, ca_cert: &str) -> Result<(), ZlinkError> {
+                self.inner.set_tls_ca(ca_cert)
+            }
+            pub fn set_tls_hostname(&self, hostname: &str) -> Result<(), ZlinkError> {
+                self.inner.set_tls_hostname(hostname)
+            }
+            pub fn set_tls_trust_system(&self, trust_system: bool) -> Result<(), ZlinkError> {
+                self.inner.set_tls_trust_system(trust_system)
             }
             pub fn set_tls_server(
                 &self,

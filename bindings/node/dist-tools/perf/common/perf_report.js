@@ -35,7 +35,7 @@ function throughputUnit(pattern) {
         ? 'Kops/s'
         : 'Kmsg/s';
 }
-function formatTableRows(rows, suite) {
+function formatTableRows(rows) {
     const latencyUnit = 'ms';
     return [
         `| Size | Throughput | Bandwidth | Lat.Mean(${latencyUnit}) | Lat.P95(${latencyUnit}) | Lat.P99(${latencyUnit}) |`,

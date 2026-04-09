@@ -14,6 +14,12 @@ fn main() {
     let pub_sock = ctx.pub_socket().expect("pub");
     let mut sub_sock = ctx.sub_socket().expect("sub");
 
+    if matches!(config.transport.as_str(), "tls" | "wss") {
+        let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
+        common::setup_raw_tls_server(&pub_sock, &tls).expect("pub tls");
+        common::setup_raw_tls_client(&sub_sock, &tls).expect("sub tls");
+    }
+
     pub_sock.bind(&bind_endpoint).expect("bind");
     let endpoint = pub_sock.last_endpoint().unwrap_or(bind_endpoint);
     sub_sock.connect(&endpoint).expect("connect");
@@ -81,7 +87,6 @@ fn main() {
         |msg| {
             let _ = pub_sock.publish("P", msg);
         },
-        |msg| pub_sock.try_publish("P", msg),
     );
     sender_done.signal_done();
     receiver_thread.join().expect("join");

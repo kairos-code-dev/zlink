@@ -64,11 +64,9 @@ void run_pattern_pair (const std::string &transport,
       std::max<size_t> (msg_size, perf_single_metric::header_size ()), '\0');
     const size_t payload_size = payload.size ();
 
-    perf::single::queue_probe_t queue_probe (&conn_socket.sock (), &bind_socket.sock ());
     perf::single::callback_receiver_t receiver_cb;
-    if (!receiver_cb.attach (bind_socket.sock (), &queue_probe)) {
-        perf::single::print_fail_result (
-          lib_name, "PAIR", transport, msg_size, &queue_probe);
+    if (!receiver_cb.attach (bind_socket.sock ())) {
+        perf::single::print_fail_result (lib_name, "PAIR", transport, msg_size);
         return;
     }
 
@@ -88,18 +86,15 @@ void run_pattern_pair (const std::string &transport,
                                            recv_timeout,
                                            &active_received,
                                            &latency)) {
-        perf::single::print_fail_result (
-          lib_name, "PAIR", transport, msg_size, &queue_probe);
+        perf::single::print_fail_result (lib_name, "PAIR", transport, msg_size);
         return;
     }
 
     const double throughput =
       duration_s > 0 ? static_cast<double> (active_received) / duration_s : 0.0;
-    const perf::single::queue_stats_t queue_stats =
-      perf::single::sample_queue_stats (&queue_probe);
     perf::single::print_result (lib_name, "PAIR", transport, msg_size,
                                 throughput, latency.mean_ns,
-                                latency.p95_ns, latency.p99_ns, queue_stats);
+                                latency.p95_ns, latency.p99_ns);
 }
 
 int main (int argc, char **argv)

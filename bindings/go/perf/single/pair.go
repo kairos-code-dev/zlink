@@ -3,11 +3,21 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
+	"sync"
 	"time"
 
 	"zlink"
 	"zlink/perf/internal/perfcommon"
 )
+
+func isPairLoopTransient(err error) bool {
+	if perfcommon.IsTransient(err) {
+		return true
+	}
+	zerr, ok := err.(*zlink.ZlinkError)
+	return ok && zerr.Kind == zlink.ErrorKindNative && zerr.Code == 14
+}
 
 func runPair(cfg benchmarkConfig) perfcommon.Result {
 	ctx, err := zlink.NewContext()
@@ -33,8 +43,13 @@ func runPair(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(client.Connect(endpoint))
 	perfcommon.ApplySingleBenchmarkSocketOptions(server, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(client, cfg.transport)
+	perfcommon.Must(server.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
+	perfcommon.Must(server.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
+	perfcommon.Must(client.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
+	perfcommon.Must(client.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 	perfcommon.WaitConnected(serverMon, clientMon)
-	startPairEchoServer(server, cfg.transport)
+	stopPairEchoServer := startPairEchoServer(server)
+	defer stopPairEchoServer()
 
 	stats := perfcommon.NewStats()
 	payload := perfcommon.PreparePayload(cfg.msgSize)
@@ -48,7 +63,7 @@ func runPair(cfg benchmarkConfig) perfcommon.Result {
 			if perfcommon.DebugEnabled() {
 				fmt.Fprintf(os.Stderr, "pair client send error: %v\n", err)
 			}
-			if perfcommon.IsTransient(err) {
+			if isPairLoopTransient(err) {
 				continue
 			}
 			perfcommon.Must(err)
@@ -60,7 +75,7 @@ func runPair(cfg benchmarkConfig) perfcommon.Result {
 				if perfcommon.DebugEnabled() {
 					fmt.Fprintf(os.Stderr, "pair client recv error: %v\n", err)
 				}
-				if perfcommon.IsTransient(err) {
+				if isPairLoopTransient(err) {
 					continue
 				}
 				perfcommon.Must(err)
@@ -71,6 +86,7 @@ func runPair(cfg benchmarkConfig) perfcommon.Result {
 		}
 		part, err := reply.SinglePartOrError()
 		perfcommon.Must(err)
+		runtime.KeepAlive(reply)
 		perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
 		if err := reply.Close(); err != nil {
 			if perfcommon.DebugEnabled() {
@@ -78,51 +94,41 @@ func runPair(cfg benchmarkConfig) perfcommon.Result {
 			}
 			perfcommon.Must(err)
 		}
+		runtime.KeepAlive(part)
+		runtime.KeepAlive(reply)
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
 
-func startPairEchoServer(server *zlink.PairSocket, transport string) {
-	usePollingRecv := true
+func startPairEchoServer(server *zlink.PairSocket) func() {
+	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
-		iter := 0
+		defer wg.Done()
 		for {
-			var received *zlink.Received
-			var err error
-			if usePollingRecv {
-				received, err = server.Recv()
-				if err != nil {
-					if perfcommon.DebugEnabled() {
-						fmt.Fprintf(os.Stderr, "pair server recv error: %v\n", err)
-					}
-					if perfcommon.IsTransient(err) {
-						continue
-					}
-					return
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			received, err := server.Recv()
+			if err != nil {
+				if perfcommon.DebugEnabled() {
+					fmt.Fprintf(os.Stderr, "pair server recv error: %v\n", err)
 				}
-				if received == nil {
+				if isPairLoopTransient(err) {
 					continue
 				}
-			} else {
-				received, err = server.Recv()
-				if err != nil {
-					if perfcommon.DebugEnabled() {
-						fmt.Fprintf(os.Stderr, "pair server recv error: %v\n", err)
-					}
-					if perfcommon.IsTransient(err) {
-						time.Sleep(100 * time.Microsecond)
-						continue
-					}
-					return
-				}
+				return
 			}
-			iter++
-			if perfcommon.DebugEnabled() && iter%10000 == 0 {
-				fmt.Fprintf(os.Stderr, "pair server received %d messages\n", iter)
+			if received == nil {
+				continue
 			}
 			err = server.Send(perfcommon.CloneMessages(received.Parts())...)
-			if err != nil && !perfcommon.IsTransient(err) {
+			if err != nil && !isPairLoopTransient(err) {
 				if perfcommon.DebugEnabled() {
 					fmt.Fprintf(os.Stderr, "pair server send error: %v\n", err)
 				}
@@ -134,6 +140,11 @@ func startPairEchoServer(server *zlink.PairSocket, transport string) {
 				}
 				perfcommon.Must(err)
 			}
+			runtime.KeepAlive(received)
 		}
 	}()
+	return func() {
+		close(stop)
+		wg.Wait()
+	}
 }

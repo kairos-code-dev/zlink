@@ -126,13 +126,11 @@ void run_pattern_spot (const std::string &transport,
     }
     zlink::socket_t pub_socket = zlink::socket_t::wrap (pub_spot.handle ());
     zlink::socket_t sub_socket = zlink::socket_t::wrap (sub_spot.handle ());
-    perf::single::queue_probe_t queue_probe (&pub_socket, &sub_socket);
     perf::single::subscribe_callback_receiver_t receiver_cb;
-    if (!receiver_cb.attach_spot (sub_spot, &queue_probe)) {
+    if (!receiver_cb.attach_spot (sub_spot)) {
         if (perf_debug_enabled ())
             std::cerr << "spot: attach callback failed" << std::endl;
-        perf::single::print_fail_result (
-          lib_name, "SPOT", transport, msg_size, &queue_probe);
+        perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
         return;
     }
 
@@ -163,8 +161,7 @@ void run_pattern_spot (const std::string &transport,
                                                      &latency)) {
         if (perf_debug_enabled ())
             std::cerr << "spot: active phase failed" << std::endl;
-        perf::single::print_fail_result (
-          lib_name, "SPOT", transport, msg_size, &queue_probe);
+        perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
         return;
     }
 
@@ -177,8 +174,7 @@ void run_pattern_spot (const std::string &transport,
                                 throughput,
                                 latency.mean_ns,
                                 latency.p95_ns,
-                                latency.p99_ns,
-                                perf::single::sample_queue_stats (&queue_probe));
+                                latency.p99_ns);
 }
 
 int main (int argc, char **argv)

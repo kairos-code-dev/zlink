@@ -22,5 +22,7 @@ public final class StreamSocket extends Socket {
     public Optional<Received> tryRecv() { return super.tryRecv(); }
     public void onReceive(SocketMessageHandler handler) { super.onReceive(handler); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
+    public void attachStreamRaw(StreamPacketHandler handler) { super.attachStreamRaw(handler); }
+    public void detachStream() { super.detachStream(); }
     @Override public StreamSocketOptions options() { return options; }
 }

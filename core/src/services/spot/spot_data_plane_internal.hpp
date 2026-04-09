@@ -259,31 +259,49 @@ inline bool remove_connected_mesh_peer_endpoint (spot_mesh_peer_state_t *state_,
     return true;
 }
 
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
+
 inline uint32_t connected_ready_peer_count (
   const spot_mesh_peer_state_t *state_)
 {
-    return state_ ? state_->connected_ready_peer_count.load (
-                     std::memory_order_acquire)
-                  : 0u;
+    if (!state_)
+        return 0u;
+
+    return state_->connected_ready_peer_count.load (
+      std::memory_order_acquire);
 }
 
 inline uint32_t mesh_pub_ready_peer_count (const spot_mesh_peer_state_t *state_)
 {
-    return state_ ? state_->mesh_pub_ready_peer_count.load (
-                     std::memory_order_acquire)
-                  : 0u;
+    if (!state_)
+        return 0u;
+
+    return state_->mesh_pub_ready_peer_count.load (
+      std::memory_order_acquire);
 }
 
 inline uint64_t mesh_peer_version (const spot_mesh_peer_state_t *state_)
 {
-    return state_ ? state_->version.load (std::memory_order_acquire) : 0u;
+    if (!state_)
+        return 0u;
+
+    return state_->version.load (std::memory_order_acquire);
 }
 
 inline uint64_t mesh_pub_budget_version (const spot_mesh_peer_state_t *state_)
 {
-    return state_ ? state_->budget_version.load (std::memory_order_acquire)
-                  : 0u;
+    if (!state_)
+        return 0u;
+
+    return state_->budget_version.load (std::memory_order_acquire);
 }
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 inline void reset_mesh_pub_budget_state (spot_mesh_peer_state_t *state_)
 {

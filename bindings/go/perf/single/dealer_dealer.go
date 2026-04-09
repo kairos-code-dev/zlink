@@ -1,6 +1,8 @@
 package main
 
 import (
+	"runtime"
+	"sync"
 	"time"
 
 	"zlink"
@@ -34,7 +36,8 @@ func runDealerDealer(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.WaitConnected(serverMon, clientMon)
 	perfcommon.Must(client.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 	perfcommon.Must(client.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
-	startDealerEchoServer(server)
+	stopDealerEchoServer := startDealerEchoServer(server)
+	defer stopDealerEchoServer()
 
 	stats := perfcommon.NewStats()
 	payload := perfcommon.PreparePayload(cfg.msgSize)
@@ -58,17 +61,29 @@ func runDealerDealer(cfg benchmarkConfig) perfcommon.Result {
 		}
 		part, err := reply.SinglePartOrError()
 		perfcommon.Must(err)
+		runtime.KeepAlive(reply)
 		perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
 		perfcommon.Must(reply.Close())
+		runtime.KeepAlive(part)
+		runtime.KeepAlive(reply)
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
 
-func startDealerEchoServer(server *zlink.DealerSocket) {
-	perfcommon.Must(server.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
+func startDealerEchoServer(server *zlink.DealerSocket) func() {
+	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
 			received, err := server.Recv()
 			if err != nil {
 				if perfcommon.IsTransient(err) {
@@ -80,6 +95,12 @@ func startDealerEchoServer(server *zlink.DealerSocket) {
 			if err != nil && !perfcommon.IsTransient(err) {
 				perfcommon.Must(err)
 			}
+			perfcommon.Must(received.Close())
+			runtime.KeepAlive(received)
 		}
 	}()
+	return func() {
+		close(stop)
+		wg.Wait()
+	}
 }

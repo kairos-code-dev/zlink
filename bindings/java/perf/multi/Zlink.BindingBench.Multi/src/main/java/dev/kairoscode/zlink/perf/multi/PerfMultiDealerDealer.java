@@ -129,9 +129,15 @@ final class PerfMultiDealerDealer {
             }
 
             pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
-            int rc = pollSet.poll(5);
-            if (rc == 0 && System.nanoTime() >= deadlineNs) {
-                return;
+            try {
+                int rc = pollSet.poll(5);
+                if (rc == 0 && System.nanoTime() >= deadlineNs) {
+                    return;
+                }
+            } catch (ZlinkException ex) {
+                if (ex.errno() != 11 && ex.errno() != 4) {
+                    throw ex;
+                }
             }
         }
     }

@@ -86,7 +86,7 @@
 
 감독은 아래 고정 순서로 진행한다.
 
-1. `core/perf`
+1. `core/perf` ==> 완료 이건 더이상 진행하지 말것 
 2. `bindings/cpp/perf`
 3. `bindings/dotnet/perf`
 4. `bindings/go/perf`

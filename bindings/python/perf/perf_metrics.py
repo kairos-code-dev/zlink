@@ -147,12 +147,6 @@ def tcp_endpoint(prefix="perf"):
     return f"tcp://127.0.0.1:{port}"
 
 
-def wait_socket_event(socket_obj, event_mask, *, timeout_ms=DEFAULT_READY_TIMEOUT_MS):
-    zlink_mod = _require_zlink()
-    with socket_obj.monitor_open(event_mask) as monitor:
-        return wait_monitor_event(monitor, event_mask, timeout_ms=timeout_ms)
-
-
 def wait_monitor_event(monitor, event_mask, *, timeout_ms=DEFAULT_READY_TIMEOUT_MS):
     zlink_mod = _require_zlink()
     deadline = time.perf_counter() + (timeout_ms / 1000.0)
@@ -200,15 +194,6 @@ def safe_poll(poller, timeout_ms):
         raise
 
 
-def _wait_for_poll_event(socket_obj, events, *, timeout_ms):
-    zlink_mod = _require_zlink()
-    with zlink_mod.Poller() as poller:
-        poller.add_socket(socket_obj, events)
-        ready = safe_poll(poller, timeout_ms)
-    if not ready:
-        raise RuntimeError(f"timed out waiting for poll event {int(events)}")
-
-
 # ---------------------------------------------------------------------------
 # Reporting helpers (shared by single & multi runners)
 # ---------------------------------------------------------------------------
@@ -224,43 +209,16 @@ def platform_name():
     return sys.platform
 
 
-def resolve_results_dir(base_dir, suite):
-    if base_dir is None:
-        return Path(__file__).resolve().parent / 'results' / suite / 'report'
-    return Path(base_dir)
-
-
 def build_report_path(*, lang, suite, results_dir=None, tag=None):
-    report_dir = resolve_results_dir(results_dir, suite)
+    report_dir = (
+        Path(__file__).resolve().parent / 'results' / suite / 'report'
+        if results_dir is None
+        else Path(results_dir)
+    )
     report_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     suffix = f'_{tag}' if tag else ''
     return report_dir / f'perf_{lang}_{suite}_{platform_name()}_{timestamp}{suffix}.txt'
-
-
-def ensure_report_path(lang, suite, tag=None):
-    report_dir = Path(__file__).resolve().parent / 'results' / suite / 'report'
-    report_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    suffix = f'_{tag}' if tag else ''
-    return report_dir / f'perf_{lang}_{suite}_{platform_name()}_{timestamp}{suffix}.txt'
-
-
-def write_report(path, *, options, output, status, expected_result_lines, actual_result_lines):
-    lines = ['## Effective Options (start)']
-    for key, value in options.items():
-        lines.append(f'- {key}: {value}')
-    lines.append('')
-    lines.append(output.rstrip())
-    lines.append('')
-    lines.append('## Effective Options (result)')
-    for key, value in options.items():
-        lines.append(f'- {key}: {value}')
-    lines.append('')
-    lines.append(f'- status: {status}')
-    lines.append(f'- expected_result_lines: {expected_result_lines}')
-    lines.append(f'- actual_result_lines: {actual_result_lines}')
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding='utf-8')
 
 
 def render_effective_options(options):

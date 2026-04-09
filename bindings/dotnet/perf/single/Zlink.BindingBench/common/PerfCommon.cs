@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Threading;
 using Zlink;
 
 internal static partial class PerfRunner
@@ -89,30 +88,6 @@ internal static partial class PerfRunner
     {
         int written = poller.Wait(events, timeoutMs, out int totalReady);
         return written > 0 || totalReady > 0;
-    }
-
-    internal static bool WaitUntil(Func<bool> check, int timeoutMs,
-        int intervalMs = 1)
-    {
-        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
-        {
-            try
-            {
-                if (check())
-                    return true;
-            }
-            catch
-            {
-            }
-
-            if (intervalMs > 0)
-                Thread.Sleep(intervalMs);
-            else
-                Thread.Yield();
-        }
-
-        return false;
     }
 
     internal static void PrintResult(string pattern, string transport, int size,
@@ -230,16 +205,6 @@ internal static partial class PerfRunner
     internal static int ResolveSpotReadyTimeoutMs()
     {
         return PerfEnv.ReadNonNegative("PERF_SPOT_READY_TIMEOUT_MS", 2000);
-    }
-
-    internal static void PrintSingleProcessMetrics(string pattern, string transport,
-        int size, TimeSpan cpuStart, Stopwatch wall)
-    {
-        _ = pattern;
-        _ = transport;
-        _ = size;
-        _ = cpuStart;
-        _ = wall;
     }
 
 }

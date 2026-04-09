@@ -112,4 +112,4 @@ English | [한국어](README.ko.md)
 |----------|-------------|
 | [spec/spot/README.md](spec/spot/README.md) | SPOT detailed specifications index |
 | [spec/spot/SPOT_PEER_PUBLISH_BATCHING_SPEC.md](spec/spot/SPOT_PEER_PUBLISH_BATCHING_SPEC.md) | SpotNode peer publish batching spec |
-| [spec/spot/SPOT_ROUTED_MESSAGE_SPEC.md](spec/spot/SPOT_ROUTED_MESSAGE_SPEC.md) | SpotNode-based routed message spec |
+| [plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md](plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md) | Working spec for SpotNode-based routed message during development |

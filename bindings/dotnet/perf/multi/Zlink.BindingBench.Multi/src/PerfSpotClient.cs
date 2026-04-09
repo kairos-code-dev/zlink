@@ -12,7 +12,6 @@ internal static class PerfSpotClient
     internal static int Run(PerfOptions options)
     {
         SpotClientConfig config = BuildConfig(options);
-        _ = ResolveMultiRecvMode(options, Pattern);
 
         using var ctx = new Context();
         ApplyMultiClientContextOptions(ctx, options);
@@ -278,8 +277,8 @@ internal static class PerfSpotClient
     private static void ApplySpotNodeSubscriberOptions(SpotNode node,
         PerfOptions options)
     {
-        int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", options);
-        int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", options);
+        int sndHwm = options.ResolveMultiHwm("PERF_SNDHWM");
+        int rcvHwm = options.ResolveMultiHwm("PERF_RCVHWM");
         int rcvTimeo = ResolveMultiRcvTimeoutMs(options);
         int xpubNoDrop = options.SpotXpubNoDrop > 0 ? 1 : 0;
         TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Sub,

@@ -2,10 +2,11 @@ package dev.kairoscode.stream;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.StreamSocket;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.CountDownLatch;
 
 public final class JvmZlinkStreamServer {
     private static final int MIN_PAYLOAD_SIZE = 16;
@@ -106,26 +107,28 @@ public final class JvmZlinkStreamServer {
             server.bind(endpoint(opt.host, opt.port));
 
             Runtime.getRuntime().addShutdownHook(shutdownHook);
-            server.onReceive(received -> {
-                if (stop.get() || !received.hasRoutingId() || !received.isSinglePart())
-                    return;
-                byte[] payload = received.singlePartOrThrow().toByteArray();
-                if (payload.length == 0)
-                    return;
-                if (payload.length > MAX_PAYLOAD_SIZE) {
+            server.attachStreamRaw((routingId, payload) -> {
+                if (stop.get() || routingId == null)
+                    return 0;
+                int payloadSize = payload.size();
+                if (payloadSize <= 0)
+                    return 0;
+                if (payloadSize > MAX_PAYLOAD_SIZE) {
                     metrics.parseError.incrementAndGet();
                     metrics.protocolError.incrementAndGet();
-                    return;
+                    return 0;
                 }
-                if (payload.length < MIN_PAYLOAD_SIZE)
-                    return;
+                if (payloadSize < MIN_PAYLOAD_SIZE)
+                    return 0;
 
                 metrics.recvMsgs.incrementAndGet();
-                try (Message reply = Message.copyOf(payload)) {
-                    server.send(received.routingId(), reply);
+                try {
+                    if (server.trySend(routingId, payload) != SendResult.SENT)
+                        metrics.sendError.incrementAndGet();
                 } catch (Throwable t) {
                     metrics.sendError.incrementAndGet();
                 }
+                return 0;
             });
 
             while (!stop.get())

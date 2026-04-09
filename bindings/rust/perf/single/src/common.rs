@@ -4,11 +4,13 @@
 //!   - ready -> active(duration)
 //!   - recv-only model
 //!   - metric header in payload for latency measurement
-#![allow(dead_code)]
 
 use std::sync::OnceLock;
 use std::sync::{Arc, Condvar, Mutex};
+use std::path::Path;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use zlink::{DealerSocket, PairSocket, PubSocket, RouterSocket, SubSocket, ZlinkError};
 
 // -- Metric header (29 bytes) ------------------------------------------------
 // Layout matches doc/perf/PERF_POLICY.md:
@@ -21,9 +23,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub const HEADER_SIZE: usize = 29;
 pub const MAGIC: u32 = 0x5A4C_4E4B; // "ZLNK"
-pub const PHASE_WARMUP: u8 = 0;
 pub const PHASE_ACTIVE: u8 = 1;
-pub const PHASE_COOLDOWN: u8 = 2;
 
 fn process_run_id() -> u32 {
     static RUN_ID: OnceLock<u32> = OnceLock::new();
@@ -91,6 +91,132 @@ pub fn now_ns() -> u64 {
         .as_nanos() as u64
 }
 
+pub struct TlsPaths {
+    pub cert: String,
+    pub key: String,
+    pub ca: String,
+}
+
+pub trait RawTlsSocket {
+    fn set_tls_cert(&self, cert: &str) -> Result<(), ZlinkError>;
+    fn set_tls_key(&self, key: &str) -> Result<(), ZlinkError>;
+    fn set_tls_ca(&self, ca: &str) -> Result<(), ZlinkError>;
+    fn set_tls_hostname(&self, hostname: &str) -> Result<(), ZlinkError>;
+    fn set_tls_trust_system(&self, trust_system: bool) -> Result<(), ZlinkError>;
+}
+
+macro_rules! impl_raw_tls_socket {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl RawTlsSocket for $ty {
+                fn set_tls_cert(&self, cert: &str) -> Result<(), ZlinkError> {
+                    <$ty>::set_tls_cert(self, cert)
+                }
+                fn set_tls_key(&self, key: &str) -> Result<(), ZlinkError> {
+                    <$ty>::set_tls_key(self, key)
+                }
+                fn set_tls_ca(&self, ca: &str) -> Result<(), ZlinkError> {
+                    <$ty>::set_tls_ca(self, ca)
+                }
+                fn set_tls_hostname(&self, hostname: &str) -> Result<(), ZlinkError> {
+                    <$ty>::set_tls_hostname(self, hostname)
+                }
+                fn set_tls_trust_system(&self, trust_system: bool) -> Result<(), ZlinkError> {
+                    <$ty>::set_tls_trust_system(self, trust_system)
+                }
+            }
+        )+
+    };
+}
+
+impl_raw_tls_socket!(PairSocket, PubSocket, DealerSocket, RouterSocket, SubSocket);
+
+fn resolve_perf_tls_paths_from(start: &Path) -> Option<TlsPaths> {
+    let mut cur = if start.is_file() {
+        start.parent()?.to_path_buf()
+    } else {
+        start.to_path_buf()
+    };
+
+    loop {
+        for candidate in [
+            cur.join("bindings").join("cpp").join("tests").join("certs").join("gen"),
+            cur.join("bindings").join("rust").join("tests").join("certs").join("gen"),
+            cur.join("bindings").join("java").join("tests").join("certs"),
+            cur.join("bindings").join("dotnet").join("tests").join("certs"),
+            cur.join("tests").join("certs").join("gen"),
+        ] {
+            if candidate.join("server.crt").is_file()
+                && candidate.join("server.key").is_file()
+                && candidate.join("ca.crt").is_file()
+            {
+                return Some(TlsPaths {
+                    cert: candidate.join("server.crt").to_string_lossy().into_owned(),
+                    key: candidate.join("server.key").to_string_lossy().into_owned(),
+                    ca: candidate.join("ca.crt").to_string_lossy().into_owned(),
+                });
+            }
+        }
+
+        let parent = match cur.parent() {
+            Some(parent) => parent.to_path_buf(),
+            None => break,
+        };
+        if parent == cur {
+            break;
+        }
+        cur = parent;
+    }
+
+    None
+}
+
+pub fn resolve_perf_tls_paths() -> Option<TlsPaths> {
+    if let Ok(cwd) = std::env::current_dir() {
+        if let Some(paths) = resolve_perf_tls_paths_from(&cwd) {
+            return Some(paths);
+        }
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(paths) = resolve_perf_tls_paths_from(&exe) {
+            return Some(paths);
+        }
+    }
+
+    None
+}
+
+pub fn setup_raw_tls_server<S: RawTlsSocket>(socket: &S, tls: &TlsPaths) -> Result<(), ZlinkError> {
+    socket.set_tls_cert(&tls.cert)?;
+    socket.set_tls_key(&tls.key)?;
+    Ok(())
+}
+
+pub fn setup_raw_tls_client<S: RawTlsSocket>(socket: &S, tls: &TlsPaths) -> Result<(), ZlinkError> {
+    socket.set_tls_ca(&tls.ca)?;
+    socket.set_tls_hostname("localhost")?;
+    socket.set_tls_trust_system(false)?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+/// Wait for a monitor CONNECTION_READY event (ready gate).
+pub fn wait_monitor_ready(mon: &zlink::SocketMonitor) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if Instant::now() > deadline {
+            panic!("single perf connection-ready gate timed out");
+        }
+        match mon.try_recv() {
+            Ok(Some(ev)) if ev.is_connection_ready() => break,
+            Ok(Some(_)) => continue,
+            Ok(None) => std::thread::yield_now(),
+            Err(_) => break,
+        }
+    }
+}
+
 // -- Latency statistics ------------------------------------------------------
 
 pub struct LatencyStats {
@@ -151,7 +277,6 @@ pub struct StatsResult {
 
 #[derive(Default)]
 pub struct PhaseResult {
-    pub count: u64,
     pub throughput: f64,
     pub bandwidth: f64,
     pub latency_mean_ns: f64,
@@ -167,14 +292,7 @@ pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> 
     };
     let bandwidth = throughput * size as f64 / 1_000_000.0;
 
-    PhaseResult {
-        count: stats.count,
-        throughput,
-        bandwidth,
-        latency_mean_ns: stats.mean_ns,
-        latency_p95_ns: stats.p95_ns,
-        latency_p99_ns: stats.p99_ns,
-    }
+    PhaseResult { throughput, bandwidth, latency_mean_ns: stats.mean_ns, latency_p95_ns: stats.p95_ns, latency_p99_ns: stats.p99_ns }
 }
 
 // -- RESULT output -----------------------------------------------------------
@@ -242,60 +360,6 @@ impl CompletionSignal {
         let (lock, _) = &*self.state;
         *lock.lock().unwrap()
     }
-
-    pub fn wait_timeout(&self, timeout: Duration, label: &str) {
-        let deadline = Instant::now() + timeout;
-        let (lock, condvar) = &*self.state;
-        let mut done = lock.lock().unwrap();
-
-        while !*done {
-            let now = Instant::now();
-            if now >= deadline {
-                panic!("{label} did not finish before timeout");
-            }
-
-            let remaining = deadline.saturating_duration_since(now);
-            let (guard, wait_result) = condvar.wait_timeout(done, remaining).unwrap();
-            done = guard;
-            if wait_result.timed_out() && !*done {
-                panic!("{label} did not finish before timeout");
-            }
-        }
-    }
-}
-
-pub struct CompletionGuard {
-    signal: CompletionSignal,
-}
-
-impl CompletionGuard {
-    pub fn new(signal: CompletionSignal) -> Self {
-        Self { signal }
-    }
-}
-
-impl Drop for CompletionGuard {
-    fn drop(&mut self) {
-        self.signal.signal_done();
-    }
-}
-
-// -- Ready gate / callback handler -------------------------------------------
-
-/// Wait for a monitor CONNECTION_READY event (ready gate).
-pub fn wait_monitor_ready(mon: &zlink::SocketMonitor) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        if Instant::now() > deadline {
-            panic!("single perf connection-ready gate timed out");
-        }
-        match mon.try_recv() {
-            Ok(Some(ev)) if ev.is_connection_ready() => break,
-            Ok(Some(_)) => continue,
-            Ok(None) => std::thread::yield_now(),
-            Err(_) => break,
-        }
-    }
 }
 
 /// Record active-phase latency if the payload matches the expected run.
@@ -311,19 +375,17 @@ pub fn handle_recv(data: &[u8], expected_size: usize, stats: &std::sync::Mutex<L
 // Core single perf uses blocking send in the sender thread.
 // The sender must not set a send timeout – blocking is the intended behavior
 // so that natural backpressure throttles the sender.
-use zlink::{Message, SendResult};
+use zlink::Message;
 
 /// One-way send loop: active only.
 /// `send_fn` performs the blocking send (may be plain or routed).
-pub fn send_loop<S, T>(
+pub fn send_loop<S>(
     active: Duration,
     msg_size: usize,
     phase: u8,
     send_fn: S,
-    _try_send_fn: T,
 ) where
     S: Fn(Message),
-    T: Fn(Message) -> Result<SendResult, zlink::ZlinkError>,
 {
     let mut seq: u64 = 0;
     let mut buf = vec![0u8; msg_size.max(HEADER_SIZE)];
@@ -338,15 +400,9 @@ pub fn send_loop<S, T>(
     }
 }
 
-/// Common receiver-side finish gate: wait for the sender window plus grace.
-pub fn wait_finished(signal: &CompletionSignal, active: u64) {
-    signal.wait_timeout(Duration::from_secs(active + 20), "single perf sender");
-}
-
 // -- CLI config --------------------------------------------------------------
 
 pub struct PerfConfig {
-    pub pattern: String,
     pub transport: String,
     pub size: usize,
     pub duration_seconds: u64,
@@ -358,8 +414,6 @@ impl PerfConfig {
         let mut size = 64;
         let mut duration = 5u64;
         let mut transport = "inproc".to_string();
-        let mut pattern = "PAIR".to_string();
-
         let mut i = 1;
         while i < args.len() {
             match args[i].as_str() {
@@ -376,21 +430,16 @@ impl PerfConfig {
                     i += 2;
                 }
                 "--pattern" if i + 1 < args.len() => {
-                    pattern = args[i + 1].clone();
                     i += 2;
                 }
                 _ => { i += 1; }
             }
         }
 
-        Self {
-            pattern,
-            transport,
-            size,
-            duration_seconds: duration,
-        }
+        Self { transport, size, duration_seconds: duration }
     }
 
+    #[allow(dead_code)]
     pub fn endpoint(&self, suffix: &str) -> String {
         match self.transport.as_str() {
             "inproc" => format!("inproc://perf-{suffix}"),

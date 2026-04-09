@@ -79,7 +79,8 @@ impl RequestDealer {
     }
 
     pub async fn request(&self, msg: Message) -> Result<Received, ZlinkError> {
-        self.request_with_timeout(msg, self.get_default_request_timeout()).await
+        self.request_with_timeout(msg, self.get_default_request_timeout())
+            .await
     }
 
     pub async fn request_with_timeout(
@@ -156,12 +157,8 @@ impl RequestDealer {
         self.try_request_callback_with_timeout(msg, callback, self.get_default_request_timeout());
     }
 
-    pub fn try_request_callback_with_timeout<F>(
-        &self,
-        msg: Message,
-        callback: F,
-        timeout: Duration,
-    ) where
+    pub fn try_request_callback_with_timeout<F>(&self, msg: Message, callback: F, timeout: Duration)
+    where
         F: FnOnce(Result<Received, ZlinkError>) + Send + 'static,
     {
         let socket = Arc::clone(&self.socket);
@@ -278,7 +275,12 @@ impl RequestRouter {
         let correlation_id = self.next_correlation_id.fetch_add(1, Ordering::Relaxed);
         msg.set_request(correlation_id)?;
         let rx = register_pending(&self.state.pending, correlation_id);
-        match self.socket.lock().unwrap().try_send(routing_id, vec![msg])? {
+        match self
+            .socket
+            .lock()
+            .unwrap()
+            .try_send(routing_id, vec![msg])?
+        {
             SendResult::Sent => {}
             other => {
                 self.state.pending.lock().unwrap().remove(&correlation_id);
@@ -421,7 +423,10 @@ fn deliver_router_data(state: &RouterState, received: Received) {
     let _ = state.data_tx.send(received);
 }
 
-fn register_pending(pending: &PendingMap, correlation_id: u64) -> mpsc::Receiver<Result<Received, ZlinkError>> {
+fn register_pending(
+    pending: &PendingMap,
+    correlation_id: u64,
+) -> mpsc::Receiver<Result<Received, ZlinkError>> {
     let (tx, rx) = mpsc::channel();
     pending.lock().unwrap().insert(correlation_id, tx);
     rx
@@ -480,9 +485,10 @@ fn try_recv_data(
     match data_rx.lock().unwrap().try_recv() {
         Ok(received) => Ok(Some(received)),
         Err(mpsc::TryRecvError::Empty) => Ok(None),
-        Err(mpsc::TryRecvError::Disconnected) => {
-            Err(ZlinkError::native(ETERM_NATIVE, "request reply dispatch closed"))
-        }
+        Err(mpsc::TryRecvError::Disconnected) => Err(ZlinkError::native(
+            ETERM_NATIVE,
+            "request reply dispatch closed",
+        )),
     }
 }
 

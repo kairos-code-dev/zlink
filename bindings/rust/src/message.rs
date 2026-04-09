@@ -134,11 +134,7 @@ impl Message {
         let mut msg_type: u8 = 0;
         let mut correlation_id: u64 = 0;
         check_rc(unsafe {
-            ffi::zlink_msg_get_request_info(
-                &self.inner,
-                &mut msg_type,
-                &mut correlation_id,
-            )
+            ffi::zlink_msg_get_request_info(&self.inner, &mut msg_type, &mut correlation_id)
         })?;
         Ok((msg_type, correlation_id))
     }
@@ -168,9 +164,7 @@ impl Message {
     /// Returns `None` if the key is absent.
     pub fn get_metadata(&self, key: u16) -> Option<&[u8]> {
         let mut size: usize = 0;
-        let ptr = unsafe {
-            ffi::zlink_msg_get_metadata(&self.inner, key, &mut size)
-        };
+        let ptr = unsafe { ffi::zlink_msg_get_metadata(&self.inner, key, &mut size) };
         if ptr.is_null() {
             None
         } else {

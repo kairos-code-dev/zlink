@@ -4,11 +4,6 @@ using Zlink;
 
 internal static partial class PerfRunner
 {
-    internal enum PerfRecvMode
-    {
-        Recv = 0,
-    }
-
     internal static readonly byte[] MultiStopToken =
         System.Text.Encoding.ASCII.GetBytes("__zlink_perf_stop__");
 
@@ -31,42 +26,19 @@ internal static partial class PerfRunner
         return NormalizePerfPattern(pattern) == "STREAM";
     }
 
-    internal static PerfRecvMode ResolveMultiRecvMode(PerfOptions options,
-        string pattern)
-    {
-        _ = options;
-        _ = pattern;
-        return PerfRecvMode.Recv;
-    }
-
-    internal static int ResolveClients(PerfOptions options)
+    internal static int ResolveMultiClients(PerfOptions options)
     {
         return options.Clients;
     }
 
-    internal static int ResolveMultiClients(PerfOptions options)
-    {
-        return ResolveClients(options);
-    }
-
-    internal static int ResolveWarmupSeconds(PerfOptions options)
+    internal static int ResolveMultiWarmupSeconds(PerfOptions options)
     {
         return options.WarmupSeconds;
     }
 
-    internal static int ResolveMultiWarmupSeconds(PerfOptions options)
-    {
-        return ResolveWarmupSeconds(options);
-    }
-
-    internal static int ResolveDurationSeconds(PerfOptions options)
-    {
-        return options.DurationSeconds;
-    }
-
     internal static int ResolveMultiDurationSeconds(PerfOptions options)
     {
-        return ResolveDurationSeconds(options);
+        return options.DurationSeconds;
     }
 
     internal static bool ResolveMultiActiveWarmup(PerfOptions options)
@@ -87,27 +59,6 @@ internal static partial class PerfRunner
     internal static int ResolveMultiConnectReadyTimeoutMs(PerfOptions options)
     {
         return options.ConnectReadyTimeoutMs;
-    }
-
-    internal static int ResolveStreamIoTimeoutMs(PerfOptions options)
-    {
-        return options.StreamTimeoutMs;
-    }
-
-    internal static int ResolveMultiClientPollTimeoutMs(PerfOptions options)
-    {
-        return options.ClientPollTimeoutMs;
-    }
-
-    internal static int ResolveEffectiveMultiClientPollTimeoutMs(
-        PerfOptions options)
-    {
-        return Math.Max(0, ResolveMultiClientPollTimeoutMs(options));
-    }
-
-    internal static int ResolveHwm(PerfOptions options)
-    {
-        return options.MultiHwm;
     }
 
     internal static string MultiEndpointFor(string transport, string name,
@@ -217,22 +168,6 @@ internal static partial class PerfRunner
             && payload.SequenceEqual(MultiStopToken);
     }
 
-    internal static int ResolveMultiHwmValue(string specificName,
-        PerfOptions options)
-    {
-        return options.ResolveMultiHwm(specificName);
-    }
-
-    internal static int ResolveIoThreads(PerfOptions options)
-    {
-        return options.IoThreads;
-    }
-
-    internal static int ResolveMultiMaxSockets(PerfOptions options)
-    {
-        return options.MaxSockets;
-    }
-
     internal static void ApplyMultiServerContextOptions(Context ctx,
         PerfOptions options)
     {
@@ -252,8 +187,8 @@ internal static partial class PerfRunner
     internal static void ApplyMultiSocketOptions(SocketBase socket,
         PerfOptions options)
     {
-        int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", options);
-        int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", options);
+        int sndHwm = options.ResolveMultiHwm("PERF_SNDHWM");
+        int rcvHwm = options.ResolveMultiHwm("PERF_RCVHWM");
         int sndTimeo = ResolveMultiSndTimeoutMs(options);
         int rcvTimeo = ResolveMultiRcvTimeoutMs(options);
 
@@ -277,53 +212,4 @@ internal static partial class PerfRunner
             || transport.Equals("wss", StringComparison.OrdinalIgnoreCase);
     }
 
-    internal readonly struct ServerQueueStats
-    {
-        internal ServerQueueStats(double sndPendingMax, double rcvPendingMax,
-            double rcvPendingEnd)
-        {
-            SndPendingMax = sndPendingMax;
-            RcvPendingMax = rcvPendingMax;
-            RcvPendingEnd = rcvPendingEnd;
-        }
-
-        internal double SndPendingMax { get; }
-        internal double RcvPendingMax { get; }
-        internal double RcvPendingEnd { get; }
-    }
-
-    internal static ServerQueueStats SampleServerQueueStats(SocketBase socket)
-    {
-        PeerRecord[] peers = socket.GetPeers();
-        if (peers.Length == 0)
-            return new ServerQueueStats(0, 0, 0);
-
-        PeerRecord best = peers[0];
-        ulong bestActivity = best.MsgsSent + best.MsgsReceived;
-        for (int i = 1; i < peers.Length; i++)
-        {
-            PeerRecord candidate = peers[i];
-            ulong candidateActivity = candidate.MsgsSent + candidate.MsgsReceived;
-            if (candidate.ConnectedTime > best.ConnectedTime
-                || (candidate.ConnectedTime == best.ConnectedTime
-                    && candidateActivity > bestActivity))
-            {
-                best = candidate;
-                bestActivity = candidateActivity;
-            }
-        }
-
-        double sndPending = best.SndPendingMsgs;
-        double rcvPending = best.RcvPendingMsgs;
-        return new ServerQueueStats(sndPending, rcvPending, rcvPending);
-    }
-
-    internal static void PrintServerQueueMetrics(string pattern, string transport,
-        int size, ServerQueueStats stats)
-    {
-        _ = pattern;
-        _ = transport;
-        _ = size;
-        _ = stats;
-    }
 }

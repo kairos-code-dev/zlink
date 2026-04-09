@@ -18,7 +18,7 @@ internal static class PerfDealerRouterClient
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
         int latencySampleCap = ResolveMultiLatencySampleCap(options);
         int clientCount = ResolveMultiClients(options);
-        int pollTimeoutMs = ResolveEffectiveMultiClientPollTimeoutMs(options);
+        int pollTimeoutMs = Math.Max(0, options.ClientPollTimeoutMs);
         string endpoint = options.Endpoint;
 
         using var ctx = new Context();

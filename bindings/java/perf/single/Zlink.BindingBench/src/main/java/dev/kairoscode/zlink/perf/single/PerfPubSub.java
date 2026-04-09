@@ -101,7 +101,7 @@ final class PerfPubSub {
             while (ready.getCount() > 0L && System.nanoTime() < readyDeadline) {
                 try (Message probe = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                    pub.publish(topic, List.of(probe));
+                    SingleSendLoops.runWithRetry(() -> pub.publish(topic, List.of(probe)));
                 }
                 try {
                     Thread.sleep(25L);
@@ -119,13 +119,13 @@ final class PerfPubSub {
                 while (System.nanoTime() < activeEnd) {
                     try (Message m = PerfUtil.payload(config.size(),
                              (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                        pub.publish(topic, List.of(m));
+                        SingleSendLoops.runWithRetry(() -> pub.publish(topic, List.of(m)));
                     }
                 }
                 for (int i = 0; i < 16; i++) {
                     try (Message m = PerfUtil.payload(config.size(),
                              (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                        pub.publish(topic, List.of(m));
+                        SingleSendLoops.runWithRetry(() -> pub.publish(topic, List.of(m)));
                     }
                 }
             }, "single-pubsub-sender");

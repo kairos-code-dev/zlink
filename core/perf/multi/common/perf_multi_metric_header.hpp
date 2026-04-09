@@ -21,7 +21,7 @@ struct header_t
 {
     uint32_t magic;
     uint32_t run_id;
-    uint8_t phase;
+    uint32_t phase;
     uint32_t msg_size;
     uint64_t seq;
     int64_t sent_ts_ns;
@@ -29,7 +29,7 @@ struct header_t
 
 inline size_t header_size ()
 {
-    return 29;
+    return sizeof (uint32_t) * 4 + sizeof (uint64_t) * 2;
 }
 
 inline uint64_t now_ns ()
@@ -51,40 +51,10 @@ inline void init_header (header_t *out,
         return;
     out->magic = k_magic;
     out->run_id = run_id;
-    out->phase = static_cast<uint8_t> (phase);
+    out->phase = static_cast<uint32_t> (phase);
     out->msg_size = static_cast<uint32_t> (msg_size);
     out->seq = seq;
     out->sent_ts_ns = static_cast<int64_t> (sent_ts_ns);
-}
-
-inline void write_u32_le (unsigned char *dst, uint32_t value)
-{
-    dst[0] = static_cast<unsigned char> (value & 0xffU);
-    dst[1] = static_cast<unsigned char> ((value >> 8) & 0xffU);
-    dst[2] = static_cast<unsigned char> ((value >> 16) & 0xffU);
-    dst[3] = static_cast<unsigned char> ((value >> 24) & 0xffU);
-}
-
-inline void write_u64_le (unsigned char *dst, uint64_t value)
-{
-    for (size_t i = 0; i < 8; ++i)
-        dst[i] = static_cast<unsigned char> ((value >> (i * 8)) & 0xffU);
-}
-
-inline uint32_t read_u32_le (const unsigned char *src)
-{
-    return static_cast<uint32_t> (src[0])
-           | (static_cast<uint32_t> (src[1]) << 8)
-           | (static_cast<uint32_t> (src[2]) << 16)
-           | (static_cast<uint32_t> (src[3]) << 24);
-}
-
-inline uint64_t read_u64_le (const unsigned char *src)
-{
-    uint64_t value = 0;
-    for (size_t i = 0; i < 8; ++i)
-        value |= static_cast<uint64_t> (src[i]) << (i * 8);
-    return value;
 }
 
 inline bool encode_header (void *dst, size_t dst_size, const header_t &h)
@@ -93,12 +63,12 @@ inline bool encode_header (void *dst, size_t dst_size, const header_t &h)
         return false;
 
     unsigned char *p = static_cast<unsigned char *> (dst);
-    write_u32_le (p + 0, h.magic);
-    write_u32_le (p + 4, h.run_id);
-    p[8] = h.phase;
-    write_u32_le (p + 9, h.msg_size);
-    write_u64_le (p + 13, h.seq);
-    write_u64_le (p + 21, static_cast<uint64_t> (h.sent_ts_ns));
+    std::memcpy (p + 0, &h.magic, sizeof (h.magic));
+    std::memcpy (p + 4, &h.run_id, sizeof (h.run_id));
+    std::memcpy (p + 8, &h.phase, sizeof (h.phase));
+    std::memcpy (p + 12, &h.msg_size, sizeof (h.msg_size));
+    std::memcpy (p + 16, &h.seq, sizeof (h.seq));
+    std::memcpy (p + 24, &h.sent_ts_ns, sizeof (h.sent_ts_ns));
     return true;
 }
 
@@ -108,12 +78,12 @@ inline bool decode_header (const void *src, size_t src_size, header_t *out)
         return false;
 
     const unsigned char *p = static_cast<const unsigned char *> (src);
-    out->magic = read_u32_le (p + 0);
-    out->run_id = read_u32_le (p + 4);
-    out->phase = p[8];
-    out->msg_size = read_u32_le (p + 9);
-    out->seq = read_u64_le (p + 13);
-    out->sent_ts_ns = static_cast<int64_t> (read_u64_le (p + 21));
+    std::memcpy (&out->magic, p + 0, sizeof (out->magic));
+    std::memcpy (&out->run_id, p + 4, sizeof (out->run_id));
+    std::memcpy (&out->phase, p + 8, sizeof (out->phase));
+    std::memcpy (&out->msg_size, p + 12, sizeof (out->msg_size));
+    std::memcpy (&out->seq, p + 16, sizeof (out->seq));
+    std::memcpy (&out->sent_ts_ns, p + 24, sizeof (out->sent_ts_ns));
     return true;
 }
 
@@ -148,7 +118,7 @@ inline bool is_expected (const header_t &h,
                          size_t msg_size)
 {
     return h.magic == k_magic && h.run_id == run_id
-           && h.phase == static_cast<uint8_t> (phase)
+           && h.phase == static_cast<uint32_t> (phase)
            && h.msg_size == static_cast<uint32_t> (msg_size);
 }
 

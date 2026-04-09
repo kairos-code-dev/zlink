@@ -2,6 +2,7 @@
 #define PERF_MULTI_STREAM_SESSION_HPP
 
 #include "perf_common.hpp"
+#include "../../common/streamclient/perf_stream_routed_reassembly.hpp"
 
 #include <atomic>
 #include <deque>
@@ -77,7 +78,8 @@ struct session_t
         send_count(0),
         pending_count(0),
         queue_mutex(),
-        pending_queue()
+        pending_queue(),
+        recv_buffers()
     {
     }
 
@@ -87,6 +89,7 @@ struct session_t
     std::atomic<unsigned long long> pending_count;
     std::mutex queue_mutex;
     std::deque<queued_message_t> pending_queue;
+    perf_stream_routed_frame::state_t recv_buffers;
 };
 
 inline bool is_event_payload(const unsigned char *data, size_t size)
@@ -114,6 +117,7 @@ inline void reset_session(session_t *session, void *send_socket)
     session->pending_count.store(0, std::memory_order_release);
     std::lock_guard<std::mutex> lock(session->queue_mutex);
     session->pending_queue.clear();
+    perf_stream_routed_frame::reset(&session->recv_buffers);
 }
 
 inline void clear_session(session_t *session)
@@ -123,6 +127,7 @@ inline void clear_session(session_t *session)
     session->send_socket = NULL;
     std::lock_guard<std::mutex> lock(session->queue_mutex);
     session->pending_queue.clear();
+    perf_stream_routed_frame::reset(&session->recv_buffers);
 }
 
 inline size_t pending_size(session_t *session)
@@ -165,6 +170,72 @@ inline bool enqueue(session_t *session,
         std::lock_guard<std::mutex> lock(session->queue_mutex);
         session->pending_queue.push_back(std::move(queued));
     }
+    return true;
+}
+
+inline bool enqueue_frame(session_t *session,
+                          const zlink_routing_id_t *rid,
+                          const unsigned char *data,
+                          size_t size)
+{
+    if (!session || !rid || !data || size == 0)
+        return false;
+
+    zlink_msg_t frame;
+    if (zlink_msg_init_size(&frame, size) != 0)
+        return false;
+
+    std::memcpy(zlink_msg_data(&frame), data, size);
+    const bool ok = enqueue(session, rid, &frame);
+    (void) zlink_msg_close(&frame);
+    return ok;
+}
+
+inline void append_connection_chunk(perf_stream_frame::buffer_t *buffer,
+                                    const unsigned char *payload,
+                                    size_t payload_size)
+{
+    perf_stream_frame::append(buffer, payload, payload_size);
+}
+
+inline bool handle_complete_frame(session_t *session,
+                                  const zlink_routing_id_t *rid,
+                                  const perf_stream_frame::frame_view_t &frame,
+                                  const char *stop_token)
+{
+    if (!session || !rid || !frame.data || frame.size == 0)
+        return false;
+
+    if (is_stop_payload(frame.payload, frame.payload_size, stop_token)) {
+        perf_stop_requested().store(true, std::memory_order_release);
+        return true;
+    }
+
+    return enqueue_frame(session, rid, frame.data, frame.size);
+}
+
+inline bool drain_connection_frames(session_t *session,
+                                    const zlink_routing_id_t *rid,
+                                    perf_stream_frame::buffer_t *buffer,
+                                    const char *stop_token)
+{
+    if (!session || !rid || !buffer)
+        return false;
+
+    while (true) {
+        if (perf_stream_frame::has_invalid_declared_size(buffer))
+            return false;
+
+        perf_stream_frame::frame_view_t frame;
+        if (!perf_stream_frame::try_peek(buffer, &frame))
+            break;
+
+        if (!handle_complete_frame(session, rid, frame, stop_token))
+            return false;
+        perf_stream_frame::consume(buffer, frame);
+    }
+
+    perf_stream_frame::compact(buffer);
     return true;
 }
 
@@ -214,16 +285,21 @@ inline bool process_chunk(session_t *session,
     const unsigned char *payload =
       static_cast<const unsigned char *>(zlink_msg_data(msg_part));
     const size_t payload_size = zlink_msg_size(msg_part);
-    if (is_event_payload(payload, payload_size))
-        return true;
-
-    session->recv_count.fetch_add(1, std::memory_order_relaxed);
-    if (is_stop_payload(payload, payload_size, stop_token)) {
-        perf_stop_requested().store(true, std::memory_order_release);
+    if (is_event_payload(payload, payload_size)) {
+        perf_stream_routed_frame::clear_connection(&session->recv_buffers, rid);
         return true;
     }
 
-    return enqueue(session, rid, msg_part);
+    session->recv_count.fetch_add(1, std::memory_order_relaxed);
+    perf_stream_frame::buffer_t *buffer =
+      perf_stream_routed_frame::buffer_for(&session->recv_buffers, rid);
+    append_connection_chunk(buffer, payload, payload_size);
+    if (!drain_connection_frames(session, rid, buffer, stop_token))
+        return false;
+
+    perf_stream_routed_frame::trim_connection_if_empty(
+      &session->recv_buffers, rid, buffer);
+    return true;
 }
 
 inline bool process_recv_parts(session_t *session,

@@ -21,6 +21,7 @@
 #include <boost/beast/websocket.hpp>
 
 #include "perf_stream_common.hpp"
+#include "perf_stream_frame_reassembly.hpp"
 
 #include <cstddef>
 #include <cstring>
@@ -70,7 +71,7 @@ class stream_client_t
         if (ec)
             return false;
 
-        ws_pending_frame.clear ();
+        perf_stream_frame::reset (&ws_pending_frame);
 
         if (mode == raw_transport_tcp) {
             tcp_socket.reset (new tcp::socket (io));
@@ -188,7 +189,7 @@ class stream_client_t
             tcp_socket.reset ();
         }
 
-        ws_pending_frame.clear ();
+        perf_stream_frame::reset (&ws_pending_frame);
     }
 
   private:
@@ -321,30 +322,24 @@ class stream_client_t
             return false;
 
         while (true) {
-            if (ws_pending_frame.size () >= 4) {
-                const uint32_t declared =
-                  perf_stream_common::perf_stream_load_u32_be (&ws_pending_frame[0]);
-                if (declared
-                    > static_cast<uint32_t> (
-                      perf_stream_common::k_stream_max_chunk_size)) {
-                    return false;
-                }
+            if (perf_stream_frame::has_invalid_declared_size (&ws_pending_frame))
+                return false;
 
-                const size_t total = static_cast<size_t> (4 + declared);
-                if (ws_pending_frame.size () >= total) {
-                    frame_out->assign (ws_pending_frame.begin (),
-                                       ws_pending_frame.begin () + total);
-                    ws_pending_frame.erase (ws_pending_frame.begin (),
-                                            ws_pending_frame.begin () + total);
-                    return true;
-                }
+            perf_stream_frame::frame_view_t frame;
+            if (perf_stream_frame::try_peek (&ws_pending_frame, &frame)) {
+                frame_out->assign (frame.data, frame.data + frame.size);
+                perf_stream_frame::consume (&ws_pending_frame, frame);
+                perf_stream_frame::compact (&ws_pending_frame);
+                return true;
             }
 
             std::vector<unsigned char> message;
             if (!read_ws_message_bytes (&message))
                 return false;
-            ws_pending_frame.insert (ws_pending_frame.end (), message.begin (),
-                                     message.end ());
+            perf_stream_frame::append (
+              &ws_pending_frame,
+              message.empty () ? NULL : &message[0],
+              message.size ());
         }
     }
 
@@ -367,7 +362,7 @@ class stream_client_t
 
     // Reassembly buffer for WS/WSS: accumulates bytes across WS messages
     // until a complete len32be frame can be extracted.
-    std::vector<unsigned char> ws_pending_frame;
+    perf_stream_frame::buffer_t ws_pending_frame;
 };
 
 #endif

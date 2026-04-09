@@ -26,6 +26,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_pubsub_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_spot_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_stream_benchmark_process
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_stream_server_reassembly
   ${INTEGRATION_TEST_ROOT}/monitoring/test_single_pair_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_single_spot_benchmark_process
   ${INTEGRATION_TEST_ROOT}/test_socket_with_handler

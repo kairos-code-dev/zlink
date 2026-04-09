@@ -14,6 +14,7 @@
 
 #include "perf_stream_bench_client_iface.hpp"
 #include "perf_stream_common.hpp"
+#include "perf_stream_frame_reassembly.hpp"
 #include "../../multi/common/perf_multi_metric_header.hpp"
 
 #include <boost/asio.hpp>
@@ -678,10 +679,10 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
         const size_t bytes = boost::asio::buffer_size (ws_read_buffer.data ());
         if (bytes > 0) {
-            const size_t base = ws_pending_frame.size ();
-            ws_pending_frame.resize (base + bytes);
+            const size_t base = ws_pending_frame.bytes.size ();
+            ws_pending_frame.bytes.resize (base + bytes);
             boost::asio::buffer_copy (
-              boost::asio::buffer (&ws_pending_frame[base], bytes),
+              boost::asio::buffer (&ws_pending_frame.bytes[base], bytes),
               ws_read_buffer.data ());
         }
         ws_read_buffer.consume (bytes);
@@ -694,37 +695,32 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         if (closed || !connected ())
             return;
 
-        if (ws_pending_frame.size () >= 4) {
-            const uint32_t declared =
-              perf_stream_common::perf_stream_load_u32_be (&ws_pending_frame[0]);
-            if (declared > perf_stream_common::k_stream_max_chunk_size) {
-                owner.on_recv_error ();
-                if (outstanding > 0) {
-                    const long dropped = static_cast<long> (outstanding);
-                    outstanding = 0;
-                    owner.on_abandon (dropped);
-                }
-                close_internal ();
-                return;
+        if (perf_stream_frame::has_invalid_declared_size (&ws_pending_frame)) {
+            owner.on_recv_error ();
+            if (outstanding > 0) {
+                const long dropped = static_cast<long> (outstanding);
+                outstanding = 0;
+                owner.on_abandon (dropped);
             }
+            close_internal ();
+            return;
+        }
 
-            const size_t total = static_cast<size_t> (4 + declared);
-            if (ws_pending_frame.size () >= total) {
-                read_declared = declared;
-                if (read_buf.size () != static_cast<size_t> (read_declared))
-                    read_buf.resize (static_cast<size_t> (read_declared));
-                if (read_declared > 0) {
-                    std::memcpy (&read_buf[0], &ws_pending_frame[4],
-                                 static_cast<size_t> (read_declared));
-                }
-                ws_pending_frame.erase (
-                  ws_pending_frame.begin (),
-                  ws_pending_frame.begin () + static_cast<std::ptrdiff_t> (total));
-
-                on_read_payload (boost::system::error_code (),
-                                 static_cast<size_t> (read_declared));
-                return;
+        perf_stream_frame::frame_view_t frame;
+        if (perf_stream_frame::try_peek (&ws_pending_frame, &frame)) {
+            read_declared = static_cast<uint32_t> (frame.payload_size);
+            if (read_buf.size () != static_cast<size_t> (read_declared))
+                read_buf.resize (static_cast<size_t> (read_declared));
+            if (read_declared > 0) {
+                std::memcpy (&read_buf[0], frame.payload,
+                             static_cast<size_t> (read_declared));
             }
+            perf_stream_frame::consume (&ws_pending_frame, frame);
+            perf_stream_frame::compact (&ws_pending_frame);
+
+            on_read_payload (boost::system::error_code (),
+                             static_cast<size_t> (read_declared));
+            return;
         }
 
         const std::shared_ptr<client_session_t> self = shared_from_this ();
@@ -859,7 +855,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         using boost::asio::ip::tcp;
 
         boost::system::error_code ec;
-        ws_pending_frame.clear ();
+        perf_stream_frame::reset (&ws_pending_frame);
         ws_read_buffer.consume (ws_read_buffer.size ());
 
         if (ws_socket) {
@@ -938,7 +934,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
       boost::asio::ssl::stream<boost::asio::ip::tcp::socket> > >
       wss_socket;
     boost::beast::flat_buffer ws_read_buffer;
-    std::vector<unsigned char> ws_pending_frame;
+    perf_stream_frame::buffer_t ws_pending_frame;
 
     boost::asio::strand<boost::asio::io_context::executor_type> strand; // serializes all callbacks
 

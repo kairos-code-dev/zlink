@@ -1,0 +1,639 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/api/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/api/bindings/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/bindings/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/bindings/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/api/context/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/context/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/context/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/api/discovery/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/discovery/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/discovery/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/api/errors/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/errors/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/errors/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/api/events/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/events/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/events/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/api/message/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/message/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/message/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/api/monitoring/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/monitoring/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/monitoring/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/api/polling/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/polling/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/polling/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/api/registry/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/registry/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/registry/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/api/socket/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/socket/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/socket/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/api/spot/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/spot/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/spot/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/api/utilities/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/utilities/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/utilities/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/01-overview/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/01-overview/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/01-overview/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/02-core-api/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/02-core-api/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/02-core-api/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/03-0-socket-patterns/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-0-socket-patterns/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-0-socket-patterns/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/03-1-pair/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-1-pair/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-1-pair/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/03-2-pubsub/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-2-pubsub/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-2-pubsub/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/03-3-dealer/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-3-dealer/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-3-dealer/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/03-4-router/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-4-router/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-4-router/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/03-5-stream/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-5-stream/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-5-stream/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/03-6-proxy/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-6-proxy/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-6-proxy/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/04-transports/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/04-transports/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/04-transports/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/05-tls-security/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/05-tls-security/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/05-tls-security/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/06-monitoring/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/06-monitoring/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/06-monitoring/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/07-0-services/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/07-0-services/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/07-0-services/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/07-1-discovery/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/07-1-discovery/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/07-1-discovery/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/07-3-spot/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/07-3-spot/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/07-3-spot/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/07-4-registry/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/07-4-registry/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/07-4-registry/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/08-routing-id/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/08-routing-id/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/08-routing-id/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/09-message-api/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/09-message-api/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/09-message-api/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/10-performance/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/10-performance/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/10-performance/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/11-thread-safety/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/11-thread-safety/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/11-thread-safety/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/guide/12-socket-options/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/12-socket-options/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/12-socket-options/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/internals/architecture/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/architecture/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/architecture/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/internals/design-decisions/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/design-decisions/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/design-decisions/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/internals/posd-module-structure/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/posd-module-structure/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/posd-module-structure/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/internals/protocol-raw/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/protocol-raw/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/protocol-raw/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/internals/protocol-zmp/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/protocol-zmp/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/protocol-zmp/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/internals/services-internals/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/services-internals/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/services-internals/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/internals/socket-option-defaults/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/socket-option-defaults/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/socket-option-defaults/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/internals/stream-socket/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/stream-socket/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/stream-socket/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/internals/thread-safety/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/thread-safety/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/thread-safety/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/internals/threading-model/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/threading-model/"/>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/threading-model/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/api/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/api/bindings/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/bindings/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/bindings/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/api/context/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/context/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/context/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/api/discovery/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/discovery/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/discovery/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/api/errors/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/errors/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/errors/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/api/events/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/events/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/events/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/api/message/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/message/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/message/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/api/monitoring/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/monitoring/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/monitoring/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/api/polling/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/polling/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/polling/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/api/registry/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/registry/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/registry/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/api/socket/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/socket/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/socket/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/api/spot/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/spot/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/spot/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/api/utilities/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/api/utilities/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/api/utilities/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/01-overview/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/01-overview/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/01-overview/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/02-core-api/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/02-core-api/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/02-core-api/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/03-0-socket-patterns/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-0-socket-patterns/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-0-socket-patterns/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/03-1-pair/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-1-pair/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-1-pair/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/03-2-pubsub/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-2-pubsub/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-2-pubsub/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/03-3-dealer/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-3-dealer/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-3-dealer/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/03-4-router/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-4-router/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-4-router/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/03-5-stream/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-5-stream/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-5-stream/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/03-6-proxy/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/03-6-proxy/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/03-6-proxy/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/04-transports/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/04-transports/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/04-transports/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/05-tls-security/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/05-tls-security/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/05-tls-security/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/06-monitoring/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/06-monitoring/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/06-monitoring/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/07-0-services/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/07-0-services/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/07-0-services/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/07-1-discovery/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/07-1-discovery/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/07-1-discovery/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/07-3-spot/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/07-3-spot/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/07-3-spot/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/07-4-registry/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/07-4-registry/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/07-4-registry/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/08-routing-id/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/08-routing-id/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/08-routing-id/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/09-message-api/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/09-message-api/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/09-message-api/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/10-performance/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/10-performance/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/10-performance/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/11-thread-safety/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/11-thread-safety/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/11-thread-safety/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/guide/12-socket-options/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/guide/12-socket-options/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/guide/12-socket-options/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/internals/architecture/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/architecture/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/architecture/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/internals/design-decisions/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/design-decisions/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/design-decisions/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/internals/multipart-atomicity/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/multipart-atomicity/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/internals/posd-module-structure/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/posd-module-structure/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/posd-module-structure/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/internals/protocol-raw/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/protocol-raw/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/protocol-raw/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/internals/protocol-zmp/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/protocol-zmp/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/protocol-zmp/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/internals/services-internals/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/services-internals/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/services-internals/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/internals/socket-option-defaults/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/socket-option-defaults/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/socket-option-defaults/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/internals/stream-socket/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/stream-socket/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/stream-socket/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/internals/thread-safety/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/thread-safety/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/thread-safety/"/>
+    </url>
+    <url>
+        <loc>https://kairos-code-dev.github.io/zlink/ko/internals/threading-model/</loc>
+        <lastmod>2026-04-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="ko" href="https://kairos-code-dev.github.io/zlink/ko/internals/threading-model/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://kairos-code-dev.github.io/zlink/internals/threading-model/"/>
+    </url>
+</urlset>

@@ -1,0 +1,4336 @@
+
+<!doctype html>
+<html lang="ko" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="zlink — Modern messaging library guide">
+      
+      
+      
+        <link rel="canonical" href="https://kairos-code-dev.github.io/zlink/ko/api/socket/">
+      
+      
+        <link rel="prev" href="../context/">
+      
+      
+        <link rel="next" href="../message/">
+      
+      
+        
+          <link rel="alternate" href="../../../api/socket/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="ko">
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Socket - zlink Guide</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api" class="md-skip">
+          콘텐츠로 이동
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="상단/헤더">
+    <a href="../../" title="zlink Guide" class="md-header__button md-logo" aria-label="zlink Guide" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            zlink Guide
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Socket
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="언어설정">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../../api/socket/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="ko" class="md-select__link">
+              한국어
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="검색" placeholder="검색" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="검색">
+        
+        <button type="reset" class="md-search__icon md-icon" title="지우기" aria-label="지우기" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            검색 초기화
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kairos-code-dev/zlink" title="저장소로 이동" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kairos-code-dev/zlink
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="탭" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guide/01-overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  가이드
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../context/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API 레퍼런스
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../internals/architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  내부 구조
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="네비게이션" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../" title="zlink Guide" class="md-nav__button md-logo" aria-label="zlink Guide" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    zlink Guide
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kairos-code-dev/zlink" title="저장소로 이동" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kairos-code-dev/zlink
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    가이드
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    가이드
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/01-overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    개요
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/02-core-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    핵심 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    소켓 패턴
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    소켓 패턴
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-0-socket-patterns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    개요
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-1-pair/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PAIR
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-2-pubsub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PUB/SUB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-3-dealer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEALER
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-4-router/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ROUTER
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-5-stream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    STREAM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-6-proxy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proxy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/04-transports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    트랜스포트
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/05-tls-security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TLS 보안
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/06-monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    모니터링
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_7" id="__nav_2_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    서비스
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    서비스
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/07-0-services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    개요
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/07-1-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    디스커버리
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/07-3-spot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SPOT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/07-4-registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/08-routing-id/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    라우팅 ID
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/09-message-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    메시지 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/10-performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    성능
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/11-thread-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    스레드 안전성
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/12-socket-options/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    소켓 옵션
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API 레퍼런스
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API 레퍼런스
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    컨텍스트
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Socket
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Socket
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="목차">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      목차
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        스레드 안전성 요약
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        콜백 타입
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="콜백 타입">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket_msg_handler_fn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket_msg_handler_fn
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_subscribe_handler_fn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_subscribe_handler_fn
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_send_ready_handler_fn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_send_ready_handler_fn
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        상수
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="상수">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        소켓 타입
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        송신 플래그
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        보안 메커니즘
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        소켓 옵션
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        함수
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="함수">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_recv_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_recv_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_subscribe_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_subscribe_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_close
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_get_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_get_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_routing_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_routing_id
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_get_routing_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_get_routing_id
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_tls_server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_tls_server
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_tls_client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_tls_client
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_router_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_router_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_get_router_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_get_router_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_dealer_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_dealer_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_stream_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_stream_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_get_stream_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_get_stream_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_pub_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_pub_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_get_pub_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_get_pub_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_sub_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_sub_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_get_sub_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_get_sub_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_bind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_bind
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_connect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_connect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_unbind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_unbind
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_disconnect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_disconnect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_send" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_send
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_recv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_recv
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_send_rid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_send_rid
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pubsub-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pub/Sub 데이터 플레인 API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Pub/Sub 데이터 플레인 API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_publish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_publish
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_subscription" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_subscription
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_unset_subscription" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_unset_subscription
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_subscription_at" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_subscription_at
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_subscribe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_subscribe
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_subscription_event" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_subscription_event
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_send_ready_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_send_ready_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_multipart_close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_multipart_close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        소켓 모니터
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="소켓 모니터">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket_monitor_open" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket_monitor_open
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../message/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    메시지
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../events/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    이벤트
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    모니터링
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../polling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    폴링
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    에러
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../utilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    유틸리티
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    디스커버리
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SPOT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    내부 구조
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    내부 구조
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    아키텍처
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/threading-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    스레딩 모델
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/thread-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    스레드 안전성
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    설계 결정
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/posd-module-structure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    POSD 모듈 구조
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/services-internals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    서비스 내부
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/stream-socket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    스트림 소켓
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/socket-option-defaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    소켓 옵션
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/protocol-zmp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZMP 프로토콜
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/protocol-raw/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Raw 프로토콜
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="목차">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      목차
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        스레드 안전성 요약
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        콜백 타입
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="콜백 타입">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket_msg_handler_fn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket_msg_handler_fn
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_subscribe_handler_fn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_subscribe_handler_fn
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_send_ready_handler_fn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_send_ready_handler_fn
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        상수
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="상수">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        소켓 타입
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        송신 플래그
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        보안 메커니즘
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        소켓 옵션
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        함수
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="함수">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_recv_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_recv_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_subscribe_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_subscribe_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_close
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_get_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_get_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_routing_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_routing_id
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_get_routing_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_get_routing_id
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_tls_server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_tls_server
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_tls_client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_tls_client
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_router_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_router_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_get_router_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_get_router_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_dealer_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_dealer_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_stream_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_stream_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_get_stream_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_get_stream_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_pub_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_pub_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_get_pub_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_get_pub_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_sub_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_sub_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_get_sub_option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_get_sub_option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_bind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_bind
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_connect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_connect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_unbind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_unbind
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_disconnect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_disconnect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_send" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_send
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_recv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_recv
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_send_rid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_send_rid
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pubsub-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pub/Sub 데이터 플레인 API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Pub/Sub 데이터 플레인 API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_publish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_publish
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_set_subscription" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_set_subscription
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_unset_subscription" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_unset_subscription
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_subscription_at" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_subscription_at
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_subscribe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_subscribe
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_subscription_event" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_subscription_event
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_send_ready_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_send_ready_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_multipart_close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_multipart_close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        소켓 모니터
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="소켓 모니터">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket_monitor_open" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket_monitor_open
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="api">소켓 API 레퍼런스<a class="headerlink" href="#api" title="Permanent link">&para;</a></h1>
+<p>소켓 API는 zlink 소켓의 생성, 구성, 바인딩, 연결, I/O 수행을 위한 함수를
+제공합니다. 모든 소켓은 recv 모드로 시작합니다. 멀티파트 callback receive
+(<code>zlink_recv_handler()</code>)는 raw <code>PAIR</code>, <code>DEALER</code>, <code>ROUTER</code>, <code>STREAM</code>에서
+지원됩니다. 토픽 callback receive
+(<code>zlink_subscribe_handler()</code>)는 raw <code>SUB</code>, <code>XSUB</code>, <code>spot</code>, <code>spot_node</code>에서
+지원됩니다. send-ready callback (<code>zlink_send_ready_handler()</code>)는 독립 축으로
+모든 send-capable subject에서 사용할 수 있습니다.</p>
+<h2 id="_1">스레드 안전성 요약<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>공개 socket handle API는 기본적으로 thread-safe합니다. 다만 모든 API가 같은
+비용 모델을 갖는 것은 아닙니다.</p>
+<ul>
+<li><code>send</code>는 여러 스레드에서 동시 호출을 허용하는 hot path입니다.</li>
+<li><code>bind/connect/disconnect</code>, subscribe/unsubscribe, option/query, monitor는
+  runtime에 호출 가능한 control path입니다. correctness는 보장되지만 실행
+  순서는 내부 직렬화에 따라 결정될 수 있습니다.</li>
+<li><code>close</code>는 fail-fast lifecycle gate를 사용합니다. 다른 스레드가 같은 handle에서
+  admitted API나 callback을 실행 중이면 <code>EBUSY</code>, close가 accepted된 뒤 새 API
+  진입은 <code>ESHUTDOWN</code>입니다.</li>
+<li>예외는 소수만 남깁니다. init-only 설정, callback context에서 금지된 일부
+  reentrant API, 같은 <code>zlink_msg_t</code> 인스턴스의 동시 공유는 기본 허용 범위
+  밖입니다.</li>
+</ul>
+<h2 id="_2">콜백 타입<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<h3 id="zlink_socket_msg_handler_fn">zlink_socket_msg_handler_fn<a class="headerlink" href="#zlink_socket_msg_handler_fn" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">typedef</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">zlink_socket_msg_handler_fn</span><span class="p">)</span><span class="w"> </span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">zlink_routing_id_t</span><span class="w"> </span><span class="o">*</span><span class="n">source_rid_</span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">parts_</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="kt">size_t</span><span class="w"> </span><span class="n">part_count_</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>멀티파트 수신 subject(raw <code>PAIR</code>, <code>DEALER</code>, <code>ROUTER</code>, <code>STREAM</code>)에서
+멀티파트 메시지 dispatch에 사용되는 콜백입니다.
+소유 I/O 스레드에서 호출됩니다. 모든 메시지 파트의 소유권이 콜백으로
+이전되며, 각 파트는 정확히 한 번 close하거나 소비해야 합니다.
+<code>zlink_recv_handler()</code>와 함께 사용합니다.</p>
+<h3 id="zlink_subscribe_handler_fn">zlink_subscribe_handler_fn<a class="headerlink" href="#zlink_subscribe_handler_fn" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">typedef</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">zlink_subscribe_handler_fn</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_routing_id_t</span><span class="w"> </span><span class="o">*</span><span class="n">source_rid_</span><span class="p">,</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">                                       </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">topic_</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">                                       </span><span class="kt">size_t</span><span class="w"> </span><span class="n">topic_len_</span><span class="p">,</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">                                       </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">parts_</span><span class="p">,</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">                                       </span><span class="kt">size_t</span><span class="w"> </span><span class="n">part_count_</span><span class="p">,</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">                                       </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>토픽 기반 수신 subject(raw <code>SUB</code>, <code>XSUB</code>, <code>spot</code>, <code>spot_node</code>)에서
+토픽 기반 메시지 dispatch에 사용되는 콜백입니다. 소유 I/O 스레드에서
+호출되며, 파트의 소유권이 이전됩니다.
+<code>zlink_subscribe_handler()</code>와 함께 사용합니다.</p>
+<p>각 콜백 타입은 전용 함수를 통해 등록합니다. 소켓 타입별 등록 함수 매핑:</p>
+<table>
+<thead>
+<tr>
+<th>소켓 타입</th>
+<th>등록 함수</th>
+<th>콜백</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PAIR, DEALER, ROUTER, STREAM</td>
+<td><code>zlink_recv_handler</code></td>
+<td><code>zlink_socket_msg_handler_fn</code></td>
+</tr>
+<tr>
+<td>SUB, XSUB, spot, spot_node</td>
+<td><code>zlink_subscribe_handler</code></td>
+<td><code>zlink_subscribe_handler_fn</code></td>
+</tr>
+<tr>
+<td>PUB</td>
+<td>N/A</td>
+<td>송신 전용; 핸들러 불필요</td>
+</tr>
+</tbody>
+</table>
+<h3 id="zlink_send_ready_handler_fn">zlink_send_ready_handler_fn<a class="headerlink" href="#zlink_send_ready_handler_fn" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">typedef</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">zlink_send_ready_handler_fn</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">subject_</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>송신 가능한 핸들이 쓰기 가능 상태로 전환될 때 호출되는 콜백.</p>
+<h2 id="_3">상수<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<h3 id="_4">소켓 타입<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">typedef</span><span class="w"> </span><span class="k">enum</span><span class="w"> </span><span class="n">zlink_socket_type_t</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="p">{</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="n">ZLINK_SOCKET_PAIR</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mh">0x1001</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="n">ZLINK_SOCKET_PUB</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="mh">0x1002</span><span class="p">,</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="n">ZLINK_SOCKET_SUB</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="mh">0x1003</span><span class="p">,</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="n">ZLINK_SOCKET_DEALER</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x1004</span><span class="p">,</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="n">ZLINK_SOCKET_ROUTER</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x1005</span><span class="p">,</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="n">ZLINK_SOCKET_XPUB</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mh">0x1006</span><span class="p">,</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">    </span><span class="n">ZLINK_SOCKET_XSUB</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mh">0x1007</span><span class="p">,</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">    </span><span class="n">ZLINK_SOCKET_STREAM</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x1008</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="p">}</span><span class="w"> </span><span class="n">zlink_socket_type_t</span><span class="p">;</span>
+</span></code></pre></div>
+<p>항상 위에 표시된 <code>ZLINK_SOCKET_*</code> 정규화된 상수를 사용합니다.</p>
+<h3 id="_5">송신 플래그<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">typedef</span><span class="w"> </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">zlink_send_flags_t</span><span class="p">;</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="cp">#define ZLINK_DONTWAIT  ((zlink_send_flags_t) 0x0001u)</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_DONTWAIT</code></td>
+<td>논블로킹 모드; 블로킹 시 <code>EAGAIN</code> 반환</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_6">보안 메커니즘<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>값</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_NULL</code></td>
+<td>0</td>
+<td>보안 메커니즘 없음 (기본값)</td>
+</tr>
+<tr>
+<td><code>ZLINK_PLAIN</code></td>
+<td>1</td>
+<td>PLAIN 사용자명/비밀번호 인증</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_7">소켓 옵션<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<p>소켓 옵션은 타입별 전용 enum과 함수를 사용합니다. 공통 옵션은
+<code>zlink_set_option()</code> / <code>zlink_get_option()</code>으로, 소켓 타입별 옵션은
+<code>zlink_set_router_option()</code>, <code>zlink_set_dealer_option()</code>,
+<code>zlink_set_pub_option()</code>, <code>zlink_set_sub_option()</code>,
+<code>zlink_set_stream_option()</code> 등 전용 함수로 설정합니다.
+ROUTING_ID는 <code>zlink_set_routing_id()</code> / <code>zlink_get_routing_id()</code> 전용
+함수를, TLS는 <code>zlink_set_tls_server()</code> / <code>zlink_set_tls_client()</code> 전용
+함수를, SUBSCRIBE/UNSUBSCRIBE는 <code>zlink_set_subscription()</code> /
+<code>zlink_unset_subscription()</code> 전용 함수를 사용합니다.</p>
+<h4 id="zlink_option_t">공통 옵션 (<code>zlink_option_t</code>)<a class="headerlink" href="#zlink_option_t" title="Permanent link">&para;</a></h4>
+<p><code>zlink_set_option()</code> / <code>zlink_get_option()</code>과 함께 사용합니다.
+모든 소켓 타입과 discovery(fan-out)에 적용됩니다.</p>
+<p>내부적으로 옵션은 세 소유권 카테고리로 분류되어 각 도메인 소유자가
+validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 옵션
+추가 시 아래 분류에 따라 소유권이 결정됩니다.</p>
+<table>
+<thead>
+<tr>
+<th>카테고리</th>
+<th>대표 옵션</th>
+<th>내부 소유자</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Core Socket</td>
+<td><code>SNDHWM</code>, <code>RCVHWM</code>, <code>LINGER</code>, <code>SNDTIMEO</code>, <code>RCVTIMEO</code></td>
+<td><code>options_core_socket</code></td>
+</tr>
+<tr>
+<td>Transport/Network</td>
+<td><code>RATE</code>, <code>RECOVERY_IVL</code>, <code>SNDBUF</code>, <code>RCVBUF</code>, <code>TOS</code>, <code>PRIORITY</code></td>
+<td><code>options_transport_network</code></td>
+</tr>
+<tr>
+<td>Protocol/Metadata</td>
+<td>ZMP 메타데이터</td>
+<td><code>options_protocol_metadata</code></td>
+</tr>
+</tbody>
+</table>
+<h5 id="transportbuffer">Transport/Buffer<a class="headerlink" href="#transportbuffer" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_OPT_AFFINITY</code></td>
+<td>I/O 스레드 어피니티 비트마스크 (<code>uint64_t</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_RATE</code></td>
+<td>멀티캐스트 전송률 (kbps, <code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_RECOVERY_IVL</code></td>
+<td>멀티캐스트 복구 간격 (ms, <code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_SNDBUF</code></td>
+<td>커널 송신 버퍼 크기 (<code>int</code>; 0=OS 기본값)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_RCVBUF</code></td>
+<td>커널 수신 버퍼 크기 (<code>int</code>; 0=OS 기본값)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_SNDHWM</code></td>
+<td>송신 하이 워터 마크 (<code>int</code>; 0=무제한)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_RCVHWM</code></td>
+<td>수신 하이 워터 마크 (<code>int</code>; 0=무제한)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_MAXMSGSIZE</code></td>
+<td>최대 인바운드 메시지 크기 (<code>int64_t</code>; -1=무제한)</td>
+</tr>
+</tbody>
+</table>
+<h5 id="timing">Timing<a class="headerlink" href="#timing" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_OPT_LINGER</code></td>
+<td>종료 시 대기 (ms, <code>int</code>; -1=무한, 0=즉시)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_RCVTIMEO</code></td>
+<td>수신 타임아웃 (ms, <code>int</code>; -1=무한)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_SNDTIMEO</code></td>
+<td>송신 타임아웃 (ms, <code>int</code>; -1=무한)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_CONNECT_TIMEOUT</code></td>
+<td>연결 타임아웃 (ms, <code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_RECONNECT_IVL</code></td>
+<td>초기 재연결 간격 (ms, <code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_RECONNECT_IVL_MAX</code></td>
+<td>최대 재연결 간격 (ms, <code>int</code>; 0=IVL만 사용)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_HANDSHAKE_IVL</code></td>
+<td>ZMTP 핸드셰이크 타임아웃 (ms, <code>int</code>)</td>
+</tr>
+</tbody>
+</table>
+<h5 id="tcp">TCP<a class="headerlink" href="#tcp" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_OPT_TCP_KEEPALIVE</code></td>
+<td>SO_KEEPALIVE (<code>int</code>; -1=OS, 0=off, 1=on)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_TCP_KEEPALIVE_CNT</code></td>
+<td>TCP_KEEPCNT (<code>int</code>; -1=OS 기본값)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_TCP_KEEPALIVE_IDLE</code></td>
+<td>TCP_KEEPIDLE (초, <code>int</code>; -1=OS 기본값)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_TCP_KEEPALIVE_INTVL</code></td>
+<td>TCP_KEEPINTVL (초, <code>int</code>; -1=OS 기본값)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_TCP_MAXRT</code></td>
+<td>최대 TCP 재전송 타임아웃 (ms, <code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_TCP_NODELAY</code></td>
+<td>TCP_NODELAY 활성화 (<code>int</code>; 0 또는 1)</td>
+</tr>
+</tbody>
+</table>
+<h5 id="heartbeat">Heartbeat<a class="headerlink" href="#heartbeat" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_OPT_HEARTBEAT_IVL</code></td>
+<td>ZMTP 하트비트 간격 (ms, <code>int</code>; 0=비활성)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_HEARTBEAT_TTL</code></td>
+<td>ZMTP 하트비트 TTL (ms, <code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_HEARTBEAT_TIMEOUT</code></td>
+<td>ZMTP 하트비트 타임아웃 (ms, <code>int</code>)</td>
+</tr>
+</tbody>
+</table>
+<h5 id="network">Network<a class="headerlink" href="#network" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_OPT_IPV6</code></td>
+<td>소켓에서 IPv6 활성화 (<code>int</code>; 0 또는 1)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_TOS</code></td>
+<td>IP Type-of-Service 값 (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_MULTICAST_HOPS</code></td>
+<td>멀티캐스트 TTL (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_MULTICAST_MAXTPDU</code></td>
+<td>최대 멀티캐스트 TPDU 크기 (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_BINDTODEVICE</code></td>
+<td>네트워크 인터페이스 바인딩 (<code>string</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_BACKLOG</code></td>
+<td>listener backlog (<code>int</code>)</td>
+</tr>
+</tbody>
+</table>
+<h5 id="behavior">Behavior<a class="headerlink" href="#behavior" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_OPT_IMMEDIATE</code></td>
+<td>완료된 연결에만 메시지 큐 사용 (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_CONFLATE</code></td>
+<td>토픽당 최신 메시지만 유지 (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_BLOCKY</code></td>
+<td>context 종료 시 블로킹 (<code>int</code>, 레거시)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_INVERT_MATCHING</code></td>
+<td>토픽 매칭 반전 (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_ZMP_METADATA</code></td>
+<td>ZMP 메타데이터 첨부 (<code>binary</code>)</td>
+</tr>
+</tbody>
+</table>
+<h5 id="read-only">Read-only<a class="headerlink" href="#read-only" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_OPT_FD</code></td>
+<td>파일 디스크립터 (<code>zlink_fd_t</code>, 읽기 전용)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_EVENTS</code></td>
+<td>이벤트 상태 비트마스크 (<code>int</code>, 읽기 전용)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_TYPE</code></td>
+<td>소켓 타입 (<code>int</code>, 읽기 전용)</td>
+</tr>
+<tr>
+<td><code>ZLINK_OPT_LAST_ENDPOINT</code></td>
+<td>바인딩된 엔드포인트 (<code>string</code>, 읽기 전용)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="router-zlink_router_option_t">Router 옵션 (<code>zlink_router_option_t</code>)<a class="headerlink" href="#router-zlink_router_option_t" title="Permanent link">&para;</a></h4>
+<p><code>zlink_set_router_option()</code> / <code>zlink_get_router_option()</code>과 함께 사용합니다.</p>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_ROUTER_OPT_MANDATORY</code></td>
+<td>라우팅 불가 시 <code>EHOSTUNREACH</code> 반환 (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_ROUTER_OPT_HANDOVER</code></td>
+<td>기존 routing id를 새 연결이 인수 허용 (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_ROUTER_OPT_PROBE</code></td>
+<td>연결 시 빈 메시지로 아이덴티티 설정 (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID</code></td>
+<td>발신 연결의 routing id 설정 (<code>binary</code>)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="dealer-zlink_dealer_option_t">Dealer 옵션 (<code>zlink_dealer_option_t</code>)<a class="headerlink" href="#dealer-zlink_dealer_option_t" title="Permanent link">&para;</a></h4>
+<p><code>zlink_set_dealer_option()</code>과 함께 사용합니다.</p>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_DEALER_OPT_PROBE</code></td>
+<td>연결 시 빈 메시지로 아이덴티티 설정 (<code>int</code>)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="pub-zlink_pub_option_t">Pub 옵션 (<code>zlink_pub_option_t</code>)<a class="headerlink" href="#pub-zlink_pub_option_t" title="Permanent link">&para;</a></h4>
+<p><code>zlink_set_pub_option()</code> / <code>zlink_get_pub_option()</code>과 함께 사용합니다.</p>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_PUB_OPT_VERBOSE</code></td>
+<td>모든 구독 메시지를 업스트림 전달 (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_PUB_OPT_VERBOSER</code></td>
+<td>구독/해제 메시지를 업스트림 전달 (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_PUB_OPT_MANUAL</code></td>
+<td>XPUB 수동 구독 관리 (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_PUB_OPT_MANUAL_LAST_VALUE</code></td>
+<td>수동 모드 최신 값 캐싱 (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_PUB_OPT_NODROP</code></td>
+<td>HWM 시 drop 대신 <code>EAGAIN</code> 반환 (<code>int</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_PUB_OPT_WELCOME_MSG</code></td>
+<td>새 subscriber 연결 시 전송 메시지 (<code>binary</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_PUB_OPT_TOPICS_COUNT</code></td>
+<td>구독된 토픽 수 (<code>int</code>, 읽기 전용)</td>
+</tr>
+<tr>
+<td><code>ZLINK_PUB_OPT_APPROVE_SUBSCRIBE</code></td>
+<td>manual 모드 구독 승인 (<code>binary</code>)</td>
+</tr>
+<tr>
+<td><code>ZLINK_PUB_OPT_REJECT_SUBSCRIBE</code></td>
+<td>manual 모드 구독 거부 (<code>binary</code>)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="sub-zlink_sub_option_t">Sub 옵션 (<code>zlink_sub_option_t</code>)<a class="headerlink" href="#sub-zlink_sub_option_t" title="Permanent link">&para;</a></h4>
+<p><code>zlink_set_sub_option()</code> / <code>zlink_get_sub_option()</code>과 함께 사용합니다.</p>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_SUB_OPT_TOPICS_COUNT</code></td>
+<td>구독된 토픽 수 (읽기 전용, <code>int</code>)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="stream-zlink_stream_option_t">Stream 옵션 (<code>zlink_stream_option_t</code>)<a class="headerlink" href="#stream-zlink_stream_option_t" title="Permanent link">&para;</a></h4>
+<p><code>zlink_set_stream_option()</code> / <code>zlink_get_stream_option()</code>과 함께 사용합니다.</p>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_STREAM_OPT_NOTIFY</code></td>
+<td>STREAM 연결/해제 알림 (<code>int</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_8">함수<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
+<h3 id="zlink_socket">zlink_socket<a class="headerlink" href="#zlink_socket" title="Permanent link">&para;</a></h3>
+<p>소켓을 생성합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="nf">zlink_socket</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">context_</span><span class="p">,</span><span class="w"> </span><span class="n">zlink_socket_type_t</span><span class="w"> </span><span class="n">type_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>지정된 context 내에서 새 소켓을 생성합니다. <code>type_</code> 매개변수는 메시징 패턴을
+선택합니다. raw socket은 recv 모드로 시작합니다. 멀티파트 수신
+subject(<code>PAIR</code>, <code>DEALER</code>, <code>ROUTER</code>, <code>STREAM</code>)는 <code>zlink_recv_handler()</code>
+callback attach를 지원하고, 토픽 기반 subject(<code>SUB</code>, <code>XSUB</code>)는
+<code>zlink_subscribe_handler()</code>를 지원합니다. 소켓은 context가
+종료되기 전에 <code>zlink_close()</code>로 닫아야 합니다.</p>
+<p><strong>반환값:</strong> 성공 시 소켓 핸들, 실패 시 <code>NULL</code> (errno가 설정됨).</p>
+<p><strong>에러:</strong> 소켓 타입이 유효하지 않으면 <code>EINVAL</code>. 최대 소켓 수에 도달하면
+<code>EMFILE</code>. Context가 종료된 경우 <code>ETERM</code>.</p>
+<p><strong>스레드 안전성:</strong> Context에 대해 스레드 안전합니다.</p>
+<p><strong>참고:</strong> <code>zlink_close</code>, <code>zlink_ctx_new</code>, <code>zlink_recv_handler</code></p>
+<hr />
+<h3 id="zlink_recv_handler">zlink_recv_handler<a class="headerlink" href="#zlink_recv_handler" title="Permanent link">&para;</a></h3>
+<p>소켓에 메시지 수신 핸들러를 부착합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_recv_handler</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">s_</span><span class="p">,</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">                        </span><span class="n">zlink_socket_msg_handler_fn</span><span class="w"> </span><span class="n">handler_</span><span class="p">,</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">                        </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>멀티파트 수신 subject에 메시지 수신 핸들러를 부착합니다. 지원 대상은 raw
+<code>PAIR</code>, <code>DEALER</code>, <code>ROUTER</code>, <code>STREAM</code>입니다. attach 이후 같은
+subject의 direct recv와 data-plane poller <code>ZLINK_POLLIN</code>은 <code>errno=EBUSY</code>로
+실패합니다. 동일 subject에 대한 두 번째 attach도 <code>errno=EBUSY</code>입니다.
+지원하지 않는 subject는 <code>ENOTSUP</code>를 반환합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> 핸들러가 NULL이면 <code>EINVAL</code>. 소켓 타입이 메시지 핸들러를
+허용하지 않으면 <code>ENOTSUP</code>. 핸들러가 이미 부착된 경우 <code>EBUSY</code>.</p>
+<p><strong>참고:</strong> <code>zlink_subscribe_handler</code>, <code>zlink_socket</code>, <code>zlink_close</code></p>
+<hr />
+<h3 id="zlink_subscribe_handler">zlink_subscribe_handler<a class="headerlink" href="#zlink_subscribe_handler" title="Permanent link">&para;</a></h3>
+<p>소켓에 토픽 기반 수신 핸들러를 부착합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_subscribe_handler</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">s_</span><span class="p">,</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">                             </span><span class="n">zlink_subscribe_handler_fn</span><span class="w"> </span><span class="n">handler_</span><span class="p">,</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">                             </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>raw <code>SUB</code>, raw <code>XSUB</code>, <code>spot</code>, <code>spot_node</code>에 토픽 기반 수신 핸들러를
+부착합니다. attach 이후 같은 subject의 <code>zlink_subscribe()</code>와 data-plane
+poller <code>ZLINK_POLLIN</code>은 <code>errno=EBUSY</code>로 실패합니다. 동일 subject에 대한
+두 번째 attach도 <code>errno=EBUSY</code>입니다. 지원하지 않는 subject는 <code>ENOTSUP</code>를
+반환합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> 핸들러가 NULL이면 <code>EINVAL</code>. handle 타입이 subscribe handler를
+허용하지 않으면 <code>ENOTSUP</code>. 핸들러가 이미 부착된 경우 <code>EBUSY</code>.</p>
+<p><strong>참고:</strong> <code>zlink_recv_handler</code>, <code>zlink_socket</code>, <code>zlink_close</code></p>
+<hr />
+<h3 id="zlink_close">zlink_close<a class="headerlink" href="#zlink_close" title="Permanent link">&para;</a></h3>
+<p>소켓을 닫고 리소스를 해제합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_close</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">s_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>소켓을 닫고 관련된 모든 리소스를 해제합니다. 송신 대기열에 남아 있는 메시지는
+<code>ZLINK_OPT_LINGER</code> 설정에 따라 폐기되거나 송신됩니다. 다른 스레드에서 동일 핸들에
+대해 콜백이나 API 호출이 진행 중이면 <code>errno=EBUSY</code>로 실패합니다. send-ready
+또는 monitor 콜백 내에서의 self-close는 콜백 에필로그까지 지연됩니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> 핸들이 유효한 소켓이 아니면 <code>ENOTSOCK</code>. 콜백이나 작업이 진행 중이면
+<code>EBUSY</code>.</p>
+<p><strong>참고:</strong> <code>zlink_socket</code></p>
+<hr />
+<h3 id="zlink_set_option">zlink_set_option<a class="headerlink" href="#zlink_set_option" title="Permanent link">&para;</a></h3>
+<p>공통 옵션을 설정합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_set_option</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">                      </span><span class="n">zlink_option_t</span><span class="w"> </span><span class="n">option_</span><span class="p">,</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">                      </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">optval_</span><span class="p">,</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">                      </span><span class="kt">size_t</span><span class="w"> </span><span class="n">optvallen_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>공통 옵션을 설정합니다. 모든 소켓 타입과 discovery(fan-out)에서
+사용합니다. <code>option_</code> 매개변수는 <code>zlink_option_t</code> enum 값입니다. <code>optval_</code>
+포인터는 값을 제공하고 <code>optvallen_</code>은 크기를 바이트 단위로 지정합니다.</p>
+<p>일부 옵션은 소켓을 바인딩하거나 연결하기 전에 설정해야 합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> 옵션이 알 수 없거나 값이 범위를 벗어나면 <code>EINVAL</code>. Context가 종료된
+경우 <code>ETERM</code>.</p>
+<p><strong>참고:</strong> <code>zlink_get_option</code></p>
+<hr />
+<h3 id="zlink_get_option">zlink_get_option<a class="headerlink" href="#zlink_get_option" title="Permanent link">&para;</a></h3>
+<p>공통 옵션을 조회합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_get_option</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">                      </span><span class="n">zlink_option_t</span><span class="w"> </span><span class="n">option_</span><span class="p">,</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">                      </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">optval_</span><span class="p">,</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">                      </span><span class="kt">size_t</span><span class="w"> </span><span class="o">*</span><span class="n">optvallen_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>공통 옵션의 현재 값을 가져옵니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_set_option</code></p>
+<hr />
+<h3 id="zlink_set_routing_id">zlink_set_routing_id<a class="headerlink" href="#zlink_set_routing_id" title="Permanent link">&para;</a></h3>
+<p>소켓의 라우팅 아이덴티티를 설정합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_set_routing_id</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">                           </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">data_</span><span class="p">,</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">                           </span><span class="kt">size_t</span><span class="w"> </span><span class="n">size_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>ROUTER 주소 지정을 위한 소켓 아이덴티티를 설정합니다. 최대 255바이트.
+바인딩 또는 연결하기 전에 설정해야 합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_get_routing_id</code></p>
+<hr />
+<h3 id="zlink_get_routing_id">zlink_get_routing_id<a class="headerlink" href="#zlink_get_routing_id" title="Permanent link">&para;</a></h3>
+<p>소켓의 라우팅 아이덴티티를 조회합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_get_routing_id</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">                           </span><span class="n">zlink_routing_id_t</span><span class="w"> </span><span class="o">*</span><span class="n">out_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>소켓에 설정된 라우팅 아이덴티티를 가져옵니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_set_routing_id</code></p>
+<hr />
+<h3 id="zlink_set_tls_server">zlink_set_tls_server<a class="headerlink" href="#zlink_set_tls_server" title="Permanent link">&para;</a></h3>
+<p>서버 측 TLS를 구성합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_set_tls_server</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">                           </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">cert_</span><span class="p">,</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">                           </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">key_</span><span class="p">,</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">                           </span><span class="kt">int</span><span class="w"> </span><span class="n">require_client_cert_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>서버 소켓에 TLS 인증서, 개인 키를 설정하고, 클라이언트 인증서 요구 여부를
+지정합니다.</p>
+<p>service handle의 경우 TLS 지원 범위는 surface마다 다릅니다. Discovery는
+client TLS만, Registry는 client/server TLS를 지원하며, SPOT은 <code>SpotNode</code>
+handle에서만 TLS를 지원합니다. unified <code>Spot</code>과 SPOT child pub/sub handle은
+<code>ENOTSUP</code>로 실패합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_set_tls_client</code>, <code>zlink_bind</code></p>
+<hr />
+<h3 id="zlink_set_tls_client">zlink_set_tls_client<a class="headerlink" href="#zlink_set_tls_client" title="Permanent link">&para;</a></h3>
+<p>클라이언트 측 TLS를 구성합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_set_tls_client</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">                           </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">ca_cert_</span><span class="p">,</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">                           </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">hostname_</span><span class="p">,</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">                           </span><span class="kt">int</span><span class="w"> </span><span class="n">trust_system_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>클라이언트 소켓에 CA 인증서, 호스트명(SNI 및 인증서 검증용), 시스템 CA
+저장소 신뢰 여부를 설정합니다.</p>
+<p>service handle의 경우 TLS 지원 범위는 surface마다 다릅니다. Discovery는
+client TLS만, Registry는 client/server TLS를 지원하며, SPOT은 <code>SpotNode</code>
+handle에서만 TLS를 지원합니다. unified <code>Spot</code>과 SPOT child pub/sub handle은
+<code>ENOTSUP</code>로 실패합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_set_tls_server</code>, <code>zlink_connect</code></p>
+<hr />
+<h3 id="zlink_set_router_option">zlink_set_router_option<a class="headerlink" href="#zlink_set_router_option" title="Permanent link">&para;</a></h3>
+<p>ROUTER 소켓 전용 옵션을 설정합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_set_router_option</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">                              </span><span class="n">zlink_router_option_t</span><span class="w"> </span><span class="n">option_</span><span class="p">,</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">                              </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">optval_</span><span class="p">,</span>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">                              </span><span class="kt">size_t</span><span class="w"> </span><span class="n">optvallen_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_get_router_option</code></p>
+<hr />
+<h3 id="zlink_get_router_option">zlink_get_router_option<a class="headerlink" href="#zlink_get_router_option" title="Permanent link">&para;</a></h3>
+<p>ROUTER 소켓 전용 옵션을 조회합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_get_router_option</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">                              </span><span class="n">zlink_router_option_t</span><span class="w"> </span><span class="n">option_</span><span class="p">,</span>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">                              </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">optval_</span><span class="p">,</span>
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">                              </span><span class="kt">size_t</span><span class="w"> </span><span class="o">*</span><span class="n">optvallen_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_set_router_option</code></p>
+<hr />
+<h3 id="zlink_set_dealer_option">zlink_set_dealer_option<a class="headerlink" href="#zlink_set_dealer_option" title="Permanent link">&para;</a></h3>
+<p>DEALER 소켓 전용 옵션을 설정합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_set_dealer_option</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">                              </span><span class="n">zlink_dealer_option_t</span><span class="w"> </span><span class="n">option_</span><span class="p">,</span>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">                              </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">optval_</span><span class="p">,</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">                              </span><span class="kt">size_t</span><span class="w"> </span><span class="n">optvallen_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<hr />
+<h3 id="zlink_set_stream_option">zlink_set_stream_option<a class="headerlink" href="#zlink_set_stream_option" title="Permanent link">&para;</a></h3>
+<p>STREAM 소켓 전용 옵션을 설정합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_set_stream_option</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">                              </span><span class="n">zlink_stream_option_t</span><span class="w"> </span><span class="n">option_</span><span class="p">,</span>
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">                              </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">optval_</span><span class="p">,</span>
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">                              </span><span class="kt">size_t</span><span class="w"> </span><span class="n">optvallen_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_get_stream_option</code></p>
+<hr />
+<h3 id="zlink_get_stream_option">zlink_get_stream_option<a class="headerlink" href="#zlink_get_stream_option" title="Permanent link">&para;</a></h3>
+<p>STREAM 소켓 전용 옵션을 조회합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_get_stream_option</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">                              </span><span class="n">zlink_stream_option_t</span><span class="w"> </span><span class="n">option_</span><span class="p">,</span>
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">                              </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">optval_</span><span class="p">,</span>
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="w">                              </span><span class="kt">size_t</span><span class="w"> </span><span class="o">*</span><span class="n">optvallen_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_set_stream_option</code></p>
+<hr />
+<h3 id="zlink_set_pub_option">zlink_set_pub_option<a class="headerlink" href="#zlink_set_pub_option" title="Permanent link">&para;</a></h3>
+<p>PUB/XPUB 소켓, spot-pub, spotnode-pub 전용 옵션을 설정합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_set_pub_option</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">                           </span><span class="n">zlink_pub_option_t</span><span class="w"> </span><span class="n">option_</span><span class="p">,</span>
+</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">                           </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">optval_</span><span class="p">,</span>
+</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">                           </span><span class="kt">size_t</span><span class="w"> </span><span class="n">optvallen_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_get_pub_option</code></p>
+<hr />
+<h3 id="zlink_get_pub_option">zlink_get_pub_option<a class="headerlink" href="#zlink_get_pub_option" title="Permanent link">&para;</a></h3>
+<p>PUB/XPUB 소켓, spot-pub, spotnode-pub 전용 옵션을 조회합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_get_pub_option</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">                           </span><span class="n">zlink_pub_option_t</span><span class="w"> </span><span class="n">option_</span><span class="p">,</span>
+</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">                           </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">optval_</span><span class="p">,</span>
+</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">                           </span><span class="kt">size_t</span><span class="w"> </span><span class="o">*</span><span class="n">optvallen_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_set_pub_option</code></p>
+<hr />
+<h3 id="zlink_set_sub_option">zlink_set_sub_option<a class="headerlink" href="#zlink_set_sub_option" title="Permanent link">&para;</a></h3>
+<p>SUB/XSUB 소켓, spot-sub, spotnode-sub 전용 옵션을 설정합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_set_sub_option</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">                           </span><span class="n">zlink_sub_option_t</span><span class="w"> </span><span class="n">option_</span><span class="p">,</span>
+</span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">                           </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">optval_</span><span class="p">,</span>
+</span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="w">                           </span><span class="kt">size_t</span><span class="w"> </span><span class="n">optvallen_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_get_sub_option</code></p>
+<hr />
+<h3 id="zlink_get_sub_option">zlink_get_sub_option<a class="headerlink" href="#zlink_get_sub_option" title="Permanent link">&para;</a></h3>
+<p>SUB/XSUB 소켓, spot-sub, spotnode-sub 전용 옵션을 조회합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_get_sub_option</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="w">                           </span><span class="n">zlink_sub_option_t</span><span class="w"> </span><span class="n">option_</span><span class="p">,</span>
+</span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">                           </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">optval_</span><span class="p">,</span>
+</span><span id="__span-23-4"><a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="w">                           </span><span class="kt">size_t</span><span class="w"> </span><span class="o">*</span><span class="n">optvallen_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_set_sub_option</code></p>
+<hr />
+<h3 id="zlink_bind">zlink_bind<a class="headerlink" href="#zlink_bind" title="Permanent link">&para;</a></h3>
+<p>소켓을 주소에 바인딩합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_bind</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">s_</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">addr_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>소켓을 로컬 엔드포인트에 바인딩합니다. 엔드포인트 문자열은
+<code>transport://address</code> 형식을 사용하며, 지원되는 트랜스포트는 다음과 같습니다:</p>
+<ul>
+<li><code>tcp://interface:port</code> 또는 <code>tcp://*:port</code></li>
+<li><code>inproc://name</code> (프로세스 내)</li>
+<li><code>ipc://pathname</code> (프로세스 간, POSIX 전용)</li>
+<li><code>ws://interface:port</code> (WebSocket)</li>
+<li><code>tls://interface:port</code> (TLS 암호화 TCP)</li>
+</ul>
+<p>소켓은 여러 엔드포인트에 바인딩할 수 있습니다. TCP의 경우 포트 0을 지정하면
+시스템이 임시 포트를 할당합니다. 실제 엔드포인트를 가져오려면
+<code>ZLINK_OPT_LAST_ENDPOINT</code>를 사용하세요.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> 주소가 이미 사용 중이면 <code>EADDRINUSE</code>. 인터페이스가 존재하지 않으면
+<code>EADDRNOTAVAIL</code>. 트랜스포트가 지원되지 않으면 <code>EPROTONOSUPPORT</code>.</p>
+<p><strong>참고:</strong> <code>zlink_connect</code>, <code>zlink_unbind</code></p>
+<hr />
+<h3 id="zlink_connect">zlink_connect<a class="headerlink" href="#zlink_connect" title="Permanent link">&para;</a></h3>
+<p>소켓을 원격 주소에 연결합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_connect</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">s_</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">addr_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>소켓을 원격 엔드포인트에 연결합니다. 엔드포인트 형식은 <code>zlink_bind()</code>와
+동일합니다. 소켓은 여러 엔드포인트에 연결할 수 있으며, 피어가 사용 불가능해지면
+라이브러리가 자동으로 재연결을 처리합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_bind</code>, <code>zlink_disconnect</code></p>
+<hr />
+<h3 id="zlink_unbind">zlink_unbind<a class="headerlink" href="#zlink_unbind" title="Permanent link">&para;</a></h3>
+<p>소켓의 주소 바인딩을 해제합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_unbind</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">s_</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">addr_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>이전에 설정된 바인딩을 제거합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_bind</code></p>
+<hr />
+<h3 id="zlink_disconnect">zlink_disconnect<a class="headerlink" href="#zlink_disconnect" title="Permanent link">&para;</a></h3>
+<p>소켓의 원격 주소 연결을 해제합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_disconnect</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">s_</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">addr_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>이전에 설정된 연결을 제거합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_connect</code></p>
+<hr />
+<h3 id="zlink_send">zlink_send<a class="headerlink" href="#zlink_send" title="Permanent link">&para;</a></h3>
+<p>소켓에서 멀티파트 메시지를 송신합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_send</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">s_</span><span class="p">,</span>
+</span><span id="__span-28-2"><a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="w">                </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">parts_</span><span class="p">,</span>
+</span><span id="__span-28-3"><a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="w">                </span><span class="kt">size_t</span><span class="w"> </span><span class="n">part_count_</span><span class="p">,</span>
+</span><span id="__span-28-4"><a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="w">                </span><span class="n">zlink_send_flags_t</span><span class="w"> </span><span class="n">flags_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>소켓 <code>s_</code>에서 <code>parts_</code> 배열의 <code>part_count_</code>개 파트로 구성된 멀티파트 메시지를
+송신합니다. 성공 시 배열 내 모든 파트의 소유권이 라이브러리로 이전되며, 호출자는
+이후 접근할 수 없습니다. 실패 시 소유권은 호출자에게 유지됩니다. <code>flags_</code>
+매개변수는 0 또는 <code>ZLINK_DONTWAIT</code>일 수 있습니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> 작업이 블로킹되고 <code>ZLINK_DONTWAIT</code>가 설정된 경우 <code>EAGAIN</code>. Context가
+종료된 경우 <code>ETERM</code>.</p>
+<p><strong>참고:</strong> <code>zlink_recv</code></p>
+<hr />
+<h3 id="zlink_recv">zlink_recv<a class="headerlink" href="#zlink_recv" title="Permanent link">&para;</a></h3>
+<p>소켓에서 멀티파트 메시지를 수신합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_recv</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">s_</span><span class="p">,</span>
+</span><span id="__span-29-2"><a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="w">                </span><span class="n">zlink_routing_id_t</span><span class="w"> </span><span class="o">*</span><span class="n">source_rid_out_</span><span class="p">,</span>
+</span><span id="__span-29-3"><a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="w">                </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">**</span><span class="n">parts_out_</span><span class="p">,</span>
+</span><span id="__span-29-4"><a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="w">                </span><span class="kt">size_t</span><span class="w"> </span><span class="o">*</span><span class="n">part_count_out_</span><span class="p">,</span>
+</span><span id="__span-29-5"><a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="w">                </span><span class="n">zlink_send_flags_t</span><span class="w"> </span><span class="n">flags_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>소켓 <code>s_</code>에서 완전한 멀티파트 메시지를 수신합니다. 성공 시 <code>*parts_out_</code>는
+라이브러리가 할당한 <code>*part_count_out_</code>개 메시지 파트 배열을 가리키며,
+<code>*source_rid_out_</code>는 송신자의 routing id로 설정됩니다 (해당하는 경우). 파트
+배열과 각 파트의 소유권이 호출자에게 이전되며, 호출자는 모든 파트를 close하거나
+<code>zlink_multipart_close()</code>를 호출하고 배열을 해제해야 합니다. 소켓이 recv
+모드여야 합니다 (핸들러 미부착). <code>zlink_recv_handler()</code>로 수신 핸들러가
+부착된 경우 <code>errno=EBUSY</code>로 실패합니다. 메시지가 없을 때 즉시 반환하려면
+<code>ZLINK_DONTWAIT</code>를 전달하세요.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> 작업이 블로킹되고 <code>ZLINK_DONTWAIT</code>가 설정된 경우, 또는
+<code>ZLINK_OPT_RCVTIMEO</code>가 만료된 경우 <code>EAGAIN</code>. 수신 핸들러가 부착된 경우 <code>EBUSY</code>.
+Context가 종료된 경우 <code>ETERM</code>.</p>
+<p><strong>참고:</strong> <code>zlink_send</code>, <code>zlink_recv_handler</code>, <code>zlink_multipart_close</code></p>
+<hr />
+<h3 id="zlink_send_rid">zlink_send_rid<a class="headerlink" href="#zlink_send_rid" title="Permanent link">&para;</a></h3>
+<p>routing id로 특정 피어에게 멀티파트 메시지를 송신합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_send_rid</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">s_</span><span class="p">,</span>
+</span><span id="__span-30-2"><a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="w">                    </span><span class="k">const</span><span class="w"> </span><span class="n">zlink_routing_id_t</span><span class="w"> </span><span class="o">*</span><span class="n">target_rid_</span><span class="p">,</span>
+</span><span id="__span-30-3"><a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="w">                    </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">parts_</span><span class="p">,</span>
+</span><span id="__span-30-4"><a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="w">                    </span><span class="kt">size_t</span><span class="w"> </span><span class="n">part_count_</span><span class="p">,</span>
+</span><span id="__span-30-5"><a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a><span class="w">                    </span><span class="n">zlink_send_flags_t</span><span class="w"> </span><span class="n">flags_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>target_rid_</code>로 식별되는 피어에게 멀티파트 메시지를 송신합니다. 성공 시
+모든 파트의 소유권이 라이브러리로 이전됩니다. 실패 시 소유권은 호출자에게
+유지됩니다.</p>
+<p>적용 대상: ROUTER (directed reply), STREAM (피어 지정 send).</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> <code>subject_</code>가 NULL이면 <code>EFAULT</code>. 작업이 블로킹되고
+<code>ZLINK_DONTWAIT</code>가 설정된 경우 <code>EAGAIN</code>. 대상 피어가 연결되지 않은 경우
+(<code>ROUTER_MANDATORY</code> 활성 시) <code>EHOSTUNREACH</code>. Context가 종료된 경우 <code>ETERM</code>.</p>
+<p><strong>참고:</strong> <code>zlink_send</code>, <code>zlink_recv</code></p>
+<hr />
+<h2 id="pubsub-api">Pub/Sub 데이터 플레인 API<a class="headerlink" href="#pubsub-api" title="Permanent link">&para;</a></h2>
+<p>다음 함수들은 raw PUB, SUB, XSUB, XPUB 소켓을 위한 canonical pub/sub
+데이터 플레인을 제공합니다. 동일한 함수가 <code>spot</code> 및 <code>spot_node</code> 서비스
+핸들에도 적용됩니다 (<a href="../spot/">spot.ko.md</a> 참고).</p>
+<h3 id="zlink_publish">zlink_publish<a class="headerlink" href="#zlink_publish" title="Permanent link">&para;</a></h3>
+<p>멀티파트 메시지를 발행합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_publish</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">subject_</span><span class="p">,</span>
+</span><span id="__span-31-2"><a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="w">                   </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">topic_id_</span><span class="p">,</span>
+</span><span id="__span-31-3"><a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a><span class="w">                   </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">parts_</span><span class="p">,</span>
+</span><span id="__span-31-4"><a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a><span class="w">                   </span><span class="kt">size_t</span><span class="w"> </span><span class="n">part_count_</span><span class="p">,</span>
+</span><span id="__span-31-5"><a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a><span class="w">                   </span><span class="n">zlink_send_flags_t</span><span class="w"> </span><span class="n">flags_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>지정된 subject에서 멀티파트 메시지를 발행합니다. 성공 시 모든 파트의
+소유권이 라이브러리로 이전됩니다.</p>
+<ul>
+<li><code>spot</code> / <code>spot_node</code>: <code>topic_id_</code>는 non-NULL이어야 합니다 (topic-bearing
+  publish). NULL이면 <code>EINVAL</code>.</li>
+<li>raw <code>PUB</code> / <code>XPUB</code>: <code>topic_id_</code>는 NULL이어야 합니다 (raw pub publish).
+  토픽 매칭은 wire first-frame prefix 규칙을 따릅니다.</li>
+</ul>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> <code>subject_</code>가 NULL이면 <code>EFAULT</code>. <code>topic_id_</code>가 spot/spot_node에서
+NULL이거나 지원하지 않는 타입이면 <code>EINVAL</code>. subject 타입이 publish를
+지원하지 않으면 <code>ENOTSUP</code>.</p>
+<p><strong>참고:</strong> <code>zlink_set_subscription</code>, <code>zlink_subscribe</code></p>
+<hr />
+<h3 id="zlink_set_subscription">zlink_set_subscription<a class="headerlink" href="#zlink_set_subscription" title="Permanent link">&para;</a></h3>
+<p>토픽 필터를 구독합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-32-1"><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_set_subscription</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">filter_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>filter_</code>에 매칭되는 메시지를 구독합니다. 필터 해석: <code>filter_</code>가 <code>*</code>로
+끝나면 prefix-match 패턴이고, 그 외는 exact topic입니다.</p>
+<p>적용 대상: raw SUB, raw XSUB, <code>spot</code>, <code>spot_node</code>.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> <code>subject_</code>가 NULL이면 <code>EFAULT</code>. <code>filter_</code>가 NULL이거나 비어있거나
+유효하지 않은 패턴 구문(복수 <code>*</code>, 중간 <code>*</code>)이면 <code>EINVAL</code>. subject 타입이
+구독을 지원하지 않으면 <code>ENOTSUP</code>.</p>
+<p><strong>참고:</strong> <code>zlink_unset_subscription</code>, <code>zlink_subscribe</code></p>
+<hr />
+<h3 id="zlink_unset_subscription">zlink_unset_subscription<a class="headerlink" href="#zlink_unset_subscription" title="Permanent link">&para;</a></h3>
+<p>토픽 필터 구독을 해제합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-33-1"><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_unset_subscription</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">filter_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>이전에 등록된 구독을 제거합니다. <code>zlink_set_subscription()</code>과 동일한 문자열
+해석 규칙이 적용됩니다: trailing <code>*</code>는 패턴 해제, 그 외는 exact topic 해제.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> <code>subject_</code>가 NULL이면 <code>EFAULT</code>. <code>filter_</code>가 NULL이거나 비어있으면
+<code>EINVAL</code>. subject 타입이 구독 해제를 지원하지 않으면 <code>ENOTSUP</code>.</p>
+<p><strong>참고:</strong> <code>zlink_set_subscription</code></p>
+<hr />
+<h3 id="zlink_subscription_at">zlink_subscription_at<a class="headerlink" href="#zlink_subscription_at" title="Permanent link">&para;</a></h3>
+<p>인덱스로 구독 필터를 조회합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-34-1"><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_subscription_at</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle_</span><span class="p">,</span>
+</span><span id="__span-34-2"><a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="w">                            </span><span class="kt">size_t</span><span class="w"> </span><span class="n">index_</span><span class="p">,</span>
+</span><span id="__span-34-3"><a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a><span class="w">                            </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">filter_out_</span><span class="p">,</span>
+</span><span id="__span-34-4"><a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a><span class="w">                            </span><span class="kt">size_t</span><span class="w"> </span><span class="o">*</span><span class="n">filter_len_inout_</span><span class="p">,</span>
+</span><span id="__span-34-5"><a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a><span class="w">                            </span><span class="kt">int</span><span class="w"> </span><span class="o">*</span><span class="n">is_pattern_out_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>index_</code> 위치의 구독 필터를 가져옵니다. <code>filter_out_</code>에 필터 문자열이,
+<code>*filter_len_inout_</code>에 길이가, <code>*is_pattern_out_</code>에 패턴 여부(trailing <code>*</code>
+구독이면 1, exact topic이면 0)가 설정됩니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_set_subscription</code>, <code>zlink_unset_subscription</code></p>
+<hr />
+<h3 id="zlink_subscribe">zlink_subscribe<a class="headerlink" href="#zlink_subscribe" title="Permanent link">&para;</a></h3>
+<p>토픽 기반 멀티파트 메시지를 수신합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-35-1"><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_subscribe</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">subject_</span><span class="p">,</span>
+</span><span id="__span-35-2"><a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a><span class="w">                     </span><span class="n">zlink_routing_id_t</span><span class="w"> </span><span class="o">*</span><span class="n">source_rid_out_</span><span class="p">,</span>
+</span><span id="__span-35-3"><a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a><span class="w">                     </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">**</span><span class="n">parts_out_</span><span class="p">,</span>
+</span><span id="__span-35-4"><a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a><span class="w">                     </span><span class="kt">size_t</span><span class="w"> </span><span class="o">*</span><span class="n">part_count_out_</span><span class="p">,</span>
+</span><span id="__span-35-5"><a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a><span class="w">                     </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">topic_id_out_</span><span class="p">,</span>
+</span><span id="__span-35-6"><a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a><span class="w">                     </span><span class="kt">size_t</span><span class="w"> </span><span class="o">*</span><span class="n">topic_id_len_out_</span><span class="p">,</span>
+</span><span id="__span-35-7"><a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a><span class="w">                     </span><span class="n">zlink_send_flags_t</span><span class="w"> </span><span class="n">flags_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>recv 모드에서 다음 토픽 기반 메시지를 수신합니다. 성공 시
+<code>*source_rid_out_</code>는 송신자의 routing id (transport가 identity를 전달하지
+않으면 zeroed), <code>*topic_id_out_</code> / <code>*topic_id_len_out_</code>는 토픽 바이트
+(binary-safe), <code>*parts_out_</code> / <code>*part_count_out_</code>는 페이로드 프레임을
+받습니다. 파트 배열의 소유권은 호출자에게 이전됩니다.</p>
+<p>subject가 recv 모드여야 합니다 (핸들러 미부착). subscribe handler가 부착된
+경우 <code>EBUSY</code>로 실패합니다.</p>
+<p>적용 대상: raw SUB, raw XSUB, <code>spot</code>, <code>spot_node</code>.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> <code>subject_</code>가 NULL이면 <code>EFAULT</code>. <code>ZLINK_DONTWAIT</code>가 설정되고
+메시지가 없으면 <code>EAGAIN</code>. subscribe handler가 부착된 경우 <code>EBUSY</code>. 토픽
+버퍼가 작으면 <code>EMSGSIZE</code>. subject 타입이 subscribe recv를 지원하지 않으면
+<code>ENOTSUP</code>.</p>
+<p><strong>참고:</strong> <code>zlink_subscribe_handler</code>, <code>zlink_set_subscription</code></p>
+<hr />
+<h3 id="zlink_subscription_event">zlink_subscription_event<a class="headerlink" href="#zlink_subscription_event" title="Permanent link">&para;</a></h3>
+<p>XPUB 소켓에서 구독 이벤트를 수신합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-36-1"><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_subscription_event</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">subject_</span><span class="p">,</span>
+</span><span id="__span-36-2"><a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="w">                               </span><span class="n">zlink_routing_id_t</span><span class="w"> </span><span class="o">*</span><span class="n">source_rid_out_</span><span class="p">,</span>
+</span><span id="__span-36-3"><a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a><span class="w">                               </span><span class="kt">int</span><span class="w"> </span><span class="o">*</span><span class="n">subscribed_out_</span><span class="p">,</span>
+</span><span id="__span-36-4"><a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a><span class="w">                               </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">topic_id_out_</span><span class="p">,</span>
+</span><span id="__span-36-5"><a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a><span class="w">                               </span><span class="kt">size_t</span><span class="w"> </span><span class="o">*</span><span class="n">topic_id_len_out_</span><span class="p">,</span>
+</span><span id="__span-36-6"><a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a><span class="w">                               </span><span class="n">zlink_send_flags_t</span><span class="w"> </span><span class="n">flags_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>recv 모드에서 다음 구독 이벤트를 수신합니다. 성공 시
+<code>*source_rid_out_</code>는 구독하는 피어를 식별하고, <code>*subscribed_out_</code>는
+subscribe이면 1, unsubscribe이면 0이며, <code>*topic_id_out_</code> /
+<code>*topic_id_len_out_</code>는 토픽 바이트를 받습니다 (<code>zlink_subscribe()</code>와
+동일한 binary-safe buffer 계약).</p>
+<p>적용 대상: raw XPUB만.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> <code>subject_</code>가 NULL이면 <code>EFAULT</code>. <code>ZLINK_DONTWAIT</code>가 설정되고
+이벤트가 없으면 <code>EAGAIN</code>. 토픽 버퍼가 작으면 <code>EMSGSIZE</code>. subject가 XPUB가
+아니면 <code>ENOTSUP</code>.</p>
+<p><strong>참고:</strong> <code>zlink_publish</code></p>
+<hr />
+<h3 id="zlink_send_ready_handler">zlink_send_ready_handler<a class="headerlink" href="#zlink_send_ready_handler" title="Permanent link">&para;</a></h3>
+<p>send-ready 콜백을 설정하거나 교체합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-37-1"><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_send_ready_handler</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">s_</span><span class="p">,</span>
+</span><span id="__span-37-2"><a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a><span class="w">                               </span><span class="n">zlink_send_ready_handler_fn</span><span class="w"> </span><span class="n">handler_</span><span class="p">,</span>
+</span><span id="__span-37-3"><a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a><span class="w">                               </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>핸들러는 교체 전용입니다. NULL 전달은 유효하지 않습니다. 교체 성공 시 다음 쓰기
+가능 전환부터 반영됩니다. 동일 핸들의 send-ready 콜백 내에서 재진입 호출하면
+<code>errno=EDEADLK</code>로 실패합니다.</p>
+<p>지원 대상은 raw <code>PAIR</code>, <code>PUB</code>, <code>XPUB</code>, <code>DEALER</code>, <code>ROUTER</code>, <code>STREAM</code>,
+<code>spot</code>, <code>spot_node</code>입니다. send-ready는 receive callback 모드와
+독립적입니다. attach 이후 같은 subject의 data-plane poller
+<code>ZLINK_POLLOUT</code>은 <code>errno=EBUSY</code>로 실패합니다. 지원하지 않는 subject는
+<code>ENOTSUP</code>를 반환합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_send</code></p>
+<hr />
+<h3 id="zlink_multipart_close">zlink_multipart_close<a class="headerlink" href="#zlink_multipart_close" title="Permanent link">&para;</a></h3>
+<p>멀티파트 메시지 배열의 모든 파트를 close합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-38-1"><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">zlink_multipart_close</span><span class="w"> </span><span class="p">(</span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">parts</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">part_count</span><span class="p">);</span>
+</span></code></pre></div>
+<p>각 원소에 대해 <code>zlink_msg_close()</code>를 호출하는 편의 함수입니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_close</code></p>
+<hr />
+<h2 id="_9">소켓 모니터<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h2>
+<h3 id="zlink_socket_monitor_open">zlink_socket_monitor_open<a class="headerlink" href="#zlink_socket_monitor_open" title="Permanent link">&para;</a></h3>
+<p>recv 모드로 소켓 모니터 핸들을 열고 반환합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-39-1"><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="nf">zlink_socket_monitor_open</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">s_</span><span class="p">,</span>
+</span><span id="__span-39-2"><a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a><span class="w">                                 </span><span class="k">const</span><span class="w"> </span><span class="n">zlink_socket_monitor_open_options_t</span><span class="w"> </span><span class="o">*</span><span class="n">options_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>소켓 <code>s_</code>에 대한 모니터를 생성하고 핸들을 반환합니다. <code>options_-&gt;events</code>
+비트마스크로 관찰할 이벤트를 선택합니다. 모니터는 <strong>recv 모드</strong>로 시작합니다.
+<code>zlink_socket_monitor_recv()</code>로 이벤트를 직접 수신하거나,
+<code>zlink_socket_monitor_handler()</code>로 callback-only 모드로 전환할 수 있습니다.
+반환된 핸들은 더 이상 필요하지 않을 때 <code>zlink_monitor_close()</code>로 닫아야 합니다.</p>
+<p><strong>반환값:</strong> 성공 시 모니터 핸들, 실패 시 <code>NULL</code> (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_socket_monitor_handler</code>, <code>zlink_socket_monitor_recv</code>,
+<code>zlink_monitor_snapshot</code>, <code>zlink_monitor_close</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  맨위로
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="하단/푸터" >
+        
+          
+          <a href="../context/" class="md-footer__link md-footer__link--prev" aria-label="이전: 컨텍스트">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                이전
+              </span>
+              <div class="md-ellipsis">
+                컨텍스트
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../message/" class="md-footer__link md-footer__link--next" aria-label="다음: 메시지">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                다음
+              </span>
+              <div class="md-ellipsis">
+                메시지
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/kairos-code-dev/zlink" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "navigation.footer", "navigation.indexes", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\ud074\ub9bd\ubcf4\ub4dc\uc5d0 \ubcf5\uc0ac\ub428", "clipboard.copy": "\ud074\ub9bd\ubcf4\ub4dc\ub85c \ubcf5\uc0ac", "search.result.more.one": "\uc774 \ubb38\uc11c\uc5d0\uc11c 1\uac1c\uc758 \uac80\uc0c9 \uacb0\uacfc \ub354 \ubcf4\uae30", "search.result.more.other": "\uc774 \ubb38\uc11c\uc5d0\uc11c #\uac1c\uc758 \uac80\uc0c9 \uacb0\uacfc \ub354 \ubcf4\uae30", "search.result.none": "\uac80\uc0c9\uc5b4\uc640 \uc77c\uce58\ud558\ub294 \ubb38\uc11c\uac00 \uc5c6\uc2b5\ub2c8\ub2e4", "search.result.one": "1\uac1c\uc758 \uc77c\uce58\ud558\ub294 \ubb38\uc11c", "search.result.other": "#\uac1c\uc758 \uc77c\uce58\ud558\ub294 \ubb38\uc11c", "search.result.placeholder": "\uac80\uc0c9\uc5b4\ub97c \uc785\ub825\ud558\uc138\uc694", "search.result.term.missing": "\ud3ec\ud568\ub418\uc9c0 \uc54a\uc740 \uac80\uc0c9\uc5b4", "select.version": "\ubc84\uc804 \uc120\ud0dd"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

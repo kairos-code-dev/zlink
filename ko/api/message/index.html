@@ -1,0 +1,3175 @@
+
+<!doctype html>
+<html lang="ko" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="zlink — Modern messaging library guide">
+      
+      
+      
+        <link rel="canonical" href="https://kairos-code-dev.github.io/zlink/ko/api/message/">
+      
+      
+        <link rel="prev" href="../socket/">
+      
+      
+        <link rel="next" href="../events/">
+      
+      
+        
+          <link rel="alternate" href="../../../api/message/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="ko">
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>메시지 - zlink Guide</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api" class="md-skip">
+          콘텐츠로 이동
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="상단/헤더">
+    <a href="../../" title="zlink Guide" class="md-header__button md-logo" aria-label="zlink Guide" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            zlink Guide
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              메시지
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="언어설정">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../../api/message/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="ko" class="md-select__link">
+              한국어
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="검색" placeholder="검색" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="검색">
+        
+        <button type="reset" class="md-search__icon md-icon" title="지우기" aria-label="지우기" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            검색 초기화
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kairos-code-dev/zlink" title="저장소로 이동" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kairos-code-dev/zlink
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="탭" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guide/01-overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  가이드
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../context/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API 레퍼런스
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../internals/architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  내부 구조
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="네비게이션" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../" title="zlink Guide" class="md-nav__button md-logo" aria-label="zlink Guide" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    zlink Guide
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kairos-code-dev/zlink" title="저장소로 이동" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kairos-code-dev/zlink
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    가이드
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    가이드
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/01-overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    개요
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/02-core-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    핵심 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    소켓 패턴
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    소켓 패턴
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-0-socket-patterns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    개요
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-1-pair/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PAIR
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-2-pubsub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PUB/SUB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-3-dealer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEALER
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-4-router/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ROUTER
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-5-stream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    STREAM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-6-proxy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proxy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/04-transports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    트랜스포트
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/05-tls-security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TLS 보안
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/06-monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    모니터링
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_7" id="__nav_2_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    서비스
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    서비스
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/07-0-services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    개요
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/07-1-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    디스커버리
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/07-3-spot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SPOT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/07-4-registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/08-routing-id/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    라우팅 ID
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/09-message-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    메시지 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/10-performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    성능
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/11-thread-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    스레드 안전성
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/12-socket-options/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    소켓 옵션
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API 레퍼런스
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API 레퍼런스
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    컨텍스트
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../socket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Socket
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    메시지
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    메시지
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="목차">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      목차
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        용어
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        타입
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        상수
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="상수">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        문자열 메타데이터 속성
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        함수
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="함수">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_init" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_init
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_init_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_init_size
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_init_data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_init_data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_close
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_move" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_move
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_copy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_copy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_size
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_refcnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_refcnt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_gets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_gets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_multipart_close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_multipart_close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#request-reply-envelope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request-Reply Envelope
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Request-Reply Envelope">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        상수
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_set_request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_set_request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_set_reply" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_set_reply
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_get_request_info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_get_request_info
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#per-message-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Message Metadata
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Per-Message Metadata">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        상수
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_set_metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_set_metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_get_metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_get_metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../events/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    이벤트
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    모니터링
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../polling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    폴링
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    에러
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../utilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    유틸리티
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    디스커버리
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SPOT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    내부 구조
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    내부 구조
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    아키텍처
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/threading-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    스레딩 모델
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/thread-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    스레드 안전성
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    설계 결정
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/posd-module-structure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    POSD 모듈 구조
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/services-internals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    서비스 내부
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/stream-socket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    스트림 소켓
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/socket-option-defaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    소켓 옵션
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/protocol-zmp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZMP 프로토콜
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/protocol-raw/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Raw 프로토콜
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="목차">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      목차
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        용어
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        타입
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        상수
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="상수">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        문자열 메타데이터 속성
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        함수
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="함수">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_init" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_init
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_init_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_init_size
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_init_data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_init_data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_close
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_move" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_move
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_copy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_copy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_size
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_refcnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_refcnt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_gets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_gets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_multipart_close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_multipart_close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#request-reply-envelope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request-Reply Envelope
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Request-Reply Envelope">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        상수
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_set_request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_set_request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_set_reply" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_set_reply
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_get_request_info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_get_request_info
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#per-message-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Message Metadata
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Per-Message Metadata">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        상수
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_set_metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_set_metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_msg_get_metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_msg_get_metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="api">메시지 API 레퍼런스<a class="headerlink" href="#api" title="Permanent link">&para;</a></h1>
+<p>메시지 API는 zlink 메시지의 생성, 송신, 수신, 관리를 위한 함수를 제공합니다.
+메시지는 소켓 간 데이터 교환의 기본 단위이며, 임의의 바이너리 페이로드를
+전달하고, 제로카피 시맨틱을 지원하며, 멀티파트 시퀀스를 구성할 수 있습니다.</p>
+<h3 id="_1">용어<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>용어</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>payload</td>
+<td>메시지가 운반하는 사용자 데이터 바이트</td>
+</tr>
+<tr>
+<td>multipart</td>
+<td>여러 프레임(part)을 하나의 논리적 메시지로 묶어 전송하는 방식</td>
+</tr>
+<tr>
+<td>zero-copy</td>
+<td>데이터를 복사하지 않고 포인터/참조만 전달하여 전송하는 기법</td>
+</tr>
+<tr>
+<td>reference count (refcount)</td>
+<td>같은 데이터 버퍼를 공유하는 메시지 핸들의 수. 0이 되면 버퍼를 해제한다</td>
+</tr>
+<tr>
+<td>routing_id</td>
+<td>Router 소켓이 피어를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트)</td>
+</tr>
+<tr>
+<td>ZMP</td>
+<td>zlink Message Protocol. zlink 전용 와이어 프로토콜</td>
+</tr>
+<tr>
+<td>envelope</td>
+<td>사용자 payload 앞에 core가 자동으로 추가하는 내부 프레임 (request-reply, metadata 등)</td>
+</tr>
+<tr>
+<td>correlation_id</td>
+<td>request-reply 패턴에서 요청과 응답을 매칭하는 uint64 식별자</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">타입<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">zlink_msg_t</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="p">{</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="n">_</span><span class="p">[</span><span class="mi">64</span><span class="p">];</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">}</span><span class="w"> </span><span class="n">zlink_msg_t</span><span class="p">;</span>
+</span></code></pre></div>
+<p><code>zlink_msg_t</code>는 64바이트 불투명 메시지 구조체입니다. 내부 레이아웃은
+플랫폼에 따라 다르며 직접 접근해서는 안 됩니다. 모든 메시지는 사용 전에
+초기화하고 사용 후에 닫아야 합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">zlink_routing_id_t</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="p">{</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">size</span><span class="p">;</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">data</span><span class="p">[</span><span class="mi">255</span><span class="p">];</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">}</span><span class="w"> </span><span class="n">zlink_routing_id_t</span><span class="p">;</span>
+</span></code></pre></div>
+<p><code>zlink_routing_id_t</code>는 <code>ROUTER</code> 소켓이 특정 피어에 주소를 지정하는 데 사용하는
+라우팅 아이덴티티를 전달합니다. <code>size</code>는 <code>data</code>에서 유효한 바이트 수를 나타냅니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">typedef</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="p">(</span><span class="n">zlink_free_fn</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">data_</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">hint_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>zlink_free_fn</code>은 제로카피 메시지 생성을 위해 <code>zlink_msg_init_data()</code>에서
+사용되는 콜백 타입입니다. 메시지 데이터 버퍼가 더 이상 필요하지 않을 때
+라이브러리가 이 함수를 호출합니다.</p>
+<h2 id="_3">상수<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<h3 id="_4">문자열 메타데이터 속성<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<p>다음 문자열 메타데이터 키는 <code>zlink_msg_gets()</code>로 조회할 수 있습니다:</p>
+<table>
+<thead>
+<tr>
+<th>키</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"Socket-Type"</code></td>
+<td>피어의 소켓 타입</td>
+</tr>
+<tr>
+<td><code>"Identity"</code></td>
+<td>피어 아이덴티티</td>
+</tr>
+<tr>
+<td><code>"Peer-Address"</code></td>
+<td>피어 네트워크 주소</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_5">함수<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<h3 id="zlink_msg_init">zlink_msg_init<a class="headerlink" href="#zlink_msg_init" title="Permanent link">&para;</a></h3>
+<p>빈 메시지를 초기화합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_msg_init</span><span class="w"> </span><span class="p">(</span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">msg_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>msg_</code>를 빈 길이 0 메시지로 초기화합니다. 메시지는 최종적으로
+<code>zlink_msg_close()</code>로 해제해야 합니다. <code>zlink_msg_t</code>를 다른 메시지 함수에
+전달하기 전에 항상 초기화하세요.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다. 각 <code>zlink_msg_t</code>는 한 번에 하나의
+스레드에서만 사용해야 합니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_init_size</code>, <code>zlink_msg_init_data</code>, <code>zlink_msg_close</code></p>
+<hr />
+<h3 id="zlink_msg_init_size">zlink_msg_init_size<a class="headerlink" href="#zlink_msg_init_size" title="Permanent link">&para;</a></h3>
+<p>지정된 크기의 메시지를 초기화합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_msg_init_size</span><span class="w"> </span><span class="p">(</span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">msg_</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">size_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>size_</code> 바이트의 내부 버퍼를 할당하고 <code>msg_</code>를 초기화합니다. 버퍼 내용은
+초기화되지 않습니다. <code>zlink_msg_data()</code>를 사용하여 버퍼에 대한 포인터를 얻고
+송신 전에 데이터를 채우세요.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> 할당 실패 시 <code>ENOMEM</code>.</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_data</code>, <code>zlink_msg_size</code></p>
+<hr />
+<h3 id="zlink_msg_init_data">zlink_msg_init_data<a class="headerlink" href="#zlink_msg_init_data" title="Permanent link">&para;</a></h3>
+<p>외부 데이터 버퍼로부터 메시지를 초기화합니다 (제로카피).</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_msg_init_data</span><span class="w"> </span><span class="p">(</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">msg_</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">data_</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">size_</span><span class="p">,</span><span class="w"> </span><span class="n">zlink_free_fn</span><span class="w"> </span><span class="o">*</span><span class="n">ffn_</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">hint_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>호출자가 제공한 <code>size_</code> 바이트의 버퍼 <code>data_</code>를 복사하지 않고 참조하는 메시지를
+생성합니다. 라이브러리가 더 이상 버퍼를 필요로 하지 않을 때(메시지가 송신되거나
+닫힌 후) 호출자가 버퍼를 해제할 수 있도록 <code>data_</code>와 <code>hint_</code>를 인수로 콜백
+<code>ffn_</code>을 호출합니다. <code>ffn_</code>이 <code>NULL</code>이면 콜백이 호출되지 않으며, 호출자는
+버퍼가 메시지보다 오래 존재하도록 보장해야 합니다.</p>
+<p>이 함수는 진정한 제로카피 메시지 전달을 가능하게 합니다. 호출자는 <code>ffn_</code>이
+호출될 때까지 <code>data_</code>를 수정하거나 해제해서는 안 됩니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_free_fn</code>, <code>zlink_msg_data</code></p>
+<hr />
+<h3 id="zlink_msg_close">zlink_msg_close<a class="headerlink" href="#zlink_msg_close" title="Permanent link">&para;</a></h3>
+<p>메시지 리소스를 해제합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_msg_close</span><span class="w"> </span><span class="p">(</span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">msg_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>메시지와 관련된 모든 리소스를 해제합니다. 초기화된 모든 메시지는 정확히 한 번
+닫아야 합니다. 닫은 후 <code>zlink_msg_t</code> 구조체는 유효하지 않으며 재사용하기 전에
+다시 초기화해야 합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_init</code>, <code>zlink_multipart_close</code></p>
+<hr />
+<h3 id="zlink_msg_move">zlink_msg_move<a class="headerlink" href="#zlink_msg_move" title="Permanent link">&para;</a></h3>
+<p>소스에서 대상으로 메시지 내용을 이동합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_msg_move</span><span class="w"> </span><span class="p">(</span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">dest_</span><span class="p">,</span><span class="w"> </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">src_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>src_</code>의 내용을 <code>dest_</code>로 이동합니다. 성공적인 이동 후 <code>src_</code>는 빈 메시지가
+되고(새로 초기화된 메시지와 동일) <code>dest_</code>는 원래 내용을 포함합니다. <code>dest_</code>의
+이전 내용은 해제됩니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_copy</code></p>
+<hr />
+<h3 id="zlink_msg_copy">zlink_msg_copy<a class="headerlink" href="#zlink_msg_copy" title="Permanent link">&para;</a></h3>
+<p>메시지를 복사합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_msg_copy</span><span class="w"> </span><span class="p">(</span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">dest_</span><span class="p">,</span><span class="w"> </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">src_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>src_</code>의 내용을 <code>dest_</code>로 복사합니다. 두 메시지는 참조 카운팅을 통해 기본
+데이터 버퍼를 공유합니다. <code>dest_</code>의 이전 내용은 해제됩니다. 복사는 경량이며
+데이터 페이로드를 복제하지 않습니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_move</code></p>
+<hr />
+<h3 id="zlink_msg_data">zlink_msg_data<a class="headerlink" href="#zlink_msg_data" title="Permanent link">&para;</a></h3>
+<p>메시지 데이터 버퍼에 대한 포인터를 반환합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="nf">zlink_msg_data</span><span class="w"> </span><span class="p">(</span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">msg_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>메시지의 원시 데이터 페이로드에 대한 포인터를 반환합니다. 포인터는 메시지가
+닫히거나, 이동되거나, 송신될 때까지 유효합니다. 메시지가 초기화되지 않은 경우
+<code>NULL</code>을 반환합니다.</p>
+<p><strong>반환값:</strong> 메시지 데이터 버퍼에 대한 포인터.</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_size</code></p>
+<hr />
+<h3 id="zlink_msg_size">zlink_msg_size<a class="headerlink" href="#zlink_msg_size" title="Permanent link">&para;</a></h3>
+<p>메시지 데이터 크기를 바이트 단위로 반환합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kt">size_t</span><span class="w"> </span><span class="nf">zlink_msg_size</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">msg_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>메시지 페이로드의 크기를 바이트 단위로 반환합니다. 빈 메시지의 경우 0을
+반환합니다.</p>
+<p><strong>반환값:</strong> 바이트 단위 크기.</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_data</code></p>
+<hr />
+<h3 id="zlink_msg_refcnt">zlink_msg_refcnt<a class="headerlink" href="#zlink_msg_refcnt" title="Permanent link">&para;</a></h3>
+<p>메시지 스토리지의 reference count를 반환합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_msg_refcnt</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">msg_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>reference-counted large/zero-copy storage면 현재 internal reference count를
+반환합니다. inline storage나 borrowed constant storage처럼 internal
+reference counting 대상이 아닌 메시지 종류는 1을 반환합니다.</p>
+<p>내부 reference count는 atomic 연산으로 관리됩니다. <code>zlink_msg_copy()</code>는
+count를 atomic으로 증가시키고, <code>zlink_msg_close()</code>는 atomic으로 감소시킵니다.
+따라서 같은 underlying storage를 공유하는 서로 다른 <code>zlink_msg_t</code> handle을
+서로 다른 스레드에서 copy/close하는 것은 안전합니다.</p>
+<p><code>zlink_msg_refcnt()</code>는 atomic counter의 relaxed read를 수행합니다.
+반환값은 시점 스냅샷이며, 호출자가 값을 확인하는 시점에 다른 스레드가
+copy/close로 이미 값을 변경했을 수 있습니다. 따라서 이 함수는 진단이나
+assertion 용도에 적합하며, 제어 판단에는 적합하지 않습니다.</p>
+<p>단일 <code>zlink_msg_t</code> 인스턴스를 여러 스레드에서 동시에 접근하면 안 됩니다.
+동시 접근이 필요하면 <code>zlink_msg_copy()</code>로 별도 handle을 만들어야 합니다.</p>
+<p><strong>반환값:</strong> 현재 storage reference count. internal reference counting 대상이
+아니면 1.</p>
+<p><strong>스레드 안전성:</strong> underlying reference count는 atomic입니다. 같은 storage를
+공유하는 <em>서로 다른</em> <code>zlink_msg_t</code> handle이 다른 스레드에서 copy/close되는
+동안 이 함수를 호출하는 것은 안전합니다. 단, <em>같은</em> <code>zlink_msg_t</code> 인스턴스에
+대해 이 함수와 다른 <code>zlink_msg_*</code> 함수를 여러 스레드에서 동시에 호출하는 것은
+안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_copy</code>, <code>zlink_msg_close</code></p>
+<hr />
+<h3 id="zlink_msg_gets">zlink_msg_gets<a class="headerlink" href="#zlink_msg_gets" title="Permanent link">&para;</a></h3>
+<p>문자열 메시지 속성을 가져옵니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="nf">zlink_msg_gets</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">msg_</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">property_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>키 이름으로 메시지의 문자열 메타데이터 값을 가져옵니다. 메타데이터는
+트랜스포트 계층에 의해 첨부되며 <code>"Socket-Type"</code>, <code>"Identity"</code>,
+<code>"Peer-Address"</code> 같은 키를 포함할 수 있습니다. 반환된 포인터는 메시지가 닫힐
+때까지만 유효합니다.</p>
+<p><strong>반환값:</strong> 성공 시 null 종료 문자열, 실패 시 <code>NULL</code> (errno가 설정됨).</p>
+<p><strong>에러:</strong> 속성 이름이 메시지 메타데이터에서 발견되지 않으면 <code>EINVAL</code>.</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_refcnt</code></p>
+<hr />
+<h3 id="zlink_multipart_close">zlink_multipart_close<a class="headerlink" href="#zlink_multipart_close" title="Permanent link">&para;</a></h3>
+<p>멀티파트 메시지 배열의 모든 파트를 닫습니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">zlink_multipart_close</span><span class="w"> </span><span class="p">(</span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">parts</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">part_count</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>parts</code> 배열의 각 요소에 대해 <code>zlink_msg_close()</code>를 호출하는 편의 함수입니다.
+<code>zlink_msg_t</code> 구조체의 연속 배열로 저장된 멀티파트 메시지를 수신하거나 구성한
+후 정리하는 데 사용합니다.</p>
+<p><strong>반환값:</strong> 없음 (void).</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_close</code></p>
+<hr />
+<h2 id="request-reply-envelope">Request-Reply Envelope<a class="headerlink" href="#request-reply-envelope" title="Permanent link">&para;</a></h2>
+<p>메시지별 request-reply 필드를 위한 상수와 함수입니다. 이 필드는 send 시
+core가 자동으로 wire envelope에 직렬화하고, recv 시 자동으로 파싱하여
+복원합니다. 바인딩은 이 값으로 dispatch만 하면 됩니다.</p>
+<h3 id="_6">상수<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="cp">#define ZLINK_MSG_TYPE_DATA     0</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="cp">#define ZLINK_MSG_TYPE_REQUEST  1</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="cp">#define ZLINK_MSG_TYPE_REPLY    2</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>값</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_MSG_TYPE_DATA</code></td>
+<td>0</td>
+<td>기본값. wire에 envelope 없음.</td>
+</tr>
+<tr>
+<td><code>ZLINK_MSG_TYPE_REQUEST</code></td>
+<td>1</td>
+<td>Request 메시지.</td>
+</tr>
+<tr>
+<td><code>ZLINK_MSG_TYPE_REPLY</code></td>
+<td>2</td>
+<td>Reply 메시지.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="zlink_msg_set_request">zlink_msg_set_request<a class="headerlink" href="#zlink_msg_set_request" title="Permanent link">&para;</a></h3>
+<p>메시지를 REQUEST로 설정합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_msg_set_request</span><span class="w"> </span><span class="p">(</span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">msg_</span><span class="p">,</span><span class="w"> </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">correlation_id_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>msg_type</code>을 <code>ZLINK_MSG_TYPE_REQUEST</code>로, <code>correlation_id</code>를 지정된 값으로
+동시에 설정합니다. send 시 core가 자동으로 request-reply envelope를
+wire에 직렬화합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> <code>msg_</code>가 NULL이거나 초기화되지 않으면 <code>EINVAL</code>.</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_set_reply</code>, <code>zlink_msg_get_request_info</code></p>
+<hr />
+<h3 id="zlink_msg_set_reply">zlink_msg_set_reply<a class="headerlink" href="#zlink_msg_set_reply" title="Permanent link">&para;</a></h3>
+<p>메시지를 REPLY로 설정합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_msg_set_reply</span><span class="w"> </span><span class="p">(</span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">msg_</span><span class="p">,</span><span class="w"> </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">correlation_id_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>msg_type</code>을 <code>ZLINK_MSG_TYPE_REPLY</code>로, <code>correlation_id</code>를 지정된 값으로
+동시에 설정합니다. correlation_id는 원본 request의 correlation_id와
+동일한 값을 사용합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> <code>msg_</code>가 NULL이거나 초기화되지 않으면 <code>EINVAL</code>.</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_set_request</code>, <code>zlink_msg_get_request_info</code></p>
+<hr />
+<h3 id="zlink_msg_get_request_info">zlink_msg_get_request_info<a class="headerlink" href="#zlink_msg_get_request_info" title="Permanent link">&para;</a></h3>
+<p>메시지의 request-reply 정보를 조회합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_msg_get_request_info</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">msg_</span><span class="p">,</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">                                </span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">type_out_</span><span class="p">,</span>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">                                </span><span class="kt">uint64_t</span><span class="w"> </span><span class="o">*</span><span class="n">correlation_id_out_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>msg_type</code>과 <code>correlation_id</code>를 한 번의 호출로 반환합니다. <code>type_out_</code>이
+<code>ZLINK_MSG_TYPE_DATA</code>(0)이면 <code>correlation_id_out_</code> 값은 무의미합니다.
+출력 포인터가 NULL이면 해당 필드를 생략합니다.</p>
+<p>recv 후 이 함수를 호출하면 core가 wire envelope에서 파싱한 msg_type과
+correlation_id를 얻을 수 있습니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong> <code>msg_</code>가 NULL이거나 초기화되지 않으면 <code>EINVAL</code>.</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_set_request</code>, <code>zlink_msg_set_reply</code></p>
+<hr />
+<h2 id="per-message-metadata">Per-Message Metadata<a class="headerlink" href="#per-message-metadata" title="Permanent link">&para;</a></h2>
+<p>개별 메시지에 application 정의 key-value metadata를 첨부하는 함수입니다.
+metadata는 send 시 wire에 직렬화되고 recv 시 복원됩니다.
+ZMP 프로토콜 메타데이터(<code>zlink_msg_gets</code>)와는 완전히 별개의 namespace입니다.</p>
+<h3 id="_7">상수<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="cp">#define ZLINK_MSG_METADATA_KEY_USER_MIN   0x0100</span>
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="cp">#define ZLINK_MSG_METADATA_VALUE_MAX      65535</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>값</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_MSG_METADATA_KEY_USER_MIN</code></td>
+<td>0x0100</td>
+<td>사용자 정의 key 최소값. 미만은 예약 대역.</td>
+</tr>
+<tr>
+<td><code>ZLINK_MSG_METADATA_VALUE_MAX</code></td>
+<td>65535</td>
+<td>단일 항목 최대 value 크기 (바이트).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="zlink_msg_set_metadata">zlink_msg_set_metadata<a class="headerlink" href="#zlink_msg_set_metadata" title="Permanent link">&para;</a></h3>
+<p>메시지에 metadata key-value를 설정합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_msg_set_metadata</span><span class="w"> </span><span class="p">(</span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">msg_</span><span class="p">,</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">key_</span><span class="p">,</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">                            </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">value_</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">value_size_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>metadata 항목을 설정하거나 덮어씁니다. 이 함수를 한 번이라도 호출하면
+send 시 metadata header가 wire에 추가됩니다. <code>0x0000</code>~<code>0x00FF</code> 범위의
+key는 zlink 내부 예약이므로 <code>EINVAL</code>로 거부됩니다. <code>value_ = NULL</code>을
+전달하면 길이 0 값을 설정합니다 (키 존재 자체가 의미).</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>에러:</strong>
+- <code>EINVAL</code>: <code>msg_</code>가 NULL, <code>key_</code> &lt; 0x0100, 또는 <code>value_size_</code>가
+  <code>ZLINK_MSG_METADATA_VALUE_MAX</code> 초과.
+- <code>ENOMEM</code>: heap 할당 실패.</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_get_metadata</code></p>
+<hr />
+<h3 id="zlink_msg_get_metadata">zlink_msg_get_metadata<a class="headerlink" href="#zlink_msg_get_metadata" title="Permanent link">&para;</a></h3>
+<p>메시지에서 metadata 값을 조회합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="nf">zlink_msg_get_metadata</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_msg_t</span><span class="w"> </span><span class="o">*</span><span class="n">msg_</span><span class="p">,</span>
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">                                    </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">key_</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="o">*</span><span class="n">size_</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>key_</code>에 연결된 값의 포인터를 반환합니다. 키가 없으면 NULL을 반환합니다.
+반환된 포인터는 메시지가 유효하고 동일 key에 <code>zlink_msg_set_metadata()</code>를
+다시 호출하지 않는 동안만 유효합니다. <code>size_ = NULL</code>을 전달하면 길이
+출력을 생략합니다.</p>
+<p><strong>반환값:</strong> 값 바이트 포인터. 키가 없으면 NULL.</p>
+<p><strong>스레드 안전성:</strong> 스레드 안전하지 않습니다.</p>
+<p><strong>참고:</strong> <code>zlink_msg_set_metadata</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  맨위로
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="하단/푸터" >
+        
+          
+          <a href="../socket/" class="md-footer__link md-footer__link--prev" aria-label="이전: Socket">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                이전
+              </span>
+              <div class="md-ellipsis">
+                Socket
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../events/" class="md-footer__link md-footer__link--next" aria-label="다음: 이벤트">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                다음
+              </span>
+              <div class="md-ellipsis">
+                이벤트
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/kairos-code-dev/zlink" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "navigation.footer", "navigation.indexes", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\ud074\ub9bd\ubcf4\ub4dc\uc5d0 \ubcf5\uc0ac\ub428", "clipboard.copy": "\ud074\ub9bd\ubcf4\ub4dc\ub85c \ubcf5\uc0ac", "search.result.more.one": "\uc774 \ubb38\uc11c\uc5d0\uc11c 1\uac1c\uc758 \uac80\uc0c9 \uacb0\uacfc \ub354 \ubcf4\uae30", "search.result.more.other": "\uc774 \ubb38\uc11c\uc5d0\uc11c #\uac1c\uc758 \uac80\uc0c9 \uacb0\uacfc \ub354 \ubcf4\uae30", "search.result.none": "\uac80\uc0c9\uc5b4\uc640 \uc77c\uce58\ud558\ub294 \ubb38\uc11c\uac00 \uc5c6\uc2b5\ub2c8\ub2e4", "search.result.one": "1\uac1c\uc758 \uc77c\uce58\ud558\ub294 \ubb38\uc11c", "search.result.other": "#\uac1c\uc758 \uc77c\uce58\ud558\ub294 \ubb38\uc11c", "search.result.placeholder": "\uac80\uc0c9\uc5b4\ub97c \uc785\ub825\ud558\uc138\uc694", "search.result.term.missing": "\ud3ec\ud568\ub418\uc9c0 \uc54a\uc740 \uac80\uc0c9\uc5b4", "select.version": "\ubc84\uc804 \uc120\ud0dd"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

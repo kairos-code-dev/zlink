@@ -1,0 +1,4018 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="zlink — Modern messaging library guide">
+      
+      
+      
+        <link rel="canonical" href="https://kairos-code-dev.github.io/zlink/guide/06-monitoring/">
+      
+      
+        <link rel="prev" href="../05-tls-security/">
+      
+      
+        <link rel="next" href="../07-0-services/">
+      
+      
+        
+          <link rel="alternate" href="./" hreflang="en">
+        
+          <link rel="alternate" href="../../ko/guide/06-monitoring/" hreflang="ko">
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Monitoring - zlink Guide</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#monitoring-api-usage" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="zlink Guide" class="md-header__button md-logo" aria-label="zlink Guide" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            zlink Guide
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Monitoring
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../../ko/guide/06-monitoring/" hreflang="ko" class="md-select__link">
+              한국어
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kairos-code-dev/zlink" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kairos-code-dev/zlink
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../01-overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../api/context/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../internals/architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Internals
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="zlink Guide" class="md-nav__button md-logo" aria-label="zlink Guide" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    zlink Guide
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kairos-code-dev/zlink" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kairos-code-dev/zlink
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../01-overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../02-core-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Socket Patterns
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Socket Patterns
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-0-socket-patterns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-1-pair/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PAIR
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-2-pubsub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PUB/SUB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-3-dealer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEALER
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-4-router/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ROUTER
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-5-stream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    STREAM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-6-proxy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proxy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../04-transports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../05-tls-security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TLS Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-enabling-the-monitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Enabling the Monitor
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Enabling the Monitor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-callback-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Callback Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Event Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-socket-monitor-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Socket Monitor Events
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Socket Monitor Events">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#event-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Event table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#connection-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connection flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#connection_ready-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CONNECTION_READY details
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disconnected-reason-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DISCONNECTED reason codes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#protocol-error-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Protocol error codes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-event-flow-diagrams" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Event Flow Diagrams
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Event Flow Diagrams">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#successful-connection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Successful Connection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#handshake-failure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Handshake Failure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#normal-disconnection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Normal Disconnection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reconnection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reconnection
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-disconnected-reason-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. DISCONNECTED Reason Codes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. DISCONNECTED Reason Codes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reason-code-handling-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reason Code Handling Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-event-filtering-and-subscription-presets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Event Filtering and Subscription Presets
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Event Filtering and Subscription Presets">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#subscribing-to-specific-events-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subscribing to Specific Events Only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recommended-subscription-presets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended Subscription Presets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preset-implementation-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preset Implementation Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-socket-monitor-snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Socket Monitor Snapshot
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#81-service-monitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1 Service Monitor
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8.1 Service Monitor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#opening-a-service-monitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opening a service monitor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#callback-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Callback mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recv-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recv mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#service-event-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Service event table
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-multi-socket-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Multi-Socket Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-important-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Important Notes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Important Notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#monitor-thread-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitor Thread Safety
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concurrent-monitor-limitation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concurrent Monitor Limitation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#callback-processing-speed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Callback Processing Speed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitor-shutdown-procedure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitor Shutdown Procedure
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-knowing-when-messaging-is-ready" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Knowing When Messaging Is Ready
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. Knowing When Messaging Is Ready">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#111-raw-sockets-pair-dealer-router" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.1 Raw sockets — PAIR, DEALER, ROUTER
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#112-raw-sockets-stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.2 Raw sockets — STREAM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#113-raw-sockets-pubsub" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.3 Raw sockets — PUB/SUB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#114-services-spot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.4 Services — SPOT
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#115-snapshots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.5 Snapshots
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_7" id="__nav_2_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Services
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Services
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07-0-services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07-1-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07-3-spot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SPOT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07-4-registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../08-routing-id/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Routing ID
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../09-message-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Message API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../10-performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../11-thread-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Thread Safety
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../12-socket-options/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Socket Options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/socket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Socket
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/message/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Message
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/events/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Events
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/polling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Polling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Errors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/utilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/spot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SPOT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/threading-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Threading Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/thread-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Thread Safety
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/posd-module-structure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    POSD Module Structure
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/services-internals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Services Internals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/stream-socket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stream Socket
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/socket-option-defaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Socket Options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/protocol-zmp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protocol ZMP
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/protocol-raw/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protocol Raw
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-enabling-the-monitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Enabling the Monitor
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Enabling the Monitor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-callback-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Callback Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Event Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-socket-monitor-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Socket Monitor Events
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Socket Monitor Events">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#event-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Event table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#connection-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connection flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#connection_ready-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CONNECTION_READY details
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disconnected-reason-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DISCONNECTED reason codes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#protocol-error-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Protocol error codes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-event-flow-diagrams" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Event Flow Diagrams
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Event Flow Diagrams">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#successful-connection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Successful Connection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#handshake-failure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Handshake Failure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#normal-disconnection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Normal Disconnection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reconnection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reconnection
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-disconnected-reason-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. DISCONNECTED Reason Codes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. DISCONNECTED Reason Codes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reason-code-handling-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reason Code Handling Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-event-filtering-and-subscription-presets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Event Filtering and Subscription Presets
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Event Filtering and Subscription Presets">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#subscribing-to-specific-events-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subscribing to Specific Events Only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recommended-subscription-presets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended Subscription Presets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preset-implementation-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preset Implementation Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-socket-monitor-snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Socket Monitor Snapshot
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#81-service-monitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1 Service Monitor
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8.1 Service Monitor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#opening-a-service-monitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opening a service monitor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#callback-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Callback mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recv-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recv mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#service-event-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Service event table
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-multi-socket-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Multi-Socket Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-important-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Important Notes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Important Notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#monitor-thread-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitor Thread Safety
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concurrent-monitor-limitation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concurrent Monitor Limitation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#callback-processing-speed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Callback Processing Speed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitor-shutdown-procedure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitor Shutdown Procedure
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-knowing-when-messaging-is-ready" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Knowing When Messaging Is Ready
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. Knowing When Messaging Is Ready">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#111-raw-sockets-pair-dealer-router" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.1 Raw sockets — PAIR, DEALER, ROUTER
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#112-raw-sockets-stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.2 Raw sockets — STREAM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#113-raw-sockets-pubsub" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.3 Raw sockets — PUB/SUB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#114-services-spot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.4 Services — SPOT
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#115-snapshots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.5 Snapshots
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="monitoring-api-usage">Monitoring API Usage<a class="headerlink" href="#monitoring-api-usage" title="Permanent link">&para;</a></h1>
+<h2 id="1-overview">1. Overview<a class="headerlink" href="#1-overview" title="Permanent link">&para;</a></h2>
+<p>Monitoring enables real-time observation of socket connection state — essential for diagnosing connectivity issues, detecting peer failures, and triggering application-level recovery.</p>
+<p>The zlink monitoring API allows real-time observation of socket events such as connection, disconnection, and handshake. Like other sockets, monitors support both recv mode (pull) and callback mode.</p>
+<h2 id="2-enabling-the-monitor">2. Enabling the Monitor<a class="headerlink" href="#2-enabling-the-monitor" title="Permanent link">&para;</a></h2>
+<h3 id="21-callback-mode">2.1 Callback Mode<a class="headerlink" href="#21-callback-mode" title="Permanent link">&para;</a></h3>
+<p>The handler is invoked on the I/O thread immediately when an event occurs.
+Callback mode is suitable for real-time processing without event loss.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="cm">/* Define event handler */</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kt">void</span><span class="w"> </span><span class="nf">on_monitor_event</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_monitor_event_t</span><span class="w"> </span><span class="o">*</span><span class="n">ev</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata</span><span class="p">)</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">{</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Event: 0x%llx</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="kt">long</span><span class="p">)</span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">event</span><span class="p">);</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Local: %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">local_addr</span><span class="p">);</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Remote: %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">remote_addr</span><span class="p">);</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">routing_id</span><span class="p">.</span><span class="n">size</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">        </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;routing_id: &quot;</span><span class="p">);</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">routing_id</span><span class="p">.</span><span class="n">size</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">            </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;%02x&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">routing_id</span><span class="p">.</span><span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">        </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="p">}</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">server</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_socket</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">ZLINK_ROUTER</span><span class="p">);</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="n">zlink_bind</span><span class="p">(</span><span class="n">server</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;tcp://*:5555&quot;</span><span class="p">);</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="cm">/* Create monitor with options */</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="n">zlink_socket_monitor_open_options_t</span><span class="w"> </span><span class="n">opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">.</span><span class="n">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ZLINK_EVENT_ALL</span><span class="w"> </span><span class="p">};</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">mon</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_socket_monitor_open</span><span class="p">(</span><span class="n">server</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">opts</span><span class="p">);</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="n">zlink_socket_monitor_handler</span><span class="p">(</span><span class="n">mon</span><span class="p">,</span><span class="w"> </span><span class="n">on_monitor_event</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+</span></code></pre></div>
+<p>Events are dispatched automatically through the <code>on_monitor_event</code> callback.</p>
+<h3 id="event-structure">Event Structure<a class="headerlink" href="#event-structure" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">event</span><span class="p">;</span><span class="w">               </span><span class="cm">/* Event type */</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">value</span><span class="p">;</span><span class="w">               </span><span class="cm">/* Auxiliary value (fd, errno, reason, etc.) */</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="n">zlink_routing_id_t</span><span class="w"> </span><span class="n">routing_id</span><span class="p">;</span><span class="w"> </span><span class="cm">/* Peer routing_id */</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="n">local_addr</span><span class="p">[</span><span class="mi">256</span><span class="p">];</span><span class="w">         </span><span class="cm">/* Local address */</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="n">remote_addr</span><span class="p">[</span><span class="mi">256</span><span class="p">];</span><span class="w">        </span><span class="cm">/* Remote address */</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="p">}</span><span class="w"> </span><span class="n">zlink_monitor_event_t</span><span class="p">;</span>
+</span></code></pre></div>
+<details class="example">
+<summary>Full Sample Code</summary>
+<table>
+<thead>
+<tr>
+<th>Language</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>C</td>
+<td><a href="https://github.com/kairos-code-dev/zlink/blob/main/core/samples/monitor_recv_sample.c">monitor_recv_sample.c</a></td>
+</tr>
+<tr>
+<td>C++</td>
+<td><a href="https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/monitor_recv_sample.cpp">monitor_recv_sample.cpp</a></td>
+</tr>
+<tr>
+<td>Java</td>
+<td><a href="https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/MonitorRecvSample.java">MonitorRecvSample.java</a></td>
+</tr>
+<tr>
+<td>Python</td>
+<td><a href="https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/monitor_recv.py">monitor_recv.py</a></td>
+</tr>
+<tr>
+<td>Node</td>
+<td><a href="https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/monitor_recv_sample.ts">monitor_recv_sample.ts</a></td>
+</tr>
+<tr>
+<td>C#</td>
+<td><a href="https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/MonitorRecv/Program.cs">Program.cs</a></td>
+</tr>
+<tr>
+<td>Rust</td>
+<td><a href="https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/monitor_recv_sample.rs">monitor_recv_sample.rs</a></td>
+</tr>
+<tr>
+<td>Go</td>
+<td><a href="https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/monitor_recv_sample/main.go">main.go</a></td>
+</tr>
+</tbody>
+</table>
+</details>
+<h2 id="4-socket-monitor-events">4. Socket Monitor Events<a class="headerlink" href="#4-socket-monitor-events" title="Permanent link">&para;</a></h2>
+<p>Events observed via <code>zlink_socket_monitor_open()</code>.
+These report transport/session state for raw sockets.</p>
+<h3 id="event-table">Event table<a class="headerlink" href="#event-table" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+<th><code>value</code></th>
+<th><code>routing_id</code></th>
+<th>Side</th>
+<th>After this event</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CONNECTION_READY</code></td>
+<td><code>0x1000</code></td>
+<td>Ready edge after handshake</td>
+<td>reserved</td>
+<td>peer id</td>
+<td>Both</td>
+<td><strong>start send/recv</strong></td>
+</tr>
+<tr>
+<td><code>CONNECTED</code></td>
+<td><code>0x0001</code></td>
+<td>TCP connection established (pre-handshake)</td>
+<td>provider-specific</td>
+<td>peer id or sentinel</td>
+<td>Client</td>
+<td>wait for <code>CONNECTION_READY</code></td>
+</tr>
+<tr>
+<td><code>ACCEPTED</code></td>
+<td><code>0x0020</code></td>
+<td>Incoming connection accepted (pre-handshake)</td>
+<td>provider-specific</td>
+<td>peer id or sentinel</td>
+<td>Server</td>
+<td>wait for <code>CONNECTION_READY</code></td>
+</tr>
+<tr>
+<td><code>DISCONNECTED</code></td>
+<td><code>0x0200</code></td>
+<td>Session terminated</td>
+<td>reason code</td>
+<td>Possible</td>
+<td>Both</td>
+<td>trigger reconnection</td>
+</tr>
+<tr>
+<td><code>LISTENING</code></td>
+<td><code>0x0008</code></td>
+<td>Bind succeeded, listening</td>
+<td>fd</td>
+<td>—</td>
+<td>Server</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>CLOSED</code></td>
+<td><code>0x0080</code></td>
+<td>Intentional close completed</td>
+<td>—</td>
+<td>—</td>
+<td>Both</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>CONNECT_DELAYED</code></td>
+<td><code>0x0002</code></td>
+<td>Async connection retry scheduled</td>
+<td>errno</td>
+<td>—</td>
+<td>Client</td>
+<td>automatic retry</td>
+</tr>
+<tr>
+<td><code>CONNECT_RETRIED</code></td>
+<td><code>0x0004</code></td>
+<td>Async reconnection in progress</td>
+<td>—</td>
+<td>—</td>
+<td>Client</td>
+<td>automatic retry</td>
+</tr>
+<tr>
+<td><code>BIND_FAILED</code></td>
+<td><code>0x0010</code></td>
+<td>Bind failed</td>
+<td>errno</td>
+<td>—</td>
+<td>Server</td>
+<td>check address/permissions</td>
+</tr>
+<tr>
+<td><code>ACCEPT_FAILED</code></td>
+<td><code>0x0040</code></td>
+<td>Accept failed</td>
+<td>errno</td>
+<td>—</td>
+<td>Server</td>
+<td>check fd limits</td>
+</tr>
+<tr>
+<td><code>CLOSE_FAILED</code></td>
+<td><code>0x0100</code></td>
+<td>Close failed</td>
+<td>errno</td>
+<td>—</td>
+<td>Both</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>HANDSHAKE_FAILED_NO_DETAIL</code></td>
+<td><code>0x0800</code></td>
+<td>Handshake failed (generic)</td>
+<td>errno</td>
+<td>—</td>
+<td>Both</td>
+<td>check network</td>
+</tr>
+<tr>
+<td><code>HANDSHAKE_FAILED_PROTOCOL</code></td>
+<td><code>0x2000</code></td>
+<td>Handshake failed (protocol error)</td>
+<td>error code</td>
+<td>—</td>
+<td>Both</td>
+<td>check version/config</td>
+</tr>
+<tr>
+<td><code>HANDSHAKE_FAILED_AUTH</code></td>
+<td><code>0x4000</code></td>
+<td>Handshake failed (auth)</td>
+<td>—</td>
+<td>—</td>
+<td>Both</td>
+<td>check TLS/auth config</td>
+</tr>
+<tr>
+<td><code>MONITOR_STOPPED</code></td>
+<td><code>0x0400</code></td>
+<td>Monitor stopped</td>
+<td>—</td>
+<td>—</td>
+<td>Both</td>
+<td><code>zlink_monitor_close()</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="connection-flow">Connection flow<a class="headerlink" href="#connection-flow" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>flowchart LR
+    subgraph Client
+        CD1[CONNECT_DELAYED\noptional] --&gt; CO1[CONNECTED] --&gt; CR1[CONNECTION_READY] --&gt; SR1[start send/recv]
+    end
+    subgraph Server
+        L1[LISTENING] --&gt; A1[ACCEPTED] --&gt; CR2[CONNECTION_READY] --&gt; SR2[start send/recv]
+    end
+    subgraph Close
+        CR3[CONNECTION_READY] --&gt; D1[DISCONNECTED] --&gt; CD2[CONNECT_DELAYED] --&gt; RE1[reconnect...]
+    end</code></pre>
+<h3 id="connection_ready-details">CONNECTION_READY details<a class="headerlink" href="#connection_ready-details" title="Permanent link">&para;</a></h3>
+<p>Fired after a successful handshake. Once received, messaging can start immediately.
+The <code>value</code> field of <code>CONNECTION_READY</code> is reserved and must not be used
+as an aggregate ready-count contract.</p>
+<ul>
+<li><code>ev-&gt;routing_id</code> contains the peer identity on all socket types.</li>
+</ul>
+<h3 id="disconnected-reason-codes">DISCONNECTED reason codes<a class="headerlink" href="#disconnected-reason-codes" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Name</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>UNKNOWN</code></td>
+<td>Reason unknown</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>HANDSHAKE_FAILED</code></td>
+<td>Handshake failure</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>TRANSPORT_ERROR</code></td>
+<td>Transport-layer error</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>CTX_TERM</code></td>
+<td>Context terminated</td>
+</tr>
+</tbody>
+</table>
+<h3 id="protocol-error-codes">Protocol error codes<a class="headerlink" href="#protocol-error-codes" title="Permanent link">&para;</a></h3>
+<p>When <code>HANDSHAKE_FAILED_PROTOCOL</code> fires, the <code>value</code> field contains one of these codes:</p>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO</code></td>
+<td><code>0x10000013</code></td>
+<td>Malformed ZMP HELLO command.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="5-event-flow-diagrams">5. Event Flow Diagrams<a class="headerlink" href="#5-event-flow-diagrams" title="Permanent link">&para;</a></h2>
+<h3 id="successful-connection">Successful Connection<a class="headerlink" href="#successful-connection" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>flowchart LR
+    subgraph Client side
+        CD[CONNECT_DELAYED\noptional] --&gt; CO[CONNECTED] --&gt; CR1[CONNECTION_READY]
+    end
+    subgraph Server side
+        A[ACCEPTED] --&gt; CR2[CONNECTION_READY]
+    end</code></pre>
+<h3 id="handshake-failure">Handshake Failure<a class="headerlink" href="#handshake-failure" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>flowchart LR
+    subgraph Client side
+        CO[CONNECTED] --&gt; HF1[HANDSHAKE_FAILED_*] --&gt; D1[DISCONNECTED]
+    end
+    subgraph Server side
+        A[ACCEPTED] --&gt; HF2[HANDSHAKE_FAILED_*] --&gt; D2[DISCONNECTED]
+    end</code></pre>
+<h3 id="normal-disconnection">Normal Disconnection<a class="headerlink" href="#normal-disconnection" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>flowchart LR
+    CR[CONNECTION_READY] --&gt; D[DISCONNECTED]</code></pre>
+<h3 id="reconnection">Reconnection<a class="headerlink" href="#reconnection" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>flowchart LR
+    CO1[CONNECTED] --&gt; CR1[CONNECTION_READY] --&gt; D[DISCONNECTED]
+    D --&gt; CD[CONNECT_DELAYED] --&gt; RT[CONNECT_RETRIED]
+    RT --&gt; CO2[CONNECTED] --&gt; CR2[CONNECTION_READY]</code></pre>
+<h2 id="6-disconnected-reason-codes">6. DISCONNECTED Reason Codes<a class="headerlink" href="#6-disconnected-reason-codes" title="Permanent link">&para;</a></h2>
+<p>The <code>value</code> field of the <code>DISCONNECTED</code> event contains the reason for disconnection.</p>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Name</th>
+<th>Meaning</th>
+<th>Recommended Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>UNKNOWN</td>
+<td>Unknown cause</td>
+<td>Log and observe</td>
+</tr>
+<tr>
+<td>3</td>
+<td>HANDSHAKE_FAILED</td>
+<td>Handshake failure</td>
+<td>Check TLS/protocol configuration</td>
+</tr>
+<tr>
+<td>4</td>
+<td>TRANSPORT_ERROR</td>
+<td>Transport layer error</td>
+<td>Check network status</td>
+</tr>
+<tr>
+<td>5</td>
+<td>CTX_TERM</td>
+<td>Context terminated</td>
+<td>Handle shutdown</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reason-code-handling-example">Reason Code Handling Example<a class="headerlink" href="#reason-code-handling-example" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">on_monitor</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_monitor_event_t</span><span class="w"> </span><span class="o">*</span><span class="n">ev</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata</span><span class="p">)</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="p">{</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">event</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">ZLINK_EVENT_DISCONNECTED</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">        </span><span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">value</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">            </span><span class="k">case</span><span class="w"> </span><span class="no">ZLINK_DISCONNECT_REASON_UNKNOWN</span><span class="p">:</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">                </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Unknown disconnection</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">                </span><span class="k">break</span><span class="p">;</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">            </span><span class="k">case</span><span class="w"> </span><span class="no">ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED</span><span class="p">:</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">                </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Handshake failed -- check TLS configuration</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">                </span><span class="k">break</span><span class="p">;</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">            </span><span class="k">case</span><span class="w"> </span><span class="no">ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR</span><span class="p">:</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">                </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Transport error -- check network</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">                </span><span class="k">break</span><span class="p">;</span>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">            </span><span class="k">case</span><span class="w"> </span><span class="no">ZLINK_DISCONNECT_REASON_CTX_TERM</span><span class="p">:</span>
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">                </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Context terminated</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">                </span><span class="k">break</span><span class="p">;</span>
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">            </span><span class="k">default</span><span class="o">:</span>
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">                </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Unknown reason=%llu</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="kt">long</span><span class="p">)</span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">value</span><span class="p">);</span>
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">                </span><span class="k">break</span><span class="p">;</span>
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="w">        </span><span class="p">}</span>
+</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="p">}</span>
+</span></code></pre></div>
+<h2 id="7-event-filtering-and-subscription-presets">7. Event Filtering and Subscription Presets<a class="headerlink" href="#7-event-filtering-and-subscription-presets" title="Permanent link">&para;</a></h2>
+<h3 id="subscribing-to-specific-events-only">Subscribing to Specific Events Only<a class="headerlink" href="#subscribing-to-specific-events-only" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="cm">/* Connection/disconnection events only */</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">zlink_socket_monitor_open_options_t</span><span class="w"> </span><span class="n">opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="p">.</span><span class="n">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ZLINK_EVENT_CONNECTION_READY</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">ZLINK_EVENT_DISCONNECTED</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">};</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">mon</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_socket_monitor_open</span><span class="p">(</span><span class="n">server</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">opts</span><span class="p">);</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">zlink_socket_monitor_handler</span><span class="p">(</span><span class="n">mon</span><span class="p">,</span><span class="w"> </span><span class="n">on_monitor_event</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+</span></code></pre></div>
+<h3 id="recommended-subscription-presets">Recommended Subscription Presets<a class="headerlink" href="#recommended-subscription-presets" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Preset</th>
+<th>Event Mask</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Basic</td>
+<td><code>CONNECTION_READY \| DISCONNECTED</code></td>
+<td>Connection state tracking</td>
+</tr>
+<tr>
+<td>Debug</td>
+<td>Basic + <code>CONNECTED \| ACCEPTED \| CONNECT_DELAYED \| CONNECT_RETRIED</code></td>
+<td>Detailed connection process</td>
+</tr>
+<tr>
+<td>Security</td>
+<td>Basic + <code>HANDSHAKE_FAILED_*</code></td>
+<td>Authentication failure detection</td>
+</tr>
+<tr>
+<td>Full</td>
+<td><code>ZLINK_EVENT_ALL</code></td>
+<td>All events</td>
+</tr>
+</tbody>
+</table>
+<h3 id="preset-implementation-example">Preset Implementation Example<a class="headerlink" href="#preset-implementation-example" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="cm">/* Basic preset */</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="cp">#define MONITOR_PRESET_BASIC \</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="cp">    (ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED)</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="cm">/* Debug preset */</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="cp">#define MONITOR_PRESET_DEBUG \</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="cp">    (MONITOR_PRESET_BASIC | ZLINK_EVENT_CONNECTED | \</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="cp">     ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_CONNECT_DELAYED | \</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="cp">     ZLINK_EVENT_CONNECT_RETRIED)</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="cm">/* Security preset */</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="cp">#define MONITOR_PRESET_SECURITY \</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="cp">    (MONITOR_PRESET_BASIC | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL | \</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="cp">     ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL | \</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="cp">     ZLINK_EVENT_HANDSHAKE_FAILED_AUTH)</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="n">zlink_socket_monitor_open_options_t</span><span class="w"> </span><span class="n">sec_opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">.</span><span class="n">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">MONITOR_PRESET_SECURITY</span><span class="w"> </span><span class="p">};</span>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">mon</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_socket_monitor_open</span><span class="p">(</span><span class="n">server</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">sec_opts</span><span class="p">);</span>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="n">zlink_socket_monitor_handler</span><span class="p">(</span><span class="n">mon</span><span class="p">,</span><span class="w"> </span><span class="n">on_monitor_event</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+</span></code></pre></div>
+<h2 id="8-socket-monitor-snapshot">8. Socket Monitor Snapshot<a class="headerlink" href="#8-socket-monitor-snapshot" title="Permanent link">&para;</a></h2>
+<p>Query the current aggregate state from a monitor handle at any time.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>snd_pending_msgs</code></td>
+<td>Messages pending in send queue (capped by SNDHWM)</td>
+</tr>
+<tr>
+<td><code>rcv_pending_msgs</code></td>
+<td>Messages pending in receive queue (capped by RCVHWM, approximate)</td>
+</tr>
+</tbody>
+</table>
+<p><code>snd_pending_msgs</code> and <code>rcv_pending_msgs</code> are directly related to HWM settings.
+When these values approach the HWM, backpressure is occurring.</p>
+<p><strong>Note — pending values can exceed the HWM setting:</strong></p>
+<ol>
+<li>
+<p><strong>inproc transport</strong>: inproc has no session/engine in between, so both
+   sides' HWMs are summed. For example, if both sides have SNDHWM=1000
+   and RCVHWM=1000, the actual pipe HWM is <code>1000 + 1000 = 2000</code>.
+   Pending values can appear as twice the configured value.</p>
+</li>
+<li>
+<p><strong>Slight HWM overshoot</strong>: The write side's view of the read counter
+   (<code>_peers_msgs_read</code>) is not real-time — it is a snapshot reported by
+   the read side only when LWM is reached. Synchronizing on every message
+   would eliminate the lock-free pipe's performance advantage, so batch
+   notification is used instead. As a result, HWM is an <strong>approximate
+   limit</strong>, not a hard limit, and can be slightly exceeded between
+   notifications.</p>
+</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>transport</th>
+<th>actual pipe HWM</th>
+<th>reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tcp/ipc/tls/ws/wss</td>
+<td><code>SNDHWM</code> (as configured)</td>
+<td>session manages each side independently</td>
+</tr>
+<tr>
+<td>inproc</td>
+<td><code>SNDHWM + peer.RCVHWM</code></td>
+<td>direct connection without session; buffers summed</td>
+</tr>
+</tbody>
+</table>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">zlink_socket_monitor_open_options_t</span><span class="w"> </span><span class="n">opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">.</span><span class="n">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ZLINK_EVENT_ALL</span><span class="w"> </span><span class="p">};</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">monitor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_socket_monitor_open</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">opts</span><span class="p">);</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">zlink_monitor_snapshot_t</span><span class="w"> </span><span class="n">snapshot</span><span class="p">;</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">zlink_monitor_snapshot</span><span class="p">(</span><span class="n">monitor</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">snapshot</span><span class="p">);</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">printf</span><span class="p">(</span><span class="s">&quot;sndq=%llu, rcvq=%llu</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">       </span><span class="p">(</span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="kt">long</span><span class="p">)</span><span class="w"> </span><span class="n">snapshot</span><span class="p">.</span><span class="n">snd_pending_msgs</span><span class="p">,</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">       </span><span class="p">(</span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="kt">long</span><span class="p">)</span><span class="w"> </span><span class="n">snapshot</span><span class="p">.</span><span class="n">rcv_pending_msgs</span><span class="p">);</span>
+</span></code></pre></div>
+<p>You can also combine snapshot queries inside event callbacks.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">on_monitor</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_monitor_event_t</span><span class="w"> </span><span class="o">*</span><span class="n">ev</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata</span><span class="p">)</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="p">{</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">event</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">ZLINK_EVENT_CONNECTION_READY</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">        </span><span class="n">zlink_monitor_snapshot_t</span><span class="w"> </span><span class="n">snapshot</span><span class="p">;</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">        </span><span class="n">zlink_monitor_snapshot</span><span class="p">(</span><span class="n">g_monitor</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">snapshot</span><span class="p">);</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">        </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Monitor snapshot updated</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="p">}</span>
+</span></code></pre></div>
+<h2 id="81-service-monitor">8.1 Service Monitor<a class="headerlink" href="#81-service-monitor" title="Permanent link">&para;</a></h2>
+<p>The service monitor observes state changes on service handles that still
+expose a public service-monitor surface, such as Discovery. It is a
+separate API from the socket monitor.</p>
+<ul>
+<li><strong>Event type</strong>: <code>zlink_service_event_t</code> (different from socket monitor's <code>zlink_monitor_event_t</code>)</li>
+<li><strong>Callback type</strong>: <code>zlink_service_monitor_handler_fn</code></li>
+<li><strong>Open</strong>: <code>zlink_service_monitor_open(target, &amp;options)</code></li>
+<li><strong>Close</strong>: <code>zlink_monitor_close(&amp;mon)</code> (same as socket monitor)</li>
+</ul>
+<h3 id="opening-a-service-monitor">Opening a service monitor<a class="headerlink" href="#opening-a-service-monitor" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="cm">/* Discovery service monitor */</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">zlink_service_monitor_open_options_t</span><span class="w"> </span><span class="n">opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="p">.</span><span class="n">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ZLINK_SERVICE_MONITOR_EVENT_ERROR</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">              </span><span class="o">|</span><span class="w"> </span><span class="n">ZLINK_SERVICE_MONITOR_EVENT_CLOSED</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">              </span><span class="o">|</span><span class="w"> </span><span class="n">ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="p">};</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">mon</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_service_monitor_open</span><span class="p">(</span><span class="n">discovery</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">opts</span><span class="p">);</span>
+</span></code></pre></div>
+<p>Pass a service handle that supports public service monitoring.
+SPOT and SpotNode no longer expose a public service-monitor surface.</p>
+<h3 id="callback-mode">Callback mode<a class="headerlink" href="#callback-mode" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">on_service_event</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_service_event_t</span><span class="w"> </span><span class="o">*</span><span class="n">ev</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata</span><span class="p">)</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="p">{</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">event_type</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">ZLINK_DISCOVERY_PROVIDERS_CHANGED</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">        </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;provider set changed</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">event_type</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">ZLINK_MONITOR_EVENT_ERROR</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">        </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;service error: %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">error_code</span><span class="p">);</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="p">}</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="n">zlink_service_monitor_handler</span><span class="p">(</span><span class="n">mon</span><span class="p">,</span><span class="w"> </span><span class="n">on_service_event</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+</span></code></pre></div>
+<h3 id="recv-mode">Recv mode<a class="headerlink" href="#recv-mode" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">zlink_service_event_t</span><span class="w"> </span><span class="n">ev</span><span class="p">;</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kt">int</span><span class="w"> </span><span class="n">rc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_service_monitor_recv</span><span class="p">(</span><span class="n">mon</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">ev</span><span class="p">);</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">rc</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;event: 0x%x, value: %u</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">ev</span><span class="p">.</span><span class="n">event_type</span><span class="p">,</span><span class="w"> </span><span class="n">ev</span><span class="p">.</span><span class="n">value</span><span class="p">);</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="p">}</span>
+</span></code></pre></div>
+<h3 id="service-event-table">Service event table<a class="headerlink" href="#service-event-table" title="Permanent link">&para;</a></h3>
+<p>Events observed via <code>zlink_service_monitor_open()</code>.
+Different services emit different events.</p>
+<h4 id="discovery-events">Discovery events<a class="headerlink" href="#discovery-events" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Description</th>
+<th><code>value</code></th>
+<th>After this event</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DISCOVERY_SERVICE_UP</code></td>
+<td>discovered service came up</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>DISCOVERY_SERVICE_DOWN</code></td>
+<td>discovered service went down</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>DISCOVERY_PROVIDERS_CHANGED</code></td>
+<td>provider set changed</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h4 id="common-events-all-services">Common events (all services)<a class="headerlink" href="#common-events-all-services" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MONITOR_EVENT_ERROR</code></td>
+<td>error occurred</td>
+</tr>
+<tr>
+<td><code>MONITOR_EVENT_CLOSED</code></td>
+<td>monitor closed</td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="../../api/events/">events.md</a> for the full event catalog.</p>
+<h2 id="9-multi-socket-monitoring">9. Multi-Socket Monitoring<a class="headerlink" href="#9-multi-socket-monitoring" title="Permanent link">&para;</a></h2>
+<p>Handle events from multiple sockets with individual callback handlers.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">on_event_a</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_monitor_event_t</span><span class="w"> </span><span class="o">*</span><span class="n">ev</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata</span><span class="p">)</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="p">{</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Socket A event: 0x%llx</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="kt">long</span><span class="p">)</span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">event</span><span class="p">);</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="p">}</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="kt">void</span><span class="w"> </span><span class="nf">on_event_b</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_monitor_event_t</span><span class="w"> </span><span class="o">*</span><span class="n">ev</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata</span><span class="p">)</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="p">{</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Socket B event: 0x%llx</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="kt">long</span><span class="p">)</span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">event</span><span class="p">);</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="p">}</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="n">zlink_socket_monitor_open_options_t</span><span class="w"> </span><span class="n">opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">.</span><span class="n">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ZLINK_EVENT_ALL</span><span class="w"> </span><span class="p">};</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">mon_a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_socket_monitor_open</span><span class="p">(</span><span class="n">sock_a</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">opts</span><span class="p">);</span>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="n">zlink_socket_monitor_handler</span><span class="p">(</span><span class="n">mon_a</span><span class="p">,</span><span class="w"> </span><span class="n">on_event_a</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">mon_b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_socket_monitor_open</span><span class="p">(</span><span class="n">sock_b</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">opts</span><span class="p">);</span>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="n">zlink_socket_monitor_handler</span><span class="p">(</span><span class="n">mon_b</span><span class="p">,</span><span class="w"> </span><span class="n">on_event_b</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>
+</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a><span class="cm">/* ... application logic ... */</span>
+</span><span id="__span-10-18"><a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>
+</span><span id="__span-10-19"><a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a><span class="cm">/* Cleanup */</span>
+</span><span id="__span-10-20"><a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a><span class="n">zlink_monitor_close</span><span class="p">(</span><span class="o">&amp;</span><span class="n">mon_a</span><span class="p">);</span>
+</span><span id="__span-10-21"><a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a><span class="n">zlink_monitor_close</span><span class="p">(</span><span class="o">&amp;</span><span class="n">mon_b</span><span class="p">);</span>
+</span></code></pre></div>
+<h2 id="10-important-notes">10. Important Notes<a class="headerlink" href="#10-important-notes" title="Permanent link">&para;</a></h2>
+<h3 id="monitor-thread-safety">Monitor Thread Safety<a class="headerlink" href="#monitor-thread-safety" title="Permanent link">&para;</a></h3>
+<p><code>zlink_socket_monitor_open()</code> and monitor-handle close belong to the
+low-frequency control-path contract of raw and service handles. That means
+they may be called from application threads and remain correct when mixed with
+other concurrent operations on the same handle. The monitor callback itself still runs on the
+I/O path, so slow callback work should be offloaded to a user queue.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="cm">/* Open a monitor from an application thread */</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">socket</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_socket</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">ZLINK_ROUTER</span><span class="p">);</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">zlink_socket_monitor_open_options_t</span><span class="w"> </span><span class="n">opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">.</span><span class="n">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ZLINK_EVENT_ALL</span><span class="w"> </span><span class="p">};</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">mon</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_socket_monitor_open</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">opts</span><span class="p">);</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="n">zlink_socket_monitor_handler</span><span class="p">(</span><span class="n">mon</span><span class="p">,</span><span class="w"> </span><span class="n">on_monitor_event</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="cm">/* Snapshot reads may happen later from another worker thread */</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="n">zlink_monitor_snapshot_t</span><span class="w"> </span><span class="n">snapshot</span><span class="p">;</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="n">zlink_monitor_snapshot</span><span class="p">(</span><span class="n">mon</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">snapshot</span><span class="p">);</span>
+</span></code></pre></div>
+<h3 id="concurrent-monitor-limitation">Concurrent Monitor Limitation<a class="headerlink" href="#concurrent-monitor-limitation" title="Permanent link">&para;</a></h3>
+<p>Multiple monitors cannot be set on the same socket simultaneously.</p>
+<h3 id="callback-processing-speed">Callback Processing Speed<a class="headerlink" href="#callback-processing-speed" title="Permanent link">&para;</a></h3>
+<p>Blocking work in the callback handler can delay other I/O. For slow
+processing, enqueue from the callback and handle it on your own thread.</p>
+<h3 id="monitor-shutdown-procedure">Monitor Shutdown Procedure<a class="headerlink" href="#monitor-shutdown-procedure" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="cm">/* Close the monitor handle */</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">zlink_monitor_close</span><span class="p">(</span><span class="o">&amp;</span><span class="n">mon</span><span class="p">);</span>
+</span></code></pre></div>
+<h2 id="11-knowing-when-messaging-is-ready">11. Knowing When Messaging Is Ready<a class="headerlink" href="#11-knowing-when-messaging-is-ready" title="Permanent link">&para;</a></h2>
+<p>When you need to know the exact moment a socket or service can send and
+receive, wait for the right event.</p>
+<h3 id="111-raw-sockets-pair-dealer-router">11.1 Raw sockets — PAIR, DEALER, ROUTER<a class="headerlink" href="#111-raw-sockets-pair-dealer-router" title="Permanent link">&para;</a></h3>
+<p>Ready to send/recv immediately after <code>CONNECTION_READY</code>.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="cm">/* DEALER/ROUTER example */</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">zlink_socket_monitor_open_options_t</span><span class="w"> </span><span class="n">opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="p">.</span><span class="n">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ZLINK_EVENT_CONNECTION_READY</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="p">};</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">mon</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_socket_monitor_open</span><span class="p">(</span><span class="n">router</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">opts</span><span class="p">);</span>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="kt">void</span><span class="w"> </span><span class="nf">on_ready</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_monitor_event_t</span><span class="w"> </span><span class="o">*</span><span class="n">ev</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">event</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">ZLINK_EVENT_CONNECTION_READY</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">        </span><span class="cm">/* ROUTER: ev-&gt;routing_id contains the peer identity */</span>
+</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">        </span><span class="cm">/* routed send is possible now */</span>
+</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="p">}</span>
+</span><span id="__span-13-13"><a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="n">zlink_socket_monitor_handler</span><span class="p">(</span><span class="n">mon</span><span class="p">,</span><span class="w"> </span><span class="n">on_ready</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Family</th>
+<th>Wait for</th>
+<th>Then you can</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PAIR</td>
+<td><code>CONNECTION_READY</code> on both sides</td>
+<td>bidirectional send/recv</td>
+</tr>
+<tr>
+<td>DEALER</td>
+<td><code>CONNECTION_READY</code></td>
+<td>send/recv</td>
+</tr>
+<tr>
+<td>ROUTER</td>
+<td><code>CONNECTION_READY</code></td>
+<td>routed send/recv using <code>ev-&gt;routing_id</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="112-raw-sockets-stream">11.2 Raw sockets — STREAM<a class="headerlink" href="#112-raw-sockets-stream" title="Permanent link">&para;</a></h3>
+<p>STREAM works like ROUTER — the routing_id is assigned when the TCP
+connection is established, not when the first payload arrives.
+<code>CONNECTION_READY</code> fires with the routing_id before any payload
+is delivered to the application. Sequence:</p>
+<ol>
+<li>Client connects via raw TCP</li>
+<li>Server receives <code>CONNECTION_READY</code> with <code>ev-&gt;routing_id</code></li>
+<li>Server can now send to the client using the routing_id</li>
+<li>Client payload (if any) arrives after the ready event</li>
+</ol>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="cm">/* STREAM server: CONNECTION_READY → routing_id available → send/recv */</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="kt">void</span><span class="w"> </span><span class="nf">on_ready</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">zlink_monitor_event_t</span><span class="w"> </span><span class="o">*</span><span class="n">ev</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ev</span><span class="o">-&gt;</span><span class="n">event</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">ZLINK_EVENT_CONNECTION_READY</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">        </span><span class="cm">/* ev-&gt;routing_id contains the peer&#39;s routing_id */</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">        </span><span class="cm">/* send to this peer immediately, or wait for inbound payload */</span>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="p">}</span>
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="n">zlink_socket_monitor_open_options_t</span><span class="w"> </span><span class="n">opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="w">    </span><span class="p">.</span><span class="n">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ZLINK_EVENT_CONNECTION_READY</span>
+</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="p">};</span>
+</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">mon</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_socket_monitor_open</span><span class="p">(</span><span class="n">stream_server</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">opts</span><span class="p">);</span>
+</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="n">zlink_socket_monitor_handler</span><span class="p">(</span><span class="n">mon</span><span class="p">,</span><span class="w"> </span><span class="n">on_ready</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Family</th>
+<th>Wait for</th>
+<th>Then you can</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>STREAM</td>
+<td><code>CONNECTION_READY</code></td>
+<td>send/recv using <code>ev-&gt;routing_id</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="113-raw-sockets-pubsub">11.3 Raw sockets — PUB/SUB<a class="headerlink" href="#113-raw-sockets-pubsub" title="Permanent link">&para;</a></h3>
+<p>For internal perf on raw PUB/SUB, use <code>CONNECTION_READY</code> for each
+expected client before messaging. Perf does not use delivery-ready
+monitor events.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">zlink_set_subscription</span><span class="p">(</span><span class="n">sub</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;topic&quot;</span><span class="p">);</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="cm">/* SUB/PUB perf gate: wait for connection-ready */</span>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="n">zlink_socket_monitor_open_options_t</span><span class="w"> </span><span class="n">sub_opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">    </span><span class="p">.</span><span class="n">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ZLINK_EVENT_CONNECTION_READY</span>
+</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="p">};</span>
+</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">sub_mon</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_socket_monitor_open</span><span class="p">(</span><span class="n">sub</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">sub_opts</span><span class="p">);</span>
+</span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>
+</span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="n">zlink_socket_monitor_open_options_t</span><span class="w"> </span><span class="n">pub_opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-15-10"><a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="w">    </span><span class="p">.</span><span class="n">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ZLINK_EVENT_CONNECTION_READY</span>
+</span><span id="__span-15-11"><a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="p">};</span>
+</span><span id="__span-15-12"><a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">pub_mon</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">zlink_socket_monitor_open</span><span class="p">(</span><span class="n">pub</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">pub_opts</span><span class="p">);</span>
+</span><span id="__span-15-13"><a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a>
+</span><span id="__span-15-14"><a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a><span class="cm">/* Start after expected clients are connection-ready */</span>
+</span><span id="__span-15-15"><a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a><span class="n">zlink_publish</span><span class="p">(</span><span class="n">pub</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">part</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span><span class="w">  </span><span class="cm">/* raw PUB: topic_id is NULL */</span>
+</span><span id="__span-15-16"><a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a><span class="n">zlink_subscribe</span><span class="p">(</span><span class="n">sub</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">source_rid</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">parts</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">count</span><span class="p">,</span><span class="w"> </span><span class="n">topic_buf</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">topic_len</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+</span><span id="__span-15-17"><a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a>
+</span><span id="__span-15-18"><a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a><span class="n">zlink_monitor_close</span><span class="p">(</span><span class="o">&amp;</span><span class="n">pub_mon</span><span class="p">);</span>
+</span><span id="__span-15-19"><a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a><span class="n">zlink_monitor_close</span><span class="p">(</span><span class="o">&amp;</span><span class="n">sub_mon</span><span class="p">);</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Family</th>
+<th>Wait for</th>
+<th>Then you can</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PUB</td>
+<td><code>CONNECTION_READY</code> + expected client counting</td>
+<td><code>zlink_publish()</code> delivery</td>
+</tr>
+<tr>
+<td>SUB</td>
+<td><code>CONNECTION_READY</code> + expected client counting</td>
+<td><code>zlink_subscribe()</code> recv</td>
+</tr>
+</tbody>
+</table>
+<h3 id="114-services-spot">11.4 Services — SPOT<a class="headerlink" href="#114-services-spot" title="Permanent link">&para;</a></h3>
+<p>SPOT no longer exposes a public service-monitor surface. For internal
+perf on SPOT, use an explicit benchmark control barrier instead of
+monitor events.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="cm">/* SPOT perf gate: explicit READY/START barrier */</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="n">send_control_ready</span><span class="p">(</span><span class="n">client_id</span><span class="p">);</span>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="n">wait_ready_count</span><span class="p">(</span><span class="n">expected_clients</span><span class="p">);</span>
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="n">broadcast_control_start</span><span class="p">();</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Wait for</th>
+<th>Then you can</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SPOT sub</td>
+<td>explicit <code>READY/START</code> barrier</td>
+<td>start receiving via <code>zlink_subscribe()</code></td>
+</tr>
+<tr>
+<td>SPOT pub</td>
+<td>explicit <code>READY/START</code> barrier</td>
+<td>start delivering via <code>zlink_publish()</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="115-snapshots">11.5 Snapshots<a class="headerlink" href="#115-snapshots" title="Permanent link">&para;</a></h3>
+<p><code>zlink_monitor_snapshot()</code> and <code>zlink_*_status_snapshot()</code> return
+a point-in-time view of the current state. Use them for dashboards,
+health checks, and debugging.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="cm">/* Check current discovery health */</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="n">zlink_discovery_status_t</span><span class="w"> </span><span class="n">status</span><span class="p">;</span>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">zlink_discovery_status_snapshot</span><span class="p">(</span><span class="n">discovery</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">status</span><span class="p">);</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="n">printf</span><span class="p">(</span><span class="s">&quot;state=%d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">status</span><span class="p">.</span><span class="n">state</span><span class="p">);</span>
+</span></code></pre></div>
+<hr />
+<p><a href="../05-tls-security/">← TLS Security</a> | <a href="../07-0-services/">Services Overview →</a></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../05-tls-security/" class="md-footer__link md-footer__link--prev" aria-label="Previous: TLS Security">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                TLS Security
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../07-0-services/" class="md-footer__link md-footer__link--next" aria-label="Next: Overview">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Overview
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/kairos-code-dev/zlink" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "navigation.footer", "navigation.indexes", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

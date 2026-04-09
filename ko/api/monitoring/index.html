@@ -1,0 +1,3605 @@
+
+<!doctype html>
+<html lang="ko" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="zlink — Modern messaging library guide">
+      
+      
+      
+        <link rel="canonical" href="https://kairos-code-dev.github.io/zlink/ko/api/monitoring/">
+      
+      
+        <link rel="prev" href="../events/">
+      
+      
+        <link rel="next" href="../polling/">
+      
+      
+        
+          <link rel="alternate" href="../../../api/monitoring/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="ko">
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>모니터링 - zlink Guide</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api" class="md-skip">
+          콘텐츠로 이동
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="상단/헤더">
+    <a href="../../" title="zlink Guide" class="md-header__button md-logo" aria-label="zlink Guide" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            zlink Guide
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              모니터링
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="언어설정">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../../api/monitoring/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="ko" class="md-select__link">
+              한국어
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="검색" placeholder="검색" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="검색">
+        
+        <button type="reset" class="md-search__icon md-icon" title="지우기" aria-label="지우기" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            검색 초기화
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kairos-code-dev/zlink" title="저장소로 이동" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kairos-code-dev/zlink
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="탭" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guide/01-overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  가이드
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../context/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API 레퍼런스
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../internals/architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  내부 구조
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="네비게이션" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../" title="zlink Guide" class="md-nav__button md-logo" aria-label="zlink Guide" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    zlink Guide
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kairos-code-dev/zlink" title="저장소로 이동" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kairos-code-dev/zlink
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    가이드
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    가이드
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/01-overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    개요
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/02-core-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    핵심 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    소켓 패턴
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    소켓 패턴
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-0-socket-patterns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    개요
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-1-pair/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PAIR
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-2-pubsub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PUB/SUB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-3-dealer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEALER
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-4-router/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ROUTER
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-5-stream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    STREAM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/03-6-proxy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proxy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/04-transports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    트랜스포트
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/05-tls-security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TLS 보안
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/06-monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    모니터링
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_7" id="__nav_2_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    서비스
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    서비스
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/07-0-services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    개요
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/07-1-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    디스커버리
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/07-3-spot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SPOT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/07-4-registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/08-routing-id/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    라우팅 ID
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/09-message-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    메시지 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/10-performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    성능
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/11-thread-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    스레드 안전성
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/12-socket-options/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    소켓 옵션
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API 레퍼런스
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API 레퍼런스
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    컨텍스트
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../socket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Socket
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../message/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    메시지
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../events/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    이벤트
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    모니터링
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    모니터링
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="목차">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      목차
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#api_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        현재 권장 API 방향
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        타입
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="타입">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_monitor_event_t-zlink_socket_monitor_event_t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_monitor_event_t / zlink_socket_monitor_event_t
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_monitor_handler_fn-zlink_socket_monitor_handler_fn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_monitor_handler_fn / zlink_socket_monitor_handler_fn
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket_monitor_open_options_t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket_monitor_open_options_t
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_monitor_snapshot_t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_monitor_snapshot_t
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        상수
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="상수">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#monitor-source-kind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitor Source Kind
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitor-state-mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitor State Mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitor-snapshot-detail-mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitor Snapshot Detail Mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        이벤트 플래그
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        연결 해제 사유
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        프로토콜 에러
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        소켓 모니터 함수
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="소켓 모니터 함수">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket_monitor_open" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket_monitor_open
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket_monitor_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket_monitor_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket_monitor_recv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket_monitor_recv
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_monitor_snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_monitor_snapshot
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_monitor_ignore_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_monitor_ignore_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_monitor_close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_monitor_close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        서비스 모니터 API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="서비스 모니터 API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_service_event_t-zlink_service_monitor_event_t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_service_event_t / zlink_service_monitor_event_t
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_service_monitor_handler_fn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_service_monitor_handler_fn
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_service_monitor_open_options_t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_service_monitor_open_options_t
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        서비스 종류 상수
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        서비스 이벤트 상수
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#detail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Detail 플래그 상수
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_service_monitor_open" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_service_monitor_open
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_service_monitor_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_service_monitor_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_service_monitor_recv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_service_monitor_recv
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../polling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    폴링
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    에러
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../utilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    유틸리티
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    디스커버리
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SPOT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    내부 구조
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    내부 구조
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    아키텍처
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/threading-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    스레딩 모델
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/thread-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    스레드 안전성
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    설계 결정
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/posd-module-structure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    POSD 모듈 구조
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/services-internals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    서비스 내부
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/stream-socket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    스트림 소켓
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/socket-option-defaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    소켓 옵션
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/protocol-zmp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZMP 프로토콜
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/protocol-raw/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Raw 프로토콜
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="목차">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      목차
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#api_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        현재 권장 API 방향
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        타입
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="타입">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_monitor_event_t-zlink_socket_monitor_event_t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_monitor_event_t / zlink_socket_monitor_event_t
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_monitor_handler_fn-zlink_socket_monitor_handler_fn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_monitor_handler_fn / zlink_socket_monitor_handler_fn
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket_monitor_open_options_t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket_monitor_open_options_t
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_monitor_snapshot_t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_monitor_snapshot_t
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        상수
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="상수">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#monitor-source-kind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitor Source Kind
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitor-state-mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitor State Mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitor-snapshot-detail-mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitor Snapshot Detail Mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        이벤트 플래그
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        연결 해제 사유
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        프로토콜 에러
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        소켓 모니터 함수
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="소켓 모니터 함수">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket_monitor_open" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket_monitor_open
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket_monitor_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket_monitor_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_socket_monitor_recv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_socket_monitor_recv
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_monitor_snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_monitor_snapshot
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_monitor_ignore_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_monitor_ignore_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_monitor_close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_monitor_close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        서비스 모니터 API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="서비스 모니터 API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zlink_service_event_t-zlink_service_monitor_event_t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_service_event_t / zlink_service_monitor_event_t
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_service_monitor_handler_fn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_service_monitor_handler_fn
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_service_monitor_open_options_t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_service_monitor_open_options_t
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        서비스 종류 상수
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        서비스 이벤트 상수
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#detail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Detail 플래그 상수
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_service_monitor_open" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_service_monitor_open
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_service_monitor_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_service_monitor_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zlink_service_monitor_recv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zlink_service_monitor_recv
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="api">모니터링 API 레퍼런스<a class="headerlink" href="#api" title="Permanent link">&para;</a></h1>
+<p>canonical 이벤트 카탈로그는 이제 <a href="../events/">events.ko.md</a>에 정리합니다.
+이 문서는 monitor API, callback, monitor snapshot 중심으로 봅니다.</p>
+<h2 id="api_1">현재 권장 API 방향<a class="headerlink" href="#api_1" title="Permanent link">&para;</a></h2>
+<p>이제 모니터링은 두 가지 클래스로 분리됩니다.</p>
+<ul>
+<li>소켓 모니터링:
+  <code>zlink_socket_monitor_open()</code> + <code>zlink_socket_monitor_open_options_t</code></li>
+<li>서비스 모니터링:
+  <code>zlink_service_monitor_open()</code> + <code>zlink_service_monitor_open_options_t</code></li>
+</ul>
+<p>두 클래스 모두 동일한 <strong>recv/callback 전달 모델</strong>을 따릅니다.</p>
+<ol>
+<li><strong>Open</strong> -- 모니터는 <strong>recv 모델</strong>로 시작합니다. 해당 <code>*_recv()</code> 함수로
+   이벤트를 가져옵니다.</li>
+<li><strong>핸들러 부착</strong> -- <code>*_handler()</code>를 호출하면 <strong>callback-only 모델</strong>로 전환됩니다
+   (단방향). 전환 후 <code>*_recv()</code>는 <code>EBUSY</code>를 반환합니다.</li>
+<li><strong>Snapshot</strong> -- <code>zlink_monitor_snapshot()</code>은 두 모델 모두에서 동작합니다.</li>
+</ol>
+<p>모든 모니터는 <code>zlink_monitor_close()</code>로 닫습니다.</p>
+<p>transport/socket 진단은 소켓 모니터를 사용하고, 공개 service-monitor
+surface를 유지하는 서비스의 상태 전이는 서비스 모니터를 사용합니다.
+현재 대표 대상은 Discovery입니다.</p>
+<h2 id="_1">타입<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<h3 id="zlink_monitor_event_t-zlink_socket_monitor_event_t">zlink_monitor_event_t / zlink_socket_monitor_event_t<a class="headerlink" href="#zlink_monitor_event_t-zlink_socket_monitor_event_t" title="Permanent link">&para;</a></h3>
+<p>소켓 모니터 핸들에서 수신된 단일 모니터 이벤트를 설명합니다.
+<code>zlink_socket_monitor_event_t</code>는 <code>zlink_monitor_event_t</code>의 typedef입니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">event</span><span class="p">;</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">value</span><span class="p">;</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="n">zlink_routing_id_t</span><span class="w"> </span><span class="n">routing_id</span><span class="p">;</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="n">local_addr</span><span class="p">[</span><span class="mi">256</span><span class="p">];</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="n">remote_addr</span><span class="p">[</span><span class="mi">256</span><span class="p">];</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">}</span><span class="w"> </span><span class="n">zlink_monitor_event_t</span><span class="p">;</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="k">typedef</span><span class="w"> </span><span class="n">zlink_monitor_event_t</span><span class="w"> </span><span class="n">zlink_socket_monitor_event_t</span><span class="p">;</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>필드</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>event</code></td>
+<td>이벤트 타입을 나타내는 비트마스크 (<code>ZLINK_EVENT_*</code> 상수 중 하나).</td>
+</tr>
+<tr>
+<td><code>value</code></td>
+<td>이벤트별 값 (아래 참조).</td>
+</tr>
+<tr>
+<td><code>routing_id</code></td>
+<td>peer-bound 이벤트의 피어 라우팅 아이덴티티. peer-less 이벤트에서도 초기화되며 0일 수 있음.</td>
+</tr>
+<tr>
+<td><code>local_addr</code></td>
+<td>null 종료 로컬 엔드포인트 주소 문자열. 항상 초기화됨.</td>
+</tr>
+<tr>
+<td><code>remote_addr</code></td>
+<td>null 종료 원격 엔드포인트 주소 문자열. 항상 초기화됨.</td>
+</tr>
+</tbody>
+</table>
+<p><code>value</code> 필드 해석:
+- 다수 failure 이벤트: errno 또는 프로토콜 에러 코드
+- 연결 해제 이벤트: <code>ZLINK_DISCONNECT_*</code> 사유
+- <code>CONNECTION_READY</code>: 예약된 필드이며 aggregate ready count로 해석하지 않음</p>
+<h3 id="zlink_monitor_handler_fn-zlink_socket_monitor_handler_fn">zlink_monitor_handler_fn / zlink_socket_monitor_handler_fn<a class="headerlink" href="#zlink_monitor_handler_fn-zlink_socket_monitor_handler_fn" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">typedef</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">zlink_monitor_handler_fn</span><span class="p">)</span><span class="w"> </span><span class="p">(</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">zlink_monitor_event_t</span><span class="w"> </span><span class="o">*</span><span class="n">event_</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata_</span><span class="p">);</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">typedef</span><span class="w"> </span><span class="n">zlink_monitor_handler_fn</span><span class="w"> </span><span class="n">zlink_socket_monitor_handler_fn</span><span class="p">;</span>
+</span></code></pre></div>
+<p>소켓 모니터 이벤트 콜백. I/O 스레드에서 호출됩니다.</p>
+<h3 id="zlink_socket_monitor_open_options_t">zlink_socket_monitor_open_options_t<a class="headerlink" href="#zlink_socket_monitor_open_options_t" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">zlink_socket_monitor_open_options_t</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="p">{</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="n">zlink_socket_monitor_event_mask_t</span><span class="w"> </span><span class="n">events</span><span class="p">;</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">}</span><span class="w"> </span><span class="n">zlink_socket_monitor_open_options_t</span><span class="p">;</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>필드</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>events</code></td>
+<td>관찰할 이벤트를 선택하는 <code>ZLINK_EVENT_*</code> 플래그 비트마스크.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="zlink_monitor_snapshot_t">zlink_monitor_snapshot_t<a class="headerlink" href="#zlink_monitor_snapshot_t" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">zlink_monitor_snapshot_t</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="p">{</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="n">zlink_monitor_source_kind_t</span><span class="w"> </span><span class="n">source_kind</span><span class="p">;</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="n">zlink_monitor_state_mask_t</span><span class="w"> </span><span class="n">state_flags</span><span class="p">;</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="n">zlink_monitor_snapshot_detail_mask_t</span><span class="w"> </span><span class="n">detail_flags</span><span class="p">;</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">snd_pending_msgs</span><span class="p">;</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">rcv_pending_msgs</span><span class="p">;</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="p">}</span><span class="w"> </span><span class="n">zlink_monitor_snapshot_t</span><span class="p">;</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>필드</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source_kind</code></td>
+<td>snapshot source(<code>SOCKET</code>, <code>SPOT_PUB</code>, <code>SPOT_SUB</code>)</td>
+</tr>
+<tr>
+<td><code>state_flags</code></td>
+<td><code>READY</code>, <code>BOUND_READY</code>, <code>CLOSED</code> 같은 aggregate 상태. <code>READY</code>는 raw socket monitor source에서만 지원되며 <code>CONNECTION_READY</code>와 같은 계약을 가짐</td>
+</tr>
+<tr>
+<td><code>detail_flags</code></td>
+<td>어떤 numeric field가 채워졌는지 표시</td>
+</tr>
+<tr>
+<td><code>snd_pending_msgs</code></td>
+<td>지원되는 경우 aggregate 로컬 송신 backlog</td>
+</tr>
+<tr>
+<td><code>rcv_pending_msgs</code></td>
+<td>지원되는 경우 aggregate 로컬 수신 backlog snapshot</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">상수<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<h3 id="monitor-source-kind">Monitor Source Kind<a class="headerlink" href="#monitor-source-kind" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">typedef</span><span class="w"> </span><span class="k">enum</span><span class="w"> </span><span class="n">zlink_monitor_source_kind_t</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="p">{</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="n">ZLINK_MONITOR_SOURCE_SOCKET</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="n">ZLINK_MONITOR_SOURCE_SPOT_PUB</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="n">ZLINK_MONITOR_SOURCE_SPOT_SUB</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="p">}</span><span class="w"> </span><span class="n">zlink_monitor_source_kind_t</span><span class="p">;</span>
+</span></code></pre></div>
+<h3 id="monitor-state-mask">Monitor State Mask<a class="headerlink" href="#monitor-state-mask" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>값</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_MONITOR_STATE_READY</code></td>
+<td><code>1 &lt;&lt; 0</code></td>
+<td>raw socket의 ready level. <code>SOCKET</code>은 usable connection 존재를 뜻하며 SPOT source는 <code>READY</code>를 사용하지 않음.</td>
+</tr>
+<tr>
+<td><code>ZLINK_MONITOR_STATE_BOUND_READY</code></td>
+<td><code>1 &lt;&lt; 1</code></td>
+<td>source에 성공적인 bind가 있음.</td>
+</tr>
+<tr>
+<td><code>ZLINK_MONITOR_STATE_CLOSED</code></td>
+<td><code>1 &lt;&lt; 3</code></td>
+<td>source가 닫힘.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="monitor-snapshot-detail-mask">Monitor Snapshot Detail Mask<a class="headerlink" href="#monitor-snapshot-detail-mask" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>값</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS</code></td>
+<td><code>1 &lt;&lt; 1</code></td>
+<td><code>snd_pending_msgs</code> 필드가 채워짐.</td>
+</tr>
+<tr>
+<td><code>ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS</code></td>
+<td><code>1 &lt;&lt; 2</code></td>
+<td><code>rcv_pending_msgs</code> 필드가 채워짐.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_3">이벤트 플래그<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<p>관찰할 이벤트를 선택하기 위해 <code>zlink_socket_monitor_open_options_t.events</code>에
+전달되는 비트마스크 상수입니다. 여러 플래그를 비트 OR로 결합할 수 있습니다.</p>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>값</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_EVENT_CONNECTED</code></td>
+<td><code>0x0001</code></td>
+<td>원격 피어에 대한 연결이 수립됨.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_CONNECT_DELAYED</code></td>
+<td><code>0x0002</code></td>
+<td>동기 연결 실패; 비동기 재시도 예약됨.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_CONNECT_RETRIED</code></td>
+<td><code>0x0004</code></td>
+<td>비동기 연결 재시도 진행 중.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_LISTENING</code></td>
+<td><code>0x0008</code></td>
+<td>소켓이 성공적으로 바인딩되어 수신 대기 중.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_BIND_FAILED</code></td>
+<td><code>0x0010</code></td>
+<td>바인딩 시도 실패.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_ACCEPTED</code></td>
+<td><code>0x0020</code></td>
+<td>수신 연결 수락됨.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_ACCEPT_FAILED</code></td>
+<td><code>0x0040</code></td>
+<td>수신 연결 수락 실패.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_CLOSED</code></td>
+<td><code>0x0080</code></td>
+<td>연결이 정상적으로 닫힘.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_CLOSE_FAILED</code></td>
+<td><code>0x0100</code></td>
+<td>연결 닫기 실패.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_DISCONNECTED</code></td>
+<td><code>0x0200</code></td>
+<td>세션 연결 해제됨.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_MONITOR_STOPPED</code></td>
+<td><code>0x0400</code></td>
+<td>모니터 중지됨.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL</code></td>
+<td><code>0x0800</code></td>
+<td>핸드셰이크 실패 (상세 없음).</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_CONNECTION_READY</code></td>
+<td><code>0x1000</code></td>
+<td>raw socket의 ready edge. 지원 raw socket 패밀리에서는 이 이벤트 이후 즉시 메시징을 시작할 수 있음.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL</code></td>
+<td><code>0x2000</code></td>
+<td>프로토콜 에러로 핸드셰이크 실패.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_HANDSHAKE_FAILED_AUTH</code></td>
+<td><code>0x4000</code></td>
+<td>인증 실패로 핸드셰이크 실패.</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_ALL</code></td>
+<td><code>0x7FFF</code></td>
+<td>모든 이벤트 구독.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">연결 해제 사유<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<p><code>ZLINK_EVENT_DISCONNECTED</code> 이벤트의 <code>value</code> 필드 값입니다.</p>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>값</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_DISCONNECT_UNKNOWN</code></td>
+<td><code>0</code></td>
+<td>사유를 확인할 수 없음.</td>
+</tr>
+<tr>
+<td><code>ZLINK_DISCONNECT_HANDSHAKE_FAILED</code></td>
+<td><code>3</code></td>
+<td>핸드셰이크 실패.</td>
+</tr>
+<tr>
+<td><code>ZLINK_DISCONNECT_TRANSPORT_ERROR</code></td>
+<td><code>4</code></td>
+<td>트랜스포트 계층 에러.</td>
+</tr>
+<tr>
+<td><code>ZLINK_DISCONNECT_CTX_TERM</code></td>
+<td><code>5</code></td>
+<td>Context 종료로 인한 연결 해제.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">프로토콜 에러<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<p><code>ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL</code> 이벤트의 <code>value</code> 필드 값입니다.</p>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>값</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO</code></td>
+<td><code>0x10000013</code></td>
+<td>잘못된 ZMP HELLO 명령.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_6">소켓 모니터 함수<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h3 id="zlink_socket_monitor_open">zlink_socket_monitor_open<a class="headerlink" href="#zlink_socket_monitor_open" title="Permanent link">&para;</a></h3>
+<p>소켓 모니터 핸들을 recv 모델로 엽니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="nf">zlink_socket_monitor_open</span><span class="w"> </span><span class="p">(</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">s_</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">zlink_socket_monitor_open_options_t</span><span class="w"> </span><span class="o">*</span><span class="n">options_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>소켓 <code>s_</code>에 모니터를 생성하고 핸들을 반환합니다. <code>options_-&gt;events</code>
+비트마스크로 관찰할 이벤트를 선택합니다. 모니터는 <strong>recv 모델</strong>로 시작합니다.
+<code>zlink_socket_monitor_recv()</code>로 이벤트를 가져오거나,
+<code>zlink_socket_monitor_handler()</code>를 호출하여 callback 모델로 전환할 수 있습니다.</p>
+<p><strong>반환값:</strong> 성공 시 모니터 핸들, 실패 시 NULL (errno가 설정됨).</p>
+<p><strong>스레드 안전성:</strong> 소켓을 소유한 스레드에서 호출해야 합니다.</p>
+<p><strong>참고:</strong> <code>zlink_socket_monitor_recv</code>, <code>zlink_socket_monitor_handler</code>,
+<code>zlink_monitor_close</code></p>
+<hr />
+<h3 id="zlink_socket_monitor_handler">zlink_socket_monitor_handler<a class="headerlink" href="#zlink_socket_monitor_handler" title="Permanent link">&para;</a></h3>
+<p>소켓 모니터에 콜백 핸들러를 부착합니다 (단방향 전환).</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_socket_monitor_handler</span><span class="w"> </span><span class="p">(</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">monitor_</span><span class="p">,</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="n">zlink_socket_monitor_handler_fn</span><span class="w"> </span><span class="n">handler_</span><span class="p">,</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>모니터를 recv 모델에서 <strong>callback-only 모델</strong>로 전환합니다. 부착 후
+<code>zlink_socket_monitor_recv()</code>는 <code>errno = EBUSY</code>와 함께 <code>-1</code>을 반환합니다.
+이 전환은 단방향이며 되돌릴 수 없습니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<hr />
+<h3 id="zlink_socket_monitor_recv">zlink_socket_monitor_recv<a class="headerlink" href="#zlink_socket_monitor_recv" title="Permanent link">&para;</a></h3>
+<p>recv 모델에서 소켓 모니터의 다음 이벤트를 수신합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_socket_monitor_recv</span><span class="w"> </span><span class="p">(</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">monitor_</span><span class="p">,</span><span class="w"> </span><span class="n">zlink_socket_monitor_event_t</span><span class="w"> </span><span class="o">*</span><span class="n">out_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>다음 pending 이벤트를 <code>out_</code>에 읽어옵니다.
+<code>zlink_socket_monitor_handler()</code>를 통해 callback 모델로 전환된 경우
+<code>errno = EBUSY</code>와 함께 <code>-1</code>을 반환합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<hr />
+<h3 id="zlink_monitor_snapshot">zlink_monitor_snapshot<a class="headerlink" href="#zlink_monitor_snapshot" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_monitor_snapshot</span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">monitor_</span><span class="p">,</span><span class="w"> </span><span class="n">zlink_monitor_snapshot_t</span><span class="w"> </span><span class="o">*</span><span class="n">out_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>socket/service monitor handle의 현재 aggregate snapshot을 읽습니다.
+queue 값은 조회 시점에 source에서 직접 읽어오며, <code>rcv_pending_msgs</code>는
+여전히 approximate 값입니다. recv 모델과 callback 모델 모두에서 동작합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_socket_monitor_open</code>, <code>zlink_service_monitor_open</code></p>
+<hr />
+<h3 id="zlink_monitor_ignore_handler">zlink_monitor_ignore_handler<a class="headerlink" href="#zlink_monitor_ignore_handler" title="Permanent link">&para;</a></h3>
+<p>소켓 모니터 이벤트 콜백을 억제하는 no-op 핸들러입니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">zlink_monitor_ignore_handler</span><span class="w"> </span><span class="p">(</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">zlink_monitor_event_t</span><span class="w"> </span><span class="o">*</span><span class="n">event_</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>callback 모델로 전환하되 모든 이벤트를 버리고 싶을 때 (예: snapshot 접근만
+필요하고 이벤트 스트림을 무시할 때) <code>zlink_socket_monitor_handler()</code>에
+전달합니다.</p>
+<hr />
+<h3 id="zlink_monitor_close">zlink_monitor_close<a class="headerlink" href="#zlink_monitor_close" title="Permanent link">&para;</a></h3>
+<p>모든 모니터 핸들(소켓 또는 서비스)을 닫고 리소스를 해제합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_monitor_close</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">**</span><span class="n">monitor_p_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>모니터를 닫고 <code>*monitor_p_</code>를 <code>NULL</code>로 설정합니다. 다른 스레드가 모니터
+콜백을 실행 중이면 <code>errno = EBUSY</code>로 실패합니다. 콜백 내에서의 self-close는
+성공하며, 콜백 반환 후까지 지연됩니다.</p>
+<p><strong>모든</strong> 모니터 타입 -- 소켓 모니터와 서비스 모니터 모두 -- 을 위한 통합 close
+함수입니다.</p>
+<p><strong>반환값:</strong> 성공 시 <code>0</code>, 실패 시 <code>-1</code> (errno가 설정됨).</p>
+<p><strong>참고:</strong> <code>zlink_socket_monitor_open</code>, <code>zlink_service_monitor_open</code></p>
+<hr />
+<h2 id="api_2">서비스 모니터 API<a class="headerlink" href="#api_2" title="Permanent link">&para;</a></h2>
+<p>서비스 모니터는 공개 service-monitor surface를 유지하는 서비스 계층
+컴포넌트의 상태 전이 이벤트를 제공합니다. transport 레벨 이벤트를 보고하는
+소켓 모니터와 달리, 서비스 모니터는 Discovery membership 변화 같은
+상위 수준 이벤트를 보고합니다.</p>
+<p><code>zlink_service_monitor_open()</code>의 target은 공개 service monitor를 제공하는
+서비스 핸들입니다. 현재 대표 대상은 Discovery이며, Spot과 SpotNode는
+더 이상 공개 service-monitor surface를 제공하지 않습니다. 서비스 종류는
+핸들의 runtime tag에서 결정되며, per-service open 함수나 <code>role</code>
+파라미터는 없습니다.</p>
+<h3 id="zlink_service_event_t-zlink_service_monitor_event_t">zlink_service_event_t / zlink_service_monitor_event_t<a class="headerlink" href="#zlink_service_event_t-zlink_service_monitor_event_t" title="Permanent link">&para;</a></h3>
+<p>단일 서비스 모니터 이벤트를 설명합니다.
+<code>zlink_service_monitor_event_t</code>는 <code>zlink_service_event_t</code>의 typedef입니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">zlink_service_event_t</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="p">{</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="n">zlink_service_kind_t</span><span class="w"> </span><span class="n">service_kind</span><span class="p">;</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">event_type</span><span class="p">;</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">    </span><span class="kt">int32_t</span><span class="w"> </span><span class="n">status</span><span class="p">;</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">    </span><span class="kt">int32_t</span><span class="w"> </span><span class="n">error_code</span><span class="p">;</span>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">value</span><span class="p">;</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">    </span><span class="n">zlink_service_event_detail_mask_t</span><span class="w"> </span><span class="n">detail_flags</span><span class="p">;</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="n">service_name</span><span class="p">[</span><span class="mi">256</span><span class="p">];</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="n">endpoint</span><span class="p">[</span><span class="mi">256</span><span class="p">];</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="w">    </span><span class="n">zlink_routing_id_t</span><span class="w"> </span><span class="n">routing_id</span><span class="p">;</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="n">subject</span><span class="p">[</span><span class="mi">256</span><span class="p">];</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="w">    </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">subject_kind</span><span class="p">;</span>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="p">}</span><span class="w"> </span><span class="n">zlink_service_event_t</span><span class="p">;</span>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="k">typedef</span><span class="w"> </span><span class="n">zlink_service_event_t</span><span class="w"> </span><span class="n">zlink_service_monitor_event_t</span><span class="p">;</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>필드</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>service_kind</code></td>
+<td>컴포넌트 타입을 식별하는 <code>ZLINK_SERVICE_KIND_*</code> 상수 중 하나.</td>
+</tr>
+<tr>
+<td><code>event_type</code></td>
+<td>이벤트를 나타내는 비트마스크 (아래 서비스 이벤트 상수 중 하나).</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>이벤트별 상태 코드.</td>
+</tr>
+<tr>
+<td><code>error_code</code></td>
+<td><code>event_type</code>이 실패를 나타낼 때의 에러 코드.</td>
+</tr>
+<tr>
+<td><code>value</code></td>
+<td>이벤트별 숫자 값.</td>
+</tr>
+<tr>
+<td><code>detail_flags</code></td>
+<td><code>ZLINK_EVENT_DETAIL_*</code> 플래그 비트마스크.</td>
+</tr>
+<tr>
+<td><code>service_name</code></td>
+<td>null 종료 서비스 이름 (<code>DETAIL_SERVICE_NAME</code> 시 유효).</td>
+</tr>
+<tr>
+<td><code>endpoint</code></td>
+<td>null 종료 엔드포인트 (<code>DETAIL_ENDPOINT</code> 시 유효).</td>
+</tr>
+<tr>
+<td><code>routing_id</code></td>
+<td>주체/피어 라우팅 아이덴티티 (해당 detail 플래그 시 유효).</td>
+</tr>
+<tr>
+<td><code>subject</code></td>
+<td>null 종료 subject (<code>DETAIL_SUBJECT</code> 시 유효).</td>
+</tr>
+<tr>
+<td><code>subject_kind</code></td>
+<td>subject 종류 (<code>DETAIL_SUBJECT_KIND</code> 시 유효).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="zlink_service_monitor_handler_fn">zlink_service_monitor_handler_fn<a class="headerlink" href="#zlink_service_monitor_handler_fn" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">typedef</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">zlink_service_monitor_handler_fn</span><span class="p">)</span><span class="w"> </span><span class="p">(</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">zlink_service_event_t</span><span class="w"> </span><span class="o">*</span><span class="n">event_</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>서비스 모니터 이벤트 콜백. I/O 스레드에서 호출됩니다.</p>
+<h3 id="zlink_service_monitor_open_options_t">zlink_service_monitor_open_options_t<a class="headerlink" href="#zlink_service_monitor_open_options_t" title="Permanent link">&para;</a></h3>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">zlink_service_monitor_open_options_t</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="p">{</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="n">zlink_service_monitor_event_mask_t</span><span class="w"> </span><span class="n">events</span><span class="p">;</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="p">}</span><span class="w"> </span><span class="n">zlink_service_monitor_open_options_t</span><span class="p">;</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>필드</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>events</code></td>
+<td>관찰할 이벤트 플래그 비트마스크 (<code>zlink_service_monitor_event_mask_t</code>).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_7">서비스 종류 상수<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>값</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_SERVICE_KIND_DISCOVERY</code></td>
+<td>1</td>
+<td>Discovery 컴포넌트</td>
+</tr>
+<tr>
+<td><code>ZLINK_SERVICE_KIND_SPOT_SUB</code></td>
+<td>3</td>
+<td>예약된 legacy 값. SPOT은 더 이상 공개 service monitor를 제공하지 않음</td>
+</tr>
+<tr>
+<td><code>ZLINK_SERVICE_KIND_SPOT_PUB</code></td>
+<td>4</td>
+<td>예약된 legacy 값. SPOT은 더 이상 공개 service monitor를 제공하지 않음</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_8">서비스 이벤트 상수<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<h4 id="_9">공통 이벤트<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>값</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_MONITOR_EVENT_ERROR</code></td>
+<td><code>1 &lt;&lt; 4</code></td>
+<td>에러 발생</td>
+</tr>
+<tr>
+<td><code>ZLINK_MONITOR_EVENT_CLOSED</code></td>
+<td><code>1 &lt;&lt; 17</code></td>
+<td>모니터 닫힘</td>
+</tr>
+</tbody>
+</table>
+<h4 id="discovery">Discovery 이벤트<a class="headerlink" href="#discovery" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>값</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_DISCOVERY_SERVICE_UP</code></td>
+<td><code>1 &lt;&lt; 5</code></td>
+<td>검색된 서비스가 활성화됨</td>
+</tr>
+<tr>
+<td><code>ZLINK_DISCOVERY_SERVICE_DOWN</code></td>
+<td><code>1 &lt;&lt; 6</code></td>
+<td>검색된 서비스가 비활성화됨</td>
+</tr>
+<tr>
+<td><code>ZLINK_DISCOVERY_PROVIDERS_CHANGED</code></td>
+<td><code>1 &lt;&lt; 7</code></td>
+<td>서비스 provider 집합이 변경됨</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_10">서비스 모니터 이벤트 마스크 상수<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h4>
+<p><code>ZLINK_SERVICE_MONITOR_EVENT_*</code> 상수는
+<code>zlink_service_monitor_open_options_t.events</code> 비트마스크 구성에 사용합니다.
+위 per-service 상수와 동일한 비트에 매핑됩니다.</p>
+<p><strong>공통:</strong>
+- <code>..._EVENT_ERROR</code> -&gt; <code>ZLINK_MONITOR_EVENT_ERROR</code>
+- <code>..._EVENT_CLOSED</code> -&gt; <code>ZLINK_MONITOR_EVENT_CLOSED</code></p>
+<p><strong>Discovery:</strong>
+- <code>..._DISCOVERY_SERVICE_UP</code> -&gt; <code>ZLINK_DISCOVERY_SERVICE_UP</code>
+- <code>..._DISCOVERY_SERVICE_DOWN</code> -&gt; <code>ZLINK_DISCOVERY_SERVICE_DOWN</code>
+- <code>..._DISCOVERY_PROVIDERS_CHANGED</code> -&gt; <code>ZLINK_DISCOVERY_PROVIDERS_CHANGED</code></p>
+<ul>
+<li><code>ZLINK_SERVICE_MONITOR_EVENT_ALL</code> -&gt; 모든 서비스 이벤트</li>
+</ul>
+<h3 id="detail">Detail 플래그 상수<a class="headerlink" href="#detail" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>상수</th>
+<th>값</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZLINK_EVENT_DETAIL_SERVICE_NAME</code></td>
+<td><code>0x0001</code></td>
+<td><code>service_name</code> 필드가 채워짐</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_DETAIL_ENDPOINT</code></td>
+<td><code>0x0002</code></td>
+<td><code>endpoint</code> 필드가 채워짐</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_DETAIL_SUBJECT_RID</code></td>
+<td><code>0x0004</code></td>
+<td><code>routing_id</code>에 주체 아이덴티티 포함</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_DETAIL_PEER_RID</code></td>
+<td><code>0x0008</code></td>
+<td><code>routing_id</code>에 피어 아이덴티티 포함</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_DETAIL_SUBJECT</code></td>
+<td><code>0x0010</code></td>
+<td><code>subject</code> 필드가 채워짐</td>
+</tr>
+<tr>
+<td><code>ZLINK_EVENT_DETAIL_SUBJECT_KIND</code></td>
+<td><code>0x0020</code></td>
+<td><code>subject_kind</code> 필드가 채워짐</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="zlink_service_monitor_open">zlink_service_monitor_open<a class="headerlink" href="#zlink_service_monitor_open" title="Permanent link">&para;</a></h3>
+<p>통합 서비스 모니터를 recv 모델로 엽니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="nf">zlink_service_monitor_open</span><span class="w"> </span><span class="p">(</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">target_</span><span class="p">,</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">zlink_service_monitor_open_options_t</span><span class="w"> </span><span class="o">*</span><span class="n">options_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>공개 service monitor를 제공하는 서비스 핸들에 서비스 모니터를 생성하고
+핸들을 반환합니다. <code>target_</code>은 Discovery 핸들을 받을 수 있습니다.
+Spot 및 SpotNode는 더 이상 여기 대상이 아니며, SpotNode status/query
+API와 benchmark control barrier를 사용해야 합니다.</p>
+<p><code>options_-&gt;events</code> 비트마스크로 관찰할 이벤트를 선택하며, 통합 마스크 타입인
+<code>zlink_service_monitor_event_mask_t</code>를 사용합니다.</p>
+<p>모니터는 <strong>recv 모델</strong>로 시작합니다. <code>zlink_service_monitor_recv()</code>로
+이벤트를 가져오거나, <code>zlink_service_monitor_handler()</code>를 호출하여 callback
+모델로 전환할 수 있습니다.</p>
+<p><strong>반환값:</strong> 성공 시 모니터 핸들, 실패 시 <code>NULL</code> (errno가 설정됨).</p>
+<p><strong>스레드 안전성:</strong> 모니터 handle 자체는 thread-safe child handle입니다.</p>
+<p><strong>참고:</strong> <code>zlink_service_monitor_recv</code>, <code>zlink_service_monitor_handler</code>,
+<code>zlink_monitor_close</code></p>
+<hr />
+<h3 id="zlink_service_monitor_handler">zlink_service_monitor_handler<a class="headerlink" href="#zlink_service_monitor_handler" title="Permanent link">&para;</a></h3>
+<p>서비스 모니터에 콜백 핸들러를 부착합니다 (단방향 전환).</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_service_monitor_handler</span><span class="w"> </span><span class="p">(</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">monitor_</span><span class="p">,</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span><span class="n">zlink_service_monitor_handler_fn</span><span class="w"> </span><span class="n">handler_</span><span class="p">,</span>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">userdata_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>모니터를 recv 모델에서 <strong>callback-only 모델</strong>로 전환합니다. 부착 후
+<code>zlink_service_monitor_recv()</code>는 <code>errno = EBUSY</code>와 함께 <code>-1</code>을 반환합니다.
+이 전환은 단방향이며 되돌릴 수 없습니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+<hr />
+<h3 id="zlink_service_monitor_recv">zlink_service_monitor_recv<a class="headerlink" href="#zlink_service_monitor_recv" title="Permanent link">&para;</a></h3>
+<p>recv 모델에서 서비스 모니터의 다음 이벤트를 수신합니다.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kt">int</span><span class="w"> </span><span class="nf">zlink_service_monitor_recv</span><span class="w"> </span><span class="p">(</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">monitor_</span><span class="p">,</span><span class="w"> </span><span class="n">zlink_service_monitor_event_t</span><span class="w"> </span><span class="o">*</span><span class="n">out_</span><span class="p">);</span>
+</span></code></pre></div>
+<p>다음 pending 이벤트를 <code>out_</code>에 읽어옵니다.
+<code>zlink_service_monitor_handler()</code>를 통해 callback 모델로 전환된 경우
+<code>errno = EBUSY</code>와 함께 <code>-1</code>을 반환합니다.</p>
+<p><strong>반환값:</strong> 성공 시 0, 실패 시 -1 (errno가 설정됨).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  맨위로
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="하단/푸터" >
+        
+          
+          <a href="../events/" class="md-footer__link md-footer__link--prev" aria-label="이전: 이벤트">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                이전
+              </span>
+              <div class="md-ellipsis">
+                이벤트
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../polling/" class="md-footer__link md-footer__link--next" aria-label="다음: 폴링">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                다음
+              </span>
+              <div class="md-ellipsis">
+                폴링
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/kairos-code-dev/zlink" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "navigation.footer", "navigation.indexes", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\ud074\ub9bd\ubcf4\ub4dc\uc5d0 \ubcf5\uc0ac\ub428", "clipboard.copy": "\ud074\ub9bd\ubcf4\ub4dc\ub85c \ubcf5\uc0ac", "search.result.more.one": "\uc774 \ubb38\uc11c\uc5d0\uc11c 1\uac1c\uc758 \uac80\uc0c9 \uacb0\uacfc \ub354 \ubcf4\uae30", "search.result.more.other": "\uc774 \ubb38\uc11c\uc5d0\uc11c #\uac1c\uc758 \uac80\uc0c9 \uacb0\uacfc \ub354 \ubcf4\uae30", "search.result.none": "\uac80\uc0c9\uc5b4\uc640 \uc77c\uce58\ud558\ub294 \ubb38\uc11c\uac00 \uc5c6\uc2b5\ub2c8\ub2e4", "search.result.one": "1\uac1c\uc758 \uc77c\uce58\ud558\ub294 \ubb38\uc11c", "search.result.other": "#\uac1c\uc758 \uc77c\uce58\ud558\ub294 \ubb38\uc11c", "search.result.placeholder": "\uac80\uc0c9\uc5b4\ub97c \uc785\ub825\ud558\uc138\uc694", "search.result.term.missing": "\ud3ec\ud568\ub418\uc9c0 \uc54a\uc740 \uac80\uc0c9\uc5b4", "select.version": "\ubc84\uc804 \uc120\ud0dd"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

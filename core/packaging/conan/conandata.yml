@@ -1,7 +1,7 @@
 sources:
   "5.0.28":
     url: "https://github.com/kairos-code-dev/zlink/archive/refs/tags/core/v5.0.28.tar.gz"
-    sha256: "b7ef8ad2a7da04318bfc032ca74e8d9957c810b2283fd5924f40ede98ac80d27"
+    sha256: "0b36cfa36c2c379a0e70e21eaa9d2e01b3fc80e81ce1a778e40386380b41fc97"
   "5.0.27":
     url: "https://github.com/kairos-code-dev/zlink/archive/refs/tags/core/v5.0.27.tar.gz"
   "5.0.25":

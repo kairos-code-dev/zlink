@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../dist');
-const { createMetricCollector, decodeMetricHeader, currentEpochUs, summarizeMetrics } = require('../common/perf_metrics');
+const { createMetricCollector, decodeMetricHeader, currentEpochNs, summarizeMetrics } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { drainRecvSocket } = require('./perf_multi_runtime');
 async function main() {
@@ -19,7 +19,7 @@ async function main() {
         server.bind(options.endpoint);
         const recvTask = drainRecvSocket(server, (received) => {
             const header = decodeMetricHeader(received.parts[0].data);
-            collector.record(header, currentEpochUs());
+            collector.record(header, currentEpochNs());
         }, () => stop);
         console.log(`READY,${options.endpoint}`);
         const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -31,7 +31,7 @@ async function main() {
         }
         await recvTask;
         const result = await collector.finish();
-        const resultLines = summarizeMetrics('MULTI_DEALER_DEALER', 'tcp', options.msgSize, result.latenciesUs, options.duration);
+        const resultLines = summarizeMetrics('MULTI_DEALER_DEALER', 'tcp', options.msgSize, result.latenciesNs, options.duration);
         for (const lineOut of resultLines) {
             console.log(lineOut);
         }

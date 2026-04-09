@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const { parentPort, workerData } = require('node:worker_threads');
-const latenciesUs = [];
+const latenciesNs = [];
 const runId = workerData.runId >>> 0;
 const msgSize = workerData.msgSize >>> 0;
 let accepted = 0;
@@ -16,15 +16,15 @@ parentPort.on('message', (message) => {
         if (message.phase !== 1) {
             return;
         }
-        const receivedAtUs = BigInt(message.receivedAtUs);
-        const sentTsUs = BigInt(message.sentTsUs);
+        const receivedAtNs = BigInt(message.receivedAtNs);
+        const sentTsNs = BigInt(message.sentTsNs);
         accepted += 1;
-        latenciesUs.push(Number(receivedAtUs - sentTsUs));
+        latenciesNs.push(Number(receivedAtNs - sentTsNs));
         return;
     }
     if (message.type === 'finish') {
         parentPort.postMessage({
-            latenciesUs,
+            latenciesNs,
             accepted,
             rejected
         });

@@ -246,7 +246,7 @@ bool run_phase (zlink::service::spot_t &spot_,
                                          phase_,
                                          msg_size_,
                                          seq_,
-                                         perf_metric::now_us ())) {
+                                         perf_metric::now_ns ())) {
             errno = EINVAL;
             return false;
         }

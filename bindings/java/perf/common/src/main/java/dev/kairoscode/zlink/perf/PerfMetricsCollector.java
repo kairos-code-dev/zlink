@@ -16,7 +16,7 @@ final class PerfMetricsCollector {
     void startActiveWindow() {
     }
 
-    synchronized void recordMicros(long value) {
+    synchronized void recordNanos(long value) {
         count++;
         sum += value;
         if ((count % sampleStride) != 0L) {
@@ -30,15 +30,15 @@ final class PerfMetricsCollector {
     }
 
     void recordMillis(double value) {
-        recordMicros(Math.round(value * 1000.0d));
+        recordNanos(Math.round(value * 1_000_000.0d));
     }
 
     synchronized PerfUtil.Result finishSingle(PerfUtil.Config config) {
-        return finish(config, 1.0d);
+        return finish(config, 1_000_000.0d);
     }
 
     synchronized PerfUtil.Result finishMulti(PerfUtil.Config config) {
-        return finish(config, 1.0d);
+        return finish(config, 1_000_000.0d);
     }
 
     private PerfUtil.Result finish(PerfUtil.Config config, double latencyDivisor) {

@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochUs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const SERVER_ID = Buffer.from('multi-router-router-server', 'ascii');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { waitForConnectionReady } = require('./perf_multi_runtime');
@@ -47,12 +47,12 @@ async function main() {
                 stampPayload(activePayloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
                 routers[i].send(SERVER_ID, activePayloads[i]);
                 const echoed = routers[i].recv();
-                collector.record(decodeMetricHeader(echoed.parts[0].data), currentEpochUs());
+                collector.record(decodeMetricHeader(echoed.parts[0].data), currentEpochNs());
                 seq += 1n;
             }
         }
         const result = await collector.finish();
-        const lines = summarizeMetrics('MULTI_ROUTER_ROUTER', 'tcp', options.msgSize, result.latenciesUs, options.duration);
+        const lines = summarizeMetrics('MULTI_ROUTER_ROUTER', 'tcp', options.msgSize, result.latenciesNs, options.duration);
         for (const line of lines) {
             console.log(line);
         }

@@ -17,17 +17,17 @@ internal static partial class PerfRunner
         internal readonly uint Phase;
         internal readonly uint MsgSize;
         internal readonly ulong Seq;
-        internal readonly ulong SentTsUs;
+        internal readonly ulong SentTsNs;
 
         internal PerfMetricHeader(uint magic, uint runId, uint phase,
-            uint msgSize, ulong seq, ulong sentTsUs)
+            uint msgSize, ulong seq, ulong sentTsNs)
         {
             Magic = magic;
             RunId = runId;
             Phase = phase;
             MsgSize = msgSize;
             Seq = seq;
-            SentTsUs = sentTsUs;
+            SentTsNs = sentTsNs;
         }
     }
 
@@ -151,20 +151,20 @@ internal static partial class PerfRunner
     }
 
     internal static void PrintResult(string pattern, string transport, int size,
-        double throughput, double latencyUs)
+        double throughput, double latencyNs)
     {
-        PrintResult(pattern, transport, size, throughput, latencyUs, latencyUs,
-            latencyUs);
+        PrintResult(pattern, transport, size, throughput, latencyNs, latencyNs,
+            latencyNs);
     }
 
     internal static void PrintResult(string pattern, string transport, int size,
-        double throughput, double latencyUs, double latencyP95Us,
-        double latencyP99Us)
+        double throughput, double latencyNs, double latencyP95Ns,
+        double latencyP99Ns)
     {
         double bandwidth = BandwidthMbps(pattern, throughput, size);
-        double latencyMs = latencyUs / 1000.0;
-        double latencyP95Ms = latencyP95Us / 1000.0;
-        double latencyP99Ms = latencyP99Us / 1000.0;
+        double latencyMs = latencyNs / 1_000_000.0;
+        double latencyP95Ms = latencyP95Ns / 1_000_000.0;
+        double latencyP99Ms = latencyP99Ns / 1_000_000.0;
         Console.WriteLine(
             $"RESULT,current,{pattern},{transport},{size},throughput,{FormatMetric(throughput)}");
         Console.WriteLine(
@@ -189,7 +189,7 @@ internal static partial class PerfRunner
     }
 
     internal static bool StampMetricHeader(Span<byte> payload, uint runId,
-        PerfPhase phase, int msgSize, ulong seq, ulong sentTsUs)
+        PerfPhase phase, int msgSize, ulong seq, ulong sentTsNs)
     {
         if (payload.Length < PerfMetricHeaderSize)
             return false;
@@ -203,7 +203,7 @@ internal static partial class PerfRunner
             (uint)Math.Max(0, msgSize));
         BinaryPrimitives.WriteUInt64LittleEndian(payload.Slice(16, 8), seq);
         BinaryPrimitives.WriteUInt64LittleEndian(payload.Slice(24, 8),
-            sentTsUs);
+            sentTsNs);
         return true;
     }
 
@@ -224,11 +224,11 @@ internal static partial class PerfRunner
             4));
         ulong seq = BinaryPrimitives.ReadUInt64LittleEndian(payload.Slice(16,
             8));
-        ulong sentTsUs = BinaryPrimitives.ReadUInt64LittleEndian(payload.Slice(
+        ulong sentTsNs = BinaryPrimitives.ReadUInt64LittleEndian(payload.Slice(
             24, 8));
 
         header = new PerfMetricHeader(magic, runId, phase, msgSize, seq,
-            sentTsUs);
+            sentTsNs);
         return magic == PerfMetricMagic;
     }
 

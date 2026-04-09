@@ -41,7 +41,7 @@ def _next_seq():
 def decode_header(data):
     if len(data) < HEADER_SIZE:
         return None
-    magic, run_id, phase, msg_size, seq, sent_ts_us = struct.unpack_from(
+    magic, run_id, phase, msg_size, seq, sent_ts_ns = struct.unpack_from(
         HEADER_FORMAT, data, 0
     )
     return {
@@ -50,16 +50,16 @@ def decode_header(data):
         "phase": phase,
         "msg_size": msg_size,
         "seq": seq,
-        "sent_ts_us": sent_ts_us,
+        "sent_ts_ns": sent_ts_ns,
     }
 
 
-def latency_us_from_message(data):
+def latency_ns_from_message(data):
     header = decode_header(data)
     if header is None or header["magic"] != HEADER_MAGIC:
         raise RuntimeError("invalid perf message header")
-    now_us = time.time_ns() // 1000
-    return float(now_us - header["sent_ts_us"])
+    now_ns = time.time_ns()
+    return float(now_ns - header["sent_ts_ns"])
 
 
 def is_active_message(data, *, expected_msg_size=None, run_id=None):
@@ -96,7 +96,7 @@ def stamp_payload(payload, phase=0, *, run_id=None, seq=None):
         int(phase),
         len(payload),
         int(header_seq),
-        int(time.time_ns() // 1000),
+        int(time.time_ns()),
     )
     return payload
 
@@ -113,22 +113,26 @@ def percentile(values, ratio):
     return float(ordered[index])
 
 
-def result_metrics(*, count, msg_size, elapsed_s, latencies_us):
+def result_metrics(*, count, msg_size, elapsed_s, latencies_ns):
     throughput = (count / elapsed_s) if elapsed_s > 0 else 0.0
     bandwidth = ((count * msg_size) / elapsed_s / 1_000_000.0) if elapsed_s > 0 else 0.0
-    median = statistics.median(latencies_us) if latencies_us else 0.0
+    median = statistics.median(latencies_ns) if latencies_ns else 0.0
     return {
         "throughput": throughput,
         "bandwidth": bandwidth,
-        "latency": float(median) / 1000.0,
-        "latency_p95": percentile(latencies_us, 0.95) / 1000.0,
-        "latency_p99": percentile(latencies_us, 0.99) / 1000.0,
+        "latency": float(median) / 1_000_000.0,
+        "latency_p95": percentile(latencies_ns, 0.95) / 1_000_000.0,
+        "latency_p99": percentile(latencies_ns, 0.99) / 1_000_000.0,
     }
 
 
 def print_result_lines(pattern, transport, msg_size, metrics):
     for name in ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99"):
-        print(f"RESULT,current,{pattern},{transport},{msg_size},{name},{metrics[name]:.2f}")
+        if name.startswith("latency"):
+            value = f"{metrics[name]:.6f}"
+        else:
+            value = f"{metrics[name]:.2f}"
+        print(f"RESULT,current,{pattern},{transport},{msg_size},{name},{value}")
 
 
 def unique_endpoint(prefix):

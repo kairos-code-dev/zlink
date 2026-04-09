@@ -21,7 +21,7 @@ fn process_run_id() -> u32 {
     static RUN_ID: OnceLock<u32> = OnceLock::new();
     *RUN_ID.get_or_init(|| {
         let pid = std::process::id();
-        let stamp = now_us() as u32;
+        let stamp = now_ns() as u32;
         stamp ^ pid.rotate_left(13)
     })
 }
@@ -32,7 +32,7 @@ pub fn encode_header(buf: &mut [u8], phase: u8, msg_size: u32, seq: u64) {
     buf[8] = phase;
     buf[9..13].copy_from_slice(&msg_size.to_le_bytes());
     buf[13..21].copy_from_slice(&seq.to_le_bytes());
-    buf[21..29].copy_from_slice(&(now_us() as i64).to_le_bytes());
+    buf[21..29].copy_from_slice(&(now_ns() as i64).to_le_bytes());
 }
 
 pub struct MetricHeader {
@@ -41,7 +41,7 @@ pub struct MetricHeader {
     pub phase: u8,
     pub msg_size: u32,
     pub seq: u64,
-    pub sent_ts: i64,
+    pub sent_ts_ns: i64,
 }
 
 pub fn decode_header(data: &[u8]) -> Option<MetricHeader> {
@@ -55,7 +55,7 @@ pub fn decode_header(data: &[u8]) -> Option<MetricHeader> {
         phase: data[8],
         msg_size: u32::from_le_bytes(data[9..13].try_into().unwrap()),
         seq: u64::from_le_bytes(data[13..21].try_into().unwrap()),
-        sent_ts: i64::from_le_bytes(data[21..29].try_into().unwrap()),
+        sent_ts_ns: i64::from_le_bytes(data[21..29].try_into().unwrap()),
     })
 }
 
@@ -71,16 +71,16 @@ pub fn decode_run_id(data: &[u8]) -> u32 {
     decode_header(data).map(|header| header.run_id).unwrap_or(0)
 }
 
-pub fn decode_sent_ts(data: &[u8]) -> i64 {
-    decode_header(data).map(|header| header.sent_ts).unwrap_or(0)
+pub fn decode_sent_ts_ns(data: &[u8]) -> i64 {
+    decode_header(data).map(|header| header.sent_ts_ns).unwrap_or(0)
 }
 
 pub fn message_payload<'a>(parts: &'a [Message]) -> &'a [u8] {
     parts.last().map(|part| part.data()).unwrap_or(&[])
 }
 
-pub fn now_us() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros() as u64
+pub fn now_ns() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64
 }
 
 pub fn is_stop_token(data: &[u8]) -> bool {
@@ -100,11 +100,11 @@ impl LatencyStats {
         Self { samples: Vec::with_capacity(1 << 16), count: 0, sum: 0.0 }
     }
 
-    pub fn record_us(&mut self, us: f64) {
+    pub fn record_ns(&mut self, ns: f64) {
         self.count += 1;
-        self.sum += us;
+        self.sum += ns;
         if self.samples.len() < 4 * 1024 * 1024 {
-            self.samples.push(us);
+            self.samples.push(ns);
         }
     }
 
@@ -114,7 +114,7 @@ impl LatencyStats {
         let mean = self.sum / self.count as f64;
         let p95 = percentile(&self.samples, 0.95);
         let p99 = percentile(&self.samples, 0.99);
-        StatsResult { count: self.count, mean_us: mean, p95_us: p95, p99_us: p99 }
+        StatsResult { count: self.count, mean_ns: mean, p95_ns: p95, p99_ns: p99 }
     }
 }
 
@@ -127,9 +127,9 @@ fn percentile(sorted: &[f64], p: f64) -> f64 {
 #[derive(Default)]
 pub struct StatsResult {
     pub count: u64,
-    pub mean_us: f64,
-    pub p95_us: f64,
-    pub p99_us: f64,
+    pub mean_ns: f64,
+    pub p95_ns: f64,
+    pub p99_ns: f64,
 }
 
 #[derive(Default)]
@@ -137,9 +137,9 @@ pub struct PhaseResult {
     pub count: u64,
     pub throughput: f64,
     pub bandwidth: f64,
-    pub latency_mean_us: f64,
-    pub latency_p95_us: f64,
-    pub latency_p99_us: f64,
+    pub latency_mean_ns: f64,
+    pub latency_p95_ns: f64,
+    pub latency_p99_ns: f64,
 }
 
 pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> PhaseResult {
@@ -154,9 +154,9 @@ pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> 
         count: stats.count,
         throughput,
         bandwidth,
-        latency_mean_us: stats.mean_us,
-        latency_p95_us: stats.p95_us,
-        latency_p99_us: stats.p99_us,
+        latency_mean_ns: stats.mean_ns,
+        latency_p95_ns: stats.p95_ns,
+        latency_p99_ns: stats.p99_ns,
     }
 }
 
@@ -165,9 +165,9 @@ pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> 
 pub fn print_phase_result(key: &str, phase: &PhaseResult) {
     println!("{key},throughput,{:.3}", phase.throughput);
     println!("{key},bandwidth,{:.3}", phase.bandwidth);
-    println!("{key},latency,{:.3}", phase.latency_mean_us / 1000.0);
-    println!("{key},latency_p95,{:.3}", phase.latency_p95_us / 1000.0);
-    println!("{key},latency_p99,{:.3}", phase.latency_p99_us / 1000.0);
+    println!("{key},latency,{:.3}", phase.latency_mean_ns / 1_000_000.0);
+    println!("{key},latency_p95,{:.3}", phase.latency_p95_ns / 1_000_000.0);
+    println!("{key},latency_p99,{:.3}", phase.latency_p99_ns / 1_000_000.0);
 }
 
 pub fn print_result(pattern: &str, transport: &str, size: usize, duration_s: u64, stats: &StatsResult) {

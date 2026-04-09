@@ -93,10 +93,10 @@ internal static class PerfDealerDealer
                 if (!active)
                     return;
 
-                long nowUs = TimestampUs();
-                long sentUs = DecodeHeader(recvBuffer.AsSpan(0, sizeof(long)));
-                double latencyUs = Math.Max(0L, nowUs - sentUs);
-                ReservoirSample(samples, latencyUs, ref sampleSeen, latencyCap,
+                long nowNs = TimestampNs();
+                long sentNs = DecodeHeader(recvBuffer.AsSpan(0, sizeof(long)));
+                double latencyNs = Math.Max(0L, nowNs - sentNs);
+                ReservoirSample(samples, latencyNs, ref sampleSeen, latencyCap,
                     ref rng);
             }
 
@@ -142,7 +142,7 @@ internal static class PerfDealerDealer
         {
             while (Stopwatch.GetTimestamp() < deadlineTicks)
             {
-                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
+                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
                 try
                 {
                     SendBlocking(sender, payload, SendFlags.None);
@@ -158,7 +158,7 @@ internal static class PerfDealerDealer
         {
             for (int i = 0; i < warmupCount; i++)
             {
-                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
+                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
                 try
                 {
                     SendBlocking(sender, payload, SendFlags.None);

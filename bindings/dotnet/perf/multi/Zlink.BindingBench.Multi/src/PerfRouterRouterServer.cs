@@ -73,11 +73,11 @@ internal static class PerfRouterRouterServer
                             benchStartTicks = Stopwatch.GetTimestamp();
                         benchEndTicks = Stopwatch.GetTimestamp();
                         echoCount++;
-                        ulong nowUs = EpochUs();
-                        if (header.SentTsUs > 0 && nowUs >= header.SentTsUs)
+                        ulong nowNs = EpochNs();
+                        if (header.SentTsNs > 0 && nowNs >= header.SentTsNs)
                         {
-                            double sampleUs = nowUs - header.SentTsUs;
-                            ReservoirSample(latSamples, sampleUs, ref sampleSeen,
+                            double sampleNs = nowNs - header.SentTsNs;
+                            ReservoirSample(latSamples, sampleNs, ref sampleSeen,
                                 latencySampleCap, ref rng);
                         }
                     }
@@ -107,13 +107,13 @@ Done:
                 ResolveMultiDurationSeconds(options));
             double throughput = echoCount / configuredSeconds;
             var latency = ComputeLatencyStats(latSamples);
-            double fallbackLatencyUs = (configuredSeconds * 1_000_000.0)
+            double fallbackLatencyNs = (configuredSeconds * 1_000_000_000.0)
                 / Math.Max(1.0, echoCount);
-            double latencyUs = latency.mean > 0.0 ? latency.mean : fallbackLatencyUs;
-            double latencyP95Us = latency.p95 > 0.0 ? latency.p95 : latencyUs;
-            double latencyP99Us = latency.p99 > 0.0 ? latency.p99 : latencyP95Us;
-            PrintResult(options.Pattern, options.Transport, size, throughput, latencyUs,
-                latencyP95Us, latencyP99Us);
+            double latencyNs = latency.mean > 0.0 ? latency.mean : fallbackLatencyNs;
+            double latencyP95Ns = latency.p95 > 0.0 ? latency.p95 : latencyNs;
+            double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
+            PrintResult(options.Pattern, options.Transport, size, throughput, latencyNs,
+                latencyP95Ns, latencyP99Ns);
         }
 
         return 0;

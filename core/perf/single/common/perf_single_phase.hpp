@@ -58,16 +58,16 @@ inline int single_phase_completion_timeout_ms (int duration_s_,
     return std::max (5000, std::max (duration_ms, recv_timeout_ms_ * 10));
 }
 
-inline double single_latency_us (const perf_single_metric::header_t &header_,
+inline double single_latency_ns (const perf_single_metric::header_t &header_,
                                  double factor_ = 1.0)
 {
-    const uint64_t now_us = perf_single_metric::now_us ();
-    if (header_.sent_ts_us <= 0
-        || now_us < static_cast<uint64_t> (header_.sent_ts_us)) {
+    const uint64_t now_ns = perf_single_metric::now_ns ();
+    if (header_.sent_ts_ns <= 0
+        || now_ns < static_cast<uint64_t> (header_.sent_ts_ns)) {
         return 0.0;
     }
     return static_cast<double> (
-             now_us - static_cast<uint64_t> (header_.sent_ts_us))
+             now_ns - static_cast<uint64_t> (header_.sent_ts_ns))
            * factor_;
 }
 
@@ -92,7 +92,7 @@ inline bool single_record_active_header (
         return false;
 
     single_increment_counter (state_->active_received);
-    state_->latency.add (single_latency_us (header_, latency_factor_));
+    state_->latency.add (single_latency_ns (header_, latency_factor_));
     return true;
 }
 

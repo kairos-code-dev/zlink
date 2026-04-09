@@ -228,12 +228,12 @@ class bench_client_t : public bench_client_iface_t
                         : 0.0;
                     const double bandwidth =
                       (m.throughput_bps * 2.0) / 1000000.0;
-                    const double latency_mean_rtt =
-                      m.mean_us > 0.0 ? m.mean_us : m.p50_us;
-                    const double latency_p95_rtt =
-                      m.p95_us > 0.0 ? m.p95_us : latency_mean_rtt;
-                    const double latency_p99_rtt =
-                      m.p99_us > 0.0 ? m.p99_us : latency_p95_rtt;
+                    const double latency_mean_ns =
+                      m.mean_ns > 0.0 ? m.mean_ns : m.p50_ns;
+                    const double latency_p95_ns =
+                      m.p95_ns > 0.0 ? m.p95_ns : latency_mean_ns;
+                    const double latency_p99_ns =
+                      m.p99_ns > 0.0 ? m.p99_ns : latency_p95_ns;
                     std::printf ("RESULT,current,%s,%s,%zu,throughput,%.6f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
                                  size, throughput);
@@ -242,13 +242,13 @@ class bench_client_t : public bench_client_iface_t
                                  size, bandwidth);
                     std::printf ("RESULT,current,%s,%s,%zu,latency,%.6f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
-                                 size, latency_mean_rtt / 1000.0);
+                                 size, latency_mean_ns / 1000000.0);
                     std::printf ("RESULT,current,%s,%s,%zu,latency_p95,%.6f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
-                                 size, latency_p95_rtt / 1000.0);
+                                 size, latency_p95_ns / 1000000.0);
                     std::printf ("RESULT,current,%s,%s,%zu,latency_p99,%.6f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
-                                 size, latency_p99_rtt / 1000.0);
+                                 size, latency_p99_ns / 1000000.0);
                 }
                 std::fflush (stdout);
                 if (!m.pass)
@@ -325,7 +325,7 @@ class bench_client_t : public bench_client_iface_t
     }
 
     // Record received bytes and RTT derived from stamped payload header.
-    void on_recv_done (size_t bytes, uint64_t sent_ts_us) override
+    void on_recv_done (size_t bytes, uint64_t sent_ts_ns) override
     {
         const long remaining =
           outstanding_total.fetch_sub (1, std::memory_order_relaxed) - 1;
@@ -339,11 +339,11 @@ class bench_client_t : public bench_client_iface_t
         bytes_recv_measure.fetch_add (
           static_cast<long long> (bytes), std::memory_order_relaxed);
 
-        if (sent_ts_us > 0) {
-            const uint64_t now_us = perf_multi_metric::now_us ();
-            if (now_us >= sent_ts_us)
+        if (sent_ts_ns > 0) {
+            const uint64_t now_ns = perf_multi_metric::now_ns ();
+            if (now_ns >= sent_ts_ns)
                 add_rtt_sample (
-                  static_cast<double> (now_us - sent_ts_us));
+                  static_cast<double> (now_ns - sent_ts_ns));
         }
     }
 
@@ -661,15 +661,15 @@ class bench_client_t : public bench_client_iface_t
                 snapshot.push_back (decode_double_bits (
                   rtt_samples_bits[i].load (std::memory_order_acquire)));
             }
-            double sum_us = 0.0;
+            double sum_ns = 0.0;
             for (size_t i = 0; i < snapshot.size (); ++i)
-                sum_us += snapshot[i];
+                sum_ns += snapshot[i];
             if (!snapshot.empty ())
-                out.mean_us = sum_us / static_cast<double> (snapshot.size ());
+                out.mean_ns = sum_ns / static_cast<double> (snapshot.size ());
             std::sort (snapshot.begin (), snapshot.end ());
-            out.p50_us = perf_stream_common::percentile_from_sorted (snapshot, 0.50);
-            out.p95_us = perf_stream_common::percentile_from_sorted (snapshot, 0.95);
-            out.p99_us = perf_stream_common::percentile_from_sorted (snapshot, 0.99);
+            out.p50_ns = perf_stream_common::percentile_from_sorted (snapshot, 0.50);
+            out.p95_ns = perf_stream_common::percentile_from_sorted (snapshot, 0.95);
+            out.p99_ns = perf_stream_common::percentile_from_sorted (snapshot, 0.99);
         }
 
         out.send_error = send_error_measure.load (std::memory_order_relaxed);

@@ -17,7 +17,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 //   [8]      phase      u8      (0=warmup, 1=active, 2=cooldown)
 //   [9..13]  msg_size   u32 LE
 //   [13..21] seq        u64 LE
-//   [21..29] sent_ts    i64 LE  (microseconds since epoch)
+//   [21..29] sent_ts_ns i64 LE  (nanoseconds since epoch)
 
 pub const HEADER_SIZE: usize = 29;
 pub const MAGIC: u32 = 0x5A4C_4E4B; // "ZLNK"
@@ -29,7 +29,7 @@ fn process_run_id() -> u32 {
     static RUN_ID: OnceLock<u32> = OnceLock::new();
     *RUN_ID.get_or_init(|| {
         let pid = std::process::id();
-        let stamp = now_us() as u32;
+        let stamp = now_ns() as u32;
         stamp ^ pid.rotate_left(13)
     })
 }
@@ -40,7 +40,7 @@ pub fn encode_header(buf: &mut [u8], phase: u8, msg_size: u32, seq: u64) {
     buf[8] = phase;
     buf[9..13].copy_from_slice(&msg_size.to_le_bytes());
     buf[13..21].copy_from_slice(&seq.to_le_bytes());
-    buf[21..29].copy_from_slice(&(now_us() as i64).to_le_bytes());
+    buf[21..29].copy_from_slice(&(now_ns() as i64).to_le_bytes());
 }
 
 pub fn decode_run_id(data: &[u8]) -> u32 {
@@ -57,7 +57,7 @@ pub fn decode_msg_size(data: &[u8]) -> u32 {
     u32::from_le_bytes(data[9..13].try_into().unwrap())
 }
 
-pub fn decode_sent_ts(data: &[u8]) -> i64 {
+pub fn decode_sent_ts_ns(data: &[u8]) -> i64 {
     if data.len() < HEADER_SIZE {
         return 0;
     }
@@ -84,11 +84,11 @@ pub fn message_payload<'a>(parts: &'a [Message]) -> &'a [u8] {
     parts.last().map(|part| part.data()).unwrap_or(&[])
 }
 
-pub fn now_us() -> u64 {
+pub fn now_ns() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_micros() as u64
+        .as_nanos() as u64
 }
 
 // -- Latency statistics ------------------------------------------------------
@@ -108,11 +108,11 @@ impl LatencyStats {
         }
     }
 
-    pub fn record(&mut self, latency_us: u64) {
+    pub fn record_ns(&mut self, latency_ns: u64) {
         self.count += 1;
-        self.sum += latency_us;
+        self.sum += latency_ns;
         if self.samples.len() < 4 * 1024 * 1024 {
-            self.samples.push(latency_us);
+            self.samples.push(latency_ns);
         }
     }
 
@@ -126,9 +126,9 @@ impl LatencyStats {
         let p99 = percentile(&self.samples, 0.99);
         StatsResult {
             count: self.count,
-            mean,
-            p95,
-            p99,
+            mean_ns: mean,
+            p95_ns: p95,
+            p99_ns: p99,
         }
     }
 }
@@ -144,9 +144,9 @@ fn percentile(sorted: &[u64], p: f64) -> f64 {
 #[derive(Default)]
 pub struct StatsResult {
     pub count: u64,
-    pub mean: f64,
-    pub p95: f64,
-    pub p99: f64,
+    pub mean_ns: f64,
+    pub p95_ns: f64,
+    pub p99_ns: f64,
 }
 
 #[derive(Default)]
@@ -154,9 +154,9 @@ pub struct PhaseResult {
     pub count: u64,
     pub throughput: f64,
     pub bandwidth: f64,
-    pub latency_mean: f64,
-    pub latency_p95: f64,
-    pub latency_p99: f64,
+    pub latency_mean_ns: f64,
+    pub latency_p95_ns: f64,
+    pub latency_p99_ns: f64,
 }
 
 pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> PhaseResult {
@@ -171,9 +171,9 @@ pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> 
         count: stats.count,
         throughput,
         bandwidth,
-        latency_mean: stats.mean,
-        latency_p95: stats.p95,
-        latency_p99: stats.p99,
+        latency_mean_ns: stats.mean_ns,
+        latency_p95_ns: stats.p95_ns,
+        latency_p99_ns: stats.p99_ns,
     }
 }
 
@@ -182,9 +182,9 @@ pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> 
 pub fn print_phase_result(key: &str, phase: &PhaseResult) {
     println!("{key},throughput,{:.2}", phase.throughput);
     println!("{key},bandwidth,{:.6}", phase.bandwidth);
-    println!("{key},latency,{:.2}", phase.latency_mean);
-    println!("{key},latency_p95,{:.2}", phase.latency_p95);
-    println!("{key},latency_p99,{:.2}", phase.latency_p99);
+    println!("{key},latency,{:.3}", phase.latency_mean_ns / 1_000_000.0);
+    println!("{key},latency_p95,{:.3}", phase.latency_p95_ns / 1_000_000.0);
+    println!("{key},latency_p99,{:.3}", phase.latency_p99_ns / 1_000_000.0);
 }
 
 pub fn print_result(
@@ -301,9 +301,9 @@ pub fn wait_monitor_ready(mon: &zlink::SocketMonitor) {
 /// Record active-phase latency if the payload matches the expected run.
 pub fn handle_recv(data: &[u8], expected_size: usize, stats: &std::sync::Mutex<LatencyStats>) {
     if is_valid_active_message(data, expected_size) {
-        let sent_ts = decode_sent_ts(data);
-        let latency = (now_us() as i64).saturating_sub(sent_ts).max(0) as u64;
-        stats.lock().unwrap().record(latency);
+        let sent_ts_ns = decode_sent_ts_ns(data);
+        let latency_ns = (now_ns() as i64).saturating_sub(sent_ts_ns).max(0) as u64;
+        stats.lock().unwrap().record_ns(latency_ns);
     }
 }
 

@@ -42,7 +42,7 @@ internal static class PerfSpotServer
             config.DurationSeconds);
 
         PrintResult(Pattern, config.Transport, config.Size, result.Throughput,
-            result.LatencyUs, result.LatencyP95Us, result.LatencyP99Us);
+            result.LatencyNs, result.LatencyP95Ns, result.LatencyP99Ns);
         return 0;
     }
 
@@ -79,7 +79,7 @@ internal static class PerfSpotServer
                && Stopwatch.GetTimestamp() < deadlineTicks)
         {
             StampMetricHeader(state.Payload.AsSpan(), RunId, phase,
-                config.Size, state.Seq++, EpochUs());
+                config.Size, state.Seq++, EpochNs());
             if (!PublishUntilReady(spotPub, state.Payload.AsSpan(),
                     deadlineTicks, control))
             {
@@ -100,7 +100,7 @@ internal static class PerfSpotServer
                && Stopwatch.GetTimestamp() < benchDeadlineTicks)
         {
             StampMetricHeader(state.Payload.AsSpan(), RunId, PerfPhase.Active,
-                config.Size, state.Seq++, EpochUs());
+                config.Size, state.Seq++, EpochNs());
             if (PublishUntilReady(spotPub, state.Payload.AsSpan(),
                     benchDeadlineTicks, control))
                 sendCount++;
@@ -118,9 +118,9 @@ internal static class PerfSpotServer
     {
         double configuredSeconds = Math.Max(1.0, durationSeconds);
         double throughput = stats.SendCount / configuredSeconds;
-        double latencyUs = (configuredSeconds * 1_000_000.0)
+        double latencyNs = (configuredSeconds * 1_000_000_000.0)
             / Math.Max(1.0, stats.SendCount);
-        return new SpotServerResult(throughput, latencyUs, latencyUs, latencyUs);
+        return new SpotServerResult(throughput, latencyNs, latencyNs, latencyNs);
     }
 
     private static bool PublishUntilReady(Spot spotPub, ReadOnlySpan<byte> payload,
@@ -271,19 +271,19 @@ internal static class PerfSpotServer
 
     private readonly struct SpotServerResult
     {
-        internal SpotServerResult(double throughput, double latencyUs,
-            double latencyP95Us, double latencyP99Us)
+        internal SpotServerResult(double throughput, double latencyNs,
+            double latencyP95Ns, double latencyP99Ns)
         {
             Throughput = throughput;
-            LatencyUs = latencyUs;
-            LatencyP95Us = latencyP95Us;
-            LatencyP99Us = latencyP99Us;
+            LatencyNs = latencyNs;
+            LatencyP95Ns = latencyP95Ns;
+            LatencyP99Ns = latencyP99Ns;
         }
 
         internal double Throughput { get; }
-        internal double LatencyUs { get; }
-        internal double LatencyP95Us { get; }
-        internal double LatencyP99Us { get; }
+        internal double LatencyNs { get; }
+        internal double LatencyP95Ns { get; }
+        internal double LatencyP99Ns { get; }
     }
 
     private readonly struct SpotServerActiveStats

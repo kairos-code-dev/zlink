@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochUs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 async function runSpotBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     const node = new zlink.SpotNode(ctx);
@@ -28,7 +28,7 @@ async function runSpotBenchmark(msgSize, options) {
                     continue;
                 }
                 const header = decodeMetricHeader(received.parts[0].data);
-                collector.record(header, currentEpochUs());
+                collector.record(header, currentEpochNs());
             }
         })();
         while (process.hrtime.bigint() < stopAtNs) {
@@ -54,7 +54,7 @@ async function runSpotBenchmark(msgSize, options) {
         stop = true;
         await recvTask;
         const result = await collector.finish();
-        return result.latenciesUs;
+        return result.latenciesNs;
     }
     finally {
         spot.close();

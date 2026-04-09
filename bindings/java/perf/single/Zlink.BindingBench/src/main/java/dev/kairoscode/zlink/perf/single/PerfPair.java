@@ -66,7 +66,7 @@ final class PerfPair {
                                     return;
                                 }
                                 if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                                    metrics.recordMicros(header.latencyMicros());
+                                    metrics.recordNanos(header.latencyNanos());
                                 }
                             }
                         }

@@ -77,7 +77,7 @@ class dealer_dealer_client_bench_t
           _poll_events (),
           _payload (std::max<size_t> (msg_size, perf_metric::header_size ()),
                     k_payload_fill),
-          _run_id (static_cast<uint32_t> (perf_metric::now_us ())),
+          _run_id (static_cast<uint32_t> (perf_metric::now_ns ())),
           _seq (1),
           _phase_cfg (),
           _result ()
@@ -188,14 +188,14 @@ class dealer_dealer_client_bench_t
         if (!state.sock)
             return false;
 
-        const uint64_t sent_ts = perf_metric::now_us ();
+        const uint64_t sent_ts_ns = perf_metric::now_ns ();
         if (!perf_metric::stamp_payload (_payload.data (),
                                          _payload.size (),
                                          _run_id,
                                          phase,
                                          _msg_size,
                                          _seq++,
-                                         sent_ts)) {
+                                         sent_ts_ns)) {
             debug_log ("stamp payload failed");
             return false;
         }
@@ -218,10 +218,10 @@ class dealer_dealer_client_bench_t
                 ++(*count);
             if (lat_out && phase == perf_metric::phase_active) {
                 const auto t1 = std::chrono::steady_clock::now ();
-                const double us = static_cast<double> (
-                  std::chrono::duration_cast<std::chrono::microseconds> (t1 - t0)
+                const double ns = static_cast<double> (
+                  std::chrono::duration_cast<std::chrono::nanoseconds> (t1 - t0)
                     .count ());
-                lat_out->add (us);
+                lat_out->add (ns);
             }
             return true;
         }

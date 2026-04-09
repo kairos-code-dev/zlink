@@ -12,7 +12,7 @@ from perf_metrics import (
     benchmark_run_id,
     build_report_path,
     ensure_report_path,
-    latency_us_from_message,
+    latency_ns_from_message,
     new_payload,
     is_active_message,
     parse_result_lines,

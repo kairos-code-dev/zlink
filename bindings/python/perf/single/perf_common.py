@@ -10,7 +10,7 @@ if perf_dir_text not in sys.path:
 from perf_metrics import (
     benchmark_run_id,
     build_report_path,
-    latency_us_from_message,
+    latency_ns_from_message,
     new_payload,
     parse_result_lines,
     platform_name,

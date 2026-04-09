@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochUs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { drainRecvSocket, waitForConnectionReady } = require('./perf_single_common');
 async function runDealerDealerBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
@@ -24,7 +24,7 @@ async function runDealerDealerBenchmark(msgSize, options) {
         let stop = false;
         const recvTask = drainRecvSocket(server, (received) => {
             const header = decodeMetricHeader(received.parts[0].data);
-            collector.record(header, currentEpochUs());
+            collector.record(header, currentEpochNs());
         }, () => stop);
         while (process.hrtime.bigint() < stopAtNs) {
             for (let i = 0; i < 256 && process.hrtime.bigint() < stopAtNs; i += 1) {
@@ -49,7 +49,7 @@ async function runDealerDealerBenchmark(msgSize, options) {
         stop = true;
         await recvTask;
         const result = await collector.finish();
-        return result.latenciesUs;
+        return result.latenciesNs;
     }
     finally {
         client.close();

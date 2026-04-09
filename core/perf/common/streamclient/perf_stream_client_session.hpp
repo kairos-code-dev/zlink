@@ -481,7 +481,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         if (payload_write
             && size >= perf_multi_metric::header_size ()) {
             const uint64_t seq = owner.next_seq ();
-            const uint64_t sent_ts_us = perf_multi_metric::now_us ();
+            const uint64_t sent_ts_ns = perf_multi_metric::now_ns ();
             (void) perf_multi_metric::stamp_payload (
               payload_write,
               size,
@@ -489,7 +489,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
               owner.metric_phase (),
               size,
               seq,
-              sent_ts_us);
+              sent_ts_ns);
         }
 
         owner.on_send_begin (size);
@@ -806,14 +806,14 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         const size_t payload_bytes = bytes;
         const unsigned char *payload_ptr = payload_bytes > 0 ? &read_buf[0] : NULL;
 
-        uint64_t sent_ts_us = 0;
+        uint64_t sent_ts_ns = 0;
         if (payload_ptr
             && payload_bytes >= perf_multi_metric::header_size ()) {
             perf_multi_metric::header_t header;
             if (perf_multi_metric::decode_payload_header (
                   payload_ptr, payload_bytes, &header)) {
                 if (header.msg_size == static_cast<uint32_t> (chunk_size))
-                    sent_ts_us = header.sent_ts_us;
+                    sent_ts_ns = header.sent_ts_ns;
                 else
                     owner.on_size_mismatch ();
             } else {
@@ -823,7 +823,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
         if (outstanding > 0) {
             --outstanding;
-            owner.on_recv_done (payload_bytes, sent_ts_us);
+            owner.on_recv_done (payload_bytes, sent_ts_ns);
         }
 
         maybe_send_more ();

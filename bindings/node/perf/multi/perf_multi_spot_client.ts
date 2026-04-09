@@ -7,7 +7,7 @@ const zlink = require('../../dist');
 const {
   createMetricCollector,
   decodeMetricHeader,
-  currentEpochUs,
+  currentEpochNs,
   sleepImmediate,
   summarizeMetrics
 } = require('../common/perf_metrics');
@@ -65,7 +65,7 @@ async function main() {
       stopResolve();
       return;
     }
-    collector.record(header, currentEpochUs());
+    collector.record(header, currentEpochNs());
   };
 
   const publishControl = async (payload) => {
@@ -174,7 +174,7 @@ async function main() {
       'MULTI_SPOT',
       'tcp',
       options.msgSize,
-      result.latenciesUs,
+      result.latenciesNs,
       options.duration
     );
     for (const line of lines) {

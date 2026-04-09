@@ -33,7 +33,7 @@ class bench_client_iface_t
     // --- Metrics callbacks (called from I/O threads via strand) ---
     virtual void on_send_begin (size_t size) = 0;   // increment outstanding
     virtual void on_recv_done (size_t bytes,
-                               uint64_t sent_ts_us) = 0; // decrement outstanding, record RTT
+                               uint64_t sent_ts_ns) = 0; // decrement outstanding, record RTT
     virtual void on_send_error () = 0;
     virtual void on_recv_error () = 0;
     virtual void on_abandon (long count) = 0;        // adjust outstanding on close/error

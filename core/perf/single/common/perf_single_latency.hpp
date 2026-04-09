@@ -8,11 +8,11 @@ inline size_t resolve_single_latency_sample_cap();
 
 struct latency_stats_t
 {
-    latency_stats_t() : mean_us(0.0), p95_us(0.0), p99_us(0.0) {}
+    latency_stats_t() : mean_ns(0.0), p95_ns(0.0), p99_ns(0.0) {}
 
-    double mean_us;
-    double p95_us;
-    double p99_us;
+    double mean_ns;
+    double p95_ns;
+    double p99_ns;
 };
 
 class latency_stats_builder_t
@@ -22,17 +22,17 @@ class latency_stats_builder_t
       size_t sample_cap_ = resolve_single_latency_sample_cap()) :
         _sample_cap(sample_cap_ > 0 ? sample_cap_ : 1),
         _count(0),
-        _sum_us(0.0),
+        _sum_ns(0.0),
         _rng_state(0x9e3779b97f4a7c15ULL)
     {
         _samples.reserve(_sample_cap);
     }
 
-    void add(double latency_us_)
+    void add(double latency_ns_)
     {
-        const double sample = latency_us_ >= 0.0 ? latency_us_ : 0.0;
+        const double sample = latency_ns_ >= 0.0 ? latency_ns_ : 0.0;
         ++_count;
-        _sum_us += sample;
+        _sum_ns += sample;
 
         if (_samples.size() < _sample_cap) {
             _samples.push_back(sample);
@@ -52,16 +52,16 @@ class latency_stats_builder_t
         if (_count == 0)
             return out;
 
-        out.mean_us = _sum_us / static_cast<double>(_count);
+        out.mean_ns = _sum_ns / static_cast<double>(_count);
         if (_samples.empty()) {
-            out.p95_us = out.mean_us;
-            out.p99_us = out.mean_us;
+            out.p95_ns = out.mean_ns;
+            out.p99_ns = out.mean_ns;
             return out;
         }
 
         std::sort(_samples.begin(), _samples.end());
-        out.p95_us = percentile_from_sorted(_samples, 0.95);
-        out.p99_us = percentile_from_sorted(_samples, 0.99);
+        out.p95_ns = percentile_from_sorted(_samples, 0.95);
+        out.p99_ns = percentile_from_sorted(_samples, 0.99);
         return out;
     }
 
@@ -97,7 +97,7 @@ class latency_stats_builder_t
 
     size_t _sample_cap;
     unsigned long long _count;
-    double _sum_us;
+    double _sum_ns;
     unsigned long long _rng_state;
     std::vector<double> _samples;
 };

@@ -70,7 +70,7 @@ internal static class PerfSpotClient
         SpotClientResult result = ComputeResult(activeStats, state.LatencySamples,
             config.DurationSeconds);
         PrintResult(Pattern, config.Transport, config.Size, result.Throughput,
-            result.LatencyUs, result.LatencyP95Us, result.LatencyP99Us);
+            result.LatencyNs, result.LatencyP95Ns, result.LatencyP99Ns);
         return 0;
     }
 
@@ -186,11 +186,11 @@ internal static class PerfSpotClient
                     {
                         measureCount++;
                         benchEndTicks = endTicks;
-                        ulong nowUs = EpochUs();
-                        if (header.SentTsUs > 0 && nowUs >= header.SentTsUs)
+                        ulong nowNs = EpochNs();
+                        if (header.SentTsNs > 0 && nowNs >= header.SentTsNs)
                         {
-                            double sampleLatencyUs = nowUs - header.SentTsUs;
-                            ReservoirSample(latencySamples, sampleLatencyUs,
+                            double sampleLatencyNs = nowNs - header.SentTsNs;
+                            ReservoirSample(latencySamples, sampleLatencyNs,
                                 ref sampleSeen, config.LatencySampleCap,
                                 ref rng);
                         }
@@ -265,14 +265,14 @@ internal static class PerfSpotClient
             / (double)Stopwatch.Frequency;
         double activeSeconds = Math.Max(1.0, durationSeconds);
         double throughput = stats.MeasureCount / activeSeconds;
-        double fallbackLatencyUs = (measuredSeconds * 1_000_000.0)
+        double fallbackLatencyNs = (measuredSeconds * 1_000_000_000.0)
             / Math.Max(1.0, stats.MeasureCount);
         var latency = ComputeLatencyStats(latencySamples);
-        double latencyUs = latency.mean > 0.0 ? latency.mean : fallbackLatencyUs;
-        double latencyP95Us = latency.p95 > 0.0 ? latency.p95 : latencyUs;
-        double latencyP99Us = latency.p99 > 0.0 ? latency.p99 : latencyP95Us;
-        return new SpotClientResult(throughput, latencyUs, latencyP95Us,
-            latencyP99Us);
+        double latencyNs = latency.mean > 0.0 ? latency.mean : fallbackLatencyNs;
+        double latencyP95Ns = latency.p95 > 0.0 ? latency.p95 : latencyNs;
+        double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
+        return new SpotClientResult(throughput, latencyNs, latencyP95Ns,
+            latencyP99Ns);
     }
 
     private static void ApplySpotNodeSubscriberOptions(SpotNode node,
@@ -358,19 +358,19 @@ internal static class PerfSpotClient
 
     private readonly struct SpotClientResult
     {
-        internal SpotClientResult(double throughput, double latencyUs,
-            double latencyP95Us, double latencyP99Us)
+        internal SpotClientResult(double throughput, double latencyNs,
+            double latencyP95Ns, double latencyP99Ns)
         {
             Throughput = throughput;
-            LatencyUs = latencyUs;
-            LatencyP95Us = latencyP95Us;
-            LatencyP99Us = latencyP99Us;
+            LatencyNs = latencyNs;
+            LatencyP95Ns = latencyP95Ns;
+            LatencyP99Ns = latencyP99Ns;
         }
 
         internal double Throughput { get; }
-        internal double LatencyUs { get; }
-        internal double LatencyP95Us { get; }
-        internal double LatencyP99Us { get; }
+        internal double LatencyNs { get; }
+        internal double LatencyP95Ns { get; }
+        internal double LatencyP99Ns { get; }
     }
 
     private readonly struct SpotClientActiveStats

@@ -47,7 +47,7 @@ function formatTableRows(rows, suite) {
     ...rows.map((row) => {
       const throughput = `${(row.metrics.throughput / 1000).toFixed(2)} ${throughputUnit(row.pattern)}`;
       const bandwidth = `${row.metrics.bandwidth.toFixed(2)} MB/s`;
-      return `| ${row.msgSize}B | ${throughput} | ${bandwidth} | ${row.metrics.latency.toFixed(3)} | ${row.metrics.latency_p95.toFixed(3)} | ${row.metrics.latency_p99.toFixed(3)} |`;
+      return `| ${row.msgSize}B | ${throughput} | ${bandwidth} | ${row.metrics.latency.toFixed(6)} | ${row.metrics.latency_p95.toFixed(6)} | ${row.metrics.latency_p99.toFixed(6)} |`;
     })
   ];
 }

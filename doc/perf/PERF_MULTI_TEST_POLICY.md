@@ -28,7 +28,7 @@
 |------|------|
 | 측정 모델 | time-based, 패턴별 phase: ready → active(throughput+latency 동시) |
 | throughput | `recv_count / duration_seconds` — echo 패턴: `ops/s`, one-way 패턴: `msg/s` |
-| latency | active phase에서 수신된 메시지의 내장 timestamp(header)로 전수 집계 |
+| latency | active phase에서 수신된 메시지의 내장 timestamp(header)로 전수 집계 (internal ns / external ms) |
 | 대표값 | median (runs > 1) |
 | 기본 runs | 1 |
 
@@ -544,9 +544,11 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 - mean: active phase에서 수집한 샘플의 산술 평균
 - p95: 샘플의 95th percentile
 - p99: 샘플의 99th percentile
-- RTT 샘플(echo): `sample_us = (recv_ts_us - sent_ts_us) / 2`
-- 단방향 샘플(one-way): 수신 메시지에 포함된 송신 타임스탬프 기준 `now_us - sent_us`
+- RTT 샘플(echo): `sample_ns = (recv_ts_ns - sent_ts_ns) / 2`
+- 단방향 샘플(one-way): 수신 메시지에 포함된 송신 타임스탬프 기준 `now_ns - sent_ts_ns`
 - active 구간 밖의 데이터는 계산에서 제외한다.
+- sample은 내부적으로 nanosecond 단위로 누적하고, RESULT line과 사람이 읽는
+  report/table에는 millisecond 단위로 표시한다.
 
 ### 5.4 one-way latency 집계 규칙
 
@@ -559,7 +561,7 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 
 ### 5.5 Header 기반 필터 규칙
 
-- 측정 메시지 payload 선두에는 공통 metric header를 포함한다: `magic`, `run_id`, `phase`, `msg_size`, `seq`, `sent_ts_us`.
+- 측정 메시지 payload 선두에는 공통 metric header를 포함한다: `magic`, `run_id`, `phase`, `msg_size`, `seq`, `sent_ts_ns`.
 - receiver는 header를 decode하여 `phase == active`, `msg_size == expected_size`,
   `run_id == current_case_run_id` 조건을 만족하는 샘플만 집계한다.
 - ROUTER 계열 multipart 수신은 routing frame이 앞에 올 수 있으므로 capture buffer에서 header magic을 스캔해 payload header를 탐지한다.
@@ -902,7 +904,7 @@ core/perf/run_benchmarks_multi.sh --duration 10
 
 - throughput 단위: echo 패턴 `Kops/s` (ops/sec / 1000), one-way 패턴 `Kmsg/s` (msg/sec / 1000) — § 4.1 참조
 - bandwidth 단위: `MB/s` (메가바이트/초) — § 4.3 참조
-- latency 단위: `ms` (밀리초, mean/p95/p99)
+- latency 단위: `ms` (밀리초, mean/p95/p99, external display)
 - transport 미지원 시: `N/A`
 
 ### 10.3 진행 로그
@@ -1163,11 +1165,11 @@ def bandwidth_mbps(throughput, msg_size, is_echo):
     multiplier = 2 if is_echo else 1
     return throughput * msg_size * multiplier / 1_000_000
 
-def latency_rtt_us(elapsed_us, roundtrip_count):
+def latency_rtt_ns(elapsed_ns, roundtrip_count):
     """MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_STREAM"""
-    return elapsed_us / max(1, roundtrip_count * 2)
+    return elapsed_ns / max(1, roundtrip_count * 2)
 
-def latency_oneway_us(elapsed_us, count):
+def latency_oneway_ns(elapsed_ns, count):
     """MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT: count=received_count"""
-    return elapsed_us / max(1, count)
+    return elapsed_ns / max(1, count)
 ```

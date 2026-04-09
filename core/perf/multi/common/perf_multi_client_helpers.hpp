@@ -389,16 +389,16 @@ inline void normalize_latency_stats (double lat_sum,
     }
 
     bench_latency_stats_t stats = samples ? samples->snapshot () : bench_latency_stats_t ();
-    if (stats.mean_us <= 0.0)
-        stats.mean_us = lat_sum / static_cast<double> (lat_count);
-    if (stats.p95_us <= 0.0)
-        stats.p95_us = stats.mean_us;
-    if (stats.p99_us <= 0.0)
-        stats.p99_us = stats.p95_us;
-    if (stats.p95_us < stats.mean_us)
-        stats.p95_us = stats.mean_us;
-    if (stats.p99_us < stats.p95_us)
-        stats.p99_us = stats.p95_us;
+    if (stats.mean_ns <= 0.0)
+        stats.mean_ns = lat_sum / static_cast<double> (lat_count);
+    if (stats.p95_ns <= 0.0)
+        stats.p95_ns = stats.mean_ns;
+    if (stats.p99_ns <= 0.0)
+        stats.p99_ns = stats.p95_ns;
+    if (stats.p95_ns < stats.mean_ns)
+        stats.p95_ns = stats.mean_ns;
+    if (stats.p99_ns < stats.p95_ns)
+        stats.p99_ns = stats.p95_ns;
     *latency_out = stats;
 }
 
@@ -437,7 +437,7 @@ inline bool stamp_metric_payload (std::vector<char> &payload,
       phase,
       msg_size,
       seq,
-      perf_multi_metric::now_us ());
+      perf_multi_metric::now_ns ());
 }
 
 inline size_t metric_capture_bytes ()
@@ -602,14 +602,14 @@ inline bool drain_socket_non_blocking (
 
         ++local_recv;
         if (collect_latency && lat_sum && lat_count) {
-            const uint64_t now_us = perf_multi_metric::now_us ();
-            if (header.sent_ts_us > 0 && now_us >= header.sent_ts_us) {
-                const double sample_us =
-                  static_cast<double> (now_us - header.sent_ts_us);
-                *lat_sum += sample_us;
+            const uint64_t now_ns = perf_multi_metric::now_ns ();
+            if (header.sent_ts_ns > 0 && now_ns >= header.sent_ts_ns) {
+                const double sample_ns =
+                  static_cast<double> (now_ns - header.sent_ts_ns);
+                *lat_sum += sample_ns;
                 (*lat_count)++;
                 if (lat_samples)
-                    lat_samples->add (sample_us);
+                    lat_samples->add (sample_ns);
             }
         }
     }
@@ -780,7 +780,7 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
 
     *throughput_out = static_cast<double> (recv_count)
                       / static_cast<double> (std::max (1, settings.duration_seconds));
-    if (active_latency.mean_us <= 0.0)
+    if (active_latency.mean_ns <= 0.0)
         normalize_latency_stats (lat_sum, lat_count, NULL, &active_latency);
     *latency_out = active_latency;
 
@@ -990,15 +990,15 @@ inline bool run_echo_window_round_robin (
                           header, run_id, phase, expected_msg_size)) {
                         ++local_recv;
                         if (collect_latency) {
-                            const uint64_t now_us = perf_multi_metric::now_us ();
-                            if (header.sent_ts_us > 0
-                                && now_us >= header.sent_ts_us) {
-                                const double sample_us =
-                                  static_cast<double> (now_us - header.sent_ts_us)
+                            const uint64_t now_ns = perf_multi_metric::now_ns ();
+                            if (header.sent_ts_ns > 0
+                                && now_ns >= header.sent_ts_ns) {
+                                const double sample_ns =
+                                  static_cast<double> (now_ns - header.sent_ts_ns)
                                   * 0.5;
-                                lat_sum_local += sample_us;
+                                lat_sum_local += sample_ns;
                                 lat_count_local++;
-                                lat_samples.add (sample_us);
+                                lat_samples.add (sample_ns);
                             }
                         }
                     } else if (decoded && bench_debug_enabled ()
@@ -1120,7 +1120,7 @@ inline bool run_echo_duration (
 
     *throughput_out = static_cast<double> (recv_count)
                       / static_cast<double> (std::max (1, settings.duration_seconds));
-    if (active_latency.mean_us <= 0.0)
+    if (active_latency.mean_ns <= 0.0)
         normalize_latency_stats (lat_sum, lat_count, NULL, &active_latency);
     *latency_out = active_latency;
 
@@ -1141,9 +1141,9 @@ inline void print_client_result_lines (
       transport,
       msg_size,
       throughput,
-      latency.mean_us,
-      latency.p95_us,
-      latency.p99_us);
+      latency.mean_ns,
+      latency.p95_ns,
+      latency.p99_ns);
 }
 
 inline void print_echo_client_result_lines (

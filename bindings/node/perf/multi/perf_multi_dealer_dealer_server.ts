@@ -7,7 +7,7 @@ const zlink = require('../../dist');
 const {
   createMetricCollector,
   decodeMetricHeader,
-  currentEpochUs,
+  currentEpochNs,
   summarizeMetrics
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
@@ -29,7 +29,7 @@ async function main() {
       server,
       (received) => {
         const header = decodeMetricHeader(received.parts[0].data);
-        collector.record(header, currentEpochUs());
+        collector.record(header, currentEpochNs());
       },
       () => stop
     );
@@ -49,7 +49,7 @@ async function main() {
       'MULTI_DEALER_DEALER',
       'tcp',
       options.msgSize,
-      result.latenciesUs,
+      result.latenciesNs,
       options.duration
     );
     for (const lineOut of resultLines) {

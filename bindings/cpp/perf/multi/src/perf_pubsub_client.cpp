@@ -272,12 +272,12 @@ class pubsub_client_bench_t
 
                     ++count;
                     if (lat_out && phase == perf_metric::phase_active) {
-                        const uint64_t now_us = perf_metric::now_us ();
-                        const double latency_us = now_us >= header.sent_ts_us
+                        const uint64_t now_ns = perf_metric::now_ns ();
+                        const double latency_ns = now_ns >= header.sent_ts_ns
                                                     ? static_cast<double> (
-                                                        now_us - header.sent_ts_us)
+                                                        now_ns - header.sent_ts_ns)
                                                     : 0.0;
-                        latency.add (latency_us);
+                        latency.add (latency_ns);
                     }
                 }
             }

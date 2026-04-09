@@ -58,9 +58,9 @@ fn main() {
                         }
                         let phase = common::decode_phase(data);
                         if phase == common::PHASE_ACTIVE {
-                            let sent_ts = common::decode_sent_ts(data);
-                            let latency = common::now_us().saturating_sub(sent_ts.max(0) as u64) as f64;
-                            latency_stats.record_us(latency);
+                            let sent_ts_ns = common::decode_sent_ts_ns(data);
+                            let latency = common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64;
+                            latency_stats.record_ns(latency);
                             active_count += 1;
                         }
                     }

@@ -67,7 +67,7 @@ inline bool publish_once (void *server,
           phase,
           current_msg_size,
           (*seq)++,
-          perf_multi_metric::now_us ())) {
+          perf_multi_metric::now_ns ())) {
         return false;
     }
 

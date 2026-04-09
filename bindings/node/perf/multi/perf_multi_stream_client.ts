@@ -9,7 +9,7 @@ const {
   createPayload,
   createRunId,
   decodeMetricHeader,
-  currentEpochUs,
+  currentEpochNs,
   summarizeMetrics,
   stampPayload
 } = require('../common/perf_metrics');
@@ -152,7 +152,7 @@ async function main() {
           await once(sockets[i], 'drain');
         }
         const echoed = await readers[i].nextFrame();
-        collector.record(decodeMetricHeader(echoed), currentEpochUs());
+        collector.record(decodeMetricHeader(echoed), currentEpochNs());
         seq += 1n;
       }
     }
@@ -162,7 +162,7 @@ async function main() {
       'MULTI_STREAM',
       'tcp',
       options.msgSize,
-      result.latenciesUs,
+      result.latenciesNs,
       options.duration
     );
     for (const line of lines) {

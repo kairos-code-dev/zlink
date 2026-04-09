@@ -115,7 +115,7 @@ final class PerfMultiRouterRouter {
                                 PerfUtil.Header header = PerfUtil.decodeHeader(
                                     received.firstPart(), config.size());
                                 if (header != null && header.phase() == PerfUtil.PHASE_ACTIVE) {
-                                    metrics.recordMicros(header.latencyMicros() / 2L);
+                                    metrics.recordNanos(header.latencyNanos() / 2L);
                                 }
                             }
                         }

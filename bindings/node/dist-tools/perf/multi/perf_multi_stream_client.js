@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const net = require('node:net');
 const { once } = require('node:events');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochUs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 function frame(buffer) {
     const framed = Buffer.allocUnsafe(buffer.length + 4);
@@ -128,12 +128,12 @@ async function main() {
                     await once(sockets[i], 'drain');
                 }
                 const echoed = await readers[i].nextFrame();
-                collector.record(decodeMetricHeader(echoed), currentEpochUs());
+                collector.record(decodeMetricHeader(echoed), currentEpochNs());
                 seq += 1n;
             }
         }
         const result = await collector.finish();
-        const lines = summarizeMetrics('MULTI_STREAM', 'tcp', options.msgSize, result.latenciesUs, options.duration);
+        const lines = summarizeMetrics('MULTI_STREAM', 'tcp', options.msgSize, result.latenciesNs, options.duration);
         for (const line of lines) {
             console.log(line);
         }

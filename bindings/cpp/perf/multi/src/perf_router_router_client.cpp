@@ -82,7 +82,7 @@ class router_router_client_bench_t
           _socket_states (),
           _poller (),
           _poll_events (),
-          _run_id (static_cast<uint32_t> (perf_metric::now_us ())),
+          _run_id (static_cast<uint32_t> (perf_metric::now_ns ())),
           _seq (1),
           _server_id ("SERVER"),
           _server_rid (zlink::empty_routing_id ()),
@@ -293,14 +293,14 @@ class router_router_client_bench_t
         if (!state.sock || state.request_buffer.empty ())
             return false;
 
-        const uint64_t sent_ts = perf_metric::now_us ();
+        const uint64_t sent_ts_ns = perf_metric::now_ns ();
         if (!perf_metric::stamp_payload (&state.request_buffer[0],
                                          state.payload_size,
                                          _run_id,
                                          phase,
                                          _msg_size,
                                          _seq++,
-                                         sent_ts)) {
+                                         sent_ts_ns)) {
             return false;
         }
 
@@ -441,13 +441,13 @@ class router_router_client_bench_t
                           header, _run_id, phase, _msg_size)) {
                         ++count;
                         if (lat_out && phase == perf_metric::phase_active) {
-                            const uint64_t now_us = perf_metric::now_us ();
-                            const double latency_us =
-                              now_us >= header.sent_ts_us
-                                ? static_cast<double> (now_us - header.sent_ts_us)
+                            const uint64_t now_ns = perf_metric::now_ns ();
+                            const double latency_ns =
+                              now_ns >= header.sent_ts_ns
+                                ? static_cast<double> (now_ns - header.sent_ts_ns)
                                     * 0.5
                                 : 0.0;
-                            latency.add (latency_us);
+                            latency.add (latency_ns);
                         }
                     }
 

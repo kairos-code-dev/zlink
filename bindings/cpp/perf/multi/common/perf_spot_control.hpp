@@ -360,7 +360,7 @@ inline bool initialize_client_control_session (
         return false;
 
     const int base_port =
-      45500 + static_cast<int> (perf_metric::now_us () % 1000) * 4;
+      45500 + static_cast<int> (perf_metric::now_ns () % 1000) * 4;
     const std::string local_control_endpoint =
       bind_spot_endpoint (*control_node, transport_, base_port);
     if (local_control_endpoint.empty ())

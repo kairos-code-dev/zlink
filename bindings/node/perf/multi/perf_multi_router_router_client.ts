@@ -8,7 +8,7 @@ const {
   createPayload,
   createRunId,
   decodeMetricHeader,
-  currentEpochUs,
+  currentEpochNs,
   summarizeMetrics,
   stampPayload
 } = require('../common/perf_metrics');
@@ -62,7 +62,7 @@ async function main() {
         stampPayload(activePayloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
         routers[i].send(SERVER_ID, activePayloads[i]);
         const echoed = routers[i].recv();
-        collector.record(decodeMetricHeader(echoed.parts[0].data), currentEpochUs());
+        collector.record(decodeMetricHeader(echoed.parts[0].data), currentEpochNs());
         seq += 1n;
       }
     }
@@ -72,7 +72,7 @@ async function main() {
       'MULTI_ROUTER_ROUTER',
       'tcp',
       options.msgSize,
-      result.latenciesUs,
+      result.latenciesNs,
       options.duration
     );
     for (const line of lines) {

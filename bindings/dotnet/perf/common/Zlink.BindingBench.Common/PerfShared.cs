@@ -17,15 +17,15 @@ public static class PerfShared
     public const uint PerfMetricMagic = 0x4D50_4631u;
     public const int PerfMetricHeaderSize = 32;
 
-    public static long TimestampUs()
+    public static long TimestampNs()
     {
         long ts = Stopwatch.GetTimestamp();
-        return (long)(ts * (1_000_000.0 / Stopwatch.Frequency));
+        return (long)(ts * (1_000_000_000.0 / Stopwatch.Frequency));
     }
 
-    public static ulong EpochUs()
+    public static ulong EpochNs()
     {
-        return (ulong)(DateTime.UtcNow.Ticks / 10L);
+        return (ulong)(DateTime.UtcNow.Ticks * 100L);
     }
 
     public static long DeadlineTicksFromMilliseconds(int milliseconds)
@@ -118,16 +118,21 @@ public static class PerfShared
         return $"{transport}://127.0.0.1:{GetPort()}";
     }
 
+    private static double NsToMs(double latencyNs)
+    {
+        return latencyNs / 1_000_000.0;
+    }
+
     public static void PrintResult(string pattern, string transport, int size,
-        double throughput, double latencyUs, double latencyP95Us,
-        double latencyP99Us, double bandwidthMultiplier, bool fixedFormat)
+        double throughput, double latencyNs, double latencyP95Ns,
+        double latencyP99Ns, double bandwidthMultiplier, bool fixedFormat)
     {
         double bandwidth = (throughput * size * bandwidthMultiplier) / 1_000_000.0;
         WriteMetric("throughput", throughput);
         WriteMetric("bandwidth", bandwidth);
-        WriteMetric("latency", latencyUs);
-        WriteMetric("latency_p95", latencyP95Us);
-        WriteMetric("latency_p99", latencyP99Us);
+        WriteMetric("latency", NsToMs(latencyNs));
+        WriteMetric("latency_p95", NsToMs(latencyP95Ns));
+        WriteMetric("latency_p99", NsToMs(latencyP99Ns));
         return;
 
         void WriteMetric(string metric, double value)
@@ -147,12 +152,12 @@ public static class PerfShared
         return 0;
     }
 
-    public static void StampHeader(Span<byte> header, long tsUs)
+    public static void StampHeader(Span<byte> header, long tsNs)
     {
         if (header.Length < 8)
             throw new ArgumentException("header length must be >= 8", nameof(header));
 
-        BinaryPrimitives.WriteInt64LittleEndian(header, tsUs);
+        BinaryPrimitives.WriteInt64LittleEndian(header, tsNs);
     }
 
     public static long DecodeHeader(ReadOnlySpan<byte> header)
@@ -164,7 +169,7 @@ public static class PerfShared
     }
 
     public static bool StampMetricHeader(Span<byte> payload, uint runId,
-        uint phase, int msgSize, ulong seq, ulong sentTsUs)
+        uint phase, int msgSize, ulong seq, ulong sentTsNs)
     {
         if (payload.Length < PerfMetricHeaderSize)
             return false;
@@ -177,7 +182,7 @@ public static class PerfShared
             (uint)Math.Max(0, msgSize));
         BinaryPrimitives.WriteUInt64LittleEndian(payload.Slice(16, 8), seq);
         BinaryPrimitives.WriteUInt64LittleEndian(payload.Slice(24, 8),
-            sentTsUs);
+            sentTsNs);
         return true;
     }
 
@@ -193,11 +198,11 @@ public static class PerfShared
         uint phase = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(8, 4));
         uint msgSize = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(12, 4));
         ulong seq = BinaryPrimitives.ReadUInt64LittleEndian(payload.Slice(16, 8));
-        ulong sentTsUs = BinaryPrimitives.ReadUInt64LittleEndian(
+        ulong sentTsNs = BinaryPrimitives.ReadUInt64LittleEndian(
             payload.Slice(24, 8));
 
         header = new PerfMetricHeader(magic, runId, phase, msgSize, seq,
-            sentTsUs);
+            sentTsNs);
         return magic == PerfMetricMagic;
     }
 
@@ -287,14 +292,14 @@ public static class PerfShared
 public readonly struct PerfMetricHeader
 {
     public PerfMetricHeader(uint magic, uint runId, uint phase, uint msgSize,
-        ulong seq, ulong sentTsUs)
+        ulong seq, ulong sentTsNs)
     {
         Magic = magic;
         RunId = runId;
         Phase = phase;
         MsgSize = msgSize;
         Seq = seq;
-        SentTsUs = sentTsUs;
+        SentTsNs = sentTsNs;
     }
 
     public uint Magic { get; }
@@ -302,5 +307,5 @@ public readonly struct PerfMetricHeader
     public uint Phase { get; }
     public uint MsgSize { get; }
     public ulong Seq { get; }
-    public ulong SentTsUs { get; }
+    public ulong SentTsNs { get; }
 }

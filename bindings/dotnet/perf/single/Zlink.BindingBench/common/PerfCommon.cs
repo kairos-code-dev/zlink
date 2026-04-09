@@ -116,18 +116,18 @@ internal static partial class PerfRunner
     }
 
     internal static void PrintResult(string pattern, string transport, int size,
-        double thr, double latUs)
+        double thr, double latNs)
     {
-        PrintResult(pattern, transport, size, thr, latUs, latUs, latUs);
+        PrintResult(pattern, transport, size, thr, latNs, latNs, latNs);
     }
 
     internal static void PrintResult(string pattern, string transport, int size,
-        double thr, double latUs, double latP95Us, double latP99Us)
+        double thr, double latNs, double latP95Ns, double latP99Ns)
     {
         double bw = BandwidthMbps(thr, size);
-        double latMs = UsToMs(latUs);
-        double latP95Ms = UsToMs(latP95Us);
-        double latP99Ms = UsToMs(latP99Us);
+        double latMs = NsToMs(latNs);
+        double latP95Ms = NsToMs(latP95Ns);
+        double latP99Ms = NsToMs(latP99Ns);
         Console.WriteLine($"RESULT,current,{pattern},{transport},{size},throughput,{thr}");
         Console.WriteLine($"RESULT,current,{pattern},{transport},{size},bandwidth,{bw}");
         Console.WriteLine($"RESULT,current,{pattern},{transport},{size},latency,{latMs}");
@@ -142,9 +142,9 @@ internal static partial class PerfRunner
         return (throughput * size) / 1_000_000.0;
     }
 
-    private static double UsToMs(double latencyUs)
+    private static double NsToMs(double latencyNs)
     {
-        return latencyUs / 1000.0;
+        return latencyNs / 1_000_000.0;
     }
 
     private static int ResolveSingleHwmValue(string specificName)

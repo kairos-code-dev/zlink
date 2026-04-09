@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../dist');
-const { createMetricCollector, decodeMetricHeader, currentEpochUs, sleepImmediate, summarizeMetrics } = require('../common/perf_metrics');
+const { createMetricCollector, decodeMetricHeader, currentEpochNs, sleepImmediate, summarizeMetrics } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
@@ -51,7 +51,7 @@ async function main() {
             stopResolve();
             return;
         }
-        collector.record(header, currentEpochUs());
+        collector.record(header, currentEpochNs());
     };
     const publishControl = async (payload) => {
         const buffer = Buffer.from(payload);
@@ -147,7 +147,7 @@ async function main() {
         debugSpot('recvTasks joined');
         const result = await collector.finish();
         debugSpot('collector finished');
-        const lines = summarizeMetrics('MULTI_SPOT', 'tcp', options.msgSize, result.latenciesUs, options.duration);
+        const lines = summarizeMetrics('MULTI_SPOT', 'tcp', options.msgSize, result.latenciesNs, options.duration);
         for (const line of lines) {
             console.log(line);
         }

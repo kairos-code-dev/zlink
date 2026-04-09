@@ -8,7 +8,7 @@ const {
   createPayload,
   createRunId,
   decodeMetricHeader,
-  currentEpochUs,
+  currentEpochNs,
   sleepImmediate,
   stampPayload
 } = require('../common/perf_metrics');
@@ -40,7 +40,7 @@ async function runSpotBenchmark(msgSize, options) {
           continue;
         }
         const header = decodeMetricHeader(received.parts[0].data);
-        collector.record(header, currentEpochUs());
+        collector.record(header, currentEpochNs());
       }
     })();
 
@@ -68,7 +68,7 @@ async function runSpotBenchmark(msgSize, options) {
     stop = true;
     await recvTask;
     const result = await collector.finish();
-    return result.latenciesUs;
+    return result.latenciesNs;
   } finally {
     spot.close();
     node.close();

@@ -42,7 +42,7 @@ final class PerfMultiDealerDealer {
                         continue;
                     }
                     if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                        metrics.recordMicros(header.latencyMicros());
+                        metrics.recordNanos(header.latencyNanos());
                     }
                 } catch (ZlinkException ex) {
                     if (ex.errno() == 11 || ex.errno() == 4) {

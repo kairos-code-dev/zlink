@@ -721,8 +721,8 @@ def format_bandwidth(bandwidth_mb_s: float) -> str:
     return f"{bandwidth_mb_s:8.2f} MB/s"
 
 
-def format_latency_ms(latency_us: float) -> str:
-    return f"{(latency_us / 1000.0):8.3f} ms"
+def format_latency_ms(latency_ms: float) -> str:
+    return f"{latency_ms:8.3f} ms"
 
 
 def build_pattern_table_lines(

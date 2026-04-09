@@ -59,7 +59,7 @@ internal static class PerfDealerRouterClient
             TrySendStopToken(activeClients);
 
             PrintResult(options.Pattern, options.Transport, size, result.throughput,
-                result.latencyUs, result.latencyP95Us, result.latencyP99Us);
+                result.latencyNs, result.latencyP95Ns, result.latencyP99Ns);
             return 0;
         }
         finally
@@ -84,8 +84,8 @@ internal static class PerfDealerRouterClient
         return slots;
     }
 
-    private static (double throughput, double latencyUs, double latencyP95Us,
-        double latencyP99Us)
+    private static (double throughput, double latencyNs, double latencyP95Ns,
+        double latencyP99Ns)
         RunMultiDealerRouterClientLoop(PollManager pollManager,
             DealerRouterClientSlot[] slots, int msgSize, int latencySampleCap,
             int pollTimeoutMs, int warmupSeconds, int durationSeconds,
@@ -135,14 +135,14 @@ internal static class PerfDealerRouterClient
             / (double)Stopwatch.Frequency;
         double configuredSeconds = Math.Max(1.0, durationSeconds);
         double throughput = metrics.MeasureCount / configuredSeconds;
-        double fallbackLatencyUs = (configuredSeconds * 1_000_000.0)
+        double fallbackLatencyNs = (configuredSeconds * 1_000_000_000.0)
             / Math.Max(1.0, metrics.MeasureCount * 2.0);
         var latency = ComputeLatencyStats(latSamples);
-        double latencyUs = latency.mean > 0.0 ? latency.mean : fallbackLatencyUs;
-        double latencyP95Us = latency.p95 > 0.0 ? latency.p95 : latencyUs;
-        double latencyP99Us = latency.p99 > 0.0 ? latency.p99 : latencyP95Us;
+        double latencyNs = latency.mean > 0.0 ? latency.mean : fallbackLatencyNs;
+        double latencyP95Ns = latency.p95 > 0.0 ? latency.p95 : latencyNs;
+        double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
 
-        return (throughput, latencyUs, latencyP95Us, latencyP99Us);
+        return (throughput, latencyNs, latencyP95Ns, latencyP99Ns);
     }
 
     private static void RunWarmupPhase(PollManager pollManager,
@@ -292,15 +292,15 @@ internal static class PerfDealerRouterClient
                     && header.Phase == (uint)phase)
                 {
                     metrics.MeasureCount++;
-                    if (metrics.LatencySamples != null && header.SentTsUs > 0)
+                    if (metrics.LatencySamples != null && header.SentTsNs > 0)
                     {
-                        ulong nowUs = EpochUs();
-                        if (nowUs >= header.SentTsUs)
+                        ulong nowNs = EpochNs();
+                        if (nowNs >= header.SentTsNs)
                         {
-                            double sampleLatencyUs = nowUs - header.SentTsUs;
+                            double sampleLatencyNs = nowNs - header.SentTsNs;
                             long sampleSeen = metrics.SampleSeen;
                             uint rng = metrics.Rng;
-                            ReservoirSample(metrics.LatencySamples, sampleLatencyUs,
+                            ReservoirSample(metrics.LatencySamples, sampleLatencyNs,
                                 ref sampleSeen, metrics.LatencySampleCap, ref rng);
                             metrics.SampleSeen = sampleSeen;
                             metrics.Rng = rng;
@@ -358,7 +358,7 @@ internal static class PerfDealerRouterClient
         uint runId, PerfPhase phase, ref ulong seq)
     {
         StampMetricHeader(slot.Payload.AsSpan(), runId, phase, msgSize,
-            seq++, EpochUs());
+            seq++, EpochNs());
     }
 
     private static bool TrySend(DealerRouterClientSlot slot)

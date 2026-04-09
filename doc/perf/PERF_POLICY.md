@@ -113,7 +113,7 @@ offset  size  type       field         설명
  8       1    uint8      phase         0=warmup, 1=active, 2=cooldown
  9       4    uint32_le  msg_size      메시지 크기 (bytes)
 13       8    uint64_le  seq           메시지 시퀀스 번호
-21       8    int64_le   sent_ts_us    송신 시점 (microseconds, epoch)
+21       8    int64_le   sent_ts_ns    송신 시점 (nanoseconds, epoch)
 ─────────────────────────────────────────────────────────
 total: 29 bytes (고정)
 ```
@@ -140,6 +140,8 @@ total: 29 bytes (고정)
 - active 결과 집계 조건은 suite/pattern 정책 문서에 명시된 단일 규칙으로 고정한다.
   core와 모든 bindings는 같은 pattern에서 동일한 active 유효 메시지 의미를
   사용해야 한다.
+- latency sample은 내부적으로 nanosecond 단위로 누적하고, RESULT line과
+  사람이 읽는 report/table에는 millisecond 단위로 표시한다.
 
 **run_id 생성 규칙**:
 
@@ -642,9 +644,9 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 |--------|------|------|
 | `throughput` | echo 패턴: 왕복 완료 수 (`ops/s`, 1 op = send + recv response 1회 완료), one-way 패턴: 단방향 수신 수 (`msg/s`) | MUST |
 | `bandwidth` | 네트워크 전송량 (MB/s) — multi echo: `throughput × size × 2 / 1,000,000`, 그 외(single 전체 + multi one-way): `throughput × size / 1,000,000` | MUST |
-| `latency` | 레이턴시 (ms) | MUST |
-| `latency_p95` | 레이턴시 95th percentile (ms) | MUST |
-| `latency_p99` | 레이턴시 99th percentile (ms) | MUST |
+| `latency` | 레이턴시 (internal ns, external ms) | MUST |
+| `latency_p95` | 레이턴시 95th percentile (internal ns, external ms) | MUST |
+| `latency_p99` | 레이턴시 99th percentile (internal ns, external ms) | MUST |
 - throughput 단위는 패턴의 메시지 흐름 방향에 따라 결정된다. echo(왕복) 패턴은 `ops/s`, one-way(단방향) 패턴은 `msg/s`. 상세 분류는 개별 정책 문서 섹션 8.1을 참조한다.
 - bandwidth는 throughput 단위가 다른 패턴 간에도 실제 데이터 처리량으로 직접 비교할 수 있는 공통 지표이다. 상세 계산은 개별 정책 문서 섹션 8.3을 참조한다.
 - 기본 perf surface와 RESULT 계약에는 cpu/mem 계열 메트릭을 포함하지 않는다.
@@ -703,7 +705,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 |------|------|------|
 | Throughput | echo: `Kops/s`, one-way: `Kmsg/s` | 패턴 방향별 단위 — 개별 정책 문서 섹션 8.1 참조 |
 | Bandwidth | `MB/s` | 네트워크 전송량 — 개별 정책 문서 섹션 8.3 참조 |
-| Lat.Mean / Lat.P95 / Lat.P99 | `ms` (밀리초) | 평균/95th/99th |
+| Lat.Mean / Lat.P95 / Lat.P99 | `ms` (밀리초, external display) | 평균/95th/99th |
 
 ### 5.2 진행 로그
 
@@ -873,7 +875,7 @@ perf 구현의 공통화 기준은 **코드 중복 제거 자체가 아니라 be
 | 항목 | 설명 |
 |------|------|
 | RESULT line 포맷팅/출력 | `RESULT,<lib>,<pattern>,...` 형식과 필드 순서를 단일 구현으로 유지 |
-| metric header encode/decode | `magic`, `run_id`, `phase`, `msg_size`, `seq`, `sent_ts_us` 처리 |
+| metric header encode/decode | `magic`, `run_id`, `phase`, `msg_size`, `seq`, `sent_ts_ns` 처리 |
 | phase별 유효 샘플 판정 | active 구간 구분과 유효 header 판정 |
 | throughput 계산 | 유효 수신 건수 기반 계산 |
 | bandwidth 계산 | throughput와 payload size 기반 계산 |

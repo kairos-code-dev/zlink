@@ -62,10 +62,10 @@ struct case_metrics_t
     long connect_fail;       // failed connections
     double throughput_bps;   // bytes per second
     double throughput_mib_s; // MiB per second
-    double mean_us;          // mean RTT (microseconds)
-    double p50_us;           // 50th percentile RTT (microseconds)
-    double p95_us;           // 95th percentile RTT
-    double p99_us;           // 99th percentile RTT
+    double mean_ns;          // mean RTT (nanoseconds)
+    double p50_ns;           // 50th percentile RTT (nanoseconds)
+    double p95_ns;           // 95th percentile RTT
+    double p99_ns;           // 99th percentile RTT
     long send_error;
     long recv_error;
     long timeout_error;
@@ -77,10 +77,10 @@ struct case_metrics_t
           connect_fail (0),
           throughput_bps (0.0),
           throughput_mib_s (0.0),
-          mean_us (0.0),
-          p50_us (0.0),
-          p95_us (0.0),
-          p99_us (0.0),
+          mean_ns (0.0),
+          p50_ns (0.0),
+          p95_ns (0.0),
+          p99_ns (0.0),
           send_error (0),
           recv_error (0),
           timeout_error (0),

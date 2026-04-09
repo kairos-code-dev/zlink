@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist');
-const { createMetricCollector, decodeMetricHeader, currentEpochUs, summarizeMetrics } = require('../common/perf_metrics');
+const { createMetricCollector, decodeMetricHeader, currentEpochNs, summarizeMetrics } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { drainRecvSocket, waitForConnectionReady } = require('./perf_multi_runtime');
 async function main() {
@@ -40,7 +40,7 @@ async function main() {
                 }
                 return;
             }
-            collector.record(header, currentEpochUs());
+            collector.record(header, currentEpochNs());
         }, () => stop));
         console.log('CLIENT_READY');
         await Promise.race([
@@ -50,7 +50,7 @@ async function main() {
         stop = true;
         await Promise.all(recvTasks);
         const result = await collector.finish();
-        const resultLines = summarizeMetrics('MULTI_PUBSUB', 'tcp', options.msgSize, result.latenciesUs, options.duration);
+        const resultLines = summarizeMetrics('MULTI_PUBSUB', 'tcp', options.msgSize, result.latenciesNs, options.duration);
         for (const line of resultLines) {
             console.log(line);
         }

@@ -19,15 +19,15 @@ var endpointCounter uint64
 type Stats struct {
 	count uint64
 	mu    sync.Mutex
-	latUs []float64
+	latNs []float64
 }
 
 type Result struct {
-	Throughput float64
-	Bandwidth  float64
-	Latency    float64
-	LatencyP95 float64
-	LatencyP99 float64
+	Throughput   float64
+	Bandwidth    float64
+	LatencyNs    float64
+	LatencyP95Ns float64
+	LatencyP99Ns float64
 }
 
 func NewStats() *Stats {
@@ -36,32 +36,32 @@ func NewStats() *Stats {
 
 func (s *Stats) Add(sentAt time.Time) {
 	atomic.AddUint64(&s.count, 1)
-	latencyUs := float64(time.Since(sentAt).Nanoseconds()) / 1000.0
+	latencyNs := float64(time.Since(sentAt).Nanoseconds())
 	s.mu.Lock()
-	s.latUs = append(s.latUs, latencyUs)
+	s.latNs = append(s.latNs, latencyNs)
 	s.mu.Unlock()
 }
 
 func (s *Stats) Snapshot(duration time.Duration, msgSize int) Result {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	sort.Float64s(s.latUs)
+	sort.Float64s(s.latNs)
 	count := atomic.LoadUint64(&s.count)
 	return Result{
-		Throughput: float64(count) / duration.Seconds(),
-		Bandwidth:  float64(count*uint64(msgSize)) / duration.Seconds() / 1_000_000.0,
-		Latency:    percentile(s.latUs, 50),
-		LatencyP95: percentile(s.latUs, 95),
-		LatencyP99: percentile(s.latUs, 99),
+		Throughput:   float64(count) / duration.Seconds(),
+		Bandwidth:    float64(count*uint64(msgSize)) / duration.Seconds() / 1_000_000.0,
+		LatencyNs:    percentile(s.latNs, 50),
+		LatencyP95Ns: percentile(s.latNs, 95),
+		LatencyP99Ns: percentile(s.latNs, 99),
 	}
 }
 
 func PrintResult(pattern, transport string, msgSize int, result Result) {
 	fmt.Printf("RESULT,current,%s,%s,%d,throughput,%.2f\n", pattern, transport, msgSize, result.Throughput)
 	fmt.Printf("RESULT,current,%s,%s,%d,bandwidth,%.2f\n", pattern, transport, msgSize, result.Bandwidth)
-	fmt.Printf("RESULT,current,%s,%s,%d,latency,%.2f\n", pattern, transport, msgSize, result.Latency)
-	fmt.Printf("RESULT,current,%s,%s,%d,latency_p95,%.2f\n", pattern, transport, msgSize, result.LatencyP95)
-	fmt.Printf("RESULT,current,%s,%s,%d,latency_p99,%.2f\n", pattern, transport, msgSize, result.LatencyP99)
+	fmt.Printf("RESULT,current,%s,%s,%d,latency,%.3f\n", pattern, transport, msgSize, result.LatencyNs/1_000_000.0)
+	fmt.Printf("RESULT,current,%s,%s,%d,latency_p95,%.3f\n", pattern, transport, msgSize, result.LatencyP95Ns/1_000_000.0)
+	fmt.Printf("RESULT,current,%s,%s,%d,latency_p99,%.3f\n", pattern, transport, msgSize, result.LatencyP99Ns/1_000_000.0)
 }
 
 func Must(err error) {

@@ -6,7 +6,7 @@ import zlink
 
 from perf_multi_common import (
     TOPIC,
-    latency_us_from_message,
+    latency_ns_from_message,
     is_active_message,
     parse_client_args,
     print_result_lines,
@@ -38,7 +38,7 @@ def _drain_ready(
                         run_id=None,
                     ):
                         continue
-                    latencies.append(latency_us_from_message(data))
+                    latencies.append(latency_ns_from_message(data))
                     count += 1
     return count
 
@@ -86,7 +86,7 @@ def main(argv=None):
                     count=count,
                     msg_size=args.msg_size,
                     elapsed_s=max(args.duration, elapsed),
-                    latencies_us=latencies,
+                    latencies_ns=latencies,
                 )
                 print_result_lines("MULTI_PUBSUB", "tcp", args.msg_size, metrics)
         finally:

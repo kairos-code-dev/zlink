@@ -202,7 +202,7 @@ send_status_t try_publish_locked(spot_server_state_t *state,
           state->phase,
           state->msg_size,
           state->next_seq,
-          perf_multi_metric::now_us())) {
+          perf_multi_metric::now_ns())) {
         zlink_msg_close(&part);
         return send_status_fatal;
     }
@@ -251,8 +251,8 @@ bool run_phase(spot_server_state_t *state,
     unsigned long long publish_blocked_count = 0;
     unsigned long long publish_wait_count = 0;
     if (bench_transition_debug_enabled()) {
-        std::cerr << "[multi-spot-server] phase start ts_us="
-                  << perf_multi_metric::now_us()
+        std::cerr << "[multi-spot-server] phase start ts_ns="
+                  << perf_multi_metric::now_ns()
                   << " size=" << msg_size
                   << " phase=" << static_cast<int>(phase)
                   << " send=" << (send_enabled ? 1 : 0) << std::endl;
@@ -289,8 +289,8 @@ bool run_phase(spot_server_state_t *state,
     state->send_enabled.store(false, std::memory_order_release);
     state->send_pending.store(false, std::memory_order_release);
     if (bench_transition_debug_enabled()) {
-        std::cerr << "[multi-spot-server] phase done ts_us="
-                  << perf_multi_metric::now_us()
+        std::cerr << "[multi-spot-server] phase done ts_ns="
+                  << perf_multi_metric::now_ns()
                   << " size=" << msg_size
                   << " phase=" << static_cast<int>(phase)
                   << " ok=" << publish_ok_count
@@ -343,15 +343,15 @@ bool run_server_loop(spot_server_state_t *state,
         }
 
         if (bench_transition_debug_enabled()) {
-            std::cerr << "[multi-spot-server] ready wait begin ts_us="
-                      << perf_multi_metric::now_us()
+            std::cerr << "[multi-spot-server] ready wait begin ts_ns="
+                      << perf_multi_metric::now_ns()
                       << " size=" << msg_sizes[i]
                       << " timeout_ms=" << start_timeout_ms << std::endl;
         }
         if (!wait_for_size_start (state, msg_sizes[i], start_timeout_ms)) {
             if (bench_transition_debug_enabled()) {
-                std::cerr << "[multi-spot-server] runner start timeout ts_us="
-                          << perf_multi_metric::now_us()
+                std::cerr << "[multi-spot-server] runner start timeout ts_ns="
+                          << perf_multi_metric::now_ns()
                           << " size=" << msg_sizes[i] << std::endl;
             }
             return false;
@@ -366,15 +366,15 @@ bool run_server_loop(spot_server_state_t *state,
         }
         if (!wait_for_ready_slots(state, msg_sizes[i], start_timeout_ms)) {
             if (bench_transition_debug_enabled()) {
-                std::cerr << "[multi-spot-server] ready wait timeout ts_us="
-                          << perf_multi_metric::now_us()
+                std::cerr << "[multi-spot-server] ready wait timeout ts_ns="
+                          << perf_multi_metric::now_ns()
                           << " size=" << msg_sizes[i] << std::endl;
             }
             return false;
         }
         if (bench_transition_debug_enabled()) {
-            std::cerr << "[multi-spot-server] ready wait done ts_us="
-                      << perf_multi_metric::now_us()
+            std::cerr << "[multi-spot-server] ready wait done ts_ns="
+                      << perf_multi_metric::now_ns()
                       << " size=" << msg_sizes[i] << std::endl;
         }
         if (!publish_control_start(state, msg_sizes[i])) {
@@ -386,8 +386,8 @@ bool run_server_loop(spot_server_state_t *state,
             return false;
         }
         if (bench_transition_debug_enabled()) {
-            std::cerr << "[multi-spot-server] start publish done ts_us="
-                      << perf_multi_metric::now_us()
+            std::cerr << "[multi-spot-server] start publish done ts_ns="
+                      << perf_multi_metric::now_ns()
                       << " size=" << msg_sizes[i] << std::endl;
         }
         if (!run_phase(state, lib_name, transport, msg_sizes[i],
@@ -469,8 +469,8 @@ int run_server_benchmark(const std::string &lib_name,
             &server_state->start_gate, start_size);
       });
     if (bench_transition_debug_enabled()) {
-        std::cerr << "[multi-spot-server] phase gate open ts_us="
-                  << perf_multi_metric::now_us()
+        std::cerr << "[multi-spot-server] phase gate open ts_ns="
+                  << perf_multi_metric::now_ns()
                   << std::endl;
     }
 

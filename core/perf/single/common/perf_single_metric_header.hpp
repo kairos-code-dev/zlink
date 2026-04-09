@@ -24,7 +24,7 @@ struct header_t
     uint8_t phase;
     uint32_t msg_size;
     uint64_t seq;
-    int64_t sent_ts_us;
+    int64_t sent_ts_ns;
 };
 
 inline size_t header_size ()
@@ -32,10 +32,10 @@ inline size_t header_size ()
     return 29;
 }
 
-inline uint64_t now_us ()
+inline uint64_t now_ns ()
 {
     return static_cast<uint64_t> (
-      std::chrono::duration_cast<std::chrono::microseconds> (
+      std::chrono::duration_cast<std::chrono::nanoseconds> (
         std::chrono::system_clock::now ().time_since_epoch ())
         .count ());
 }
@@ -45,7 +45,7 @@ inline void init_header (header_t *out,
                          phase_t phase,
                          size_t msg_size,
                          uint64_t seq,
-                         uint64_t sent_ts_us)
+                         uint64_t sent_ts_ns)
 {
     if (!out)
         return;
@@ -55,7 +55,7 @@ inline void init_header (header_t *out,
     out->phase = static_cast<uint8_t> (phase);
     out->msg_size = static_cast<uint32_t> (msg_size);
     out->seq = seq;
-    out->sent_ts_us = static_cast<int64_t> (sent_ts_us);
+    out->sent_ts_ns = static_cast<int64_t> (sent_ts_ns);
 }
 
 inline void write_u32_le (unsigned char *dst, uint32_t value)
@@ -99,7 +99,7 @@ inline bool encode_header (void *dst, size_t dst_size, const header_t &h)
     p[8] = h.phase;
     write_u32_le (p + 9, h.msg_size);
     write_u64_le (p + 13, h.seq);
-    write_u64_le (p + 21, static_cast<uint64_t> (h.sent_ts_us));
+    write_u64_le (p + 21, static_cast<uint64_t> (h.sent_ts_ns));
     return true;
 }
 
@@ -114,7 +114,7 @@ inline bool decode_header (const void *src, size_t src_size, header_t *out)
     out->phase = p[8];
     out->msg_size = read_u32_le (p + 9);
     out->seq = read_u64_le (p + 13);
-    out->sent_ts_us = static_cast<int64_t> (read_u64_le (p + 21));
+    out->sent_ts_ns = static_cast<int64_t> (read_u64_le (p + 21));
     return true;
 }
 
@@ -124,13 +124,13 @@ inline bool stamp_payload (void *payload,
                            phase_t phase,
                            size_t msg_size,
                            uint64_t seq,
-                           uint64_t sent_ts_us)
+                           uint64_t sent_ts_ns)
 {
     if (!payload || payload_size < header_size ())
         return false;
 
     header_t h;
-    init_header (&h, run_id, phase, msg_size, seq, sent_ts_us);
+    init_header (&h, run_id, phase, msg_size, seq, sent_ts_ns);
     return encode_header (payload, payload_size, h);
 }
 

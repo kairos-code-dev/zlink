@@ -28,7 +28,7 @@
 |------|------|
 | 측정 모델 | ready + active(duration) |
 | throughput | one-way: `active 수신 건수 / active 시간(초)` (msg/s), echo: `active RTT 완료 수 / active 시간(초)` (ops/s) |
-| latency | active 구간 수신 payload header timestamp 기반 |
+| latency | active 구간 수신 payload header timestamp 기반 (internal ns / external ms) |
 | 대표값 | runs > 1일 때 metric별 median |
 | 저장 경로 | `perf/results/single/report/` 단일 |
 
@@ -148,6 +148,8 @@ PUBSUB / SPOT    = [ready] -> [post_ready_settle] -> [active(duration)] -> [idle
 - `single`은 별도 settle/prime phase를 두지 않는다.
 - 단, `PUBSUB`/`SPOT` post-ready settle과 recv one-way 공통 idle drain은 본
   문서에 정의된 의미로 반드시 수행한다.
+- latency sample은 내부적으로 nanosecond 단위로 누적하고, RESULT line과
+  사람이 읽는 report/table에는 millisecond 단위로 표시한다.
 - 다음 size는 별도 프로세스로 다시 시작한다.
 - monitor-ready 이후 필요한 protocol self-check는 단발성 검증 1회만
   허용하며, `PUBSUB`/`SPOT` 예외를 제외한 sleep 기반 보정은 금지한다.

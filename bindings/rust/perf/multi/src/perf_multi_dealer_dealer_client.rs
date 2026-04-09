@@ -98,7 +98,7 @@ fn run_send_phase(
             }
 
             common::encode_header(buf, phase, msg_size as u32, *seq);
-            let t0 = common::now_us();
+            let t0 = common::now_ns();
             let msg = Message::from_bytes(buf).expect("msg");
             match sockets[si].try_send(msg) {
                 Ok(SendResult::Sent) => {
@@ -106,8 +106,8 @@ fn run_send_phase(
                     progress = true;
                     if let Some((count, lat)) = metrics.as_mut() {
                         **count += 1;
-                        let latency = common::now_us().saturating_sub(t0) as f64;
-                        lat.record_us(latency);
+                        let latency = common::now_ns().saturating_sub(t0) as f64;
+                        lat.record_ns(latency);
                     }
                 }
                 Ok(SendResult::Backpressured) | Ok(SendResult::NotReady) => {

@@ -58,10 +58,10 @@ internal static class PerfPubSubServer
         {
             double configuredSeconds = Math.Max(1.0, durationSeconds);
             double throughput = activeSent / configuredSeconds;
-            double latencyUs = (configuredSeconds * 1_000_000.0)
+            double latencyNs = (configuredSeconds * 1_000_000_000.0)
                 / Math.Max(1.0, activeSent);
-            PrintResult(options.Pattern, options.Transport, size, throughput, latencyUs,
-                latencyUs, latencyUs);
+            PrintResult(options.Pattern, options.Transport, size, throughput, latencyNs,
+                latencyNs, latencyNs);
         }
 
         return 0;
@@ -97,7 +97,7 @@ internal static class PerfPubSubServer
             if (trySend)
             {
                 StampMetricHeader(payload.AsSpan(), runId, phase, size, seq,
-                    EpochUs());
+                    EpochNs());
                 if (TryPublish(server, payload.AsSpan()))
                 {
                     seq++;

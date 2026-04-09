@@ -43,7 +43,7 @@ public final class PerfUtil {
     ) {
     }
 
-    public record Header(byte phase, long latencyMicros) {
+    public record Header(byte phase, long latencyNanos) {
     }
 
     public static final class Result {
@@ -95,8 +95,8 @@ public final class PerfUtil {
             delegate.startActiveWindow();
         }
 
-        public synchronized void recordMicros(long value) {
-            delegate.recordMicros(value);
+        public synchronized void recordNanos(long value) {
+            delegate.recordNanos(value);
         }
 
         public void recordMillis(double value) {
@@ -132,8 +132,8 @@ public final class PerfUtil {
         return PerfMeasurement.phase(message);
     }
 
-    public static long latencyMicros(Message message) {
-        return PerfMeasurement.latencyMicros(message);
+    public static long latencyNanos(Message message) {
+        return PerfMeasurement.latencyNanos(message);
     }
 
     public static double latencyMillis(Message message) {
@@ -223,8 +223,8 @@ public final class PerfUtil {
         return PerfReport.resultFileName("java", recvMode, platform, tag);
     }
 
-    public static long nowUs() {
-        return PerfMeasurement.nowUs();
+    public static long nowNs() {
+        return PerfMeasurement.nowNs();
     }
 
     public static PerfCallbackMetrics callbackMetrics(String workerName) {

@@ -85,9 +85,9 @@ fn main() {
                                 inflight[i] = false;
                                 if phase == common::PHASE_ACTIVE {
                                     let data = received.parts()[0].data();
-                                    let sent_ts = common::decode_sent_ts(data);
-                                    let rtt = common::now_us().saturating_sub(sent_ts.max(0) as u64) as f64;
-                                    lat.record_us(rtt);
+                                    let sent_ts_ns = common::decode_sent_ts_ns(data);
+                                    let rtt = common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64;
+                                    lat.record_ns(rtt);
                                     *count += 1;
                                 }
                             }

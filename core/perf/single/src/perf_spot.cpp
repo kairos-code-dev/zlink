@@ -126,7 +126,7 @@ bool publish_metric_payload (void *publisher_,
           phase_,
           msg_size_,
           seq_,
-          perf_single_metric::now_us ())) {
+          perf_single_metric::now_ns ())) {
         return false;
     }
 
@@ -281,7 +281,7 @@ bool run_active_window (void *publisher_,
                 if (header_ok && single_header_matches_run (*state_, header)
                     && std::chrono::steady_clock::now () < deadline) {
                     received.fetch_add (1, std::memory_order_relaxed);
-                    latency_builder.add (single_latency_us (header));
+                    latency_builder.add (single_latency_ns (header));
                 }
 
                 for (;;) {
@@ -297,7 +297,7 @@ bool run_active_window (void *publisher_,
                             && std::chrono::steady_clock::now () < deadline) {
                             received.fetch_add (1, std::memory_order_relaxed);
                             latency_builder.add (
-                              single_latency_us (burst_header));
+                              single_latency_ns (burst_header));
                         }
                         continue;
                     }
@@ -501,9 +501,9 @@ int run_case (const std::string &lib_name_,
                   transport_,
                   msg_size_,
                   throughput,
-                  latency.mean_us,
-                  latency.p95_us,
-                  latency.p99_us);
+                  latency.mean_ns,
+                  latency.p95_ns,
+                  latency.p99_ns);
     return 0;
 }
 

@@ -6,7 +6,7 @@ import zlink
 
 from perf_common import (
     benchmark_run_id,
-    latency_us_from_message,
+    latency_ns_from_message,
     is_active_message,
     new_payload,
     parse_single_args,
@@ -78,7 +78,7 @@ def main(argv=None):
                                         with lock:
                                             state["active_count"] += 1
                                         state["latencies"].append(
-                                            latency_us_from_message(data)
+                                            latency_ns_from_message(data)
                                         )
                                 if time.perf_counter() >= drain_deadline:
                                     break
@@ -90,7 +90,7 @@ def main(argv=None):
                     count=state["active_count"],
                     msg_size=args.msg_size,
                     elapsed_s=args.duration,
-                    latencies_us=state["latencies"],
+                    latencies_ns=state["latencies"],
                 )
                 print_result_lines("PAIR", "tcp", args.msg_size, metrics)
 

@@ -28,7 +28,7 @@ int recv_one_pubsub_message (void *socket,
                              size_t expected_msg_size,
                              uint32_t expected_run_id,
                              perf_multi_metric::header_t *header_out,
-                             double *sample_us_out,
+                             double *sample_ns_out,
                              bool *have_sample_out)
 {
     size_t topic_len = 0;
@@ -78,13 +78,13 @@ int recv_one_pubsub_message (void *socket,
         *header_out = header;
     if (have_sample_out)
         *have_sample_out = false;
-    if (sample_us_out)
-        *sample_us_out = 0.0;
-    const uint64_t now_us = perf_multi_metric::now_us ();
-    if (header.sent_ts_us > 0 && now_us >= header.sent_ts_us) {
-        if (sample_us_out)
-            *sample_us_out =
-              static_cast<double> (now_us - header.sent_ts_us);
+    if (sample_ns_out)
+        *sample_ns_out = 0.0;
+    const uint64_t now_ns = perf_multi_metric::now_ns ();
+    if (header.sent_ts_ns > 0 && now_ns >= header.sent_ts_ns) {
+        if (sample_ns_out)
+            *sample_ns_out =
+              static_cast<double> (now_ns - header.sent_ts_ns);
         if (have_sample_out)
             *have_sample_out = true;
     }
@@ -181,10 +181,10 @@ bool run_recv_duration (const std::vector<void *> &sockets,
             while (socket) {
                 perf_multi_metric::header_t header;
                 std::memset (&header, 0, sizeof (header));
-                double sample_us = 0.0;
+                double sample_ns = 0.0;
                 bool have_sample = false;
                 const int recv_rc = recv_one_pubsub_message (
-                  socket, msg_size, run_id, &header, &sample_us, &have_sample);
+                  socket, msg_size, run_id, &header, &sample_ns, &have_sample);
                 if (recv_rc < 0) {
                     if (bench_debug_enabled ()) {
                         std::cerr << "[multi-pubsub-client] recv error err="
@@ -216,9 +216,9 @@ bool run_recv_duration (const std::vector<void *> &sockets,
 
                 ++recv_count;
                 if (have_sample) {
-                    lat_sum += sample_us;
+                    lat_sum += sample_ns;
                     ++lat_count;
-                    lat_samples.add (sample_us);
+                    lat_samples.add (sample_ns);
                 }
             }
         }

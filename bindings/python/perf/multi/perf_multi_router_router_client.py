@@ -6,7 +6,7 @@ from contextlib import ExitStack
 import zlink
 
 from perf_multi_common import (
-    latency_us_from_message,
+    latency_ns_from_message,
     is_active_message,
     new_payload,
     parse_client_args,
@@ -53,7 +53,7 @@ def main(argv=None):
                                 run_id=None,
                             ):
                                 continue
-                            sample = latency_us_from_message(data)
+                            sample = latency_ns_from_message(data)
                         with lock:
                             count += 1
                             latencies.append(sample)
@@ -69,7 +69,7 @@ def main(argv=None):
                     count=count,
                     msg_size=args.msg_size,
                     elapsed_s=max(args.duration, elapsed),
-                    latencies_us=latencies,
+                    latencies_ns=latencies,
                 )
                 print_result_lines("MULTI_ROUTER_ROUTER", "tcp", args.msg_size, metrics)
         finally:

@@ -25,7 +25,7 @@ public final class PerfCallbackMetrics {
         metrics.startActiveWindow();
     }
 
-    public void recordMicros(long value) {
+    public void recordNanos(long value) {
         checkFailure();
         if (!queue.offer(value)) {
             throw new IllegalStateException("callback metrics queue overflow");
@@ -33,7 +33,7 @@ public final class PerfCallbackMetrics {
     }
 
     public void recordMillis(double value) {
-        recordMicros(Math.round(value * 1000.0d));
+        recordNanos(Math.round(value * 1_000_000.0d));
     }
 
     public PerfUtil.Result finishSingle(PerfUtil.Config config) {
@@ -61,7 +61,7 @@ public final class PerfCallbackMetrics {
                 if (value == STOP_SENTINEL) {
                     return;
                 }
-                metrics.recordMicros(value);
+                metrics.recordNanos(value);
             }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();

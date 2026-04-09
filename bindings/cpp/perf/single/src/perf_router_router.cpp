@@ -78,11 +78,11 @@ bool record_router_router_sample (uint32_t run_id_,
     }
 
     received_->fetch_add (1, std::memory_order_release);
-    const uint64_t now = perf_single_metric::now_us ();
-    const double latency_us =
-      now >= header.sent_ts_us ? static_cast<double> (now - header.sent_ts_us)
+    const uint64_t now = perf_single_metric::now_ns ();
+    const double latency_ns =
+      now >= header.sent_ts_ns ? static_cast<double> (now - header.sent_ts_ns)
                                : 0.0;
-    latency_->add (latency_us);
+    latency_->add (latency_ns);
     return true;
 }
 
@@ -107,7 +107,7 @@ bool send_router_samples (zlink::socket_t *sender_,
               perf_single_metric::phase_active,
               state_->msg_size,
               seq,
-              perf_single_metric::now_us ())) {
+              perf_single_metric::now_ns ())) {
             return false;
         }
 
@@ -177,7 +177,7 @@ void run_pattern_router_router (const std::string &transport,
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
 
-    const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_us ());
+    const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_ns ());
 
     const int duration_s =
       std::max (1, perf::single::resolve_single_duration_seconds ());
@@ -266,9 +266,9 @@ void run_pattern_router_router (const std::string &transport,
                                 transport,
                                 msg_size,
                                 throughput,
-                                latency.mean_us,
-                                latency.p95_us,
-                                latency.p99_us);
+                                latency.mean_ns,
+                                latency.p95_ns,
+                                latency.p99_ns);
 }
 
 int main (int argc, char **argv)

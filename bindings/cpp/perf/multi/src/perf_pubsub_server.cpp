@@ -66,7 +66,7 @@ bool run_phase (zlink::socket_t &publisher,
                                              phase,
                                              msg_size,
                                              seq++,
-                                             perf_metric::now_us ())) {
+                                             perf_metric::now_ns ())) {
                 return false;
             }
         }

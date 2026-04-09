@@ -163,7 +163,7 @@ send_status_t send_dealer_request(dealer_client_slot_t *slot)
           slot->phase,
           slot->msg_size,
           (static_cast<uint64_t>(slot->slot_index) << 48) | slot->next_seq,
-          perf_multi_metric::now_us())) {
+          perf_multi_metric::now_ns())) {
         zlink_msg_close(&part);
         return send_error;
     }
@@ -229,12 +229,12 @@ recv_status_t receive_dealer_reply(dealer_client_state_t *state,
           perf_multi_metric::phase_active,
           state->active_msg_size.load(std::memory_order_acquire))) {
         state->active_received.fetch_add(1, std::memory_order_acq_rel);
-        const uint64_t now_us = perf_multi_metric::now_us();
-        const double latency_us =
-          header.sent_ts_us > 0 && now_us >= header.sent_ts_us
-            ? static_cast<double>(now_us - header.sent_ts_us) * 0.5
+        const uint64_t now_ns = perf_multi_metric::now_ns();
+        const double latency_ns =
+          header.sent_ts_ns > 0 && now_ns >= header.sent_ts_ns
+            ? static_cast<double>(now_ns - header.sent_ts_ns) * 0.5
             : 0.0;
-        slot->latency.add(latency_us);
+        slot->latency.add(latency_ns);
     }
 
     if (slot->send_enabled && slot->auto_send_on_recv) {
@@ -452,18 +452,18 @@ bool build_latency_stats(const std::vector<dealer_client_slot_t> &slots,
                          unsigned long long *latency_count_out)
 {
     unsigned long long latency_count = 0;
-    double latency_sum_us = 0.0;
+    double latency_sum_ns = 0.0;
     std::vector<double> latency_samples;
 
     for_each_dealer_slot(slots, [&] (const dealer_client_slot_t *slot) {
         perf_multi_echo::echo_append_slot_latency(
-          slot, &latency_count, &latency_sum_us, &latency_samples);
+          slot, &latency_count, &latency_sum_ns, &latency_samples);
     });
 
     if (latency_count_out)
         *latency_count_out = latency_count;
     return perf_multi_echo::echo_finalize_latency_stats(
-      latency_count, latency_sum_us, latency_samples, latency_out);
+      latency_count, latency_sum_ns, latency_samples, latency_out);
 }
 
 bool run_single_size_case(dealer_client_state_t *state,

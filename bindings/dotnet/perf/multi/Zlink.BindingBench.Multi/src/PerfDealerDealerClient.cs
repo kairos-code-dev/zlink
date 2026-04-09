@@ -206,7 +206,7 @@ internal static class PerfDealerDealerClient
         int msgSize, uint runId, PerfPhase phase, ref ulong seq)
     {
         StampMetricHeader(slot.Payload.AsSpan(), runId, phase, msgSize,
-            seq, EpochUs());
+            seq, EpochNs());
 
         try
         {

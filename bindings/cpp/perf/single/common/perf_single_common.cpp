@@ -721,12 +721,12 @@ void callback_receiver_t::worker_loop ()
 
             ++_received_count;
             if (_current_active.load (std::memory_order_acquire)) {
-                const uint64_t now = perf_single_metric::now_us ();
-                const double latency_us =
-                  now >= header.sent_ts_us
-                    ? static_cast<double> (now - header.sent_ts_us)
+                const uint64_t now = perf_single_metric::now_ns ();
+                const double latency_ns =
+                  now >= header.sent_ts_ns
+                    ? static_cast<double> (now - header.sent_ts_ns)
                     : 0.0;
-                _latency_builder.add (latency_us);
+                _latency_builder.add (latency_ns);
             }
             _result_cv.notify_all ();
         }
@@ -768,7 +768,7 @@ bool run_callback_phase (callback_receiver_t &receiver_,
                                                     phase_,
                                                     msg_size_,
                                                     seq_++,
-                                                    perf_single_metric::now_us ())
+                                                    perf_single_metric::now_ns ())
                 || !send_fn_ (
                   send_userdata_, payload_.data (), payload_.size ())) {
                 send_failed = true;
@@ -784,7 +784,7 @@ bool run_callback_phase (callback_receiver_t &receiver_,
                                                     phase_,
                                                     msg_size_,
                                                     seq_++,
-                                                    perf_single_metric::now_us ())
+                                                    perf_single_metric::now_ns ())
                 || !send_fn_ (
                   send_userdata_, payload_.data (), payload_.size ())) {
                 send_failed = true;
@@ -802,7 +802,7 @@ bool run_callback_phase (callback_receiver_t &receiver_,
         return false;
     }
 
-    if (active && latency_out_ && latency_out_->mean_us <= 0.0)
+    if (active && latency_out_ && latency_out_->mean_ns <= 0.0)
         return false;
     return !receiver_.failed ();
 }
@@ -1097,12 +1097,12 @@ void subscribe_callback_receiver_t::worker_loop ()
 
             ++_received_count;
             if (_current_active.load (std::memory_order_acquire)) {
-                const uint64_t now = perf_single_metric::now_us ();
-                const double latency_us =
-                  now >= received_header.sent_ts_us
-                    ? static_cast<double> (now - received_header.sent_ts_us)
+                const uint64_t now = perf_single_metric::now_ns ();
+                const double latency_ns =
+                  now >= received_header.sent_ts_ns
+                    ? static_cast<double> (now - received_header.sent_ts_ns)
                     : 0.0;
-                _latency_builder.add (latency_us);
+                _latency_builder.add (latency_ns);
             }
             _result_cv.notify_all ();
         }
@@ -1149,7 +1149,7 @@ bool run_subscribe_callback_phase (subscribe_callback_receiver_t &receiver_,
                                                     phase_,
                                                     msg_size_,
                                                     seq_++,
-                                                    perf_single_metric::now_us ())
+                                                    perf_single_metric::now_ns ())
                 || !send_fn_ (
                   send_userdata_, payload_.data (), payload_.size ())) {
                 send_failed = true;
@@ -1165,7 +1165,7 @@ bool run_subscribe_callback_phase (subscribe_callback_receiver_t &receiver_,
                                                     phase_,
                                                     msg_size_,
                                                     seq_++,
-                                                    perf_single_metric::now_us ())
+                                                    perf_single_metric::now_ns ())
                 || !send_fn_ (
                   send_userdata_, payload_.data (), payload_.size ())) {
                 send_failed = true;
@@ -1190,7 +1190,7 @@ bool run_subscribe_callback_phase (subscribe_callback_receiver_t &receiver_,
         return false;
     }
 
-    if (active && latency_out_ && latency_out_->mean_us <= 0.0) {
+    if (active && latency_out_ && latency_out_->mean_ns <= 0.0) {
         if (debug_enabled)
             std::cerr << "subscribe_phase: latency snapshot empty" << std::endl;
         return false;

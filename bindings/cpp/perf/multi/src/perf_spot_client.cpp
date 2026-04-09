@@ -326,12 +326,12 @@ class callback_slot_t
         if (metrics) {
             ++metrics->active_received;
             if (should_sample_spot_latency (++metrics->sample_index)) {
-                const uint64_t received_ts_us = perf_metric::now_us ();
-                const double latency_us =
-                  received_ts_us >= header.sent_ts_us
-                    ? static_cast<double> (received_ts_us - header.sent_ts_us)
+                const uint64_t received_ts_ns = perf_metric::now_ns ();
+                const double latency_ns =
+                  received_ts_ns >= header.sent_ts_ns
+                    ? static_cast<double> (received_ts_ns - header.sent_ts_ns)
                     : 0.0;
-                metrics->latency.add (latency_us);
+                metrics->latency.add (latency_ns);
             }
         }
 
@@ -384,7 +384,7 @@ class spot_client_bench_t
           _registry_pub_endpoint (),
           _registry_router_endpoint (),
           _callback_state (),
-          _active_start_us (0),
+          _active_start_ns (0),
           _active_count (0),
           _latency (),
           _phase_mutex (),
@@ -434,7 +434,7 @@ class spot_client_bench_t
     bool run_single_size (size_t msg_size_)
     {
         _msg_size = msg_size_;
-        _active_start_us.store (0, std::memory_order_release);
+        _active_start_ns.store (0, std::memory_order_release);
         _active_count = 0;
         _latency = perf::multi::bench_latency_stats_t ();
         _callback_state.expected_msg_size.store (_msg_size,
@@ -674,9 +674,9 @@ class spot_client_bench_t
 
     bool run_recv_active ()
     {
-        const uint64_t active_duration_us =
+        const uint64_t active_duration_ns =
           static_cast<uint64_t> (std::max (1, _settings.duration_seconds))
-          * 1000000ULL;
+          * 1000000000ULL;
         const auto start_deadline = std::chrono::steady_clock::now ()
                                     + std::chrono::milliseconds (
                                       resolve_spot_phase_timeout_ms (
@@ -688,7 +688,7 @@ class spot_client_bench_t
               start_deadline,
               [this]() {
                   return _recv_fatal.load (std::memory_order_acquire)
-                         || _active_start_us.load (
+                         || _active_start_ns.load (
                               std::memory_order_acquire)
                               != 0;
               });
@@ -699,21 +699,21 @@ class spot_client_bench_t
             }
         }
 
-        const uint64_t active_start_us =
-          _active_start_us.load (std::memory_order_acquire);
+        const uint64_t active_start_ns =
+          _active_start_ns.load (std::memory_order_acquire);
         if (_recv_fatal.load (std::memory_order_acquire))
             return false;
-        if (active_start_us == 0) {
+        if (active_start_ns == 0) {
             errno = ETIMEDOUT;
             debug_log ("recv active start timed out");
             return false;
         }
 
-        const uint64_t deadline_us = active_start_us + active_duration_us;
+        const uint64_t deadline_ns = active_start_ns + active_duration_ns;
         {
             std::unique_lock<std::mutex> lock (_phase_mutex);
             while (!_recv_fatal.load (std::memory_order_acquire)) {
-                if (perf_metric::now_us () > deadline_us)
+                if (perf_metric::now_ns () > deadline_ns)
                     break;
                 _phase_cv.wait_for (lock, std::chrono::milliseconds (5));
             }
@@ -758,22 +758,22 @@ class spot_client_bench_t
             if (header.phase != static_cast<uint32_t> (perf_metric::phase_active))
                 continue;
 
-            const uint64_t received_ts_us = perf_metric::now_us ();
-            uint64_t start = _active_start_us.load (std::memory_order_acquire);
+            const uint64_t received_ts_ns = perf_metric::now_ns ();
+            uint64_t start = _active_start_ns.load (std::memory_order_acquire);
             bool notify_phase = false;
             if (start == 0) {
-                (void) _active_start_us.compare_exchange_strong (
-                  start, received_ts_us, std::memory_order_acq_rel);
-                start = _active_start_us.load (std::memory_order_acquire);
+                (void) _active_start_ns.compare_exchange_strong (
+                  start, received_ts_ns, std::memory_order_acq_rel);
+                start = _active_start_ns.load (std::memory_order_acquire);
                 notify_phase = (start != 0);
             }
-            if (received_ts_us < start)
+            if (received_ts_ns < start)
                 continue;
 
-            const uint64_t duration_us =
+            const uint64_t duration_ns =
               static_cast<uint64_t> (std::max (1, _settings.duration_seconds))
-              * 1000000ULL;
-            if (received_ts_us > start + duration_us)
+              * 1000000000ULL;
+            if (received_ts_ns > start + duration_ns)
                 continue;
 
             recv_thread_metrics_t *metrics = bind_recv_thread_metrics ();
@@ -782,12 +782,12 @@ class spot_client_bench_t
 
             ++metrics->active_received;
             if (should_sample_spot_latency (++metrics->sample_index)) {
-                const double latency_us = received_ts_us >= header.sent_ts_us
+                const double latency_ns = received_ts_ns >= header.sent_ts_ns
                                             ? static_cast<double> (
-                                                received_ts_us
-                                                - header.sent_ts_us)
+                                                received_ts_ns
+                                                - header.sent_ts_ns)
                                             : 0.0;
-                metrics->latency.add (latency_us);
+                metrics->latency.add (latency_ns);
             }
 
             if (notify_phase)
@@ -932,7 +932,7 @@ class spot_client_bench_t
     std::string _registry_pub_endpoint;
     std::string _registry_router_endpoint;
     callback_client_state_t _callback_state;
-    std::atomic<uint64_t> _active_start_us;
+    std::atomic<uint64_t> _active_start_ns;
     unsigned long long _active_count;
     perf::multi::bench_latency_stats_t _latency;
     std::mutex _phase_mutex;

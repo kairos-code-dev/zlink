@@ -68,9 +68,9 @@ async function main() {
         }
         const patternRows = [];
         for (const msgSize of options.msgSizes) {
-            const latenciesUs = await runner(msgSize, options);
-            const metrics = computeMetrics(latenciesUs, options.duration, msgSize);
-            const lines = summarizeMetrics(name, 'inproc', msgSize, latenciesUs, options.duration);
+            const latenciesNs = await runner(msgSize, options);
+            const metrics = computeMetrics(latenciesNs, options.duration, msgSize);
+            const lines = summarizeMetrics(name, 'inproc', msgSize, latenciesNs, options.duration);
             for (const line of lines) {
                 console.log(line);
                 resultLines.push(line);

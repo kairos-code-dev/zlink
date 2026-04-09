@@ -468,9 +468,9 @@ inline void debug_header_trace (const char *role,
                                 uint32_t phase,
                                 uint32_t run_id,
                                 uint64_t seq,
-                                uint64_t sent_ts_us,
-                                uint64_t observed_ts_us,
-                                double latency_us)
+                                uint64_t sent_ts_ns,
+                                uint64_t observed_ts_ns,
+                                double latency_ns)
 {
     if (!debug_header_trace_enabled ())
         return;
@@ -489,11 +489,11 @@ inline void debug_header_trace (const char *role,
               << ",phase=" << phase
               << ",run_id=" << run_id
               << ",seq=" << seq
-              << ",sent_ts_us=" << sent_ts_us
-              << ",observed_ts_us=" << observed_ts_us;
-    if (latency_us >= 0.0) {
-        std::cerr << ",latency_us=" << std::fixed << std::setprecision (3)
-                  << latency_us;
+              << ",sent_ts_ns=" << sent_ts_ns
+              << ",observed_ts_ns=" << observed_ts_ns;
+    if (latency_ns >= 0.0) {
+        std::cerr << ",latency_ns=" << std::fixed << std::setprecision (3)
+                  << latency_ns;
     }
     std::cerr << std::endl;
 }
@@ -520,13 +520,13 @@ inline void print_result (const std::string &lib,
                           size_t size,
                           double throughput,
                           double bandwidth,
-                          double latency_us,
-                          double p95_us,
-                          double p99_us)
+                          double latency_ns,
+                          double p95_ns,
+                          double p99_ns)
 {
-    const double latency_ms = latency_us / 1000.0;
-    const double p95_ms = p95_us / 1000.0;
-    const double p99_ms = p99_us / 1000.0;
+    const double latency_ms = latency_ns / 1000000.0;
+    const double p95_ms = p95_ns / 1000000.0;
+    const double p99_ms = p99_ns / 1000000.0;
 
     std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
               << ",throughput," << std::fixed << std::setprecision (3) << throughput
@@ -633,9 +633,9 @@ inline void print_client_result_lines (
                   size,
                   throughput,
                   bandwidth,
-                  latency.mean_us,
-                  latency.p95_us,
-                  latency.p99_us);
+                  latency.mean_ns,
+                  latency.p95_ns,
+                  latency.p99_ns);
     print_client_resource_metrics ("current", pattern, transport, size, metrics);
 }
 

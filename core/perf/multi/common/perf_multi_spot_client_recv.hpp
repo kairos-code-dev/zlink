@@ -134,7 +134,7 @@ inline bool emit_client_result_lines(const char *pattern,
                                      const bench_latency_stats_t &latency)
 {
     if (!pattern || duration_seconds <= 0 || fatal || active_received == 0
-        || latency.mean_us <= 0.0) {
+        || latency.mean_ns <= 0.0) {
         errno = EINVAL;
         return false;
     }

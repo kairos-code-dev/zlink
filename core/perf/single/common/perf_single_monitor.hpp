@@ -120,15 +120,15 @@ inline void print_result(const std::string &lib_type,
                          const std::string &transport,
                          size_t size,
                          double throughput,
-                         double latency,
-                         double latency_p95,
-                         double latency_p99)
+                         double latency_ns,
+                         double latency_p95_ns,
+                         double latency_p99_ns)
 {
     const double bandwidth_mb_s =
       (throughput * static_cast<double>(size)) / 1000000.0;
-    const double latency_ms = latency / 1000.0;
-    const double latency_p95_ms = latency_p95 / 1000.0;
-    const double latency_p99_ms = latency_p99 / 1000.0;
+    const double latency_ms = latency_ns / 1000000.0;
+    const double latency_p95_ms = latency_p95_ns / 1000000.0;
+    const double latency_p99_ms = latency_p99_ns / 1000000.0;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",throughput," << std::fixed
               << std::setprecision(2) << throughput << std::endl;

@@ -82,9 +82,9 @@ inline void print_spot_client_result_lines (
                   msg_size_,
                   throughput,
                   bandwidth,
-                  latency_.mean_us,
-                  latency_.p95_us,
-                  latency_.p99_us);
+                  latency_.mean_ns,
+                  latency_.p95_ns,
+                  latency_.p99_ns);
     print_client_resource_metrics (
       "current", pattern_, transport_, msg_size_, resource_metrics_);
 }

@@ -103,7 +103,7 @@ bool send_dealer_samples (void *sender_,
               perf_single_metric::phase_active,
               state_->msg_size,
               seq,
-              perf_single_metric::now_us ())) {
+              perf_single_metric::now_ns ())) {
             return false;
         }
 
@@ -174,7 +174,7 @@ bool run_active_phase (void *sender_,
                 if (header_ok && single_header_matches_run (*state_, header)
                     && std::chrono::steady_clock::now () < deadline) {
                     received.fetch_add (1, std::memory_order_relaxed);
-                    latency_builder.add (single_latency_us (header));
+                    latency_builder.add (single_latency_ns (header));
                 }
 
                 for (;;) {
@@ -193,7 +193,7 @@ bool run_active_phase (void *sender_,
                             && std::chrono::steady_clock::now () < deadline) {
                             received.fetch_add (1, std::memory_order_relaxed);
                             latency_builder.add (
-                              single_latency_us (burst_header));
+                              single_latency_ns (burst_header));
                         }
                         continue;
                     }
@@ -312,9 +312,9 @@ void run_dealer_dealer (const std::string &transport,
                   msg_size,
                   static_cast<double> (received)
                     / static_cast<double> (duration_s),
-                  latency.mean_us,
-                  latency.p95_us,
-                  latency.p99_us);
+                  latency.mean_ns,
+                  latency.p95_ns,
+                  latency.p99_ns);
 }
 
 int main (int argc, char **argv)

@@ -58,7 +58,7 @@ internal static class PerfPubSubClient
                 warmupSeconds, durationSeconds, activeWarmup);
 
             PrintResult(options.Pattern, options.Transport, size, result.throughput,
-                result.latencyUs, result.latencyP95Us, result.latencyP99Us);
+                result.latencyNs, result.latencyP95Ns, result.latencyP99Ns);
             return 0;
         }
         finally
@@ -68,8 +68,8 @@ internal static class PerfPubSubClient
         }
     }
 
-    private static (double throughput, double latencyUs, double latencyP95Us,
-        double latencyP99Us)
+    private static (double throughput, double latencyNs, double latencyP95Ns,
+        double latencyP99Ns)
         RunMultiPubSubClientLoop(PollManager pollManager,
             List<SocketBase> activeClients,
             byte[] recv, int msgSize, int latencySampleCap, int pollTimeoutMs,
@@ -132,11 +132,11 @@ internal static class PerfPubSubClient
                     if (header.Phase == (uint)PerfPhase.Active)
                     {
                         measureCount++;
-                        ulong nowUs = EpochUs();
-                        if (header.SentTsUs > 0 && nowUs >= header.SentTsUs)
+                        ulong nowNs = EpochNs();
+                        if (header.SentTsNs > 0 && nowNs >= header.SentTsNs)
                         {
-                            double sampleLatencyUs = nowUs - header.SentTsUs;
-                            ReservoirSample(latSamples, sampleLatencyUs,
+                            double sampleLatencyNs = nowNs - header.SentTsNs;
+                            ReservoirSample(latSamples, sampleLatencyNs,
                                 ref sampleSeen, latencySampleCap, ref rng);
                         }
                     }
@@ -147,13 +147,13 @@ internal static class PerfPubSubClient
 
         double configuredSeconds = Math.Max(1.0, durationSeconds);
         double throughput = measureCount / configuredSeconds;
-        double fallbackLatencyUs = (configuredSeconds * 1_000_000.0)
+        double fallbackLatencyNs = (configuredSeconds * 1_000_000_000.0)
             / Math.Max(1.0, measureCount);
         var latency = ComputeLatencyStats(latSamples);
-        double latencyUs = latency.mean > 0.0 ? latency.mean : fallbackLatencyUs;
-        double latencyP95Us = latency.p95 > 0.0 ? latency.p95 : latencyUs;
-        double latencyP99Us = latency.p99 > 0.0 ? latency.p99 : latencyP95Us;
+        double latencyNs = latency.mean > 0.0 ? latency.mean : fallbackLatencyNs;
+        double latencyP95Ns = latency.p95 > 0.0 ? latency.p95 : latencyNs;
+        double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
 
-        return (throughput, latencyUs, latencyP95Us, latencyP99Us);
+        return (throughput, latencyNs, latencyP95Ns, latencyP99Ns);
     }
 }

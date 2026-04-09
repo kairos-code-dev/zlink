@@ -26,8 +26,8 @@ final class PerfMetricHeader {
         if (message.readIntLe(9) != expectedSize) {
             return null;
         }
-        long sentTsUs = message.readLongLe(21);
-        long latencyMicros = Math.max(0L, PerfUtil.nowUs() - sentTsUs);
-        return new PerfUtil.Header((byte) phase, latencyMicros);
+        long sentTsNs = message.readLongLe(21);
+        long latencyNanos = Math.max(0L, PerfUtil.nowNs() - sentTsNs);
+        return new PerfUtil.Header((byte) phase, latencyNanos);
     }
 }

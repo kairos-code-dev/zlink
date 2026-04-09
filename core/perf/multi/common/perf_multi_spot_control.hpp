@@ -766,8 +766,8 @@ inline void start_client_stdin_watcher(StateT *state, NotifyStartFn notify_start
         std::string line;
         while (std::getline(std::cin, line)) {
             if (bench_transition_debug_enabled()) {
-                std::cerr << "[multi-spot-client] stdin line ts_us="
-                          << perf_multi_metric::now_us()
+                std::cerr << "[multi-spot-client] stdin line ts_ns="
+                          << perf_multi_metric::now_ns()
                           << " line=" << line << std::endl;
             }
 
@@ -806,8 +806,8 @@ inline void start_server_stdin_watcher(StateT *state,
           std::string line;
           while (std::getline(std::cin, line)) {
               if (bench_transition_debug_enabled()) {
-                  std::cerr << "[multi-spot-server] stdin line ts_us="
-                            << perf_multi_metric::now_us()
+                  std::cerr << "[multi-spot-server] stdin line ts_ns="
+                            << perf_multi_metric::now_ns()
                             << " line=" << line << std::endl;
               }
 
@@ -817,8 +817,8 @@ inline void start_server_stdin_watcher(StateT *state,
                     line, "CONNECT_CONTROL,", &connect_endpoint)) {
                   if (bench_transition_debug_enabled()) {
                       std::cerr
-                        << "[multi-spot-server] reverse connect request ts_us="
-                        << perf_multi_metric::now_us()
+                        << "[multi-spot-server] reverse connect request ts_ns="
+                        << perf_multi_metric::now_ns()
                         << " endpoint=" << connect_endpoint << std::endl;
                   }
                   if (!accept_reverse_connect_request(

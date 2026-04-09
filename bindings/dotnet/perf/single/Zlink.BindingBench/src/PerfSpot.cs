@@ -151,10 +151,10 @@ internal static class PerfSpot
                 if (!active)
                     return;
 
-                long nowUs = TimestampUs();
-                long sentUs = DecodeHeader(recvBuffer.AsSpan(0, sizeof(long)));
-                double latencyUs = Math.Max(0L, nowUs - sentUs);
-                ReservoirSample(samples, latencyUs, ref sampleSeen, latCount,
+                long nowNs = TimestampNs();
+                long sentNs = DecodeHeader(recvBuffer.AsSpan(0, sizeof(long)));
+                double latencyNs = Math.Max(0L, nowNs - sentNs);
+                ReservoirSample(samples, latencyNs, ref sampleSeen, latCount,
                     ref rng);
             }
 
@@ -193,7 +193,7 @@ internal static class PerfSpot
         {
             while (Stopwatch.GetTimestamp() < deadlineTicks)
             {
-                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
+                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
                 if (TryPublishPayload(sender, payload) != SendResult.Sent)
                 {
                     Thread.Yield();
@@ -206,7 +206,7 @@ internal static class PerfSpot
         {
             for (int i = 0; i < warmupCount; i++)
             {
-                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
+                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
                 while (TryPublishPayload(sender, payload) != SendResult.Sent)
                 {
                     Thread.Yield();

@@ -140,7 +140,7 @@ void run_pattern_spot (const std::string &transport,
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 's');
 
-    const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_us ());
+    const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_ns ());
     uint64_t seq = 1;
 
     const int duration_s =
@@ -175,9 +175,9 @@ void run_pattern_spot (const std::string &transport,
                                 transport,
                                 msg_size,
                                 throughput,
-                                latency.mean_us,
-                                latency.p95_us,
-                                latency.p99_us,
+                                latency.mean_ns,
+                                latency.p95_ns,
+                                latency.p99_ns,
                                 perf::single::sample_queue_stats (&queue_probe));
 }
 

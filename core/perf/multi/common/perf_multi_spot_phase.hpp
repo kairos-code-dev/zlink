@@ -43,8 +43,8 @@ inline bool run_server_cases(void *state,
         }
 
         if (bench_transition_debug_enabled()) {
-            std::cerr << "[" << debug_tag << "] ready wait begin ts_us="
-                      << perf_multi_metric::now_us()
+            std::cerr << "[" << debug_tag << "] ready wait begin ts_ns="
+                      << perf_multi_metric::now_ns()
                       << " size=" << msg_size
                       << " timeout_ms=" << start_timeout_ms << std::endl;
         }

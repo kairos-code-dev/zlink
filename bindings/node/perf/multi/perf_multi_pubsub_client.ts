@@ -6,7 +6,7 @@ const zlink = require('../../dist');
 const {
   createMetricCollector,
   decodeMetricHeader,
-  currentEpochUs,
+  currentEpochNs,
   summarizeMetrics
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
@@ -52,7 +52,7 @@ async function main() {
           }
           return;
         }
-        collector.record(header, currentEpochUs());
+        collector.record(header, currentEpochNs());
       },
       () => stop
     ));
@@ -69,7 +69,7 @@ async function main() {
       'MULTI_PUBSUB',
       'tcp',
       options.msgSize,
-      result.latenciesUs,
+      result.latenciesNs,
       options.duration
     );
     for (const line of resultLines) {

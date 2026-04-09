@@ -8,7 +8,7 @@ const {
   createPayload,
   createRunId,
   decodeMetricHeader,
-  currentEpochUs,
+  currentEpochNs,
   sleepImmediate,
   stampPayload
 } = require('../common/perf_metrics');
@@ -41,7 +41,7 @@ async function runPubSubBenchmark(msgSize, options) {
       sub,
       (received) => {
         const header = decodeMetricHeader(received.parts[0].data);
-        collector.record(header, currentEpochUs());
+        collector.record(header, currentEpochNs());
       },
       () => stop
     );
@@ -70,7 +70,7 @@ async function runPubSubBenchmark(msgSize, options) {
     stop = true;
     await recvTask;
     const result = await collector.finish();
-    return result.latenciesUs;
+    return result.latenciesNs;
   } finally {
     sub.close();
     pub.close();

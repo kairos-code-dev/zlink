@@ -98,8 +98,8 @@ void run_pattern_pair (const std::string &transport,
     const perf::single::queue_stats_t queue_stats =
       perf::single::sample_queue_stats (&queue_probe);
     perf::single::print_result (lib_name, "PAIR", transport, msg_size,
-                                throughput, latency.mean_us,
-                                latency.p95_us, latency.p99_us, queue_stats);
+                                throughput, latency.mean_ns,
+                                latency.p95_ns, latency.p99_ns, queue_stats);
 }
 
 int main (int argc, char **argv)

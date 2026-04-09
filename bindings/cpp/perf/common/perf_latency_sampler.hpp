@@ -9,11 +9,11 @@ namespace perf {
 
 struct latency_sampler_stats_t
 {
-    latency_sampler_stats_t () : mean_us (0.0), p95_us (0.0), p99_us (0.0) {}
+    latency_sampler_stats_t () : mean_ns (0.0), p95_ns (0.0), p99_ns (0.0) {}
 
-    double mean_us;
-    double p95_us;
-    double p99_us;
+    double mean_ns;
+    double p95_ns;
+    double p99_ns;
 };
 
 class latency_sampler_t
@@ -28,9 +28,9 @@ class latency_sampler_t
         _samples.reserve (_cap);
     }
 
-    void add (double latency_us)
+    void add (double latency_ns)
     {
-        const double sample = latency_us >= 0.0 ? latency_us : 0.0;
+        const double sample = latency_ns >= 0.0 ? latency_ns : 0.0;
         ++_count;
         _sum += sample;
 
@@ -78,20 +78,20 @@ class latency_sampler_t
         if (_count == 0)
             return out;
 
-        out.mean_us = _sum / static_cast<double> (_count);
+        out.mean_ns = _sum / static_cast<double> (_count);
         if (_samples.empty ()) {
-            out.p95_us = out.mean_us;
-            out.p99_us = out.mean_us;
+            out.p95_ns = out.mean_ns;
+            out.p99_ns = out.mean_ns;
             return out;
         }
 
         std::sort (_samples.begin (), _samples.end ());
-        out.p95_us = percentile (_samples, 0.95);
-        out.p99_us = percentile (_samples, 0.99);
-        if (out.p95_us < out.mean_us)
-            out.p95_us = out.mean_us;
-        if (out.p99_us < out.p95_us)
-            out.p99_us = out.p95_us;
+        out.p95_ns = percentile (_samples, 0.95);
+        out.p99_ns = percentile (_samples, 0.99);
+        if (out.p95_ns < out.mean_ns)
+            out.p95_ns = out.mean_ns;
+        if (out.p99_ns < out.p95_ns)
+            out.p99_ns = out.p95_ns;
         return out;
     }
 

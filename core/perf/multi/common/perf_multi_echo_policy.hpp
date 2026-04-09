@@ -100,20 +100,20 @@ template <typename Slot> inline void echo_stop_phase_slot (Slot *slot)
 template <typename Slot>
 inline void echo_append_slot_latency (const Slot *slot,
                                       unsigned long long *latency_count_out,
-                                      double *latency_sum_us_out,
+                                      double *latency_sum_ns_out,
                                       std::vector<double> *latency_samples_out)
 {
     if (latency_count_out)
         *latency_count_out += slot->latency.count ();
-    if (latency_sum_us_out)
-        *latency_sum_us_out += slot->latency.sum_us ();
+    if (latency_sum_ns_out)
+        *latency_sum_ns_out += slot->latency.sum_ns ();
     if (latency_samples_out)
         slot->latency.append_samples (latency_samples_out);
 }
 
 inline bool echo_finalize_latency_stats (
   unsigned long long latency_count,
-  double latency_sum_us,
+  double latency_sum_ns,
   std::vector<double> &latency_samples,
   bench_latency_stats_t *latency_out)
 {
@@ -125,18 +125,18 @@ inline bool echo_finalize_latency_stats (
         return false;
     }
 
-    latency_out->mean_us =
-      latency_sum_us / static_cast<double> (latency_count);
+    latency_out->mean_ns =
+      latency_sum_ns / static_cast<double> (latency_count);
     if (latency_samples.empty ()) {
-        latency_out->p95_us = latency_out->mean_us;
-        latency_out->p99_us = latency_out->mean_us;
+        latency_out->p95_ns = latency_out->mean_ns;
+        latency_out->p99_ns = latency_out->mean_ns;
         return true;
     }
 
     std::sort (latency_samples.begin (), latency_samples.end ());
-    latency_out->p95_us =
+    latency_out->p95_ns =
       echo_percentile_from_sorted (latency_samples, 0.95);
-    latency_out->p99_us =
+    latency_out->p99_ns =
       echo_percentile_from_sorted (latency_samples, 0.99);
     return true;
 }

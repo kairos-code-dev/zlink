@@ -27,7 +27,7 @@ struct header_t
     uint32_t phase;      // phase_t cast to uint32 for wire encoding
     uint32_t msg_size;   // logical message size requested by the benchmark
     uint64_t seq;        // monotonic send-side sequence number
-    uint64_t sent_ts_us; // sender wall-clock timestamp in microseconds
+    uint64_t sent_ts_ns; // sender wall-clock timestamp in nanoseconds
 };
 
 // Wire size of header_t: 4 x uint32 (16 bytes) + 2 x uint64 (16 bytes) = 32.
@@ -38,10 +38,10 @@ inline size_t header_size ()
     return sizeof (uint32_t) * 4 + sizeof (uint64_t) * 2;
 }
 
-inline uint64_t now_us ()
+inline uint64_t now_ns ()
 {
     return static_cast<uint64_t> (
-      std::chrono::duration_cast<std::chrono::microseconds> (
+      std::chrono::duration_cast<std::chrono::nanoseconds> (
         std::chrono::system_clock::now ().time_since_epoch ())
         .count ());
 }
@@ -51,7 +51,7 @@ inline void init_header (header_t *out,
                          phase_t phase,
                          size_t msg_size,
                          uint64_t seq,
-                         uint64_t sent_ts_us)
+                         uint64_t sent_ts_ns)
 {
     if (!out)
         return;
@@ -61,7 +61,7 @@ inline void init_header (header_t *out,
     out->phase = static_cast<uint32_t> (phase);
     out->msg_size = static_cast<uint32_t> (msg_size);
     out->seq = seq;
-    out->sent_ts_us = sent_ts_us;
+    out->sent_ts_ns = sent_ts_ns;
 }
 
 inline bool encode_header (void *dst, size_t dst_size, const header_t &h)
@@ -75,7 +75,7 @@ inline bool encode_header (void *dst, size_t dst_size, const header_t &h)
     std::memcpy (p + 8, &h.phase, sizeof (h.phase));
     std::memcpy (p + 12, &h.msg_size, sizeof (h.msg_size));
     std::memcpy (p + 16, &h.seq, sizeof (h.seq));
-    std::memcpy (p + 24, &h.sent_ts_us, sizeof (h.sent_ts_us));
+    std::memcpy (p + 24, &h.sent_ts_ns, sizeof (h.sent_ts_ns));
     return true;
 }
 
@@ -90,7 +90,7 @@ inline bool decode_header (const void *src, size_t src_size, header_t *out)
     std::memcpy (&out->phase, p + 8, sizeof (out->phase));
     std::memcpy (&out->msg_size, p + 12, sizeof (out->msg_size));
     std::memcpy (&out->seq, p + 16, sizeof (out->seq));
-    std::memcpy (&out->sent_ts_us, p + 24, sizeof (out->sent_ts_us));
+    std::memcpy (&out->sent_ts_ns, p + 24, sizeof (out->sent_ts_ns));
     return true;
 }
 
@@ -100,13 +100,13 @@ inline bool stamp_payload (void *payload,
                            phase_t phase,
                            size_t msg_size,
                            uint64_t seq,
-                           uint64_t sent_ts_us)
+                           uint64_t sent_ts_ns)
 {
     if (!payload || payload_size < header_size ())
         return false;
 
     header_t h;
-    init_header (&h, run_id, phase, msg_size, seq, sent_ts_us);
+    init_header (&h, run_id, phase, msg_size, seq, sent_ts_ns);
     return encode_header (payload, payload_size, h);
 }
 

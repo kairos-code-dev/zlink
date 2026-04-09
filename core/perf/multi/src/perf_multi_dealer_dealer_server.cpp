@@ -61,9 +61,9 @@ inline recv_result_t receive_one_message (
   uint32_t expected_run_id,
   perf_multi_metric::phase_t expected_phase,
   bool *sender_window_started,
-  uint64_t *sender_window_start_us,
-  uint64_t *sender_window_end_us,
-  uint64_t active_duration_us,
+  uint64_t *sender_window_start_ns,
+  uint64_t *sender_window_end_ns,
+  uint64_t active_duration_ns,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -127,19 +127,19 @@ inline recv_result_t receive_one_message (
                   << " got_size=" << header.msg_size << std::endl;
     }
     bool count_matched = matched;
-    if (matched && sender_window_started && sender_window_start_us
-        && sender_window_end_us) {
+    if (matched && sender_window_started && sender_window_start_ns
+        && sender_window_end_ns) {
         if (!(*sender_window_started)) {
-            const uint64_t window_start_us =
-              header.sent_ts_us > 0
-                ? header.sent_ts_us
-                : perf_multi_metric::now_us ();
+            const uint64_t window_start_ns =
+              header.sent_ts_ns > 0
+                ? header.sent_ts_ns
+                : perf_multi_metric::now_ns ();
             *sender_window_started = true;
-            *sender_window_start_us = window_start_us;
-            *sender_window_end_us = window_start_us + active_duration_us;
+            *sender_window_start_ns = window_start_ns;
+            *sender_window_end_ns = window_start_ns + active_duration_ns;
         }
-        if (count_matched && header.sent_ts_us > 0
-            && header.sent_ts_us > *sender_window_end_us)
+        if (count_matched && header.sent_ts_ns > 0
+            && header.sent_ts_ns > *sender_window_end_ns)
             count_matched = false;
     }
 
@@ -147,13 +147,13 @@ inline recv_result_t receive_one_message (
         (*message_count)++;
 
     if (count_matched && collect_latency && lat_sum && lat_count) {
-        const uint64_t now_us = perf_multi_metric::now_us ();
-        if (header.sent_ts_us > 0 && now_us >= header.sent_ts_us) {
-            const double sample_us = static_cast<double> (now_us - header.sent_ts_us);
-            *lat_sum += sample_us;
+        const uint64_t now_ns = perf_multi_metric::now_ns ();
+        if (header.sent_ts_ns > 0 && now_ns >= header.sent_ts_ns) {
+            const double sample_ns = static_cast<double> (now_ns - header.sent_ts_ns);
+            *lat_sum += sample_ns;
             (*lat_count)++;
             if (lat_samples)
-                lat_samples->add (sample_us);
+                lat_samples->add (sample_ns);
         }
     }
 
@@ -167,9 +167,9 @@ inline bool drain_non_blocking_messages (
   uint32_t expected_run_id,
   perf_multi_metric::phase_t expected_phase,
   bool *sender_window_started,
-  uint64_t *sender_window_start_us,
-  uint64_t *sender_window_end_us,
-  uint64_t active_duration_us,
+  uint64_t *sender_window_start_ns,
+  uint64_t *sender_window_end_ns,
+  uint64_t active_duration_ns,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -185,9 +185,9 @@ inline bool drain_non_blocking_messages (
           expected_run_id,
           expected_phase,
           sender_window_started,
-          sender_window_start_us,
-          sender_window_end_us,
-          active_duration_us,
+          sender_window_start_ns,
+          sender_window_end_ns,
+          active_duration_ns,
           count_message,
           collect_latency,
           message_count,
@@ -210,8 +210,8 @@ inline bool run_receive_window (
   double measure_seconds,
   double local_wait_seconds,
   bool *sender_window_started,
-  uint64_t *sender_window_start_us,
-  uint64_t *sender_window_end_us,
+  uint64_t *sender_window_start_ns,
+  uint64_t *sender_window_end_ns,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -231,7 +231,7 @@ inline bool run_receive_window (
       std::chrono::steady_clock::now ()
       + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
         std::chrono::duration<double> (local_wait_seconds));
-    const uint64_t active_duration_us =
+    const uint64_t active_duration_ns =
       static_cast<uint64_t> (
         std::max (1.0, measure_seconds) * 1000000.0);
     const double delivery_slack_s =
@@ -250,9 +250,9 @@ inline bool run_receive_window (
           expected_run_id,
           expected_phase,
           sender_window_started,
-          sender_window_start_us,
-          sender_window_end_us,
-          active_duration_us,
+          sender_window_start_ns,
+          sender_window_end_ns,
+          active_duration_ns,
           count_message,
           collect_latency,
           message_count,
@@ -281,9 +281,9 @@ inline bool run_receive_window (
               expected_run_id,
               expected_phase,
               sender_window_started,
-              sender_window_start_us,
-              sender_window_end_us,
-              active_duration_us,
+              sender_window_start_ns,
+              sender_window_end_ns,
+              active_duration_ns,
               count_message,
               collect_latency,
               message_count,
@@ -383,8 +383,8 @@ inline bool run_one_size_benchmark (
     long lat_count = 0;
     bench_latency_sampler_t lat_samples;
     bool sender_window_started = false;
-    uint64_t sender_window_start_us = 0;
-    uint64_t sender_window_end_us = 0;
+    uint64_t sender_window_start_ns = 0;
+    uint64_t sender_window_end_ns = 0;
 
     const bool active_ok = run_receive_window (
       server,
@@ -394,8 +394,8 @@ inline bool run_one_size_benchmark (
       active_s,
       std::max (active_s + 2.0, active_s + 5.0),
       &sender_window_started,
-      &sender_window_start_us,
-      &sender_window_end_us,
+      &sender_window_start_ns,
+      &sender_window_end_ns,
       true,
       true,
       &recv_count,
@@ -435,9 +435,9 @@ inline bool run_one_size_benchmark (
       transport,
       msg_size,
       throughput,
-      latency.mean_us,
-      latency.p95_us,
-      latency.p99_us);
+      latency.mean_ns,
+      latency.p95_ns,
+      latency.p99_ns);
 
     return true;
 }

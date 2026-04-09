@@ -50,9 +50,9 @@ fn main() {
                         if common::is_stop_token(data) { stop_seen = true; break; }
                         let phase = common::decode_phase(data);
                         if phase == common::PHASE_ACTIVE {
-                            let sent_ts = common::decode_sent_ts(data);
-                            latency_stats.record_us(
-                                common::now_us().saturating_sub(sent_ts.max(0) as u64) as f64,
+                            let sent_ts_ns = common::decode_sent_ts_ns(data);
+                            latency_stats.record_ns(
+                                common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64,
                             );
                             active_count += 1;
                         }

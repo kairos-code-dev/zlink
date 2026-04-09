@@ -90,7 +90,7 @@ inline send_status_t send_one_message (void *socket,
           phase,
           msg_size,
           seq,
-          perf_multi_metric::now_us ())) {
+          perf_multi_metric::now_ns ())) {
         zlink_msg_close (&part);
         return send_status_fatal;
     }

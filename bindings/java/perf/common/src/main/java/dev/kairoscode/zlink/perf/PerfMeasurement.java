@@ -14,7 +14,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 
 final class PerfMeasurement {
-    private static final long BASE_EPOCH_US = System.currentTimeMillis() * 1_000L;
+    private static final long BASE_EPOCH_NS = System.currentTimeMillis() * 1_000_000L;
     private static final long BASE_NANO = System.nanoTime();
     private static final int RUN_ID = nextRunId();
     private static final AtomicLong SEQ = new AtomicLong();
@@ -27,8 +27,8 @@ final class PerfMeasurement {
     }
 
     static Message payload(int size, byte phase, long sentNanoTime) {
-        long nowUs = BASE_EPOCH_US + (sentNanoTime - BASE_NANO) / 1_000L;
-        return payload(0x5A4C4E4B, size, phase, RUN_ID, SEQ.getAndIncrement(), nowUs);
+        long sentTsNs = BASE_EPOCH_NS + (sentNanoTime - BASE_NANO);
+        return payload(0x5A4C4E4B, size, phase, RUN_ID, SEQ.getAndIncrement(), sentTsNs);
     }
 
     static byte phase(Message message) {
@@ -38,15 +38,15 @@ final class PerfMeasurement {
         return (byte) (message.readIntLe(8) & 0xFF);
     }
 
-    static long latencyMicros(Message message) {
+    static long latencyNanos(Message message) {
         if (message == null || message.size() < PerfUtil.HEADER_SIZE) {
             return 0L;
         }
-        return Math.max(0L, nowUs() - message.readLongLe(21));
+        return Math.max(0L, nowNs() - message.readLongLe(21));
     }
 
     static double latencyMillis(Message message) {
-        return latencyMicros(message) / 1000.0d;
+        return latencyNanos(message) / 1_000_000.0d;
     }
 
     static String endpoint(String transport, String token) {
@@ -64,8 +64,8 @@ final class PerfMeasurement {
             || "STREAM".equals(pattern);
     }
 
-    static long nowUs() {
-        return BASE_EPOCH_US + (System.nanoTime() - BASE_NANO) / 1_000L;
+    static long nowNs() {
+        return BASE_EPOCH_NS + (System.nanoTime() - BASE_NANO);
     }
 
     static double bytesToMb(long bytes) {
@@ -73,7 +73,7 @@ final class PerfMeasurement {
     }
 
     private static Message payload(int magic, int size, int phase, int runId, long seq,
-                                   long sentTsUs) {
+                                   long sentTsNs) {
         int capacity = Math.max(size, PerfUtil.HEADER_SIZE);
         ByteBuffer buffer = ByteBuffer.allocate(capacity).order(ByteOrder.LITTLE_ENDIAN);
         buffer.putInt(magic);
@@ -81,7 +81,7 @@ final class PerfMeasurement {
         buffer.put((byte) phase);
         buffer.putInt(size);
         buffer.putLong(seq);
-        buffer.putLong(sentTsUs);
+        buffer.putLong(sentTsNs);
         while (buffer.hasRemaining()) {
             buffer.put((byte) 'a');
         }

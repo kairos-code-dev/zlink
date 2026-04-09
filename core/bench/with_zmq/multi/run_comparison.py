@@ -1302,12 +1302,12 @@ def print_size_comparison_rows(transport, size, std_data, zlk_data, std_availabl
     zlk_l = metric_or_none(zlk_data, k_l)
 
     zlk_t_s = format_throughput(zlk_t) if zlk_t is not None else "N/A"
-    zlk_l_s = f"{zlk_l/1e3:8.2f} ms" if zlk_l is not None else "N/A"
+    zlk_l_s = f"{zlk_l:8.2f} ms" if zlk_l is not None else "N/A"
     if std_available:
         std_t = metric_or_none(std_data, k_t)
         std_l = metric_or_none(std_data, k_l)
         std_t_s = format_throughput(std_t) if std_t is not None else "N/A"
-        std_l_s = f"{std_l/1e3:8.2f} ms" if std_l is not None else "N/A"
+        std_l_s = f"{std_l:8.2f} ms" if std_l is not None else "N/A"
         if std_t is not None and zlk_t is not None and std_t > 0:
             t_diff = (zlk_t - std_t) / std_t * 100.0
             t_diff_s = f"{t_diff:>+7.2f}%"
@@ -1379,6 +1379,7 @@ def parse_args():
         "  BENCH_TRANSPORTS=tcp\n"
         "  BENCH_MSG_SIZES=1024\n"
         "  BENCH_MULTI_CLIENTS=100 (stream=10000)\n"
+        "  PERF_MULTI_STREAM_CONNECT_BATCH=256 (recommended for stream=10000)\n"
         "  BENCH_MULTI_HWM=100 (stream=10)\n"
         "  BENCH_MULTI_SNDTIMEO_MS=200\n"
         "  BENCH_MULTI_RCVTIMEO_MS=200\n"
@@ -1653,7 +1654,7 @@ def main():
                         msg_sizes=[sz],
                         announce=False,
                         show_progress=False,
-                        allow_no_data=(p_name == "MULTI_STREAM"),
+                        allow_no_data=False,
                     )
                     std_data.update(std_partial)
                     std_fail.extend(std_partial_fail)
@@ -1668,7 +1669,7 @@ def main():
                     msg_sizes=[sz],
                     announce=False,
                     show_progress=False,
-                    allow_no_data=(p_name == "MULTI_STREAM"),
+                    allow_no_data=False,
                 )
                 zlk_data.update(zlk_partial)
                 zlk_fail.extend(zlk_partial_fail)

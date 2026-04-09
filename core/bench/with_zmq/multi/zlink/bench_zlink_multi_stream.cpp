@@ -94,14 +94,13 @@ int main (int argc, char **argv)
     client_options_t opt;
     opt.transport = argv[2];
     opt.pattern = "MULTI_STREAM";
-    opt.print_perf_result = 1;
     opt.send_stop_token = 0;
     opt.ccu = parse_positive_env ("BENCH_MULTI_CLIENTS", opt.ccu);
     opt.runs = 1;
-    opt.warmup = resolve_multi_int_env ("BENCH_MULTI_WARMUP_SECONDS", 3, 0);
     opt.duration = resolve_multi_int_env ("BENCH_MULTI_DURATION_SECONDS", 5, 1);
-    opt.drain_ms = resolve_multi_int_env ("BENCH_MULTI_DRAIN_MS", 300, 0);
-    opt.size_transition_drain_ms =
+    opt.completion_wait_ms =
+      resolve_multi_int_env ("BENCH_MULTI_DRAIN_MS", 300, 0);
+    opt.size_transition_completion_wait_ms =
       resolve_multi_int_env ("BENCH_MULTI_PATTERN_TRANSITION_MS", 0, 0);
     opt.io_threads = parse_positive_env ("BENCH_IO_THREADS", opt.io_threads);
 

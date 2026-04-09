@@ -570,6 +570,11 @@ if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" ]]; then
       export BENCH_STREAM_CLIENT_THREADS="1"
     fi
   fi
+  if [[ -z "${PERF_MULTI_STREAM_CONNECT_BATCH:-}" ]]; then
+    if [[ "${effective_clients}" =~ ^[0-9]+$ && "${effective_clients}" -ge 10000 ]]; then
+      export PERF_MULTI_STREAM_CONNECT_BATCH="256"
+    fi
+  fi
   export BENCH_STREAM_HWM="${effective_hwm}"
 fi
 

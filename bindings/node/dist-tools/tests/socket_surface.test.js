@@ -76,6 +76,8 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(typeof dealer.setRoutingId, 'function');
     assert.equal(typeof dealer.getRoutingId, 'function');
     assert.equal(typeof dealer.attachDiscovery, 'function');
+    assert.equal(typeof zlink.RequestDealer, 'function');
+    assert.equal(typeof zlink.RequestRouter, 'function');
     assert.equal(typeof stream.send, 'function');
     assert.equal(typeof stream.trySend, 'function');
     assert.equal(typeof stream.recv, 'function');

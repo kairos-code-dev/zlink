@@ -20,13 +20,13 @@ interface RecvSocketLike {
 export function normalizeMessagePayload(
   message: MessageLike,
   label = 'message'
-): Buffer {
+): Buffer | MessageSnapshot {
   return message instanceof Message
-    ? message.payloadBuffer()
+    ? message.toSnapshot()
     : normalizeBufferLike(message, label);
 }
 
-export function normalizeMultipart(parts: readonly MessageLike[]): Buffer[] {
+export function normalizeMultipart(parts: readonly MessageLike[]): Array<Buffer | MessageSnapshot> {
   if (!Array.isArray(parts)) throw new TypeError('parts must be an array');
   return parts.map((part, index) => normalizeMessagePayload(part, `parts[${index}]`));
 }

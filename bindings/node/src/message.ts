@@ -84,6 +84,17 @@ export class Message {
     return this._buffer;
   }
 
+  /** @internal */
+  toSnapshot(): MessageSnapshot {
+    return {
+      data: this._buffer,
+      refCount: this._refCount,
+      properties: this._properties,
+      requestInfo: this._requestInfo,
+      metadata: this._metadata
+    };
+  }
+
   get data(): Buffer {
     return this._buffer;
   }

@@ -35,6 +35,7 @@ from ._socket_types import (
     XPubSocket,
     XSubSocket,
 )
+from ._request_reply import RequestDealer, RequestRouter
 from ._poller import Poller
 from ._monitor import (
     MonitorSnapshot,
@@ -125,6 +126,8 @@ __all__ = [
     "SubSocket",
     "XPubSocket",
     "XSubSocket",
+    "RequestDealer",
+    "RequestRouter",
     "Message",
     "Received",
     "Subscribed",

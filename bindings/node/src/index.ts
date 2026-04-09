@@ -1921,6 +1921,411 @@ export class Spot {
   }
 }
 
+type RequestOptions = { timeout?: number };
+type RequestCallback = (err: Error | null, reply?: Received) => void;
+type RequestHandler = (routingId: Buffer, correlationId: bigint, request: Received) => void;
+type PendingRequestState = {
+  resolve: (reply: Received) => void;
+  reject: (error: Error) => void;
+  timer: NodeJS.Timeout;
+};
+
+function normalizeRequestTimeout(options?: RequestOptions): number {
+  const timeout = options?.timeout ?? 30000;
+  return int32Value(timeout, 'timeout');
+}
+
+function normalizeRequestParts(
+  payloadOrParts: MessageLike | readonly MessageLike[]
+): Array<Buffer | MessageSnapshot> {
+  return Array.isArray(payloadOrParts)
+    ? normalizeMultipart(payloadOrParts)
+    : [normalizeMessagePayload(payloadOrParts as MessageLike)];
+}
+
+function markRequestReplyPart(
+  payloadOrParts: MessageLike | readonly MessageLike[],
+  msgType: number,
+  correlationId: bigint
+): Array<Buffer | MessageSnapshot> {
+  const parts = normalizeRequestParts(payloadOrParts);
+  const first = parts[0];
+  const snapshot = Buffer.isBuffer(first)
+    ? Message.fromBuffer(first).toSnapshot()
+    : first;
+  snapshot.requestInfo = { msgType, correlationId };
+  parts[0] = snapshot;
+  return parts;
+}
+
+function rejectPendingRequests(
+  pending: Map<bigint, PendingRequestState>,
+  error: Error
+): void {
+  for (const entry of pending.values()) {
+    clearTimeout(entry.timer);
+    entry.reject(error);
+  }
+  pending.clear();
+}
+
+function settlePendingReply(
+  pending: Map<bigint, PendingRequestState>,
+  correlationId: bigint,
+  received: Received
+): boolean {
+  const entry = pending.get(correlationId);
+  if (!entry) return false;
+  clearTimeout(entry.timer);
+  pending.delete(correlationId);
+  entry.resolve(received);
+  return true;
+}
+
+function createPendingRequest(
+  pending: Map<bigint, PendingRequestState>,
+  correlationId: bigint,
+  timeoutMs: number,
+  startSend: () => void,
+  nonBlocking: boolean
+): Promise<Received> {
+  return new Promise<Received>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pending.delete(correlationId);
+      reject(new Error('request timed out'));
+    }, timeoutMs);
+    pending.set(correlationId, { resolve, reject, timer });
+    try {
+      startSend();
+    } catch (error) {
+      clearTimeout(timer);
+      pending.delete(correlationId);
+      reject(error as Error);
+      return;
+    }
+    if (nonBlocking) {
+      return;
+    }
+  });
+}
+
+class RequestReplyBase {
+  protected readonly _dataQueue: Received[] = [];
+  protected _receiveHandler: SocketRecvHandler | null = null;
+  protected _dispatchTimer: NodeJS.Timeout | null = null;
+
+  protected ensureDispatchLoop(tick: () => void): void {
+    if (this._dispatchTimer) return;
+    this._dispatchTimer = setInterval(tick, 1);
+  }
+
+  protected deliverData(received: Received): void {
+    if (this._receiveHandler) {
+      this._receiveHandler(received.routingId, received.parts.slice() as Message[]);
+      return;
+    }
+    this._dataQueue.push(received);
+  }
+
+  onReceive(handler: SocketRecvHandler): void {
+    if (typeof handler !== 'function') {
+      throw new TypeError('handler must be a function');
+    }
+    this._receiveHandler = handler;
+  }
+
+  protected stopDispatchLoop(): void {
+    if (this._dispatchTimer) {
+      clearInterval(this._dispatchTimer);
+      this._dispatchTimer = null;
+    }
+  }
+
+  protected recvFromQueue(dispatchOnce: () => void): Received {
+    if (this._receiveHandler) {
+      throw callbackModeError('recv');
+    }
+    const sleeper = new Int32Array(new SharedArrayBuffer(4));
+    for (;;) {
+      dispatchOnce();
+      const received = this._dataQueue.shift();
+      if (received) return received;
+      Atomics.wait(sleeper, 0, 0, 1);
+    }
+  }
+
+  protected tryRecvFromQueue(dispatchOnce: () => void): Received | null {
+    if (this._receiveHandler) {
+      throw callbackModeError('recv');
+    }
+    dispatchOnce();
+    return this._dataQueue.shift() ?? null;
+  }
+}
+
+export class RequestDealer extends RequestReplyBase {
+  private readonly _socket: DealerSocket;
+  private readonly _pending = new Map<bigint, PendingRequestState>();
+  private _nextCorrelationId = 1n;
+
+  constructor(socket: DealerSocket) {
+    super();
+    this._socket = socket;
+  }
+
+  socket(): DealerSocket {
+    return this._socket;
+  }
+
+  request(message: MessageLike, options?: RequestOptions): Promise<Received>;
+  request(parts: readonly MessageLike[], options?: RequestOptions): Promise<Received>;
+  request(message: MessageLike, callback: RequestCallback, options?: RequestOptions): void;
+  request(parts: readonly MessageLike[], callback: RequestCallback, options?: RequestOptions): void;
+  request(
+    payloadOrParts: MessageLike | readonly MessageLike[],
+    callbackOrOptions?: RequestCallback | RequestOptions,
+    maybeOptions?: RequestOptions
+  ): Promise<Received> | void {
+    const callback = typeof callbackOrOptions === 'function' ? callbackOrOptions : null;
+    const options = (typeof callbackOrOptions === 'function' ? maybeOptions : callbackOrOptions) ?? {};
+    const promise = this.requestInternal(payloadOrParts, options, false);
+    if (callback) {
+      promise.then((reply) => callback(null, reply), (err) => callback(err));
+      return;
+    }
+    return promise;
+  }
+
+  tryRequest(message: MessageLike, options?: RequestOptions): Promise<Received>;
+  tryRequest(parts: readonly MessageLike[], options?: RequestOptions): Promise<Received>;
+  tryRequest(message: MessageLike, callback: RequestCallback, options?: RequestOptions): void;
+  tryRequest(parts: readonly MessageLike[], callback: RequestCallback, options?: RequestOptions): void;
+  tryRequest(
+    payloadOrParts: MessageLike | readonly MessageLike[],
+    callbackOrOptions?: RequestCallback | RequestOptions,
+    maybeOptions?: RequestOptions
+  ): Promise<Received> | void {
+    const callback = typeof callbackOrOptions === 'function' ? callbackOrOptions : null;
+    const options = (typeof callbackOrOptions === 'function' ? maybeOptions : callbackOrOptions) ?? {};
+    const promise = this.requestInternal(payloadOrParts, options, true);
+    if (callback) {
+      promise.then((reply) => callback(null, reply), (err) => callback(err));
+      return;
+    }
+    return promise;
+  }
+
+  close(): void {
+    this.stopDispatchLoop();
+    rejectPendingRequests(this._pending, new Error('socket is closed'));
+    this._socket.close();
+  }
+
+  recv(): Received {
+    return this.recvFromQueue(() => this.dispatchOnce());
+  }
+
+  tryRecv(): Received | null {
+    return this.tryRecvFromQueue(() => this.dispatchOnce());
+  }
+
+  private requestInternal(
+    payloadOrParts: MessageLike | readonly MessageLike[],
+    options: RequestOptions,
+    nonBlocking: boolean
+  ): Promise<Received> {
+    this.ensureDispatchLoop(() => this.dispatchOnce());
+    const correlationId = this._nextCorrelationId++;
+    const parts = markRequestReplyPart(payloadOrParts, MsgType.Request, correlationId);
+    return createPendingRequest(
+      this._pending,
+      correlationId,
+      normalizeRequestTimeout(options),
+      () => {
+        const result = nonBlocking
+          ? requireNative().socketTrySendParts(
+            this._socket.nativeHandle(),
+            parts
+          ) as SendResult
+          : requireNative().socketSendParts(
+            this._socket.nativeHandle(),
+            parts,
+            0
+          ) as number;
+        if (nonBlocking && result !== SendResult.Sent) {
+          throw new Error('request send is backpressured');
+        }
+      },
+      nonBlocking
+    );
+  }
+
+  private dispatchOnce(): void {
+    const received = this._socket.tryRecv();
+    if (!received) return;
+    const first = received.parts[0];
+    const info = first?.getRequestInfo();
+    if (info && info.msgType === MsgType.Reply) {
+      if (settlePendingReply(this._pending, info.correlationId, received)) {
+        return;
+      }
+    }
+    this.deliverData(received);
+  }
+}
+
+export class RequestRouter extends RequestReplyBase {
+  private readonly _socket: RouterSocket;
+  private readonly _pending = new Map<bigint, PendingRequestState>();
+  private _requestHandler: RequestHandler | null = null;
+  private _nextCorrelationId = 1n;
+
+  constructor(socket: RouterSocket) {
+    super();
+    this._socket = socket;
+  }
+
+  socket(): RouterSocket {
+    return this._socket;
+  }
+
+  request(routingId: BufferLike, message: MessageLike, options?: RequestOptions): Promise<Received>;
+  request(routingId: BufferLike, parts: readonly MessageLike[], options?: RequestOptions): Promise<Received>;
+  request(routingId: BufferLike, message: MessageLike, callback: RequestCallback, options?: RequestOptions): void;
+  request(routingId: BufferLike, parts: readonly MessageLike[], callback: RequestCallback, options?: RequestOptions): void;
+  request(
+    routingId: BufferLike,
+    payloadOrParts: MessageLike | readonly MessageLike[],
+    callbackOrOptions?: RequestCallback | RequestOptions,
+    maybeOptions?: RequestOptions
+  ): Promise<Received> | void {
+    const callback = typeof callbackOrOptions === 'function' ? callbackOrOptions : null;
+    const options = (typeof callbackOrOptions === 'function' ? maybeOptions : callbackOrOptions) ?? {};
+    const promise = this.requestInternal(routingId, payloadOrParts, options, false);
+    if (callback) {
+      promise.then((reply) => callback(null, reply), (err) => callback(err));
+      return;
+    }
+    return promise;
+  }
+
+  tryRequest(routingId: BufferLike, message: MessageLike, options?: RequestOptions): Promise<Received>;
+  tryRequest(routingId: BufferLike, parts: readonly MessageLike[], options?: RequestOptions): Promise<Received>;
+  tryRequest(routingId: BufferLike, message: MessageLike, callback: RequestCallback, options?: RequestOptions): void;
+  tryRequest(routingId: BufferLike, parts: readonly MessageLike[], callback: RequestCallback, options?: RequestOptions): void;
+  tryRequest(
+    routingId: BufferLike,
+    payloadOrParts: MessageLike | readonly MessageLike[],
+    callbackOrOptions?: RequestCallback | RequestOptions,
+    maybeOptions?: RequestOptions
+  ): Promise<Received> | void {
+    const callback = typeof callbackOrOptions === 'function' ? callbackOrOptions : null;
+    const options = (typeof callbackOrOptions === 'function' ? maybeOptions : callbackOrOptions) ?? {};
+    const promise = this.requestInternal(routingId, payloadOrParts, options, true);
+    if (callback) {
+      promise.then((reply) => callback(null, reply), (err) => callback(err));
+      return;
+    }
+    return promise;
+  }
+
+  reply(routingId: BufferLike, correlationId: bigint, message: MessageLike): number;
+  reply(routingId: BufferLike, correlationId: bigint, parts: readonly MessageLike[]): number;
+  reply(routingId: BufferLike, correlationId: bigint, payloadOrParts: MessageLike | readonly MessageLike[]): number {
+    const parts = markRequestReplyPart(payloadOrParts, MsgType.Reply, correlationId);
+    return requireNative().socketSendParts(
+      this._socket.nativeHandle(),
+      [normalizeRoutingId(routingId), ...parts],
+      0
+    ) as number;
+  }
+
+  tryReply(routingId: BufferLike, correlationId: bigint, message: MessageLike): SendResult;
+  tryReply(routingId: BufferLike, correlationId: bigint, parts: readonly MessageLike[]): SendResult;
+  tryReply(routingId: BufferLike, correlationId: bigint, payloadOrParts: MessageLike | readonly MessageLike[]): SendResult {
+    const parts = markRequestReplyPart(payloadOrParts, MsgType.Reply, correlationId);
+    return requireNative().socketTrySendRoutingParts(
+      this._socket.nativeHandle(),
+      normalizeRoutingId(routingId),
+      parts
+    ) as SendResult;
+  }
+
+  onRequest(handler: RequestHandler): void {
+    if (typeof handler !== 'function') {
+      throw new TypeError('handler must be a function');
+    }
+    this._requestHandler = handler;
+    this.ensureDispatchLoop(() => this.dispatchOnce());
+  }
+
+  close(): void {
+    this.stopDispatchLoop();
+    rejectPendingRequests(this._pending, new Error('socket is closed'));
+    this._socket.close();
+  }
+
+  recv(): Received {
+    return this.recvFromQueue(() => this.dispatchOnce());
+  }
+
+  tryRecv(): Received | null {
+    return this.tryRecvFromQueue(() => this.dispatchOnce());
+  }
+
+  private requestInternal(
+    routingId: BufferLike,
+    payloadOrParts: MessageLike | readonly MessageLike[],
+    options: RequestOptions,
+    nonBlocking: boolean
+  ): Promise<Received> {
+    this.ensureDispatchLoop(() => this.dispatchOnce());
+    const correlationId = this._nextCorrelationId++;
+    const parts = markRequestReplyPart(payloadOrParts, MsgType.Request, correlationId);
+    return createPendingRequest(
+      this._pending,
+      correlationId,
+      normalizeRequestTimeout(options),
+      () => {
+        const result = nonBlocking
+          ? requireNative().socketTrySendRoutingParts(
+            this._socket.nativeHandle(),
+            normalizeRoutingId(routingId),
+            parts
+          ) as SendResult
+          : requireNative().socketSendParts(
+            this._socket.nativeHandle(),
+            [normalizeRoutingId(routingId), ...parts],
+            0
+          ) as number;
+        if (nonBlocking && result !== SendResult.Sent) {
+          throw new Error('request send is backpressured');
+        }
+      },
+      nonBlocking
+    );
+  }
+
+  private dispatchOnce(): void {
+    const received = this._socket.tryRecv();
+    if (!received) return;
+    const first = received.parts[0];
+    const info = first?.getRequestInfo();
+    if (info) {
+      if (info.msgType === MsgType.Request && received.routingId && this._requestHandler) {
+        this._requestHandler(received.routingId, info.correlationId, received);
+        return;
+      }
+      if (info.msgType === MsgType.Reply) {
+        if (settlePendingReply(this._pending, info.correlationId, received)) {
+          return;
+        }
+      }
+    }
+    this.deliverData(received);
+  }
+}
+
 export function version(): [number, number, number] {
   return requireNative().version() as [number, number, number];
 }

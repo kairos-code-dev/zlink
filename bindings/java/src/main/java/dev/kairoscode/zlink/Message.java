@@ -102,6 +102,30 @@ public final class Message implements AutoCloseable {
         return copyOf(value.getBytes(StandardCharsets.UTF_8));
     }
 
+    static Message sharedCopyOf(byte[] data) {
+        return sharedCopyOf(data, 0, data.length);
+    }
+
+    static Message sharedCopyOf(byte[] data, int offset, int length) {
+        Objects.requireNonNull(data, "data");
+        validateRange(data.length, offset, length, "data");
+        Message msg = new Message(Arena.ofShared(), true);
+        int rc = NativeMsg.msgInitSize(msg.msg, length);
+        if (rc != 0) {
+            msg.arena.close();
+            msg.closed = true;
+            throw ZlinkException.fromLastError("zlink_msg_init_size");
+        }
+        msg.valid = true;
+        msg.recvArmed = false;
+        msg.more = false;
+        if (length > 0) {
+            MemorySegment dst = NativeMsg.msgData(msg.msg).reinterpret(length);
+            MemorySegment.copy(MemorySegment.ofArray(data), offset, dst, 0, length);
+        }
+        return msg;
+    }
+
     /** Copies the remaining bytes from the buffer without mutating its cursor. */
     public static Message copyOf(ByteBuffer data) {
         Objects.requireNonNull(data, "data");

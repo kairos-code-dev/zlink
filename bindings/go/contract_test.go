@@ -1,7 +1,9 @@
 package zlink_test
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"zlink"
 )
@@ -116,5 +118,128 @@ func TestAttachDiscoveryBlocksManualSocketLifecycleControls(t *testing.T) {
 	}
 	if err := dealer.Unbind("tcp://127.0.0.1:5555"); err == nil {
 		t.Fatalf("Unbind() after AttachDiscovery() should fail")
+	}
+}
+
+func TestRequestReplyWrapperSupportsDealerRouterRoundTrip(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	routerSocket, err := ctx.RouterSocket()
+	if err != nil {
+		t.Fatalf("RouterSocket() error = %v", err)
+	}
+	defer routerSocket.Close()
+
+	dealerSocket, err := ctx.DealerSocket()
+	if err != nil {
+		t.Fatalf("DealerSocket() error = %v", err)
+	}
+	defer dealerSocket.Close()
+
+	router := zlink.NewRequestRouter(routerSocket)
+	defer router.Close()
+	dealer := zlink.NewRequestDealer(dealerSocket)
+	defer dealer.Close()
+
+	endpoint := inprocEndpoint("request-reply")
+	if err := routerSocket.Bind(endpoint); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	if err := dealerSocket.Connect(endpoint); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	done := make(chan struct{})
+	router.OnRequest(func(routingID zlink.RoutingID, correlationID uint64, received *zlink.Received) {
+		defer close(done)
+		defer received.Close()
+		part, err := received.SinglePartOrError()
+		if err != nil {
+			t.Errorf("SinglePartOrError() error = %v", err)
+			return
+		}
+		if got := string(part.Data()); got != "ping" {
+			t.Errorf("request payload = %q, want %q", got, "ping")
+			return
+		}
+		reply, err := zlink.NewMessage([]byte("pong"))
+		if err != nil {
+			t.Errorf("NewMessage() error = %v", err)
+			return
+		}
+		if err := router.Reply(routingID, correlationID, reply); err != nil {
+			t.Errorf("Reply() error = %v", err)
+		}
+	})
+
+	request, err := zlink.NewMessage([]byte("ping"))
+	if err != nil {
+		t.Fatalf("NewMessage() error = %v", err)
+	}
+	reply, err := dealer.Request(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+	defer reply.Close()
+	part, err := reply.SinglePartOrError()
+	if err != nil {
+		t.Fatalf("SinglePartOrError() error = %v", err)
+	}
+	if got := string(part.Data()); got != "pong" {
+		t.Fatalf("reply payload = %q, want %q", got, "pong")
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("request handler did not run")
+	}
+}
+
+func TestRequestRouterPreservesDataReceiveSurface(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	routerSocket, err := ctx.RouterSocket()
+	if err != nil {
+		t.Fatalf("RouterSocket() error = %v", err)
+	}
+	defer routerSocket.Close()
+
+	dealerSocket, err := ctx.DealerSocket()
+	if err != nil {
+		t.Fatalf("DealerSocket() error = %v", err)
+	}
+	defer dealerSocket.Close()
+
+	router := zlink.NewRequestRouter(routerSocket)
+	defer router.Close()
+
+	endpoint := inprocEndpoint("request-reply-data")
+	if err := routerSocket.Bind(endpoint); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	if err := dealerSocket.Connect(endpoint); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	payload, err := zlink.NewMessage([]byte("plain-data"))
+	if err != nil {
+		t.Fatalf("NewMessage() error = %v", err)
+	}
+	if err := dealerSocket.Send(payload); err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	received, err := router.Recv()
+	if err != nil {
+		t.Fatalf("Recv() error = %v", err)
+	}
+	defer received.Close()
+	part, err := received.SinglePartOrError()
+	if err != nil {
+		t.Fatalf("SinglePartOrError() error = %v", err)
+	}
+	if got := string(part.Data()); got != "plain-data" {
+		t.Fatalf("data payload = %q, want %q", got, "plain-data")
 	}
 }

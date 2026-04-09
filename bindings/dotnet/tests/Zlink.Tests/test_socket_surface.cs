@@ -188,6 +188,27 @@ public sealed class test_socket_surface
     }
 
     [Fact]
+    public void request_reply_wrappers_expose_canonical_surface()
+    {
+        Assert.True(HasPublicInstanceMethod(typeof(RequestDealer),
+            nameof(RequestDealer.RequestAsync), typeof(Message),
+            typeof(System.Threading.CancellationToken)));
+        Assert.True(HasPublicInstanceMethod(typeof(RequestDealer),
+            nameof(RequestDealer.TryRequestAsync), typeof(Message),
+            typeof(TimeSpan), typeof(System.Threading.CancellationToken)));
+        Assert.True(HasPublicInstanceMethod(typeof(RequestDealer),
+            nameof(RequestDealer.OnReceive), typeof(SocketRecvHandler)));
+        Assert.True(HasPublicInstanceMethod(typeof(RequestRouter),
+            nameof(RequestRouter.OnRequest), typeof(RequestHandler)));
+        Assert.True(HasPublicInstanceMethod(typeof(RequestRouter),
+            nameof(RequestRouter.Reply), typeof(RoutingId), typeof(ulong),
+            typeof(Message)));
+        Assert.True(HasPublicInstanceMethod(typeof(RequestRouter),
+            nameof(RequestRouter.TryReply), typeof(RoutingId), typeof(ulong),
+            typeof(Message)));
+    }
+
+    [Fact]
     public void raw_option_types_are_not_publicly_exported()
     {
         Type[] exported = typeof(SocketBase).Assembly.GetExportedTypes();

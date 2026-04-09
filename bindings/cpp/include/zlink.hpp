@@ -8,6 +8,7 @@
 #include "zlink/message.hpp"
 #include "zlink/context.hpp"
 #include "zlink/socket_types.hpp"
+#include "zlink/request_reply.hpp"
 #include "zlink/monitor.hpp"
 #include "zlink/service_monitor.hpp"
 #include "zlink/poller.hpp"

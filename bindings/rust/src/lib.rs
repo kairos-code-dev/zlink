@@ -27,6 +27,7 @@ mod message;
 pub mod monitor;
 mod options;
 pub mod poller;
+mod request_reply;
 pub mod service;
 pub mod socket;
 
@@ -51,6 +52,7 @@ pub use options::{
     StreamSocketOptions, SubSocketOptions,
 };
 pub use poller::{POLLIN, POLLOUT, PollEvent, PollTarget, Poller};
+pub use request_reply::{RequestDealer, RequestRouter};
 pub use service::{
     Discovery, MemberPeerEntry, Registry, RegistryQueryClient, RegistryServiceSummaryEntry,
     RegistryServiceSummaryFilter, RegistryState, RegistryStatus, RegistryTopologyEntry,

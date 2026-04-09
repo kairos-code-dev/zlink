@@ -165,3 +165,70 @@ fn all_socket_types_create_successfully() {
     let _ = ctx.xsub_socket().unwrap();
     let _ = ctx.stream_socket().unwrap();
 }
+
+#[test]
+fn request_reply_wrapper_roundtrip() {
+    let ctx = Context::new().unwrap();
+    let router_socket = ctx.router_socket().unwrap();
+    let dealer_socket = ctx.dealer_socket().unwrap();
+    let router_send_handle = router_socket.send_handle();
+    router_socket.bind("inproc://rust-request-reply").unwrap();
+    dealer_socket.connect("inproc://rust-request-reply").unwrap();
+
+    let router = RequestRouter::new(router_socket).unwrap();
+    let dealer = RequestDealer::new(dealer_socket).unwrap();
+
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let done_flag = done.clone();
+    let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+    router.on_request(move |routing_id, correlation_id, received| {
+        let part = received.single_part().unwrap();
+        assert_eq!(part.data(), b"ping");
+        let mut reply = Message::from_bytes(b"pong").unwrap();
+        reply.set_reply(correlation_id).unwrap();
+        router_send_handle.send_to(&routing_id, vec![reply]).unwrap();
+        done_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+    });
+
+    dealer.request_callback_with_timeout(
+        Message::from_bytes(b"ping").unwrap(),
+        move |result| {
+            let payload = result
+                .map(|reply| reply.single_part().unwrap().data().to_vec());
+            reply_tx.send(payload).unwrap();
+        },
+        std::time::Duration::from_secs(2),
+    );
+
+    let start = std::time::Instant::now();
+    while !done.load(std::sync::atomic::Ordering::SeqCst)
+        && start.elapsed() < std::time::Duration::from_secs(2)
+    {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(done.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(
+        reply_rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap().unwrap(),
+        b"pong"
+    );
+}
+
+#[test]
+fn request_router_preserves_data_recv_surface() {
+    let ctx = Context::new().unwrap();
+    let router_socket = ctx.router_socket().unwrap();
+    let dealer_socket = ctx.dealer_socket().unwrap();
+    router_socket
+        .bind("inproc://rust-request-reply-data")
+        .unwrap();
+    dealer_socket
+        .connect("inproc://rust-request-reply-data")
+        .unwrap();
+
+    let router = RequestRouter::new(router_socket).unwrap();
+    dealer_socket.send(vec![Message::from_bytes(b"plain-data").unwrap()]).unwrap();
+
+    let received = router.recv().unwrap();
+    let part = received.single_part().unwrap();
+    assert_eq!(part.data(), b"plain-data");
+}

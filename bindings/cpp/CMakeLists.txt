@@ -145,6 +145,10 @@ if(ZLINK_CPP_BUILD_TESTS)
     tests/contract/test_cpp_contract_socket.cpp
   )
   add_cpp_contract_test(
+    test_cpp_contract_request_reply
+    tests/contract/test_cpp_contract_request_reply.cpp
+  )
+  add_cpp_contract_test(
     test_cpp_contract_callback_mode
     tests/contract/test_cpp_contract_callback_mode.cpp
   )

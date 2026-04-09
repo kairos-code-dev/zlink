@@ -8,6 +8,9 @@ import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.PubSocketOptions;
+import dev.kairoscode.zlink.Received;
+import dev.kairoscode.zlink.RequestDealer;
+import dev.kairoscode.zlink.RequestRouter;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendResult;
@@ -32,6 +35,7 @@ import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -64,6 +68,57 @@ public class SocketContractTest {
 
             try (var received = server.recv()) {
                 assertArrayEquals("pair-contract".getBytes(StandardCharsets.UTF_8),
+                    received.singlePartOrThrow().toByteArray());
+            }
+        }
+    }
+
+    @Test
+    public void requestReplyWrapperSupportsDealerRouterRoundTrip() throws Exception {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             RouterSocket routerSocket = new RouterSocket(ctx);
+             DealerSocket dealerSocket = new DealerSocket(ctx);
+             RequestRouter router = new RequestRouter(routerSocket);
+             RequestDealer dealer = new RequestDealer(dealerSocket)) {
+            String endpoint = TestSupport.inprocEndpoint("request-reply");
+            routerSocket.bind(endpoint);
+            dealerSocket.connect(endpoint);
+
+            router.onRequest((routingId, correlationId, received) -> {
+                try (received) {
+                    assertArrayEquals("ping".getBytes(StandardCharsets.UTF_8),
+                        received.singlePartOrThrow().toByteArray());
+                    router.reply(routingId, correlationId,
+                        List.of(Message.copyOfUtf8("pong")));
+                }
+            });
+
+            try (Received reply = dealer.request(List.of(Message.copyOfUtf8("ping")),
+                Duration.ofSeconds(2)).get(2, TimeUnit.SECONDS)) {
+                assertArrayEquals("pong".getBytes(StandardCharsets.UTF_8),
+                    reply.singlePartOrThrow().toByteArray());
+            }
+        }
+    }
+
+    @Test
+    public void requestReplyWrapperPreservesDataReceiveSurface() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             RouterSocket routerSocket = new RouterSocket(ctx);
+             DealerSocket dealerSocket = new DealerSocket(ctx);
+             RequestRouter router = new RequestRouter(routerSocket)) {
+            String endpoint = TestSupport.inprocEndpoint("request-reply-data");
+            routerSocket.bind(endpoint);
+            dealerSocket.connect(endpoint);
+
+            dealerSocket.send(List.of(Message.copyOfUtf8("plain-data")));
+
+            try (Received received = router.recv()) {
+                assertArrayEquals("plain-data".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
             }
         }

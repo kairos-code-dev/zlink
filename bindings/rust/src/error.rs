@@ -45,6 +45,13 @@ impl ZlinkError {
         }
     }
 
+    pub(crate) fn native(code: i32, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
     /// The raw errno code.
     pub fn code(&self) -> i32 {
         self.code

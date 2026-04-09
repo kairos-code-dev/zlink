@@ -68,8 +68,11 @@ bool setup_connected_pubsub_pair (void *pub_socket_,
       pub_monitor, ZLINK_EVENT_CONNECTION_READY, timeout_ms);
     zlink_monitor_close (&sub_monitor);
     zlink_monitor_close (&pub_monitor);
-    if (sub_ready && pub_ready)
-        std::this_thread::sleep_for (std::chrono::seconds (1));
+    if (sub_ready && pub_ready) {
+        const int settle_ms = resolve_single_pubsub_ready_settle_ms ();
+        if (settle_ms > 0 && perf_socket_poll (NULL, 0, settle_ms) < 0)
+            return false;
+    }
     return sub_ready && pub_ready;
 }
 
@@ -319,7 +322,7 @@ void run_pubsub (const std::string &transport,
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
     pubsub_recv_state_t state;
-    state.run_id = static_cast<uint32_t> (perf_single_metric::now_us ());
+    state.run_id = next_single_metric_run_id ();
     state.msg_size = msg_size;
     state.payload_size = payload_size;
 

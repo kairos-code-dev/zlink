@@ -135,15 +135,24 @@ total: 29 bytes (고정)
 
 - sender는 ready gate 통과 전까지 `phase=0`으로 송신하고, active 시작 시
   `phase=1`로 전환하며, duration 만료 시 `phase=2`로 전환한다.
-- receiver는 `phase=1` 메시지만 집계하므로, warmup/cooldown 메시지가
-  측정 결과를 오염시키지 않는다.
+- receiver는 `phase=1` 메시지만 active 집계 후보로 취급한다. warmup/cooldown
+  메시지는 어떤 suite/pattern에서도 active 결과에 포함되면 안 된다.
+- active 결과 집계 조건은 suite/pattern 정책 문서에 명시된 단일 규칙으로 고정한다.
+  core와 모든 bindings는 같은 pattern에서 동일한 active 유효 메시지 의미를
+  사용해야 한다.
 
 **run_id 생성 규칙**:
 
-- `run_id`는 프로세스 시작 시 **랜덤 uint32**를 1회 생성한다.
-- 같은 프로세스 내 모든 메시지는 동일한 `run_id`를 사용한다.
-- receiver는 `run_id`가 일치하는 메시지만 유효 perf 메시지로 인식한다.
-  다른 `run_id`의 메시지(이전 실행 잔여 등)는 무시한다.
+- `run_id`는 **1-based benchmark case ordinal** 이다. 값 `0`은 사용하지 않는다.
+- 같은 benchmark case의 sender/receiver는 반드시 동일한 `run_id`를 사용한다.
+- 한 case의 ready/settle/active/drain 동안 송신되는 모든 perf 메시지는 동일한
+  `run_id`를 사용한다.
+- 프로세스가 case 1개만 수행하는 경우 `run_id`는 반드시 `1`이다.
+- 프로세스가 여러 case를 순차 수행하는 경우 `run_id`는 case마다 `1,2,3,...`
+  순서로 증가해야 하며, 협력하는 상대 프로세스도 같은 case ordinal을 사용해야
+  한다.
+- receiver는 `run_id`가 일치하는 메시지만 유효 perf 메시지로 인식한다. 다른
+  `run_id`의 메시지(이전 실행 잔여, 다른 case 잔여 등)는 집계에서 제외한다.
 
 ### 1.1.2 Hot Path 및 Ready Gate 규칙
 
@@ -197,21 +206,35 @@ total: 29 bytes (고정)
   quorum 완화, 보정용 handshake 단계)을 두지 않는다.
 - perf start gate 구현에서 아래를 금지한다.
   - `sleep`/`msleep`/고정 지연
-    - 예외: `multi SPOT` barrier 내부의 stabilization/control-settle 절차는
+    - 예외 1: `multi SPOT` barrier 내부의 stabilization/control-settle 절차는
       본 문서와 suite 정책에 명시된 경우에 한해 허용한다. 이는 별도 public
       gate나 일반 ready phase로 승격하지 않는다.
+    - 예외 2: `single PUBSUB` 과 `single SPOT` 은 ready gate 통과 직후
+      bounded post-ready settle을 반드시 수행한다. 이는 추가 ready gate가
+      아니라 패턴 전용의 고정 안정화 절차이며, core/bindings 전체에 동일
+      의미로 적용해야 한다.
   - monitor snapshot polling
   - ad-hoc retry loop
 - perf lifecycle에서 아래와 같은 **벤치 단계**를 새로 만들지 않는다.
   - `preflight`
   - `prime`
   - `settle`
-    - 예외: `multi SPOT` barrier 내부 settle은 별도 lifecycle phase가 아니라
+    - 예외 1: `multi SPOT` barrier 내부 settle은 별도 lifecycle phase가 아니라
       control handshake의 내부 절차로만 허용한다.
+    - 예외 2: `single PUBSUB` / `single SPOT` post-ready settle은 ready를
+      대체하는 별도 phase가 아니라, 해당 패턴의 전달 준비를 정렬하기 위한
+      bounded 안정화 절차로만 허용한다.
   - `stable`
   - `quiet`
   - `quiescent`
   - `idle drain`
+    - 예외: `single` recv one-way 패턴은 active 종료 후 bounded idle drain을
+      반드시 수행한다. 이 절차의 의미는 "deadline 이전에 송신되어
+      queue/in-flight에 남아 있던 메시지를 추가 recv로 비운다"는 운영 절차다.
+      active 결과 집계는 suite/pattern 문서가 정의한 active 유효 메시지 규칙에만
+      종속된다. 이 idle drain은 single recv one-way 공통 계약으로 core/bindings
+      전체에 동일하게 적용해야 하며, 다른 ad-hoc drain/settle 단계로 확장하면
+      안 된다.
 - 위 단계가 이미 존재하지만 실제로는 “ready 이벤트 하나 기다리기” 또는
   “phase 종료 후 남은 메시지 정리”를 우회적으로 표현한 것뿐이라면, 새 단계로
   유지하지 말고 삭제하거나 기존 `ready -> active` 흐름에 흡수한다.

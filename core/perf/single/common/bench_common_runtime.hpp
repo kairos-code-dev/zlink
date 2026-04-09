@@ -131,6 +131,45 @@ inline int resolve_single_pubsub_recv_timeout_ms()
                               resolve_single_recv_timeout_ms());
 }
 
+inline int resolve_single_nonnegative_env (const char *env_name_,
+                                           int default_value_)
+{
+    const char *value = std::getenv (env_name_);
+    if (!value || !*value)
+        return default_value_;
+
+    char *end = NULL;
+    const long parsed = std::strtol (value, &end, 10);
+    if (end == value || *end != '\0')
+        return default_value_;
+    if (parsed < 0)
+        return 0;
+    if (parsed > INT_MAX)
+        return INT_MAX;
+    return static_cast<int> (parsed);
+}
+
+inline int resolve_single_pubsub_ready_settle_ms ()
+{
+    return resolve_single_nonnegative_env (
+      "PERF_SINGLE_PUBSUB_READY_SETTLE_MS", 1000);
+}
+
+inline int resolve_single_spot_ready_settle_ms ()
+{
+    return resolve_single_nonnegative_env (
+      "PERF_SINGLE_SPOT_READY_SETTLE_MS", 1000);
+}
+
+inline uint32_t next_single_metric_run_id ()
+{
+    static std::atomic<uint32_t> next_id (1);
+    uint32_t run_id = next_id.fetch_add (1, std::memory_order_relaxed);
+    if (run_id == 0)
+        run_id = next_id.fetch_add (1, std::memory_order_relaxed);
+    return run_id;
+}
+
 inline int resolve_single_socket_hwm(bool send_)
 {
     const int base_hwm = parse_positive_env("PERF_SINGLE_HWM", 1000);

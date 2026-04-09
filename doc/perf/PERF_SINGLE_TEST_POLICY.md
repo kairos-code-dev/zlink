@@ -62,8 +62,9 @@ single은 **단일 프로세스** 안에서 sender와 receiver를 구동한다.
 └──────────────────────────────────────┘
 ```
 - sender thread: blocking send 연속 수행. HWM 도달 시 자연 backpressure.
-- recv thread: poller `POLLIN` → `zlink_recv()` DONTWAIT drain 루프.
-  throughput/latency 집계를 recv drain 안에서 인라인 수행.
+- recv thread: recv 루프 안에서 throughput/latency 집계를 수행한다.
+  recv loop 구조와 active 집계 anchor는 모든 raw one-way 패턴과 바인딩에서
+  동일 의미로 유지해야 한다.
 
 **SPOT one-way 패턴**:
 ```
@@ -81,7 +82,11 @@ single은 **단일 프로세스** 안에서 sender와 receiver를 구동한다.
 - `EAGAIN` 기반 pending 관리, send-ready handler 등 multi에서 사용하는
   backpressure 메커니즘은 single에 적용하지 않는다.
 - latency sample 계산, percentile sample 축적은 recv 루프 내에서 처리한다.
-- phase 종료 보장은 내부 processed-count drain으로 처리한다.
+- phase 종료 후에는 bounded idle drain을 반드시 수행한다. 이 절차는 "deadline 이전에
+  송신되어 queue/in-flight에 남아 있던 메시지를 추가 recv로 비운다"는 의미이며,
+  active 결과 집계는 본 문서가 정의한 active 유효 메시지 조건을 계속 따른다.
+- idle drain은 single recv one-way 공통 계약이다. 특정 패턴이나 특정 binding만
+  더 길거나 다른 의미의 종료 drain을 두면 안 된다.
 
 ### 1.2 실행 계약 불변식
 
@@ -102,7 +107,6 @@ single은 **단일 프로세스** 안에서 sender와 receiver를 구동한다.
 - `settle`
 - `stable`
 - `quiet`
-- `idle drain`
 - `expected_ready_count > 1`
 
 위 항목이 이미 존재하지만 실제로는 ready 이벤트 하나 대기하거나 phase 종료를
@@ -115,13 +119,17 @@ single은 **단일 프로세스** 안에서 sender와 receiver를 구동한다.
 ## 2. Phase 규칙
 
 ```text
-[single phase]: [ready] -> [active(duration)]
+[single phase]:
+raw pattern      = [ready] -> [active(duration)] -> [idle_drain] -> [done]
+PUBSUB / SPOT    = [ready] -> [post_ready_settle] -> [active(duration)] -> [idle_drain] -> [done]
 ```
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
 | ready | event-based | raw=`CONNECTION_READY`, SPOT=local probe-based barrier | `PERF_CONNECT_READY_TIMEOUT_MS` 계열 timeout |
+| post-ready settle | bounded stabilization | PUBSUB/SPOT만 수행 | `PERF_SINGLE_PUBSUB_READY_SETTLE_MS`, `PERF_SINGLE_SPOT_READY_SETTLE_MS` |
 | active | time-based | 5s | `PERF_SINGLE_DURATION_SECONDS` |
+| idle drain | bounded recv drain | recv one-way 전체 수행 | `PERF_SINGLE_RCVTIMEO_MS` 계열 timeout bound |
 
 - `setup_connected_pair()`는 내부적으로 low-cost monitoring ready gate를
   캡슐화한 helper인 경우에만 허용된다. 별도/독자적인 start gate 규칙으로
@@ -129,13 +137,20 @@ single은 **단일 프로세스** 안에서 sender와 receiver를 구동한다.
 - pattern별 low-cost ready event는 single 측정의 공식 start gate다. benchmark
   시작 전 준비 판정은 monitoring event로 해결하고, perf 파일 안의 커스텀
   handshake loop, sleep, monitor snapshot polling으로 대체하지 않는다.
+- 예외: `PUBSUB` 과 `SPOT` 은 ready gate 통과 후 bounded post-ready settle을
+  반드시 수행한다. `PUBSUB` settle의 의미는 subscription/data path 전달 준비
+  안정화이고, `SPOT` settle의 의미는 local probe/control path 전달 준비
+  안정화다. 이는 ready를 대체하는 추가 gate가 아니라 패턴 전용의 고정
+  post-ready 절차다.
 - 패턴 파일에서는 공통 helper를 통해 `wait_*ready*()` 형태로 감싸도 된다.
   이 경우에도 ready source는 반드시 위 표의 pattern contract 와 일치해야 한다.
 - active에서만 throughput/latency를 계산한다.
-- `single`은 별도 settle/prime/idle-drain phase를 두지 않는다.
+- `single`은 별도 settle/prime phase를 두지 않는다.
+- 단, `PUBSUB`/`SPOT` post-ready settle과 recv one-way 공통 idle drain은 본
+  문서에 정의된 의미로 반드시 수행한다.
 - 다음 size는 별도 프로세스로 다시 시작한다.
 - monitor-ready 이후 필요한 protocol self-check는 단발성 검증 1회만
-  허용하며, retry loop나 sleep 기반 보정은 금지한다.
+  허용하며, `PUBSUB`/`SPOT` 예외를 제외한 sleep 기반 보정은 금지한다.
 
 ### 2.1 Header 기반 집계 (필수)
 
@@ -143,8 +158,12 @@ active 구간 집계는 payload에 기록된 metric header를 기준으로만 �
 
 - decode 실패 메시지: 집계 제외
 - `magic`, `phase`, `msg_size` 검증 실패 메시지: 집계 제외
-- 필요 시 `run_id` 불일치 메시지도 집계 제외한다.
+- `run_id` 불일치 메시지는 집계 제외한다.
 - 유효 header 메시지만 throughput 카운트와 latency 샘플에 포함
+- single active 유효 메시지 규칙은 "`phase == active` 이고, recv 루프가 active
+  window 안에서 처리한 유효 header 메시지"로 고정한다. idle drain 구간에서
+  추가로 recv한 메시지는 종료 정리용으로만 소비하며, active 집계 포함 여부는
+  이 규칙을 바꾸지 않는다.
 
 즉, throughput과 latency는 동일한 유효 메시지 집합을 사용한다.
 
@@ -278,6 +297,12 @@ SPOT 에서는 local probe barrier 로 판정한다. perf는 추가 precondition
 
 - single policy 는 `event.value` 와 `snapshot.ready_count` gate 를 금지한다.
 - single policy 는 delivery-ready event gate 도 사용하지 않는다.
+- `PUBSUB` 은 `CONNECTION_READY` 뒤에 subscription 전파 안정화를 위한 bounded
+  post-ready settle 1회를 반드시 수행한다.
+- `SPOT` 은 local probe 기반 ready 판정 직후 bounded post-ready settle 1회를
+  반드시 수행한다.
+- 위 settle은 additional ready source가 아니며, transport/binding별 임의 조정
+  단계로 확장하면 안 된다.
 - single SPOT 은 service monitor 를 사용하지 않는다.
 - single SPOT 은 local pub/sub setup 완료 후 sender 가 metric header가 찍힌
   probe payload 를 publish 하고, recv 측이 첫 유효 payload 를 확인하면
@@ -328,6 +353,8 @@ SPOT 에서는 local probe barrier 로 판정한다. perf는 추가 precondition
 | `PERF_SINGLE_SNDTIMEO_MS` | 송신 타임아웃(ms) | 200 |
 | `PERF_SINGLE_RCVTIMEO_MS` | 수신 타임아웃(ms) | 200 |
 | `PERF_SINGLE_PUBSUB_RCVTIMEO_MS` | PUBSUB 수신 타임아웃(ms) | `PERF_SINGLE_RCVTIMEO_MS` |
+| `PERF_SINGLE_PUBSUB_READY_SETTLE_MS` | PUBSUB post-ready settle(ms) | 1000 |
+| `PERF_SINGLE_SPOT_READY_SETTLE_MS` | SPOT post-ready settle(ms) | 1000 |
 | `PERF_SINGLE_LATENCY_SAMPLE_CAP` | 레이턴시 샘플 최대 수 | 200000 |
 | `PERF_SINGLE_PUBSUB_XPUB_NODROP` | PUBSUB의 `ZLINK_XPUB_NODROP` 기본값 | (바이너리별) |
 

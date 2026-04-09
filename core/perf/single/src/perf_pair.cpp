@@ -261,7 +261,7 @@ void run_pair (const std::string &transport,
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
     pair_recv_state_t state;
-    state.run_id = static_cast<uint32_t> (perf_single_metric::now_us ());
+    state.run_id = next_single_metric_run_id ();
     state.msg_size = msg_size;
     state.payload_size = payload_size;
 

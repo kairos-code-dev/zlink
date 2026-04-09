@@ -107,7 +107,7 @@ perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
   `READY_COUNT,<msg_size>,<count>` control message 로 보낸다. server 는
   msg_size 별 누적 ready unit 이 `expected_clients` 와 같아지면 `START` 를
   broadcast 해서 판정한다.
-- 단, SPOT client 는 `connect_peer()` 직후 즉시 `READY_COUNT` 를 보내지 않는다.
+- SPOT client 는 `connect_peer()` 직후 즉시 `READY_COUNT` 를 보내지 않는다.
   local benchmark network 정책으로, 각 client spot 이 control link ready 와
   local connect setup 을 모두 끝낸 뒤 고정 stabilization window(기본 1초)와
   짧은 control settle(기본 25ms)을 거쳐 `READY_COUNT` 를 전송한다.
@@ -185,6 +185,9 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 
 - server는 client 종료까지 상시 대기하며 relay/echo를 수행한다.
 - phase 전환은 패턴별로 제어한다: echo는 client가 phase를 제어하고 server는 relay/echo 대기, one-way는 sender/receiver가 동일 순서의 phase를 수행한다. throughput/latency는 모두 active phase 한 구간에서 계산한다.
+- multi active 유효 메시지 규칙은 패턴별 정책 문서에 정의된 단일 기준으로
+  고정한다. core와 모든 bindings는 같은 pattern에서 동일한 active 유효 메시지
+  의미를 사용해야 한다.
 - 스크립트는 양쪽 프로세스의 stdout을 수집하고, 종료 코드를 확인하여 결과를 합산한다.
 - `READY,<endpoint>`는 프로세스 orchestration 용도다. benchmark start gate를 대체하지 않는다.
 - raw pattern 의 실제 측정 시작 조건은 각 바이너리 내부의 `CONNECTION_READY` gate가 담당한다.
@@ -557,7 +560,8 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 ### 5.5 Header 기반 필터 규칙
 
 - 측정 메시지 payload 선두에는 공통 metric header를 포함한다: `magic`, `run_id`, `phase`, `msg_size`, `seq`, `sent_ts_us`.
-- receiver는 header를 decode하여 `phase == active`, `msg_size == expected_size` (필요 시 `run_id` 일치) 조건을 만족하는 샘플만 집계한다.
+- receiver는 header를 decode하여 `phase == active`, `msg_size == expected_size`,
+  `run_id == current_case_run_id` 조건을 만족하는 샘플만 집계한다.
 - ROUTER 계열 multipart 수신은 routing frame이 앞에 올 수 있으므로 capture buffer에서 header magic을 스캔해 payload header를 탐지한다.
 - header 불일치(다른 size/phase, stale 메시지)는 수신 드레인만 수행하고 메트릭 집계에서 제외한다.
 
@@ -694,8 +698,11 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 - **Wire protocol**: client는 `[4B length (big-endian)][payload]` (len32be framing)으로 통일한다. server 수신 방식만 패턴별로 다르다. 상세는 [PERF_POLICY.md § 2.0.3 Wire Protocol](PERF_POLICY.md)을 참조한다.
 - **Server per-connection 프레임 재조립**: STREAM 소켓은 raw TCP 데이터를
   수신하므로, recv 경계가 len32be 프레임 경계와 일치하지 않을 수 있다.
-  server는 routing_id(connection)별 재조립 버퍼를 유지하여 완전한 프레임을
-  조립한 뒤 echo해야 한다. 상세는 [PERF_POLICY.md § 2.0.3 Server Per-Connection 프레임 재조립](PERF_POLICY.md)을 참조한다.
+  server는 routing_id(connection)별 재조립 버퍼를 유지하여 완전한 프레임만
+  반드시 조립한 뒤 echo해야 한다. partial chunk를 그대로 echo하거나 다른
+  connection과 섞어 조립하면 정책 위반이다. 상세는
+  [PERF_POLICY.md § 2.0.3 Server Per-Connection 프레임 재조립](PERF_POLICY.md)을
+  참조한다.
 - 수신 방식만 다르므로 throughput/latency 차이를 직접 비교할 수 있다.
 - `MULTI_STREAM_LEN32BE`는 삭제되었다. 문서, 스크립트, 빌드 설정, 코드에 잔존 구현이 있으면 모두 삭제해야 하며, 삭제된 패턴을 alias/legacy path로 유지하지 않는다.
 - MULTI_STREAM의 server 프로세스는 반드시 zlink

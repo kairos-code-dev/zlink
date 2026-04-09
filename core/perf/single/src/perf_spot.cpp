@@ -205,6 +205,12 @@ bool wait_for_spot_ready_barrier (void *publisher_,
     return state_->active_received.load (std::memory_order_acquire) > 0;
 }
 
+bool run_spot_post_ready_settle ()
+{
+    const int settle_ms = resolve_single_spot_ready_settle_ms ();
+    return settle_ms <= 0 || perf_socket_poll (NULL, 0, settle_ms) >= 0;
+}
+
 bool send_spot_samples (void *publisher_,
                         std::vector<char> *payload_,
                         spot_recv_state_t *state_,
@@ -447,7 +453,7 @@ int run_case (const std::string &lib_name_,
     }
 
     spot_recv_state_t state;
-    state.run_id = static_cast<uint32_t> (current_process_id ());
+    state.run_id = next_single_metric_run_id ();
     state.msg_size = msg_size_;
     if (!wait_for_spot_ready_barrier (
           publisher,
@@ -457,6 +463,14 @@ int run_case (const std::string &lib_name_,
           resolve_spot_subscription_ready_timeout_ms (transport_))) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] ready barrier failed" << std::endl;
+        cleanup_spot_case (&subscriber, &publisher, &subscriber_node,
+                           &publisher_node);
+        print_fail ();
+        return 1;
+    }
+    if (!run_spot_post_ready_settle ()) {
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-spot] post-ready settle failed" << std::endl;
         cleanup_spot_case (&subscriber, &publisher, &subscriber_node,
                            &publisher_node);
         print_fail ();

@@ -6,7 +6,7 @@
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 27
+#define ZLINK_VERSION_PATCH 28
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -487,6 +487,17 @@ typedef enum zlink_stream_option_t
     ZLINK_STREAM_OPT_NOTIFY = 0x3501
 } zlink_stream_option_t;
 
+typedef enum zlink_spot_node_option_t
+{
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE = 0x3601,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS = 0x3602,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_MESSAGES = 0x3603,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_BYTES = 0x3604,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_BYPASS_BYTES = 0x3605,
+    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_MESSAGES_PER_TURN = 0x3606,
+    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN = 0x3607
+} zlink_spot_node_option_t;
+
 #define ZLINK_DONTWAIT ((zlink_send_flags_t) 0x0001u)
 #define ZLINK_SEND_FLAG_DONTWAIT ZLINK_DONTWAIT
 
@@ -753,6 +764,18 @@ ZLINK_EXPORT int zlink_get_sub_option (void *handle_,
                                        zlink_sub_option_t option_,
                                        void *optval_,
                                        size_t *optvallen_);
+
+/*
+ * SpotNode service-level batching options.
+ */
+ZLINK_EXPORT int zlink_set_spot_node_option (void *handle_,
+                                             zlink_spot_node_option_t option_,
+                                             const void *optval_,
+                                             size_t optvallen_);
+ZLINK_EXPORT int zlink_get_spot_node_option (void *handle_,
+                                             zlink_spot_node_option_t option_,
+                                             void *optval_,
+                                             size_t *optvallen_);
 
 /**
  * @brief Bind a socket to an address.

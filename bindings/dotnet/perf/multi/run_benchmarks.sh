@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTNET_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PROJECT="${DOTNET_DIR}/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj"
 STREAM_CLIENT="${DOTNET_DIR}/../../core/build/bin/perf_stream_client"
+REPO_DIR="$(cd "${DOTNET_DIR}/../.." && pwd)"
+CORE_BUILD_DIR="${REPO_DIR}/core/build"
 RESULTS_ROOT="${DOTNET_DIR}/perf/results"
 PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
@@ -291,6 +293,25 @@ for metric in required:
 PY
 }
 
+ensure_core_stream_client() {
+  cmake -S "${REPO_DIR}" -B "${CORE_BUILD_DIR}" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DENABLE_LTO=OFF \
+    -DBUILD_BENCHMARKS=ON \
+    -DZLINK_BUILD_TESTS=OFF \
+    -DZLINK_BUILD_BENCH_ZMQ=OFF \
+    -DZLINK_BUILD_BENCH_ZLINK=ON \
+    -DZLINK_BUILD_BENCH_BEAST=OFF \
+    -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
+    -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
+    -DZLINK_CXX_STANDARD=17 >/dev/null
+  cmake --build "${CORE_BUILD_DIR}" --target perf_stream_client >/dev/null
+  if [[ ! -x "${STREAM_CLIENT}" ]]; then
+    echo "STREAM client binary not found: ${STREAM_CLIENT}" >&2
+    exit 1
+  fi
+}
+
 emit_markdown_table() {
   local metrics_file="${1:-}"
   local pattern="${2:-}"
@@ -419,6 +440,9 @@ if [[ ! "${TRANSPORTS}" =~ ^[a-z]+(,[a-z]+)*$ ]]; then
 fi
 
 PATTERN="$(normalize_multi_pattern_csv "${PATTERN}")"
+if printf '%s' "${PATTERN}" | grep -q 'MULTI_STREAM'; then
+  ensure_core_stream_client
+fi
 
 mkdir -p "${RESULTS_ROOT}/multi/tmp" "${RESULTS_ROOT}/multi/report" \
   "${RESULTS_ROOT}/multi/baseline"

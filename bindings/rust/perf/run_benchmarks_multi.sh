@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_DIR="$(cd "${PROJECT_DIR}/../.." && pwd)"
 STREAM_CLIENT="${REPO_DIR}/core/build/bin/perf_stream_client"
+CORE_BUILD_DIR="${REPO_DIR}/core/build"
+REUSE_BUILD=0
 
 source "$HOME/.cargo/env" 2>/dev/null || true
 
@@ -54,9 +56,14 @@ while [[ $# -gt 0 ]]; do
         --results-dir) RESULTS_DIR="$2"; shift 2 ;;
         --results-tag) RESULTS_TAG="$2"; shift 2 ;;
         --output)      OUTPUT_FILE="$2"; shift 2 ;;
+        --reuse-build) REUSE_BUILD=1; shift ;;
+        --clean-build)
+            echo "--clean-build is not supported for the shared core stream client in this runner" >&2
+            exit 1
+            ;;
         --build-dir|--io-threads|--server-io-threads|--client-io-threads|--hwm|--send-hwm|--recv-hwm|--sndbuf|--rcvbuf|--sndtimeo|--rcvtimeo|--send-timeout-ms|--recv-timeout-ms|--connect-concurrency|--transport-transition-ms|--pattern-transition-ms|--server-ready-timeout-ms|--connect-ready-timeout-ms|--monitor-hwm|--server-shutdown-timeout-ms|--server-bind-port)
             shift 2 ;;
-        --reuse-build|--clean-build|--pin-cpu) shift ;;
+        --pin-cpu) shift ;;
         *)             echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -108,6 +115,29 @@ allowed = {
     "STREAM",
 }
 
+ensure_core_stream_client() {
+    if [[ "${REUSE_BUILD}" -eq 1 ]]; then
+        if [[ ! -x "${STREAM_CLIENT}" ]]; then
+            echo "shared stream client not found for --reuse-build: ${STREAM_CLIENT}" >&2
+            exit 1
+        fi
+        return
+    fi
+
+    cmake -S "${REPO_DIR}" -B "${CORE_BUILD_DIR}" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DENABLE_LTO=OFF \
+        -DBUILD_BENCHMARKS=ON \
+        -DZLINK_BUILD_TESTS=OFF \
+        -DZLINK_BUILD_BENCH_ZMQ=OFF \
+        -DZLINK_BUILD_BENCH_ZLINK=ON \
+        -DZLINK_BUILD_BENCH_BEAST=OFF \
+        -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
+        -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
+        -DZLINK_CXX_STANDARD=17 >/dev/null
+    cmake --build "${CORE_BUILD_DIR}" --target perf_stream_client >/dev/null
+}
+
 if raw == "ALL":
     print("MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM")
     raise SystemExit(0)
@@ -139,6 +169,9 @@ BIN_DIR="${SCRIPT_DIR}/multi/target/release"
 
 PATTERN="$(normalize_patterns "${PATTERN}")"
 IFS=',' read -ra PATTERNS <<< "${PATTERN}"
+if printf '%s\n' "${PATTERNS[@]}" | grep -qx 'MULTI_STREAM'; then
+    ensure_core_stream_client
+fi
 
 IFS=',' read -ra SIZE_LIST <<< "${MSG_SIZES}"
 IFS=',' read -ra TRANSPORT_LIST <<< "${TRANSPORTS}"

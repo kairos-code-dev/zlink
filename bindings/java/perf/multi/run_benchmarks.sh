@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_DIR="$(cd "${ROOT_DIR}/../../.." && pwd)"
 STREAM_CLIENT="${REPO_DIR}/core/build/bin/perf_stream_client"
+CORE_BUILD_DIR="${REPO_DIR}/core/build"
 RESULTS_ROOT="${ROOT_DIR}/results"
 PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
@@ -294,6 +295,29 @@ resolve_build_dir() {
   fi
 }
 
+ensure_core_stream_client() {
+  if [[ "${REUSE_BUILD}" -eq 1 ]]; then
+    if [[ ! -x "${STREAM_CLIENT}" ]]; then
+      echo "shared stream client not found for --reuse-build: ${STREAM_CLIENT}" >&2
+      exit 1
+    fi
+    return
+  fi
+
+  cmake -S "${REPO_DIR}" -B "${CORE_BUILD_DIR}" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DENABLE_LTO=OFF \
+    -DBUILD_BENCHMARKS=ON \
+    -DZLINK_BUILD_TESTS=OFF \
+    -DZLINK_BUILD_BENCH_ZMQ=OFF \
+    -DZLINK_BUILD_BENCH_ZLINK=ON \
+    -DZLINK_BUILD_BENCH_BEAST=OFF \
+    -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
+    -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
+    -DZLINK_CXX_STANDARD=17 >/dev/null
+  cmake --build "${CORE_BUILD_DIR}" --target perf_stream_client >/dev/null
+}
+
 is_uint() {
   local value="${1:-}"
   [[ "${value}" =~ ^[0-9]+$ ]]
@@ -578,6 +602,9 @@ append_metrics() {
 }
 
 IFS=',' read -r -a patterns <<< "$(trim_csv "${PATTERN}")"
+if printf '%s\n' "${patterns[@]}" | grep -qx 'MULTI_STREAM'; then
+  ensure_core_stream_client
+fi
 IFS=',' read -r -a transports <<< "$(trim_csv "${TRANSPORTS}")"
 for i in "${!patterns[@]}"; do
   patterns[$i]="$(normalize_multi_pattern "${patterns[$i]}")"

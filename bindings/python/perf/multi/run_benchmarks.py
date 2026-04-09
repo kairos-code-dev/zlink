@@ -28,6 +28,39 @@ DEFAULT_MSG_SIZES = ("64", "256", "1024", "65536", "131072", "262144")
 DEFAULT_STREAM_MSG_SIZES = ("64", "256", "1024", "65536")
 
 
+def _ensure_core_stream_client():
+    repo_root = ROOT.parent.parent.parent.parent
+    core_build = repo_root / "core" / "build"
+    subprocess.run(
+        [
+            "cmake",
+            "-S",
+            str(repo_root),
+            "-B",
+            str(core_build),
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DENABLE_LTO=OFF",
+            "-DBUILD_BENCHMARKS=ON",
+            "-DZLINK_BUILD_TESTS=OFF",
+            "-DZLINK_BUILD_BENCH_ZMQ=OFF",
+            "-DZLINK_BUILD_BENCH_ZLINK=ON",
+            "-DZLINK_BUILD_BENCH_BEAST=OFF",
+            "-DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF",
+            "-DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF",
+            "-DZLINK_CXX_STANDARD=17",
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        ["cmake", "--build", str(core_build), "--target", "perf_stream_client"],
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    if not STREAM_CLIENT.exists():
+        raise SystemExit(f"shared stream client not found: {STREAM_CLIENT}")
+
+
 def parse_args(argv):
     parser = argparse.ArgumentParser(prog="run_benchmarks.sh")
     parser.add_argument("--pythonpath", required=True)
@@ -173,8 +206,7 @@ def _run_pattern(args, env, pattern, msg_size, clients):
     if pattern == "STREAM":
         if not server_path.exists():
             raise SystemExit(f"unsupported pattern: {pattern}")
-        if not STREAM_CLIENT.exists():
-            raise SystemExit(f"shared stream client not found: {STREAM_CLIENT}")
+        _ensure_core_stream_client()
     elif not server_path.exists() or not client_path.exists():
         raise SystemExit(f"unsupported pattern: {pattern}")
 

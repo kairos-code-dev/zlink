@@ -232,6 +232,16 @@ Frame 4~N: Service entries (repeated service_count times)
 - 원격 수신 (SUB):
   로컬 spot_sub 분배만 (재발행 없음, 루프 방지)
 
+### 5.4.1 SpotNode HWM 경계
+- unified `Spot` handle HWM 과 SpotNode internal HWM 은 다른 계층이다.
+- `Spot` handle HWM 은 public facade pub/sub 소켓을 제어한다.
+- `SpotNode` HWM 은 internal data-plane budget 이며 방향별로 적용된다.
+  - `SNDHWM` → `fanout`, `mesh_pub`
+  - `RCVHWM` → `ingress`, `mesh_xsub`
+- SpotNode internal data-plane HWM 기본값은 `1000` 이다.
+- `peer_ctrl` 는 control-plane 소켓이므로 SpotNode data-plane HWM 묶음에
+  포함하지 않는다.
+
 ### 5.5 Raw 소켓 정책
 - `spot_pub_t`: raw PUB socket 노출하지 않음
   (thread-safety 우회 방지)

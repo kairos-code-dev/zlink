@@ -25,11 +25,8 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 - `cppserver`
 - `dotnet`
 - `netzlink`
-- `netzlink-len32be`
 - `jvmzlink`
-- `jvmzlink-len32be`
 - `zlink`
-- `zlink-len32be`
 - `zmq`
 - `netty`
 
@@ -57,8 +54,8 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 - Linux 환경
 - CMake + C++ 컴파일러
 - Python 3
-- .NET SDK (`dotnet`, `netzlink`, `netzlink-len32be` 스택 사용 시)
-- JDK 22 + Gradle 8.8+ (`netty`, `jvmzlink`, `jvmzlink-len32be` 스택 사용 시)
+- .NET SDK (`dotnet`, `netzlink` 스택 사용 시)
+- JDK 22 + Gradle 8.8+ (`netty`, `jvmzlink` 스택 사용 시)
 - 선택한 스택에 따른 외부 의존성
 
 고CCU(예: `--ccu 10000`)에서는 OS 튜닝이 중요합니다:
@@ -105,7 +102,7 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 ## 실행 옵션
 
 ```text
---stack <asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty|all|csv>
+--stack <asio|cppserver|dotnet|netzlink|jvmzlink|zlink|zmq|netty|all|csv>
 --size <64|1024|65536|all|csv>
 --build-dir PATH            기본값: core/build
 --reuse-build               기존 빌드 디렉토리 재사용(configure/build 생략)
@@ -126,8 +123,8 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 - `RESULT_DIR`: 결과 출력 디렉토리 지정
 - `HOST`: 벤치 대상 호스트 (기본값 `127.0.0.1`)
 - `BASE_PORT`: 스택 실행 시작 포트 (기본값 `22000`)
-- `NETTY_JAVA_HOME`: `netty`, `jvmzlink`, `jvmzlink-len32be` 스택에서 사용할 JDK 22 경로
-- `NETTY_GRADLE_BIN`: `netty`, `jvmzlink`, `jvmzlink-len32be` 스택에서 사용할 Gradle 실행 파일 경로
+- `NETTY_JAVA_HOME`: `netty`, `jvmzlink` 스택에서 사용할 JDK 22 경로
+- `NETTY_GRADLE_BIN`: `netty`, `jvmzlink` 스택에서 사용할 Gradle 실행 파일 경로
 
 참고:
 
@@ -141,9 +138,8 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 - `netty`는 Gradle 8.8+가 필요하며 시스템 `gradle`이 오래된 경우
   러너가 `core/bench/benchwithstreamcompare/stacks/netty/.gradle-tools/` 아래에
   Gradle `8.10.2`를 자동 다운로드해서 사용
-- `jvmzlink`와 `jvmzlink-len32be`는 `netty`와 동일한 Java/Gradle 탐색
-  경로를 사용하고, 실행 전 `bindings/java` jar를 먼저 빌드해 서버 앱을
-  패키징
+- `jvmzlink`는 `netty`와 동일한 Java/Gradle 탐색 경로를 사용하고,
+  실행 전 `bindings/java` jar를 먼저 빌드해 서버 앱을 패키징
 - `zlink` 스택은 native STREAM 서버 바이너리를 직접 실행
 
 ## 결과 파일

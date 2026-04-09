@@ -32,6 +32,8 @@ echo "Running samples:"
 echo ""
 
 run_sample pair_recv_sample
+run_sample request_reply_async_sample
+run_sample request_reply_callback_sample
 run_sample pair_callback_sample
 run_sample pubsub_recv_sample
 run_sample pubsub_callback_sample

@@ -105,3 +105,11 @@ English | [한국어](README.ko.md)
 |----------|-------------|
 | [feature-roadmap.md](plan/feature-roadmap.md) | Feature roadmap |
 | [type-segmentation.md](plan/type-segmentation.md) | Discovery type separation plan |
+
+## Detailed Specs (spec/)
+
+| Document | Description |
+|----------|-------------|
+| [spec/spot/README.md](spec/spot/README.md) | SPOT detailed specifications index |
+| [spec/spot/SPOT_PEER_PUBLISH_BATCHING_SPEC.md](spec/spot/SPOT_PEER_PUBLISH_BATCHING_SPEC.md) | SpotNode peer publish batching spec |
+| [spec/spot/SPOT_ROUTED_MESSAGE_SPEC.md](spec/spot/SPOT_ROUTED_MESSAGE_SPEC.md) | SpotNode-based routed message spec |

@@ -22,7 +22,6 @@ static const char *k_token = "pubsub";
 static const zlink_socket_type_t k_server_socket_type = ZLINK_SOCKET_PUB;
 static const bool k_server_has_routing_id = false;
 static const char *k_server_routing_id = "SERVER";
-static const uint32_t k_metric_run_id = 1U;
 static const char *k_pubsub_topic = "bench";
 
 static std::atomic<int> g_debug_pub_logs (0);
@@ -44,6 +43,7 @@ bool wait_for_start_signal (size_t msg_size, int timeout_ms)
 inline bool publish_once (void *server,
                           std::vector<char> &payload,
                           size_t current_msg_size,
+                          uint32_t run_id,
                           perf_multi_metric::phase_t phase,
                           uint64_t *seq,
                           unsigned long long *publish_ok_count,
@@ -63,7 +63,7 @@ inline bool publish_once (void *server,
     if (!perf_multi_metric::stamp_payload (
           payload.data (),
           send_size,
-          k_metric_run_id,
+          run_id,
           phase,
           current_msg_size,
           (*seq)++,
@@ -105,7 +105,12 @@ inline bool publish_once (void *server,
         }
         if (publish_wait_count)
             ++(*publish_wait_count);
-        if (perf_socket_poll (NULL, 0, 1) < 0 && zlink_errno () != EINTR)
+        zlink_pollitem_t item;
+        item.socket = server;
+        item.fd = 0;
+        item.events = ZLINK_POLLOUT;
+        item.revents = 0;
+        if (perf_socket_poll (&item, 1, 1) < 0 && zlink_errno () != EINTR)
             return false;
         return true;
     }
@@ -204,6 +209,7 @@ inline bool run_server_loop (void *server,
     auto phase_deadline = std::chrono::steady_clock::time_point ();
     bool phase_started = false;
     size_t current_phase_msg_size = 0;
+    uint32_t current_phase_run_id = 0;
     perf_multi_metric::phase_t current_phase = perf_multi_metric::phase_unknown;
     uint64_t phase_seq = 1;
     unsigned long long publish_ok_count = 0;
@@ -249,6 +255,8 @@ inline bool run_server_loop (void *server,
                 const bool new_size =
                   phases[phase_index].msg_size != current_phase_msg_size;
                 current_phase_msg_size = phases[phase_index].msg_size;
+                current_phase_run_id =
+                  static_cast<uint32_t> (phase_index + 1);
                 current_phase = phases[phase_index].phase;
                 phase_seq = 1;
                 publish_ok_count = 0;
@@ -260,25 +268,10 @@ inline bool run_server_loop (void *server,
                       settings.connect_ready_timeout_ms)) {
                     return false;
                 }
-                if (new_size) {
-                    const int settle_ms =
-                      std::max (50, std::min (500,
-                                              settings.connect_ready_timeout_ms
-                                                / 10));
-                    if (perf_socket_poll (NULL, 0, settle_ms) < 0
-                        && zlink_errno () != EINTR) {
-                        return false;
-                    }
-                }
-                phase_started = false;
-            }
-
-            if (!phase_started && phases[phase_index].send_active
-                && bench_transition_debug_enabled ()) {
-                std::cerr << "[multi-pubsub-server] waiting first publish size="
-                          << current_phase_msg_size << " phase="
-                          << static_cast<unsigned int> (current_phase)
-                          << std::endl;
+                phase_deadline =
+                  std::chrono::steady_clock::now ()
+                  + phases[phase_index].duration;
+                phase_started = true;
             }
 
             if (!phases[phase_index].send_active) {
@@ -300,11 +293,11 @@ inline bool run_server_loop (void *server,
                 continue;
             }
 
-            const unsigned long long publish_ok_before = publish_ok_count;
             if (!publish_once (
                   server,
                   *payload,
                   phases[phase_index].msg_size,
+                  current_phase_run_id,
                   phases[phase_index].phase,
                   &phase_seq,
                   &publish_ok_count,
@@ -312,21 +305,17 @@ inline bool run_server_loop (void *server,
                   &publish_wait_count)) {
                 return false;
             }
-            if (!phase_started && publish_ok_count > publish_ok_before) {
-                phase_deadline =
-                  std::chrono::steady_clock::now ()
-                  + phases[phase_index].duration;
-                phase_started = true;
-            }
             continue;
         }
 
         current_phase = perf_multi_metric::phase_active;
         current_phase_msg_size = payload->size ();
+        current_phase_run_id = 1;
         if (!publish_once (
               server,
               *payload,
               payload->size (),
+              current_phase_run_id,
               perf_multi_metric::phase_active,
               &phase_seq,
               &publish_ok_count,

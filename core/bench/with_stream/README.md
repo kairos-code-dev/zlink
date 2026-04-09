@@ -25,11 +25,8 @@ Supported stacks:
 - `cppserver`
 - `dotnet`
 - `netzlink`
-- `netzlink-len32be`
 - `jvmzlink`
-- `jvmzlink-len32be`
 - `zlink`
-- `zlink-len32be`
 - `zmq`
 - `netty`
 
@@ -57,7 +54,7 @@ Supported payload sizes:
 - CMake + C++ toolchain
 - Python 3
 - .NET SDK (for `dotnet`, `netzlink`, `netzlink-len32be` stacks)
-- JDK 22 + Gradle 8.8+ (for `netty`, `jvmzlink`, `jvmzlink-len32be` stacks)
+- JDK 22 + Gradle 8.8+ (for `netty`, `jvmzlink` stacks)
 - Optional external libs/tools depending on selected stacks
 
 For high CCU (for example `--ccu 10000`), host tuning is important:
@@ -104,7 +101,7 @@ Run one stack with multi-size sequence (reconnect per size):
 ## Runner Options
 
 ```text
---stack <asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty|all|csv>
+--stack <asio|cppserver|dotnet|netzlink|jvmzlink|zlink|zmq|netty|all|csv>
 --size <64|1024|65536|all|csv>
 --build-dir PATH            default: core/build
 --reuse-build               reuse existing build directory (skip configure/build)
@@ -125,8 +122,8 @@ Supported environment variables:
 - `RESULT_DIR`: override output directory
 - `HOST`: benchmark target host (default `127.0.0.1`)
 - `BASE_PORT`: start port for stack runs (default `22000`)
-- `NETTY_JAVA_HOME`: JDK home for `netty`, `jvmzlink`, `jvmzlink-len32be` stacks (must be Java 22+)
-- `NETTY_GRADLE_BIN`: override Gradle binary for `netty`, `jvmzlink`, `jvmzlink-len32be` stacks
+- `NETTY_JAVA_HOME`: JDK home for `netty`, `jvmzlink` stacks (must be Java 22+)
+- `NETTY_GRADLE_BIN`: override Gradle binary for `netty`, `jvmzlink` stacks
 
 Notes:
 
@@ -141,8 +138,8 @@ Notes:
 - `netty` requires Gradle 8.8+. If system `gradle` is older, the runner
   auto-downloads Gradle `8.10.2` under
   `core/bench/benchwithstreamcompare/stacks/netty/.gradle-tools/`.
-- `jvmzlink` and `jvmzlink-len32be` use the same Java/Gradle resolution path as
-  `netty`, then build `bindings/java` jar before packaging the stack server app.
+- `jvmzlink` uses the same Java/Gradle resolution path as `netty`, then builds
+  `bindings/java` jar before packaging the stack server app.
 - `zlink` stack is run directly as the native STREAM server binary.
 
 ## Output Files

@@ -1923,7 +1923,6 @@ export class Spot {
 
 type RequestOptions = { timeout?: number };
 type RequestCallback = (err: Error | null, reply?: Received) => void;
-type RequestHandler = (routingId: Buffer, correlationId: bigint, request: Received) => void;
 type PendingRequestState = {
   resolve: (reply: Received) => void;
   reject: (error: Error) => void;
@@ -2129,6 +2128,11 @@ export class RequestDealer extends RequestReplyBase {
     return this.tryRecvFromQueue(() => this.dispatchOnce());
   }
 
+  override onReceive(handler: SocketRecvHandler): void {
+    super.onReceive(handler);
+    this.ensureDispatchLoop(() => this.dispatchOnce());
+  }
+
   private requestInternal(
     payloadOrParts: MessageLike | readonly MessageLike[],
     options: RequestOptions,
@@ -2177,7 +2181,6 @@ export class RequestDealer extends RequestReplyBase {
 export class RequestRouter extends RequestReplyBase {
   private readonly _socket: RouterSocket;
   private readonly _pending = new Map<bigint, PendingRequestState>();
-  private _requestHandler: RequestHandler | null = null;
   private _nextCorrelationId = 1n;
 
   constructor(socket: RouterSocket) {
@@ -2251,14 +2254,6 @@ export class RequestRouter extends RequestReplyBase {
     ) as SendResult;
   }
 
-  onRequest(handler: RequestHandler): void {
-    if (typeof handler !== 'function') {
-      throw new TypeError('handler must be a function');
-    }
-    this._requestHandler = handler;
-    this.ensureDispatchLoop(() => this.dispatchOnce());
-  }
-
   close(): void {
     this.stopDispatchLoop();
     rejectPendingRequests(this._pending, new Error('socket is closed'));
@@ -2271,6 +2266,11 @@ export class RequestRouter extends RequestReplyBase {
 
   tryRecv(): Received | null {
     return this.tryRecvFromQueue(() => this.dispatchOnce());
+  }
+
+  override onReceive(handler: SocketRecvHandler): void {
+    super.onReceive(handler);
+    this.ensureDispatchLoop(() => this.dispatchOnce());
   }
 
   private requestInternal(
@@ -2312,10 +2312,6 @@ export class RequestRouter extends RequestReplyBase {
     const first = received.parts[0];
     const info = first?.getRequestInfo();
     if (info) {
-      if (info.msgType === MsgType.Request && received.routingId && this._requestHandler) {
-        this._requestHandler(received.routingId, info.correlationId, received);
-        return;
-      }
       if (info.msgType === MsgType.Reply) {
         if (settlePendingReply(this._pending, info.correlationId, received)) {
           return;

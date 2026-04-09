@@ -10,8 +10,6 @@ namespace Zlink;
 
 public delegate void RequestReplyCallback(Received reply);
 public delegate void RequestErrorCallback(ZlinkException error);
-public delegate void RequestHandler(RoutingId routingId, ulong correlationId,
-    Received request);
 
 internal sealed class PendingRequest
 {
@@ -328,8 +326,6 @@ public sealed class RequestRouter : IDisposable, IAsyncDisposable
     private long _nextCorrelationId = 1;
     private SocketRecvHandler? _dataHandler;
     private SynchronizationContext? _dataHandlerContext;
-    private RequestHandler? _requestHandler;
-    private SynchronizationContext? _requestHandlerContext;
     private int _closed;
 
     public RequestRouter(RouterSocket socket)
@@ -432,12 +428,6 @@ public sealed class RequestRouter : IDisposable, IAsyncDisposable
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         cloned[0].SetReply(correlationId);
         return _socket.TrySend(routingId, cloned);
-    }
-
-    public void OnRequest(RequestHandler handler)
-    {
-        _requestHandler = handler ?? throw new ArgumentNullException(nameof(handler));
-        _requestHandlerContext = SynchronizationContext.Current;
     }
 
     public Received Recv()
@@ -593,17 +583,6 @@ public sealed class RequestRouter : IDisposable, IAsyncDisposable
             return;
         }
         (byte msgType, ulong correlationId) = received.Parts[0].GetRequestInfo();
-        if (msgType == 1)
-        {
-            RequestHandler? handler = _requestHandler;
-            if (handler != null)
-            {
-                SynchronizationContext? context = _requestHandlerContext;
-                CallbackDelivery.Post(context, () =>
-                    handler(new RoutingId(received.RoutingId), correlationId, received));
-                return;
-            }
-        }
         if (msgType == 2 && _pending.TryRemove(correlationId, out PendingRequest? pending))
         {
             pending.TrySetResult(received);

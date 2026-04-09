@@ -41,7 +41,6 @@ static const int k_spot_role_pub = 1;
 static const char *k_pattern = "MULTI_SPOT";
 static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
-static const uint32_t k_metric_run_id = 1U;
 
 void ensure_multi_spot_mesh_pub_budget_default()
 {
@@ -58,6 +57,7 @@ struct spot_server_state_t
         control_sub(NULL),
         msg_size(0),
         phase(perf_multi_metric::phase_unknown),
+        run_id(1U),
         next_seq(1),
         expected_ready_count(1),
         send_enabled(false),
@@ -76,6 +76,7 @@ struct spot_server_state_t
     void *control_sub;
     size_t msg_size;
     perf_multi_metric::phase_t phase;
+    uint32_t run_id;
     uint64_t next_seq;
     size_t expected_ready_count;
     std::atomic<bool> send_enabled;
@@ -198,7 +199,7 @@ send_status_t try_publish_locked(spot_server_state_t *state,
     if (!perf_multi_metric::stamp_payload(
           zlink_msg_data(&part),
           payload_size,
-          k_metric_run_id,
+          state->run_id,
           state->phase,
           state->msg_size,
           state->next_seq,
@@ -235,6 +236,7 @@ bool run_phase(spot_server_state_t *state,
                const std::string &lib_name,
                const std::string &transport,
                size_t msg_size,
+               uint32_t run_id,
                perf_multi_metric::phase_t phase,
                double duration_seconds,
                bool send_enabled)
@@ -244,6 +246,7 @@ bool run_phase(spot_server_state_t *state,
 
     state->msg_size = msg_size;
     state->phase = phase;
+    state->run_id = run_id;
     state->next_seq = 1;
     state->send_enabled.store(send_enabled, std::memory_order_release);
     state->send_pending.store(false, std::memory_order_release);
@@ -390,7 +393,11 @@ bool run_server_loop(spot_server_state_t *state,
                       << perf_multi_metric::now_ns()
                       << " size=" << msg_sizes[i] << std::endl;
         }
-        if (!run_phase(state, lib_name, transport, msg_sizes[i],
+        if (!run_phase(state,
+                       lib_name,
+                       transport,
+                       msg_sizes[i],
+                       static_cast<uint32_t>(i + 1),
                        perf_multi_metric::phase_active, active_seconds, true)) {
             if (bench_transition_debug_enabled()) {
                 std::cerr << "[multi-spot-server] loop abort size="

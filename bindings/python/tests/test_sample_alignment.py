@@ -9,6 +9,8 @@ SAMPLES_DIR = ROOT / "samples"
 class SampleAlignmentTests(unittest.TestCase):
     def test_required_sample_files_exist(self):
         expected = [
+            "request_reply_async_sample.py",
+            "request_reply_callback_sample.py",
             "pair_recv_sample.py",
             "pair_callback_sample.py",
             "dealer_router_recv_sample.py",
@@ -40,6 +42,8 @@ class SampleAlignmentTests(unittest.TestCase):
         runner = (SAMPLES_DIR / "run_samples.py").read_text(encoding="utf-8")
         shell = (SAMPLES_DIR / "run_samples.sh").read_text(encoding="utf-8")
 
+        self.assertIn("request_reply_async_sample.py", runner)
+        self.assertIn("request_reply_callback_sample.py", runner)
         self.assertIn("spot_recv_sample.py", runner)
         self.assertIn("spot_callback_sample.py", runner)
         self.assertIn("pair_recv_sample.py", runner)

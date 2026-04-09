@@ -23,396 +23,90 @@ flowchart LR
 
 > A->RC, B->RA, C->RB ... routing_id로 대상 지정
 
-    ```csharp
-    // Receive and reply using Recv() + SendRid()
-    var (sourceRid, parts) = router.Recv();
-    router.SendRid(sourceRid, new Message("reply"u8));
-    ```
+```c
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
 
-    ```go
-    // Receive and reply using recv() + send_rid()
-    source_rid, parts, err := router.Recv()
-    if err != nil { panic(err) }
-    router.SendTo(source_rid, zlink.NewMessage([]byte("reply")))
-    ```
+/* TCP */
+zlink_bind(router, "tcp://127.0.0.1:5558");
+
+/* IPC (Linux/macOS) */
+zlink_bind(router, "ipc:///tmp/router.ipc");
+
+/* inproc (same process) */
+zlink_bind(router, "inproc://router");
+
+/* DEALERs connect via each transport -- ROUTER manages them uniformly by routing_id */
+```
+
+```c
+/* Explicit routing_id -- remains the same across reconnections */
+zlink_set_routing_id(dealer, "stable-id", 9);
+```
 
 ## 2. 기본 사용법
 
 ### 생성 및 바인드
 
-=== "C"
-
-    ```c
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    zlink_bind(router, "tcp://*:5558");
-    ```
-
-=== "C++"
-
-    ```cpp
-    zlink::context_t ctx;
-    zlink::router_socket_t router(ctx);
-    router.bind("tcp://*:5558");
-    ```
-
-=== "Java"
-
-    ```java
-    Context ctx = new Context();
-    RouterSocket router = new RouterSocket(ctx);
-    router.bind("tcp://*:5558");
-    ```
-
-=== "Python"
-
-    ```python
-    ctx = zlink.Context()
-    router = zlink.RouterSocket(ctx)
-    router.bind("tcp://*:5558")
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const ctx = new zlink.Context();
-    const router = new zlink.RouterSocket(ctx);
-    router.bind("tcp://*:5558");
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using var ctx = new Context();
-    using var router = new RouterSocket(ctx);
-    router.Bind("tcp://*:5558");
-    ```
-
-=== "Rust"
-
-    ```rust
-    let ctx = zlink::Context::new()?;
-    let router = ctx.router_socket()?;
-    router.bind("tcp://*:5558")?;
-    ```
-
-=== "Go"
-
-    ```go
-    ctx, err := zlink.NewContext()
-    if err != nil { panic(err) }
-    router, err := ctx.RouterSocket()
-    if err != nil { panic(err) }
-    router.Bind("tcp://*:5558")
-    ```
-
-### 메시지 교환
-
-DEALER-ROUTER 전체 예제: DEALER가 연결 후 요청을 전송하고,
-ROUTER가 `source_rid`로 송신자를 식별하여 `zlink_send_rid()`로 응답한다.
-
-=== "C"
-
-    ```c
-    #include <zlink.h>
-    #include <string.h>
-    #include <stdio.h>
-
-    int main(void)
-    {
-        void *ctx = zlink_ctx_new();
-
-        void *router = zlink_socket(ctx, ZLINK_ROUTER);
-        zlink_bind(router, "tcp://*:5558");
-
-        void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-        zlink_set_routing_id(dealer, "D1", 2);
-        zlink_connect(dealer, "tcp://127.0.0.1:5558");
-
-        /* DEALER sends a request */
-        zlink_msg_t req;
-        zlink_msg_init_size(&req, 5);
-        memcpy(zlink_msg_data(&req), "Hello", 5);
-        zlink_send(dealer, &req, 1, 0);
-
-        /* ROUTER receives -- source_rid identifies the sender */
-        zlink_routing_id_t source_rid;
-        zlink_msg_t *parts = NULL;
-        size_t part_count = 0;
-        zlink_recv(router, &source_rid, &parts, &part_count, 0);
-        printf("From [%.*s]: %.*s\n",
-               (int)source_rid.size, source_rid.data,
-               (int)zlink_msg_size(&parts[0]),
-               (char *)zlink_msg_data(&parts[0]));
-        zlink_multipart_close(parts, part_count);
-
-        /* ROUTER replies to the sender */
-        zlink_msg_t reply;
-        zlink_msg_init_size(&reply, 5);
-        memcpy(zlink_msg_data(&reply), "World", 5);
-        zlink_send_rid(router, &source_rid, &reply, 1, 0);
-
-        /* DEALER receives the reply */
-        zlink_recv(dealer, &source_rid, &parts, &part_count, 0);
-        printf("Reply: %.*s\n",
-               (int)zlink_msg_size(&parts[0]),
-               (char *)zlink_msg_data(&parts[0]));
-        zlink_multipart_close(parts, part_count);
-
-        zlink_close(dealer);
-        zlink_close(router);
-        zlink_ctx_term(ctx);
-        return 0;
-    }
-    ```
-
-=== "C++"
-
-    ```cpp
-    #include <zlink/socket.hpp>
-    #include <iostream>
-
-    int main()
-    {
-        zlink::context_t ctx;
-
-        zlink::router_socket_t router(ctx);
-        router.bind("tcp://*:5558");
-
-        zlink::dealer_socket_t dealer(ctx);
-        dealer.set_routing_id("D1");
-        dealer.connect("tcp://127.0.0.1:5558");
-
-        // DEALER sends a request
-        dealer.send(zlink::message_t("Hello", 5));
-
-        // ROUTER receives -- source_rid identifies the sender
-        auto [source_rid, parts] = router.recv();
-        std::cout << "From [" << source_rid.to_string() << "]: "
-                  << parts[0].to_string() << std::endl;
-
-        // ROUTER replies to the sender
-        router.send_rid(source_rid, zlink::message_t("World", 5));
-
-        // DEALER receives the reply
-        auto [rid2, reply] = dealer.recv();
-        std::cout << "Reply: " << reply[0].to_string() << std::endl;
-
-        return 0;
-    }
-    ```
-
-=== "Java"
-
-    ```java
-    import dev.kairoscode.zlink.*;
-
-    public class RouterExample {
-        public static void main(String[] args) {
-            Context ctx = new Context();
-
-            RouterSocket router = new RouterSocket(ctx);
-            router.bind("tcp://*:5558");
-
-            DealerSocket dealer = new DealerSocket(ctx);
-            dealer.setRoutingId("D1");
-            dealer.connect("tcp://127.0.0.1:5558");
-
-            // DEALER sends a request
-            dealer.send(new Message("Hello".getBytes()));
-
-            // ROUTER receives -- sourceRid identifies the sender
-            RecvResult result = router.recv();
-            System.out.println("From [" + result.routingId() + "]: "
-                + new String(result.parts()[0].data()));
-
-            // ROUTER replies to the sender
-            router.sendRid(result.routingId(), new Message("World".getBytes()));
-
-            // DEALER receives the reply
-            Message reply = dealer.recv();
-            System.out.println("Reply: " + reply.partAsString(0));
-
-            dealer.close();
-            router.close();
-            ctx.close();
-        }
-    }
-    ```
-
-=== "Python"
-
-    ```python
-    import zlink
-
-    ctx = zlink.Context()
-
-    router = zlink.RouterSocket(ctx)
-    router.bind("tcp://*:5558")
-
-    dealer = zlink.DealerSocket(ctx)
-    dealer.set_routing_id(b"D1")
-    dealer.connect("tcp://127.0.0.1:5558")
-
-    # DEALER sends a request
-    dealer.send(b"Hello")
-
-    # ROUTER receives -- source_rid identifies the sender
-    source_rid, parts = router.recv()
-    print(f"From [{source_rid}]: {parts[0].data().decode()}")
-
-    # ROUTER replies to the sender
-    router.send_rid(source_rid, b"World")
-
-    # DEALER receives the reply
-    _, reply = dealer.recv()
-    print(f"Reply: {reply[0].decode()}")
-
-    dealer.close()
-    router.close()
-    ctx.term()
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    import * as zlink from 'zlink';
-
-    const ctx = new zlink.Context();
-
-    const router = new zlink.RouterSocket(ctx);
-    router.bind('tcp://*:5558');
-
-    const dealer = new zlink.DealerSocket(ctx);
-    dealer.setRoutingId(Buffer.from('D1'));
-    dealer.connect('tcp://127.0.0.1:5558');
-
-    // DEALER sends a request
-    dealer.send(Buffer.from('Hello'));
-
-    // ROUTER receives -- sourceRid identifies the sender
-    const { sourceRid, parts } = router.recv();
-    console.log(`From [${sourceRid}]: ${parts[0].toString()}`);
-
-    // ROUTER replies to the sender
-    router.sendRid(sourceRid, Buffer.from('World'));
-
-    // DEALER receives the reply
-    const reply = dealer.recv();
-    console.log(`Reply: ${reply.parts[0].toString()}`);
-
-    dealer.close();
-    router.close();
-    ctx.term();
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using Zlink;
-
-    using var ctx = new Context();
-
-    using var router = new RouterSocket(ctx);
-    router.Bind("tcp://*:5558");
-
-    using var dealer = new DealerSocket(ctx);
-    dealer.SetRoutingId("D1"u8);
-    dealer.Connect("tcp://127.0.0.1:5558");
-
-    // DEALER sends a request
-    dealer.Send(new Message("Hello"u8));
-
-    // ROUTER receives -- sourceRid identifies the sender
-    var (sourceRid, parts) = router.Recv();
-    Console.WriteLine($"From [{sourceRid}]: {parts[0].DataString()}");
-
-    // ROUTER replies to the sender
-    router.SendRid(sourceRid, new Message("World"u8));
-
-    // DEALER receives the reply
-    var (_, reply) = dealer.Recv();
-    Console.WriteLine($"Reply: {reply[0].DataString()}");
-    ```
-
-=== "Rust"
-
-    ```rust
-    use zlink::Context;
-
-    fn main() -> Result<(), Box<dyn std::error::Error>> {
-        let ctx = Context::new()?;
-
-        let router = ctx.router_socket()?;
-        router.bind("tcp://*:5558")?;
-
-        let dealer = ctx.dealer_socket()?;
-        dealer.set_routing_id("D1")?;
-        dealer.connect("tcp://127.0.0.1:5558")?;
-
-        // DEALER sends a request
-        dealer.send(&zlink::Message::from("Hello"))?;
-
-        // ROUTER receives -- source_rid identifies the sender
-        let (source_rid, parts) = router.recv()?;
-        println!("From [{}]: {}", source_rid, parts[0].as_str()?);
-
-        // ROUTER replies to the sender
-        router.send_rid(&source_rid, &zlink::Message::from("World"))?;
-
-        // DEALER receives the reply
-        let (_, reply) = dealer.recv()?;
-        println!("Reply: {}", reply[0].as_str()?);
-
-        Ok(())
-    }
-    ```
-
-=== "Go"
-
-    ```go
-    package main
-
-    import (
-        "fmt"
-        "log"
-        "github.com/kairos-code-dev/zlink-go"
-    )
-
-    func main() {
-        ctx, err := zlink.NewContext()
-        if err != nil { log.Fatal(err) }
-        defer ctx.Close()
-
-        router, _ := ctx.RouterSocket()
-        defer router.Close()
-        router.Bind("tcp://*:5558")
-
-        dealer, _ := ctx.DealerSocket()
-        defer dealer.Close()
-        dealer.SetRoutingId("D1")
-        dealer.Connect("tcp://127.0.0.1:5558")
-
-        // DEALER sends a request
-        dealer.Send(zlink.NewMessage([]byte("Hello")))
-
-        // ROUTER receives -- source_rid identifies the sender
-        sourceRid, parts, _ := router.Recv()
-        fmt.Printf("From [%v]: %s\n", sourceRid, string(parts[0].Data()))
-
-        // ROUTER replies to the sender
-        router.SendTo(sourceRid, zlink.NewMessage([]byte("World")))
-
-        // DEALER receives the reply
-        _, reply, _ := dealer.Recv()
-        fmt.Printf("Reply: %s\n", string(reply[0].Data()))
-    }
-    ```
+```c
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(router, "tcp://*:5558");
+```
+
+### 메시지 수신
+
+ROUTER는 소켓 생성 후 부착한 핸들러 콜백으로 메시지를 수신한다.
+
+```c
+/* DEALER sends "Hello" → handler receives source_rid + parts */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    printf("From [%.*s]: %.*s\n",
+           (int)source_rid->size, source_rid->data,
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+/* Receive with zlink_recv() */
+```
+
+### 메시지 송신
+
+응답 시 `zlink_send_rid`에 콜백의 `source_rid`를 전달하여 대상을 지정한다.
+
+```c
+/* Reply using source_rid from the callback */
+zlink_msg_t reply;
+zlink_msg_init_size(&reply, 5);
+memcpy(zlink_msg_data(&reply), "World", 5);
+zlink_send_rid(router, source_rid, &reply, 1, 0);
+```
+
+### 수신 모드
+
+**Pull 모드**: 핸들러를 부착하지 않으면 `zlink_recv()`로 동기 수신한다.
+
+```c
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+int rc = zlink_recv(router, &source_rid, &parts, &part_count, 0);
+if (rc == 0) {
+    /* source_rid identifies the sender */
+    /* process parts[0..part_count-1] */
+    zlink_multipart_close(parts, part_count);
+}
+```
 
 > 피어별 송신 큐가 가득 차면(HWM) `ROUTER_MANDATORY` 활성 시
 > `EHOSTUNREACH`를 반환하고, 그렇지 않으면 메시지를 조용히 드롭한다.
 > 고급 backpressure 패턴은 [성능 가이드](10-performance.ko.md)를 참고.
 
-??? example "Full Sample Code -- Recv"
+??? example "Full Sample Code"
 
     | Language | Source |
     |----------|--------|
@@ -425,330 +119,6 @@ ROUTER가 `source_rid`로 송신자를 식별하여 `zlink_send_rid()`로 응답
     | Rust | [dealer_router_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/dealer_router_recv_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/dealer_router_recv_sample/main.go) |
 
-### 콜백 모드
-
-ROUTER가 `zlink_recv_handler()`로 수신 메시지를 콜백으로 처리한다.
-DEALER는 요청을 전송하고 블로킹 `zlink_recv()`로 응답을 수신한다.
-
-=== "C"
-
-    ```c
-    #include <zlink.h>
-    #include <string.h>
-    #include <stdio.h>
-
-    void on_request(const zlink_routing_id_t *source_rid,
-                    zlink_msg_t *parts, size_t count, void *userdata)
-    {
-        printf("Router callback: %.*s from peer\n",
-               (int)zlink_msg_size(&parts[0]),
-               (char *)zlink_msg_data(&parts[0]));
-
-        /* Reply back using the source routing id */
-        void *router = (void *)userdata;
-        zlink_msg_t reply;
-        zlink_msg_init_size(&reply, 4);
-        memcpy(zlink_msg_data(&reply), "pong", 4);
-        zlink_send_rid(router, source_rid, &reply, 1, 0);
-
-        zlink_multipart_close(parts, count);
-    }
-
-    int main(void)
-    {
-        void *ctx = zlink_ctx_new();
-        void *router = zlink_socket(ctx, ZLINK_ROUTER);
-        void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-
-        zlink_bind(router, "tcp://*:5557");
-        zlink_set_routing_id(dealer, "CLIENT", 6);
-        zlink_connect(dealer, "tcp://127.0.0.1:5557");
-
-        /* Router uses callback to receive and reply */
-        zlink_recv_handler(router, on_request, router);
-
-        /* Dealer sends request */
-        zlink_msg_t req;
-        zlink_msg_init_size(&req, 4);
-        memcpy(zlink_msg_data(&req), "ping", 4);
-        zlink_send(dealer, &req, 1, 0);
-
-        /* Dealer receives reply (blocking recv) */
-        zlink_routing_id_t src;
-        zlink_msg_t *parts;
-        size_t cnt;
-        zlink_recv(dealer, &src, &parts, &cnt, 0);
-        printf("Reply: %.*s\n", (int)zlink_msg_size(&parts[0]),
-               (char *)zlink_msg_data(&parts[0]));
-        zlink_multipart_close(parts, cnt);
-
-        zlink_close(dealer);
-        zlink_close(router);
-        zlink_ctx_term(ctx);
-        return 0;
-    }
-    ```
-
-=== "C++"
-
-    ```cpp
-    #include <zlink/socket.hpp>
-    #include <iostream>
-
-    int main()
-    {
-        zlink::context_t ctx;
-
-        zlink::router_socket_t router(ctx);
-        router.bind("tcp://*:5557");
-
-        zlink::dealer_socket_t dealer(ctx);
-        dealer.set_routing_id("CLIENT");
-        dealer.connect("tcp://127.0.0.1:5557");
-
-        // Router uses callback to receive and reply
-        router.on_receive([&](const zlink::routing_id_t& source_rid,
-                              std::span<zlink::message_t> parts) {
-            std::cout << "Router callback: " << parts[0].str() << std::endl;
-            router.send_rid(source_rid, zlink::message_t("pong", 4));
-        });
-
-        // Dealer sends request
-        dealer.send(zlink::message_t("ping", 4));
-
-        // Dealer receives reply (blocking recv)
-        auto [rid, reply] = dealer.recv();
-        std::cout << "Reply: " << reply[0].str() << std::endl;
-
-        return 0;
-    }
-    ```
-
-=== "Java"
-
-    ```java
-    import dev.kairoscode.zlink.*;
-
-    public class RouterCallbackExample {
-        public static void main(String[] args) {
-            Context ctx = new Context();
-
-            RouterSocket router = new RouterSocket(ctx);
-            router.bind("tcp://*:5557");
-
-            DealerSocket dealer = new DealerSocket(ctx);
-            dealer.setRoutingId("CLIENT");
-            dealer.connect("tcp://127.0.0.1:5557");
-
-            // Router uses callback to receive and reply
-            router.onReceive(received -> {
-                System.out.println("Router callback: "
-                    + new String(received.parts()[0].data()));
-                router.sendRid(received.routingId(),
-                    new Message("pong".getBytes()));
-            });
-
-            // Dealer sends request
-            dealer.send(new Message("ping".getBytes()));
-
-            // Dealer receives reply (blocking recv)
-            Message reply = dealer.recv();
-            System.out.println("Reply: " + reply.partAsString(0));
-
-            dealer.close();
-            router.close();
-            ctx.close();
-        }
-    }
-    ```
-
-=== "Python"
-
-    ```python
-    import zlink
-
-    ctx = zlink.Context()
-
-    router = zlink.RouterSocket(ctx)
-    router.bind("tcp://*:5557")
-
-    dealer = zlink.DealerSocket(ctx)
-    dealer.set_routing_id("CLIENT")
-    dealer.connect("tcp://127.0.0.1:5557")
-
-    # Router uses callback to receive and reply
-    def on_request(source_rid, parts):
-        print(f"Router callback: {parts[0].decode()}")
-        router.send_rid(source_rid, b"pong")
-
-    router.on_receive(on_request)
-
-    # Dealer sends request
-    dealer.send(b"ping")
-
-    # Dealer receives reply (blocking recv)
-    _, reply = dealer.recv()
-    print(f"Reply: {reply[0].decode()}")
-
-    dealer.close()
-    router.close()
-    ctx.term()
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    import * as zlink from 'zlink';
-
-    const ctx = new zlink.Context();
-
-    const router = new zlink.RouterSocket(ctx);
-    router.bind('tcp://*:5557');
-
-    const dealer = new zlink.DealerSocket(ctx);
-    dealer.setRoutingId('CLIENT');
-    dealer.connect('tcp://127.0.0.1:5557');
-
-    // Router uses callback to receive and reply
-    router.recvHandler((sourceRid: Buffer, parts: Buffer[]) => {
-        console.log(`Router callback: ${parts[0].toString()}`);
-        router.sendRid(sourceRid, Buffer.from('pong'));
-    });
-
-    // Dealer sends request
-    dealer.send(Buffer.from('ping'));
-
-    // Dealer receives reply (blocking recv)
-    const [rid, reply] = dealer.receive();
-    console.log(`Reply: ${reply[0].toString()}`);
-
-    dealer.close();
-    router.close();
-    ctx.term();
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using Zlink;
-
-    using var ctx = new Context();
-
-    using var router = new RouterSocket(ctx);
-    router.Bind("tcp://*:5557");
-
-    using var dealer = new DealerSocket(ctx);
-    dealer.SetRoutingId("CLIENT");
-    dealer.Connect("tcp://127.0.0.1:5557");
-
-    // Router uses callback to receive and reply
-    router.RecvHandler((sourceRid, parts) => {
-        Console.WriteLine($"Router callback: {parts[0].GetString()}");
-        router.SendRid(sourceRid, new Message("pong"u8));
-    });
-
-    // Dealer sends request
-    dealer.Send(new Message("ping"u8));
-
-    // Dealer receives reply (blocking recv)
-    var (rid, reply) = dealer.Recv();
-    Console.WriteLine($"Reply: {reply[0].DataString()}");
-    ```
-
-=== "Rust"
-
-    ```rust
-    use zlink::Context;
-
-    fn main() -> Result<(), Box<dyn std::error::Error>> {
-        let ctx = Context::new();
-
-        let router = ctx.router_socket();
-        router.bind("tcp://*:5557")?;
-
-        let dealer = ctx.dealer_socket();
-        dealer.set_routing_id("CLIENT")?;
-        dealer.connect("tcp://127.0.0.1:5557")?;
-
-        // Router uses callback to receive and reply
-        let send_handle = router.send_handle();
-        router.on_receive(move |source_rid, parts| {
-            println!("Router callback: {}",
-                     String::from_utf8_lossy(parts[0].data()));
-            send_handle.send_rid(source_rid, b"pong")?;
-            Ok(())
-        })?;
-
-        // Dealer sends request
-        dealer.send(b"ping")?;
-
-        // Dealer receives reply (blocking recv)
-        let (_, reply) = dealer.recv()?;
-        println!("Reply: {}",
-                 String::from_utf8_lossy(reply[0].data()));
-
-        Ok(())
-    }
-    ```
-
-=== "Go"
-
-    ```go
-    package main
-
-    import (
-        "fmt"
-        "log"
-        "github.com/kairos-code-dev/zlink-go"
-    )
-
-    func main() {
-        ctx, err := zlink.NewContext()
-        if err != nil { log.Fatal(err) }
-        defer ctx.Close()
-
-        router, err := ctx.RouterSocket()
-        if err != nil { log.Fatal(err) }
-        defer router.Close()
-        router.Bind("tcp://*:5557")
-
-        dealer, err := ctx.DealerSocket()
-        if err != nil { log.Fatal(err) }
-        defer dealer.Close()
-        rid, _ := zlink.NewRoutingID([]byte("CLIENT"))
-        dealer.SetRoutingID(rid)
-        dealer.Connect("tcp://127.0.0.1:5557")
-
-        // Router uses callback to receive and reply
-        router.OnMessage(func(sourceRid zlink.RoutingID, parts []zlink.Message) {
-            fmt.Printf("Router callback: %s\n", string(parts[0].Data()))
-            router.SendTo(sourceRid, zlink.NewMessage([]byte("pong")))
-        })
-
-        // Dealer sends request
-        dealer.Send(zlink.NewMessage([]byte("ping")))
-
-        // Dealer receives reply (blocking recv)
-        reply, err := dealer.Recv()
-        if err != nil { log.Fatal(err) }
-        fmt.Printf("Reply: %s\n", reply.Parts[0].Data())
-        reply.Close()
-    }
-    ```
-
-??? example "Full Sample Code -- Callback"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [dealer_router_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/dealer_router_callback_sample.c) |
-    | C++ | [dealer_router_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/dealer_router_callback_sample.cpp) |
-    | Java | [DealerRouterCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/DealerRouterCallbackSample.java) |
-    | Python | [dealer_router_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/dealer_router_callback.py) |
-    | Node | [dealer_router_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/dealer_router_callback_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/DealerRouterCallback/Program.cs) |
-    | Rust | [dealer_router_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/dealer_router_callback_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/dealer_router_callback_sample/main.go) |
-
 ## 3. 사용 예제
 
 ROUTER는 `zlink_send_rid()`로 특정 피어에 전송하고,
@@ -756,83 +126,22 @@ ROUTER는 `zlink_send_rid()`로 특정 피어에 전송하고,
 
 ### 콜백을 사용한 수신/응답
 
-=== "C"
+```c
+/* Receive: handler callback provides routing_id and data */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    /* Reply: send to the source peer using zlink_send_rid */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "reply", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
 
-    ```c
-    /* Receive: handler callback provides routing_id and data */
-    void on_message(const zlink_routing_id_t *source_rid,
-                    zlink_msg_t *parts, size_t part_count,
-                    void *userdata)
-    {
-        /* Reply: send to the source peer using zlink_send_rid */
-        zlink_msg_t reply;
-        zlink_msg_init_size(&reply, 5);
-        memcpy(zlink_msg_data(&reply), "reply", 5);
-        zlink_send_rid(router, source_rid, &reply, 1, 0);
-
-        for (size_t i = 0; i < part_count; i++)
-            zlink_msg_close(&parts[i]);
-    }
-    ```
-
-=== "C++"
-
-    ```cpp
-    // Receive and reply using recv() + send_rid()
-    auto [source_rid, parts] = router.recv();
-    zlink::message_t reply("reply", 5);
-    router.send_rid(source_rid, reply);
-    ```
-
-=== "Java"
-
-    ```java
-    // Receive and reply using recv() + sendRid()
-    RecvResult result = router.recv();
-    Message reply = new Message("reply".getBytes());
-    router.sendRid(result.routingId(), reply);
-    ```
-
-=== "Python"
-
-    ```python
-    # Receive and reply using recv() + send_rid()
-    source_rid, parts = router.recv()
-    router.send_rid(source_rid, b"reply")
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    // Receive and reply using recv() + sendRid()
-    const { sourceRid, parts } = router.recv();
-    router.sendRid(sourceRid, Buffer.from("reply"));
-    ```
-
-=== "C#/.NET"
-
-    ```rust
-    // Receive and reply using recv() + send_rid()
-    let (source_rid, parts) = router.recv()?;
-    router.send_rid(&source_rid, &zlink::Message::from("reply"))?;
-    ```
-
-=== "Rust"
-
-    ```typescript
-    // Explicit routing_id — remains the same across reconnections
-    dealer.setRoutingId(Buffer.from("stable-id"));
-    ```
-
-=== "Go"
-
-    ```go
-    ctx, err := zlink.NewContext()
-    if err != nil { panic(err) }
-    router, err := ctx.RouterSocket()
-    if err != nil { panic(err) }
-    router.Bind("tcp://*:5558")
-    ```
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+```
 
 ## 4. 소켓 옵션
 
@@ -849,121 +158,18 @@ ROUTER는 `zlink_send_rid()`로 특정 피어에 전송하고,
 
 기본적으로 ROUTER는 대상을 찾을 수 없는 메시지를 **조용히 드롭**한다. `ROUTER_MANDATORY`를 활성화하면 `EHOSTUNREACH` 에러를 반환한다.
 
-=== "C"
+```c
+int mandatory = 1;
+zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
 
-    ```c
-    int mandatory = 1;
-    zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
-
-    /* Attempt to send to a non-existent target */
-    zlink_routing_id_t target_rid = { .data = "UNKNOWN", .size = 7 };
-    zlink_msg_t msg;
-    zlink_msg_init_size(&msg, 4);
-    memcpy(zlink_msg_data(&msg), "data", 4);
-    int rc = zlink_send_rid(router, &target_rid, &msg, 1, 0);
-    /* rc == -1, errno == EHOSTUNREACH */
-    ```
-
-=== "C++"
-
-    ```cpp
-    router.set_router_mandatory(true);
-
-    // Attempt to send to a non-existent target
-    zlink::routing_id_t target_rid("UNKNOWN", 7);
-    zlink::message_t msg("data", 4);
-    try {
-        router.send_rid(target_rid, msg);
-    } catch (const zlink::error_t& e) {
-        // EHOSTUNREACH — target "UNKNOWN" not found
-    }
-    ```
-
-=== "Java"
-
-    ```java
-    router.setRouterMandatory(true);
-
-    // Attempt to send to a non-existent target
-    RoutingId targetRid = new RoutingId("UNKNOWN");
-    Message msg = new Message("data".getBytes());
-    try {
-        router.sendRid(targetRid, msg);
-    } catch (ZlinkException e) {
-        // EHOSTUNREACH — target "UNKNOWN" not found
-    }
-    ```
-
-=== "Python"
-
-    ```python
-    router.set_router_mandatory(True)
-
-    # Attempt to send to a non-existent target
-    try:
-        router.send_rid(b"UNKNOWN", b"data")
-    except zlink.ZlinkError as e:
-        # EHOSTUNREACH — target "UNKNOWN" not found
-        pass
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    router.setRouterMandatory(true);
-
-    // Attempt to send to a non-existent target
-    try {
-        router.sendRid(Buffer.from("UNKNOWN"), Buffer.from("data"));
-    } catch (e) {
-        // EHOSTUNREACH — target "UNKNOWN" not found
-    }
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    router.SetRouterMandatory(true);
-
-    // Attempt to send to a non-existent target
-    var targetRid = new RoutingId("UNKNOWN"u8);
-    try {
-        router.SendRid(targetRid, new Message("data"u8));
-    } catch (ZlinkException e) {
-        // EHOSTUNREACH — target "UNKNOWN" not found
-    }
-    ```
-
-=== "Rust"
-
-    ```rust
-    router.set_router_mandatory(true)?;
-
-    // Attempt to send to a non-existent target
-    let target_rid = zlink::RoutingId::from("UNKNOWN");
-    let msg = zlink::Message::from("data");
-    match router.send_rid(&target_rid, &msg) {
-        Err(e) if e.kind() == zlink::ErrorKind::HostUnreachable => {
-            // target "UNKNOWN" not found
-        }
-        other => other?,
-    }
-    ```
-
-=== "Go"
-
-    ```go
-    router.SetRouterMandatory(true)
-
-    // Attempt to send to a non-existent target
-    target_rid := zlink.NewRoutingID("UNKNOWN")
-    msg := zlink.NewMessage([]byte("data"))
-    err := router.SendTo(target_rid, msg)
-        if err != nil { // HostUnreachable
-            // target "UNKNOWN" not found
-        }
-    }
-    ```
+/* Attempt to send to a non-existent target */
+zlink_routing_id_t target_rid = { .data = "UNKNOWN", .size = 7 };
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "data", 4);
+int rc = zlink_send_rid(router, &target_rid, &msg, 1, 0);
+/* rc == -1, errno == EHOSTUNREACH */
+```
 
 > 참고: `core/tests/test_router_mandatory.cpp` — `test_basic()`
 
@@ -974,293 +180,82 @@ ROUTER는 `zlink_send_rid()`로 특정 피어에 전송하고,
 ROUTER의 핵심 패턴. N개 노드가 각각 상대의 routing_id를 지정하여 특정 노드에 전송한다.
 1:1이면 DEALER로 충분하므로, ROUTER ↔ ROUTER는 N개 노드 간 통신에서 의미가 있다.
 
-    ```c
-    /* ROUTER handler: DEALER's initial message confirms connection */
-    void on_connect(const zlink_routing_id_t *source_rid,
-                    zlink_msg_t *parts, size_t part_count,
-                    void *userdata)
-    {
-        /* source_rid->data = "X" -- now it is safe to send to "X" */
-        zlink_msg_t reply;
-        zlink_msg_init_size(&reply, 7);
-        memcpy(zlink_msg_data(&reply), "Welcome", 7);
-        zlink_send_rid(router, source_rid, &reply, 1, 0);
-        for (size_t i = 0; i < part_count; i++)
-            zlink_msg_close(&parts[i]);
-    }
+```c
+/* ROUTER handler: DEALER's initial message confirms connection */
+void on_connect(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    /* source_rid->data = "X" -- now it is safe to send to "X" */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 7);
+    memcpy(zlink_msg_data(&reply), "Welcome", 7);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 
-    /* DEALER connects and sends initial message */
-    void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-    zlink_set_routing_id(dealer, "X", 1);
-    zlink_connect(dealer, endpoint);
-    zlink_msg_t hello;
-    zlink_msg_init_size(&hello, 5);
-    memcpy(zlink_msg_data(&hello), "Hello", 5);
-    zlink_send(dealer, &hello, 1, 0);
+/* DEALER connects and sends initial message */
+void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+zlink_set_routing_id(dealer, "X", 1);
+zlink_connect(dealer, endpoint);
+zlink_msg_t hello;
+zlink_msg_init_size(&hello, 5);
+memcpy(zlink_msg_data(&hello), "Hello", 5);
+zlink_send(dealer, &hello, 1, 0);
 
-    /* on_connect receives: source_rid = "X", parts[0] = "Hello"
-       and replies with "Welcome" */
-    ```
+/* on_connect receives: source_rid = "X", parts[0] = "Hello"
+   and replies with "Welcome" */
+```
 
-=== "C"
+```c
+/* Server: ROUTER with handler */
+void on_request(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    /* Reply to the sender */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "reply", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 
-    ```c
-    /* Server: ROUTER with handler */
-    void on_request(const zlink_routing_id_t *source_rid,
-                    zlink_msg_t *parts, size_t part_count,
-                    void *userdata)
-    {
-        /* Reply to the sender */
-        zlink_msg_t reply;
-        zlink_msg_init_size(&reply, 5);
-        memcpy(zlink_msg_data(&reply), "reply", 5);
-        zlink_send_rid(router, source_rid, &reply, 1, 0);
-        for (size_t i = 0; i < part_count; i++)
-            zlink_msg_close(&parts[i]);
-    }
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+/* Receive with zlink_recv() */
+zlink_bind(router, "tcp://127.0.0.1:*");
 
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    /* Receive with zlink_recv() */
-    zlink_bind(router, "tcp://127.0.0.1:*");
+char endpoint[256];
+size_t len = sizeof(endpoint);
+zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
-    char endpoint[256];
-    size_t len = sizeof(endpoint);
-    zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
+/* Client 1 */
+void *d1 = zlink_socket(ctx, ZLINK_DEALER);
+/* Receive replies with zlink_recv() */
+zlink_set_routing_id(d1, "D1", 2);
+zlink_connect(d1, endpoint);
 
-    /* Client 1 */
-    void *d1 = zlink_socket(ctx, ZLINK_DEALER);
-    /* Receive replies with zlink_recv() */
-    zlink_set_routing_id(d1, "D1", 2);
-    zlink_connect(d1, endpoint);
+/* Client 2 */
+void *d2 = zlink_socket(ctx, ZLINK_DEALER);
+/* Receive replies with zlink_recv() */
+zlink_set_routing_id(d2, "D2", 2);
+zlink_connect(d2, endpoint);
 
-    /* Client 2 */
-    void *d2 = zlink_socket(ctx, ZLINK_DEALER);
-    /* Receive replies with zlink_recv() */
-    zlink_set_routing_id(d2, "D2", 2);
-    zlink_connect(d2, endpoint);
+/* Each client sends a message -- on_request receives with source_rid */
+zlink_msg_t m1;
+zlink_msg_init_size(&m1, 7);
+memcpy(zlink_msg_data(&m1), "from_d1", 7);
+zlink_send(d1, &m1, 1, 0);
 
-    /* Each client sends a message -- on_request receives with source_rid */
-    zlink_msg_t m1;
-    zlink_msg_init_size(&m1, 7);
-    memcpy(zlink_msg_data(&m1), "from_d1", 7);
-    zlink_send(d1, &m1, 1, 0);
+zlink_msg_t m2;
+zlink_msg_init_size(&m2, 7);
+memcpy(zlink_msg_data(&m2), "from_d2", 7);
+zlink_send(d2, &m2, 1, 0);
 
-    zlink_msg_t m2;
-    zlink_msg_init_size(&m2, 7);
-    memcpy(zlink_msg_data(&m2), "from_d2", 7);
-    zlink_send(d2, &m2, 1, 0);
-
-    /* on_reply receives the reply for each DEALER */
-    ```
-
-=== "C++"
-
-    ```cpp
-    zlink::context_t ctx;
-    zlink::router_socket_t router(ctx);
-    router.bind("tcp://127.0.0.1:*");
-    std::string endpoint = router.last_endpoint();
-
-    // Client 1
-    zlink::dealer_socket_t d1(ctx);
-    d1.set_routing_id("D1");
-    d1.connect(endpoint);
-
-    // Client 2
-    zlink::dealer_socket_t d2(ctx);
-    d2.set_routing_id("D2");
-    d2.connect(endpoint);
-
-    // Each client sends — router.recv() returns source_rid
-    d1.send(zlink::message_t("from_d1", 7));
-    d2.send(zlink::message_t("from_d2", 7));
-
-    // Server receives and replies
-    auto [rid1, parts1] = router.recv();
-    router.send_rid(rid1, zlink::message_t("reply", 5));
-    auto [rid2, parts2] = router.recv();
-    router.send_rid(rid2, zlink::message_t("reply", 5));
-    ```
-
-=== "Java"
-
-    ```java
-    Context ctx = new Context();
-    RouterSocket router = new RouterSocket(ctx);
-    router.bind("tcp://127.0.0.1:*");
-    String endpoint = router.lastEndpoint();
-
-    // Client 1
-    DealerSocket d1 = new DealerSocket(ctx);
-    d1.setRoutingId("D1");
-    d1.connect(endpoint);
-
-    // Client 2
-    DealerSocket d2 = new DealerSocket(ctx);
-    d2.setRoutingId("D2");
-    d2.connect(endpoint);
-
-    // Each client sends — router.recv() returns sourceRid
-    d1.send(new Message("from_d1".getBytes()));
-    d2.send(new Message("from_d2".getBytes()));
-
-    // Server receives and replies
-    RecvResult r1 = router.recv();
-    router.sendRid(r1.routingId(), new Message("reply".getBytes()));
-    RecvResult r2 = router.recv();
-    router.sendRid(r2.routingId(), new Message("reply".getBytes()));
-    ```
-
-=== "Python"
-
-    ```python
-    ctx = zlink.Context()
-    router = zlink.RouterSocket(ctx)
-    router.bind("tcp://127.0.0.1:*")
-    endpoint = router.last_endpoint()
-
-    # Client 1
-    d1 = zlink.DealerSocket(ctx)
-    d1.set_routing_id(b"D1")
-    d1.connect(endpoint)
-
-    # Client 2
-    d2 = zlink.DealerSocket(ctx)
-    d2.set_routing_id(b"D2")
-    d2.connect(endpoint)
-
-    # Each client sends — router.recv() returns source_rid
-    d1.send(b"from_d1")
-    d2.send(b"from_d2")
-
-    # Server receives and replies
-    rid1, parts1 = router.recv()
-    router.send_rid(rid1, b"reply")
-    rid2, parts2 = router.recv()
-    router.send_rid(rid2, b"reply")
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const ctx = new zlink.Context();
-    const router = new zlink.RouterSocket(ctx);
-    router.bind("tcp://127.0.0.1:*");
-    const endpoint = router.lastEndpoint();
-
-    // Client 1
-    const d1 = new zlink.DealerSocket(ctx);
-    d1.setRoutingId(Buffer.from("D1"));
-    d1.connect(endpoint);
-
-    // Client 2
-    const d2 = new zlink.DealerSocket(ctx);
-    d2.setRoutingId(Buffer.from("D2"));
-    d2.connect(endpoint);
-
-    // Each client sends — router.recv() returns sourceRid
-    d1.send(Buffer.from("from_d1"));
-    d2.send(Buffer.from("from_d2"));
-
-    // Server receives and replies
-    const r1 = router.recv();
-    router.sendRid(r1.sourceRid, Buffer.from("reply"));
-    const r2 = router.recv();
-    router.sendRid(r2.sourceRid, Buffer.from("reply"));
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using var ctx = new Context();
-    using var router = new RouterSocket(ctx);
-    router.Bind("tcp://127.0.0.1:*");
-    var endpoint = router.LastEndpoint;
-
-    // Client 1
-    using var d1 = new DealerSocket(ctx);
-    d1.SetRoutingId("D1"u8);
-    d1.Connect(endpoint);
-
-    // Client 2
-    using var d2 = new DealerSocket(ctx);
-    d2.SetRoutingId("D2"u8);
-    d2.Connect(endpoint);
-
-    // Each client sends — router.Recv() returns sourceRid
-    d1.Send(new Message("from_d1"u8));
-    d2.Send(new Message("from_d2"u8));
-
-    // Server receives and replies
-    var (rid1, parts1) = router.Recv();
-    router.SendRid(rid1, new Message("reply"u8));
-    var (rid2, parts2) = router.Recv();
-    router.SendRid(rid2, new Message("reply"u8));
-    ```
-
-=== "Rust"
-
-    ```rust
-    let ctx = zlink::Context::new()?;
-    let router = ctx.router_socket()?;
-    router.bind("tcp://127.0.0.1:*")?;
-    let endpoint = router.last_endpoint()?;
-
-    // Client 1
-    let d1 = ctx.dealer_socket()?;
-    d1.set_routing_id("D1")?;
-    d1.connect(&endpoint)?;
-
-    // Client 2
-    let d2 = ctx.dealer_socket()?;
-    d2.set_routing_id("D2")?;
-    d2.connect(&endpoint)?;
-
-    // Each client sends — router.recv() returns source_rid
-    d1.send(&zlink::Message::from("from_d1"))?;
-    d2.send(&zlink::Message::from("from_d2"))?;
-
-    // Server receives and replies
-    let (rid1, parts1) = router.recv()?;
-    router.send_rid(&rid1, &zlink::Message::from("reply"))?;
-    let (rid2, parts2) = router.recv()?;
-    router.send_rid(&rid2, &zlink::Message::from("reply"))?;
-    ```
-
-=== "Go"
-
-    ```go
-    ctx, err := zlink.NewContext()
-    if err != nil { panic(err) }
-    router, err := ctx.RouterSocket()
-    if err != nil { panic(err) }
-    router.Bind("tcp://127.0.0.1:*")
-    endpoint, _ := router.GetOption(zlink.OptionLastEndpoint)
-
-    // Client 1
-    d1, err := ctx.DealerSocket()
-    if err != nil { panic(err) }
-    d1.SetRoutingId("D1")
-    d1.Connect(endpoint)
-
-    // Client 2
-    d2, err := ctx.DealerSocket()
-    if err != nil { panic(err) }
-    d2.SetRoutingId("D2")
-    d2.Connect(endpoint)
-
-    // Each client sends — router.recv() returns source_rid
-    d1.Send(zlink.NewMessage([]byte("from_d1")))
-    d2.Send(zlink.NewMessage([]byte("from_d2")))
-
-    // Server receives and replies
-    rid1, parts1, err := router.Recv()
-    if err != nil { panic(err) }
-    router.SendTo(rid1, zlink.NewMessage([]byte("reply")))
-    rid2, parts2, err := router.Recv()
-    if err != nil { panic(err) }
-    router.SendTo(rid2, zlink.NewMessage([]byte("reply")))
-    ```
+/* on_reply receives the reply for each DEALER */
+```
 
 > ROUTER ↔ ROUTER는 브로커, 클러스터 노드 간 메시 통신에 적합하다.
 > 모든 노드가 능동적으로 대상을 routing_id로 지정할 수 있다.
@@ -1271,196 +266,57 @@ DEALER ↔ ROUTER 조합의 핵심 장점:
 - **DEALER 측**: round-robin으로 여러 ROUTER 중 하나를 자동 선택 → 부하 분산
 - **ROUTER 측**: routing_id로 요청을 보낸 DEALER를 정확히 식별 → 응답 라우팅
 
-    ```c
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    zlink_bind(router, "tcp://*:5558");
+```
+                                    +----------+
+                        +-- send -->| ROUTER A |
+                        |           +----------+
+  +----------+          |           +----------+
+  | DEALER 1 |----------+-- send -->| ROUTER B |    round-robin
+  |   (D1)   |          |           +----------+    순환 분배
+  +----------+          |           +----------+
+                        +-- send -->| ROUTER C |
+                                    +----------+
 
-    /* Default behavior: silently drops undeliverable messages */
-    zlink_routing_id_t bad_rid = { .data = "UNKNOWN", .size = 7 };
-    zlink_msg_t msg;
-    zlink_msg_init_size(&msg, 4);
-    memcpy(zlink_msg_data(&msg), "DATA", 4);
-    zlink_send_rid(router, &bad_rid, &msg, 1, 0);
-    /* No error, message lost */
+  +----------+
+  | DEALER 2 |-------- (동일하게 A, B, C에 round-robin)
+  |   (D2)   |
+  +----------+
 
-    /* Enable MANDATORY mode */
-    int mandatory = 1;
-    zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
 
-    /* Now returns error on undeliverable message */
-    zlink_msg_t msg2;
-    zlink_msg_init_size(&msg2, 4);
-    memcpy(zlink_msg_data(&msg2), "DATA", 4);
-    int rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
-    if (rc == -1 && errno == EHOSTUNREACH) {
-        /* Target "UNKNOWN" not found */
-    }
-    ```
+  ROUTER가 요청한 DEALER에 응답:
 
-=== "C"
+  +----------+    ① send         +----------+
+  | DEALER 1 |------------------>| ROUTER B |
+  |   (D1)   |<------------------+          |
+  +----------+    ② send_rid     +----------+
+                   source_rid="D1"
+```
 
-    ```rust
-    let router = ctx.router_socket()?;
-    router.bind("tcp://*:5558")?;
+```c
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(router, "tcp://*:5558");
 
-    // Default behavior: silently drops undeliverable messages
-    let bad_rid = zlink::RoutingId::from("UNKNOWN");
-    router.send_rid(&bad_rid, &zlink::Message::from("DATA"))?;
-    // No error, message lost
+/* Default behavior: silently drops undeliverable messages */
+zlink_routing_id_t bad_rid = { .data = "UNKNOWN", .size = 7 };
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "DATA", 4);
+zlink_send_rid(router, &bad_rid, &msg, 1, 0);
+/* No error, message lost */
 
-    // Enable MANDATORY mode
-    router.set_router_mandatory(true)?;
+/* Enable MANDATORY mode */
+int mandatory = 1;
+zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
 
-    // Now returns error on undeliverable message
-    match router.send_rid(&bad_rid, &zlink::Message::from("DATA")) {
-        Err(e) if e.kind() == zlink::ErrorKind::HostUnreachable => {
-            // target "UNKNOWN" not found
-        }
-        other => other?,
-    }
-    ```
-
-=== "C++"
-
-    ```cpp
-    // ROUTER receives initial message confirming connection
-    auto [source_rid, parts] = router.recv();
-    // source_rid = "X" — now safe to send to "X"
-    router.send_rid(source_rid, zlink::message_t("Welcome", 7));
-
-    // DEALER connects and sends initial message
-    zlink::dealer_socket_t dealer(ctx);
-    dealer.set_routing_id("X");
-    dealer.connect(endpoint);
-    dealer.send(zlink::message_t("Hello", 5));
-    ```
-
-=== "Java"
-
-    ```java
-    RouterSocket router = new RouterSocket(ctx);
-    router.bind("tcp://*:5558");
-
-    // Default behavior: silently drops undeliverable messages
-    RoutingId badRid = new RoutingId("UNKNOWN");
-    router.sendRid(badRid, new Message("DATA".getBytes()));
-    // No error, message lost
-
-    // Enable MANDATORY mode
-    router.setRouterMandatory(true);
-
-    // Now throws on undeliverable message
-    try {
-        router.sendRid(badRid, new Message("DATA".getBytes()));
-    } catch (ZlinkException e) {
-        // EHOSTUNREACH — target "UNKNOWN" not found
-    }
-    ```
-
-=== "Python"
-
-    ```go
-    // ROUTER receives initial message confirming connection
-    source_rid, parts, err := router.Recv()
-    if err != nil { panic(err) }
-    // source_rid = "X" — now safe to send to "X"
-    router.SendTo(source_rid, zlink.NewMessage([]byte("Welcome")))
-
-    // DEALER connects and sends initial message
-    dealer, err := ctx.DealerSocket()
-    if err != nil { panic(err) }
-    dealer.SetRoutingId("X")
-    dealer.Connect(endpoint)
-    dealer.Send(zlink.NewMessage([]byte("Hello")))
-    ```
-
-=== "Node/TypeScript"
-
-    ```csharp
-    using var router = new RouterSocket(ctx);
-    router.Bind("tcp://*:5558");
-
-    // Default behavior: silently drops undeliverable messages
-    var badRid = new RoutingId("UNKNOWN"u8);
-    router.SendRid(badRid, new Message("DATA"u8));
-    // No error, message lost
-
-    // Enable MANDATORY mode
-    router.SetRouterMandatory(true);
-
-    // Now throws on undeliverable message
-    try {
-        router.SendRid(badRid, new Message("DATA"u8));
-    } catch (ZlinkException) {
-        // EHOSTUNREACH — target "UNKNOWN" not found
-    }
-    ```
-
-=== "C#/.NET"
-
-    ```go
-    router, err := ctx.RouterSocket()
-    if err != nil { panic(err) }
-    router.Bind("tcp://*:5558")
-
-    // Default behavior: silently drops undeliverable messages
-    bad_rid := zlink.NewRoutingID("UNKNOWN")
-    router.SendTo(bad_rid, zlink.NewMessage([]byte("DATA")))
-    // No error, message lost
-
-    // Enable MANDATORY mode
-    router.SetRouterMandatory(true)
-
-    // Now returns error on undeliverable message
-    err := router.SendTo(bad_rid, zlink.NewMessage([]byte("DATA")))
-        if err != nil { // HostUnreachable
-            // target "UNKNOWN" not found
-        }
-    }
-    ```
-
-=== "Rust"
-
-    ```cpp
-    zlink::router_socket_t router(ctx);
-    router.bind("tcp://*:5558");
-
-    // Default behavior: silently drops undeliverable messages
-    zlink::routing_id_t bad_rid("UNKNOWN", 7);
-    router.send_rid(bad_rid, zlink::message_t("DATA", 4));
-    // No error, message lost
-
-    // Enable MANDATORY mode
-    router.set_router_mandatory(true);
-
-    // Now throws on undeliverable message
-    try {
-        router.send_rid(bad_rid, zlink::message_t("DATA", 4));
-    } catch (const zlink::error_t& e) {
-        // EHOSTUNREACH — target "UNKNOWN" not found
-    }
-    ```
-
-=== "Go"
-
-    ```typescript
-    const router = new zlink.RouterSocket(ctx);
-    router.bind("tcp://*:5558");
-
-    // Default behavior: silently drops undeliverable messages
-    router.sendRid(Buffer.from("UNKNOWN"), Buffer.from("DATA"));
-    // No error, message lost
-
-    // Enable MANDATORY mode
-    router.setRouterMandatory(true);
-
-    // Now throws on undeliverable message
-    try {
-        router.sendRid(Buffer.from("UNKNOWN"), Buffer.from("DATA"));
-    } catch (e) {
-        // EHOSTUNREACH — target "UNKNOWN" not found
-    }
-    ```
+/* Now returns error on undeliverable message */
+zlink_msg_t msg2;
+zlink_msg_init_size(&msg2, 4);
+memcpy(zlink_msg_data(&msg2), "DATA", 4);
+int rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
+if (rc == -1 && errno == EHOSTUNREACH) {
+    /* Target "UNKNOWN" not found */
+}
+```
 
 ### 패턴 3: ROUTER ↔ ROUTER 가중치 라우팅
 
@@ -1468,137 +324,68 @@ DEALER → ROUTER는 round-robin이 고정되어 분배 비율을 제어할 수 
 가중치, 우선순위, 조건부 라우팅이 필요하면 ROUTER ↔ ROUTER로 구성하고
 애플리케이션이 routing_id를 직접 선택한다.
 
-    ```python
-    router = zlink.RouterSocket(ctx)
-    router.bind("tcp://*:5558")
+```
+  DEALER → ROUTER (round-robin 고정, 균등 분배):
 
-    # Default behavior: silently drops undeliverable messages
-    router.send_rid(b"UNKNOWN", b"DATA")
-    # No error, message lost
+  +----------+     1/3      +----------+
+  |          |-------------->| ROUTER A |
+  |  DEALER  |     1/3      +----------+
+  |          |-------------->| ROUTER B |    변경 불가
+  |          |     1/3      +----------+
+  |          |-------------->| ROUTER C |
+  +----------+              +----------+
 
-    # Enable MANDATORY mode
-    router.set_router_mandatory(True)
 
-    # Now raises on undeliverable message
-    try:
-        router.send_rid(b"UNKNOWN", b"DATA")
-    except zlink.ZlinkError:
-        # EHOSTUNREACH — target "UNKNOWN" not found
-        pass
-    ```
+  ROUTER ↔ ROUTER (애플리케이션이 대상 직접 선택):
 
-=== "C"
+  +----------+     50%      +----------+
+  |          |-------------->| ROUTER A |
+  |  ROUTER  |     30%      +----------+
+  | (client) |-------------->| ROUTER B |    자유롭게 제어
+  |          |     20%      +----------+
+  |          |-------------->| ROUTER C |
+  +----------+              +----------+
+```
 
-    ```rust
-    // ROUTER receives initial message confirming connection
-    let (source_rid, parts) = router.recv()?;
-    // source_rid = "X" — now safe to send to "X"
-    router.send_rid(&source_rid, &zlink::Message::from("Welcome"))?;
+```c
+/* 서버 3대 */
+void *sa = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_set_routing_id(sa, "SA", 2);
+zlink_bind(sa, "tcp://127.0.0.1:5560");
+void *sb = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_set_routing_id(sb, "SB", 2);
+zlink_bind(sb, "tcp://127.0.0.1:5561");
+void *sc = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_set_routing_id(sc, "SC", 2);
+zlink_bind(sc, "tcp://127.0.0.1:5562");
 
-    // DEALER connects and sends initial message
-    let dealer = ctx.dealer_socket()?;
-    dealer.set_routing_id("X")?;
-    dealer.connect(&endpoint)?;
-    dealer.send(&zlink::Message::from("Hello"))?;
-    ```
+/* 클라이언트 ROUTER: 3개 서버에 connect */
+void *client = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_set_routing_id(client, "C1", 2);
+zlink_connect(client, "tcp://127.0.0.1:5560");
+zlink_connect(client, "tcp://127.0.0.1:5561");
+zlink_connect(client, "tcp://127.0.0.1:5562");
 
-=== "C++"
+/* 가중치 테이블: SA=50%, SB=30%, SC=20% */
+typedef struct { const char *rid; size_t len; int weight; } route_t;
+route_t routes[] = {
+    { "SA", 2, 50 }, { "SB", 2, 30 }, { "SC", 2, 20 }
+};
 
-    ```java
-    // ROUTER receives initial message confirming connection
-    RecvResult result = router.recv();
-    // sourceRid = "X" — now safe to send to "X"
-    router.sendRid(result.routingId(), new Message("Welcome".getBytes()));
+/* 가중치 기반 대상 선택 */
+int roll = rand() % 100;
+route_t *target = (roll < 50)  ? &routes[0]
+               : (roll < 80) ? &routes[1]
+               :                &routes[2];
 
-    // DEALER connects and sends initial message
-    DealerSocket dealer = new DealerSocket(ctx);
-    dealer.setRoutingId("X");
-    dealer.connect(endpoint);
-    dealer.send(new Message("Hello".getBytes()));
-    ```
+zlink_routing_id_t rid = { .data = target->rid, .size = target->len };
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 7);
+memcpy(zlink_msg_data(&msg), "request", 7);
+zlink_send_rid(client, &rid, &msg, 1, 0);
 
-=== "Java"
-
-    ```typescript
-    // ROUTER receives initial message confirming connection
-    const { sourceRid, parts } = router.recv();
-    // sourceRid = "X" — now safe to send to "X"
-    router.sendRid(sourceRid, Buffer.from("Welcome"));
-
-    // DEALER connects and sends initial message
-    const dealer = new zlink.DealerSocket(ctx);
-    dealer.setRoutingId(Buffer.from("X"));
-    dealer.connect(endpoint);
-    dealer.send(Buffer.from("Hello"));
-    ```
-
-=== "Python"
-
-    ```csharp
-    // ROUTER receives initial message confirming connection
-    var (sourceRid, parts) = router.Recv();
-    // sourceRid = "X" — now safe to send to "X"
-    router.SendRid(sourceRid, new Message("Welcome"u8));
-
-    // DEALER connects and sends initial message
-    using var dealer = new DealerSocket(ctx);
-    dealer.SetRoutingId("X"u8);
-    dealer.Connect(endpoint);
-    dealer.Send(new Message("Hello"u8));
-    ```
-
-=== "Node/TypeScript"
-
-    ```python
-    # ROUTER receives initial message confirming connection
-    source_rid, parts = router.recv()
-    # source_rid = "X" — now safe to send to "X"
-    router.send_rid(source_rid, b"Welcome")
-
-    # DEALER connects and sends initial message
-    dealer = zlink.DealerSocket(ctx)
-    dealer.set_routing_id(b"X")
-    dealer.connect(endpoint)
-    dealer.send(b"Hello")
-    ```
-
-=== "C#/.NET"
-
-    ```c
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
-
-    /* TCP */
-    zlink_bind(router, "tcp://127.0.0.1:5558");
-
-    /* IPC (Linux/macOS) */
-    zlink_bind(router, "ipc:///tmp/router.ipc");
-
-    /* inproc (same process) */
-    zlink_bind(router, "inproc://router");
-
-    /* DEALERs connect via each transport -- ROUTER manages them uniformly by routing_id */
-    ```
-
-=== "Rust"
-
-    ```typescript
-    const router = new zlink.RouterSocket(ctx);
-    router.bind("tcp://127.0.0.1:5558");
-    router.bind("ipc:///tmp/router.ipc");     // IPC (Linux/macOS)
-    router.bind("inproc://router");            // inproc (same process)
-    // DEALERs connect via each transport — ROUTER manages them uniformly by routing_id
-    ```
-
-=== "Go"
-
-    ```go
-    router, err := ctx.RouterSocket()
-    if err != nil { panic(err) }
-    router.Bind("tcp://127.0.0.1:5558")
-    router.Bind("ipc:///tmp/router.ipc")  // IPC (Linux/macOS)
-    router.Bind("inproc://router")  // inproc (same process)
-    // DEALERs connect via each transport — ROUTER manages them uniformly by routing_id
-    ```
+/* 서버 응답: source_rid = "C1"로 클라이언트 식별 가능 */
+```
 
 > DEALER → ROUTER의 round-robin이 충분하면 DEALER를 사용하고,
 > 분배 로직을 제어해야 하면 ROUTER ↔ ROUTER로 전환한다.
@@ -1607,84 +394,47 @@ DEALER → ROUTER는 round-robin이 고정되어 분배 비율을 제어할 수 
 
 여러 DEALER가 하나의 ROUTER에 연결. ROUTER가 각 DEALER를 routing_id로 구분.
 
-    ```python
-    router = zlink.RouterSocket(ctx)
-    router.bind("tcp://127.0.0.1:5558")
-    router.bind("ipc:///tmp/router.ipc")      # IPC (Linux/macOS)
-    router.bind("inproc://router")             # inproc (same process)
-    # DEALERs connect via each transport — ROUTER manages them uniformly by routing_id
-    ```
+```
+  +----------+
+  | DEALER 1 |-- send --+
+  |   (D1)   |          |
+  +----------+          |     +----------+
+                        +---->|  ROUTER  |
+  +----------+          |     +----------+
+  | DEALER 2 |-- send --+         |
+  |   (D2)   |              source_rid로
+  +----------+              D1, D2 구분
+```
 
-=== "C"
+```c
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(router, "tcp://127.0.0.1:*");
 
-    ```java
-    RouterSocket router = new RouterSocket(ctx);
-    router.bind("tcp://127.0.0.1:5558");
-    router.bind("ipc:///tmp/router.ipc");     // IPC (Linux/macOS)
-    router.bind("inproc://router");            // inproc (same process)
-    // DEALERs connect via each transport — ROUTER manages them uniformly by routing_id
-    ```
+char endpoint[256];
+size_t len = sizeof(endpoint);
+zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
-=== "C++"
+/* 클라이언트 1 */
+void *d1 = zlink_socket(ctx, ZLINK_DEALER);
+zlink_set_routing_id(d1, "D1", 2);
+zlink_connect(d1, endpoint);
 
-    ```cpp
-    zlink::router_socket_t router(ctx);
-    router.bind("tcp://127.0.0.1:5558");
-    router.bind("ipc:///tmp/router.ipc");     // IPC (Linux/macOS)
-    router.bind("inproc://router");            // inproc (same process)
-    // DEALERs connect via each transport — ROUTER manages them uniformly by routing_id
-    ```
+/* 클라이언트 2 */
+void *d2 = zlink_socket(ctx, ZLINK_DEALER);
+zlink_set_routing_id(d2, "D2", 2);
+zlink_connect(d2, endpoint);
 
-=== "Java"
+/* 각 클라이언트가 메시지 전송 — ROUTER가 source_rid로 구분 */
+zlink_msg_t m1;
+zlink_msg_init_size(&m1, 7);
+memcpy(zlink_msg_data(&m1), "from_d1", 7);
+zlink_send(d1, &m1, 1, 0);
 
-    ```csharp
-    using var router = new RouterSocket(ctx);
-    router.Bind("tcp://127.0.0.1:5558");
-    router.Bind("ipc:///tmp/router.ipc");     // IPC (Linux/macOS)
-    router.Bind("inproc://router");            // inproc (same process)
-    // DEALERs connect via each transport — ROUTER manages them uniformly by routing_id
-    ```
-
-=== "Python"
-
-    ```rust
-    let router = ctx.router_socket()?;
-    router.bind("tcp://127.0.0.1:5558")?;
-    router.bind("ipc:///tmp/router.ipc")?;    // IPC (Linux/macOS)
-    router.bind("inproc://router")?;           // inproc (same process)
-    // DEALERs connect via each transport — ROUTER manages them uniformly by routing_id
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const ctx = new zlink.Context();
-    const router = new zlink.RouterSocket(ctx);
-    router.bind("tcp://*:5558");
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using var ctx = new Context();
-    using var router = new RouterSocket(ctx);
-    router.Bind("tcp://*:5558");
-    ```
-
-=== "Rust"
-
-    ```c
-    /* Explicit routing_id -- remains the same across reconnections */
-    zlink_set_routing_id(dealer, "stable-id", 9);
-    ```
-
-=== "Go"
-
-    ```java
-    Context ctx = new Context();
-    RouterSocket router = new RouterSocket(ctx);
-    router.bind("tcp://*:5558");
-    ```
+zlink_msg_t m2;
+zlink_msg_init_size(&m2, 7);
+memcpy(zlink_msg_data(&m2), "from_d2", 7);
+zlink_send(d2, &m2, 1, 0);
+```
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — TCP/IPC/inproc 3가지 transport
 
@@ -1703,156 +453,29 @@ ROUTER(프론트엔드) + DEALER(백엔드)로 멀티스레드 서버 구축.
   +----------+                                       +----------+
 ```
 
-=== "C"
+```c
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(router, "tcp://*:5558");
+```
 
-    ```rust
-    let ctx = zlink::Context::new()?;
-    let router = ctx.router_socket()?;
-    router.bind("tcp://*:5558")?;
-    ```
-
-=== "C++"
-
-    ```cpp
-    zlink::context_t ctx;
-    zlink::router_socket_t router(ctx);
-    router.bind("tcp://*:5558");
-    ```
-
-=== "Java"
-
-    ```python
-    ctx = zlink.Context()
-    router = zlink.RouterSocket(ctx)
-    router.bind("tcp://*:5558")
-    ```
-
-=== "Python"
-
-    ```python
-    # Explicit routing_id — remains the same across reconnections
-    dealer.set_routing_id(b"stable-id")
-    ```
-
-=== "Node/TypeScript"
-
-    ```csharp
-    // Explicit routing_id — remains the same across reconnections
-    dealer.SetRoutingId("stable-id"u8);
-    ```
-
-=== "C#/.NET"
-
-    ```java
-    // Explicit routing_id — remains the same across reconnections
-    dealer.setRoutingId("stable-id");
-    ```
-
-=== "Rust"
-
-    ```cpp
-    // Explicit routing_id — remains the same across reconnections
-    dealer.set_routing_id("stable-id");
-    ```
-
-=== "Go"
-
-    ```go
-    // Explicit routing_id — remains the same across reconnections
-    dealer.SetRoutingId("stable-id")
-    ```
-
-=== "C"
-
-    ```rust
-    // Explicit routing_id — remains the same across reconnections
-    dealer.set_routing_id("stable-id")?;
-    ```
-
-=== "C++"
-
-    ```c
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    zlink_bind(router, "tcp://*:5558");
-    ```
-
-=== "Java"
-
-    ```java
-    // 워커 스레드
-    class WorkerThread implements Runnable {
-        public void run() {
-            DealerSocket worker = new DealerSocket(ctx);
-            worker.connect("inproc://backend");
-            while (true) {
-                RecvResult r = worker.recv();
-                worker.sendRid(r.routingId(), r.parts());
-            }
-        }
+```c
+/* 워커 스레드 */
+void worker_thread(void *arg) {
+    void on_work(const zlink_routing_id_t *source_rid,
+                 zlink_msg_t *parts, size_t part_count,
+                 void *userdata)
+    {
+        /* 처리 후 동일 routing_id로 응답 */
+        zlink_send_rid(worker, source_rid, parts, part_count, 0);
     }
-    ```
 
-=== "Python"
+    void *worker = zlink_socket(ctx, ZLINK_DEALER);
+    /* zlink_recv()로 작업 수신 */
+    zlink_connect(worker, "inproc://backend");
 
-    ```python
-    # 워커 스레드
-    def worker_thread():
-        worker = zlink.DealerSocket(ctx)
-        worker.connect("inproc://backend")
-        while True:
-            rid, parts = worker.recv()
-            worker.send_rid(rid, parts)
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    // 워커 스레드
-    const worker = new zlink.DealerSocket(ctx);
-    worker.connect("inproc://backend");
-    while (true) {
-        const { sourceRid, parts } = worker.recv();
-        worker.sendRid(sourceRid, parts);
-    }
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    // 워커 스레드
-    using var worker = new DealerSocket(ctx);
-    worker.Connect("inproc://backend");
-    while (true) {
-        var (rid, parts) = worker.Recv();
-        worker.SendRid(rid, parts);
-    }
-    ```
-
-=== "Rust"
-
-    ```rust
-    // 워커 스레드
-    let worker = ctx.dealer_socket()?;
-    worker.connect("inproc://backend")?;
-    loop {
-        let (rid, parts) = worker.recv()?;
-        worker.send_rid(&rid, &parts)?;
-    }
-    ```
-
-=== "Go"
-
-    ```go
-    // 워커 스레드
-    worker, err := ctx.DealerSocket()
-    if err != nil { panic(err) }
-    worker.Connect("inproc://backend")
-    for {
-        rid, parts, err := worker.Recv()
-        if err != nil { panic(err) }
-        worker.SendTo(rid, parts)
-    }
-    ```
+    /* 소켓이 닫힐 때까지 워커 유지 */
+}
+```
 
 > 참고: `core/tests/test_proxy.cpp` — ROUTER(frontend) + DEALER(backend) + 워커 풀
 
@@ -1874,173 +497,31 @@ ROUTER(프론트엔드) + DEALER(백엔드)로 멀티스레드 서버 구축.
                  "UNKNOWN"
 ```
 
-=== "C"
+```c
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(router, "tcp://*:5558");
 
-    ```c
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    zlink_bind(router, "tcp://*:5558");
+/* 기본 동작: 미도달 메시지 조용히 드롭 */
+zlink_routing_id_t bad_rid = { .data = "UNKNOWN", .size = 7 };
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "DATA", 4);
+zlink_send_rid(router, &bad_rid, &msg, 1, 0);
+/* 에러 없음, 메시지 소실 */
 
-    /* 기본 동작: 미도달 메시지 조용히 드롭 */
-    zlink_routing_id_t bad_rid = { .data = "UNKNOWN", .size = 7 };
-    zlink_msg_t msg;
-    zlink_msg_init_size(&msg, 4);
-    memcpy(zlink_msg_data(&msg), "DATA", 4);
-    zlink_send_rid(router, &bad_rid, &msg, 1, 0);
-    /* 에러 없음, 메시지 소실 */
+/* MANDATORY 모드 활성화 */
+int mandatory = 1;
+zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
 
-    /* MANDATORY 모드 활성화 */
-    int mandatory = 1;
-    zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
-
-    /* 이제 미도달 시 에러 반환 */
-    zlink_msg_t msg2;
-    zlink_msg_init_size(&msg2, 4);
-    memcpy(zlink_msg_data(&msg2), "DATA", 4);
-    int rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
-    if (rc == -1 && errno == EHOSTUNREACH) {
-        /* 대상 "UNKNOWN"을 찾을 수 없음 */
-    }
-    ```
-
-=== "C++"
-
-    ```cpp
-    zlink::router_socket_t router(ctx);
-    router.bind("tcp://*:5558");
-
-    // 기본 동작: 미도달 메시지 조용히 드롭
-    zlink::routing_id_t bad_rid("UNKNOWN", 7);
-    router.send_rid(bad_rid, zlink::message_t("DATA", 4));
-
-    // MANDATORY 모드 활성화
-    router.set_router_mandatory(true);
-
-    try {
-        router.send_rid(bad_rid, zlink::message_t("DATA", 4));
-    } catch (const zlink::error_t& e) {
-        // EHOSTUNREACH — 대상 "UNKNOWN" 찾을 수 없음
-    }
-    ```
-
-=== "Java"
-
-    ```java
-    RouterSocket router = new RouterSocket(ctx);
-    router.bind("tcp://*:5558");
-
-    // 기본 동작: 미도달 메시지 조용히 드롭
-    RoutingId badRid = new RoutingId("UNKNOWN");
-    router.sendRid(badRid, new Message("DATA".getBytes()));
-
-    // MANDATORY 모드 활성화
-    router.setRouterMandatory(true);
-
-    try {
-        router.sendRid(badRid, new Message("DATA".getBytes()));
-    } catch (ZlinkException e) {
-        // EHOSTUNREACH — 대상 "UNKNOWN" 찾을 수 없음
-    }
-    ```
-
-=== "Python"
-
-    ```python
-    router = zlink.RouterSocket(ctx)
-    router.bind("tcp://*:5558")
-
-    # 기본 동작: 미도달 메시지 조용히 드롭
-    router.send_rid(b"UNKNOWN", b"DATA")
-
-    # MANDATORY 모드 활성화
-    router.set_router_mandatory(True)
-
-    try:
-        router.send_rid(b"UNKNOWN", b"DATA")
-    except zlink.ZlinkError:
-        # EHOSTUNREACH — 대상 "UNKNOWN" 찾을 수 없음
-        pass
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const router = new zlink.RouterSocket(ctx);
-    router.bind("tcp://*:5558");
-
-    // 기본 동작: 미도달 메시지 조용히 드롭
-    router.sendRid(Buffer.from("UNKNOWN"), Buffer.from("DATA"));
-
-    // MANDATORY 모드 활성화
-    router.setRouterMandatory(true);
-
-    try {
-        router.sendRid(Buffer.from("UNKNOWN"), Buffer.from("DATA"));
-    } catch (e) {
-        // EHOSTUNREACH — 대상 "UNKNOWN" 찾을 수 없음
-    }
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using var router = new RouterSocket(ctx);
-    router.Bind("tcp://*:5558");
-
-    // 기본 동작: 미도달 메시지 조용히 드롭
-    var badRid = new RoutingId("UNKNOWN"u8);
-    router.SendRid(badRid, new Message("DATA"u8));
-
-    // MANDATORY 모드 활성화
-    router.SetRouterMandatory(true);
-
-    try {
-        router.SendRid(badRid, new Message("DATA"u8));
-    } catch (ZlinkException) {
-        // EHOSTUNREACH — 대상 "UNKNOWN" 찾을 수 없음
-    }
-    ```
-
-=== "Rust"
-
-    ```rust
-    let router = ctx.router_socket()?;
-    router.bind("tcp://*:5558")?;
-
-    // 기본 동작: 미도달 메시지 조용히 드롭
-    let bad_rid = zlink::RoutingId::from("UNKNOWN");
-    router.send_rid(&bad_rid, &zlink::Message::from("DATA"))?;
-
-    // MANDATORY 모드 활성화
-    router.set_router_mandatory(true)?;
-
-    match router.send_rid(&bad_rid, &zlink::Message::from("DATA")) {
-        Err(e) if e.kind() == zlink::ErrorKind::HostUnreachable => {
-            // 대상 "UNKNOWN" 찾을 수 없음
-        }
-        other => other?,
-    }
-    ```
-
-=== "Go"
-
-    ```go
-    router, err := ctx.RouterSocket()
-    if err != nil { panic(err) }
-    router.Bind("tcp://*:5558")
-
-    // 기본 동작: 미도달 메시지 조용히 드롭
-    bad_rid := zlink.NewRoutingID("UNKNOWN")
-    router.SendTo(bad_rid, zlink.NewMessage([]byte("DATA")))
-
-    // MANDATORY 모드 활성화
-    router.SetRouterMandatory(true)
-
-    err := router.SendTo(bad_rid, zlink.NewMessage([]byte("DATA")))
-        if err != nil { // HostUnreachable
-            // 대상 "UNKNOWN" 찾을 수 없음
-        }
-    }
-    ```
+/* 이제 미도달 시 에러 반환 */
+zlink_msg_t msg2;
+zlink_msg_init_size(&msg2, 4);
+memcpy(zlink_msg_data(&msg2), "DATA", 4);
+int rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
+if (rc == -1 && errno == EHOSTUNREACH) {
+    /* 대상 "UNKNOWN"을 찾을 수 없음 */
+}
+```
 
 > 참고: `core/tests/test_router_mandatory.cpp` — 기본 드롭 vs MANDATORY 에러
 
@@ -2056,142 +537,33 @@ DEALER가 먼저 메시지를 전송하여 ROUTER에 연결을 알린 후, ROUTE
                    source_rid="X"
 ```
 
-=== "C"
+```c
+/* ROUTER 핸들러: DEALER의 초기 메시지로 연결 확인 */
+void on_connect(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    /* source_rid->data = "X" — 이제 "X"로 안전하게 전송 가능 */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 7);
+    memcpy(zlink_msg_data(&reply), "Welcome", 7);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 
-    ```c
-    /* ROUTER 핸들러: DEALER의 초기 메시지로 연결 확인 */
-    void on_connect(const zlink_routing_id_t *source_rid,
-                    zlink_msg_t *parts, size_t part_count,
-                    void *userdata)
-    {
-        /* source_rid->data = "X" — 이제 "X"로 안전하게 전송 가능 */
-        zlink_msg_t reply;
-        zlink_msg_init_size(&reply, 7);
-        memcpy(zlink_msg_data(&reply), "Welcome", 7);
-        zlink_send_rid(router, source_rid, &reply, 1, 0);
-        for (size_t i = 0; i < part_count; i++)
-            zlink_msg_close(&parts[i]);
-    }
+/* DEALER 연결 및 초기 메시지 전송 */
+void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+zlink_set_routing_id(dealer, "X", 1);
+zlink_connect(dealer, endpoint);
+zlink_msg_t hello;
+zlink_msg_init_size(&hello, 5);
+memcpy(zlink_msg_data(&hello), "Hello", 5);
+zlink_send(dealer, &hello, 1, 0);
 
-    /* DEALER 연결 및 초기 메시지 전송 */
-    void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-    zlink_set_routing_id(dealer, "X", 1);
-    zlink_connect(dealer, endpoint);
-    zlink_msg_t hello;
-    zlink_msg_init_size(&hello, 5);
-    memcpy(zlink_msg_data(&hello), "Hello", 5);
-    zlink_send(dealer, &hello, 1, 0);
-
-    /* on_connect 수신: source_rid = "X", parts[0] = "Hello"
-       "Welcome"으로 응답 */
-    ```
-
-=== "C++"
-
-    ```cpp
-    // ROUTER: DEALER의 초기 메시지로 연결 확인
-    auto [source_rid, parts] = router.recv();
-    // source_rid = "X" — 이제 "X"로 안전하게 전송 가능
-    router.send_rid(source_rid, zlink::message_t("Welcome", 7));
-
-    // DEALER 연결 및 초기 메시지 전송
-    zlink::dealer_socket_t dealer(ctx);
-    dealer.set_routing_id("X");
-    dealer.connect(endpoint);
-    dealer.send(zlink::message_t("Hello", 5));
-    ```
-
-=== "Java"
-
-    ```java
-    // ROUTER: DEALER의 초기 메시지로 연결 확인
-    RecvResult result = router.recv();
-    // sourceRid = "X" — 이제 "X"로 안전하게 전송 가능
-    router.sendRid(result.routingId(), new Message("Welcome".getBytes()));
-
-    // DEALER 연결 및 초기 메시지 전송
-    DealerSocket dealer = new DealerSocket(ctx);
-    dealer.setRoutingId("X");
-    dealer.connect(endpoint);
-    dealer.send(new Message("Hello".getBytes()));
-    ```
-
-=== "Python"
-
-    ```python
-    # ROUTER: DEALER의 초기 메시지로 연결 확인
-    source_rid, parts = router.recv()
-    # source_rid = "X" — 이제 "X"로 안전하게 전송 가능
-    router.send_rid(source_rid, b"Welcome")
-
-    # DEALER 연결 및 초기 메시지 전송
-    dealer = zlink.DealerSocket(ctx)
-    dealer.set_routing_id(b"X")
-    dealer.connect(endpoint)
-    dealer.send(b"Hello")
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    // ROUTER: DEALER의 초기 메시지로 연결 확인
-    const { sourceRid, parts } = router.recv();
-    // sourceRid = "X" — 이제 "X"로 안전하게 전송 가능
-    router.sendRid(sourceRid, Buffer.from("Welcome"));
-
-    // DEALER 연결 및 초기 메시지 전송
-    const dealer = new zlink.DealerSocket(ctx);
-    dealer.setRoutingId(Buffer.from("X"));
-    dealer.connect(endpoint);
-    dealer.send(Buffer.from("Hello"));
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    // ROUTER: DEALER의 초기 메시지로 연결 확인
-    var (sourceRid, parts) = router.Recv();
-    // sourceRid = "X" — 이제 "X"로 안전하게 전송 가능
-    router.SendRid(sourceRid, new Message("Welcome"u8));
-
-    // DEALER 연결 및 초기 메시지 전송
-    using var dealer = new DealerSocket(ctx);
-    dealer.SetRoutingId("X"u8);
-    dealer.Connect(endpoint);
-    dealer.Send(new Message("Hello"u8));
-    ```
-
-=== "Rust"
-
-    ```rust
-    // ROUTER: DEALER의 초기 메시지로 연결 확인
-    let (source_rid, parts) = router.recv()?;
-    // source_rid = "X" — 이제 "X"로 안전하게 전송 가능
-    router.send_rid(&source_rid, &zlink::Message::from("Welcome"))?;
-
-    // DEALER 연결 및 초기 메시지 전송
-    let dealer = ctx.dealer_socket()?;
-    dealer.set_routing_id("X")?;
-    dealer.connect(&endpoint)?;
-    dealer.send(&zlink::Message::from("Hello"))?;
-    ```
-
-=== "Go"
-
-    ```go
-    // ROUTER: DEALER의 초기 메시지로 연결 확인
-    source_rid, parts, err := router.Recv()
-    if err != nil { panic(err) }
-    // source_rid = "X" — 이제 "X"로 안전하게 전송 가능
-    router.SendTo(source_rid, zlink.NewMessage([]byte("Welcome")))
-
-    // DEALER 연결 및 초기 메시지 전송
-    dealer, err := ctx.DealerSocket()
-    if err != nil { panic(err) }
-    dealer.SetRoutingId("X")
-    dealer.Connect(endpoint)
-    dealer.Send(zlink.NewMessage([]byte("Hello")))
-    ```
+/* on_connect 수신: source_rid = "X", parts[0] = "Hello"
+   "Welcome"으로 응답 */
+```
 
 > 참고: `core/tests/test_router_mandatory.cpp` — DEALER 연결 → 메시지 → ROUTER 응답
 
@@ -2213,93 +585,20 @@ DEALER가 먼저 메시지를 전송하여 ROUTER에 연결을 알린 후, ROUTE
   transport가 달라도 routing_id로 동일하게 식별
 ```
 
-=== "C"
+```c
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
 
-    ```c
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
+/* TCP */
+zlink_bind(router, "tcp://127.0.0.1:5558");
 
-    /* TCP */
-    zlink_bind(router, "tcp://127.0.0.1:5558");
+/* IPC (Linux/macOS) */
+zlink_bind(router, "ipc:///tmp/router.ipc");
 
-    /* IPC (Linux/macOS) */
-    zlink_bind(router, "ipc:///tmp/router.ipc");
+/* inproc (동일 프로세스) */
+zlink_bind(router, "inproc://router");
 
-    /* inproc (동일 프로세스) */
-    zlink_bind(router, "inproc://router");
-
-    /* 각 transport의 DEALER가 연결 — ROUTER는 routing_id로 통합 관리 */
-    ```
-
-=== "C++"
-
-    ```cpp
-    zlink::router_socket_t router(ctx);
-    router.bind("tcp://127.0.0.1:5558");
-    router.bind("ipc:///tmp/router.ipc");     // IPC (Linux/macOS)
-    router.bind("inproc://router");            // inproc (동일 프로세스)
-    // 각 transport의 DEALER가 연결 — routing_id로 통합 관리
-    ```
-
-=== "Java"
-
-    ```java
-    RouterSocket router = new RouterSocket(ctx);
-    router.bind("tcp://127.0.0.1:5558");
-    router.bind("ipc:///tmp/router.ipc");     // IPC (Linux/macOS)
-    router.bind("inproc://router");            // inproc (동일 프로세스)
-    // 각 transport의 DEALER가 연결 — routing_id로 통합 관리
-    ```
-
-=== "Python"
-
-    ```python
-    router = zlink.RouterSocket(ctx)
-    router.bind("tcp://127.0.0.1:5558")
-    router.bind("ipc:///tmp/router.ipc")      # IPC (Linux/macOS)
-    router.bind("inproc://router")             # inproc (동일 프로세스)
-    # 각 transport의 DEALER가 연결 — routing_id로 통합 관리
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const router = new zlink.RouterSocket(ctx);
-    router.bind("tcp://127.0.0.1:5558");
-    router.bind("ipc:///tmp/router.ipc");     // IPC (Linux/macOS)
-    router.bind("inproc://router");            // inproc (동일 프로세스)
-    // 각 transport의 DEALER가 연결 — routing_id로 통합 관리
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using var router = new RouterSocket(ctx);
-    router.Bind("tcp://127.0.0.1:5558");
-    router.Bind("ipc:///tmp/router.ipc");     // IPC (Linux/macOS)
-    router.Bind("inproc://router");            // inproc (동일 프로세스)
-    // 각 transport의 DEALER가 연결 — routing_id로 통합 관리
-    ```
-
-=== "Rust"
-
-    ```rust
-    let router = ctx.router_socket()?;
-    router.bind("tcp://127.0.0.1:5558")?;
-    router.bind("ipc:///tmp/router.ipc")?;    // IPC (Linux/macOS)
-    router.bind("inproc://router")?;           // inproc (동일 프로세스)
-    // 각 transport의 DEALER가 연결 — routing_id로 통합 관리
-    ```
-
-=== "Go"
-
-    ```go
-    router, err := ctx.RouterSocket()
-    if err != nil { panic(err) }
-    router.Bind("tcp://127.0.0.1:5558")
-    router.Bind("ipc:///tmp/router.ipc")  // IPC (Linux/macOS)
-    router.Bind("inproc://router")  // inproc (동일 프로세스)
-    // 각 transport의 DEALER가 연결 — routing_id로 통합 관리
-    ```
+/* 각 transport의 DEALER가 연결 — ROUTER는 routing_id로 통합 관리 */
+```
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — TCP/IPC/inproc 테스트
 
@@ -2313,61 +612,10 @@ DEALER가 먼저 메시지를 전송하여 ROUTER에 연결을 알린 후, ROUTE
 
 DEALER가 재연결하면 자동 생성된 routing_id가 변경될 수 있다. 안정적인 통신을 위해 명시적 routing_id 설정을 권장한다.
 
-=== "C"
-
-    ```c
-    /* 명시적 routing_id — 재연결 시에도 동일 */
-    zlink_set_routing_id(dealer, "stable-id", 9);
-    ```
-
-=== "C++"
-
-    ```cpp
-    // 명시적 routing_id — 재연결 시에도 동일
-    dealer.set_routing_id("stable-id");
-    ```
-
-=== "Java"
-
-    ```java
-    // 명시적 routing_id — 재연결 시에도 동일
-    dealer.setRoutingId("stable-id");
-    ```
-
-=== "Python"
-
-    ```python
-    # 명시적 routing_id — 재연결 시에도 동일
-    dealer.set_routing_id(b"stable-id")
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    // 명시적 routing_id — 재연결 시에도 동일
-    dealer.setRoutingId(Buffer.from("stable-id"));
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    // 명시적 routing_id — 재연결 시에도 동일
-    dealer.SetRoutingId("stable-id"u8);
-    ```
-
-=== "Rust"
-
-    ```rust
-    // 명시적 routing_id — 재연결 시에도 동일
-    dealer.set_routing_id("stable-id")?;
-    ```
-
-=== "Go"
-
-    ```go
-    // 명시적 routing_id — 재연결 시에도 동일
-    dealer.SetRoutingId("stable-id")
-    ```
+```c
+/* 명시적 routing_id — 재연결 시에도 동일 */
+zlink_set_routing_id(dealer, "stable-id", 9);
+```
 
 ### routing_id 충돌
 

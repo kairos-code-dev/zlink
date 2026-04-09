@@ -2,15 +2,13 @@
 
 'use strict';
 
-const path = require('node:path');
-const { Worker } = require('node:worker_threads');
-const { performance } = require('node:perf_hooks');
-
 const METRIC_MAGIC = 0x5a4c4e4b;
 const HEADER_SIZE = 29;
+const BASE_EPOCH_NS = BigInt(Date.now()) * 1_000_000n;
+const BASE_HR_NS = process.hrtime.bigint();
 
 function currentEpochNs() {
-  return BigInt(Math.round((performance.timeOrigin + performance.now()) * 1_000_000));
+  return BASE_EPOCH_NS + (process.hrtime.bigint() - BASE_HR_NS);
 }
 
 function createPayload(size) {
@@ -162,64 +160,45 @@ function createRunId() {
 }
 
 function createMetricCollector(config) {
-  const worker = new Worker(path.join(__dirname, 'perf_metric_worker.js'), {
-    workerData: config
-  });
+  const latenciesNs = [];
+  const runId = config.runId >>> 0;
+  const msgSize = config.msgSize >>> 0;
+  let accepted = 0;
+  let rejected = 0;
   let closed = false;
-
-  const closeWorker = async () => {
-    if (closed) {
-      return;
-    }
-    closed = true;
-    await worker.terminate();
-  };
 
   return {
     record(header, receivedAtNs) {
       if (!header || closed) {
         return;
       }
-      worker.postMessage({
-        type: 'sample',
-        msgSize: header.msgSize,
-        runId: header.runId,
-        phase: header.phase,
-        sentTsNs: header.sentTsNs,
-        receivedAtNs
-      });
+      if ((header.runId >>> 0) !== runId || (header.msgSize >>> 0) !== msgSize) {
+        rejected += 1;
+        return;
+      }
+      if (header.phase !== 1) {
+        return;
+      }
+      const sentTsNs = BigInt(header.sentTsNs);
+      const recvTsNs = BigInt(receivedAtNs);
+      if (recvTsNs < sentTsNs) {
+        rejected += 1;
+        return;
+      }
+      accepted += 1;
+      latenciesNs.push(Number(recvTsNs - sentTsNs));
     },
     async finish() {
-      return new Promise((resolve, reject) => {
-        const cleanup = () => {
-          worker.removeAllListeners('message');
-          worker.removeAllListeners('error');
-          worker.removeAllListeners('exit');
-        };
-        worker.once('message', (message) => {
-          closed = true;
-          cleanup();
-          resolve(message);
-        });
-        worker.once('error', (error) => {
-          closed = true;
-          cleanup();
-          reject(error);
-        });
-        worker.once('exit', (code) => {
-          if (code !== 0) {
-            closed = true;
-            cleanup();
-            reject(new Error(`metric worker exited with code ${code}`));
-          }
-        });
-        worker.postMessage({ type: 'finish' });
-      }).finally(() => {
-        worker.unref();
-      });
+      closed = true;
+      return {
+        latenciesNs,
+        accepted,
+        rejected
+      };
     },
     close() {
-      return closeWorker();
+      closed = true;
+      return Promise.resolve();
     }
   };
 }

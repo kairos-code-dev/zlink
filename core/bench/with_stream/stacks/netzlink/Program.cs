@@ -101,11 +101,11 @@ internal sealed class StreamEchoServer : IDisposable
 {
     private const byte StreamEventConnect = 0x01;
     private const byte StreamEventDisconnect = 0x00;
-    private readonly Zlink.Socket _socket;
+    private readonly StreamSocket _socket;
     private readonly Metrics _metrics;
     private bool _attached;
 
-    internal StreamEchoServer(Zlink.Socket socket, Metrics metrics)
+    internal StreamEchoServer(StreamSocket socket, Metrics metrics)
     {
         _socket = socket ?? throw new ArgumentNullException(nameof(socket));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
@@ -119,7 +119,7 @@ internal sealed class StreamEchoServer : IDisposable
         _attached = true;
     }
 
-    private int OnRawPacket(uint routingId, Message payload)
+    private int OnRawPacket(string routingId, Message payload)
     {
         bool consumed = false;
         try
@@ -143,12 +143,8 @@ internal sealed class StreamEchoServer : IDisposable
             }
 
             _metrics.AddRecvMsg();
-            int sent = _socket.StreamSend(routingId, payload, SendFlags.None);
+            _socket.Send(routingId, payload);
             consumed = true;
-            if (sent != payloadSize)
-            {
-                _metrics.AddSendError();
-            }
             return 0;
         }
         catch
@@ -180,29 +176,17 @@ internal sealed class StreamEchoServer : IDisposable
 
 internal static class Program
 {
-    private const int ZlinkTcpNoDelay = 118;
-
-    [DllImport("zlink", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int zlink_setsockopt(IntPtr socket, int option,
-                                               IntPtr optval, nuint optvallen);
 
     private static string Endpoint(string host, int port) => $"tcp://{host}:{port}";
 
-    private static unsafe void ApplySocketTuning(Zlink.Socket socket,
+    private static void ApplySocketTuning(StreamSocket socket,
                                                  ServerOptions options)
     {
-        socket.SetOption(SocketOptions.SndBuf, options.SndBuf);
-        socket.SetOption(SocketOptions.RcvBuf, options.RcvBuf);
-        socket.SetOption(SocketOptions.Backlog, options.Backlog);
-        socket.SetOption(SocketOptions.SndHwm, 100);
-        socket.SetOption(SocketOptions.RcvHwm, 100);
-
-        int tcpNoDelay = options.TcpNoDelay;
-        int rc = zlink_setsockopt(
-          socket.Handle, ZlinkTcpNoDelay, (IntPtr) (&tcpNoDelay),
-          (nuint) sizeof(int));
-        if (rc != 0)
-            throw ZlinkException.FromLastError();
+        socket.Options.SendBufferSize = options.SndBuf;
+        socket.Options.ReceiveBufferSize = options.RcvBuf;
+        socket.Options.TcpNoDelay = options.TcpNoDelay != 0;
+        socket.Options.SendHighWaterMark = 100;
+        socket.Options.ReceiveHighWaterMark = 100;
     }
 
     public static int Main(string[] args)
@@ -260,8 +244,8 @@ internal static class Program
         try
         {
             using Context ctx = new();
-            ctx.SetOption(ContextOption.IoThreads, options.IoThreads);
-            using Zlink.Socket server = new(ctx, SocketType.Stream);
+            ctx.Options.IoThreads = options.IoThreads;
+            using StreamSocket server = new(ctx);
             ApplySocketTuning(server, options);
             server.Bind(Endpoint(options.Host, options.Port));
             using StreamEchoServer echo = new(server, metrics);

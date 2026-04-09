@@ -9,6 +9,8 @@ if [[ -f "$CORE_LIB" ]]; then
 fi
 
 SAMPLES=(
+  "RequestReplyAsync/RequestReplyAsync.csproj"
+  "RequestReplyCallback/RequestReplyCallback.csproj"
   "PairRecv/PairRecv.csproj"
   "PairCallback/PairCallback.csproj"
   "MonitorRecv/MonitorRecv.csproj"

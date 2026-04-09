@@ -11,13 +11,11 @@ test('request dealer/router roundtrip works and preserves request info', async (
     const dealer = new zlink.RequestDealer(dealerSocket);
     routerSocket.bind('inproc://request-reply-contract');
     dealerSocket.connect('inproc://request-reply-contract');
-    router.onRequest((routingId, correlationId, request) => {
+    router.onReceive((routingId, parts) => {
         assert.ok(Buffer.isBuffer(routingId));
-        assert.equal(request.parts[0].data.toString(), 'ping');
-        const info = request.parts[0].getRequestInfo();
+        const info = parts[0].getRequestInfo();
         assert.equal(info.msgType, zlink.MsgType.Request);
-        assert.equal(info.correlationId, correlationId);
-        router.reply(routingId, correlationId, zlink.Message.fromBuffer(Buffer.from('pong')));
+        router.reply(routingId, info.correlationId, zlink.Message.fromBuffer(Buffer.from('pong')));
     });
     const reply = await dealer.request(zlink.Message.fromBuffer(Buffer.from('ping')), {
         timeout: 2000

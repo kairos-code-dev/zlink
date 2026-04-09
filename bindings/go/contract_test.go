@@ -151,7 +151,7 @@ func TestRequestReplyWrapperSupportsDealerRouterRoundTrip(t *testing.T) {
 	}
 
 	done := make(chan struct{})
-	router.OnRequest(func(routingID zlink.RoutingID, correlationID uint64, received *zlink.Received) {
+	if err := router.OnReceive(func(received *zlink.Received) {
 		defer close(done)
 		defer received.Close()
 		part, err := received.SinglePartOrError()
@@ -163,6 +163,16 @@ func TestRequestReplyWrapperSupportsDealerRouterRoundTrip(t *testing.T) {
 			t.Errorf("request payload = %q, want %q", got, "ping")
 			return
 		}
+		msgType, correlationID, err := part.RequestInfo()
+		if err != nil {
+			t.Errorf("RequestInfo() error = %v", err)
+			return
+		}
+		if msgType != uint8(zlink.MsgTypeRequest) {
+			t.Errorf("msgType = %d, want %d", msgType, zlink.MsgTypeRequest)
+			return
+		}
+		routingID := received.RoutingID()
 		reply, err := zlink.NewMessage([]byte("pong"))
 		if err != nil {
 			t.Errorf("NewMessage() error = %v", err)
@@ -171,7 +181,9 @@ func TestRequestReplyWrapperSupportsDealerRouterRoundTrip(t *testing.T) {
 		if err := router.Reply(routingID, correlationID, reply); err != nil {
 			t.Errorf("Reply() error = %v", err)
 		}
-	})
+	}); err != nil {
+		t.Fatalf("OnReceive() error = %v", err)
+	}
 
 	request, err := zlink.NewMessage([]byte("ping"))
 	if err != nil {

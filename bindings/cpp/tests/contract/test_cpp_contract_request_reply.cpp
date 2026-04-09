@@ -23,24 +23,20 @@ void test_request_dealer_router_roundtrip ()
     assert (router_socket.bind (endpoint) == 0);
     assert (dealer_socket.connect (endpoint) == 0);
 
-    router.on_request ([&router] (zlink::routing_id_t routing_id,
-                                  uint64_t correlation_id,
-                                  zlink::received_t request) {
+    router.on_receive ([&router] (zlink::received_t request) {
         assert (request.parts.size () == 1);
         uint8_t msg_type = 0;
-        uint64_t seen_correlation_id = 0;
-        assert (request.parts[0].get_request_info (&msg_type,
-                                                   &seen_correlation_id)
+        uint64_t correlation_id = 0;
+        assert (request.parts[0].get_request_info (&msg_type, &correlation_id)
                 == 0);
         assert (msg_type == 1u);
-        assert (seen_correlation_id == correlation_id);
 
         zlink::message_t reply = make_request_message ("reply:ok");
-        assert (router.try_reply (routing_id, correlation_id, std::move (reply))
+        assert (router.try_reply (request.routing_id, correlation_id, std::move (reply))
                 == zlink::send_result_t::sent);
     });
 
-    std::future<zlink::received_t> future =
+    zlink::async_result_t<zlink::received_t> future =
       dealer.request (make_request_message ("request:ping"),
                       std::chrono::milliseconds (5000));
     const zlink::received_t reply = future.get ();
@@ -65,8 +61,6 @@ void test_request_router_preserves_data_recv_surface ()
       zlink_cpp_contract::unique_inproc ("rr-cpp-data");
     assert (router_socket.bind (endpoint) == 0);
     assert (dealer_socket.connect (endpoint) == 0);
-
-    router.on_request ([] (zlink::routing_id_t, uint64_t, zlink::received_t) {});
 
     zlink::message_t data = make_request_message ("plain-data");
     dealer_socket.send (data);

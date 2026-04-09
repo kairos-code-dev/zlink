@@ -47,6 +47,32 @@ Fields:
 | 3 | SUBSCRIBE | 0x08 | Subscription request |
 | 4 | CANCEL | 0x10 | Subscription cancel |
 
+### 2.3 Internal Envelope Frames
+
+When a message carries request-reply fields (`msg_type` / `correlation_id`)
+or per-message metadata, the send path prepends internal envelope frames
+before the user payload frames. These frames use the `command` message type
+and are transparent to the application.
+
+- Messages with no request-reply or metadata produce no extra frames.
+  Zero overhead.
+- The recv path (`strip_internal_message_envelopes`) detects and strips
+  envelope frames, restoring `msg_type`, `correlation_id`, and metadata
+  into the message internal state before delivering to the application.
+- `zlink_msg_data()` / `zlink_msg_size()` always return user payload only.
+
+Envelope frames that may be prepended:
+
+| Frame | Condition | Content |
+|-------|-----------|---------|
+| Request-reply envelope | `msg_type != DATA` | type (u8) + correlation_id (u64) = 9 bytes |
+| Metadata envelope | metadata count > 0 | Encoded key-value entries |
+
+Both are optional and independent. A single message can carry both
+request-reply and metadata envelopes simultaneously. When both are present,
+the request-reply envelope frame is sent first, then the metadata frame,
+then the user payload frames.
+
 ## 3. Handshake
 
 ### 3.1 Sequence

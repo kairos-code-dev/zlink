@@ -2,6 +2,19 @@
 
 # SPOT
 
+### 용어
+
+| 용어 | 설명 |
+|------|------|
+| SpotNode | SPOT mesh 토폴로지와 lifecycle을 관리하는 소유자 핸들 |
+| Spot (facade) | SpotNode 위에 올라가는 publish/subscribe 통합 인터페이스 |
+| mesh | SpotNode 간 자동 구성되는 PUB/SUB 네트워크 |
+| fanout | 수신한 메시지를 로컬 subscriber에게 분배하는 내부 경로 |
+| HWM (High Water Mark) | 송신/수신 큐 최대 용량. 초과 시 backpressure 발생 |
+| peer batching | 같은 topic의 작은 메시지를 모아 하나의 batch frame으로 peer에 전송하는 내부 최적화 |
+| routing_id | 피어를 식별하는 고유 바이트 열 (최대 255바이트) |
+| inproc | 동일 프로세스 내 스레드 간 통신 transport |
+
 SPOT public API는 두 계층으로 정리됩니다.
 
 - `SpotNode`: bind/connect/discovery/TLS wiring owner
@@ -407,7 +420,7 @@ typedef struct zlink_spot_node_subject_filter_t
 ## SpotNode Peer Publish Batching 옵션
 
 SpotNode는 peer publish 경로의 선택적 내부 batching을 제공합니다.
-이 옵션들은 SpotNode handle에서 `zlink_set_option()`으로 설정합니다.
+이 옵션들은 SpotNode handle에서 `zlink_set_spot_node_option()`으로 설정합니다.
 
 ### zlink_spot_node_option_t
 
@@ -439,11 +452,11 @@ typedef enum zlink_spot_node_option_t {
 void *node = zlink_spot_node_new(ctx);
 
 int enabled = 1;
-zlink_set_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
                  &enabled, sizeof(enabled));
 
 int delay_ms = 10;
-zlink_set_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS,
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS,
                  &delay_ms, sizeof(delay_ms));
 
 zlink_spot_node_bind(node, "tcp://*:9000");
@@ -452,8 +465,8 @@ zlink_spot_node_bind(node, "tcp://*:9000");
 **v1 제약:** mesh의 모든 SpotNode가 동일 세대 binary를 실행해야 합니다
 (homogeneous deployment). runtime capability negotiation은 없습니다.
 
-**반환값:** `zlink_set_option` / `zlink_get_option`은 성공 시 0, 실패 시 -1을
-반환합니다 (errno가 설정됨).
+**반환값:** `zlink_set_spot_node_option` / `zlink_get_spot_node_option`은
+성공 시 0, 실패 시 -1을 반환합니다 (errno가 설정됨).
 
 **스레드 안전성:** 옵션은 bind/connect 전에 설정해야 합니다.
 

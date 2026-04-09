@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
 SAMPLES=(
+  "samples/request_reply_async_sample"
+  "samples/request_reply_callback_sample"
   "samples/pair_recv_sample"
   "samples/pair_callback_sample"
   "samples/pubsub_recv_sample"

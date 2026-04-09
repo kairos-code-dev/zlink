@@ -6,6 +6,19 @@
 메시지는 소켓 간 데이터 교환의 기본 단위이며, 임의의 바이너리 페이로드를
 전달하고, 제로카피 시맨틱을 지원하며, 멀티파트 시퀀스를 구성할 수 있습니다.
 
+### 용어
+
+| 용어 | 설명 |
+|------|------|
+| payload | 메시지가 운반하는 사용자 데이터 바이트 |
+| multipart | 여러 프레임(part)을 하나의 논리적 메시지로 묶어 전송하는 방식 |
+| zero-copy | 데이터를 복사하지 않고 포인터/참조만 전달하여 전송하는 기법 |
+| reference count (refcount) | 같은 데이터 버퍼를 공유하는 메시지 핸들의 수. 0이 되면 버퍼를 해제한다 |
+| routing_id | Router 소켓이 피어를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트) |
+| ZMP | zlink Message Protocol. zlink 전용 와이어 프로토콜 |
+| envelope | 사용자 payload 앞에 core가 자동으로 추가하는 내부 프레임 (request-reply, metadata 등) |
+| correlation_id | request-reply 패턴에서 요청과 응답을 매칭하는 uint64 식별자 |
+
 ## 타입
 
 ```c

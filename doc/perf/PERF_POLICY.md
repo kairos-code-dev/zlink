@@ -404,6 +404,8 @@ perf/                                       # bindings/<lang>/perf/
 - 모델 위반/불일치 구현은 정책 위반으로 간주하며, 해당 코드 경로를 삭제한 뒤 정책 모델로 재구현해야 한다.
 - 모델 위반 구현에서 나온 결과는 `UNSUPPORTED`/`SKIP`으로 우회할 수 없으며 정책 산출물로 인정하지 않는다.
 - STREAM multi 측정에서는 각 size마다 `connect_ok == target clients`(100%)를 충족해야 하며, 미달 시 반드시 `fail`로 처리한다.
+- `MULTI_STREAM`은 **packet semantics**를 측정한다. server는 routing_id(connection)별로 len32be packet을 완성한 뒤에만 echo해야 하며, partial chunk를 packet처럼 취급하거나 recv chunk 경계를 결과 의미로 노출하면 안 된다.
+- 다만 packet semantics를 보존하는 범위의 fast path는 허용한다. 예를 들어 idle connection에서 단일 recv chunk가 이미 정확히 1개의 완전한 len32be packet이면, append/peek/compact 같은 내부 단계 전체를 반드시 거칠 필요는 없다.
 
 #### Wire Protocol
 
@@ -597,6 +599,8 @@ bindings/java/perf/run_benchmarks_multi.sh --pattern ALL
 | `--transports LIST` | transport 목록 | suite별 기본값 |
 
 - suite별 고유 옵션(`--clients` 등)은 개별 스크립트 호출 시 전달한다.
+- official perf runner의 기본 동작은 **현재 소스 기준 최신 벤치마크 산출물**을 사용하도록 configure/build를 수행하는 것이다. `--reuse-build`는 stale build 사용을 명시적으로 허용하는 유일한 opt-out이며, 이 플래그 없이 이전 산출물/스크립트를 그대로 실행하는 runner는 정책 위반이다.
+- 결과 의미에 직접 영향을 주는 기본값(`clients`, `stream clients`, `server/client io_threads`, `hwm`, `stream hwm`)은 baseline/full-run 계약의 일부다. 기본값을 변경하면 문서와 runner help, 예시, baseline 비교 기준을 같은 변경에서 함께 갱신해야 한다.
 
 ---
 

@@ -8,6 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLES_DIR = ROOT / "samples"
 SAMPLES = [
+    "request_reply_async_sample.py",
+    "request_reply_callback_sample.py",
     "spot_recv_sample.py",
     "spot_callback_sample.py",
     "pair_recv_sample.py",

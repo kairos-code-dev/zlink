@@ -25,17 +25,19 @@ public sealed class test_request_reply
         Thread.Sleep(50);
 
         using var handled = new ManualResetEventSlim(false);
-        router.OnRequest((routingId, correlationId, received) =>
+        router.OnReceive((routingId, parts) =>
         {
             try
             {
-                Assert.Equal("ping", received.SinglePartOrThrow().GetString());
+                Assert.Equal("ping", parts[0].GetString());
+                (byte msgType, ulong correlationId) = parts[0].GetRequestInfo();
+                Assert.Equal(1, msgType);
                 using Message reply = Message.FromString("pong");
-                router.Reply(routingId, correlationId, reply);
+                router.Reply(new RoutingId(routingId), correlationId, reply);
             }
             finally
             {
-                foreach (Message part in received.Parts)
+                foreach (Message part in parts)
                     part.Dispose();
                 handled.Set();
             }

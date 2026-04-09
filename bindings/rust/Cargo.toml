@@ -14,6 +14,14 @@ path = "src/lib.rs"
 libc = "0.2"
 
 [[example]]
+name = "request_reply_async_sample"
+path = "samples/request_reply_async_sample.rs"
+
+[[example]]
+name = "request_reply_callback_sample"
+path = "samples/request_reply_callback_sample.rs"
+
+[[example]]
 name = "pair_recv_sample"
 path = "samples/pair_recv_sample.rs"
 

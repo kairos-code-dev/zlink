@@ -2,6 +2,17 @@
 
 # ZMP v1.0 프로토콜 상세
 
+### 용어
+
+| 용어 | 설명 |
+|------|------|
+| ZMP | zlink Message Protocol. zlink 전용 와이어 프로토콜 |
+| ZMTP | ZeroMQ Message Transport Protocol. ZMP가 대체하는 기존 프로토콜 |
+| frame | 와이어 위에서 전송되는 하나의 데이터 단위. 헤더 + payload로 구성된다 |
+| handshake | 연결 초기에 두 피어가 소켓 타입과 identity를 교환하는 절차 |
+| envelope | 사용자 payload 앞에 자동 추가되는 내부 프레임 (request-reply, metadata 등) |
+| routing_id | Router 소켓이 피어를 식별하는 고유 바이트 열 |
+
 ## 왜 ZMTP 대신 ZMP인가?
 
 ZMP(zlink Message Protocol)는 ZMTP를 대체하는 전용 와이어 프로토콜이다.

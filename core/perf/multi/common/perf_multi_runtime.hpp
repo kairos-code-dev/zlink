@@ -349,9 +349,14 @@ inline void apply_benchmark_socket_options(void *socket_,
         return;
 
     const int linger_ms = 0;
+    const int tcp_nodelay = 1;
     const int sndbuf = bench_socket_buffer_bytes_from_env("PERF_SNDBUF", -1);
     const int rcvbuf = bench_socket_buffer_bytes_from_env("PERF_RCVBUF", -1);
     set_sockopt_int(socket_, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
+    if (transport == "tcp") {
+        set_sockopt_int(
+          socket_, ZLINK_OPT_TCP_NODELAY, tcp_nodelay, "ZLINK_OPT_TCP_NODELAY");
+    }
     if (sndbuf > 0)
         set_sockopt_int(socket_, ZLINK_OPT_SNDBUF, sndbuf, "ZLINK_OPT_SNDBUF");
     if (rcvbuf > 0)

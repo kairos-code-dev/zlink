@@ -6,6 +6,23 @@
 > 이 가이드는 설명 목적의 문서이며, API 명칭/시그니처의 정확한 기준은
 > `core/include/zlink.h`와 `bindings/README.md`다.
 
+### 용어
+
+| 용어 | 설명 |
+|------|------|
+| VSM (Very Small Message) | 33바이트 이하 메시지. `zlink_msg_t` 내부에 인라인 저장된다 |
+| LMSG (Large Message) | 33바이트 초과 메시지. heap 할당 버퍼를 reference counting으로 관리한다 |
+| CMSG (Constant Message) | 외부 상수 데이터를 복사 없이 참조하는 메시지 (`ffn=NULL`) |
+| ZCLMSG (Zero-copy Large) | 외부 버퍼를 참조하며 해제 콜백(`ffn`)으로 수명을 관리하는 메시지 |
+| multipart | 여러 프레임(part)을 하나의 논리적 메시지로 묶어 원자적으로 전송하는 방식 |
+| zero-copy | 데이터를 복사하지 않고 포인터 참조만 전달하여 전송하는 기법 |
+| reference count (refcount) | 같은 데이터 버퍼를 공유하는 메시지 핸들의 수. 0이 되면 버퍼가 해제된다 |
+| ownership | 메시지 데이터의 소유권. send 성공 시 library로 이전되고, 실패 시 caller가 유지한다 |
+| routing_id | Router 소켓이 피어를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트) |
+| envelope | 사용자 payload 앞에 core가 자동으로 추가하는 내부 프레임 (request-reply, metadata) |
+| correlation_id | request-reply 패턴에서 요청과 응답을 매칭하는 uint64 식별자 |
+| HWM (High Water Mark) | 소켓의 송신/수신 큐 최대 용량. 초과 시 backpressure가 발생한다 |
+
 ## 1. 개요
 
 zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이다.
@@ -30,33 +47,40 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이�
 `zlink_msg_t`는 항상 64 byte 고정 struct이다. data 크기에 따라
 내부 저장 전략이 자동으로 결정된다:
 
-```
-+-------------------------------------------------------------+
-|                  zlink_msg_t (64 bytes)                     |
-+-------------------------------------------------------------+
-|                                                             |
-|  VSM (≤33B):  [ type | size | data ····················· ]  |
-|                               ↑ data가 struct 내부에 inline |
-|                                                             |
-|  LMSG (>33B): [ type | content_ptr                          |
-|                           ↓                                 |
-|                  +--------------------+                     |
-|                  | heap buffer        |                     |
-|                  | + refcount         |                     |
-|                  +--------------------+                     |
-|                                                             |
-|  CMSG:        [ type | data_ptr                             |
-|                           ↓                                 |
-|                  +--------------------+                     |
-|                  | external const buf                       |
-|                  +--------------------+                     |
-|                                                             |
-|  ZCLMSG:      [ type | data_ptr | ffn_ptr | hint | ··· ]    |
-|                           ↓          ↓                      |
-|                  +----------+   ffn(data, hint)로 해제      |
-|                  | user buf |                               |
-|                  +----------+                               |
-+-------------------------------------------------------------+
+```text
++------------------------------------------------------+
+|               zlink_msg_t  (64 bytes)                |
++------------------------------------------------------+
+|                                                      |
+|  VSM  (<=33B):                                       |
+|    [ type | size | data ......................... ]  |
+|                          ^ stored inline             |
+|                                                      |
+|  LMSG (>33B):                                        |
+|    [ type | content_ptr ]                            |
+|                   |                                  |
+|                   v                                  |
+|             +------------------+                     |
+|             | heap buffer      |                     |
+|             | + refcount       |                     |
+|             +------------------+                     |
+|                                                      |
+|  CMSG:                                               |
+|    [ type | data_ptr ]                               |
+|                   |                                  |
+|                   v                                  |
+|             +------------------+                     |
+|             | external const   |                     |
+|             +------------------+                     |
+|                                                      |
+|  ZCLMSG:                                             |
+|    [ type | data_ptr | ffn_ptr | hint | ... ]        |
+|                |           |                         |
+|                v           v                         |
+|          +----------+  ffn(data, hint)               |
+|          | user buf  |  called on release            |
+|          +----------+                                |
++------------------------------------------------------+
 ```
 
 핵심: `zlink_msg_t` struct 자체는 stack/배열에 놓이고, 큰 data만 heap을
@@ -271,12 +295,10 @@ if (rc == -1) {
 }
 ```
 
-> **Legacy:** `zlink_msg_send()`는 아직 header에 존재하지만 제거 예정이다.
-> `zlink_send()`에 parts array를 전달하는 방식으로 대체한다.
 
 ### 4.6 Recv
 
-Message는 socket에 등록한 handler callback으로 수신된다.
+Message는 socket에 등록한 핸들러 콜백으로 수신된다.
 Callback이 `zlink_msg_t` part를 직접 제공한다:
 
 ```c
@@ -310,7 +332,7 @@ zlink_msg_close(&msg);
 |------|-----------|-----------|
 | `zlink_send` 성공 | library로 이전 | msg part는 빈 상태, access 불가 |
 | `zlink_send` 실패 | caller가 여전히 소유 | 각 part에 `zlink_msg_close()` 호출 필요 |
-| Handler callback이 msg 전달 | library가 msg part 제공 | 각 part에 `zlink_msg_close()` 호출 필요 |
+| 핸들러 콜백이 메시지 전달 | library가 메시지 part 제공 | 각 part에 `zlink_msg_close()` 호출 필요 |
 | `zlink_msg_close` | resource 해제 | msg 재사용 가능 (재init 필요) |
 
 ### Ownership 규칙 실전
@@ -586,8 +608,6 @@ ROUTER directed send에는 `zlink_send_rid()`를 사용한다:
 zlink_send_rid(router, &target_rid, parts, part_count, 0);
 ```
 
-> **Legacy:** `zlink_msg_send()`는 아직 header에 존재하지만 제거 예정이다.
-> 모든 call site를 `zlink_send()`에 parts array를 전달하는 방식으로 migration한다.
 
 ## 11. Request-Reply Envelope
 

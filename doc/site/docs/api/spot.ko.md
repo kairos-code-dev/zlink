@@ -1,6 +1,19 @@
 
 # SPOT
 
+### 용어
+
+| 용어 | 설명 |
+|------|------|
+| SpotNode | SPOT mesh 토폴로지와 lifecycle을 관리하는 소유자 핸들 |
+| Spot (facade) | SpotNode 위에 올라가는 publish/subscribe 통합 인터페이스 |
+| mesh | SpotNode 간 자동 구성되는 PUB/SUB 네트워크 |
+| fanout | 수신한 메시지를 로컬 subscriber에게 분배하는 내부 경로 |
+| HWM (High Water Mark) | 송신/수신 큐 최대 용량. 초과 시 backpressure 발생 |
+| peer batching | 같은 topic의 작은 메시지를 모아 하나의 batch frame으로 peer에 전송하는 내부 최적화 |
+| routing_id | 피어를 식별하는 고유 바이트 열 (최대 255바이트) |
+| inproc | 동일 프로세스 내 스레드 간 통신 transport |
+
 SPOT public API는 두 계층으로 정리됩니다.
 
 - `SpotNode`: bind/connect/discovery/TLS wiring owner
@@ -152,22 +165,38 @@ handle에 `zlink_set_tls_server()` 또는 `zlink_set_tls_client()`를 호출하�
 `zlink_spot_node_peers_snapshot()`, `zlink_spot_node_subjects_snapshot()`을
 사용합니다.
 
-## Internal Mesh Publish Budget
+## SpotNode Internal Data-Plane HWM
 
-SPOT은 SpotNode 런타임 내부에서 peer fanout 용 `mesh_pub` sender를 사용합니다.
-이 내부 `mesh_pub`의 send HWM 기본값은 `tcp`, `tls`, `ws`, `wss`를 포함한
-모든 transport에서 `100`입니다.
+SpotNode는 다음 내부 data-plane을 가집니다.
 
-이 내부 budget은 unified `Spot` handle에 설정하는 public `SNDHWM` /
-`RCVHWM`과는 별개의 값입니다.
+- `ingress` receive queue
+- `fanout` local publish queue
+- `mesh_pub` peer publish queue
+- `mesh_xsub` peer receive queue
 
-- internal `mesh_pub` send HWM 기본값: `100`
+기본 data-plane HWM은 `1000`입니다. `SpotNode` handle에 `SNDHWM` /
+`RCVHWM`을 설정하면 같은 방향의 내부 data-plane budget에도 함께 적용됩니다.
+
+- `SpotNode` 의 `SNDHWM`
+  - 기본 SpotNode pub handle
+  - internal `fanout` send HWM
+  - internal `mesh_pub` send HWM
+- `SpotNode` 의 `RCVHWM`
+  - 기본 SpotNode sub handle
+  - internal `ingress` receive HWM
+  - internal `mesh_xsub` receive HWM
+
+이 내부 data-plane budget은 unified `Spot` handle에 설정하는 public
+`SNDHWM` / `RCVHWM`과는 별개입니다. `peer_ctrl` 는 control-plane 기본값을
+유지하며 SpotNode data-plane HWM 묶음에 포함하지 않습니다.
+
+- internal data-plane HWM 기본값: `1000`
 - transport별 기본 확장은 적용하지 않습니다
-- 특정 배포에서만 별도 internal budget이 필요하면
-  `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM=<value>`로 override 하십시오
-
-transport 비교 perf에서는 transport별 internal backlog 깊이 차이로
-queueing latency가 왜곡되지 않도록 기본값 유지가 권장됩니다.
+- 세부 internal override는 진단용으로만 남겨둡니다
+  - `ZLINK_SPOT_INTERNAL_INGRESS_RCVHWM`
+  - `ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM`
+  - `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM`
+  - `ZLINK_SPOT_INTERNAL_MESH_XSUB_RCVHWM`
 
 ## callback 계약
 
@@ -386,6 +415,59 @@ typedef struct zlink_spot_node_subject_filter_t
 1. `zlink_spot_node_status_snapshot()` -- 전체 건강 상태를 먼저 확인합니다.
 2. `zlink_spot_node_peers_snapshot()` -- 피어 연결 상태를 점검합니다.
 3. `zlink_spot_node_subjects_snapshot()` -- subject readiness를 확인합니다.
+
+## SpotNode Peer Publish Batching 옵션
+
+SpotNode는 peer publish 경로의 선택적 내부 batching을 제공합니다.
+이 옵션들은 SpotNode handle에서 `zlink_set_spot_node_option()`으로 설정합니다.
+
+### zlink_spot_node_option_t
+
+```c
+typedef enum zlink_spot_node_option_t {
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE                  = 0x3601,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS                = 0x3602,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_MESSAGES            = 0x3603,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_BYTES               = 0x3604,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_BYPASS_BYTES            = 0x3605,
+    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_MESSAGES_PER_TURN = 0x3606,
+    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN    = 0x3607,
+} zlink_spot_node_option_t;
+```
+
+| 옵션 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `PEER_BATCH_ENABLE` | `int` (bool) | 0 (비활성) | peer publish batching 활성화. homogeneous deployment에서 운영자 opt-in. |
+| `PEER_BATCH_DELAY_MS` | `int` | 20 | topic bucket flush 최대 지연 (ms). |
+| `PEER_BATCH_MAX_MESSAGES` | `int` | 32 | topic bucket당 최대 메시지 수. |
+| `PEER_BATCH_MAX_BYTES` | `int` | 65536 | topic bucket당 최대 바이트. |
+| `PEER_BATCH_BYPASS_BYTES` | `int` | 65536 | 이 encoded 크기 이상 메시지는 batching을 우회하여 즉시 전송. |
+| `PEER_UNBATCH_MAX_MESSAGES_PER_TURN` | `int` | 32 | receiver측 I/O turn당 최대 unbatch 메시지 수. |
+| `PEER_UNBATCH_MAX_BYTES_PER_TURN` | `int` | 65536 | receiver측 I/O turn당 최대 unbatch 바이트. |
+
+사용법:
+
+```c
+void *node = zlink_spot_node_new(ctx);
+
+int enabled = 1;
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
+                 &enabled, sizeof(enabled));
+
+int delay_ms = 10;
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS,
+                 &delay_ms, sizeof(delay_ms));
+
+zlink_spot_node_bind(node, "tcp://*:9000");
+```
+
+**v1 제약:** mesh의 모든 SpotNode가 동일 세대 binary를 실행해야 합니다
+(homogeneous deployment). runtime capability negotiation은 없습니다.
+
+**반환값:** `zlink_set_spot_node_option` / `zlink_get_spot_node_option`은
+성공 시 0, 실패 시 -1을 반환합니다 (errno가 설정됨).
+
+**스레드 안전성:** 옵션은 bind/connect 전에 설정해야 합니다.
 
 ## 제거된 public API
 

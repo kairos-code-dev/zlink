@@ -5,6 +5,8 @@ set -euo pipefail
 SAMPLES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SAMPLES_DIR/.." && pwd)"
 TASKS=(
+  ":samples:runRequestReplyAsync"
+  ":samples:runRequestReplyCallback"
   ":samples:runPairRecv"
   ":samples:runPairCallback"
   ":samples:runPubSubRecv"

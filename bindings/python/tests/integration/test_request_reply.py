@@ -25,12 +25,16 @@ class RequestReplyScenarioTest(unittest.TestCase):
                 async def scenario():
                     handled = asyncio.Event()
 
-                    async def handler(routing_id, correlation_id, received):
-                        self.assertEqual(received.to_bytes_list(), [b"ping"])
-                        await router.reply(routing_id, correlation_id, [b"pong"])
+                    def on_receive(received):
+                        msg_type, correlation_id = received.parts[0].get_request_info()
+                        self.assertEqual(msg_type, zlink.MSG_TYPE_REQUEST)
+                        asyncio.get_running_loop().call_soon_threadsafe(
+                            asyncio.create_task,
+                            router.reply(received.routing_id, correlation_id, [b"pong"]),
+                        )
                         handled.set()
 
-                    router.on_request(handler)
+                    router.on_receive(on_receive)
                     reply = await dealer.request([b"ping"], timeout=2.0)
                     try:
                         self.assertEqual(reply.to_bytes_list(), [b"pong"])

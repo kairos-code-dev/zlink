@@ -57,12 +57,28 @@ async function runSpotBenchmark(msgSize, options) {
         }
         seq += 1n;
       }
+      while (true) {
+        const received = spot.trySubscribe();
+        if (!received) {
+          break;
+        }
+        const header = decodeMetricHeader(received.parts[0].data);
+        collector.record(header, currentEpochNs());
+      }
       if ((Number(seq) & 0x03) === 0) {
         await sleepImmediate();
       }
     }
 
     for (let i = 0; i < 4; i += 1) {
+      while (true) {
+        const received = spot.trySubscribe();
+        if (!received) {
+          break;
+        }
+        const header = decodeMetricHeader(received.parts[0].data);
+        collector.record(header, currentEpochNs());
+      }
       await sleepImmediate();
     }
     stop = true;

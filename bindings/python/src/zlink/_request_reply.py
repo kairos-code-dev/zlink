@@ -6,9 +6,18 @@ import errno
 import queue
 import threading
 
-from ._core import MSG_TYPE_REPLY, MSG_TYPE_REQUEST, Message, ReceivedMessage, ZlinkError
+from ._core import (
+    MSG_TYPE_REPLY,
+    MSG_TYPE_REQUEST,
+    Message,
+    ReceivedMessage,
+    ZlinkError,
+    _clone_native_msg,
+)
 from ._enums import SendResult
 from ._ffi import lib
+
+_ERRNO_ETERM = getattr(errno, "ETERM", 156)
 
 
 def _request_info(message):
@@ -54,12 +63,16 @@ def _clone_received(received):
 
 
 def _clone_message(message):
-    cloned = Message.copy_from(message.to_bytes())
-    msg_type, correlation_id = _request_info(message)
-    if msg_type == MSG_TYPE_REQUEST:
-        cloned.set_request(correlation_id)
-    elif msg_type == MSG_TYPE_REPLY:
-        cloned.set_reply(correlation_id)
+    if isinstance(message, ReceivedMessage):
+        native = _clone_native_msg(message._native_msg())
+    elif isinstance(message, Message):
+        native = _clone_native_msg(message._msg)
+    else:
+        raise TypeError("message must be Message or ReceivedMessage")
+    cloned = Message.__new__(Message)
+    cloned._msg = native
+    cloned._valid = True
+    cloned._keepalive = None
     return cloned
 
 
@@ -225,7 +238,7 @@ class _RequestReplyBase:
         self._ensure_dispatch_started()
         item = self._data_queue.get()
         if item is None:
-            raise ZlinkError(errno.ETERM, "socket is closed")
+            raise ZlinkError(_ERRNO_ETERM, "socket is closed")
         return item
 
     def try_recv(self):
@@ -235,7 +248,7 @@ class _RequestReplyBase:
         except queue.Empty:
             return None
         if item is None:
-            raise ZlinkError(errno.ETERM, "socket is closed")
+            raise ZlinkError(_ERRNO_ETERM, "socket is closed")
         return item
 
     def on_receive(self, handler):
@@ -256,12 +269,11 @@ class _RequestReplyBase:
             pending = list(self._pending.values())
             self._pending.clear()
         for item in pending:
-            item.reject(ZlinkError(errno.ETERM, "socket is closed"))
+            item.reject(ZlinkError(_ERRNO_ETERM, "socket is closed"))
         self._data_queue.put(None)
         self._socket.close()
 
     def _handle_request(self, received, correlation_id):
-        received.close()
         return False
 
 
@@ -328,37 +340,6 @@ class RequestDealer(_RequestReplyBase):
 class RequestRouter(_RequestReplyBase):
     def __init__(self, socket):
         super().__init__(socket)
-        self._request_handler = None
-        self._request_handler_loop = None
-
-    def on_request(self, handler):
-        if handler is None:
-            raise ValueError("handler must not be None")
-        self._ensure_dispatch_started()
-        self._request_handler = handler
-        try:
-            self._request_handler_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._request_handler_loop = None
-
-    def _handle_request(self, received, correlation_id):
-        if self._request_handler is None:
-            return False
-
-        def _deliver():
-            result = self._request_handler(received.routing_id, correlation_id, received)
-            if asyncio.iscoroutine(result):
-                task = asyncio.create_task(result)
-                task.add_done_callback(lambda _: received.close())
-            else:
-                received.close()
-
-        loop = self._request_handler_loop
-        if loop is None:
-            _deliver()
-        else:
-            loop.call_soon_threadsafe(_deliver)
-        return True
 
     async def request(self, routing_id, payload, timeout=None):
         self._ensure_dispatch_started()

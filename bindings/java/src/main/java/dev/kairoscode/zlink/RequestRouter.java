@@ -25,7 +25,6 @@ public final class RequestRouter implements AutoCloseable {
     private final LinkedBlockingQueue<Object> dataQueue = new LinkedBlockingQueue<>();
     private final Thread dispatchThread;
     private volatile SocketMessageHandler dataHandler;
-    private volatile RequestHandler requestHandler;
     private volatile boolean closed;
 
     public RequestRouter(RouterSocket socket) {
@@ -119,10 +118,6 @@ public final class RequestRouter implements AutoCloseable {
         }
     }
 
-    public void onRequest(RequestHandler handler) {
-        this.requestHandler = Objects.requireNonNull(handler, "handler");
-    }
-
     public Received recv() {
         if (dataHandler != null) {
             throw new IllegalStateException("socket is in callback mode; direct recv is not allowed");
@@ -176,13 +171,6 @@ public final class RequestRouter implements AutoCloseable {
     private void dispatch(Received received) {
         Received snapshot = RequestReplySupport.cloneReceived(received);
         long[] info = snapshot.firstPart().getRequestInfo();
-        if (info[0] == Message.MSG_TYPE_REQUEST) {
-            RequestHandler handler = requestHandler;
-            if (handler != null) {
-                handler.onRequest(snapshot.routingId(), info[1], snapshot);
-                return;
-            }
-        }
         if (info[0] == Message.MSG_TYPE_REPLY) {
             CompletableFuture<Received> future = pending.remove(info[1]);
             if (future == null) {

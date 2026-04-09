@@ -1,4 +1,9 @@
+
 # Service Discovery
+
+> **Normative status: Illustrative — Needs refresh.**
+> 이 가이드는 설명 목적의 문서이며, API 명칭/시그니처의 정확한 기준은
+> `core/include/zlink.h`와 `bindings/README.md`다.
 
 ## 1. 개요
 
@@ -162,158 +167,34 @@ Registry는 중앙 조정 서버다. 운영 환경에서는 HA를 위해 3노드
 배포한다 ([섹션 6](#6-registry-클러스터-ha) 참조). 개발 및 테스트에는
 단일 Registry로 충분하다.
 
-=== "C"
+```c
+void *ctx = zlink_ctx_new();
+void *registry = zlink_registry_new(ctx);
 
-    ```c
-    void *ctx = zlink_ctx_new();
-    void *registry = zlink_registry_new(ctx);
+/* Add cluster peers (optional, must be called before bind) */
+zlink_registry_add_peer(registry, "tcp://registry2:5550");
+zlink_registry_add_peer(registry, "tcp://registry3:5550");
 
-    /* Add cluster peers (optional, must be called before bind) */
-    zlink_registry_add_peer(registry, "tcp://registry2:5550");
-    zlink_registry_add_peer(registry, "tcp://registry3:5550");
+/* Heartbeat configuration (optional, must be called before bind) */
+zlink_registry_set_heartbeat(registry, 5000, 15000);
 
-    /* Heartbeat configuration (optional, must be called before bind) */
-    zlink_registry_set_heartbeat(registry, 5000, 15000);
+/* Broadcast interval (optional, default 30 seconds) */
+zlink_registry_set_broadcast_interval(registry, 30000);
 
-    /* Broadcast interval (optional, default 30 seconds) */
-    zlink_registry_set_broadcast_interval(registry, 30000);
+/* Bind and start
+   First arg:  PUB endpoint — broadcasts service list (Discovery SUB subscribes)
+   Second arg: ROUTER endpoint — receives registration/heartbeat/queries (Discovery bootstraps here) */
+zlink_registry_bind(registry,
+    "tcp://*:5550",    /* PUB (service list broadcast) */
+    "tcp://*:5551"     /* ROUTER (registration/heartbeat/queries) */
+);
 
-    /* Bind and start */
-    zlink_registry_bind(registry,
-        "tcp://*:5550",    /* PUB (service list broadcast) */
-        "tcp://*:5551"     /* ROUTER (registration/heartbeat/queries) */
-    );
+/* ... application logic ... */
 
-    /* ... application logic ... */
-
-    zlink_registry_destroy(&registry);
-    zlink_ctx_term(ctx);
-    ```
-
-=== "C++"
-
-    ```cpp
-    auto ctx = zlink::context();
-    auto registry = zlink::registry(ctx);
-
-    registry.add_peer("tcp://registry2:5550");
-    registry.add_peer("tcp://registry3:5550");
-    registry.set_heartbeat(5000, 15000);
-    registry.set_broadcast_interval(30000);
-    registry.bind("tcp://*:5550", "tcp://*:5551");
-
-    // ... application logic ...
-
-    registry.close();
-    ctx.close();
-    ```
-
-=== "Java"
-
-    ```java
-    var ctx = Zlink.contextNew();
-    var registry = ctx.registryNew();
-
-    registry.addPeer("tcp://registry2:5550");
-    registry.addPeer("tcp://registry3:5550");
-    registry.setHeartbeat(5000, 15000);
-    registry.setBroadcastInterval(30000);
-    registry.bind("tcp://*:5550", "tcp://*:5551");
-
-    // ... application logic ...
-
-    registry.destroy();
-    ctx.term();
-    ```
-
-=== "Python"
-
-    ```python
-    ctx = zlink.Context()
-    registry = zlink.Registry(ctx)
-
-    registry.add_peer("tcp://registry2:5550")
-    registry.add_peer("tcp://registry3:5550")
-    registry.set_heartbeat(5000, 15000)
-    registry.set_broadcast_interval(30000)
-    registry.bind("tcp://*:5550", "tcp://*:5551")
-
-    # ... application logic ...
-
-    registry.destroy()
-    ctx.term()
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const ctx = new zlink.Context();
-    const registry = new zlink.Registry(ctx);
-
-    registry.addPeer("tcp://registry2:5550");
-    registry.addPeer("tcp://registry3:5550");
-    registry.setHeartbeat(5000, 15000);
-    registry.setBroadcastInterval(30000);
-    registry.bind("tcp://*:5550", "tcp://*:5551");
-
-    // ... application logic ...
-
-    registry.destroy();
-    ctx.term();
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using var ctx = new ZlinkContext();
-    using var registry = new Registry(ctx);
-
-    registry.AddPeer("tcp://registry2:5550");
-    registry.AddPeer("tcp://registry3:5550");
-    registry.SetHeartbeat(5000, 15000);
-    registry.SetBroadcastInterval(30000);
-    registry.Bind("tcp://*:5550", "tcp://*:5551");
-
-    // ... application logic ...
-    ```
-
-=== "Rust"
-
-    ```rust
-    let ctx = zlink::Context::new()?;
-    let registry = zlink::Registry::new(&ctx)?;
-
-    registry.add_peer("tcp://registry2:5550")?;
-    registry.add_peer("tcp://registry3:5550")?;
-    registry.set_heartbeat(5000, 15000)?;
-    registry.set_broadcast_interval(30000)?;
-    registry.bind("tcp://*:5550", "tcp://*:5551")?;
-
-    // ... application logic ...
-
-    registry.destroy()?;
-    ctx.term()?;
-    ```
-
-=== "Go"
-
-    ```go
-    ctx, err := zlink.NewContext()
-    if err != nil { log.Fatal(err) }
-    registry, err := zlink.NewRegistry(ctx)
-    if err != nil { log.Fatal(err) }
-
-    registry.AddPeer("tcp://registry2:5550")
-    registry.AddPeer("tcp://registry3:5550")
-    registry.SetHeartbeat(5000, 15000)
-    registry.SetBroadcastInterval(30000)
-    registry.Bind("tcp://*:5550", "tcp://*:5551")
-
-    // ... application logic ...
-
-    registry.Destroy()
-    ctx.Term()
-    ```
+/* Shutdown */
+zlink_registry_destroy(&registry);
+zlink_ctx_term(ctx);
+```
 
 ## 4. Discovery 사용
 
@@ -322,169 +203,29 @@ Discovery는 애플리케이션에서 사용하는 클라이언트 측 컴포넌
 raw 소켓을 attach한다. Discovery가 등록, 피어 조회, heartbeat를 대신
 처리한다.
 
-=== "C"
+```c
+/* service_type: ZLINK_SERVICE_TYPE_SPOT or ZLINK_SERVICE_TYPE_SOCKET */
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SPOT, "order-service");
 
-    ```c
-    /* service_type: ZLINK_SERVICE_TYPE_SPOT or ZLINK_SERVICE_TYPE_SOCKET */
-    void *discovery = zlink_discovery_new(ctx,
-        ZLINK_SERVICE_TYPE_SPOT, "order-service");
+/* Connect to Registry bootstrap/control endpoint (multiple allowed) */
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 
-    /* Connect to Registry bootstrap/control endpoint (multiple allowed) */
-    zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
-    zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
+/* Observe service state via monitor */
+zlink_service_monitor_open_options_t opts = {
+    .events = ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
+            | ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED,
+};
+void *mon = zlink_service_monitor_open(discovery, &opts);
+zlink_service_monitor_handler(mon, on_discovery_event, NULL);
 
-    /* Observe service state via monitor */
-    zlink_service_monitor_open_options_t opts = {
-        .events = ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
-                | ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED,
-    };
-    void *mon = zlink_service_monitor_open(discovery, &opts);
-    zlink_service_monitor_handler(mon, on_discovery_event, NULL);
+/* ... Discovery delivers events through the callback ... */
 
-    /* ... Discovery delivers events through the callback ... */
-
-    zlink_monitor_close(&mon);
-    zlink_discovery_destroy(&discovery);
-    ```
-
-=== "C++"
-
-    ```cpp
-    auto discovery = zlink::discovery(ctx,
-        zlink::service_type::spot, "order-service");
-
-    discovery.connect_registry("tcp://registry1:5551");
-    discovery.connect_registry("tcp://registry2:5551");
-
-    auto mon = discovery.service_monitor_open(
-        {zlink::discovery_monitor_event::service_up
-         | zlink::discovery_monitor_event::providers_changed});
-    mon.set_handler(on_discovery_event);
-
-    // ... Discovery delivers events through the callback ...
-
-    mon.close();
-    discovery.close();
-    ```
-
-=== "Java"
-
-    ```java
-    var discovery = ctx.discoveryNew(ServiceType.SPOT, "order-service");
-
-    discovery.connectRegistry("tcp://registry1:5551");
-    discovery.connectRegistry("tcp://registry2:5551");
-
-    var opts = new ServiceMonitorOptions(
-        DiscoveryMonitorEvent.SERVICE_UP | DiscoveryMonitorEvent.PROVIDERS_CHANGED);
-    var mon = discovery.serviceMonitorOpen(opts);
-    mon.setHandler(this::onDiscoveryEvent);
-
-    // ... Discovery delivers events through the callback ...
-
-    mon.close();
-    discovery.destroy();
-    ```
-
-=== "Python"
-
-    ```python
-    discovery = zlink.Discovery(ctx, zlink.SERVICE_TYPE_SPOT, "order-service")
-
-    discovery.connect_registry("tcp://registry1:5551")
-    discovery.connect_registry("tcp://registry2:5551")
-
-    opts = zlink.ServiceMonitorOptions(
-        events=zlink.DISCOVERY_MONITOR_EVENT_SERVICE_UP
-               | zlink.DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED)
-    mon = discovery.service_monitor_open(opts)
-    mon.set_handler(on_discovery_event)
-
-    # ... Discovery delivers events through the callback ...
-
-    mon.close()
-    discovery.destroy()
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const discovery = new zlink.Discovery(ctx,
-        zlink.SERVICE_TYPE_SPOT, "order-service");
-
-    discovery.connectRegistry("tcp://registry1:5551");
-    discovery.connectRegistry("tcp://registry2:5551");
-
-    const mon = discovery.serviceMonitorOpen({
-        events: zlink.DISCOVERY_MONITOR_EVENT_SERVICE_UP
-              | zlink.DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED
-    });
-    mon.setHandler(onDiscoveryEvent);
-
-    // ... Discovery delivers events through the callback ...
-
-    mon.close();
-    discovery.destroy();
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using var discovery = new Discovery(ctx, ServiceType.Spot, "order-service");
-
-    discovery.ConnectRegistry("tcp://registry1:5551");
-    discovery.ConnectRegistry("tcp://registry2:5551");
-
-    using var mon = discovery.ServiceMonitorOpen(new ServiceMonitorOptions {
-        Events = DiscoveryMonitorEvent.ServiceUp
-               | DiscoveryMonitorEvent.ProvidersChanged });
-    mon.SetHandler(OnDiscoveryEvent);
-
-    // ... Discovery delivers events through the callback ...
-    ```
-
-=== "Rust"
-
-    ```rust
-    let discovery = zlink::Discovery::new(&ctx,
-        zlink::ServiceType::Spot, "order-service")?;
-
-    discovery.connect_registry("tcp://registry1:5551")?;
-    discovery.connect_registry("tcp://registry2:5551")?;
-
-    let mon = discovery.service_monitor_open(&zlink::ServiceMonitorOptions::new(
-        zlink::DISCOVERY_MONITOR_EVENT_SERVICE_UP
-        | zlink::DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED))?;
-    mon.set_handler(on_discovery_event);
-
-    // ... Discovery delivers events through the callback ...
-
-    mon.close();
-    discovery.destroy()?;
-    ```
-
-=== "Go"
-
-    ```go
-    discovery, err := zlink.NewDiscovery(ctx,
-        zlink.ServiceTypeSpot, "order-service")
-    if err != nil { log.Fatal(err) }
-
-    discovery.ConnectRegistry("tcp://registry1:5551")
-    discovery.ConnectRegistry("tcp://registry2:5551")
-
-    opts := zlink.ServiceMonitorOptions{Events:
-        zlink.DiscoveryMonitorEventServiceUp |
-        zlink.DiscoveryMonitorEventProvidersChanged}
-    mon, err := discovery.ServiceMonitorOpen(opts)
-    if err != nil { log.Fatal(err) }
-    mon.SetHandler(onDiscoveryEvent)
-
-    // ... Discovery delivers events through the callback ...
-
-    mon.Close()
-    discovery.Destroy()
-    ```
+/* Cleanup */
+zlink_monitor_close(&mon);
+zlink_discovery_destroy(&discovery);
+```
 
 ## 4.1 소켓 패밀리 Discovery
 
@@ -492,133 +233,25 @@ raw ROUTER/DEALER/PUB/SUB 소켓은 Discovery를 사용하여 자동 피어 발�
 lifecycle 관리를 할 수 있다. SPOT 추상화 없이 소켓 수준에서 위치투명
 통신을 가능하게 한다.
 
-=== "C"
+```c
+/* Create Discovery with SOCKET type */
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "price-feed");
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
-    ```c
-    /* Create Discovery with SOCKET type */
-    void *discovery = zlink_discovery_new(ctx,
-        ZLINK_SERVICE_TYPE_SOCKET, "price-feed");
-    zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+/* Create a PUB socket and attach it to Discovery */
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
+zlink_bind(pub, "tcp://*:9100");
+zlink_socket_attach_discovery(pub, discovery);
+/* Discovery registers the PUB endpoint and manages heartbeats.
+   Remote SUB sockets in the same service ("price-feed") will
+   automatically discover and connect to this endpoint. */
 
-    /* Create a PUB socket and attach it to Discovery */
-    void *pub = zlink_socket_new(ctx, ZLINK_PUB);
-    zlink_bind(pub, "tcp://*:9100");
-    zlink_socket_attach_discovery(pub, discovery);
-    /* Discovery registers the PUB endpoint and manages heartbeats. */
+/* ... publish messages ... */
 
-    /* ... publish messages ... */
-
-    zlink_discovery_destroy(&discovery);
-    ```
-
-=== "C++"
-
-    ```cpp
-    auto discovery = zlink::discovery(ctx,
-        zlink::service_type::socket, "price-feed");
-    discovery.connect_registry("tcp://registry1:5551");
-
-    auto pub = zlink::socket(ctx, zlink::socket_type::pub_);
-    pub.bind("tcp://*:9100");
-    pub.attach_discovery(discovery);
-
-    // ... publish messages ...
-
-    discovery.close();
-    ```
-
-=== "Java"
-
-    ```java
-    var discovery = ctx.discoveryNew(ServiceType.SOCKET, "price-feed");
-    discovery.connectRegistry("tcp://registry1:5551");
-
-    var pub = ctx.socket(SocketType.PUB);
-    pub.bind("tcp://*:9100");
-    pub.attachDiscovery(discovery);
-
-    // ... publish messages ...
-
-    discovery.destroy();
-    ```
-
-=== "Python"
-
-    ```python
-    discovery = zlink.Discovery(ctx, zlink.SERVICE_TYPE_SOCKET, "price-feed")
-    discovery.connect_registry("tcp://registry1:5551")
-
-    pub = ctx.socket(zlink.PUB)
-    pub.bind("tcp://*:9100")
-    pub.attach_discovery(discovery)
-
-    # ... publish messages ...
-
-    discovery.destroy()
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const discovery = new zlink.Discovery(ctx,
-        zlink.SERVICE_TYPE_SOCKET, "price-feed");
-    discovery.connectRegistry("tcp://registry1:5551");
-
-    const pub = ctx.socket(zlink.PUB);
-    pub.bind("tcp://*:9100");
-    pub.attachDiscovery(discovery);
-
-    // ... publish messages ...
-
-    discovery.destroy();
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using var discovery = new Discovery(ctx, ServiceType.Socket, "price-feed");
-    discovery.ConnectRegistry("tcp://registry1:5551");
-
-    using var pub = ctx.CreateSocket(SocketType.Pub);
-    pub.Bind("tcp://*:9100");
-    pub.AttachDiscovery(discovery);
-
-    // ... publish messages ...
-    ```
-
-=== "Rust"
-
-    ```rust
-    let discovery = zlink::Discovery::new(&ctx,
-        zlink::ServiceType::Socket, "price-feed")?;
-    discovery.connect_registry("tcp://registry1:5551")?;
-
-    let pub_sock = ctx.socket(zlink::PUB)?;
-    pub_sock.bind("tcp://*:9100")?;
-    pub_sock.attach_discovery(&discovery)?;
-
-    // ... publish messages ...
-
-    discovery.destroy()?;
-    ```
-
-=== "Go"
-
-    ```go
-    discovery, err := zlink.NewDiscovery(ctx,
-        zlink.ServiceTypeSocket, "price-feed")
-    if err != nil { log.Fatal(err) }
-    discovery.ConnectRegistry("tcp://registry1:5551")
-
-    pubSock, err := ctx.PubSocket()
-    if err != nil { log.Fatal(err) }
-    pubSock.Bind("tcp://*:9100")
-    pubSock.AttachDiscovery(discovery)
-
-    // ... publish messages ...
-
-    discovery.Destroy()
-    ```
+/* Destroy Discovery to shut down the attached socket */
+zlink_discovery_destroy(&discovery);
+```
 
 **Lifecycle:** 소켓이 연결되면 `connect`, `disconnect`, `unbind`, `close`
 수동 호출이 실패한다. Discovery 인스턴스를 파괴하면 모든 연결된 소켓이

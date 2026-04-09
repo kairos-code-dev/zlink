@@ -408,7 +408,7 @@ Set fields to non-zero values to filter. Zero-valued fields are wildcards.
 ## SpotNode Peer Publish Batching Options
 
 SpotNode provides optional internal batching for the peer publish path.
-These options are set via `zlink_set_option()` on the SpotNode handle.
+These options are set via `zlink_set_spot_node_option()` on the SpotNode handle.
 
 ### zlink_spot_node_option_t
 
@@ -440,11 +440,11 @@ Usage:
 void *node = zlink_spot_node_new(ctx);
 
 int enabled = 1;
-zlink_set_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
                  &enabled, sizeof(enabled));
 
 int delay_ms = 10;
-zlink_set_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS,
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS,
                  &delay_ms, sizeof(delay_ms));
 
 zlink_spot_node_bind(node, "tcp://*:9000");
@@ -453,8 +453,8 @@ zlink_spot_node_bind(node, "tcp://*:9000");
 **v1 constraint:** All SpotNodes in the mesh must run the same binary
 generation (homogeneous deployment). No runtime capability negotiation.
 
-**Returns:** `zlink_set_option` / `zlink_get_option` return 0 on success,
--1 on failure (errno is set).
+**Returns:** `zlink_set_spot_node_option` / `zlink_get_spot_node_option`
+return 0 on success, -1 on failure (errno is set).
 
 **Thread safety:** Options should be set before bind/connect.
 

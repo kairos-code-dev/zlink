@@ -31,6 +31,8 @@
 
 ## Canonical Sample Set
 - 각 샘플 표면은 다음 canonical sample 세트를 기준으로 맞춘다.
+  - `request_reply_async_sample`
+  - `request_reply_callback_sample`
   - `pair_recv_sample`
   - `pair_callback_sample`
   - `pubsub_recv_sample`
@@ -43,6 +45,8 @@
   - `spot_callback_sample`
   - `monitor_recv_sample`
 - service/spot 계열이 없는 표면은 `spot_*` 샘플을 제외할 수 있다.
+- request-reply wrapper 표면이 없는 바인딩은 `request_reply_*` 샘플을 제외할 수
+  있다.
 - 서비스 계층 컴포넌트를 구현하는 표면은 다음 샘플을 추가로 포함한다.
   - `discovery_registry_sample` (Discovery + Registry end-to-end)
   - `registry_query_sample` (RegistryQueryClient로 토폴로지 조회)
@@ -56,6 +60,7 @@
 - 샘플 파일명은 canonical 이름을 그대로 사용한다.
 - recv sample 이름 패턴은 `*_recv_sample` 로 고정한다.
 - callback sample 이름 패턴은 `*_callback_sample` 로 고정한다.
+- async/coroutine sample 이름 패턴은 `*_async_sample` 로 고정한다.
 - monitor sample 이름 패턴은 `*_monitor_recv_sample` 또는 단일
   `monitor_recv_sample` 로 고정한다.
 - 각 샘플은 하나의 핵심 패턴만 설명해야 한다.
@@ -83,6 +88,8 @@
 
 ## Sample Classification Rules
 - `recv sample` 은 direct receive 계열만 사용한다.
+- `async sample` 은 future/task/coroutine 또는 그와 동등한 async completion
+  surface만 사용한다.
 - `callback sample` 은 callback receive 계열만 사용한다.
 - `monitor sample` 은 monitor `recv/tryRecv` 계열만 사용한다.
 - 한 샘플 안에서 recv와 callback 수신 모델을 섞지 않는다.
@@ -93,6 +100,17 @@
 - `recv sample` 은 callback 등록 API를 사용하지 않는다.
 - `send/publish` 후 direct receive 결과를 직접 확인한다.
 - recv sample 본문은 recv surface를 배우는 데 필요한 코드만 남긴다.
+
+## Async Sample Rules
+- `async sample` 은 async request lifecycle이 핵심 표면인 기능에만 적용한다.
+- request-reply wrapper를 제공하는 표면은 `request_reply_async_sample` 을 canonical
+  sample에 포함해야 한다.
+- `request_reply_async_sample` 은 `RequestDealer`/`RequestRouter` 또는 그와 동등한
+  wrapper public API를 직접 사용해야 한다.
+- raw `DealerSocket`/`RouterSocket` recv/send 샘플을 재포장해서는 안 된다.
+- async sample은 callback completion으로 결과를 대신 설명하면 안 된다.
+- reply 완료 확인은 `await`, `future.get`, `Task`, `channel receive`,
+  `std::future` 등 언어별 async completion 표면으로 보여야 한다.
 
 ## Callback Sample Rules
 - `callback sample` 은 callback 등록과 callback delivery만으로 수신을
@@ -152,6 +170,8 @@
 
 ```text
 # bidirectional (echo / request-reply)
+[dealer-router/request-reply/async] send: "ping" -> recv: "pong"
+[dealer-router/request-reply/callback] send: "ping" -> recv: "pong"
 [pair/recv] send: "hello-pair" -> recv: "hello-pair"
 [pair/callback] send: "hello-pair" -> recv: "hello-pair"
 [dealer-router/recv] send: "ping" -> recv: "pong"
@@ -184,6 +204,7 @@
 
 | 패턴 | 방향 | topic | payload |
 |------|------|-------|---------|
+| request-reply | bidirectional | — | request: `"ping"`, reply: `"pong"` |
 | pair | bidirectional | — | `"hello-pair"` |
 | dealer-router | bidirectional | — | request: `"ping"`, reply: `"pong"` |
 | stream | bidirectional | — | `"hello-stream"` |
@@ -195,6 +216,9 @@
 
 ## Sample Coverage Expectations
 - 각 표면은 canonical sample 세트를 공식 샘플 표면으로 유지한다.
+- request-reply wrapper를 구현한 표면:
+  - `request_reply_async_sample`
+  - `request_reply_callback_sample`
 - direct recv 계열:
   - PAIR 또는 동등한 기본 send/recv
   - PUB/SUB 또는 동등한 topic publish/subscribe

@@ -20,8 +20,6 @@ const requestReplyPollInterval = time.Millisecond
 const defaultRequestTimeout = 30 * time.Second
 
 type RequestReplyCallback func(*Received, error)
-type RequestHandler func(RoutingID, uint64, *Received)
-
 type pendingRequest struct {
 	reply chan requestResult
 }
@@ -51,7 +49,6 @@ type RequestRouter struct {
 	socket         *RouterSocket
 	nextID         atomic.Uint64
 	core           requestReplyCore
-	requestHandler atomic.Value
 }
 
 func NewRequestDealer(socket *DealerSocket) *RequestDealer {
@@ -232,10 +229,6 @@ func (r *RequestRouter) Socket() *RouterSocket {
 	return r.socket
 }
 
-func (r *RequestRouter) OnRequest(handler RequestHandler) {
-	r.requestHandler.Store(handler)
-}
-
 func (r *RequestRouter) Request(ctx context.Context, routingID RoutingID, parts ...*Message) (*Received, error) {
 	return r.requestWith(ctx, false, routingID, parts...)
 }
@@ -386,11 +379,6 @@ func (r *RequestRouter) routeReceived(received *Received) error {
 		return err
 	}
 	switch msgType {
-	case MsgTypeRequest:
-		if handler, ok := r.requestHandler.Load().(RequestHandler); ok && handler != nil {
-			go handler(received.RoutingID(), correlationID, received)
-			return nil
-		}
 	case MsgTypeReply:
 		value, ok := r.core.pending.LoadAndDelete(correlationID)
 		if !ok {

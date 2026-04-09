@@ -64,6 +64,9 @@
   - `EAGAIN` 시 `bool send_pending` 플래그만 설정한다.
   - poller `POLLOUT` readiness에서 플래그 확인 후 재전송한다.
   - 응답 수신 → 다음 전송의 1:1 대응이므로 deque 불필요하다.
+  - 이 `inflight 1`은 구현 선택이 아니라 측정 계약이다. `MULTI_DEALER_ROUTER`,
+    `MULTI_ROUTER_ROUTER`, `MULTI_STREAM` echo client는 소켓별 outstanding request를
+    반드시 1개로 유지해야 하며, 숨은 추가 inflight/deque/window를 두면 안 된다.
 - **one-way sender** (단일 흐름):
   - `EAGAIN` 시 `bool send_pending` 플래그만 설정한다.
   - poller `POLLOUT` readiness에서 플래그 확인 후 재전송한다.
@@ -705,6 +708,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
   connection과 섞어 조립하면 정책 위반이다. 상세는
   [PERF_POLICY.md § 2.0.3 Server Per-Connection 프레임 재조립](PERF_POLICY.md)을
   참조한다.
+- 위 계약은 packet semantics를 고정하는 것이며, 내부 자료구조/세부 단계까지 고정하지 않는다. 완전한 단일 frame chunk를 idle connection에서 즉시 echo하는 fast path처럼, packet semantics를 유지하는 최적화는 허용한다.
 - 수신 방식만 다르므로 throughput/latency 차이를 직접 비교할 수 있다.
 - `MULTI_STREAM_LEN32BE`는 삭제되었다. 문서, 스크립트, 빌드 설정, 코드에 잔존 구현이 있으면 모두 삭제해야 하며, 삭제된 패턴을 alias/legacy path로 유지하지 않는다.
 - MULTI_STREAM의 server 프로세스는 반드시 zlink
@@ -795,6 +799,9 @@ run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
 | CMake configure | 실행 | 생략 | 실행 |
 | CMake build | 실행 | 생략 | 실행 |
 | 빌드 디렉터리 미존재 시 | 생성 후 진행 | 에러 후 중단 | 생성 후 진행 |
+
+- 기본 모드는 항상 해당 suite의 최신 benchmark binary/script를 사용해야 한다. 즉 multi official runner는 기본 실행에서 현재 소스 기준 configure/build를 수행해야 하며, `--reuse-build`를 주지 않았는데 stale 산출물을 실행하면 정책 위반이다.
+- `clients`, `stream clients`, `server/client io_threads`, `hwm` 기본값은 multi baseline 의미의 일부다. 기본값을 바꾸면 runner 구현, help 출력, Effective Options, 문서 예시를 같은 변경에서 함께 갱신해야 한다.
 
 ### 9.3 실행 예시
 

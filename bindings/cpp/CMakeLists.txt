@@ -75,6 +75,15 @@ if(ZLINK_CPP_BUILD_SAMPLES)
   endfunction()
 
   add_cpp_sample(
+    sample_cpp_request_reply_async_sample
+    samples/request_reply_async_sample.cpp
+  )
+  target_compile_features(sample_cpp_request_reply_async_sample PRIVATE cxx_std_20)
+  add_cpp_sample(
+    sample_cpp_request_reply_callback_sample
+    samples/request_reply_callback_sample.cpp
+  )
+  add_cpp_sample(
     sample_cpp_pair_recv_sample
     samples/pair_recv_sample.cpp
   )

@@ -6,7 +6,7 @@
 
 callback-only receive 모델로 전환됨에 따라 polling API(`zlink_poll`,
 `zlink_pollitem_t`, `ZLINK_POLLIN`)는 제거되었습니다. 모든 메시지 수신은
-이제 handler callback을 통해 처리됩니다. 프록시 및 기능 확인 함수는 그대로
+이제 핸들러 콜백을 통해 처리됩니다. 프록시 및 기능 확인 함수는 그대로
 유지됩니다.
 
 ## 타입

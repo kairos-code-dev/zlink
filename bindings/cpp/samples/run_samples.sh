@@ -22,6 +22,8 @@ echo "[cpp-samples] build"
 cmake --build "${BUILD_DIR}" -j"$(nproc)"
 
 sample_tests=(
+  sample_smoke_sample_cpp_request_reply_async_sample
+  sample_smoke_sample_cpp_request_reply_callback_sample
   sample_smoke_sample_cpp_pair_recv_sample
   sample_smoke_sample_cpp_pair_callback_sample
   sample_smoke_sample_cpp_pubsub_recv_sample

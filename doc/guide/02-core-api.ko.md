@@ -195,7 +195,7 @@ if (rc == -1 && zlink_errno() == EAGAIN) {
 
 #### Callback Mode
 
-Socket 생성 후 handler callback을 부착하면 message 도착 시 I/O thread에서
+Socket 생성 후 핸들러 콜백을 부착하면 메시지 도착 시 I/O 스레드에서
 비동기로 호출된다. 한번 부착하면 socket 수명 동안 해제할 수 없다.
 Handler가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한다.
 

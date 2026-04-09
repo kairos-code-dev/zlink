@@ -12,7 +12,7 @@ const {
   sleepImmediate,
   stampPayload
 } = require('../common/perf_metrics');
-const { drainRecvSocket, waitForConnectionReady } = require('./perf_single_common');
+const { drainRecvNow, drainRecvSocket, waitForConnectionReady } = require('./perf_single_common');
 
 const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
 const SENDER_ID = Buffer.from('router-perf-sender', 'ascii');
@@ -81,12 +81,20 @@ async function runRouterRouterBenchmark(msgSize, options) {
         }
         seq += 1n;
       }
+      drainRecvNow(receiver, (received) => {
+        const header = decodeMetricHeader(received.parts[0].data);
+        collector.record(header, currentEpochNs());
+      });
       if ((Number(seq) & 0x03) === 0) {
         await sleepImmediate();
       }
     }
 
     for (let i = 0; i < 4; i += 1) {
+      drainRecvNow(receiver, (received) => {
+        const header = decodeMetricHeader(received.parts[0].data);
+        collector.record(header, currentEpochNs());
+      });
       await sleepImmediate();
     }
     stop = true;

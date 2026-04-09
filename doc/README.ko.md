@@ -105,3 +105,11 @@
 |------|------|
 | [feature-roadmap.ko.md](plan/feature-roadmap.ko.md) | 기능 로드맵 |
 | [type-segmentation.ko.md](plan/type-segmentation.ko.md) | Discovery 타입 분리 계획 |
+
+## 상세 스펙 (spec/)
+
+| 문서 | 설명 |
+|------|------|
+| [spec/spot/README.md](spec/spot/README.md) | SPOT 상세 스펙 인덱스 |
+| [spec/spot/SPOT_PEER_PUBLISH_BATCHING_SPEC.md](spec/spot/SPOT_PEER_PUBLISH_BATCHING_SPEC.md) | SpotNode peer publish batching 스펙 |
+| [spec/spot/SPOT_ROUTED_MESSAGE_SPEC.md](spec/spot/SPOT_ROUTED_MESSAGE_SPEC.md) | SpotNode 기반 routed message 스펙 |

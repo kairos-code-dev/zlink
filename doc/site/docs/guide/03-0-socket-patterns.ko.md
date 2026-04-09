@@ -1,3 +1,4 @@
+
 # 소켓 패턴 개요 및 선택 가이드
 
 ## 1. 개요
@@ -98,15 +99,13 @@ Is the communication peer an external client (browser, game)?
 
 모든 소켓 타입에서 `zlink_recv()`와 recv callback은 동일한 인터페이스를 사용한다:
 
-!!! note "C API 시그니처 -- 각 바인딩은 이를 자체 관용적 recv 메서드로 래핑한다."
-
-    ```c
-    int zlink_recv (void *socket,
-                    zlink_routing_id_t *source_rid,  /* sender routing_id */
-                    zlink_msg_t **parts,              /* multipart data */
-                    size_t *part_count,               /* frame count */
-                    zlink_send_flags_t flags);
-    ```
+```c
+int zlink_recv (void *socket,
+                zlink_routing_id_t *source_rid,  /* sender routing_id */
+                zlink_msg_t **parts,              /* multipart data */
+                size_t *part_count,               /* frame count */
+                zlink_send_flags_t flags);
+```
 
 - **`source_rid`**: 모든 소켓에서 송신자 피어의 routing_id가 채워진다.
   이것은 메시지 프레임이 아니라 zlink가 연결된 피어의 identity를
@@ -142,237 +141,39 @@ PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
 
 모든 소켓 타입에 공통되는 기본 패턴:
 
-=== "C"
+```c
+/* 1. Create Context */
+void *ctx = zlink_ctx_new();
 
-    ```c
-    /* 1. Create Context */
-    void *ctx = zlink_ctx_new();
+/* 2. Define handler callback */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    /* process received message */
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 
-    /* 2. Define handler callback */
-    void on_message(const zlink_routing_id_t *source_rid,
-                    zlink_msg_t *parts, size_t part_count,
-                    void *userdata)
-    {
-        /* process received message */
-        for (size_t i = 0; i < part_count; i++)
-            zlink_msg_close(&parts[i]);
-    }
+/* 3. Create Socket (raw STREAM callback example) */
+void *socket = zlink_socket(ctx, ZLINK_STREAM);
+zlink_recv_handler(socket, on_message, NULL);
 
-    /* 3. Create Socket (raw STREAM callback example) */
-    void *socket = zlink_socket(ctx, ZLINK_STREAM);
-    zlink_recv_handler(socket, on_message, NULL);
+/* 4. Set socket options (before bind/connect) */
+zlink_set_option(socket, ZLINK_OPT_<OPTION>, &value, sizeof(value));
 
-    /* 4. Set socket options (before bind/connect) */
-    zlink_set_option(socket, ZLINK_OPT_<OPTION>, &value, sizeof(value));
+/* 5. Establish connection (bind or connect) */
+zlink_bind(socket, "tcp://*:5555");
+// or
+zlink_connect(socket, "tcp://127.0.0.1:5555");
 
-    /* 5. Establish connection (bind or connect) */
-    zlink_bind(socket, "tcp://*:5555");
-    // or
-    zlink_connect(socket, "tcp://127.0.0.1:5555");
+/* 6. Send messages (receive is handled by callback) */
+zlink_send(socket, data, size, flags);
 
-    /* 6. Send messages (receive is handled by callback) */
-    zlink_send(socket, data, size, flags);
-
-    /* 7. Cleanup */
-    zlink_close(socket);
-    zlink_ctx_term(ctx);
-    ```
-
-=== "C++"
-
-    ```cpp
-    // 1. Create Context
-    zlink::context_t ctx;
-
-    // 2. Define handler callback
-    auto on_message = [](const zlink::routing_id_t& source_rid,
-                         std::vector<zlink::message_t> parts,
-                         void* userdata) {
-        // process received message
-    };
-
-    // 3. Create Socket (raw STREAM callback example)
-    zlink::stream_socket_t socket(ctx);
-    socket.recv_handler(on_message, nullptr);
-
-    // 4. Set socket options (before bind/connect)
-    socket.set_option(ZLINK_OPT_<OPTION>, value);
-
-    // 5. Establish connection (bind or connect)
-    socket.bind("tcp://*:5555");
-    // or
-    socket.connect("tcp://127.0.0.1:5555");
-
-    // 6. Send messages (receive is handled by callback)
-    socket.send(data);
-
-    // 7. Cleanup
-    socket.close();
-    ```
-
-=== "Java"
-
-    ```java
-    // 1. Create Context
-    Context ctx = new Context();
-
-    // 2–3. Create Socket with callback (raw STREAM example)
-    StreamSocket socket = new StreamSocket(ctx);
-    socket.recvHandler((sourceRid, parts) -> {
-        // process received message
-    });
-
-    // 4. Set socket options (before bind/connect)
-    socket.setOption(Option.<OPTION>, value);
-
-    // 5. Establish connection (bind or connect)
-    socket.bind("tcp://*:5555");
-    // or
-    socket.connect("tcp://127.0.0.1:5555");
-
-    // 6. Send messages (receive is handled by callback)
-    socket.send(data);
-
-    // 7. Cleanup
-    socket.close();
-    ctx.close();
-    ```
-
-=== "Python"
-
-    ```python
-    # 1. Create Context
-    ctx = zlink.Context()
-
-    # 2–3. Create Socket with callback (raw STREAM example)
-    socket = zlink.StreamSocket(ctx)
-    socket.recv_handler(lambda source_rid, parts: ...)
-
-    # 4. Set socket options (before bind/connect)
-    socket.set_option(zlink.Option.<OPTION>, value)
-
-    # 5. Establish connection (bind or connect)
-    socket.bind("tcp://*:5555")
-    # or
-    socket.connect("tcp://127.0.0.1:5555")
-
-    # 6. Send messages (receive is handled by callback)
-    socket.send(data)
-
-    # 7. Cleanup
-    socket.close()
-    ctx.term()
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    // 1. Create Context
-    const ctx = new zlink.Context();
-
-    // 2–3. Create Socket with callback (raw STREAM example)
-    const socket = new zlink.StreamSocket(ctx);
-    socket.recvHandler((sourceRid, parts) => {
-        // process received message
-    });
-
-    // 4. Set socket options (before bind/connect)
-    socket.setOption(zlink.Option.<OPTION>, value);
-
-    // 5. Establish connection (bind or connect)
-    socket.bind("tcp://*:5555");
-    // or
-    socket.connect("tcp://127.0.0.1:5555");
-
-    // 6. Send messages (receive is handled by callback)
-    socket.send(data);
-
-    // 7. Cleanup
-    socket.close();
-    ctx.term();
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    // 1. Create Context
-    using var ctx = new Context();
-
-    // 2–3. Create Socket with callback (raw STREAM example)
-    using var socket = new StreamSocket(ctx);
-    socket.RecvHandler((sourceRid, parts) => {
-        // process received message
-    });
-
-    // 4. Set socket options (before bind/connect)
-    socket.SetOption(Option.<OPTION>, value);
-
-    // 5. Establish connection (bind or connect)
-    socket.Bind("tcp://*:5555");
-    // or
-    socket.Connect("tcp://127.0.0.1:5555");
-
-    // 6. Send messages (receive is handled by callback)
-    socket.Send(data);
-    ```
-
-=== "Rust"
-
-    ```rust
-    // 1. Create Context
-    let ctx = zlink::Context::new()?;
-
-    // 2–3. Create Socket with callback (raw STREAM example)
-    let socket = ctx.stream_socket()?;
-    socket.recv_handler(|source_rid, parts| {
-        // process received message
-    })?;
-
-    // 4. Set socket options (before bind/connect)
-    socket.set_option(zlink::Option::<OPTION>, value)?;
-
-    // 5. Establish connection (bind or connect)
-    socket.bind("tcp://*:5555")?;
-    // or
-    socket.connect("tcp://127.0.0.1:5555")?;
-
-    // 6. Send messages (receive is handled by callback)
-    socket.send(data)?;
-
-    // 7. Cleanup
-    socket.close()?;
-    ctx.term()?;
-    ```
-
-=== "Go"
-
-    ```go
-    // 1. Create Context
-    ctx, err := zlink.NewContext()
-    if err != nil { panic(err) }
-
-    // 2–3. Create Socket with callback (raw STREAM example)
-    socket, err := ctx.StreamSocket()
-    if err != nil { panic(err) }
-    socket.RecvHandler(func(sourceRid zlink.RoutingID, parts []zlink.Message) {
-        // process received message
-    })
-
-    // 4. Set socket options (before bind/connect)
-    socket.SetOption(zlink.OptionOPTION, value)
-
-    // 5. Establish connection (bind or connect)
-    socket.Bind("tcp://*:5555")
-    // or
-    socket.Connect("tcp://127.0.0.1:5555")
-
-    // 6. Send messages (receive is handled by callback)
-    socket.Send(data)
-
-    // 7. Cleanup
-    socket.Close()
-    ctx.Close()
-    ```
+/* 7. Cleanup */
+zlink_close(socket);
+zlink_ctx_term(ctx);
+```
 
 > 다음 옵션은 핸드셰이크/연결 과정에서 사용되므로
 > `zlink_bind()`/`zlink_connect()` **이전에** 설정해야 한다:

@@ -10,7 +10,8 @@
 Router 소켓과 Dealer 소켓에 비동기 request-reply 기능을 추가한다.
 C API에 메시지 request-reply 필드(msg_type, correlation_id)를 추가하고,
 각 바인딩은 언어별 코루틴/async primitive를 활용하여 Router/Dealer 소켓의
-기능을 확장한다.
+기능을 확장한다. 여기서 request의 의미는 호출 스레드를 점유하는 blocking call이
+아니라, **언어별 async 실행 컨텍스트를 기다리게 하는 비동기 request**이다.
 
 ### 1.1 동기
 
@@ -25,12 +26,19 @@ C API에 메시지 request-reply 필드(msg_type, correlation_id)를 추가하�
   포함하지 않는다.
 - request-reply dispatch, pending map, timeout, cancellation은 바인딩 레이어에서
   언어별 코루틴/async primitive로 구현한다.
+- `request()` / `tryRequest()`는 thread blocking API가 아니다.
+  - Python/Node/.NET/Rust/C++에서는 현재 coroutine/task/future가 suspend 또는
+    pending 된다.
+  - Java는 `CompletableFuture`를 반환하여 caller의 async continuation이 그
+    결과를 기다리게 한다.
+  - Go는 goroutine + `context.Context` 모델로 caller goroutine이 결과를
+    기다리게 한다.
 - request-reply는 Router/Dealer 소켓의 **기능 확장**이다.
   별도 추상 레이어가 아니라 기존 소켓에 request-reply capability를 얹는 것이다.
-- blocking request는 제공하지 않는다. 코루틴 버전과 콜백 버전만 제공한다.
+- blocking request는 제공하지 않는다. async 버전과 콜백 버전만 제공한다.
   - blocking request는 reply 대기 중 스레드를 점유하여 deadlock 위험이 크다.
-  - 단순 동기 용도는 코루틴 버전을 동기적으로 실행하면 된다
-    (Java: `.get()`, Python: `asyncio.run()`, C++: `.get()`).
+  - 필요하면 caller가 각 언어의 동기 bridge를 선택할 수는 있지만, canonical
+    surface는 async/coroutine 쪽이다.
 
 ---
 
@@ -122,40 +130,39 @@ request-reply capability를 활성화하면 바인딩 내부에 **dispatch owner
 ```
 소켓 recv owner → [C API: envelope 파싱, msg_type 설정]
                 → [바인딩 dispatch owner]
-                      ├── REQUEST → onRequest handler
+                      ├── REQUEST → 기존 recv / 일반 수신 callback 경로
                       ├── REPLY   → pending map resolve / callback 호출
                       └── DATA    → 기존 recv / 일반 수신 callback 경로
 ```
 
-- dispatch owner는 `request()` 또는 `onRequest()` 최초 호출 시 자동 시작된다.
+- dispatch owner는 request-reply 수신/송신 표면이 처음 사용될 때 자동 시작된다.
+  - 예: `request()`, `recv()`, `tryRecv()`, `onReceive()`
 - dispatch owner가 활성화되면 **내부적으로 C API recv를 독점**한다.
   사용자의 `recv()` / `tryRecv()`는 dispatch owner가 분류한 DATA 큐에서
   읽는 형태로 전환된다. 즉 사용자 `recv()`는 더 이상 C API 직접 호출이 아니라
   dispatch owner가 채운 DATA 큐의 consumer가 된다.
 - dispatch owner는 `REPLY`만 내부에서 소비한다.
-- `DATA` 메시지는 기존 public receive surface로 그대로 전달된다.
-  - direct receive: 기존 `recv()` / `tryRecv()` — DATA 큐에서 읽음
+- `REQUEST`와 `DATA` 메시지는 기존 public receive surface로 그대로 전달된다.
+  - direct receive: 기존 `recv()` / `tryRecv()` — REQUEST/DATA 큐에서 읽음
   - callback receive: 기존 일반 수신 callback (`onReceive` 또는 언어별 동등 이름)
 
-DATA 수신 세부 규칙:
-- `tryRecv()`: DATA 큐가 비어 있으면 기존과 동일하게 empty/null/None 반환.
-- `recv()` (blocking): DATA 큐가 비어 있으면 DATA가 도착할 때까지 대기.
-- DATA 메시지의 도착 순서는 wire 순서를 유지한다.
+REQUEST/DATA 수신 세부 규칙:
+- `tryRecv()`: REQUEST/DATA 큐가 비어 있으면 기존과 동일하게 empty/null/None 반환.
+- `recv()` (blocking): REQUEST/DATA 큐가 비어 있으면 메시지가 도착할 때까지 대기.
+- REQUEST/DATA 메시지의 도착 순서는 wire 순서를 유지한다.
 - 소켓 close 시 dispatch owner가 종료되고 blocking `recv()`가 wakeup된다.
 - `onReceive` callback과 direct `recv()`는 기존 정책대로 상호 배타적이다.
-  `onRequest`와 `onReceive`는 서로 다른 message type을 처리하므로
-  동시 등록이 가능하다.
 
 #### Callback 실행 컨텍스트
 
-- `onRequest` handler, request callback, Future resolve는 모두
+- 일반 수신 callback과 request Future/Promise/Task resolve는 모두
   **바인딩이 보장하는 안전한 실행 컨텍스트**에서 실행된다.
   - Node: event loop thread
   - Python: asyncio event loop
   - Java: socket dispatcher thread 또는 소켓에 설정된 executor
   - .NET: 캡처된 SynchronizationContext 또는 thread pool
   - Go: goroutine (별도)
-  - C++: 코루틴 resume context
+  - C++: awaitable/future completion context
   - Rust: async runtime executor
 - callback 내에서 같은 소켓의 `reply()`, `send()` 등을 호출할 수는 있지만,
   callback context에서 blocking send를 가정하면 안 된다.
@@ -170,21 +177,24 @@ RouterSocket에 추가되는 request-reply capability.
 
 | Capability | RequestRouter |
 |---|---|
-| `request` (코루틴) | Y — async send + reply 대기 → Received |
+| `request` (async) | Y — async send + reply 대기 → Received |
 | `request` (콜백) | Y — async send + callback 으로 reply 전달 |
-| `tryRequest` (코루틴) | Y — non-blocking send + reply 대기 → Received |
+| `tryRequest` (async) | Y — non-blocking send + reply 대기 → Received |
 | `tryRequest` (콜백) | Y — non-blocking send + callback 으로 reply 전달 |
 | `reply` | Y — async send (writable 대기) |
 | `tryReply` | Y — non-blocking send → `SendResult` |
-| `onRequest` | Y — 수신 REQUEST callback |
 | 기존 Router 기능 | 그대로 유지 (send, recv, bind, connect 등) |
 
 #### API 상세
 
-**`request(routingId, message, [timeout])` → 코루틴 대기 → Received**
+**`request(routingId, message, [timeout])` → async 대기 → Received**
 
-- REQUEST를 전송하고 REPLY가 올 때까지 **코루틴을 suspend**한다.
+- REQUEST를 전송하고 REPLY가 올 때까지 **호출한 async 실행 컨텍스트를
+  기다리게 한다**.
 - 호출 스레드를 blocking하지 않는다.
+- Python/Node/.NET/Rust/C++에서는 coroutine/task/future가 suspend 또는 pending
+  되고, Java는 `CompletableFuture`가 완료될 때까지 continuation이 보류되며,
+  Go는 caller goroutine이 `context` 경계 안에서 결과를 기다린다.
 - 내부 동작은 4.4 Request 내부 구현을 따른다.
 
 ```typescript
@@ -197,20 +207,21 @@ const reply = await router.request(routingId, msg, { timeout: 5000 });
 reply = await router.request(routing_id, msg, timeout=5.0)
 ```
 
-```cpp
-// C++
-auto reply = co_await router.request(routing_id, msg, 5000ms);
+```java
+// Java — async result surface
+CompletableFuture<Received> replyFuture =
+    router.request(routingId, msg, Duration.ofSeconds(5));
 ```
 
-```java
-// Java — CompletableFuture 반환, .join()으로 동기 대기 가능
-Received reply = router.request(routingId, msg, Duration.ofSeconds(5)).join();
+```kotlin
+// Kotlin coroutine — await()로 현재 coroutine만 대기
+val reply = router.request(routingId, msg, 5.seconds.toJavaDuration()).await()
 ```
 
 **`request(routingId, message, callback, [timeout])` → 즉시 반환**
 
 - REQUEST를 전송하고 **즉시 반환**한다. REPLY가 오면 callback을 호출한다.
-- 코루틴 컨텍스트가 아닌 환경에서 사용한다.
+- async/coroutine surface를 직접 쓰지 않는 환경에서 사용한다.
 - 내부 동작은 4.4 Request 내부 구현을 따른다. Future 대신 callback을 등록한다.
 
 ```typescript
@@ -238,18 +249,19 @@ router.request(routing_id, msg, on_reply, on_error, timeout=5.0)
   backpressure 처리를 사용한다.
 - backpressure 시 writable 될 때까지 비동기 대기한다. 예외를 던지지 않는다.
 - send 실패(EAGAIN 외 오류) 시 `ZlinkError(errno)` 예외를 던진다.
-- callback 내에서 `reply()`를 호출하면 코루틴 suspend가 발생할 수 있다.
+- callback 내에서 `reply()`를 호출하면 현재 async 실행 컨텍스트의 대기가
+  발생할 수 있다.
   이것은 기존 callback 내 `send()` 호출과 동일한 주의사항이다.
-  callback이 suspend되는 동안 dispatch loop이 멈출 수 있으므로,
+  callback 처리 경로가 대기 상태에 들어가면 dispatch loop이 멈출 수 있으므로,
   고처리량 환경에서는 callback 내에서 reply를 직접 호출하는 대신
-  별도 코루틴/태스크로 분리하는 것을 권장한다.
+  별도 coroutine/task로 분리하는 것을 권장한다.
 
-**`tryRequest(routingId, message, [timeout])` → 코루틴 대기 → Received**
+**`tryRequest(routingId, message, [timeout])` → async 대기 → Received**
 
 - `request()`와 동일하지만 send 단계에서 **non-blocking send (trySend)**를
   사용한다. backpressure 시 writable 대기 없이 즉시 `ZlinkError(EAGAIN)`로
   실패한다.
-- send 성공 후 reply 대기는 `request()`와 동일하게 코루틴 suspend.
+- send 성공 후 reply 대기는 `request()`와 동일하게 async 컨텍스트 대기.
 - backpressure를 caller가 직접 제어하고 싶을 때 사용한다.
 
 **`tryRequest(routingId, message, callback, [timeout])` → 즉시 반환**
@@ -263,16 +275,6 @@ router.request(routing_id, msg, on_reply, on_error, timeout=5.0)
 - callback 내에서 dispatch loop을 멈추지 않고 즉시 반환해야 할 때 사용한다.
 - 기존 `trySend()`와 동일한 반환 규칙: `Sent` / `Backpressured` / `NotReady`.
   EAGAIN 외 오류만 예외.
-
-**`onRequest(handler)`**
-
-- 수신 REQUEST에 대한 callback을 등록한다.
-- handler는 `(routingId, correlationId, received)` 를 별도 파라미터로 받는다.
-- handler 내부에서 `reply()` 또는 `tryReply()`를 호출하여 응답한다.
-  - `reply()`: backpressure 시 코루틴 suspend. 안전하지만 dispatch loop 정지 가능.
-  - `tryReply()`: 즉시 반환. dispatch loop을 멈추지 않지만 `Backpressured` 처리 필요.
-- 두 번째 `onRequest()` 호출은 이전 handler를 **교체**한다. 체이닝하지 않는다.
-- Callback API Policy를 따른다: callback 해제는 소켓 close로만 한다.
 
 ### 4.4 Request 내부 구현
 
@@ -290,10 +292,10 @@ request() 내부 흐름:
   3. pending map에 correlation_id → Future/Promise/callback 등록
   4. timeout timer 시작 (전체 경과 시간 기준)
   5. async send (fd writable 대기 → trySend)
-     - writable 될 때까지 코루틴 suspend (스레드 blocking 아님)
+     - writable 될 때까지 async 컨텍스트 대기 (스레드 blocking 아님)
      - timeout 초과 시: pending map 제거 → ZlinkError(ETIMEDOUT)
      - send 실패 (EAGAIN 외 오류): pending map 제거 → ZlinkError(errno)
-  6. reply 대기 (코루틴 suspend)
+  6. reply 대기 (async 컨텍스트 대기)
      - timeout 초과 시: pending map 제거 → ZlinkError(ETIMEDOUT)
      - 취소 시: pending map 제거 → ZlinkError(ECANCELED)
      - reply 수신 시: pending map 제거 → Received 반환
@@ -338,7 +340,7 @@ pending map 등록을 send 전에 수행하는 이유:
 | | `send()` | `request()` |
 |---|---|---|
 | backpressure | writable 될 때까지 대기 | writable 될 때까지 비동기 대기 |
-| 대기 방식 | 스레드 blocking | 코루틴 suspend (스레드 blocking 아님) |
+| 대기 방식 | 스레드 blocking | async 컨텍스트 대기 (스레드 blocking 아님) |
 | timeout | send timeout 옵션 | request timeout (전체 경과 시간) |
 | 실패 | 예외 | 예외 (ZlinkError + errno) |
 
@@ -390,23 +392,23 @@ request-reply 경로의 backpressure는 두 지점에서 발생할 수 있다.
 |------|-----------|-------------|
 | 발생 조건 | send HWM 도달 | 동일 |
 | 처리 | writable 대기 후 자동 전송 | 즉시 `SendResult::Backpressured` 반환 |
-| caller 영향 | 코루틴 suspend | 즉시 반환, caller가 처리 |
+| caller 영향 | async 컨텍스트 대기 | 즉시 반환, caller가 처리 |
 
 - `reply()`: backpressure를 내부에서 writable 대기로 처리한다.
-  callback 내에서 호출 시 코루틴 suspend가 발생할 수 있다.
+  callback 내에서 호출 시 async 컨텍스트 대기가 발생할 수 있다.
   이것은 기존 callback 내 `send()` 호출과 동일한 주의사항이다.
 - `tryReply()`: backpressure를 `SendResult`로 즉시 반환한다.
   callback 내에서 dispatch loop을 멈추지 않아야 할 때 사용한다.
   기존 `trySend()`와 동일한 동작.
 - 고처리량 환경의 callback 내에서는 `tryReply()`를 사용하거나,
-  `reply()`를 별도 코루틴/태스크로 분리하는 것을 권장한다.
+  `reply()`를 별도 coroutine/task로 분리하는 것을 권장한다.
 - reply 전송이 지연되더라도 요청 측의 timeout은 독립적으로 동작한다.
   reply가 timeout 전에 도착하지 않으면 요청 측에서 `ETIMEDOUT`으로 처리된다.
 
 #### 메시지 Dispatch 규칙
 
 수신 메시지의 `msg_type`에 따라 내부에서 분기한다:
-- `REQUEST` → `onRequest` handler로 전달
+- `REQUEST` → 기존 `recv()` / 일반 수신 callback 경로로 전달
 - `REPLY` → pending map에서 correlation_id로 매칭하여 resolve (또는 callback 호출)
 - `DATA` → 기존 `recv()` / 일반 수신 callback 경로로 전달
 
@@ -418,17 +420,18 @@ DealerSocket에 추가되는 request-only capability.
 
 | Capability | RequestDealer |
 |---|---|
-| `request` (코루틴) | Y — async send + reply 대기 → Received |
+| `request` (async) | Y — async send + reply 대기 → Received |
 | `request` (콜백) | Y — async send + callback 으로 reply 전달 |
-| `tryRequest` (코루틴) | Y — non-blocking send + reply 대기 → Received |
+| `tryRequest` (async) | Y — non-blocking send + reply 대기 → Received |
 | `tryRequest` (콜백) | Y — non-blocking send + callback 으로 reply 전달 |
 | 기존 Dealer 기능 | 그대로 유지 (send, recv, bind, connect 등) |
 
 #### API 상세
 
-**`request(message, [timeout])` → 코루틴 대기 → Received**
+**`request(message, [timeout])` → async 대기 → Received**
 
-- REQUEST를 전송하고 REPLY가 올 때까지 코루틴을 suspend한다.
+- REQUEST를 전송하고 REPLY가 올 때까지 호출한 async 실행 컨텍스트를
+  기다리게 한다.
 - 내부 동작은 4.4 Request 내부 구현을 따른다.
 - routing_id 파라미터가 없다. Dealer는 peer를 지정할 수 없다.
 
@@ -437,7 +440,7 @@ DealerSocket에 추가되는 request-only capability.
 - 콜백 버전. 내부 동작은 4.4 Request 내부 구현을 따른다.
   Future 대신 callback을 등록한다.
 
-**`tryRequest(message, [timeout])` → 코루틴 대기 → Received**
+**`tryRequest(message, [timeout])` → async 대기 → Received**
 
 - send 단계에서 non-blocking send. backpressure 시 즉시 `ZlinkError(EAGAIN)`.
 - reply 대기는 `request()`와 동일.
@@ -472,13 +475,15 @@ DealerSocket에 추가되는 request-only capability.
 - `Received`에 `routingId`가 포함되므로 Router-Router 시나리오에서
   응답자 식별도 가능하다.
 
-### 5.2 onRequest handler 파라미터
+### 5.2 REQUEST 식별
 
-- handler는 `(routingId, correlationId, received)` 별도 파라미터를 받는다.
-  별도 `Request` 타입은 만들지 않는다.
-- `routingId`: 요청자의 routing ID (Router에서만)
-- `correlationId`: reply 시 사용할 correlation ID (uint64)
-- `received`: 기존 `Received` domain object (payload parts)
+- 별도 `Request` 타입이나 `onRequest` 전용 callback은 만들지 않는다.
+- Router 쪽 사용자는 기존 `Received` / message surface에서 request 여부를 구분한다.
+- 구분 기준:
+  - `Received`의 첫 part에서 `getRequestInfo()` 또는 언어별 동등 API 호출
+  - `msg_type == REQUEST`이면 request message
+  - 같은 API에서 `correlation_id`를 읽어 `reply()` / `tryReply()`에 전달
+- 요청자의 `routingId`는 기존 `Received.routingId`에서 읽는다.
 
 ### 5.3 예외 처리
 
@@ -508,15 +513,16 @@ request-reply 실패는 별도 `RequestError` 타입을 도입하지 않는다.
 
 상세 정책은 `bindings/README.md` 의 Request-Reply Error Policy 를 따른다.
 
-#### 코루틴 버전 예외 전달
+#### Async 버전 예외 전달
 
-코루틴 버전에서 send 실패는 동기적으로 예외를 던지지 않는다.
-즉시 실패한 Future/Promise 를 반환하여 모든 실패가 Future 경로를 통한다.
+async 버전에서 send 실패는 동기적으로 예외를 던지지 않는다.
+즉시 실패한 Future/Promise 를 반환하거나 async 함수 내부에서 예외를 발생시켜,
+모든 실패가 async completion 경로를 통한다.
 - Java: `CompletableFuture.failedFuture(new ZlinkException(errno))`
 - .NET: `Task.FromException<Received>(new ZlinkException(errno))`
 - Node: `Promise.reject(new ZlinkError(errno))`
-- Python: 코루틴 내부에서 `raise ZlinkError(errno)`
-- C++: `Task<Received>` 가 예외와 함께 즉시 resolve
+- Python: async coroutine 내부에서 `raise ZlinkError(errno)`
+- C++: awaitable/future가 예외와 함께 즉시 완료
 - Rust: `Err(ZlinkError{code: errno})` 를 포함한 즉시 완료 Future
 - Go: `(Received{}, ZlinkError{Code: errno})` 즉시 반환
 
@@ -571,14 +577,14 @@ request-reply 실패는 별도 `RequestError` 타입을 도입하지 않는다.
 
 - timeout 초과 시:
   1. pending map에서 해당 correlation_id 항목 제거
-  2. 코루틴 버전: `ZlinkError(ETIMEDOUT)` 예외/오류 반환
+  2. async 버전: `ZlinkError(ETIMEDOUT)` 예외/오류 반환
   3. 콜백 버전: callback에 `ZlinkError(ETIMEDOUT)` 전달
 
 ---
 
 ## 8. 언어별 인터페이스
 
-### 8.1 C++ (C++20 coroutines)
+### 8.1 C++ (`async_result_t`, C++20에서 `co_await` 가능)
 
 ```cpp
 class RouterSocket {
@@ -588,10 +594,10 @@ class RouterSocket {
     void set_default_request_timeout(std::chrono::milliseconds timeout);
     std::chrono::milliseconds get_default_request_timeout() const;
 
-    // 코루틴 — co_await로 reply 대기
-    Task<Received> request(const RoutingId& routing_id, Message msg);
-    Task<Received> request(const RoutingId& routing_id, Message msg,
-                        std::chrono::milliseconds timeout);
+    // async result — C++20 coroutine에서는 co_await 가능
+    async_result_t<Received> request(const RoutingId& routing_id, Message msg);
+    async_result_t<Received> request(const RoutingId& routing_id, Message msg,
+                                     std::chrono::milliseconds timeout);
 
     // 콜백 — 즉시 반환
     void request(const RoutingId& routing_id, Message msg,
@@ -603,9 +609,9 @@ class RouterSocket {
                  std::chrono::milliseconds timeout);
 
     // tryRequest — non-blocking send + reply 대기
-    Task<Received> try_request(const RoutingId& routing_id, Message msg);
-    Task<Received> try_request(const RoutingId& routing_id, Message msg,
-                               std::chrono::milliseconds timeout);
+    async_result_t<Received> try_request(const RoutingId& routing_id, Message msg);
+    async_result_t<Received> try_request(const RoutingId& routing_id, Message msg,
+                                         std::chrono::milliseconds timeout);
     void try_request(const RoutingId& routing_id, Message msg,
                      std::function<void(Received)> on_reply,
                      std::function<void(ZlinkError)> on_error);
@@ -622,8 +628,6 @@ class RouterSocket {
     SendResult try_reply(const RoutingId& routing_id, uint64_t correlation_id,
                          Message msg);
 
-    // 수신 request callback
-    void on_request(std::function<void(RoutingId, uint64_t, Received)> handler);
 };
 
 class DealerSocket {
@@ -632,8 +636,8 @@ class DealerSocket {
     void set_default_request_timeout(std::chrono::milliseconds timeout);
     std::chrono::milliseconds get_default_request_timeout() const;
 
-    Task<Received> request(Message msg);
-    Task<Received> request(Message msg, std::chrono::milliseconds timeout);
+    async_result_t<Received> request(Message msg);
+    async_result_t<Received> request(Message msg, std::chrono::milliseconds timeout);
     void request(Message msg,
                  std::function<void(Received)> on_reply,
                  std::function<void(ZlinkError)> on_error);
@@ -642,8 +646,8 @@ class DealerSocket {
                  std::function<void(ZlinkError)> on_error,
                  std::chrono::milliseconds timeout);
 
-    Task<Received> try_request(Message msg);
-    Task<Received> try_request(Message msg, std::chrono::milliseconds timeout);
+    async_result_t<Received> try_request(Message msg);
+    async_result_t<Received> try_request(Message msg, std::chrono::milliseconds timeout);
     void try_request(Message msg,
                      std::function<void(Received)> on_reply,
                      std::function<void(ZlinkError)> on_error);
@@ -655,15 +659,24 @@ class DealerSocket {
 ```
 
 ```cpp
-// 사용 예
+// 사용 예 (C++20 coroutine)
 auto reply = co_await router.request(routing_id, msg, 5000ms);
 
-router.on_request([&](RoutingId id, uint64_t corr_id, Received req) {
-    router.reply(id, corr_id, Message::from("ok"));
+router.on_receive([&](Received req) {
+    uint8_t msg_type = 0;
+    uint64_t corr_id = 0;
+    req.parts[0].get_request_info(&msg_type, &corr_id);
+    if (msg_type == 1) {
+        router.reply(req.routing_id, corr_id, Message::from("ok"));
+    }
 });
 ```
 
-### 8.2 Java (Kotlin 호환)
+- C++ 바인딩의 canonical async 표면은 `async_result_t<Received>` 이다.
+- C++20 coroutine context에서는 `co_await`로 현재 coroutine만 대기한다.
+- 일반 thread context에서는 `.get()` / `.wait()`를 caller가 명시적으로 선택할 수 있다.
+
+### 8.2 Java (CompletableFuture / Kotlin coroutine bridge)
 
 Java API는 `CompletableFuture`를 반환하여 Kotlin에서 `.await()` 확장 함수로
 자연스럽게 사용할 수 있도록 설계한다.
@@ -676,7 +689,7 @@ public class RouterSocket {
     void setDefaultRequestTimeout(Duration timeout);
     Duration getDefaultRequestTimeout();
 
-    // 코루틴 대기 — CompletableFuture 반환
+    // async result — CompletableFuture 반환
     // Kotlin: router.request(routingId, msg).await()
     CompletableFuture<Received> request(RoutingId routingId, Message message);
     CompletableFuture<Received> request(RoutingId routingId, Message message,
@@ -703,13 +716,6 @@ public class RouterSocket {
     // tryReply — non-blocking send
     SendResult tryReply(RoutingId routingId, long correlationId, Message message);
 
-    // 수신 request callback
-    void onRequest(RequestHandler handler);
-}
-
-@FunctionalInterface
-public interface RequestHandler {
-    void handle(RoutingId routingId, long correlationId, Received received);
 }
 
 public class DealerSocket {
@@ -734,17 +740,21 @@ public class DealerSocket {
 
 ```java
 // Java 사용 예
-Received reply = router.request(routingId, msg, Duration.ofSeconds(5)).join();
+CompletableFuture<Received> replyFuture =
+    router.request(routingId, msg, Duration.ofSeconds(5));
 
-router.onRequest((id, corrId, req) -> {
-    router.reply(id, corrId, Message.from("ok"));
+router.onReceive(req -> {
+    long[] info = req.firstPart().getRequestInfo();
+    if (info[0] == Message.MSG_TYPE_REQUEST) {
+        router.reply(req.routingId(), info[1], Message.from("ok"));
+    }
 });
 ```
 
 ```kotlin
 // Kotlin 사용 예 — coroutine scope에서 자연스럽게 사용
 
-// 코루틴 — CompletableFuture.await()으로 suspend
+// coroutine — CompletableFuture.await()으로 현재 coroutine만 대기
 suspend fun handleRequest() {
     val reply = router.request(routingId, msg, 5.seconds.toJavaDuration()).await()
     println("reply: ${reply.parts[0]}")
@@ -759,9 +769,12 @@ router.request(routingId, msg, { received, error ->
     }
 }, Duration.ofSeconds(5))
 
-// 수신 request handler
-router.onRequest { id, corrId, req ->
-    router.reply(id, corrId, Message.from("ok"))
+// REQUEST는 일반 수신 surface에서 구분
+router.onReceive { req ->
+    val info = req.firstPart().requestInfo
+    if (info[0] == Message.MSG_TYPE_REQUEST) {
+        router.reply(req.routingId(), info[1], Message.from("ok"))
+    }
 }
 
 // default timeout 설정
@@ -825,7 +838,6 @@ public class RouterSocket {
     void Reply(RoutingId routingId, ulong correlationId, Message message);
     SendResult TryReply(RoutingId routingId, ulong correlationId, Message message);
 
-    void OnRequest(Action<RoutingId, ulong, Received> handler);
 }
 
 public class DealerSocket {
@@ -860,15 +872,17 @@ public class DealerSocket {
 var reply = await router.RequestAsync(routingId, msg,
                                       TimeSpan.FromSeconds(5));
 
-router.OnRequest((id, corrId, req) => {
-    router.Reply(id, corrId, Message.From("ok"));
+router.OnReceive((routingId, parts) => {
+    var info = parts[0].GetRequestInfo();
+    if (info.MsgType == 1)
+        router.Reply(new RoutingId(routingId), info.CorrelationId, Message.From("ok"));
 });
 ```
 
 - .NET은 `CancellationToken`으로 취소를 지원한다.
 - timeout과 cancellation이 모두 적용되며, 먼저 발생한 쪽이 우선한다.
 
-### 8.4 Node / TypeScript (async/await)
+### 8.4 Node / TypeScript (Promise / async-await)
 
 ```typescript
 class RouterSocket {
@@ -877,7 +891,7 @@ class RouterSocket {
     setDefaultRequestTimeout(ms: number): void;
     getDefaultRequestTimeout(): number;
 
-    // 코루틴 — await로 reply 대기
+    // Promise — await로 현재 async flow만 대기
     request(routingId: RoutingId, message: Message): Promise<Received>;
     request(routingId: RoutingId, message: Message,
             options: { timeout?: number }): Promise<Received>;
@@ -902,8 +916,6 @@ class RouterSocket {
     reply(routingId: RoutingId, correlationId: bigint, message: Message): void;
     tryReply(routingId: RoutingId, correlationId: bigint, message: Message): SendResult;
 
-    onRequest(handler: (routingId: RoutingId, correlationId: bigint,
-                        received: Received) => void): void;
 }
 
 class DealerSocket {
@@ -934,8 +946,11 @@ class DealerSocket {
 // 사용 예
 const reply = await router.request(routingId, msg, { timeout: 5000 });
 
-router.onRequest((routingId, correlationId, received) => {
-    router.reply(routingId, correlationId, Buffer.from("ok"));
+router.onReceive((routingId, parts) => {
+    const info = parts[0].getRequestInfo();
+    if (info.msgType === 1) {
+        router.reply(routingId, info.correlationId, Buffer.from("ok"));
+    }
 });
 ```
 
@@ -952,7 +967,7 @@ class AsyncRouterSocket:
     def set_default_request_timeout(self, timeout: float) -> None: ...
     def get_default_request_timeout(self) -> float: ...
 
-    # 코루틴 — await로 reply 대기
+    # coroutine — await로 현재 task만 대기
     async def request(self, routing_id: RoutingId, message: Message,
                       *, timeout: float | None = None) -> Received: ...
 
@@ -980,11 +995,6 @@ class AsyncRouterSocket:
 
     def try_reply(self, routing_id: RoutingId, correlation_id: int,
                   message: Message) -> SendResult: ...
-
-    def on_request(self, handler: Callable[
-        [RoutingId, int, Received], None
-    ]) -> None: ...
-
 
 class AsyncDealerSocket:
     # ... 기존 API ...
@@ -1017,10 +1027,12 @@ class AsyncDealerSocket:
 # 사용 예
 reply = await router.request(routing_id, msg, timeout=5.0)
 
-def handle_request(routing_id, correlation_id, received):
-    router.reply(routing_id, correlation_id, b"ok")
+def handle_receive(received):
+    msg_type, correlation_id = received.parts[0].get_request_info()
+    if msg_type == zlink.MSG_TYPE_REQUEST:
+        router.reply(received.routing_id, correlation_id, b"ok")
 
-router.on_request(handle_request)
+router.on_receive(handle_receive)
 ```
 
 - timeout 단위는 seconds (float, Python 관례).
@@ -1030,8 +1042,9 @@ router.on_request(handle_request)
 
 ### 8.6 Go (context)
 
-Go는 코루틴 대신 goroutine + `context.Context`로 timeout/cancellation을
-처리한다. goroutine은 경량이므로 goroutine을 block하는 것이 idiomatic하다.
+Go는 goroutine + `context.Context`로 timeout/cancellation을 처리한다.
+여기서 request는 OS thread를 점유하는 blocking call이 아니라, caller goroutine이
+`context` 경계 안에서 결과를 기다리는 함수로 본다.
 
 ```go
 type RouterSocket struct {
@@ -1041,7 +1054,7 @@ type RouterSocket struct {
 func (s *RouterSocket) SetDefaultRequestTimeout(d time.Duration)
 func (s *RouterSocket) GetDefaultRequestTimeout() time.Duration
 
-// context로 timeout/cancellation — goroutine을 block
+// context로 timeout/cancellation — caller goroutine이 결과를 기다림
 func (s *RouterSocket) Request(ctx context.Context,
     routingId RoutingId, msg Message) (Received, error)
 
@@ -1059,10 +1072,6 @@ func (s *RouterSocket) Reply(routingId RoutingId,
     correlationId uint64, msg Message) error
 func (s *RouterSocket) TryReply(routingId RoutingId,
     correlationId uint64, msg Message) (SendResult, error)
-
-func (s *RouterSocket) OnRequest(
-    handler func(RoutingId, uint64, Received))
-
 
 type DealerSocket struct {
     // ... 기존 API ...
@@ -1088,13 +1097,17 @@ ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
 reply, err := router.Request(ctx, routingId, msg)
 
-router.OnRequest(func(id RoutingId, corrId uint64, req Received) {
-    router.Reply(id, corrId, NewMessage([]byte("ok")))
+router.OnReceive(func(req Received) {
+    msgType, corrId, _ := req.SinglePartOrError().RequestInfo()
+    if msgType == uint8(zlink.MsgTypeRequest) {
+        router.Reply(req.RoutingID(), corrId, NewMessage([]byte("ok")))
+    }
 })
 ```
 
 - Go는 `context.Context`가 timeout/cancellation의 표준이다.
-- `Request`는 goroutine을 block하지만 OS 스레드를 block하지 않는다.
+- `Request`는 caller goroutine을 기다리게 하지만 OS 스레드를 점유하는
+  blocking API로 보지 않는다.
 - `RequestAsync`는 콜백 패턴이 필요한 경우에 사용한다.
 
 ### 8.7 Rust (async/await)
@@ -1137,8 +1150,6 @@ impl RouterSocket {
     fn try_reply(&self, routing_id: &RoutingId, correlation_id: u64,
                  msg: Message) -> SendResult;
 
-    fn on_request(&self,
-        handler: impl Fn(RoutingId, u64, Received) + Send + Sync + 'static);
 }
 
 impl DealerSocket {
@@ -1175,8 +1186,11 @@ let reply = router.request_with_timeout(
     &routing_id, msg, Duration::from_secs(5)
 ).await?;
 
-router.on_request(|id, corr_id, req| {
-    router.reply(&id, corr_id, Message::from(b"ok")).unwrap();
+router.on_receive(|req| {
+    let (msg_type, corr_id) = req.parts()[0].request_info().unwrap();
+    if msg_type == 1 {
+        router.reply(req.routing_id(), corr_id, Message::from(b"ok")).unwrap();
+    }
 });
 ```
 
@@ -1201,12 +1215,12 @@ router.on_request(|id, corr_id, req| {
         else:
           discard  // timeout, 취소, 또는 중복/stray reply — 무시
       case REQUEST:
-        deliver to onRequest handler
+        deliver to recv/onReceive surface
       case DATA:
         기존 recv 경로로 전달
 ```
 
-DATA 메시지는 request-reply 수신 루프가 소비하지 않는다.
+REQUEST/DATA 메시지는 request-reply 수신 루프가 소비하지 않는다.
 기존 recv 경로(direct recv, onReceive callback)로 그대로 전달된다.
 
 ---
@@ -1227,16 +1241,19 @@ DATA 메시지는 request-reply 수신 루프가 소비하지 않는다.
 - `reply()` 호출 시 동일.
 - 수신한 `Received`의 ownership은 기존 recv 계약을 따른다.
   바인딩이 받아서 해제 책임.
-- `onRequest` callback으로 전달된 `Received`의 parts는 callback 반환 후에도
-  유효하다 (기존 `onReceive` callback payload lifetime과 동일).
+- 일반 수신 callback으로 전달된 `Received`의 parts lifetime은 각 바인딩의
+  기존 `onReceive` 계약을 따른다.
+- 기본 규칙:
+  - callback 실행 중에는 유효하다.
+  - callback 반환 후에도 보존이 필요하면 바인딩이 제공하는 clone/copy 경로로
+    caller가 명시적으로 복제해야 한다.
 
 ### 9.3 잘못된 routingId로 reply 전송
 
 - `reply(routingId, correlationId, msg)`에서 routingId가 원래 요청자와 다른
   경우, reply가 엉뚱한 peer에 전달된다. 원래 요청자는 timeout으로 실패한다.
 - 바인딩은 routingId의 정확성을 검증하지 않는다. 사용자 책임이다.
-- 안전한 패턴: `onRequest` handler에서 받은 `routingId`를 그대로
-  `reply()`에 전달한다.
+- 안전한 패턴: 수신한 `Received.routingId`를 그대로 `reply()`에 전달한다.
 
 ---
 
@@ -1259,7 +1276,8 @@ DATA 메시지는 request-reply 수신 루프가 소비하지 않는다.
 
 - `request()`: backpressure를 내부에서 writable 대기로 처리한다.
 - `tryRequest()`: backpressure를 즉시 `EAGAIN`으로 반환한다.
-- 코루틴 버전은 실패한 Future/예외, 콜백 버전은 error callback 으로 전달한다.
+- async 버전은 실패한 Future/Promise/Task/예외, 콜백 버전은 error callback 으로
+  전달한다.
 
 ### 10.2 reply 오류
 
@@ -1293,7 +1311,6 @@ bindings/README.md Naming Policy를 따른다. canonical 이름:
 |---|---|---|
 | Router | `request` / `tryRequest` | async send / non-blocking send + reply 대기 |
 | Router | `reply` / `tryReply` | async send / non-blocking send |
-| Router | `onRequest` | 수신 request callback |
 | Router, Dealer | `setDefaultRequestTimeout` | 기본 request timeout 설정 |
 | Router, Dealer | `getDefaultRequestTimeout` | 기본 request timeout 조회 |
 | Dealer | `request` / `tryRequest` | async send / non-blocking send + reply 대기 |
@@ -1302,13 +1319,13 @@ bindings/README.md Naming Policy를 따른다. canonical 이름:
 동일하다. `try*` 접두사는 non-blocking send를 의미한다.
 
 언어별 케이싱 변형:
-- Python: `request`, `try_request`, `reply`, `try_reply`, `on_request`,
+- Python: `request`, `try_request`, `reply`, `try_reply`,
   `set_default_request_timeout`, `get_default_request_timeout`.
   콜백 버전은 `request_with_callback`, `try_request_with_callback`.
-- Go: `Request`, `TryRequest`, `Reply`, `TryReply`, `OnRequest`,
+- Go: `Request`, `TryRequest`, `Reply`, `TryReply`,
   `SetDefaultRequestTimeout`, `GetDefaultRequestTimeout`.
   콜백 버전은 `RequestAsync`, `TryRequestAsync`.
-- Rust: `request`, `try_request`, `reply`, `try_reply`, `on_request`,
+- Rust: `request`, `try_request`, `reply`, `try_reply`,
   `set_default_request_timeout`, `get_default_request_timeout`.
   timeout 변형은 `request_with_timeout`, `try_request_with_timeout`.
 - 그 외: camelCase 동일 (`tryRequest`, `tryReply`)
@@ -1328,13 +1345,13 @@ bindings/README.md Naming Policy를 따른다. canonical 이름:
 - request-reply 상태가 소켓 lifecycle에 귀속되는지 확인
 
 ### Behavior Tests
-- Dealer → Router: request(코루틴) → reply round-trip 성공
+- Dealer → Router: request(async) → reply round-trip 성공
 - Dealer → Router: request(콜백) → reply round-trip 성공
 - Router → Router: request → reply round-trip 성공
-- request timeout 동작 확인 (코루틴 버전)
+- request timeout 동작 확인 (async 버전)
 - request timeout 동작 확인 (콜백 버전)
 - 다수 concurrent request의 correlation_id 매칭 정확성
-- onRequest callback 호출 확인
+- REQUEST가 기존 recv/callback surface로 전달되는지 확인
 - DATA 메시지가 기존 recv 경로로 정상 전달되는지 확인
 
 ### Ownership Tests
@@ -1346,7 +1363,7 @@ bindings/README.md Naming Policy를 따른다. canonical 이름:
 - backpressure 시 writable 대기 후 자동 전송 확인 (EAGAIN이 caller에 노출되지 않음)
 - send 대기 중 timeout 초과 시 `ZlinkError(ETIMEDOUT)` 확인
 - send 오류 (EAGAIN 외) 시 pending map에서 제거됨 확인
-- send 오류 시 코루틴 버전과 콜백 버전 모두 동일한 오류 종류 확인
+- send 오류 시 async 버전과 콜백 버전 모두 동일한 오류 종류 확인
 
 ### Regression Tests
 
@@ -1360,8 +1377,8 @@ bindings/README.md Naming Policy를 따른다. canonical 이름:
 - request 도중 peer disconnect → reconnect 후 새 request가 정상 동작 확인
 - correlation_id counter가 소켓 재사용 시 이전 pending과 충돌하지 않는지 확인
 - DATA/REQUEST/REPLY 메시지가 혼재된 상황에서 dispatch가 정확한지 확인
-  (DATA는 recv 경로, REQUEST는 onRequest, REPLY는 pending map)
-- onRequest handler 내에서 reply를 보내지 않은 경우 request 측에서
+  (REQUEST/DATA는 recv 경로, REPLY는 pending map)
+- 일반 수신 callback/recv에서 REQUEST를 읽었지만 reply를 보내지 않은 경우 request 측에서
   timeout으로 정상 실패하는지 확인
 - 콜백 버전에서 callback 내 예외가 소켓 상태를 오염시키지 않는지 확인
 - default timeout 변경 후 기존 pending request에 영향 없이
@@ -1378,7 +1395,7 @@ bindings/README.md Naming Policy를 따른다. canonical 이름:
 > 시나리오만 다룬다.
 
 - dispatch owner가 recv한 메시지에서 `get_request_info`로 추출한
-  msg_type/correlation_id가 pending map lookup/onRequest 분기에 정확히
+  msg_type/correlation_id가 pending map lookup/recv 분기에 정확히
   사용되는지 확인 (envelope strip 후 dispatch 로직에 값이 전달되어야 함)
 - dispatch 활성 상태에서 DATA 메시지의 payload가 envelope 검사에 의해
   변형되지 않는지 확인 (DATA payload를 envelope로 오인하면 안 됨)
@@ -1388,9 +1405,9 @@ bindings/README.md Naming Policy를 따른다. canonical 이름:
 - REPLY 메시지에 per-message metadata가 동시에 설정된 경우,
   pending map에서 correlation_id로 정확히 매칭되고 metadata도
   resolve된 결과에 포함되는지 확인
-- onRequest handler에 전달된 메시지에서 사용자가 `getMetadata`로
+- 일반 수신 callback에 전달된 메시지에서 사용자가 `getMetadata`로
   metadata를 읽을 수 있는지 확인 (dispatch가 metadata를 소비하지 않아야 함)
-- multipart REQUEST + metadata → dispatch → onRequest handler에
+- multipart REQUEST + metadata → dispatch → 일반 수신 callback에
   part count가 보존되고 metadata도 접근 가능한지 확인
 - correlation_id가 0인 REQUEST 메시지가 정상 dispatch되는지 확인
   (0은 DATA의 기본값이지만 msg_type이 REQUEST이면 유효한 request)
@@ -1410,7 +1427,7 @@ request-reply 활성화 시 수신 경로에 dispatch overhead가 추가된다.
 |------|----------------|--------------|----------|
 | DATA recv | C API → 사용자 | C API → envelope 검사 → dispatch → DATA 큐 → 사용자 | envelope 검사 + 큐 hop |
 | REPLY recv | — | C API → envelope 파싱 → dispatch → pending map lookup | envelope 파싱 + map lookup |
-| REQUEST recv | — | C API → envelope 파싱 → dispatch → onRequest | envelope 파싱 + callback |
+| REQUEST recv | — | C API → envelope 파싱 → dispatch → recv/onReceive | envelope 파싱 + callback/큐 hop |
 | send (DATA) | 변경 없음 | 변경 없음 | 0 |
 | request() send | — | async send + pending map insert + timer 등록 | writable 대기 + map insert + timer |
 | tryRequest() send | — | trySend + pending map insert + timer 등록 | map insert + timer (writable 대기 없음) |
@@ -1479,14 +1496,14 @@ pending map은 request/reply hot path에서 접근되므로 경합을 최소화�
 ### 13.5 객체 할당 비용
 
 매 request마다 할당되는 객체:
-- Future/Promise/CompletableFuture (1개)
+- Future/Promise/Task/CompletableFuture (1개)
 - pending map entry (1개)
 - timer 또는 timer wheel slot (1개)
 
 고처리량 시나리오에서 GC 압력이 될 수 있다. 바인딩은 다음을 고려한다:
 - Java: `CompletableFuture`는 경량이므로 일반적으로 허용 가능
 - .NET: `ValueTask<Received>`를 사용하면 heap 할당을 줄일 수 있다
-- C++/Rust: stack 기반 coroutine/future는 할당 없음
+- C++/Rust: 언어 런타임과 awaitable/future 구현에 따라 추가 할당이 없을 수 있음
 - object pool은 복잡도 대비 효과가 낮으므로 권장하지 않는다.
   필요 시 바인딩별 판단.
 
@@ -1517,9 +1534,8 @@ request-reply 구현의 성능 검증을 위해 아래 벤치마크를 측정한
 
 | Sample | 설명 |
 |--------|------|
-| `request_reply_sample` | Dealer → Router request-reply 기본 패턴 |
-| `request_reply_router_sample` | Router → Router 양방향 request-reply |
-| `request_reply_callback_sample` | onRequest callback 패턴 |
+| `request_reply_async_sample` | Dealer → Router request-reply async/await 패턴 |
+| `request_reply_callback_sample` | Dealer → Router request-reply callback 패턴 |
 
 ---
 
@@ -1527,19 +1543,18 @@ request-reply 구현의 성능 검증을 위해 아래 벤치마크를 측정한
 
 ```
 RouterSocket + request-reply 확장
-  ├── request(routingId, msg, [timeout])              → async send + 코루틴 대기 → Received
+  ├── request(routingId, msg, [timeout])              → async send + async 컨텍스트 대기 → Received
   ├── request(routingId, msg, callback, [timeout])    → async send + callback
-  ├── tryRequest(routingId, msg, [timeout])            → non-blocking send + 코루틴 대기 → Received
+  ├── tryRequest(routingId, msg, [timeout])            → non-blocking send + async 컨텍스트 대기 → Received
   ├── tryRequest(routingId, msg, callback, [timeout])  → non-blocking send + callback
   ├── reply(routingId, correlationId, msg)             → async send
   ├── tryReply(routingId, correlationId, msg)           → non-blocking send → SendResult
-  ├── onRequest(handler)
   └── 기존 Router 기능 그대로 유지
 
 DealerSocket + request 확장
-  ├── request(msg, [timeout])              → async send + 코루틴 대기 → Received
+  ├── request(msg, [timeout])              → async send + async 컨텍스트 대기 → Received
   ├── request(msg, callback, [timeout])    → async send + callback
-  ├── tryRequest(msg, [timeout])            → non-blocking send + 코루틴 대기 → Received
+  ├── tryRequest(msg, [timeout])            → non-blocking send + async 컨텍스트 대기 → Received
   ├── tryRequest(msg, callback, [timeout])  → non-blocking send + callback
   └── 기존 Dealer 기능 그대로 유지
   ⚠ 연결 대상이 모두 Router여야 함

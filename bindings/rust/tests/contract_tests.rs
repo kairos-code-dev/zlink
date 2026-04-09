@@ -181,9 +181,12 @@ fn request_reply_wrapper_roundtrip() {
     let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let done_flag = done.clone();
     let (reply_tx, reply_rx) = std::sync::mpsc::channel();
-    router.on_request(move |routing_id, correlation_id, received| {
+    router.on_receive(move |received| {
+        let routing_id = received.routing_id().clone();
         let part = received.single_part().unwrap();
         assert_eq!(part.data(), b"ping");
+        let (msg_type, correlation_id) = part.request_info().unwrap();
+        assert_eq!(msg_type, 1);
         let mut reply = Message::from_bytes(b"pong").unwrap();
         reply.set_reply(correlation_id).unwrap();
         router_send_handle.send_to(&routing_id, vec![reply]).unwrap();

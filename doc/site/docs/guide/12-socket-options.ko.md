@@ -1,3 +1,4 @@
+
 # 소켓 옵션 상세 가이드
 
 이 문서는 `zlink_set_option()` / `zlink_get_option()`으로 설정하는 소켓 옵션
@@ -35,63 +36,12 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 **소켓 타입별 차이:** 모든 소켓에 동일하게 적용. 서비스(SPOT)도
 내부 소켓에 fan-out으로 적용.
 
-=== "C"
-
-    ```c
-    int sndhwm = 5000;
-    zlink_set_option(socket, ZLINK_OPT_SNDHWM, &sndhwm, sizeof(sndhwm));
-    int rcvhwm = 5000;
-    zlink_set_option(socket, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof(rcvhwm));
-    ```
-
-=== "C++"
-
-    ```cpp
-    socket.set_option(zlink::sndhwm, 5000);
-    socket.set_option(zlink::rcvhwm, 5000);
-    ```
-
-=== "Java"
-
-    ```java
-    socket.setOption(SocketOptions.SNDHWM, 5000);
-    socket.setOption(SocketOptions.RCVHWM, 5000);
-    ```
-
-=== "Python"
-
-    ```python
-    socket.options.send_high_water_mark = 5000
-    socket.options.receive_high_water_mark = 5000
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    socket.options.sendHwm = 5000;
-    socket.options.recvHwm = 5000;
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    socket.CommonOptions.SendHighWaterMark = 5000;
-    socket.CommonOptions.ReceiveHighWaterMark = 5000;
-    ```
-
-=== "Rust"
-
-    ```rust
-    socket.set_send_hwm(5000)?;
-    socket.set_recv_hwm(5000)?;
-    ```
-
-=== "Go"
-
-    ```go
-    socket.SetSendHWM(5000)
-    socket.SetRecvHWM(5000)
-    ```
+```c
+int sndhwm = 5000;
+zlink_set_option(socket, ZLINK_OPT_SNDHWM, &sndhwm, sizeof(sndhwm));
+int rcvhwm = 5000;
+zlink_set_option(socket, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof(rcvhwm));
+```
 
 ---
 
@@ -113,55 +63,11 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 - `XSUB`, `SUB`: 생성 시 linger를 강제로 `0`으로 override (구독 소켓은
   종료 시 대기할 필요 없음)
 
-=== "C"
-
-    ```c
-    /* Wait up to 1 second for pending messages on close */
-    int linger = 1000;
-    zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
-    ```
-
-=== "C++"
-
-    ```cpp
-    socket.set_option(zlink::linger, 1000);
-    ```
-
-=== "Java"
-
-    ```java
-    socket.setOption(SocketOptions.LINGER, 1000);
-    ```
-
-=== "Python"
-
-    ```python
-    socket.options.linger_ms = 1000
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    socket.options.linger = 1000;
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    socket.CommonOptions.Linger = TimeSpan.FromMilliseconds(1000);
-    ```
-
-=== "Rust"
-
-    ```rust
-    socket.set_linger(Duration::from_millis(1000))?;
-    ```
-
-=== "Go"
-
-    ```go
-    socket.SetLinger(1000 * time.Millisecond)
-    ```
+```c
+/* Wait up to 1 second for pending messages on close */
+int linger = 1000;
+zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
+```
 
 ---
 
@@ -177,64 +83,13 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 
 **서비스 적용:** SPOT에서 pub/sub 내부 소켓에 전파.
 
-=== "C"
-
-    ```c
-    /* Give up send/recv after 500 ms */
-    int sndtimeo = 500;
-    zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));
-    int rcvtimeo = 500;
-    zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &rcvtimeo, sizeof(rcvtimeo));
-    ```
-
-=== "C++"
-
-    ```cpp
-    socket.set_option(zlink::sndtimeo, 500);
-    socket.set_option(zlink::rcvtimeo, 500);
-    ```
-
-=== "Java"
-
-    ```java
-    socket.setOption(SocketOptions.SNDTIMEO, 500);
-    socket.setOption(SocketOptions.RCVTIMEO, 500);
-    ```
-
-=== "Python"
-
-    ```python
-    socket.options.send_timeout_ms = 500
-    socket.options.receive_timeout_ms = 500
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    socket.options.sendTimeout = 500;
-    socket.options.recvTimeout = 500;
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    socket.CommonOptions.SendTimeout = TimeSpan.FromMilliseconds(500);
-    socket.CommonOptions.ReceiveTimeout = TimeSpan.FromMilliseconds(500);
-    ```
-
-=== "Rust"
-
-    ```rust
-    socket.set_send_timeout(Duration::from_millis(500))?;
-    socket.set_recv_timeout(Duration::from_millis(500))?;
-    ```
-
-=== "Go"
-
-    ```go
-    socket.SetSendTimeout(500 * time.Millisecond)
-    socket.SetRecvTimeout(500 * time.Millisecond)
-    ```
+```c
+/* Give up send/recv after 500 ms */
+int sndtimeo = 500;
+zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));
+int rcvtimeo = 500;
+zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &rcvtimeo, sizeof(rcvtimeo));
+```
 
 ---
 
@@ -250,55 +105,11 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 **OS 타임아웃과의 관계:** TCP 스택 자체의 SYN 재전송 타임아웃(보통 ~2분)보다
 짧게 설정하여 빠른 failover를 구현할 때 유용하다.
 
-=== "C"
-
-    ```c
-    /* Fail connect attempts after 3 seconds */
-    int timeout = 3000;
-    zlink_set_option(socket, ZLINK_OPT_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
-    ```
-
-=== "C++"
-
-    ```cpp
-    socket.set_option(zlink::connect_timeout, 3000);
-    ```
-
-=== "Java"
-
-    ```java
-    socket.setOption(SocketOptions.CONNECT_TIMEOUT, 3000);
-    ```
-
-=== "Python"
-
-    ```python
-    socket.set_option(zlink.SocketOption.CONNECT_TIMEOUT, 3000)
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    socket.options.connectTimeout = 3000;
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    socket.CommonOptions.ConnectTimeout = TimeSpan.FromMilliseconds(3000);
-    ```
-
-=== "Rust"
-
-    ```rust
-    socket.set_connect_timeout(Duration::from_millis(3000))?;
-    ```
-
-=== "Go"
-
-    ```go
-    socket.SetConnectTimeout(3000 * time.Millisecond)
-    ```
+```c
+/* Fail connect attempts after 3 seconds */
+int timeout = 3000;
+zlink_set_option(socket, ZLINK_OPT_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
+```
 
 ---
 
@@ -318,64 +129,13 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 
 **음수:** `RECONNECT_IVL < 0`이면 자동 재연결을 비활성화한다.
 
-=== "C"
-
-    ```c
-    /* Exponential backoff: 200ms initial, cap at 30s */
-    int ivl = 200;
-    zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL, &ivl, sizeof(ivl));
-    int ivl_max = 30000;
-    zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL_MAX, &ivl_max, sizeof(ivl_max));
-    ```
-
-=== "C++"
-
-    ```cpp
-    socket.set_option(zlink::reconnect_ivl, 200);
-    socket.set_option(zlink::reconnect_ivl_max, 30000);
-    ```
-
-=== "Java"
-
-    ```java
-    socket.setOption(SocketOptions.RECONNECT_IVL, 200);
-    socket.setOption(SocketOptions.RECONNECT_IVL_MAX, 30000);
-    ```
-
-=== "Python"
-
-    ```python
-    socket.set_option(zlink.SocketOption.RECONNECT_IVL, 200)
-    socket.set_option(zlink.SocketOption.RECONNECT_IVL_MAX, 30000)
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    socket.options.reconnectInterval = 200;
-    socket.options.reconnectIntervalMax = 30000;
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    socket.SetOption(SocketOptions.ReconnectIvl, 200);
-    socket.SetOption(SocketOptions.ReconnectIvlMax, 30000);
-    ```
-
-=== "Rust"
-
-    ```rust
-    socket.set_reconnect_interval(Duration::from_millis(200))?;
-    socket.set_reconnect_interval_max(Duration::from_secs(30))?;
-    ```
-
-=== "Go"
-
-    ```go
-    socket.SetOption(zlink.OptionReconnectIvl, 200)
-    socket.SetOption(zlink.OptionReconnectIvlMax, 30000)
-    ```
+```c
+/* Exponential backoff: 200ms initial, cap at 30s */
+int ivl = 200;
+zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL, &ivl, sizeof(ivl));
+int ivl_max = 30000;
+zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL_MAX, &ivl_max, sizeof(ivl_max));
+```
 
 ---
 
@@ -395,86 +155,13 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 **TCP에만 적용.** IPC, inproc, WebSocket에는 해당 없음.
 
 **권장 설정 예:**
-
-=== "C"
-
-    ```c
-    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
-    zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE, &(int){1}, sizeof(int));
-    zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_IDLE, &(int){60}, sizeof(int));
-    zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_INTVL, &(int){10}, sizeof(int));
-    zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_CNT, &(int){3}, sizeof(int));
-    ```
-
-=== "C++"
-
-    ```cpp
-    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
-    s.set_option(ZLINK_OPT_TCP_KEEPALIVE, 1);
-    s.set_option(ZLINK_OPT_TCP_KEEPALIVE_IDLE, 60);
-    s.set_option(ZLINK_OPT_TCP_KEEPALIVE_INTVL, 10);
-    s.set_option(ZLINK_OPT_TCP_KEEPALIVE_CNT, 3);
-    ```
-
-=== "Java"
-
-    ```java
-    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
-    s.setOption(Option.TCP_KEEPALIVE, 1);
-    s.setOption(Option.TCP_KEEPALIVE_IDLE, 60);
-    s.setOption(Option.TCP_KEEPALIVE_INTVL, 10);
-    s.setOption(Option.TCP_KEEPALIVE_CNT, 3);
-    ```
-
-=== "Python"
-
-    ```python
-    # Probe after 60s idle, every 10s, 3 probes max, then disconnect
-    s.set_option(zlink.Option.TCP_KEEPALIVE, 1)
-    s.set_option(zlink.Option.TCP_KEEPALIVE_IDLE, 60)
-    s.set_option(zlink.Option.TCP_KEEPALIVE_INTVL, 10)
-    s.set_option(zlink.Option.TCP_KEEPALIVE_CNT, 3)
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
-    s.setOption(zlink.Option.TCP_KEEPALIVE, 1);
-    s.setOption(zlink.Option.TCP_KEEPALIVE_IDLE, 60);
-    s.setOption(zlink.Option.TCP_KEEPALIVE_INTVL, 10);
-    s.setOption(zlink.Option.TCP_KEEPALIVE_CNT, 3);
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
-    s.SetOption(Option.TcpKeepalive, 1);
-    s.SetOption(Option.TcpKeepaliveIdle, 60);
-    s.SetOption(Option.TcpKeepaliveIntvl, 10);
-    s.SetOption(Option.TcpKeepaliveCnt, 3);
-    ```
-
-=== "Rust"
-
-    ```rust
-    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
-    s.set_option(zlink::Option::TcpKeepalive, 1)?;
-    s.set_option(zlink::Option::TcpKeepaliveIdle, 60)?;
-    s.set_option(zlink::Option::TcpKeepaliveIntvl, 10)?;
-    s.set_option(zlink::Option::TcpKeepaliveCnt, 3)?;
-    ```
-
-=== "Go"
-
-    ```go
-    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
-    s.SetOption(zlink.OptionTcpKeepalive, 1)
-    s.SetOption(zlink.OptionTcpKeepaliveIdle, 60)
-    s.SetOption(zlink.OptionTcpKeepaliveIntvl, 10)
-    s.SetOption(zlink.OptionTcpKeepaliveCnt, 3)
-    ```
+```c
+// Probe after 60s idle, every 10s, 3 probes max, then disconnect
+zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE, &(int){1}, sizeof(int));
+zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_IDLE, &(int){60}, sizeof(int));
+zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_INTVL, &(int){10}, sizeof(int));
+zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_CNT, &(int){3}, sizeof(int));
+```
 
 ---
 
@@ -524,73 +211,15 @@ Keepalive보다 빠른 dead peer 감지가 필요할 때 사용.
 ZMP 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정하면 더 빠른 쪽이
 먼저 감지한다.
 
-=== "C"
-
-    ```c
-    /* PING every 5s, remote TTL 15s, local PONG timeout 10s */
-    int hb_ivl = 5000;
-    zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_IVL, &hb_ivl, sizeof(hb_ivl));
-    int hb_ttl = 150;  /* 0.1s units → 15s */
-    zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TTL, &hb_ttl, sizeof(hb_ttl));
-    int hb_timeout = 10000;
-    zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout));
-    ```
-
-=== "C++"
-
-    ```cpp
-    socket.set_option(zlink::heartbeat_ivl, 5000);
-    socket.set_option(zlink::heartbeat_ttl, 150);      // 0.1s units → 15s
-    socket.set_option(zlink::heartbeat_timeout, 10000);
-    ```
-
-=== "Java"
-
-    ```java
-    socket.setOption(SocketOptions.HEARTBEAT_IVL, 5000);
-    socket.setOption(SocketOptions.HEARTBEAT_TTL, 150);      // 0.1s units → 15s
-    socket.setOption(SocketOptions.HEARTBEAT_TIMEOUT, 10000);
-    ```
-
-=== "Python"
-
-    ```python
-    socket.set_option(zlink.SocketOption.HEARTBEAT_IVL, 5000)
-    socket.set_option(zlink.SocketOption.HEARTBEAT_TTL, 150)      # 0.1s units → 15s
-    socket.set_option(zlink.SocketOption.HEARTBEAT_TIMEOUT, 10000)
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    socket.options.heartbeatInterval = 5000;
-    socket.options.heartbeatTtl = 150;      // 0.1s units → 15s
-    socket.options.heartbeatTimeout = 10000;
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    socket.SetOption(SocketOptions.HeartbeatIvl, 5000);
-    socket.SetOption(SocketOptions.HeartbeatTtl, 150);      // 0.1s units → 15s
-    socket.SetOption(SocketOptions.HeartbeatTimeout, 10000);
-    ```
-
-=== "Rust"
-
-    ```rust
-    socket.set_heartbeat_interval(Duration::from_secs(5))?;
-    socket.set_heartbeat_ttl(Duration::from_secs(15))?;
-    socket.set_heartbeat_timeout(Duration::from_secs(10))?;
-    ```
-
-=== "Go"
-
-    ```go
-    socket.SetOption(zlink.OptionHeartbeatIvl, 5000)
-    socket.SetOption(zlink.OptionHeartbeatTtl, 150)      // 0.1s units → 15s
-    socket.SetOption(zlink.OptionHeartbeatTimeout, 10000)
-    ```
+```c
+/* PING every 5s, remote TTL 15s, local PONG timeout 10s */
+int hb_ivl = 5000;
+zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_IVL, &hb_ivl, sizeof(hb_ivl));
+int hb_ttl = 150;  /* 0.1s units → 15s */
+zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TTL, &hb_ttl, sizeof(hb_ttl));
+int hb_timeout = 10000;
+zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout));
+```
 
 ---
 

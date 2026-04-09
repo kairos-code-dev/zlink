@@ -56,7 +56,7 @@
 - multipart message:
   `more` flag로 이어지는 frame sequence. 마지막 frame에는 `more`가 없다.
 - payload part:
-  public recv/callback에서 사용자에게 노출되는 frame.
+  공개 수신/콜백에서 사용자에게 노출되는 프레임.
 - internal prefix:
   routing id, topic, 기타 protocol framing처럼 public payload cap 계산에는
   포함되지 않지만 내부 전송/조립에는 포함되는 frame.

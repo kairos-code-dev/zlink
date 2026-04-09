@@ -29,7 +29,6 @@ static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
 static const size_t k_topic_len = sizeof("bench") - 1;
 static const char *k_control_ready_prefix = "CLIENT_CONTROL_ENDPOINT,";
-static const uint32_t k_metric_run_id = 1U;
 using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::print_client_result_lines;
 using perf_multi_client::resolve_case_msg_sizes;
@@ -71,6 +70,7 @@ struct spot_client_state_t
         sender_window_start_ns(0),
         sender_window_end_ns(0),
         collect_active(false),
+        expected_run_id(1U),
         fatal(false),
         ready_barrier_settled(false),
         control_connected(false),
@@ -101,6 +101,7 @@ struct spot_client_state_t
     std::atomic<uint64_t> sender_window_start_ns;
     std::atomic<uint64_t> sender_window_end_ns;
     std::atomic<bool> collect_active;
+    std::atomic<uint32_t> expected_run_id;
     std::atomic<bool> fatal;
     std::atomic<bool> ready_barrier_settled;
     std::atomic<bool> control_connected;
@@ -584,7 +585,8 @@ void handle_spot_client_parts(const char *topic,
 
     if (collect_active
         && header.magic == perf_multi_metric::k_magic
-        && header.run_id == k_metric_run_id
+        && header.run_id
+             == state->expected_run_id.load(std::memory_order_acquire)
         && header.phase
              == static_cast<uint32_t> (perf_multi_metric::phase_active)
         && header.msg_size
@@ -1214,7 +1216,8 @@ bool run_single_size_case(spot_client_state_t *state,
                           const multi_bench_settings_t &settings,
                           const std::string &lib_name,
                           const std::string &transport,
-                          size_t msg_size)
+                          size_t msg_size,
+                          uint32_t run_id)
 {
     const int phase_timeout_ms =
       resolve_spot_phase_timeout_ms(settings, msg_size);
@@ -1237,10 +1240,11 @@ bool run_single_size_case(spot_client_state_t *state,
 
     std::cout << "CLIENT_READY," << msg_size << std::endl;
 
+    state->expected_run_id.store(run_id, std::memory_order_release);
     reset_metrics(state, msg_size);
     state->active_duration_ns.store(
       static_cast<uint64_t>(std::max(1, settings.duration_seconds))
-      * 1000000ULL,
+      * 1000000000ULL,
       std::memory_order_release);
     if (!ensure_control_connected(state)) {
         if (bench_debug_enabled()) {
@@ -1415,8 +1419,12 @@ int run_client_benchmark(const std::string &lib_name,
       });
 
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
-        if (!run_single_size_case(&state, settings, lib_name, transport,
-                                  msg_sizes[i])) {
+        if (!run_single_size_case(&state,
+                                  settings,
+                                  lib_name,
+                                  transport,
+                                  msg_sizes[i],
+                                  static_cast<uint32_t>(i + 1))) {
             fast_exit_process(1);
         }
     }

@@ -154,22 +154,39 @@ Returns `EBUSY` in callback model.
 Use `zlink_spot_node_status_snapshot()`, `zlink_spot_node_peers_snapshot()`,
 and `zlink_spot_node_subjects_snapshot()` for observability.
 
-## Internal Mesh Publish Budget
+## SpotNode Internal Data-Plane HWM
 
-SPOT uses an internal `mesh_pub` sender inside the SpotNode runtime to fan out
-payloads to connected peers. The internal `mesh_pub` send HWM defaults to
-`100` for every transport, including `tcp`, `tls`, `ws`, and `wss`.
+SpotNode owns an internal data-plane made of:
 
-This internal budget is separate from public socket `SNDHWM` or `RCVHWM`
-options applied to unified `Spot` handles.
+- `ingress` receive queue
+- `fanout` local publish queue
+- `mesh_pub` peer publish queue
+- `mesh_xsub` peer receive queue
 
-- Default internal `mesh_pub` send HWM: `100`
+The default data-plane HWM is `1000`. When `SNDHWM` / `RCVHWM` are set on a
+`SpotNode` handle, the value is also used as the internal data-plane budget in
+the matching direction:
+
+- `SNDHWM` on `SpotNode`
+  - default SpotNode pub handles
+  - internal `fanout` send HWM
+  - internal `mesh_pub` send HWM
+- `RCVHWM` on `SpotNode`
+  - default SpotNode sub handles
+  - internal `ingress` receive HWM
+  - internal `mesh_xsub` receive HWM
+
+This internal data-plane budget is separate from public `SNDHWM` / `RCVHWM`
+options applied to unified `Spot` handles. `peer_ctrl` remains on its own
+control-plane default and is not grouped into the SpotNode data-plane HWM.
+
+- Default internal data-plane HWM: `1000`
 - Transport-specific default expansion is not applied
-- Override only when a deployment explicitly needs a different internal budget:
-  `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM=<value>`
-
-Keep the default when comparing transport behavior in perf runs so queueing
-latency is not distorted by transport-specific internal backlog depth.
+- Fine-grained internal overrides remain available only for diagnostics:
+  - `ZLINK_SPOT_INTERNAL_INGRESS_RCVHWM`
+  - `ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM`
+  - `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM`
+  - `ZLINK_SPOT_INTERNAL_MESH_XSUB_RCVHWM`
 
 ## Callback contract
 
@@ -386,6 +403,59 @@ Set fields to non-zero values to filter. Zero-valued fields are wildcards.
 1. `zlink_spot_node_status_snapshot()` -- check overall health first.
 2. `zlink_spot_node_peers_snapshot()` -- inspect peer connectivity.
 3. `zlink_spot_node_subjects_snapshot()` -- verify subject readiness.
+
+## SpotNode Peer Publish Batching Options
+
+SpotNode provides optional internal batching for the peer publish path.
+These options are set via `zlink_set_spot_node_option()` on the SpotNode handle.
+
+### zlink_spot_node_option_t
+
+```c
+typedef enum zlink_spot_node_option_t {
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE                  = 0x3601,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS                = 0x3602,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_MESSAGES            = 0x3603,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_BYTES               = 0x3604,
+    ZLINK_SPOT_NODE_OPT_PEER_BATCH_BYPASS_BYTES            = 0x3605,
+    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_MESSAGES_PER_TURN = 0x3606,
+    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN    = 0x3607,
+} zlink_spot_node_option_t;
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `PEER_BATCH_ENABLE` | `int` (bool) | 0 (disabled) | Enable peer publish batching. Operator opt-in for homogeneous deployments. |
+| `PEER_BATCH_DELAY_MS` | `int` | 20 | Maximum delay before flushing a topic bucket (ms). |
+| `PEER_BATCH_MAX_MESSAGES` | `int` | 32 | Maximum messages per topic bucket before flush. |
+| `PEER_BATCH_MAX_BYTES` | `int` | 65536 | Maximum bytes per topic bucket before flush. |
+| `PEER_BATCH_BYPASS_BYTES` | `int` | 65536 | Messages at or above this encoded size bypass batching and are sent immediately. |
+| `PEER_UNBATCH_MAX_MESSAGES_PER_TURN` | `int` | 32 | Maximum messages to unbatch per I/O turn on the receiver side. |
+| `PEER_UNBATCH_MAX_BYTES_PER_TURN` | `int` | 65536 | Maximum bytes to unbatch per I/O turn on the receiver side. |
+
+Usage:
+
+```c
+void *node = zlink_spot_node_new(ctx);
+
+int enabled = 1;
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
+                 &enabled, sizeof(enabled));
+
+int delay_ms = 10;
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS,
+                 &delay_ms, sizeof(delay_ms));
+
+zlink_spot_node_bind(node, "tcp://*:9000");
+```
+
+**v1 constraint:** All SpotNodes in the mesh must run the same binary
+generation (homogeneous deployment). No runtime capability negotiation.
+
+**Returns:** `zlink_set_spot_node_option` / `zlink_get_spot_node_option`
+return 0 on success, -1 on failure (errno is set).
+
+**Thread safety:** Options should be set before bind/connect.
 
 ## Removed public APIs
 

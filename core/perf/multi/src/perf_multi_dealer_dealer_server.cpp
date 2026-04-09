@@ -60,10 +60,6 @@ inline recv_result_t receive_one_message (
   size_t expected_msg_size,
   uint32_t expected_run_id,
   perf_multi_metric::phase_t expected_phase,
-  bool *sender_window_started,
-  uint64_t *sender_window_start_ns,
-  uint64_t *sender_window_end_ns,
-  uint64_t active_duration_ns,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -126,27 +122,10 @@ inline recv_result_t receive_one_message (
                   << header.run_id << " got_phase=" << header.phase
                   << " got_size=" << header.msg_size << std::endl;
     }
-    bool count_matched = matched;
-    if (matched && sender_window_started && sender_window_start_ns
-        && sender_window_end_ns) {
-        if (!(*sender_window_started)) {
-            const uint64_t window_start_ns =
-              header.sent_ts_ns > 0
-                ? header.sent_ts_ns
-                : perf_multi_metric::now_ns ();
-            *sender_window_started = true;
-            *sender_window_start_ns = window_start_ns;
-            *sender_window_end_ns = window_start_ns + active_duration_ns;
-        }
-        if (count_matched && header.sent_ts_ns > 0
-            && header.sent_ts_ns > *sender_window_end_ns)
-            count_matched = false;
-    }
-
-    if (count_matched && count_message && message_count)
+    if (matched && count_message && message_count)
         (*message_count)++;
 
-    if (count_matched && collect_latency && lat_sum && lat_count) {
+    if (matched && collect_latency && lat_sum && lat_count) {
         const uint64_t now_ns = perf_multi_metric::now_ns ();
         if (header.sent_ts_ns > 0 && now_ns >= header.sent_ts_ns) {
             const double sample_ns = static_cast<double> (now_ns - header.sent_ts_ns);
@@ -166,10 +145,6 @@ inline bool drain_non_blocking_messages (
   size_t expected_msg_size,
   uint32_t expected_run_id,
   perf_multi_metric::phase_t expected_phase,
-  bool *sender_window_started,
-  uint64_t *sender_window_start_ns,
-  uint64_t *sender_window_end_ns,
-  uint64_t active_duration_ns,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -184,10 +159,6 @@ inline bool drain_non_blocking_messages (
           expected_msg_size,
           expected_run_id,
           expected_phase,
-          sender_window_started,
-          sender_window_start_ns,
-          sender_window_end_ns,
-          active_duration_ns,
           count_message,
           collect_latency,
           message_count,
@@ -209,9 +180,6 @@ inline bool run_receive_window (
   perf_multi_metric::phase_t expected_phase,
   double measure_seconds,
   double local_wait_seconds,
-  bool *sender_window_started,
-  uint64_t *sender_window_start_ns,
-  uint64_t *sender_window_end_ns,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -231,28 +199,36 @@ inline bool run_receive_window (
       std::chrono::steady_clock::now ()
       + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
         std::chrono::duration<double> (local_wait_seconds));
-    const uint64_t active_duration_ns =
-      static_cast<uint64_t> (
-        std::max (1.0, measure_seconds) * 1000000.0);
-    const double delivery_slack_s =
-      std::max (1.0, std::min (5.0, measure_seconds));
-    bool active_window_observed =
-      sender_window_started ? *sender_window_started : false;
+    zlink_pollitem_t poll_item;
+    poll_item.socket = server;
+    poll_item.fd = 0;
+    poll_item.events = ZLINK_POLLIN;
+    poll_item.revents = 0;
 
     while (!perf_stop_requested ().load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < deadline) {
-        const bool had_sender_window =
-          sender_window_started ? *sender_window_started : false;
+        const long remaining_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            deadline - std::chrono::steady_clock::now ())
+            .count ();
+        if (remaining_ms <= 0)
+            break;
+        poll_item.revents = 0;
+        const int poll_rc = perf_socket_poll (&poll_item, 1, remaining_ms);
+        if (poll_rc < 0) {
+            if (zlink_errno () == EINTR)
+                continue;
+            return false;
+        }
+        if (poll_rc == 0 || (poll_item.revents & ZLINK_POLLIN) == 0)
+            continue;
+
         const recv_result_t status = receive_one_message (
           server,
-          0,
+          ZLINK_DONTWAIT,
           expected_msg_size,
           expected_run_id,
           expected_phase,
-          sender_window_started,
-          sender_window_start_ns,
-          sender_window_end_ns,
-          active_duration_ns,
           count_message,
           collect_latency,
           message_count,
@@ -264,26 +240,11 @@ inline bool run_receive_window (
         if (status == recv_fatal)
             return false;
 
-        if (sender_window_started && *sender_window_started
-            && (!active_window_observed || !had_sender_window)) {
-            active_window_observed = true;
-            deadline =
-              std::chrono::steady_clock::now ()
-              + std::chrono::duration_cast<
-                std::chrono::steady_clock::duration> (
-                std::chrono::duration<double> (
-                  measure_seconds + delivery_slack_s));
-        }
-
         if (!drain_non_blocking_messages (
               server,
               expected_msg_size,
               expected_run_id,
               expected_phase,
-              sender_window_started,
-              sender_window_start_ns,
-              sender_window_end_ns,
-              active_duration_ns,
               count_message,
               collect_latency,
               message_count,
@@ -329,10 +290,6 @@ inline bool drain_phase_until_idle (void *server,
           expected_msg_size,
           expected_run_id,
           expected_phase,
-          NULL,
-          NULL,
-          NULL,
-          0,
           false,
           false,
           NULL,
@@ -382,10 +339,6 @@ inline bool run_one_size_benchmark (
     double lat_sum = 0.0;
     long lat_count = 0;
     bench_latency_sampler_t lat_samples;
-    bool sender_window_started = false;
-    uint64_t sender_window_start_ns = 0;
-    uint64_t sender_window_end_ns = 0;
-
     const bool active_ok = run_receive_window (
       server,
       msg_size,
@@ -393,9 +346,6 @@ inline bool run_one_size_benchmark (
       perf_multi_metric::phase_active,
       active_s,
       std::max (active_s + 2.0, active_s + 5.0),
-      &sender_window_started,
-      &sender_window_start_ns,
-      &sender_window_end_ns,
       true,
       true,
       &recv_count,
@@ -416,8 +366,7 @@ inline bool run_one_size_benchmark (
                       << msg_size << " run=" << run_id
                       << " recv_count=" << recv_count
                       << " lat_count=" << lat_count
-                      << " sender_window_started="
-                      << sender_window_started << std::endl;
+                      << std::endl;
         }
         return false;
     }

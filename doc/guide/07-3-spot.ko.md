@@ -331,7 +331,7 @@ batching은 기본값 disabled이다. SpotNode의 `PEER_BATCH_ENABLE` 옵션으�
 
 ```c
 int enabled = 1;
-zlink_set_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
                  &enabled, sizeof(enabled));
 ```
 

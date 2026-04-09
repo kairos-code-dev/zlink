@@ -78,7 +78,40 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
         }
     }
 }
+function drainRecvNow(socket, onMessage) {
+    const socketKind = socket && socket.constructor ? socket.constructor.name : '';
+    if (socketKind === 'StreamSocket' && typeof socket.tryRecv === 'function') {
+        while (true) {
+            const received = socket.tryRecv();
+            if (!received) {
+                break;
+            }
+            onMessage(received);
+        }
+        return;
+    }
+    if (typeof socket.trySubscribe === 'function') {
+        while (true) {
+            const received = socket.trySubscribe();
+            if (!received) {
+                break;
+            }
+            onMessage(received);
+        }
+        return;
+    }
+    if (typeof socket.tryRecv === 'function') {
+        while (true) {
+            const received = socket.tryRecv();
+            if (!received) {
+                break;
+            }
+            onMessage(received);
+        }
+    }
+}
 module.exports = {
     drainRecvSocket,
+    drainRecvNow,
     waitForConnectionReady
 };

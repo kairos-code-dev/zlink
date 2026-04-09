@@ -199,7 +199,7 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(RequestDealer),
             nameof(RequestDealer.OnReceive), typeof(SocketRecvHandler)));
         Assert.True(HasPublicInstanceMethod(typeof(RequestRouter),
-            nameof(RequestRouter.OnRequest), typeof(RequestHandler)));
+            nameof(RequestRouter.OnReceive), typeof(SocketRecvHandler)));
         Assert.True(HasPublicInstanceMethod(typeof(RequestRouter),
             nameof(RequestRouter.Reply), typeof(RoutingId), typeof(ulong),
             typeof(Message)));

@@ -182,7 +182,7 @@ def main():
 
                 for row in pass_rows:
                     tp = fnum(row, "throughput_bps")
-                    mean = fnum(row, "mean_us")
+                    mean = fnum(row, "p50_us")
                     p95 = fnum(row, "p95_us")
                     if tp is None:
                         continue

@@ -100,8 +100,6 @@ if (rc == -1) {
 }
 ```
 
-> **Legacy:** `zlink_msg_send()` is still present in the header but planned for
-> removal. Use `zlink_send()` with a parts array instead.
 
 ### 3.4 Receiving
 
@@ -417,8 +415,6 @@ For ROUTER directed sends, use `zlink_send_rid()`:
 zlink_send_rid(router, &target_rid, parts, part_count, 0);
 ```
 
-> **Legacy:** `zlink_msg_send()` is still present in the header but planned for
-> removal. Migrate all call sites to `zlink_send()` with a parts array.
 
 ## 10. Request-Reply Envelope
 

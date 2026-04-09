@@ -12,7 +12,7 @@ const {
   sleepImmediate,
   stampPayload
 } = require('../common/perf_metrics');
-const { drainRecvSocket, waitForConnectionReady } = require('./perf_single_common');
+const { drainRecvNow, drainRecvSocket, waitForConnectionReady } = require('./perf_single_common');
 
 async function runDealerRouterBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
@@ -57,12 +57,20 @@ async function runDealerRouterBenchmark(msgSize, options) {
         }
         seq += 1n;
       }
+      drainRecvNow(router, (received) => {
+        const header = decodeMetricHeader(received.parts[0].data);
+        collector.record(header, currentEpochNs());
+      });
       if ((Number(seq) & 0x03) === 0) {
         await sleepImmediate();
       }
     }
 
     for (let i = 0; i < 4; i += 1) {
+      drainRecvNow(router, (received) => {
+        const header = decodeMetricHeader(received.parts[0].data);
+        collector.record(header, currentEpochNs());
+      });
       await sleepImmediate();
     }
     stop = true;

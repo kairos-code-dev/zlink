@@ -12,8 +12,6 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 const ETERM_NATIVE: i32 = 156_384_765;
 
 type DataHandler = Arc<dyn Fn(Received) + Send + Sync + 'static>;
-type RequestHandler = Arc<dyn Fn(RoutingId, u64, Received) + Send + Sync + 'static>;
-
 struct DealerState {
     pending: Mutex<HashMap<u64, mpsc::Sender<Result<Received, ZlinkError>>>>,
     data_tx: mpsc::Sender<Received>,
@@ -24,7 +22,6 @@ struct RouterState {
     pending: Mutex<HashMap<u64, mpsc::Sender<Result<Received, ZlinkError>>>>,
     data_tx: mpsc::Sender<Received>,
     data_handler: Mutex<Option<DataHandler>>,
-    request_handler: Mutex<Option<RequestHandler>>,
 }
 
 type PendingMap = Mutex<HashMap<u64, mpsc::Sender<Result<Received, ZlinkError>>>>;
@@ -211,7 +208,6 @@ impl RequestRouter {
             pending: Mutex::new(HashMap::new()),
             data_tx,
             data_handler: Mutex::new(None),
-            request_handler: Mutex::new(None),
         });
         let socket = Arc::new(Mutex::new(socket));
         let dispatch_stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -391,13 +387,6 @@ impl RequestRouter {
     ) -> Result<SendResult, ZlinkError> {
         msg.set_reply(correlation_id)?;
         self.socket.lock().unwrap().try_send(routing_id, vec![msg])
-    }
-
-    pub fn on_request<F>(&self, handler: F)
-    where
-        F: Fn(RoutingId, u64, Received) + Send + Sync + 'static,
-    {
-        *self.state.request_handler.lock().unwrap() = Some(Arc::new(handler));
     }
 
     pub fn recv(&self) -> Result<Received, ZlinkError> {
@@ -591,12 +580,7 @@ fn spawn_router_dispatch_thread(
                     continue;
                 }
             };
-            if msg_type == 1 {
-                if let Some(handler) = state.request_handler.lock().unwrap().as_ref().cloned() {
-                    handler(received.routing_id().clone(), correlation_id, received);
-                    continue;
-                }
-            } else if msg_type == 2 {
+            if msg_type == 2 {
                 let pending = state.pending.lock().unwrap().remove(&correlation_id);
                 if let Some(reply_tx) = pending {
                     let _ = reply_tx.send(Ok(received));

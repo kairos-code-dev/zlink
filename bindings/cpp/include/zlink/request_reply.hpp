@@ -7,6 +7,10 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#if defined(__cpp_impl_coroutine) || defined(__cpp_coroutines)
+#include <coroutine>
+#define ZLINK_CPP_HAS_COROUTINE_SUPPORT 1
+#endif
 #include <deque>
 #include <future>
 #include <memory>
@@ -52,6 +56,93 @@ struct request_reply_pending_t
     request_reply_pending_t () : completed (false) {}
 
     bool mark_completed () { return !completed.exchange (true); }
+};
+
+template<typename T> class async_result_t
+{
+  public:
+    explicit async_result_t (std::future<T> future_)
+        : _state (new shared_state_t (std::move (future_)))
+    {
+    }
+
+    async_result_t (async_result_t &&) noexcept = default;
+    async_result_t &operator= (async_result_t &&) noexcept = default;
+
+    async_result_t (const async_result_t &) = delete;
+    async_result_t &operator= (const async_result_t &) = delete;
+
+    ZLINK_CPP_NODISCARD bool valid () const
+    {
+        return _state && _state->future.valid ();
+    }
+
+    void wait () const { _state->future.wait (); }
+
+    template<typename Rep, typename Period>
+    ZLINK_CPP_NODISCARD std::future_status
+    wait_for (const std::chrono::duration<Rep, Period> &timeout_) const
+    {
+        return _state->future.wait_for (timeout_);
+    }
+
+    template<typename Clock, typename Duration>
+    ZLINK_CPP_NODISCARD std::future_status
+    wait_until (const std::chrono::time_point<Clock, Duration> &deadline_) const
+    {
+        return _state->future.wait_until (deadline_);
+    }
+
+    ZLINK_CPP_NODISCARD T get () { return _state->future.get (); }
+
+#if defined(ZLINK_CPP_HAS_COROUTINE_SUPPORT)
+    ZLINK_CPP_NODISCARD bool await_ready () const
+    {
+        return wait_for (std::chrono::milliseconds (0))
+               == std::future_status::ready;
+    }
+
+    void await_suspend (std::coroutine_handle<> continuation_)
+    {
+        std::shared_ptr<shared_state_t> state = _state;
+        state->waiter_started.store (true);
+        std::thread ([state, continuation_]() mutable {
+            try {
+                state->value.reset (new T (state->future.get ()));
+            } catch (...) {
+                state->error = std::current_exception ();
+            }
+            continuation_.resume ();
+        }).detach ();
+    }
+
+    ZLINK_CPP_NODISCARD T await_resume ()
+    {
+        if (!_state->waiter_started.load ())
+            return _state->future.get ();
+        if (_state->error)
+            std::rethrow_exception (_state->error);
+        return std::move (*_state->value);
+    }
+#endif
+
+  private:
+    struct shared_state_t
+    {
+        explicit shared_state_t (std::future<T> future_)
+            : future (std::move (future_)), waiter_started (false)
+        {
+        }
+
+        std::future<T> future;
+        std::atomic<bool> waiter_started;
+#if defined(ZLINK_CPP_HAS_COROUTINE_SUPPORT)
+        std::unique_ptr<T> value;
+        std::exception_ptr error;
+#endif
+    };
+
+    std::shared_ptr<shared_state_t> _state;
 };
 
 template<typename SocketT> class request_reply_base_t
@@ -155,7 +246,7 @@ template<typename SocketT> class request_reply_base_t
         }
     }
 
-    ZLINK_CPP_NODISCARD std::future<received_t>
+    ZLINK_CPP_NODISCARD async_result_t<received_t>
     make_pending_future (uint64_t correlation_id_,
                          std::function<void(received_t)> on_reply_,
                          std::function<void(error_t)> on_error_,
@@ -165,7 +256,7 @@ template<typename SocketT> class request_reply_base_t
           new request_reply_pending_t ());
         pending->on_reply = on_reply_;
         pending->on_error = on_error_;
-        std::future<received_t> future = pending->promise.get_future ();
+        async_result_t<received_t> future (pending->promise.get_future ());
 
         {
             std::lock_guard<std::mutex> lock (_state_mutex);
@@ -335,6 +426,8 @@ inline bool read_request_info (const received_t &received_,
 
 } // namespace detail
 
+template<typename T> using async_result_t = detail::async_result_t<T>;
+
 class request_dealer_t : public detail::request_reply_base_t<dealer_socket_t>
 {
   public:
@@ -344,12 +437,13 @@ class request_dealer_t : public detail::request_reply_base_t<dealer_socket_t>
     {
     }
 
-    ZLINK_CPP_NODISCARD std::future<received_t> request (message_t message_)
+    ZLINK_CPP_NODISCARD async_result_t<received_t>
+    request (message_t message_)
     {
         return request (std::move (message_), get_default_request_timeout ());
     }
 
-    ZLINK_CPP_NODISCARD std::future<received_t>
+    ZLINK_CPP_NODISCARD async_result_t<received_t>
     request (message_t message_, std::chrono::milliseconds timeout_)
     {
         ensure_dispatch_started ();
@@ -357,7 +451,7 @@ class request_dealer_t : public detail::request_reply_base_t<dealer_socket_t>
         if (message_.set_request (correlation_id) != 0)
             throw detail::make_error_from_errno (zlink_errno ());
 
-        std::future<received_t> future = make_pending_future (
+        async_result_t<received_t> future = make_pending_future (
           correlation_id, std::function<void(received_t)> (),
           std::function<void(error_t)> (), timeout_);
 
@@ -408,12 +502,13 @@ class request_dealer_t : public detail::request_reply_base_t<dealer_socket_t>
         });
     }
 
-    ZLINK_CPP_NODISCARD std::future<received_t> try_request (message_t message_)
+    ZLINK_CPP_NODISCARD async_result_t<received_t>
+    try_request (message_t message_)
     {
         return try_request (std::move (message_), get_default_request_timeout ());
     }
 
-    ZLINK_CPP_NODISCARD std::future<received_t>
+    ZLINK_CPP_NODISCARD async_result_t<received_t>
     try_request (message_t message_, std::chrono::milliseconds timeout_)
     {
         ensure_dispatch_started ();
@@ -421,7 +516,7 @@ class request_dealer_t : public detail::request_reply_base_t<dealer_socket_t>
         if (message_.set_request (correlation_id) != 0)
             throw detail::make_error_from_errno (zlink_errno ());
 
-        std::future<received_t> future = make_pending_future (
+        async_result_t<received_t> future = make_pending_future (
           correlation_id, std::function<void(received_t)> (),
           std::function<void(error_t)> (), timeout_);
 
@@ -512,14 +607,14 @@ class request_router_t : public detail::request_reply_base_t<router_socket_t>
     {
     }
 
-    ZLINK_CPP_NODISCARD std::future<received_t>
+    ZLINK_CPP_NODISCARD async_result_t<received_t>
     request (const routing_id_t &routing_id_, message_t message_)
     {
         return request (
           routing_id_, std::move (message_), get_default_request_timeout ());
     }
 
-    ZLINK_CPP_NODISCARD std::future<received_t>
+    ZLINK_CPP_NODISCARD async_result_t<received_t>
     request (const routing_id_t &routing_id_,
              message_t message_,
              std::chrono::milliseconds timeout_)
@@ -529,7 +624,7 @@ class request_router_t : public detail::request_reply_base_t<router_socket_t>
         if (message_.set_request (correlation_id) != 0)
             throw detail::make_error_from_errno (zlink_errno ());
 
-        std::future<received_t> future = make_pending_future (
+        async_result_t<received_t> future = make_pending_future (
           correlation_id, std::function<void(received_t)> (),
           std::function<void(error_t)> (), timeout_);
 
@@ -582,14 +677,14 @@ class request_router_t : public detail::request_reply_base_t<router_socket_t>
         });
     }
 
-    ZLINK_CPP_NODISCARD std::future<received_t>
+    ZLINK_CPP_NODISCARD async_result_t<received_t>
     try_request (const routing_id_t &routing_id_, message_t message_)
     {
         return try_request (
           routing_id_, std::move (message_), get_default_request_timeout ());
     }
 
-    ZLINK_CPP_NODISCARD std::future<received_t>
+    ZLINK_CPP_NODISCARD async_result_t<received_t>
     try_request (const routing_id_t &routing_id_,
                  message_t message_,
                  std::chrono::milliseconds timeout_)
@@ -599,7 +694,7 @@ class request_router_t : public detail::request_reply_base_t<router_socket_t>
         if (message_.set_request (correlation_id) != 0)
             throw detail::make_error_from_errno (zlink_errno ());
 
-        std::future<received_t> future = make_pending_future (
+        async_result_t<received_t> future = make_pending_future (
           correlation_id, std::function<void(received_t)> (),
           std::function<void(error_t)> (), timeout_);
 
@@ -683,14 +778,6 @@ class request_router_t : public detail::request_reply_base_t<router_socket_t>
         return _socket.try_send (routing_id_, message_);
     }
 
-    void on_request (
-      std::function<void(routing_id_t, uint64_t, received_t)> handler_)
-    {
-        ensure_dispatch_started ();
-        std::lock_guard<std::mutex> lock (_request_mutex);
-        _request_handler = handler_;
-    }
-
   protected:
     void handle_dispatch (received_t received_) override
     {
@@ -708,21 +795,6 @@ class request_router_t : public detail::request_reply_base_t<router_socket_t>
             return;
         }
 
-        if (msg_type == static_cast<uint8_t> (
-                          detail::request_reply_message_type_t::request)) {
-            std::function<void(routing_id_t, uint64_t, received_t)> handler;
-            {
-                std::lock_guard<std::mutex> lock (_request_mutex);
-                handler = _request_handler;
-            }
-            if (handler)
-                handler (received_.routing_id, correlation_id,
-                         std::move (received_));
-            else
-                deliver_data (std::move (received_));
-            return;
-        }
-
         deliver_data (std::move (received_));
     }
 
@@ -733,8 +805,6 @@ class request_router_t : public detail::request_reply_base_t<router_socket_t>
     }
 
     std::atomic<uint64_t> _next_correlation_id;
-    std::mutex _request_mutex;
-    std::function<void(routing_id_t, uint64_t, received_t)> _request_handler;
 };
 
 } // namespace zlink

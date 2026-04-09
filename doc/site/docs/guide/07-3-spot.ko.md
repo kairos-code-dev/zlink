@@ -1,3 +1,4 @@
+
 # SPOT 토픽 PUB/SUB (위치투명 발행/구독)
 
 > 이 가이드는 recv-first public surface 기준으로 작성되었다.
@@ -94,110 +95,21 @@ flowchart LR
 
 ### 3.1 Discovery 기반 자동 Mesh
 
-=== "C"
+```c
+void *ctx = zlink_ctx_new();
 
-    ```c
-    void *ctx = zlink_ctx_new();
+/* Discovery setup (peer discovery + registry uplink / heartbeat owner) */
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SPOT, "spot-node");
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
-    /* Discovery setup (peer discovery + registry uplink / heartbeat owner) */
-    void *discovery = zlink_discovery_new(ctx,
-        ZLINK_SERVICE_TYPE_SPOT, "spot-node");
-    zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+/* SPOT Node setup */
+void *node = zlink_spot_node_new(ctx);
+zlink_spot_node_bind(node, "tcp://*:9000");
 
-    /* SPOT Node setup */
-    void *node = zlink_spot_node_new(ctx);
-    zlink_spot_node_bind(node, "tcp://*:9000");
-
-    /* Attach Discovery */
-    zlink_spot_node_attach_discovery(node, discovery);
-    ```
-
-=== "C++"
-
-    ```cpp
-    auto ctx = zlink::context();
-    auto discovery = zlink::discovery(ctx, zlink::service_type::spot, "spot-node");
-    discovery.connect_registry("tcp://registry1:5551");
-
-    auto node = zlink::spot_node(ctx);
-    node.bind("tcp://*:9000");
-    node.attach_discovery(discovery);
-    ```
-
-=== "Java"
-
-    ```java
-    var ctx = Zlink.contextNew();
-    var discovery = ctx.discoveryNew(ServiceType.SPOT, "spot-node");
-    discovery.connectRegistry("tcp://registry1:5551");
-
-    var node = ctx.spotNodeNew();
-    node.bind("tcp://*:9000");
-    node.attachDiscovery(discovery);
-    ```
-
-=== "Python"
-
-    ```python
-    ctx = zlink.Context()
-    discovery = zlink.Discovery(ctx, zlink.SERVICE_TYPE_SPOT, "spot-node")
-    discovery.connect_registry("tcp://registry1:5551")
-
-    node = zlink.SpotNode(ctx)
-    node.bind("tcp://*:9000")
-    node.attach_discovery(discovery)
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const ctx = new zlink.Context();
-    const discovery = new zlink.Discovery(ctx, zlink.SERVICE_TYPE_SPOT, "spot-node");
-    discovery.connectRegistry("tcp://registry1:5551");
-
-    const node = new zlink.SpotNode(ctx);
-    node.bind("tcp://*:9000");
-    node.attachDiscovery(discovery);
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using var ctx = new ZlinkContext();
-    using var discovery = new Discovery(ctx, ServiceType.Spot, "spot-node");
-    discovery.ConnectRegistry("tcp://registry1:5551");
-
-    using var node = new SpotNode(ctx);
-    node.Bind("tcp://*:9000");
-    node.AttachDiscovery(discovery);
-    ```
-
-=== "Rust"
-
-    ```rust
-    let ctx = zlink::Context::new()?;
-    let discovery = zlink::Discovery::new(&ctx, zlink::ServiceType::Spot, "spot-node")?;
-    discovery.connect_registry("tcp://registry1:5551")?;
-
-    let node = zlink::SpotNode::new(&ctx)?;
-    node.bind("tcp://*:9000")?;
-    node.attach_discovery(&discovery)?;
-    ```
-
-=== "Go"
-
-    ```go
-    ctx, err := zlink.NewContext()
-    if err != nil { log.Fatal(err) }
-    discovery, err := zlink.NewDiscovery(ctx, zlink.ServiceTypeSpot, "spot-node")
-    if err != nil { log.Fatal(err) }
-    discovery.ConnectRegistry("tcp://registry1:5551")
-
-    node, err := ctx.SpotNode()
-    if err != nil { log.Fatal(err) }
-    node.Bind("tcp://*:9000")
-    node.AttachDiscovery(discovery)
-    ```
+/* Attach Discovery */
+zlink_spot_node_attach_discovery(node, discovery);
+```
 
 > `SpotNode`는 mesh 참여를 위한 토폴로지 및 라이프사이클 소유자이다.
 > 범용 data-plane facade(publish/subscribe)를 노출하지 않는다.
@@ -210,147 +122,23 @@ Discovery가 attach되면 Registry를 통해 자동으로 peer를 발견하고 �
 자동 할당한다. `zlink_spot_node_status_snapshot()`의 `local_endpoint`로
 실제 할당된 endpoint를 조회할 수 있다:
 
-=== "C"
-
-    ```c
-    zlink_spot_node_bind(node, "tcp://127.0.0.1:0");
-    zlink_spot_node_status_t status;
-    zlink_spot_node_status_snapshot(node, &status);
-    /* status.local_endpoint contains e.g. "tcp://127.0.0.1:43521" */
-    ```
-
-=== "C++"
-
-    ```cpp
-    node.bind("tcp://127.0.0.1:0");
-    auto status = node.status_snapshot();
-    // status.local_endpoint contains e.g. "tcp://127.0.0.1:43521"
-    ```
-
-=== "Java"
-
-    ```java
-    node.bind("tcp://127.0.0.1:0");
-    var status = node.statusSnapshot();
-    // status.localEndpoint() contains e.g. "tcp://127.0.0.1:43521"
-    ```
-
-=== "Python"
-
-    ```python
-    node.bind("tcp://127.0.0.1:0")
-    status = node.status_snapshot()
-    # status.local_endpoint contains e.g. "tcp://127.0.0.1:43521"
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    node.bind("tcp://127.0.0.1:0");
-    const status = node.statusSnapshot();
-    // status.localEndpoint contains e.g. "tcp://127.0.0.1:43521"
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    node.Bind("tcp://127.0.0.1:0");
-    var status = node.StatusSnapshot();
-    // status.LocalEndpoint contains e.g. "tcp://127.0.0.1:43521"
-    ```
-
-=== "Rust"
-
-    ```rust
-    node.bind("tcp://127.0.0.1:0")?;
-    let status = node.status_snapshot()?;
-    // status.local_endpoint contains e.g. "tcp://127.0.0.1:43521"
-    ```
-
-=== "Go"
-
-    ```go
-    node.Bind("tcp://127.0.0.1:0")
-    status, _ := node.StatusSnapshot()
-    // status.LocalEndpoint contains e.g. "tcp://127.0.0.1:43521"
-    ```
+```c
+zlink_spot_node_bind(node, "tcp://127.0.0.1:0");
+zlink_spot_node_status_t status;
+zlink_spot_node_status_snapshot(node, &status);
+/* status.local_endpoint contains e.g. "tcp://127.0.0.1:43521" */
+```
 
 ### 3.2 수동 Mesh
 
-=== "C"
+```c
+void *node = zlink_spot_node_new(ctx);
+zlink_spot_node_bind(node, "tcp://*:9000");
 
-    ```c
-    void *node = zlink_spot_node_new(ctx);
-    zlink_spot_node_bind(node, "tcp://*:9000");
-
-    /* Directly connect to other nodes' PUB */
-    zlink_spot_node_connect_peer(node, "tcp://node2:9000");
-    zlink_spot_node_connect_peer(node, "tcp://node3:9000");
-    ```
-
-=== "C++"
-
-    ```cpp
-    auto node = zlink::spot_node(ctx);
-    node.bind("tcp://*:9000");
-    node.connect_peer("tcp://node2:9000");
-    node.connect_peer("tcp://node3:9000");
-    ```
-
-=== "Java"
-
-    ```java
-    var node = ctx.spotNodeNew();
-    node.bind("tcp://*:9000");
-    node.connectPeer("tcp://node2:9000");
-    node.connectPeer("tcp://node3:9000");
-    ```
-
-=== "Python"
-
-    ```python
-    node = zlink.SpotNode(ctx)
-    node.bind("tcp://*:9000")
-    node.connect_peer("tcp://node2:9000")
-    node.connect_peer("tcp://node3:9000")
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const node = new zlink.SpotNode(ctx);
-    node.bind("tcp://*:9000");
-    node.connectPeer("tcp://node2:9000");
-    node.connectPeer("tcp://node3:9000");
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using var node = new SpotNode(ctx);
-    node.Bind("tcp://*:9000");
-    node.ConnectPeer("tcp://node2:9000");
-    node.ConnectPeer("tcp://node3:9000");
-    ```
-
-=== "Rust"
-
-    ```rust
-    let node = zlink::SpotNode::new(&ctx)?;
-    node.bind("tcp://*:9000")?;
-    node.connect_peer("tcp://node2:9000")?;
-    node.connect_peer("tcp://node3:9000")?;
-    ```
-
-=== "Go"
-
-    ```go
-    node, err := ctx.SpotNode()
-    if err != nil { log.Fatal(err) }
-    node.Bind("tcp://*:9000")
-    node.ConnectPeer("tcp://node2:9000")
-    node.ConnectPeer("tcp://node3:9000")
-    ```
+/* Directly connect to other nodes' PUB */
+zlink_spot_node_connect_peer(node, "tcp://node2:9000");
+zlink_spot_node_connect_peer(node, "tcp://node3:9000");
+```
 
 **주의:** 수동 Mesh에서는 Discovery가 없으므로 Registry topology visibility도
 없다. 이는 의도된 제한이다.
@@ -359,54 +147,9 @@ Discovery가 attach되면 Registry를 통해 자동으로 peer를 발견하고 �
 
 ### 4.1 생성
 
-=== "C"
-
-    ```c
-    void *spot = zlink_spot_new(node);
-    ```
-
-=== "C++"
-
-    ```cpp
-    auto spot = zlink::spot(node);
-    ```
-
-=== "Java"
-
-    ```java
-    var spot = node.spotNew();
-    ```
-
-=== "Python"
-
-    ```python
-    spot = zlink.Spot(node)
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const spot = new zlink.Spot(node);
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using var spot = new Spot(node);
-    ```
-
-=== "Rust"
-
-    ```rust
-    let spot = zlink::Spot::new(&node)?;
-    ```
-
-=== "Go"
-
-    ```go
-    spot, err := node.Spot()
-    if err != nil { log.Fatal(err) }
-    ```
+```c
+void *spot = zlink_spot_new(node);
+```
 
 `zlink_spot_new(node)`는 기존 spot node를 빌리는 unified facade를
 생성한다. publish와 subscribe를 함께 제공한다. public standalone
@@ -418,141 +161,22 @@ unified `spot` 내부의 `inproc` 연결은 TLS 설정 surface가 아니다.
 
 ### 4.2 발행
 
-=== "C"
-
-    ```c
-    zlink_msg_t part;
-    zlink_msg_init_size(&part, 11);
-    memcpy(zlink_msg_data(&part), "hello world", 11);
-    zlink_publish(spot, "chat:room1:message", &part, 1, 0);
-    ```
-
-=== "C++"
-
-    ```cpp
-    zlink::msg part(11);
-    std::memcpy(part.data(), "hello world", 11);
-    spot.publish("chat:room1:message", &part, 1, 0);
-    ```
-
-=== "Java"
-
-    ```java
-    byte[] data = "hello world".getBytes();
-    spot.publish("chat:room1:message", data);
-    ```
-
-=== "Python"
-
-    ```go
-    spot.Publish("chat:room1:message", zlink.NewMessage([]byte("hello world")))
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    spot.publish("chat:room1:message", Buffer.from("hello world"));
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    spot.Publish("chat:room1:message", "hello world"u8.ToArray());
-    ```
-
-=== "Rust"
-
-    ```rust
-    spot.publish("chat:room1:message", b"hello world")?;
-    ```
-
-=== "Go"
-
-    ```python
-    spot.publish("chat:room1:message", b"hello world")
-    ```
+```c
+zlink_msg_t part;
+zlink_msg_init_size(&part, 11);
+memcpy(zlink_msg_data(&part), "hello world", 11);
+zlink_publish(spot, "chat:room1:message", &part, 1, 0);
+```
 
 ### 4.3 구독 / 해제
 
-=== "C"
+```c
+zlink_set_subscription(spot, "chat:room1:message");
+zlink_set_subscription(spot, "chat:room1:*");
 
-    ```c
-    zlink_set_subscription(spot, "chat:room1:message");
-    zlink_set_subscription(spot, "chat:room1:*");
-
-    zlink_unset_subscription(spot, "chat:room1:message");
-    zlink_unset_subscription(spot, "chat:room1:*");
-    ```
-
-=== "C++"
-
-    ```cpp
-    spot.set_subscription("chat:room1:message");
-    spot.set_subscription("chat:room1:*");
-
-    spot.unset_subscription("chat:room1:message");
-    spot.unset_subscription("chat:room1:*");
-    ```
-
-=== "Java"
-
-    ```java
-    spot.setSubscription("chat:room1:message");
-    spot.setSubscription("chat:room1:*");
-
-    spot.unsetSubscription("chat:room1:message");
-    spot.unsetSubscription("chat:room1:*");
-    ```
-
-=== "Python"
-
-    ```go
-    spot.SetSubscription("chat:room1:message")
-    spot.SetSubscription("chat:room1:*")
-
-    spot.UnsetSubscription("chat:room1:message")
-    spot.UnsetSubscription("chat:room1:*")
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    spot.setSubscription("chat:room1:message");
-    spot.setSubscription("chat:room1:*");
-
-    spot.unsetSubscription("chat:room1:message");
-    spot.unsetSubscription("chat:room1:*");
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    spot.SetSubscription("chat:room1:message");
-    spot.SetSubscription("chat:room1:*");
-
-    spot.UnsetSubscription("chat:room1:message");
-    spot.UnsetSubscription("chat:room1:*");
-    ```
-
-=== "Rust"
-
-    ```rust
-    spot.set_subscription("chat:room1:message")?;
-    spot.set_subscription("chat:room1:*")?;
-
-    spot.unset_subscription("chat:room1:message")?;
-    spot.unset_subscription("chat:room1:*")?;
-    ```
-
-=== "Go"
-
-    ```python
-    spot.set_subscription("chat:room1:message")
-    spot.set_subscription("chat:room1:*")
-
-    spot.unset_subscription("chat:room1:message")
-    spot.unset_subscription("chat:room1:*")
-    ```
+zlink_unset_subscription(spot, "chat:room1:message");
+zlink_unset_subscription(spot, "chat:room1:*");
+```
 
 ### 4.4 메시지 수신
 
@@ -564,310 +188,25 @@ send-ready는 별도 축이다.
 
 recv 모드에서는 `zlink_subscribe()`로 메시지를 직접 수신한다.
 
-=== "C"
-
-    ```c
-    #include <zlink.h>
-    #include <string.h>
-    #include <stdio.h>
-
-    int main(void)
-    {
-        void *ctx = zlink_ctx_new();
-
-        /* Publisher node */
-        void *pub_node = zlink_spot_node_new(ctx);
-        zlink_spot_node_bind(pub_node, "tcp://127.0.0.1:0");
-        zlink_spot_node_status_t status;
-        zlink_spot_node_status_snapshot(pub_node, &status);
-
-        /* Subscriber node -- connect to publisher */
-        void *sub_node = zlink_spot_node_new(ctx);
-        zlink_spot_node_bind(sub_node, "tcp://127.0.0.1:0");
-        zlink_spot_node_connect_peer(sub_node, status.local_endpoint);
-
-        void *publisher = zlink_spot_new(pub_node);
-        void *subscriber = zlink_spot_new(sub_node);
-
-        zlink_set_subscription(subscriber, "chat:room1:message");
-        zlink_msleep(100);  /* wait for subscription to propagate */
-
-        /* Publish */
-        zlink_msg_t part;
-        zlink_msg_init_size(&part, 11);
-        memcpy(zlink_msg_data(&part), "hello world", 11);
-        zlink_publish(publisher, "chat:room1:message", &part, 1, 0);
-
-        /* Receive */
-        zlink_routing_id_t source_rid;
-        zlink_msg_t *parts = NULL;
-        size_t part_count = 0;
-        char topic_buf[256];
-        size_t topic_len = sizeof(topic_buf);
-        int rc = zlink_subscribe(subscriber, &source_rid, &parts, &part_count,
-                                      topic_buf, &topic_len, 0);
-        if (rc == 0) {
-            printf("Topic: %.*s Data: %.*s\n",
-                   (int)topic_len, topic_buf,
-                   (int)zlink_msg_size(&parts[0]),
-                   (char *)zlink_msg_data(&parts[0]));
-            for (size_t i = 0; i < part_count; i++)
-                zlink_msg_close(&parts[i]);
-        }
-
-        zlink_spot_destroy(&subscriber);
-        zlink_spot_destroy(&publisher);
-        zlink_spot_node_destroy(&sub_node);
-        zlink_spot_node_destroy(&pub_node);
-        zlink_ctx_term(ctx);
-        return 0;
-    }
-    ```
-
-=== "C++"
-
-    ```cpp
-    #include <zlink/services/spot.hpp>
-    #include <iostream>
-    #include <thread>
-
-    int main()
-    {
-        zlink::context_t ctx;
-
-        zlink::spot_node pub_node(ctx);
-        pub_node.bind("tcp://127.0.0.1:0");
-        auto pub_status = pub_node.status_snapshot();
-
-        zlink::spot_node sub_node(ctx);
-        sub_node.bind("tcp://127.0.0.1:0");
-        sub_node.connect_peer(pub_status.local_endpoint);
-
-        auto publisher = zlink::spot(pub_node);
-        auto subscriber = zlink::spot(sub_node);
-
-        subscriber.set_subscription("chat:room1:message");
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-        publisher.publish("chat:room1:message", "hello world");
-
-        auto [topic, parts] = subscriber.subscribe();
-        std::cout << "Topic: " << topic
-                  << " Data: " << parts[0].str() << std::endl;
-
-        return 0;
-    }
-    ```
-
-=== "Java"
-
-    ```java
-    import dev.kairoscode.zlink.*;
-
-    public class SpotRecvExample {
-        public static void main(String[] args) throws Exception {
-            var ctx = Zlink.contextNew();
-
-            var pubNode = ctx.spotNodeNew();
-            pubNode.bind("tcp://127.0.0.1:0");
-            var pubStatus = pubNode.statusSnapshot();
-
-            var subNode = ctx.spotNodeNew();
-            subNode.bind("tcp://127.0.0.1:0");
-            subNode.connectPeer(pubStatus.localEndpoint());
-
-            var publisher = pubNode.spotNew();
-            var subscriber = subNode.spotNew();
-
-            subscriber.setSubscription("chat:room1:message");
-            Thread.sleep(100);
-
-            publisher.publish("chat:room1:message", "hello world".getBytes());
-
-            var msg = subscriber.subscribe();
-            System.out.printf("Topic: %s Data: %s%n",
-                msg.topic(), new String(msg.parts()[0].data()));
-
-            subscriber.destroy();
-            publisher.destroy();
-            subNode.destroy();
-            pubNode.destroy();
-            ctx.close();
-        }
-    }
-    ```
-
-=== "Python"
-
-    ```python
-    import zlink
-    import time
-
-    ctx = zlink.Context()
-
-    pub_node = zlink.SpotNode(ctx)
-    pub_node.bind("tcp://127.0.0.1:0")
-    pub_status = pub_node.status_snapshot()
-
-    sub_node = zlink.SpotNode(ctx)
-    sub_node.bind("tcp://127.0.0.1:0")
-    sub_node.connect_peer(pub_status.local_endpoint)
-
-    publisher = zlink.Spot(pub_node)
-    subscriber = zlink.Spot(sub_node)
-
-    subscriber.set_subscription("chat:room1:message")
-    time.sleep(0.1)
-
-    publisher.publish("chat:room1:message", b"hello world")
-
-    topic, parts = subscriber.subscribe()
-    print(f"Topic: {topic} Data: {parts[0].decode()}")
-
-    subscriber.destroy()
-    publisher.destroy()
-    sub_node.destroy()
-    pub_node.destroy()
-    ctx.term()
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    import * as zlink from 'zlink';
-
-    const ctx = new zlink.Context();
-
-    const pubNode = new zlink.SpotNode(ctx);
-    pubNode.bind('tcp://127.0.0.1:0');
-    const pubStatus = pubNode.statusSnapshot();
-
-    const subNode = new zlink.SpotNode(ctx);
-    subNode.bind('tcp://127.0.0.1:0');
-    subNode.connectPeer(pubStatus.localEndpoint);
-
-    const publisher = new zlink.Spot(pubNode);
-    const subscriber = new zlink.Spot(subNode);
-
-    subscriber.setSubscription('chat:room1:message');
-    await new Promise(r => setTimeout(r, 100));
-
-    publisher.publish('chat:room1:message', Buffer.from('hello world'));
-
-    const { topic, parts } = subscriber.subscribe();
-    console.log(`Topic: ${topic} Data: ${parts[0].toString()}`);
-
-    subscriber.destroy();
-    publisher.destroy();
-    subNode.destroy();
-    pubNode.destroy();
-    ctx.term();
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using Zlink;
-
-    using var ctx = new ZlinkContext();
-
-    using var pubNode = new SpotNode(ctx);
-    pubNode.Bind("tcp://127.0.0.1:0");
-    var pubStatus = pubNode.StatusSnapshot();
-
-    using var subNode = new SpotNode(ctx);
-    subNode.Bind("tcp://127.0.0.1:0");
-    subNode.ConnectPeer(pubStatus.LocalEndpoint);
-
-    using var publisher = new Spot(pubNode);
-    using var subscriber = new Spot(subNode);
-
-    subscriber.SetSubscription("chat:room1:message");
-    Thread.Sleep(100);
-
-    publisher.Publish("chat:room1:message", "hello world"u8.ToArray());
-
-    var (topic, parts) = subscriber.Subscribe();
-    Console.WriteLine($"Topic: {topic} Data: {parts[0].GetString()}");
-    ```
-
-=== "Rust"
-
-    ```rust
-    use zlink::Context;
-    use std::thread;
-    use std::time::Duration;
-
-    fn main() -> Result<(), Box<dyn std::error::Error>> {
-        let ctx = Context::new()?;
-
-        let pub_node = zlink::SpotNode::new(&ctx)?;
-        pub_node.bind("tcp://127.0.0.1:0")?;
-        let pub_status = pub_node.status_snapshot()?;
-
-        let sub_node = zlink::SpotNode::new(&ctx)?;
-        sub_node.bind("tcp://127.0.0.1:0")?;
-        sub_node.connect_peer(&pub_status.local_endpoint)?;
-
-        let publisher = zlink::Spot::new(&pub_node)?;
-        let subscriber = zlink::Spot::new(&sub_node)?;
-
-        subscriber.set_subscription("chat:room1:message")?;
-        thread::sleep(Duration::from_millis(100));
-
-        publisher.publish("chat:room1:message", b"hello world")?;
-
-        let (topic, parts) = subscriber.subscribe()?;
-        println!("Topic: {} Data: {}", topic,
-                 String::from_utf8_lossy(parts[0].data()));
-
-        Ok(())
-    }
-    ```
-
-=== "Go"
-
-    ```go
-    package main
-
-    import (
-        "fmt"
-        "log"
-        "time"
-        "github.com/kairos-code-dev/zlink-go"
-    )
-
-    func main() {
-        ctx, err := zlink.NewContext()
-        if err != nil { log.Fatal(err) }
-
-        pubNode, _ := ctx.SpotNode()
-        pubNode.Bind("tcp://127.0.0.1:0")
-        pubStatus, _ := pubNode.StatusSnapshot()
-
-        subNode, _ := ctx.SpotNode()
-        subNode.Bind("tcp://127.0.0.1:0")
-        subNode.ConnectPeer(pubStatus.LocalEndpoint)
-
-        publisher, _ := pubNode.Spot()
-        subscriber, _ := subNode.Spot()
-
-        subscriber.SetSubscription("chat:room1:message")
-        time.Sleep(100 * time.Millisecond)
-
-        publisher.Publish("chat:room1:message",
-            zlink.NewMessage([]byte("hello world")))
-
-        topic, parts, err := subscriber.Subscribe()
-        if err != nil { log.Fatal(err) }
-        fmt.Printf("Topic: %s Data: %s\n", topic, string(parts[0].Data()))
-
-        subscriber.Destroy()
-        publisher.Destroy()
-        subNode.Destroy()
-        pubNode.Destroy()
-    }
-    ```
+```c
+void *spot = zlink_spot_new(node);
+zlink_set_subscription(spot, "chat:room1:message");
+
+/* Pull next message */
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+char topic_buf[256];
+size_t topic_len = sizeof(topic_buf);
+int rc = zlink_subscribe(spot, &source_rid, &parts, &part_count,
+                              topic_buf, &topic_len, 0);
+if (rc == 0) {
+    printf("Topic: %.*s, Parts: %zu\n",
+           (int)topic_len, topic_buf, part_count);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+```
 
 ??? example "Full Sample Code"
 
@@ -887,314 +226,20 @@ recv 모드에서는 `zlink_subscribe()`로 메시지를 직접 수신한다.
 `zlink_subscribe_handler()`를 호출하면 recv 모드에서 callback 모드로
 일방 전환된다. 이후 수신 메시지는 설치된 callback으로 자동 dispatch된다.
 
-=== "C"
-
-    ```c
-    #include <zlink.h>
-    #include <string.h>
-    #include <stdio.h>
-
-    void on_message(const zlink_routing_id_t *source_rid,
-                    const char *topic, size_t topic_len,
-                    zlink_msg_t *parts, size_t part_count,
-                    void *userdata)
-    {
-        printf("Topic: %.*s Data: %.*s\n",
-               (int)topic_len, topic,
-               (int)zlink_msg_size(&parts[0]),
-               (char *)zlink_msg_data(&parts[0]));
-    }
-
-    int main(void)
-    {
-        void *ctx = zlink_ctx_new();
-
-        void *pub_node = zlink_spot_node_new(ctx);
-        zlink_spot_node_bind(pub_node, "tcp://127.0.0.1:0");
-        zlink_spot_node_status_t status;
-        zlink_spot_node_status_snapshot(pub_node, &status);
-
-        void *sub_node = zlink_spot_node_new(ctx);
-        zlink_spot_node_bind(sub_node, "tcp://127.0.0.1:0");
-        zlink_spot_node_connect_peer(sub_node, status.local_endpoint);
-
-        void *publisher = zlink_spot_new(pub_node);
-        void *subscriber = zlink_spot_new(sub_node);
-
-        zlink_set_subscription(subscriber, "chat:room1:*");
-        zlink_subscribe_handler(subscriber, on_message, NULL);
-        zlink_msleep(100);
-
-        zlink_msg_t part;
-        zlink_msg_init_size(&part, 11);
-        memcpy(zlink_msg_data(&part), "hello world", 11);
-        zlink_publish(publisher, "chat:room1:message", &part, 1, 0);
-
-        zlink_msleep(200);  /* let callback fire */
-
-        zlink_spot_destroy(&subscriber);
-        zlink_spot_destroy(&publisher);
-        zlink_spot_node_destroy(&sub_node);
-        zlink_spot_node_destroy(&pub_node);
-        zlink_ctx_term(ctx);
-        return 0;
-    }
-    ```
-
-=== "C++"
-
-    ```cpp
-    #include <zlink/services/spot.hpp>
-    #include <iostream>
-    #include <thread>
-
-    int main()
-    {
-        zlink::context_t ctx;
-
-        zlink::spot_node pub_node(ctx);
-        pub_node.bind("tcp://127.0.0.1:0");
-        auto pub_status = pub_node.status_snapshot();
-
-        zlink::spot_node sub_node(ctx);
-        sub_node.bind("tcp://127.0.0.1:0");
-        sub_node.connect_peer(pub_status.local_endpoint);
-
-        auto publisher = zlink::spot(pub_node);
-        auto subscriber = zlink::spot(sub_node);
-
-        subscriber.set_subscription("chat:room1:*");
-        subscriber.subscribe_handler([](const auto& source_rid,
-                                        std::string_view topic,
-                                        std::span<zlink::msg> parts) {
-            std::cout << "Topic: " << topic
-                      << " Data: " << parts[0].str() << std::endl;
-        });
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-        publisher.publish("chat:room1:message", "hello world");
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-        return 0;
-    }
-    ```
-
-=== "Java"
-
-    ```java
-    import dev.kairoscode.zlink.*;
-
-    public class SpotCallbackExample {
-        public static void main(String[] args) throws Exception {
-            var ctx = Zlink.contextNew();
-
-            var pubNode = ctx.spotNodeNew();
-            pubNode.bind("tcp://127.0.0.1:0");
-            var pubStatus = pubNode.statusSnapshot();
-
-            var subNode = ctx.spotNodeNew();
-            subNode.bind("tcp://127.0.0.1:0");
-            subNode.connectPeer(pubStatus.localEndpoint());
-
-            var publisher = pubNode.spotNew();
-            var subscriber = subNode.spotNew();
-
-            subscriber.setSubscription("chat:room1:*");
-            subscriber.subscribeHandler((sourceRid, topic, parts) -> {
-                System.out.printf("Topic: %s Data: %s%n",
-                    topic, new String(parts[0].data()));
-            });
-            Thread.sleep(100);
-
-            publisher.publish("chat:room1:message", "hello world".getBytes());
-            Thread.sleep(200);
-
-            subscriber.destroy();
-            publisher.destroy();
-            subNode.destroy();
-            pubNode.destroy();
-            ctx.close();
-        }
-    }
-    ```
-
-=== "Python"
-
-    ```python
-    import zlink
-    import time
-
-    ctx = zlink.Context()
-
-    pub_node = zlink.SpotNode(ctx)
-    pub_node.bind("tcp://127.0.0.1:0")
-    pub_status = pub_node.status_snapshot()
-
-    sub_node = zlink.SpotNode(ctx)
-    sub_node.bind("tcp://127.0.0.1:0")
-    sub_node.connect_peer(pub_status.local_endpoint)
-
-    publisher = zlink.Spot(pub_node)
-    subscriber = zlink.Spot(sub_node)
-
-    subscriber.set_subscription("chat:room1:*")
-
-    def on_message(source_rid, topic, parts):
-        print(f"Topic: {topic} Data: {parts[0].decode()}")
-
-    subscriber.subscribe_handler(on_message)
-    time.sleep(0.1)
-
-    publisher.publish("chat:room1:message", b"hello world")
-    time.sleep(0.2)
-
-    subscriber.destroy()
-    publisher.destroy()
-    sub_node.destroy()
-    pub_node.destroy()
-    ctx.term()
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    import * as zlink from 'zlink';
-
-    const ctx = new zlink.Context();
-
-    const pubNode = new zlink.SpotNode(ctx);
-    pubNode.bind('tcp://127.0.0.1:0');
-    const pubStatus = pubNode.statusSnapshot();
-
-    const subNode = new zlink.SpotNode(ctx);
-    subNode.bind('tcp://127.0.0.1:0');
-    subNode.connectPeer(pubStatus.localEndpoint);
-
-    const publisher = new zlink.Spot(pubNode);
-    const subscriber = new zlink.Spot(subNode);
-
-    subscriber.setSubscription('chat:room1:*');
-    subscriber.subscribeHandler((sourceRid, topic, parts) => {
-        console.log(`Topic: ${topic} Data: ${parts[0].toString()}`);
-    });
-    await new Promise(r => setTimeout(r, 100));
-
-    publisher.publish('chat:room1:message', Buffer.from('hello world'));
-    await new Promise(r => setTimeout(r, 200));
-
-    subscriber.destroy();
-    publisher.destroy();
-    subNode.destroy();
-    pubNode.destroy();
-    ctx.term();
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using Zlink;
-
-    using var ctx = new ZlinkContext();
-
-    using var pubNode = new SpotNode(ctx);
-    pubNode.Bind("tcp://127.0.0.1:0");
-    var pubStatus = pubNode.StatusSnapshot();
-
-    using var subNode = new SpotNode(ctx);
-    subNode.Bind("tcp://127.0.0.1:0");
-    subNode.ConnectPeer(pubStatus.LocalEndpoint);
-
-    using var publisher = new Spot(pubNode);
-    using var subscriber = new Spot(subNode);
-
-    subscriber.SetSubscription("chat:room1:*");
-    subscriber.SubscribeHandler((sourceRid, topic, parts) => {
-        Console.WriteLine($"Topic: {topic} Data: {parts[0].GetString()}");
-    });
-    Thread.Sleep(100);
-
-    publisher.Publish("chat:room1:message", "hello world"u8.ToArray());
-    Thread.Sleep(200);
-    ```
-
-=== "Rust"
-
-    ```rust
-    use zlink::Context;
-    use std::thread;
-    use std::time::Duration;
-
-    fn main() -> Result<(), Box<dyn std::error::Error>> {
-        let ctx = Context::new()?;
-
-        let pub_node = zlink::SpotNode::new(&ctx)?;
-        pub_node.bind("tcp://127.0.0.1:0")?;
-        let pub_status = pub_node.status_snapshot()?;
-
-        let sub_node = zlink::SpotNode::new(&ctx)?;
-        sub_node.bind("tcp://127.0.0.1:0")?;
-        sub_node.connect_peer(&pub_status.local_endpoint)?;
-
-        let publisher = zlink::Spot::new(&pub_node)?;
-        let subscriber = zlink::Spot::new(&sub_node)?;
-
-        subscriber.set_subscription("chat:room1:*")?;
-        subscriber.subscribe_handler(|source_rid, topic, parts| {
-            println!("Topic: {} Data: {}",
-                     topic, String::from_utf8_lossy(parts[0].data()));
-        });
-        thread::sleep(Duration::from_millis(100));
-
-        publisher.publish("chat:room1:message", b"hello world")?;
-        thread::sleep(Duration::from_millis(200));
-
-        Ok(())
-    }
-    ```
-
-=== "Go"
-
-    ```go
-    package main
-
-    import (
-        "fmt"
-        "log"
-        "time"
-        "github.com/kairos-code-dev/zlink-go"
-    )
-
-    func main() {
-        ctx, err := zlink.NewContext()
-        if err != nil { log.Fatal(err) }
-
-        pubNode, _ := ctx.SpotNode()
-        pubNode.Bind("tcp://127.0.0.1:0")
-        pubStatus, _ := pubNode.StatusSnapshot()
-
-        subNode, _ := ctx.SpotNode()
-        subNode.Bind("tcp://127.0.0.1:0")
-        subNode.ConnectPeer(pubStatus.LocalEndpoint)
-
-        publisher, _ := pubNode.Spot()
-        subscriber, _ := subNode.Spot()
-
-        subscriber.SetSubscription("chat:room1:*")
-        subscriber.SubscribeHandler(func(sourceRid zlink.RoutingID, topic string, parts []zlink.Message) {
-            fmt.Printf("Topic: %s Data: %s\n", topic, string(parts[0].Data()))
-        })
-        time.Sleep(100 * time.Millisecond)
-
-        publisher.Publish("chat:room1:message",
-            zlink.NewMessage([]byte("hello world")))
-        time.Sleep(200 * time.Millisecond)
-
-        subscriber.Destroy()
-        publisher.Destroy()
-        subNode.Destroy()
-        pubNode.Destroy()
-    }
-    ```
+```c
+/* Define callback function */
+void on_message(const zlink_routing_id_t *source_rid,
+                const char *topic, size_t topic_len,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    printf("Topic: %.*s, Parts: %zu\n", (int)topic_len, topic, part_count);
+}
+
+/* Register handler at unified spot creation */
+void *spot = zlink_spot_new(node);
+zlink_subscribe_handler(spot, on_message, NULL);
+```
 
 ??? example "Full Sample Code"
 
@@ -1268,7 +313,64 @@ SPOT의 내부 구현은 data plane과 control plane이 분리된 모듈 구조�
 멀티파트 publish는 공통 `multipart_send_txn` 모듈을 사용하여
 whole-message 보장(전체 성공 또는 전체 실패)을 제공한다.
 
-## 6. 전달 정책
+## 6. Peer Publish Batching
+
+SpotNode는 peer publish 경로(`mesh_pub`)에서 작은 메시지를 topic별로
+모아 하나의 batch frame으로 보내는 내부 최적화를 지원한다.
+receiver는 batch를 내부적으로 풀어서 기존과 동일한 logical message를
+callback/recv 경로로 전달한다.
+
+이것은 **투명한 내부 최적화**이다. application이 보는 publish/subscribe/callback
+계약은 변경되지 않는다. receiver는 동일한 logical message를 동일한 순서로 받는다.
+
+### 활성화
+
+batching은 기본값 disabled이다. SpotNode의 `PEER_BATCH_ENABLE` 옵션으로
+활성화한다:
+
+```c
+int enabled = 1;
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
+                 &enabled, sizeof(enabled));
+```
+
+**v1 제약:** mesh에 참여하는 모든 SpotNode가 동일 세대 binary여야 한다
+(homogeneous deployment). runtime capability negotiation은 없다.
+mixed-version mesh에서 활성화하면 batch frame을 일반 메시지로 오해석할 수 있다.
+
+### 설정
+
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `PEER_BATCH_ENABLE` | false | peer batching 활성화 (운영자 opt-in) |
+| `PEER_BATCH_DELAY_MS` | 20 | topic bucket flush 최대 지연 (ms) |
+| `PEER_BATCH_MAX_MESSAGES` | 32 | bucket당 최대 메시지 수 |
+| `PEER_BATCH_MAX_BYTES` | 65536 | bucket당 최대 바이트 |
+| `PEER_BATCH_BYPASS_BYTES` | 65536 | 이 크기 이상 메시지는 즉시 전송 |
+| `PEER_UNBATCH_MAX_MESSAGES_PER_TURN` | 32 | I/O turn당 unbatch 최대 메시지 수 |
+| `PEER_UNBATCH_MAX_BYTES_PER_TURN` | 65536 | I/O turn당 unbatch 최대 바이트 |
+
+### 동작
+
+- **로컬 fanout**은 항상 즉시 전달된다. batching은 peer 경로에만 적용된다.
+- **같은 topic 내 순서**는 batch, bypass, flush 모든 경로에서 보존된다.
+- **대형 메시지** (>= `BYPASS_BYTES`)는 즉시 전송된다. 같은 topic에
+  pending bucket이 있으면 순서 유지를 위해 먼저 flush한다.
+- **Flush 조건:** delay timeout, max messages, max bytes, shutdown/drain.
+
+### Wire 형식
+
+batch frame은 원래 topic subject를 그대로 사용한다 (reserved internal subject 없음).
+batch frame은 정확히 3개의 part로 구성된다:
+
+1. **Header** (12바이트): magic `0x31544253` ("SBT1"), version, flags, header_size
+2. **Metadata** (16바이트): message_count, total_payload_bytes, encoded_bytes, reserved
+3. **Body** (가변): 연결된 encoded logical message stream
+
+receiver는 magic, version, header_size를 검증한 후에만 batch로 처리한다.
+매칭되지 않는 frame은 일반 메시지로 처리된다.
+
+## 7. 전달 정책
 
 - 로컬 publish (`spot`) → 로컬 SPOT Sub 분배 + PUB 송출 (원격 전파)
 - 원격 수신 (SUB) → 로컬 SPOT Sub 분배만 (재발행 없음)
@@ -1282,71 +384,13 @@ whole-message 보장(전체 성공 또는 전체 실패)을 제공한다.
 SPOT은 live pub/sub이며, durable delivery, ack/retry, exactly-once,
 late join에 대한 과거 메시지 재전송은 보장하지 않는다.
 
-## 7. 정리
+## 8. 정리
 
-=== "C"
-
-    ```c
-    zlink_spot_destroy(&spot);
-    zlink_spot_node_destroy(&node);
-    zlink_discovery_destroy(&discovery);
-    ```
-
-=== "C++"
-
-    ```cpp
-    spot.close();
-    node.close();
-    discovery.close();
-    ```
-
-=== "Java"
-
-    ```java
-    spot.destroy();
-    node.destroy();
-    discovery.destroy();
-    ```
-
-=== "Python"
-
-    ```python
-    spot.destroy()
-    node.destroy()
-    discovery.destroy()
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    spot.destroy();
-    node.destroy();
-    discovery.destroy();
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    spot.Dispose();
-    node.Dispose();
-    discovery.Dispose();
-    ```
-
-=== "Rust"
-
-    ```rust
-    spot.destroy()?;
-    node.destroy()?;
-    discovery.destroy()?;
-    ```
-
-=== "Go"
-
-    ```go
-    spot.Destroy()
-    node.Destroy()
-    discovery.Destroy()
-    ```
+```c
+zlink_spot_destroy(&spot);
+zlink_spot_node_destroy(&node);
+zlink_discovery_destroy(&discovery);
+```
 
 **정리 순서:** `spot`을 먼저 destroy하고, 그 다음 `SpotNode`, 마지막으로
 `Discovery` 순서로 정리한다. `SpotNode` destroy 전에 관련 `spot`의 외부 사용을

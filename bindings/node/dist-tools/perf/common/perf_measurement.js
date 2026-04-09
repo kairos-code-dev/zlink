@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const path = require('node:path');
-const { Worker } = require('node:worker_threads');
-const { performance } = require('node:perf_hooks');
 const METRIC_MAGIC = 0x5a4c4e4b;
 const HEADER_SIZE = 29;
+const BASE_EPOCH_NS = BigInt(Date.now()) * 1000000n;
+const BASE_HR_NS = process.hrtime.bigint();
 function currentEpochNs() {
-    return BigInt(Math.round((performance.timeOrigin + performance.now()) * 1000000));
+    return BASE_EPOCH_NS + (process.hrtime.bigint() - BASE_HR_NS);
 }
 function createPayload(size) {
     if (!Number.isInteger(size) || size < HEADER_SIZE) {
@@ -70,7 +69,7 @@ function percentile(sortedValues, q) {
 function computeMetrics(latenciesNs, durationSeconds, msgSize, bandwidthMultiplier = 1) {
     const count = latenciesNs.length;
     const throughput = durationSeconds > 0 ? count / durationSeconds : 0;
-    const bandwidth = throughput * msgSize * bandwidthMultiplier / 1000000;
+    const bandwidth = throughput * msgSize * bandwidthMultiplier / 1_000_000;
     const sorted = latenciesNs.slice().sort((a, b) => a - b);
     const latency = count > 0 ? sorted.reduce((sum, value) => sum + value, 0) / count : 0;
     const latencyP95 = percentile(sorted, 0.95);
@@ -78,9 +77,9 @@ function computeMetrics(latenciesNs, durationSeconds, msgSize, bandwidthMultipli
     return {
         throughput,
         bandwidth,
-        latency: latency / 1000000,
-        latency_p95: latencyP95 / 1000000,
-        latency_p99: latencyP99 / 1000000
+        latency: latency / 1_000_000,
+        latency_p95: latencyP95 / 1_000_000,
+        latency_p99: latencyP99 / 1_000_000
     };
 }
 function isEchoPattern(pattern) {
@@ -91,7 +90,9 @@ function isEchoPattern(pattern) {
 function summarizeMetrics(pattern, transport, msgSize, latenciesNs, durationSeconds) {
     const metrics = computeMetrics(latenciesNs, durationSeconds, msgSize, isEchoPattern(pattern) ? 2 : 1);
     return Object.entries(metrics).map(([metric, value]) => {
-        const formatted = metric.startsWith('latency') ? value.toFixed(6) : value.toFixed(2);
+        const formatted = metric.startsWith('latency')
+            ? value.toFixed(6)
+            : value.toFixed(2);
         return `RESULT,current,${pattern},${transport},${msgSize},${metric},${formatted}`;
     });
 }
@@ -129,62 +130,44 @@ function createRunId() {
     return (Math.random() * 0xffffffff) >>> 0;
 }
 function createMetricCollector(config) {
-    const worker = new Worker(path.join(__dirname, 'perf_metric_worker.js'), {
-        workerData: config
-    });
+    const latenciesNs = [];
+    const runId = config.runId >>> 0;
+    const msgSize = config.msgSize >>> 0;
+    let accepted = 0;
+    let rejected = 0;
     let closed = false;
-    const closeWorker = async () => {
-        if (closed) {
-            return;
-        }
-        closed = true;
-        await worker.terminate();
-    };
     return {
         record(header, receivedAtNs) {
             if (!header || closed) {
                 return;
             }
-        worker.postMessage({
-            type: 'sample',
-            msgSize: header.msgSize,
-            runId: header.runId,
-            phase: header.phase,
-            sentTsNs: header.sentTsNs,
-            receivedAtNs
-        });
-    },
+            if ((header.runId >>> 0) !== runId || (header.msgSize >>> 0) !== msgSize) {
+                rejected += 1;
+                return;
+            }
+            if (header.phase !== 1) {
+                return;
+            }
+            const sentTsNs = BigInt(header.sentTsNs);
+            const recvTsNs = BigInt(receivedAtNs);
+            if (recvTsNs < sentTsNs) {
+                rejected += 1;
+                return;
+            }
+            accepted += 1;
+            latenciesNs.push(Number(recvTsNs - sentTsNs));
+        },
         async finish() {
-            return new Promise((resolve, reject) => {
-                const cleanup = () => {
-                    worker.removeAllListeners('message');
-                    worker.removeAllListeners('error');
-                    worker.removeAllListeners('exit');
-                };
-                worker.once('message', (message) => {
-                    closed = true;
-                    cleanup();
-                    resolve(message);
-                });
-                worker.once('error', (error) => {
-                    closed = true;
-                    cleanup();
-                    reject(error);
-                });
-                worker.once('exit', (code) => {
-                    if (code !== 0) {
-                        closed = true;
-                        cleanup();
-                        reject(new Error(`metric worker exited with code ${code}`));
-                    }
-                });
-                worker.postMessage({ type: 'finish' });
-            }).finally(() => {
-                worker.unref();
-            });
+            closed = true;
+            return {
+                latenciesNs,
+                accepted,
+                rejected
+            };
         },
         close() {
-            return closeWorker();
+            closed = true;
+            return Promise.resolve();
         }
     };
 }
@@ -203,10 +186,3 @@ module.exports = {
     stampPayload,
     summarizeMetrics
 };
-// Compatibility aliases kept out of the active perf path.
-function currentEpochUs() {
-    return currentEpochNs();
-}
-function latencyUsFromPayload(buffer, receivedAtUs = currentEpochUs()) {
-    return latencyNsFromPayload(buffer, receivedAtUs);
-}

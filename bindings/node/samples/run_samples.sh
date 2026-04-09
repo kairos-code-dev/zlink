@@ -35,6 +35,8 @@ run_node_job() {
 }
 
 samples=(
+  "dist-tools/samples/request_reply_async_sample.js"
+  "dist-tools/samples/request_reply_callback_sample.js"
   "dist-tools/samples/pair_recv_sample.js"
   "dist-tools/samples/pair_callback_sample.js"
   "dist-tools/samples/pubsub_recv_sample.js"

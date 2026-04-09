@@ -27,7 +27,7 @@ Usage:
   run_benchmarks.sh [options]
 
 Options:
-  --stack <asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty|all|comma-list>
+  --stack <asio|cppserver|dotnet|netzlink|jvmzlink|netty|zlink|zmq|all|comma-list>
   --size <64|1024|65536|all|comma-list>
   --build-dir PATH            Build directory (default: core/build).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
@@ -51,7 +51,7 @@ Examples:
 USAGE
 }
 
-STACKS_ALL=(zlink zlink-len32be netzlink netzlink-len32be jvmzlink jvmzlink-len32be asio cppserver dotnet zmq netty)
+STACKS_ALL=(zlink netzlink jvmzlink asio cppserver dotnet zmq netty)
 SIZES_ALL=(64 1024 65536)
 
 TARGET_STACK="all"
@@ -205,7 +205,7 @@ fi
 
 for s in "${RUN_STACKS[@]}"; do
     case "${s}" in
-        asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty)
+        asio|cppserver|dotnet|netzlink|jvmzlink|netty|zlink|zmq)
             ;;
         *)
             echo "invalid stack: ${s}" >&2
@@ -236,7 +236,6 @@ SKIP_CSV="${RESULT_DIR}/skipped_stacks.csv"
 CLIENT_BIN="${BUILD_DIR}/bin/bench_streamcompare_client"
 ASIO_BIN="${BUILD_DIR}/bin/test_scenario_stream_asio"
 ZLINK_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlink"
-ZLINK_LEN32BE_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlink_len32be"
 ZMQ_BIN="${BUILD_DIR}/bin/test_scenario_stream_zmq"
 
 STACKS_ROOT_DIR="${STACKS_ROOT_DIR:-${ROOT_DIR}/core/bench/with_stream/stacks}"
@@ -1041,13 +1040,6 @@ try_build_stack()
                 cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink -j"$(nproc)" >/dev/null
             fi
             ;;
-        zlink-len32be)
-            if [[ "${BUILD_MODE}" == "reuse" ]]; then
-                [[ -f "${ZLINK_LEN32BE_BIN}" ]]
-            else
-                cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink_len32be -j"$(nproc)" >/dev/null
-            fi
-            ;;
         zmq)
             if [[ "${BUILD_MODE}" == "reuse" ]]; then
                 [[ -f "${ZMQ_BIN}" ]]
@@ -1177,9 +1169,6 @@ start_server()
             ;;
         zlink)
             cmd=("${ZLINK_BIN}")
-            ;;
-        zlink-len32be)
-            cmd=("${ZLINK_LEN32BE_BIN}")
             ;;
         zmq)
             cmd=("${ZMQ_BIN}")
@@ -1351,10 +1340,82 @@ server_resource = load_resource_summary(server_resource_summary)
 system_resource = load_resource_summary(system_resource_summary)
 
 with open(client_log, encoding="utf-8", errors="replace") as f:
+    csv_metrics = {}
     for raw_line in f:
         line = raw_line.strip()
-        if not line.startswith("RESULT "):
+        if not line.startswith("RESULT"):
             continue
+
+        if "," in line:
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) == 7 and parts[0] == "RESULT":
+                _, impl_name, phase_name, transport_name, size_text, metric_name, metric_value = parts
+                if phase_name != "STREAM":
+                    continue
+                metric_row = csv_metrics.setdefault(size_text, {
+                    "stack": stack,
+                    "phase": phase_override if phase_override else "current",
+                    "size": size_text,
+                    "run": run_override if run_override and run_override != "0" else "1",
+                    "ccu": str(ccu),
+                    "client_rc": str(client_rc),
+                    "throughput_bps": "0",
+                    "throughput_mib_s": "0",
+                    "throughput_tps": "0",
+                    "p50_us": "0",
+                    "p95_us": "0",
+                    "p99_us": "0",
+                    "connect_ok": str(ccu),
+                    "connect_fail": "0",
+                    "send_err": "0",
+                    "recv_err": "0",
+                    "timeout": "0",
+                    "size_mismatch": "0",
+                    "pass_fail": "PASS",
+                    "client_avg_cpu_pct": client_resource["avg_cpu_pct"],
+                    "client_peak_cpu_pct": client_resource["peak_cpu_pct"],
+                    "client_avg_rss_kb": client_resource["avg_rss_kb"],
+                    "client_peak_rss_kb": client_resource["peak_rss_kb"],
+                    "client_peak_hwm_kb": client_resource["peak_hwm_kb"],
+                    "server_avg_cpu_pct": server_resource["avg_cpu_pct"],
+                    "server_peak_cpu_pct": server_resource["peak_cpu_pct"],
+                    "server_avg_rss_kb": server_resource["avg_rss_kb"],
+                    "server_peak_rss_kb": server_resource["peak_rss_kb"],
+                    "server_peak_hwm_kb": server_resource["peak_hwm_kb"],
+                    "system_avg_cpu_pct": system_resource["avg_cpu_pct"],
+                    "system_peak_cpu_pct": system_resource["peak_cpu_pct"],
+                    "system_avg_mem_used_kb": system_resource.get("avg_mem_used_kb", "0"),
+                    "system_peak_mem_used_kb": system_resource.get("peak_mem_used_kb", "0"),
+                    "system_avg_mem_used_pct": system_resource.get("avg_mem_used_pct", "0"),
+                    "system_peak_mem_used_pct": system_resource.get("peak_mem_used_pct", "0"),
+                    "client_resource_log": client_resource_log,
+                    "server_resource_log": server_resource_log,
+                    "system_resource_log": system_resource_log,
+                    "client_log": client_log,
+                    "server_log": server_log,
+                })
+
+                size_value = 0
+                try:
+                    size_value = int(size_text)
+                except Exception:
+                    size_value = 0
+
+                numeric = parse_float(metric_value, 0.0)
+                if metric_name == "throughput":
+                    metric_row["throughput_tps"] = f"{numeric:.2f}"
+                    if size_value > 0:
+                        metric_row["throughput_bps"] = f"{numeric * float(size_value):.2f}"
+                elif metric_name == "bandwidth":
+                    metric_row["throughput_mib_s"] = metric_value
+                elif metric_name == "latency":
+                    metric_row["p50_us"] = f"{numeric * 1000.0:.2f}"
+                elif metric_name == "latency_p95":
+                    metric_row["p95_us"] = f"{numeric * 1000.0:.2f}"
+                elif metric_name == "latency_p99":
+                    metric_row["p99_us"] = f"{numeric * 1000.0:.2f}"
+                continue
+
         fields = {}
         for token in line.split()[1:]:
             if "=" not in token:
@@ -1416,6 +1477,9 @@ with open(client_log, encoding="utf-8", errors="replace") as f:
             "server_log": server_log,
         }
         rows.append(row)
+
+for row in csv_metrics.values():
+    rows.append(row)
 
 with open(metrics_csv, "a", newline="", encoding="utf-8") as f:
     writer = csv.DictWriter(

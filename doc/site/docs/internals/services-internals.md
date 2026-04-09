@@ -223,6 +223,16 @@ Frame 4~N: Service entries (repeated service_count times)
 - Local publish (spot_pub) → local spot_sub distribution + PUB output (remote propagation)
 - Remote receive (SUB) → local spot_sub distribution only (no re-publishing, loop prevention)
 
+### 5.4.1 SpotNode HWM Boundaries
+- Unified `Spot` handle HWM and SpotNode internal HWM are different layers.
+- `Spot` handle HWM controls the public facade pub/sub sockets.
+- `SpotNode` HWM is the internal data-plane budget and is applied by direction:
+  - `SNDHWM` → `fanout`, `mesh_pub`
+  - `RCVHWM` → `ingress`, `mesh_xsub`
+- The default SpotNode internal data-plane HWM is `1000`.
+- `peer_ctrl` is a control-plane socket and is not grouped into the SpotNode
+  data-plane HWM family.
+
 ### 5.5 Raw Socket Policy
 - `spot_pub_t`: Does not expose raw PUB socket (prevents thread-safety bypass)
 - `spot_sub_t`: Does not expose raw SUB socket; consumption is via callback/recv API only

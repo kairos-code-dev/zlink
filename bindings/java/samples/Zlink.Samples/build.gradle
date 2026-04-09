@@ -20,6 +20,8 @@ dependencies {
 }
 
 def sampleMainClasses = [
+    runRequestReplyAsync: 'dev.kairoscode.zlink.samples.RequestReplyAsyncSample',
+    runRequestReplyCallback: 'dev.kairoscode.zlink.samples.RequestReplyCallbackSample',
     runPairRecv: 'dev.kairoscode.zlink.samples.PairRecvSample',
     runPairCallback: 'dev.kairoscode.zlink.samples.PairCallbackSample',
     runPubSubRecv: 'dev.kairoscode.zlink.samples.PubSubRecvSample',

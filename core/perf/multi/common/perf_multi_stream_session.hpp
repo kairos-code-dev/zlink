@@ -6,7 +6,6 @@
 
 #include <atomic>
 #include <deque>
-#include <mutex>
 
 namespace perf_multi_stream {
 
@@ -77,7 +76,6 @@ struct session_t
         recv_count(0),
         send_count(0),
         pending_count(0),
-        queue_mutex(),
         pending_queue(),
         recv_buffers()
     {
@@ -87,7 +85,6 @@ struct session_t
     std::atomic<unsigned long long> recv_count;
     std::atomic<unsigned long long> send_count;
     std::atomic<unsigned long long> pending_count;
-    std::mutex queue_mutex;
     std::deque<queued_message_t> pending_queue;
     perf_stream_routed_frame::state_t recv_buffers;
 };
@@ -115,7 +112,6 @@ inline void reset_session(session_t *session, void *send_socket)
     session->recv_count.store(0, std::memory_order_release);
     session->send_count.store(0, std::memory_order_release);
     session->pending_count.store(0, std::memory_order_release);
-    std::lock_guard<std::mutex> lock(session->queue_mutex);
     session->pending_queue.clear();
     perf_stream_routed_frame::reset(&session->recv_buffers);
 }
@@ -125,7 +121,6 @@ inline void clear_session(session_t *session)
     if (!session)
         return;
     session->send_socket = NULL;
-    std::lock_guard<std::mutex> lock(session->queue_mutex);
     session->pending_queue.clear();
     perf_stream_routed_frame::reset(&session->recv_buffers);
 }
@@ -134,7 +129,6 @@ inline size_t pending_size(session_t *session)
 {
     if (!session)
         return 0;
-    std::lock_guard<std::mutex> lock(session->queue_mutex);
     return session->pending_queue.size();
 }
 
@@ -166,11 +160,39 @@ inline bool enqueue(session_t *session,
         return false;
 
     session->pending_count.fetch_add(1, std::memory_order_relaxed);
-    {
-        std::lock_guard<std::mutex> lock(session->queue_mutex);
-        session->pending_queue.push_back(std::move(queued));
-    }
+    session->pending_queue.push_back(std::move(queued));
     return true;
+}
+
+inline bool enqueue_complete_chunk(session_t *session,
+                                   const zlink_routing_id_t *rid,
+                                   zlink_msg_t *msg_part,
+                                   const char *stop_token)
+{
+    if (!session || !rid || !msg_part)
+        return false;
+
+    const unsigned char *payload =
+      static_cast<const unsigned char *>(zlink_msg_data(msg_part));
+    const size_t payload_size = zlink_msg_size(msg_part);
+    if (!payload || payload_size < 4)
+        return false;
+
+    const uint32_t declared = perf_stream_common::perf_stream_load_u32_be(payload);
+    if (declared
+        > static_cast<uint32_t>(perf_stream_common::k_stream_max_chunk_size))
+        return false;
+
+    const size_t frame_size = 4 + static_cast<size_t>(declared);
+    if (frame_size != payload_size)
+        return false;
+
+    if (is_stop_payload(payload + 4, declared, stop_token)) {
+        perf_stop_requested().store(true, std::memory_order_release);
+        return true;
+    }
+
+    return enqueue(session, rid, msg_part);
 }
 
 inline bool enqueue_frame(session_t *session,
@@ -246,13 +268,10 @@ inline void drain_pending(session_t *session)
 
     while (true) {
         queued_message_t queued;
-        {
-            std::lock_guard<std::mutex> lock(session->queue_mutex);
-            if (session->pending_queue.empty())
-                return;
-            queued = std::move(session->pending_queue.front());
-            session->pending_queue.pop_front();
-        }
+        if (session->pending_queue.empty())
+            return;
+        queued = std::move(session->pending_queue.front());
+        session->pending_queue.pop_front();
 
         const send_result_t rc = try_send(queued, session->send_socket);
         if (rc == send_result_sent) {
@@ -265,7 +284,6 @@ inline void drain_pending(session_t *session)
             continue;
         }
         if (rc == send_result_pending) {
-            std::lock_guard<std::mutex> lock(session->queue_mutex);
             session->pending_queue.push_front(std::move(queued));
             return;
         }
@@ -291,6 +309,10 @@ inline bool process_chunk(session_t *session,
     }
 
     session->recv_count.fetch_add(1, std::memory_order_relaxed);
+    if (perf_stream_routed_frame::is_connection_idle(&session->recv_buffers, rid)
+        && enqueue_complete_chunk(session, rid, msg_part, stop_token))
+        return true;
+
     perf_stream_frame::buffer_t *buffer =
       perf_stream_routed_frame::buffer_for(&session->recv_buffers, rid);
     append_connection_chunk(buffer, payload, payload_size);

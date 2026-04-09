@@ -5,22 +5,43 @@
 #include "../../../include/zlink.h"
 
 #include <map>
-#include <string>
+#include <cstring>
 
 namespace perf_stream_routed_frame {
 
-struct state_t
+struct key_t
 {
-    std::map<std::string, perf_stream_frame::buffer_t> buffers;
+    key_t() : size(0)
+    {
+        std::memset(data, 0, sizeof(data));
+    }
+
+    uint8_t size;
+    unsigned char data[sizeof(zlink_routing_id_t().data)];
 };
 
-inline std::string routing_id_key(const zlink_routing_id_t *rid)
+inline key_t routing_id_key(const zlink_routing_id_t *rid)
 {
+    key_t key;
     if (!rid || rid->size == 0)
-        return std::string();
+        return key;
 
-    return std::string(reinterpret_cast<const char *>(rid->data), rid->size);
+    key.size = rid->size;
+    std::memcpy(key.data, rid->data, rid->size);
+    return key;
 }
+
+inline bool operator<(const key_t &lhs, const key_t &rhs)
+{
+    if (lhs.size != rhs.size)
+        return lhs.size < rhs.size;
+    return std::memcmp(lhs.data, rhs.data, lhs.size) < 0;
+}
+
+struct state_t
+{
+    std::map<key_t, perf_stream_frame::buffer_t> buffers;
+};
 
 inline void reset(state_t *state)
 {
@@ -45,6 +66,15 @@ inline perf_stream_frame::buffer_t *buffer_for(state_t *state,
         return NULL;
 
     return &state->buffers[routing_id_key(rid)];
+}
+
+inline bool is_connection_idle(const state_t *state,
+                               const zlink_routing_id_t *rid)
+{
+    if (!state)
+        return true;
+
+    return state->buffers.find(routing_id_key(rid)) == state->buffers.end();
 }
 
 inline void trim_connection_if_empty(state_t *state,

@@ -111,6 +111,11 @@ inline void compact(buffer_t *buffer)
         return;
     }
 
+    // Avoid a memmove on every partially-consumed chunk. Compact only after
+    // enough headroom has been reclaimed to amortize the copy cost.
+    if (buffer->consumed < 4096 && (buffer->consumed * 2) < buffer->bytes.size())
+        return;
+
     const size_t remaining = buffer->bytes.size() - buffer->consumed;
     std::memmove(&buffer->bytes[0], &buffer->bytes[buffer->consumed], remaining);
     buffer->bytes.resize(remaining);

@@ -457,8 +457,8 @@ if any(metric not in metrics for metric in required):
     raise SystemExit(1)
 print(
     f"{prefix}| {size}B | {metrics['throughput'] / 1000.0:.2f} {unit} | "
-    f"{metrics['bandwidth']:.2f} MB/s | {metrics['latency'] / 1000.0:.2f} ms | "
-    f"{metrics['latency_p95'] / 1000.0:.2f} ms | {metrics['latency_p99'] / 1000.0:.2f} ms |"
+    f"{metrics['bandwidth']:.2f} MB/s | {metrics['latency']:.3f} ms | "
+    f"{metrics['latency_p95']:.3f} ms | {metrics['latency_p99']:.3f} ms |"
 )
 PY
 }

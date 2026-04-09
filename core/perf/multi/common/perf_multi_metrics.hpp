@@ -170,6 +170,9 @@ inline void print_result(const std::string &lib_type,
     const double direction_factor = is_echo_pattern ? 2.0 : 1.0;
     const double bandwidth_mb_s =
       (throughput * static_cast<double>(size) * direction_factor) / 1000000.0;
+    const double latency_ms = latency / 1000.0;
+    const double latency_p95_ms = latency_p95 / 1000.0;
+    const double latency_p99_ms = latency_p99 / 1000.0;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",throughput,"
               << std::fixed << std::setprecision(3) << throughput
@@ -180,15 +183,15 @@ inline void print_result(const std::string &lib_type,
               << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",latency,"
-              << std::fixed << std::setprecision(3) << latency
+              << std::fixed << std::setprecision(3) << latency_ms
               << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",latency_p95,"
-              << std::fixed << std::setprecision(3) << latency_p95
+              << std::fixed << std::setprecision(3) << latency_p95_ms
               << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",latency_p99,"
-              << std::fixed << std::setprecision(3) << latency_p99
+              << std::fixed << std::setprecision(3) << latency_p99_ms
               << std::endl;
 }
 

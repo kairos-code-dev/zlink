@@ -242,13 +242,13 @@ class bench_client_t : public bench_client_iface_t
                                  size, bandwidth);
                     std::printf ("RESULT,current,%s,%s,%zu,latency,%.6f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
-                                 size, latency_mean_rtt);
+                                 size, latency_mean_rtt / 1000.0);
                     std::printf ("RESULT,current,%s,%s,%zu,latency_p95,%.6f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
-                                 size, latency_p95_rtt);
+                                 size, latency_p95_rtt / 1000.0);
                     std::printf ("RESULT,current,%s,%s,%zu,latency_p99,%.6f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
-                                 size, latency_p99_rtt);
+                                 size, latency_p99_rtt / 1000.0);
                 }
                 std::fflush (stdout);
                 if (!m.pass)

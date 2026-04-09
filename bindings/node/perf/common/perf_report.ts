@@ -40,15 +40,14 @@ function throughputUnit(pattern) {
 }
 
 function formatTableRows(rows, suite) {
-  const latencyUnit = suite === 'multi' ? 'ms' : 'us';
+  const latencyUnit = 'ms';
   return [
     `| Size | Throughput | Bandwidth | Lat.Mean(${latencyUnit}) | Lat.P95(${latencyUnit}) | Lat.P99(${latencyUnit}) |`,
     '|------|------------|-----------|----------------|---------------|---------------|',
     ...rows.map((row) => {
       const throughput = `${(row.metrics.throughput / 1000).toFixed(2)} ${throughputUnit(row.pattern)}`;
       const bandwidth = `${row.metrics.bandwidth.toFixed(2)} MB/s`;
-      const latencyScale = suite === 'multi' ? 1000 : 1;
-      return `| ${row.msgSize}B | ${throughput} | ${bandwidth} | ${(row.metrics.latency / latencyScale).toFixed(2)} | ${(row.metrics.latency_p95 / latencyScale).toFixed(2)} | ${(row.metrics.latency_p99 / latencyScale).toFixed(2)} |`;
+      return `| ${row.msgSize}B | ${throughput} | ${bandwidth} | ${row.metrics.latency.toFixed(3)} | ${row.metrics.latency_p95.toFixed(3)} | ${row.metrics.latency_p99.toFixed(3)} |`;
     })
   ];
 }

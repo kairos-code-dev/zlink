@@ -91,9 +91,9 @@ function computeMetrics(latenciesUs, durationSeconds, msgSize, bandwidthMultipli
   return {
     throughput,
     bandwidth,
-    latency,
-    latency_p95: latencyP95,
-    latency_p99: latencyP99
+    latency: latency / 1000,
+    latency_p95: latencyP95 / 1000,
+    latency_p99: latencyP99 / 1000
   };
 }
 

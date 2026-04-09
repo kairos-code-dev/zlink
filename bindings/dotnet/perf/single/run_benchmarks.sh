@@ -132,8 +132,8 @@ with open(sys.argv[1], encoding="utf-8") as handle:
         rows.setdefault(size, {})
         rows[size][metric] = row[6]
 
-print("      | Size     |       Throughput |   Bandwidth |   Lat.Mean |    Lat.P95 |    Lat.P99 |")
-print("      |----------|------------------|-------------|------------|------------|------------|")
+print("      | Size     |       Throughput |   Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |")
+print("      |----------|------------------|-------------|--------------|-------------|-------------|")
 for size, metrics in rows.items():
     values = [metrics.get(metric, "NA") for metric in required]
     throughput = float(values[0]) / 1000.0
@@ -143,7 +143,7 @@ for size, metrics in rows.items():
     latency_p99 = float(values[4])
     print(
         f"      | {size}B | {throughput:>16.2f} Kmsg/s | {bandwidth:>10.2f} MB/s |"
-        f" {latency:>10.2f} us | {latency_p95:>10.2f} us | {latency_p99:>10.2f} us |"
+        f" {latency:>11.3f} ms | {latency_p95:>11.3f} ms | {latency_p99:>11.3f} ms |"
     )
 PY
     print_line "${table_line}"

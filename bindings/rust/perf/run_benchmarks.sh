@@ -225,8 +225,8 @@ def fmt_rate(value):
 def fmt_bandwidth(value):
     return "N/A" if math.isnan(value) else f"{value:.2f} MB/s"
 
-def fmt_latency_us(value):
-    return "N/A" if math.isnan(value) else f"{value:.2f} us"
+def fmt_latency_ms(value):
+    return "N/A" if math.isnan(value) else f"{value:.3f} ms"
 
 def fmt_metric(value):
     return "N/A" if math.isnan(value) else f"{value:.2f}"
@@ -266,8 +266,8 @@ for pattern_index, pattern in enumerate(patterns):
     emit("")
     for transport in pattern_transports[pattern]:
         emit(f"### Transport: {transport}")
-        emit("| Size | Throughput | Bandwidth | Lat.Mean | Lat.P95 | Lat.P99 |")
-        emit("|------|------------|-----------|----------|---------|---------|")
+        emit("| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |")
+        emit("|------|------------|-----------|--------------|-------------|-------------|")
         for size in pattern_sizes[pattern]:
             key = (pattern, transport, size)
             status, reason = cases.get(key, ("fail", "missing_case_status"))
@@ -286,9 +286,9 @@ for pattern_index, pattern in enumerate(patterns):
                 emit(
                     f"| {size}B | {fmt_rate(metric_values['throughput'])} | "
                     f"{fmt_bandwidth(metric_values['bandwidth'])} | "
-                    f"{fmt_latency_us(metric_values['latency'])} | "
-                    f"{fmt_latency_us(metric_values['latency_p95'])} | "
-                    f"{fmt_latency_us(metric_values['latency_p99'])} |"
+                    f"{fmt_latency_ms(metric_values['latency'])} | "
+                    f"{fmt_latency_ms(metric_values['latency_p95'])} | "
+                    f"{fmt_latency_ms(metric_values['latency_p99'])} |"
                 )
                 for metric in required_metrics:
                     result_lines.append(

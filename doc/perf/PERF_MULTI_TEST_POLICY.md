@@ -862,9 +862,9 @@ core/perf/run_benchmarks_multi.sh --duration 10
 |--------|-------------|------|------|
 | `throughput` | client | echo 패턴: 왕복 완료 수 (`ops/s`), one-way 패턴: 단방향 수신 수 (`msg/s`) — § 4.1 참조 | MUST |
 | `bandwidth` | client | 네트워크 전송량 (MB/s) — § 4.3 참조 | MUST |
-| `latency` | client | 레이턴시 (us) | MUST |
-| `latency_p95` | client | 95th percentile 레이턴시 (us) | MUST |
-| `latency_p99` | client | 99th percentile 레이턴시 (us) | MUST |
+| `latency` | client | 레이턴시 (ms) | MUST |
+| `latency_p95` | client | 95th percentile 레이턴시 (ms) | MUST |
+| `latency_p99` | client | 99th percentile 레이턴시 (ms) | MUST |
 
 - cpu/mem 계열 metric은 multi 기본 RESULT line에 포함하지 않는다.
 - size별 측정값이 아닌 바이너리 1회 실행 전체의 단일 측정값을 복제하는 것은 허용하지 않는다.
@@ -895,7 +895,7 @@ core/perf/run_benchmarks_multi.sh --duration 10
 
 - throughput 단위: echo 패턴 `Kops/s` (ops/sec / 1000), one-way 패턴 `Kmsg/s` (msg/sec / 1000) — § 4.1 참조
 - bandwidth 단위: `MB/s` (메가바이트/초) — § 4.3 참조
-- latency 단위: `ms` (밀리초, mean/p95/p99) — RESULT line 값(us)을 1000으로 나누어 변환
+- latency 단위: `ms` (밀리초, mean/p95/p99)
 - transport 미지원 시: `N/A`
 
 ### 10.3 진행 로그

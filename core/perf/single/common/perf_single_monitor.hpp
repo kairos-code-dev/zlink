@@ -126,6 +126,9 @@ inline void print_result(const std::string &lib_type,
 {
     const double bandwidth_mb_s =
       (throughput * static_cast<double>(size)) / 1000000.0;
+    const double latency_ms = latency / 1000.0;
+    const double latency_p95_ms = latency_p95 / 1000.0;
+    const double latency_p99_ms = latency_p99 / 1000.0;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",throughput," << std::fixed
               << std::setprecision(2) << throughput << std::endl;
@@ -134,13 +137,13 @@ inline void print_result(const std::string &lib_type,
               << std::setprecision(2) << bandwidth_mb_s << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",latency," << std::fixed
-              << std::setprecision(2) << latency << std::endl;
+              << std::setprecision(3) << latency_ms << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",latency_p95," << std::fixed
-              << std::setprecision(2) << latency_p95 << std::endl;
+              << std::setprecision(3) << latency_p95_ms << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",latency_p99," << std::fixed
-              << std::setprecision(2) << latency_p99 << std::endl;
+              << std::setprecision(3) << latency_p99_ms << std::endl;
 }
 
 inline void print_result(const std::string &lib_type,

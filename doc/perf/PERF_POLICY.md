@@ -598,10 +598,10 @@ bindings/java/perf/run_benchmarks_multi.sh --pattern ALL
 ## PATTERN: PAIR (one-way)
 
 ### Transport: tcp
-| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 |
-|----------|------------------|-----------|--------------|--------------|--------------|
-| 64B      |   523.40 Kmsg/s  | 33.5 MB/s |   12.35 us   |   18.20 us   |   21.40 us   |
-| 1024B    |   120.30 Kmsg/s  | 123.2 MB/s|   52.10 us   |   70.55 us   |   92.10 us   |
+| Size     |       Throughput | Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+|----------|------------------|-----------|---------------|---------------|---------------|
+| 64B      |   523.40 Kmsg/s  | 33.5 MB/s |   0.01235 ms  |   0.01820 ms  |   0.02140 ms  |
+| 1024B    |   120.30 Kmsg/s  | 123.2 MB/s|   0.05210 ms  |   0.07055 ms  |   0.09210 ms  |
 ```
 
 - **실행 옵션 헤더 + TABLE**을 저장한다.
@@ -619,9 +619,9 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 |--------|------|------|
 | `throughput` | echo 패턴: 왕복 완료 수 (`ops/s`, 1 op = send + recv response 1회 완료), one-way 패턴: 단방향 수신 수 (`msg/s`) | MUST |
 | `bandwidth` | 네트워크 전송량 (MB/s) — multi echo: `throughput × size × 2 / 1,000,000`, 그 외(single 전체 + multi one-way): `throughput × size / 1,000,000` | MUST |
-| `latency` | 레이턴시 (us) | MUST |
-| `latency_p95` | 레이턴시 95th percentile (us) | MUST |
-| `latency_p99` | 레이턴시 99th percentile (us) | MUST |
+| `latency` | 레이턴시 (ms) | MUST |
+| `latency_p95` | 레이턴시 95th percentile (ms) | MUST |
+| `latency_p99` | 레이턴시 99th percentile (ms) | MUST |
 - throughput 단위는 패턴의 메시지 흐름 방향에 따라 결정된다. echo(왕복) 패턴은 `ops/s`, one-way(단방향) 패턴은 `msg/s`. 상세 분류는 개별 정책 문서 섹션 8.1을 참조한다.
 - bandwidth는 throughput 단위가 다른 패턴 간에도 실제 데이터 처리량으로 직접 비교할 수 있는 공통 지표이다. 상세 계산은 개별 정책 문서 섹션 8.3을 참조한다.
 - 기본 perf surface와 RESULT 계약에는 cpu/mem 계열 메트릭을 포함하지 않는다.
@@ -657,10 +657,10 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ## PATTERN: PAIR (one-way)
 
 ### Transport: tcp
-| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 |
-|----------|------------------|-----------|--------------|--------------|--------------|
-| 64B      |   523.40 Kmsg/s  | 33.5 MB/s |   12.35 us   |   18.20 us   |   21.40 us   |
-| 1024B    |   312.50 Kmsg/s  | 320.0 MB/s|   18.44 us   |   27.55 us   |   33.10 us   |
+| Size     |       Throughput | Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+|----------|------------------|-----------|---------------|---------------|---------------|
+| 64B      |   523.40 Kmsg/s  | 33.5 MB/s |  0.01235 ms  |  0.01820 ms  |  0.02140 ms  |
+| 1024B    |   312.50 Kmsg/s  | 320.0 MB/s|  0.01844 ms  |  0.02755 ms  |  0.03310 ms  |
 
 
 ===============================================================================
@@ -680,7 +680,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 |------|------|------|
 | Throughput | echo: `Kops/s`, one-way: `Kmsg/s` | 패턴 방향별 단위 — 개별 정책 문서 섹션 8.1 참조 |
 | Bandwidth | `MB/s` | 네트워크 전송량 — 개별 정책 문서 섹션 8.3 참조 |
-| Lat.Mean / Lat.P95 / Lat.P99 | single: `us` (마이크로초), multi: `ms` (밀리초) | 평균/95th/99th |
+| Lat.Mean / Lat.P95 / Lat.P99 | `ms` (밀리초) | 평균/95th/99th |
 
 ### 5.2 진행 로그
 
@@ -712,10 +712,10 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ```text
   > Benchmarking current for PAIR...
     Testing tcp:
-      | Size     |       Throughput |  Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 |
-      |----------|------------------|------------|--------------|--------------|--------------|
-      | 64B      |   523.40 Kmsg/s  | 33.5 MB/s  |   12.35 us   |   18.20 us   |   21.40 us   |
-      | 256B     |   480.12 Kmsg/s  | 122.9 MB/s |   14.20 us   |   20.30 us   |   24.10 us   |
+      | Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|------------|---------------|---------------|---------------|
+      | 64B      |   523.40 Kmsg/s  | 33.5 MB/s  |  0.01235 ms  |  0.01820 ms  |  0.02140 ms  |
+      | 256B     |   480.12 Kmsg/s  | 122.9 MB/s |  0.01420 ms  |  0.02030 ms  |  0.02410 ms  |
     Testing tcp: Done
 ```
 

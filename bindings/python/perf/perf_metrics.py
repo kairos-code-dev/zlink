@@ -120,9 +120,9 @@ def result_metrics(*, count, msg_size, elapsed_s, latencies_us):
     return {
         "throughput": throughput,
         "bandwidth": bandwidth,
-        "latency": float(median),
-        "latency_p95": percentile(latencies_us, 0.95),
-        "latency_p99": percentile(latencies_us, 0.99),
+        "latency": float(median) / 1000.0,
+        "latency_p95": percentile(latencies_us, 0.95) / 1000.0,
+        "latency_p99": percentile(latencies_us, 0.99) / 1000.0,
     }
 
 

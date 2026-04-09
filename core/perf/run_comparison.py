@@ -2353,9 +2353,9 @@ def _table_header_line(is_multi):
     lat_w = 13
     lat95_w = 13
     lat99_w = 13
-    label_mean = "Lat.Mean(ms)" if is_multi else "Lat.Mean"
-    label_p95 = "Lat.P95(ms)" if is_multi else "Lat.P95"
-    label_p99 = "Lat.P99(ms)" if is_multi else "Lat.P99"
+    label_mean = "Lat.Mean(ms)"
+    label_p95 = "Lat.P95(ms)"
+    label_p99 = "Lat.P99(ms)"
     return (
         f"| {'Size':<{size_w}} | {'Throughput':>{tp_w}} | {'Bandwidth':>{bw_w}} | "
         f"{label_mean:>{lat_w}} | {label_p95:>{lat95_w}} | {label_p99:>{lat99_w}} |"
@@ -2405,20 +2405,13 @@ def _emit_table_row(
         )
         tp_s = format_throughput(pattern_name, throughput if throughput is not None else 0.0)
         bw_s = format_bandwidth(bandwidth if bandwidth is not None else 0.0)
-        if is_multi:
-            lat_s = (
-                f"{((latency_mean if latency_mean is not None else 0.0) / 1000.0):9.3f} ms"
-            )
-            lat95_s = (
-                f"{((latency_p95_value if latency_p95_value is not None else 0.0) / 1000.0):9.3f} ms"
-            )
-            lat99_s = (
-                f"{((latency_p99_value if latency_p99_value is not None else 0.0) / 1000.0):9.3f} ms"
-            )
-        else:
-            lat_s = f"{(latency_mean if latency_mean is not None else 0.0):9.3f} us"
-            lat95_s = f"{(latency_p95_value if latency_p95_value is not None else 0.0):9.3f} us"
-            lat99_s = f"{(latency_p99_value if latency_p99_value is not None else 0.0):9.3f} us"
+        lat_s = f"{(latency_mean if latency_mean is not None else 0.0):9.3f} ms"
+        lat95_s = (
+            f"{(latency_p95_value if latency_p95_value is not None else 0.0):9.3f} ms"
+        )
+        lat99_s = (
+            f"{(latency_p99_value if latency_p99_value is not None else 0.0):9.3f} ms"
+        )
     else:
         token = "UNSUPPORTED" if status == "unsupported" else "FAIL"
         tp_s = token

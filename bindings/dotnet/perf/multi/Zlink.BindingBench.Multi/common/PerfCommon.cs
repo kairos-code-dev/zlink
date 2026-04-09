@@ -162,16 +162,19 @@ internal static partial class PerfRunner
         double latencyP99Us)
     {
         double bandwidth = BandwidthMbps(pattern, throughput, size);
+        double latencyMs = latencyUs / 1000.0;
+        double latencyP95Ms = latencyP95Us / 1000.0;
+        double latencyP99Ms = latencyP99Us / 1000.0;
         Console.WriteLine(
             $"RESULT,current,{pattern},{transport},{size},throughput,{FormatMetric(throughput)}");
         Console.WriteLine(
             $"RESULT,current,{pattern},{transport},{size},bandwidth,{FormatMetric(bandwidth)}");
         Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency,{FormatMetric(latencyUs)}");
+            $"RESULT,current,{pattern},{transport},{size},latency,{FormatMetric(latencyMs)}");
         Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency_p95,{FormatMetric(latencyP95Us)}");
+            $"RESULT,current,{pattern},{transport},{size},latency_p95,{FormatMetric(latencyP95Ms)}");
         Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency_p99,{FormatMetric(latencyP99Us)}");
+            $"RESULT,current,{pattern},{transport},{size},latency_p99,{FormatMetric(latencyP99Ms)}");
     }
 
     private static double BandwidthMbps(string pattern, double throughput, int size)

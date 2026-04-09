@@ -516,8 +516,8 @@ def build_bench_cmd(binary_path: str, args: List[str], pin_cpu: bool) -> List[st
 
 def single_table_header_line() -> str:
     return (
-        "| Size     |       Throughput |    Bandwidth |  Lat.Mean(us) |"
-        "   Lat.P95(us) |   Lat.P99(us) |"
+        "| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |"
+        "   Lat.P95(ms) |   Lat.P99(ms) |"
     )
 
 
@@ -722,7 +722,7 @@ def format_bandwidth(bandwidth_mb_s: float) -> str:
 
 
 def format_latency_ms(latency_us: float) -> str:
-    return f"{latency_us:8.2f} us"
+    return f"{(latency_us / 1000.0):8.3f} ms"
 
 
 def build_pattern_table_lines(
@@ -735,8 +735,8 @@ def build_pattern_table_lines(
     for transport in transports:
         lines.append(f"### Transport: {transport}")
         lines.append(
-            "| Size   |       Throughput |    Bandwidth | Lat.Mean(us) |"
-            "  Lat.P95(us) |  Lat.P99(us) |"
+            "| Size   |       Throughput |    Bandwidth | Lat.Mean(ms) |"
+            "  Lat.P95(ms) |  Lat.P99(ms) |"
         )
         lines.append(
             "|--------|------------------|--------------|-------------|-------------|-------------|"

@@ -335,9 +335,9 @@ print("      |----------|------------------|-------------|---------------|------
 for size, metrics in rows.items():
     throughput = float(metrics["throughput"]) / 1000.0
     bandwidth = float(metrics["bandwidth"])
-    latency_ms = float(metrics["latency"]) / 1000.0
-    latency_p95_ms = float(metrics["latency_p95"]) / 1000.0
-    latency_p99_ms = float(metrics["latency_p99"]) / 1000.0
+    latency_ms = float(metrics["latency"])
+    latency_p95_ms = float(metrics["latency_p95"])
+    latency_p99_ms = float(metrics["latency_p99"])
     print(
         f"      | {size}B | {throughput:>16.2f} {throughput_unit} | {bandwidth:>10.2f} MB/s |"
         f" {latency_ms:>11.2f} ms | {latency_p95_ms:>11.2f} ms | {latency_p99_ms:>11.2f} ms |"

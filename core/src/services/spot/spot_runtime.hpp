@@ -23,6 +23,23 @@ enum spot_attachment_kind_t
     spot_attachment_sub = 2
 };
 
+enum spot_runtime_sender_kind_t
+{
+    spot_runtime_sender_route_ingress = 1,
+    spot_runtime_sender_node_router = 2
+};
+
+enum spot_shutdown_phase_t
+{
+    spot_shutdown_phase_running = 0,
+    spot_shutdown_phase_stop_accepting = 1,
+    spot_shutdown_phase_stop_producers = 2,
+    spot_shutdown_phase_detach_endpoints = 3,
+    spot_shutdown_phase_close_transports = 4,
+    spot_shutdown_phase_drain_state = 5,
+    spot_shutdown_phase_cleanup = 6
+};
+
 struct spot_attachment_t
 {
     spot_attachment_t () :
@@ -92,6 +109,14 @@ struct spot_runtime_t
     int close_runtime_socket_async (socket_base_t *&socket_, int timeout_ms_);
     int send_command (const char *verb_, const char *arg_) const;
     void mark_fault (int err_);
+    int ensure_sender_socket (spot_runtime_sender_kind_t kind_,
+                              socket_base_t **out_);
+    int close_sender_cache (spot_runtime_sender_kind_t kind_, int timeout_ms_);
+    int close_sender_caches (int timeout_ms_);
+    void begin_shutdown ();
+    void advance_shutdown_phase (spot_shutdown_phase_t phase_);
+    spot_shutdown_phase_t shutdown_phase () const;
+    int detach_runtime_endpoints ();
     bool try_set_data_plane_task_id (uint64_t task_id_);
     uint64_t data_plane_task_id () const;
     uint64_t clear_data_plane_task_id ();
@@ -115,6 +140,7 @@ struct spot_runtime_t
     mutable mutex_t peer_batch_config_sync;
     mutable mutex_t hwm_config_sync;
     mutable mutex_t routed_send_sync;
+    mutable mutex_t shutdown_sync;
     socket_base_t *data_ctrl_front;
     socket_base_t *data_ctrl_back;
     socket_base_t *mesh_pub;
@@ -137,9 +163,12 @@ struct spot_runtime_t
     std::string node_router_endpoint;
     std::string data_ctrl_endpoint;
     std::string peer_ctrl_endpoint;
+    std::string route_ingress_sender_endpoint;
+    std::string node_router_sender_endpoint;
     bool faulted;
     int fault_errno;
     bool abortive_shutdown;
+    spot_shutdown_phase_t shutdown_phase_value;
     spot_node_batch_config_t peer_batch_config;
     spot_node_hwm_config_t hwm_config;
     mutable mutex_t attachment_sync;

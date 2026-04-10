@@ -10,6 +10,7 @@
 #include <deque>
 #include <set>
 #include <mutex>
+#include <memory>
 #include <vector>
 
 #include "core/own.hpp"
@@ -44,6 +45,10 @@ class io_thread_t;
 class discovery_t;
 class socket_discovery_attachment_t;
 class socket_base_t;
+}
+
+namespace zlink
+{
 typedef void (*spot_sub_io_handler_fn) (const zlink_routing_id_t *source_rid_,
                                         const char *topic_,
                                         size_t topic_len_,
@@ -240,6 +245,13 @@ class socket_base_t : public own_t,
     bool monitor_has_attached_pipes () const;
     void socket_peer_remote_endpoints (std::vector<std::string> *out_);
     int socket_id () const;
+    std::shared_ptr<void> router_spot_request_reply_state () const;
+    void set_router_spot_request_reply_state (
+      const std::shared_ptr<void> &state_);
+    void clear_router_spot_request_reply_state ();
+    std::shared_ptr<void> request_reply_state () const;
+    void set_request_reply_state (const std::shared_ptr<void> &state_);
+    void clear_request_reply_state ();
 
     bool is_ctx_terminated () const;
 
@@ -569,6 +581,8 @@ class socket_base_t : public own_t,
     clock_t _clock;
     socket_runtime_t _runtime;
     socket_discovery_attachment_t *_service_attachment;
+    std::shared_ptr<void> _router_spot_request_reply_state;
+    std::shared_ptr<void> _request_reply_state;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
 };

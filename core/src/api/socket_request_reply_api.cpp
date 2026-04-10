@@ -68,11 +68,6 @@ struct socket_request_reply_state_t
     void *router_handler_userdata;
 };
 
-typedef std::map<zlink::socket_base_t *, std::shared_ptr<socket_request_reply_state_t> >
-  socket_request_reply_state_map_t;
-
-std::mutex g_socket_request_reply_states_mutex;
-socket_request_reply_state_map_t g_socket_request_reply_states;
 thread_local zlink_routing_id_t g_router_recv_source_rid;
 
 bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_);
@@ -464,27 +459,26 @@ int send_request_reply_message (void *socket_handle_,
 std::shared_ptr<socket_request_reply_state_t>
 find_or_create_request_reply_state (socket_handle_t handle_)
 {
-    std::lock_guard<std::mutex> lock (g_socket_request_reply_states_mutex);
-    socket_request_reply_state_map_t::iterator it =
-      g_socket_request_reply_states.find (handle_.socket);
-    if (it != g_socket_request_reply_states.end ())
-        return it->second;
+    std::shared_ptr<socket_request_reply_state_t> state =
+      handle_.socket ? std::static_pointer_cast<socket_request_reply_state_t> (
+                        handle_.socket->request_reply_state ())
+                     : std::shared_ptr<socket_request_reply_state_t> ();
+    if (state)
+        return state;
 
-    std::shared_ptr<socket_request_reply_state_t> state (
+    state.reset (
       new socket_request_reply_state_t (handle_.socket, socket_type (handle_)));
-    g_socket_request_reply_states[handle_.socket] = state;
+    handle_.socket->set_request_reply_state (state);
     return state;
 }
 
 std::shared_ptr<socket_request_reply_state_t>
 find_request_reply_state (socket_handle_t handle_)
 {
-    std::lock_guard<std::mutex> lock (g_socket_request_reply_states_mutex);
-    socket_request_reply_state_map_t::iterator it =
-      g_socket_request_reply_states.find (handle_.socket);
-    if (it == g_socket_request_reply_states.end ())
-        return std::shared_ptr<socket_request_reply_state_t> ();
-    return it->second;
+    return handle_.socket
+             ? std::static_pointer_cast<socket_request_reply_state_t> (
+                 handle_.socket->request_reply_state ())
+                          : std::shared_ptr<socket_request_reply_state_t> ();
 }
 
 uint64_t allocate_request_seq (socket_request_reply_state_t *state_)
@@ -886,17 +880,15 @@ extern "C" void zlink_socket_request_reply_cleanup (void *socket_)
         return;
 
     bool stop_dispatch = false;
-    {
-        std::lock_guard<std::mutex> lock (g_socket_request_reply_states_mutex);
-        socket_request_reply_state_map_t::iterator it =
-          g_socket_request_reply_states.find (handle.socket);
-        if (it != g_socket_request_reply_states.end ()) {
-            std::lock_guard<std::mutex> state_lock (it->second->mutex);
-            stop_dispatch = it->second->internal_dispatch_installed;
-            zlink::internal_pair_queue::close (&it->second->recv_queue);
-            g_socket_request_reply_states.erase (it);
-        }
+    std::shared_ptr<socket_request_reply_state_t> state =
+      std::static_pointer_cast<socket_request_reply_state_t> (
+        handle.socket->request_reply_state ());
+    if (state) {
+        std::lock_guard<std::mutex> state_lock (state->mutex);
+        stop_dispatch = state->internal_dispatch_installed;
+        zlink::internal_pair_queue::close (&state->recv_queue);
     }
+    handle.socket->clear_request_reply_state ();
 
     if (stop_dispatch && handle.socket->socket_msg_dispatch_active ())
         (void) handle.socket->socket_msg_dispatch_stop ();

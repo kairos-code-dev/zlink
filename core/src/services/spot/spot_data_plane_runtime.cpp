@@ -109,8 +109,6 @@ static void close_runtime_sockets (spot_node_t *node_,
     state_->poller = NULL;
     spot_data_plane_t::close_socket_ptr (node_, state_->fanout);
     spot_data_plane_t::close_socket_ptr (node_, state_->ingress);
-    spot_data_plane_t::close_socket_ptr (node_, state_->node_router_tx);
-    spot_data_plane_t::close_socket_ptr (node_, state_->route_ingress_tx);
     spot_data_plane_t::close_socket_ptr (node_, state_->node_router);
     spot_data_plane_t::close_socket_ptr (node_, state_->route_ingress);
     spot_data_plane_t::close_socket_ptr (node_, state_->peer_ctrl_sub);
@@ -246,8 +244,6 @@ spot_data_plane_runtime_state_t::spot_data_plane_runtime_state_t () :
     peer_ctrl_sub (NULL),
     route_ingress (NULL),
     node_router (NULL),
-    route_ingress_tx (NULL),
-    node_router_tx (NULL),
     ingress (NULL),
     fanout (NULL),
     current_mesh_pub_sndhwm (0),
@@ -282,8 +278,6 @@ void spot_data_plane_t::clear_runtime_socket_refs (
     runtime_->peer_ctrl_sub = NULL;
     runtime_->route_ingress = NULL;
     runtime_->node_router = NULL;
-    runtime_->route_ingress_tx = NULL;
-    runtime_->node_router_tx = NULL;
     runtime_->local_pub_ingress_sub = NULL;
     runtime_->local_fanout_xpub = NULL;
 }
@@ -309,8 +303,6 @@ int spot_data_plane_t::initialize_runtime (
       node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
     state_out_->node_router =
       node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
-    state_out_->route_ingress_tx = NULL;
-    state_out_->node_router_tx = NULL;
     state_out_->ingress = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
     state_out_->fanout = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
 
@@ -345,8 +337,6 @@ int spot_data_plane_t::initialize_runtime (
         runtime_->peer_ctrl_sub = state_out_->peer_ctrl_sub;
         runtime_->route_ingress = state_out_->route_ingress;
         runtime_->node_router = state_out_->node_router;
-        runtime_->route_ingress_tx = NULL;
-        runtime_->node_router_tx = NULL;
         runtime_->local_pub_ingress_sub = state_out_->ingress;
         runtime_->local_fanout_xpub = state_out_->fanout;
         node_->track_owned_socket (state_out_->ctrl);

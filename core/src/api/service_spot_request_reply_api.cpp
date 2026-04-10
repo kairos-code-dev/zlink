@@ -79,9 +79,9 @@ struct parsed_spot_envelope_t
     size_t payload_part_count;
 };
 
-struct local_spot_request_reply_state_t
+struct spot_request_reply_state_t
 {
-    explicit local_spot_request_reply_state_t (void *owner_) :
+    explicit spot_request_reply_state_t (void *owner_) :
         owner (owner_),
         default_timeout_ms (zlink::request_reply::default_timeout_ms),
         next_request_seq (1),
@@ -105,9 +105,9 @@ struct local_spot_request_reply_state_t
     void *dispatch_event_handler_userdata;
 };
 
-struct local_router_spot_state_t
+struct router_spot_request_reply_state_t
 {
-    explicit local_router_spot_state_t (void *owner_) :
+    explicit router_spot_request_reply_state_t (void *owner_) :
         owner (owner_),
         default_timeout_ms (zlink::request_reply::default_timeout_ms),
         next_request_seq (1),
@@ -128,19 +128,25 @@ struct local_router_spot_state_t
     void *handler_userdata;
 };
 
-typedef std::map<void *, std::shared_ptr<local_spot_request_reply_state_t> >
-  local_spot_state_map_t;
-typedef std::map<void *, std::shared_ptr<local_router_spot_state_t> >
-  local_router_state_map_t;
+typedef std::map<std::string, std::weak_ptr<spot_request_reply_state_t> >
+  spot_state_identity_index_t;
+typedef std::map<std::string, std::weak_ptr<router_spot_request_reply_state_t> >
+  router_state_identity_index_t;
 
-std::mutex g_local_spot_states_mutex;
-local_spot_state_map_t g_local_spot_states;
-local_router_state_map_t g_local_router_states;
+std::mutex g_spot_request_reply_index_mutex;
+spot_state_identity_index_t g_spot_state_identity_index;
+router_state_identity_index_t g_router_state_identity_index;
 thread_local zlink_routing_id_t g_spot_recv_source_rid;
 thread_local zlink_routing_id_t g_spot_recv_spot_rid;
 
 int enqueue_runtime_route_ingress_once (zlink::spot_runtime_t *runtime_,
                                         std::vector<zlink_msg_t> *parts_);
+
+std::string make_spot_identity_key (const std::string &node_rid_,
+                                    const std::string &spot_rid_)
+{
+    return node_rid_ + '\n' + spot_rid_;
+}
 
 int validate_request_parts (zlink_msg_t *parts_, size_t part_count_)
 {
@@ -202,16 +208,15 @@ bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_)
            && peer_rid_->size <= sizeof (peer_rid_->data);
 }
 
-std::shared_ptr<local_spot_request_reply_state_t> try_find_spot_state (void *spot_)
+std::shared_ptr<spot_request_reply_state_t> try_find_spot_state (void *spot_)
 {
-    std::lock_guard<std::mutex> lock (g_local_spot_states_mutex);
-    local_spot_state_map_t::iterator it = g_local_spot_states.find (spot_);
-    if (it == g_local_spot_states.end ())
-        return std::shared_ptr<local_spot_request_reply_state_t> ();
-    return it->second;
+    spot_handle_t *spot = as_spot_handle (spot_);
+    return spot ? std::static_pointer_cast<spot_request_reply_state_t> (
+                    spot->request_reply_state)
+                : std::shared_ptr<spot_request_reply_state_t> ();
 }
 
-void maybe_dispatch_spot_event (local_spot_request_reply_state_t *state_,
+void maybe_dispatch_spot_event (spot_request_reply_state_t *state_,
                                 zlink_spot_dispatch_event_t event_)
 {
     zlink_spot_dispatch_event_handler_fn handler = NULL;
@@ -231,7 +236,7 @@ void maybe_dispatch_spot_event (local_spot_request_reply_state_t *state_,
 void notify_spot_dispatch_event (void *spot_,
                                  zlink_spot_dispatch_event_t event_)
 {
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       try_find_spot_state (spot_);
     if (!state)
         return;
@@ -246,7 +251,7 @@ extern "C" void zlink_spot_notify_dispatch_event (
 }
 
 int queue_spot_message (
-  local_spot_request_reply_state_t *state_,
+  spot_request_reply_state_t *state_,
   const zlink_routing_id_t *source_rid_,
   const zlink_routing_id_t *spot_rid_,
   uint64_t request_seq_,
@@ -418,7 +423,7 @@ int recv_internal_spot_queue (zlink::internal_pair_queue::queue_t *queue_,
       queue_->rx, parts_out_, part_count_out_);
 }
 
-int dispatch_spot_message (local_spot_request_reply_state_t *state_,
+int dispatch_spot_message (spot_request_reply_state_t *state_,
                            const zlink_routing_id_t *source_rid_,
                            const zlink_routing_id_t *spot_rid_,
                            uint64_t request_seq_,
@@ -448,7 +453,7 @@ int dispatch_spot_message (local_spot_request_reply_state_t *state_,
     return 0;
 }
 
-int dispatch_router_spot_message (local_router_spot_state_t *state_,
+int dispatch_router_spot_message (router_spot_request_reply_state_t *state_,
                                   const zlink_routing_id_t *source_node_rid_,
                                   const zlink_routing_id_t *source_spot_rid_,
                                   uint64_t request_seq_,
@@ -625,68 +630,93 @@ bool resolve_spot_identity (void *spot_, routing_pair_t *out_)
     return false;
 }
 
-std::shared_ptr<local_spot_request_reply_state_t>
-find_or_create_spot_state (void *spot_)
+void refresh_spot_identity_index (spot_handle_t *spot_,
+                                  const std::shared_ptr<spot_request_reply_state_t> &state_)
 {
-    std::lock_guard<std::mutex> lock (g_local_spot_states_mutex);
-    local_spot_state_map_t::iterator it = g_local_spot_states.find (spot_);
-    if (it != g_local_spot_states.end ())
-        return it->second;
+    if (!spot_ || !state_)
+        return;
 
-    std::shared_ptr<local_spot_request_reply_state_t> state (
-      new local_spot_request_reply_state_t (spot_));
-    g_local_spot_states[spot_] = state;
+    routing_pair_t identity;
+    if (!resolve_spot_identity (spot_, &identity))
+        return;
+
+    std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+    g_spot_state_identity_index[make_spot_identity_key (identity.node_rid,
+                                                        identity.spot_rid)] =
+      state_;
+}
+
+std::shared_ptr<spot_request_reply_state_t> find_or_create_spot_state (void *spot_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return std::shared_ptr<spot_request_reply_state_t> ();
+    std::shared_ptr<spot_request_reply_state_t> state =
+      std::static_pointer_cast<spot_request_reply_state_t> (
+        spot->request_reply_state);
+    if (!state) {
+        state.reset (new spot_request_reply_state_t (spot_));
+        spot->request_reply_state = state;
+    }
+    refresh_spot_identity_index (spot, state);
     return state;
 }
 
-std::shared_ptr<local_router_spot_state_t>
+std::shared_ptr<router_spot_request_reply_state_t>
 find_or_create_router_state (void *router_)
 {
-    std::lock_guard<std::mutex> lock (g_local_spot_states_mutex);
-    local_router_state_map_t::iterator it = g_local_router_states.find (router_);
-    if (it != g_local_router_states.end ())
-        return it->second;
+    const socket_handle_t handle = as_socket_handle (router_);
+    if (!handle.socket)
+        return std::shared_ptr<router_spot_request_reply_state_t> ();
 
-    std::shared_ptr<local_router_spot_state_t> state (
-      new local_router_spot_state_t (router_));
-    g_local_router_states[router_] = state;
+    std::shared_ptr<router_spot_request_reply_state_t> state =
+      std::static_pointer_cast<router_spot_request_reply_state_t> (
+        handle.socket->router_spot_request_reply_state ());
+    if (!state) {
+        state.reset (new router_spot_request_reply_state_t (router_));
+        handle.socket->set_router_spot_request_reply_state (state);
+    }
     return state;
 }
 
-std::shared_ptr<local_spot_request_reply_state_t>
+std::shared_ptr<spot_request_reply_state_t>
 find_spot_state_by_identity (const std::string &node_rid_,
                              const std::string &spot_rid_)
 {
-    std::lock_guard<std::mutex> lock (g_local_spot_states_mutex);
-    for (local_spot_state_map_t::const_iterator it = g_local_spot_states.begin ();
-         it != g_local_spot_states.end (); ++it) {
-        routing_pair_t current;
-        if (!resolve_spot_identity (it->first, &current))
-            continue;
-        if (current.node_rid == node_rid_ && current.spot_rid == spot_rid_)
-            return it->second;
+    const std::string key = make_spot_identity_key (node_rid_, spot_rid_);
+    std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+    spot_state_identity_index_t::iterator it = g_spot_state_identity_index.find (key);
+    if (it == g_spot_state_identity_index.end ())
+        return std::shared_ptr<spot_request_reply_state_t> ();
+    std::shared_ptr<spot_request_reply_state_t> state = it->second.lock ();
+    if (!state) {
+        g_spot_state_identity_index.erase (it);
+        return std::shared_ptr<spot_request_reply_state_t> ();
     }
-    return std::shared_ptr<local_spot_request_reply_state_t> ();
+    return state;
 }
 
-std::shared_ptr<local_router_spot_state_t>
+std::shared_ptr<router_spot_request_reply_state_t>
 find_router_state_by_rid (const std::string &router_rid_)
 {
-    std::lock_guard<std::mutex> lock (g_local_spot_states_mutex);
-    for (local_router_state_map_t::const_iterator it =
-           g_local_router_states.begin ();
-         it != g_local_router_states.end (); ++it) {
-        if (it->second && it->second->router_rid == router_rid_)
-            return it->second;
+    std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+    router_state_identity_index_t::iterator it =
+      g_router_state_identity_index.find (router_rid_);
+    if (it == g_router_state_identity_index.end ())
+        return std::shared_ptr<router_spot_request_reply_state_t> ();
+    std::shared_ptr<router_spot_request_reply_state_t> state = it->second.lock ();
+    if (!state) {
+        g_router_state_identity_index.erase (it);
+        return std::shared_ptr<router_spot_request_reply_state_t> ();
     }
-    return std::shared_ptr<local_router_spot_state_t> ();
+    return state;
 }
 
 zlink::spot_runtime_t *resolve_runtime_for_spot_destination (
   const std::string &node_rid_,
   const std::string &spot_rid_)
 {
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       find_spot_state_by_identity (node_rid_, spot_rid_);
     if (!state)
         return NULL;
@@ -707,56 +737,8 @@ int send_combined_parts_locked (zlink::socket_base_t *socket_,
                                           0);
 }
 
-int ensure_dealer_sender (zlink::ctx_t *ctx_,
-                          const std::string &endpoint_,
-                          zlink::socket_base_t **socket_inout_,
-                          std::string *bound_endpoint_inout_,
-                          zlink::spot_node_t *owner_ = NULL)
-{
-    if (!ctx_ || !socket_inout_ || !bound_endpoint_inout_
-        || endpoint_.empty ()) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    if (*socket_inout_ && *bound_endpoint_inout_ == endpoint_)
-        return 0;
-
-    if (*socket_inout_) {
-        (*socket_inout_)->stop ();
-        (*socket_inout_)->close ();
-        *socket_inout_ = NULL;
-        bound_endpoint_inout_->clear ();
-    }
-
-    zlink::socket_base_t *socket =
-      ctx_->create_socket (ZLINK_CORE_SOCKET_DEALER);
-    if (!socket)
-        return -1;
-
-    if (owner_)
-        zlink::spot_node_access_t::track_owned_socket (owner_, socket);
-
-    const int linger = 0;
-    socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
-    if (socket->connect (endpoint_.c_str ()) != 0) {
-        const int saved_errno = errno;
-        if (owner_)
-            zlink::spot_node_access_t::untrack_owned_socket (owner_, socket);
-        socket->stop ();
-        socket->close ();
-        errno = saved_errno;
-        return -1;
-    }
-
-    *socket_inout_ = socket;
-    *bound_endpoint_inout_ = endpoint_;
-    errno = 0;
-    return 0;
-}
-
 int enqueue_spot_state_route_ingress (
-  local_spot_request_reply_state_t *state_,
+  spot_request_reply_state_t *state_,
   zlink::spot_runtime_t *runtime_,
   std::vector<zlink_msg_t> *parts_)
 {
@@ -776,17 +758,10 @@ int enqueue_runtime_route_ingress_once (zlink::spot_runtime_t *runtime_,
     }
 
     zlink::socket_base_t *socket = NULL;
-    {
-        zlink::scoped_lock_t lock (
-          zlink::spot_node_access_t::sync (runtime_->owner));
-        if (ensure_dealer_sender (
-              zlink::spot_node_access_t::ctx (runtime_->owner),
-              runtime_->route_ingress_endpoint, &runtime_->route_ingress_tx,
-              &runtime_->route_ingress_endpoint, runtime_->owner)
-            != 0)
-            return -1;
-        socket = runtime_->route_ingress_tx;
-    }
+    if (runtime_->ensure_sender_socket (
+          zlink::spot_runtime_sender_route_ingress, &socket)
+        != 0)
+        return -1;
 
     zlink::spot_data_plane_forwarder_t::pump_socket_commands (socket);
     socket->set_all_pipes_nodelay ();
@@ -807,17 +782,10 @@ int enqueue_runtime_node_router_once (zlink::spot_runtime_t *runtime_,
     }
 
     zlink::socket_base_t *socket = NULL;
-    {
-        zlink::scoped_lock_t lock (
-          zlink::spot_node_access_t::sync (runtime_->owner));
-        if (ensure_dealer_sender (
-              zlink::spot_node_access_t::ctx (runtime_->owner),
-              runtime_->node_router_endpoint, &runtime_->node_router_tx,
-              &runtime_->node_router_endpoint, runtime_->owner)
-            != 0)
-            return -1;
-        socket = runtime_->node_router_tx;
-    }
+    if (runtime_->ensure_sender_socket (
+          zlink::spot_runtime_sender_node_router, &socket)
+        != 0)
+        return -1;
 
     zlink::spot_data_plane_forwarder_t::pump_socket_commands (socket);
     socket->set_all_pipes_nodelay ();
@@ -831,26 +799,18 @@ int enqueue_runtime_node_router_once (zlink::spot_runtime_t *runtime_,
 
 void bind_router_state_rid (void *router_,
                             const std::string &router_rid_,
-                            const std::shared_ptr<local_router_spot_state_t> &state_)
+                            const std::shared_ptr<router_spot_request_reply_state_t> &state_)
 {
     if (!router_ || !state_)
         return;
 
-    std::lock_guard<std::mutex> lock (g_local_spot_states_mutex);
-    for (local_router_state_map_t::iterator it = g_local_router_states.begin ();
-         it != g_local_router_states.end ();) {
-        if (it->first != router_ && it->second
-            && it->second->router_rid == router_rid_) {
-            std::lock_guard<std::mutex> state_lock (it->second->mutex);
-            zlink::internal_pair_queue::close (&it->second->recv_queue);
-            it = g_local_router_states.erase (it);
-            continue;
-        }
-        ++it;
+    {
+        std::lock_guard<std::mutex> state_lock (state_->mutex);
+        state_->router_rid = router_rid_;
     }
-    local_router_state_map_t::iterator self = g_local_router_states.find (router_);
-    if (self != g_local_router_states.end ())
-        self->second->router_rid = router_rid_;
+
+    std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+    g_router_state_identity_index[router_rid_] = state_;
 }
 
 uint64_t allocate_request_seq (uint64_t *next_request_seq_,
@@ -887,13 +847,13 @@ uint64_t allocate_request_seq (uint64_t *next_request_seq_,
 
 struct spot_timeout_callback_ctx_t
 {
-    std::shared_ptr<local_spot_request_reply_state_t> state;
+    std::shared_ptr<spot_request_reply_state_t> state;
     pending_spot_key_t key;
 };
 
 struct router_spot_timeout_callback_ctx_t
 {
-    std::shared_ptr<local_router_spot_state_t> state;
+    std::shared_ptr<router_spot_request_reply_state_t> state;
     uint64_t request_seq;
 };
 
@@ -1185,7 +1145,7 @@ int deliver_reply_to_spot (
   const parsed_spot_envelope_t &spot_envelope_,
   const zlink::request_reply::parsed_envelope_t &rr_envelope_)
 {
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       find_spot_state_by_identity (spot_envelope_.destination_node_rid,
                                    spot_envelope_.destination_endpoint_rid);
     if (!state) {
@@ -1243,7 +1203,7 @@ int deliver_reply_to_router (const std::string &router_rid_,
                              const zlink::request_reply::parsed_envelope_t
                                &rr_envelope_)
 {
-    std::shared_ptr<local_router_spot_state_t> state =
+    std::shared_ptr<router_spot_request_reply_state_t> state =
       find_router_state_by_rid (router_rid_);
     if (!state) {
         errno = ENOENT;
@@ -1346,7 +1306,7 @@ int dispatch_spot_request_to_spot (const parsed_spot_envelope_t &spot_envelope_,
                                    const zlink::request_reply::parsed_envelope_t
                                      &rr_envelope_)
 {
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       find_spot_state_by_identity (spot_envelope_.destination_node_rid,
                                    spot_envelope_.destination_endpoint_rid);
     if (!state) {
@@ -1381,7 +1341,7 @@ int dispatch_spot_request_to_router (
   const parsed_spot_envelope_t &spot_envelope_,
   const zlink::request_reply::parsed_envelope_t &rr_envelope_)
 {
-    std::shared_ptr<local_router_spot_state_t> state =
+    std::shared_ptr<router_spot_request_reply_state_t> state =
       find_router_state_by_rid (router_rid_);
     if (!state) {
         return synthesize_local_error_reply (spot_envelope_,
@@ -1431,7 +1391,7 @@ int dispatch_local_request (const std::string &router_rid_,
 }
 
 void erase_spot_pending_request (
-  const std::shared_ptr<local_spot_request_reply_state_t> &state_,
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
   const pending_spot_key_t &key_)
 {
     std::lock_guard<std::mutex> lock (state_->mutex);
@@ -1488,7 +1448,7 @@ int start_spot_request_common (void *spot_,
     if (!resolve_spot_identity (spot_, &source_identity))
         return -1;
 
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     pending_spot_key_t key;
     pending_reply_t pending;
@@ -1637,9 +1597,9 @@ int start_router_request_to_spot (void *router_,
     if (zlink_get_routing_id (router_, &router_rid) != 0 || router_rid.size == 0)
         return -1;
 
-    std::shared_ptr<local_router_spot_state_t> state =
+    std::shared_ptr<router_spot_request_reply_state_t> state =
       find_or_create_router_state (router_);
-    state->router_rid = routing_id_key (&router_rid);
+    bind_router_state_rid (router_, routing_id_key (&router_rid), state);
 
     uint64_t request_seq = 0;
     pending_reply_t pending;
@@ -1730,7 +1690,7 @@ int dispatch_local_direct_to_spot (uint8_t source_class_,
                                    zlink_msg_t *parts_,
                                    size_t part_count_)
 {
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       find_spot_state_by_identity (dest_node_rid_, dest_spot_rid_);
     if (!state) {
         zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
@@ -1762,7 +1722,7 @@ int dispatch_local_direct_to_router (const std::string &router_rid_,
                                      zlink_msg_t *parts_,
                                      size_t part_count_)
 {
-    std::shared_ptr<local_router_spot_state_t> state =
+    std::shared_ptr<router_spot_request_reply_state_t> state =
       find_router_state_by_rid (router_rid_);
     if (!state) {
         zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
@@ -1922,7 +1882,7 @@ int zlink_spot_send_spot (void *spot_,
         != 0)
         return -1;
 
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     const bool local_target = static_cast<bool> (find_spot_state_by_identity (
       routing_id_key (dest_node_rid_), routing_id_key (dest_spot_rid_)));
@@ -1971,7 +1931,7 @@ int zlink_spot_send_router (void *spot_,
         != 0)
         return -1;
 
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     const bool local_target =
       static_cast<bool> (find_router_state_by_rid (routing_id_key (peer_rid_)));
@@ -2036,7 +1996,7 @@ int zlink_spot_reply_spot (void *spot_,
           request_seq_, parts_, part_count_, &combined)
         != 0)
         return -1;
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     const bool local_target = static_cast<bool> (find_spot_state_by_identity (
       routing_id_key (dest_node_rid_), routing_id_key (dest_spot_rid_)));
@@ -2116,7 +2076,7 @@ int zlink_spot_handler (void *spot_,
     if (spot_transition_to_callback_mode (as_spot_handle (spot_)) != 0)
         return -1;
 
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     std::lock_guard<std::mutex> lock (state->mutex);
     if (state->request_handler || state->dispatch_event_handler) {
@@ -2147,7 +2107,7 @@ int zlink_spot_dispatch_event_handler (
     if (spot_transition_to_callback_mode (as_spot_handle (spot_)) != 0)
         return -1;
 
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     std::lock_guard<std::mutex> lock (state->mutex);
     if (state->request_handler || state->dispatch_event_handler) {
@@ -2183,7 +2143,7 @@ int zlink_spot_recv (void *spot_,
     if (spot_require_recv_model (as_spot_handle (spot_)) != 0)
         return -1;
 
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     std::unique_lock<std::mutex> lock (state->mutex);
     if (state->request_handler || state->dispatch_event_handler) {
@@ -2353,7 +2313,7 @@ int zlink_router_spot_handler (void *router_,
     if (zlink_get_routing_id (router_, &router_rid) != 0 || router_rid.size == 0)
         return -1;
 
-    std::shared_ptr<local_router_spot_state_t> state =
+    std::shared_ptr<router_spot_request_reply_state_t> state =
       find_or_create_router_state (router_);
     bind_router_state_rid (router_, routing_id_key (&router_rid), state);
     std::lock_guard<std::mutex> lock (state->mutex);
@@ -2393,7 +2353,7 @@ int zlink_router_spot_recv (void *router_,
     if (zlink_get_routing_id (router_, &router_rid) != 0 || router_rid.size == 0)
         return -1;
 
-    std::shared_ptr<local_router_spot_state_t> state =
+    std::shared_ptr<router_spot_request_reply_state_t> state =
       find_or_create_router_state (router_);
     bind_router_state_rid (router_, routing_id_key (&router_rid), state);
 
@@ -2435,7 +2395,7 @@ extern "C" int zlink_spot_request_reply_set_default_timeout (
         return -1;
     }
 
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     std::lock_guard<std::mutex> lock (state->mutex);
     state->default_timeout_ms = static_cast<uint32_t> (timeout_ms);
@@ -2456,7 +2416,7 @@ extern "C" int zlink_spot_request_reply_get_default_timeout (
         return -1;
     }
 
-    std::shared_ptr<local_spot_request_reply_state_t> state =
+    std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     int timeout_ms = 0;
     {
@@ -2471,15 +2431,28 @@ extern "C" int zlink_spot_request_reply_get_default_timeout (
 
 extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
 {
-    if (!as_spot_handle (spot_))
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
         return;
 
-    std::lock_guard<std::mutex> lock (g_local_spot_states_mutex);
-    local_spot_state_map_t::iterator it = g_local_spot_states.find (spot_);
-    if (it != g_local_spot_states.end ()) {
-        std::lock_guard<std::mutex> state_lock (it->second->mutex);
-        zlink::internal_pair_queue::close (&it->second->recv_queue);
-        g_local_spot_states.erase (it);
+    std::shared_ptr<spot_request_reply_state_t> state =
+      std::static_pointer_cast<spot_request_reply_state_t> (
+        spot->request_reply_state);
+    if (state) {
+        std::lock_guard<std::mutex> state_lock (state->mutex);
+        zlink::internal_pair_queue::close (&state->recv_queue);
+    }
+    spot->request_reply_state.reset ();
+
+    std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+    for (spot_state_identity_index_t::iterator it =
+           g_spot_state_identity_index.begin ();
+         it != g_spot_state_identity_index.end ();) {
+        std::shared_ptr<spot_request_reply_state_t> indexed = it->second.lock ();
+        if (!indexed || indexed == state)
+            it = g_spot_state_identity_index.erase (it);
+        else
+            ++it;
     }
 }
 
@@ -2489,11 +2462,23 @@ extern "C" void zlink_spot_request_reply_cleanup_router (void *router_)
     if (!handle.socket)
         return;
 
-    std::lock_guard<std::mutex> lock (g_local_spot_states_mutex);
-    local_router_state_map_t::iterator it = g_local_router_states.find (router_);
-    if (it != g_local_router_states.end ()) {
-        std::lock_guard<std::mutex> state_lock (it->second->mutex);
-        zlink::internal_pair_queue::close (&it->second->recv_queue);
-        g_local_router_states.erase (it);
+    std::shared_ptr<router_spot_request_reply_state_t> state =
+      std::static_pointer_cast<router_spot_request_reply_state_t> (
+        handle.socket->router_spot_request_reply_state ());
+    if (state) {
+        std::lock_guard<std::mutex> state_lock (state->mutex);
+        zlink::internal_pair_queue::close (&state->recv_queue);
+    }
+    handle.socket->clear_router_spot_request_reply_state ();
+    std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+    for (router_state_identity_index_t::iterator it =
+           g_router_state_identity_index.begin ();
+         it != g_router_state_identity_index.end ();) {
+        std::shared_ptr<router_spot_request_reply_state_t> indexed =
+          it->second.lock ();
+        if (!indexed || indexed == state)
+            it = g_router_state_identity_index.erase (it);
+        else
+            ++it;
     }
 }

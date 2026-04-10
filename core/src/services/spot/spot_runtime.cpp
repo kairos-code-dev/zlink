@@ -14,6 +14,8 @@ namespace zlink
 {
 namespace
 {
+static const int spot_runtime_default_close_timeout_ms = 2000;
+
 static uint32_t resolve_spot_data_runtime_interval_ms ()
 {
     const char *raw = std::getenv ("ZLINK_SPOT_DATA_RUNTIME_INTERVAL_MS");
@@ -63,6 +65,30 @@ static bool spot_shutdown_debug_enabled_local ()
     return std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN") != NULL;
 }
 
+static socket_base_t *&sender_socket_slot_local (spot_runtime_t *runtime_,
+                                                 spot_runtime_sender_kind_t kind_)
+{
+    return kind_ == spot_runtime_sender_node_router ? runtime_->node_router_tx
+                                                    : runtime_->route_ingress_tx;
+}
+
+static std::string &sender_endpoint_cache_local (spot_runtime_t *runtime_,
+                                                 spot_runtime_sender_kind_t kind_)
+{
+    return kind_ == spot_runtime_sender_node_router
+             ? runtime_->node_router_sender_endpoint
+             : runtime_->route_ingress_sender_endpoint;
+}
+
+static const std::string &sender_target_endpoint_local (
+  const spot_runtime_t *runtime_,
+  spot_runtime_sender_kind_t kind_)
+{
+    return kind_ == spot_runtime_sender_node_router
+             ? runtime_->node_router_endpoint
+             : runtime_->route_ingress_endpoint;
+}
+
 }
 
 spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
@@ -75,6 +101,8 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     peer_ctrl_sub (NULL),
     route_ingress (NULL),
     node_router (NULL),
+    route_ingress_tx (NULL),
+    node_router_tx (NULL),
     local_pub_ingress_sub (NULL),
     local_fanout_xpub (NULL),
     data_plane_runtime (NULL),
@@ -83,6 +111,7 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     faulted (false),
     fault_errno (0),
     abortive_shutdown (false),
+    shutdown_phase_value (spot_shutdown_phase_running),
     data_plane_task_id_value (0),
     data_plane_running (false),
     next_bootstrap_ms (0),
@@ -345,6 +374,8 @@ void spot_runtime_t::stop_sockets ()
     socket_base_t *peer_ctrl_sub_local = NULL;
     socket_base_t *route_ingress_local = NULL;
     socket_base_t *node_router_local = NULL;
+    socket_base_t *route_ingress_tx_local = NULL;
+    socket_base_t *node_router_tx_local = NULL;
     socket_base_t *ingress = NULL;
     socket_base_t *fanout = NULL;
 
@@ -358,6 +389,8 @@ void spot_runtime_t::stop_sockets ()
         peer_ctrl_sub_local = peer_ctrl_sub;
         route_ingress_local = route_ingress;
         node_router_local = node_router;
+        route_ingress_tx_local = route_ingress_tx;
+        node_router_tx_local = node_router_tx;
         ingress = local_pub_ingress_sub;
         fanout = local_fanout_xpub;
     }
@@ -378,6 +411,10 @@ void spot_runtime_t::stop_sockets ()
         route_ingress_local->stop ();
     if (node_router_local)
         node_router_local->stop ();
+    if (route_ingress_tx_local)
+        route_ingress_tx_local->stop ();
+    if (node_router_tx_local)
+        node_router_tx_local->stop ();
     if (ingress)
         ingress->stop ();
     if (fanout)
@@ -481,10 +518,10 @@ int spot_runtime_t::close_control_sockets ()
             ingress->set_all_pipes_nodelay ();
         if (fanout)
             fanout->set_all_pipes_nodelay ();
-        preserve_first_error_local (
-          close_runtime_socket (route_ingress_tx_local, 2000), &first_error);
-        preserve_first_error_local (
-          close_runtime_socket (node_router_tx_local, 2000), &first_error);
+        if (route_ingress_tx_local)
+            close_socket_ptr_local (&route_ingress_tx_local);
+        if (node_router_tx_local)
+            close_socket_ptr_local (&node_router_tx_local);
         preserve_first_error_local (close_runtime_socket (ctrl_front, 2000),
                                     &first_error);
         preserve_first_error_local (close_runtime_socket (ctrl_back, 2000),
@@ -559,6 +596,162 @@ void spot_runtime_t::mark_fault (int err_)
     fault_errno = err_ != 0 ? err_ : EIO;
 }
 
+int spot_runtime_t::ensure_sender_socket (spot_runtime_sender_kind_t kind_,
+                                          socket_base_t **out_)
+{
+    if (!owner || !owner->_ctx || !out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    scoped_lock_t lock (owner->_sync);
+    if (stop.get () != 0 || faulted || shutdown_phase_value != spot_shutdown_phase_running) {
+        errno = EFSM;
+        return -1;
+    }
+
+    socket_base_t *&slot = sender_socket_slot_local (this, kind_);
+    std::string &connected_endpoint = sender_endpoint_cache_local (this, kind_);
+    const std::string &target_endpoint =
+      sender_target_endpoint_local (this, kind_);
+    if (target_endpoint.empty ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (slot && connected_endpoint == target_endpoint) {
+        *out_ = slot;
+        return 0;
+    }
+
+    if (slot) {
+        close_socket_ptr_local (&slot);
+        connected_endpoint.clear ();
+    }
+
+    socket_base_t *socket = owner->_ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
+    if (!socket)
+        return -1;
+
+    const int linger = 0;
+    socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
+    if (socket->connect (target_endpoint.c_str ()) != 0) {
+        const int saved_errno = errno != 0 ? errno : EIO;
+        close_socket_ptr_local (&socket);
+        errno = saved_errno;
+        return -1;
+    }
+
+    slot = socket;
+    connected_endpoint = target_endpoint;
+    *out_ = slot;
+    return 0;
+}
+
+int spot_runtime_t::close_sender_cache (spot_runtime_sender_kind_t kind_,
+                                        int timeout_ms_)
+{
+    socket_base_t *socket = NULL;
+    std::string endpoint;
+    {
+        scoped_lock_t lock (owner->_sync);
+        socket = sender_socket_slot_local (this, kind_);
+        endpoint = sender_endpoint_cache_local (this, kind_);
+        sender_socket_slot_local (this, kind_) = NULL;
+        sender_endpoint_cache_local (this, kind_).clear ();
+    }
+
+    if (!socket)
+        return 0;
+    LIBZLINK_UNUSED (endpoint);
+    LIBZLINK_UNUSED (timeout_ms_);
+    close_socket_ptr_local (&socket);
+    return 0;
+}
+
+int spot_runtime_t::close_sender_caches (int timeout_ms_)
+{
+    int first_error = 0;
+    preserve_first_error_local (
+      close_sender_cache (spot_runtime_sender_route_ingress, timeout_ms_),
+      &first_error);
+    preserve_first_error_local (
+      close_sender_cache (spot_runtime_sender_node_router, timeout_ms_),
+      &first_error);
+    if (first_error != 0) {
+        errno = first_error;
+        return -1;
+    }
+    return 0;
+}
+
+void spot_runtime_t::begin_shutdown ()
+{
+    stop.set (1);
+    advance_shutdown_phase (spot_shutdown_phase_stop_accepting);
+}
+
+void spot_runtime_t::advance_shutdown_phase (spot_shutdown_phase_t phase_)
+{
+    scoped_lock_t lock (shutdown_sync);
+    if (phase_ > shutdown_phase_value)
+        shutdown_phase_value = phase_;
+}
+
+spot_shutdown_phase_t spot_runtime_t::shutdown_phase () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (shutdown_sync));
+    return shutdown_phase_value;
+}
+
+int spot_runtime_t::detach_runtime_endpoints ()
+{
+    socket_base_t *ctrl_front = NULL;
+    socket_base_t *ctrl_back = NULL;
+    socket_base_t *route_ingress_local = NULL;
+    socket_base_t *node_router_local = NULL;
+    socket_base_t *ingress = NULL;
+    socket_base_t *fanout = NULL;
+    socket_base_t *route_ingress_tx_local = NULL;
+    socket_base_t *node_router_tx_local = NULL;
+    std::string route_ingress_sender_endpoint_local;
+    std::string node_router_sender_endpoint_local;
+
+    {
+        scoped_lock_t lock (owner->_sync);
+        ctrl_front = data_ctrl_front;
+        ctrl_back = data_ctrl_back;
+        route_ingress_local = route_ingress;
+        node_router_local = node_router;
+        route_ingress_tx_local = route_ingress_tx;
+        node_router_tx_local = node_router_tx;
+        ingress = local_pub_ingress_sub;
+        fanout = local_fanout_xpub;
+        route_ingress_sender_endpoint_local = route_ingress_sender_endpoint;
+        node_router_sender_endpoint_local = node_router_sender_endpoint;
+    }
+
+    if (ctrl_front && !data_ctrl_endpoint.empty ())
+        (void) ctrl_front->term_endpoint (data_ctrl_endpoint.c_str ());
+    if (ctrl_back && !data_ctrl_endpoint.empty ())
+        (void) ctrl_back->term_endpoint (data_ctrl_endpoint.c_str ());
+    if (route_ingress_local && !route_ingress_endpoint.empty ())
+        (void) route_ingress_local->term_endpoint (route_ingress_endpoint.c_str ());
+    if (node_router_local && !node_router_endpoint.empty ())
+        (void) node_router_local->term_endpoint (node_router_endpoint.c_str ());
+    if (ingress && !pub_ingress_endpoint.empty ())
+        (void) ingress->term_endpoint (pub_ingress_endpoint.c_str ());
+    if (fanout && !sub_fanout_endpoint.empty ())
+        (void) fanout->term_endpoint (sub_fanout_endpoint.c_str ());
+    if (route_ingress_tx_local && !route_ingress_sender_endpoint_local.empty ())
+        (void) route_ingress_tx_local->term_endpoint (
+          route_ingress_sender_endpoint_local.c_str ());
+    if (node_router_tx_local && !node_router_sender_endpoint_local.empty ())
+        (void) node_router_tx_local->term_endpoint (
+          node_router_sender_endpoint_local.c_str ());
+    return 0;
+}
+
 bool spot_runtime_t::try_set_data_plane_task_id (uint64_t task_id_)
 {
     if (task_id_ == 0)
@@ -629,7 +822,7 @@ uint64_t spot_runtime_t::connected_peer_version_seen () const
 
 int spot_runtime_t::stop_and_join ()
 {
-    stop.set (1);
+    begin_shutdown ();
     if (data_ctrl_front) {
         scoped_lock_t lock (ctrl_sync);
         if (send_ascii_frame_local (data_ctrl_front, "terminate", 0) != 0) {
@@ -641,6 +834,10 @@ int spot_runtime_t::stop_and_join ()
             }
         }
     }
+    advance_shutdown_phase (spot_shutdown_phase_stop_producers);
+    (void) close_sender_caches (1000);
+    (void) detach_runtime_endpoints ();
+    advance_shutdown_phase (spot_shutdown_phase_detach_endpoints);
     stop_sockets ();
     const uint64_t task_id = clear_data_plane_task_id ();
     if (data_plane_runtime && task_id != 0)
@@ -651,6 +848,9 @@ int spot_runtime_t::stop_and_join ()
                                              &data_plane_protocol_state);
         data_plane_running = false;
     }
+    advance_shutdown_phase (spot_shutdown_phase_close_transports);
+    advance_shutdown_phase (spot_shutdown_phase_drain_state);
+    advance_shutdown_phase (spot_shutdown_phase_cleanup);
     return 0;
 }
 
@@ -682,7 +882,7 @@ size_t spot_runtime_t::attachment_count () const
 int spot_runtime_t::abortive_stop ()
 {
     abortive_shutdown = true;
-    stop.set (1);
+    begin_shutdown ();
     const uint64_t task_id = clear_data_plane_task_id ();
     if (data_plane_runtime && task_id != 0)
         (void) data_plane_runtime->remove_task (task_id);
@@ -692,6 +892,10 @@ int spot_runtime_t::abortive_stop ()
                                              &data_plane_protocol_state);
         data_plane_running = false;
     }
+    advance_shutdown_phase (spot_shutdown_phase_stop_producers);
+    (void) close_sender_caches (1000);
+    (void) detach_runtime_endpoints ();
+    advance_shutdown_phase (spot_shutdown_phase_detach_endpoints);
 
     socket_base_t *ctrl_front = NULL;
     socket_base_t *ctrl_back = NULL;
@@ -746,16 +950,6 @@ int spot_runtime_t::abortive_stop ()
     }
 
     if (owner && owner->_ctx) {
-        if (ctrl_front && !data_ctrl_endpoint.empty ())
-            (void) ctrl_front->term_endpoint (data_ctrl_endpoint.c_str ());
-        if (ctrl_back && !data_ctrl_endpoint.empty ())
-            (void) ctrl_back->term_endpoint (data_ctrl_endpoint.c_str ());
-        if (route_ingress_local && !route_ingress_endpoint.empty ())
-            (void) route_ingress_local->term_endpoint (
-              route_ingress_endpoint.c_str ());
-        if (node_router_local && !node_router_endpoint.empty ())
-            (void) node_router_local->term_endpoint (
-              node_router_endpoint.c_str ());
         if (ctrl_front)
             ctrl_front->set_all_pipes_nodelay ();
         if (ctrl_back)
@@ -776,8 +970,6 @@ int spot_runtime_t::abortive_stop ()
             ingress->set_all_pipes_nodelay ();
         if (fanout)
             fanout->set_all_pipes_nodelay ();
-        (void) close_runtime_socket (route_ingress_tx_local, 1000);
-        (void) close_runtime_socket (node_router_tx_local, 1000);
         (void) close_runtime_socket (ctrl_front, 1000);
         (void) close_runtime_socket (ctrl_back, 1000);
         (void) close_runtime_socket (mesh_pub_local, 1000);
@@ -801,8 +993,6 @@ int spot_runtime_t::abortive_stop ()
         close_socket_ptr_local (&peer_ctrl_sub_local);
         close_socket_ptr_local (&route_ingress_local);
         close_socket_ptr_local (&node_router_local);
-        close_socket_ptr_local (&route_ingress_tx_local);
-        close_socket_ptr_local (&node_router_tx_local);
         close_socket_ptr_local (&ingress);
         close_socket_ptr_local (&fanout);
         for (size_t i = 0; i < attachment_sockets.size (); ++i) {
@@ -811,6 +1001,9 @@ int spot_runtime_t::abortive_stop ()
         }
     }
 
+    advance_shutdown_phase (spot_shutdown_phase_close_transports);
+    advance_shutdown_phase (spot_shutdown_phase_drain_state);
+    advance_shutdown_phase (spot_shutdown_phase_cleanup);
     return 0;
 }
 }

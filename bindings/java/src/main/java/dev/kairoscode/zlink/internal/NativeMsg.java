@@ -75,16 +75,6 @@ public final class NativeMsg {
             FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSG_REFCNT = downcall("zlink_msg_refcnt",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_SET_REQUEST = downcall("zlink_msg_set_request",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_MSG_SET_REPLY = downcall("zlink_msg_set_reply",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_MSG_GET_REQUEST_INFO = downcall("zlink_msg_get_request_info",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_SET_METADATA = downcall("zlink_msg_set_metadata",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_MSG_GET_METADATA = downcall("zlink_msg_get_metadata",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSG_GETS = downcall("zlink_msg_gets",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSGV_CLOSE = downcallAny(
@@ -92,6 +82,24 @@ public final class NativeMsg {
             FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_FREE = cDowncall("free",
             FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+    private static final MethodHandle MH_DEALER_REQUEST = downcall("zlink_dealer_request",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
+    private static final MethodHandle MH_ROUTER_REQUEST = downcall("zlink_router_request",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_ROUTER_REPLY = downcall("zlink_router_reply",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_ROUTER_HANDLER = downcall(
+            "zlink_router_handler",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
     private NativeMsg() {}
 
@@ -168,46 +176,6 @@ public final class NativeMsg {
         }
     }
 
-    public static int msgSetRequest(MemorySegment msg, long correlationId) {
-        try {
-            return (int) MH_MSG_SET_REQUEST.invokeExact(msg, correlationId);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_set_request failed", t);
-        }
-    }
-
-    public static int msgSetReply(MemorySegment msg, long correlationId) {
-        try {
-            return (int) MH_MSG_SET_REPLY.invokeExact(msg, correlationId);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_set_reply failed", t);
-        }
-    }
-
-    public static int msgGetRequestInfo(MemorySegment msg, MemorySegment typeOut, MemorySegment correlationIdOut) {
-        try {
-            return (int) MH_MSG_GET_REQUEST_INFO.invokeExact(msg, typeOut, correlationIdOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_get_request_info failed", t);
-        }
-    }
-
-    public static int msgSetMetadata(MemorySegment msg, short key, MemorySegment value, long valueSize) {
-        try {
-            return (int) MH_MSG_SET_METADATA.invokeExact(msg, key, value, valueSize);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_set_metadata failed", t);
-        }
-    }
-
-    public static MemorySegment msgGetMetadata(MemorySegment msg, short key, MemorySegment sizeOut) {
-        try {
-            return (MemorySegment) MH_MSG_GET_METADATA.invokeExact(msg, key, sizeOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_get_metadata failed", t);
-        }
-    }
-
     public static MemorySegment msgGets(MemorySegment msg, MemorySegment property) {
         try {
             return (MemorySegment) MH_MSG_GETS.invokeExact(msg, property);
@@ -232,6 +200,52 @@ public final class NativeMsg {
             MH_MSGV_CLOSE.invokeExact(parts, count);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_multipart_close failed", t);
+        }
+    }
+
+    public static int dealerRequest(MemorySegment dealer, MemorySegment parts,
+                                    long partCount, int timeoutMs,
+                                    MemorySegment handler,
+                                    MemorySegment userData) {
+        try {
+            return (int) MH_DEALER_REQUEST.invokeExact(dealer, parts, partCount,
+                timeoutMs, handler, userData);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_dealer_request failed", t);
+        }
+    }
+
+    public static int routerRequest(MemorySegment router, MemorySegment peerRid,
+                                    MemorySegment parts, long partCount,
+                                    int timeoutMs, MemorySegment handler,
+                                    MemorySegment userData) {
+        try {
+            return (int) MH_ROUTER_REQUEST.invokeExact(router, peerRid, parts,
+                partCount, timeoutMs, handler, userData);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_router_request failed", t);
+        }
+    }
+
+    public static int routerReply(MemorySegment router, MemorySegment peerRid,
+                                  long requestSeq, MemorySegment parts,
+                                  long partCount) {
+        try {
+            return (int) MH_ROUTER_REPLY.invokeExact(router, peerRid, requestSeq,
+                parts, partCount);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_router_reply failed", t);
+        }
+    }
+
+    public static int routerHandler(MemorySegment router,
+                                    MemorySegment handler,
+                                    MemorySegment userData) {
+        try {
+            return (int) MH_ROUTER_HANDLER.invokeExact(router, handler,
+                userData);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_router_handler failed", t);
         }
     }
 

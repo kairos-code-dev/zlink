@@ -47,6 +47,12 @@ static napi_value init(napi_env env, napi_value exports)
         {"socketStreamSend", 0, socket_stream_send, 0, 0, 0, napi_default, 0},
         {"socketSetOpt", 0, socket_setopt, 0, 0, 0, napi_default, 0},
         {"socketGetOpt", 0, socket_getopt, 0, 0, 0, napi_default, 0},
+        {"dealerRequest", 0, dealer_request, 0, 0, 0, napi_default, 0},
+        {"routerRequest", 0, router_request, 0, 0, 0, napi_default, 0},
+        {"routerReply", 0, router_reply, 0, 0, 0, napi_default, 0},
+        {"routerHandlerMessage", 0, router_handler_message, 0, 0, 0, napi_default, 0},
+        {"routerRecvMessage", 0, router_recv_message, 0, 0, 0, napi_default, 0},
+        {"routerTryRecvMessage", 0, router_try_recv_message, 0, 0, 0, napi_default, 0},
 
         {"registryNew", 0, registry_new, 0, 0, 0, napi_default, 0},
         {"registrySetEndpoints", 0, registry_set_endpoints, 0, 0, 0, napi_default, 0},

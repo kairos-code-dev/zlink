@@ -1,7 +1,8 @@
 # Message Request-Reply 필드 — Core C API Spec
 
 > **상태**: Historical Draft
-> **소비자**: [`bindings/REQUEST_REPLY_SPEC.md`](../../../bindings/REQUEST_REPLY_SPEC.md)
+> **소비자**: [`bindings/README.md`](../../../bindings/README.md) (Request-Reply Policy 섹션),
+> [`bindings/lang/*.md`](../../../bindings/lang/) (언어별 인터페이스)
 > **관련 문서**:
 > [`MSG_METADATA_SPEC.md`](MSG_METADATA_SPEC.md) — 범용 per-message metadata,
 > [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식,
@@ -11,6 +12,9 @@
 > 이 문서의 설계안은 현재 채택하지 않았다.
 > 현재 기준은 message-level field 가 아니라
 > ZMP request-reply protocol envelope 와 socket request API 다.
+> 이 문서의 `msg_type`, `correlation_id`, `EXTENDED_HEADER` 기반 설명은
+> 현재 source-of-truth 와 충돌하는 폐기안이다.
+> 구현이나 테스트를 진행할 때는 이 문서를 기준으로 삼지 않는다.
 
 ---
 

@@ -110,6 +110,20 @@ void zlink::fq_t::activated (pipe_t *pipe_)
     _active++;
 }
 
+void zlink::fq_t::arm_dispatch ()
+{
+    normalize_state ();
+
+    const pipes_t::size_type limit = _active;
+    for (pipes_t::size_type i = 0; i < limit; ++i) {
+        pipe_t *pipe = _pipes[i];
+        if (!pipe)
+            continue;
+        pipe->check_read ();
+        deactivate (pipe);
+    }
+}
+
 int zlink::fq_t::recv (msg_t *msg_)
 {
     return recvpipe (msg_, NULL);
@@ -140,7 +154,10 @@ int zlink::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
                 *pipe_ = _pipes[_current];
             _more = (msg_->flags () & msg_t::more) != 0;
             if (!_more) {
-                _current = (_current + 1) % _active;
+                if (_active > 0)
+                    _current = (_current + 1) % _active;
+                else
+                    _current = 0;
             }
             return 0;
         }

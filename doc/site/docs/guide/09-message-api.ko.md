@@ -18,8 +18,7 @@
 | reference count (refcount) | 같은 데이터 버퍼를 공유하는 메시지 핸들의 수. 0이 되면 버퍼가 해제된다 |
 | ownership | 메시지 데이터의 소유권. send 성공 시 library로 이전되고, 실패 시 caller가 유지한다 |
 | routing_id | Router 소켓이 피어를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트) |
-| envelope | 사용자 payload 앞에 core가 자동으로 추가하는 내부 프레임 (request-reply, metadata) |
-| correlation_id | request-reply 패턴에서 요청과 응답을 매칭하는 uint64 식별자 |
+| envelope | 사용자 payload 앞에 자동으로 붙는 제어 정보 |
 | HWM (High Water Mark) | 소켓의 송신/수신 큐 최대 용량. 초과 시 backpressure가 발생한다 |
 
 ## 1. 개요
@@ -607,58 +606,32 @@ zlink_send_rid(router, &target_rid, parts, part_count, 0);
 
 ## 11. Request-Reply Envelope
 
-메시지에 request-reply 필드(`msg_type`, `correlation_id`)를 설정하면 core가
-send 시 자동으로 wire envelope에 직렬화하고, recv 시 자동으로 파싱하여
-복원한다. DATA 메시지(기본값)는 envelope overhead가 0이다.
+## 11. request-reply 와 metadata 변경 사항
 
-### Request/Reply 설정
+예전 message-level request-reply 와 per-message metadata API 는 더 이상
+활성 공개 API 가 아니다.
 
-```c
-/* correlation_id = 1001로 REQUEST 전송 */
-zlink_msg_t req;
-zlink_msg_init_size(&req, 13);
-memcpy(zlink_msg_data(&req), "get_portfolio", 13);
-zlink_msg_set_request(&req, 1001);
-zlink_send(dealer, &req, 1, 0);
+제거된 항목:
 
-/* 응답 측: 동일한 correlation_id로 REPLY 생성 */
-zlink_msg_t reply;
-zlink_msg_init_size(&reply, 4);
-memcpy(zlink_msg_data(&reply), "done", 4);
-zlink_msg_set_reply(&reply, 1001);
-zlink_send_rid(router, &source_rid, &reply, 1, 0);
-```
+- `zlink_msg_set_request`
+- `zlink_msg_set_reply`
+- `zlink_msg_get_request_info`
+- `zlink_msg_set_metadata`
+- `zlink_msg_get_metadata`
+- `zlink_msg_clear_metadata`
 
-### Request-Reply 정보 읽기
+현재 request-reply 는 typed socket API 로 연다.
+예를 들어 `DEALER`, `ROUTER` 는 전용 request/reply 함수와 typed receive
+surface 를 사용한다.
 
-```c
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    uint8_t msg_type;
-    uint64_t correlation_id;
-    zlink_msg_get_request_info(&parts[0], &msg_type, &correlation_id);
+SPOT 직접 전달과 SPOT request-reply 도 같은 방식으로 typed SPOT surface 와
+ZMP control part 를 사용한다.
 
-    if (msg_type == ZLINK_MSG_TYPE_REQUEST) {
-        /* correlation_id로 request dispatch */
-    } else if (msg_type == ZLINK_MSG_TYPE_REPLY) {
-        /* correlation_id로 pending request 매칭 */
-    }
-    /* msg_type == ZLINK_MSG_TYPE_DATA: 일반 메시지, envelope 없음 */
+현재 기준 문서는 아래를 따른다.
 
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-```
-
-### 핵심 사항
-
-- `zlink_msg_init()` 후 msg_type은 DATA, correlation_id는 0이다.
-- `set_request` 후 `set_reply` 호출(또는 반대) 시 마지막 호출이 우선한다.
-- `msg_copy` / `msg_move`는 request-reply 필드도 함께 복사/이동한다.
-- `msg_data()` / `msg_size()`는 사용자 payload만 반환한다. envelope 미포함.
-- DATA 메시지는 wire overhead가 0이다 (envelope 미생성).
+- `doc/api/socket.ko.md`
+- `doc/api/spot.ko.md`
+- `doc/internals/protocol-zmp.ko.md`
 
 ## 12. Per-Message Metadata
 

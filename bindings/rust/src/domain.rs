@@ -48,11 +48,28 @@ impl SendResult {
 pub struct Received {
     routing_id: RoutingId,
     parts: Vec<Message>,
+    request_seq: Option<u64>,
 }
 
 impl Received {
     pub(crate) fn new(routing_id: RoutingId, parts: Vec<Message>) -> Self {
-        Self { routing_id, parts }
+        Self {
+            routing_id,
+            parts,
+            request_seq: None,
+        }
+    }
+
+    pub(crate) fn with_request_seq(
+        routing_id: RoutingId,
+        parts: Vec<Message>,
+        request_seq: u64,
+    ) -> Self {
+        Self {
+            routing_id,
+            parts,
+            request_seq: Some(request_seq),
+        }
     }
 
     /// Sender routing-id attached to this delivery.
@@ -68,6 +85,12 @@ impl Received {
     /// Consume the result and return the individual parts.
     pub fn into_parts(self) -> Vec<Message> {
         self.parts
+    }
+
+    /// Request sequence attached by the request-reply API when this delivery
+    /// represents an incoming request on a `RequestRouter`.
+    pub fn request_seq(&self) -> Option<u64> {
+        self.request_seq
     }
 
     /// Consume the result and return the single part, or error if the

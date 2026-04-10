@@ -95,6 +95,9 @@ void spot_sub_handler_adapter (const zlink_routing_id_t *source_rid_,
         return;
     }
 
+    zlink_spot_notify_dispatch_event (spot,
+                                      ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE);
+
     g_current_spot_dispatch_handle = spot;
     g_current_spot_dispatch_is_node = false;
     spot->handler (source_rid_, topic_, topic_len_, parts_, part_count_,

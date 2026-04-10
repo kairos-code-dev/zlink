@@ -2,52 +2,15 @@
 
 #include "sample_common.hpp"
 
-#include <coroutine>
 namespace detail
 {
 
-class sample_task_t
+void run_request_round_trip (zlink::request_dealer_t &dealer_)
 {
-  public:
-    struct promise_type
-    {
-        sample_task_t get_return_object ()
-        {
-            return sample_task_t (_completion.get_future ());
-        }
-
-        std::suspend_never initial_suspend () noexcept { return {}; }
-        std::suspend_never final_suspend () noexcept { return {}; }
-
-        void return_void () { _completion.set_value (); }
-
-        void unhandled_exception ()
-        {
-            _completion.set_exception (std::current_exception ());
-        }
-
-      private:
-        std::promise<void> _completion;
-
-        friend class sample_task_t;
-    };
-
-    explicit sample_task_t (std::future<void> completion_)
-        : _completion (std::move (completion_))
-    {
-    }
-
-    void wait () { _completion.get (); }
-
-  private:
-    std::future<void> _completion;
-};
-
-sample_task_t run_request_round_trip (zlink::request_dealer_t &dealer_)
-{
-    zlink::received_t reply = co_await dealer_.request (
+    zlink::received_t reply = dealer_.request (
       detail::make_message (detail::k_dealer_router_request),
-      std::chrono::milliseconds (2000));
+      std::chrono::milliseconds (2000))
+                                .get ();
     assert (reply.parts.size () == 1);
     assert (reply.parts[0].to_string () == detail::k_dealer_router_reply);
 }
@@ -80,19 +43,14 @@ int main ()
           assert (received.parts.size () == 1);
           assert (received.parts[0].to_string ()
                   == detail::k_dealer_router_request);
-          uint8_t msg_type = 0;
-          uint64_t correlation_id = 0;
-          assert (received.parts[0].get_request_info (&msg_type, &correlation_id)
-                  == 0);
-          assert (msg_type == static_cast<uint8_t> (
-                                zlink::detail::request_reply_message_type_t::request));
-          router.reply (received.routing_id, correlation_id,
+          assert (received.has_request_seq);
+          assert (received.request_seq != 0u);
+          router.reply (received.routing_id, received.request_seq,
                         detail::make_message (detail::k_dealer_router_reply));
           request_handled.set_value ();
       });
 
-    detail::sample_task_t round_trip = detail::run_request_round_trip (dealer);
-    round_trip.wait ();
+    detail::run_request_round_trip (dealer);
     assert (request_done.wait_for (std::chrono::milliseconds (2000))
             == std::future_status::ready);
 

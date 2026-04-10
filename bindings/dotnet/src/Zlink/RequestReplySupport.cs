@@ -9,6 +9,9 @@ namespace Zlink;
 
 internal static class RequestReplySupport
 {
+    private const int ErrnoEAgainWin = 35;
+    private const int ErrnoEWouldBlockWin = 10035;
+
     internal static Message[] ToArray(IReadOnlyList<Message> parts)
     {
         Message[] array = new Message[parts.Count];
@@ -19,13 +22,7 @@ internal static class RequestReplySupport
 
     internal static Message CloneMessage(Message source)
     {
-        Message clone = Message.FromBytes(source.AsReadOnlySpan());
-        (byte msgType, ulong correlationId) = source.GetRequestInfo();
-        if (msgType == 1)
-            clone.SetRequest(correlationId);
-        else if (msgType == 2)
-            clone.SetReply(correlationId);
-        return clone;
+        return Message.FromBytes(source.AsReadOnlySpan());
     }
 
     internal static Message[] CloneParts(IReadOnlyList<Message> parts)
@@ -43,7 +40,8 @@ internal static class RequestReplySupport
         Message[] parts = new Message[source.Parts.Count];
         for (int i = 0; i < source.Parts.Count; i++)
             parts[i] = CloneMessage(source.Parts[i]);
-        return new Received(source.RoutingId, parts);
+        return new Received(source.RoutingId, parts, source.RequestSequence,
+            source.HasRequestSequence);
     }
 
     internal static void DisposeParts(IEnumerable<Message> parts)
@@ -78,5 +76,60 @@ internal static class RequestReplySupport
             }
             CallbackDelivery.Post(context, () => onReply(task.Result));
         }, TaskScheduler.Default);
+    }
+
+    internal static unsafe void MovePartsToNative(IReadOnlyList<Message> parts,
+        out Zlink.Native.ZlinkMsg[] nativeParts)
+    {
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
+        if (parts.Count == 0)
+            throw new ArgumentException("parts must not be empty", nameof(parts));
+
+        nativeParts = new Zlink.Native.ZlinkMsg[parts.Count];
+        int built = 0;
+        try
+        {
+            for (int i = 0; i < parts.Count; i++)
+            {
+                Message part = parts[i]
+                    ?? throw new ArgumentNullException(nameof(parts),
+                        "parts must not contain null");
+                part.MoveTo(ref nativeParts[i]);
+                built++;
+            }
+        }
+        catch
+        {
+            RestoreManagedParts(parts, nativeParts, built);
+            throw;
+        }
+    }
+
+    internal static void RestoreManagedParts(IReadOnlyList<Message> parts,
+        Zlink.Native.ZlinkMsg[] nativeParts, int built)
+    {
+        for (int i = built - 1; i >= 0; i--)
+        {
+            try
+            {
+                parts[i].RestoreFrom(ref nativeParts[i]);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    internal static SendResult MapTrySendResult(ZlinkException error)
+    {
+        ErrorCode code = ZlinkException.MapErrorCode(error.Errno);
+        return code switch
+        {
+            ErrorCode.EAgain => SendResult.Backpressured,
+            _ when error.Errno == ErrnoEAgainWin ||
+                error.Errno == ErrnoEWouldBlockWin => SendResult.Backpressured,
+            _ => throw error
+        };
     }
 }

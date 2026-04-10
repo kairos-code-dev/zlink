@@ -273,9 +273,6 @@ typedef struct zlink_routing_id_t
 
 typedef void (zlink_free_fn) (void *data_, void *hint_);
 
-#define ZLINK_MSG_TYPE_DATA 0
-#define ZLINK_MSG_TYPE_REQUEST 1
-#define ZLINK_MSG_TYPE_REPLY 2
 #define ZLINK_MSG_METADATA_KEY_USER_MIN 0x0100
 #define ZLINK_MSG_METADATA_VALUE_MAX 65535
 
@@ -327,30 +324,6 @@ ZLINK_EXPORT int zlink_msg_move (zlink_msg_t *dest_, zlink_msg_t *src_);
  * reference count rather than duplicating the payload buffer.
  */
 ZLINK_EXPORT int zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
-
-/** @brief Mark this message as a request with the given correlation id. */
-ZLINK_EXPORT int zlink_msg_set_request (zlink_msg_t *msg_,
-                                        uint64_t correlation_id_);
-
-/** @brief Mark this message as a reply with the given correlation id. */
-ZLINK_EXPORT int zlink_msg_set_reply (zlink_msg_t *msg_,
-                                      uint64_t correlation_id_);
-
-/** @brief Get request-reply metadata associated with this message. */
-ZLINK_EXPORT int zlink_msg_get_request_info (const zlink_msg_t *msg_,
-                                             uint8_t *type_out_,
-                                             uint64_t *correlation_id_out_);
-
-/** @brief Set a per-message metadata key/value pair. */
-ZLINK_EXPORT int zlink_msg_set_metadata (zlink_msg_t *msg_,
-                                         uint16_t key_,
-                                         const void *value_,
-                                         size_t value_size_);
-
-/** @brief Lookup a per-message metadata value by key. */
-ZLINK_EXPORT const void *zlink_msg_get_metadata (const zlink_msg_t *msg_,
-                                                 uint16_t key_,
-                                                 size_t *size_);
 
 /** @brief Return a pointer to the message data buffer. */
 ZLINK_EXPORT void *zlink_msg_data (zlink_msg_t *msg_);
@@ -456,12 +429,14 @@ typedef enum zlink_router_option_t
     ZLINK_ROUTER_OPT_MANDATORY = 0x3101,
     ZLINK_ROUTER_OPT_HANDOVER = 0x3102,
     ZLINK_ROUTER_OPT_PROBE = 0x3103,
-    ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID = 0x3104
+    ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID = 0x3104,
+    ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS = 0x3105
 } zlink_router_option_t;
 
 typedef enum zlink_dealer_option_t
 {
-    ZLINK_DEALER_OPT_PROBE = 0x3201
+    ZLINK_DEALER_OPT_PROBE = 0x3201,
+    ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS = 0x3202
 } zlink_dealer_option_t;
 
 typedef enum zlink_pub_option_t
@@ -497,6 +472,11 @@ typedef enum zlink_spot_node_option_t
     ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_MESSAGES_PER_TURN = 0x3606,
     ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN = 0x3607
 } zlink_spot_node_option_t;
+
+typedef enum zlink_spot_option_t
+{
+    ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS = 0x3701
+} zlink_spot_option_t;
 
 #define ZLINK_DONTWAIT ((zlink_send_flags_t) 0x0001u)
 #define ZLINK_SEND_FLAG_DONTWAIT ZLINK_DONTWAIT
@@ -608,6 +588,52 @@ typedef void (*zlink_subscribe_handler_fn) (
 
 typedef void (*zlink_send_ready_handler_fn) (void *subject_, void *userdata_);
 
+typedef void (*zlink_reply_handler_fn) (
+  int errno_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
+
+typedef void (*zlink_router_handler_fn) (
+  const zlink_routing_id_t *peer_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
+
+typedef void (*zlink_spot_handler_fn) (
+  const zlink_routing_id_t *source_rid_,
+  const zlink_routing_id_t *spot_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
+
+typedef void (*zlink_router_spot_handler_fn) (
+  const zlink_routing_id_t *source_node_rid_,
+  const zlink_routing_id_t *source_spot_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
+
+typedef enum zlink_spot_dispatch_event_t
+{
+    ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,
+    ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE = 2,
+    ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE = 3
+} zlink_spot_dispatch_event_t;
+
+typedef void (*zlink_spot_dispatch_event_handler_fn) (
+  void *spot_,
+  zlink_spot_dispatch_event_t event_,
+  void *userdata_);
+
+typedef void (*zlink_spot_timer_handler_fn) (
+  void *timer_,
+  uint64_t fire_count_,
+  void *userdata_);
+
 /**
  * @brief Create a socket.
  * @param context_  Context handle (return value of zlink_ctx_new()).
@@ -622,7 +648,6 @@ ZLINK_EXPORT void *zlink_socket (void *, zlink_socket_type_t type_);
  * Supported subjects:
  * - raw `PAIR`
  * - raw `DEALER`
- * - raw `ROUTER`
  * - raw `STREAM`
  *
  * The subject starts in recv model. After a successful attach, direct recv on
@@ -737,6 +762,15 @@ ZLINK_EXPORT int zlink_get_stream_option (void *handle_,
                                           void *optval_,
                                           size_t *optvallen_);
 
+ZLINK_EXPORT int zlink_set_spot_option (void *handle_,
+                                        zlink_spot_option_t option_,
+                                        const void *optval_,
+                                        size_t optvallen_);
+ZLINK_EXPORT int zlink_get_spot_option (void *handle_,
+                                        zlink_spot_option_t option_,
+                                        void *optval_,
+                                        size_t *optvallen_);
+
 /*
  * PUB/XPUB socket, spot-pub, spotnode-pub:
  * - zlink_pub_option_t for pub-specific options
@@ -844,6 +878,156 @@ ZLINK_EXPORT int zlink_try_send_rid (void *s_,
                                      zlink_msg_t *parts_,
                                      size_t part_count_,
                                      zlink_send_result_t *result_out_);
+
+ZLINK_EXPORT int zlink_dealer_request (void *dealer_,
+                                       zlink_msg_t *parts_,
+                                       size_t part_count_,
+                                       uint32_t timeout_ms_,
+                                       zlink_reply_handler_fn handler_,
+                                       void *userdata_);
+
+ZLINK_EXPORT int zlink_router_request (
+  void *router_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  uint32_t timeout_ms_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_);
+
+ZLINK_EXPORT int zlink_router_reply (void *router_,
+                                     const zlink_routing_id_t *peer_rid_,
+                                     uint64_t request_seq_,
+                                     zlink_msg_t *parts_,
+                                     size_t part_count_);
+
+ZLINK_EXPORT int zlink_router_handler (void *router_,
+                                       zlink_router_handler_fn handler_,
+                                       void *userdata_);
+
+ZLINK_EXPORT int zlink_router_recv (void *router_,
+                                    const zlink_routing_id_t **peer_rid_out_,
+                                    uint64_t *request_seq_out_,
+                                    zlink_msg_t **parts_out_,
+                                    size_t *part_count_out_,
+                                    int flags_);
+
+ZLINK_EXPORT int zlink_spot_request_spot (void *spot_,
+                                          const zlink_routing_id_t *dest_node_rid_,
+                                          const zlink_routing_id_t *dest_spot_rid_,
+                                          zlink_msg_t *parts_,
+                                          size_t part_count_,
+                                          uint32_t timeout_ms_,
+                                          zlink_reply_handler_fn handler_,
+                                          void *userdata_);
+
+ZLINK_EXPORT int zlink_spot_send_spot (void *spot_,
+                                       const zlink_routing_id_t *dest_node_rid_,
+                                       const zlink_routing_id_t *dest_spot_rid_,
+                                       zlink_msg_t *parts_,
+                                       size_t part_count_,
+                                       zlink_send_flags_t flags_);
+
+ZLINK_EXPORT int zlink_spot_send_router (void *spot_,
+                                         const zlink_routing_id_t *peer_rid_,
+                                         zlink_msg_t *parts_,
+                                         size_t part_count_,
+                                         zlink_send_flags_t flags_);
+
+ZLINK_EXPORT int zlink_spot_request_router (void *spot_,
+                                            const zlink_routing_id_t *peer_rid_,
+                                            zlink_msg_t *parts_,
+                                            size_t part_count_,
+                                            uint32_t timeout_ms_,
+                                            zlink_reply_handler_fn handler_,
+                                            void *userdata_);
+
+ZLINK_EXPORT int zlink_spot_reply_spot (void *spot_,
+                                        const zlink_routing_id_t *dest_node_rid_,
+                                        const zlink_routing_id_t *dest_spot_rid_,
+                                        uint64_t request_seq_,
+                                        zlink_msg_t *parts_,
+                                        size_t part_count_);
+
+ZLINK_EXPORT int zlink_spot_reply_router (void *spot_,
+                                          const zlink_routing_id_t *peer_rid_,
+                                          uint64_t request_seq_,
+                                          zlink_msg_t *parts_,
+                                          size_t part_count_);
+
+ZLINK_EXPORT int zlink_spot_handler (void *spot_,
+                                     zlink_spot_handler_fn handler_,
+                                     void *userdata_);
+
+ZLINK_EXPORT int zlink_spot_dispatch_event_handler (
+  void *spot_,
+  zlink_spot_dispatch_event_handler_fn handler_,
+  void *userdata_);
+
+ZLINK_EXPORT int zlink_spot_recv (void *spot_,
+                                  const zlink_routing_id_t **source_rid_out_,
+                                  const zlink_routing_id_t **spot_rid_out_,
+                                  uint64_t *request_seq_out_,
+                                  zlink_msg_t **parts_out_,
+                                  size_t *part_count_out_,
+                                  int flags_);
+
+ZLINK_EXPORT void *zlink_spot_timer_new (void *spot_);
+
+ZLINK_EXPORT int zlink_spot_timer_destroy (void **timer_p_);
+
+ZLINK_EXPORT int zlink_spot_timer_start (void *timer_,
+                                         uint64_t interval_ns_,
+                                         uint64_t repeat_count_);
+
+ZLINK_EXPORT int zlink_spot_timer_stop (void *timer_);
+
+ZLINK_EXPORT int zlink_spot_timer_handler (
+  void *timer_,
+  zlink_spot_timer_handler_fn handler_,
+  void *userdata_);
+
+ZLINK_EXPORT int zlink_spot_timer_recv (void *timer_,
+                                        uint64_t *fire_count_out_,
+                                        int flags_);
+
+ZLINK_EXPORT int zlink_router_request_spot (
+  void *router_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  uint32_t timeout_ms_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_);
+
+ZLINK_EXPORT int zlink_router_reply_spot (void *router_,
+                                          const zlink_routing_id_t *dest_node_rid_,
+                                          const zlink_routing_id_t *dest_spot_rid_,
+                                          uint64_t request_seq_,
+                                          zlink_msg_t *parts_,
+                                          size_t part_count_);
+
+ZLINK_EXPORT int zlink_router_send_spot (void *router_,
+                                         const zlink_routing_id_t *dest_node_rid_,
+                                         const zlink_routing_id_t *dest_spot_rid_,
+                                         zlink_msg_t *parts_,
+                                         size_t part_count_,
+                                         zlink_send_flags_t flags_);
+
+ZLINK_EXPORT int zlink_router_spot_handler (
+  void *router_,
+  zlink_router_spot_handler_fn handler_,
+  void *userdata_);
+
+ZLINK_EXPORT int zlink_router_spot_recv (
+  void *router_,
+  const zlink_routing_id_t **source_node_rid_out_,
+  const zlink_routing_id_t **source_spot_rid_out_,
+  uint64_t *request_seq_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  int flags_);
 
 /**
  * @brief Receive a multipart message from a socket or handle.

@@ -31,10 +31,9 @@ async def main():
                     with await asyncio.to_thread(router.recv) as received:
                         if received.routing_id != zlink.RoutingId(b"REQ-CLIENT"):
                             raise AssertionError("unexpected request routing id")
-                        msg_type, correlation_id = received.parts[0].get_request_info()
-                        if msg_type != zlink.MSG_TYPE_REQUEST:
-                            raise AssertionError("unexpected message type")
-                        await router.reply(received.routing_id, correlation_id, [b"pong"])
+                        if received.request_seq is None:
+                            raise AssertionError("missing request sequence")
+                        await router.reply(received.routing_id, received.request_seq, [b"pong"])
 
                     with await pending_reply as reply:
                         if reply.to_bytes_list() != [b"pong"]:

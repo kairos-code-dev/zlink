@@ -3,30 +3,16 @@
 import { normalizeBufferLike } from './buffer_like';
 import type { BufferLike } from './buffer_like';
 
-/** Message type constants for request-reply envelope. */
-export const MsgType = Object.freeze({
-  Data: 0,
-  Request: 1,
-  Reply: 2,
-} as const);
-
 /** Minimum user-defined metadata key. */
 export const METADATA_KEY_USER_MIN = 0x0100;
 /** Maximum metadata value size in bytes. */
 export const METADATA_VALUE_MAX = 65535;
-
-/** Request-reply information extracted from a message. */
-export interface RequestInfo {
-  readonly msgType: number;
-  readonly correlationId: bigint;
-}
 
 /** @internal */
 export interface MessageSnapshot {
   data: Buffer;
   refCount?: number;
   properties?: Readonly<Record<string, string>>;
-  requestInfo?: RequestInfo;
   metadata?: Readonly<Map<number, Buffer>>;
 }
 
@@ -46,20 +32,17 @@ export class Message {
   private readonly _buffer: Buffer;
   private readonly _refCount: number;
   private readonly _properties: Readonly<Record<string, string>>;
-  private readonly _requestInfo: RequestInfo;
   private readonly _metadata: Readonly<Map<number, Buffer>>;
 
   private constructor(
     buffer: Buffer,
     refCount = 1,
     properties?: Readonly<Record<string, string>>,
-    requestInfo?: RequestInfo,
     metadata?: Readonly<Map<number, Buffer>>
   ) {
     this._buffer = buffer;
     this._refCount = refCount | 0;
     this._properties = normalizeMessageProperties(properties);
-    this._requestInfo = requestInfo ?? { msgType: MsgType.Data, correlationId: BigInt(0) };
     this._metadata = metadata ?? EMPTY_METADATA;
     Object.freeze(this);
   }
@@ -74,7 +57,6 @@ export class Message {
       snapshot.data,
       snapshot.refCount ?? 1,
       snapshot.properties,
-      snapshot.requestInfo,
       snapshot.metadata
     );
   }
@@ -90,7 +72,6 @@ export class Message {
       data: this._buffer,
       refCount: this._refCount,
       properties: this._properties,
-      requestInfo: this._requestInfo,
       metadata: this._metadata
     };
   }
@@ -110,11 +91,6 @@ export class Message {
     return Object.prototype.hasOwnProperty.call(this._properties, name)
       ? this._properties[name]
       : null;
-  }
-
-  /** Get request-reply information (msgType and correlationId). */
-  getRequestInfo(): RequestInfo {
-    return this._requestInfo;
   }
 
   /** Get a metadata value by key. Returns null if absent. */
@@ -140,10 +116,16 @@ export class Message {
 export class Received {
   readonly parts: readonly Message[];
   readonly routingId: Buffer | null;
+  readonly requestSeq: bigint | null;
 
-  constructor(parts: readonly Message[], routingId: Buffer | null = null) {
+  constructor(
+    parts: readonly Message[],
+    routingId: Buffer | null = null,
+    requestSeq: bigint | null = null
+  ) {
     this.parts = Object.isFrozen(parts) ? parts : Object.freeze(parts.slice());
     this.routingId = routingId;
+    this.requestSeq = requestSeq;
   }
 
   singlePartOrThrow(): Message {

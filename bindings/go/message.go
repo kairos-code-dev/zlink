@@ -19,19 +19,6 @@ import (
 const maxRoutingIDSize = 255
 const maxFixedCStringFieldSize = 255
 
-// Message type constants for request-reply envelope.
-const (
-	MsgTypeData    = 0
-	MsgTypeRequest = 1
-	MsgTypeReply   = 2
-)
-
-// Per-message metadata key range.
-const (
-	MetadataKeyUserMin = 0x0100
-	MetadataValueMax   = 65535
-)
-
 type RoutingID struct {
 	data []byte
 }
@@ -160,61 +147,6 @@ func (m *Message) GetProperty(name string) (string, bool, error) {
 		return "", false, nil
 	}
 	return C.GoString(value), true, nil
-}
-
-// SetRequest marks this message as a REQUEST with the given correlation ID.
-func (m *Message) SetRequest(correlationID uint64) error {
-	if m == nil || m.closed {
-		return stateError("message is closed")
-	}
-	return checkRC(C.zlink_msg_set_request(&m.msg, C.uint64_t(correlationID)))
-}
-
-// SetReply marks this message as a REPLY with the given correlation ID.
-func (m *Message) SetReply(correlationID uint64) error {
-	if m == nil || m.closed {
-		return stateError("message is closed")
-	}
-	return checkRC(C.zlink_msg_set_reply(&m.msg, C.uint64_t(correlationID)))
-}
-
-// RequestInfo returns the message type (0=DATA, 1=REQUEST, 2=REPLY) and correlation ID.
-func (m *Message) RequestInfo() (msgType uint8, correlationID uint64, err error) {
-	if m == nil || m.closed {
-		return 0, 0, stateError("message is closed")
-	}
-	var cType C.uint8_t
-	var cID C.uint64_t
-	if err := checkRC(C.zlink_msg_get_request_info(&m.msg, &cType, &cID)); err != nil {
-		return 0, 0, err
-	}
-	return uint8(cType), uint64(cID), nil
-}
-
-// SetMetadata sets a metadata key-value pair on this message.
-// Keys below 0x0100 are reserved and will return an error.
-func (m *Message) SetMetadata(key uint16, value []byte) error {
-	if m == nil || m.closed {
-		return stateError("message is closed")
-	}
-	var ptr unsafe.Pointer
-	if len(value) > 0 {
-		ptr = unsafe.Pointer(&value[0])
-	}
-	return checkRC(C.zlink_msg_set_metadata(&m.msg, C.uint16_t(key), ptr, C.size_t(len(value))))
-}
-
-// GetMetadata retrieves a metadata value by key. Returns nil if absent.
-func (m *Message) GetMetadata(key uint16) ([]byte, error) {
-	if m == nil || m.closed {
-		return nil, stateError("message is closed")
-	}
-	var size C.size_t
-	ptr := C.zlink_msg_get_metadata(&m.msg, C.uint16_t(key), &size)
-	if ptr == nil {
-		return nil, nil
-	}
-	return C.GoBytes(ptr, C.int(size)), nil
 }
 
 func (m *Message) moved() {

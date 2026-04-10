@@ -662,9 +662,6 @@ int zlink::asio_zmp_engine_t::decode_and_push (msg_t *msg_)
         return 0;
     }
 
-    if (_metadata)
-        msg_->set_metadata (_metadata);
-
     if (session ()->push_msg (msg_) == -1) {
         if (errno == EAGAIN)
             _process_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (

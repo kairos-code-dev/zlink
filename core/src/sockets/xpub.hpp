@@ -119,7 +119,6 @@ class xpub_t : public socket_base_t
     //  List of pending (un)subscriptions, ie. those that were already
     //  applied to the trie, but not yet received by the user.
     std::deque<blob_t> _pending_data;
-    std::deque<metadata_t *> _pending_metadata;
     std::deque<unsigned char> _pending_flags;
     std::atomic<bool> _dispatch_active;
     std::atomic<uint32_t> _dispatch_inflight;

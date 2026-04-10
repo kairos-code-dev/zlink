@@ -95,6 +95,9 @@ static void *create_socket_handle (void *ctx_, zlink_socket_type_t type_)
     return static_cast<void *> (socket);
 }
 
+extern "C" void zlink_socket_request_reply_cleanup (void *socket_);
+extern "C" void zlink_spot_request_reply_cleanup_router (void *router_);
+
 void *zlink_socket (void *ctx_, zlink_socket_type_t type_)
 {
     return create_socket_handle (ctx_, type_);
@@ -156,7 +159,10 @@ int zlink_close (void *s_)
         handle.socket->stop ();
         stream_api_lock_t api_lock (handle);
         (void) handle.socket->stream_dispatch_stop ();
-        return handle.socket->close ();
+        zlink_socket_request_reply_cleanup (s_);
+        zlink_spot_request_reply_cleanup_router (s_);
+        const int rc = handle.socket->close ();
+        return rc;
     }
 
     if (handle.socket->socket_msg_dispatch_active ()) {
@@ -169,7 +175,10 @@ int zlink_close (void *s_)
     }
 
     (void) handle.socket->stream_dispatch_stop ();
-    return handle.socket->close ();
+    zlink_socket_request_reply_cleanup (s_);
+    zlink_spot_request_reply_cleanup_router (s_);
+    const int rc = handle.socket->close ();
+    return rc;
 }
 
 int zlink_poller_add (void *poller_,

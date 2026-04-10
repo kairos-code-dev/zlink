@@ -235,6 +235,10 @@ int zlink::socket_base_t::xrecv_routed (msg_t *msg_,
     return rc;
 }
 
+void zlink::socket_base_t::xarm_socket_msg_dispatch ()
+{
+}
+
 void zlink::socket_base_t::xread_activated (pipe_t *)
 {
     zlink_assert (false);

@@ -41,14 +41,14 @@ public final class RequestReplyCallbackSample {
                         failure.compareAndSet(null,
                             new IllegalStateException("unexpected request: " + request));
                     } else {
-                        long[] info = received.firstPart().getRequestInfo();
-                        if (info[0] != Message.MSG_TYPE_REQUEST) {
+                        if (!received.hasRequestSequence()) {
                             failure.compareAndSet(null,
-                                new IllegalStateException("unexpected message type: " + info[0]));
+                                new IllegalStateException("missing request sequence"));
                             return;
                         }
                         try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
-                            router.reply(received.routingId(), info[1], reply).join();
+                            router.reply(received.routingId(),
+                                received.requestSequence(), reply).join();
                         }
                     }
                 } finally {

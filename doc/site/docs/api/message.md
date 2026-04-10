@@ -307,106 +307,29 @@ message stored as a contiguous array of `zlink_msg_t` structures.
 
 ---
 
-## Request-Reply Envelope
+## Request-Reply And Metadata Removal Note
 
-Constants and functions for per-message request-reply fields. These fields
-are serialized into the wire envelope automatically by core on send and
-restored on recv. Bindings use these to implement request-reply dispatch
-without manual envelope construction.
+The active public API does not provide message-level request-reply markers or
+per-message metadata setters.
 
-### Constants
+Removed families:
 
-```c
-#define ZLINK_MSG_TYPE_DATA     0
-#define ZLINK_MSG_TYPE_REQUEST  1
-#define ZLINK_MSG_TYPE_REPLY    2
-```
+- `zlink_msg_set_request`
+- `zlink_msg_set_reply`
+- `zlink_msg_get_request_info`
+- `zlink_msg_set_metadata`
+- `zlink_msg_get_metadata`
+- `zlink_msg_clear_metadata`
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_MSG_TYPE_DATA` | 0 | Default. No envelope on wire. |
-| `ZLINK_MSG_TYPE_REQUEST` | 1 | Request message. |
-| `ZLINK_MSG_TYPE_REPLY` | 2 | Reply message. |
+Current request-reply uses typed socket surfaces and ZMP control parts.
+Current SPOT direct delivery and SPOT request-reply also use typed receive
+surfaces and ZMP control parts.
 
-### zlink_msg_set_request
+For the current interfaces, see:
 
-Mark a message as REQUEST with the given correlation ID.
-
-```c
-int zlink_msg_set_request (zlink_msg_t *msg_, uint64_t correlation_id_);
-```
-
-Sets `msg_type` to `ZLINK_MSG_TYPE_REQUEST` and `correlation_id` to the
-specified value. On send, core automatically serializes the request-reply
-envelope to the wire.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `EINVAL` if `msg_` is NULL or uninitialized.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_msg_set_reply`, `zlink_msg_get_request_info`
-
----
-
-### zlink_msg_set_reply
-
-Mark a message as REPLY with the given correlation ID.
-
-```c
-int zlink_msg_set_reply (zlink_msg_t *msg_, uint64_t correlation_id_);
-```
-
-Sets `msg_type` to `ZLINK_MSG_TYPE_REPLY` and `correlation_id` to the
-specified value. The correlation ID should match the original request's
-correlation ID.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `EINVAL` if `msg_` is NULL or uninitialized.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_msg_set_request`, `zlink_msg_get_request_info`
-
----
-
-### zlink_msg_get_request_info
-
-Retrieve request-reply information from a message.
-
-```c
-int zlink_msg_get_request_info (const zlink_msg_t *msg_,
-                                uint8_t *type_out_,
-                                uint64_t *correlation_id_out_);
-```
-
-Returns the `msg_type` and `correlation_id` in a single call. If `type_out_`
-is `ZLINK_MSG_TYPE_DATA` (0), the `correlation_id_out_` value is meaningless.
-Either output pointer may be NULL to skip that field.
-
-After recv, call this function to obtain the msg_type and correlation_id
-that core parsed from the wire envelope.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `EINVAL` if `msg_` is NULL or uninitialized.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_msg_set_request`, `zlink_msg_set_reply`
-
----
-
-## Per-Message Metadata
-
-Functions for attaching application-defined key-value metadata to individual
-messages. Metadata is serialized to the wire on send and restored on recv.
-This is separate from ZMP protocol metadata (`zlink_msg_gets`), which is
-per-connection and read-only.
-
-### Constants
+- `doc/api/socket.md`
+- `doc/api/spot.md`
+- `doc/internals/protocol-zmp.md`
 
 ```c
 #define ZLINK_MSG_METADATA_KEY_USER_MIN   0x0100

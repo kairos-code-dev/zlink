@@ -1924,9 +1924,6 @@ int zlink::asio_ws_engine_t::decode_and_push (msg_t *msg_)
         return 0;
     }
 
-    if (_metadata)
-        msg_->set_metadata (_metadata);
-
     if (push_msg_to_session (msg_) == -1) {
         if (errno == EAGAIN)
             _process_msg = &asio_ws_engine_t::push_one_then_decode_and_push;

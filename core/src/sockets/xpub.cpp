@@ -35,11 +35,6 @@ zlink::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
 zlink::xpub_t::~xpub_t ()
 {
     _welcome_msg.close ();
-    for (std::deque<metadata_t *>::iterator it = _pending_metadata.begin (),
-                                            end = _pending_metadata.end ();
-         it != end; ++it)
-        if (*it && (*it)->drop_ref ())
-            LIBZLINK_DELETE (*it);
 }
 
 bool zlink::xpub_t::compute_delivery_ready_state () const
@@ -113,7 +108,6 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
     //  There are some subscriptions waiting. Let's process them.
     msg_t msg;
     while (pipe_->read (&msg)) {
-        metadata_t *metadata = msg.metadata ();
         unsigned char *msg_data = static_cast<unsigned char *> (msg.data ()),
                       *data = NULL;
         size_t size = 0;
@@ -185,9 +179,6 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
                 memcpy (notification.data () + 1, data, size);
 
                 _pending_data.push_back (ZLINK_MOVE (notification));
-                if (metadata)
-                    metadata->add_ref ();
-                _pending_metadata.push_back (metadata);
                 _pending_flags.push_back (0);
                 _pending_pipes.push_back (pipe_);
             }
@@ -196,9 +187,6 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
             //  but not if the type is PUB, which never processes user
             //  messages
             _pending_data.push_back (blob_t (msg_data, msg.size ()));
-            if (metadata)
-                metadata->add_ref ();
-            _pending_metadata.push_back (metadata);
             _pending_flags.push_back (msg.flags ());
             _pending_pipes.push_back (pipe_);
         }
@@ -436,16 +424,8 @@ int zlink::xpub_t::xrecv (msg_t *msg_)
     memcpy (msg_->data (), _pending_data.front ().data (),
             _pending_data.front ().size ());
 
-    // set metadata only if there is some
-    if (metadata_t *metadata = _pending_metadata.front ()) {
-        msg_->set_metadata (metadata);
-        // Remove ref corresponding to vector placement
-        metadata->drop_ref ();
-    }
-
     msg_->set_flags (_pending_flags.front ());
     _pending_data.pop_front ();
-    _pending_metadata.pop_front ();
     _pending_flags.pop_front ();
     return 0;
 }
@@ -546,7 +526,6 @@ void zlink::xpub_t::send_unsubscription (zlink::mtrie_t::prefix_t data_,
         if (size_ > 0)
             memcpy (unsub.data () + 1, data_, size_);
         self_->_pending_data.ZLINK_PUSH_OR_EMPLACE_BACK (ZLINK_MOVE (unsub));
-        self_->_pending_metadata.push_back (NULL);
         self_->_pending_flags.push_back (0);
 
         self_->_last_pipe = NULL;

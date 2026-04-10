@@ -279,6 +279,7 @@ class socket_base_t : public own_t,
     virtual int xsocket_msg_dispatch (zlink::msg_t *msg_,
                                       zlink::pipe_t *pipe_);
     virtual int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
+    virtual void xarm_socket_msg_dispatch ();
     virtual void xdispatch_io ();
     virtual uint32_t monitor_ready_count () const;
 

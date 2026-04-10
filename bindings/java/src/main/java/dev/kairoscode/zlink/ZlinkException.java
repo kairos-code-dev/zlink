@@ -24,6 +24,10 @@ public final class ZlinkException extends RuntimeException {
 
     public static ZlinkException fromLastError(String operation) {
         int errno = safeErrno();
+        return fromErrno(operation, errno);
+    }
+
+    public static ZlinkException fromErrno(String operation, int errno) {
         String detail = safeStrerror(errno);
         ErrorCode code = mapErrorCode(errno);
         String op = operation == null || operation.isEmpty()

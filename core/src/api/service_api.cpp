@@ -165,6 +165,18 @@ int zlink_service_recv_internal (void *handle_,
                                  size_t *part_count_out_,
                                  zlink_send_flags_t flags_)
 {
+    const zlink::service_handle_resolution_t resolved =
+      zlink::resolve_service_handle (handle_);
+    if (resolved.kind == zlink::service_handle_spot
+        || resolved.kind == zlink::service_handle_spot_node) {
+        LIBZLINK_UNUSED (source_rid_out_);
+        LIBZLINK_UNUSED (parts_out_);
+        LIBZLINK_UNUSED (part_count_out_);
+        LIBZLINK_UNUSED (flags_);
+        errno = EOPNOTSUPP;
+        return -1;
+    }
+
     LIBZLINK_UNUSED (handle_);
     LIBZLINK_UNUSED (source_rid_out_);
     LIBZLINK_UNUSED (parts_out_);

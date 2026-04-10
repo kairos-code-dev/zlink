@@ -2046,8 +2046,6 @@ int zlink::asio_engine_t::decode_and_push (msg_t *msg_)
         process_command_message (msg_);
     }
 
-    if (_metadata)
-        msg_->set_metadata (_metadata);
     if (_session->push_msg (msg_) == -1) {
         if (asio_trace_on) {
             fprintf (stderr,

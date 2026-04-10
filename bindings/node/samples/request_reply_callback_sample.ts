@@ -56,11 +56,10 @@ async function main() {
     const replyHandled = waitFor('reply callback', 2000);
     const requestHandled = waitFor('request callback', 2000);
 
-    router.onReceive((routingId, parts) => {
-      assert.equal(Buffer.from(routingId).toString(), 'request-reply-client');
-      const info = parts[0].getRequestInfo();
-      assert.equal(info.msgType, zlink.MsgType.Request);
-      router.reply(routingId, info.correlationId, zlink.Message.fromBuffer(Buffer.from('pong')));
+    router.onReceive((received) => {
+      assert.equal(Buffer.from(received.routingId).toString(), 'request-reply-client');
+      assert.ok(typeof received.requestSeq === 'bigint');
+      router.reply(received.routingId, received.requestSeq, zlink.Message.fromBuffer(Buffer.from('pong')));
       requestHandled.resolve();
     });
 
@@ -71,7 +70,7 @@ async function main() {
         assert.equal(reply.parts[0].data.toString(), 'pong');
         replyHandled.resolve();
       },
-      { timeoutMs: 2000 }
+      { timeout: 2000 }
     );
 
     await requestHandled.promise;

@@ -8,7 +8,6 @@
 #include "api/service_api_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/socket_message_api_internal.hpp"
-#include "core/message_envelope.hpp"
 #include "core/msg.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
@@ -22,7 +21,7 @@ bool is_direct_public_recv_fast_type (int type_)
 
 bool is_direct_public_routed_recv_fast_type (int type_)
 {
-    return type_ == ZLINK_CORE_SOCKET_ROUTER;
+    return false;
 }
 
 bool frame_has_more (const zlink_msg_t &msg_)
@@ -136,9 +135,6 @@ int export_payload_sequence (void *socket_,
         errno = EFAULT;
         return -1;
     }
-
-    if (zlink::strip_internal_message_envelopes (socket, first_payload_) != 0)
-        return -1;
 
     if (!frame_has_more (*first_payload_))
         return zlink::recv_tls_view::export_single (first_payload_, parts_out_,
@@ -322,6 +318,10 @@ int recv_socket_parts (socket_handle_t handle_,
         errno = ENOTSUP;
         return -1;
     }
+    if (type == ZLINK_CORE_SOCKET_ROUTER) {
+        errno = EOPNOTSUPP;
+        return -1;
+    }
 
     const bool routed_router_payload =
       type == ZLINK_CORE_SOCKET_ROUTER && source_rid_out_ != NULL;
@@ -351,10 +351,6 @@ int recv_socket_parts (socket_handle_t handle_,
             < 0)
             return -1;
 
-        if (zlink::strip_internal_message_envelopes (handle_.socket, first_slot)
-            != 0)
-            return -1;
-
         if (!frame_has_more (*first_slot))
             return zlink::recv_tls_view::commit_reserved_single (
               parts_out_, part_count_out_);
@@ -380,10 +376,6 @@ int recv_socket_parts (socket_handle_t handle_,
               reinterpret_cast<zlink::msg_t *> (first_slot), source_rid_out_,
               flags_)
             < 0)
-            return -1;
-
-        if (zlink::strip_internal_message_envelopes (handle_.socket, first_slot)
-            != 0)
             return -1;
 
         if (!frame_has_more (*first_slot))

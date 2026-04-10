@@ -956,6 +956,7 @@ set(api-sources
   src/api/service_registry_api.cpp
   src/api/service_spot_node_api.cpp
     src/api/service_spot_api.cpp
+    src/api/service_spot_request_reply_api.cpp
     src/api/service_spot_subject_option_api.cpp
     src/api/service_spot_subject_subscription_api.cpp
     src/api/service_spot_subject_api.cpp
@@ -965,6 +966,7 @@ set(api-sources
     src/api/socket_message_recv_api.cpp
     src/api/socket_message_handler_api.cpp
     src/api/socket_message_send_api.cpp
+    src/api/socket_request_reply_api.cpp
     src/api/socket_api.cpp
     src/api/zlink.cpp
     src/api/zlink_option.cpp
@@ -973,9 +975,7 @@ set(api-sources
     src/api/zlink_utils.cpp)
 
 set(core-sources
-    src/core/message_envelope.cpp
     src/core/msg.cpp
-    src/core/user_metadata.cpp
     src/core/multipart_send_txn.cpp
     src/core/recv_internal.cpp
     src/core/send_internal.cpp

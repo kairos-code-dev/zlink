@@ -45,6 +45,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_xpub_nodrop
   ${INTEGRATION_TEST_ROOT}/test_router_handover
   ${INTEGRATION_TEST_ROOT}/test_router_multiple_dealers
+  ${INTEGRATION_TEST_ROOT}/test_zmp_request_reply
   ${INTEGRATION_TEST_ROOT}/test_router_concurrent_routed_recv
   ${INTEGRATION_TEST_ROOT}/test_router_mandatory_hwm
   ${INTEGRATION_TEST_ROOT}/test_stream_socket
@@ -286,6 +287,9 @@ foreach(test_source ${tests})
     endif()
 
     set_tests_properties(${test} PROPERTIES TIMEOUT 10)
+    if(${test} STREQUAL "test_zmp_request_reply")
+      set_tests_properties(${test} PROPERTIES TIMEOUT 30)
+    endif()
     if(${test} STREQUAL "test_multi_stream_benchmark_process")
       set_tests_properties(${test} PROPERTIES TIMEOUT 120)
     endif()

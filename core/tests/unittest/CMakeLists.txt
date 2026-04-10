@@ -11,7 +11,6 @@ set(unittests
     unittest_zmp_decoder
     unittest_raw_decoder
     unittest_msg_view
-    unittest_msg_request_reply
     unittest_ctx_runtime
     unittest_service_runtime_base
     unittest_discovery_service_state

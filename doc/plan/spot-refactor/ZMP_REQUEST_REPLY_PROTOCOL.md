@@ -1,8 +1,8 @@
 # ZMP Request-Reply Protocol
 
 > **상태**: In Progress
-> 이 문서는 현재 개발 라운드에서 구현 기준으로 쓰는 작업 스펙이다.
-> 구현과 테스트가 끝난 뒤 공개 API 기준은 `doc/api` 문서에 반영한다.
+> 이 문서는 현재 작업에서 구현 기준으로 쓰는 작업 스펙이다.
+> 구현과 테스트를 마치면 공개 API 기준은 `doc/api` 문서에 반영한다.
 > **관련 문서**:
 > [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
 > [`SOCKET_REQUEST_REPLY_API_SPEC.md`](SOCKET_REQUEST_REPLY_API_SPEC.md) — socket 레벨 request-reply API
@@ -127,10 +127,37 @@ part 단위 규칙:
 - request 와 그에 대한 reply 는 같은 request seq 를 사용한다
 - 의미는 transport `routing_id` 와 다르다
 - 8바이트 고정 part 와 network byte order 를 쓴다
+- wire 타입은 부호 없는 64비트 정수다
 - 같은 소켓에서 여러 request 가 동시에 outstanding 상태여도
   request seq 로 각각 구분할 수 있어야 한다
-- request 송신 측이 locally unique 하게 생성한다
+- request 송신 측이 socket 로컬 카운터에서 locally unique 하게 생성한다
 - reply 송신 측은 request 에서 받은 request seq 값을 그대로 다시 실어 보낸다
+
+생성 규칙:
+
+- request 송신 소켓은 새 request 를 accept 할 때마다 다음 `request_seq` 후보를 고른다
+- 시작값은 `1` 이다
+- 값은 request 1건마다 `+1` 씩 증가한다
+- `0` 은 wire 에 싣지 않는 예약값으로 둔다
+- 카운터가 `UINT64_MAX` 다음으로 넘어가면 `1` 로 되돌아가고,
+  현재 outstanding request 와 충돌하는 값은 건너뛴다
+- 사용 가능한 non-zero 값이 하나도 없으면 새 request 시작을 즉시 실패시켜야 한다
+
+이 규칙을 두는 이유는 다음과 같다.
+
+- `0` 을 "초기화되지 않음"과 쉽게 구분할 수 있다
+- request 생성 규칙이 socket API 와 wire format 에서 같은 의미를 가진다
+- wrap 이후에도 아직 끝나지 않은 request 와 충돌하지 않게 할 수 있다
+
+### reply 주소 계약
+
+`ROUTER` 계열에서 reply 경로는
+transport peer 주소와 request-reply 식별자를 함께 써서 결정한다.
+
+- reply 송신 측은 받은 request 의 transport peer `routing_id` 를 그대로 reply 대상 주소로 쓴다
+- reply 송신 측은 받은 request 의 `request_seq` 를 그대로 다시 쓴다
+- 즉 `ROUTER` 계열의 reply 식별자는 `peer_rid + request_seq` 조합이다
+- 둘 중 하나라도 원 request 와 다르면 같은 request 에 대한 reply 로 보면 안 된다
 
 ### error reply
 
@@ -158,6 +185,15 @@ part 단위 규칙:
   해당 request completion 을 실패로 완료한다
 - `error reply` 는 ordinary success reply payload 로 전달하지 않는다
 - high-level callback 에는 `errno != 0` 형태로 전달한다
+
+현재 공개 계약에서 우선 사용하는 오류 코드는 아래와 같다.
+
+- `ENOENT`: request 대상 peer 또는 target `Spot` 을 찾지 못함
+- `EOPNOTSUPP`: 대상이 request-reply 기능이나 필요한 조합을 지원하지 않음
+- `EINVAL`: remote endpoint 가 request 내용을 유효한 request 로 받아들일 수 없음
+
+timeout, disconnect, local validation failure 는 wire `error reply` 가 아니라
+local completion 실패로 처리한다.
 
 ---
 
@@ -215,7 +251,7 @@ request-reply 의미는 이 protocol 문서가 정의한다.
 ## 구현 규칙
 
 - payload 시작 위치는 transport 뒤 4개 control part 다음으로 본다
-- `ROUTER` 계열 helper API 는 이번 라운드에서 추가하지 않는다
+- `ROUTER` 계열 helper API 는 추가하지 않는다
 
 ---
 

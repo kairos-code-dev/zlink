@@ -2,6 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const path = require('node:path');
+const { once } = require('node:events');
 const { spawn } = require('node:child_process');
 const { buildEffectiveOptions, defaultMultiClients, defaultMultiMsgSizes, DEFAULT_MULTI_TRANSPORTS, formatTableRows, parseCommonArgs, primaryMetricsFromResultLines, resolveMultiPatternNames, writeReport } = require('../common/perf_metrics');
 const { reservePort, } = require('./perf_multi_common');
@@ -59,9 +60,7 @@ async function spawnSharedStreamPair(args) {
         detached: true
     });
     attachProcessCapture(client, resultLines, 'RESULT,current,');
-    const [code] = await new Promise((resolve) => {
-        client.once('exit', (...args) => resolve(args));
-    });
+    const [code] = await once(client, 'exit');
     if (code !== 0) {
         throw new Error(`shared stream client failed: ${code}`);
     }

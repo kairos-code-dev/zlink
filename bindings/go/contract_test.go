@@ -163,13 +163,9 @@ func TestRequestReplyWrapperSupportsDealerRouterRoundTrip(t *testing.T) {
 			t.Errorf("request payload = %q, want %q", got, "ping")
 			return
 		}
-		msgType, correlationID, err := part.RequestInfo()
-		if err != nil {
-			t.Errorf("RequestInfo() error = %v", err)
-			return
-		}
-		if msgType != uint8(zlink.MsgTypeRequest) {
-			t.Errorf("msgType = %d, want %d", msgType, zlink.MsgTypeRequest)
+		requestSeq, ok := received.RequestSeq()
+		if !ok {
+			t.Errorf("RequestSeq() = missing")
 			return
 		}
 		routingID := received.RoutingID()
@@ -178,7 +174,7 @@ func TestRequestReplyWrapperSupportsDealerRouterRoundTrip(t *testing.T) {
 			t.Errorf("NewMessage() error = %v", err)
 			return
 		}
-		if err := router.Reply(routingID, correlationID, reply); err != nil {
+		if err := router.Reply(routingID, requestSeq, reply); err != nil {
 			t.Errorf("Reply() error = %v", err)
 		}
 	}); err != nil {

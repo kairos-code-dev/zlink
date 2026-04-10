@@ -7,6 +7,9 @@
 > 이 문서의 설계안은 현재 채택하지 않았다.
 > 현재 기준은 message-level metadata 를 유지하지 않는 방향이다.
 > 현재 구현 기준은 관련 ZMP protocol 문서와 계획 문서를 참고한다.
+> 이 문서의 per-message metadata 와 `EXTENDED_HEADER` 기반 설명은
+> 현재 source-of-truth 와 충돌하는 폐기안이다.
+> 구현이나 테스트를 진행할 때는 이 문서를 기준으로 삼지 않는다.
 
 ---
 

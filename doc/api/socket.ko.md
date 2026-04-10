@@ -226,6 +226,7 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 | `ZLINK_ROUTER_OPT_HANDOVER` | 기존 routing id를 새 연결이 인수 허용 (`int`) |
 | `ZLINK_ROUTER_OPT_PROBE` | 연결 시 빈 메시지로 아이덴티티 설정 (`int`) |
 | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 발신 연결의 routing id 설정 (`binary`) |
+| `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | `zlink_router_request()` 기본 timeout (`int`, ms). `0`이면 구현 기본값 `5000` 사용 |
 
 #### Dealer 옵션 (`zlink_dealer_option_t`)
 
@@ -234,6 +235,7 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 | 상수 | 설명 |
 |---|---|
 | `ZLINK_DEALER_OPT_PROBE` | 연결 시 빈 메시지로 아이덴티티 설정 (`int`) |
+| `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | `zlink_dealer_request()` 기본 timeout (`int`, ms). `0`이면 구현 기본값 `5000` 사용 |
 
 #### Pub 옵션 (`zlink_pub_option_t`)
 
@@ -1004,6 +1006,145 @@ int zlink_send_ready_handler (void *s_,
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
 **참고:** `zlink_send`
+
+---
+
+## request-reply 공개 표면
+
+request-reply 는 더 이상 `zlink_msg_t` 안에 request 표시를 넣는 방식이
+아닙니다. `DEALER`, `ROUTER`, `spot` 계열 전용 함수가 ZMP control part 를
+붙여서 보냅니다.
+
+핵심 규칙:
+
+- ordinary `zlink_send()` / `zlink_recv()` 의미는 그대로 유지됩니다.
+- request-reply 는 wire 위에서 `request-reply envelope` 로만 구분됩니다.
+- request 1건은 callback 1회로 완료됩니다.
+- reply 매칭 키는 `request_seq` 이고, `ROUTER` 계열은 여기에 `peer_rid` 가
+  함께 들어갑니다.
+- per-call `timeout_ms` 가 `0` 이면 socket 기본 timeout 을 씁니다.
+- socket 기본 timeout 도 `0` 이면 구현 기본값 `5000ms` 를 씁니다.
+- 첫 reply 뒤에 같은 `request_seq` 로 추가 reply 가 오면 완료된 요청으로 보고
+  조용히 무시합니다.
+
+### 콜백 타입
+
+```c
+typedef void (*zlink_reply_handler_fn) (
+  int errno_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
+
+typedef void (*zlink_router_handler_fn) (
+  const zlink_routing_id_t *peer_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
+```
+
+`zlink_reply_handler_fn` 은 성공이면 `errno_ = 0` 으로 reply payload 를 받고,
+실패면 `errno_ != 0` 으로 완료됩니다. wire `error reply` 는 첫 payload part 의
+4바이트 errno 값을 읽어 같은 형식으로 callback 에 전달합니다.
+
+`zlink_router_handler_fn` 은 sender 주소와 `request_seq` 를
+함께 받습니다. reply 는 이 두 값을 그대로 써야 같은 요청으로 매칭됩니다.
+
+### zlink_dealer_request
+
+```c
+int zlink_dealer_request (void *dealer_,
+                          zlink_msg_t *parts_,
+                          size_t part_count_,
+                          uint32_t timeout_ms_,
+                          zlink_reply_handler_fn handler_,
+                          void *userdata_);
+```
+
+`DEALER` 에서 request 1건을 시작합니다. 대상 peer 선택은 기존 `DEALER`
+송신 규칙을 그대로 따릅니다. 사용자는 `peer_rid` 를 직접 주지 않습니다.
+
+### zlink_router_request
+
+```c
+int zlink_router_request (void *router_,
+                          const zlink_routing_id_t *peer_rid_,
+                          zlink_msg_t *parts_,
+                          size_t part_count_,
+                          uint32_t timeout_ms_,
+                          zlink_reply_handler_fn handler_,
+                          void *userdata_);
+```
+
+`ROUTER` 에서 특정 peer 로 request 를 시작합니다. `peer_rid_` 와
+`request_seq` 조합으로 pending reply 를 찾습니다.
+
+### zlink_router_reply
+
+```c
+int zlink_router_reply (void *router_,
+                        const zlink_routing_id_t *peer_rid_,
+                        uint64_t request_seq_,
+                        zlink_msg_t *parts_,
+                        size_t part_count_);
+```
+
+받은 request 에 대한 reply 를 보냅니다. `peer_rid_` 와 `request_seq_` 는
+request handler 가 전달한 값을 그대로 넘겨야 합니다.
+
+### zlink_router_handler
+
+```c
+int zlink_router_handler (void *router_,
+                          zlink_router_handler_fn handler_,
+                          void *userdata_);
+```
+
+`ROUTER` 에 typed receive callback 을 설치합니다. 이 callback 은 ordinary
+메시지와 request-reply 메시지를 함께 받습니다. `request_seq = 0` 이면 ordinary
+메시지이고, `request_seq != 0` 이면 request-reply 메시지입니다. 같은 `ROUTER`
+에서는 generic `zlink_recv()` / generic receive callback 을 함께 쓸 수 없습니다.
+
+### request-reply timeout option
+
+```c
+int zlink_set_router_option (void *handle_,
+                             zlink_router_option_t option_,
+                             const void *optval_,
+                             size_t optvallen_);
+int zlink_get_router_option (void *handle_,
+                             zlink_router_option_t option_,
+                             void *optval_,
+                             size_t *optvallen_);
+
+int zlink_set_dealer_option (void *handle_,
+                             zlink_dealer_option_t option_,
+                             const void *optval_,
+                             size_t optvallen_);
+```
+
+지원 옵션:
+
+- `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS`
+- `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS`
+
+설정 값은 socket 기본 request timeout 입니다. `int` 값으로 전달하며 음수는
+허용하지 않습니다.
+
+예:
+
+```c
+int timeout_ms = 1000;
+zlink_set_dealer_option(
+  dealer,
+  ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS,
+  &timeout_ms,
+  sizeof(timeout_ms));
+```
+
+request-reply envelope 형식과 `request_seq` encode 방식은
+`doc/internals/protocol-zmp.ko.md` 설명을 따릅니다.
 
 ---
 

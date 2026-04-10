@@ -2,6 +2,15 @@
 
 # Message API Reference
 
+> Note:
+> The message creation and multipart sections in this document still describe
+> the current implementation.
+> Request-reply and SPOT direct delivery, however, now follow the ZMP
+> protocol-level documents under `doc/plan/spot-refactor` rather than
+> message-internal request fields.
+> Older message-level request-reply descriptions are no longer the current
+> implementation basis.
+
 The Message API provides functions for creating, sending, and managing zlink
 messages. Messages are the fundamental unit of data exchange between sockets
 and can carry arbitrary binary payloads, support zero-copy semantics, and
@@ -308,161 +317,32 @@ message stored as a contiguous array of `zlink_msg_t` structures.
 
 ---
 
-## Request-Reply Envelope
+## Request-Reply And Metadata Removal Note
 
-Constants and functions for per-message request-reply fields. These fields
-are serialized into the wire envelope automatically by core on send and
-restored on recv. Bindings use these to implement request-reply dispatch
-without manual envelope construction.
+The current public API does not provide message-level request-reply functions
+or per-message metadata functions.
 
-### Constants
+Removed families:
 
-```c
-#define ZLINK_MSG_TYPE_DATA     0
-#define ZLINK_MSG_TYPE_REQUEST  1
-#define ZLINK_MSG_TYPE_REPLY    2
-```
+- `zlink_msg_set_request`
+- `zlink_msg_set_reply`
+- `zlink_msg_get_request_info`
+- `zlink_msg_set_metadata`
+- `zlink_msg_get_metadata`
+- `zlink_msg_clear_metadata`
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_MSG_TYPE_DATA` | 0 | Default. No envelope on wire. |
-| `ZLINK_MSG_TYPE_REQUEST` | 1 | Request message. |
-| `ZLINK_MSG_TYPE_REPLY` | 2 | Reply message. |
+Reason:
 
-### zlink_msg_set_request
+- request-reply is now represented as ZMP control parts, not as fields stored
+  inside `zlink_msg_t`
+- per-message metadata encode/decode is no longer part of the active message
+  path
 
-Mark a message as REQUEST with the given correlation ID.
+Use these documents instead:
 
-```c
-int zlink_msg_set_request (zlink_msg_t *msg_, uint64_t correlation_id_);
-```
+- request-reply public API: `doc/api/socket.md`
+- SPOT direct and request-reply public API: `doc/api/spot.md`
+- wire format and control-part rules: `doc/internals/protocol-zmp.md`
 
-Sets `msg_type` to `ZLINK_MSG_TYPE_REQUEST` and `correlation_id` to the
-specified value. On send, core automatically serializes the request-reply
-envelope to the wire.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `EINVAL` if `msg_` is NULL or uninitialized.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_msg_set_reply`, `zlink_msg_get_request_info`
-
----
-
-### zlink_msg_set_reply
-
-Mark a message as REPLY with the given correlation ID.
-
-```c
-int zlink_msg_set_reply (zlink_msg_t *msg_, uint64_t correlation_id_);
-```
-
-Sets `msg_type` to `ZLINK_MSG_TYPE_REPLY` and `correlation_id` to the
-specified value. The correlation ID should match the original request's
-correlation ID.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `EINVAL` if `msg_` is NULL or uninitialized.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_msg_set_request`, `zlink_msg_get_request_info`
-
----
-
-### zlink_msg_get_request_info
-
-Retrieve request-reply information from a message.
-
-```c
-int zlink_msg_get_request_info (const zlink_msg_t *msg_,
-                                uint8_t *type_out_,
-                                uint64_t *correlation_id_out_);
-```
-
-Returns the `msg_type` and `correlation_id` in a single call. If `type_out_`
-is `ZLINK_MSG_TYPE_DATA` (0), the `correlation_id_out_` value is meaningless.
-Either output pointer may be NULL to skip that field.
-
-After recv, call this function to obtain the msg_type and correlation_id
-that core parsed from the wire envelope.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `EINVAL` if `msg_` is NULL or uninitialized.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_msg_set_request`, `zlink_msg_set_reply`
-
----
-
-## Per-Message Metadata
-
-Functions for attaching application-defined key-value metadata to individual
-messages. Metadata is serialized to the wire on send and restored on recv.
-This is separate from ZMP protocol metadata (`zlink_msg_gets`), which is
-per-connection and read-only.
-
-### Constants
-
-```c
-#define ZLINK_MSG_METADATA_KEY_USER_MIN   0x0100
-#define ZLINK_MSG_METADATA_VALUE_MAX      65535
-```
-
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_MSG_METADATA_KEY_USER_MIN` | 0x0100 | Minimum user-defined key. Keys below this are reserved. |
-| `ZLINK_MSG_METADATA_VALUE_MAX` | 65535 | Maximum value size in bytes per entry. |
-
-### zlink_msg_set_metadata
-
-Set a metadata key-value pair on a message.
-
-```c
-int zlink_msg_set_metadata (zlink_msg_t *msg_, uint16_t key_,
-                            const void *value_, size_t value_size_);
-```
-
-Attaches or overwrites a metadata entry. If this function is called at least
-once, the send path will include a metadata header on the wire. Keys in the
-range `0x0000`--`0x00FF` are reserved for zlink internal use and are rejected
-with `EINVAL`. Pass `value_ = NULL` to set a zero-length value (the key's
-presence itself carries meaning).
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:**
-- `EINVAL`: `msg_` is NULL, `key_` < 0x0100, or `value_size_` exceeds
-  `ZLINK_MSG_METADATA_VALUE_MAX`.
-- `ENOMEM`: heap allocation failure.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_msg_get_metadata`
-
----
-
-### zlink_msg_get_metadata
-
-Retrieve a metadata value from a message.
-
-```c
-const void *zlink_msg_get_metadata (const zlink_msg_t *msg_,
-                                    uint16_t key_, size_t *size_);
-```
-
-Returns a pointer to the value associated with `key_`, or NULL if the key
-is not present. The pointer is valid only while the message is alive and the
-same key has not been overwritten via `zlink_msg_set_metadata()`. Pass
-`size_ = NULL` to skip the length output.
-
-**Returns:** Pointer to value bytes, or NULL if the key is absent.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_msg_set_metadata`
+`zlink_msg_t` is still the payload-part container, but it no longer carries
+request-reply or metadata meaning by itself.

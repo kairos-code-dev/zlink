@@ -26,11 +26,10 @@ class RequestReplyScenarioTest(unittest.TestCase):
                     handled = asyncio.Event()
 
                     def on_receive(received):
-                        msg_type, correlation_id = received.parts[0].get_request_info()
-                        self.assertEqual(msg_type, zlink.MSG_TYPE_REQUEST)
+                        self.assertIsNotNone(received.request_seq)
                         asyncio.get_running_loop().call_soon_threadsafe(
                             asyncio.create_task,
-                            router.reply(received.routing_id, correlation_id, [b"pong"]),
+                            router.reply(received.routing_id, received.request_seq, [b"pong"]),
                         )
                         handled.set()
 

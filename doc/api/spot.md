@@ -157,37 +157,22 @@ and `zlink_spot_node_subjects_snapshot()` for observability.
 
 ## SpotNode Internal Data-Plane HWM
 
-SpotNode owns an internal data-plane made of:
+SpotNode HWM settings use `zlink_set_spot_node_option()` rather than the
+generic `zlink_set_option(..., SNDHWM/RCVHWM)` path. This matters because a
+SpotNode contains both topic publish/subscribe flows and routed direct-delivery
+flows, and those two planes must be able to use different queue budgets.
 
-- `ingress` receive queue
-- `fanout` local publish queue
-- `mesh_pub` peer publish queue
-- `mesh_xsub` peer receive queue
+The public configuration axes are:
 
-The default data-plane HWM is `1000`. When `SNDHWM` / `RCVHWM` are set on a
-`SpotNode` handle, the value is also used as the internal data-plane budget in
-the matching direction:
+- `TOPIC_SEND_HWM`
+- `TOPIC_RECV_HWM`
+- `ROUTED_SEND_HWM`
+- `ROUTED_RECV_HWM`
 
-- `SNDHWM` on `SpotNode`
-  - default SpotNode pub handles
-  - internal `fanout` send HWM
-  - internal `mesh_pub` send HWM
-- `RCVHWM` on `SpotNode`
-  - default SpotNode sub handles
-  - internal `ingress` receive HWM
-  - internal `mesh_xsub` receive HWM
-
-This internal data-plane budget is separate from public `SNDHWM` / `RCVHWM`
-options applied to unified `Spot` handles. `peer_ctrl` remains on its own
-control-plane default and is not grouped into the SpotNode data-plane HWM.
-
-- Default internal data-plane HWM: `1000`
-- Transport-specific default expansion is not applied
-- Fine-grained internal overrides remain available only for diagnostics:
-  - `ZLINK_SPOT_INTERNAL_INGRESS_RCVHWM`
-  - `ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM`
-  - `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM`
-  - `ZLINK_SPOT_INTERNAL_MESH_XSUB_RCVHWM`
+Those values are mapped to the internal topic and routed socket groups. The
+public API does not expose individual internal socket names. It keeps the
+configuration at the SpotNode level and only distinguishes topic vs. routed
+traffic.
 
 ## Callback contract
 

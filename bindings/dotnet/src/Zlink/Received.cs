@@ -7,10 +7,13 @@ namespace Zlink;
 
 public sealed class Received
 {
-    internal Received(string routingId, Message[] parts)
+    internal Received(string routingId, Message[] parts, ulong requestSequence = 0,
+        bool hasRequestSequence = false)
     {
         RoutingId = routingId ?? string.Empty;
         Parts = parts ?? Array.Empty<Message>();
+        RequestSequence = requestSequence;
+        HasRequestSequence = hasRequestSequence;
     }
 
     public string RoutingId { get; }
@@ -19,6 +22,10 @@ public sealed class Received
         string.IsNullOrEmpty(RoutingId) ? null : new RoutingId(RoutingId);
 
     public IReadOnlyList<Message> Parts { get; }
+
+    public ulong RequestSequence { get; }
+
+    public bool HasRequestSequence { get; }
 
     public bool HasSinglePart => Parts.Count == 1;
 

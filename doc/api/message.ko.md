@@ -2,6 +2,12 @@
 
 # 메시지 API 레퍼런스
 
+> 주의:
+> 이 문서의 메시지 생성과 multipart 설명은 현재 구현 기준과 맞습니다.
+> 다만 request-reply 와 SPOT 직접 전달의 현재 기준은 message 내부 필드가 아니라
+> `doc/plan/spot-refactor` 아래의 ZMP 상위 프로토콜 문서를 따릅니다.
+> `zlink_msg_t`에 request-reply 상태를 넣는 예전 설명은 현재 구현 기준이 아닙니다.
+
 메시지 API는 zlink 메시지의 생성, 송신, 수신, 관리를 위한 함수를 제공합니다.
 메시지는 소켓 간 데이터 교환의 기본 단위이며, 임의의 바이너리 페이로드를
 전달하고, 제로카피 시맨틱을 지원하며, 멀티파트 시퀀스를 구성할 수 있습니다.
@@ -16,8 +22,7 @@
 | reference count (refcount) | 같은 데이터 버퍼를 공유하는 메시지 핸들의 수. 0이 되면 버퍼를 해제한다 |
 | routing_id | Router 소켓이 피어를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트) |
 | ZMP | zlink Message Protocol. zlink 전용 와이어 프로토콜 |
-| envelope | 사용자 payload 앞에 core가 자동으로 추가하는 내부 프레임 (request-reply, metadata 등) |
-| correlation_id | request-reply 패턴에서 요청과 응답을 매칭하는 uint64 식별자 |
+| control part | request-reply, SPOT routed 같은 상위 프로토콜이 payload 앞에 붙이는 내부 part |
 
 ## 타입
 
@@ -314,158 +319,31 @@ void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 
 ---
 
-## Request-Reply Envelope
+## request-reply 와 metadata 정리 메모
 
-메시지별 request-reply 필드를 위한 상수와 함수입니다. 이 필드는 send 시
-core가 자동으로 wire envelope에 직렬화하고, recv 시 자동으로 파싱하여
-복원합니다. 바인딩은 이 값으로 dispatch만 하면 됩니다.
+현재 공개 API 에는 message-level request-reply 함수와 per-message metadata
+함수가 없습니다.
 
-### 상수
+제거된 계열:
 
-```c
-#define ZLINK_MSG_TYPE_DATA     0
-#define ZLINK_MSG_TYPE_REQUEST  1
-#define ZLINK_MSG_TYPE_REPLY    2
-```
+- `zlink_msg_set_request`
+- `zlink_msg_set_reply`
+- `zlink_msg_get_request_info`
+- `zlink_msg_set_metadata`
+- `zlink_msg_get_metadata`
+- `zlink_msg_clear_metadata`
 
-| 상수 | 값 | 설명 |
-|------|---|------|
-| `ZLINK_MSG_TYPE_DATA` | 0 | 기본값. wire에 envelope 없음. |
-| `ZLINK_MSG_TYPE_REQUEST` | 1 | Request 메시지. |
-| `ZLINK_MSG_TYPE_REPLY` | 2 | Reply 메시지. |
+이유:
 
-### zlink_msg_set_request
+- request-reply 는 이제 `zlink_msg_t` 내부 상태가 아니라 ZMP control part 로
+  표현합니다.
+- metadata 를 공통 message 기능으로 encode/decode 하는 경로는 제거되었습니다.
 
-메시지를 REQUEST로 설정합니다.
+대신 다음 문서를 기준으로 봅니다.
 
-```c
-int zlink_msg_set_request (zlink_msg_t *msg_, uint64_t correlation_id_);
-```
+- socket request-reply 공개 표면: `doc/api/socket.ko.md`
+- SPOT routed request-reply 공개 표면: `doc/api/spot.ko.md`
+- wire 형식과 control part 구조: `doc/internals/protocol-zmp.ko.md`
 
-`msg_type`을 `ZLINK_MSG_TYPE_REQUEST`로, `correlation_id`를 지정된 값으로
-동시에 설정합니다. send 시 core가 자동으로 request-reply envelope를
-wire에 직렬화합니다.
-
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
-
-**에러:** `msg_`가 NULL이거나 초기화되지 않으면 `EINVAL`.
-
-**스레드 안전성:** 스레드 안전하지 않습니다.
-
-**참고:** `zlink_msg_set_reply`, `zlink_msg_get_request_info`
-
----
-
-### zlink_msg_set_reply
-
-메시지를 REPLY로 설정합니다.
-
-```c
-int zlink_msg_set_reply (zlink_msg_t *msg_, uint64_t correlation_id_);
-```
-
-`msg_type`을 `ZLINK_MSG_TYPE_REPLY`로, `correlation_id`를 지정된 값으로
-동시에 설정합니다. correlation_id는 원본 request의 correlation_id와
-동일한 값을 사용합니다.
-
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
-
-**에러:** `msg_`가 NULL이거나 초기화되지 않으면 `EINVAL`.
-
-**스레드 안전성:** 스레드 안전하지 않습니다.
-
-**참고:** `zlink_msg_set_request`, `zlink_msg_get_request_info`
-
----
-
-### zlink_msg_get_request_info
-
-메시지의 request-reply 정보를 조회합니다.
-
-```c
-int zlink_msg_get_request_info (const zlink_msg_t *msg_,
-                                uint8_t *type_out_,
-                                uint64_t *correlation_id_out_);
-```
-
-`msg_type`과 `correlation_id`를 한 번의 호출로 반환합니다. `type_out_`이
-`ZLINK_MSG_TYPE_DATA`(0)이면 `correlation_id_out_` 값은 무의미합니다.
-출력 포인터가 NULL이면 해당 필드를 생략합니다.
-
-recv 후 이 함수를 호출하면 core가 wire envelope에서 파싱한 msg_type과
-correlation_id를 얻을 수 있습니다.
-
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
-
-**에러:** `msg_`가 NULL이거나 초기화되지 않으면 `EINVAL`.
-
-**스레드 안전성:** 스레드 안전하지 않습니다.
-
-**참고:** `zlink_msg_set_request`, `zlink_msg_set_reply`
-
----
-
-## Per-Message Metadata
-
-개별 메시지에 application 정의 key-value metadata를 첨부하는 함수입니다.
-metadata는 send 시 wire에 직렬화되고 recv 시 복원됩니다.
-ZMP 프로토콜 메타데이터(`zlink_msg_gets`)와는 완전히 별개의 namespace입니다.
-
-### 상수
-
-```c
-#define ZLINK_MSG_METADATA_KEY_USER_MIN   0x0100
-#define ZLINK_MSG_METADATA_VALUE_MAX      65535
-```
-
-| 상수 | 값 | 설명 |
-|------|---|------|
-| `ZLINK_MSG_METADATA_KEY_USER_MIN` | 0x0100 | 사용자 정의 key 최소값. 미만은 예약 대역. |
-| `ZLINK_MSG_METADATA_VALUE_MAX` | 65535 | 단일 항목 최대 value 크기 (바이트). |
-
-### zlink_msg_set_metadata
-
-메시지에 metadata key-value를 설정합니다.
-
-```c
-int zlink_msg_set_metadata (zlink_msg_t *msg_, uint16_t key_,
-                            const void *value_, size_t value_size_);
-```
-
-metadata 항목을 설정하거나 덮어씁니다. 이 함수를 한 번이라도 호출하면
-send 시 metadata header가 wire에 추가됩니다. `0x0000`~`0x00FF` 범위의
-key는 zlink 내부 예약이므로 `EINVAL`로 거부됩니다. `value_ = NULL`을
-전달하면 길이 0 값을 설정합니다 (키 존재 자체가 의미).
-
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
-
-**에러:**
-- `EINVAL`: `msg_`가 NULL, `key_` < 0x0100, 또는 `value_size_`가
-  `ZLINK_MSG_METADATA_VALUE_MAX` 초과.
-- `ENOMEM`: heap 할당 실패.
-
-**스레드 안전성:** 스레드 안전하지 않습니다.
-
-**참고:** `zlink_msg_get_metadata`
-
----
-
-### zlink_msg_get_metadata
-
-메시지에서 metadata 값을 조회합니다.
-
-```c
-const void *zlink_msg_get_metadata (const zlink_msg_t *msg_,
-                                    uint16_t key_, size_t *size_);
-```
-
-`key_`에 연결된 값의 포인터를 반환합니다. 키가 없으면 NULL을 반환합니다.
-반환된 포인터는 메시지가 유효하고 동일 key에 `zlink_msg_set_metadata()`를
-다시 호출하지 않는 동안만 유효합니다. `size_ = NULL`을 전달하면 길이
-출력을 생략합니다.
-
-**반환값:** 값 바이트 포인터. 키가 없으면 NULL.
-
-**스레드 안전성:** 스레드 안전하지 않습니다.
-
-**참고:** `zlink_msg_set_metadata`
+즉 `zlink_msg_t` 는 지금도 payload part 컨테이너로 그대로 사용하지만,
+request-reply 나 metadata 의미를 직접 들고 있지는 않습니다.

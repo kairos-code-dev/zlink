@@ -76,9 +76,11 @@ int zlink_recv_handler (void *s_,
     switch (type) {
         case ZLINK_CORE_SOCKET_PAIR:
         case ZLINK_CORE_SOCKET_DEALER:
-        case ZLINK_CORE_SOCKET_ROUTER:
             return handle.socket->socket_set_msg_handler_with_userdata (
               handler_, NULL, userdata_);
+        case ZLINK_CORE_SOCKET_ROUTER:
+            errno = EOPNOTSUPP;
+            return -1;
         case ZLINK_CORE_SOCKET_SUB:
         case ZLINK_CORE_SOCKET_XSUB:
         case ZLINK_CORE_SOCKET_PUB:

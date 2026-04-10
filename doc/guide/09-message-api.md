@@ -416,68 +416,29 @@ zlink_send_rid(router, &target_rid, parts, part_count, 0);
 ```
 
 
-## 10. Request-Reply Envelope
+## 10. Request-Reply And Metadata Note
 
-Messages can carry request-reply fields (`msg_type` and `correlation_id`)
-that core serializes into the wire envelope automatically. DATA messages
-(the default) produce no envelope overhead.
+Message-level request-reply markers and per-message metadata are not part of
+the current active API.
 
-### Setting Request/Reply
+- `zlink_msg_set_request`
+- `zlink_msg_set_reply`
+- `zlink_msg_get_request_info`
+- `zlink_msg_set_metadata`
+- `zlink_msg_get_metadata`
+- `zlink_msg_clear_metadata`
 
-```c
-/* Send a REQUEST with correlation_id = 1001 */
-zlink_msg_t req;
-zlink_msg_init_size(&req, 13);
-memcpy(zlink_msg_data(&req), "get_portfolio", 13);
-zlink_msg_set_request(&req, 1001);
-zlink_send(dealer, &req, 1, 0);
+were removed.
 
-/* On the responder side: build a REPLY with the same correlation_id */
-zlink_msg_t reply;
-zlink_msg_init_size(&reply, 4);
-memcpy(zlink_msg_data(&reply), "done", 4);
-zlink_msg_set_reply(&reply, 1001);
-zlink_send_rid(router, &source_rid, &reply, 1, 0);
-```
+Current request-reply uses typed socket surfaces and ZMP control parts.
+Current SPOT direct delivery and SPOT request-reply also use typed receive
+surfaces and ZMP control parts.
 
-### Reading Request-Reply Info
+For the current interfaces, see:
 
-```c
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    uint8_t msg_type;
-    uint64_t correlation_id;
-    zlink_msg_get_request_info(&parts[0], &msg_type, &correlation_id);
-
-    if (msg_type == ZLINK_MSG_TYPE_REQUEST) {
-        /* dispatch request with correlation_id */
-    } else if (msg_type == ZLINK_MSG_TYPE_REPLY) {
-        /* match reply to pending request via correlation_id */
-    }
-    /* msg_type == ZLINK_MSG_TYPE_DATA: regular message, no envelope */
-
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-```
-
-### Key Points
-
-- `zlink_msg_init()` initializes msg_type to DATA and correlation_id to 0.
-- Calling `set_request` after `set_reply` (or vice-versa) overwrites — last call wins.
-- `msg_copy` / `msg_move` preserve request-reply fields.
-- `msg_data()` / `msg_size()` return user payload only — envelope is not included.
-- DATA messages have zero wire overhead (no envelope generated).
-
-## 11. Per-Message Metadata
-
-Each message can carry application-defined key-value metadata that is
-serialized to the wire and restored on recv. This is independent of ZMP
-protocol metadata (`zlink_msg_gets`) which is per-connection.
-
-### Setting Metadata
+- `doc/api/socket.ko.md`
+- `doc/api/spot.ko.md`
+- `doc/internals/protocol-zmp.ko.md`
 
 ```c
 /* Application-defined metadata keys */

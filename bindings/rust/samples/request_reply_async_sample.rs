@@ -43,7 +43,6 @@ fn main() {
 
     let router_socket = ctx.router_socket().expect("router socket failed");
     let dealer_socket = ctx.dealer_socket().expect("dealer socket failed");
-    let router_send_handle = router_socket.send_handle();
     let router_monitor = SocketMonitor::open(&router_socket).expect("router monitor open failed");
     let dealer_monitor = SocketMonitor::open(&dealer_socket).expect("dealer monitor open failed");
     let routing_id = RoutingId::new(b"request-reply-client").expect("routing id failed");
@@ -56,24 +55,22 @@ fn main() {
     drop(router_monitor);
     drop(dealer_monitor);
 
-    let router = RequestRouter::new(router_socket).expect("request router failed");
+    let router = std::sync::Arc::new(RequestRouter::new(router_socket).expect("request router failed"));
     let dealer = RequestDealer::new(dealer_socket).expect("request dealer failed");
 
     let (request_done_tx, request_done_rx) = mpsc::channel();
     let expected_routing_id = routing_id.clone();
+    let router_for_reply = router.clone();
     router.on_receive(move |received| {
         assert_eq!(received.parts()[0].as_str().unwrap_or("?"), "ping");
         assert_eq!(received.routing_id().data(), expected_routing_id.data());
-        let (msg_type, correlation_id) = received.parts()[0]
-            .request_info()
-            .expect("request info failed");
-        assert_eq!(msg_type, 1);
-        let mut reply = Message::from_bytes(b"pong").expect("reply message failed");
-        reply
-            .set_reply(correlation_id)
-            .expect("set reply metadata failed");
-        router_send_handle
-            .send_to(received.routing_id(), vec![reply])
+        let reply = Message::from_bytes(b"pong").expect("reply message failed");
+        router_for_reply
+            .reply(
+                received.routing_id(),
+                received.request_seq().expect("missing request sequence"),
+                reply,
+            )
             .expect("reply send failed");
         request_done_tx.send(()).expect("request done send failed");
     });

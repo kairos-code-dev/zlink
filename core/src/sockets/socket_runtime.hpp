@@ -227,7 +227,8 @@ class socket_lifecycle_coordinator_t
         monitor_async_mailbox_owned (false),
         async_mailbox_active (false),
         async_quiesce_pending (false),
-        async_processing_done (true)
+        async_processing_done (true),
+        async_processing_started (false)
     {
     }
 
@@ -248,6 +249,8 @@ class socket_lifecycle_coordinator_t
                                         mailbox_t::mailbox_handler_t handler_,
                                         void *handler_arg_,
                                         mailbox_t::mailbox_pre_post_t pre_post_);
+    void mark_async_processing_started ();
+    void wait_async_started (int timeout_ms_);
     void stop_async_mailbox_processing (mailbox_t *mailbox_);
     void mark_async_processing_stopped (mailbox_t *mailbox_);
     void wait_async_quiesced (int timeout_ms_);
@@ -280,6 +283,7 @@ class socket_lifecycle_coordinator_t
     std::atomic<bool> async_mailbox_active;
     std::atomic<bool> async_quiesce_pending;
     std::atomic<bool> async_processing_done;
+    std::atomic<bool> async_processing_started;
     mutex_t async_done_mu;
     condition_variable_t async_done_cv;
 };

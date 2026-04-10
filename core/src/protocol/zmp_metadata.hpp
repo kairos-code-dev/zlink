@@ -4,6 +4,7 @@
 #define __ZLINK_ZMP_METADATA_HPP_INCLUDED__
 
 #include <limits.h>
+#include <map>
 #include <string.h>
 #include <string>
 #include <vector>
@@ -18,6 +19,8 @@ namespace zlink
 {
 namespace zmp_metadata
 {
+typedef std::map<std::string, std::string> properties_t;
+
 static inline const char *socket_type_string (int socket_type_)
 {
     switch (socket_type_) {
@@ -83,7 +86,7 @@ static inline void add_basic_properties (const options_t &options_,
 
 static inline int parse (const unsigned char *ptr_,
                          size_t length_,
-                         metadata_t::dict_t &out_)
+                         properties_t &out_)
 {
     size_t bytes_left = length_;
     while (bytes_left > 1) {

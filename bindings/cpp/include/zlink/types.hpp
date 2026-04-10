@@ -515,6 +515,8 @@ struct received_t
 {
     routing_id_t routing_id;
     std::vector<message_t> parts;
+    uint64_t request_seq = 0;
+    bool has_request_seq = false;
 };
 
 struct subscribed_t

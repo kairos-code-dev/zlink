@@ -22,16 +22,16 @@ using var requestHandled = new ManualResetEventSlim(false);
 using var replyHandled = new ManualResetEventSlim(false);
 Exception? failure = null;
 
-router.OnReceive((replyRoutingId, parts) =>
+router.OnReceive(received =>
 {
     try
     {
-        using Message part = parts[0];
+        if (!received.HasRequestSequence)
+            throw new InvalidOperationException("missing request sequence");
+        using Message part = received.Parts[0];
         SampleSupport.EnsureEqual("ping", part.GetString(), "request");
-        (byte msgType, ulong correlationId) = part.GetRequestInfo();
-        SampleSupport.EnsureEqual("1", msgType.ToString(), "request msg type");
         using var reply = Message.FromString("pong");
-        router.Reply(new RoutingId(replyRoutingId), correlationId, reply);
+        router.Reply(received.RoutingIdValue!, received.RequestSequence, reply);
     }
     catch (Exception ex)
     {

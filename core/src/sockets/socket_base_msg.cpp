@@ -13,7 +13,6 @@ void prepare_direct_send_message (zlink::msg_t *msg_, int flags_)
     msg_->reset_flags (zlink::msg_t::more);
     if (flags_ & ZLINK_SNDMORE)
         msg_->set_flags (zlink::msg_t::more);
-    msg_->reset_metadata ();
 }
 }
 

@@ -46,6 +46,8 @@ class router_t : public routing_socket_base_t
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     int xsocket_msg_dispatch (zlink::msg_t *msg_,
                               zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    void xarm_socket_msg_dispatch () ZLINK_OVERRIDE;
+    void xdispatch_io () ZLINK_OVERRIDE;
     int get_peer_state (const void *routing_id_,
                         size_t routing_id_size_) const ZLINK_FINAL;
 

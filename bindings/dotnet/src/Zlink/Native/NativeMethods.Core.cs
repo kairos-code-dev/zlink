@@ -32,6 +32,10 @@ internal static partial class NativeMethods
         "zlink_msg_refcnt",
         "zlink_msg_gets",
         "zlink_multipart_close",
+        "zlink_dealer_request",
+        "zlink_router_request",
+        "zlink_router_reply",
+        "zlink_router_handler",
         "zlink_atomic_counter_new",
         "zlink_atomic_counter_set",
         "zlink_atomic_counter_inc",
@@ -120,27 +124,35 @@ internal static partial class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string property);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_msg_set_request(ref ZlinkMsg msg,
-        ulong correlationId);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_msg_set_reply(ref ZlinkMsg msg,
-        ulong correlationId);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_msg_get_request_info(ref ZlinkMsg msg,
-        out byte typeOut, out ulong correlationIdOut);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_msg_set_metadata(ref ZlinkMsg msg,
-        ushort key, IntPtr value, nuint valueSize);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_msg_get_metadata(ref ZlinkMsg msg,
-        ushort key, out nuint size);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void zlink_multipart_close(IntPtr parts, nuint count);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkReplyHandlerDelegate(int errno, IntPtr parts,
+        nuint partCount, IntPtr userData);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal unsafe delegate void ZlinkRouterRequestHandlerDelegate(
+        ZlinkRoutingId* peerRoutingId, ulong requestSequence, IntPtr parts,
+        nuint partCount, IntPtr userData);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_dealer_request(IntPtr dealer,
+        IntPtr parts, nuint partCount, uint timeoutMs,
+        ZlinkReplyHandlerDelegate handler, IntPtr userData);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_router_request(IntPtr router,
+        ref ZlinkRoutingId peerRoutingId, IntPtr parts, nuint partCount,
+        uint timeoutMs, ZlinkReplyHandlerDelegate handler, IntPtr userData);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_router_reply(IntPtr router,
+        ref ZlinkRoutingId peerRoutingId, ulong requestSequence, IntPtr parts,
+        nuint partCount);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_router_handler(IntPtr router,
+        ZlinkRouterRequestHandlerDelegate handler, IntPtr userData);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_atomic_counter_new();

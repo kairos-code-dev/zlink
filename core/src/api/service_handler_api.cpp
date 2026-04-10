@@ -46,7 +46,13 @@ int zlink_service_msg_recv_handler_internal (
   zlink_socket_msg_handler_fn handler_,
   void *userdata_)
 {
-    LIBZLINK_UNUSED (handle_);
+    const zlink::service_handle_resolution_t resolved =
+      zlink::resolve_service_handle (handle_);
+    if (resolved.kind == zlink::service_handle_spot
+        || resolved.kind == zlink::service_handle_spot_node) {
+        errno = EOPNOTSUPP;
+        return -1;
+    }
     LIBZLINK_UNUSED (handler_);
     LIBZLINK_UNUSED (userdata_);
     errno = EFAULT;

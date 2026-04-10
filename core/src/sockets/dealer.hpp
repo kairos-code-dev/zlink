@@ -42,6 +42,8 @@ class dealer_t : public socket_base_t
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
     int xsocket_msg_dispatch (zlink::msg_t *msg_,
                               zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    void xarm_socket_msg_dispatch () ZLINK_OVERRIDE;
+    void xdispatch_io () ZLINK_OVERRIDE;
 
     //  Send and recv - knowing which pipe was used.
     int sendpipe (zlink::msg_t *msg_, zlink::pipe_t **pipe_);

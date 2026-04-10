@@ -2,8 +2,7 @@
 
 import { requireNative } from './native';
 import { normalizeBufferLike } from './buffer_like';
-import { Message, Received, Subscribed, SubscriptionEvent, MsgType, METADATA_KEY_USER_MIN, METADATA_VALUE_MAX } from './message';
-import type { RequestInfo } from './message';
+import { Message, Received, Subscribed, SubscriptionEvent, METADATA_KEY_USER_MIN, METADATA_VALUE_MAX } from './message';
 import {
   SocketType,
   SocketOption
@@ -31,11 +30,9 @@ export {
   MonitorSocket,
   SocketType,
   SocketOption,
-  MsgType,
   METADATA_KEY_USER_MIN,
   METADATA_VALUE_MAX
 };
-export type { RequestInfo };
 
 export const SendResult = Object.freeze({
   Sent: 0,
@@ -1923,14 +1920,9 @@ export class Spot {
 
 type RequestOptions = { timeout?: number };
 type RequestCallback = (err: Error | null, reply?: Received) => void;
-type PendingRequestState = {
-  resolve: (reply: Received) => void;
-  reject: (error: Error) => void;
-  timer: NodeJS.Timeout;
-};
 
 function normalizeRequestTimeout(options?: RequestOptions): number {
-  const timeout = options?.timeout ?? 30000;
+  const timeout = options?.timeout ?? 5000;
   return int32Value(timeout, 'timeout');
 }
 
@@ -1942,75 +1934,9 @@ function normalizeRequestParts(
     : [normalizeMessagePayload(payloadOrParts as MessageLike)];
 }
 
-function markRequestReplyPart(
-  payloadOrParts: MessageLike | readonly MessageLike[],
-  msgType: number,
-  correlationId: bigint
-): Array<Buffer | MessageSnapshot> {
-  const parts = normalizeRequestParts(payloadOrParts);
-  const first = parts[0];
-  const snapshot = Buffer.isBuffer(first)
-    ? Message.fromBuffer(first).toSnapshot()
-    : first;
-  snapshot.requestInfo = { msgType, correlationId };
-  parts[0] = snapshot;
-  return parts;
-}
-
-function rejectPendingRequests(
-  pending: Map<bigint, PendingRequestState>,
-  error: Error
-): void {
-  for (const entry of pending.values()) {
-    clearTimeout(entry.timer);
-    entry.reject(error);
-  }
-  pending.clear();
-}
-
-function settlePendingReply(
-  pending: Map<bigint, PendingRequestState>,
-  correlationId: bigint,
-  received: Received
-): boolean {
-  const entry = pending.get(correlationId);
-  if (!entry) return false;
-  clearTimeout(entry.timer);
-  pending.delete(correlationId);
-  entry.resolve(received);
-  return true;
-}
-
-function createPendingRequest(
-  pending: Map<bigint, PendingRequestState>,
-  correlationId: bigint,
-  timeoutMs: number,
-  startSend: () => void,
-  nonBlocking: boolean
-): Promise<Received> {
-  return new Promise<Received>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      pending.delete(correlationId);
-      reject(new Error('request timed out'));
-    }, timeoutMs);
-    pending.set(correlationId, { resolve, reject, timer });
-    try {
-      startSend();
-    } catch (error) {
-      clearTimeout(timer);
-      pending.delete(correlationId);
-      reject(error as Error);
-      return;
-    }
-    if (nonBlocking) {
-      return;
-    }
-  });
-}
-
 class RequestReplyBase {
   protected readonly _dataQueue: Received[] = [];
-  protected _receiveHandler: SocketRecvHandler | null = null;
+  protected _receiveHandler: ((received: Received) => void) | null = null;
   protected _dispatchTimer: NodeJS.Timeout | null = null;
 
   protected ensureDispatchLoop(tick: () => void): void {
@@ -2020,13 +1946,13 @@ class RequestReplyBase {
 
   protected deliverData(received: Received): void {
     if (this._receiveHandler) {
-      this._receiveHandler(received.routingId, received.parts.slice() as Message[]);
+      this._receiveHandler(received);
       return;
     }
     this._dataQueue.push(received);
   }
 
-  onReceive(handler: SocketRecvHandler): void {
+  onReceive(handler: (received: Received) => void): void {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
@@ -2064,8 +1990,6 @@ class RequestReplyBase {
 
 export class RequestDealer extends RequestReplyBase {
   private readonly _socket: DealerSocket;
-  private readonly _pending = new Map<bigint, PendingRequestState>();
-  private _nextCorrelationId = 1n;
 
   constructor(socket: DealerSocket) {
     super();
@@ -2087,7 +2011,7 @@ export class RequestDealer extends RequestReplyBase {
   ): Promise<Received> | void {
     const callback = typeof callbackOrOptions === 'function' ? callbackOrOptions : null;
     const options = (typeof callbackOrOptions === 'function' ? maybeOptions : callbackOrOptions) ?? {};
-    const promise = this.requestInternal(payloadOrParts, options, false);
+    const promise = this.requestInternal(payloadOrParts, options);
     if (callback) {
       promise.then((reply) => callback(null, reply), (err) => callback(err));
       return;
@@ -2106,7 +2030,7 @@ export class RequestDealer extends RequestReplyBase {
   ): Promise<Received> | void {
     const callback = typeof callbackOrOptions === 'function' ? callbackOrOptions : null;
     const options = (typeof callbackOrOptions === 'function' ? maybeOptions : callbackOrOptions) ?? {};
-    const promise = this.requestInternal(payloadOrParts, options, true);
+    const promise = this.requestInternal(payloadOrParts, options);
     if (callback) {
       promise.then((reply) => callback(null, reply), (err) => callback(err));
       return;
@@ -2116,7 +2040,6 @@ export class RequestDealer extends RequestReplyBase {
 
   close(): void {
     this.stopDispatchLoop();
-    rejectPendingRequests(this._pending, new Error('socket is closed'));
     this._socket.close();
   }
 
@@ -2128,64 +2051,48 @@ export class RequestDealer extends RequestReplyBase {
     return this.tryRecvFromQueue(() => this.dispatchOnce());
   }
 
-  override onReceive(handler: SocketRecvHandler): void {
+  override onReceive(handler: (received: Received) => void): void {
     super.onReceive(handler);
     this.ensureDispatchLoop(() => this.dispatchOnce());
   }
 
   private requestInternal(
     payloadOrParts: MessageLike | readonly MessageLike[],
-    options: RequestOptions,
-    nonBlocking: boolean
+    options: RequestOptions
   ): Promise<Received> {
-    this.ensureDispatchLoop(() => this.dispatchOnce());
-    const correlationId = this._nextCorrelationId++;
-    const parts = markRequestReplyPart(payloadOrParts, MsgType.Request, correlationId);
-    return createPendingRequest(
-      this._pending,
-      correlationId,
-      normalizeRequestTimeout(options),
-      () => {
-        const result = nonBlocking
-          ? requireNative().socketTrySendParts(
-            this._socket.nativeHandle(),
-            parts
-          ) as SendResult
-          : requireNative().socketSendParts(
-            this._socket.nativeHandle(),
-            parts,
-            0
-          ) as number;
-        if (nonBlocking && result !== SendResult.Sent) {
-          throw new Error('request send is backpressured');
+    const parts = normalizeRequestParts(payloadOrParts);
+    const timeoutMs = normalizeRequestTimeout(options);
+    return new Promise<Received>((resolve, reject) => {
+      requireNative().dealerRequest(
+        this._socket.nativeHandle(),
+        parts,
+        timeoutMs,
+        (errnum: number, replyParts: Buffer[] | null) => {
+          if (errnum !== 0) {
+            reject(new Error(`request failed (errno=${errnum})`));
+            return;
+          }
+          resolve(new Received(wrapMessageParts(replyParts ?? []), null, null));
         }
-      },
-      nonBlocking
-    );
+      );
+    });
   }
 
   private dispatchOnce(): void {
     const received = this._socket.tryRecv();
     if (!received) return;
-    const first = received.parts[0];
-    const info = first?.getRequestInfo();
-    if (info && info.msgType === MsgType.Reply) {
-      if (settlePendingReply(this._pending, info.correlationId, received)) {
-        return;
-      }
-    }
     this.deliverData(received);
   }
 }
 
 export class RequestRouter extends RequestReplyBase {
   private readonly _socket: RouterSocket;
-  private readonly _pending = new Map<bigint, PendingRequestState>();
-  private _nextCorrelationId = 1n;
+  private _routerCallbackInstalled = false;
 
   constructor(socket: RouterSocket) {
     super();
     this._socket = socket;
+    requireNative().routerTryRecvMessage(this._socket.nativeHandle());
   }
 
   socket(): RouterSocket {
@@ -2204,7 +2111,7 @@ export class RequestRouter extends RequestReplyBase {
   ): Promise<Received> | void {
     const callback = typeof callbackOrOptions === 'function' ? callbackOrOptions : null;
     const options = (typeof callbackOrOptions === 'function' ? maybeOptions : callbackOrOptions) ?? {};
-    const promise = this.requestInternal(routingId, payloadOrParts, options, false);
+    const promise = this.requestInternal(routingId, payloadOrParts, options);
     if (callback) {
       promise.then((reply) => callback(null, reply), (err) => callback(err));
       return;
@@ -2224,7 +2131,7 @@ export class RequestRouter extends RequestReplyBase {
   ): Promise<Received> | void {
     const callback = typeof callbackOrOptions === 'function' ? callbackOrOptions : null;
     const options = (typeof callbackOrOptions === 'function' ? maybeOptions : callbackOrOptions) ?? {};
-    const promise = this.requestInternal(routingId, payloadOrParts, options, true);
+    const promise = this.requestInternal(routingId, payloadOrParts, options);
     if (callback) {
       promise.then((reply) => callback(null, reply), (err) => callback(err));
       return;
@@ -2232,93 +2139,89 @@ export class RequestRouter extends RequestReplyBase {
     return promise;
   }
 
-  reply(routingId: BufferLike, correlationId: bigint, message: MessageLike): number;
-  reply(routingId: BufferLike, correlationId: bigint, parts: readonly MessageLike[]): number;
-  reply(routingId: BufferLike, correlationId: bigint, payloadOrParts: MessageLike | readonly MessageLike[]): number {
-    const parts = markRequestReplyPart(payloadOrParts, MsgType.Reply, correlationId);
-    return requireNative().socketSendParts(
-      this._socket.nativeHandle(),
-      [normalizeRoutingId(routingId), ...parts],
-      0
-    ) as number;
-  }
-
-  tryReply(routingId: BufferLike, correlationId: bigint, message: MessageLike): SendResult;
-  tryReply(routingId: BufferLike, correlationId: bigint, parts: readonly MessageLike[]): SendResult;
-  tryReply(routingId: BufferLike, correlationId: bigint, payloadOrParts: MessageLike | readonly MessageLike[]): SendResult {
-    const parts = markRequestReplyPart(payloadOrParts, MsgType.Reply, correlationId);
-    return requireNative().socketTrySendRoutingParts(
+  reply(routingId: BufferLike, requestSeq: bigint, message: MessageLike): number;
+  reply(routingId: BufferLike, requestSeq: bigint, parts: readonly MessageLike[]): number;
+  reply(routingId: BufferLike, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[]): number {
+    requireNative().routerReply(
       this._socket.nativeHandle(),
       normalizeRoutingId(routingId),
-      parts
-    ) as SendResult;
+      requestSeq,
+      normalizeRequestParts(payloadOrParts)
+    );
+    return 0;
+  }
+
+  tryReply(routingId: BufferLike, requestSeq: bigint, message: MessageLike): SendResult;
+  tryReply(routingId: BufferLike, requestSeq: bigint, parts: readonly MessageLike[]): SendResult;
+  tryReply(routingId: BufferLike, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[]): SendResult {
+    requireNative().routerReply(
+      this._socket.nativeHandle(),
+      normalizeRoutingId(routingId),
+      requestSeq,
+      normalizeRequestParts(payloadOrParts)
+    );
+    return SendResult.Sent;
   }
 
   close(): void {
-    this.stopDispatchLoop();
-    rejectPendingRequests(this._pending, new Error('socket is closed'));
     this._socket.close();
   }
 
   recv(): Received {
-    return this.recvFromQueue(() => this.dispatchOnce());
+    if (this._routerCallbackInstalled) {
+      throw callbackModeError('recv');
+    }
+    const raw = requireNative().routerRecvMessage(
+      this._socket.nativeHandle()
+    ) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null };
+    return materializeReceived(raw);
   }
 
   tryRecv(): Received | null {
-    return this.tryRecvFromQueue(() => this.dispatchOnce());
+    if (this._routerCallbackInstalled) {
+      throw callbackModeError('recv');
+    }
+    const raw = requireNative().routerTryRecvMessage(
+      this._socket.nativeHandle()
+    ) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null;
+    return raw ? materializeReceived(raw) : null;
   }
 
-  override onReceive(handler: SocketRecvHandler): void {
-    super.onReceive(handler);
-    this.ensureDispatchLoop(() => this.dispatchOnce());
+  override onReceive(handler: (received: Received) => void): void {
+    if (typeof handler !== 'function') {
+      throw new TypeError('handler must be a function');
+    }
+    requireNative().routerHandlerMessage(
+      this._socket.nativeHandle(),
+      (raw: { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null }) => {
+        handler(materializeReceived(raw));
+      }
+    );
+    this._routerCallbackInstalled = true;
   }
 
   private requestInternal(
     routingId: BufferLike,
     payloadOrParts: MessageLike | readonly MessageLike[],
-    options: RequestOptions,
-    nonBlocking: boolean
+    options: RequestOptions
   ): Promise<Received> {
-    this.ensureDispatchLoop(() => this.dispatchOnce());
-    const correlationId = this._nextCorrelationId++;
-    const parts = markRequestReplyPart(payloadOrParts, MsgType.Request, correlationId);
-    return createPendingRequest(
-      this._pending,
-      correlationId,
-      normalizeRequestTimeout(options),
-      () => {
-        const result = nonBlocking
-          ? requireNative().socketTrySendRoutingParts(
-            this._socket.nativeHandle(),
-            normalizeRoutingId(routingId),
-            parts
-          ) as SendResult
-          : requireNative().socketSendParts(
-            this._socket.nativeHandle(),
-            [normalizeRoutingId(routingId), ...parts],
-            0
-          ) as number;
-        if (nonBlocking && result !== SendResult.Sent) {
-          throw new Error('request send is backpressured');
+    const parts = normalizeRequestParts(payloadOrParts);
+    const timeoutMs = normalizeRequestTimeout(options);
+    return new Promise<Received>((resolve, reject) => {
+      requireNative().routerRequest(
+        this._socket.nativeHandle(),
+        normalizeRoutingId(routingId),
+        parts,
+        timeoutMs,
+        (errnum: number, replyParts: Buffer[] | null) => {
+          if (errnum !== 0) {
+            reject(new Error(`request failed (errno=${errnum})`));
+            return;
+          }
+          resolve(new Received(wrapMessageParts(replyParts ?? []), null, null));
         }
-      },
-      nonBlocking
-    );
-  }
-
-  private dispatchOnce(): void {
-    const received = this._socket.tryRecv();
-    if (!received) return;
-    const first = received.parts[0];
-    const info = first?.getRequestInfo();
-    if (info) {
-      if (info.msgType === MsgType.Reply) {
-        if (settlePendingReply(this._pending, info.correlationId, received)) {
-          return;
-        }
-      }
-    }
-    this.deliverData(received);
+      );
+    });
   }
 }
 

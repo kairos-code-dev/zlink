@@ -35,6 +35,8 @@ func (r SendResult) Sent() bool {
 type Received struct {
 	routingID RoutingID
 	parts     []*Message
+	requestSeq uint64
+	hasRequestSeq bool
 }
 
 func (r *Received) RoutingID() RoutingID {
@@ -49,6 +51,13 @@ func (r *Received) Parts() []*Message {
 		return nil
 	}
 	return r.parts
+}
+
+func (r *Received) RequestSeq() (uint64, bool) {
+	if r == nil {
+		return 0, false
+	}
+	return r.requestSeq, r.hasRequestSeq
 }
 
 func (r *Received) SinglePartOrError() (*Message, error) {

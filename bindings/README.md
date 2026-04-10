@@ -1,5 +1,10 @@
 # Bindings API Policy
 
+> request-reply 와 SPOT routed 구현 기준은
+> [`doc/plan/spot-refactor`](../doc/plan/spot-refactor) 아래 문서를 따른다.
+> 언어별 인터페이스 시그니처와 사용 예는
+> [`lang/*.md`](lang/) 를 참조한다.
+
 ## 목적
 이 문서는 `bindings/` 전체의 public API 정책을 정의한다.
 
@@ -663,79 +668,466 @@ RegistryQueryClient (원격 토폴로지 조회)
 이 섹션은 `core/include/zlink.h`에 추가된 core API를 정리한다.
 각 바인딩은 이 API를 언어별 typed surface로 노출해야 한다.
 
-### Message Request-Reply Envelope
+### Request-Reply Policy
 
-메시지에 request-reply 필드(msg_type, correlation_id)를 설정/조회하는 API.
-core가 send 시 자동으로 wire envelope를 직렬화하고, recv 시 자동으로 파싱하여
-복원한다. 바인딩은 dispatch만 하면 된다.
+> 언어별 인터페이스 시그니처와 사용 예는
+> [`lang/*.md`](lang/) 를 참조한다.
+> 구현 기준 상세는
+> [`doc/plan/spot-refactor/SOCKET_REQUEST_REPLY_API_SPEC.md`](../doc/plan/spot-refactor/SOCKET_REQUEST_REPLY_API_SPEC.md),
+> [`doc/plan/spot-refactor/ZMP_REQUEST_REPLY_PROTOCOL.md`](../doc/plan/spot-refactor/ZMP_REQUEST_REPLY_PROTOCOL.md),
+> [`doc/plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md`](../doc/plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md)
+> 를 따른다.
 
-#### 상수
+#### 설계 원칙
+
+- request-reply 는 ZMP protocol envelope 로 처리한다.
+  `zlink_msg_t` 에 request 표시를 붙이는 방식은 사용하지 않는다.
+- dispatch, pending map, timeout, reply 매칭은 core C API 에서 처리한다.
+  바인딩은 이 로직을 다시 구현하지 않는다.
+- core 는 callback 기반 비동기 모델을 제공한다.
+  바인딩은 callback 위에 coroutine/future/promise 표면을 얹는다.
+- `request()` / `tryRequest()` 는 thread blocking API 가 아니다.
+- request-reply 는 Router/Dealer 소켓과 SPOT 의 기능 확장이다.
+  별도 추상 레이어가 아니라 기존 표면에 capability 를 얹는다.
+
+#### 제거된 API
+
+message-level request-reply marker API 와 per-message metadata API 는 제거되었다.
+
+- `zlink_msg_set_request`, `zlink_msg_set_reply`, `zlink_msg_get_request_info`
+- `zlink_msg_set_metadata`, `zlink_msg_get_metadata`, `zlink_msg_clear_metadata`
+
+바인딩은 이 함수나 상수를 public surface 로 다시 노출하면 안 된다.
+`Message` 객체 안에 request marker 상태를 두지 않는다.
+
+#### 유효한 Request-Reply 조합
+
+**Socket 경로:**
+
+| 요청자 | 응답자 | 가능 | reply 경로 |
+|--------|--------|------|-----------|
+| Dealer | Router | Y | Router 가 Dealer 의 routing_id 로 회신 |
+| Router | Router | Y | 서로 routing_id 로 회신 |
+| Dealer | Dealer | **N** | 양쪽 다 routing_id 없음 |
+| Router | Dealer | **N** | Dealer 가 특정 peer 에 회신 불가 |
+
+**SPOT 경로:**
+
+| 요청자 | 응답자 | 가능 | reply 경로 |
+|--------|--------|------|-----------|
+| Spot | Spot | Y | 상대 주소 + request_seq 로 회신 |
+| Spot | Router | Y | Spot 이 Router 에 request, Router 가 Spot 에 reply |
+| Router | Spot | Y | Router 가 Spot 에 request, Spot 이 Router 에 reply |
+
+RequestDealer 연결 제약:
+- 연결 대상은 전부 Router 여야 한다.
+  Dealer 에 Router 와 Dealer 가 섞이면 request 가 실패할 수 있다.
+- 바인딩은 이 제약을 런타임에 검증하지 않는다. 사용자 책임이며 API 문서에 명시한다.
+
+#### C API 표면
+
+**공통 타입:**
 
 ```c
-#define ZLINK_MSG_TYPE_DATA     0
-#define ZLINK_MSG_TYPE_REQUEST  1
-#define ZLINK_MSG_TYPE_REPLY    2
+typedef void (*zlink_reply_handler_fn)(
+    int errno_, zlink_msg_t *parts, size_t part_count, void *userdata);
+
+typedef void (*zlink_router_handler_fn)(
+    const zlink_routing_id_t *peer_rid, uint64_t request_seq,
+    zlink_msg_t *parts, size_t part_count, void *userdata);
 ```
 
-#### C API
+callback 으로 전달된 `parts`, `peer_rid` 는 borrowed view 다.
+callback 반환 시점까지만 유효하다. 밖에서 유지하려면 복사한다.
+
+**Socket API:**
 
 ```c
-int zlink_msg_set_request (zlink_msg_t *msg_, uint64_t correlation_id_);
-int zlink_msg_set_reply (zlink_msg_t *msg_, uint64_t correlation_id_);
-int zlink_msg_get_request_info (const zlink_msg_t *msg_,
-                                uint8_t *type_out_,
-                                uint64_t *correlation_id_out_);
+int zlink_dealer_request(void *dealer, zlink_msg_t *parts, size_t part_count,
+    uint32_t timeout_ms, zlink_reply_handler_fn handler, void *userdata);
+
+int zlink_router_request(void *router, const zlink_routing_id_t *peer_rid,
+    zlink_msg_t *parts, size_t part_count, uint32_t timeout_ms,
+    zlink_reply_handler_fn handler, void *userdata);
+
+int zlink_router_reply(void *router, const zlink_routing_id_t *peer_rid,
+    uint64_t request_seq, zlink_msg_t *parts, size_t part_count);
+
+int zlink_router_handler(void *router, zlink_router_handler_fn handler,
+    void *userdata);
+
+int zlink_router_recv(void *router, const zlink_routing_id_t **peer_rid_out,
+    uint64_t *request_seq_out, zlink_msg_t **parts_out,
+    size_t *part_count_out, int flags);
 ```
 
-#### 바인딩 규칙
-
-- 세 함수 모두 public surface에 노출한다.
-- `msg_type` 상수는 언어별 enum/constant로 노출한다.
-- `set_request` / `set_reply`는 msg_type과 correlation_id를 동시에 설정한다.
-  개별 setter로 분리하지 않는다.
-- `get_request_info`는 msg_type과 correlation_id를 한 번에 반환한다.
-  언어별로 tuple, struct, domain object 등 자연스러운 형태를 사용한다.
-- NULL msg 입력 시 EINVAL. 바인딩은 null-check를 선행할 수 있다.
-- `type_out_` 또는 `correlation_id_out_`이 NULL이면 해당 출력만 생략한다.
-
-### Per-Message Metadata
-
-메시지에 사용자 정의 key(uint16)-value(binary) 쌍을 설정/조회하는 API.
-메시지마다 다른 값을 보낼 수 있다. ZMP 프로토콜 메타데이터(`zlink_msg_gets`)와
-완전히 별개의 namespace다.
-
-#### 상수
+**SPOT API:**
 
 ```c
-#define ZLINK_MSG_METADATA_KEY_USER_MIN   0x0100
-#define ZLINK_MSG_METADATA_VALUE_MAX      65535
+int zlink_spot_request_spot(void *spot, ...);
+int zlink_spot_reply_spot(void *spot, ...);
+int zlink_spot_request_router(void *spot, ...);
+int zlink_spot_reply_router(void *spot, ...);
+int zlink_router_request_spot(void *router, ...);
+int zlink_router_reply_spot(void *router, ...);
+int zlink_router_send_spot(void *router, ...);
+int zlink_spot_handler(void *spot, ...);
+int zlink_spot_recv(void *spot, ...);
+int zlink_router_spot_recv(void *router, ...);
+int zlink_router_spot_handler(void *router, ...);
 ```
 
-#### C API
+전체 시그니처는 `core/include/zlink.h` 를 참조한다.
+
+#### 수신 Dispatch 모델
+
+core 가 request-reply dispatch 를 처리한다. 바인딩은 dispatch owner 를 구현하지 않는다.
+
+- `request_seq = 0` 이면 ordinary message.
+- `request_seq != 0` 이면 request-reply message.
+- core 가 pending map 에서 `peer_rid + request_seq` 로 매칭한다.
+- 매칭 실패한 reply (stray/late reply) 는 drop 한다.
+- ROUTER 는 generic `zlink_recv()` 대신 `zlink_router_recv()` / `zlink_router_handler()`
+  typed surface 를 사용한다. generic `zlink_recv()` 호출 시 `EOPNOTSUPP`.
+- peer-directed ROUTER 수신 plane 과 spot-origin 수신 plane 은 서로 다른 표면이다.
+
+#### request/tryRequest, reply/tryReply 구분
+
+`send`/`trySend` 패턴과 동일하다. 같은 core C API 를 호출하고,
+바인딩이 send 단계의 backpressure 처리만 다르게 한다.
+
+| | `request()` / `reply()` | `tryRequest()` / `tryReply()` |
+|---|---|---|
+| backpressure | writable 될 때까지 비동기 대기 | 즉시 실패 반환 |
+| 대기 방식 | async 컨텍스트 대기 (스레드 blocking 아님) | 대기 없음 |
+| 실패 시 | `ZlinkError(errno)` 예외 | `EAGAIN` / `SendResult` |
+| 대응 기존 API | `send()` | `trySend()` |
+
+#### SPOT Request-Reply
+
+SPOT 직접 전달 위에서도 같은 request-reply 프로토콜을 사용한다.
+`SPOT routed envelope -> request-reply envelope -> payload` 순서로 싣는다.
+SPOT reply 도 ctx 없이 상대 주소 + request_seq 로 보낸다.
+같은 Spot 에서 여러 request 를 동시에 outstanding 상태로 둘 수 있다.
+high-level request 완료는 첫 reply 1건으로 끝난다.
+
+#### Timeout
+
+- timeout 은 core 가 관리한다. 바인딩은 timeout 로직을 구현하지 않는다.
+- 기본 timeout: `5000ms`. per-call > socket default > 구현 기본 `5000ms`.
+- `timeout_ms = 0` 이면 socket default timeout 을 사용한다.
+- timeout 은 send 대기 + reply 대기를 합산한 전체 경과 시간에 적용된다.
+- timeout 시 core 가 pending map 에서 제거하고 callback 에 `ETIMEDOUT` 전달.
+- timeout 후 late reply 는 core 가 drop 한다.
+
+#### Pending map
+
+- `request_seq` 채번, pending 등록, reply 매칭, timeout 제거 모두 core 에서 한다.
+- 바인딩은 pending map 을 별도로 유지하지 않는다.
+- 바인딩이 유지하는 것은 callback → Future/Promise resolve 매핑뿐이다.
+
+#### Wire format
+
+- `request_seq` 는 부호 없는 64비트 정수 (8바이트, network byte order).
+- 시작값 `1`. `0` 은 ordinary message 예약값.
+- overflow 시 `1` 로 wrap. outstanding 충돌값은 건너뛴다.
+- envelope 은 4개 control part: protocol id, version, message type, request_seq.
+- SPOT routed 조합 시 8개 SPOT control part + 4개 request-reply control part + payload.
+- 바인딩은 envelope 을 직접 파싱하지 않는다. core 가 처리한다.
+
+#### 반환 타입
+
+- `request()` 성공 시 기존 `Received` domain object 를 반환한다.
+  별도 `Reply` 타입은 만들지 않는다.
+- `Received` 에 `routingId` 와 `requestSeq` 가 포함된다.
+- request handler 는 `peer_rid`, `request_seq`, payload 를 함께 전달한다.
+  별도 `Request` 타입이나 `onRequest` 전용 callback 은 만들지 않는다.
+
+#### 소유권
+
+- `request()` / `reply()` 호출 시 메시지 ownership 은 기존 send 계약을 따른다.
+- reply handler callback 으로 전달된 `parts` 는 borrowed view 다.
+  callback 반환 후 무효. 바인딩은 callback 에서 복사하여 `Received` 를 만든다.
+- 소켓 close 시 core 가 pending map 의 모든 미완료 request 를 `ETERM` callback 으로 reject 한다.
+
+#### Callback 계약
+
+- callback 은 정확히 한 번 호출된다.
+  성공이면 `err = null/0` + `received`, 실패면 `err` + `received = null`.
+- 언어별 패턴:
+  - C++: `std::function<void(ZlinkError, Received)>`
+  - Java: `BiConsumer<Received, ZlinkException>`
+  - .NET: `Action<ZlinkException, Received>`
+  - Node: `(err, reply)`
+  - Python: `callback(err, received)`
+  - Go: `func(Received, error)`
+  - Rust: `FnOnce(Result<Received, ZlinkError>)`
+
+### SPOT Messaging Policy
+
+> 언어별 SPOT 인터페이스는 [`lang/*.md`](lang/) 를 참조한다.
+
+SPOT 은 pub/sub 메시징과 routed direct messaging 두 가지를 지원한다.
+request-reply 는 routed direct messaging 위에 얹어진다.
+
+#### Pub/Sub 메시징
+
+SPOT pub/sub 는 topic 기반 발행/구독 모델이다.
 
 ```c
-int zlink_msg_set_metadata (zlink_msg_t *msg_, uint16_t key_,
-                            const void *value_, size_t value_size_);
-const void *zlink_msg_get_metadata (const zlink_msg_t *msg_,
-                                    uint16_t key_, size_t *size_);
+/* 발행 */
+int zlink_publish(void *subject, const char *topic_id,
+    zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags);
+int zlink_try_publish(void *subject, const char *topic_id,
+    zlink_msg_t *parts, size_t part_count, zlink_send_result_t *result_out);
+
+/* 구독 수신 */
+int zlink_subscribe(void *subject, zlink_routing_id_t *source_rid_out,
+    zlink_msg_t **parts_out, size_t *part_count_out,
+    char *topic_id_out, size_t *topic_id_len_out, zlink_send_flags_t flags);
+
+/* 구독 필터 */
+int zlink_set_subscription(void *handle, const char *filter);
+int zlink_unset_subscription(void *handle, const char *filter);
 ```
 
-#### Key 대역
+바인딩 규칙:
+- `publish` / `tryPublish` 는 기존 `send` / `trySend` 패턴과 동일하다.
+- `subscribe` 수신은 typed receive surface 또는 handler callback 으로 노출한다.
+- topic filter 설정은 typed subscription API 로 노출한다.
 
-| 대역 | 범위 | 용도 |
-|------|------|------|
-| zlink 내부 예약 | `0x0000` ~ `0x00FF` | 사용 시 `EINVAL` |
-| 사용자 정의 | `0x0100` ~ `0xFFFF` | application 자유 사용 |
+#### Routed Direct Messaging
 
-#### 바인딩 규칙
+SPOT routed direct messaging 은 특정 Spot 또는 Router 에 직접 메시지를 보낸다.
+request-reply 가 아닌 ordinary 메시지 전송이다.
 
-- 두 함수 모두 public surface에 노출한다.
-- key < `0x0100` 설정 시 바인딩 레벨에서도 검증하여 예외/오류를 던진다.
-- value는 binary(byte array/Buffer/bytes 등)로 노출한다.
-- `get_metadata`는 키가 없으면 NULL/null/None을 반환한다.
-- 반환된 value 포인터는 메시지가 유효한 동안만 사용할 수 있다.
-  바인딩이 언어 특성에 따라 복사본을 반환하는 것은 허용한다.
-- `has_metadata`, `remove_metadata`, `metadata_count`는 제공하지 않는다.
+```c
+/* spot -> spot */
+int zlink_spot_send_spot(void *spot,
+    const zlink_routing_id_t *dest_node_rid,
+    const zlink_routing_id_t *dest_spot_rid,
+    zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags);
+
+/* spot -> router */
+int zlink_spot_send_router(void *spot,
+    const zlink_routing_id_t *peer_rid,
+    zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags);
+
+/* router -> spot */
+int zlink_router_send_spot(void *router,
+    const zlink_routing_id_t *dest_node_rid,
+    const zlink_routing_id_t *dest_spot_rid,
+    zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags);
+```
+
+바인딩 규칙:
+- routed send 는 기존 `sendRid` 패턴과 동일하다.
+- 목적지 주소는 `dest_node_rid + dest_spot_rid` 또는 `peer_rid` 로 지정한다.
+- routed recv 는 아래 Event Dispatcher 의 handler/recv surface 를 사용한다.
+
+#### SPOT Lifecycle
+
+```c
+void *zlink_spot_new(void *node);          /* SPOT facade 생성 */
+int zlink_spot_destroy(void **spot_p);     /* SPOT facade 해제 */
+
+void *zlink_spot_node_new(void *ctx);      /* SPOT Node 런타임 생성 */
+int zlink_spot_node_destroy(void **node_p);/* SPOT Node 해제 */
+int zlink_spot_node_bind(void *node, const char *endpoint);
+int zlink_spot_node_connect_peer(void *node, const char *peer_endpoint);
+int zlink_spot_node_disconnect_peer(void *node, const char *peer_endpoint);
+int zlink_spot_node_attach_discovery(void *node, void *discovery);
+```
+
+바인딩 규칙:
+- `SpotNode` 와 `Spot` 은 별도 typed handle 로 노출한다.
+- `Spot` 은 `SpotNode` 위에 올라가는 facade 다. `SpotNode` 해제 시 `Spot` 도 무효가 된다.
+- `zlink_spot_node_attach_discovery` 후에는 peer connect/disconnect 를 수동으로 하면 `EFSM`.
+
+### SPOT Event Dispatcher Policy
+
+core 는 callback 기반 event dispatcher 모델을 제공한다.
+하나의 I/O thread context 안에서 여러 이벤트 소스
+(sub recv, routed recv, timer, send-ready) 를 동기화 없이 처리할 수 있다.
+
+핵심 원리:
+- handler callback 을 등록하면 core I/O thread 가 이벤트 발생 시 callback 을 호출한다.
+- 모든 callback 은 같은 thread context 에서 실행되므로 lock 없이 상태를 공유할 수 있다.
+- callback 안에서 recv, send, reply 를 호출해도 동기화 문제가 없다.
+- timer 도 같은 context 에서 실행된다.
+
+#### Callback 등록 API
+
+```c
+/* 소켓/subject 에 direct recv callback 등록 */
+int zlink_recv_handler(void *s, zlink_socket_msg_handler_fn handler, void *userdata);
+
+/* pub/sub subject 에 topic-aware recv callback 등록 */
+int zlink_subscribe_handler(void *s, zlink_subscribe_handler_fn handler, void *userdata);
+
+/* writable 알림 callback 등록 */
+int zlink_send_ready_handler(void *s, zlink_send_ready_handler_fn handler, void *userdata);
+
+/* SPOT typed recv callback */
+int zlink_spot_handler(void *spot, zlink_spot_handler_fn handler, void *userdata);
+
+/* ROUTER typed recv callback */
+int zlink_router_handler(void *router, zlink_router_handler_fn handler, void *userdata);
+
+/* ROUTER 의 SPOT-origin recv callback */
+int zlink_router_spot_handler(void *router, zlink_router_spot_handler_fn handler,
+    void *userdata);
+```
+
+규칙:
+- callback 등록은 한 subject 당 하나만 가능하다.
+  이미 등록된 상태에서 다시 등록하면 `EBUSY`.
+- callback 등록 후 같은 subject 에 대한 direct recv (`zlink_recv`, `zlink_subscribe`) 와
+  poller `ZLINK_POLLIN` 등록은 `EBUSY` 로 실패한다.
+- callback 은 replace-only 다. `NULL` 전달은 허용하지 않는다.
+
+#### Timer API
+
+```c
+void *zlink_timers_new(void);
+int zlink_timers_destroy(void **timers_p);
+int zlink_timers_add(void *timers, size_t interval_ms,
+    zlink_timer_fn handler, void *arg);
+int zlink_timers_cancel(void *timers, int timer_id);
+int zlink_timers_set_interval(void *timers, int timer_id, size_t interval_ms);
+int zlink_timers_reset(void *timers, int timer_id);
+long zlink_timers_timeout(void *timers);
+int zlink_timers_execute(void *timers);
+```
+
+timer 는 poller loop 과 통합하여 사용한다.
+`zlink_timers_timeout()` 으로 다음 fire 까지 남은 시간을 poller timeout 으로 쓰고,
+poller 반환 후 `zlink_timers_execute()` 로 만료된 timer 를 실행한다.
+
+바인딩 규칙:
+- timer 는 typed wrapper 로 노출한다.
+- timer callback 은 handler callback 과 같은 thread context 에서 실행된다.
+- 바인딩은 poller + timer 통합을 내부적으로 처리하고,
+  사용자에게는 handler 등록 + timer 등록만 노출한다.
+
+#### Dispatch 모델 요약
+
+```
+I/O thread context (동기화 불필요)
+  ├── subscribe handler callback  (pub/sub 메시지 도착)
+  ├── spot handler callback       (routed message / request 도착)
+  ├── router handler callback     (socket message / request 도착)
+  ├── router spot handler callback(spot -> router 메시지 도착)
+  ├── send ready handler callback (writable 전환)
+  ├── timer callback              (timer 만료)
+  └── reply handler callback      (request-reply 응답 도착)
+```
+
+이 모든 callback 이 같은 thread context 에서 실행되므로,
+callback 안에서 recv, send, reply 를 호출하거나
+다른 handler 의 상태를 읽어도 lock 이 필요 없다.
+
+#### Typed Receive Surface
+
+SPOT 수신은 여러 typed surface 를 제공한다.
+바인딩은 이 typed surface 위에 언어별 handler/callback 표면을 얹는다.
+
+#### Spot 수신
+
+```c
+typedef void (*zlink_spot_handler_fn)(
+    const zlink_routing_id_t *source_rid,
+    const zlink_routing_id_t *spot_rid,
+    uint64_t request_seq,
+    zlink_msg_t *parts, size_t part_count, void *userdata);
+
+int zlink_spot_handler(void *spot, zlink_spot_handler_fn handler, void *userdata);
+int zlink_spot_recv(void *spot, ...);
+```
+
+- `request_seq = 0` 이면 ordinary routed message 또는 pub/sub message 다.
+- `request_seq != 0` 이면 request-reply message 다.
+- `source_rid + spot_rid` 는 발신자 주소이며 reply target 으로 사용한다.
+- `zlink_spot_handler()` 와 `zlink_spot_recv()` 는 같은 수신 plane 을 공유한다.
+  동시에 허용하지 않는다. 충돌 시 `EBUSY`.
+
+#### Router 의 SPOT 수신
+
+```c
+typedef void (*zlink_router_spot_handler_fn)(
+    const zlink_routing_id_t *source_node_rid,
+    const zlink_routing_id_t *source_spot_rid,
+    uint64_t request_seq,
+    zlink_msg_t *parts, size_t part_count, void *userdata);
+
+int zlink_router_spot_handler(void *router,
+    zlink_router_spot_handler_fn handler, void *userdata);
+int zlink_router_spot_recv(void *router, ...);
+```
+
+- peer-directed ROUTER 수신 plane 과 spot-origin 수신 plane 은 서로 다른 표면이다.
+- `zlink_router_spot_recv()` 와 `zlink_router_spot_handler()` 도 같은 plane 을
+  공유하므로 동시에 허용하지 않는다. 충돌 시 `EBUSY`.
+
+#### Pub/Sub 수신
+
+```c
+typedef void (*zlink_subscribe_handler_fn)(
+    zlink_routing_id_t *source_rid,
+    zlink_msg_t *parts, size_t part_count,
+    void *userdata);
+
+int zlink_subscribe_handler(void *s, zlink_subscribe_handler_fn handler,
+    void *userdata);
+```
+
+#### Service Monitor
+
+SPOT Node 상태 변경을 모니터링하는 event surface 다.
+
+```c
+typedef void (*zlink_service_monitor_handler_fn)(
+    const zlink_service_event_t *event, void *userdata);
+
+void *zlink_service_monitor_open(void *node,
+    const zlink_service_monitor_open_options_t *options);
+int zlink_service_monitor_handler(void *monitor,
+    zlink_service_monitor_handler_fn handler, void *userdata);
+int zlink_service_monitor_recv(void *monitor,
+    zlink_service_monitor_event_t *out, int flags);
+```
+
+이벤트 종류:
+- `ZLINK_SERVICE_EVENT_PEER_ADDED` — peer 추가
+- `ZLINK_SERVICE_EVENT_PEER_REMOVED` — peer 제거
+- `ZLINK_SERVICE_EVENT_PEER_READY` — peer 연결 완료
+- `ZLINK_SERVICE_EVENT_SUBJECT_ADDED` — 주제 추가
+- `ZLINK_SERVICE_EVENT_SUBJECT_REMOVED` — 주제 제거
+- `ZLINK_SERVICE_EVENT_SUBJECT_READY` — 주제 준비 완료
+
+바인딩 규칙:
+- monitor 는 typed handle 로 노출한다.
+- event 수신은 handler callback 또는 direct recv 로 제공한다.
+- event mask 필터링은 open 옵션으로 설정한다.
+- `zlink_service_event_t` 는 바인딩이 언어별 typed event object 로 변환한다.
+
+#### SPOT Node Status Query
+
+```c
+int zlink_spot_node_status_snapshot(void *node, zlink_spot_node_status_t *out);
+int zlink_spot_node_peers_snapshot(void *node,
+    zlink_spot_node_peer_entry_t **entries_out, size_t *count_out);
+int zlink_spot_node_peers_query(void *node,
+    const zlink_spot_node_peer_filter_t *filter,
+    zlink_spot_node_peer_entry_t **entries_out, size_t *count_out);
+int zlink_spot_node_subjects_snapshot(void *node,
+    zlink_spot_node_subject_entry_t **entries_out, size_t *count_out);
+```
+
+바인딩 규칙:
+- snapshot 결과는 언어별 typed domain object 배열로 변환한다.
+- filter query 는 typed filter builder 또는 struct 로 노출한다.
+- 반환된 배열의 메모리는 바인딩이 적절히 해제해야 한다.
 
 ### SpotNode Peer Publish Batching Options
 
@@ -992,22 +1384,48 @@ zlink 고유 오류 코드. POSIX errno 와 충돌하지 않도록 `ZLINK_HAUSNU
 | C++ | `int` errno | `ZlinkError.code()` |
 
 ### Request-Reply Error Policy
-- `request()` 는 blocking send 계열과 동일한 예외 정책을 따른다.
-  별도 `RequestError` 타입을 도입하지 않는다.
-- backpressure 는 caller 에 예외로 노출하지 않는다. 내부에서 writable 될
-  때까지 비동기 대기한 후 전송한다. 기존 `send()` 의 backpressure 처리와
-  동일하다.
-- timeout 은 send 대기 + reply 대기를 합산한 **전체 경과 시간**에 적용된다.
-  send 대기 중 timeout 초과 시에도 `ETIMEDOUT` 으로 처리한다.
-- request-reply 실패 시 errno 매핑:
 
-  | 실패 원인 | errno | 설명 |
-  |----------|-------|------|
-  | timeout (send 대기 + reply 대기 합산) | `ETIMEDOUT` | 전체 경과 시간 초과 |
-  | send 오류 (EAGAIN 외) | 해당 errno | transport/protocol 오류 |
-  | caller 취소 | `ECANCELED` | caller 가 request 를 취소함 |
-  | 소켓 close | `ETERM` | request 대기 중 소켓 close 또는 close 후 호출 |
+별도 `RequestError` 타입을 도입하지 않는다.
+기존 `ZlinkError` + errno 체계를 그대로 사용한다.
 
+오류 코드는 두 계층으로 나뉜다.
+
+**Wire error reply 코드** — peer 가 보내는 protocol-level error reply.
+wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSUPP`, `EINVAL`.
+
+**API/completion 코드** — core 가 callback 에 전달하는 errno:
+
+| errno | 발생 시점 |
+|-------|----------|
+| `ENOENT` | 대상 peer/spot 을 찾지 못함 (wire 또는 local) |
+| `EOPNOTSUPP` | peer 종류 불일치 또는 지원 안 함 |
+| `EINVAL` | 잘못된 파라미터 |
+| `ETIMEDOUT` | reply 대기 중 timeout 초과 |
+| `EPROTO` | envelope parse 실패 또는 잘못된 remote reply |
+| `EBUSY` | 수신 표면 충돌 (handler 중복 등록) |
+
+**request 오류:**
+
+| 상황 | `request()` | `tryRequest()` |
+|------|------------|---------------|
+| backpressure | writable 대기 (timeout 에 합산) | 즉시 `ZlinkError(EAGAIN)` |
+| timeout | `ZlinkError(ETIMEDOUT)` | 동일 |
+| 대상 없음 | `ZlinkError(ENOENT)` | 동일 |
+| remote error reply | `ZlinkError(해당 errno)` | 동일 |
+| 소켓 close | `ZlinkError(ETERM)` | 동일 |
+| caller 취소 | `ZlinkError(ECANCELED)` | 동일 |
+| pending map 에 없는 reply | 무시 | 무시 |
+
+**reply 오류:**
+
+| 상황 | `reply()` | `tryReply()` |
+|------|-----------|-------------|
+| backpressure | writable 대기 | `SendResult::Backpressured` |
+| not ready | writable 대기 | `SendResult::NotReady` |
+| send 성공 | 정상 반환 | `SendResult::Sent` |
+| send 오류 (EAGAIN 외) | `ZlinkError(errno)` 예외 | 동일 |
+
+- 모든 실패는 async completion 경로 (Future reject / callback) 로 전달한다.
 - 언어별 표현:
   - Java: `ZlinkException(errno)` — `getErrorCode()` 로 원인 구분
   - .NET: `ZlinkException(errno)` — `Errno` property
@@ -1015,10 +1433,6 @@ zlink 고유 오류 코드. POSIX errno 와 충돌하지 않도록 `ZLINK_HAUSNU
   - Rust: `Err(ZlinkError{code: errno})` — `code` 필드
   - Node: `ZlinkError` — `errno` property
   - Python: `ZlinkError(errno)` — `errno` attribute
-- `reply()` 는 `request()` 와 동일하게 async send 를 사용한다. backpressure
-  시 writable 될 때까지 비동기 대기한다. 실패 시 `ZlinkError(errno)` 예외.
-  callback 내에서 호출 시 코루틴 suspend 가 발생할 수 있으며, 이것은
-  기존 callback 내 `send()` 호출과 동일한 주의사항이다.
 
 ## Length and Range Boundary Policy
 - 검증 책임은 두 층으로 나눈다.

@@ -5,12 +5,12 @@
 > 이번 작업의 핵심은 기존 message-level request 표식을 걷어내고,
 > request-reply 와 SPOT 직접 전달을 모두 ZMP 상위 프로토콜로 다시 맞추는 것이다.
 >
-> 이번 계획은 다음 순서를 전제로 한다.
+> 이번 계획은 아래 순서를 전제로 한다.
 >
 > - 먼저 문서와 core 작업만 진행한다.
 > - core 기본 경로 구현과 core 테스트가 끝나면 POSD 기반 리팩토링을 먼저 진행한다.
-> - timeout 은 POSD 정리까지 끝난 뒤 붙이는 마지막 core 기능 단계로 둔다.
-> - bindings 적용은 core 작업이 끝난 뒤에 진행한다.
+> - timeout 은 POSD 정리 다음 순서에서 바로 붙인다.
+> - bindings 적용은 core 작업을 정리한 흐름 안에서 바로 이어서 진행한다.
 > - 구현을 시작하면 사용자 추가 응답을 기다리지 않고 합리적인 가정으로 계속 진행한다.
 > - 특별한 blocker 가 없는 한 중간 단계에서 멈추지 않는다.
 > - 이 계획 문서의 마지막 완료 조건까지 한 흐름으로 완료한다.
@@ -21,27 +21,27 @@
 
 - 기존 core 의 message-level metadata 기능을 제거한다.
 - 기존 core 의 message-level request 기능을 제거한다.
+- 기존 core 의 callback 중심 `zlink_timers_*()` 기능을 제거한다.
 - request-reply 를 ZMP 상위 프로토콜로 다시 구현한다.
 - SPOT 직접 전달 위에서도 같은 request-reply 프로토콜을 재사용한다.
+- 공통 timer 를 `zlink_timer_*()` 와 `poller` 결합 모델로 다시 맞춘다.
 
 이 작업이 끝나면 request-reply 의미는 `zlink_msg_t` 내부 상태가 아니라
 ZMP multipart control part 로 표현된다.
 또한 SPOT 은 자기 routed envelope 바깥에 request-reply envelope 를 한 겹 더 두는
 방식으로 request-reply 를 지원한다.
 
-## 2. 이번 라운드에서 먼저 끝내는 것
+## 2. 이번 작업에서 끝내는 것
 
 - 문서 기준 확정
 - core 기존 기능 제거 범위 확정
 - core request-reply 공개 API 확정
 - core request-reply 프로토콜 encode/decode 구현
 - core SPOT routed 와 request-reply 조합 구현
-
-이번 라운드에서 나중으로 미루는 것:
-
+- 기존 `zlink_timers_*()` 제거와 새 공통 timer / poller 표면 구현
+- timeout 구현
 - bindings 실제 이관 작업
 - bindings 문서 정리
-- timeout 최종 구현
 
 ## 2.1 구현 중 정리해도 되는 항목
 
@@ -52,9 +52,10 @@ ZMP multipart control part 로 표현된다.
 
 ## 3. source of truth
 
-이번 개발 라운드에서는 `doc/api` 가 아니라
-`doc/plan/spot-refactor` 아래 문서를 구현 기준으로 사용한다.
-구현과 테스트가 끝난 뒤 정리된 공개 API 문서와 설명 문서를
+이번 작업에서는 `doc/api` 가 아니라
+`doc/plan/spot-refactor` 아래 문서와
+공통 timer 스펙 문서를 구현 기준으로 사용한다.
+구현과 테스트를 마치면 정리된 공개 API 문서와 설명 문서를
 `doc/api`, `doc/guide`, `doc/internals` 에 반영한다.
 
 - [`/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/ZMP_PROTOCOL_OVERVIEW.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/ZMP_PROTOCOL_OVERVIEW.md)
@@ -62,6 +63,7 @@ ZMP multipart control part 로 표현된다.
 - [`/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/ZMP_SPOT_ROUTED_PROTOCOL.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/ZMP_SPOT_ROUTED_PROTOCOL.md)
 - [`/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/SOCKET_REQUEST_REPLY_API_SPEC.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/SOCKET_REQUEST_REPLY_API_SPEC.md)
 - [`/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md)
+- [`/home/hep7/project/kairos/zlink/doc/spec/timer/TIMER_POLLER_SPEC.ko.md`](/home/hep7/project/kairos/zlink/doc/spec/timer/TIMER_POLLER_SPEC.ko.md)
 
 ## 4. 핵심 결정 요약
 
@@ -74,7 +76,7 @@ ZMP multipart control part 로 표현된다.
 - request 1건은 high-level callback/future 1회 완료로 본다.
 - 같은 `request_seq` 의 추가 reply 는 무시하고 카운터만 올릴 수 있다.
 - 여러 in-flight request 는 허용한다.
-- timeout 은 POSD 정리 뒤 마지막 core 기능 단계에서 붙인다.
+- timeout 은 POSD 정리 뒤 순서대로 붙인다.
 
 ## 5. 작업 순서
 
@@ -88,6 +90,7 @@ ZMP multipart control part 로 표현된다.
 
 - request-reply 문서에서 `request_seq`, `errno`, `peer_rid + request_seq` 계약을 최종 확인한다.
 - SPOT 문서에서 request-reply 조합 규칙을 최종 확인한다.
+- timer / poller 문서에서 `recv`, `poller`, callback 충돌 규칙을 최종 확인한다.
 - 기존 historical draft 문서가 현재 기준과 충돌하지 않는지 다시 점검한다.
 
 완료 조건:
@@ -99,6 +102,7 @@ ZMP multipart control part 로 표현된다.
 목적:
 
 - 예전 message-level metadata / request 기능이 새 구조와 섞이지 않게 정리한다.
+- 예전 callback 중심 timer 기능도 새 구조와 섞이지 않게 정리한다.
 
 제거 대상 1: metadata
 
@@ -127,17 +131,41 @@ ZMP multipart control part 로 표현된다.
 - 기존 message-level request 회귀 테스트
 - 기존 message-level request 전용 내부 헬퍼와 보조 코드
 
+제거 대상 3: 기존 timer API
+
+- `zlink_timers_new(...)`
+- `zlink_timers_destroy(...)`
+- `zlink_timers_add(...)`
+- `zlink_timers_cancel(...)`
+- `zlink_timers_set_interval(...)`
+- `zlink_timers_reset(...)`
+- `zlink_timers_timeout(...)`
+- `zlink_timers_execute(...)`
+- 기존 callback 중심 timer 회귀 테스트
+- 기존 timer 전용 내부 헬퍼와 보조 코드
+
 같이 점검할 것:
 
 - 기존 bindings 와 샘플이 metadata API 에 어디까지 의존하는지 목록을 만든다.
 - 기존 bindings 와 샘플이 request message API 에 어디까지 의존하는지 목록을 만든다.
+- 기존 bindings 와 샘플이 `zlink_timers_*()` API 에 어디까지 의존하는지 목록을 만든다.
 - core 에서 제거한 뒤에도 ordinary send/recv 는 기존과 같은 의미를 유지하는지 확인한다.
 - 제거 대상 테스트가 새 구조 테스트와 중복되지 않는지 확인한다.
+
+정리 원칙:
+
+- 기존 timer API 는 유지하지 않는다.
+- 새 기준은 공통 `zlink_timer_*()` 와 `zlink_poller_add_timer()` 조합이다.
+- timer 도 기존 소켓과 같은 수신 정책을 따른다.
+- 기본은 `recv` 또는 `poller` 이고, callback 등록 시 callback 전용 모드로 전환한다.
+- timer 에서도 수신 모델 충돌은 `EBUSY` 로 맞춘다.
+- 제거 범위는 C API 선언만이 아니라 내부 구현 코드, 헬퍼, 테스트, 샘플까지 포함한다.
 
 완료 조건:
 
 - core 안에 metadata extended header 경로가 더 이상 남지 않는다.
 - core 안에 request-reply message marking 경로가 더 이상 남지 않는다.
+- core 안에 기존 `zlink_timers_*()` 경로가 더 이상 남지 않는다.
 - 제거 대상 회귀 테스트와 내부 보조 코드도 함께 정리된다.
 - 이 단계에서 core 헤더 변경으로 bindings 빌드가 일시적으로 깨지는 것은 허용한다
 - 단, bindings 이관 전까지 old API 제거 목록과 영향 범위는 문서로 남겨야 한다
@@ -153,8 +181,8 @@ ZMP multipart control part 로 표현된다.
 - `zlink_dealer_request(...)`
 - `zlink_router_request(...)`
 - `zlink_router_reply(...)`
-- `zlink_router_request_handler(...)`
-- request timeout 기본값은 각 socket 전용 option 으로 두고 구현은 마지막 단계로 미룬다
+- `zlink_router_handler(...)`
+- request timeout 기본값은 각 socket 전용 option 으로 둔다
 
 핵심 규칙:
 
@@ -203,7 +231,8 @@ ZMP multipart control part 로 표현된다.
 - `spot -> spot request/reply`
 - `spot -> router request/reply`
 - `router -> spot request/reply`
-- SPOT request handler / reply public surface 추가
+- SPOT typed recv/callback 에 `request_seq` 전달 규칙 추가
+- SPOT reply public surface 추가
 
 핵심 규칙:
 
@@ -215,7 +244,34 @@ ZMP multipart control part 로 표현된다.
 
 - SPOT request-reply 가 `ROUTER` 기반 request-reply 와 같은 의미로 동작한다.
 
-### 5.6 6단계: core 테스트
+### 5.6 6단계: 공통 timer / poller 전환
+
+목적:
+
+- 기존 callback 중심 timer API 를 제거하고,
+  공통 `timer + poller` 모델을 core 에 고정한다.
+
+작업:
+
+- `zlink_timers_*()` 제거
+- `zlink_timer_new/destroy/start/stop/recv/handler` 추가
+- `zlink_poller_add_timer()` / `zlink_poller_remove_timer()` 추가
+- timer source 가 `poller.wait()` 결과에 함께 나오도록 정리
+- timer 도 기존 소켓과 같은 수신 모델 충돌 규칙을 따르도록 정리
+
+핵심 규칙:
+
+- 기본 사용 모델은 `recv` 또는 `poller` 이다.
+- callback 을 등록하면 callback 전용 모드로 전환한다.
+- callback 과 `recv/poller` 를 섞으면 `EBUSY` 다.
+- 새 timer 기준은 [`TIMER_POLLER_SPEC.ko.md`](/home/hep7/project/kairos/zlink/doc/spec/timer/TIMER_POLLER_SPEC.ko.md) 를 따른다.
+
+완료 조건:
+
+- core 안에 기존 `zlink_timers_*()` 경로가 남지 않는다.
+- 공통 `timer + poller` 경로가 자동 테스트로 고정된다.
+
+### 5.7 7단계: core 테스트
 
 목적:
 
@@ -233,16 +289,20 @@ ZMP multipart control part 로 표현된다.
 - `spot -> spot request/reply`
 - `spot -> router request/reply`
 - `router -> spot request/reply`
+- one-shot timer
+- 반복 timer
+- `poller + timer_recv()`
+- timer callback / recv / poller 충돌 `EBUSY`
 
 완료 조건:
 
 - request-reply 와 SPOT request-reply 핵심 경로가 자동 테스트로 고정된다.
 
-### 5.7 7단계: POSD 기반 리팩토링
+### 5.8 8단계: POSD 기반 리팩토링
 
 목적:
 
-- core 기본 경로 구현과 core 테스트가 끝난 뒤 남아 있는 구조 복잡성을 줄인다.
+- core 기본 경로 구현과 core 테스트를 마치면 남아 있는 구조 복잡성을 줄인다.
 - request-reply 와 SPOT request-reply 경로를 POSD 원칙에 맞게 다시 다듬는다.
 
 이 단계는 기능 추가 단계가 아니다.
@@ -264,11 +324,11 @@ change amplification, 정보 누출, 얕은 모듈, 중복 표면이 남아 있�
   의미 중복, dead code, 얕은 wrapper, ownership 혼란이 줄어든다.
 - 기능 계약과 테스트를 유지한 상태에서 내부 구조가 더 단순해진다.
 
-### 5.8 8단계: timeout 구현
+### 5.9 9단계: timeout 구현
 
 목적:
 
-- request-reply 기본 경로와 POSD 정리까지 끝난 뒤 timeout 을 마지막 core 기능 단계로 붙인다.
+- request-reply 기본 경로와 POSD 정리를 마친 상태에서 timeout 을 core 기능으로 붙인다.
 
 이 순서를 쓰는 이유:
 
@@ -287,7 +347,7 @@ change amplification, 정보 누출, 얕은 모듈, 중복 표면이 남아 있�
 
 - request/reply 와 SPOT request/reply 모두 timeout 계약이 동일한 방식으로 동작한다.
 
-### 5.9 9단계: bindings native 라이브러리 임시 최신화
+### 5.10 10단계: bindings native 라이브러리 임시 최신화
 
 목적:
 
@@ -314,7 +374,7 @@ change amplification, 정보 누출, 얕은 모듈, 중복 표면이 남아 있�
 - 각 언어별 `bindings/*/native` 아래 라이브러리가 현재 core 산출물과 같은 버전으로 맞춰진다
 - bindings 이관 작업 전에 라이브러리 로딩 실패나 심볼 누락이 없는지 확인된다
 
-### 5.10 10단계: bindings 이관
+### 5.11 11단계: bindings 이관
 
 목적:
 
@@ -323,14 +383,16 @@ change amplification, 정보 누출, 얕은 모듈, 중복 표면이 남아 있�
 작업:
 
 - 기존 bindings request 구현에서 `msg.set_request(...)` 의존 제거
+- 기존 bindings timer 구현에서 `zlink_timers_*()` 의존 제거
 - 새 core request API 호출로 교체
+- 새 core timer / poller API 호출로 교체
 - 기존 언어별 async/callback 표면 유지
 - 기존 언어별 enum/exception 오류 매핑 유지
 
 순서:
 
 core 와 가장 가까운 구현부터 먼저 옮기고,
-그 다음 현재 bindings request 구현이 비교적 분명한 언어 순서로 내려간다.
+현재 bindings request 구현이 비교적 분명한 언어 순서로 내려간다.
 
 1. Rust
 2. Go
@@ -344,18 +406,21 @@ core 와 가장 가까운 구현부터 먼저 옮기고,
 
 - bindings 는 새 core API 위에서 기존 사용자 경험을 유지한다.
 
-### 5.11 11단계: 공개 문서와 설명 문서 정리
+### 5.12 12단계: 공개 문서와 설명 문서 정리
 
 목적:
 
-- 구현과 테스트가 끝난 뒤 작업 스펙 기준 내용을
+- 구현과 테스트를 마치면 작업 스펙 기준 내용을
   공개 문서와 설명 문서에 반영한다.
 
 작업:
 
 - `doc/api` 에 새 request-reply, SPOT routed, timeout option 공개 표면 반영
+- `doc/api` 에 새 공통 timer / poller 공개 표면 반영
 - `doc/guide` 에 새 사용 흐름과 예제 반영
+- `doc/guide` 에 socket 과 timer 를 같은 poller loop 에서 다루는 예제 반영
 - `doc/internals` 에 encode/decode, pending, SPOT routed 조합 구조 반영
+- `doc/internals` 에 timer readiness 와 poller integration 구조 반영
 - 이번 작업 라운드에서 기준으로 쓴 `doc/plan/spot-refactor` 문서와
   공개 문서 사이 설명이 어긋나지 않는지 마지막 점검
 
@@ -363,6 +428,38 @@ core 와 가장 가까운 구현부터 먼저 옮기고,
 
 - `doc/api`, `doc/guide`, `doc/internals` 가 구현 결과와 같은 계약을 설명한다
 - 개발 중 기준 문서와 공개 문서 사이에 핵심 용어와 API 이름 충돌이 남지 않는다
+
+최종 공개 표면 이름 메모:
+
+- socket request-reply:
+  `zlink_dealer_request`,
+  `zlink_router_request`,
+  `zlink_router_reply`,
+  `zlink_router_handler`,
+  `zlink_router_recv`
+- timeout option:
+  `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS`,
+  `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS`
+- timer / poller:
+  `zlink_timer_new`,
+  `zlink_timer_destroy`,
+  `zlink_timer_start`,
+  `zlink_timer_stop`,
+  `zlink_timer_recv`,
+  `zlink_timer_handler`,
+  `zlink_poller_add_timer`,
+  `zlink_poller_remove_timer`
+- SPOT routed request-reply:
+  `zlink_spot_request_spot`,
+  `zlink_spot_request_router`,
+  `zlink_spot_reply_spot`,
+  `zlink_spot_reply_router`,
+  `zlink_spot_handler`,
+  `zlink_spot_recv`,
+  `zlink_router_request_spot`,
+  `zlink_router_reply_spot`,
+  `zlink_router_spot_handler`,
+  `zlink_router_spot_recv`
 
 ## 6. 기존 기능 제거 체크리스트
 
@@ -402,4 +499,4 @@ core 와 가장 가까운 구현부터 먼저 옮기고,
 
 bindings 범위 완료 판정은 별도다.
 core 완료는 core 테스트, POSD 정리, timeout 까지 끝난 상태를 뜻한다.
-그 뒤 bindings 이관과 언어별 테스트가 모두 끝나야 이번 라운드를 완전히 종료한 것으로 본다.
+bindings 이관과 언어별 테스트까지 모두 끝나야 이번 작업을 완전히 종료한 것으로 본다.

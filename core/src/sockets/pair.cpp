@@ -165,3 +165,11 @@ int zlink::pair_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
     _dispatch_parts.clear ();
     return 1;
 }
+
+void zlink::pair_t::xdispatch_io ()
+{
+    if (!socket_msg_dispatch_active () || !_pipe)
+        return;
+
+    drain_pair_dispatch (this, _pipe);
+}

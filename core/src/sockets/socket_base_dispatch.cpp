@@ -128,6 +128,15 @@ int zlink::socket_base_t::socket_set_msg_handler_with_userdata (
           NULL, std::memory_order_release);
         return -1;
     }
+
+    lifecycle_coordinator ().wait_async_started (1000);
+
+    xarm_socket_msg_dispatch ();
+
+    // Existing readable pipes may have been attached before dispatch mode was
+    // enabled. Drain them once so typed callback users do not miss the first
+    // message after installing the handler.
+    xdispatch_io ();
     return 0;
 }
 

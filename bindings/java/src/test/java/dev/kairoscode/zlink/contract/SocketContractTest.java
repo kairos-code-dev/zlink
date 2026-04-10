@@ -90,9 +90,9 @@ public class SocketContractTest {
                 try (received) {
                     assertArrayEquals("ping".getBytes(StandardCharsets.UTF_8),
                         received.singlePartOrThrow().toByteArray());
-                    long[] info = received.singlePartOrThrow().getRequestInfo();
-                    assertEquals(Message.MSG_TYPE_REQUEST, info[0]);
-                    router.reply(received.routingId(), info[1],
+                    assertTrue(received.hasRequestSequence());
+                    assertTrue(received.requestSequence() != 0L);
+                    router.reply(received.routingId(), received.requestSequence(),
                         List.of(Message.copyOfUtf8("pong")));
                 }
             });

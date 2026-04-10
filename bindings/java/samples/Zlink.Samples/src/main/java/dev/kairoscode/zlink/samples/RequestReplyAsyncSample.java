@@ -34,18 +34,18 @@ public final class RequestReplyAsyncSample {
 
             CompletableFuture<Void> replyHandled = new CompletableFuture<>();
 
-            router.onReceive(received -> {
-                try (received) {
-                    String request = SampleSupport.singleUtf8(received);
-                    if (!SampleSupport.DEALER_REQUEST.equals(request)) {
-                        throw new IllegalStateException("unexpected request: " + request);
-                    }
-                    long[] info = received.firstPart().getRequestInfo();
-                    if (info[0] != Message.MSG_TYPE_REQUEST) {
-                        throw new IllegalStateException("unexpected message type: " + info[0]);
-                    }
-                    try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
-                        router.reply(received.routingId(), info[1], reply)
+                router.onReceive(received -> {
+                    try (received) {
+                        String request = SampleSupport.singleUtf8(received);
+                        if (!SampleSupport.DEALER_REQUEST.equals(request)) {
+                            throw new IllegalStateException("unexpected request: " + request);
+                        }
+                        if (!received.hasRequestSequence()) {
+                            throw new IllegalStateException("missing request sequence");
+                        }
+                        try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
+                            router.reply(received.routingId(),
+                                received.requestSequence(), reply)
                             .whenComplete((ignored, error) -> {
                                 if (error != null) {
                                     replyHandled.completeExceptionally(error);

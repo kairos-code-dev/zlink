@@ -1,8 +1,8 @@
 # ZMP SPOT Routed Protocol
 
 > **상태**: In Progress
-> 이 문서는 현재 개발 라운드에서 구현 기준으로 쓰는 작업 스펙이다.
-> 구현과 테스트가 끝난 뒤 공개 API 기준은 `doc/api` 문서에 반영한다.
+> 이 문서는 현재 작업에서 구현 기준으로 쓰는 작업 스펙이다.
+> 구현과 테스트를 마치면 공개 API 기준은 `doc/api` 문서에 반영한다.
 > **관련 문서**:
 > [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
 > [`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md) — request-reply protocol envelope
@@ -280,7 +280,7 @@ SPOT 상위 설계 문서가 함께 정의한다.
 
 - source/destination rid 길이 제한은 별도 구현 제약으로 정한다
 - payload 시작 위치는 transport 뒤 8개 control part 다음으로 본다
-- generic `ROUTER` helper API 는 이번 라운드에서 추가하지 않는다
+- generic `ROUTER` helper API 는 추가하지 않는다
 
 ---
 

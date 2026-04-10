@@ -178,3 +178,28 @@ int zlink::dealer_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
     _dispatch_parts.clear ();
     return 1;
 }
+
+void zlink::dealer_t::xarm_socket_msg_dispatch ()
+{
+    _fq.arm_dispatch ();
+}
+
+void zlink::dealer_t::xdispatch_io ()
+{
+    if (!socket_msg_dispatch_active ())
+        return;
+
+    msg_t msg;
+    const int init_rc = msg.init ();
+    errno_assert (init_rc == 0);
+
+    pipe_t *dispatch_pipe = NULL;
+    while (recvpipe (&msg, &dispatch_pipe) == 0) {
+        const int dispatch_rc = xsocket_msg_dispatch (&msg, dispatch_pipe);
+        if (dispatch_rc <= 0)
+            break;
+    }
+
+    const int close_rc = msg.close ();
+    errno_assert (close_rc == 0);
+}

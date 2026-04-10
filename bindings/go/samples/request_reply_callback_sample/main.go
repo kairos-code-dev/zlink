@@ -54,16 +54,12 @@ func main() {
 			requestDone <- fmt.Errorf("unexpected request %q", string(part.Data()))
 			return
 		}
-		msgType, correlationID, err := part.RequestInfo()
-		if err != nil {
-			requestDone <- err
+		requestSeq, ok := received.RequestSeq()
+		if !ok {
+			requestDone <- fmt.Errorf("missing request sequence")
 			return
 		}
-		if msgType != uint8(zlink.MsgTypeRequest) {
-			requestDone <- fmt.Errorf("unexpected msg type %d", msgType)
-			return
-		}
-		requestDone <- router.Reply(received.RoutingID(), correlationID, samplecommon.Message("pong"))
+		requestDone <- router.Reply(received.RoutingID(), requestSeq, samplecommon.Message("pong"))
 	}))
 
 	dealer.RequestAsync(2*time.Second, func(reply *zlink.Received, err error) {

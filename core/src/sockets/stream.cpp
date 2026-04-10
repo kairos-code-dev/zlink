@@ -368,8 +368,6 @@ int zlink::stream_t::xrecv (msg_t *msg_)
     if (routing_id.size () > 0)
         memcpy (msg_->data (), routing_id.data (), routing_id.size ());
     msg_->set_flags (msg_t::more);
-    if (_prefetched_msg.metadata ())
-        msg_->set_metadata (_prefetched_msg.metadata ());
     return 0;
 }
 

@@ -14,6 +14,7 @@ namespace {
 
 static const size_t k_stream_slot_count = 8;
 static const size_t k_recv_handler_slot_count = 8;
+static const size_t k_router_handler_slot_count = 8;
 static const size_t k_subscribe_handler_slot_count = 8;
 static const size_t k_send_ready_handler_slot_count = 8;
 static const size_t k_socket_monitor_handler_slot_count = 8;
@@ -65,6 +66,13 @@ struct recv_handler_js_payload_t
     std::vector<std::vector<unsigned char> > parts;
 };
 
+struct router_handler_js_payload_t
+{
+    std::vector<unsigned char> routing_id;
+    uint64_t request_seq;
+    std::vector<std::vector<unsigned char> > parts;
+};
+
 struct subscribe_handler_js_payload_t
 {
     std::vector<unsigned char> routing_id;
@@ -80,6 +88,20 @@ struct socket_monitor_handler_js_payload_t
 struct service_monitor_handler_js_payload_t
 {
     zlink_service_event_t event;
+};
+
+struct request_result_js_payload_t
+{
+    int errnum;
+    std::vector<std::vector<unsigned char> > parts;
+};
+
+struct request_js_state_t
+{
+    request_js_state_t () : env (NULL), tsfn (NULL) {}
+
+    napi_env env;
+    napi_threadsafe_function tsfn;
 };
 
 struct stream_js_state_t
@@ -110,6 +132,16 @@ static stream_js_state_t g_stream_slots[k_stream_slot_count];
 struct recv_handler_js_state_t
 {
     recv_handler_js_state_t () : used (false), socket (NULL), env (NULL), tsfn (NULL) {}
+
+    bool used;
+    void *socket;
+    napi_env env;
+    napi_threadsafe_function tsfn;
+};
+
+struct router_handler_js_state_t
+{
+    router_handler_js_state_t () : used (false), socket (NULL), env (NULL), tsfn (NULL) {}
 
     bool used;
     void *socket;
@@ -161,6 +193,9 @@ struct service_monitor_handler_js_state_t
 
 static std::mutex g_recv_handler_slots_mu;
 static recv_handler_js_state_t g_recv_handler_slots[k_recv_handler_slot_count];
+static std::mutex g_router_handler_slots_mu;
+static router_handler_js_state_t
+  g_router_handler_slots[k_router_handler_slot_count];
 static std::mutex g_subscribe_handler_slots_mu;
 static subscribe_handler_js_state_t
   g_subscribe_handler_slots[k_subscribe_handler_slot_count];
@@ -199,6 +234,26 @@ recv_handler_js_state_t *find_free_recv_handler_slot_unsafe()
     for (size_t i = 0; i < k_recv_handler_slot_count; ++i) {
         if (!g_recv_handler_slots[i].used)
             return &g_recv_handler_slots[i];
+    }
+    return NULL;
+}
+
+router_handler_js_state_t *find_router_handler_slot_by_socket_unsafe(void *socket)
+{
+    for (size_t i = 0; i < k_router_handler_slot_count; ++i) {
+        if (g_router_handler_slots[i].used
+            && g_router_handler_slots[i].socket == socket) {
+            return &g_router_handler_slots[i];
+        }
+    }
+    return NULL;
+}
+
+router_handler_js_state_t *find_free_router_handler_slot_unsafe()
+{
+    for (size_t i = 0; i < k_router_handler_slot_count; ++i) {
+        if (!g_router_handler_slots[i].used)
+            return &g_router_handler_slots[i];
     }
     return NULL;
 }
@@ -311,6 +366,16 @@ void reset_stream_slot_unsafe(stream_js_state_t *state)
 }
 
 void reset_recv_handler_slot_unsafe(recv_handler_js_state_t *state)
+{
+    if (!state)
+        return;
+    state->used = false;
+    state->socket = NULL;
+    state->env = NULL;
+    state->tsfn = NULL;
+}
+
+void reset_router_handler_slot_unsafe(router_handler_js_state_t *state)
 {
     if (!state)
         return;
@@ -522,6 +587,23 @@ napi_value create_recv_message_value(napi_env env,
     return obj;
 }
 
+napi_value create_router_recv_message_value(napi_env env,
+                                            const zlink_routing_id_t &routing_id,
+                                            uint64_t request_seq,
+                                            zlink_msg_t *parts,
+                                            size_t part_count)
+{
+    napi_value obj = create_recv_message_value(env, routing_id, parts, part_count);
+    napi_value request_seq_value;
+    if (request_seq == 0) {
+        napi_get_null(env, &request_seq_value);
+    } else {
+        napi_create_bigint_uint64(env, request_seq, &request_seq_value);
+    }
+    napi_set_named_property(env, obj, "requestSeq", request_seq_value);
+    return obj;
+}
+
 napi_value create_subscription_event_value(napi_env env,
                                            const zlink_routing_id_t &routing_id,
                                            int subscribed,
@@ -705,19 +787,6 @@ napi_value create_message_snapshot_value(napi_env env,
     napi_set_named_property(env, obj, "data", data);
     napi_set_named_property(env, obj, "refCount", ref_count);
     napi_set_named_property(env, obj, "properties", props);
-    uint8_t msg_type = 0;
-    uint64_t correlation_id = 0;
-    if (zlink_msg_get_request_info(msg, &msg_type, &correlation_id) == 0) {
-        napi_value request_info;
-        napi_value request_type;
-        napi_value request_id;
-        napi_create_object(env, &request_info);
-        napi_create_uint32(env, static_cast<uint32_t>(msg_type), &request_type);
-        napi_create_bigint_uint64(env, correlation_id, &request_id);
-        napi_set_named_property(env, request_info, "msgType", request_type);
-        napi_set_named_property(env, request_info, "correlationId", request_id);
-        napi_set_named_property(env, obj, "requestInfo", request_info);
-    }
     return obj;
 }
 
@@ -897,6 +966,20 @@ void recv_handler_tsfn_finalize(napi_env env,
     reset_recv_handler_slot_unsafe(state);
 }
 
+void router_handler_tsfn_finalize(napi_env env,
+                                  void *finalize_data,
+                                  void *finalize_hint)
+{
+    (void) env;
+    (void) finalize_hint;
+    router_handler_js_state_t *state =
+      static_cast<router_handler_js_state_t *>(finalize_data);
+    if (!state)
+        return;
+    std::lock_guard<std::mutex> lock(g_router_handler_slots_mu);
+    reset_router_handler_slot_unsafe(state);
+}
+
 void subscribe_handler_tsfn_finalize(napi_env env,
                                      void *finalize_data,
                                      void *finalize_hint)
@@ -1048,6 +1131,66 @@ void recv_handler_tsfn_call_js(napi_env env,
     (void) napi_call_function(env, this_arg, js_cb, 2, argv, &recv);
 }
 
+void router_handler_tsfn_call_js(napi_env env,
+                                 napi_value js_cb,
+                                 void *context,
+                                 void *data)
+{
+    std::unique_ptr<router_handler_js_payload_t> payload(
+      static_cast<router_handler_js_payload_t *>(data));
+    (void) context;
+    if (!env || !js_cb || !payload)
+        return;
+
+    napi_value argv[1];
+    napi_create_object(env, &argv[0]);
+
+    zlink_routing_id_t rid;
+    memset(&rid, 0, sizeof(rid));
+    if (!payload->routing_id.empty()) {
+        rid.size = payload->routing_id.size();
+        memcpy(rid.data, payload->routing_id.data(), rid.size);
+    }
+
+    napi_value rid_value = create_routing_id_value(env, rid);
+    napi_set_named_property(env, argv[0], "routingId", rid_value);
+
+    napi_value request_seq_value;
+    if (payload->request_seq == 0) {
+        napi_get_null(env, &request_seq_value);
+    } else {
+        napi_create_bigint_uint64(env, payload->request_seq, &request_seq_value);
+    }
+    napi_set_named_property(env, argv[0], "requestSeq", request_seq_value);
+
+    napi_value parts_array;
+    if (napi_create_array_with_length(env, payload->parts.size(), &parts_array)
+        != napi_ok) {
+        return;
+    }
+    for (size_t i = 0; i < payload->parts.size(); ++i) {
+        const std::vector<unsigned char> &part = payload->parts[i];
+        napi_value part_obj;
+        napi_create_object(env, &part_obj);
+
+        napi_value part_buf;
+        if (napi_create_buffer_copy(
+              env, part.size(), part.empty() ? NULL : part.data(), NULL,
+              &part_buf)
+            != napi_ok) {
+            return;
+        }
+        napi_set_named_property(env, part_obj, "data", part_buf);
+        napi_set_element(env, parts_array, static_cast<uint32_t>(i), part_obj);
+    }
+    napi_set_named_property(env, argv[0], "parts", parts_array);
+
+    napi_value recv;
+    napi_value this_arg;
+    napi_get_undefined(env, &this_arg);
+    (void) napi_call_function(env, this_arg, js_cb, 1, argv, &recv);
+}
+
 void subscribe_handler_tsfn_call_js(napi_env env,
                                     napi_value js_cb,
                                     void *context,
@@ -1146,6 +1289,66 @@ void service_monitor_handler_tsfn_call_js(napi_env env,
     napi_value this_arg;
     napi_get_undefined(env, &this_arg);
     (void) napi_call_function(env, this_arg, js_cb, 1, argv, &recv);
+}
+
+void request_tsfn_call_js(napi_env env,
+                          napi_value js_cb,
+                          void *context,
+                          void *data)
+{
+    std::unique_ptr<request_result_js_payload_t> payload(
+      static_cast<request_result_js_payload_t *>(data));
+    (void) context;
+    if (!env || !js_cb || !payload)
+        return;
+
+    napi_value argv[2];
+    napi_create_int32(env, payload->errnum, &argv[0]);
+    if (payload->errnum != 0) {
+        napi_get_null(env, &argv[1]);
+    } else {
+        napi_value parts_array;
+        napi_create_array_with_length(env, payload->parts.size(), &parts_array);
+        for (size_t i = 0; i < payload->parts.size(); ++i) {
+            const std::vector<unsigned char> &part = payload->parts[i];
+            napi_value part_buf = create_buffer_copy_or_empty(
+              env, part.empty() ? NULL : part.data(), part.size());
+            napi_set_element(env, parts_array, static_cast<uint32_t>(i), part_buf);
+        }
+        argv[1] = parts_array;
+    }
+
+    napi_value recv;
+    napi_value this_arg;
+    napi_get_undefined(env, &this_arg);
+    (void) napi_call_function(env, this_arg, js_cb, 2, argv, &recv);
+}
+
+void request_reply_callback_trampoline(int errnum_,
+                                       zlink_msg_t *parts_,
+                                       size_t part_count_,
+                                       void *userdata_)
+{
+    request_js_state_t *state = static_cast<request_js_state_t *>(userdata_);
+    if (!state || !state->tsfn) {
+        close_recv_parts(parts_, part_count_);
+        return;
+    }
+
+    std::unique_ptr<request_result_js_payload_t> payload(
+      new request_result_js_payload_t());
+    payload->errnum = errnum_;
+    if (errnum_ == 0)
+        copy_recv_parts_to_vectors(parts_, part_count_, &payload->parts);
+    close_recv_parts(parts_, part_count_);
+
+    if (napi_call_threadsafe_function(
+          state->tsfn, payload.get(), napi_tsfn_nonblocking)
+        == napi_ok) {
+        payload.release();
+    }
+    (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_release);
+    state->tsfn = NULL;
 }
 
 std::string make_routing_id_key(const zlink_routing_id_t *rid)
@@ -1301,6 +1504,14 @@ void stream_release_slot(void *socket)
         (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
 }
 
+void request_tsfn_finalize(napi_env env, void *finalize_data, void *finalize_hint)
+{
+    (void) env;
+    (void) finalize_hint;
+    request_js_state_t *state = static_cast<request_js_state_t *>(finalize_data);
+    delete state;
+}
+
 void recv_handler_release_slot(void *socket)
 {
     napi_threadsafe_function tsfn = NULL;
@@ -1312,6 +1523,22 @@ void recv_handler_release_slot(void *socket)
             return;
         tsfn = state->tsfn;
         reset_recv_handler_slot_unsafe(state);
+    }
+    if (tsfn)
+        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
+}
+
+void router_handler_release_slot(void *socket)
+{
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_router_handler_slots_mu);
+        router_handler_js_state_t *state =
+          find_router_handler_slot_by_socket_unsafe(socket);
+        if (!state)
+            return;
+        tsfn = state->tsfn;
+        reset_router_handler_slot_unsafe(state);
     }
     if (tsfn)
         (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
@@ -1365,6 +1592,39 @@ void recv_handler_slot_callback(const zlink_routing_id_t *source_rid_,
 }
 
 template <size_t Slot>
+void router_handler_slot_callback(const zlink_routing_id_t *peer_rid_,
+                                  uint64_t request_seq_,
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_,
+                                  void *userdata_)
+{
+    (void) userdata_;
+    std::unique_ptr<router_handler_js_payload_t> payload(
+      new router_handler_js_payload_t());
+    router_handler_js_state_t *state = &g_router_handler_slots[Slot];
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_router_handler_slots_mu);
+        if (!state->used || !state->tsfn) {
+            close_recv_parts(parts_, part_count_);
+            return;
+        }
+        tsfn = state->tsfn;
+        payload->request_seq = request_seq_;
+        if (peer_rid_ && peer_rid_->size > 0) {
+            payload->routing_id.assign(
+              peer_rid_->data, peer_rid_->data + peer_rid_->size);
+        }
+        copy_recv_parts_to_vectors(parts_, part_count_, &payload->parts);
+    }
+    close_recv_parts(parts_, part_count_);
+    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
+        == napi_ok) {
+        payload.release();
+    }
+}
+
+template <size_t Slot>
 void subscribe_handler_slot_callback(const zlink_routing_id_t *source_rid_,
                                      const char *topic_,
                                      size_t topic_len_,
@@ -1402,6 +1662,11 @@ typedef void (*recv_handler_slot_callback_t)(const zlink_routing_id_t *,
                                              zlink_msg_t *,
                                              size_t,
                                              void *);
+typedef void (*router_handler_slot_callback_t)(const zlink_routing_id_t *,
+                                               uint64_t,
+                                               zlink_msg_t *,
+                                               size_t,
+                                               void *);
 typedef void (*subscribe_handler_slot_callback_t)(const zlink_routing_id_t *,
                                                   const char *,
                                                   size_t,
@@ -1422,6 +1687,20 @@ static recv_handler_slot_callback_t
     RECV_HANDLER_SLOT_CALLBACK(7),
 };
 #undef RECV_HANDLER_SLOT_CALLBACK
+
+#define ROUTER_HANDLER_SLOT_CALLBACK(N) &router_handler_slot_callback<N>
+static router_handler_slot_callback_t
+  g_router_handler_slot_callbacks[k_router_handler_slot_count] = {
+    ROUTER_HANDLER_SLOT_CALLBACK(0),
+    ROUTER_HANDLER_SLOT_CALLBACK(1),
+    ROUTER_HANDLER_SLOT_CALLBACK(2),
+    ROUTER_HANDLER_SLOT_CALLBACK(3),
+    ROUTER_HANDLER_SLOT_CALLBACK(4),
+    ROUTER_HANDLER_SLOT_CALLBACK(5),
+    ROUTER_HANDLER_SLOT_CALLBACK(6),
+    ROUTER_HANDLER_SLOT_CALLBACK(7),
+};
+#undef ROUTER_HANDLER_SLOT_CALLBACK
 
 #define SUBSCRIBE_HANDLER_SLOT_CALLBACK(N) &subscribe_handler_slot_callback<N>
 static subscribe_handler_slot_callback_t
@@ -1598,6 +1877,55 @@ bool attach_recv_handler(napi_env env, void *socket, napi_value handler)
     if (rc != 0) {
         recv_handler_release_slot(socket);
         throw_last_error(env, "recvHandler failed");
+        return false;
+    }
+    return true;
+}
+
+bool attach_router_handler(napi_env env, void *socket, napi_value handler)
+{
+    router_handler_js_state_t *slot = NULL;
+    size_t slot_index = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_router_handler_slots_mu);
+        if (find_router_handler_slot_by_socket_unsafe(socket)) {
+            napi_throw_error(env, NULL, "routerHandler already attached");
+            return false;
+        }
+        slot = find_free_router_handler_slot_unsafe();
+        if (!slot) {
+            napi_throw_error(env, NULL, "no free routerHandler slot");
+            return false;
+        }
+        slot_index = static_cast<size_t>(slot - g_router_handler_slots);
+    }
+
+    napi_value resource_name;
+    napi_create_string_utf8(env, "zlink-router-handler", NAPI_AUTO_LENGTH,
+                            &resource_name);
+    napi_threadsafe_function tsfn = NULL;
+    napi_status tsfn_status = napi_create_threadsafe_function(
+      env, handler, NULL, resource_name, 0, 1, slot,
+      router_handler_tsfn_finalize, slot, router_handler_tsfn_call_js, &tsfn);
+    if (tsfn_status != napi_ok) {
+        napi_throw_error(
+          env, NULL, "routerHandler failed to create callback queue");
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_router_handler_slots_mu);
+        slot->used = true;
+        slot->socket = socket;
+        slot->env = env;
+        slot->tsfn = tsfn;
+    }
+
+    int rc = zlink_router_handler(
+      socket, g_router_handler_slot_callbacks[slot_index], slot);
+    if (rc != 0) {
+        router_handler_release_slot(socket);
+        throw_last_error(env, "routerHandler failed");
         return false;
     }
     return true;
@@ -1814,6 +2142,11 @@ void release_socket_recv_handler_slot(void *socket)
     recv_handler_release_slot(socket);
 }
 
+void release_router_handler_slot(void *socket)
+{
+    router_handler_release_slot(socket);
+}
+
 void release_socket_subscribe_handler_slot(void *socket)
 {
     subscribe_handler_release_slot(socket);
@@ -1893,6 +2226,27 @@ std::string get_string(napi_env env, napi_value val)
 
 bool get_uint64_like(napi_env env, napi_value value, uint64_t *out);
 
+request_js_state_t *create_request_js_state(napi_env env, napi_value handler)
+{
+    request_js_state_t *state = new request_js_state_t();
+    state->env = env;
+
+    napi_value resource_name;
+    napi_create_string_utf8(
+      env, "zlink-request-reply-callback", NAPI_AUTO_LENGTH, &resource_name);
+    napi_threadsafe_function tsfn = NULL;
+    napi_status status = napi_create_threadsafe_function(
+      env, handler, NULL, resource_name, 0, 1, state, request_tsfn_finalize,
+      state, request_tsfn_call_js, &tsfn);
+    if (status != napi_ok) {
+        delete state;
+        napi_throw_error(env, NULL, "request callback setup failed");
+        return NULL;
+    }
+    state->tsfn = tsfn;
+    return state;
+}
+
 bool build_msg_vector(napi_env env, napi_value arr,
                       std::vector<zlink_msg_t> *out)
 {
@@ -1959,45 +2313,6 @@ bool build_msg_vector(napi_env env, napi_value arr,
         if (sz > 0 && data)
             memcpy(zlink_msg_data(msg), data, sz);
 
-        bool has_request_info = false;
-        if (napi_has_named_property(env, val, "requestInfo", &has_request_info) == napi_ok
-            && has_request_info) {
-            napi_value request_info;
-            napi_value msg_type_value;
-            napi_value correlation_id_value;
-            if (napi_get_named_property(env, val, "requestInfo", &request_info) == napi_ok
-                && napi_get_named_property(env, request_info, "msgType", &msg_type_value)
-                     == napi_ok
-                && napi_get_named_property(
-                     env, request_info, "correlationId", &correlation_id_value)
-                     == napi_ok) {
-                uint32_t msg_type = 0;
-                uint64_t correlation_id = 0;
-                napi_get_value_uint32(env, msg_type_value, &msg_type);
-                if (!get_uint64_like(env, correlation_id_value, &correlation_id)) {
-                    for (size_t j = 0; j <= built; j++)
-                        zlink_msg_close(&(*out)[j]);
-                    napi_throw_type_error(
-                      env, NULL, "requestInfo.correlationId must be uint64-like");
-                    return false;
-                }
-                if (msg_type == ZLINK_MSG_TYPE_REQUEST) {
-                    if (zlink_msg_set_request(msg, correlation_id) != 0) {
-                        for (size_t j = 0; j <= built; j++)
-                            zlink_msg_close(&(*out)[j]);
-                        throw_last_error(env, "msg_set_request failed");
-                        return false;
-                    }
-                } else if (msg_type == ZLINK_MSG_TYPE_REPLY) {
-                    if (zlink_msg_set_reply(msg, correlation_id) != 0) {
-                        for (size_t j = 0; j <= built; j++)
-                            zlink_msg_close(&(*out)[j]);
-                        throw_last_error(env, "msg_set_reply failed");
-                        return false;
-                    }
-                }
-            }
-        }
         built++;
     }
     return true;
@@ -2068,34 +2383,6 @@ bool init_msg_from_value(napi_env env, napi_value value, zlink_msg_t *msg)
     if (!init_msg_from_bytes(msg, data, len))
         return false;
 
-    bool has_request_info = false;
-    if (napi_has_named_property(env, value, "requestInfo", &has_request_info) == napi_ok
-        && has_request_info) {
-        napi_value request_info;
-        napi_value msg_type_value;
-        napi_value correlation_id_value;
-        if (napi_get_named_property(env, value, "requestInfo", &request_info) == napi_ok
-            && napi_get_named_property(env, request_info, "msgType", &msg_type_value)
-                 == napi_ok
-            && napi_get_named_property(env, request_info, "correlationId", &correlation_id_value)
-                 == napi_ok) {
-            uint32_t msg_type = 0;
-            uint64_t correlation_id = 0;
-            napi_get_value_uint32(env, msg_type_value, &msg_type);
-            if (!get_uint64_like(env, correlation_id_value, &correlation_id)) {
-                napi_throw_type_error(
-                  env, NULL, "requestInfo.correlationId must be uint64-like");
-                return false;
-            }
-            if (msg_type == ZLINK_MSG_TYPE_REQUEST) {
-                if (zlink_msg_set_request(msg, correlation_id) != 0)
-                    return false;
-            } else if (msg_type == ZLINK_MSG_TYPE_REPLY) {
-                if (zlink_msg_set_reply(msg, correlation_id) != 0)
-                    return false;
-            }
-        }
-    }
     return true;
 }
 
@@ -2218,6 +2505,7 @@ napi_value socket_close(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &sock);
     stream_release_slot(sock);
     recv_handler_release_slot(sock);
+    router_handler_release_slot(sock);
     subscribe_handler_release_slot(sock);
     release_socket_send_ready_handler_slot(sock);
     int rc = zlink_close(sock);
@@ -3225,6 +3513,227 @@ napi_value socket_getopt(napi_env env, napi_callback_info info)
         return buf;
     napi_value out;
     napi_create_buffer_copy(env, len, data, NULL, &out);
+    return out;
+}
+
+napi_value dealer_request(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 4) {
+        napi_throw_type_error(
+          env, NULL, "dealerRequest requires (socket, parts, timeoutMs, handler)");
+        return NULL;
+    }
+    void *dealer = NULL;
+    napi_get_value_external(env, argv[0], &dealer);
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[1], &parts))
+        return NULL;
+    int32_t timeout_ms = 0;
+    napi_get_value_int32(env, argv[2], &timeout_ms);
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[3], &handler_type);
+    if (handler_type != napi_function) {
+        close_msg_vector(parts);
+        napi_throw_type_error(env, NULL, "dealerRequest handler must be a function");
+        return NULL;
+    }
+    request_js_state_t *state = create_request_js_state(env, argv[3]);
+    if (!state) {
+        close_msg_vector(parts);
+        return NULL;
+    }
+    int rc = zlink_dealer_request(
+      dealer, parts.data(), parts.size(), static_cast<uint32_t>(timeout_ms),
+      request_reply_callback_trampoline, state);
+    if (rc != 0) {
+        close_msg_vector(parts);
+        if (state->tsfn) {
+            (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_abort);
+            state->tsfn = NULL;
+        }
+        return throw_last_error(env, "dealerRequest failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value router_request(napi_env env, napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 5) {
+        napi_throw_type_error(
+          env, NULL,
+          "routerRequest requires (socket, routingId, parts, timeoutMs, handler)");
+        return NULL;
+    }
+    void *router = NULL;
+    napi_get_value_external(env, argv[0], &router);
+    zlink_routing_id_t peer_rid;
+    if (!parse_routing_id(env, argv[1], &peer_rid))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[2], &parts))
+        return NULL;
+    int32_t timeout_ms = 0;
+    napi_get_value_int32(env, argv[3], &timeout_ms);
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[4], &handler_type);
+    if (handler_type != napi_function) {
+        close_msg_vector(parts);
+        napi_throw_type_error(env, NULL, "routerRequest handler must be a function");
+        return NULL;
+    }
+    request_js_state_t *state = create_request_js_state(env, argv[4]);
+    if (!state) {
+        close_msg_vector(parts);
+        return NULL;
+    }
+    int rc = zlink_router_request(
+      router, &peer_rid, parts.data(), parts.size(),
+      static_cast<uint32_t>(timeout_ms), request_reply_callback_trampoline, state);
+    if (rc != 0) {
+        close_msg_vector(parts);
+        if (state->tsfn) {
+            (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_abort);
+            state->tsfn = NULL;
+        }
+        return throw_last_error(env, "routerRequest failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value router_reply(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 4) {
+        napi_throw_type_error(
+          env, NULL, "routerReply requires (socket, routingId, requestSeq, parts)");
+        return NULL;
+    }
+    void *router = NULL;
+    napi_get_value_external(env, argv[0], &router);
+    zlink_routing_id_t peer_rid;
+    if (!parse_routing_id(env, argv[1], &peer_rid))
+        return NULL;
+    uint64_t request_seq = 0;
+    if (!get_uint64_like(env, argv[2], &request_seq)) {
+        napi_throw_type_error(env, NULL, "requestSeq must be uint64");
+        return NULL;
+    }
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[3], &parts))
+        return NULL;
+    int rc = zlink_router_reply(
+      router, &peer_rid, request_seq, parts.data(), parts.size());
+    if (rc != 0) {
+        close_msg_vector(parts);
+        return throw_last_error(env, "routerReply failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value router_handler_message(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error(
+          env, NULL, "routerHandlerMessage requires (socket, handler)");
+        return NULL;
+    }
+
+    void *router = NULL;
+    napi_get_value_external(env, argv[0], &router);
+
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[1], &handler_type);
+    if (handler_type != napi_function) {
+        napi_throw_type_error(
+          env, NULL, "routerHandlerMessage handler must be a function");
+        return NULL;
+    }
+
+    if (!attach_router_handler(env, router, argv[1]))
+        return NULL;
+
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value router_recv_message(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *router = NULL;
+    napi_get_value_external(env, argv[0], &router);
+    int32_t flags = 0;
+    if (argc >= 2)
+        napi_get_value_int32(env, argv[1], &flags);
+
+    const zlink_routing_id_t *peer_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    int rc = zlink_router_recv(
+      router, &peer_rid, &request_seq, &parts, &part_count, flags);
+    if (rc != 0)
+        return throw_last_error(env, "routerRecvMessage failed");
+
+    zlink_routing_id_t rid_copy;
+    memset(&rid_copy, 0, sizeof(rid_copy));
+    if (peer_rid)
+        rid_copy = *peer_rid;
+    napi_value out = create_router_recv_message_value(
+      env, rid_copy, request_seq, parts, part_count);
+    close_recv_parts(parts, part_count);
+    return out;
+}
+
+napi_value router_try_recv_message(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *router = NULL;
+    napi_get_value_external(env, argv[0], &router);
+
+    const zlink_routing_id_t *peer_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    int rc = zlink_router_recv(
+      router, &peer_rid, &request_seq, &parts, &part_count, ZLINK_DONTWAIT);
+    if (rc != 0) {
+        if (zlink_errno() == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        return throw_last_error(env, "routerTryRecvMessage failed");
+    }
+
+    zlink_routing_id_t rid_copy;
+    memset(&rid_copy, 0, sizeof(rid_copy));
+    if (peer_rid)
+        rid_copy = *peer_rid;
+    napi_value out = create_router_recv_message_value(
+      env, rid_copy, request_seq, parts, part_count);
+    close_recv_parts(parts, part_count);
     return out;
 }
 

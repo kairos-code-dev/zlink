@@ -85,8 +85,13 @@ export function wrapMessageParts(parts: readonly Buffer[]): Message[] {
 export function materializeReceived(raw: {
   parts: readonly MessageSnapshot[];
   routingId?: Buffer | null;
+  requestSeq?: bigint | null;
 }): Received {
-  return new Received(materializeMessageParts(raw.parts), raw.routingId ?? null);
+  return new Received(
+    materializeMessageParts(raw.parts),
+    raw.routingId ?? null,
+    raw.requestSeq ?? null
+  );
 }
 
 export function materializeSubscribed(raw: {

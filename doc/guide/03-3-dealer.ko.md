@@ -146,6 +146,7 @@ if (rc == -1 && errno == EAGAIN) {
 |------|------|--------|------|
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER에서 식별할 ID (전용 함수) |
 | `ZLINK_DEALER_OPT_PROBE` | int | 0 | 연결 시 빈 메시지 전송 (연결 알림) |
+| `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_dealer_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 큐 최대 메시지 수 |
 | `ZLINK_OPT_RCVHWM` | int | 1000 | 수신 큐 최대 메시지 수 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 대기 시간 (ms) |
@@ -164,6 +165,43 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ```
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
+
+## 4.1 request-reply 시작
+
+`DEALER` 가 응답을 기다리는 흐름은 ordinary `send/recv` 와 별도로
+`zlink_dealer_request()` 를 사용한다. 이 함수는 ZMP request-reply envelope 를
+붙여 보내고, reply 는 callback 으로 완료된다.
+
+```c
+static void on_reply(int reply_errno,
+                     zlink_msg_t *parts,
+                     size_t part_count,
+                     void *userdata)
+{
+    if (reply_errno != 0) {
+        fprintf(stderr, "request failed: %d\n", reply_errno);
+        return;
+    }
+
+    for (size_t i = 0; i < part_count; ++i)
+        zlink_msg_close(&parts[i]);
+}
+
+int timeout_ms = 1000;
+zlink_set_dealer_option(
+  dealer,
+  ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS,
+  &timeout_ms,
+  sizeof(timeout_ms));
+
+zlink_msg_t req;
+zlink_msg_init_size(&req, 4);
+memcpy(zlink_msg_data(&req), "ping", 4);
+zlink_dealer_request(dealer, &req, 1, 0, on_reply, NULL);
+```
+
+이때 `timeout_ms = 0` 은 socket 기본값을 뜻하고, socket 기본값도 `0` 이면
+구현 기본값 `5000ms` 를 쓴다.
 
 ## 5. 사용 패턴
 

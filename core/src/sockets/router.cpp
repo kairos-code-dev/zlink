@@ -506,8 +506,6 @@ int zlink::router_t::xrecv (msg_t *msg_)
         errno_assert (rc == 0);
         memcpy (msg_->data (), routing_id.data (), routing_id.size ());
         msg_->set_flags (msg_t::more);
-        if (_prefetched_msg.metadata ())
-            msg_->set_metadata (_prefetched_msg.metadata ());
         _routing_id_sent = true;
     }
 
@@ -614,6 +612,31 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
     return 1;
 }
 
+void zlink::router_t::xarm_socket_msg_dispatch ()
+{
+    _fq.arm_dispatch ();
+}
+
+void zlink::router_t::xdispatch_io ()
+{
+    if (!socket_msg_dispatch_active ())
+        return;
+
+    msg_t msg;
+    const int init_rc = msg.init ();
+    errno_assert (init_rc == 0);
+
+    pipe_t *dispatch_pipe = NULL;
+    while (_fq.recvpipe (&msg, &dispatch_pipe) == 0) {
+        const int dispatch_rc = xsocket_msg_dispatch (&msg, dispatch_pipe);
+        if (dispatch_rc <= 0)
+            break;
+    }
+
+    const int close_rc = msg.close ();
+    errno_assert (close_rc == 0);
+}
+
 int zlink::router_t::rollback ()
 {
     if (_current_out) {
@@ -657,8 +680,6 @@ bool zlink::router_t::xhas_in ()
     errno_assert (rc == 0);
     memcpy (_prefetched_id.data (), routing_id.data (), routing_id.size ());
     _prefetched_id.set_flags (msg_t::more);
-    if (_prefetched_msg.metadata ())
-        _prefetched_id.set_metadata (_prefetched_msg.metadata ());
 
     _prefetched = true;
     _routing_id_sent = false;

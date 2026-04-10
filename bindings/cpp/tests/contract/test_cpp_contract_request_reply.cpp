@@ -25,14 +25,12 @@ void test_request_dealer_router_roundtrip ()
 
     router.on_receive ([&router] (zlink::received_t request) {
         assert (request.parts.size () == 1);
-        uint8_t msg_type = 0;
-        uint64_t correlation_id = 0;
-        assert (request.parts[0].get_request_info (&msg_type, &correlation_id)
-                == 0);
-        assert (msg_type == 1u);
+        assert (request.has_request_seq);
+        assert (request.request_seq != 0u);
 
         zlink::message_t reply = make_request_message ("reply:ok");
-        assert (router.try_reply (request.routing_id, correlation_id, std::move (reply))
+        assert (router.try_reply (
+                  request.routing_id, request.request_seq, std::move (reply))
                 == zlink::send_result_t::sent);
     });
 
@@ -42,12 +40,6 @@ void test_request_dealer_router_roundtrip ()
     const zlink::received_t reply = future.get ();
     assert (reply.parts.size () == 1);
     assert (reply.parts[0].to_string () == "reply:ok");
-
-    uint8_t msg_type = 0;
-    uint64_t correlation_id = 0;
-    assert (reply.parts[0].get_request_info (&msg_type, &correlation_id) == 0);
-    assert (msg_type == 2u);
-    assert (correlation_id != 0u);
 }
 
 void test_request_router_preserves_data_recv_surface ()
@@ -68,13 +60,7 @@ void test_request_router_preserves_data_recv_surface ()
     const zlink::received_t received = router.recv ();
     assert (received.parts.size () == 1);
     assert (received.parts[0].to_string () == "plain-data");
-
-    uint8_t msg_type = 255u;
-    uint64_t correlation_id = 123u;
-    assert (received.parts[0].get_request_info (&msg_type, &correlation_id)
-            == 0);
-    assert (msg_type == 0u);
-    assert (correlation_id == 0u);
+    assert (!received.has_request_seq);
 }
 
 } // namespace

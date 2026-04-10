@@ -1,72 +1,48 @@
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::domain::{Received, SendResult};
-use crate::error::ZlinkError;
+use crate::error::{ZlinkError, check_rc};
+use crate::ffi;
 use crate::message::{Message, RoutingId};
-use crate::{DealerSocket, RouterSocket};
+use crate::socket::{DealerSocket, RouterSocket, prepare_send_parts, take_parts};
 
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
-const ETERM_NATIVE: i32 = 156_384_765;
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 type DataHandler = Arc<dyn Fn(Received) + Send + Sync + 'static>;
-struct DealerState {
-    pending: Mutex<HashMap<u64, mpsc::Sender<Result<Received, ZlinkError>>>>,
-    data_tx: mpsc::Sender<Received>,
-    data_handler: Mutex<Option<DataHandler>>,
+
+struct ReplyCallbackState {
+    tx: mpsc::Sender<Result<Received, ZlinkError>>,
 }
 
-struct RouterState {
-    pending: Mutex<HashMap<u64, mpsc::Sender<Result<Received, ZlinkError>>>>,
-    data_tx: mpsc::Sender<Received>,
-    data_handler: Mutex<Option<DataHandler>>,
+struct RouterRequestState {
+    tx: mpsc::Sender<Received>,
+    handler: Mutex<Option<DataHandler>>,
 }
-
-type PendingMap = Mutex<HashMap<u64, mpsc::Sender<Result<Received, ZlinkError>>>>;
 
 pub struct RequestDealer {
-    socket: Arc<Mutex<DealerSocket>>,
-    state: Arc<DealerState>,
-    data_rx: Mutex<mpsc::Receiver<Received>>,
-    next_correlation_id: AtomicU64,
+    socket: DealerSocket,
     default_timeout: Mutex<Duration>,
-    dispatch_stop: Arc<std::sync::atomic::AtomicBool>,
 }
 
 pub struct RequestRouter {
-    socket: Arc<Mutex<RouterSocket>>,
-    state: Arc<RouterState>,
+    socket: RouterSocket,
+    state: Arc<RouterRequestState>,
     data_rx: Mutex<mpsc::Receiver<Received>>,
-    next_correlation_id: AtomicU64,
     default_timeout: Mutex<Duration>,
-    dispatch_stop: Arc<std::sync::atomic::AtomicBool>,
 }
+
+unsafe impl Send for RequestDealer {}
+unsafe impl Sync for RequestDealer {}
+unsafe impl Send for RequestRouter {}
+unsafe impl Sync for RequestRouter {}
 
 impl RequestDealer {
     pub fn new(socket: DealerSocket) -> Result<Self, ZlinkError> {
-        let (data_tx, data_rx) = mpsc::channel();
-        let state = Arc::new(DealerState {
-            pending: Mutex::new(HashMap::new()),
-            data_tx,
-            data_handler: Mutex::new(None),
-        });
-        let socket = Arc::new(Mutex::new(socket));
-        let dispatch_stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        spawn_dealer_dispatch_thread(
-            Arc::clone(&socket),
-            Arc::clone(&state),
-            Arc::clone(&dispatch_stop),
-        );
-
         Ok(Self {
             socket,
-            state,
-            data_rx: Mutex::new(data_rx),
-            next_correlation_id: AtomicU64::new(1),
             default_timeout: Mutex::new(DEFAULT_TIMEOUT),
-            dispatch_stop,
         })
     }
 
@@ -85,17 +61,10 @@ impl RequestDealer {
 
     pub async fn request_with_timeout(
         &self,
-        mut msg: Message,
+        msg: Message,
         timeout: Duration,
     ) -> Result<Received, ZlinkError> {
-        let correlation_id = self.next_correlation_id.fetch_add(1, Ordering::Relaxed);
-        msg.set_request(correlation_id)?;
-        let rx = register_pending(&self.state.pending, correlation_id);
-        if let Err(err) = self.socket.lock().unwrap().send(vec![msg]) {
-            self.state.pending.lock().unwrap().remove(&correlation_id);
-            return Err(err);
-        }
-        await_pending_reply(&self.state.pending, correlation_id, rx, timeout)
+        self.request_impl(msg, timeout)
     }
 
     pub fn request_callback<F>(&self, msg: Message, callback: F)
@@ -109,22 +78,8 @@ impl RequestDealer {
     where
         F: FnOnce(Result<Received, ZlinkError>) + Send + 'static,
     {
-        let socket = Arc::clone(&self.socket);
-        let state = Arc::clone(&self.state);
-        let correlation_id = self.next_correlation_id.fetch_add(1, Ordering::Relaxed);
-        std::thread::spawn(move || {
-            let result = (|| {
-                let mut msg = msg;
-                msg.set_request(correlation_id)?;
-                let rx = register_pending(&state.pending, correlation_id);
-                if let Err(err) = socket.lock().unwrap().send(vec![msg]) {
-                    state.pending.lock().unwrap().remove(&correlation_id);
-                    return Err(err);
-                }
-                await_pending_reply(&state.pending, correlation_id, rx, timeout)
-            })();
-            callback(result);
-        });
+        let result = self.request_impl(msg, timeout);
+        callback(result);
     }
 
     pub async fn try_request(&self, msg: Message) -> Result<Received, ZlinkError> {
@@ -134,20 +89,10 @@ impl RequestDealer {
 
     pub async fn try_request_with_timeout(
         &self,
-        mut msg: Message,
+        msg: Message,
         timeout: Duration,
     ) -> Result<Received, ZlinkError> {
-        let correlation_id = self.next_correlation_id.fetch_add(1, Ordering::Relaxed);
-        msg.set_request(correlation_id)?;
-        let rx = register_pending(&self.state.pending, correlation_id);
-        match self.socket.lock().unwrap().try_send(vec![msg])? {
-            SendResult::Sent => {}
-            other => {
-                self.state.pending.lock().unwrap().remove(&correlation_id);
-                return Err(send_result_error(other));
-            }
-        }
-        await_pending_reply(&self.state.pending, correlation_id, rx, timeout)
+        self.request_impl(msg, timeout)
     }
 
     pub fn try_request_callback<F>(&self, msg: Message, callback: F)
@@ -161,66 +106,68 @@ impl RequestDealer {
     where
         F: FnOnce(Result<Received, ZlinkError>) + Send + 'static,
     {
-        let socket = Arc::clone(&self.socket);
-        let state = Arc::clone(&self.state);
-        let correlation_id = self.next_correlation_id.fetch_add(1, Ordering::Relaxed);
-        std::thread::spawn(move || {
-            let result = (|| {
-                let mut msg = msg;
-                msg.set_request(correlation_id)?;
-                let rx = register_pending(&state.pending, correlation_id);
-                match socket.lock().unwrap().try_send(vec![msg])? {
-                    SendResult::Sent => {}
-                    other => {
-                        state.pending.lock().unwrap().remove(&correlation_id);
-                        return Err(send_result_error(other));
-                    }
-                }
-                await_pending_reply(&state.pending, correlation_id, rx, timeout)
-            })();
-            callback(result);
-        });
+        let result = self.request_impl(msg, timeout);
+        callback(result);
     }
 
     pub fn recv(&self) -> Result<Received, ZlinkError> {
-        recv_data(&self.state.data_handler, &self.data_rx)
+        self.socket.recv()
     }
 
     pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError> {
-        try_recv_data(&self.state.data_handler, &self.data_rx)
+        self.socket.try_recv()
     }
 
-    pub fn on_receive<F>(&self, handler: F)
+    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
     where
-        F: Fn(Received) + Send + Sync + 'static,
+        F: Fn(Received) + Send + 'static,
     {
-        *self.state.data_handler.lock().unwrap() = Some(Arc::new(handler));
+        self.socket.on_receive(handler)
+    }
+
+    fn request_impl(&self, msg: Message, timeout: Duration) -> Result<Received, ZlinkError> {
+        let mut parts = vec![msg];
+        let mut native = prepare_send_parts(&mut parts)?;
+        let (tx, rx) = mpsc::channel();
+        let state = Box::new(ReplyCallbackState { tx });
+        let state_ptr = Box::into_raw(state);
+        let rc = unsafe {
+            ffi::zlink_dealer_request(
+                self.socket.inner.handle,
+                native.as_mut_ptr(),
+                native.len(),
+                duration_to_timeout_ms(timeout),
+                dealer_reply_callback,
+                state_ptr.cast(),
+            )
+        };
+        if rc != 0 {
+            unsafe { drop(Box::from_raw(state_ptr)); }
+            return Err(ZlinkError::last());
+        }
+        rx.recv().unwrap_or_else(|_| Err(ZlinkError::state("request callback dropped")))
     }
 }
 
 impl RequestRouter {
     pub fn new(socket: RouterSocket) -> Result<Self, ZlinkError> {
-        let (data_tx, data_rx) = mpsc::channel();
-        let state = Arc::new(RouterState {
-            pending: Mutex::new(HashMap::new()),
-            data_tx,
-            data_handler: Mutex::new(None),
+        let (tx, rx) = mpsc::channel();
+        let state = Arc::new(RouterRequestState {
+            tx,
+            handler: Mutex::new(None),
         });
-        let socket = Arc::new(Mutex::new(socket));
-        let dispatch_stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        spawn_router_dispatch_thread(
-            Arc::clone(&socket),
-            Arc::clone(&state),
-            Arc::clone(&dispatch_stop),
-        );
-
+        check_rc(unsafe {
+            ffi::zlink_router_handler(
+                socket.inner.handle,
+                router_request_callback,
+                Arc::as_ptr(&state) as *mut _,
+            )
+        })?;
         Ok(Self {
             socket,
             state,
-            data_rx: Mutex::new(data_rx),
-            next_correlation_id: AtomicU64::new(1),
+            data_rx: Mutex::new(rx),
             default_timeout: Mutex::new(DEFAULT_TIMEOUT),
-            dispatch_stop,
         })
     }
 
@@ -244,17 +191,10 @@ impl RequestRouter {
     pub async fn request_with_timeout(
         &self,
         routing_id: &RoutingId,
-        mut msg: Message,
+        msg: Message,
         timeout: Duration,
     ) -> Result<Received, ZlinkError> {
-        let correlation_id = self.next_correlation_id.fetch_add(1, Ordering::Relaxed);
-        msg.set_request(correlation_id)?;
-        let rx = register_pending(&self.state.pending, correlation_id);
-        if let Err(err) = self.socket.lock().unwrap().send(routing_id, vec![msg]) {
-            self.state.pending.lock().unwrap().remove(&correlation_id);
-            return Err(err);
-        }
-        await_pending_reply(&self.state.pending, correlation_id, rx, timeout)
+        self.request_impl(routing_id, msg, timeout)
     }
 
     pub async fn try_request(
@@ -269,25 +209,10 @@ impl RequestRouter {
     pub async fn try_request_with_timeout(
         &self,
         routing_id: &RoutingId,
-        mut msg: Message,
+        msg: Message,
         timeout: Duration,
     ) -> Result<Received, ZlinkError> {
-        let correlation_id = self.next_correlation_id.fetch_add(1, Ordering::Relaxed);
-        msg.set_request(correlation_id)?;
-        let rx = register_pending(&self.state.pending, correlation_id);
-        match self
-            .socket
-            .lock()
-            .unwrap()
-            .try_send(routing_id, vec![msg])?
-        {
-            SendResult::Sent => {}
-            other => {
-                self.state.pending.lock().unwrap().remove(&correlation_id);
-                return Err(send_result_error(other));
-            }
-        }
-        await_pending_reply(&self.state.pending, correlation_id, rx, timeout)
+        self.request_impl(routing_id, msg, timeout)
     }
 
     pub fn request_callback<F>(&self, routing_id: RoutingId, msg: Message, callback: F)
@@ -311,22 +236,8 @@ impl RequestRouter {
     ) where
         F: FnOnce(Result<Received, ZlinkError>) + Send + 'static,
     {
-        let socket = Arc::clone(&self.socket);
-        let state = Arc::clone(&self.state);
-        let correlation_id = self.next_correlation_id.fetch_add(1, Ordering::Relaxed);
-        std::thread::spawn(move || {
-            let result = (|| {
-                let mut msg = msg;
-                msg.set_request(correlation_id)?;
-                let rx = register_pending(&state.pending, correlation_id);
-                if let Err(err) = socket.lock().unwrap().send(&routing_id, vec![msg]) {
-                    state.pending.lock().unwrap().remove(&correlation_id);
-                    return Err(err);
-                }
-                await_pending_reply(&state.pending, correlation_id, rx, timeout)
-            })();
-            callback(result);
-        });
+        let result = self.request_impl(&routing_id, msg, timeout);
+        callback(result);
     }
 
     pub fn try_request_callback<F>(&self, routing_id: RoutingId, msg: Message, callback: F)
@@ -350,114 +261,90 @@ impl RequestRouter {
     ) where
         F: FnOnce(Result<Received, ZlinkError>) + Send + 'static,
     {
-        let socket = Arc::clone(&self.socket);
-        let state = Arc::clone(&self.state);
-        let correlation_id = self.next_correlation_id.fetch_add(1, Ordering::Relaxed);
-        std::thread::spawn(move || {
-            let result = (|| {
-                let mut msg = msg;
-                msg.set_request(correlation_id)?;
-                let rx = register_pending(&state.pending, correlation_id);
-                match socket.lock().unwrap().try_send(&routing_id, vec![msg])? {
-                    SendResult::Sent => {}
-                    other => {
-                        state.pending.lock().unwrap().remove(&correlation_id);
-                        return Err(send_result_error(other));
-                    }
-                }
-                await_pending_reply(&state.pending, correlation_id, rx, timeout)
-            })();
-            callback(result);
-        });
+        let result = self.request_impl(&routing_id, msg, timeout);
+        callback(result);
     }
 
     pub fn reply(
         &self,
         routing_id: &RoutingId,
-        correlation_id: u64,
-        mut msg: Message,
+        request_seq: u64,
+        msg: Message,
     ) -> Result<(), ZlinkError> {
-        msg.set_reply(correlation_id)?;
-        self.socket.lock().unwrap().send(routing_id, vec![msg])
+        let mut parts = vec![msg];
+        let mut native = prepare_send_parts(&mut parts)?;
+        check_rc(unsafe {
+            ffi::zlink_router_reply(
+                self.socket.inner.handle,
+                routing_id.as_raw(),
+                request_seq,
+                native.as_mut_ptr(),
+                native.len(),
+            )
+        })
     }
 
     pub fn try_reply(
         &self,
         routing_id: &RoutingId,
-        correlation_id: u64,
-        mut msg: Message,
+        request_seq: u64,
+        msg: Message,
     ) -> Result<SendResult, ZlinkError> {
-        msg.set_reply(correlation_id)?;
-        self.socket.lock().unwrap().try_send(routing_id, vec![msg])
+        self.reply(routing_id, request_seq, msg)?;
+        Ok(SendResult::Sent)
     }
 
     pub fn recv(&self) -> Result<Received, ZlinkError> {
-        recv_data(&self.state.data_handler, &self.data_rx)
+        recv_data(&self.state.handler, &self.data_rx)
     }
 
     pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError> {
-        try_recv_data(&self.state.data_handler, &self.data_rx)
+        try_recv_data(&self.state.handler, &self.data_rx)
     }
 
     pub fn on_receive<F>(&self, handler: F)
     where
         F: Fn(Received) + Send + Sync + 'static,
     {
-        *self.state.data_handler.lock().unwrap() = Some(Arc::new(handler));
+        *self.state.handler.lock().unwrap() = Some(Arc::new(handler));
     }
-}
 
-fn deliver_dealer_data(state: &DealerState, received: Received) {
-    if let Some(handler) = state.data_handler.lock().unwrap().as_ref().cloned() {
-        handler(received);
-        return;
-    }
-    let _ = state.data_tx.send(received);
-}
-
-fn deliver_router_data(state: &RouterState, received: Received) {
-    if let Some(handler) = state.data_handler.lock().unwrap().as_ref().cloned() {
-        handler(received);
-        return;
-    }
-    let _ = state.data_tx.send(received);
-}
-
-fn register_pending(
-    pending: &PendingMap,
-    correlation_id: u64,
-) -> mpsc::Receiver<Result<Received, ZlinkError>> {
-    let (tx, rx) = mpsc::channel();
-    pending.lock().unwrap().insert(correlation_id, tx);
-    rx
-}
-
-fn await_pending_reply(
-    pending: &PendingMap,
-    correlation_id: u64,
-    rx: mpsc::Receiver<Result<Received, ZlinkError>>,
-    timeout: Duration,
-) -> Result<Received, ZlinkError> {
-    match rx.recv_timeout(timeout) {
-        Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            pending.lock().unwrap().remove(&correlation_id);
-            Err(ZlinkError::native(libc::ETIMEDOUT, "request timed out"))
+    fn request_impl(
+        &self,
+        routing_id: &RoutingId,
+        msg: Message,
+        timeout: Duration,
+    ) -> Result<Received, ZlinkError> {
+        let mut parts = vec![msg];
+        let mut native = prepare_send_parts(&mut parts)?;
+        let (tx, rx) = mpsc::channel();
+        let state = Box::new(ReplyCallbackState { tx });
+        let state_ptr = Box::into_raw(state);
+        let rc = unsafe {
+            ffi::zlink_router_request(
+                self.socket.inner.handle,
+                routing_id.as_raw(),
+                native.as_mut_ptr(),
+                native.len(),
+                duration_to_timeout_ms(timeout),
+                dealer_reply_callback,
+                state_ptr.cast(),
+            )
+        };
+        if rc != 0 {
+            unsafe { drop(Box::from_raw(state_ptr)); }
+            return Err(ZlinkError::last());
         }
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err(ZlinkError::native(
-            ETERM_NATIVE,
-            "request reply dispatch closed",
-        )),
+        rx.recv().unwrap_or_else(|_| Err(ZlinkError::state("request callback dropped")))
     }
 }
 
-fn send_result_error(result: SendResult) -> ZlinkError {
-    match result {
-        SendResult::Sent => ZlinkError::native(libc::EINVAL, "invalid send result"),
-        SendResult::Backpressured => {
-            ZlinkError::native(libc::EAGAIN, "request send is backpressured")
-        }
-        SendResult::NotReady => ZlinkError::native(libc::EAGAIN, "request send is not ready"),
+fn duration_to_timeout_ms(timeout: Duration) -> u32 {
+    let millis = timeout.as_millis();
+    if millis == 0 {
+        0
+    } else {
+        millis.min(u32::MAX as u128) as u32
     }
 }
 
@@ -472,7 +359,7 @@ fn recv_data(
         .lock()
         .unwrap()
         .recv()
-        .map_err(|_| ZlinkError::native(ETERM_NATIVE, "request reply dispatch closed"))
+        .map_err(|_| ZlinkError::state("request handler closed"))
 }
 
 fn try_recv_data(
@@ -485,127 +372,46 @@ fn try_recv_data(
     match data_rx.lock().unwrap().try_recv() {
         Ok(received) => Ok(Some(received)),
         Err(mpsc::TryRecvError::Empty) => Ok(None),
-        Err(mpsc::TryRecvError::Disconnected) => Err(ZlinkError::native(
-            ETERM_NATIVE,
-            "request reply dispatch closed",
-        )),
+        Err(mpsc::TryRecvError::Disconnected) => Err(ZlinkError::state("request handler closed")),
     }
 }
 
-fn fail_all_dealer_pending(state: &DealerState, err: &ZlinkError) {
-    let pending = std::mem::take(&mut *state.pending.lock().unwrap());
-    for (_, reply_tx) in pending {
-        let _ = reply_tx.send(Err(ZlinkError::native(err.code(), err.to_string())));
-    }
-}
-
-fn fail_all_router_pending(state: &RouterState, err: &ZlinkError) {
-    let pending = std::mem::take(&mut *state.pending.lock().unwrap());
-    for (_, reply_tx) in pending {
-        let _ = reply_tx.send(Err(ZlinkError::native(err.code(), err.to_string())));
-    }
-}
-
-fn spawn_dealer_dispatch_thread(
-    socket: Arc<Mutex<DealerSocket>>,
-    state: Arc<DealerState>,
-    stop: Arc<std::sync::atomic::AtomicBool>,
+unsafe extern "C" fn dealer_reply_callback(
+    errno_: i32,
+    parts: *mut ffi::zlink_msg_t,
+    part_count: usize,
+    userdata: *mut std::ffi::c_void,
 ) {
-    std::thread::spawn(move || {
-        while !stop.load(Ordering::SeqCst) {
-            let maybe_received = match socket.lock().unwrap().try_recv() {
-                Ok(maybe_received) => maybe_received,
-                Err(err) => {
-                    fail_all_dealer_pending(&state, &err);
-                    stop.store(true, Ordering::SeqCst);
-                    return;
-                }
-            };
-            let Some(received) = maybe_received else {
-                std::thread::sleep(Duration::from_millis(1));
-                continue;
-            };
-
-            let first = match received.parts().first() {
-                Some(part) => part,
-                None => {
-                    deliver_dealer_data(&state, received);
-                    continue;
-                }
-            };
-            let (msg_type, correlation_id) = match first.request_info() {
-                Ok(info) => info,
-                Err(_) => {
-                    deliver_dealer_data(&state, received);
-                    continue;
-                }
-            };
-            if msg_type == 2 {
-                let pending = state.pending.lock().unwrap().remove(&correlation_id);
-                if let Some(reply_tx) = pending {
-                    let _ = reply_tx.send(Ok(received));
-                    continue;
-                }
-            }
-            deliver_dealer_data(&state, received);
-        }
-    });
+    let state = unsafe { Box::from_raw(userdata.cast::<ReplyCallbackState>()) };
+    let result = if errno_ == 0 {
+        let owned = take_parts(parts, part_count);
+        state
+            .tx
+            .send(Ok(Received::new(RoutingId::from_raw(ffi::zlink_routing_id_t {
+                size: 0,
+                data: [0; 255],
+            }), owned)))
+    } else {
+        state
+            .tx
+            .send(Err(ZlinkError::native(errno_, "request failed")))
+    };
+    let _ = result;
 }
 
-fn spawn_router_dispatch_thread(
-    socket: Arc<Mutex<RouterSocket>>,
-    state: Arc<RouterState>,
-    stop: Arc<std::sync::atomic::AtomicBool>,
+unsafe extern "C" fn router_request_callback(
+    peer_rid: *const ffi::zlink_routing_id_t,
+    request_seq: u64,
+    parts: *mut ffi::zlink_msg_t,
+    part_count: usize,
+    userdata: *mut std::ffi::c_void,
 ) {
-    std::thread::spawn(move || {
-        while !stop.load(Ordering::SeqCst) {
-            let maybe_received = match socket.lock().unwrap().try_recv() {
-                Ok(maybe_received) => maybe_received,
-                Err(err) => {
-                    fail_all_router_pending(&state, &err);
-                    stop.store(true, Ordering::SeqCst);
-                    return;
-                }
-            };
-            let Some(received) = maybe_received else {
-                std::thread::sleep(Duration::from_millis(1));
-                continue;
-            };
-
-            let first = match received.parts().first() {
-                Some(part) => part,
-                None => {
-                    deliver_router_data(&state, received);
-                    continue;
-                }
-            };
-            let (msg_type, correlation_id) = match first.request_info() {
-                Ok(info) => info,
-                Err(_) => {
-                    deliver_router_data(&state, received);
-                    continue;
-                }
-            };
-            if msg_type == 2 {
-                let pending = state.pending.lock().unwrap().remove(&correlation_id);
-                if let Some(reply_tx) = pending {
-                    let _ = reply_tx.send(Ok(received));
-                    continue;
-                }
-            }
-            deliver_router_data(&state, received);
-        }
-    });
-}
-
-impl Drop for RequestDealer {
-    fn drop(&mut self) {
-        self.dispatch_stop.store(true, Ordering::SeqCst);
-    }
-}
-
-impl Drop for RequestRouter {
-    fn drop(&mut self) {
-        self.dispatch_stop.store(true, Ordering::SeqCst);
+    let state = unsafe { &*(userdata as *const RouterRequestState) };
+    let routing_id = unsafe { RoutingId::from_raw(*peer_rid) };
+    let received = Received::with_request_seq(routing_id, take_parts(parts, part_count), request_seq);
+    if let Some(handler) = state.handler.lock().unwrap().as_ref().cloned() {
+        handler(received);
+    } else {
+        let _ = state.tx.send(received);
     }
 }

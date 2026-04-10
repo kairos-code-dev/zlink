@@ -40,12 +40,11 @@ async function main() {
             routerMonitor.close();
             dealerMonitor.close();
         }
-        const pendingReply = dealer.request(zlink.Message.fromBuffer(Buffer.from('ping')), { timeoutMs: 2000 });
+        const pendingReply = dealer.request(zlink.Message.fromBuffer(Buffer.from('ping')), { timeout: 2000 });
         const request = router.recv();
         assert.equal(Buffer.from(request.routingId).toString(), 'request-reply-client');
-        const info = request.parts[0].getRequestInfo();
-        assert.equal(info.msgType, zlink.MsgType.Request);
-        router.reply(request.routingId, info.correlationId, zlink.Message.fromBuffer(Buffer.from('pong')));
+        assert.ok(typeof request.requestSeq === 'bigint');
+        router.reply(request.routingId, request.requestSeq, zlink.Message.fromBuffer(Buffer.from('pong')));
         const reply = await pendingReply;
         assert.equal(reply.parts[0].data.toString(), 'pong');
         console.log('[dealer-router/request-reply/async] send: "ping" -> recv: "pong"');

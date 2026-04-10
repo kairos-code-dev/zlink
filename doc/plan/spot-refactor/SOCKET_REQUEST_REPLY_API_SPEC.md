@@ -1,8 +1,8 @@
 # Socket Request-Reply API Spec
 
 > **상태**: In Progress
-> 이 문서는 현재 개발 라운드에서 구현 기준으로 쓰는 작업 스펙이다.
-> 구현과 테스트가 끝난 뒤 공개 API 기준은 `doc/api` 문서에 반영한다.
+> 이 문서는 현재 작업에서 구현 기준으로 쓰는 작업 스펙이다.
+> 구현과 테스트를 마치면 공개 API 기준은 `doc/api` 문서에 반영한다.
 > **관련 문서**:
 > [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
 > [`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md) — request-reply protocol envelope
@@ -81,7 +81,7 @@ core C API 는 callback 기반 비동기 응답 모델을 기준으로 둔다.
 - callback API
 - coroutine / future / promise 기반 API
 
-즉 core 는 "요청 1건을 보내고, 나중에 응답 callback 을 받는 모델"을 제공하고,
+즉 core 는 "요청 1건을 보내고, 응답 callback 으로 완료를 받는 모델"을 제공하고,
 bindings 가 그 위에 더 높은 수준의 async 표면을 얹는다.
 
 ### 5. 여러 request 를 동시에 보낼 수 있어야 한다
@@ -137,14 +137,14 @@ request 는 응답이 오지 않을 수 있으므로 timeout 이 반드시 있�
 
 - `router.request(...)`
 - `router.reply(...)`
-- `router.request_handler(...)`
+- `router.handler(...)`
 
 설명:
 
 - `router.request(...)` 는 `ROUTER` 가 능동적으로 다른 request-reply 지원 peer 에
   요청을 보낼 때 쓴다
 - `router.reply(...)` 는 받은 request 에 답할 때 쓴다
-- `router.request_handler(...)` 는 request 수신 callback 등록에 쓴다
+- `router.handler(...)` 는 ordinary 와 request-reply 를 함께 받는 typed 수신 callback 등록에 쓴다
 
 ---
 
@@ -159,7 +159,7 @@ typedef void (*zlink_reply_handler_fn)(
     size_t part_count,
     void *userdata);
 
-typedef void (*zlink_router_request_handler_fn)(
+typedef void (*zlink_router_handler_fn)(
     const zlink_routing_id_t *peer_rid,
     uint64_t request_seq,
     zlink_msg_t *parts,
@@ -179,6 +179,15 @@ typedef void (*zlink_router_request_handler_fn)(
 - callback 밖에서 payload 를 유지하려면 사용자가 복사해야 한다
 - request handler 로 전달된 `peer_rid` 는 borrowed view 다
 - callback 밖에서 `peer_rid` 를 유지하려면 사용자가 복사해야 한다
+
+`ROUTER` 는 generic receive surface 와 다른 typed receive surface 를 가진다.
+
+- `ROUTER` 수신은 `zlink_router_recv()` 와 `zlink_router_handler()` 를 기준으로 본다
+- `request_seq = 0` 이면 ordinary `ROUTER` message 다
+- `request_seq != 0` 이면 request-reply message 다
+- request-reply 수신을 위해 `request_handler` 와 `request_recv` 를 따로 나누지 않는다
+- 기존 generic `zlink_recv()` 와 generic direct callback 표면은 `ROUTER` 에서 사용하지 않는다
+- `ROUTER` handle 에 대해 generic receive surface 를 호출하면 즉시 `EOPNOTSUPP` 로 실패한다
 
 ### timeout 설정
 
@@ -283,7 +292,9 @@ int zlink_router_reply(
 규칙:
 
 - `peer_rid` 와 `request_seq` 는 기존 request handler 에서 받은 값이어야 한다
-- 여러 reply 를 허용하더라도 각 reply 는 같은 reply 경로와 같은 request seq 의미를 공유한다
+- wire 수준에서 같은 `peer_rid + request_seq` 로 추가 reply 가 들어올 수는 있다
+- 하지만 high-level request 완료는 첫 reply 1건으로 끝난다
+- 첫 reply 뒤의 extra reply 는 callback 을 다시 일으키지 않고 무시하거나 카운터만 올린다
 
 ### `ROUTER -> SPOT` 송신
 
@@ -307,20 +318,71 @@ int zlink_router_send_spot(
 - 이 함수는 `router -> spot` 직접 전달용이며 request-reply 전용 함수는 아니다
 - 수신한 `Spot` 쪽에서는 ordinary routed recv 또는 request-reply 수신 규칙에 따라 해석한다
 
-### `ROUTER.request_handler`
+### `ROUTER <- SPOT` 수신
+
+일반 `ROUTER` 가 `spot -> router` 직접 전달이나
+`spot -> router request/reply` 를 받을 때는
+peer-directed `ROUTER.recv` 표면과 별도의 spot-origin typed surface 를 사용한다.
 
 ```c
-int zlink_router_request_handler(
+int zlink_router_spot_recv(
     void *router,
-    zlink_router_request_handler_fn handler,
+    const zlink_routing_id_t **source_node_rid_out,
+    const zlink_routing_id_t **source_spot_rid_out,
+    uint64_t *request_seq_out,
+    zlink_msg_t **parts_out,
+    size_t *part_count_out,
+    int flags);
+
+int zlink_router_spot_handler(
+    void *router,
+    zlink_router_spot_handler_fn handler,
     void *userdata);
 ```
 
 규칙:
 
-- `ROUTER` 가 request-reply protocol envelope 를 받은 경우에만 이 handler 로 보낸다
-- ordinary `ROUTER` traffic 는 이 handler 로 보내지 않는다
-- request 수신과 ordinary raw recv 표면의 관계는 별도 충돌 규칙으로 정해야 한다
+- `spot -> router` ordinary direct message 는 `request_seq = 0` 으로 전달한다
+- `spot -> router request/reply` message 는 `request_seq != 0` 으로 전달한다
+- `source_node_rid + source_spot_rid` 는 reply target 주소로 사용한다
+- `zlink_router_spot_recv()` 와 `zlink_router_spot_handler()` 는 같은 수신 plane 을 공유하므로 동시에 허용하지 않는다
+- 충돌 시 `EBUSY` 를 사용한다
+- 같은 프로세스 안의 local short-circuit 경로에서는
+  대상 `ROUTER` 가 먼저 이 typed surface 중 하나를 활성화해 두어야 한다
+
+### `ROUTER.recv`
+
+```c
+int zlink_router_recv(
+    void *router,
+    const zlink_routing_id_t **peer_rid_out,
+    uint64_t *request_seq_out,
+    zlink_msg_t **parts_out,
+    size_t *part_count_out,
+    int flags);
+```
+
+규칙:
+
+- `ROUTER` 수신은 generic `zlink_recv()` 대신 이 표면을 사용한다
+- `request_seq_out = 0` 이면 ordinary `ROUTER` message 다
+- `request_seq_out != 0` 이면 request-reply message 다
+
+### `ROUTER.handler`
+
+```c
+int zlink_router_handler(
+    void *router,
+    zlink_router_handler_fn handler,
+    void *userdata);
+```
+
+규칙:
+
+- `ROUTER` direct callback 수신은 generic direct callback 대신 이 표면을 사용한다
+- `request_seq = 0` 이면 ordinary `ROUTER` message 다
+- `request_seq != 0` 이면 request-reply message 다
+- `ROUTER` 수신은 ordinary 와 request-reply 를 이 typed surface 하나로 함께 다룬다
 
 ---
 
@@ -358,6 +420,9 @@ request 가능 여부는 소켓 타입 이름만으로 다 정하지 않는다.
 - `EINVAL`: 인자 오류
 - `EOPNOTSUPP`: peer 종류 또는 capability 가 맞지 않음
 - `ENOENT`: 대상 peer 를 찾지 못함
+- `ETIMEDOUT`: timeout 으로 request completion 실패
+- `EPROTO`: protocol envelope parse 실패 또는 잘못된 remote reply
+- `EBUSY`: request 수신 표면 충돌
 
 ### 비동기 실패
 
@@ -377,6 +442,9 @@ request 가능 여부는 소켓 타입 이름만으로 다 정하지 않는다.
 
 - `errno = 0` 이면 성공 reply 다
 - `errno != 0` 이면 timeout, disconnect, protocol 오류, remote error reply 같은 실패다
+- remote `error reply` 로 받은 `errno` 값은
+  [`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md)
+  의 error reply 규칙과 같은 값으로 해석한다
 
 추가 규칙:
 
@@ -401,21 +469,22 @@ bindings 가 그 위에서 coroutine 버전을 구성하는 구조를 권장한�
 
 ---
 
-## request 수신과 raw recv 관계
-
-`ROUTER` 는 기존 raw recv 표면도 가질 수 있다.
-따라서 request handler 와 raw recv 사이 충돌 규칙을 정해야 한다.
+## ROUTER 수신 표면 규칙
 
 규칙:
 
-- 같은 request-reply 수신 표면에서는
-  `request_handler` 와 raw recv 를 동시에 허용하지 않는다
-- ordinary raw traffic 와 request-reply traffic 는
-  protocol envelope 로 구분한다
+- `ROUTER` 는 generic `zlink_recv()` 를 사용하지 않는다
+- `ROUTER` 는 generic direct callback 표면도 사용하지 않는다
+- `ROUTER` 수신은 `zlink_router_recv()` 와 `zlink_router_handler()` 로만 수행한다
+- ordinary 와 request-reply 는 `request_seq` 값으로 같은 수신 표면 안에서 구분한다
+- `ROUTER` handle 에 대해 generic receive surface 를 호출하면 `EOPNOTSUPP` 로 실패한다
+- `zlink_router_recv()` 와 `zlink_router_handler()` 는 같은 수신 plane 을 공유하므로 동시에 허용하지 않는다
 - 충돌 시 `EBUSY` 를 사용한다
 
-이 규칙은 SPOT routed recv 와 비슷하게
-"한 수신 표면에는 한 모델만 활성화" 원칙으로 설명할 수 있다.
+추가 규칙:
+
+- `spot -> router` 경로는 `zlink_router_spot_recv()` 와 `zlink_router_spot_handler()` 로 받는다
+- peer-directed `ROUTER` 수신 plane 과 spot-origin 수신 plane 은 서로 다른 표면이다
 
 ---
 
@@ -436,7 +505,7 @@ bindings 가 기대할 수 있는 최소 계약은 다음과 같다.
 
 - low-level `router_reply(peer_rid, request_seq, ...)` 는 여러 번 호출할 수 있다
 - `request()` 완료 callback 은 첫 번째 reply 로 완료된다
-- 그 뒤 reply 를 별도 public 표면으로 노출할지는 추가 설계가 필요하다
+- extra reply 를 별도 public 표면으로 노출하지 않는다
 - reply 도착 순서는 request 송신 순서와 같을 필요가 없다
 - 즉 server 측 low-level reply 다중 호출과 requester 측 callback 1회 완료는 서로 다른 계약이다
 
@@ -464,4 +533,5 @@ callback API 와 coroutine API 를 모두 무리 없이 제공할 수 있다.
 - `DEALER -> DEALER request` 는 비지원이어야 한다
 - 잘못된 대상 peer 에 대한 request 는 즉시 `EOPNOTSUPP` 로 실패해야 한다
 - 첫 reply 이후의 extra reply 는 high-level callback 을 다시 완료시키지 않아야 한다
-- request handler 와 raw recv 를 동시에 켰을 때 충돌 규칙이 문서와 같아야 한다
+- `ROUTER` typed recv 와 typed callback 을 동시에 켰을 때 충돌 규칙이 문서와 같아야 한다
+- `ROUTER` handle 에 대해 generic receive surface 를 호출하면 `EOPNOTSUPP` 로 실패해야 한다

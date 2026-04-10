@@ -2,6 +2,13 @@
 
 # ZMP v1.0 Protocol Details
 
+> Note:
+> The current implementation source of truth for this development round lives
+> under `doc/plan/spot-refactor`.
+> This document remains as internal background material.
+> For request-reply and SPOT direct delivery, prefer the work-in-progress
+> protocol documents in that folder.
+
 ## Why ZMP instead of ZMTP?
 
 ZMP (zlink Message Protocol) is a purpose-built wire protocol that
@@ -48,31 +55,25 @@ Fields:
 | 3 | SUBSCRIBE | 0x08 | Subscription request |
 | 4 | CANCEL | 0x10 | Subscription cancel |
 
-### 2.3 Internal Envelope Frames
+### 2.3 Control Parts For Higher-Level Protocols
 
-When a message carries request-reply fields (`msg_type` / `correlation_id`)
-or per-message metadata, the send path prepends internal envelope frames
-before the user payload frames. These frames use the `command` message type
-and are transparent to the application.
+Current request-reply and SPOT direct delivery do not use message-level
+markers inside `zlink_msg_t`.
 
-- Messages with no request-reply or metadata produce no extra frames.
-  Zero overhead.
-- The recv path (`strip_internal_message_envelopes`) detects and strips
-  envelope frames, restoring `msg_type`, `correlation_id`, and metadata
-  into the message internal state before delivering to the application.
-- `zlink_msg_data()` / `zlink_msg_size()` always return user payload only.
+Instead, higher-level protocols use ZMP multipart control parts in front of
+the user payload parts.
 
-Envelope frames that may be prepended:
+- request-reply uses fixed control parts defined by
+  `doc/plan/spot-refactor/ZMP_REQUEST_REPLY_PROTOCOL.md`
+- SPOT direct delivery uses fixed control parts defined by
+  `doc/plan/spot-refactor/ZMP_SPOT_ROUTED_PROTOCOL.md`
+- ordinary payload messages do not carry these protocol control parts
 
-| Frame | Condition | Content |
-|-------|-----------|---------|
-| Request-reply envelope | `msg_type != DATA` | type (u8) + correlation_id (u64) = 9 bytes |
-| Metadata envelope | metadata count > 0 | Encoded key-value entries |
-
-Both are optional and independent. A single message can carry both
-request-reply and metadata envelopes simultaneously. When both are present,
-the request-reply envelope frame is sent first, then the metadata frame,
-then the user payload frames.
+The `CONTROL` flag in the ZMP frame header marks these protocol control parts.
+Applications do not read them through `zlink_msg_data()` or `zlink_msg_size()`.
+Typed receive surfaces such as `router_recv`, `router_spot_recv`, and
+`spot_recv` interpret them and return decoded routing or `request_seq`
+information together with the payload parts.
 
 ## 3. Handshake
 

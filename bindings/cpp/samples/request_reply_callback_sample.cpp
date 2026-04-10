@@ -31,13 +31,9 @@ int main ()
           assert (received.parts.size () == 1);
           assert (received.parts[0].to_string ()
                   == detail::k_dealer_router_request);
-          uint8_t msg_type = 0;
-          uint64_t correlation_id = 0;
-          assert (received.parts[0].get_request_info (&msg_type, &correlation_id)
-                  == 0);
-          assert (msg_type == static_cast<uint8_t> (
-                                zlink::detail::request_reply_message_type_t::request));
-          router.reply (received.routing_id, correlation_id,
+          assert (received.has_request_seq);
+          assert (received.request_seq != 0u);
+          router.reply (received.routing_id, received.request_seq,
                         detail::make_message (detail::k_dealer_router_reply));
           request_handled.set_value ();
       });

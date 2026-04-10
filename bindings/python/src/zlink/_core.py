@@ -116,6 +116,21 @@ _SOCKET_SEND_READY_HANDLER = ctypes.CFUNCTYPE(
     ctypes.c_void_p,
     ctypes.c_void_p,
 )
+_REPLY_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_int,
+    ctypes.POINTER(ZlinkMsg),
+    ctypes.c_size_t,
+    ctypes.c_void_p,
+)
+_ROUTER_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.POINTER(ZlinkRoutingId),
+    ctypes.c_uint64,
+    ctypes.POINTER(ZlinkMsg),
+    ctypes.c_size_t,
+    ctypes.c_void_p,
+)
 _LEGACY_SOCKET_TYPE_MAP = {
     0: 0x1001,
     1: 0x1002,
@@ -563,11 +578,6 @@ class SubscriptionEvent:
         self.subscribed = subscribed
 
 
-# Message type constants for request-reply envelope.
-MSG_TYPE_DATA = 0
-MSG_TYPE_REQUEST = 1
-MSG_TYPE_REPLY = 2
-
 # Per-message metadata key range.
 METADATA_KEY_USER_MIN = 0x0100
 METADATA_VALUE_MAX = 65535
@@ -629,65 +639,6 @@ class Message:
 
     def refCount(self):
         return _msg_refcnt(self._msg) if self._valid else -1
-
-    def set_request(self, correlation_id):
-        if not self._valid:
-            raise RuntimeError("message is closed")
-        rc = lib().zlink_msg_set_request(ctypes.byref(self._msg), ctypes.c_uint64(correlation_id))
-        if rc != 0:
-            _raise_last_error()
-
-    def set_reply(self, correlation_id):
-        if not self._valid:
-            raise RuntimeError("message is closed")
-        rc = lib().zlink_msg_set_reply(ctypes.byref(self._msg), ctypes.c_uint64(correlation_id))
-        if rc != 0:
-            _raise_last_error()
-
-    def get_request_info(self):
-        if not self._valid:
-            raise RuntimeError("message is closed")
-        msg_type = ctypes.c_uint8(0)
-        correlation_id = ctypes.c_uint64(0)
-        rc = lib().zlink_msg_get_request_info(
-            ctypes.byref(self._msg),
-            ctypes.byref(msg_type),
-            ctypes.byref(correlation_id))
-        if rc != 0:
-            _raise_last_error()
-        return (msg_type.value, correlation_id.value)
-
-    def set_metadata(self, key, value):
-        if not self._valid:
-            raise RuntimeError("message is closed")
-        if key < 0x0100:
-            raise ValueError("metadata key must be >= 0x0100")
-        if isinstance(value, (bytes, bytearray, memoryview)):
-            buf = bytes(value)
-        elif value is None:
-            buf = b""
-        else:
-            raise TypeError("value must be bytes, bytearray, memoryview, or None")
-        ptr = ctypes.c_char_p(buf) if buf else None
-        rc = lib().zlink_msg_set_metadata(
-            ctypes.byref(self._msg),
-            ctypes.c_uint16(key),
-            ptr,
-            ctypes.c_size_t(len(buf)))
-        if rc != 0:
-            _raise_last_error()
-
-    def get_metadata(self, key):
-        if not self._valid:
-            return None
-        size = ctypes.c_size_t(0)
-        ptr = lib().zlink_msg_get_metadata(
-            ctypes.byref(self._msg),
-            ctypes.c_uint16(key),
-            ctypes.byref(size))
-        if not ptr:
-            return None
-        return ctypes.string_at(ptr, size.value)
 
     def send(self, socket):
         socket.send(self)

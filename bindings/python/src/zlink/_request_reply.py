@@ -4,15 +4,18 @@ import asyncio
 import ctypes
 import errno
 import queue
-import threading
 
 from ._core import (
-    MSG_TYPE_REPLY,
-    MSG_TYPE_REQUEST,
     Message,
     ReceivedMessage,
+    RoutingId,
     ZlinkError,
+    ZlinkMsg,
+    _REPLY_HANDLER,
+    _ROUTER_HANDLER,
     _clone_native_msg,
+    _copy_routing_id,
+    _raise_last_error,
 )
 from ._enums import SendResult
 from ._ffi import lib
@@ -20,28 +23,11 @@ from ._ffi import lib
 _ERRNO_ETERM = getattr(errno, "ETERM", 156)
 
 
-def _request_info(message):
-    if isinstance(message, ReceivedMessage):
-        native = message._native_msg()
-        msg_ref = ctypes.byref(native)
-    elif isinstance(message, Message):
-        msg_ref = ctypes.byref(message._msg)
-    else:
-        raise TypeError("message must be Message or ReceivedMessage")
-    msg_type = ctypes.c_uint8(0)
-    correlation_id = ctypes.c_uint64(0)
-    rc = lib().zlink_msg_get_request_info(
-        msg_ref, ctypes.byref(msg_type), ctypes.byref(correlation_id)
-    )
-    if rc != 0:
-        raise ZlinkError(errno.EINVAL, "failed to inspect request info")
-    return msg_type.value, correlation_id.value
-
-
 class _BufferedReceived:
-    def __init__(self, parts, routing_id):
+    def __init__(self, parts, routing_id=None, request_seq=None):
         self.parts = tuple(parts)
         self.routing_id = routing_id
+        self.request_seq = request_seq
 
     def to_bytes_list(self):
         return [part.to_bytes() for part in self.parts]
@@ -55,11 +41,6 @@ class _BufferedReceived:
 
     def __exit__(self, exc_type, exc, tb):
         self.close()
-
-
-def _clone_received(received):
-    parts = [_clone_message(part) for part in received.parts]
-    return _BufferedReceived(parts, received.routing_id)
 
 
 def _clone_message(message):
@@ -93,21 +74,40 @@ def _clone_payload(payload):
     return parts
 
 
+def _take_callback_parts(parts_ptr, part_count):
+    parts = []
+    for index in range(int(part_count)):
+        native = _clone_native_msg(parts_ptr[index])
+        msg = Message.__new__(Message)
+        msg._msg = native
+        msg._valid = True
+        msg._keepalive = None
+        parts.append(msg)
+    return parts
+
+
+def _prepare_native_parts(parts):
+    native_parts = (ZlinkMsg * len(parts))()
+    for index, part in enumerate(parts):
+        rc = lib().zlink_msg_init(ctypes.byref(native_parts[index]))
+        if rc != 0:
+            _raise_last_error()
+        rc = lib().zlink_msg_move(ctypes.byref(native_parts[index]), ctypes.byref(part._msg))
+        if rc != 0:
+            _raise_last_error()
+        part._valid = False
+        part._keepalive = None
+    return native_parts
+
+
 class _PendingRequest:
     def __init__(self, loop, on_reply=None, on_error=None):
         self.loop = loop
         self.future = loop.create_future() if on_reply is None else None
         self.on_reply = on_reply
         self.on_error = on_error
-        self.done = False
-        self.lock = threading.Lock()
 
     def resolve(self, received):
-        with self.lock:
-            if self.done:
-                received.close()
-                return
-            self.done = True
         if self.future is not None:
             self.loop.call_soon_threadsafe(self.future.set_result, received)
             return
@@ -121,10 +121,6 @@ class _PendingRequest:
         self.loop.call_soon_threadsafe(_deliver)
 
     def reject(self, exc):
-        with self.lock:
-            if self.done:
-                return
-            self.done = True
         if self.future is not None:
             self.loop.call_soon_threadsafe(self.future.set_exception, exc)
             return
@@ -132,92 +128,186 @@ class _PendingRequest:
             self.loop.call_soon_threadsafe(self.on_error, exc)
 
 
-class _RequestReplyBase:
-    _RECV_POLL_INTERVAL = 0.001
-
+class RequestDealer:
     def __init__(self, socket):
         self._socket = socket
-        self._dispatch_started = False
-        self._dispatch_lock = threading.Lock()
+        self._reply_handler = _REPLY_HANDLER(self._on_reply)
+        self._pending = {}
+
+    async def request(self, payload, timeout=None):
+        loop = asyncio.get_running_loop()
+        pending = _PendingRequest(loop)
+        handle = id(pending)
+        self._pending[handle] = pending
+        self._start_request(payload, timeout, handle, None)
+        return await pending.future
+
+    async def try_request(self, payload, timeout=None):
+        return await self.request(payload, timeout=timeout)
+
+    def request_callback(self, payload, on_reply, on_error, timeout=None):
+        loop = asyncio.get_running_loop()
+        pending = _PendingRequest(loop, on_reply=on_reply, on_error=on_error)
+        handle = id(pending)
+        self._pending[handle] = pending
+        self._start_request(payload, timeout, handle, None)
+
+    def recv(self):
+        return self._socket.recv()
+
+    def try_recv(self):
+        return self._socket.try_recv()
+
+    def on_receive(self, handler):
+        self._socket.on_receive(handler)
+
+    def close(self):
+        self._socket.close()
+
+    def _start_request(self, payload, timeout, handle, routing_id):
+        parts = _clone_payload(payload)
+        native_parts = _prepare_native_parts(parts)
+        timeout_ms = _timeout_to_ms(timeout)
+        rc = lib().zlink_dealer_request(
+            self._socket._handle,
+            native_parts,
+            len(parts),
+            timeout_ms,
+            self._reply_handler,
+            ctypes.c_void_p(handle),
+        )
+        if rc != 0:
+            self._pending.pop(handle, None)
+            _raise_last_error()
+
+    def _on_reply(self, errnum, parts, part_count, userdata):
+        handle = ctypes.cast(userdata, ctypes.c_void_p).value
+        pending = self._pending.pop(handle, None)
+        if pending is None:
+            return
+        if errnum != 0:
+            pending.reject(ZlinkError(errnum, os_error_message(errnum)))
+            return
+        pending.resolve(_BufferedReceived(_take_callback_parts(parts, part_count)))
+
+
+class RequestRouter:
+    def __init__(self, socket):
+        self._socket = socket
         self._data_queue = queue.Queue()
         self._data_handler = None
         self._data_handler_loop = None
-        self._pending_lock = threading.Lock()
+        self._reply_handler = _REPLY_HANDLER(self._on_reply)
+        self._request_handler = _ROUTER_HANDLER(self._on_request)
         self._pending = {}
-        self._next_correlation_id = 1
-        self._closed = False
-        self._dispatch_thread = None
+        rc = lib().zlink_router_handler(
+            self._socket._handle,
+            self._request_handler,
+            None,
+        )
+        if rc != 0:
+            _raise_last_error()
 
-    def _ensure_dispatch_started(self):
-        if self._dispatch_started:
-            return
-        with self._dispatch_lock:
-            if self._dispatch_started:
-                return
-            self._dispatch_thread = threading.Thread(
-                target=self._dispatch_loop,
-                name="zlink-request-reply",
-                daemon=True,
-            )
-            self._dispatch_thread.start()
-            self._dispatch_started = True
-
-    def _next_pending(self, on_reply=None, on_error=None):
+    async def request(self, routing_id, payload, timeout=None):
         loop = asyncio.get_running_loop()
-        with self._pending_lock:
-            correlation_id = self._next_correlation_id
-            self._next_correlation_id += 1
-            pending = _PendingRequest(loop, on_reply=on_reply, on_error=on_error)
-            self._pending[correlation_id] = pending
-        return correlation_id, pending
+        pending = _PendingRequest(loop)
+        handle = id(pending)
+        self._pending[handle] = pending
+        self._start_request(routing_id, payload, timeout, handle)
+        return await pending.future
 
-    def _pop_pending(self, correlation_id):
-        with self._pending_lock:
-            return self._pending.pop(correlation_id, None)
+    async def try_request(self, routing_id, payload, timeout=None):
+        return await self.request(routing_id, payload, timeout=timeout)
 
-    def _fail_pending(self, correlation_id, exc):
-        pending = self._pop_pending(correlation_id)
-        if pending is not None:
-            pending.reject(exc)
+    def request_callback(self, routing_id, payload, on_reply, on_error, timeout=None):
+        loop = asyncio.get_running_loop()
+        pending = _PendingRequest(loop, on_reply=on_reply, on_error=on_error)
+        handle = id(pending)
+        self._pending[handle] = pending
+        self._start_request(routing_id, payload, timeout, handle)
 
-    def _dispatch_loop(self):
-        while not self._closed:
-            try:
-                received = self._socket.try_recv()
-            except Exception as exc:
-                if self._closed:
-                    break
-                with self._pending_lock:
-                    pending = list(self._pending.values())
-                    self._pending.clear()
-                for item in pending:
-                    item.reject(exc)
-                self._data_queue.put(None)
-                break
-            if received is None:
-                threading.Event().wait(self._RECV_POLL_INTERVAL)
-                continue
-            try:
-                cloned = _clone_received(received)
-            finally:
-                received.close()
-            first = cloned.parts[0] if cloned.parts else None
-            if first is None:
-                self._deliver_data(cloned)
-                continue
-            msg_type, correlation_id = _request_info(first)
-            if msg_type == MSG_TYPE_REPLY:
-                pending = self._pop_pending(correlation_id)
-                if pending is None:
-                    cloned.close()
-                    continue
-                pending.resolve(cloned)
-                continue
-            if msg_type == MSG_TYPE_REQUEST and self._handle_request(cloned, correlation_id):
-                continue
-            self._deliver_data(cloned)
+    async def reply(self, routing_id, request_seq, payload):
+        parts = _clone_payload(payload)
+        native_parts = _prepare_native_parts(parts)
+        native_rid = _copy_routing_id(routing_id)
+        rc = lib().zlink_router_reply(
+            self._socket._handle,
+            ctypes.byref(native_rid),
+            ctypes.c_uint64(request_seq),
+            native_parts,
+            len(parts),
+        )
+        if rc != 0:
+            _raise_last_error()
 
-    def _deliver_data(self, received):
+    def try_reply(self, routing_id, request_seq, payload):
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(self.reply(routing_id, request_seq, payload))
+        finally:
+            loop.close()
+        return SendResult.SENT
+
+    def recv(self):
+        item = self._data_queue.get()
+        if item is None:
+            raise ZlinkError(_ERRNO_ETERM, "socket is closed")
+        return item
+
+    def try_recv(self):
+        try:
+            item = self._data_queue.get_nowait()
+        except queue.Empty:
+            return None
+        if item is None:
+            raise ZlinkError(_ERRNO_ETERM, "socket is closed")
+        return item
+
+    def on_receive(self, handler):
+        self._data_handler = handler
+        try:
+            self._data_handler_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._data_handler_loop = None
+
+    def close(self):
+        self._data_queue.put(None)
+        self._socket.close()
+
+    def _start_request(self, routing_id, payload, timeout, handle):
+        parts = _clone_payload(payload)
+        native_parts = _prepare_native_parts(parts)
+        native_rid = _copy_routing_id(routing_id)
+        rc = lib().zlink_router_request(
+            self._socket._handle,
+            ctypes.byref(native_rid),
+            native_parts,
+            len(parts),
+            _timeout_to_ms(timeout),
+            self._reply_handler,
+            ctypes.c_void_p(handle),
+        )
+        if rc != 0:
+            self._pending.pop(handle, None)
+            _raise_last_error()
+
+    def _on_reply(self, errnum, parts, part_count, userdata):
+        handle = ctypes.cast(userdata, ctypes.c_void_p).value
+        pending = self._pending.pop(handle, None)
+        if pending is None:
+            return
+        if errnum != 0:
+            pending.reject(ZlinkError(errnum, os_error_message(errnum)))
+            return
+        pending.resolve(_BufferedReceived(_take_callback_parts(parts, part_count)))
+
+    def _on_request(self, peer_rid, request_seq, parts, part_count, userdata):
+        routing_id = RoutingId(bytes(peer_rid.contents.data[: peer_rid.contents.size]))
+        received = _BufferedReceived(
+            _take_callback_parts(parts, part_count),
+            routing_id=routing_id,
+            request_seq=int(request_seq),
+        )
         if self._data_handler is None:
             self._data_queue.put(received)
             return
@@ -228,180 +318,20 @@ class _RequestReplyBase:
             finally:
                 received.close()
 
-        loop = self._data_handler_loop
-        if loop is None:
+        if self._data_handler_loop is None:
             _deliver()
         else:
-            loop.call_soon_threadsafe(_deliver)
-
-    def recv(self):
-        self._ensure_dispatch_started()
-        item = self._data_queue.get()
-        if item is None:
-            raise ZlinkError(_ERRNO_ETERM, "socket is closed")
-        return item
-
-    def try_recv(self):
-        self._ensure_dispatch_started()
-        try:
-            item = self._data_queue.get_nowait()
-        except queue.Empty:
-            return None
-        if item is None:
-            raise ZlinkError(_ERRNO_ETERM, "socket is closed")
-        return item
-
-    def on_receive(self, handler):
-        if handler is None:
-            raise ValueError("handler must not be None")
-        self._ensure_dispatch_started()
-        self._data_handler = handler
-        try:
-            self._data_handler_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._data_handler_loop = None
-
-    def close(self):
-        if self._closed:
-            return
-        self._closed = True
-        with self._pending_lock:
-            pending = list(self._pending.values())
-            self._pending.clear()
-        for item in pending:
-            item.reject(ZlinkError(_ERRNO_ETERM, "socket is closed"))
-        self._data_queue.put(None)
-        self._socket.close()
-
-    def _handle_request(self, received, correlation_id):
-        return False
+            self._data_handler_loop.call_soon_threadsafe(_deliver)
 
 
-class RequestDealer(_RequestReplyBase):
-    def __init__(self, socket):
-        super().__init__(socket)
-
-    async def request(self, payload, timeout=None):
-        self._ensure_dispatch_started()
-        correlation_id, pending = self._next_pending()
-        parts = _clone_payload(payload)
-        parts[0].set_request(correlation_id)
-        try:
-            self._socket.send(parts)
-        except Exception as exc:
-            self._fail_pending(correlation_id, exc)
-            raise
-        if timeout is None:
-            return await pending.future
-        return await asyncio.wait_for(pending.future, timeout)
-
-    async def try_request(self, payload, timeout=None):
-        self._ensure_dispatch_started()
-        correlation_id, pending = self._next_pending()
-        parts = _clone_payload(payload)
-        parts[0].set_request(correlation_id)
-        try:
-            result = self._socket.try_send(parts)
-        except Exception as exc:
-            self._fail_pending(correlation_id, exc)
-            raise
-        if result is not SendResult.SENT:
-            exc = ZlinkError(errno.EAGAIN, "request send is backpressured")
-            self._fail_pending(correlation_id, exc)
-            raise exc
-        if timeout is None:
-            return await pending.future
-        return await asyncio.wait_for(pending.future, timeout)
-
-    def request_callback(self, payload, on_reply, on_error, timeout=None):
-        self._ensure_dispatch_started()
-        correlation_id, pending = self._next_pending(
-            on_reply=on_reply,
-            on_error=on_error,
-        )
-        parts = _clone_payload(payload)
-        parts[0].set_request(correlation_id)
-        try:
-            self._socket.send(parts)
-        except Exception as exc:
-            self._fail_pending(correlation_id, exc)
-            if on_error is not None:
-                pending.reject(exc)
-            return
-        if timeout is not None:
-            loop = pending.loop
-
-            def _timeout():
-                self._fail_pending(correlation_id, ZlinkError(errno.ETIMEDOUT, "request timed out"))
-
-            loop.call_later(timeout, _timeout)
+def _timeout_to_ms(timeout):
+    if timeout is None:
+        return 0
+    return max(1, int(float(timeout) * 1000))
 
 
-class RequestRouter(_RequestReplyBase):
-    def __init__(self, socket):
-        super().__init__(socket)
-
-    async def request(self, routing_id, payload, timeout=None):
-        self._ensure_dispatch_started()
-        correlation_id, pending = self._next_pending()
-        parts = _clone_payload(payload)
-        parts[0].set_request(correlation_id)
-        try:
-            self._socket.send(parts, routing_id=routing_id)
-        except Exception as exc:
-            self._fail_pending(correlation_id, exc)
-            raise
-        if timeout is None:
-            return await pending.future
-        return await asyncio.wait_for(pending.future, timeout)
-
-    async def try_request(self, routing_id, payload, timeout=None):
-        self._ensure_dispatch_started()
-        correlation_id, pending = self._next_pending()
-        parts = _clone_payload(payload)
-        parts[0].set_request(correlation_id)
-        try:
-            result = self._socket.try_send(parts, routing_id=routing_id)
-        except Exception as exc:
-            self._fail_pending(correlation_id, exc)
-            raise
-        if result is not SendResult.SENT:
-            exc = ZlinkError(errno.EAGAIN, "request send is backpressured")
-            self._fail_pending(correlation_id, exc)
-            raise exc
-        if timeout is None:
-            return await pending.future
-        return await asyncio.wait_for(pending.future, timeout)
-
-    def request_callback(self, routing_id, payload, on_reply, on_error, timeout=None):
-        self._ensure_dispatch_started()
-        correlation_id, pending = self._next_pending(
-            on_reply=on_reply,
-            on_error=on_error,
-        )
-        parts = _clone_payload(payload)
-        parts[0].set_request(correlation_id)
-        try:
-            self._socket.send(parts, routing_id=routing_id)
-        except Exception as exc:
-            self._fail_pending(correlation_id, exc)
-            if on_error is not None:
-                pending.reject(exc)
-            return
-        if timeout is not None:
-            loop = pending.loop
-
-            def _timeout():
-                self._fail_pending(correlation_id, ZlinkError(errno.ETIMEDOUT, "request timed out"))
-
-            loop.call_later(timeout, _timeout)
-
-    async def reply(self, routing_id, correlation_id, payload):
-        parts = _clone_payload(payload)
-        parts[0].set_reply(correlation_id)
-        self._socket.send(parts, routing_id=routing_id)
-
-    def try_reply(self, routing_id, correlation_id, payload):
-        parts = _clone_payload(payload)
-        parts[0].set_reply(correlation_id)
-        return self._socket.try_send(parts, routing_id=routing_id)
+def os_error_message(errnum):
+    try:
+        return errno.errorcode.get(int(errnum), "zlink error")
+    except Exception:
+        return "zlink error"

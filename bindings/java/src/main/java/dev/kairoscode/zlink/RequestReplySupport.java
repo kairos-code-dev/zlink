@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 final class RequestReplySupport {
-    static final long DEFAULT_TIMEOUT_MS = 30_000L;
+    static final long DEFAULT_TIMEOUT_MS = 5_000L;
     private static final long SEND_RETRY_SLEEP_MS = 1L;
 
     private RequestReplySupport() {
@@ -54,7 +54,8 @@ final class RequestReplySupport {
         RoutingId routingId = received.hasRoutingId()
             ? RoutingId.copyOf(received.routingId().toByteArray())
             : null;
-        return new Received(routingId, parts, true);
+        return new Received(routingId, parts, true, received.requestSequence(),
+            received.hasRequestSequence());
     }
 
     static List<Message> clonePayload(List<Message> parts) {
@@ -66,14 +67,7 @@ final class RequestReplySupport {
     }
 
     static Message cloneMessage(Message source) {
-        Message cloned = Message.sharedCopyOf(source.toByteArray());
-        long[] info = source.getRequestInfo();
-        if (info[0] == Message.MSG_TYPE_REQUEST) {
-            cloned.setRequest(info[1]);
-        } else if (info[0] == Message.MSG_TYPE_REPLY) {
-            cloned.setReply(info[1]);
-        }
-        return cloned;
+        return Message.sharedCopyOf(source.toByteArray());
     }
 
     static void closeAll(List<Message> parts) {

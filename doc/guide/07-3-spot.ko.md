@@ -256,10 +256,90 @@ zlink_subscribe_handler(spot, on_message, NULL);
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/spot_callback_sample/main.go) |
 
 **중요:** 하나의 `spot` / `spot_node` handle을 여러 스레드에서 동시에
-사용할 수 있다 (thread-safe). `publish`는 hot path(고빈도 데이터 경로)로서 여러 스레드에서 동시 호출을 허용하고,
-subscribe/unsubscribe/attach/peer connect/monitor는 control path(저빈도 설정/관리 경로)로
-호출할 수 있다. 다만 callback은 I/O 경로에서 직접 호출되므로, 느린 처리는
-사용자 queue로 넘겨 별도 thread에서 처리하는 편이 안전하다.
+사용할 수 있다 (thread-safe). `publish`는 hot path(고빈도 데이터 경로)로서
+여러 스레드에서 동시 호출을 허용하고, subscribe/unsubscribe/attach/peer
+connect/monitor는 control path(저빈도 설정/관리 경로)로 호출할 수 있다. 다만
+callback은 I/O 경로에서 직접 호출되므로, 느린 처리는 사용자 queue로 넘겨 별도
+thread에서 처리하는 편이 안전하다.
+
+## 5. SPOT routed request-reply
+
+SPOT 에서 특정 대상에게 응답을 기대하는 흐름은 topic publish 가 아니라
+request-reply 전용 함수를 사용한다. 구현은 topic 본문에 표식을 넣지 않고,
+wire 위에서 `SPOT routed envelope -> request-reply envelope -> payload`
+순서로 control part 를 붙인다.
+
+### 5.1 spot -> spot request
+
+```c
+static void on_spot_reply(int reply_errno,
+                          zlink_msg_t *parts,
+                          size_t part_count,
+                          void *userdata)
+{
+    if (reply_errno == 0)
+        zlink_multipart_close(parts, part_count);
+}
+
+zlink_msg_t req;
+zlink_msg_init_size(&req, 4);
+memcpy(zlink_msg_data(&req), "ping", 4);
+
+zlink_spot_request_spot(
+  spot,
+  &dest_node_rid,
+  &dest_spot_rid,
+  &req,
+  1,
+  1500,
+  on_spot_reply,
+  NULL);
+```
+
+### 5.2 spot request handler 와 reply
+
+```c
+static void on_spot_request(const zlink_routing_id_t *source_node_rid,
+                            const zlink_routing_id_t *source_spot_rid,
+                            uint64_t request_seq,
+                            zlink_msg_t *parts,
+                            size_t part_count,
+                            void *userdata)
+{
+    zlink_multipart_close(parts, part_count);
+
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 4);
+    memcpy(zlink_msg_data(&reply), "pong", 4);
+
+    zlink_spot_reply_spot(
+      spot,
+      source_node_rid,
+      source_spot_rid,
+      request_seq,
+      &reply,
+      1);
+}
+
+zlink_spot_handler(spot, on_spot_request, NULL);
+```
+
+reply 주소는 handler 인자로 받은 source 주소와 `request_seq` 를 그대로 써야
+한다. 다른 값을 넣으면 pending request 와 매칭되지 않는다.
+
+### 5.3 spot <-> router 조합
+
+SPOT request-reply 는 일반 `ROUTER` 와도 직접 연결할 수 있다.
+
+- `spot -> router`: `zlink_spot_request_router()`,
+  `zlink_router_spot_handler()`,
+  `zlink_router_reply_spot()`
+- `router -> spot`: `zlink_router_request_spot()`,
+  `zlink_spot_handler()`,
+  `zlink_spot_reply_router()`
+
+이 조합에서도 완료 규칙은 같다. request 1건은 첫 reply 1건으로 끝나고,
+추가 reply 는 무시된다.
 
 **제약 사항:**
 
@@ -277,7 +357,7 @@ subscribe/unsubscribe/attach/peer connect/monitor는 control path(저빈도 설�
 
 > 전체 three-tier 계약과 추가 패턴은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
 
-## 5. 토픽 규칙
+## 6. 토픽 규칙
 
 ### 명명 규칙
 

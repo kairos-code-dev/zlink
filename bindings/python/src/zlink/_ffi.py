@@ -347,6 +347,47 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_dealer_request",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
+                ctypes.c_uint32,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_router_request",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
+                ctypes.c_uint32,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_router_reply",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.c_uint64,
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_router_handler",
+            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_try_publish",
             [
                 ctypes.c_void_p,

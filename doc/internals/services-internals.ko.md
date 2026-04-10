@@ -256,3 +256,65 @@ Frame 4~N: Service entries (repeated service_count times)
   (ROUTER=3, DEALER=4, PUB=5, SUB=6) — 역할 기반 피어 매칭용
 - 역할 매칭은 `service_roles_match()`가 강제한다 — PUB은 SUB과 짝,
   ROUTER/DEALER는 서로 짝을 이룬다
+
+### 5.7 SPOT routed request-reply 조합
+
+SPOT request-reply 는 topic fanout 경로와 별도 상태를 가진다. 구현은 local
+runtime 에서 다음 세 단계를 거친다.
+
+1. SPOT routed envelope 8개 part decode
+2. 남은 payload 앞의 request-reply envelope 4개 part decode
+3. request 면 local handler dispatch, reply 면 pending map completion
+
+의미를 나눠 보면 다음과 같다.
+
+- SPOT routed envelope: source/destination node, spot, router 주소
+- request-reply envelope: `message_type`, `request_seq`
+- payload: application body
+
+### 5.8 pending 구조
+
+socket request-reply 와 SPOT request-reply 는 각자 다른 pending key 를 쓴다.
+
+```cpp
+struct pending_key_t {
+    std::string peer_rid;
+    uint64_t request_seq;
+};
+
+struct pending_spot_key_t {
+    uint8_t source_class;
+    std::string source_rid;
+    std::string source_spot_rid;
+    uint64_t request_seq;
+};
+```
+
+정리:
+
+- `DEALER` 는 `request_seq` 만으로 reply 를 찾는다.
+- `ROUTER` 는 `peer_rid + request_seq` 조합으로 reply 를 찾는다.
+- `spot -> spot` 은 source class 와 source 주소까지 함께 본다.
+- `router -> spot` 은 local router state 에서 `request_seq` 로 관리한다.
+
+이렇게 나누는 이유는 같은 `request_seq` 가 다른 상대 주소에서 동시에 보일 수
+있기 때문이다.
+
+### 5.9 timeout 과 완료
+
+각 request 시작 시 pending entry 를 넣고 timeout thread 를 함께 건다.
+
+- per-call timeout 이 있으면 그 값을 사용
+- 없으면 socket 기본 timeout 사용
+- 둘 다 없으면 `5000ms`
+
+timeout 이 먼저 오면 pending entry 를 지우고 `ETIMEDOUT` 로 callback 한다.
+reply 가 먼저 오면 pending entry 를 지우고 timeout thread 는 나중에 깨어나도
+아무 일도 하지 않는다.
+
+추가 reply 처리 규칙:
+
+- 첫 reply 로 이미 완료된 key 는 pending map 에서 제거된다.
+- 이후 같은 key 로 reply 가 와도 조용히 drop 한다.
+- `error reply` 는 payload 첫 part 의 4바이트 errno 를 읽어 실패 completion 으로
+  바꾼다.

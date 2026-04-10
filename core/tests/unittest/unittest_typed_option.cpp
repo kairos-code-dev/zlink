@@ -122,9 +122,22 @@ void test_typed_raw_socket_options ()
       router, ZLINK_ROUTER_OPT_MANDATORY, &value, &size));
     TEST_ASSERT_EQUAL_INT (1, value);
 
+    value = 4321;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      router, ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS, &value, sizeof (value)));
+    value = 0;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_router_option (
+      router, ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS, &value, &size));
+    TEST_ASSERT_EQUAL_INT (4321, value);
+
     value = 1;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
       dealer, ZLINK_DEALER_OPT_PROBE, &value, sizeof (value)));
+
+    value = 3210;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
+      dealer, ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS, &value, sizeof (value)));
 
     value = 1;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_stream_option (

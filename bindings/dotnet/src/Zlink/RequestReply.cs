@@ -3,47 +3,83 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Zlink.Native;
 
 namespace Zlink;
 
 public delegate void RequestReplyCallback(Received reply);
 public delegate void RequestErrorCallback(ZlinkException error);
 
-internal sealed class PendingRequest
+internal sealed class RequestCallState
 {
-    public TaskCompletionSource<Received> Completion { get; } =
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private CancellationTokenRegistration _cancellationRegistration;
+    private Timer? _timeoutTimer;
+    private int _completed;
 
-    public bool TrySetResult(Received received)
+    internal RequestCallState(TaskCompletionSource<Received> completion)
     {
+        Completion = completion;
+    }
+
+    internal TaskCompletionSource<Received> Completion { get; }
+
+    internal bool TrySetResult(Received received)
+    {
+        if (Interlocked.Exchange(ref _completed, 1) != 0)
+            return false;
+        DisposeRegistrations();
         return Completion.TrySetResult(received);
     }
 
-    public bool TrySetException(Exception ex)
+    internal bool TrySetException(Exception error)
     {
-        return Completion.TrySetException(ex);
+        if (Interlocked.Exchange(ref _completed, 1) != 0)
+            return false;
+        DisposeRegistrations();
+        return Completion.TrySetException(error);
     }
 
-    public bool TrySetCanceled(CancellationToken token)
+    internal bool TrySetCanceled(CancellationToken token)
     {
+        if (Interlocked.Exchange(ref _completed, 1) != 0)
+            return false;
+        DisposeRegistrations();
         return Completion.TrySetCanceled(token);
+    }
+
+    internal void SetCancellationRegistration(
+        CancellationTokenRegistration cancellationRegistration)
+    {
+        _cancellationRegistration = cancellationRegistration;
+    }
+
+    internal void SetTimeoutTimer(Timer? timeoutTimer)
+    {
+        _timeoutTimer = timeoutTimer;
+    }
+
+    private void DisposeRegistrations()
+    {
+        _timeoutTimer?.Dispose();
+        _cancellationRegistration.Dispose();
     }
 }
 
 public sealed class RequestDealer : IDisposable, IAsyncDisposable
 {
-    private static readonly TimeSpan DefaultTimeoutValue = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultTimeoutValue = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan PollDelay = TimeSpan.FromMilliseconds(1);
+    private static readonly NativeMethods.ZlinkReplyHandlerDelegate ReplyHandler =
+        OnReply;
 
     private readonly DealerSocket _socket;
-    private readonly ConcurrentDictionary<ulong, PendingRequest> _pending = new();
     private readonly BlockingCollection<Received> _dataQueue = new();
     private readonly CancellationTokenSource _stop = new();
     private readonly Thread _dispatchThread;
-    private long _nextCorrelationId = 1;
-    private SocketRecvHandler? _dataHandler;
+    private Action<Received>? _dataHandler;
     private SynchronizationContext? _dataHandlerContext;
     private int _closed;
 
@@ -76,23 +112,23 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
 
     public Task<Received> RequestAsync(IReadOnlyList<Message> parts,
         TimeSpan timeout, CancellationToken ct = default)
-        => RequestCoreAsync(parts, timeout, ct, trySend: false);
+        => RequestCoreAsync(parts, timeout, ct);
 
     public Task<Received> TryRequestAsync(Message message,
         CancellationToken ct = default)
-        => TryRequestAsync(new[] { message }, DefaultRequestTimeout, ct);
+        => RequestAsync(message, ct);
 
     public Task<Received> TryRequestAsync(Message message, TimeSpan timeout,
         CancellationToken ct = default)
-        => TryRequestAsync(new[] { message }, timeout, ct);
+        => RequestAsync(message, timeout, ct);
 
     public Task<Received> TryRequestAsync(IReadOnlyList<Message> parts,
         CancellationToken ct = default)
-        => TryRequestAsync(parts, DefaultRequestTimeout, ct);
+        => RequestAsync(parts, ct);
 
     public Task<Received> TryRequestAsync(IReadOnlyList<Message> parts,
         TimeSpan timeout, CancellationToken ct = default)
-        => RequestCoreAsync(parts, timeout, ct, trySend: true);
+        => RequestAsync(parts, timeout, ct);
 
     public void Request(Message message, RequestReplyCallback onReply,
         RequestErrorCallback onError)
@@ -108,23 +144,25 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
 
     public void Request(IReadOnlyList<Message> parts, RequestReplyCallback onReply,
         RequestErrorCallback onError, TimeSpan timeout)
-        => RequestReplySupport.AttachCallback(() => RequestAsync(parts, timeout), onReply, onError);
+        => RequestReplySupport.AttachCallback(() => RequestAsync(parts, timeout),
+            onReply, onError);
 
     public void TryRequest(Message message, RequestReplyCallback onReply,
         RequestErrorCallback onError)
-        => TryRequest(new[] { message }, onReply, onError, DefaultRequestTimeout);
+        => Request(message, onReply, onError);
 
     public void TryRequest(Message message, RequestReplyCallback onReply,
         RequestErrorCallback onError, TimeSpan timeout)
-        => TryRequest(new[] { message }, onReply, onError, timeout);
+        => Request(message, onReply, onError, timeout);
 
-    public void TryRequest(IReadOnlyList<Message> parts, RequestReplyCallback onReply,
-        RequestErrorCallback onError)
-        => TryRequest(parts, onReply, onError, DefaultRequestTimeout);
+    public void TryRequest(IReadOnlyList<Message> parts,
+        RequestReplyCallback onReply, RequestErrorCallback onError)
+        => Request(parts, onReply, onError);
 
-    public void TryRequest(IReadOnlyList<Message> parts, RequestReplyCallback onReply,
-        RequestErrorCallback onError, TimeSpan timeout)
-        => RequestReplySupport.AttachCallback(() => TryRequestAsync(parts, timeout), onReply, onError);
+    public void TryRequest(IReadOnlyList<Message> parts,
+        RequestReplyCallback onReply, RequestErrorCallback onError,
+        TimeSpan timeout)
+        => Request(parts, onReply, onError, timeout);
 
     public Received Recv()
     {
@@ -151,7 +189,7 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
         return _dataQueue.TryTake(out received, 0);
     }
 
-    public void OnReceive(SocketRecvHandler handler)
+    public void OnReceive(Action<Received> handler)
     {
         _dataHandler = handler ?? throw new ArgumentNullException(nameof(handler));
         _dataHandlerContext = SynchronizationContext.Current;
@@ -165,7 +203,6 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
         _socket.Dispose();
         _dispatchThread.Join(TimeSpan.FromSeconds(1));
         _dataQueue.CompleteAdding();
-        FailAll(new ZlinkException((int)ErrorCode.Eterm, "socket is closed"));
     }
 
     public ValueTask DisposeAsync()
@@ -174,71 +211,60 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
-    private Task<Received> RequestCoreAsync(IReadOnlyList<Message> parts,
-        TimeSpan timeout, CancellationToken ct, bool trySend)
+    private unsafe Task<Received> RequestCoreAsync(IReadOnlyList<Message> parts,
+        TimeSpan timeout, CancellationToken ct)
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
-        ulong correlationId = unchecked((ulong)Interlocked.Increment(ref _nextCorrelationId) - 1);
-        cloned[0].SetRequest(correlationId);
-        var pending = new PendingRequest();
-        if (!_pending.TryAdd(correlationId, pending))
-        {
-            RequestReplySupport.DisposeParts(cloned);
-            throw new InvalidOperationException("duplicate correlation id");
-        }
 
-        CancellationTokenRegistration ctr = default;
-        Timer? timeoutTimer = null;
-        if (ct.CanBeCanceled)
-        {
-            ctr = ct.Register(() =>
-            {
-                if (_pending.TryRemove(correlationId, out PendingRequest? removed))
-                    removed.TrySetCanceled(ct);
-            });
-        }
-        if (timeout <= TimeSpan.Zero)
-            timeout = DefaultRequestTimeout;
-        timeoutTimer = new Timer(_ =>
-        {
-            if (_pending.TryRemove(correlationId, out PendingRequest? removed))
-            {
-                removed.TrySetException(new ZlinkException((int)ErrorCode.ETimedOut,
-                    "request timed out"));
-            }
-        }, null, timeout, Timeout.InfiniteTimeSpan);
+        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        RequestReplySupport.MovePartsToNative(cloned, out ZlinkMsg[] nativeParts);
+        uint timeoutMs = NormalizeTimeout(timeout, DefaultRequestTimeout);
+        var completion = new TaskCompletionSource<Received>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        GCHandle handle = default;
+        RequestCallState? state = null;
 
         try
         {
-            if (trySend)
-            {
-                SendResult result = _socket.TrySend(cloned);
-                if (result != SendResult.Sent)
-                    throw new ZlinkException((int)ErrorCode.EAgain,
-                        "request send is backpressured");
-            }
-            else
-            {
-                _socket.Send(cloned);
-            }
-        }
-        catch (Exception ex)
-        {
-            _pending.TryRemove(correlationId, out _);
-            timeoutTimer.Dispose();
-            ctr.Dispose();
-            RequestReplySupport.DisposeParts(cloned);
-            return Task.FromException<Received>(ex);
-        }
+            state = new RequestCallState(completion);
+            handle = GCHandle.Alloc(state, GCHandleType.Normal);
+            IntPtr userData = GCHandle.ToIntPtr(handle);
 
-        pending.Completion.Task.ContinueWith(_ =>
+            if (ct.CanBeCanceled)
+            {
+                state.SetCancellationRegistration(ct.Register(static userdata =>
+                {
+                    RequestCallState callbackState = (RequestCallState)((GCHandle)userdata!).Target!;
+                    callbackState.TrySetCanceled(CancellationToken.None);
+                }, handle));
+            }
+
+            state.SetTimeoutTimer(new Timer(static userdata =>
+            {
+                RequestCallState callbackState = (RequestCallState)((GCHandle)userdata!).Target!;
+                callbackState.TrySetException(new ZlinkException(
+                    (int)ErrorCode.ETimedOut, "request timed out"));
+            }, handle, (int)timeoutMs, Timeout.Infinite));
+
+            fixed (ZlinkMsg* nativePtr = nativeParts)
+            {
+                int rc = NativeMethods.zlink_dealer_request(_socket.Handle,
+                    (IntPtr)nativePtr, (nuint)nativeParts.Length, timeoutMs,
+                    ReplyHandler, userData);
+                if (rc != 0)
+                    throw ZlinkException.FromLastError();
+            }
+            return completion.Task;
+        }
+        catch
         {
-            timeoutTimer.Dispose();
-            ctr.Dispose();
-        }, TaskScheduler.Default);
-        return pending.Completion.Task;
+            RequestReplySupport.RestoreManagedParts(cloned, nativeParts,
+                nativeParts.Length);
+            if (handle.IsAllocated)
+                handle.Free();
+            throw;
+        }
     }
 
     private void DispatchLoop()
@@ -254,7 +280,7 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
                 }
                 if (received == null)
                     continue;
-                RouteReceived(RequestReplySupport.CloneReceived(received));
+                DeliverData(RequestReplySupport.CloneReceived(received));
             }
             catch (ZlinkException ex) when (ex.Errno == (int)ErrorCode.Eterm)
             {
@@ -264,33 +290,12 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
             {
                 break;
             }
-            catch (Exception ex)
-            {
-                FailAll(ex);
-                break;
-            }
         }
-    }
-
-    private void RouteReceived(Received received)
-    {
-        if (received.Parts.Count == 0)
-        {
-            DeliverData(received);
-            return;
-        }
-        (byte msgType, ulong correlationId) = received.Parts[0].GetRequestInfo();
-        if (msgType == 2 && _pending.TryRemove(correlationId, out PendingRequest? pending))
-        {
-            pending.TrySetResult(received);
-            return;
-        }
-        DeliverData(received);
     }
 
     private void DeliverData(Received received)
     {
-        SocketRecvHandler? handler = _dataHandler;
+        Action<Received>? handler = _dataHandler;
         if (handler == null)
         {
             if (!_dataQueue.IsAddingCompleted)
@@ -298,39 +303,78 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
             return;
         }
         SynchronizationContext? context = _dataHandlerContext;
-        CallbackDelivery.Post(context, () => handler(received.RoutingId,
-            RequestReplySupport.ToArray(received.Parts)));
+        CallbackDelivery.Post(context, () => handler(received));
     }
 
-    private void FailAll(Exception ex)
+    private static uint NormalizeTimeout(TimeSpan timeout, TimeSpan fallback)
     {
-        foreach ((ulong key, PendingRequest pending) in _pending)
+        TimeSpan effective = timeout <= TimeSpan.Zero ? fallback : timeout;
+        double millis = effective.TotalMilliseconds;
+        if (millis <= 1)
+            return 1;
+        if (millis >= uint.MaxValue)
+            return uint.MaxValue;
+        return (uint)millis;
+    }
+
+    private static void OnReply(int errno, IntPtr parts, nuint partCount,
+        IntPtr userData)
+    {
+        GCHandle handle = GCHandle.FromIntPtr(userData);
+        RequestCallState state = (RequestCallState)handle.Target!;
+        try
         {
-            if (_pending.TryRemove(key, out PendingRequest? removed))
-                removed.TrySetException(ex);
+            if (errno != 0)
+            {
+                state.TrySetException(new ZlinkException(errno,
+                    $"request failed (errno={errno})"));
+                return;
+            }
+            Message[] replyParts = Message.FromNativeVector(parts, partCount);
+            parts = IntPtr.Zero;
+            partCount = 0;
+            Received received = new(string.Empty, replyParts);
+            if (!state.TrySetResult(received))
+                RequestReplySupport.DisposeParts(replyParts);
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(parts, partCount);
+            handle.Free();
         }
     }
-
 }
 
-public sealed class RequestRouter : IDisposable, IAsyncDisposable
+public sealed unsafe class RequestRouter : IDisposable, IAsyncDisposable
 {
-    private static readonly TimeSpan DefaultTimeoutValue = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultTimeoutValue = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan PollDelay = TimeSpan.FromMilliseconds(1);
+    private static readonly NativeMethods.ZlinkReplyHandlerDelegate ReplyHandler =
+        OnReply;
+    private static readonly NativeMethods.ZlinkRouterRequestHandlerDelegate
+        RouterRequestHandler = OnRouterRequest;
 
     private readonly RouterSocket _socket;
-    private readonly ConcurrentDictionary<ulong, PendingRequest> _pending = new();
     private readonly BlockingCollection<Received> _dataQueue = new();
     private readonly CancellationTokenSource _stop = new();
     private readonly Thread _dispatchThread;
-    private long _nextCorrelationId = 1;
-    private SocketRecvHandler? _dataHandler;
+    private readonly GCHandle _selfHandle;
+    private Action<Received>? _dataHandler;
     private SynchronizationContext? _dataHandlerContext;
     private int _closed;
 
     public RequestRouter(RouterSocket socket)
     {
         _socket = socket ?? throw new ArgumentNullException(nameof(socket));
+        _selfHandle = GCHandle.Alloc(this, GCHandleType.Normal);
+        int rc = NativeMethods.zlink_router_handler(_socket.Handle,
+            RouterRequestHandler, GCHandle.ToIntPtr(_selfHandle));
+        if (rc != 0)
+        {
+            _selfHandle.Free();
+            throw ZlinkException.FromLastError();
+        }
         _dispatchThread = new Thread(DispatchLoop)
         {
             IsBackground = true,
@@ -351,36 +395,40 @@ public sealed class RequestRouter : IDisposable, IAsyncDisposable
         TimeSpan timeout, CancellationToken ct = default)
         => RequestAsync(routingId, new[] { message }, timeout, ct);
 
-    public Task<Received> RequestAsync(RoutingId routingId, IReadOnlyList<Message> parts,
-        CancellationToken ct = default)
+    public Task<Received> RequestAsync(RoutingId routingId,
+        IReadOnlyList<Message> parts, CancellationToken ct = default)
         => RequestAsync(routingId, parts, DefaultRequestTimeout, ct);
 
-    public Task<Received> RequestAsync(RoutingId routingId, IReadOnlyList<Message> parts,
-        TimeSpan timeout, CancellationToken ct = default)
-        => RequestCoreAsync(routingId, parts, timeout, ct, trySend: false);
+    public Task<Received> RequestAsync(RoutingId routingId,
+        IReadOnlyList<Message> parts, TimeSpan timeout,
+        CancellationToken ct = default)
+        => RequestCoreAsync(routingId, parts, timeout, ct);
 
     public Task<Received> TryRequestAsync(RoutingId routingId, Message message,
         CancellationToken ct = default)
-        => TryRequestAsync(routingId, new[] { message }, DefaultRequestTimeout, ct);
+        => RequestAsync(routingId, message, ct);
 
     public Task<Received> TryRequestAsync(RoutingId routingId, Message message,
         TimeSpan timeout, CancellationToken ct = default)
-        => TryRequestAsync(routingId, new[] { message }, timeout, ct);
+        => RequestAsync(routingId, message, timeout, ct);
 
-    public Task<Received> TryRequestAsync(RoutingId routingId, IReadOnlyList<Message> parts,
+    public Task<Received> TryRequestAsync(RoutingId routingId,
+        IReadOnlyList<Message> parts, CancellationToken ct = default)
+        => RequestAsync(routingId, parts, ct);
+
+    public Task<Received> TryRequestAsync(RoutingId routingId,
+        IReadOnlyList<Message> parts, TimeSpan timeout,
         CancellationToken ct = default)
-        => TryRequestAsync(routingId, parts, DefaultRequestTimeout, ct);
-
-    public Task<Received> TryRequestAsync(RoutingId routingId, IReadOnlyList<Message> parts,
-        TimeSpan timeout, CancellationToken ct = default)
-        => RequestCoreAsync(routingId, parts, timeout, ct, trySend: true);
+        => RequestAsync(routingId, parts, timeout, ct);
 
     public void Request(RoutingId routingId, Message message,
         RequestReplyCallback onReply, RequestErrorCallback onError)
-        => Request(routingId, new[] { message }, onReply, onError, DefaultRequestTimeout);
+        => Request(routingId, new[] { message }, onReply, onError,
+            DefaultRequestTimeout);
 
     public void Request(RoutingId routingId, Message message,
-        RequestReplyCallback onReply, RequestErrorCallback onError, TimeSpan timeout)
+        RequestReplyCallback onReply, RequestErrorCallback onError,
+        TimeSpan timeout)
         => Request(routingId, new[] { message }, onReply, onError, timeout);
 
     public void Request(RoutingId routingId, IReadOnlyList<Message> parts,
@@ -388,46 +436,74 @@ public sealed class RequestRouter : IDisposable, IAsyncDisposable
         => Request(routingId, parts, onReply, onError, DefaultRequestTimeout);
 
     public void Request(RoutingId routingId, IReadOnlyList<Message> parts,
-        RequestReplyCallback onReply, RequestErrorCallback onError, TimeSpan timeout)
-        => RequestReplySupport.AttachCallback(() => RequestAsync(routingId, parts, timeout), onReply, onError);
+        RequestReplyCallback onReply, RequestErrorCallback onError,
+        TimeSpan timeout)
+        => RequestReplySupport.AttachCallback(
+            () => RequestAsync(routingId, parts, timeout), onReply, onError);
 
     public void TryRequest(RoutingId routingId, Message message,
         RequestReplyCallback onReply, RequestErrorCallback onError)
-        => TryRequest(routingId, new[] { message }, onReply, onError, DefaultRequestTimeout);
+        => Request(routingId, message, onReply, onError);
 
     public void TryRequest(RoutingId routingId, Message message,
-        RequestReplyCallback onReply, RequestErrorCallback onError, TimeSpan timeout)
-        => TryRequest(routingId, new[] { message }, onReply, onError, timeout);
+        RequestReplyCallback onReply, RequestErrorCallback onError,
+        TimeSpan timeout)
+        => Request(routingId, message, onReply, onError, timeout);
 
     public void TryRequest(RoutingId routingId, IReadOnlyList<Message> parts,
         RequestReplyCallback onReply, RequestErrorCallback onError)
-        => TryRequest(routingId, parts, onReply, onError, DefaultRequestTimeout);
+        => Request(routingId, parts, onReply, onError);
 
     public void TryRequest(RoutingId routingId, IReadOnlyList<Message> parts,
-        RequestReplyCallback onReply, RequestErrorCallback onError, TimeSpan timeout)
-        => RequestReplySupport.AttachCallback(() => TryRequestAsync(routingId, parts, timeout), onReply, onError);
+        RequestReplyCallback onReply, RequestErrorCallback onError,
+        TimeSpan timeout)
+        => Request(routingId, parts, onReply, onError, timeout);
 
-    public void Reply(RoutingId routingId, ulong correlationId, Message message)
-        => Reply(routingId, correlationId, new[] { message });
+    public void Reply(RoutingId routingId, ulong requestSequence, Message message)
+        => Reply(routingId, requestSequence, new[] { message });
 
-    public void Reply(RoutingId routingId, ulong correlationId,
+    public unsafe void Reply(RoutingId routingId, ulong requestSequence,
         IReadOnlyList<Message> parts)
     {
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
-        cloned[0].SetReply(correlationId);
-        _socket.Send(routingId, cloned);
+        SendResult result = TryReply(routingId, requestSequence, parts);
+        if (result != SendResult.Sent)
+        {
+            throw new ZlinkException((int)ErrorCode.EAgain,
+                "reply send is backpressured");
+        }
     }
 
-    public SendResult TryReply(RoutingId routingId, ulong correlationId,
+    public SendResult TryReply(RoutingId routingId, ulong requestSequence,
         Message message)
-        => TryReply(routingId, correlationId, new[] { message });
+        => TryReply(routingId, requestSequence, new[] { message });
 
-    public SendResult TryReply(RoutingId routingId, ulong correlationId,
+    public unsafe SendResult TryReply(RoutingId routingId, ulong requestSequence,
         IReadOnlyList<Message> parts)
     {
+        byte[] ridBytes = RoutingIdCodec.FromPublicString(routingId.Value,
+            nameof(routingId));
+        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(ridBytes);
         Message[] cloned = RequestReplySupport.CloneParts(parts);
-        cloned[0].SetReply(correlationId);
-        return _socket.TrySend(routingId, cloned);
+        RequestReplySupport.MovePartsToNative(cloned, out ZlinkMsg[] nativeParts);
+        try
+        {
+            fixed (ZlinkMsg* nativePtr = nativeParts)
+            {
+                int rc = NativeMethods.zlink_router_reply(_socket.Handle,
+                    ref nativeRoutingId, requestSequence, (IntPtr)nativePtr,
+                    (nuint)nativeParts.Length);
+                if (rc == 0)
+                    return SendResult.Sent;
+                return RequestReplySupport.MapTrySendResult(
+                    ZlinkException.FromLastError());
+            }
+        }
+        catch
+        {
+            RequestReplySupport.RestoreManagedParts(cloned, nativeParts,
+                nativeParts.Length);
+            throw;
+        }
     }
 
     public Received Recv()
@@ -455,7 +531,7 @@ public sealed class RequestRouter : IDisposable, IAsyncDisposable
         return _dataQueue.TryTake(out received, 0);
     }
 
-    public void OnReceive(SocketRecvHandler handler)
+    public void OnReceive(Action<Received> handler)
     {
         _dataHandler = handler ?? throw new ArgumentNullException(nameof(handler));
         _dataHandlerContext = SynchronizationContext.Current;
@@ -469,7 +545,8 @@ public sealed class RequestRouter : IDisposable, IAsyncDisposable
         _socket.Dispose();
         _dispatchThread.Join(TimeSpan.FromSeconds(1));
         _dataQueue.CompleteAdding();
-        FailAll(new ZlinkException((int)ErrorCode.Eterm, "socket is closed"));
+        if (_selfHandle.IsAllocated)
+            _selfHandle.Free();
     }
 
     public ValueTask DisposeAsync()
@@ -478,70 +555,61 @@ public sealed class RequestRouter : IDisposable, IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
-    private Task<Received> RequestCoreAsync(RoutingId routingId,
-        IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct,
-        bool trySend)
+    private unsafe Task<Received> RequestCoreAsync(RoutingId routingId,
+        IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct)
     {
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
-        ulong correlationId = unchecked((ulong)Interlocked.Increment(ref _nextCorrelationId) - 1);
-        cloned[0].SetRequest(correlationId);
-        var pending = new PendingRequest();
-        if (!_pending.TryAdd(correlationId, pending))
-        {
-            RequestReplySupport.DisposeParts(cloned);
-            throw new InvalidOperationException("duplicate correlation id");
-        }
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
 
-        CancellationTokenRegistration ctr = default;
-        Timer? timeoutTimer = null;
-        if (ct.CanBeCanceled)
-        {
-            ctr = ct.Register(() =>
-            {
-                if (_pending.TryRemove(correlationId, out PendingRequest? removed))
-                    removed.TrySetCanceled(ct);
-            });
-        }
-        if (timeout <= TimeSpan.Zero)
-            timeout = DefaultRequestTimeout;
-        timeoutTimer = new Timer(_ =>
-        {
-            if (_pending.TryRemove(correlationId, out PendingRequest? removed))
-            {
-                removed.TrySetException(new ZlinkException((int)ErrorCode.ETimedOut,
-                    "request timed out"));
-            }
-        }, null, timeout, Timeout.InfiniteTimeSpan);
+        byte[] ridBytes = RoutingIdCodec.FromPublicString(routingId.Value,
+            nameof(routingId));
+        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(ridBytes);
+        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        RequestReplySupport.MovePartsToNative(cloned, out ZlinkMsg[] nativeParts);
+        uint timeoutMs = NormalizeTimeout(timeout, DefaultRequestTimeout);
+        var completion = new TaskCompletionSource<Received>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        GCHandle handle = default;
+        RequestCallState? state = null;
 
         try
         {
-            if (trySend)
+            state = new RequestCallState(completion);
+            handle = GCHandle.Alloc(state, GCHandleType.Normal);
+            if (ct.CanBeCanceled)
             {
-                SendResult result = _socket.TrySend(routingId, cloned);
-                if (result != SendResult.Sent)
-                    throw new ZlinkException((int)ErrorCode.EAgain,
-                        "request send is backpressured");
+                state.SetCancellationRegistration(ct.Register(static userdata =>
+                {
+                    RequestCallState callbackState = (RequestCallState)((GCHandle)userdata!).Target!;
+                    callbackState.TrySetCanceled(CancellationToken.None);
+                }, handle));
             }
-            else
+            state.SetTimeoutTimer(new Timer(static userdata =>
             {
-                _socket.Send(routingId, cloned);
-            }
-        }
-        catch (Exception ex)
-        {
-            _pending.TryRemove(correlationId, out _);
-            timeoutTimer.Dispose();
-            ctr.Dispose();
-            RequestReplySupport.DisposeParts(cloned);
-            return Task.FromException<Received>(ex);
-        }
+                RequestCallState callbackState = (RequestCallState)((GCHandle)userdata!).Target!;
+                callbackState.TrySetException(new ZlinkException(
+                    (int)ErrorCode.ETimedOut, "request timed out"));
+            }, handle, (int)timeoutMs, Timeout.Infinite));
+            IntPtr userData = GCHandle.ToIntPtr(handle);
 
-        pending.Completion.Task.ContinueWith(_ =>
+            fixed (ZlinkMsg* nativePtr = nativeParts)
+            {
+                int rc = NativeMethods.zlink_router_request(_socket.Handle,
+                    ref nativeRoutingId, (IntPtr)nativePtr,
+                    (nuint)nativeParts.Length, timeoutMs, ReplyHandler, userData);
+                if (rc != 0)
+                    throw ZlinkException.FromLastError();
+            }
+            return completion.Task;
+        }
+        catch
         {
-            timeoutTimer.Dispose();
-            ctr.Dispose();
-        }, TaskScheduler.Default);
-        return pending.Completion.Task;
+            RequestReplySupport.RestoreManagedParts(cloned, nativeParts,
+                nativeParts.Length);
+            if (handle.IsAllocated)
+                handle.Free();
+            throw;
+        }
     }
 
     private void DispatchLoop()
@@ -557,7 +625,7 @@ public sealed class RequestRouter : IDisposable, IAsyncDisposable
                 }
                 if (received == null)
                     continue;
-                RouteReceived(RequestReplySupport.CloneReceived(received));
+                DeliverData(RequestReplySupport.CloneReceived(received));
             }
             catch (ZlinkException ex) when (ex.Errno == (int)ErrorCode.Eterm)
             {
@@ -567,33 +635,12 @@ public sealed class RequestRouter : IDisposable, IAsyncDisposable
             {
                 break;
             }
-            catch (Exception ex)
-            {
-                FailAll(ex);
-                break;
-            }
         }
-    }
-
-    private void RouteReceived(Received received)
-    {
-        if (received.Parts.Count == 0)
-        {
-            DeliverData(received);
-            return;
-        }
-        (byte msgType, ulong correlationId) = received.Parts[0].GetRequestInfo();
-        if (msgType == 2 && _pending.TryRemove(correlationId, out PendingRequest? pending))
-        {
-            pending.TrySetResult(received);
-            return;
-        }
-        DeliverData(received);
     }
 
     private void DeliverData(Received received)
     {
-        SocketRecvHandler? handler = _dataHandler;
+        Action<Received>? handler = _dataHandler;
         if (handler == null)
         {
             if (!_dataQueue.IsAddingCompleted)
@@ -601,17 +648,76 @@ public sealed class RequestRouter : IDisposable, IAsyncDisposable
             return;
         }
         SynchronizationContext? context = _dataHandlerContext;
-        CallbackDelivery.Post(context, () => handler(received.RoutingId,
-            RequestReplySupport.ToArray(received.Parts)));
+        CallbackDelivery.Post(context, () => handler(received));
     }
 
-    private void FailAll(Exception ex)
+    private unsafe void HandleRouterRequest(ZlinkRoutingId* peerRoutingId,
+        ulong requestSequence, IntPtr parts, nuint partCount)
     {
-        foreach ((ulong key, PendingRequest pending) in _pending)
+        Message[] managedParts = Message.FromNativeVector(parts, partCount);
+        parts = IntPtr.Zero;
+        partCount = 0;
+        string routingId = peerRoutingId == null ? string.Empty :
+            RoutingIdCodec.ToPublicString(
+                NativeHelpers.ReadRoutingId(ref *peerRoutingId));
+        DeliverData(new Received(routingId, managedParts, requestSequence, true));
+    }
+
+    private static uint NormalizeTimeout(TimeSpan timeout, TimeSpan fallback)
+    {
+        TimeSpan effective = timeout <= TimeSpan.Zero ? fallback : timeout;
+        double millis = effective.TotalMilliseconds;
+        if (millis <= 1)
+            return 1;
+        if (millis >= uint.MaxValue)
+            return uint.MaxValue;
+        return (uint)millis;
+    }
+
+    private static void OnReply(int errno, IntPtr parts, nuint partCount,
+        IntPtr userData)
+    {
+        GCHandle handle = GCHandle.FromIntPtr(userData);
+        RequestCallState state = (RequestCallState)handle.Target!;
+        try
         {
-            if (_pending.TryRemove(key, out PendingRequest? removed))
-                removed.TrySetException(ex);
+            if (errno != 0)
+            {
+                state.TrySetException(new ZlinkException(errno,
+                    $"request failed (errno={errno})"));
+                return;
+            }
+            Message[] replyParts = Message.FromNativeVector(parts, partCount);
+            parts = IntPtr.Zero;
+            partCount = 0;
+            Received received = new(string.Empty, replyParts);
+            if (!state.TrySetResult(received))
+                RequestReplySupport.DisposeParts(replyParts);
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(parts, partCount);
+            handle.Free();
         }
     }
 
+    private static unsafe void OnRouterRequest(ZlinkRoutingId* peerRoutingId,
+        ulong requestSequence, IntPtr parts, nuint partCount, IntPtr userData)
+    {
+        GCHandle handle = GCHandle.FromIntPtr(userData);
+        RequestRouter router = (RequestRouter)handle.Target!;
+        try
+        {
+            router.HandleRouterRequest(peerRoutingId, requestSequence, parts,
+                partCount);
+            parts = IntPtr.Zero;
+            partCount = 0;
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(parts, partCount);
+        }
+    }
 }

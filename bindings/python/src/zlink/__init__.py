@@ -10,9 +10,6 @@ from ._core import (
     RoutingId,
     SubscriptionEvent,
     ZlinkError,
-    MSG_TYPE_DATA,
-    MSG_TYPE_REQUEST,
-    MSG_TYPE_REPLY,
     METADATA_KEY_USER_MIN,
     METADATA_VALUE_MAX,
 )

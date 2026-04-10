@@ -6,11 +6,38 @@
 #include "api/zlink_option_internal.hpp"
 #include "services/spot/spot_node_access.hpp"
 
+extern "C" int zlink_socket_request_reply_set_default_timeout (
+  void *socket_,
+  const void *optval_,
+  size_t optvallen_);
+extern "C" int zlink_socket_request_reply_get_default_timeout (
+  void *socket_,
+  void *optval_,
+  size_t *optvallen_);
+extern "C" int zlink_spot_request_reply_set_default_timeout (
+  void *spot_,
+  const void *optval_,
+  size_t optvallen_);
+extern "C" int zlink_spot_request_reply_get_default_timeout (
+  void *spot_,
+  void *optval_,
+  size_t *optvallen_);
+
 int zlink_set_router_option (void *handle_,
                              zlink_router_option_t option_,
                              const void *optval_,
                              size_t optvallen_)
 {
+    if (option_ == ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS) {
+        zlink::socket_base_t *socket = as_socket (handle_);
+        if (!socket || socket_type_of (socket) != ZLINK_CORE_SOCKET_ROUTER) {
+            errno = EINVAL;
+            return -1;
+        }
+        return zlink_socket_request_reply_set_default_timeout (handle_, optval_,
+                                                               optvallen_);
+    }
+
     const int socket_option = map_router_option (option_);
     if (socket_option < 0)
         return -1;
@@ -40,6 +67,16 @@ int zlink_get_router_option (void *handle_,
                              void *optval_,
                              size_t *optvallen_)
 {
+    if (option_ == ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS) {
+        zlink::socket_base_t *socket = as_socket (handle_);
+        if (!socket || socket_type_of (socket) != ZLINK_CORE_SOCKET_ROUTER) {
+            errno = EINVAL;
+            return -1;
+        }
+        return zlink_socket_request_reply_get_default_timeout (
+          handle_, optval_, optvallen_);
+    }
+
     const int socket_option = map_router_option (option_);
     if (socket_option < 0)
         return -1;
@@ -69,6 +106,16 @@ int zlink_set_dealer_option (void *handle_,
                              const void *optval_,
                              size_t optvallen_)
 {
+    if (option_ == ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS) {
+        zlink::socket_base_t *socket = as_socket (handle_);
+        if (!socket || socket_type_of (socket) != ZLINK_CORE_SOCKET_DEALER) {
+            errno = EINVAL;
+            return -1;
+        }
+        return zlink_socket_request_reply_set_default_timeout (handle_, optval_,
+                                                               optvallen_);
+    }
+
     const int socket_option = map_dealer_option (option_);
     if (socket_option < 0)
         return -1;
@@ -113,6 +160,44 @@ int zlink_get_stream_option (void *handle_,
     return get_socket_option_checked (
       socket, socket_type_of (socket), ZLINK_CORE_SOCKET_STREAM,
       ZLINK_CORE_SOCKET_STREAM, socket_option, optval_, optvallen_);
+}
+
+int zlink_set_spot_option (void *handle_,
+                           zlink_spot_option_t option_,
+                           const void *optval_,
+                           size_t optvallen_)
+{
+    if (option_ != ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (!as_spot_handle (handle_)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    return zlink_spot_request_reply_set_default_timeout (handle_, optval_,
+                                                         optvallen_);
+}
+
+int zlink_get_spot_option (void *handle_,
+                           zlink_spot_option_t option_,
+                           void *optval_,
+                           size_t *optvallen_)
+{
+    if (option_ != ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (!as_spot_handle (handle_)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    return zlink_spot_request_reply_get_default_timeout (handle_, optval_,
+                                                         optvallen_);
 }
 
 int zlink_set_pub_option (void *handle_,

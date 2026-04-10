@@ -171,28 +171,26 @@ fn request_reply_wrapper_roundtrip() {
     let ctx = Context::new().unwrap();
     let router_socket = ctx.router_socket().unwrap();
     let dealer_socket = ctx.dealer_socket().unwrap();
-    let router_send_handle = router_socket.send_handle();
     router_socket.bind("inproc://rust-request-reply").unwrap();
     dealer_socket
         .connect("inproc://rust-request-reply")
         .unwrap();
 
-    let router = RequestRouter::new(router_socket).unwrap();
+    let router = std::sync::Arc::new(RequestRouter::new(router_socket).unwrap());
     let dealer = RequestDealer::new(dealer_socket).unwrap();
 
     let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let done_flag = done.clone();
     let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+    let router_for_reply = router.clone();
     router.on_receive(move |received| {
         let routing_id = received.routing_id().clone();
+        let request_seq = received.request_seq().unwrap();
         let part = received.single_part().unwrap();
         assert_eq!(part.data(), b"ping");
-        let (msg_type, correlation_id) = part.request_info().unwrap();
-        assert_eq!(msg_type, 1);
-        let mut reply = Message::from_bytes(b"pong").unwrap();
-        reply.set_reply(correlation_id).unwrap();
-        router_send_handle
-            .send_to(&routing_id, vec![reply])
+        let reply = Message::from_bytes(b"pong").unwrap();
+        router_for_reply
+            .reply(&routing_id, request_seq, reply)
             .unwrap();
         done_flag.store(true, std::sync::atomic::Ordering::SeqCst);
     });
@@ -223,7 +221,7 @@ fn request_reply_wrapper_roundtrip() {
 }
 
 #[test]
-fn request_router_preserves_data_recv_surface() {
+fn request_router_exposes_request_sequence() {
     let ctx = Context::new().unwrap();
     let router_socket = ctx.router_socket().unwrap();
     let dealer_socket = ctx.dealer_socket().unwrap();
@@ -235,11 +233,16 @@ fn request_router_preserves_data_recv_surface() {
         .unwrap();
 
     let router = RequestRouter::new(router_socket).unwrap();
-    dealer_socket
-        .send(vec![Message::from_bytes(b"plain-data").unwrap()])
-        .unwrap();
+    let dealer = RequestDealer::new(dealer_socket).unwrap();
+    dealer.request_callback_with_timeout(
+        Message::from_bytes(b"plain-data").unwrap(),
+        |_| {},
+        std::time::Duration::from_millis(50),
+    );
 
     let received = router.recv().unwrap();
+    let request_seq = received.request_seq();
     let part = received.single_part().unwrap();
     assert_eq!(part.data(), b"plain-data");
+    assert!(request_seq.is_some());
 }

@@ -150,6 +150,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 |------|------|--------|------|
 | `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | 미도달 시 `EHOSTUNREACH` 반환 |
 | `ZLINK_ROUTER_OPT_HANDOVER` | int | 0 | routing_id 충돌 시 기존 연결 대체 |
+| `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_router_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER 자신의 routing_id (전용 함수) |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 HWM |
 | `ZLINK_OPT_RCVHWM` | int | 1000 | 수신 HWM |
@@ -173,6 +174,50 @@ int rc = zlink_send_rid(router, &target_rid, &msg, 1, 0);
 ```
 
 > 참고: `core/tests/test_router_mandatory.cpp` — `test_basic()`
+
+## 4.1 request-reply 서버와 클라이언트 역할
+
+`ROUTER` 는 request-reply 에서 두 역할을 모두 맡을 수 있다.
+
+- 서버 역할: `zlink_router_handler()` 로 request 를 받고
+  `zlink_router_reply()` 로 응답
+- 능동 client 역할: `zlink_router_request()` 로 특정 peer 에 요청
+
+가장 중요한 값은 `peer_rid + request_seq` 조합이다. `request_seq` 만 맞고
+`peer_rid` 가 다르면 같은 요청 reply 로 보면 안 된다.
+
+```c
+static void on_request(const zlink_routing_id_t *peer_rid,
+                       uint64_t request_seq,
+                       zlink_msg_t *parts,
+                       size_t part_count,
+                       void *userdata)
+{
+    zlink_multipart_close(parts, part_count);
+
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 4);
+    memcpy(zlink_msg_data(&reply), "pong", 4);
+    zlink_router_reply(router, peer_rid, request_seq, &reply, 1);
+}
+
+zlink_router_handler(router, on_request, NULL);
+```
+
+`ROUTER` 가 먼저 request 를 시작할 때는 reply callback 을 받는다.
+
+```c
+static void on_router_reply(int reply_errno,
+                            zlink_msg_t *parts,
+                            size_t part_count,
+                            void *userdata)
+{
+    if (reply_errno == 0)
+        zlink_multipart_close(parts, part_count);
+}
+
+zlink_router_request(router, target_rid, &req, 1, 2500, on_router_reply, NULL);
+```
 
 ## 5. 사용 패턴
 

@@ -166,6 +166,132 @@ handle에 `zlink_set_tls_server()` 또는 `zlink_set_tls_client()`를 호출하�
 `zlink_spot_node_peers_snapshot()`, `zlink_spot_node_subjects_snapshot()`을
 사용합니다.
 
+## SPOT routed request-reply
+
+SPOT request-reply 는 publish/subscribe 경로와 별도입니다. 이 표면은 topic 을
+통하지 않고, ZMP control part 로 목적지와 request-reply 문맥을 함께 실어
+보냅니다.
+
+핵심 규칙:
+
+- ordinary `zlink_publish()` / `zlink_subscribe()` 와 섞이지 않습니다.
+- wire 순서는 `SPOT routed envelope -> request-reply envelope -> payload` 입니다.
+- reply 는 request handler 가 알려준 주소와 `request_seq` 를 그대로 사용합니다.
+- `timeout_ms = 0` 이면 구현 기본값 `5000ms` 를 사용합니다.
+- high-level completion 은 첫 reply 1건으로 끝납니다.
+
+### 콜백 타입
+
+```c
+typedef void (*zlink_spot_handler_fn) (
+  const zlink_routing_id_t *source_rid_,
+  const zlink_routing_id_t *spot_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
+
+typedef void (*zlink_router_spot_handler_fn) (
+  const zlink_routing_id_t *source_node_rid_,
+  const zlink_routing_id_t *source_spot_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
+```
+
+`zlink_spot_handler_fn` 은 ordinary routed message 와 request-reply message 를
+같이 받습니다. `request_seq = 0` 이면 ordinary message 이고,
+`request_seq != 0` 이면 request-reply message 입니다.
+
+`zlink_router_spot_handler_fn` 은 `spot -> router` ordinary direct message 와
+request-reply message 를 같이 받습니다. 이때 `source_node_rid_` 와
+`source_spot_rid_` 를 reply 주소로 사용합니다.
+
+### Spot 에서 시작하는 request
+
+```c
+int zlink_spot_request_spot (void *spot_,
+                             const zlink_routing_id_t *dest_node_rid_,
+                             const zlink_routing_id_t *dest_spot_rid_,
+                             zlink_msg_t *parts_,
+                             size_t part_count_,
+                             uint32_t timeout_ms_,
+                             zlink_reply_handler_fn handler_,
+                             void *userdata_);
+
+int zlink_spot_request_router (void *spot_,
+                               const zlink_routing_id_t *peer_rid_,
+                               zlink_msg_t *parts_,
+                               size_t part_count_,
+                               uint32_t timeout_ms_,
+                               zlink_reply_handler_fn handler_,
+                               void *userdata_);
+```
+
+- `zlink_spot_request_spot()` 은 destination node rid 와 destination spot rid
+  를 모두 요구합니다.
+- `zlink_spot_request_router()` 는 일반 `ROUTER` peer 로 보냅니다.
+- 두 함수 모두 reply 는 `zlink_reply_handler_fn` 으로 비동기 완료됩니다.
+
+### Spot 에서 보내는 reply
+
+```c
+int zlink_spot_reply_spot (void *spot_,
+                           const zlink_routing_id_t *dest_node_rid_,
+                           const zlink_routing_id_t *dest_spot_rid_,
+                           uint64_t request_seq_,
+                           zlink_msg_t *parts_,
+                           size_t part_count_);
+
+int zlink_spot_reply_router (void *spot_,
+                             const zlink_routing_id_t *peer_rid_,
+                             uint64_t request_seq_,
+                             zlink_msg_t *parts_,
+                             size_t part_count_);
+```
+
+### Spot typed receive callback
+
+```c
+int zlink_spot_handler (
+  void *spot_, zlink_spot_handler_fn handler_, void *userdata_);
+```
+
+한 `Spot` 에 한 개의 typed receive callback 만 설치할 수 있습니다. ordinary
+routed message 와 request-reply message 를 같은 callback 에서 받고,
+`request_seq` 값으로 구분합니다.
+
+### Router 와 SPOT 사이 request-reply
+
+```c
+int zlink_router_request_spot (
+  void *router_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  uint32_t timeout_ms_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_);
+
+int zlink_router_reply_spot (void *router_,
+                             const zlink_routing_id_t *dest_node_rid_,
+                             const zlink_routing_id_t *dest_spot_rid_,
+                             uint64_t request_seq_,
+                             zlink_msg_t *parts_,
+                             size_t part_count_);
+
+int zlink_router_spot_handler (
+  void *router_,
+  zlink_router_spot_handler_fn handler_,
+  void *userdata_);
+```
+
+이 표면으로 `router -> spot`, `spot -> router` 조합을 같은 계약으로 맞춥니다.
+`ROUTER` 쪽 reply 주소는 transport `peer_rid` 가 아니라
+`dest_node_rid + dest_spot_rid + request_seq` 조합입니다.
+
 ## SpotNode Internal Data-Plane HWM
 
 SpotNode는 다음 내부 data-plane을 가집니다.
@@ -175,29 +301,21 @@ SpotNode는 다음 내부 data-plane을 가집니다.
 - `mesh_pub` peer publish queue
 - `mesh_xsub` peer receive queue
 
-기본 data-plane HWM은 `1000`입니다. `SpotNode` handle에 `SNDHWM` /
-`RCVHWM`을 설정하면 같은 방향의 내부 data-plane budget에도 함께 적용됩니다.
+SpotNode 내부 HWM 설정은 일반 `zlink_set_option(..., SNDHWM/RCVHWM)` 이 아니라
+`zlink_set_spot_node_option()` 으로 다룹니다. 이유는 SpotNode 안에 topic
+publish/subscribe 경로와 routed 경로가 함께 있고, 두 경로가 같은 큐 한도를
+공유하면 한쪽 폭주가 다른 쪽 지연을 망칠 수 있기 때문입니다.
 
-- `SpotNode` 의 `SNDHWM`
-  - 기본 SpotNode pub handle
-  - internal `fanout` send HWM
-  - internal `mesh_pub` send HWM
-- `SpotNode` 의 `RCVHWM`
-  - 기본 SpotNode sub handle
-  - internal `ingress` receive HWM
-  - internal `mesh_xsub` receive HWM
+현재 공개 설정 축은 다음 네 가지입니다.
 
-이 내부 data-plane budget은 unified `Spot` handle에 설정하는 public
-`SNDHWM` / `RCVHWM`과는 별개입니다. `peer_ctrl` 는 control-plane 기본값을
-유지하며 SpotNode data-plane HWM 묶음에 포함하지 않습니다.
+- `TOPIC_SEND_HWM`
+- `TOPIC_RECV_HWM`
+- `ROUTED_SEND_HWM`
+- `ROUTED_RECV_HWM`
 
-- internal data-plane HWM 기본값: `1000`
-- transport별 기본 확장은 적용하지 않습니다
-- 세부 internal override는 진단용으로만 남겨둡니다
-  - `ZLINK_SPOT_INTERNAL_INGRESS_RCVHWM`
-  - `ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM`
-  - `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM`
-  - `ZLINK_SPOT_INTERNAL_MESH_XSUB_RCVHWM`
+이 값은 내부 topic/routed 소켓군에 각각 매핑됩니다. public API는 내부 소켓
+이름을 직접 노출하지 않고, SpotNode 수준에서 topic 과 routed 두 방향만
+구분합니다.
 
 ## callback 계약
 

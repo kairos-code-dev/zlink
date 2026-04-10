@@ -151,7 +151,7 @@ struct options_t
     ipc_pid_accept_filters_t ipc_pid_accept_filters;
 #endif
 
-    //  Enable READY metadata for ZMP (default: false)
+    //  Enable READY properties for ZMP (default: false)
     bool zmp_metadata;
 
     //  ID of the socket.
@@ -198,7 +198,7 @@ struct options_t
     // This stays in the shared bag, but monitor sequencing interprets it.
     int monitor_event_version;
 
-    // Protocol/metadata-owned handshake payloads.
+    // Protocol-owned handshake payloads.
     // Session/pipe owners interpret these rather than the central bag.
     std::vector<unsigned char> hello_msg;
     bool can_send_hello_msg;

@@ -187,28 +187,11 @@ class registry_t
     service_runtime_base_t _lifecycle;
     service_public_api_guard_t _public_api;
 
-    std::string _pub_endpoint;
-    std::string _router_endpoint;
-    std::vector<std::string> _peer_pubs;
-
-    uint32_t _registry_id;
-    bool _registry_id_set;
-    uint64_t _list_seq;
-    int _last_summary_error;
-    uint64_t _summary_last_changed_ms;
-
-    uint32_t _heartbeat_interval_ms;
-    uint32_t _heartbeat_timeout_ms;
-    uint32_t _broadcast_interval_ms;
-
     struct socket_opt_t
     {
         int option;
         std::vector<unsigned char> value;
     };
-    std::vector<socket_opt_t> _pub_opts;
-    std::vector<socket_opt_t> _router_opts;
-    std::vector<socket_opt_t> _peer_sub_opts;
     void apply_socket_opts (socket_base_t *socket_,
                             const std::vector<socket_opt_t> &opts_);
     void promote_runtime_sockets (socket_base_t *pub_,
@@ -220,24 +203,119 @@ class registry_t
     void connect_peer_sub_endpoints (void *peer_sub_,
                                      const std::vector<std::string> &peer_pubs_);
 
-    atomic_counter_t _stop;
-    uint64_t _task_id;
-    void *_pub_socket;
-    void *_router_socket;
-    void *_peer_sub_socket;
-    std::set<std::string> _peer_connected;
-    uint64_t _next_broadcast_ms;
-    uint64_t _last_sent_seq;
-    bool _started;
-    uint64_t _next_socket_retry_ms;
-
     mutex_t _sync;
 
-    service_map_t _services;
-    std::map<topology_key_t, topology_entry_t> _topology;
-    std::map<uint32_t, uint64_t> _peer_seq;
-    std::map<uint32_t, uint64_t> _peer_last_seen;
-    size_t _metadata_max_size;
+    struct endpoint_config_t
+    {
+        std::string pub_endpoint;
+        std::string router_endpoint;
+        std::vector<std::string> peer_pubs;
+    };
+
+    struct coordination_state_t
+    {
+        coordination_state_t () :
+            registry_id (0),
+            registry_id_set (false),
+            list_seq (0),
+            last_summary_error (0),
+            summary_last_changed_ms (0),
+            heartbeat_interval_ms (5000),
+            heartbeat_timeout_ms (15000),
+            broadcast_interval_ms (30000)
+        {
+        }
+
+        uint32_t registry_id;
+        bool registry_id_set;
+        uint64_t list_seq;
+        int last_summary_error;
+        uint64_t summary_last_changed_ms;
+        uint32_t heartbeat_interval_ms;
+        uint32_t heartbeat_timeout_ms;
+        uint32_t broadcast_interval_ms;
+    };
+
+    struct socket_option_state_t
+    {
+        std::vector<socket_opt_t> pub_opts;
+        std::vector<socket_opt_t> router_opts;
+        std::vector<socket_opt_t> peer_sub_opts;
+    };
+
+    struct runtime_socket_state_t
+    {
+        runtime_socket_state_t () :
+            stop (0),
+            task_id (0),
+            pub_socket (NULL),
+            router_socket (NULL),
+            peer_sub_socket (NULL),
+            next_broadcast_ms (0),
+            last_sent_seq (0),
+            started (false),
+            next_socket_retry_ms (0)
+        {
+        }
+
+        atomic_counter_t stop;
+        uint64_t task_id;
+        void *pub_socket;
+        void *router_socket;
+        void *peer_sub_socket;
+        std::set<std::string> peer_connected;
+        uint64_t next_broadcast_ms;
+        uint64_t last_sent_seq;
+        bool started;
+        uint64_t next_socket_retry_ms;
+    };
+
+    struct projection_state_t
+    {
+        projection_state_t () : metadata_max_size (4096) {}
+
+        service_map_t services;
+        std::map<topology_key_t, topology_entry_t> topology;
+        std::map<uint32_t, uint64_t> peer_seq;
+        std::map<uint32_t, uint64_t> peer_last_seen;
+        size_t metadata_max_size;
+    };
+
+    endpoint_config_t _endpoint_config;
+    coordination_state_t _coordination_state;
+    socket_option_state_t _socket_option_state;
+    runtime_socket_state_t _runtime_socket_state;
+    projection_state_t _projection_state;
+
+    std::string &_pub_endpoint;
+    std::string &_router_endpoint;
+    std::vector<std::string> &_peer_pubs;
+    uint32_t &_registry_id;
+    bool &_registry_id_set;
+    uint64_t &_list_seq;
+    int &_last_summary_error;
+    uint64_t &_summary_last_changed_ms;
+    uint32_t &_heartbeat_interval_ms;
+    uint32_t &_heartbeat_timeout_ms;
+    uint32_t &_broadcast_interval_ms;
+    std::vector<socket_opt_t> &_pub_opts;
+    std::vector<socket_opt_t> &_router_opts;
+    std::vector<socket_opt_t> &_peer_sub_opts;
+    atomic_counter_t &_stop;
+    uint64_t &_task_id;
+    void *&_pub_socket;
+    void *&_router_socket;
+    void *&_peer_sub_socket;
+    std::set<std::string> &_peer_connected;
+    uint64_t &_next_broadcast_ms;
+    uint64_t &_last_sent_seq;
+    bool &_started;
+    uint64_t &_next_socket_retry_ms;
+    service_map_t &_services;
+    std::map<topology_key_t, topology_entry_t> &_topology;
+    std::map<uint32_t, uint64_t> &_peer_seq;
+    std::map<uint32_t, uint64_t> &_peer_last_seen;
+    size_t &_metadata_max_size;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (registry_t)
 };

@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 #include "sockets/stream.hpp"
+#include "sockets/stream_dispatch_internal.hpp"
 #include "core/pipe.hpp"
 #include "protocol/wire.hpp"
 #include "utils/err.hpp"
@@ -89,38 +90,6 @@ uint32_t resolve_dispatch_routing_id (const zlink::msg_t *msg_,
 
     return 0;
 }
-
-struct stream_dispatch_tls_t
-{
-    stream_dispatch_tls_t () : socket (NULL), pipe (NULL), routing_id (0)
-    {
-    }
-
-    zlink::stream_t *socket;
-    zlink::pipe_t *pipe;
-    uint32_t routing_id;
-};
-
-thread_local stream_dispatch_tls_t g_stream_dispatch_tls;
-
-class stream_dispatch_tls_scope_t
-{
-  public:
-    stream_dispatch_tls_scope_t (zlink::stream_t *socket_,
-                                 zlink::pipe_t *pipe_,
-                                 uint32_t routing_id_) :
-        _prev (g_stream_dispatch_tls)
-    {
-        g_stream_dispatch_tls.socket = socket_;
-        g_stream_dispatch_tls.pipe = pipe_;
-        g_stream_dispatch_tls.routing_id = routing_id_;
-    }
-
-    ~stream_dispatch_tls_scope_t () { g_stream_dispatch_tls = _prev; }
-
-  private:
-    stream_dispatch_tls_t _prev;
-};
 
 zlink::pipe_t *resolve_connect_event_owner (zlink::pipe_t *pipe_)
 {
@@ -706,7 +675,8 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     rid.size = 4;
     memcpy (rid.data, rid_buf, 4);
 
-    const stream_dispatch_tls_scope_t tls_scope (this, pipe_, routing_id_value);
+    const stream_dispatch_context_t dispatch_scope (this, pipe_,
+                                                    routing_id_value);
     _dispatch_inflight.fetch_add (1, std::memory_order_acq_rel);
 
     msg_t callback_msg;
@@ -734,7 +704,7 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
 
 bool zlink::stream_t::stream_dispatch_owns_tls () const
 {
-    return g_stream_dispatch_tls.socket == this;
+    return zlink::stream_dispatch_owns_socket (this);
 }
 
 uint32_t zlink::stream_t::ensure_dispatch_routing_id (pipe_t *pipe_)

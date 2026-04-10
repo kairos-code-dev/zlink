@@ -122,15 +122,12 @@ void monitor_handler_task (void *arg_)
                 state_->callback_depth.fetch_add (
                   1, std::memory_order_acq_rel);
             }
-            monitor_handler_state_t *previous =
-              g_current_monitor_handler_state;
-            g_current_monitor_handler_state = state_;
+            const zlink::monitor_dispatch_context_t dispatch_scope (state_);
             handler (&event, handler_userdata);
             const int depth_after =
               state_->callback_depth.fetch_sub (
                 1, std::memory_order_acq_rel)
               - 1;
-            g_current_monitor_handler_state = previous;
             if (state_->close_requested.load (std::memory_order_acquire)
                 && depth_after == 0) {
                 finalize_monitor_handler_self_close (state_);
@@ -164,15 +161,12 @@ void monitor_handler_task (void *arg_)
                 state_->callback_depth.fetch_add (
                   1, std::memory_order_acq_rel);
             }
-            monitor_handler_state_t *previous =
-              g_current_monitor_handler_state;
-            g_current_monitor_handler_state = state_;
+            const zlink::monitor_dispatch_context_t dispatch_scope (state_);
             handler (&event, handler_userdata);
             const int depth_after =
               state_->callback_depth.fetch_sub (
                 1, std::memory_order_acq_rel)
               - 1;
-            g_current_monitor_handler_state = previous;
             if (state_->close_requested.load (std::memory_order_acquire)
                 && depth_after == 0) {
                 finalize_monitor_handler_self_close (state_);
@@ -182,8 +176,6 @@ void monitor_handler_task (void *arg_)
     }
 }
 }
-
-thread_local monitor_handler_state_t *g_current_monitor_handler_state = NULL;
 
 int require_monitor_recv_model (void *monitor_, bool service_)
 {
@@ -208,16 +200,6 @@ int require_monitor_recv_model (void *monitor_, bool service_)
         return -1;
     }
     return 0;
-}
-
-namespace zlink
-{
-void *current_monitor_dispatch_handle ()
-{
-    return g_current_monitor_handler_state
-             ? static_cast<void *> (g_current_monitor_handler_state->socket)
-             : NULL;
-}
 }
 
 monitor_handler_state_t *find_monitor_handler_state (zlink::socket_base_t *socket_)
@@ -401,13 +383,13 @@ int zlink_monitor_close (void **monitor_p_)
                                                  std::memory_order_release);
             monitor_state->service_handler.store (NULL,
                                                   std::memory_order_release);
-            if (g_current_monitor_handler_state != monitor_state) {
+            if (zlink::current_monitor_handler_state () != monitor_state) {
                 monitor_state->stop.store (true, std::memory_order_release);
                 stop_socket_before_close = true;
             }
         }
     }
-    if (monitor_state && g_current_monitor_handler_state == monitor_state) {
+    if (monitor_state && zlink::current_monitor_handler_state () == monitor_state) {
         const int rc = zlink_close (monitor);
         if (rc == 0)
             *monitor_p_ = NULL;

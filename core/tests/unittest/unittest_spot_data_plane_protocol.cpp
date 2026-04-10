@@ -101,8 +101,9 @@ zlink::spot_topic_batch_bucket_t make_bucket (
 void test_mesh_xsub_monitor_ready_zero_clears_connected_peer ()
 {
     zlink::spot_runtime_t runtime (NULL);
-    runtime.mesh_peer_state.connected_endpoints.insert ("wss://127.0.0.1:9000");
-    runtime.mesh_peer_state.connected_ready_peer_count.store (1);
+    runtime.execution.mesh_peer_state.connected_endpoints.insert (
+      "wss://127.0.0.1:9000");
+    runtime.execution.mesh_peer_state.connected_ready_peer_count.store (1);
     zlink_monitor_event_t raw;
     memset (&raw, 0, sizeof (raw));
     raw.event = ZLINK_EVENT_CONNECTION_READY;
@@ -112,10 +113,11 @@ void test_mesh_xsub_monitor_ready_zero_clears_connected_peer ()
     zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
       &runtime, raw);
     TEST_ASSERT_EQUAL_UINT (
-      1, runtime.mesh_peer_state.connected_endpoints.size ());
+      1, runtime.execution.mesh_peer_state.connected_endpoints.size ());
     TEST_ASSERT_EQUAL_UINT (
-      1, runtime.mesh_peer_state.connected_ready_peer_count.load ());
-    TEST_ASSERT_EQUAL_UINT64 (0, runtime.mesh_peer_state.version.load ());
+      1, runtime.execution.mesh_peer_state.connected_ready_peer_count.load ());
+    TEST_ASSERT_EQUAL_UINT64 (
+      0, runtime.execution.mesh_peer_state.version.load ());
 }
 
 void test_mesh_xsub_monitor_ready_count_growth_marks_connected ()
@@ -130,10 +132,11 @@ void test_mesh_xsub_monitor_ready_count_growth_marks_connected ()
     zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
       &runtime, raw);
     TEST_ASSERT_EQUAL_UINT (
-      1, runtime.mesh_peer_state.connected_endpoints.size ());
+      1, runtime.execution.mesh_peer_state.connected_endpoints.size ());
     TEST_ASSERT_EQUAL_UINT (
-      1, runtime.mesh_peer_state.connected_ready_peer_count.load ());
-    TEST_ASSERT_EQUAL_UINT64 (1, runtime.mesh_peer_state.version.load ());
+      1, runtime.execution.mesh_peer_state.connected_ready_peer_count.load ());
+    TEST_ASSERT_EQUAL_UINT64 (
+      1, runtime.execution.mesh_peer_state.version.load ());
 }
 
 void test_mesh_xsub_monitor_disconnect_clears_connected_peer ()
@@ -152,18 +155,22 @@ void test_mesh_xsub_monitor_disconnect_clears_connected_peer ()
     raw.value = 0;
     zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
       &runtime, raw);
-    TEST_ASSERT_TRUE (runtime.mesh_peer_state.connected_endpoints.empty ());
+    TEST_ASSERT_TRUE (
+      runtime.execution.mesh_peer_state.connected_endpoints.empty ());
     TEST_ASSERT_EQUAL_UINT (
-      0, runtime.mesh_peer_state.connected_ready_peer_count.load ());
-    TEST_ASSERT_EQUAL_UINT64 (2, runtime.mesh_peer_state.version.load ());
+      0, runtime.execution.mesh_peer_state.connected_ready_peer_count.load ());
+    TEST_ASSERT_EQUAL_UINT64 (
+      2, runtime.execution.mesh_peer_state.version.load ());
 }
 
 void test_mesh_xsub_monitor_ready_count_changes_without_rewriting_membership ()
 {
     zlink::spot_runtime_t runtime (NULL);
-    runtime.mesh_peer_state.connected_endpoints.insert ("wss://127.0.0.1:9000");
-    runtime.mesh_peer_state.connected_endpoints.insert ("wss://127.0.0.1:9001");
-    runtime.mesh_peer_state.connected_ready_peer_count.store (2);
+    runtime.execution.mesh_peer_state.connected_endpoints.insert (
+      "wss://127.0.0.1:9000");
+    runtime.execution.mesh_peer_state.connected_endpoints.insert (
+      "wss://127.0.0.1:9001");
+    runtime.execution.mesh_peer_state.connected_ready_peer_count.store (2);
 
     zlink_monitor_event_t raw;
     memset (&raw, 0, sizeof (raw));
@@ -173,13 +180,14 @@ void test_mesh_xsub_monitor_ready_count_changes_without_rewriting_membership ()
 
     bool endpoint_membership_changed = true;
     TEST_ASSERT_FALSE (zlink::sync_mesh_peer_monitor_state (
-      &runtime.mesh_peer_state, raw, &endpoint_membership_changed));
+      &runtime.execution.mesh_peer_state, raw, &endpoint_membership_changed));
     TEST_ASSERT_EQUAL_UINT (
-      2, runtime.mesh_peer_state.connected_endpoints.size ());
+      2, runtime.execution.mesh_peer_state.connected_endpoints.size ());
     TEST_ASSERT_EQUAL_UINT (
-      2, runtime.mesh_peer_state.connected_ready_peer_count.load ());
+      2, runtime.execution.mesh_peer_state.connected_ready_peer_count.load ());
     TEST_ASSERT_FALSE (endpoint_membership_changed);
-    TEST_ASSERT_EQUAL_UINT64 (0, runtime.mesh_peer_state.version.load ());
+    TEST_ASSERT_EQUAL_UINT64 (
+      0, runtime.execution.mesh_peer_state.version.load ());
 }
 
 void test_mesh_xsub_monitor_ready_growth_reports_endpoint_membership_change ()
@@ -206,7 +214,8 @@ void test_mesh_xsub_monitor_ready_growth_reports_endpoint_membership_change ()
 void test_mesh_xsub_monitor_ready_positive_keeps_endpoint_present ()
 {
     zlink::spot_runtime_t runtime (NULL);
-    runtime.mesh_peer_state.connected_endpoints.insert ("wss://127.0.0.1:9000");
+    runtime.execution.mesh_peer_state.connected_endpoints.insert (
+      "wss://127.0.0.1:9000");
 
     zlink_monitor_event_t raw;
     memset (&raw, 0, sizeof (raw));
@@ -218,20 +227,23 @@ void test_mesh_xsub_monitor_ready_positive_keeps_endpoint_present ()
     zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
       &runtime, raw);
     TEST_ASSERT_EQUAL_UINT (
-      2, runtime.mesh_peer_state.connected_endpoints.size ());
-    TEST_ASSERT_TRUE (runtime.mesh_peer_state.connected_endpoints.count (
-                        "wss://127.0.0.1:9001")
-                      == 1);
+      2, runtime.execution.mesh_peer_state.connected_endpoints.size ());
+    TEST_ASSERT_TRUE (runtime.execution.mesh_peer_state.connected_endpoints.count (
+      "wss://127.0.0.1:9001")
+                     == 1);
     TEST_ASSERT_EQUAL_UINT (
-      2, runtime.mesh_peer_state.connected_ready_peer_count.load ());
-    TEST_ASSERT_EQUAL_UINT64 (1, runtime.mesh_peer_state.version.load ());
+      2, runtime.execution.mesh_peer_state.connected_ready_peer_count.load ());
+    TEST_ASSERT_EQUAL_UINT64 (
+      1, runtime.execution.mesh_peer_state.version.load ());
 }
 
 void test_mesh_xsub_monitor_same_ready_count_does_not_bump_version ()
 {
     zlink::spot_runtime_t runtime (NULL);
-    runtime.mesh_peer_state.connected_endpoints.insert ("wss://127.0.0.1:9000");
-    runtime.mesh_peer_state.connected_endpoints.insert ("wss://127.0.0.1:9001");
+    runtime.execution.mesh_peer_state.connected_endpoints.insert (
+      "wss://127.0.0.1:9000");
+    runtime.execution.mesh_peer_state.connected_endpoints.insert (
+      "wss://127.0.0.1:9001");
 
     zlink_monitor_event_t raw;
     memset (&raw, 0, sizeof (raw));
@@ -243,10 +255,11 @@ void test_mesh_xsub_monitor_same_ready_count_does_not_bump_version ()
     zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
       &runtime, raw);
     TEST_ASSERT_EQUAL_UINT (
-      3, runtime.mesh_peer_state.connected_endpoints.size ());
+      3, runtime.execution.mesh_peer_state.connected_endpoints.size ());
     TEST_ASSERT_EQUAL_UINT (
-      3, runtime.mesh_peer_state.connected_ready_peer_count.load ());
-    TEST_ASSERT_EQUAL_UINT64 (1, runtime.mesh_peer_state.version.load ());
+      3, runtime.execution.mesh_peer_state.connected_ready_peer_count.load ());
+    TEST_ASSERT_EQUAL_UINT64 (
+      1, runtime.execution.mesh_peer_state.version.load ());
 }
 
 void test_explicit_disconnect_updates_private_mesh_peer_state ()
@@ -310,9 +323,10 @@ void test_ready_endpoint_helper_tracks_endpoint_local_readiness ()
 void test_bootstrap_descriptor_republish_stops_after_ready_topology_stabilizes ()
 {
     zlink::spot_runtime_t runtime (NULL);
-    runtime.mesh_peer_state.connected_endpoints.insert ("tls://127.0.0.1:9000");
-    runtime.mesh_peer_state.connected_ready_peer_count.store (1);
-    runtime.mesh_peer_state.version.store (7);
+    runtime.execution.mesh_peer_state.connected_endpoints.insert (
+      "tls://127.0.0.1:9000");
+    runtime.execution.mesh_peer_state.connected_ready_peer_count.store (1);
+    runtime.execution.mesh_peer_state.version.store (7);
 
     TEST_ASSERT_TRUE (
       zlink::spot_data_plane_protocol_t::should_publish_bootstrap_descriptor (
@@ -331,15 +345,16 @@ void test_bootstrap_descriptor_republish_stops_after_ready_topology_stabilizes (
 void test_bootstrap_descriptor_republish_resumes_after_topology_change ()
 {
     zlink::spot_runtime_t runtime (NULL);
-    runtime.mesh_peer_state.connected_endpoints.insert ("tls://127.0.0.1:9000");
-    runtime.mesh_peer_state.connected_ready_peer_count.store (1);
-    runtime.mesh_peer_state.version.store (3);
+    runtime.execution.mesh_peer_state.connected_endpoints.insert (
+      "tls://127.0.0.1:9000");
+    runtime.execution.mesh_peer_state.connected_ready_peer_count.store (1);
+    runtime.execution.mesh_peer_state.version.store (3);
 
     TEST_ASSERT_FALSE (
       zlink::spot_data_plane_protocol_t::should_publish_bootstrap_descriptor (
         &runtime, true, 3));
 
-    runtime.mesh_peer_state.version.store (4);
+    runtime.execution.mesh_peer_state.version.store (4);
     TEST_ASSERT_TRUE (
       zlink::spot_data_plane_protocol_t::should_publish_bootstrap_descriptor (
         &runtime, true, 3));

@@ -217,12 +217,24 @@ class discovery_bootstrap_runtime_t
         bootstrap_state_t ();
     };
 
+    struct request_state_t
+    {
+        request_state_t () : heartbeat_interval_ms (5000) {}
+
+        std::set<std::string> registry_bootstrap_endpoints;
+        std::set<std::string> bootstrapped_registry_endpoints;
+        std::map<std::string, bootstrap_state_t> bootstrap_states;
+        std::set<std::string> registry_pub_endpoints;
+        uint32_t heartbeat_interval_ms;
+    };
+
     discovery_bootstrap_socket_config_t _socket_config;
-    std::set<std::string> _registry_bootstrap_endpoints;
-    std::set<std::string> _bootstrapped_registry_endpoints;
-    std::map<std::string, bootstrap_state_t> _bootstrap_states;
-    std::set<std::string> _registry_pub_endpoints;
-    uint32_t _heartbeat_interval_ms;
+    request_state_t _request_state;
+    std::set<std::string> &_registry_bootstrap_endpoints;
+    std::set<std::string> &_bootstrapped_registry_endpoints;
+    std::map<std::string, bootstrap_state_t> &_bootstrap_states;
+    std::set<std::string> &_registry_pub_endpoints;
+    uint32_t &_heartbeat_interval_ms;
 };
 
 class discovery_uplink_runtime_t
@@ -258,16 +270,25 @@ class discovery_uplink_runtime_t
       std::vector<std::pair<std::string, socket_base_t *> > *control_dealers);
 
   private:
+    struct socket_owner_state_t
+    {
+        std::set<std::string> registry_uplink_endpoints;
+        std::string latest_registry_uplink_endpoint;
+        std::map<std::string, socket_base_t *> report_dealers;
+        std::map<std::string, socket_base_t *> control_dealers;
+    };
+
     socket_base_t *create_uplink_dealer (discovery_t *owner_,
                                          const std::string &uplink_endpoint_,
                                          int linger_,
                                          int sndtimeo_ms_,
                                          int rcvtimeo_ms_,
                                          bool use_bootstrap_routing_id_);
-    std::set<std::string> _registry_uplink_endpoints;
-    std::string _latest_registry_uplink_endpoint;
-    std::map<std::string, socket_base_t *> _report_dealers;
-    std::map<std::string, socket_base_t *> _control_dealers;
+    socket_owner_state_t _socket_owner_state;
+    std::set<std::string> &_registry_uplink_endpoints;
+    std::string &_latest_registry_uplink_endpoint;
+    std::map<std::string, socket_base_t *> &_report_dealers;
+    std::map<std::string, socket_base_t *> &_control_dealers;
 };
 }
 

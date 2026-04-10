@@ -942,6 +942,7 @@ set(api-sources
     src/api/context_api.cpp
     src/api/message_api.cpp
     src/api/monitor_api.cpp
+    src/api/monitor_dispatch_context.cpp
     src/api/monitor_query_api.cpp
     src/api/monitor_service_open_api.cpp
     src/api/monitor_service_api.cpp
@@ -969,9 +970,12 @@ set(api-sources
     src/api/socket_message_recv_api.cpp
     src/api/socket_message_handler_api.cpp
     src/api/socket_message_send_api.cpp
+    src/api/socket_request_reply_dispatch.cpp
+    src/api/socket_request_reply_internal.cpp
     src/api/socket_request_reply_api.cpp
     src/api/socket_api.cpp
     src/api/timer_api.cpp
+    src/api/timer_scheduler_backend.cpp
     src/api/zlink.cpp
     src/api/zlink_option.cpp
     src/api/zlink_option_specialized_api.cpp
@@ -1031,7 +1035,9 @@ set(discovery-sources
     src/services/discovery/registry_config.cpp
     src/services/discovery/registry_control.cpp
     src/services/discovery/registry_query.cpp
+    src/services/discovery/registry_projection.cpp
     src/services/discovery/registry_runtime.cpp
+    src/services/discovery/registry_socket_owner.cpp
     src/services/discovery/registry_state.cpp
     src/services/discovery/discovery.cpp
     src/services/discovery/discovery_bootstrap.cpp
@@ -1041,6 +1047,7 @@ set(discovery-sources
     src/services/discovery/discovery_registration_propagation.cpp
     src/services/discovery/discovery_state.cpp
     src/services/discovery/discovery_uplink.cpp
+    src/services/discovery/discovery_uplink_socket_owner.cpp
     src/services/discovery/discovery_update.cpp)
 
 set(spot-sources
@@ -1061,10 +1068,12 @@ set(spot-sources
     src/services/spot/spot_node.cpp
     src/services/spot/spot_node_control.cpp
     src/services/spot/spot_node_control_policy.cpp
+    src/services/spot/spot_node_defaults.cpp
     src/services/spot/spot_node_handles.cpp
     src/services/spot/spot_node_lifecycle.cpp
     src/services/spot/spot_node_summary.cpp
     src/services/spot/spot_pub.cpp
+    src/services/spot/spot_dispatch_context.cpp
     src/services/spot/spot_runtime.cpp
     src/services/spot/spot_sub_lifecycle.cpp
     src/services/spot/spot_sub_option.cpp
@@ -1088,10 +1097,12 @@ set(socket-sources
     src/sockets/dealer.cpp
     src/sockets/router.cpp
     src/sockets/stream.cpp
+    src/sockets/stream_dispatch_context.cpp
     src/sockets/pub.cpp
     src/sockets/sub.cpp
     src/sockets/xpub.cpp
     src/sockets/xsub.cpp
+    src/sockets/xsub_dispatch_context.cpp
     src/sockets/pair.cpp
     src/sockets/lb.cpp
     src/sockets/fq.cpp

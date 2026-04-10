@@ -27,14 +27,12 @@ bool has_open_spot_node_monitor_child (zlink::spot_node_t *node_)
 
 bool in_spot_node_monitor_callback (zlink::spot_node_t *node_)
 {
-    if (!node_ || !g_current_monitor_handler_state
-        || !g_current_monitor_handler_state->service) {
+    monitor_handler_state_t *state = zlink::current_monitor_handler_state ();
+    if (!node_ || !state || !state->service) {
         return false;
     }
 
-    void *subject =
-      g_current_monitor_handler_state->snapshot_subject.load (
-        std::memory_order_acquire);
+    void *subject = state->snapshot_subject.load (std::memory_order_acquire);
     if (!subject)
         return false;
     if (subject == node_)

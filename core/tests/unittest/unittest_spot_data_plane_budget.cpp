@@ -264,22 +264,22 @@ void test_mesh_pub_budget_hint_updates_private_runtime_owner ()
     TEST_ASSERT_TRUE (
       zlink::spot_mesh_pub_budget_t::publish_ready_hint (&runtime, 1));
     TEST_ASSERT_EQUAL_UINT (
-      1, zlink::mesh_pub_ready_peer_count (&runtime.mesh_peer_state));
+      1, zlink::mesh_pub_ready_peer_count (&runtime.execution.mesh_peer_state));
     TEST_ASSERT_EQUAL_UINT64 (
-      0, zlink::mesh_pub_budget_version (&runtime.mesh_peer_state));
+      0, zlink::mesh_pub_budget_version (&runtime.execution.mesh_peer_state));
 
     TEST_ASSERT_TRUE (
       zlink::spot_mesh_pub_budget_t::publish_ready_hint (&runtime, 2));
     TEST_ASSERT_EQUAL_UINT (
-      2, zlink::mesh_pub_ready_peer_count (&runtime.mesh_peer_state));
+      2, zlink::mesh_pub_ready_peer_count (&runtime.execution.mesh_peer_state));
     TEST_ASSERT_EQUAL_UINT64 (
-      0, zlink::mesh_pub_budget_version (&runtime.mesh_peer_state));
+      0, zlink::mesh_pub_budget_version (&runtime.execution.mesh_peer_state));
 
     zlink::spot_mesh_pub_budget_t::reset_runtime_state (&runtime);
     TEST_ASSERT_EQUAL_UINT (
-      0, zlink::mesh_pub_ready_peer_count (&runtime.mesh_peer_state));
+      0, zlink::mesh_pub_ready_peer_count (&runtime.execution.mesh_peer_state));
     TEST_ASSERT_EQUAL_UINT64 (
-      1, zlink::mesh_pub_budget_version (&runtime.mesh_peer_state));
+      1, zlink::mesh_pub_budget_version (&runtime.execution.mesh_peer_state));
 }
 
 void test_mesh_pub_budget_runtime_owner_uses_bound_endpoint ()
@@ -298,7 +298,7 @@ void test_mesh_pub_budget_runtime_owner_uses_bound_endpoint ()
 
     zlink::spot_mesh_pub_budget_t::reset_runtime_state (&runtime);
     TEST_ASSERT_EQUAL_UINT (
-      0, zlink::mesh_pub_ready_peer_count (&runtime.mesh_peer_state));
+      0, zlink::mesh_pub_ready_peer_count (&runtime.execution.mesh_peer_state));
 }
 
 void test_mesh_pub_budget_runtime_owner_tracks_ready_count_changes ()
@@ -309,14 +309,14 @@ void test_mesh_pub_budget_runtime_owner_tracks_ready_count_changes ()
     TEST_ASSERT_TRUE (
       zlink::spot_mesh_pub_budget_t::publish_ready_hint (&runtime, 1));
     TEST_ASSERT_EQUAL_UINT64 (
-      0, zlink::mesh_pub_budget_version (&runtime.mesh_peer_state));
+      0, zlink::mesh_pub_budget_version (&runtime.execution.mesh_peer_state));
 
     TEST_ASSERT_TRUE (
       zlink::spot_mesh_pub_budget_t::publish_ready_hint (&runtime, 2));
     TEST_ASSERT_EQUAL_UINT (
-      2, zlink::mesh_pub_ready_peer_count (&runtime.mesh_peer_state));
+      2, zlink::mesh_pub_ready_peer_count (&runtime.execution.mesh_peer_state));
     TEST_ASSERT_EQUAL_UINT64 (
-      0, zlink::mesh_pub_budget_version (&runtime.mesh_peer_state));
+      0, zlink::mesh_pub_budget_version (&runtime.execution.mesh_peer_state));
     TEST_ASSERT_EQUAL_INT (
       1000,
       zlink::spot_mesh_pub_budget_t::resolve_runtime_default (&runtime));

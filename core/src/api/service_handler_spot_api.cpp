@@ -27,9 +27,6 @@ struct spot_node_handler_registry_t
     std::map<zlink::spot_node_t *, spot_node_handler_entry_t> handlers;
 };
 
-thread_local void *g_current_spot_dispatch_handle = NULL;
-thread_local bool g_current_spot_dispatch_is_node = false;
-
 spot_node_handler_registry_t &spot_node_handler_registry ()
 {
     static spot_node_handler_registry_t registry;
@@ -75,11 +72,8 @@ void spot_node_sub_handler_adapter (const zlink_routing_id_t *source_rid_,
         return;
     }
 
-    g_current_spot_dispatch_handle = node;
-    g_current_spot_dispatch_is_node = true;
+    const zlink::spot_dispatch_context_t dispatch_context (node, true);
     handler (source_rid_, topic_, topic_len_, parts_, part_count_, userdata);
-    g_current_spot_dispatch_handle = NULL;
-    g_current_spot_dispatch_is_node = false;
 }
 
 void spot_sub_handler_adapter (const zlink_routing_id_t *source_rid_,
@@ -98,27 +92,11 @@ void spot_sub_handler_adapter (const zlink_routing_id_t *source_rid_,
     zlink_spot_notify_dispatch_event (spot,
                                       ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE);
 
-    g_current_spot_dispatch_handle = spot;
-    g_current_spot_dispatch_is_node = false;
+    const zlink::spot_dispatch_context_t dispatch_context (spot, false);
     spot->handler (source_rid_, topic_, topic_len_, parts_, part_count_,
                    spot->handler_userdata);
-    g_current_spot_dispatch_handle = NULL;
-    g_current_spot_dispatch_is_node = false;
 }
 } // namespace
-
-namespace zlink
-{
-void *current_spot_dispatch_handle ()
-{
-    return g_current_spot_dispatch_handle;
-}
-
-bool current_spot_dispatch_is_node ()
-{
-    return g_current_spot_dispatch_is_node;
-}
-}
 
 zlink::spot_pub_t *ensure_spot_pub (spot_handle_t *spot_)
 {

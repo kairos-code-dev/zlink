@@ -395,7 +395,7 @@ class request_router_t
                   detail::recv_router_received (_socket.handle (), ZLINK_DONTWAIT));
             }
             catch (const error_t &err) {
-                if (err.num () == EAGAIN)
+                if (err.code () == EAGAIN)
                     return maybe_t<received_t> ();
                 throw;
             }

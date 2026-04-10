@@ -300,7 +300,12 @@ bool discovery_bootstrap_socket_config_t::ensure_socket_routing_id (
 }
 
 discovery_bootstrap_runtime_t::discovery_bootstrap_runtime_t () :
-    _heartbeat_interval_ms (5000)
+    _registry_bootstrap_endpoints (_request_state.registry_bootstrap_endpoints),
+    _bootstrapped_registry_endpoints (
+      _request_state.bootstrapped_registry_endpoints),
+    _bootstrap_states (_request_state.bootstrap_states),
+    _registry_pub_endpoints (_request_state.registry_pub_endpoints),
+    _heartbeat_interval_ms (_request_state.heartbeat_interval_ms)
 {
 }
 

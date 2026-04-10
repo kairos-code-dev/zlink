@@ -6,6 +6,7 @@
 
 #include "utils/macros.hpp"
 #include "sockets/xsub.hpp"
+#include "sockets/xsub_dispatch_internal.hpp"
 #include "utils/err.hpp"
 
 namespace
@@ -19,30 +20,6 @@ struct xsub_snapshot_arg_t
     }
 
     std::vector<zlink::xsub_t::subscription_descriptor_t> *out;
-};
-
-struct xsub_dispatch_tls_t
-{
-    xsub_dispatch_tls_t () : socket (NULL) {}
-
-    zlink::xsub_t *socket;
-};
-
-thread_local xsub_dispatch_tls_t g_xsub_dispatch_tls;
-
-class xsub_dispatch_scope_t
-{
-  public:
-    explicit xsub_dispatch_scope_t (zlink::xsub_t *socket_) :
-        _prev (g_xsub_dispatch_tls)
-    {
-        g_xsub_dispatch_tls.socket = socket_;
-    }
-
-    ~xsub_dispatch_scope_t () { g_xsub_dispatch_tls = _prev; }
-
-  private:
-    xsub_dispatch_tls_t _prev;
 };
 
 static void close_dispatch_frames (std::vector<zlink_msg_t> *frames_)
@@ -367,7 +344,7 @@ int zlink::xsub_t::sub_dispatch_stop ()
         _dispatch_active.store (false, std::memory_order_release);
         _dispatch_callback.store (NULL, std::memory_order_release);
         _dispatch_userdata.store (NULL, std::memory_order_release);
-        wait_for_callbacks = g_xsub_dispatch_tls.socket != this;
+        wait_for_callbacks = !zlink::xsub_dispatch_owns_socket (this);
     }
     stop_async_mailbox_processing ();
     wait_async_quiesced (10000);
@@ -610,7 +587,7 @@ int zlink::xsub_t::dispatch_message (msg_t *msg_, pipe_t *pipe_)
     resolve_socket_msg_source_rid (pipe_, &source_rid);
 
     {
-        const xsub_dispatch_scope_t dispatch_scope (this);
+        const zlink::xsub_dispatch_context_t dispatch_scope (this);
         callback (&source_rid, topic_data, topic_size,
                   const_cast<zlink_msg_t *> (payload), payload_count,
                   userdata);

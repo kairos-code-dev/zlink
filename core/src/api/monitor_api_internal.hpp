@@ -54,7 +54,24 @@ struct monitor_handler_state_t
     uint64_t dispatch_task_id;
 };
 
-extern thread_local monitor_handler_state_t *g_current_monitor_handler_state;
+namespace zlink
+{
+class monitor_dispatch_context_t
+{
+  public:
+    explicit monitor_dispatch_context_t (monitor_handler_state_t *state_);
+    ~monitor_dispatch_context_t ();
+
+    static monitor_handler_state_t *current_state ();
+    static void *current_handle ();
+
+  private:
+    monitor_handler_state_t *_previous_state;
+};
+
+monitor_handler_state_t *current_monitor_handler_state ();
+void *current_monitor_dispatch_handle ();
+}
 
 monitor_handler_state_t *find_monitor_handler_state (
   zlink::socket_base_t *socket_);

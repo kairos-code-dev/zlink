@@ -113,7 +113,7 @@ int zlink_close (void *s_)
     zlink::socket_base_t *raw_monitor_source =
       raw_monitor_snapshot_subject (monitor_state);
     if (monitor_state) {
-        if (g_current_monitor_handler_state == monitor_state) {
+        if (zlink::current_monitor_handler_state () == monitor_state) {
             monitor_state->close_requested.store (true,
                                                  std::memory_order_release);
             return 0;

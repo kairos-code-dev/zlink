@@ -203,46 +203,124 @@ class spot_node_t : public discovery_observer_t
     mutable mutex_t _sync;
 
     spot_runtime_t *_runtime;
-
-    std::string _bound_endpoint;
     spot_peer_state_t _peer_state;
-    std::map<std::string, uint64_t> _subject_last_changed_ms;
-    int _last_summary_error;
-    uint64_t _summary_last_changed_ms;
-
-    discovery_t *_discovery;
-    std::string _discovery_service;
-    uint64_t _discovery_seq;
-    std::set<std::string> _pending_service_updates;
-
-    bool _registered;
-    std::string _advertise_endpoint;
-    std::string _registration_uplink_endpoint;
-
-    std::string _tls_cert;
-    std::string _tls_key;
-    std::string _tls_ca;
-    std::string _tls_hostname;
-    int _tls_trust_system;
-    bool _server_tls_locked;
-    bool _mesh_client_tls_locked;
-    bool _registration_tls_locked;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     std::atomic<void *> _send_ready_handler_userdata;
     service_public_api_guard_t _public_api;
-
-    int _local_pub_ingress_rcvhwm_cfg;
-    int _local_fanout_sndhwm_cfg;
-    int _local_pub_ingress_rcvhwm_default;
-    int _local_fanout_sndhwm_default;
-    std::atomic<uint32_t> _local_filtered_sub_count;
-    std::atomic<uint32_t> _active_peer_count;
-
-    spot_node_default_handles_t _handle_defaults;
-    std::set<spot_pub_t *> _pubs;
-    std::set<spot_sub_t *> _subs;
     service_mode_state_t _mode_state;
     service_runtime_base_t _lifecycle;
+
+    struct summary_state_t
+    {
+        summary_state_t () : last_summary_error (0), summary_last_changed_ms (0)
+        {
+        }
+
+        std::map<std::string, uint64_t> subject_last_changed_ms;
+        int last_summary_error;
+        uint64_t summary_last_changed_ms;
+    };
+
+    struct discovery_binding_state_t
+    {
+        discovery_binding_state_t () :
+            discovery (NULL),
+            discovery_seq (0),
+            registered (false)
+        {
+        }
+
+        discovery_t *discovery;
+        std::string discovery_service;
+        uint64_t discovery_seq;
+        std::set<std::string> pending_service_updates;
+        bool registered;
+        std::string advertise_endpoint;
+        std::string registration_uplink_endpoint;
+    };
+
+    struct tls_state_t
+    {
+        tls_state_t () :
+            tls_trust_system (0),
+            server_tls_locked (false),
+            mesh_client_tls_locked (false),
+            registration_tls_locked (false)
+        {
+        }
+
+        std::string tls_cert;
+        std::string tls_key;
+        std::string tls_ca;
+        std::string tls_hostname;
+        int tls_trust_system;
+        bool server_tls_locked;
+        bool mesh_client_tls_locked;
+        bool registration_tls_locked;
+    };
+
+    struct endpoint_state_t
+    {
+        endpoint_state_t () :
+            local_pub_ingress_rcvhwm_cfg (0),
+            local_fanout_sndhwm_cfg (0),
+            local_pub_ingress_rcvhwm_default (0),
+            local_fanout_sndhwm_default (0),
+            local_filtered_sub_count (0),
+            active_peer_count (0)
+        {
+        }
+
+        std::string bound_endpoint;
+        int local_pub_ingress_rcvhwm_cfg;
+        int local_fanout_sndhwm_cfg;
+        int local_pub_ingress_rcvhwm_default;
+        int local_fanout_sndhwm_default;
+        std::atomic<uint32_t> local_filtered_sub_count;
+        std::atomic<uint32_t> active_peer_count;
+    };
+
+    struct handle_state_t
+    {
+        spot_node_default_handles_t handle_defaults;
+        std::set<spot_pub_t *> pubs;
+        std::set<spot_sub_t *> subs;
+    };
+
+    summary_state_t _summary_state;
+    discovery_binding_state_t _discovery_state;
+    tls_state_t _tls_state;
+    endpoint_state_t _endpoint_state;
+    handle_state_t _handle_state;
+
+    std::string &_bound_endpoint;
+    std::map<std::string, uint64_t> &_subject_last_changed_ms;
+    int &_last_summary_error;
+    uint64_t &_summary_last_changed_ms;
+    discovery_t *&_discovery;
+    std::string &_discovery_service;
+    uint64_t &_discovery_seq;
+    std::set<std::string> &_pending_service_updates;
+    bool &_registered;
+    std::string &_advertise_endpoint;
+    std::string &_registration_uplink_endpoint;
+    std::string &_tls_cert;
+    std::string &_tls_key;
+    std::string &_tls_ca;
+    std::string &_tls_hostname;
+    int &_tls_trust_system;
+    bool &_server_tls_locked;
+    bool &_mesh_client_tls_locked;
+    bool &_registration_tls_locked;
+    int &_local_pub_ingress_rcvhwm_cfg;
+    int &_local_fanout_sndhwm_cfg;
+    int &_local_pub_ingress_rcvhwm_default;
+    int &_local_fanout_sndhwm_default;
+    std::atomic<uint32_t> &_local_filtered_sub_count;
+    std::atomic<uint32_t> &_active_peer_count;
+    spot_node_default_handles_t &_handle_defaults;
+    std::set<spot_pub_t *> &_pubs;
+    std::set<spot_sub_t *> &_subs;
 
     friend struct spot_runtime_t;
     friend class spot_data_plane_t;

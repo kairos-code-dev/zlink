@@ -185,22 +185,10 @@ int discovery_t::set_value (int64_t value_)
     {
         scoped_lock_t lock (_sync);
         _local_state.set_value (value_);
-        _local_state.snapshot_registration (NULL, &metadata);
-        for (std::map<registered_service_key_t, registered_service_t>::const_iterator
-               it = _registered_services.begin ();
-             it != _registered_services.end (); ++it)
-            services.push_back (it->second);
     }
-
-    for (size_t i = 0; i < services.size (); ++i) {
-        if (update_service_attributes (services[i].service_type,
-                                       services[i].service_name.c_str (),
-                                       services[i].endpoint.c_str (), value_,
-                                       &metadata, services[i].service_role)
-            != 0) {
-            return -1;
-        }
-    }
+    snapshot_registered_service_updates (&services, NULL, &metadata);
+    if (propagate_registered_service_updates (services, value_, metadata) != 0)
+        return -1;
     return 0;
 }
 
@@ -227,22 +215,10 @@ int discovery_t::set_metadata (const void *data_, size_t size_)
         scoped_lock_t lock (_sync);
         if (_local_state.set_metadata (data_, size_) != 0)
             return -1;
-        _local_state.snapshot_registration (&value, &metadata);
-        for (std::map<registered_service_key_t, registered_service_t>::const_iterator
-               it = _registered_services.begin ();
-             it != _registered_services.end (); ++it)
-            services.push_back (it->second);
     }
-
-    for (size_t i = 0; i < services.size (); ++i) {
-        if (update_service_attributes (services[i].service_type,
-                                       services[i].service_name.c_str (),
-                                       services[i].endpoint.c_str (), value,
-                                       &metadata, services[i].service_role)
-            != 0) {
-            return -1;
-        }
-    }
+    snapshot_registered_service_updates (&services, &value, &metadata);
+    if (propagate_registered_service_updates (services, value, metadata) != 0)
+        return -1;
     return 0;
 }
 

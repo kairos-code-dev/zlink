@@ -3,19 +3,12 @@
 #include "utils/precompiled.hpp"
 
 #include "sockets/socket_base.hpp"
+#include "sockets/socket_dispatch_context.hpp"
 #include "utils/err.hpp"
 #include "utils/macros.hpp"
 
 namespace
 {
-thread_local zlink::socket_base_t *g_current_socket_msg_dispatch_socket = NULL;
-thread_local zlink::pipe_t *g_current_socket_msg_dispatch_pipe = NULL;
-thread_local void *g_current_socket_msg_dispatch_subject = NULL;
-thread_local zlink_routing_id_t g_current_socket_msg_dispatch_source_rid;
-thread_local bool g_current_socket_msg_dispatch_source_rid_valid = false;
-thread_local zlink::socket_base_t *g_current_recv_source_rid_socket = NULL;
-thread_local bool g_current_recv_source_rid_enabled = false;
-
 static void copy_routing_id (zlink_routing_id_t *out_,
                              const zlink::blob_t &routing_id_)
 {
@@ -31,23 +24,20 @@ static void copy_routing_id (zlink_routing_id_t *out_,
 
 zlink::socket_recv_source_rid_scope_t::socket_recv_source_rid_scope_t (
   socket_base_t *socket_, bool enabled_) :
-    _prev_socket (g_current_recv_source_rid_socket),
-    _prev_enabled (g_current_recv_source_rid_enabled)
+    _prev_socket (socket_recv_source_rid_context_t::current_socket ()),
+    _prev_enabled (socket_recv_source_rid_context_t::current_enabled ())
 {
-    g_current_recv_source_rid_socket = socket_;
-    g_current_recv_source_rid_enabled = enabled_;
+    socket_recv_source_rid_context_t::set (socket_, enabled_);
 }
 
 zlink::socket_recv_source_rid_scope_t::~socket_recv_source_rid_scope_t ()
 {
-    g_current_recv_source_rid_socket = _prev_socket;
-    g_current_recv_source_rid_enabled = _prev_enabled;
+    socket_recv_source_rid_context_t::set (_prev_socket, _prev_enabled);
 }
 
 bool zlink::socket_base_t::recv_source_rid_capture_requested () const
 {
-    return g_current_recv_source_rid_enabled
-           && g_current_recv_source_rid_socket == this;
+    return socket_recv_source_rid_context_t::capture_requested (this);
 }
 
 int zlink::socket_base_t::stream_dispatch_msg_from_io (msg_t *msg_,
@@ -63,20 +53,15 @@ int zlink::socket_base_t::socket_msg_dispatch_from_io (msg_t *msg_,
         return 0;
 
     if (options.type == ZLINK_CORE_SOCKET_STREAM) {
-        pipe_t *previous_pipe = g_current_socket_msg_dispatch_pipe;
-        g_current_socket_msg_dispatch_pipe = pipe_;
-        const int rc = xsocket_msg_dispatch (msg_, pipe_);
-        g_current_socket_msg_dispatch_pipe = previous_pipe;
-        return rc;
+        socket_msg_dispatch_context_t context (
+          NULL, pipe_, NULL, NULL);
+        return xsocket_msg_dispatch (msg_, pipe_);
     }
 
     std::lock_guard<std::recursive_mutex> dispatch_lock (
       dispatch_runtime ().socket_msg_dispatch_sync);
-    pipe_t *previous_pipe = g_current_socket_msg_dispatch_pipe;
-    g_current_socket_msg_dispatch_pipe = pipe_;
-    const int rc = xsocket_msg_dispatch (msg_, pipe_);
-    g_current_socket_msg_dispatch_pipe = previous_pipe;
-    return rc;
+    socket_msg_dispatch_context_t context (NULL, pipe_, NULL, NULL);
+    return xsocket_msg_dispatch (msg_, pipe_);
 }
 
 int zlink::socket_base_t::socket_set_msg_handler (
@@ -247,7 +232,7 @@ bool zlink::socket_base_t::send_ready_handler_active () const
 zlink::socket_base_t *
 zlink::socket_base_t::current_socket_msg_dispatch_socket ()
 {
-    return g_current_socket_msg_dispatch_socket;
+    return socket_msg_dispatch_context_t::current_socket ();
 }
 
 zlink::socket_base_t *
@@ -258,21 +243,18 @@ zlink::socket_base_t::current_send_ready_dispatch_socket ()
 
 zlink::pipe_t *zlink::socket_base_t::current_socket_msg_dispatch_pipe ()
 {
-    return g_current_socket_msg_dispatch_pipe;
+    return socket_msg_dispatch_context_t::current_pipe ();
 }
 
 void *zlink::socket_base_t::current_socket_msg_dispatch_subject ()
 {
-    return g_current_socket_msg_dispatch_subject;
+    return socket_msg_dispatch_context_t::current_subject ();
 }
 
 bool zlink::socket_base_t::current_socket_msg_dispatch_source_rid (
   zlink_routing_id_t *out_)
 {
-    if (!out_ || !g_current_socket_msg_dispatch_source_rid_valid)
-        return false;
-    *out_ = g_current_socket_msg_dispatch_source_rid;
-    return true;
+    return socket_msg_dispatch_context_t::current_source_rid (out_);
 }
 
 void zlink::socket_base_t::invoke_send_ready_handler_for_testing ()
@@ -369,35 +351,11 @@ void zlink::socket_base_t::invoke_socket_msg_handler (
         }
         return;
     }
-    socket_base_t *previous = g_current_socket_msg_dispatch_socket;
-    void *previous_subject = g_current_socket_msg_dispatch_subject;
-    zlink_routing_id_t previous_source_rid;
-    const bool previous_source_rid_valid =
-      g_current_socket_msg_dispatch_source_rid_valid;
-    if (previous_source_rid_valid)
-        previous_source_rid = g_current_socket_msg_dispatch_source_rid;
-    g_current_socket_msg_dispatch_socket = this;
-    g_current_socket_msg_dispatch_subject = socket_msg_handler_subject ();
-    if (source_rid_) {
-        g_current_socket_msg_dispatch_source_rid = *source_rid_;
-        g_current_socket_msg_dispatch_source_rid_valid = true;
-    } else {
-        memset (&g_current_socket_msg_dispatch_source_rid, 0,
-                sizeof (g_current_socket_msg_dispatch_source_rid));
-        g_current_socket_msg_dispatch_source_rid_valid = false;
-    }
+    socket_msg_dispatch_context_t context (
+      this, socket_msg_dispatch_context_t::current_pipe (),
+      socket_msg_handler_subject (), source_rid_);
     handler_ (source_rid_, parts_, part_count_,
               socket_msg_handler_userdata ());
-    g_current_socket_msg_dispatch_socket = previous;
-    g_current_socket_msg_dispatch_subject = previous_subject;
-    if (previous_source_rid_valid) {
-        g_current_socket_msg_dispatch_source_rid = previous_source_rid;
-        g_current_socket_msg_dispatch_source_rid_valid = true;
-    } else {
-        memset (&g_current_socket_msg_dispatch_source_rid, 0,
-                sizeof (g_current_socket_msg_dispatch_source_rid));
-        g_current_socket_msg_dispatch_source_rid_valid = false;
-    }
 }
 
 void zlink::socket_base_t::close_socket_msg_parts (

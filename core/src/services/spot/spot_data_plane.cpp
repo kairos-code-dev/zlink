@@ -33,9 +33,10 @@ int spot_data_plane_t::run_tick (spot_node_t *node_, spot_runtime_t *runtime_)
 
     bool running = true;
     const int fatal_errno = spot_data_plane_loop_t::run_once (
-      node_, runtime_, &runtime_->data_plane_state,
-      &runtime_->data_plane_protocol_state, &runtime_->next_bootstrap_ms,
-      &runtime_->last_bootstrap_peer_version, &running);
+      node_, runtime_, &runtime_->execution.data_plane_state,
+      &runtime_->execution.data_plane_protocol_state,
+      &runtime_->execution.next_bootstrap_ms,
+      &runtime_->execution.last_bootstrap_peer_version, &running);
 
     if (!running)
         runtime_->stop.set (1);

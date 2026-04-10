@@ -7,6 +7,7 @@
 #include "services/control/service_control_runtime.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_mesh_pub_budget.hpp"
+#include "services/spot/spot_node_control_policy.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
@@ -35,18 +36,6 @@ static void spot_control_diagf (const char *fmt_, ...)
     va_end (args);
 }
 
-static uint32_t resolve_effective_ready_count (uint32_t ready_count_,
-                                               uint32_t active_peer_count_,
-                                               uint32_t connected_ready_count_)
-{
-    const uint32_t effective_peer_count =
-      active_peer_count_ > connected_ready_count_ ? active_peer_count_
-                                                  : connected_ready_count_;
-    if (effective_peer_count == 0)
-        return ready_count_;
-    return clamp_ready_peer_count (ready_count_, effective_peer_count);
-}
-
 static void spot_ready_ack_debugf (const char *fmt_, ...)
 {
     if (!std::getenv ("ZLINK_DEBUG_SPOT_READY_ACK"))
@@ -70,89 +59,6 @@ static void spot_ready_ack_debugf (const char *fmt_, ...)
     va_end (args);
 }
 
-static unsigned int subscription_ready_holdoff_ticks (
-  const std::set<std::string> &connected_endpoints_)
-{
-    for (std::set<std::string>::const_iterator it =
-           connected_endpoints_.begin ();
-         it != connected_endpoints_.end (); ++it) {
-        if (it->compare (0, 6, "wss://") == 0)
-            return 500;
-        if (it->compare (0, 6, "tls://") == 0)
-            return 150;
-    }
-
-    return 50;
-}
-
-static unsigned int subscription_replay_attempt_count (
-  const std::set<std::string> &connected_endpoints_)
-{
-    for (std::set<std::string>::const_iterator it =
-           connected_endpoints_.begin ();
-         it != connected_endpoints_.end (); ++it) {
-        if (it->compare (0, 6, "wss://") == 0)
-            return 40;
-        if (it->compare (0, 6, "tls://") == 0)
-            return 20;
-        if (it->compare (0, 5, "ws://") == 0)
-            return 10;
-    }
-
-    return 10;
-}
-
-static unsigned int subscription_replay_holdoff_ticks (
-  const std::set<std::string> &connected_endpoints_)
-{
-    for (std::set<std::string>::const_iterator it =
-           connected_endpoints_.begin ();
-         it != connected_endpoints_.end (); ++it) {
-        if (it->compare (0, 6, "wss://") == 0)
-            return 2;
-        if (it->compare (0, 6, "tls://") == 0)
-            return 2;
-        if (it->compare (0, 5, "ws://") == 0)
-            return 2;
-    }
-
-    return 5;
-}
-
-static unsigned int pub_delivery_ready_holdoff_ticks (
-  const std::set<std::string> &connected_endpoints_)
-{
-    for (std::set<std::string>::const_iterator it =
-           connected_endpoints_.begin ();
-         it != connected_endpoints_.end (); ++it) {
-        if (it->compare (0, 6, "wss://") == 0)
-            return 50;
-        if (it->compare (0, 6, "tls://") == 0)
-            return 15;
-    }
-
-    return 20;
-}
-
-static std::string make_ready_ack_arg (const std::string &target_endpoint_,
-                                       const std::string &raw_filter_,
-                                       const std::string &ack_source_id_)
-{
-    return target_endpoint_ + "\n" + raw_filter_ + "\n" + ack_source_id_;
-}
-
-static void collect_replay_raw_filters (const std::vector<spot_sub_t *> &subs_,
-                                        std::set<std::string> *out_)
-{
-    if (!out_)
-        return;
-
-    out_->clear ();
-    for (size_t i = 0; i < subs_.size (); ++i) {
-        if (subs_[i])
-            subs_[i]->append_replay_raw_filters (out_);
-    }
-}
 }
 
 int spot_node_t::replay_subscriptions_if_active_peers ()
@@ -183,7 +89,8 @@ void spot_node_t::schedule_subscription_replay ()
         scoped_lock_t lock (_sync);
         _peer_state.subscription_replay_pending = true;
         const unsigned int target_attempts =
-          subscription_replay_attempt_count (_peer_state.active_endpoints);
+          spot_node_control_policy::subscription_replay_attempt_count (
+            _peer_state.active_endpoints);
         if (_peer_state.subscription_replay_attempts < target_attempts)
             _peer_state.subscription_replay_attempts = target_attempts;
         _peer_state.subscription_replay_holdoff_ticks = 0;
@@ -260,7 +167,7 @@ bool spot_node_t::can_suspend_control_task () const
     }
     if (!_runtime)
         return false;
-    return mesh_peer_version (&_runtime->mesh_peer_state)
+    return mesh_peer_version (&_runtime->execution.mesh_peer_state)
            == _runtime->connected_peer_version_seen ();
 }
 
@@ -277,7 +184,7 @@ void spot_node_t::control_tick ()
     {
         scoped_lock_t lock (_sync);
         const uint64_t connected_peer_version =
-          mesh_peer_version (&_runtime->mesh_peer_state);
+          mesh_peer_version (&_runtime->execution.mesh_peer_state);
         skip_extra = _discovery == NULL
                      && connected_peer_version
                           == _runtime->connected_peer_version_seen ()
@@ -326,7 +233,8 @@ void spot_node_t::emit_pending_subscription_replays ()
     }
 
     std::set<std::string> replay_filters;
-    collect_replay_raw_filters (subs, &replay_filters);
+    spot_node_control_policy::collect_replay_raw_filters (subs,
+                                                          &replay_filters);
 
     bool should_replay = false;
     {
@@ -353,7 +261,8 @@ void spot_node_t::emit_pending_subscription_replays ()
         should_replay = true;
         --_peer_state.subscription_replay_attempts;
         _peer_state.subscription_replay_holdoff_ticks =
-          subscription_replay_holdoff_ticks (_peer_state.connected_endpoints);
+          spot_node_control_policy::subscription_replay_holdoff_ticks (
+            _peer_state.connected_endpoints);
         if (_peer_state.subscription_replay_attempts == 0)
             _peer_state.subscription_replay_pending = false;
     }
@@ -487,11 +396,12 @@ void spot_node_t::refresh_connected_peer_endpoints ()
         runtime = _runtime;
         if (!runtime)
             return;
-        connected_peer_version = mesh_peer_version (&runtime->mesh_peer_state);
+        connected_peer_version =
+          mesh_peer_version (&runtime->execution.mesh_peer_state);
     }
     if (!runtime->note_connected_peer_version (connected_peer_version))
         return;
-    snapshot_connected_mesh_peer_endpoints (&runtime->mesh_peer_state,
+    snapshot_connected_mesh_peer_endpoints (&runtime->execution.mesh_peer_state,
                                             &connected);
     spot_control_diagf ("refresh-connected node=%p observed=%zu", this,
                         connected.size ());
@@ -597,12 +507,14 @@ uint32_t spot_node_t::max_pub_delivery_ready_count_locked () const
     const uint32_t active_peer_count =
       static_cast<uint32_t> (_peer_state.active_endpoints.size ());
     const uint32_t connected_ready_count =
-      connected_ready_peer_count (_runtime ? &_runtime->mesh_peer_state : NULL);
+      connected_ready_peer_count (_runtime ? &_runtime->execution.mesh_peer_state
+                                           : NULL);
     uint32_t max_ready_count = 0;
     for (std::map<std::string, std::set<std::string> >::const_iterator it =
            _peer_state.pub_delivery_ready_sources.begin ();
          it != _peer_state.pub_delivery_ready_sources.end (); ++it) {
-        const uint32_t ready_count = resolve_effective_ready_count (
+        const uint32_t ready_count =
+          spot_node_control_policy::resolve_effective_ready_count (
           static_cast<uint32_t> (it->second.size ()), active_peer_count,
           connected_ready_count);
         if (ready_count > max_ready_count)
@@ -632,7 +544,8 @@ void spot_node_t::schedule_subscription_ready_refresh ()
         scoped_lock_t lock (_sync);
         _peer_state.subscription_ready_refresh_pending = true;
         holdoff_ticks =
-          subscription_ready_holdoff_ticks (_peer_state.connected_endpoints);
+          spot_node_control_policy::subscription_ready_holdoff_ticks (
+            _peer_state.connected_endpoints);
         _peer_state.subscription_ready_refresh_holdoff_ticks = holdoff_ticks;
     }
     wake_control_task ();
@@ -648,7 +561,8 @@ void spot_node_t::schedule_pub_delivery_ready_refresh ()
         scoped_lock_t lock (_sync);
         _peer_state.pub_delivery_ready_refresh_pending = true;
         holdoff_ticks =
-          pub_delivery_ready_holdoff_ticks (_peer_state.active_endpoints);
+          spot_node_control_policy::pub_delivery_ready_holdoff_ticks (
+            _peer_state.active_endpoints);
         _peer_state.pub_delivery_ready_refresh_holdoff_ticks = holdoff_ticks;
     }
     wake_control_task ();
@@ -858,8 +772,8 @@ void spot_node_t::notify_pub_delivery_ready_ack (
         const uint32_t active_peer_count =
           static_cast<uint32_t> (_peer_state.active_endpoints.size ());
         const uint32_t connected_ready_count =
-          connected_ready_peer_count (_runtime ? &_runtime->mesh_peer_state
-                                               : NULL);
+          connected_ready_peer_count (
+            _runtime ? &_runtime->execution.mesh_peer_state : NULL);
         std::set<std::string> &ready_sources =
           _peer_state.pub_delivery_ready_sources[subject_];
 
@@ -873,7 +787,7 @@ void spot_node_t::notify_pub_delivery_ready_ack (
                 _peer_state.pub_delivery_ready_sources.erase (subject_);
         }
 
-        ready_count = resolve_effective_ready_count (
+        ready_count = spot_node_control_policy::resolve_effective_ready_count (
           static_cast<uint32_t> (ready_sources.size ()), active_peer_count,
           connected_ready_count);
 
@@ -931,7 +845,8 @@ int spot_node_t::send_ready_ack_update (const std::string &target_endpoint_,
                            ack_source_id_.c_str (), subscribe_ ? 1 : 0);
 
     const std::string arg =
-      make_ready_ack_arg (target_endpoint_, raw_filter_, ack_source_id_);
+      spot_node_control_policy::make_ready_ack_arg (
+        target_endpoint_, raw_filter_, ack_source_id_);
     return send_data_plane_command (
       subscribe_ ? "ready_ack_subscribe" : "ready_ack_unsubscribe",
       arg.c_str ());

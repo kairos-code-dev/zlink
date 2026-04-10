@@ -47,7 +47,7 @@ static void refresh_runtime_pub_hwm (spot_runtime_t *runtime_,
     if (runtime_->local_fanout_xpub)
         (void) runtime_->local_fanout_xpub->setsockopt (
           ZLINK_INTERNAL_OPT_SNDHWM, &value, sizeof (value));
-    runtime_->data_plane_state.current_mesh_pub_sndhwm = value;
+    runtime_->execution.data_plane_state.current_mesh_pub_sndhwm = value;
 }
 
 static void refresh_runtime_sub_hwm (spot_runtime_t *runtime_,

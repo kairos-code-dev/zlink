@@ -3,7 +3,7 @@
 #ifndef __ZLINK_SPOT_RUNTIME_HPP_INCLUDED__
 #define __ZLINK_SPOT_RUNTIME_HPP_INCLUDED__
 
-#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_runtime_execution.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 #include "utils/stdint.hpp"
@@ -53,18 +53,6 @@ struct spot_attachment_t
     int kind;
     socket_base_t *socket;
     std::string endpoint;
-};
-
-struct spot_control_runtime_state_t
-{
-    spot_control_runtime_state_t () :
-        task_id (0),
-        connected_peer_version_seen (0)
-    {
-    }
-
-    uint64_t task_id;
-    uint64_t connected_peer_version_seen;
 };
 
 struct spot_node_hwm_config_t
@@ -136,7 +124,7 @@ struct spot_runtime_t
 
     spot_node_t *owner;
     mutable mutex_t ctrl_sync;
-    mutable mutex_t control_state_sync;
+    mutable mutex_t execution_sync;
     mutable mutex_t peer_batch_config_sync;
     mutable mutex_t hwm_config_sync;
     mutable mutex_t routed_send_sync;
@@ -172,14 +160,7 @@ struct spot_runtime_t
     spot_node_batch_config_t peer_batch_config;
     spot_node_hwm_config_t hwm_config;
     mutable mutex_t attachment_sync;
-    uint64_t data_plane_task_id_value;
-    bool data_plane_running;
-    uint64_t next_bootstrap_ms;
-    uint64_t last_bootstrap_peer_version;
-    spot_data_plane_runtime_state_t data_plane_state;
-    spot_data_plane_protocol_state_t data_plane_protocol_state;
-    spot_control_runtime_state_t control_state;
-    spot_mesh_peer_state_t mesh_peer_state;
+    spot_runtime_execution_state_t execution;
     uint64_t next_attachment_id;
     std::map<uint64_t, spot_attachment_t> attachments;
 };

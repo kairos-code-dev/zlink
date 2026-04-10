@@ -13,6 +13,8 @@
 
 namespace zlink
 {
+extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_);
+
 service_handle_resolution_t::service_handle_resolution_t () :
     kind (service_handle_unknown),
     discovery (NULL),
@@ -101,6 +103,8 @@ void destroy_spot_handle_for_testing (void *spot_)
         return;
     }
 
+    zlink_spot_request_reply_cleanup_spot (spot);
+
     if (spot->sub) {
         int rc = spot->sub->destroy ();
         if (rc != 0)
@@ -119,7 +123,7 @@ void destroy_spot_handle_for_testing (void *spot_)
     }
 
     spot->tag = 0xdeadbeef;
-    delete spot;
+    ::operator delete (spot);
 }
 }
 

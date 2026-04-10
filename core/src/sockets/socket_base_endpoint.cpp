@@ -121,24 +121,8 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
         return -1;
     }
 
-    if (protocol == protocol_name::inproc) {
-        const endpoint_t endpoint (this, options);
-        rc = register_endpoint (endpoint_uri_, endpoint);
-        if (rc == 0) {
-            connect_pending (endpoint_uri_, this);
-            endpoint_runtime ().set_last_endpoint (endpoint_uri_);
-            options.connected = true;
-            if (_service_attachment
-                && _service_attachment->on_bind_success (
-                     endpoint_runtime ().last_endpoint_uri ())
-                     != 0) {
-                (void) term_endpoint_internal (
-                  endpoint_runtime ().last_endpoint_uri ().c_str ());
-                return -1;
-            }
-        }
-        return rc;
-    }
+    if (protocol == protocol_name::inproc)
+        return bind_inproc_endpoint (endpoint_uri_);
 
 #ifdef ZLINK_HAVE_OPENPGM
     if (protocol == protocol_name::pgm || protocol == protocol_name::epgm) {
@@ -155,161 +139,7 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
         return -1;
     }
 
-    if (protocol == protocol_name::tcp) {
-        asio_tcp_listener_t *listener =
-          new (std::nothrow) asio_tcp_listener_t (io_thread, this, options);
-        alloc_assert (listener);
-        rc = listener->set_local_address (address.c_str ());
-        if (rc != 0) {
-            LIBZLINK_DELETE (listener);
-            event_bind_failed (make_unconnected_bind_endpoint_pair (address),
-                               zlink_errno ());
-            return -1;
-        }
-
-        std::string last_endpoint;
-        listener->get_local_address (last_endpoint);
-        endpoint_runtime ().set_last_endpoint (last_endpoint);
-        add_endpoint (make_unconnected_bind_endpoint_pair (
-                        endpoint_runtime ().last_endpoint_uri ()),
-                      static_cast<own_t *> (listener), NULL);
-        options.connected = true;
-        if (_service_attachment
-            && _service_attachment->on_bind_success (
-                 endpoint_runtime ().last_endpoint_uri ())
-                 != 0) {
-            (void) term_endpoint_internal (
-              endpoint_runtime ().last_endpoint_uri ().c_str ());
-            return -1;
-        }
-        return 0;
-    }
-
-#if defined ZLINK_HAVE_TLS && defined ZLINK_HAVE_ASIO_SSL
-    if (protocol == protocol_name::tls) {
-        asio_tls_listener_t *listener =
-          new (std::nothrow) asio_tls_listener_t (io_thread, this, options);
-        alloc_assert (listener);
-        rc = listener->set_local_address (address.c_str ());
-        if (rc != 0) {
-            LIBZLINK_DELETE (listener);
-            event_bind_failed (make_unconnected_bind_endpoint_pair (address),
-                               zlink_errno ());
-            return -1;
-        }
-
-        std::string last_endpoint;
-        listener->get_local_address (last_endpoint);
-        endpoint_runtime ().set_last_endpoint (last_endpoint);
-        add_endpoint (make_unconnected_bind_endpoint_pair (
-                        endpoint_runtime ().last_endpoint_uri ()),
-                      static_cast<own_t *> (listener), NULL);
-        options.connected = true;
-        if (_service_attachment
-            && _service_attachment->on_bind_success (
-                 endpoint_runtime ().last_endpoint_uri ())
-                 != 0) {
-            (void) term_endpoint_internal (
-              endpoint_runtime ().last_endpoint_uri ().c_str ());
-            return -1;
-        }
-        return 0;
-    }
-#endif
-
-#if defined ZLINK_HAVE_IPC
-    if (protocol == protocol_name::ipc) {
-        asio_ipc_listener_t *listener =
-          new (std::nothrow) asio_ipc_listener_t (io_thread, this, options);
-        alloc_assert (listener);
-        rc = listener->set_local_address (address.c_str ());
-        if (rc != 0) {
-            LIBZLINK_DELETE (listener);
-            event_bind_failed (make_unconnected_bind_endpoint_pair (address),
-                               zlink_errno ());
-            return -1;
-        }
-
-        std::string last_endpoint;
-        listener->get_local_address (last_endpoint);
-        endpoint_runtime ().set_last_endpoint (last_endpoint);
-        add_endpoint (make_unconnected_bind_endpoint_pair (
-                        endpoint_runtime ().last_endpoint_uri ()),
-                      static_cast<own_t *> (listener), NULL);
-        options.connected = true;
-        if (_service_attachment
-            && _service_attachment->on_bind_success (
-                 endpoint_runtime ().last_endpoint_uri ())
-                 != 0) {
-            (void) term_endpoint_internal (
-              endpoint_runtime ().last_endpoint_uri ().c_str ());
-            return -1;
-        }
-        return 0;
-    }
-#endif
-
-#if defined ZLINK_HAVE_WS
-    if (protocol == protocol_name::ws
-#if defined ZLINK_HAVE_WSS
-        || protocol == protocol_name::wss
-#endif
-    ) {
-        const bool secure =
-#if defined ZLINK_HAVE_WSS
-          protocol == protocol_name::wss;
-#else
-          false;
-#endif
-
-        ws_address_t *ws_addr =
-#if defined ZLINK_HAVE_WSS
-          secure ? static_cast<ws_address_t *> (new (std::nothrow) wss_address_t ())
-                 :
-#endif
-                 new (std::nothrow) ws_address_t ();
-        alloc_assert (ws_addr);
-        rc = ws_addr->resolve (address.c_str (), true, options.ipv6);
-        if (rc != 0) {
-            LIBZLINK_DELETE (ws_addr);
-            event_bind_failed (make_unconnected_bind_endpoint_pair (address),
-                               zlink_errno ());
-            return -1;
-        }
-
-        asio_ws_listener_t *listener =
-          new (std::nothrow) asio_ws_listener_t (io_thread, this, options);
-        alloc_assert (listener);
-        rc = listener->set_local_address (ws_addr, secure);
-        LIBZLINK_DELETE (ws_addr);
-        if (rc != 0) {
-            LIBZLINK_DELETE (listener);
-            event_bind_failed (make_unconnected_bind_endpoint_pair (address),
-                               zlink_errno ());
-            return -1;
-        }
-
-        std::string last_endpoint;
-        listener->get_local_address (last_endpoint);
-        endpoint_runtime ().set_last_endpoint (last_endpoint);
-        add_endpoint (make_unconnected_bind_endpoint_pair (
-                        endpoint_runtime ().last_endpoint_uri ()),
-                      static_cast<own_t *> (listener), NULL);
-        options.connected = true;
-        if (_service_attachment
-            && _service_attachment->on_bind_success (
-                 endpoint_runtime ().last_endpoint_uri ())
-                 != 0) {
-            (void) term_endpoint_internal (
-              endpoint_runtime ().last_endpoint_uri ().c_str ());
-            return -1;
-        }
-        return 0;
-    }
-#endif
-
-    zlink_assert (false);
-    return -1;
+    return bind_transport_listener (protocol, address, io_thread);
 }
 
 int zlink::socket_base_t::connect (const char *endpoint_uri_)
@@ -417,75 +247,10 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
       new (std::nothrow) address_t (protocol, address, this->get_ctx ());
     alloc_assert (paddr);
 
-    if (protocol == protocol_name::tcp
-#ifdef ZLINK_HAVE_TLS
-        || protocol == protocol_name::tls
-#endif
-    ) {
-        const char *check = address.c_str ();
-        if (isalnum (*check) || isxdigit (*check) || *check == '['
-            || *check == ':') {
-            check++;
-            while (isalnum (*check) || isxdigit (*check) || *check == '.'
-                   || *check == '-' || *check == ':' || *check == '%'
-                   || *check == ';' || *check == '[' || *check == ']'
-                   || *check == '_' || *check == '*') {
-                check++;
-            }
-        }
-        rc = -1;
-        if (*check == 0) {
-            check = strrchr (address.c_str (), ':');
-            if (check) {
-                check++;
-                if (*check && isdigit (*check))
-                    rc = 0;
-            }
-        }
-        if (rc == -1) {
-            errno = EINVAL;
-            LIBZLINK_DELETE (paddr);
-            return -1;
-        }
-        paddr->resolved.tcp_addr = NULL;
+    if (resolve_connect_address (protocol, address, paddr) != 0) {
+        LIBZLINK_DELETE (paddr);
+        return -1;
     }
-#ifdef ZLINK_HAVE_WS
-#ifdef ZLINK_HAVE_WSS
-    else if (protocol == protocol_name::ws || protocol == protocol_name::wss) {
-        if (protocol == protocol_name::wss) {
-            paddr->resolved.wss_addr = new (std::nothrow) wss_address_t ();
-            alloc_assert (paddr->resolved.wss_addr);
-            rc = paddr->resolved.wss_addr->resolve (address.c_str (), false,
-                                                    options.ipv6);
-        } else
-#else
-    else if (protocol == protocol_name::ws) {
-#endif
-        {
-            paddr->resolved.ws_addr = new (std::nothrow) ws_address_t ();
-            alloc_assert (paddr->resolved.ws_addr);
-            rc = paddr->resolved.ws_addr->resolve (address.c_str (), false,
-                                                   options.ipv6);
-        }
-
-        if (rc != 0) {
-            LIBZLINK_DELETE (paddr);
-            return -1;
-        }
-    }
-#endif
-
-#if defined ZLINK_HAVE_IPC
-    else if (protocol == protocol_name::ipc) {
-        paddr->resolved.ipc_addr = new (std::nothrow) ipc_address_t ();
-        alloc_assert (paddr->resolved.ipc_addr);
-        rc = paddr->resolved.ipc_addr->resolve (address.c_str ());
-        if (rc != 0) {
-            LIBZLINK_DELETE (paddr);
-            return -1;
-        }
-    }
-#endif
 
 #ifdef ZLINK_HAVE_OPENPGM
     if (protocol == protocol_name::pgm || protocol == protocol_name::epgm) {

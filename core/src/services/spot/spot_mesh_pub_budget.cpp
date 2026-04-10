@@ -40,7 +40,7 @@ void spot_mesh_pub_budget_t::reset_runtime_state (spot_runtime_t *runtime_)
     if (!runtime_)
         return;
 
-    zlink::reset_mesh_pub_budget_state (&runtime_->mesh_peer_state);
+    zlink::reset_mesh_pub_budget_state (&runtime_->execution.mesh_peer_state);
 }
 
 bool spot_mesh_pub_budget_t::publish_ready_hint (spot_runtime_t *runtime_,
@@ -49,7 +49,7 @@ bool spot_mesh_pub_budget_t::publish_ready_hint (spot_runtime_t *runtime_,
     if (!runtime_)
         return false;
 
-    spot_mesh_peer_state_t *state = &runtime_->mesh_peer_state;
+    spot_mesh_peer_state_t *state = &runtime_->execution.mesh_peer_state;
     const uint32_t previous =
       state->mesh_pub_ready_peer_count.load (std::memory_order_acquire);
     if (previous == ready_count_)
@@ -80,7 +80,7 @@ int spot_mesh_pub_budget_t::resolve_runtime_default (
     }
 
     const uint32_t ready_peers =
-      mesh_pub_ready_peer_count (&runtime_->mesh_peer_state);
+      mesh_pub_ready_peer_count (&runtime_->execution.mesh_peer_state);
     return resolve_default (runtime_->bound_endpoint, ready_peers);
 }
 
@@ -90,7 +90,8 @@ int spot_mesh_pub_budget_t::resolve_initial_bind_sndhwm (
 {
     unsigned int ready_peers = 0;
     if (runtime_)
-        ready_peers = mesh_pub_ready_peer_count (&runtime_->mesh_peer_state);
+        ready_peers =
+          mesh_pub_ready_peer_count (&runtime_->execution.mesh_peer_state);
 
     return spot_data_plane_forwarder_t::resolve_internal_hwm_override (
       "ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM",
@@ -110,7 +111,7 @@ void spot_mesh_pub_budget_t::refresh_live_socket (
     }
 
     const uint64_t budget_version =
-      mesh_pub_budget_version (&runtime_->mesh_peer_state);
+      mesh_pub_budget_version (&runtime_->execution.mesh_peer_state);
     const std::string bound_endpoint = runtime_->bound_endpoint;
     if (budget_version == *last_budget_version_
         && bound_endpoint == *last_bound_endpoint_) {

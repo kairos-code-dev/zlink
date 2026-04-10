@@ -49,6 +49,7 @@ class socket_base_t;
 
 namespace zlink
 {
+class address_t;
 typedef void (*spot_sub_io_handler_fn) (const zlink_routing_id_t *source_rid_,
                                         const char *topic_,
                                         size_t topic_len_,
@@ -315,6 +316,13 @@ class socket_base_t : public own_t,
 
     int connect_internal (const char *endpoint_uri_);
     int term_endpoint_internal (const char *endpoint_uri_);
+    int bind_inproc_endpoint (const char *endpoint_uri_);
+    int bind_transport_listener (const std::string &protocol_,
+                                 const std::string &address_,
+                                 io_thread_t *io_thread_);
+    int resolve_connect_address (const std::string &protocol_,
+                                 const std::string &address_,
+                                 address_t *paddr_) const;
     int start_async_mailbox_processing (io_thread_t *io_thread_);
     void stop_async_mailbox_processing ();
     void wait_async_quiesced (int timeout_ms_);

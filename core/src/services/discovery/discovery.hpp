@@ -207,6 +207,15 @@ class discovery_t
         }
     };
 
+    void snapshot_registered_service_updates (
+      std::vector<registered_service_t> *services_out_,
+      int64_t *value_out_,
+      std::vector<unsigned char> *metadata_out_) const;
+    int propagate_registered_service_updates (
+      const std::vector<registered_service_t> &services_,
+      int64_t value_,
+      const std::vector<unsigned char> &metadata_);
+
     ctx_t *_ctx;
     uint32_t _tag;
     service_runtime_base_t _lifecycle;

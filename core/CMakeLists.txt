@@ -958,6 +958,7 @@ set(api-sources
   src/api/service_spot_node_api.cpp
     src/api/service_spot_api.cpp
     src/api/request_timeout_scheduler_internal.cpp
+    src/api/service_spot_request_reply_internal.cpp
     src/api/service_spot_request_reply_api.cpp
     src/api/service_spot_subject_option_api.cpp
     src/api/service_spot_subject_subscription_api.cpp
@@ -1037,6 +1038,7 @@ set(discovery-sources
     src/services/discovery/discovery_registry_client.cpp
     src/services/discovery/discovery_service_state.cpp
     src/services/discovery/socket_discovery_attachment.cpp
+    src/services/discovery/discovery_registration_propagation.cpp
     src/services/discovery/discovery_state.cpp
     src/services/discovery/discovery_uplink.cpp
     src/services/discovery/discovery_update.cpp)
@@ -1058,6 +1060,7 @@ set(spot-sources
     src/services/spot/spot_node_access.cpp
     src/services/spot/spot_node.cpp
     src/services/spot/spot_node_control.cpp
+    src/services/spot/spot_node_control_policy.cpp
     src/services/spot/spot_node_handles.cpp
     src/services/spot/spot_node_lifecycle.cpp
     src/services/spot/spot_node_summary.cpp
@@ -1074,7 +1077,9 @@ set(socket-sources
     src/sockets/socket_base.cpp
     src/sockets/socket_base_api.cpp
     src/sockets/socket_base_dispatch.cpp
+    src/sockets/socket_dispatch_context.cpp
     src/sockets/socket_base_endpoint.cpp
+    src/sockets/socket_base_endpoint_factory.cpp
     src/sockets/socket_base_lifecycle.cpp
     src/sockets/socket_base_msg.cpp
     src/sockets/socket_base_monitor.cpp

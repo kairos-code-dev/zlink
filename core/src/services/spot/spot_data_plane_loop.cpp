@@ -237,7 +237,7 @@ int publish_bootstrap_if_due (spot_node_t *node_,
         }
 
         *last_bootstrap_peer_version_out_ =
-          mesh_peer_version (&runtime_->mesh_peer_state);
+          mesh_peer_version (&runtime_->execution.mesh_peer_state);
     }
 
     *next_bootstrap_ms_ =

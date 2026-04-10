@@ -112,10 +112,6 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     fault_errno (0),
     abortive_shutdown (false),
     shutdown_phase_value (spot_shutdown_phase_running),
-    data_plane_task_id_value (0),
-    data_plane_running (false),
-    next_bootstrap_ms (0),
-    last_bootstrap_peer_version (UINT64_MAX),
     next_attachment_id (0)
 {
     if (node_id == 0)
@@ -315,13 +311,16 @@ int spot_runtime_t::start ()
                                  sizeof (timeout));
 
     int worker_errno = 0;
-    if (spot_data_plane_t::initialize_runtime (owner, this, &data_plane_state) != 0
+    if (spot_data_plane_t::initialize_runtime (owner, this,
+                                               &execution.data_plane_state)
+        != 0
         || !spot_node_t::recv_ctrl_reply (data_ctrl_front, &worker_errno)) {
         errno = worker_errno != 0 ? worker_errno : ETIMEDOUT;
         stop.set (1);
         stop_sockets ();
-        spot_data_plane_t::teardown_runtime (owner, this, &data_plane_state,
-                                             &data_plane_protocol_state);
+        spot_data_plane_t::teardown_runtime (
+          owner, this, &execution.data_plane_state,
+          &execution.data_plane_protocol_state);
         if (owner)
             owner->untrack_owned_socket (data_ctrl_front);
         close_socket_ptr_local (&data_ctrl_front);
@@ -333,8 +332,9 @@ int spot_runtime_t::start ()
         errno = ETERM;
         stop.set (1);
         stop_sockets ();
-        spot_data_plane_t::teardown_runtime (owner, this, &data_plane_state,
-                                             &data_plane_protocol_state);
+        spot_data_plane_t::teardown_runtime (
+          owner, this, &execution.data_plane_state,
+          &execution.data_plane_protocol_state);
         return -1;
     }
 
@@ -346,12 +346,13 @@ int spot_runtime_t::start ()
     if (task_id == 0) {
         stop.set (1);
         stop_sockets ();
-        spot_data_plane_t::teardown_runtime (owner, this, &data_plane_state,
-                                             &data_plane_protocol_state);
+        spot_data_plane_t::teardown_runtime (
+          owner, this, &execution.data_plane_state,
+          &execution.data_plane_protocol_state);
         return -1;
     }
-    data_plane_task_id_value = task_id;
-    data_plane_running = true;
+    execution.data_plane_task_id_value = task_id;
+    execution.data_plane_running = true;
     return 0;
 }
 
@@ -579,8 +580,8 @@ int spot_runtime_t::send_command (const char *verb_, const char *arg_) const
     if (arg_ && send_ascii_frame_local (data_ctrl_front, arg_, 0) != 0)
         return -1;
 
-    if (data_plane_runtime && data_plane_task_id_value != 0)
-        data_plane_runtime->wakeup_task (data_plane_task_id_value);
+    if (data_plane_runtime && execution.data_plane_task_id_value != 0)
+        data_plane_runtime->wakeup_task (execution.data_plane_task_id_value);
 
     int reply_errno = 0;
     if (!spot_node_t::recv_ctrl_reply (data_ctrl_front, &reply_errno)) {
@@ -757,24 +758,24 @@ bool spot_runtime_t::try_set_data_plane_task_id (uint64_t task_id_)
     if (task_id_ == 0)
         return false;
 
-    scoped_lock_t lock (control_state_sync);
-    if (data_plane_task_id_value != 0)
+    scoped_lock_t lock (execution_sync);
+    if (execution.data_plane_task_id_value != 0)
         return false;
-    data_plane_task_id_value = task_id_;
+    execution.data_plane_task_id_value = task_id_;
     return true;
 }
 
 uint64_t spot_runtime_t::data_plane_task_id () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (control_state_sync));
-    return data_plane_task_id_value;
+    scoped_lock_t lock (const_cast<mutex_t &> (execution_sync));
+    return execution.data_plane_task_id_value;
 }
 
 uint64_t spot_runtime_t::clear_data_plane_task_id ()
 {
-    scoped_lock_t lock (control_state_sync);
-    const uint64_t task_id = data_plane_task_id_value;
-    data_plane_task_id_value = 0;
+    scoped_lock_t lock (execution_sync);
+    const uint64_t task_id = execution.data_plane_task_id_value;
+    execution.data_plane_task_id_value = 0;
     return task_id;
 }
 
@@ -783,41 +784,42 @@ bool spot_runtime_t::try_set_control_task_id (uint64_t task_id_)
     if (task_id_ == 0)
         return false;
 
-    scoped_lock_t lock (control_state_sync);
-    if (control_state.task_id != 0)
+    scoped_lock_t lock (execution_sync);
+    if (execution.control_state.task_id != 0)
         return false;
-    control_state.task_id = task_id_;
+    execution.control_state.task_id = task_id_;
     return true;
 }
 
 uint64_t spot_runtime_t::control_task_id () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (control_state_sync));
-    return control_state.task_id;
+    scoped_lock_t lock (const_cast<mutex_t &> (execution_sync));
+    return execution.control_state.task_id;
 }
 
 uint64_t spot_runtime_t::clear_control_task_id ()
 {
-    scoped_lock_t lock (control_state_sync);
-    const uint64_t task_id = control_state.task_id;
-    control_state.task_id = 0;
+    scoped_lock_t lock (execution_sync);
+    const uint64_t task_id = execution.control_state.task_id;
+    execution.control_state.task_id = 0;
     return task_id;
 }
 
 bool spot_runtime_t::note_connected_peer_version (
   uint64_t connected_peer_version_)
 {
-    scoped_lock_t lock (control_state_sync);
-    if (control_state.connected_peer_version_seen == connected_peer_version_)
+    scoped_lock_t lock (execution_sync);
+    if (execution.control_state.connected_peer_version_seen
+        == connected_peer_version_)
         return false;
-    control_state.connected_peer_version_seen = connected_peer_version_;
+    execution.control_state.connected_peer_version_seen = connected_peer_version_;
     return true;
 }
 
 uint64_t spot_runtime_t::connected_peer_version_seen () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (control_state_sync));
-    return control_state.connected_peer_version_seen;
+    scoped_lock_t lock (const_cast<mutex_t &> (execution_sync));
+    return execution.control_state.connected_peer_version_seen;
 }
 
 int spot_runtime_t::stop_and_join ()
@@ -843,10 +845,11 @@ int spot_runtime_t::stop_and_join ()
     if (data_plane_runtime && task_id != 0)
         (void) data_plane_runtime->remove_task (task_id);
     data_plane_runtime = NULL;
-    if (data_plane_running) {
-        spot_data_plane_t::teardown_runtime (owner, this, &data_plane_state,
-                                             &data_plane_protocol_state);
-        data_plane_running = false;
+    if (execution.data_plane_running) {
+        spot_data_plane_t::teardown_runtime (
+          owner, this, &execution.data_plane_state,
+          &execution.data_plane_protocol_state);
+        execution.data_plane_running = false;
     }
     advance_shutdown_phase (spot_shutdown_phase_close_transports);
     advance_shutdown_phase (spot_shutdown_phase_drain_state);
@@ -887,10 +890,11 @@ int spot_runtime_t::abortive_stop ()
     if (data_plane_runtime && task_id != 0)
         (void) data_plane_runtime->remove_task (task_id);
     data_plane_runtime = NULL;
-    if (data_plane_running) {
-        spot_data_plane_t::teardown_runtime (owner, this, &data_plane_state,
-                                             &data_plane_protocol_state);
-        data_plane_running = false;
+    if (execution.data_plane_running) {
+        spot_data_plane_t::teardown_runtime (
+          owner, this, &execution.data_plane_state,
+          &execution.data_plane_protocol_state);
+        execution.data_plane_running = false;
     }
     advance_shutdown_phase (spot_shutdown_phase_stop_producers);
     (void) close_sender_caches (1000);

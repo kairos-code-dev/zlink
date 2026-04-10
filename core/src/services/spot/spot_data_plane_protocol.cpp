@@ -482,11 +482,11 @@ bool spot_data_plane_protocol_t::should_publish_bootstrap_descriptor (
         return true;
 
     const uint32_t ready_peer_count =
-      connected_ready_peer_count (&runtime_->mesh_peer_state);
+      connected_ready_peer_count (&runtime_->execution.mesh_peer_state);
     if (ready_peer_count == 0)
         return true;
 
-    return mesh_peer_version (&runtime_->mesh_peer_state)
+    return mesh_peer_version (&runtime_->execution.mesh_peer_state)
            != last_published_peer_version_;
 }
 
@@ -506,7 +506,7 @@ void spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
     }
 
     const bool changed =
-      sync_mesh_peer_monitor_state (&runtime_->mesh_peer_state, raw_);
+      sync_mesh_peer_monitor_state (&runtime_->execution.mesh_peer_state, raw_);
     if (std::getenv ("ZLINK_DEBUG_SPOT_CONTROL")) {
         std::fprintf (
           stderr,
@@ -514,7 +514,7 @@ void spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
           runtime_->owner,
           changed ? 1 : 0,
           static_cast<unsigned long long> (
-            mesh_peer_version (&runtime_->mesh_peer_state)));
+            mesh_peer_version (&runtime_->execution.mesh_peer_state)));
         std::fflush (stderr);
     }
     if (!changed)
@@ -529,7 +529,8 @@ void spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
     if (!runtime_)
         return;
 
-    const bool changed = clear_mesh_peer_monitor_state (&runtime_->mesh_peer_state);
+    const bool changed =
+      clear_mesh_peer_monitor_state (&runtime_->execution.mesh_peer_state);
     if (changed && runtime_->owner)
         spot_node_access_t::wake_control_task (runtime_->owner);
 }
@@ -1187,8 +1188,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             return 0;
         }
 
-        if (remove_connected_mesh_peer_endpoint (&runtime_->mesh_peer_state,
-                                                 arg)
+        if (remove_connected_mesh_peer_endpoint (
+              &runtime_->execution.mesh_peer_state, arg)
             && runtime_->owner) {
             spot_node_access_t::wake_control_task (runtime_->owner);
         }

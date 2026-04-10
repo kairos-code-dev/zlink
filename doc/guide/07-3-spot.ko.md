@@ -1,18 +1,23 @@
 [English](07-3-spot.md) | [한국어](07-3-spot.ko.md)
 
-# SPOT 토픽 PUB/SUB (위치투명 발행/구독)
+# SPOT (위치투명 메시징)
 
 > 이 가이드는 recv-first public surface 기준으로 작성되었다.
 > `SpotNode`와 unified `Spot`은 recv 모드로 시작하고,
-> `zlink_subscribe_handler()`로 callback 모드로 일방 전환된다.
+> topic 경로는 `zlink_subscribe_handler()`, routed 경로는
+> `zlink_spot_handler()`로 callback 모드로 전환된다.
 
 ## 1. 개요
 
-SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다.
-Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여,
-클러스터 전체에서 토픽 메시지를 발행/구독할 수 있다.
+SPOT은 위치 투명한 메시징 시스템으로 두 가지 전달 경로를 제공한다:
 
-SPOT이 없다면, 여러 노드에 걸친 토픽 기반 메시징을 사용하는 애플리케이션은 어떤 노드에 구독자가 있는지 직접 추적하고, PUB/SUB mesh 연결을 관리하고, 구독 포워딩을 처리해야 한다. SPOT은 이를 자동화한다 -- 어떤 노드에서든 토픽에 publish하면, 클러스터 전체의 모든 구독자가 메시지를 수신한다.
+1. **토픽 PUB/SUB** -- 토픽 매칭을 통한 클러스터 전체 발행/구독
+2. **Routed (직접)** -- 주소 기반으로 특정 SPOT 또는 ROUTER에 직접 전달
+
+두 경로 모두 동일한 SpotNode mesh 인프라를 공유한다. 토픽 메시지와 routed 메시지는
+별도 채널이며 독립된 수신 surface를 가진다.
+
+SPOT이 없다면, 여러 노드에 걸친 토픽 기반 메시징을 사용하는 애플리케이션은 어떤 노드에 구독자가 있는지 직접 추적하고, PUB/SUB mesh 연결을 관리하고, 구독 포워딩을 처리해야 한다. SPOT은 이를 자동화한다 -- 어떤 노드에서든 토픽에 publish하면, 클러스터 전체의 모든 구독자가 메시지를 수신한다. Routed 경로는 ROUTER/DEALER 소켓을 수동으로 구성하지 않고도 직접 전달과 request-reply를 추가한다.
 
 > **명칭에 대하여**: SPOT은 "위치(spot)"에서 유래한 이름이다. 각 객체(노드)가 자신의 위치에서 토픽을 발행하고, 다른 위치의 토픽을 구독하는 객체 단위의 위치투명한(location-transparent) pub/sub 메시 시스템이다.
 
@@ -20,12 +25,16 @@ SPOT이 없다면, 여러 노드에 걸친 토픽 기반 메시징을 사용하�
 
 | 용어 | 설명 |
 |------|------|
-| **SPOT Node** | PUB/SUB Mesh 참여 에이전트 (노드별 1개) |
-| **SPOT Pub** | 토픽 발행 경로 (`spot` / `spot_node`의 hot path) |
+| **SPOT Node** | Mesh 참여 에이전트 (노드별 1개) |
+| **SPOT Pub** | 토픽 발행 경로 (`spot` / `spot_node`의 핫 패스(hot path, 고빈도 데이터 경로)) |
 | **SPOT Sub** | 토픽 구독/수신 핸들 |
-| **Topic** | 문자열 키 기반 메시지 채널 |
+| **Topic** | 문자열 키 기반 메시지 채널 (토픽 경로) |
 | **Pattern** | 접두어 + `*` 와일드카드 구독 |
 | **Handler** | callback 수신 시 자동 호출되는 콜백 함수 |
+| **Routed** | 주소 기반으로 특정 SPOT 또는 ROUTER에 직접 전달하는 경로 |
+| **node_rid** | SpotNode 수준 routing_id (mesh 내 노드 식별자) |
+| **spot_rid** | SPOT handle별 routing_id (개별 객체 식별자) |
+| **request_seq** | request-reply 상관 시퀀스 번호 (`0` = 일반 routed 메시지) |
 
 ## 2. 아키텍처
 
@@ -113,7 +122,7 @@ zlink_spot_node_attach_discovery(node, discovery);
 ```
 
 > `SpotNode`는 mesh 참여를 위한 토폴로지 및 라이프사이클 소유자이다.
-> 범용 data-plane facade(publish/subscribe)를 노출하지 않는다.
+> 범용 데이터 플레인(data plane, 실제 메시지가 흐르는 경로) facade(publish/subscribe)를 노출하지 않는다.
 > publish/subscribe를 사용하려면 `zlink_spot_new(node)`로 facade를 만든다.
 
 **주의:** `attach_discovery()`는 bind 이후에 호출하는 것을 권장한다.
@@ -209,18 +218,21 @@ if (rc == 0) {
 }
 ```
 
-??? example "Full Sample Code"
+<details>
+<summary>Full Sample Code</summary>
 
-    | Language | Source |
-    |----------|--------|
-    | C | [spot_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/spot_recv_sample.c) |
-    | C++ | [spot_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/spot_recv_sample.cpp) |
-    | Java | [SpotRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/SpotRecvSample.java) |
-    | Python | [spot_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/spot_recv.py) |
-    | Node | [spot_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/spot_recv_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/SpotRecv/Program.cs) |
-    | Rust | [spot_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/spot_recv_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/spot_recv_sample/main.go) |
+| Language | Source |
+|----------|--------|
+| C | [spot_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/spot_recv_sample.c) |
+| C++ | [spot_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/spot_recv_sample.cpp) |
+| Java | [SpotRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/SpotRecvSample.java) |
+| Python | [spot_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/spot_recv.py) |
+| Node | [spot_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/spot_recv_sample.ts) |
+| C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/SpotRecv/Program.cs) |
+| Rust | [spot_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/spot_recv_sample.rs) |
+| Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/spot_recv_sample/main.go) |
+
+</details>
 
 #### Callback 모드
 
@@ -242,34 +254,264 @@ void *spot = zlink_spot_new(node);
 zlink_subscribe_handler(spot, on_message, NULL);
 ```
 
-??? example "Full Sample Code"
+<details>
+<summary>Full Sample Code</summary>
 
-    | Language | Source |
-    |----------|--------|
-    | C | [spot_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/spot_callback_sample.c) |
-    | C++ | [spot_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/spot_callback_sample.cpp) |
-    | Java | [SpotCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/SpotCallbackSample.java) |
-    | Python | [spot_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/spot_callback.py) |
-    | Node | [spot_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/spot_callback_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/SpotCallback/Program.cs) |
-    | Rust | [spot_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/spot_callback_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/spot_callback_sample/main.go) |
+| Language | Source |
+|----------|--------|
+| C | [spot_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/spot_callback_sample.c) |
+| C++ | [spot_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/spot_callback_sample.cpp) |
+| Java | [SpotCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/SpotCallbackSample.java) |
+| Python | [spot_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/spot_callback.py) |
+| Node | [spot_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/spot_callback_sample.ts) |
+| C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/SpotCallback/Program.cs) |
+| Rust | [spot_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/spot_callback_sample.rs) |
+| Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/spot_callback_sample/main.go) |
+
+</details>
 
 **중요:** 하나의 `spot` / `spot_node` handle을 여러 스레드에서 동시에
-사용할 수 있다 (thread-safe). `publish`는 hot path(고빈도 데이터 경로)로서
+사용할 수 있다 (thread-safe). `publish`는 핫 패스로서
 여러 스레드에서 동시 호출을 허용하고, subscribe/unsubscribe/attach/peer
-connect/monitor는 control path(저빈도 설정/관리 경로)로 호출할 수 있다. 다만
+connect/monitor는 제어 경로(control path)로 호출할 수 있다. 다만
 callback은 I/O 경로에서 직접 호출되므로, 느린 처리는 사용자 queue로 넘겨 별도
 thread에서 처리하는 편이 안전하다.
 
-## 5. SPOT routed request-reply
+## 5. Routed (직접) 메시징
+
+Routed 메시징은 토픽 매칭을 거치지 않고 주소로 특정 SPOT handle 또는 ROUTER
+소켓에 직접 메시지를 전달한다. 토픽 pub/sub 경로와 별개다.
+
+### 주소 모델
+
+Routed 메시지는 2단계 주소를 사용한다: **node_rid** (어떤 SpotNode)와
+**spot_rid** (해당 노드의 어떤 SPOT handle). ROUTER에 보낼 때는
+`peer_rid`만 필요하다.
+
+```text
+토픽 경로:     publish("price:USD:JPY", ...) → 매칭되는 모든 구독자
+Routed 경로:   send_spot(dest_node_rid, dest_spot_rid, ...) → 특정 대상 1개
+```
+
+### Routed 전달 흐름
+
+#### spot → spot (같은 노드 / 다른 노드)
+
+```mermaid
+sequenceDiagram
+    participant A as Spot A (Node 1)
+    participant W1 as Node 1 Worker
+    participant W2 as Node 2 Worker
+    participant B as Spot B (Node 2)
+
+    A->>W1: send_spot(node2_rid, spotB_rid, msg)
+    W1->>W2: routed envelope (tcp mesh)
+    W2->>B: deliver to spot_rid
+```
+
+Spot A가 Spot B의 주소(node_rid + spot_rid)를 지정하면,
+Node 1 worker가 mesh를 통해 Node 2로 전달하고,
+Node 2 worker가 spot_rid로 정확한 Spot B에게 배달한다.
+
+#### spot ↔ router (크로스 패턴)
+
+```mermaid
+sequenceDiagram
+    participant S as Spot (Node)
+    participant W as Node Worker
+    participant R as ROUTER
+
+    Note over S,R: spot → router
+    S->>W: send_router(peer_rid, msg)
+    W->>R: routed envelope (tcp)
+
+    Note over S,R: router → spot
+    R->>W: send_spot(node_rid, spot_rid, msg)
+    W->>S: deliver to spot_rid
+```
+
+SPOT과 일반 ROUTER 소켓 간에도 직접 메시지를 주고받을 수 있다.
+ROUTER로 보낼 때는 `peer_rid`만 있으면 되고,
+SPOT으로 보낼 때는 `node_rid + spot_rid` 2단계 주소가 필요하다.
+
+#### 전체 Routed 구조 요약
+
+```mermaid
+flowchart LR
+    subgraph Node1["Node 1"]
+        SA[Spot A] --> W1[Worker]
+    end
+    subgraph Node2["Node 2"]
+        W2[Worker] --> SB[Spot B]
+    end
+    R[ROUTER] 
+
+    W1 -- "routed (tcp mesh)" --> W2
+    W1 -- "routed (tcp)" --> R
+    R -- "routed (tcp)" --> W2
+```
+
+- 토픽 경로(PUB/SUB)와 Routed 경로는 같은 mesh 인프라를 공유하지만 **독립된 채널**이다
+- Routed 메시지는 토픽 매칭을 거치지 않고 주소로 직접 전달된다
+- ROUTER 소켓은 SpotNode 없이도 Routed 경로에 참여할 수 있다
+
+### 5.1 직접 송신
+
+#### spot → spot
+
+```c
+zlink_msg_t part;
+zlink_msg_init_size(&part, 13);
+memcpy(zlink_msg_data(&part), "market_update", 13);
+
+zlink_spot_send_spot(spot, &dest_node_rid, &dest_spot_rid, &part, 1, 0);
+```
+
+#### spot → router
+
+```c
+zlink_msg_t part;
+zlink_msg_init_size(&part, 11);
+memcpy(zlink_msg_data(&part), "status_ping", 11);
+
+zlink_spot_send_router(spot, &peer_rid, &part, 1, 0);
+```
+
+#### router → spot
+
+```c
+zlink_msg_t part;
+zlink_msg_init_size(&part, 12);
+memcpy(zlink_msg_data(&part), "control_sync", 12);
+
+zlink_router_send_spot(router, &dest_node_rid, &dest_spot_rid, &part, 1, 0);
+```
+
+### 5.2 Routed 수신
+
+Routed 메시지는 토픽 구독 surface와 별개인 전용 routed 수신 surface로 받는다.
+
+#### Pull 모드
+
+```c
+const zlink_routing_id_t *source_rid;
+const zlink_routing_id_t *spot_rid;
+uint64_t request_seq;
+zlink_msg_t *parts;
+size_t part_count;
+
+int rc = zlink_spot_recv(spot, &source_rid, &spot_rid,
+                         &request_seq, &parts, &part_count, 0);
+if (rc == 0) {
+    if (request_seq == 0) {
+        /* 일반 routed 메시지 */
+    } else {
+        /* request-reply 메시지 — request_seq로 reply 필요 */
+    }
+    zlink_multipart_close(parts, part_count);
+}
+```
+
+#### Callback 모드
+
+```c
+void on_routed(const zlink_routing_id_t *source_rid,
+               const zlink_routing_id_t *spot_rid,
+               uint64_t request_seq,
+               zlink_msg_t *parts, size_t part_count,
+               void *userdata)
+{
+    if (request_seq == 0) {
+        /* 일반 routed 메시지 */
+    } else {
+        /* request — reply 필요 */
+    }
+    zlink_multipart_close(parts, part_count);
+}
+
+zlink_spot_handler(spot, on_routed, NULL);
+```
+
+**참고:** `zlink_spot_handler()` (routed)와 `zlink_subscribe_handler()`
+(topic)는 독립된 surface다. 같은 SPOT handle에서 둘 다 사용할 수 있다.
+
+### 5.3 ROUTER가 SPOT으로부터 수신
+
+ROUTER 소켓은 전용 handler와 recv surface로 SPOT에서 오는 routed 메시지를
+수신할 수 있다.
+
+```c
+void on_from_spot(const zlink_routing_id_t *source_node_rid,
+                  const zlink_routing_id_t *source_spot_rid,
+                  uint64_t request_seq,
+                  zlink_msg_t *parts, size_t part_count,
+                  void *userdata)
+{
+    zlink_multipart_close(parts, part_count);
+}
+
+zlink_router_spot_handler(router, on_from_spot, NULL);
+```
+
+Pull 모드: `zlink_router_spot_recv(router, &source_node_rid, &source_spot_rid, &request_seq, &parts, &part_count, 0)`.
+
+## 6. SPOT Request-Reply
 
 SPOT 에서 특정 대상에게 응답을 기대하는 흐름은 topic publish 가 아니라
 request-reply 전용 함수를 사용한다. 구현은 topic 본문에 표식을 넣지 않고,
-wire 위에서 `SPOT routed envelope -> request-reply envelope -> payload`
+와이어(wire, 프로토콜 전송 레벨) 위에서 `SPOT routed envelope -> request-reply envelope -> payload`
 순서로 control part 를 붙인다.
 
-### 5.1 spot -> spot request
+### Request-Reply 흐름
+
+#### spot → spot request-reply
+
+```mermaid
+sequenceDiagram
+    participant A as Spot A (요청자)
+    participant W1 as Node 1 Worker
+    participant W2 as Node 2 Worker
+    participant B as Spot B (응답자)
+
+    A->>W1: request_spot(nodeB, spotB, msg, timeout, callback)
+    W1->>W2: request envelope (tcp mesh)
+    W2->>B: on_routed(source_rid, spot_rid, request_seq, msg)
+    B->>W2: reply_spot(nodeA, spotA, request_seq, reply)
+    W2->>W1: reply envelope (tcp mesh)
+    W1->>A: callback(0, reply)
+```
+
+1. Spot A가 `request_spot`으로 메시지를 보내고 reply callback을 등록한다.
+2. Spot B의 handler에 `request_seq > 0`인 메시지가 도착한다.
+3. Spot B가 `reply_spot`으로 같은 `request_seq`를 붙여 응답한다.
+4. Spot A의 callback이 reply를 수신한다. timeout 내 reply가 없으면 error callback.
+
+#### spot ↔ router request-reply
+
+```mermaid
+sequenceDiagram
+    participant S as Spot
+    participant W as Node Worker
+    participant R as ROUTER
+
+    Note over S,R: spot이 router에게 request
+    S->>W: request_router(peer_rid, msg, timeout, cb)
+    W->>R: request envelope (tcp)
+    R->>W: reply_spot(node_rid, spot_rid, seq, reply)
+    W->>S: callback(0, reply)
+
+    Note over S,R: router가 spot에게 request
+    R->>W: request_spot(node_rid, spot_rid, msg, timeout, cb)
+    W->>S: on_routed(source_rid, spot_rid, seq, msg)
+    S->>W: reply_router(peer_rid, seq, reply)
+    W->>R: callback(0, reply)
+```
+
+SPOT과 ROUTER 사이의 request-reply도 동일한 패턴이다.
+요청자는 `request_*`로 보내고, 수신자는 `reply_*`로 같은 `request_seq`를
+붙여 응답한다.
+
+### 6.1 spot -> spot request
 
 ```c
 static void on_spot_reply(int reply_errno,
@@ -296,7 +538,7 @@ zlink_spot_request_spot(
   NULL);
 ```
 
-### 5.2 spot request handler 와 reply
+### 6.2 spot request handler 와 reply
 
 ```c
 static void on_spot_request(const zlink_routing_id_t *source_node_rid,
@@ -327,7 +569,7 @@ zlink_spot_handler(spot, on_spot_request, NULL);
 reply 주소는 handler 인자로 받은 source 주소와 `request_seq` 를 그대로 써야
 한다. 다른 값을 넣으면 pending request 와 매칭되지 않는다.
 
-### 5.3 spot <-> router 조합
+### 6.3 spot <-> router 조합
 
 SPOT request-reply 는 일반 `ROUTER` 와도 직접 연결할 수 있다.
 
@@ -341,13 +583,42 @@ SPOT request-reply 는 일반 `ROUTER` 와도 직접 연결할 수 있다.
 이 조합에서도 완료 규칙은 같다. request 1건은 첫 reply 1건으로 끝나고,
 추가 reply 는 무시된다.
 
+### 6.4 SPOT Timer
+
+SPOT timer는 SpotNode-local shared scheduler를 사용한다. 일반 timer와
+동일한 recv/callback/poller 모델을 지원한다.
+
+```c
+void *spot_timer = zlink_spot_timer_new(spot);
+zlink_timer_start(spot_timer, 100000000ULL, 0);  /* 100ms, 무한 반복 */
+
+/* Pull 모드 */
+uint64_t fire_count;
+zlink_timer_recv(spot_timer, &fire_count, 0);
+
+/* 또는 callback 모드 */
+zlink_timer_handler(spot_timer, on_fire, NULL);
+```
+
+### 핵심 규칙
+
+| 규칙 | 설명 |
+|------|------|
+| `request_seq=0` | 일반 routed 메시지 (request 아님) |
+| `request_seq>0` | request-reply 메시지; reply 필요 |
+| 첫 reply 우선 | 같은 `request_seq`에 대한 추가 reply는 드롭 |
+| Timeout | reply callback에 `reply_errno != 0`으로 전달 |
+| 대상 미발견 | `ENOENT` error reply (즉시, timeout 아님) |
+| recv vs callback 충돌 | `EBUSY` 반환 |
+| 토픽 vs routed | 별도 수신 surface; 둘 다 동시에 활성 가능 |
+
 **제약 사항:**
 
 - recv 모드에서는 `zlink_subscribe()`를 사용한다
 - receive callback 전환은 `zlink_subscribe_handler()`로 한 번만 수행한다
-- receive callback 모드에서는 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`이 `EBUSY`로 실패한다
+- receive callback 모드에서는 `zlink_subscribe()`와 데이터 플레인 `ZLINK_POLLIN`이 `EBUSY`로 실패한다
 - `zlink_send_ready_handler()`는 receive callback 선행 조건이 없다
-- send-ready attach 이후 data-plane `ZLINK_POLLOUT`은 `EBUSY`로 실패한다
+- send-ready attach 이후 데이터 플레인 `ZLINK_POLLOUT`은 `EBUSY`로 실패한다
 - 전환 후 callback 교체나 해제는 지원하지 않는다
 - 콜백은 소켓 dispatch / I/O 경로에서 직접 호출된다
 - 콜백에서 블로킹 작업을 수행하면 다른 I/O 진행에 영향을 줄 수 있다
@@ -357,7 +628,7 @@ SPOT request-reply 는 일반 `ROUTER` 와도 직접 연결할 수 있다.
 
 > 전체 three-tier 계약과 추가 패턴은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
 
-## 6. 토픽 규칙
+## 7. 토픽 규칙
 
 ### 명명 규칙
 
@@ -374,27 +645,27 @@ SPOT request-reply 는 일반 `ROUTER` 와도 직접 연결할 수 있다.
 - 대소문자 구분
 - 예: `chat:*` → `chat:room1:message`, `chat:room2:join` 모두 매칭
 
-## 내부 모듈 구조
+## 8. 내부 모듈 구조
 
-SPOT의 내부 구현은 data plane과 control plane이 분리된 모듈 구조를 가진다.
+SPOT의 내부 구현은 데이터 플레인과 컨트롤 플레인(control plane, 제어 및 관리 경로)이 분리된 모듈 구조를 가진다.
 공개 C API는 변경 없이 유지되며, 내부 변경이 좁은 범위에서 이루어진다.
 
 | 모듈 | 역할 |
 |------|------|
-| `spot_node_access` · `spot_subject_access` | API 계층과의 seam |
+| `spot_node_access` · `spot_subject_access` | API 계층과의 접합 지점(seam) |
 | `spot_handle` | 공개 handle 구조체 |
-| `spot_node` | SpotNode orchestration, discovery integration |
+| `spot_node` | SpotNode 오케스트레이션(조정 및 생명주기 관리), 디스커버리 연동 |
 | `spot_pub` | publish 경로 |
 | `spot_sub` | subscribe 경로 (option · recv 분리) |
-| `spot_data_plane` | data plane 코어 |
+| `spot_data_plane` | 데이터 플레인 코어 |
 | `spot_data_plane_forwarding` | ingress/egress 메시지 포워딩 |
-| `spot_data_plane_protocol` | 제어 메시지, 구독 업데이트, bootstrap |
+| `spot_data_plane_protocol` | 제어 메시지, 구독 업데이트, 부트스트랩(bootstrap, 초기 연결) |
 | `spot_runtime` | runtime lifecycle |
 
 멀티파트 publish는 공통 `multipart_send_txn` 모듈을 사용하여
 whole-message 보장(전체 성공 또는 전체 실패)을 제공한다.
 
-## 6. Peer Publish Batching
+## 9. Peer Publish Batching
 
 SpotNode는 peer publish 경로(`mesh_pub`)에서 작은 메시지를 topic별로
 모아 하나의 batch frame으로 보내는 내부 최적화를 지원한다.
@@ -451,7 +722,7 @@ batch frame은 정확히 3개의 part로 구성된다:
 receiver는 magic, version, header_size를 검증한 후에만 batch로 처리한다.
 매칭되지 않는 frame은 일반 메시지로 처리된다.
 
-## 7. 전달 정책
+## 10. 전달 정책
 
 - 로컬 publish (`spot`) → 로컬 SPOT Sub 분배 + PUB 송출 (원격 전파)
 - 원격 수신 (SUB) → 로컬 SPOT Sub 분배만 (재발행 없음)
@@ -462,10 +733,17 @@ receiver는 magic, version, header_size를 검증한 후에만 batch로 처리�
 - 서로 다른 `spot` handle 사이의 전역 순서는 보장하지 않는다
 - 동일 subscriber에 exact topic + pattern이 둘 다 매칭되더라도 메시지는 1회만 전달된다
 
-SPOT은 live pub/sub이며, durable delivery, ack/retry, exactly-once,
+SPOT은 live 메시징 시스템이며, durable delivery, ack/retry, exactly-once,
 late join에 대한 과거 메시지 재전송은 보장하지 않는다.
 
-## 8. 정리
+Routed 전달 규칙:
+- Routed 메시지는 토픽 메시지와 동일한 노드 mesh transport를 사용한다
+- 대상이 같은 프로세스에 있으면 로컬 inproc 최적화를 사용한다
+- 원격 전달은 ROUTER-to-ROUTER 직접 transport를 사용한다
+- 토픽과 routed 메시지 간 상대적 순서는 보장하지 않는다
+- 같은 노드 쌍 간 메시지 순서는 보존한다 (best effort)
+
+## 11. 정리
 
 ```c
 zlink_spot_destroy(&spot);

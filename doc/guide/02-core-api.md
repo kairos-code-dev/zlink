@@ -237,7 +237,12 @@ Each socket type uses a dedicated registration function:
 | Socket Type | Registration Call | Callback Signature |
 |---|---|---|
 | STREAM | `zlink_recv_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
-| spot, spot_node | `zlink_subscribe_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)` |
+| ROUTER (request-reply) | `zlink_router_handler(router, fn, userdata)` | `void fn(const zlink_routing_id_t *peer_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
+| SPOT (routed) | `zlink_spot_handler(spot, fn, userdata)` | `void fn(const zlink_routing_id_t *source_rid, const zlink_routing_id_t *spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
+| ROUTER (from SPOT) | `zlink_router_spot_handler(router, fn, userdata)` | `void fn(const zlink_routing_id_t *source_node_rid, const zlink_routing_id_t *source_spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
+| spot, spot_node (topic) | `zlink_subscribe_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)` |
+| DEALER (reply) | `zlink_reply_handler_fn` passed to `zlink_dealer_request()` | `void fn(int errno, zlink_msg_t *parts, size_t count, void *userdata)` |
+| Timer | `zlink_timer_handler(timer, fn, userdata)` | `void fn(void *timer, uint64_t fire_count, void *userdata)` |
 | PUB | N/A | Send-only socket |
 
 Callbacks are invoked on the I/O thread. Avoid blocking work inside callbacks.
@@ -262,13 +267,73 @@ Key error codes:
 | Error | Description |
 |-------|-------------|
 | `EAGAIN` | Cannot complete immediately in non-blocking mode |
+| `EBUSY` | recv/callback mode conflict (handler already attached) |
 | `ETERM` | Context has been terminated |
 | `ENOTSOCK` | Invalid socket |
 | `EINTR` | Interrupted by signal |
 | `EFSM` | Operation not allowed in current state |
 | `EHOSTUNREACH` | Host unreachable |
+| `ENOTSUP` | Operation not supported on this subject type |
+| `ENOENT` | Target not found (e.g. SPOT destination unknown) |
 
-## 6. DEALER/ROUTER Example
+## 6. Timer API
+
+Timers are first-class event sources, like sockets. They support the same
+recv/callback/poller model.
+
+### 6.1 General Timer
+
+```c
+void *timer = zlink_timer_new();
+
+/* Start: 100ms interval, repeat indefinitely (0 = infinite) */
+zlink_timer_start(timer, 100000000ULL, 0);  /* interval_ns, repeat_count */
+
+/* Pull mode */
+uint64_t fire_count;
+int rc = zlink_timer_recv(timer, &fire_count, 0);
+
+/* Callback mode */
+void on_fire(void *timer, uint64_t fire_count, void *userdata) {
+    /* handle timer event */
+}
+zlink_timer_handler(timer, on_fire, NULL);
+
+/* Stop and destroy */
+zlink_timer_stop(timer);
+zlink_timer_destroy(&timer);
+```
+
+### 6.2 SPOT Timer
+
+SPOT timers use the SpotNode-local shared scheduler instead of the global one.
+
+```c
+void *spot_timer = zlink_spot_timer_new(spot);
+zlink_timer_start(spot_timer, 50000000ULL, 10);  /* 50ms, 10 repetitions */
+```
+
+### 6.3 Poller Integration
+
+Timers can be added to a poller alongside sockets and file descriptors.
+
+```c
+zlink_poller_add_timer(poller, timer, user_data);
+/* ... zlink_poller_wait() returns timer events ... */
+zlink_poller_remove_timer(poller, timer);
+```
+
+### Key Rules
+
+| Rule | Description |
+|------|-------------|
+| `repeat_count=0` | Infinite repetition |
+| `repeat_count=N` | Fires exactly N times then stops |
+| recv vs callback | Conflicts return `EBUSY` (same as sockets) |
+| General timer | Uses global shared scheduler |
+| SPOT timer | Uses SpotNode-local shared scheduler |
+
+## 7. DEALER/ROUTER Example
 
 ```c
 #include <zlink.h>

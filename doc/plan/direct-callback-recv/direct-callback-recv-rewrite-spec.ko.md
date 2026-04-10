@@ -1329,7 +1329,7 @@ transport-local inproc handoff primitive와 protocol decoder partial buffer,
 
 - public API에서 삭제 대상으로 지정한 recv/pollin/legacy facade가 모두 제거되어 있다.
 - 내부 구현에서 삭제 대상으로 지정한 legacy path, 임시 bridge, dead code가 모두 제거되어 있다.
-- `core/tests`, `core/tests/unittest`, `core/perf`, guide/doc/api 문서, bindings wrapper에
+- `core/tests`, `core/tests/unittest`, `core/perf`, guide/doc/spec/core 문서, bindings wrapper에
   삭제된 API/경로 참조가 남아 있지 않다.
 - "나중에 정리"를 전제로 한 dormant code path, compatibility flag, legacy wrapper를 남기지 않는다.
 - callback-only contract가 실제 production path의 유일한 recv path가 되어 있다.
@@ -1391,7 +1391,7 @@ transport-local inproc handoff primitive와 protocol decoder partial buffer,
 
 1. public contract를 먼저 고정한다.
    - 새 callback API/삭제 API 확정
-   - guide/doc/api 문서 스켈레톤 갱신
+   - guide/doc/spec/core 문서 스켈레톤 갱신
    - bindings 영향 목록 확정
 2. engine direct dispatch와 internal pause 모델을 도입한다.
    - engine -> socket/service direct dispatch 경로 구현

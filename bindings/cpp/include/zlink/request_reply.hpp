@@ -60,6 +60,20 @@ inline received_t take_received (const zlink_routing_id_t *rid_,
     return received;
 }
 
+inline received_t recv_router_received (void *router_handle_, int flags_)
+{
+    const zlink_routing_id_t *peer_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc = zlink_router_recv (router_handle_, &peer_rid, &request_seq,
+                                      &parts, &part_count, flags_);
+    if (rc != 0)
+        throw last_error ();
+    return take_received (peer_rid, parts, part_count, request_seq,
+                          request_seq != 0);
+}
+
 inline void complete_reply_state (cpp_reply_state_t *state_,
                                   int errnum_,
                                   zlink_msg_t *parts_,
@@ -367,7 +381,7 @@ class request_router_t
                 return received;
             }
         }
-        return _socket.recv ();
+        return detail::recv_router_received (_socket.handle (), 0);
     }
 
     maybe_t<received_t> try_recv ()
@@ -375,8 +389,17 @@ class request_router_t
         std::lock_guard<std::mutex> lock (_mutex);
         if (_callback_mode)
             throw std::logic_error ("socket is in callback mode");
-        if (_queue.empty ())
-            return _socket.try_recv ();
+        if (_queue.empty ()) {
+            try {
+                return maybe_t<received_t> (
+                  detail::recv_router_received (_socket.handle (), ZLINK_DONTWAIT));
+            }
+            catch (const error_t &err) {
+                if (err.num () == EAGAIN)
+                    return maybe_t<received_t> ();
+                throw;
+            }
+        }
         received_t received = std::move (_queue.front ());
         _queue.pop ();
         return maybe_t<received_t> (std::move (received));

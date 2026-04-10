@@ -27,6 +27,11 @@ void *spot_node_access_t::create (ctx_t *ctx_)
     return node;
 }
 
+ctx_t *spot_node_access_t::ctx (spot_node_t *node_)
+{
+    return node_ ? node_->_ctx : NULL;
+}
+
 spot_node_t *spot_node_access_t::from_handle (void *node_)
 {
     if (!node_) {

@@ -48,21 +48,14 @@ English | [한국어](README.ko.md)
 | [09-message-api.md](guide/09-message-api.md) | Message API details |
 | [10-performance.md](guide/10-performance.md) | Performance characteristics and tuning guide |
 
-## API Reference (api/)
+## Library Specification (spec/)
 
 | Document | Description |
 |----------|-------------|
-| [README.md](api/README.md) | API reference index |
-| [errors.md](api/errors.md) | Error handling and versioning |
-| [context.md](api/context.md) | Context API |
-| [message.md](api/message.md) | Message API |
-| [socket.md](api/socket.md) | Socket API |
-| [monitoring.md](api/monitoring.md) | Monitoring and peer information |
-| [registry.md](api/registry.md) | Registry API |
-| [discovery.md](api/discovery.md) | Discovery API |
-| [spot.md](api/spot.md) | SPOT PUB/SUB API |
-| [polling.md](api/polling.md) | Polling and Proxy |
-| [utilities.md](api/utilities.md) | Utilities (timer, thread, etc.) |
+| [spec/README.md](spec/README.md) | Specification master index |
+| [spec/core/README.md](spec/core/README.md) | Core C library specification |
+| [spec/core/socket/](spec/core/socket/README.md) | Socket specifications (common + per-type) |
+| [spec/bindings/README.md](spec/bindings/README.md) | Cross-language binding policy and per-language specs |
 
 ## Bindings Guide (bindings/)
 
@@ -106,10 +99,8 @@ English | [한국어](README.ko.md)
 | [feature-roadmap.md](plan/feature-roadmap.md) | Feature roadmap |
 | [type-segmentation.md](plan/type-segmentation.md) | Discovery type separation plan |
 
-## Detailed Specs (spec/)
+## Working Specs (plan/)
 
 | Document | Description |
 |----------|-------------|
-| [spec/spot/README.md](spec/spot/README.md) | SPOT detailed specifications index |
-| [spec/spot/SPOT_PEER_PUBLISH_BATCHING_SPEC.md](spec/spot/SPOT_PEER_PUBLISH_BATCHING_SPEC.md) | SpotNode peer publish batching spec |
 | [plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md](plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md) | Working spec for SpotNode-based routed message during development |

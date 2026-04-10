@@ -1,19 +1,26 @@
 [English](07-3-spot.md) | [한국어](07-3-spot.ko.md)
 
-# SPOT Topic PUB/SUB (Location-Transparent Publish/Subscribe)
+# SPOT (Location-Transparent Messaging)
 
 > **Normative status: Authoritative.**
-> 이 가이드는 `core/include/zlink.h` 기준으로 정확하다.
+> This guide reflects `core/include/zlink.h`.
 
-> This guide reflects the recv-first public surface.
 > `SpotNode` and unified `Spot` start in recv model and use
-> `zlink_subscribe_handler()` for the one-way transition to callback model.
+> `zlink_subscribe_handler()` for the one-way transition to callback model
+> (topic path), or `zlink_spot_handler()` for the routed path.
 
 ## 1. Overview
 
-SPOT is a location-transparent, topic-based publish/subscribe system. It automatically constructs a PUB/SUB Mesh based on Discovery, enabling topic message publishing and subscribing across the entire cluster.
+SPOT is a location-transparent messaging system that provides two delivery
+paths:
 
-Without SPOT, applications using topic-based messaging across multiple nodes would need to manually track which nodes have subscribers, manage PUB/SUB mesh connections, and handle subscription forwarding. SPOT automates this -- publish to a topic on any node, and all subscribers across the cluster receive the message.
+1. **Topic PUB/SUB** -- publish/subscribe across the cluster via topic matching
+2. **Routed (direct)** -- point-to-point delivery to a specific SPOT or ROUTER by address
+
+Both paths share the same SpotNode mesh infrastructure. Topic and routed
+messages are separate channels with independent receive surfaces.
+
+Without SPOT, applications using topic-based messaging across multiple nodes would need to manually track which nodes have subscribers, manage PUB/SUB mesh connections, and handle subscription forwarding. SPOT automates this -- publish to a topic on any node, and all subscribers across the cluster receive the message. The routed path adds direct delivery and request-reply without requiring manual ROUTER/DEALER socket wiring.
 
 > **About the name**: SPOT derives its name from "spot" (location). Each object (node) publishes topics from its own location and subscribes to topics from other locations, forming an object-level, location-transparent pub/sub mesh system.
 
@@ -21,12 +28,16 @@ Without SPOT, applications using topic-based messaging across multiple nodes wou
 
 | Term | Description |
 |------|-------------|
-| **SPOT Node** | PUB/SUB Mesh participant agent (one per node) |
+| **SPOT Node** | Mesh participant agent (one per node) |
 | **SPOT Pub** | Topic publishing path (the hot path of `spot` / `spot_node`) |
 | **SPOT Sub** | Topic subscription/receive handle |
-| **Topic** | String key-based message channel |
+| **Topic** | String key-based message channel (topic path) |
 | **Pattern** | Prefix + `*` wildcard subscription |
 | **Handler** | Callback function automatically invoked on message receipt |
+| **Routed** | Direct delivery path to a specific SPOT or ROUTER by address |
+| **node_rid** | SpotNode-level routing_id (node identity in the mesh) |
+| **spot_rid** | Per-SPOT-handle routing_id (individual object identity) |
+| **request_seq** | Sequence number for request-reply correlation (`0` = ordinary routed message) |
 
 ## 2. Architecture
 
@@ -280,7 +291,235 @@ should be offloaded to an application queue or worker thread.
 
 > See [Thread-Safety Guide](11-thread-safety.md) for the full three-tier contract and additional patterns.
 
-## 5. Topic Rules
+## 5. Routed (Direct) Messaging
+
+Routed messaging delivers messages directly to a specific SPOT handle or
+ROUTER socket by address, bypassing topic matching. This is separate from
+the topic pub/sub path.
+
+### Address Model
+
+Routed messages use a two-level address: **node_rid** (which SpotNode)
+and **spot_rid** (which SPOT handle on that node). When sending to a
+ROUTER, only `peer_rid` is needed.
+
+```text
+Topic path:     publish("price:USD:JPY", ...) → all matching subscribers
+Routed path:    send_spot(dest_node_rid, dest_spot_rid, ...) → one target
+```
+
+### 5.1 Direct Send
+
+#### spot → spot
+
+```c
+zlink_msg_t part;
+zlink_msg_init_size(&part, 13);
+memcpy(zlink_msg_data(&part), "market_update", 13);
+
+zlink_spot_send_spot(spot, &dest_node_rid, &dest_spot_rid, &part, 1, 0);
+```
+
+#### spot → router
+
+```c
+zlink_msg_t part;
+zlink_msg_init_size(&part, 11);
+memcpy(zlink_msg_data(&part), "status_ping", 11);
+
+zlink_spot_send_router(spot, &peer_rid, &part, 1, 0);
+```
+
+#### router → spot
+
+```c
+zlink_msg_t part;
+zlink_msg_init_size(&part, 12);
+memcpy(zlink_msg_data(&part), "control_sync", 12);
+
+zlink_router_send_spot(router, &dest_node_rid, &dest_spot_rid, &part, 1, 0);
+```
+
+### 5.2 Routed Recv
+
+Routed messages are received through the dedicated routed receive surface,
+which is separate from the topic subscription surface.
+
+#### Pull Mode
+
+```c
+const zlink_routing_id_t *source_rid;
+const zlink_routing_id_t *spot_rid;
+uint64_t request_seq;
+zlink_msg_t *parts;
+size_t part_count;
+
+int rc = zlink_spot_recv(spot, &source_rid, &spot_rid,
+                         &request_seq, &parts, &part_count, 0);
+if (rc == 0) {
+    if (request_seq == 0) {
+        /* Ordinary routed message */
+    } else {
+        /* Request-reply message -- reply using request_seq */
+    }
+    zlink_multipart_close(parts, part_count);
+}
+```
+
+#### Callback Mode
+
+```c
+void on_routed(const zlink_routing_id_t *source_rid,
+               const zlink_routing_id_t *spot_rid,
+               uint64_t request_seq,
+               zlink_msg_t *parts, size_t part_count,
+               void *userdata)
+{
+    if (request_seq == 0) {
+        /* Ordinary routed message */
+    } else {
+        /* Request -- reply required */
+    }
+    zlink_multipart_close(parts, part_count);
+}
+
+zlink_spot_handler(spot, on_routed, NULL);
+```
+
+**Note:** `zlink_spot_handler()` (routed) and `zlink_subscribe_handler()`
+(topic) are independent surfaces. You can use both on the same SPOT handle.
+
+### 5.3 Router Receiving from SPOT
+
+A ROUTER socket can receive routed messages from SPOT using a dedicated
+handler and recv surface.
+
+```c
+void on_from_spot(const zlink_routing_id_t *source_node_rid,
+                  const zlink_routing_id_t *source_spot_rid,
+                  uint64_t request_seq,
+                  zlink_msg_t *parts, size_t part_count,
+                  void *userdata)
+{
+    zlink_multipart_close(parts, part_count);
+}
+
+zlink_router_spot_handler(router, on_from_spot, NULL);
+```
+
+Pull mode: `zlink_router_spot_recv(router, &source_node_rid, &source_spot_rid, &request_seq, &parts, &part_count, 0)`.
+
+## 6. SPOT Request-Reply
+
+SPOT request-reply sends a message to a specific target and expects a
+single reply. The implementation uses ZMP control parts on the wire
+(`SPOT routed envelope → request-reply envelope → payload`), not topic
+fields.
+
+### 6.1 spot → spot Request
+
+```c
+static void on_spot_reply(int reply_errno,
+                          zlink_msg_t *parts,
+                          size_t part_count,
+                          void *userdata)
+{
+    if (reply_errno == 0)
+        zlink_multipart_close(parts, part_count);
+}
+
+zlink_msg_t req;
+zlink_msg_init_size(&req, 4);
+memcpy(zlink_msg_data(&req), "ping", 4);
+
+zlink_spot_request_spot(
+  spot,
+  &dest_node_rid,
+  &dest_spot_rid,
+  &req,
+  1,
+  1500,          /* timeout_ms */
+  on_spot_reply,
+  NULL);
+```
+
+### 6.2 SPOT Request Handler and Reply
+
+The receiving SPOT uses `zlink_spot_handler()` to receive requests. The
+handler delivers `source_rid`, `spot_rid`, and `request_seq`.
+
+```c
+static void on_spot_request(const zlink_routing_id_t *source_rid,
+                            const zlink_routing_id_t *spot_rid,
+                            uint64_t request_seq,
+                            zlink_msg_t *parts,
+                            size_t part_count,
+                            void *userdata)
+{
+    zlink_multipart_close(parts, part_count);
+
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 4);
+    memcpy(zlink_msg_data(&reply), "pong", 4);
+
+    zlink_spot_reply_spot(
+      spot,
+      source_rid,  /* dest_node_rid = caller's source */
+      spot_rid,    /* dest_spot_rid = caller's spot */
+      request_seq,
+      &reply,
+      1);
+}
+
+zlink_spot_handler(spot, on_spot_request, NULL);
+```
+
+The reply address must use exactly the source address and `request_seq`
+from the handler arguments. Using different values will not match the
+pending request.
+
+### 6.3 spot ↔ router Combinations
+
+SPOT request-reply can also cross directly with plain ROUTER sockets:
+
+- **spot → router**: `zlink_spot_request_router()` →
+  `zlink_router_spot_handler()` → `zlink_router_reply_spot()`
+- **router → spot**: `zlink_router_request_spot()` →
+  `zlink_spot_handler()` → `zlink_spot_reply_router()`
+
+The completion rules are the same: one request yields one reply;
+extra replies are ignored.
+
+### 6.4 SPOT Timer
+
+SPOT timers use the SpotNode-local shared scheduler. They support the
+same recv/callback/poller model as general timers.
+
+```c
+void *spot_timer = zlink_spot_timer_new(spot);
+zlink_timer_start(spot_timer, 100000000ULL, 0);  /* 100ms, infinite */
+
+/* Pull mode */
+uint64_t fire_count;
+zlink_timer_recv(spot_timer, &fire_count, 0);
+
+/* Or callback mode */
+zlink_timer_handler(spot_timer, on_fire, NULL);
+```
+
+### Key Rules
+
+| Rule | Description |
+|------|-------------|
+| `request_seq=0` | Ordinary routed message (not a request) |
+| `request_seq>0` | Request-reply message; reply required |
+| First reply wins | Extra replies to the same `request_seq` are dropped |
+| Timeout | Delivered as `reply_errno != 0` in the reply callback |
+| Target not found | `ENOENT` error reply (immediate, not timeout) |
+| recv vs callback conflict | Returns `EBUSY` |
+| Topic vs routed | Separate receive surfaces; both can be active simultaneously |
+
+## 7. Topic Rules
 
 ### Naming Convention
 
@@ -297,7 +536,7 @@ Examples:
 - Case-sensitive
 - Example: `chat:*` matches both `chat:room1:message` and `chat:room2:join`
 
-## Internal Module Structure
+## 8. Internal Module Structure
 
 The SPOT internal implementation has a modular structure with separated
 data plane and control plane. The public C API remains unchanged;
@@ -318,7 +557,7 @@ internal changes stay within narrow boundaries.
 Multipart publish uses the shared `multipart_send_txn` module to provide
 whole-message guarantees (all-or-nothing).
 
-## 6. Peer Publish Batching
+## 9. Peer Publish Batching
 
 SpotNode supports optional internal batching of small messages on the peer
 publish path (`mesh_pub`). When enabled, the sender accumulates small
@@ -378,7 +617,7 @@ A batch frame consists of exactly 3 parts:
 The receiver validates magic, version, and header_size before treating a
 frame as a batch. Non-matching frames are processed as regular messages.
 
-## 7. Delivery Policy
+## 10. Delivery Policy
 
 - Local publish (`spot`) distributes to local SPOT Subs + sends out via PUB (remote propagation)
 - Remote receive (SUB) distributes to local SPOT Subs only (no re-publishing)
@@ -390,10 +629,17 @@ frame as a batch. Non-matching frames are processed as regular messages.
 - If both an exact topic and a pattern match the same message on the same subscriber,
   the message is delivered only once
 
-SPOT is a live pub/sub system. It does not guarantee durable delivery,
+SPOT is a live messaging system. It does not guarantee durable delivery,
 ack/retry, exactly-once semantics, or past message replay for late joiners.
 
-## 8. Cleanup
+Routed delivery rules:
+- Routed messages follow the same node mesh transport as topic messages
+- Local inproc optimization is used when the destination is in the same process
+- Direct ROUTER-to-ROUTER transport is used for remote delivery
+- Topic and routed message relative order is not guaranteed
+- Same node-pair message ordering is preserved (best effort)
+
+## 11. Cleanup
 
 ```c
 zlink_spot_destroy(&spot);

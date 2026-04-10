@@ -163,6 +163,22 @@ inline send_result_t to_send_result (int result_) noexcept
     }
 }
 
+inline bool classify_nonblocking_send_errno (int err_,
+                                             send_result_t &result_) noexcept
+{
+    switch (err_) {
+    case EAGAIN:
+        result_ = send_result_t::backpressured;
+        return true;
+    case ENOTCONN:
+    case EHOSTUNREACH:
+        result_ = send_result_t::not_ready;
+        return true;
+    default:
+        return false;
+    }
+}
+
 } // namespace detail
 
 class spot_node_t
@@ -648,13 +664,16 @@ class spot_t
         if (detail::move_parts_to_native (parts_, native) != 0)
             return -1;
 
-        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
-        const int rc = zlink_try_publish (
-          _spot, topic_, native.data (), native.size (),
-          &native_result);
+        const int rc =
+          zlink_publish (_spot, topic_, native.data (), native.size (), ZLINK_DONTWAIT);
         if (rc == 0) {
-            result_out_ = detail::to_send_result (native_result);
-            if (native_result != ZLINK_SEND_RESULT_SENT) {
+            result_out_ = send_result_t::sent;
+            return 0;
+        }
+
+        const int err = errno;
+        if (detail::classify_nonblocking_send_errno (err, result_out_)) {
+            if (result_out_ != send_result_t::sent) {
                 for (size_t i = 0; i < native.size (); ++i) {
                     if (parts_[i].init () == 0)
                         (void) zlink_msg_move (parts_[i].handle (), &native[i]);
@@ -664,7 +683,6 @@ class spot_t
             return 0;
         }
 
-        const int err = errno;
         for (size_t i = 0; i < native.size (); ++i)
             (void) zlink_msg_close (&native[i]);
         errno = err;
@@ -690,12 +708,15 @@ class spot_t
         if (part_.move_to (&native) != 0)
             return -1;
 
-        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
-        const int rc =
-          zlink_try_publish (_spot, topic_, &native, 1, &native_result);
+        const int rc = zlink_publish (_spot, topic_, &native, 1, ZLINK_DONTWAIT);
         if (rc == 0) {
-            result_out_ = detail::to_send_result (native_result);
-            if (native_result != ZLINK_SEND_RESULT_SENT) {
+            result_out_ = send_result_t::sent;
+            return 0;
+        }
+
+        const int err = errno;
+        if (detail::classify_nonblocking_send_errno (err, result_out_)) {
+            if (result_out_ != send_result_t::sent) {
                 if (part_.init () == 0)
                     (void) zlink_msg_move (part_.handle (), &native);
                 (void) zlink_msg_close (&native);
@@ -703,7 +724,6 @@ class spot_t
             return 0;
         }
 
-        const int err = errno;
         if (part_.init () == 0)
             (void) zlink_msg_move (part_.handle (), &native);
         (void) zlink_msg_close (&native);

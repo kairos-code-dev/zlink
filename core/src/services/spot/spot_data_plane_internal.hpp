@@ -322,6 +322,10 @@ struct spot_data_plane_runtime_state_t
     socket_base_t *mesh_xsub_monitor;
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
+    socket_base_t *route_ingress;
+    socket_base_t *node_router;
+    socket_base_t *route_ingress_tx;
+    socket_base_t *node_router_tx;
     socket_base_t *ingress;
     socket_base_t *fanout;
     int current_mesh_pub_sndhwm;

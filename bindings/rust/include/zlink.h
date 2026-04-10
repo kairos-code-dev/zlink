@@ -838,11 +838,6 @@ ZLINK_EXPORT int zlink_send (void *s_,
                              size_t part_count_,
                              zlink_send_flags_t flags_);
 
-ZLINK_EXPORT int zlink_try_send (void *s_,
-                                 zlink_msg_t *parts_,
-                                 size_t part_count_,
-                                 zlink_send_result_t *result_out_);
-
 /**
  * @brief Send a multipart message to a specific peer routing id.
  *
@@ -855,12 +850,6 @@ ZLINK_EXPORT int zlink_send_rid (void *s_,
                                  zlink_msg_t *parts_,
                                  size_t part_count_,
                                  zlink_send_flags_t flags_);
-
-ZLINK_EXPORT int zlink_try_send_rid (void *s_,
-                                     const zlink_routing_id_t *target_rid_,
-                                     zlink_msg_t *parts_,
-                                     size_t part_count_,
-                                     zlink_send_result_t *result_out_);
 
 ZLINK_EXPORT int zlink_dealer_request (void *dealer_,
                                        zlink_msg_t *parts_,
@@ -1013,12 +1002,6 @@ ZLINK_EXPORT int zlink_publish (void *subject_,
                                 zlink_msg_t *parts_,
                                 size_t part_count_,
                                 zlink_send_flags_t flags_);
-
-ZLINK_EXPORT int zlink_try_publish (void *subject_,
-                                    const char *topic_id_,
-                                    zlink_msg_t *parts_,
-                                    size_t part_count_,
-                                    zlink_send_result_t *result_out_);
 
 ZLINK_EXPORT int zlink_set_subscription (void *handle_,
                                          const char *filter_);

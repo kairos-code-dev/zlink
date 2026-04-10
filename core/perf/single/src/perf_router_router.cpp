@@ -101,13 +101,12 @@ int recv_router_router_header_flags (void *receiver_,
     if (header_ok_out_)
         *header_ok_out_ = false;
 
-    zlink_routing_id_t source_rid;
-    std::memset (&source_rid, 0, sizeof (source_rid));
+    const zlink_routing_id_t *source_rid = NULL;
+    uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = zlink_recv (
-      receiver_, &source_rid, &parts, &part_count,
-      static_cast<zlink_send_flags_t> (flags_));
+    const int rc = zlink_router_recv (
+      receiver_, &source_rid, &request_seq, &parts, &part_count, flags_);
     if (rc != 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
@@ -116,8 +115,9 @@ int recv_router_router_header_flags (void *receiver_,
     }
 
     const bool rid_ok =
-      source_rid.size == 7 && std::memcmp (source_rid.data, "ROUTER2", 7) == 0;
-    const bool shape_ok = rid_ok && parts && part_count == 1;
+      source_rid && source_rid->size == 7
+      && std::memcmp (source_rid->data, "ROUTER2", 7) == 0;
+    const bool shape_ok = rid_ok && request_seq == 0 && parts && part_count == 1;
     if (!shape_ok) {
         if (parts)
             zlink_multipart_close (parts, part_count);

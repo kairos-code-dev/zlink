@@ -197,6 +197,22 @@ inline send_result_t to_send_result (int result_) noexcept
     }
 }
 
+inline bool classify_nonblocking_send_errno (int err_,
+                                             send_result_t &result_) noexcept
+{
+    switch (err_) {
+    case EAGAIN:
+        result_ = send_result_t::backpressured;
+        return true;
+    case ENOTCONN:
+    case EHOSTUNREACH:
+        result_ = send_result_t::not_ready;
+        return true;
+    default:
+        return false;
+    }
+}
+
 } // namespace detail
 
 class base_socket_t : public socket_handle_t
@@ -390,12 +406,16 @@ class base_socket_t : public socket_handle_t
         if (part_.move_to (&native_part) != 0)
             return -1;
 
-        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
-        const int rc = zlink_try_send (
-          handle (), &native_part, 1, &native_result);
+        const int rc =
+          zlink_send (handle (), &native_part, 1, ZLINK_DONTWAIT);
         if (rc == 0) {
-            result_ = detail::to_send_result (native_result);
-            if (native_result != ZLINK_SEND_RESULT_SENT) {
+            result_ = send_result_t::sent;
+            return 0;
+        }
+
+        const int err = errno;
+        if (detail::classify_nonblocking_send_errno (err, result_)) {
+            if (result_ != send_result_t::sent) {
                 if (part_.init () == 0)
                     (void) zlink_msg_move (part_.handle (), &native_part);
                 (void) zlink_msg_close (&native_part);
@@ -406,6 +426,7 @@ class base_socket_t : public socket_handle_t
         if (part_.init () == 0)
             (void) zlink_msg_move (part_.handle (), &native_part);
         (void) zlink_msg_close (&native_part);
+        errno = err;
         return -1;
     }
 
@@ -416,18 +437,23 @@ class base_socket_t : public socket_handle_t
         if (detail::move_parts_to_native (parts_, native_parts) != 0)
             return -1;
 
-        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
-        const int rc = zlink_try_send (
-          handle (), native_parts.empty () ? NULL : &native_parts[0],
-          native_parts.size (), &native_result);
+        const int rc =
+          zlink_send (handle (), native_parts.empty () ? NULL : &native_parts[0],
+                      native_parts.size (), ZLINK_DONTWAIT);
         if (rc == 0) {
-            result_ = detail::to_send_result (native_result);
-            if (native_result != ZLINK_SEND_RESULT_SENT)
+            result_ = send_result_t::sent;
+            return 0;
+        }
+
+        const int err = errno;
+        if (detail::classify_nonblocking_send_errno (err, result_)) {
+            if (result_ != send_result_t::sent)
                 detail::restore_parts_from_native (parts_, native_parts);
             return 0;
         }
 
         detail::restore_parts_from_native (parts_, native_parts);
+        errno = err;
         return -1;
     }
 
@@ -445,12 +471,17 @@ class base_socket_t : public socket_handle_t
         if (part_.move_to (&native_part) != 0)
             return -1;
 
-        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
-        const int rc = zlink_try_send_rid (
-          handle (), routing_id_native (target_rid_), &native_part, 1, &native_result);
+        const int rc = zlink_send_rid (
+          handle (), routing_id_native (target_rid_), &native_part, 1,
+          ZLINK_DONTWAIT);
         if (rc == 0) {
-            result_ = detail::to_send_result (native_result);
-            if (native_result != ZLINK_SEND_RESULT_SENT) {
+            result_ = send_result_t::sent;
+            return 0;
+        }
+
+        const int err = errno;
+        if (detail::classify_nonblocking_send_errno (err, result_)) {
+            if (result_ != send_result_t::sent) {
                 if (part_.init () == 0)
                     (void) zlink_msg_move (part_.handle (), &native_part);
                 (void) zlink_msg_close (&native_part);
@@ -461,6 +492,7 @@ class base_socket_t : public socket_handle_t
         if (part_.init () == 0)
             (void) zlink_msg_move (part_.handle (), &native_part);
         (void) zlink_msg_close (&native_part);
+        errno = err;
         return -1;
     }
 
@@ -473,19 +505,24 @@ class base_socket_t : public socket_handle_t
         if (detail::move_parts_to_native (parts_, native_parts) != 0)
             return -1;
 
-        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
-        const int rc = zlink_try_send_rid (
+        const int rc = zlink_send_rid (
           handle (), routing_id_native (target_rid_),
           native_parts.empty () ? NULL : &native_parts[0],
-          native_parts.size (), &native_result);
+          native_parts.size (), ZLINK_DONTWAIT);
         if (rc == 0) {
-            result_ = detail::to_send_result (native_result);
-            if (native_result != ZLINK_SEND_RESULT_SENT)
+            result_ = send_result_t::sent;
+            return 0;
+        }
+
+        const int err = errno;
+        if (detail::classify_nonblocking_send_errno (err, result_)) {
+            if (result_ != send_result_t::sent)
                 detail::restore_parts_from_native (parts_, native_parts);
             return 0;
         }
 
         detail::restore_parts_from_native (parts_, native_parts);
+        errno = err;
         return -1;
     }
 
@@ -551,19 +588,24 @@ class base_socket_t : public socket_handle_t
         if (detail::move_parts_to_native (parts_, native_parts) != 0)
             return -1;
 
-        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
-        const int rc = zlink_try_publish (
+        const int rc = zlink_publish (
           handle (), topic_id_.c_str (),
           native_parts.empty () ? NULL : &native_parts[0], native_parts.size (),
-          &native_result);
+          ZLINK_DONTWAIT);
         if (rc == 0) {
-            result_ = detail::to_send_result (native_result);
-            if (native_result != ZLINK_SEND_RESULT_SENT)
+            result_ = send_result_t::sent;
+            return 0;
+        }
+
+        const int err = errno;
+        if (detail::classify_nonblocking_send_errno (err, result_)) {
+            if (result_ != send_result_t::sent)
                 detail::restore_parts_from_native (parts_, native_parts);
             return 0;
         }
 
         detail::restore_parts_from_native (parts_, native_parts);
+        errno = err;
         return -1;
     }
 

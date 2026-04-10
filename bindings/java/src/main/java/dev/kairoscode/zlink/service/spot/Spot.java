@@ -52,6 +52,7 @@ public final class Spot implements AutoCloseable {
     private static final int ERRNO_ETIMEDOUT_WIN = 10060;
     private static final int RECV_BLOCKING = 0;
     private static final int RECV_DONTWAIT = 1;
+    private static final int SEND_DONTWAIT = 1;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_SUBSCRIBE_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -131,18 +132,16 @@ public final class Spot implements AutoCloseable {
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment topic = topicCString(topicId);
                 MemorySegment msg = arena.allocate(MSG_SIZE);
-                MemorySegment resultOut = arena.allocate(ValueLayout.JAVA_INT);
                 int initRc = NativeMsg.msgInit(msg);
                 if (initRc != 0)
                     throw ZlinkException.fromLastError("zlink_msg_init");
                 InternalAccess.messageCopyTo(part, msg);
                 int rc = nonBlocking
-                    ? Native.tryPublish(handle, topic, msg, 1, resultOut)
+                    ? Native.publish(handle, topic, msg, 1, SEND_DONTWAIT)
                     : Native.publish(handle, topic, msg, 1, 0);
                 if (nonBlocking) {
                     if (rc == 0)
-                        return SendResult.fromNativeValue(
-                          resultOut.get(ValueLayout.JAVA_INT, 0));
+                        return SendResult.SENT;
                 } else {
                     if (rc != 0)
                         throw ZlinkException.fromLastError("zlink_publish");
@@ -152,7 +151,7 @@ public final class Spot implements AutoCloseable {
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            throw ZlinkException.fromLastError("zlink_publish");
+            return classifyNonBlockingSendErrno("zlink_publish");
         }
     }
 
@@ -168,7 +167,6 @@ public final class Spot implements AutoCloseable {
                 MemorySegment topic = topicCString(topicId);
                 MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT,
                   partCount);
-                MemorySegment resultOut = arena.allocate(ValueLayout.JAVA_INT);
                 int initialized = 0;
                 boolean success = false;
                 try {
@@ -184,14 +182,13 @@ public final class Spot implements AutoCloseable {
                         InternalAccess.messageCopyTo(part, dest);
                     }
                     int rc = nonBlocking
-                        ? Native.tryPublish(handle, topic, vec, partCount,
-                            resultOut)
+                        ? Native.publish(handle, topic, vec, partCount,
+                            SEND_DONTWAIT)
                         : Native.publish(handle, topic, vec, partCount, 0);
                     if (nonBlocking) {
                         if (rc == 0) {
                             success = true;
-                            return SendResult.fromNativeValue(
-                              resultOut.get(ValueLayout.JAVA_INT, 0));
+                            return SendResult.SENT;
                         }
                     } else {
                         if (rc != 0)
@@ -207,9 +204,19 @@ public final class Spot implements AutoCloseable {
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            throw ZlinkException.fromLastError(
-                "zlink_publish");
+            return classifyNonBlockingSendErrno("zlink_publish");
         }
+    }
+
+    private SendResult classifyNonBlockingSendErrno(String apiName) {
+        int errno = Native.errno();
+        if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)
+            return SendResult.BACKPRESSURED;
+        if (errno == ERRNO_ENOTCONN || errno == ERRNO_ENOTCONN_WIN
+            || errno == ERRNO_EHOSTUNREACH || errno == ERRNO_EHOSTUNREACH_WIN) {
+            return SendResult.NOT_READY;
+        }
+        throw ZlinkException.fromLastError(apiName);
     }
 
     /** Subscribes to one topic or pattern string. */

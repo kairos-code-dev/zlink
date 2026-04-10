@@ -470,7 +470,11 @@ typedef enum zlink_spot_node_option_t
     ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_BYTES = 0x3604,
     ZLINK_SPOT_NODE_OPT_PEER_BATCH_BYPASS_BYTES = 0x3605,
     ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_MESSAGES_PER_TURN = 0x3606,
-    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN = 0x3607
+    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN = 0x3607,
+    ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM = 0x3608,
+    ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM = 0x3609,
+    ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM = 0x360A,
+    ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM = 0x360B
 } zlink_spot_node_option_t;
 
 typedef enum zlink_spot_option_t
@@ -627,11 +631,6 @@ typedef enum zlink_spot_dispatch_event_t
 typedef void (*zlink_spot_dispatch_event_handler_fn) (
   void *spot_,
   zlink_spot_dispatch_event_t event_,
-  void *userdata_);
-
-typedef void (*zlink_spot_timer_handler_fn) (
-  void *timer_,
-  uint64_t fire_count_,
   void *userdata_);
 
 /**
@@ -855,11 +854,6 @@ ZLINK_EXPORT int zlink_send (void *s_,
                              size_t part_count_,
                              zlink_send_flags_t flags_);
 
-ZLINK_EXPORT int zlink_try_send (void *s_,
-                                 zlink_msg_t *parts_,
-                                 size_t part_count_,
-                                 zlink_send_result_t *result_out_);
-
 /**
  * @brief Send a multipart message to a specific peer routing id.
  *
@@ -872,12 +866,6 @@ ZLINK_EXPORT int zlink_send_rid (void *s_,
                                  zlink_msg_t *parts_,
                                  size_t part_count_,
                                  zlink_send_flags_t flags_);
-
-ZLINK_EXPORT int zlink_try_send_rid (void *s_,
-                                     const zlink_routing_id_t *target_rid_,
-                                     zlink_msg_t *parts_,
-                                     size_t part_count_,
-                                     zlink_send_result_t *result_out_);
 
 ZLINK_EXPORT int zlink_dealer_request (void *dealer_,
                                        zlink_msg_t *parts_,
@@ -972,25 +960,6 @@ ZLINK_EXPORT int zlink_spot_recv (void *spot_,
                                   size_t *part_count_out_,
                                   int flags_);
 
-ZLINK_EXPORT void *zlink_spot_timer_new (void *spot_);
-
-ZLINK_EXPORT int zlink_spot_timer_destroy (void **timer_p_);
-
-ZLINK_EXPORT int zlink_spot_timer_start (void *timer_,
-                                         uint64_t interval_ns_,
-                                         uint64_t repeat_count_);
-
-ZLINK_EXPORT int zlink_spot_timer_stop (void *timer_);
-
-ZLINK_EXPORT int zlink_spot_timer_handler (
-  void *timer_,
-  zlink_spot_timer_handler_fn handler_,
-  void *userdata_);
-
-ZLINK_EXPORT int zlink_spot_timer_recv (void *timer_,
-                                        uint64_t *fire_count_out_,
-                                        int flags_);
-
 ZLINK_EXPORT int zlink_router_request_spot (
   void *router_,
   const zlink_routing_id_t *dest_node_rid_,
@@ -1054,12 +1023,6 @@ ZLINK_EXPORT int zlink_publish (void *subject_,
                                 zlink_msg_t *parts_,
                                 size_t part_count_,
                                 zlink_send_flags_t flags_);
-
-ZLINK_EXPORT int zlink_try_publish (void *subject_,
-                                    const char *topic_id_,
-                                    zlink_msg_t *parts_,
-                                    size_t part_count_,
-                                    zlink_send_result_t *result_out_);
 
 ZLINK_EXPORT int zlink_set_subscription (void *handle_,
                                          const char *filter_);
@@ -1734,6 +1697,13 @@ typedef int zlink_fd_t;
 
 typedef short zlink_poller_event_mask_t;
 
+typedef enum zlink_poller_source_kind_t
+{
+    ZLINK_POLLER_SOURCE_SOCKET = 1,
+    ZLINK_POLLER_SOURCE_FD = 2,
+    ZLINK_POLLER_SOURCE_TIMER = 3
+} zlink_poller_source_kind_t;
+
 typedef struct zlink_pollitem_t
 {
     void *socket;
@@ -1744,8 +1714,10 @@ typedef struct zlink_pollitem_t
 
 typedef struct zlink_poller_event_t
 {
+    zlink_poller_source_kind_t source_kind;
     void *socket;
     zlink_fd_t fd;
+    void *timer;
     void *user_data;
     short events;
 } zlink_poller_event_t;
@@ -1788,10 +1760,14 @@ ZLINK_EXPORT int zlink_poller_add_fd (void *poller_,
                                       zlink_fd_t fd_,
                                       void *user_data_,
                                       short events_);
+ZLINK_EXPORT int zlink_poller_add_timer (void *poller_,
+                                         void *timer_,
+                                         void *user_data_);
 ZLINK_EXPORT int zlink_poller_modify_fd (void *poller_,
                                          zlink_fd_t fd_,
                                          short events_);
 ZLINK_EXPORT int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
+ZLINK_EXPORT int zlink_poller_remove_timer (void *poller_, void *timer_);
 ZLINK_EXPORT int zlink_poller_wait (void *poller_,
                                     zlink_poller_event_t *event_,
                                     long timeout_);
@@ -1825,35 +1801,26 @@ int zlink_atomic_counter_value (void *counter_);
 void zlink_atomic_counter_destroy (void **counter_p_);
 
 /******************************************************************************/
-/*  Scheduling timers                                                         */
+/*  Timers                                                                    */
 /******************************************************************************/
-typedef void (zlink_timer_fn) (int timer_id, void *arg);
 
-/** @brief Create a new timer set. */
-ZLINK_EXPORT void *zlink_timers_new (void);
+typedef void (*zlink_timer_handler_fn) (void *timer_,
+                                        uint64_t fire_count_,
+                                        void *userdata_);
 
-/** @brief Destroy a timer set and release all resources. */
-ZLINK_EXPORT int zlink_timers_destroy (void **timers_p);
-
-/** @brief Add a timer with the given interval (ms) and callback. Returns timer ID. */
-ZLINK_EXPORT int
-zlink_timers_add (void *timers, size_t interval, zlink_timer_fn handler, void *arg);
-
-/** @brief Cancel a timer by its ID. */
-ZLINK_EXPORT int zlink_timers_cancel (void *timers, int timer_id);
-
-/** @brief Change the interval of an existing timer. */
-ZLINK_EXPORT int
-zlink_timers_set_interval (void *timers, int timer_id, size_t interval);
-
-/** @brief Reset a timer's countdown to its full interval. */
-ZLINK_EXPORT int zlink_timers_reset (void *timers, int timer_id);
-
-/** @brief Return milliseconds until the next timer fires, or -1 if none. */
-ZLINK_EXPORT long zlink_timers_timeout (void *timers);
-
-/** @brief Execute all expired timers. */
-ZLINK_EXPORT int zlink_timers_execute (void *timers);
+ZLINK_EXPORT void *zlink_timer_new (void);
+ZLINK_EXPORT void *zlink_spot_timer_new (void *spot_);
+ZLINK_EXPORT int zlink_timer_destroy (void **timer_p_);
+ZLINK_EXPORT int zlink_timer_start (void *timer_,
+                                    uint64_t interval_ns_,
+                                    uint64_t repeat_count_);
+ZLINK_EXPORT int zlink_timer_stop (void *timer_);
+ZLINK_EXPORT int zlink_timer_recv (void *timer_,
+                                   uint64_t *fire_count_out_,
+                                   int flags_);
+ZLINK_EXPORT int zlink_timer_handler (void *timer_,
+                                      zlink_timer_handler_fn handler_,
+                                      void *userdata_);
 
 /** @brief Start a high-resolution stopwatch. Returns an opaque handle. */
 ZLINK_EXPORT void *zlink_stopwatch_start (void);

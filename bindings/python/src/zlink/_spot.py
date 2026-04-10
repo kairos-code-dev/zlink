@@ -6,6 +6,7 @@ import queue
 import threading
 
 from ._socket_base import (
+    _classify_nonblocking_send_errno,
     _clone_received_owner,
     _ensure_not_in_callback,
     _enter_callback,
@@ -458,19 +459,8 @@ class Spot:
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
-        native_result = ctypes.c_int(int(SendResult.SENT))
-        rc = lib().zlink_try_publish(
-            self._handle,
-            topic_bytes,
-            parts_array,
-            part_count,
-            ctypes.byref(native_result),
-        )
-        if rc != 0:
-            for index in range(part_count):
-                lib().zlink_msg_close(ctypes.byref(parts_array[index]))
-            _raise_last_error()
-        result = SendResult(native_result.value)
+        rc = lib().zlink_publish(self._handle, topic_bytes, parts_array, part_count, 1)
+        result = SendResult.SENT if rc == 0 else _classify_nonblocking_send_errno()
         if result is not SendResult.SENT:
             for index in range(part_count):
                 lib().zlink_msg_close(ctypes.byref(parts_array[index]))

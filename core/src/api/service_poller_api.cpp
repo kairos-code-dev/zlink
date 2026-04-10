@@ -4,6 +4,7 @@
 
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
+#include "api/timer_api_internal.hpp"
 
 int validate_spot_generic_poller_events (short events_, bool *is_pub_out_)
 {
@@ -27,6 +28,12 @@ int validate_spot_generic_poller_events (short events_, bool *is_pub_out_)
 void release_poller_registration (const poller_registration_t &registration_)
 {
     switch (registration_.subject_kind) {
+        case poller_subject_timer:
+            timer_handle_release_poller_ref (
+              as_timer_handle (registration_.subject));
+            break;
+        case poller_subject_fd:
+            break;
         case poller_subject_spot_pub:
         case poller_subject_spot_sub:
             decrement_spot_poller_ref (

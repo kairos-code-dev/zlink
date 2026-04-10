@@ -584,6 +584,16 @@ void raw_client_handler (const zlink_routing_id_t *source_rid_,
     probe->cv.notify_all ();
 }
 
+void typed_router_client_handler (const zlink_routing_id_t *source_rid_,
+                                  uint64_t request_seq_,
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_,
+                                  void *)
+{
+    TEST_ASSERT_EQUAL_UINT64 (0, request_seq_);
+    raw_client_handler (source_rid_, parts_, part_count_, NULL);
+}
+
 void pubsub_subscribe_handler (const zlink_routing_id_t *source_rid_,
                                const char *topic_,
                                size_t topic_len_,
@@ -1102,7 +1112,7 @@ void run_router_router_ready_matrix (monitor_mode_t monitor_mode_,
     g_router_client_probe = &client_probe;
     if (socket_mode_ == socket_callback_mode) {
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_recv_handler (client, &raw_client_handler, NULL));
+          zlink_router_handler (client, &typed_router_client_handler, NULL));
     }
 
     zlink_socket_monitor_open_options_t monitor_opts;

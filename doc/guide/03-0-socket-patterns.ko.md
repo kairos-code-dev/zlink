@@ -129,8 +129,8 @@ PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
 
 | 용어 | 의미 |
 |------|------|
-| **hot path** | 고빈도로 호출되는 경로. `send`, `publish` 등 데이터 전송 API. 동시 호출에 최적화되어 있다 |
-| **control path** | 저빈도로 호출되는 경로. `bind`, `connect`, `set_option`, `monitor` 등 설정/관리 API. 내부 직렬화로 correctness를 보장한다 |
+| **핫 패스(hot path, 고빈도 데이터 경로)** | 고빈도로 호출되는 경로. `send`, `publish` 등 데이터 전송 API. 동시 호출에 최적화되어 있다 |
+| **제어 경로(control path)** | 저빈도로 호출되는 경로. `bind`, `connect`, `set_option`, `monitor` 등 설정/관리 API. 내부 직렬화로 correctness를 보장한다 |
 | **correctness** | 여러 스레드가 같은 handle을 동시에 사용해도 데이터 손상이나 크래시 없이 올바르게 동작하는 성질 |
 | **fail-fast lifecycle gate** | `close`/`destroy` 호출 시 다른 스레드가 사용 중이면 즉시 `EBUSY`를 반환하고, close가 수락된 뒤 새 API 진입은 `ESHUTDOWN`을 반환하는 종료 계약 |
 | **admission guard** | API 진입 시 handle이 유효한지, 이미 종료 중인지를 검사하는 내부 게이트 |

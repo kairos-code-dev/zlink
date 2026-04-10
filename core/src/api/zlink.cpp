@@ -45,7 +45,6 @@ struct iovec
 #include "core/socket_poller.hpp"
 #include "utils/fd.hpp"
 #include "protocol/metadata.hpp"
-#include "core/timers.hpp"
 #include "utils/ip.hpp"
 #include "core/address.hpp"
 

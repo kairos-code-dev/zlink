@@ -3,7 +3,7 @@
 > 상태: 진행중
 > 기준 문서: 이 실행 가이드 하나로 고정
 > 대상 범위: `bindings/node/perf/`, `bindings/node/tests/`, `bindings/node/package.json`, `bindings/node/perf/README.md`, `bindings/node/plan/perf/`
-> 목적: `bindings/node/perf`가 [`bindings/README.md`](../../README.md#perf-policy) 633-795 line의 `Perf Policy`부터 `Perf Review Checklist`까지 전부 만족할 때까지 반복 실행 기준과 완료 판정 기준을 고정
+> 목적: `bindings/node/perf`가 [`bindings/README.md`](../../../../doc/spec/bindings/README.md#perf-policy) 633-795 line의 `Perf Policy`부터 `Perf Review Checklist`까지 전부 만족할 때까지 반복 실행 기준과 완료 판정 기준을 고정
 > 최종 종료 판정: `미적용 사항이 없습니다.`
 
 ## 1. 목적
@@ -12,7 +12,7 @@
 
 이번 loop의 목표는 아래 하나로 고정한다.
 
-- Node perf surface가 [`bindings/README.md`](../../README.md#perf-policy) 633-795
+- Node perf surface가 [`bindings/README.md`](../../../../doc/spec/bindings/README.md#perf-policy) 633-795
   line의 perf 정책 전체를 실제 코드, 스크립트, 출력, 문서, 검증 경로에서
   만족하도록 끝까지 정렬한다.
 
@@ -22,7 +22,7 @@
 
 이번 실행에서 반드시 만족해야 하는 기준 문서는 아래다.
 
-- [`bindings/README.md`](../../README.md#perf-policy)
+- [`bindings/README.md`](../../../../doc/spec/bindings/README.md#perf-policy)
 - [`doc/perf/PERF_POLICY.md`](../../../../doc/perf/PERF_POLICY.md)
 - [`doc/perf/PERF_SINGLE_TEST_POLICY.md`](../../../../doc/perf/PERF_SINGLE_TEST_POLICY.md)
 - [`doc/perf/PERF_MULTI_TEST_POLICY.md`](../../../../doc/perf/PERF_MULTI_TEST_POLICY.md)

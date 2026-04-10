@@ -13,6 +13,8 @@
 enum poller_subject_kind_t
 {
     poller_subject_none = 0,
+    poller_subject_fd,
+    poller_subject_timer,
     poller_subject_spot_pub,
     poller_subject_spot_sub,
     poller_subject_spot_node_pub,
@@ -23,15 +25,19 @@ struct poller_registration_t
 {
     poller_registration_t () :
         socket (NULL),
+        fd (zlink::retired_fd),
         subject (NULL),
         subject_kind (poller_subject_none),
+        user_data (NULL),
         events (0)
     {
     }
 
     void *socket;
+    zlink_fd_t fd;
     void *subject;
     poller_subject_kind_t subject_kind;
+    void *user_data;
     short events;
 };
 
@@ -70,10 +76,19 @@ int poller_add_registration (poller_handle_t *poller_,
                              short events_,
                              void *subject_,
                              poller_subject_kind_t subject_kind_);
+int poller_add_fd_registration (poller_handle_t *poller_,
+                                zlink_fd_t fd_,
+                                void *user_data_,
+                                short events_,
+                                void *subject_,
+                                poller_subject_kind_t subject_kind_);
 int poller_find_registration_index (poller_handle_t *poller_, void *subject_);
 int poller_find_registration_index (poller_handle_t *poller_,
                                     void *subject_,
                                     poller_subject_kind_t subject_kind_);
+int poller_find_fd_registration_index (poller_handle_t *poller_,
+                                       zlink_fd_t fd_,
+                                       poller_subject_kind_t subject_kind_);
 int poller_remove_registration_at (poller_handle_t *poller_, int index_);
 int poller_remove_all_registrations_for_subject (poller_handle_t *poller_,
                                                  void *subject_);

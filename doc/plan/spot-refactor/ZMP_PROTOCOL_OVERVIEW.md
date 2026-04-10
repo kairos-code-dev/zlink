@@ -2,7 +2,7 @@
 
 > **상태**: In Progress
 > 이 문서는 현재 작업에서 구현 기준으로 쓰는 작업 스펙이다.
-> 구현과 테스트를 마치면 공개 API 기준은 `doc/api` 문서에 반영한다.
+> 구현과 테스트를 마치면 공개 API 기준은 `doc/spec/core` 문서에 반영한다.
 > **관련 문서**:
 > [`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md) — request-reply 상위 프로토콜
 > [`ZMP_SPOT_ROUTED_PROTOCOL.md`](ZMP_SPOT_ROUTED_PROTOCOL.md) — SPOT 직접 전달 상위 프로토콜

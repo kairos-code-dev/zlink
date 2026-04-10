@@ -23,7 +23,7 @@
 이번 정렬 작업의 우선순위는 아래 순서로 둔다.
 
 1. `../../../../core/include/zlink.h`
-2. `../../../../doc/guide/*.md`, `../../../../doc/api/*.md`
+2. `../../../../doc/guide/*.md`, `../../../../doc/spec/core/*.md`
 3. 현재 `bindings/cpp/include`
 4. 현재 `bindings/cpp/tests`
 
@@ -89,7 +89,7 @@
 
 - `guide` 문서는 대체로 최신 서비스 모델과 맞는다.
 - 반면
-  [`doc/api/polling.ko.md`](/home/hep7/project/kairos/zlink/doc/api/polling.ko.md)
+  [`doc/spec/core/polling.ko.md`](/home/hep7/project/kairos/zlink/doc/spec/core/polling.ko.md)
   는 polling 제거를 설명하지만, 최신 `core/include/zlink.h`에는 poller API가
   존재한다.
 
@@ -676,7 +676,7 @@ CTest 등록 방식:
 
 주의:
 
-- `doc/api/polling.ko.md`와 실제 header가 충돌하므로, 구현은 header를 따른다.
+- `doc/spec/core/polling.ko.md`와 실제 header가 충돌하므로, 구현은 header를 따른다.
 - 이후 문서 단계에서 poller 지원 범위를 명확히 재서술한다.
 
 완료 기준:
@@ -1037,7 +1037,7 @@ wrapper의 형태를 자연스럽게 만들 수 있기 때문이다.
 
 ## 10. 리스크
 
-- `doc/api` 일부 문서가 낡아 있어 문서만 보고 구현하면 다시 어긋날 수 있다.
+- `doc/spec/core` 일부 문서가 낡아 있어 문서만 보고 구현하면 다시 어긋날 수 있다.
 - 서비스 계층은 개념 변경 폭이 커서 단순 rename으로 끝나지 않는다.
 - 편의 API를 많이 유지하려고 하면 오히려 최신 `core`의 multipart/monitor/service
   모델을 흐리게 만든다.

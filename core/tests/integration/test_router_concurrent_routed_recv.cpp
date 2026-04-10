@@ -220,8 +220,26 @@ bool recv_single_part (void *socket_,
 {
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    if (zlink_recv (socket_, source_rid_out_, &parts, &part_count, 0) != 0)
+    if (source_rid_out_) {
+        const zlink_routing_id_t *peer_rid = NULL;
+        uint64_t request_seq = 0;
+        if (zlink_router_recv (socket_, &peer_rid, &request_seq, &parts,
+                               &part_count, 0)
+            != 0) {
+            return false;
+        }
+        if (request_seq != 0) {
+            if (parts)
+                zlink_multipart_close (parts, part_count);
+            errno = EPROTO;
+            return false;
+        }
+        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
+        if (peer_rid)
+            *source_rid_out_ = *peer_rid;
+    } else if (zlink_recv (socket_, NULL, &parts, &part_count, 0) != 0) {
         return false;
+    }
 
     if (part_count != 1) {
         zlink_multipart_close (parts, part_count);

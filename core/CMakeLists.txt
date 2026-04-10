@@ -956,6 +956,7 @@ set(api-sources
   src/api/service_registry_api.cpp
   src/api/service_spot_node_api.cpp
     src/api/service_spot_api.cpp
+    src/api/request_timeout_scheduler_internal.cpp
     src/api/service_spot_request_reply_api.cpp
     src/api/service_spot_subject_option_api.cpp
     src/api/service_spot_subject_subscription_api.cpp
@@ -968,6 +969,7 @@ set(api-sources
     src/api/socket_message_send_api.cpp
     src/api/socket_request_reply_api.cpp
     src/api/socket_api.cpp
+    src/api/timer_api.cpp
     src/api/zlink.cpp
     src/api/zlink_option.cpp
     src/api/zlink_option_specialized_api.cpp
@@ -995,7 +997,6 @@ set(core-sources
     src/core/reaper.cpp
     src/core/signaler.cpp
     src/core/thread.cpp
-    src/core/timers.cpp
     src/core/options.cpp
     src/core/options_dispatch.cpp
     src/core/options_core_socket.cpp

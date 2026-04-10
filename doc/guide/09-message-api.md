@@ -2,9 +2,9 @@
 
 # Message API Reference
 
-> **Normative status: Illustrative — Needs refresh.**
-> 이 가이드는 설명 목적의 문서이며, API 명칭/시그니처의 정확한 기준은
-> `core/include/zlink.h`와 `bindings/README.md`다.
+> **Normative status: Illustrative.**
+> This guide is for explanation purposes. The authoritative source for
+> API names and signatures is `core/include/zlink.h` and `bindings/README.md`.
 
 ## 1. Overview
 
@@ -416,89 +416,33 @@ zlink_send_rid(router, &target_rid, parts, part_count, 0);
 ```
 
 
-## 10. Request-Reply And Metadata Note
+## 10. Request-Reply and Metadata Changes
 
-Message-level request-reply markers and per-message metadata are not part of
-the current active API.
+Previous versions of this guide documented message-level request-reply and
+per-message metadata functions. These have been removed:
 
-- `zlink_msg_set_request`
-- `zlink_msg_set_reply`
-- `zlink_msg_get_request_info`
-- `zlink_msg_set_metadata`
-- `zlink_msg_get_metadata`
-- `zlink_msg_clear_metadata`
+- `zlink_msg_set_request`, `zlink_msg_set_reply`,
+  `zlink_msg_get_request_info` -- removed
+- `zlink_msg_set_metadata`, `zlink_msg_get_metadata`,
+  `zlink_msg_clear_metadata` -- removed
+- `zlink_msg_t` now serves purely as a payload part container
 
-were removed.
+Current request-reply uses dedicated typed API surfaces:
 
-Current request-reply uses typed socket surfaces and ZMP control parts.
-Current SPOT direct delivery and SPOT request-reply also use typed receive
-surfaces and ZMP control parts.
+- **DEALER/ROUTER**: `zlink_dealer_request()`, `zlink_router_request()`,
+  `zlink_router_reply()`, `zlink_router_handler()`, `zlink_router_recv()`
+  -- see [DEALER Guide](03-3-dealer.md), [ROUTER Guide](03-4-router.md)
+- **SPOT routed request-reply**: `zlink_spot_request_spot()`,
+  `zlink_spot_reply_spot()`, `zlink_spot_handler()`, `zlink_spot_recv()`
+  -- see [SPOT Guide](07-3-spot.md)
 
-For the current interfaces, see:
+From the message API perspective, the key points are:
 
-- `doc/api/socket.ko.md`
-- `doc/api/spot.ko.md`
-- `doc/internals/protocol-zmp.ko.md`
-
-```c
-/* Application-defined metadata keys */
-enum my_meta {
-    META_TRACE_ID  = 0x0100,
-    META_PRIORITY  = 0x0101,
-    META_TIMESTAMP = 0x0102,
-};
-
-zlink_msg_t msg;
-zlink_msg_init_size(&msg, 11);
-memcpy(zlink_msg_data(&msg), "hello world", 11);
-
-/* Attach trace-id */
-uint8_t trace_id[16] = { /* ... */ };
-zlink_msg_set_metadata(&msg, META_TRACE_ID, trace_id, 16);
-
-/* Attach priority */
-uint8_t priority = 3;
-zlink_msg_set_metadata(&msg, META_PRIORITY, &priority, 1);
-
-zlink_send(socket, &msg, 1, 0);
-```
-
-### Reading Metadata
-
-```c
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    size_t trace_len;
-    const void *trace = zlink_msg_get_metadata(&parts[0],
-                                                META_TRACE_ID, &trace_len);
-    if (trace) {
-        /* use trace_id bytes (trace, trace_len) */
-    }
-
-    size_t prio_len;
-    const void *prio = zlink_msg_get_metadata(&parts[0],
-                                               META_PRIORITY, &prio_len);
-    if (prio && prio_len == 1) {
-        uint8_t priority = *(const uint8_t *)prio;
-        /* use priority */
-    }
-
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-```
-
-### Key Points
-
-- Keys `0x0000`--`0x00FF` are reserved for zlink. User keys start at `0x0100`.
-- Messages with no metadata have zero wire overhead.
-- `msg_copy` deep-copies metadata. `msg_move` transfers metadata (source becomes empty).
-- `msg_close` frees the metadata storage.
-- `msg_data()` / `msg_size()` return user payload only — metadata header is not included.
-- `get_metadata` returns NULL for absent keys (no error).
-- Metadata and request-reply fields are independent and can coexist on the same message.
+- Payload is still built with `zlink_msg_t` (init, send, close)
+- Request-reply context lives in wire control parts, not message fields
+- The message metadata serialization path is no longer a public contract
+- If application-level metadata is needed (trace-id, priority, etc.),
+  encode it as a multipart payload frame
 
 ---
 [← Routing ID](08-routing-id.md) | [Performance →](10-performance.md)

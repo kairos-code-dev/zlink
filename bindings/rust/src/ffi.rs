@@ -774,25 +774,12 @@ unsafe extern "C" {
         part_count: usize,
         flags: zlink_send_flags_t,
     ) -> c_int;
-    pub fn zlink_try_send(
-        socket: *mut c_void,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
-        result_out: *mut zlink_send_result_t,
-    ) -> c_int;
     pub fn zlink_send_rid(
         socket: *mut c_void,
         target_rid: *const zlink_routing_id_t,
         parts: *mut zlink_msg_t,
         part_count: usize,
         flags: zlink_send_flags_t,
-    ) -> c_int;
-    pub fn zlink_try_send_rid(
-        socket: *mut c_void,
-        target_rid: *const zlink_routing_id_t,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
-        result_out: *mut zlink_send_result_t,
     ) -> c_int;
     pub fn zlink_dealer_request(
         dealer: *mut c_void,
@@ -838,13 +825,6 @@ unsafe extern "C" {
         parts: *mut zlink_msg_t,
         part_count: usize,
         flags: zlink_send_flags_t,
-    ) -> c_int;
-    pub fn zlink_try_publish(
-        subject: *mut c_void,
-        topic_id: *const c_char,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
-        result_out: *mut zlink_send_result_t,
     ) -> c_int;
     pub fn zlink_set_subscription(handle: *mut c_void, filter: *const c_char) -> c_int;
     pub fn zlink_unset_subscription(handle: *mut c_void, filter: *const c_char) -> c_int;

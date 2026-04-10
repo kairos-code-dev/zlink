@@ -12,6 +12,8 @@ namespace zlink
 {
 namespace
 {
+static const int spot_node_hwm_default = 1000;
+
 static void preserve_first_error_local (int rc_, int *first_error_)
 {
     if (rc_ == 0 || !first_error_ || *first_error_ != 0)
@@ -63,6 +65,98 @@ static void refresh_runtime_sub_hwm (spot_runtime_t *runtime_,
     if (runtime_->mesh_xsub)
         (void) runtime_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
                                                 &value, sizeof (value));
+}
+
+static void refresh_runtime_routed_send_hwm (spot_runtime_t *runtime_,
+                                             const void *optval_,
+                                             size_t optvallen_)
+{
+    if (!runtime_ || !optval_ || optvallen_ == 0)
+        return;
+
+    int value = 0;
+    copy_int_option_value (optval_, optvallen_, &value);
+    if (runtime_->node_router)
+        (void) runtime_->node_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                                  &value, sizeof (value));
+}
+
+static void refresh_runtime_routed_recv_hwm (spot_runtime_t *runtime_,
+                                             const void *optval_,
+                                             size_t optvallen_)
+{
+    if (!runtime_ || !optval_ || optvallen_ == 0)
+        return;
+
+    int value = 0;
+    copy_int_option_value (optval_, optvallen_, &value);
+    if (runtime_->route_ingress)
+        (void) runtime_->route_ingress->setsockopt (
+          ZLINK_INTERNAL_OPT_RCVHWM, &value, sizeof (value));
+    if (runtime_->node_router)
+        (void) runtime_->node_router->setsockopt (
+          ZLINK_INTERNAL_OPT_RCVHWM, &value, sizeof (value));
+}
+
+static bool apply_runtime_hwm_option (spot_node_hwm_config_t *config_,
+                                      int option_,
+                                      const void *optval_,
+                                      size_t optvallen_)
+{
+    if (!config_ || !optval_ || optvallen_ == 0 || optvallen_ > sizeof (int))
+        return false;
+
+    int value = 0;
+    copy_int_option_value (optval_, optvallen_, &value);
+    switch (option_) {
+        case ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM:
+            config_->topic_send_enabled = true;
+            config_->topic_send_hwm = value;
+            return true;
+        case ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM:
+            config_->topic_recv_enabled = true;
+            config_->topic_recv_hwm = value;
+            return true;
+        case ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM:
+            config_->routed_send_enabled = true;
+            config_->routed_send_hwm = value;
+            return true;
+        case ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM:
+            config_->routed_recv_enabled = true;
+            config_->routed_recv_hwm = value;
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool read_runtime_hwm_option (const spot_node_hwm_config_t &config_,
+                                     int option_,
+                                     int *value_out_)
+{
+    if (!value_out_)
+        return false;
+
+    switch (option_) {
+        case ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM:
+            *value_out_ = config_.topic_send_enabled ? config_.topic_send_hwm
+                                                     : spot_node_hwm_default;
+            return true;
+        case ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM:
+            *value_out_ = config_.topic_recv_enabled ? config_.topic_recv_hwm
+                                                     : spot_node_hwm_default;
+            return true;
+        case ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM:
+            *value_out_ = config_.routed_send_enabled ? config_.routed_send_hwm
+                                                      : spot_node_hwm_default;
+            return true;
+        case ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM:
+            *value_out_ = config_.routed_recv_enabled ? config_.routed_recv_hwm
+                                                      : spot_node_hwm_default;
+            return true;
+        default:
+            return false;
+    }
 }
 
 }
@@ -450,15 +544,47 @@ int spot_node_t::set_node_option (int option_,
     spot_node_batch_config_t config = _runtime->peer_batch_config_snapshot ();
     const spot_node_batch_option_binding_t *binding =
       resolve_spot_node_batch_option_binding (option_);
-    if (!binding
-        || !apply_spot_node_batch_option_value (&config, binding, optval_,
-                                                optvallen_)) {
+    if (binding && apply_spot_node_batch_option_value (&config, binding, optval_,
+                                                       optvallen_)) {
+        _runtime->set_peer_batch_config (config);
+        return 0;
+    }
+
+    spot_node_hwm_config_t hwm_config = _runtime->hwm_config_snapshot ();
+    if (!apply_runtime_hwm_option (&hwm_config, option_, optval_, optvallen_)) {
         errno = EINVAL;
         return -1;
     }
+    if (option_ == ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM) {
+        if (_handle_defaults.set_pub_option (ZLINK_SPOT_PUB_OPT_SNDHWM, optval_,
+                                             optvallen_)
+            != 0)
+            return -1;
+    } else if (option_ == ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM) {
+        if (_handle_defaults.set_sub_option (ZLINK_SPOT_SUB_OPT_RCVHWM, optval_,
+                                             optvallen_)
+            != 0)
+            return -1;
+    }
+    _runtime->set_hwm_config (hwm_config);
 
-    _runtime->set_peer_batch_config (config);
-    return 0;
+    switch (option_) {
+        case ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM:
+            refresh_runtime_pub_hwm (_runtime, optval_, optvallen_);
+            return 0;
+        case ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM:
+            refresh_runtime_sub_hwm (_runtime, optval_, optvallen_);
+            return 0;
+        case ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM:
+            refresh_runtime_routed_send_hwm (_runtime, optval_, optvallen_);
+            return 0;
+        case ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM:
+            refresh_runtime_routed_recv_hwm (_runtime, optval_, optvallen_);
+            return 0;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
 }
 
 int spot_node_t::get_node_option (int option_,
@@ -479,8 +605,11 @@ int spot_node_t::get_node_option (int option_,
     const spot_node_batch_option_binding_t *binding =
       resolve_spot_node_batch_option_binding (option_);
     if (!binding || !read_spot_node_batch_option_value (config, binding, &value)) {
-        errno = EINVAL;
-        return -1;
+        const spot_node_hwm_config_t hwm_config = _runtime->hwm_config_snapshot ();
+        if (!read_runtime_hwm_option (hwm_config, option_, &value)) {
+            errno = EINVAL;
+            return -1;
+        }
     }
 
     memcpy (optval_, &value, sizeof (value));

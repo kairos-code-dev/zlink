@@ -340,6 +340,7 @@ void run_multi_pubsub_process_case (const char *self_path_,
       wait_for_stdout_prefix (&client, "CLIENT_READY,", 10000, NULL));
     const std::string start_line = std::string ("START,") + msg_size_ + "\n";
     write_stdin_line (&server, start_line.c_str ());
+    write_stdin_line (&client, start_line.c_str ());
 
     int client_rc = INT_MIN;
     TEST_ASSERT_TRUE (wait_for_exit_code (&client, 20000, &client_rc));

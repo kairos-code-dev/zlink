@@ -38,14 +38,22 @@ struct relay_server_config_t
 
 inline bool relay_router_once (void *server)
 {
-    zlink_routing_id_t source_rid;
-    source_rid.size = 0;
+    const zlink_routing_id_t *source_rid = NULL;
+    uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = ::zlink_recv (server, &source_rid, &parts, &part_count, 0);
+    const int rc =
+      ::zlink_router_recv (server, &source_rid, &request_seq, &parts, &part_count, 0);
     if (rc < 0) {
         const int err = zlink_errno ();
         return err == EAGAIN || err == EINTR;
+    }
+
+    if (!source_rid || source_rid->size == 0 || request_seq != 0) {
+        if (parts)
+            zlink_multipart_close (parts, part_count);
+        errno = EPROTO;
+        return false;
     }
 
     if (part_count == 0 || !parts) {
@@ -54,7 +62,7 @@ inline bool relay_router_once (void *server)
             return false;
 
         const int send_rc =
-          ::zlink_send_rid (server, &source_rid, &empty_part, 1, 0);
+          ::zlink_send_rid (server, source_rid, &empty_part, 1, 0);
         if (send_rc >= 0)
             return true;
 
@@ -63,7 +71,7 @@ inline bool relay_router_once (void *server)
         return err == EAGAIN || err == EINTR;
     }
 
-    const int send_rc = ::zlink_send_rid (server, &source_rid, parts, part_count, 0);
+    const int send_rc = ::zlink_send_rid (server, source_rid, parts, part_count, 0);
     if (send_rc >= 0) {
         return true;
     }

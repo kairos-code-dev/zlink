@@ -267,16 +267,16 @@
 
 아래 문서는 이번 작업 안에서 같이 수정한다.
 
-- `doc/api/socket.md`
-- `doc/api/socket.ko.md`
-- `doc/api/README.md`
-- `doc/api/README.ko.md`
-- `doc/api/gateway.md`
-- `doc/api/gateway.ko.md`
-- `doc/api/spot.md`
-- `doc/api/spot.ko.md`
-- `doc/api/monitoring.md`
-- `doc/api/monitoring.ko.md`
+- `doc/spec/core/socket/README.md`
+- `doc/spec/core/socket/README.ko.md`
+- `doc/spec/core/README.md`
+- `doc/spec/core/README.ko.md`
+- `doc/spec/core/gateway.md`
+- `doc/spec/core/gateway.ko.md`
+- `doc/spec/core/spot.md`
+- `doc/spec/core/spot.ko.md`
+- `doc/spec/core/monitoring.md`
+- `doc/spec/core/monitoring.ko.md`
 - `doc/guide/02-core-api.md`
 - `doc/guide/02-core-api.ko.md`
 - `doc/guide/03-0-socket-patterns.*`
@@ -305,5 +305,5 @@ bindings/package 쪽은 이번 문서에서 상세 정책을 따로 들고 가�
 1. `core/include/zlink.h` support matrix와 설명을 먼저 고정한다.
 2. `core/src/`의 callback attach validation을 축소한다.
 3. `core/tests/`에서 남는/빠지는 matrix를 회귀로 고정한다.
-4. `doc/api`, `doc/guide`, `doc/perf`, `core/perf`를 같은 작업에서 함께 정리한다.
+4. `doc/spec/core`, `doc/guide`, `doc/perf`, `core/perf`를 같은 작업에서 함께 정리한다.
 5. bindings/package는 별도 후속 작업에서 `core` contract와만 정합성을 맞춘다.

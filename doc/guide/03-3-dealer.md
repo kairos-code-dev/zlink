@@ -133,6 +133,7 @@ zlink_send(dealer, parts, 2, 0);
 |------|------|--------|------|
 | `zlink_set_routing_id()` | binary | Auto (UUID) | ID for identification by ROUTER (dedicated function) |
 | `ZLINK_DEALER_OPT_PROBE` | int | 0 | Send empty message on connect (connection notification) |
+| `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | Default timeout for `zlink_dealer_request()`. `0` uses the implementation default of `5000ms` |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | Maximum number of messages in the send queue |
 | `ZLINK_OPT_RCVHWM` | int | 1000 | Maximum number of messages in the receive queue |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on close (ms) |
@@ -151,6 +152,44 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ```
 
 > Reference: `core/tests/test_router_multiple_dealers.cpp` -- `zlink_set_routing_id(dealer1, "D1", 2)`
+
+### 4.1 Request-Reply
+
+When DEALER needs to send a request and wait for a reply, use
+`zlink_dealer_request()` instead of ordinary `send/recv`. This function
+attaches a ZMP request-reply envelope and delivers the reply via callback.
+
+```c
+static void on_reply(int reply_errno,
+                     zlink_msg_t *parts,
+                     size_t part_count,
+                     void *userdata)
+{
+    if (reply_errno != 0) {
+        fprintf(stderr, "request failed: %d\n", reply_errno);
+        return;
+    }
+
+    for (size_t i = 0; i < part_count; ++i)
+        zlink_msg_close(&parts[i]);
+}
+
+int timeout_ms = 1000;
+zlink_set_dealer_option(
+  dealer,
+  ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS,
+  &timeout_ms,
+  sizeof(timeout_ms));
+
+zlink_msg_t req;
+zlink_msg_init_size(&req, 4);
+memcpy(zlink_msg_data(&req), "ping", 4);
+zlink_dealer_request(dealer, &req, 1, 0, on_reply, NULL);
+```
+
+When `timeout_ms=0` is passed to `zlink_dealer_request()`, it uses the
+socket default. If the socket default is also `0`, the implementation
+default of `5000ms` applies.
 
 ## 5. Usage Patterns
 

@@ -183,7 +183,7 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 
 ### 패턴 1: 스레드 간 시그널링 (inproc)
 
-가장 일반적인 PAIR 사용 사례. inproc transport로 스레드 간 zero-copy 통신.
+가장 일반적인 PAIR 사용 사례. inproc transport로 스레드 간 제로카피(zero-copy, 메모리 복사 없이 전달) 통신.
 
 ```c
 /* Main thread */

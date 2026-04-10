@@ -7,7 +7,7 @@
 [![Build](https://github.com/ulala-x/zlink/actions/workflows/build.yml/badge.svg)](https://github.com/ulala-x/zlink/actions/workflows/build.yml)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE)
 
-[사용자 가이드](doc/guide/01-overview.ko.md) · [API 레퍼런스](doc/api/README.ko.md) · [바인딩](doc/bindings/overview.ko.md) · [내부 구조](doc/internals/architecture.ko.md) · [빌드](doc/building/build-guide.ko.md)
+[사용자 가이드](doc/guide/01-overview.ko.md) · [스펙](doc/spec/README.ko.md) · [바인딩](doc/bindings/overview.ko.md) · [내부 구조](doc/internals/architecture.ko.md) · [빌드](doc/building/build-guide.ko.md)
 
 ---
 
@@ -226,7 +226,7 @@ libzmq 대비 64바이트 메시지 TCP 처리량 비교:
 | 문서 | 설명 |
 |------|------|
 | [문서 네비게이션](doc/README.ko.md) | 전체 문서 목차 및 독자별 경로 |
-| [API 레퍼런스](doc/api/README.ko.md) | 함수 수준 C API 레퍼런스 |
+| [라이브러리 스펙](doc/spec/README.ko.md) | zlink 라이브러리 스펙 (코어 + 바인딩) |
 | [사용자 가이드](doc/guide/01-overview.ko.md) | zlink API 가이드 (12편) |
 | [바인딩 가이드](doc/bindings/overview.ko.md) | C++/Java/.NET/Node.js/Python 바인딩 |
 | [내부 아키텍처](doc/internals/architecture.ko.md) | 시스템 아키텍처 및 내부 구현 |

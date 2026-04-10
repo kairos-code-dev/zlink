@@ -50,13 +50,12 @@ int recv_router_header_flags (void *router_,
     if (header_ok_out_)
         *header_ok_out_ = false;
 
-    zlink_routing_id_t source_rid;
-    std::memset (&source_rid, 0, sizeof (source_rid));
+    const zlink_routing_id_t *source_rid = NULL;
+    uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = zlink_recv (
-      router_, &source_rid, &parts, &part_count,
-      static_cast<zlink_send_flags_t> (flags_));
+    const int rc = zlink_router_recv (
+      router_, &source_rid, &request_seq, &parts, &part_count, flags_);
     if (rc != 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
@@ -64,10 +63,13 @@ int recv_router_header_flags (void *router_,
         return -1;
     }
 
-    if (source_rid.size == 0 || !parts || part_count != 1) {
+    if (!source_rid || source_rid->size == 0 || request_seq != 0 || !parts
+        || part_count != 1) {
         if (bench_debug_enabled ()) {
             std::cerr << "[perf-dealer-router] invalid routed recv"
-                      << " rid_size=" << static_cast<int> (source_rid.size)
+                      << " rid_size="
+                      << static_cast<int> (source_rid ? source_rid->size : 0)
+                      << " request_seq=" << request_seq
                       << " part_count=" << part_count << std::endl;
         }
         if (parts)

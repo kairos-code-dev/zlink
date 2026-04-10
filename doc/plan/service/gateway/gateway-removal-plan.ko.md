@@ -344,7 +344,7 @@ generic metadata/member 모델이 정말 필요하면
 - `core/perf`의 gateway benchmark/binary/run-script/config 이름과 경로 정리
 - `core/perf`에서 gateway API, gateway monitor event, gateway service token을 참조하는 코드 제거 또는 대체
 - gateway 전용 테스트 helper, lane 언급, README 설명
-- `doc/api/gateway*.md`와 gateway 전용 plan/doc
+- `doc/spec/core/gateway*.md`와 gateway 전용 plan/doc
 - bindings의 `Gateway` wrapper와 예시 문서
 
 ### 11.7 제거 완료 판정
@@ -496,7 +496,7 @@ build 산출물이나 generated artifact는 제거 작업의 판정 기준에 �
 
 - source 기준 bindings의 `Gateway` wrapper, enum, test, example 제거
 - bindings 문서의 gateway 섹션 제거 또는 대체 경로로 갱신
-- `doc/api/gateway.ko.md`, `doc/api/gateway.md` 제거 또는
+- `doc/spec/core/gateway.ko.md`, `doc/spec/core/gateway.md` 제거 또는
   migration 문서로 대체
 - service/discovery/registry 관련 문서에서 gateway family 언급 정리
 

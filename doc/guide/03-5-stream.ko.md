@@ -72,7 +72,8 @@ STREAM만의 고유 동작은 다음과 같다.
 
 ## 4. 콜백 예시
 
-STREAM의 콜백에서는 connect/disconnect 이벤트와 데이터를 구분해야 한다.
+STREAM의 콜백 디스패치(수신 메시지를 콜백으로 전달) 과정에서는
+connect/disconnect 이벤트와 데이터를 구분해야 한다.
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,

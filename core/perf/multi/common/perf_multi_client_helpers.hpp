@@ -132,6 +132,7 @@ inline send_status_t send_echo_message (void *socket,
 }
 
 inline int recv_one_message (void *socket,
+                             bool router_surface,
                              std::vector<char> &scratch,
                              int flags,
                              size_t capture_bytes)
@@ -139,17 +140,35 @@ inline int recv_one_message (void *socket,
     if (!socket)
         return -1;
 
-    zlink_routing_id_t source_rid;
-    source_rid.size = 0;
+    const int recv_flags =
+      router_surface ? (flags & ~ZLINK_DONTWAIT) : flags;
+    const zlink_routing_id_t *source_rid = NULL;
+    uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = ::zlink_recv (
-      socket, &source_rid, &parts, &part_count,
-      static_cast<zlink_send_flags_t> (flags));
+    const int rc =
+      router_surface
+        ? ::zlink_router_recv (
+            socket,
+            &source_rid,
+            &request_seq,
+            &parts,
+            &part_count,
+            recv_flags)
+        : ::zlink_recv (
+            socket, NULL, &parts, &part_count,
+            static_cast<zlink_send_flags_t> (recv_flags));
     if (rc < 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
             return 0;
+        return -1;
+    }
+
+    if (router_surface && request_seq != 0) {
+        if (parts)
+            zlink_multipart_close (parts, part_count);
+        errno = EPROTO;
         return -1;
     }
 
@@ -178,9 +197,13 @@ inline int recv_one_message (void *socket,
     return 1;
 }
 
-inline int recv_one_message (void *socket, std::vector<char> &scratch, int flags)
+inline int recv_one_message (void *socket,
+                             bool router_surface,
+                             std::vector<char> &scratch,
+                             int flags)
 {
-    return recv_one_message (socket, scratch, flags, scratch.size ());
+    return recv_one_message (
+      socket, router_surface, scratch, flags, scratch.size ());
 }
 
 inline bool wait_all_client_connect_ready (std::vector<ready_monitor_t> &monitors,
@@ -480,6 +503,7 @@ inline bool decode_metric_header_from_capture (
 }
 
 inline int recv_one_message_header (void *socket,
+                                    bool router_surface,
                                     std::vector<char> &scratch,
                                     int flags,
                                     size_t capture_bytes,
@@ -489,17 +513,35 @@ inline int recv_one_message_header (void *socket,
     if (!socket)
         return -1;
 
-    zlink_routing_id_t source_rid;
-    source_rid.size = 0;
+    const int recv_flags =
+      router_surface ? (flags & ~ZLINK_DONTWAIT) : flags;
+    const zlink_routing_id_t *source_rid = NULL;
+    uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = ::zlink_recv (
-      socket, &source_rid, &parts, &part_count,
-      static_cast<zlink_send_flags_t> (flags));
+    const int rc =
+      router_surface
+        ? ::zlink_router_recv (
+            socket,
+            &source_rid,
+            &request_seq,
+            &parts,
+            &part_count,
+            recv_flags)
+        : ::zlink_recv (
+            socket, NULL, &parts, &part_count,
+            static_cast<zlink_send_flags_t> (recv_flags));
     if (rc < 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
             return 0;
+        return -1;
+    }
+
+    if (router_surface && request_seq != 0) {
+        if (parts)
+            zlink_multipart_close (parts, part_count);
+        errno = EPROTO;
         return -1;
     }
 
@@ -539,6 +581,7 @@ inline int recv_one_message_header (void *socket,
 
 inline bool drain_socket_non_blocking (
   void *socket,
+  bool router_surface,
   std::vector<char> &scratch,
   size_t expected_msg_size,
   uint32_t expected_run_id,
@@ -558,6 +601,7 @@ inline bool drain_socket_non_blocking (
         bool decoded = false;
         const int rc = recv_one_message_header (
           socket,
+          router_surface,
           scratch,
           ZLINK_DONTWAIT,
           scratch.size (),
@@ -621,6 +665,7 @@ inline bool drain_socket_non_blocking (
 
 inline bool run_one_way_window_loop (
   const std::vector<void *> &recv_sockets,
+  bool router_surface,
   const multi_bench_settings_t &settings,
   size_t expected_msg_size,
   uint32_t expected_run_id,
@@ -695,6 +740,7 @@ inline bool run_one_way_window_loop (
                 long recv_now = 0;
                 if (!drain_socket_non_blocking (
                       recv_sockets[i],
+                      router_surface,
                       scratch,
                       expected_msg_size,
                       expected_run_id,
@@ -754,6 +800,7 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
 
     if (!run_one_way_window_loop (
           recv_sockets,
+          false,
           settings,
           msg_size,
           run_id,
@@ -965,6 +1012,7 @@ inline bool run_echo_window_round_robin (
                     bool decoded = false;
                     const int recv_rc = recv_one_message_header (
                       sockets[idx],
+                      client_router_send,
                       scratch,
                       ZLINK_DONTWAIT,
                       scratch.size (),

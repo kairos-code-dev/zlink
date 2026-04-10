@@ -264,17 +264,16 @@ func (s *Spot) TryPublish(topic string, parts ...*Message) (SendResult, error) {
 	if err != nil {
 		return 0, err
 	}
-	var result C.zlink_send_result_t
+	sendResult := SendResultSent
 	err = s.core.withCString(topic, func(cstr *C.char) error {
-		return checkRC(C.zlink_try_publish(s.raw(), cstr, prepared.ptr(), prepared.count(), &result))
-	})
-	if err != nil {
-		if restoreErr := prepared.restore(); restoreErr != nil {
-			return 0, restoreErr
+		rc := C.zlink_publish(s.raw(), cstr, prepared.ptr(), prepared.count(), C.ZLINK_DONTWAIT)
+		if rc == 0 {
+			return nil
 		}
-		return 0, err
-	}
-	sendResult, err := sendResultFromC(result)
+		var classifyErr error
+		sendResult, classifyErr = classifyNonBlockingSendErr()
+		return classifyErr
+	})
 	if err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
 			return 0, restoreErr

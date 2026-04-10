@@ -35,7 +35,7 @@
 
 아래 원칙은 `core/perf`와 모든 bindings perf에 동일하게 적용한다.
 
-- `core/perf`는 `doc/guide` 및 `doc/api` 문서에 기술된 public C API만 사용한다.
+- `core/perf`는 `doc/guide` 및 `doc/spec/core` 문서에 기술된 public C API만 사용한다.
   내부 헤더나 내부 함수를 직접 호출하지 않는다.
 - `bindings/<lang>/perf`는 해당 언어 binding의 public API만 사용한다. binding
   내부/private API, 내부 구현 클래스, native 내부 helper를 직접 호출하지 않는다.

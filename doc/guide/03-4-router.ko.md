@@ -175,7 +175,7 @@ int rc = zlink_send_rid(router, &target_rid, &msg, 1, 0);
 
 > 참고: `core/tests/test_router_mandatory.cpp` — `test_basic()`
 
-## 4.1 request-reply 서버와 클라이언트 역할
+### 4.1 request-reply 서버와 클라이언트 역할
 
 `ROUTER` 는 request-reply 에서 두 역할을 모두 맡을 수 있다.
 
@@ -218,6 +218,33 @@ static void on_router_reply(int reply_errno,
 
 zlink_router_request(router, target_rid, &req, 1, 2500, on_router_reply, NULL);
 ```
+
+#### Typed Recv (Pull 모드)
+
+Callback 대신 `zlink_router_recv()`로 request-reply 메시지를 직접 수신할 수 있다.
+`peer_rid`, `request_seq`, payload parts를 반환한다.
+
+```c
+const zlink_routing_id_t *peer_rid;
+uint64_t request_seq;
+zlink_msg_t *parts;
+size_t part_count;
+int rc = zlink_router_recv(router, &peer_rid, &request_seq,
+                           &parts, &part_count, 0);
+if (rc == 0) {
+    /* request payload 처리 */
+    zlink_multipart_close(parts, part_count);
+
+    /* reply 생성 및 전송 */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 4);
+    memcpy(zlink_msg_data(&reply), "pong", 4);
+    zlink_router_reply(router, peer_rid, request_seq, &reply, 1);
+}
+```
+
+**주의:** `zlink_router_recv()`와 `zlink_router_handler()`는 상호 배타적이다.
+둘 다 사용하면 `EBUSY`를 반환한다.
 
 ## 5. 사용 패턴
 
@@ -309,7 +336,7 @@ zlink_send(d2, &m2, 1, 0);
 ### 패턴 2: DEALER → ROUTER 로드밸런싱 요청-응답
 
 DEALER ↔ ROUTER 조합의 핵심 장점:
-- **DEALER 측**: round-robin으로 여러 ROUTER 중 하나를 자동 선택 → 부하 분산
+- **DEALER 측**: 라운드 로빈(round-robin, 순환 분배)으로 여러 ROUTER 중 하나를 자동 선택 → 부하 분산
 - **ROUTER 측**: routing_id로 요청을 보낸 DEALER를 정확히 식별 → 응답 라우팅
 
 ```
@@ -317,14 +344,14 @@ DEALER ↔ ROUTER 조합의 핵심 장점:
                         +-- send -->| ROUTER A |
                         |           +----------+
   +----------+          |           +----------+
-  | DEALER 1 |----------+-- send -->| ROUTER B |    round-robin
-  |   (D1)   |          |           +----------+    순환 분배
+  | DEALER 1 |----------+-- send -->| ROUTER B |    라운드 로빈
+  |   (D1)   |          |           +----------+    (순환 분배)
   +----------+          |           +----------+
                         +-- send -->| ROUTER C |
                                     +----------+
 
   +----------+
-  | DEALER 2 |-------- (동일하게 A, B, C에 round-robin)
+  | DEALER 2 |-------- (동일하게 A, B, C에 라운드 로빈)
   |   (D2)   |
   +----------+
 
@@ -366,12 +393,12 @@ if (rc == -1 && errno == EHOSTUNREACH) {
 
 ### 패턴 3: ROUTER ↔ ROUTER 가중치 라우팅
 
-DEALER → ROUTER는 round-robin이 고정되어 분배 비율을 제어할 수 없다.
+DEALER → ROUTER는 라운드 로빈이 고정되어 분배 비율을 제어할 수 없다.
 가중치, 우선순위, 조건부 라우팅이 필요하면 ROUTER ↔ ROUTER로 구성하고
 애플리케이션이 routing_id를 직접 선택한다.
 
 ```
-  DEALER → ROUTER (round-robin 고정, 균등 분배):
+  DEALER → ROUTER (라운드 로빈 고정, 균등 분배):
 
   +----------+     1/3      +----------+
   |          |-------------->| ROUTER A |
@@ -433,7 +460,7 @@ zlink_send_rid(client, &rid, &msg, 1, 0);
 /* 서버 응답: source_rid = "C1"로 클라이언트 식별 가능 */
 ```
 
-> DEALER → ROUTER의 round-robin이 충분하면 DEALER를 사용하고,
+> DEALER → ROUTER의 라운드 로빈이 충분하면 DEALER를 사용하고,
 > 분배 로직을 제어해야 하면 ROUTER ↔ ROUTER로 전환한다.
 
 ### 패턴 4: 다중 DEALER 서버

@@ -397,6 +397,79 @@ void test_spot_node_batch_options_expose_documented_defaults ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_spot_node_hwm_options_round_trip_public_api ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    int topic_send = 111;
+    int topic_recv = 222;
+    int routed_send = 333;
+    int routed_recv = 444;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM, &topic_send,
+      sizeof (topic_send)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM, &topic_recv,
+      sizeof (topic_recv)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM, &routed_send,
+      sizeof (routed_send)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM, &routed_recv,
+      sizeof (routed_recv)));
+
+    int value = 0;
+    size_t value_size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM, &value, &value_size));
+    TEST_ASSERT_EQUAL_INT (111, value);
+    value_size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM, &value, &value_size));
+    TEST_ASSERT_EQUAL_INT (222, value);
+    value_size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM, &value, &value_size));
+    TEST_ASSERT_EQUAL_INT (333, value);
+    value_size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM, &value, &value_size));
+    TEST_ASSERT_EQUAL_INT (444, value);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_spot_node_hwm_options_expose_defaults ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    const zlink_spot_node_option_t options[] = {
+      ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM,
+      ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM,
+      ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM,
+      ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM,
+    };
+
+    for (size_t i = 0; i < sizeof (options) / sizeof (options[0]); ++i) {
+        int value = -1;
+        size_t value_size = sizeof (value);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_get_spot_node_option (node, options[i], &value, &value_size));
+        TEST_ASSERT_EQUAL_UINT (sizeof (value), value_size);
+        TEST_ASSERT_EQUAL_INT (1000, value);
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_peer_batch_delay_flush_emits_internal_batch_frame ()
 {
     zlink::ctx_t *ctx = new zlink::ctx_t;
@@ -882,6 +955,8 @@ int main (int argc, char **argv)
       test_mesh_pub_budget_runtime_owner_tracks_ready_count_changes);
     RUN_TEST (test_spot_node_batch_options_round_trip_public_api);
     RUN_TEST (test_spot_node_batch_options_expose_documented_defaults);
+    RUN_TEST (test_spot_node_hwm_options_round_trip_public_api);
+    RUN_TEST (test_spot_node_hwm_options_expose_defaults);
     RUN_TEST (test_peer_batch_delay_flush_emits_internal_batch_frame);
     RUN_TEST (test_peer_batch_max_messages_flushes_on_enqueue_boundary);
     RUN_TEST (test_peer_batch_max_bytes_flushes_before_next_enqueue);

@@ -1,7 +1,7 @@
 # Spot Routed Message Spec
 
 > 이 문서는 현재 작업에서 구현 기준으로 쓰는 작업 스펙이다.
-> 구현과 테스트를 마치면 공개 API 기준은 `doc/api` 문서에 반영한다.
+> 구현과 테스트를 마치면 공개 API 기준은 `doc/spec/core` 문서에 반영한다.
 > **관련 문서**:
 > [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
 > [`ZMP_SPOT_ROUTED_PROTOCOL.md`](ZMP_SPOT_ROUTED_PROTOCOL.md) — SPOT routed protocol envelope
@@ -141,6 +141,24 @@
 - publish/subscribe 의미와 routed 의미를 같은 API 에 섞지 않는다
 - request/reply 는 routed payload 안의 별도 상위 프로토콜로 처리한다
 
+### 6. routed 내부 구현은 `inproc` 소켓 경로를 기준으로 한다
+
+이번 라운드에서 공개 함수 이름은 `zlink.h` 기준을 유지한다.
+하지만 내부 구현은 임시 메모리 큐가 아니라 실제 routed 경로를 설명할 수 있는 구조여야 한다.
+
+즉 routed 내부 경로는 다음 기준을 따른다.
+
+- 같은 프로세스 안의 routed handoff 는 내부 `inproc` 소켓 경로를 사용한다
+- `spot -> spot`, `spot -> router`, `router -> spot` 은 모두 같은 routed data plane 위에서 해석한다
+- `zlink_spot_recv()` 와 `zlink_router_spot_recv()` 는 임시 `deque` 소비가 아니라 내부 routed 소켓 경로 위에서 동작해야 한다
+- routed HWM 은 이 내부 routed 소켓 경로에 직접 매핑될 수 있어야 한다
+
+이 규칙이 필요한 이유는 다음과 같다.
+
+- 문서에 정의한 `ROUTED_SEND_HWM`, `ROUTED_RECV_HWM` 의미를 실제 내부 경로에 연결할 수 있어야 한다
+- typed recv/callback 이 별도 임시 큐를 또 가지면 성능과 의미가 같이 흐려진다
+- 같은 `SpotNode` 안의 토픽 경로와 routed 경로를 구조적으로 분리할 수 있어야 한다
+
 
 ## 용어
 
@@ -192,6 +210,10 @@
 중요한 점은
 직접 전달 기능이 기존 토픽 기능을 대체하는 것이 아니라,
 같은 `SpotNode` 안에 별도 경로로 추가된다는 점이다.
+
+또 하나 중요한 점은, 이 routed 경로가 단순 로컬 메모리 큐가 아니라
+실제 내부 `inproc` 소켓 경로로 설명 가능해야 한다는 것이다.
+그래야 routed HWM, poller, recv/callback 정책을 기존 소켓 모델과 같은 말로 설명할 수 있다.
 
 
 ## SPOT Request-Reply
@@ -550,7 +572,7 @@ routed 메시지는 pub/sub 메시지와 다르다.
 - timer 는 `Spot` 전용 helper 로 따로 두지 않는다
 - timer 는 공통 `zlink_timer_*()` 와 `poller` 기준을 따른다
 - timer 관련 공개 계약은
-  [`TIMER_POLLER_SPEC.ko.md`](/home/hep7/project/kairos/zlink/doc/spec/timer/TIMER_POLLER_SPEC.ko.md)
+  [`TIMER_POLLER_SPEC.ko.md`](../../spec/core/utilities.ko.md)
   를 기준으로 본다
 
 ### 핸들 구조

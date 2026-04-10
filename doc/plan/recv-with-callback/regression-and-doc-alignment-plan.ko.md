@@ -92,9 +92,9 @@ monitor는 기존 dual-mode 유지 대상이므로 아래를 별도로 확인한
 
 우선순위가 높은 문서:
 
-- `doc/api/gateway.*`
-- `doc/api/monitoring.*`
-- `doc/api/spot.*`
+- `doc/spec/core/gateway.*`
+- `doc/spec/core/monitoring.*`
+- `doc/spec/core/spot.*`
 - `doc/guide/03-5-stream.*`
 - `doc/guide/07-2-gateway.*`
 - `doc/guide/07-3-spot.*`

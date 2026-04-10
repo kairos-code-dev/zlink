@@ -529,7 +529,7 @@ snapshot의 state flag도 `ready_count`와 같은 축을 따라야 한다.
 반드시 같이 바꿔야 하는 문서:
 
 - `core/include/zlink.h`
-- `doc/api/monitoring.md`
+- `doc/spec/core/monitoring.md`
 - service별 monitoring 설명 문서
 - perf/plan 문서에서 `ready_peer_count` 또는 `READY` alias를 전제로 쓴 부분
 
@@ -629,7 +629,7 @@ snapshot의 state flag도 `ready_count`와 같은 축을 따라야 한다.
 4. tests
    - symbol rename 반영
    - count semantics 회귀 추가
-5. `doc/api/monitoring.md`
+5. `doc/spec/core/monitoring.md`
    - 최종 contract 문서화
 
 이 순서가 좋은 이유는 public naming을 먼저 고정해야

@@ -11,6 +11,18 @@ import (
 	"fmt"
 )
 
+func classifyNonBlockingSendErr() (SendResult, error) {
+	code := int(C.zlink_errno())
+	switch code {
+	case int(C.EAGAIN):
+		return SendResultBackpressured, nil
+	case int(C.ENOTCONN), int(C.EHOSTUNREACH):
+		return SendResultNotReady, nil
+	default:
+		return 0, lastError()
+	}
+}
+
 type ErrorKind string
 
 const (

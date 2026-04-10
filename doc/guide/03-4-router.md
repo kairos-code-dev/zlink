@@ -128,6 +128,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 |------|------|--------|------|
 | `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | Return EHOSTUNREACH error for undeliverable messages (set via `zlink_set_router_option()`) |
 | `ZLINK_ROUTER_OPT_HANDOVER` | int | 0 | Replace existing connection on routing_id conflict |
+| `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | Default timeout for `zlink_router_request()`. `0` uses the implementation default of `5000ms` |
 | `zlink_set_routing_id()` | binary | Auto (UUID) | The ROUTER's own routing_id (dedicated function) |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | Send HWM |
 | `ZLINK_OPT_RCVHWM` | int | 1000 | Receive HWM |
@@ -151,6 +152,84 @@ int rc = zlink_send_rid(router, &target_rid, &msg, 1, 0);
 ```
 
 > Reference: `core/tests/test_router_mandatory.cpp` -- `test_basic()`
+
+### 4.1 Request-Reply Server and Client Roles
+
+ROUTER can play both roles in request-reply:
+
+- **Server role**: receive requests with `zlink_router_handler()` and
+  reply with `zlink_router_reply()`
+- **Active client role**: initiate requests with `zlink_router_request()`
+  to a specific peer
+
+The key identifier is the `peer_rid + request_seq` combination. A reply
+must match both values -- the same `request_seq` from a different
+`peer_rid` is not the same request.
+
+#### Server: Receive Requests and Reply
+
+```c
+static void on_request(const zlink_routing_id_t *peer_rid,
+                       uint64_t request_seq,
+                       zlink_msg_t *parts,
+                       size_t part_count,
+                       void *userdata)
+{
+    zlink_multipart_close(parts, part_count);
+
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 4);
+    memcpy(zlink_msg_data(&reply), "pong", 4);
+    zlink_router_reply(router, peer_rid, request_seq, &reply, 1);
+}
+
+zlink_router_handler(router, on_request, NULL);
+```
+
+#### Client: Initiate Request
+
+When ROUTER initiates a request, the reply is delivered via callback.
+
+```c
+static void on_router_reply(int reply_errno,
+                            zlink_msg_t *parts,
+                            size_t part_count,
+                            void *userdata)
+{
+    if (reply_errno == 0)
+        zlink_multipart_close(parts, part_count);
+}
+
+zlink_router_request(router, target_rid, &req, 1, 2500, on_router_reply, NULL);
+```
+
+#### Typed Recv (Pull Mode)
+
+Instead of the callback model, ROUTER can pull request-reply messages
+using `zlink_router_recv()`. This returns `peer_rid`, `request_seq`,
+and payload parts.
+
+```c
+const zlink_routing_id_t *peer_rid;
+uint64_t request_seq;
+zlink_msg_t *parts;
+size_t part_count;
+int rc = zlink_router_recv(router, &peer_rid, &request_seq,
+                           &parts, &part_count, 0);
+if (rc == 0) {
+    /* process request payload */
+    zlink_multipart_close(parts, part_count);
+
+    /* build and send reply */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 4);
+    memcpy(zlink_msg_data(&reply), "pong", 4);
+    zlink_router_reply(router, peer_rid, request_seq, &reply, 1);
+}
+```
+
+**Note:** `zlink_router_recv()` and `zlink_router_handler()` are mutually
+exclusive. Using both returns `EBUSY`.
 
 ## 5. Usage Patterns
 

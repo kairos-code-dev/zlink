@@ -6,6 +6,64 @@
 #include <vector>
 
 #include "api/poller_api_internal.hpp"
+#include "api/timer_api_internal.hpp"
+
+namespace
+{
+int fill_public_poller_event (poller_handle_t *poller_,
+                              const zlink::socket_poller_t::event_t &native_,
+                              zlink_poller_event_t *event_out_)
+{
+    if (!poller_ || !event_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    memset (event_out_, 0, sizeof (*event_out_));
+    event_out_->fd = 0;
+
+    for (size_t i = 0; i < poller_->registrations.size (); ++i) {
+        const poller_registration_t &registration = poller_->registrations[i];
+        if (registration.socket && registration.socket == native_.socket) {
+            event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
+            event_out_->socket = native_.socket;
+            event_out_->fd = native_.fd;
+            event_out_->timer = NULL;
+            event_out_->user_data = native_.user_data;
+            event_out_->events = native_.events;
+            return 0;
+        }
+        if (!registration.socket && registration.fd == native_.fd) {
+            if (registration.subject_kind == poller_subject_timer) {
+                event_out_->source_kind = ZLINK_POLLER_SOURCE_TIMER;
+                event_out_->socket = NULL;
+                event_out_->fd = native_.fd;
+                event_out_->timer = registration.subject;
+                event_out_->user_data = native_.user_data;
+                event_out_->events = native_.events;
+                return 0;
+            }
+
+            event_out_->source_kind = ZLINK_POLLER_SOURCE_FD;
+            event_out_->socket = NULL;
+            event_out_->fd = native_.fd;
+            event_out_->timer = NULL;
+            event_out_->user_data = native_.user_data;
+            event_out_->events = native_.events;
+            return 0;
+        }
+    }
+
+    event_out_->source_kind =
+      native_.socket ? ZLINK_POLLER_SOURCE_SOCKET : ZLINK_POLLER_SOURCE_FD;
+    event_out_->socket = native_.socket;
+    event_out_->fd = native_.fd;
+    event_out_->timer = NULL;
+    event_out_->user_data = native_.user_data;
+    event_out_->events = native_.events;
+    return 0;
+}
+}
 
 int poller_add_registration (poller_handle_t *poller_,
                              zlink::socket_base_t *socket_,
@@ -23,8 +81,35 @@ int poller_add_registration (poller_handle_t *poller_,
 
     poller_registration_t registration;
     registration.socket = static_cast<void *> (socket_);
+    registration.fd = zlink::retired_fd;
     registration.subject = subject_;
     registration.subject_kind = subject_kind_;
+    registration.user_data = user_data_;
+    registration.events = events_;
+    poller_->registrations.push_back (registration);
+    return 0;
+}
+
+int poller_add_fd_registration (poller_handle_t *poller_,
+                                zlink_fd_t fd_,
+                                void *user_data_,
+                                short events_,
+                                void *subject_,
+                                poller_subject_kind_t subject_kind_)
+{
+    if (!poller_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (poller_->poller.add_fd (fd_, user_data_, events_) != 0)
+        return -1;
+
+    poller_registration_t registration;
+    registration.socket = NULL;
+    registration.fd = fd_;
+    registration.subject = subject_;
+    registration.subject_kind = subject_kind_;
+    registration.user_data = user_data_;
     registration.events = events_;
     poller_->registrations.push_back (registration);
     return 0;
@@ -56,6 +141,22 @@ int poller_find_registration_index (poller_handle_t *poller_,
     return -1;
 }
 
+int poller_find_fd_registration_index (poller_handle_t *poller_,
+                                       zlink_fd_t fd_,
+                                       poller_subject_kind_t subject_kind_)
+{
+    if (!poller_)
+        return -1;
+    for (size_t i = 0; i < poller_->registrations.size (); ++i) {
+        if (!poller_->registrations[i].socket
+            && poller_->registrations[i].fd == fd_
+            && poller_->registrations[i].subject_kind == subject_kind_) {
+            return static_cast<int> (i);
+        }
+    }
+    return -1;
+}
+
 int poller_remove_registration_at (poller_handle_t *poller_, int index_)
 {
     if (!poller_ || index_ < 0
@@ -64,12 +165,15 @@ int poller_remove_registration_at (poller_handle_t *poller_, int index_)
         return -1;
     }
 
-    zlink::socket_base_t *socket = static_cast<zlink::socket_base_t *> (
-      poller_->registrations[static_cast<size_t> (index_)].socket);
-    const int rc = poller_->poller.remove (socket);
+    const poller_registration_t registration =
+      poller_->registrations[static_cast<size_t> (index_)];
+    const int rc = registration.socket
+                     ? poller_->poller.remove (
+                         static_cast<zlink::socket_base_t *> (
+                           registration.socket))
+                     : poller_->poller.remove_fd (registration.fd);
     if (rc == 0) {
-        release_poller_registration (
-          poller_->registrations[static_cast<size_t> (index_)]);
+        release_poller_registration (registration);
         poller_->registrations.erase (poller_->registrations.begin () + index_);
     }
     return rc;
@@ -188,7 +292,8 @@ int zlink_poller_add_fd (void *poller_,
     poller_handle_t *poller = as_poller_handle (poller_);
     if (!poller)
         return -1;
-    return poller->poller.add_fd (fd_, user_data_, events_);
+    return poller_add_fd_registration (poller, fd_, user_data_, events_, NULL,
+                                       poller_subject_fd);
 }
 
 int zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_)
@@ -196,7 +301,16 @@ int zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_)
     poller_handle_t *poller = as_poller_handle (poller_);
     if (!poller)
         return -1;
-    return poller->poller.modify_fd (fd_, events_);
+    const int index =
+      poller_find_fd_registration_index (poller, fd_, poller_subject_fd);
+    if (index < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (poller->poller.modify_fd (fd_, events_) != 0)
+        return -1;
+    poller->registrations[static_cast<size_t> (index)].events = events_;
+    return 0;
 }
 
 int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_)
@@ -204,7 +318,50 @@ int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_)
     poller_handle_t *poller = as_poller_handle (poller_);
     if (!poller)
         return -1;
-    return poller->poller.remove_fd (fd_);
+    const int index =
+      poller_find_fd_registration_index (poller, fd_, poller_subject_fd);
+    if (index < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    return poller_remove_registration_at (poller, index);
+}
+
+int zlink_poller_add_timer (void *poller_, void *timer_, void *user_data_)
+{
+    poller_handle_t *poller = as_poller_handle (poller_);
+    timer_handle_t *timer = as_timer_handle (timer_);
+    if (!poller || !timer)
+        return -1;
+
+    if (timer_handle_acquire_poller_ref (timer) != 0)
+        return -1;
+
+    zlink_fd_t fd = 0;
+    if (timer_handle_signaler_fd (timer, &fd) != 0
+        || poller_add_fd_registration (poller, fd, user_data_, ZLINK_POLLIN,
+                                       timer_, poller_subject_timer)
+             != 0) {
+        timer_handle_release_poller_ref (timer);
+        return -1;
+    }
+    return 0;
+}
+
+int zlink_poller_remove_timer (void *poller_, void *timer_)
+{
+    poller_handle_t *poller = as_poller_handle (poller_);
+    timer_handle_t *timer = as_timer_handle (timer_);
+    if (!poller || !timer)
+        return -1;
+
+    const int index =
+      poller_find_registration_index (poller, timer_, poller_subject_timer);
+    if (index < 0) {
+        errno = ENOENT;
+        return -1;
+    }
+    return poller_remove_registration_at (poller, index);
 }
 
 int zlink_poller_wait (void *poller_,
@@ -221,11 +378,8 @@ int zlink_poller_wait (void *poller_,
     const int rc = poller->poller.wait (&native_event, 1, timeout_);
     if (rc <= 0)
         return rc;
-    event_->socket = native_event.socket;
-    event_->fd = native_event.fd;
-    event_->user_data = native_event.user_data;
-    event_->events = native_event.events;
-    return rc;
+    return fill_public_poller_event (poller, native_event, event_) == 0 ? rc
+                                                                         : -1;
 }
 
 int zlink_poller_wait_all (void *poller_,
@@ -240,7 +394,16 @@ int zlink_poller_wait_all (void *poller_,
         errno = EINVAL;
         return -1;
     }
-    return poller->poller.wait (
-      reinterpret_cast<zlink::socket_poller_t::event_t *> (events_), n_events_,
-      timeout_);
+    std::vector<zlink::socket_poller_t::event_t> native_events (
+      static_cast<size_t> (n_events_));
+    const int rc =
+      poller->poller.wait (native_events.data (), n_events_, timeout_);
+    if (rc <= 0)
+        return rc;
+    for (int i = 0; i < rc; ++i) {
+        if (fill_public_poller_event (poller, native_events[i], &events_[i])
+            != 0)
+            return -1;
+    }
+    return rc;
 }

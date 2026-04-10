@@ -573,14 +573,11 @@ func (s *directSocket) TrySend(parts ...*Message) (SendResult, error) {
 	if err != nil {
 		return 0, err
 	}
-	var result C.zlink_send_result_t
-	if err := checkRC(C.zlink_try_send(s.raw(), prepared.ptr(), prepared.count(), &result)); err != nil {
-		if restoreErr := prepared.restore(); restoreErr != nil {
-			return 0, restoreErr
-		}
-		return 0, err
+	rc := C.zlink_send(s.raw(), prepared.ptr(), prepared.count(), C.ZLINK_DONTWAIT)
+	sendResult := SendResultSent
+	if rc != 0 {
+		sendResult, err = classifyNonBlockingSendErr()
 	}
-	sendResult, err := sendResultFromC(result)
 	if err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
 			return 0, restoreErr
@@ -680,17 +677,16 @@ func (s *publishSocket) TryPublish(topic string, parts ...*Message) (SendResult,
 	if err != nil {
 		return 0, err
 	}
-	var result C.zlink_send_result_t
+	sendResult := SendResultSent
 	err = s.withCString(topic, func(cstr *C.char) error {
-		return checkRC(C.zlink_try_publish(s.raw(), cstr, prepared.ptr(), prepared.count(), &result))
-	})
-	if err != nil {
-		if restoreErr := prepared.restore(); restoreErr != nil {
-			return 0, restoreErr
+		rc := C.zlink_publish(s.raw(), cstr, prepared.ptr(), prepared.count(), C.ZLINK_DONTWAIT)
+		if rc == 0 {
+			return nil
 		}
-		return 0, err
-	}
-	sendResult, err := sendResultFromC(result)
+		var classifyErr error
+		sendResult, classifyErr = classifyNonBlockingSendErr()
+		return classifyErr
+	})
 	if err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
 			return 0, restoreErr
@@ -733,14 +729,11 @@ func (s *routedSocket) TrySendTo(target RoutingID, parts ...*Message) (SendResul
 		return 0, err
 	}
 	rid := target.toC()
-	var result C.zlink_send_result_t
-	if err := checkRC(C.zlink_try_send_rid(s.raw(), &rid, prepared.ptr(), prepared.count(), &result)); err != nil {
-		if restoreErr := prepared.restore(); restoreErr != nil {
-			return 0, restoreErr
-		}
-		return 0, err
+	rc := C.zlink_send_rid(s.raw(), &rid, prepared.ptr(), prepared.count(), C.ZLINK_DONTWAIT)
+	sendResult := SendResultSent
+	if rc != 0 {
+		sendResult, err = classifyNonBlockingSendErr()
 	}
-	sendResult, err := sendResultFromC(result)
 	if err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
 			return 0, restoreErr

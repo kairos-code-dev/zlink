@@ -208,10 +208,10 @@ multipart 경계를 판단한다.
 ### 7.1 Public Header / Docs
 
 - [zlink.h](/home/hep7/project/kairos/zlink/core/include/zlink.h)
-- [socket.md](/home/hep7/project/kairos/zlink/doc/api/socket.md)
-- [socket.ko.md](/home/hep7/project/kairos/zlink/doc/api/socket.ko.md)
-- [README.md](/home/hep7/project/kairos/zlink/doc/api/README.md)
-- [README.ko.md](/home/hep7/project/kairos/zlink/doc/api/README.ko.md)
+- [socket.md](/home/hep7/project/kairos/zlink/doc/spec/core/socket/README.md)
+- [socket.ko.md](/home/hep7/project/kairos/zlink/doc/spec/core/socket/README.ko.md)
+- [README.md](/home/hep7/project/kairos/zlink/doc/spec/core/README.md)
+- [README.ko.md](/home/hep7/project/kairos/zlink/doc/spec/core/README.ko.md)
 
 ### 7.2 Internal Core
 

@@ -7,124 +7,75 @@
 namespace zlink
 {
 
-/**
- * @brief RAII wrapper for zlink timer wheel API.
- */
-class timers_t
+class timer_t
 {
   public:
-    /**
-     * @brief Create a timer collection.
-     */
-    timers_t () : _timers (zlink_timers_new ()) {}
-    /**
-     * @brief Destroy the timer collection.
-     */
-    ~timers_t () { destroy (); }
+    timer_t () : _timer (zlink_timer_new ()) {}
 
-    timers_t (timers_t &&other) noexcept : _timers (other._timers)
+    explicit timer_t (void *timer_) : _timer (timer_) {}
+
+    ~timer_t () { destroy (); }
+
+    timer_t (timer_t &&other) noexcept : _timer (other._timer)
     {
-        other._timers = NULL;
+        other._timer = NULL;
     }
 
-    timers_t &operator= (timers_t &&other) noexcept
+    timer_t &operator= (timer_t &&other) noexcept
     {
         if (this == &other)
             return *this;
         destroy ();
-        _timers = other._timers;
-        other._timers = NULL;
+        _timer = other._timer;
+        other._timer = NULL;
         return *this;
     }
 
-    timers_t (const timers_t &) = delete;
-    timers_t &operator= (const timers_t &) = delete;
+    timer_t (const timer_t &) = delete;
+    timer_t &operator= (const timer_t &) = delete;
 
-    /**
-     * @brief Add a periodic timer.
-     * @param interval_ms_ Interval in milliseconds.
-     * @param handler_ Timer callback.
-     * @param arg_ User pointer for callback.
-     * @return Timer id (>=0) on success, -1 on failure.
-     */
-    int add (size_t interval_ms_, zlink_timer_fn handler_, void *arg_)
+    template<typename SpotLike>
+    static timer_t from_spot (SpotLike &spot_)
     {
-        return zlink_timers_add (_timers, interval_ms_, handler_, arg_);
+        return timer_t (zlink_spot_timer_new (spot_.handle ()));
     }
 
-    /**
-     * @brief Cancel a timer.
-     * @param timer_id_ Timer id.
-     * @return 0 on success, -1 on failure.
-     */
-    int cancel (int timer_id_)
+    bool valid () const noexcept { return _timer != NULL; }
+
+    void *handle () noexcept { return _timer; }
+    const void *handle () const noexcept { return _timer; }
+
+    int start (uint64_t interval_ns_, uint64_t repeat_count_)
     {
-        return zlink_timers_cancel (_timers, timer_id_);
+        return zlink_timer_start (_timer, interval_ns_, repeat_count_);
     }
 
-    /**
-     * @brief Update timer interval.
-     * @param timer_id_ Timer id.
-     * @param interval_ms_ New interval in milliseconds.
-     * @return 0 on success, -1 on failure.
-     */
-    int set_interval (int timer_id_, size_t interval_ms_)
+    int stop () { return zlink_timer_stop (_timer); }
+
+    int recv (uint64_t *fire_count_out_, int flags_ = 0)
     {
-        return zlink_timers_set_interval (_timers, timer_id_, interval_ms_);
+        return zlink_timer_recv (_timer, fire_count_out_, flags_);
     }
 
-    /**
-     * @brief Reset timer next-fire time.
-     * @param timer_id_ Timer id.
-     * @return 0 on success, -1 on failure.
-     */
-    int reset (int timer_id_)
+    int set_handler (zlink_timer_handler_fn handler_, void *userdata_ = NULL)
     {
-        return zlink_timers_reset (_timers, timer_id_);
+        return zlink_timer_handler (_timer, handler_, userdata_);
     }
 
-    /**
-     * @brief Query milliseconds until next timer event.
-     * @return Timeout in milliseconds, or -1.
-     */
-    long timeout () const
-    {
-        return _timers ? zlink_timers_timeout (_timers) : -1;
-    }
-
-    /**
-     * @brief Execute due timers.
-     * @return Number of executed callbacks, or -1 on failure.
-     */
-    int execute ()
-    {
-        return zlink_timers_execute (_timers);
-    }
-
-    /**
-     * @brief Explicitly destroy timer collection.
-     * @return 0 on success, -1 on failure.
-     */
     int destroy ()
     {
-        if (!_timers)
+        if (!_timer)
             return 0;
 
-        void *tmp = _timers;
-        const int rc = zlink_timers_destroy (&tmp);
+        void *timer = _timer;
+        const int rc = zlink_timer_destroy (&timer);
         if (rc == 0)
-            _timers = NULL;
+            _timer = NULL;
         return rc;
     }
 
-    /**
-     * @brief Access raw native timer handle.
-     * @return Native handle pointer.
-     */
-    void *handle () const { return _timers; }
-
   private:
-    void *_timers;
+    void *_timer;
 };
 
 } // namespace zlink

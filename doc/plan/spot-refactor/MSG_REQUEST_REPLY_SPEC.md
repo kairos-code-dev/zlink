@@ -1,8 +1,8 @@
 # Message Request-Reply 필드 — Core C API Spec
 
 > **상태**: Historical Draft
-> **소비자**: [`bindings/README.md`](../../../bindings/README.md) (Request-Reply Policy 섹션),
-> [`bindings/lang/*.md`](../../../bindings/lang/) (언어별 인터페이스)
+> **소비자**: [`bindings/README.md`](../../../doc/spec/bindings/README.md) (Request-Reply Policy 섹션),
+> [`bindings/lang/*.md`](../../../doc/spec/bindings/) (언어별 인터페이스)
 > **관련 문서**:
 > [`MSG_METADATA_SPEC.md`](MSG_METADATA_SPEC.md) — 범용 per-message metadata,
 > [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식,

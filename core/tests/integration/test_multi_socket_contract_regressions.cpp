@@ -111,8 +111,25 @@ void recv_parts_expect_payload (void *socket_,
     zlink_routing_id_t source_rid;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv (socket_, &source_rid, &parts, &part_count, 0));
+    const zlink_routing_id_t *peer_rid = NULL;
+    uint64_t request_seq = 0;
+    memset (&source_rid, 0, sizeof (source_rid));
+    if (zlink_router_recv (socket_, &peer_rid, &request_seq, &parts, &part_count, 0)
+        == 0) {
+        TEST_ASSERT_EQUAL_UINT64 (0, request_seq);
+        if (peer_rid)
+            source_rid = *peer_rid;
+    }
+    else {
+        if (expected_source_rid_) {
+            TEST_ASSERT_SUCCESS_ERRNO (
+              zlink_recv (socket_, &source_rid, &parts, &part_count, 0));
+        }
+        else {
+            TEST_ASSERT_SUCCESS_ERRNO (
+              zlink_recv (socket_, NULL, &parts, &part_count, 0));
+        }
+    }
     TEST_ASSERT_EQUAL_UINT64 (1, part_count);
 
     const size_t expected_source_rid_size =

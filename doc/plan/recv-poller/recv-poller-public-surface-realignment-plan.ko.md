@@ -235,7 +235,7 @@ poller 관련:
 문서/바인딩:
 
 - `bindings/cpp/include/zlink.h`
-- `doc/api/`
+- `doc/spec/core/`
 - `doc/guide/`
 
 테스트:
@@ -1340,16 +1340,16 @@ C API 함수 수는 늘어난다.
 
 갱신 대상:
 
-- `doc/api/gateway.md`
-- `doc/api/gateway.ko.md`
-- `doc/api/spot.md`
-- `doc/api/spot.ko.md`
-- `doc/api/polling.md`
-- `doc/api/polling.ko.md`
-- `doc/api/socket.md`
-- `doc/api/socket.ko.md`
-- `doc/api/README.md`
-- `doc/api/README.ko.md`
+- `doc/spec/core/gateway.md`
+- `doc/spec/core/gateway.ko.md`
+- `doc/spec/core/spot.md`
+- `doc/spec/core/spot.ko.md`
+- `doc/spec/core/polling.md`
+- `doc/spec/core/polling.ko.md`
+- `doc/spec/core/socket/README.md`
+- `doc/spec/core/socket/README.ko.md`
+- `doc/spec/core/README.md`
+- `doc/spec/core/README.ko.md`
 
 반영:
 
@@ -1399,8 +1399,8 @@ C API 함수 수는 늘어난다.
 
 갱신 대상:
 
-- `doc/api/monitoring.md`
-- `doc/api/monitoring.ko.md`
+- `doc/spec/core/monitoring.md`
+- `doc/spec/core/monitoring.ko.md`
 
 반영:
 

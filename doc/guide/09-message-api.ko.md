@@ -19,7 +19,7 @@
 | reference count (refcount) | 같은 데이터 버퍼를 공유하는 메시지 핸들의 수. 0이 되면 버퍼가 해제된다 |
 | ownership | 메시지 데이터의 소유권. send 성공 시 library로 이전되고, 실패 시 caller가 유지한다 |
 | routing_id | Router 소켓이 피어를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트) |
-| control part | request-reply, SPOT routed 같은 상위 프로토콜이 payload 앞에 붙이는 내부 part |
+| control part(제어 파트) | request-reply, SPOT routed 같은 상위 프로토콜이 payload 앞에 붙이는 내부 part |
 | HWM (High Water Mark) | 소켓의 송신/수신 큐 최대 용량. 초과 시 backpressure가 발생한다 |
 
 ## 1. 개요
@@ -626,12 +626,12 @@ zlink_send_rid(router, &target_rid, parts, part_count, 0);
 - `DEALER` / `ROUTER`: [03-3-dealer.ko.md](03-3-dealer.ko.md),
   [03-4-router.ko.md](03-4-router.ko.md)
 - SPOT routed request-reply: [07-3-spot.ko.md](07-3-spot.ko.md)
-- wire envelope 구조: [../internals/protocol-zmp.ko.md](../internals/protocol-zmp.ko.md)
+- 와이어(wire, 프로토콜 전송 레벨) envelope 구조: [../internals/protocol-zmp.ko.md](../internals/protocol-zmp.ko.md)
 
 즉 message API 관점에서 기억할 점은 단순하다.
 
 - payload 는 여전히 `zlink_msg_t` 로 만든다.
-- request-reply 문맥은 message 내부 필드가 아니라 wire control part 에 있다.
+- request-reply 문맥은 message 내부 필드가 아니라 와이어 제어 파트(control part)에 있다.
 - message metadata 직렬화 경로는 더 이상 공개 계약이 아니다.
 
 ---

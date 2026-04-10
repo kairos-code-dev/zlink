@@ -442,8 +442,8 @@ typed SPOT surfaces rather than `zlink_msg_t` markers.
 
 See:
 
-- `doc/api/socket.md`
-- `doc/api/spot.md`
+- `doc/spec/core/socket/README.md`
+- `doc/spec/core/spot.md`
 - `doc/internals/protocol-zmp.md`
 
 ## 11. Per-Message Metadata

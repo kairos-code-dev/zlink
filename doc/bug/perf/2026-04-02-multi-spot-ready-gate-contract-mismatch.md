@@ -21,7 +21,7 @@ multi `SPOT` benchmark가 시작하지 못했다.
 근거 문서:
 
 - `doc/guide/06-monitoring.ko.md`
-- `doc/api/events.md`
+- `doc/spec/core/events.md`
 
 핵심 내용:
 

@@ -103,19 +103,10 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
                     ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_TRY_SEND = downcall("zlink_try_send",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_SEND_RID = downcall("zlink_send_rid",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_TRY_SEND_RID = downcall(
-            "zlink_try_send_rid",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
     private static final MethodHandle MH_RECV = downcall("zlink_recv",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -203,11 +194,6 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_TRY_PUBLISH = downcall(
-            "zlink_try_publish",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SUBSCRIBE = downcall("zlink_subscribe",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -717,16 +703,6 @@ public final class Native {
         }
     }
 
-    public static int trySendMultipart(MemorySegment socket, MemorySegment parts,
-                                       long partCount, MemorySegment resultOut) {
-        try {
-            return (int) MH_TRY_SEND.invokeExact(socket, parts, partCount,
-              resultOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_try_send failed", t);
-        }
-    }
-
     public static int sendMultipart(MemorySegment socket, MemorySegment routingId,
                                     MemorySegment parts, long partCount,
                                     int flags) {
@@ -735,18 +711,6 @@ public final class Native {
               partCount, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_send_rid failed", t);
-        }
-    }
-
-    public static int trySendMultipart(MemorySegment socket,
-                                       MemorySegment routingId,
-                                       MemorySegment parts, long partCount,
-                                       MemorySegment resultOut) {
-        try {
-            return (int) MH_TRY_SEND_RID.invokeExact(socket, routingId, parts,
-              partCount, resultOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_try_send_rid failed", t);
         }
     }
 
@@ -1015,17 +979,6 @@ public final class Native {
               partCount, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_publish failed", t);
-        }
-    }
-
-    public static int tryPublish(MemorySegment subject, MemorySegment topicId,
-                                 MemorySegment parts, long partCount,
-                                 MemorySegment resultOut) {
-        try {
-            return (int) MH_TRY_PUBLISH.invokeExact(subject, topicId, parts,
-              partCount, resultOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_try_publish failed", t);
         }
     }
 

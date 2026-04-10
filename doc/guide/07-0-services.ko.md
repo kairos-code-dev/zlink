@@ -20,7 +20,7 @@ flowchart TB
     end
 
     subgraph facade["Public API Facade"]
-        F1["service_api · service_*_api<br/>validate + delegate → service-local access seam"]
+        F1["service_api · service_*_api<br/>validate + delegate → service-local access 접합 지점(seam)"]
     end
 
     subgraph access["Service Access Layer"]
@@ -42,8 +42,8 @@ flowchart TB
     app --> facade --> access --> runtime --> infra --> core
 ```
 
-- **Public API Facade**는 C API 진입점으로, handle validation 후 service-local access seam으로 위임한다. concrete service 세부를 직접 알지 않는다.
-- **Service Access Layer**는 각 서비스가 제공하는 service-local seam이다. `*_access.hpp`가 API 계층과 service runtime 사이의 계약을 정의한다.
+- **Public API Facade**는 C API 진입점으로, handle validation 후 service-local access 접합 지점으로 위임한다. concrete service 세부를 직접 알지 않는다.
+- **Service Access Layer**는 각 서비스가 제공하는 service-local 접합 지점이다. `*_access.hpp`가 API 계층과 service runtime 사이의 계약을 정의한다.
 - **Service Runtime**은 각 서비스의 내부 구현이다. SPOT은 node/data_plane(forwarding/protocol)/pub/sub으로 모듈화되어 있다.
 - **Registry**는 서비스 엔트리를 관리하고, 주기적으로 SERVICE_LIST를 브로드캐스트한다.
 - **Discovery**는 Registry를 구독하여 서비스 목록을 로컬 캐시로 유지한다.
@@ -63,11 +63,11 @@ flowchart TB
 
 Registry 클러스터 기반의 서비스 등록/발견 시스템. 서비스가 Registry에 등록하면 Discovery가 이를 구독하여 서비스 목록을 관리한다.
 
-- Registry 클러스터 HA (flooding 동기화)
+- Registry 클러스터 HA (플러딩(flooding, 전체 브로드캐스트 전파) 동기화)
 - Heartbeat 기반 생존 확인
 - Client-side 서비스 목록 캐싱
 - 내부 모듈:
-  - `discovery_access` (API seam)
+  - `discovery_access` (API 접합 지점)
   - `discovery_bootstrap` · `discovery_state`
   - `discovery_update` · `discovery_uplink`
   - `discovery_registry_client`
@@ -84,7 +84,7 @@ Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여 클러스터 전체�
 - Discovery 기반 자동 Mesh 구성
 - **Thread-safe** — 하나의 `spot` / `spot_node` handle에서 operational API를 여러 스레드가 동시 호출 가능
 - 내부 모듈:
-  - `spot_node_access` · `spot_subject_access` (API seam)
+  - `spot_node_access` · `spot_subject_access` (API 접합 지점)
   - `spot_handle` · `spot_node`
   - `spot_data_plane` (forwarding · protocol)
   - `spot_pub` · `spot_sub` (option · recv)
@@ -109,7 +109,7 @@ raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스(서비스 타입
 
 서비스 엔트리를 등록·관리하는 중앙 저장소. SPOT 노드/소켓 패밀리의 등록, 하트비트, 토폴로지 브로드캐스트를 담당한다.
 
-- 내부 모듈: `registry_access` (API seam) · `registry_query_access` (원격 조회 seam)
+- 내부 모듈: `registry_access` (API 접합 지점) · `registry_query_access` (원격 조회 접합 지점)
 
 자세한 내용은 [Registry 가이드](07-4-registry.ko.md)를 참고.
 
@@ -120,11 +120,11 @@ raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스(서비스 타입
 ```mermaid
 flowchart LR
     A["C API<br/>(zlink_spot_publish, etc.)"] --> B["service_api.cpp<br/>(validate + delegate)"]
-    B --> C["*_access.hpp<br/>(service-local seam)"]
+    B --> C["*_access.hpp<br/>(service-local 접합 지점)"]
     C --> D["Service Runtime<br/>(concrete implementation)"]
 ```
 
-| 서비스 | Access Seam | 역할 |
+| 서비스 | Access 접합 지점 | 역할 |
 |--------|-------------|------|
 | Discovery | `discovery_access_t` | lifecycle, connect_registry, option, monitor |
 | Registry | `registry_access_t` | lifecycle, bind, config, snapshot/query |
@@ -132,7 +132,7 @@ flowchart LR
 | SPOT Node | `spot_node_access_t` | lifecycle, bind, peer connect, discovery attach |
 | SPOT Subject | `spot_subject_access_t` | publish, subscribe, option, handler, monitor |
 
-각 access seam은 `service_public_api_guard_t`와 통합되어 callback 모드 추적과
+각 access 접합 지점은 `service_public_api_guard_t`와 통합되어 콜백(callback) 모드 추적과
 lifecycle gate(destroy 시 `EBUSY`/`ESHUTDOWN` 계약)를 제공한다.
 
 이 구조 덕분에 API 계층은 concrete service 구현을 직접 알지 않고,

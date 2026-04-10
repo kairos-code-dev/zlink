@@ -326,20 +326,50 @@ static zlink_msg_t make_payload_part ()
     return part;
 }
 
+static int classify_nonblocking_send_errno (zlink_send_result_t *result_out_)
+{
+    if (!result_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    switch (errno) {
+    case EAGAIN:
+        *result_out_ = ZLINK_SEND_RESULT_BACKPRESSURED;
+        return 0;
+    case ENOTCONN:
+    case EHOSTUNREACH:
+        *result_out_ = ZLINK_SEND_RESULT_NOT_READY;
+        return 0;
+    default:
+        return -1;
+    }
+}
+
 static int try_send_raw_part (void *sender_,
                               const zlink_routing_id_t *target_rid_,
                               zlink_send_result_t *result_out_)
 {
     zlink_msg_t part = make_payload_part ();
-    if (target_rid_)
-        return zlink_try_send_rid (sender_, target_rid_, &part, 1, result_out_);
-    return zlink_try_send (sender_, &part, 1, result_out_);
+    const int rc = target_rid_
+      ? zlink_send_rid (sender_, target_rid_, &part, 1, ZLINK_DONTWAIT)
+      : zlink_send (sender_, &part, 1, ZLINK_DONTWAIT);
+    if (rc == 0) {
+        *result_out_ = ZLINK_SEND_RESULT_SENT;
+        return 0;
+    }
+    return classify_nonblocking_send_errno (result_out_);
 }
 
 static int try_publish_part (void *subject_, zlink_send_result_t *result_out_)
 {
     zlink_msg_t part = make_payload_part ();
-    return zlink_try_publish (subject_, kTopic, &part, 1, result_out_);
+    const int rc = zlink_publish (subject_, kTopic, &part, 1, ZLINK_DONTWAIT);
+    if (rc == 0) {
+        *result_out_ = ZLINK_SEND_RESULT_SENT;
+        return 0;
+    }
+    return classify_nonblocking_send_errno (result_out_);
 }
 
 static void set_send_timeout (void *socket_, int timeout_ms_)
@@ -456,9 +486,25 @@ static int recv_one_raw_message (void *socket_,
     zlink_routing_id_t source_rid;
     memset (&source_rid, 0, sizeof (source_rid));
 
-    const int rc =
-      zlink_recv (socket_, wants_routing_id_ ? &source_rid : NULL, &parts,
-                  &part_count, 0);
+    int rc = -1;
+    if (wants_routing_id_) {
+        const zlink_routing_id_t *peer_rid = NULL;
+        uint64_t request_seq = 0;
+        rc = zlink_router_recv (socket_, &peer_rid, &request_seq, &parts,
+                                &part_count, 0);
+        if (rc == 0) {
+            if (request_seq != 0) {
+                if (parts)
+                    zlink_multipart_close (parts, part_count);
+                errno = EPROTO;
+                return -1;
+            }
+            if (peer_rid)
+                source_rid = *peer_rid;
+        }
+    } else {
+        rc = zlink_recv (socket_, NULL, &parts, &part_count, 0);
+    }
     if (rc != 0)
         return -1;
 
@@ -921,9 +967,8 @@ static void verify_raw_pressure_entry_and_resume ()
                 TEST_ASSERT_SUCCESS_ERRNO (
                   recv_one_raw_message (raw.sender, false, NULL));
             } else if (pattern == raw_pattern_dealer_router) {
-                zlink_routing_id_t ack_source_rid;
                 TEST_ASSERT_SUCCESS_ERRNO (
-                  recv_one_raw_message (raw.sender, true, &ack_source_rid));
+                  recv_one_raw_message (raw.sender, false, NULL));
             }
 
             set_send_timeout (raw.sender, kTimeoutMs);

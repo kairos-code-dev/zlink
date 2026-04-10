@@ -110,8 +110,11 @@ int spot_node_recv_internal (void *node_,
                              char *topic_id_out_,
                              size_t *topic_id_len_,
                              zlink_send_flags_t flags_);
-void zlink_spot_notify_dispatch_event (void *spot_,
-                                       zlink_spot_dispatch_event_t event_);
+extern "C" void zlink_spot_notify_dispatch_event (
+  void *spot_,
+  zlink_spot_dispatch_event_t event_);
+extern "C" int zlink_spot_process_route_ingress (void *node_, void *socket_);
+extern "C" int zlink_spot_process_node_router (void *node_, void *socket_);
 
 int zlink_spot_subject_set_common_option_internal (void *handle_,
                                                    zlink_option_t option_,

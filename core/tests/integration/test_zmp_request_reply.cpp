@@ -433,16 +433,21 @@ void setup_connected_spot_case (spot_case_t *out_)
 
 void teardown_connected_spot_case (spot_case_t *case_)
 {
-    if (case_->spot_b)
+    if (case_->spot_b) {
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&case_->spot_b));
-    if (case_->spot_a)
+    }
+    if (case_->spot_a) {
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&case_->spot_a));
-    if (case_->node_b)
+    }
+    if (case_->node_b) {
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&case_->node_b));
-    if (case_->node_a)
+    }
+    if (case_->node_a) {
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&case_->node_a));
-    if (case_->ctx)
+    }
+    if (case_->ctx) {
         TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (case_->ctx));
+    }
 }
 
 void test_dealer_to_router_request_reply_basic ()

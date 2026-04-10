@@ -5,12 +5,12 @@
 ## 1. 개요
 
 DEALER 소켓은 비동기 요청 소켓이다.
-여러 피어에 **Round-robin** 분배로 송신하고, **Fair-queue**로 수신한다.
+여러 피어에 **라운드 로빈(round-robin, 순환 분배)** 방식으로 송신하고, **페어 큐잉(fair-queuing, 균등 수신 분배)** 방식으로 수신한다.
 send/recv 순서 강제가 없어 자유로운 비동기 메시징이 가능하다.
 
 **핵심 특성:**
-- 송신: Round-robin (`lb_t`) — 연결된 피어에 순환 분배
-- 수신: Fair-queue (`fq_t`) — 모든 피어에서 공정하게 수신
+- 송신: 라운드 로빈 (`lb_t`) — 연결된 피어에 순환 분배
+- 수신: 페어 큐잉 (`fq_t`) — 모든 피어에서 공정하게 수신
 - send/recv 순서 강제 없음 (비동기)
 
 **유효한 소켓 조합:** DEALER ↔ ROUTER, DEALER ↔ DEALER
@@ -34,7 +34,7 @@ zlink_send(dealer, parts, 2, 0);
 ### 구체적 시나리오: 3개 DEALER가 1개 ROUTER로 전송
 
 3개의 DEALER 클라이언트가 하나의 ROUTER 서버에 연결한다. 각 DEALER는
-독립적으로 요청을 전송하며, ROUTER는 fair-queue로 수신하고
+독립적으로 요청을 전송하며, ROUTER는 페어 큐잉으로 수신하고
 `source_rid`로 각 송신자를 구분한다.
 
 | 송신자 | routing_id | 메시지 | ROUTER 수신 |
@@ -44,8 +44,8 @@ zlink_send(dealer, parts, 2, 0);
 | DEALER 3 | `D3` | `"buy MSFT 200"` | source_rid=`D3`, data=`"buy MSFT 200"` |
 
 ROUTER는 `zlink_send_rid()`에 해당 `source_rid`를 전달하여 각 DEALER에
-응답한다. DEALER는 *송신* 연결에 round-robin을 사용하므로, 하나의
-DEALER가 여러 ROUTER에 연결하면 메시지가 순환 분배된다
+응답한다. DEALER는 *송신* 연결에 라운드 로빈을 사용하므로, 하나의
+DEALER가 여러 ROUTER에 연결하면 메시지가 라운드 로빈으로 순환 분배된다
 (msg1 -> ROUTER-A, msg2 -> ROUTER-B, ...).
 
 ## 2. 기본 사용법
@@ -166,7 +166,7 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
 
-## 4.1 request-reply 시작
+### 4.1 request-reply 시작
 
 `DEALER` 가 응답을 기다리는 흐름은 ordinary `send/recv` 와 별도로
 `zlink_dealer_request()` 를 사용한다. 이 함수는 ZMP request-reply envelope 를
@@ -233,9 +233,9 @@ zlink_send(b, &pong, 1, 0);
 /* on_message_b receives "ping", on_message_a receives "pong" */
 ```
 
-### 패턴 2: 1:N Round-robin 작업 분배
+### 패턴 2: 1:N 라운드 로빈 작업 분배
 
-PUSH/PULL 없이 작업을 N개 워커에 순환 분배하는 패턴.
+PUSH/PULL 없이 작업을 N개 워커에 라운드 로빈으로 순환 분배하는 패턴.
 응답이 필요 없는 작업 분배 또는 파이프라인 단계 간 전달에 사용한다.
 
 ```c
@@ -284,9 +284,9 @@ zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, endpoint);  /* identified as D1 */
 ```
 
-### Round-robin 분배
+### 라운드 로빈 분배
 
-여러 피어가 연결된 경우 메시지는 순환적으로 분배된다. 특정 피어에게만 전송하려면 ROUTER를 사용한다.
+여러 피어가 연결된 경우 메시지는 라운드 로빈으로 순환 분배된다. 특정 피어에게만 전송하려면 ROUTER를 사용한다.
 
 ### routing_id는 connect 전에 설정
 

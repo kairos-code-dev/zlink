@@ -7,7 +7,7 @@
 [![Build](https://github.com/ulala-x/zlink/actions/workflows/build.yml/badge.svg)](https://github.com/ulala-x/zlink/actions/workflows/build.yml)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE)
 
-[User Guide](doc/guide/01-overview.md) · [API Reference](doc/api/README.md) · [Bindings](doc/bindings/overview.md) · [Internals](doc/internals/architecture.md) · [Build](doc/building/build-guide.md)
+[User Guide](doc/guide/01-overview.md) · [Spec](doc/spec/README.md) · [Bindings](doc/bindings/overview.md) · [Internals](doc/internals/architecture.md) · [Build](doc/building/build-guide.md)
 
 ---
 
@@ -226,7 +226,7 @@ Throughput comparison with libzmq on 64-byte messages over TCP:
 | Document | Description |
 |----------|-------------|
 | [Documentation Index](doc/README.md) | Full table of contents and reader-specific paths |
-| [API Reference](doc/api/README.md) | Function-level C API reference |
+| [Library Spec](doc/spec/README.md) | zlink library specification (core + bindings) |
 | [User Guide](doc/guide/01-overview.md) | zlink API guide (12 chapters) |
 | [Bindings Guide](doc/bindings/overview.md) | C++/Java/.NET/Node.js/Python bindings |
 | [Internal Architecture](doc/internals/architecture.md) | System architecture and internals |

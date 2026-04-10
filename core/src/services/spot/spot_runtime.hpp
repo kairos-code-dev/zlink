@@ -50,6 +50,30 @@ struct spot_control_runtime_state_t
     uint64_t connected_peer_version_seen;
 };
 
+struct spot_node_hwm_config_t
+{
+    spot_node_hwm_config_t () :
+        topic_send_enabled (false),
+        topic_send_hwm (0),
+        topic_recv_enabled (false),
+        topic_recv_hwm (0),
+        routed_send_enabled (false),
+        routed_send_hwm (0),
+        routed_recv_enabled (false),
+        routed_recv_hwm (0)
+    {
+    }
+
+    bool topic_send_enabled;
+    int topic_send_hwm;
+    bool topic_recv_enabled;
+    int topic_recv_hwm;
+    bool routed_send_enabled;
+    int routed_send_hwm;
+    bool routed_recv_enabled;
+    int routed_recv_hwm;
+};
+
 struct spot_runtime_t
 {
     explicit spot_runtime_t (spot_node_t *owner_);
@@ -82,17 +106,25 @@ struct spot_runtime_t
     size_t attachment_count () const;
     spot_node_batch_config_t peer_batch_config_snapshot () const;
     void set_peer_batch_config (const spot_node_batch_config_t &config_);
+    spot_node_hwm_config_t hwm_config_snapshot () const;
+    void set_hwm_config (const spot_node_hwm_config_t &config_);
 
     spot_node_t *owner;
     mutable mutex_t ctrl_sync;
     mutable mutex_t control_state_sync;
     mutable mutex_t peer_batch_config_sync;
+    mutable mutex_t hwm_config_sync;
+    mutable mutex_t routed_send_sync;
     socket_base_t *data_ctrl_front;
     socket_base_t *data_ctrl_back;
     socket_base_t *mesh_pub;
     socket_base_t *mesh_xsub;
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
+    socket_base_t *route_ingress;
+    socket_base_t *node_router;
+    socket_base_t *route_ingress_tx;
+    socket_base_t *node_router_tx;
     socket_base_t *local_pub_ingress_sub;
     socket_base_t *local_fanout_xpub;
     service_control_runtime_t *data_plane_runtime;
@@ -101,12 +133,15 @@ struct spot_runtime_t
     std::string bound_endpoint;
     std::string pub_ingress_endpoint;
     std::string sub_fanout_endpoint;
+    std::string route_ingress_endpoint;
+    std::string node_router_endpoint;
     std::string data_ctrl_endpoint;
     std::string peer_ctrl_endpoint;
     bool faulted;
     int fault_errno;
     bool abortive_shutdown;
     spot_node_batch_config_t peer_batch_config;
+    spot_node_hwm_config_t hwm_config;
     mutable mutex_t attachment_sync;
     uint64_t data_plane_task_id_value;
     bool data_plane_running;

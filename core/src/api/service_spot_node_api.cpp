@@ -15,6 +15,7 @@
 namespace
 {
 extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_);
+extern "C" void zlink_timer_cleanup_spot (void *spot_);
 
 template <typename Row>
 static int copy_snapshot_rows (const std::vector<Row> &rows_,
@@ -89,6 +90,7 @@ int zlink_spot_destroy (void **spot_p_)
     }
 
     zlink_spot_request_reply_cleanup_spot (spot);
+    zlink_timer_cleanup_spot (spot);
     zlink::destroy_spot_handle_for_testing (spot);
     *spot_p_ = NULL;
     return 0;

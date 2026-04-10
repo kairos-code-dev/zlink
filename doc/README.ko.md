@@ -48,21 +48,14 @@
 | [09-message-api.ko.md](guide/09-message-api.ko.md) | 메시지 API 상세 |
 | [10-performance.ko.md](guide/10-performance.ko.md) | 성능 특성 및 튜닝 가이드 |
 
-## API 레퍼런스 (api/)
+## 라이브러리 스펙 (spec/)
 
 | 문서 | 설명 |
 |------|------|
-| [README.ko.md](api/README.ko.md) | API 레퍼런스 인덱스 |
-| [errors.ko.md](api/errors.ko.md) | 에러 처리 및 버전 |
-| [context.ko.md](api/context.ko.md) | Context API |
-| [message.ko.md](api/message.ko.md) | Message API |
-| [socket.ko.md](api/socket.ko.md) | Socket API |
-| [monitoring.ko.md](api/monitoring.ko.md) | 모니터링 및 피어 정보 |
-| [registry.ko.md](api/registry.ko.md) | Registry API |
-| [discovery.ko.md](api/discovery.ko.md) | Discovery API |
-| [spot.ko.md](api/spot.ko.md) | SPOT PUB/SUB API |
-| [polling.ko.md](api/polling.ko.md) | Polling 및 Proxy |
-| [utilities.ko.md](api/utilities.ko.md) | 유틸리티 (타이머, 스레드 등) |
+| [spec/README.ko.md](spec/README.ko.md) | 스펙 마스터 인덱스 |
+| [spec/core/README.ko.md](spec/core/README.ko.md) | 코어 C 라이브러리 스펙 |
+| [spec/core/socket/](spec/core/socket/README.ko.md) | 소켓 스펙 (공통 + 타입별) |
+| [spec/bindings/README.md](spec/bindings/README.md) | Cross-language 바인딩 정책 및 언어별 스펙 |
 
 ## 바인딩 가이드 (bindings/)
 
@@ -106,10 +99,8 @@
 | [feature-roadmap.ko.md](plan/feature-roadmap.ko.md) | 기능 로드맵 |
 | [type-segmentation.ko.md](plan/type-segmentation.ko.md) | Discovery 타입 분리 계획 |
 
-## 상세 스펙 (spec/)
+## 작업 스펙 (plan/)
 
 | 문서 | 설명 |
 |------|------|
-| [spec/spot/README.md](spec/spot/README.md) | SPOT 상세 스펙 인덱스 |
-| [spec/spot/SPOT_PEER_PUBLISH_BATCHING_SPEC.md](spec/spot/SPOT_PEER_PUBLISH_BATCHING_SPEC.md) | SpotNode peer publish batching 스펙 |
 | [plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md](plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md) | 개발 중 기준으로 쓰는 SpotNode 기반 routed message 작업 스펙 |

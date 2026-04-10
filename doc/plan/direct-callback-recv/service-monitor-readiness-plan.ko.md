@@ -49,7 +49,7 @@ monitor = state transition callback
 - `core/src/services/gateway/*`
 - `core/src/services/spot/*`
 - bindings facade surface
-- `doc/api/*`
+- `doc/spec/core/*`
 - `doc/guide/*`
 
 ### 2.2 비범위

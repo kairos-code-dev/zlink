@@ -101,54 +101,34 @@ def _close_send_parts(parts_array, part_count):
         lib().zlink_msg_close(ctypes.byref(parts_array[index]))
 
 
+def _classify_nonblocking_send_errno():
+    err = lib().zlink_errno()
+    if err == errno.EAGAIN:
+        return SendResult.BACKPRESSURED
+    if err in (errno.ENOTCONN, errno.EHOSTUNREACH):
+        return SendResult.NOT_READY
+    _raise_last_error()
+
+
 def _try_send_via_native(handle, parts_array, part_count):
-    native_result = ctypes.c_int(int(SendResult.SENT))
-    rc = lib().zlink_try_send(
-        handle,
-        parts_array,
-        part_count,
-        ctypes.byref(native_result),
-    )
-    if rc != 0:
-        _close_send_parts(parts_array, part_count)
-        _raise_last_error()
-    result = SendResult(native_result.value)
+    rc = lib().zlink_send(handle, parts_array, part_count, 1)
+    result = SendResult.SENT if rc == 0 else _classify_nonblocking_send_errno()
     if result is not SendResult.SENT:
         _close_send_parts(parts_array, part_count)
     return result
 
 
 def _try_send_rid_via_native(handle, routing_id, parts_array, part_count):
-    native_result = ctypes.c_int(int(SendResult.SENT))
-    rc = lib().zlink_try_send_rid(
-        handle,
-        ctypes.byref(routing_id),
-        parts_array,
-        part_count,
-        ctypes.byref(native_result),
-    )
-    if rc != 0:
-        _close_send_parts(parts_array, part_count)
-        _raise_last_error()
-    result = SendResult(native_result.value)
+    rc = lib().zlink_send_rid(handle, ctypes.byref(routing_id), parts_array, part_count, 1)
+    result = SendResult.SENT if rc == 0 else _classify_nonblocking_send_errno()
     if result is not SendResult.SENT:
         _close_send_parts(parts_array, part_count)
     return result
 
 
 def _try_publish_via_native(handle, topic_bytes, parts_array, part_count):
-    native_result = ctypes.c_int(int(SendResult.SENT))
-    rc = lib().zlink_try_publish(
-        handle,
-        topic_bytes,
-        parts_array,
-        part_count,
-        ctypes.byref(native_result),
-    )
-    if rc != 0:
-        _close_send_parts(parts_array, part_count)
-        _raise_last_error()
-    result = SendResult(native_result.value)
+    rc = lib().zlink_publish(handle, topic_bytes, parts_array, part_count, 1)
+    result = SendResult.SENT if rc == 0 else _classify_nonblocking_send_errno()
     if result is not SendResult.SENT:
         _close_send_parts(parts_array, part_count)
     return result

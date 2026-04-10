@@ -34,7 +34,7 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 
 ## 2. Socket API
 
-공개 socket handle API는 기본적으로 thread-safe다. 여러 thread에서
+공개 socket handle API는 기본적으로 스레드 안전(thread-safe)하다. 여러 thread에서
 같은 socket handle을 공유하여 send/recv/bind/connect 등을 호출할 수 있다.
 
 > 세부 threading 규칙은 [Thread Safety 가이드](11-thread-safety.ko.md)를 참고.
@@ -232,13 +232,13 @@ zlink_recv_handler(socket, on_message, NULL);
 | Socket Type | 등록 호출 | Callback Signature |
 |---|---|---|
 | STREAM | `zlink_recv_handler()` | `fn(rid, parts, count, userdata)` |
-| spot, spot_node | `zlink_subscribe_handler()` | `fn(rid, topic, topic_len, parts, count, userdata)` |
+| ROUTER (request-reply) | `zlink_router_handler()` | `fn(peer_rid, request_seq, parts, count, userdata)` |
+| SPOT (routed) | `zlink_spot_handler()` | `fn(source_rid, spot_rid, request_seq, parts, count, userdata)` |
+| ROUTER (from SPOT) | `zlink_router_spot_handler()` | `fn(source_node_rid, source_spot_rid, request_seq, parts, count, userdata)` |
+| spot, spot_node (topic) | `zlink_subscribe_handler()` | `fn(rid, topic, topic_len, parts, count, userdata)` |
+| DEALER (reply) | `zlink_dealer_request()` 에 전달 | `fn(errno, parts, count, userdata)` |
+| Timer | `zlink_timer_handler()` | `fn(timer, fire_count, userdata)` |
 | PUB | N/A | Send-only socket |
-
-상세 시그니처:
-
-- **STREAM**: `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)`
-- **spot/spot_node**: `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)`
 
 Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업을 피해야 한다.
 느린 처리가 필요하면 user queue에 넣고 별도 thread에서 처리한다.
@@ -261,15 +261,74 @@ if (rc == -1) {
 | Error | 값 | 설명 |
 |-------|-----|------|
 | `EAGAIN` | POSIX | Non-blocking mode에서 즉시 완료 불가 |
+| `EBUSY` | POSIX | recv/callback 모드 충돌 (handler가 이미 부착됨) |
 | `EINTR` | POSIX | Signal에 의해 interrupt됨 |
 | `ENOTSOCK` | `HAUSNUMERO + 9` | 유효하지 않은 socket |
 | `EHOSTUNREACH` | `HAUSNUMERO + 17` | Host 도달 불가 |
 | `EFSM` | `HAUSNUMERO + 51` | 현재 state에서 허용되지 않는 연산 |
 | `ETERM` | `HAUSNUMERO + 53` | Context terminated |
+| `ENOTSUP` | `HAUSNUMERO + 1` | 해당 subject type에서 지원하지 않는 연산 |
+| `ENOENT` | — | 대상을 찾을 수 없음 (예: SPOT 대상 미발견) |
 
 > `ZLINK_HAUSNUMERO` = 156384712. POSIX errno와 충돌하지 않는 zlink 전용 base 값이다.
 
-## 6. DEALER/ROUTER 예제
+## 6. Timer API
+
+Timer는 socket과 동일한 recv/callback/poller 모델을 지원하는 일급(first-class) 이벤트 소스다.
+
+### 6.1 일반 Timer
+
+```c
+void *timer = zlink_timer_new();
+
+/* Start: 100ms 간격, 무한 반복 (0 = infinite) */
+zlink_timer_start(timer, 100000000ULL, 0);  /* interval_ns, repeat_count */
+
+/* Pull 모드 */
+uint64_t fire_count;
+int rc = zlink_timer_recv(timer, &fire_count, 0);
+
+/* Callback 모드 */
+void on_fire(void *timer, uint64_t fire_count, void *userdata) {
+    /* timer 이벤트 처리 */
+}
+zlink_timer_handler(timer, on_fire, NULL);
+
+/* 정지 및 해제 */
+zlink_timer_stop(timer);
+zlink_timer_destroy(&timer);
+```
+
+### 6.2 SPOT Timer
+
+SPOT timer는 global scheduler 대신 SpotNode-local shared scheduler를 사용한다.
+
+```c
+void *spot_timer = zlink_spot_timer_new(spot);
+zlink_timer_start(spot_timer, 50000000ULL, 10);  /* 50ms, 10회 반복 */
+```
+
+### 6.3 Poller 통합
+
+Timer를 socket, file descriptor와 함께 poller에 등록할 수 있다.
+
+```c
+zlink_poller_add_timer(poller, timer, user_data);
+/* ... zlink_poller_wait()가 timer 이벤트를 반환 ... */
+zlink_poller_remove_timer(poller, timer);
+```
+
+### 핵심 규칙
+
+| 규칙 | 설명 |
+|------|------|
+| `repeat_count=0` | 무한 반복 |
+| `repeat_count=N` | 정확히 N회 fire 후 자동 정지 |
+| recv vs callback | 충돌 시 `EBUSY` 반환 (socket과 동일) |
+| 일반 timer | global shared scheduler 사용 |
+| SPOT timer | SpotNode-local shared scheduler 사용 |
+
+## 7. DEALER/ROUTER 예제
 
 ```c
 #include <zlink.h>

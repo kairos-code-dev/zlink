@@ -6,7 +6,7 @@ scenario shape aligned with `core/perf` without hiding hot-path behavior behind
 extra wrappers.
 
 This suite follows the binding-wide perf rules in
-[`bindings/README.md`](../README.md) and must also be reviewed against:
+[`bindings/README.md`](../../doc/spec/bindings/README.md) and must also be reviewed against:
 
 - [`doc/perf/PERF_POLICY.md`](../../doc/perf/PERF_POLICY.md)
 - [`doc/perf/PERF_SINGLE_TEST_POLICY.md`](../../doc/perf/PERF_SINGLE_TEST_POLICY.md)

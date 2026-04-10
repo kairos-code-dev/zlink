@@ -2,21 +2,20 @@
 
 #include "utils/precompiled.hpp"
 
-#include <chrono>
-#include <condition_variable>
-#include <deque>
 #include <limits>
 #include <memory>
 #include <set>
 #include <string>
-#include <thread>
 
+#include "api/request_timeout_scheduler_internal.hpp"
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/service_api_internal.hpp"
+#include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
 #include "sockets/socket_base.hpp"
+#include "utils/random.hpp"
 
 namespace
 {
@@ -38,18 +37,16 @@ struct pending_request_t
     pending_key_t key;
     zlink_reply_handler_fn handler;
     void *userdata;
+    std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
 };
 
-struct queued_router_message_t
+struct internal_pair_queue_t
 {
-    zlink_routing_id_t peer_rid;
-    uint64_t request_seq;
-    std::vector<zlink_msg_t> parts;
+    internal_pair_queue_t () : rx (NULL), tx (NULL) {}
 
-    queued_router_message_t () : request_seq (0)
-    {
-        memset (&peer_rid, 0, sizeof (peer_rid));
-    }
+    zlink::socket_base_t *rx;
+    zlink::socket_base_t *tx;
+    std::string endpoint;
 };
 
 struct socket_request_reply_state_t
@@ -74,8 +71,7 @@ struct socket_request_reply_state_t
     std::set<uint64_t> pending_sequences;
     std::map<pending_key_t, pending_request_t> pending_requests;
     bool internal_dispatch_installed;
-    std::condition_variable recv_cv;
-    std::deque<queued_router_message_t> queued_messages;
+    internal_pair_queue_t recv_queue;
     zlink_router_handler_fn router_handler;
     void *router_handler_userdata;
 };
@@ -86,6 +82,154 @@ typedef std::map<zlink::socket_base_t *, std::shared_ptr<socket_request_reply_st
 std::mutex g_socket_request_reply_states_mutex;
 socket_request_reply_state_map_t g_socket_request_reply_states;
 thread_local zlink_routing_id_t g_router_recv_source_rid;
+
+void close_internal_pair_queue (internal_pair_queue_t *queue_)
+{
+    if (!queue_)
+        return;
+
+    if (queue_->tx) {
+        queue_->tx->stop ();
+        queue_->tx->close ();
+        queue_->tx = NULL;
+    }
+    if (queue_->rx) {
+        queue_->rx->stop ();
+        queue_->rx->close ();
+        queue_->rx = NULL;
+    }
+    queue_->endpoint.clear ();
+}
+
+void set_internal_pair_socket_defaults (zlink::socket_base_t *socket_)
+{
+    if (!socket_)
+        return;
+
+    const int linger = 0;
+    socket_->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
+}
+
+bool recv_internal_pair_handshake (zlink::socket_base_t *socket_,
+                                   long timeout_ms_)
+{
+    if (!socket_)
+        return false;
+
+    const int timeout = static_cast<int> (timeout_ms_);
+    if (socket_->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &timeout,
+                             sizeof (timeout))
+        != 0)
+        return false;
+
+    zlink::msg_t msg;
+    if (msg.init () != 0)
+        return false;
+
+    const int rc = socket_->recv (&msg, 0);
+    msg.close ();
+
+    const int blocking = -1;
+    (void) socket_->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &blocking,
+                                sizeof (blocking));
+    return rc == 0;
+}
+
+bool handshake_internal_pair (zlink::socket_base_t *rx_,
+                              zlink::socket_base_t *tx_)
+{
+    if (!rx_ || !tx_)
+        return false;
+
+    const unsigned char hello = 0x11;
+    const unsigned char ack = 0x22;
+
+    zlink::msg_t msg;
+    if (msg.init_size (sizeof (hello)) != 0)
+        return false;
+    memcpy (msg.data (), &hello, sizeof (hello));
+    if (tx_->send (&msg, 0) != 0) {
+        msg.close ();
+        return false;
+    }
+    msg.close ();
+
+    if (!recv_internal_pair_handshake (rx_, 100))
+        return false;
+
+    if (msg.init_size (sizeof (ack)) != 0)
+        return false;
+    memcpy (msg.data (), &ack, sizeof (ack));
+    if (rx_->send (&msg, 0) != 0) {
+        msg.close ();
+        return false;
+    }
+    msg.close ();
+
+    if (!recv_internal_pair_handshake (tx_, 100))
+        return false;
+
+    return true;
+}
+
+int ensure_internal_pair_queue (zlink::ctx_t *ctx_,
+                                const char *prefix_,
+                                internal_pair_queue_t *queue_)
+{
+    if (!ctx_ || !prefix_ || !queue_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (queue_->rx && queue_->tx)
+        return 0;
+
+    char endpoint[128];
+    snprintf (endpoint, sizeof (endpoint), "inproc://%s-%p-%u", prefix_,
+              static_cast<void *> (queue_), zlink::generate_random ());
+
+    zlink::socket_base_t *rx = ctx_->create_socket (ZLINK_CORE_SOCKET_PAIR);
+    zlink::socket_base_t *tx = ctx_->create_socket (ZLINK_CORE_SOCKET_PAIR);
+    if (!rx || !tx) {
+        if (tx) {
+            tx->stop ();
+            tx->close ();
+        }
+        if (rx) {
+            rx->stop ();
+            rx->close ();
+        }
+        return -1;
+    }
+
+    set_internal_pair_socket_defaults (rx);
+    set_internal_pair_socket_defaults (tx);
+
+    if (rx->bind (endpoint) != 0 || tx->connect (endpoint) != 0) {
+        const int saved_errno = errno;
+        tx->stop ();
+        tx->close ();
+        rx->stop ();
+        rx->close ();
+        errno = saved_errno;
+        return -1;
+    }
+
+    if (!handshake_internal_pair (rx, tx)) {
+        const int saved_errno = errno != 0 ? errno : EPROTO;
+        tx->stop ();
+        tx->close ();
+        rx->stop ();
+        rx->close ();
+        errno = saved_errno;
+        return -1;
+    }
+
+    queue_->rx = rx;
+    queue_->tx = tx;
+    queue_->endpoint = endpoint;
+    errno = 0;
+    return 0;
+}
 
 bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_);
 
@@ -99,33 +243,180 @@ int validate_request_parts (zlink_msg_t *parts_, size_t part_count_)
     return 0;
 }
 
-int export_queued_router_message (queued_router_message_t *queued_,
-                                  const zlink_routing_id_t **peer_rid_out_,
-                                  uint64_t *request_seq_out_,
-                                  zlink_msg_t **parts_out_,
-                                  size_t *part_count_out_)
+bool frame_has_more_local (const zlink_msg_t &msg_)
 {
-    if (!queued_ || !peer_rid_out_ || !request_seq_out_ || !parts_out_
-        || !part_count_out_) {
+    return (reinterpret_cast<const zlink::msg_t *> (&msg_)->flags ()
+            & zlink::msg_t::more)
+           != 0;
+}
+
+int export_followup_sequence_from_reserved_first_local (
+  zlink::socket_base_t *socket_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_)
+{
+    if (!socket_ || !parts_out_ || !part_count_out_) {
         errno = EFAULT;
         return -1;
     }
 
-    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
-        return -1;
+    while (true) {
+        zlink::recv_tls_view::storage_t &tls = zlink::recv_tls_view::storage ();
+        const bool more = frame_has_more_local (tls.parts[tls.count - 1]);
+        if (!more)
+            return zlink::recv_tls_view::commit (parts_out_, part_count_out_);
 
-    for (size_t i = 0; i < queued_->parts.size (); ++i) {
-        if (zlink::recv_tls_view::push (&queued_->parts[i]) != 0) {
+        zlink_msg_t next;
+        zlink_msg_init (&next);
+        if (zlink::recv_followup_msg_socket (socket_, &next) < 0) {
+            zlink_msg_close (&next);
+            zlink::recv_tls_view::abort ();
+            return -1;
+        }
+
+        if (zlink::recv_tls_view::push (&next) != 0) {
             const int saved_errno = errno;
+            zlink_msg_close (&next);
             zlink::recv_tls_view::abort ();
             errno = saved_errno;
             return -1;
         }
     }
+}
 
-    *peer_rid_out_ = &queued_->peer_rid;
-    *request_seq_out_ = queued_->request_seq;
-    return zlink::recv_tls_view::commit (parts_out_, part_count_out_);
+int recv_followup_with_retry_local (zlink::socket_base_t *socket_,
+                                    zlink_msg_t *msg_,
+                                    int flags_)
+{
+    if (!socket_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    while (socket_->recv (reinterpret_cast<zlink::msg_t *> (msg_), flags_) != 0) {
+        const int saved_errno = errno;
+        if ((flags_ & ZLINK_DONTWAIT) != 0 || saved_errno != EAGAIN) {
+            errno = saved_errno;
+            return -1;
+        }
+        if (zlink::wait_socket_events_internal (socket_, ZLINK_POLLIN, -1)
+            <= 0) {
+            errno = saved_errno;
+            return -1;
+        }
+    }
+    return 0;
+}
+
+int send_buffer_frame_local (zlink::socket_base_t *socket_,
+                             const void *data_,
+                             size_t size_,
+                             int flags_)
+{
+    if (!socket_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink::msg_t msg;
+    if (msg.init_size (size_) != 0)
+        return -1;
+    if (size_ > 0 && data_)
+        memcpy (msg.data (), data_, size_);
+    const int rc = socket_->send (&msg, flags_);
+    const int saved_errno = errno;
+    msg.close ();
+    errno = saved_errno;
+    return rc;
+}
+
+int recv_internal_router_queue (internal_pair_queue_t *queue_,
+                                const zlink_routing_id_t **peer_rid_out_,
+                                uint64_t *request_seq_out_,
+                                zlink_msg_t **parts_out_,
+                                size_t *part_count_out_,
+                                int flags_)
+{
+    if (!queue_ || !queue_->rx || !peer_rid_out_ || !request_seq_out_
+        || !parts_out_ || !part_count_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink_msg_t peer_frame;
+    zlink_msg_t seq_frame;
+    zlink_msg_t *first_payload = NULL;
+    zlink_msg_init (&peer_frame);
+    zlink_msg_init (&seq_frame);
+
+    if (zlink::recv_tls_view::begin_with_first_slot (
+          parts_out_, part_count_out_, &first_payload)
+        != 0)
+        return -1;
+
+    while (queue_->rx->recv (reinterpret_cast<zlink::msg_t *> (&peer_frame),
+                             flags_)
+           != 0) {
+        const int saved_errno = errno;
+        zlink_msg_close (&peer_frame);
+        if ((flags_ & ZLINK_DONTWAIT) != 0 || saved_errno != EAGAIN) {
+            zlink::recv_tls_view::abort ();
+            errno = saved_errno;
+            return -1;
+        }
+        if (zlink::wait_socket_events_internal (queue_->rx, ZLINK_POLLIN, -1)
+            <= 0) {
+            zlink::recv_tls_view::abort ();
+            errno = saved_errno;
+            return -1;
+        }
+        zlink_msg_init (&peer_frame);
+    }
+    if (recv_followup_with_retry_local (queue_->rx, &seq_frame, flags_) != 0) {
+        const int saved_errno = errno;
+        zlink_msg_close (&peer_frame);
+        zlink_msg_close (&seq_frame);
+        zlink::recv_tls_view::abort ();
+        errno = saved_errno;
+        return -1;
+    }
+    if (zlink_msg_size (&seq_frame) != 8) {
+        zlink_msg_close (&peer_frame);
+        zlink_msg_close (&seq_frame);
+        zlink::recv_tls_view::abort ();
+        errno = EPROTO;
+        return -1;
+    }
+    if (recv_followup_with_retry_local (queue_->rx, first_payload, flags_)
+        != 0) {
+        const int saved_errno = errno;
+        zlink_msg_close (&peer_frame);
+        zlink_msg_close (&seq_frame);
+        zlink::recv_tls_view::abort ();
+        errno = saved_errno;
+        return -1;
+    }
+
+    g_router_recv_source_rid.size =
+      static_cast<uint8_t> (std::min (zlink_msg_size (&peer_frame),
+                                      sizeof (g_router_recv_source_rid.data)));
+    if (g_router_recv_source_rid.size > 0) {
+        memcpy (g_router_recv_source_rid.data, zlink_msg_data (&peer_frame),
+                g_router_recv_source_rid.size);
+    }
+    *peer_rid_out_ = &g_router_recv_source_rid;
+    *request_seq_out_ = zlink::request_reply::decode_u64_be (
+      static_cast<const unsigned char *> (zlink_msg_data (&seq_frame)));
+    zlink_msg_close (&peer_frame);
+    zlink_msg_close (&seq_frame);
+
+    if ((reinterpret_cast<const zlink::msg_t *> (first_payload)->flags ()
+         & zlink::msg_t::more)
+        == 0)
+        return zlink::recv_tls_view::commit_reserved_single (parts_out_,
+                                                             part_count_out_);
+    return export_followup_sequence_from_reserved_first_local (
+      queue_->rx, parts_out_, part_count_out_);
 }
 
 void close_router_raw_parts (std::vector<zlink_msg_t> *parts_)
@@ -255,27 +546,38 @@ int queue_router_message (socket_request_reply_state_t *state_,
         return -1;
     }
 
-    queued_router_message_t queued;
-    if (has_valid_routing_id (peer_rid_))
-        queued.peer_rid = *peer_rid_;
-    queued.request_seq = request_seq_;
-    queued.parts.resize (part_count_);
+    if (ensure_internal_pair_queue (
+          state_->socket ? state_->socket->get_ctx () : NULL,
+          "zlink.router.reqrep.recv", &state_->recv_queue)
+        != 0)
+        return -1;
+
+    unsigned char seq_buf[8];
+    zlink::request_reply::encode_u64_be (request_seq_, seq_buf);
+    const void *peer_data =
+      has_valid_routing_id (peer_rid_) ? peer_rid_->data : NULL;
+    const size_t peer_size = has_valid_routing_id (peer_rid_) ? peer_rid_->size
+                                                              : 0;
+    if (send_buffer_frame_local (state_->recv_queue.tx, peer_data, peer_size,
+                                 ZLINK_SNDMORE)
+        != 0
+        || send_buffer_frame_local (state_->recv_queue.tx, seq_buf,
+                                    sizeof (seq_buf), ZLINK_SNDMORE)
+             != 0) {
+        zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
+        return -1;
+    }
+
     for (size_t i = 0; i < part_count_; ++i) {
-        zlink_msg_init (&queued.parts[i]);
-        if (zlink_msg_move (&queued.parts[i], &parts_[i]) != 0) {
-            const int saved_errno = errno;
-            for (size_t j = 0; j <= i; ++j)
-                zlink_msg_close (&queued.parts[j]);
-            errno = saved_errno;
+        const int flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
+        if (state_->recv_queue.tx->send (
+              reinterpret_cast<zlink::msg_t *> (&parts_[i]), flags)
+            != 0) {
+            zlink::request_reply::consume_send_frames_from (parts_, i,
+                                                            part_count_);
             return -1;
         }
     }
-
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        state_->queued_messages.push_back (std::move (queued));
-    }
-    state_->recv_cv.notify_one ();
     return 0;
 }
 
@@ -456,48 +758,36 @@ uint64_t allocate_request_seq (socket_request_reply_state_t *state_)
     return 0;
 }
 
-void schedule_request_timeout (
-  std::shared_ptr<socket_request_reply_state_t> state_,
-  const pending_key_t &key_,
-  uint32_t timeout_ms_)
+struct socket_timeout_callback_ctx_t
 {
-    std::thread ([state_, key_, timeout_ms_]() {
-        const uint32_t sleep_slice_ms = 10;
-        uint32_t waited_ms = 0;
-        while (waited_ms < timeout_ms_) {
-            {
-                std::lock_guard<std::mutex> lock (state_->mutex);
-                if (state_->pending_requests.find (key_)
-                    == state_->pending_requests.end ()) {
-                    return;
-                }
-            }
+    std::shared_ptr<socket_request_reply_state_t> state;
+    pending_key_t key;
+};
 
-            const uint32_t remaining_ms = timeout_ms_ - waited_ms;
-            const uint32_t step_ms =
-              remaining_ms < sleep_slice_ms ? remaining_ms : sleep_slice_ms;
-            std::this_thread::sleep_for (std::chrono::milliseconds (step_ms));
-            waited_ms += step_ms;
-        }
+void on_socket_request_timeout (void *userdata_)
+{
+    std::unique_ptr<socket_timeout_callback_ctx_t> ctx (
+      static_cast<socket_timeout_callback_ctx_t *> (userdata_));
+    if (!ctx.get () || !ctx->state)
+        return;
 
-        pending_request_t pending;
-        bool found = false;
-        {
-            std::lock_guard<std::mutex> lock (state_->mutex);
-            std::map<pending_key_t, pending_request_t>::iterator it =
-              state_->pending_requests.find (key_);
-            if (it == state_->pending_requests.end ())
-                return;
-            pending = it->second;
-            state_->pending_sequences.erase (key_.request_seq);
-            state_->pending_requests.erase (it);
-            found = true;
-        }
+    pending_request_t pending;
+    bool found = false;
+    {
+        std::lock_guard<std::mutex> lock (ctx->state->mutex);
+        std::map<pending_key_t, pending_request_t>::iterator it =
+          ctx->state->pending_requests.find (ctx->key);
+        if (it == ctx->state->pending_requests.end ())
+            return;
+        pending = it->second;
+        ctx->state->pending_sequences.erase (ctx->key.request_seq);
+        ctx->state->pending_requests.erase (it);
+        found = true;
+    }
 
-        if (found)
-            zlink::request_reply::complete_reply_callback (
-              pending.handler, ETIMEDOUT, NULL, 0, pending.userdata);
-    }).detach ();
+    if (found)
+        zlink::request_reply::complete_reply_callback (
+          pending.handler, ETIMEDOUT, NULL, 0, pending.userdata);
 }
 
 void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
@@ -550,6 +840,8 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
             found = true;
         }
     }
+
+    zlink::request_timeout::cancel (pending.timeout_task);
 
     if (!found) {
         if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER
@@ -638,10 +930,26 @@ int start_request (socket_handle_t handle_,
         pending.key = key;
         pending.handler = handler_;
         pending.userdata = userdata_;
-        state->pending_sequences.insert (request_seq);
-        state->pending_requests[key] = pending;
         resolved_timeout_ms = zlink::request_reply::resolve_timeout_ms (
           timeout_ms_, state->default_timeout_ms);
+        std::unique_ptr<socket_timeout_callback_ctx_t> timeout_ctx (
+          new (std::nothrow) socket_timeout_callback_ctx_t ());
+        if (!timeout_ctx.get ()) {
+            errno = ENOMEM;
+            return -1;
+        }
+        timeout_ctx->state = state;
+        timeout_ctx->key = key;
+        pending.timeout_task =
+          zlink::request_timeout::schedule (resolved_timeout_ms,
+                                            &on_socket_request_timeout,
+                                            timeout_ctx.release ());
+        if (!pending.timeout_task) {
+            errno = ENOMEM;
+            return -1;
+        }
+        state->pending_sequences.insert (request_seq);
+        state->pending_requests[key] = pending;
     }
 
     const uint8_t message_type = zlink::request_reply::request_type;
@@ -650,13 +958,11 @@ int start_request (socket_handle_t handle_,
                                   message_type, key.request_seq);
     if (rc != 0) {
         std::lock_guard<std::mutex> lock (state->mutex);
+        zlink::request_timeout::cancel (pending.timeout_task);
         state->pending_sequences.erase (key.request_seq);
         state->pending_requests.erase (key);
         return -1;
     }
-
-    schedule_request_timeout (
-      state, key, resolved_timeout_ms);
     return 0;
 }
 }
@@ -801,22 +1107,15 @@ int zlink_router_recv (void *router_,
                                                part_count_out_, flags_);
         }
 
-        if ((flags_ & ZLINK_DONTWAIT) != 0 && state->queued_messages.empty ()) {
-            errno = EAGAIN;
+        if (ensure_internal_pair_queue (handle.socket->get_ctx (),
+                                        "zlink.router.reqrep.recv",
+                                        &state->recv_queue)
+            != 0)
             return -1;
-        }
-
-        while (state->queued_messages.empty ())
-            state->recv_cv.wait (lock);
-
-        queued_router_message_t queued =
-          std::move (state->queued_messages.front ());
-        state->queued_messages.pop_front ();
         lock.unlock ();
-
-        return export_queued_router_message (&queued, peer_rid_out_,
-                                             request_seq_out_, parts_out_,
-                                             part_count_out_);
+        return recv_internal_router_queue (&state->recv_queue, peer_rid_out_,
+                                           request_seq_out_, parts_out_,
+                                           part_count_out_, flags_);
     }
 }
 
@@ -834,12 +1133,7 @@ extern "C" void zlink_socket_request_reply_cleanup (void *socket_)
         if (it != g_socket_request_reply_states.end ()) {
             std::lock_guard<std::mutex> state_lock (it->second->mutex);
             stop_dispatch = it->second->internal_dispatch_installed;
-            for (std::deque<queued_router_message_t>::iterator qit =
-                   it->second->queued_messages.begin ();
-                 qit != it->second->queued_messages.end (); ++qit) {
-                for (size_t i = 0; i < qit->parts.size (); ++i)
-                    zlink_msg_close (&qit->parts[i]);
-            }
+            close_internal_pair_queue (&it->second->recv_queue);
             g_socket_request_reply_states.erase (it);
         }
     }

@@ -2,7 +2,7 @@
 
 # Service Discovery
 
-> **Normative status: Illustrative — Needs refresh.**
+> **규범 상태(Normative status): 설명 목적(Illustrative) — 갱신 필요.**
 > 이 가이드는 설명 목적의 문서이며, API 명칭/시그니처의 정확한 기준은
 > `core/include/zlink.h`와 `bindings/README.md`다.
 
@@ -40,7 +40,7 @@ zlink_socket_attach_discovery(sub, discovery);
 | 용어 | 설명 |
 |------|------|
 | **Registry** | 등록된 서비스를 추적하고 서비스 목록을 브로드캐스트하는 중앙 서버 (PUB + ROUTER 소켓) |
-| **Discovery** | Registry에 bootstrap 연결하여 서비스 목록을 수신(SUB)하고, 연결된 서비스의 커넥션을 관리하는 클라이언트 에이전트 |
+| **Discovery** | Registry에 부트스트랩(bootstrap, 초기 연결)하여 서비스 목록을 수신(SUB)하고, 연결된 서비스의 커넥션을 관리하는 클라이언트 에이전트 |
 | **소켓 패밀리** | Discovery를 통해 피어를 등록·발견하는 raw ROUTER/DEALER/PUB/SUB 소켓 |
 | **서비스 역할** | 자동 피어 매칭에 사용되는 소켓 수준 역할 (ROUTER/DEALER/PUB/SUB) |
 | **Heartbeat** | 주기적 생존 신호 (기본: 5초 주기, 15초 타임아웃) |
@@ -93,11 +93,11 @@ flowchart TB
 각 **Registry**는 두 개의 소켓을 노출한다:
 
 - **PUB** — 전체 서비스 목록을 주기적으로 브로드캐스트 (기본 30초)
-- **ROUTER** — 등록, heartbeat, bootstrap, 쿼리 메시지를 수신
+- **ROUTER** — 등록, heartbeat, 부트스트랩, 쿼리 메시지를 수신
 
 각 **Discovery**는 Registry에 다음과 같이 연결한다:
 
-- **DEALER → ROUTER** — bootstrap 요청, 서비스 등록, heartbeat 전송
+- **DEALER → ROUTER** — 부트스트랩 요청, 서비스 등록, heartbeat 전송
 - **SUB → PUB** — 서비스 목록 브로드캐스트 수신
 
 **구체적 시나리오** -- 위 아키텍처 다이어그램의 `price-feed` 예시:
@@ -107,7 +107,7 @@ flowchart TB
 2. Discovery가 확정된 엔드포인트(예: `tcp://10.0.1.8:9100`)를
    Registry 2에 등록한다.
 3. Registry 2가 다음 서비스 목록 브로드캐스트에 이 엔드포인트를 포함한다.
-   Flooding을 통해 Registry 1, 3도 이 정보를 학습한다.
+   플러딩(flooding, 전체 브로드캐스트 전파)을 통해 Registry 1, 3도 이 정보를 학습한다.
 4. **Node C**는 자신의 `"price-feed"` Discovery에 SUB 소켓을 attach한
    상태다. 브로드캐스트가 도착하면 Discovery가 PUB 프로바이더를 확인하고
    SUB 소켓을 `tcp://10.0.1.8:9100`에 **자동 연결**한다.
@@ -116,7 +116,7 @@ flowchart TB
 
 Node C의 코드에는 `tcp://10.0.1.8:9100` 주소가 어디에도 없다.
 
-### Bootstrap 및 연결 흐름
+### Bootstrap(부트스트랩) 및 연결 흐름
 
 ```mermaid
 sequenceDiagram
@@ -143,7 +143,7 @@ sequenceDiagram
 ```
 
 1. 서비스가 Discovery에 **attach** (또는 SPOT 노드를 등록).
-2. Discovery가 Registry의 ROUTER 엔드포인트에 **bootstrap 요청**을 전송.
+2. Discovery가 Registry의 ROUTER 엔드포인트에 **부트스트랩 요청**을 전송.
 3. Registry가 구독할 PUB 엔드포인트와 heartbeat 주기를 응답.
 4. Discovery가 PUB 엔드포인트를 **구독**하고 주기적 서비스 목록 수신 시작.
 5. Discovery가 자신의 서비스를 **등록**하고 heartbeat 전송 시작.
@@ -287,12 +287,12 @@ sequenceDiagram
 ## 6. Registry 클러스터 HA
 
 - 3노드 클러스터 권장
-- **Flooding 방식 동기화:** 각 Registry가 다른 Registry의 PUB를 구독하여,
+- **플러딩 방식 동기화:** 각 Registry가 다른 Registry의 PUB를 구독하여,
   새 서비스 등록 시 변경된 목록이 모든 피어로 전파된다.
 - **Eventually Consistent:** 모든 Registry가 동일 상태로 수렴.
   `registry_id` + `list_seq`로 중복/역전 업데이트 무시.
 
-**서비스 가시성:** Registry 클러스터에서 서비스 목록은 flooding으로 전파된다.
+**서비스 가시성:** Registry 클러스터에서 서비스 목록은 플러딩으로 전파된다.
 Discovery가 하나의 Registry에만 연결해도 피어 Registry에 등록된 서비스가
 브로드캐스트에 포함되어 전체 클러스터의 서비스를 볼 수 있다. 여러 Registry에
 `connect_registry()`하는 것은 서비스 가시성이 아닌 **HA(장애 대응)**를 위한
@@ -300,9 +300,9 @@ Discovery가 하나의 Registry에만 연결해도 피어 Registry에 등록된 
 
 ### Discovery Failover
 
-- Discovery는 하나 이상의 Registry control endpoint에 bootstrap 연결한다.
-- bootstrap metadata로 내부 broadcast/uplink 경로를 학습한다.
-- 한 Registry 노드가 실패해도 다른 bootstrap control endpoint를 통해
+- Discovery는 하나 이상의 Registry control endpoint에 부트스트랩 연결한다.
+- 부트스트랩 metadata로 내부 broadcast/uplink 경로를 학습한다.
+- 한 Registry 노드가 실패해도 다른 부트스트랩 control endpoint를 통해
   계속 동작할 수 있다.
 
 ## 7. 다음 단계

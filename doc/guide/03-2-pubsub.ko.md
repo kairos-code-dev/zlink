@@ -219,7 +219,7 @@ zlink_publish(pub, "sensor:cpu", parts, 2, 0);
    parts[1]  = "73" */
 ```
 
-토픽은 wire에서 첫 프레임으로 전송되고, `zlink_subscribe()` /
+토픽은 와이어(wire, 프로토콜 전송 레벨)에서 첫 프레임으로 전송되고, `zlink_subscribe()` /
 `zlink_subscribe_handler()`가 토픽과 데이터를 분리하여 반환한다.
 호출자가 토픽 프레임을 직접 조립할 필요 없다.
 

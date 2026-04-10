@@ -52,24 +52,27 @@ ZMP multipart control part 로 표현된다.
 
 ## 3. source of truth
 
-이번 작업에서는 `doc/api` 가 아니라
+이번 작업에서는 `doc/spec/core` 가 아니라
 `doc/plan/spot-refactor` 아래 문서와
 공통 timer 스펙 문서를 구현 기준으로 사용한다.
 구현과 테스트를 마치면 정리된 공개 API 문서와 설명 문서를
-`doc/api`, `doc/guide`, `doc/internals` 에 반영한다.
+`doc/spec/core`, `doc/guide`, `doc/internals` 에 반영한다.
 
 - [`/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/ZMP_PROTOCOL_OVERVIEW.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/ZMP_PROTOCOL_OVERVIEW.md)
 - [`/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/ZMP_REQUEST_REPLY_PROTOCOL.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/ZMP_REQUEST_REPLY_PROTOCOL.md)
 - [`/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/ZMP_SPOT_ROUTED_PROTOCOL.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/ZMP_SPOT_ROUTED_PROTOCOL.md)
 - [`/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/SOCKET_REQUEST_REPLY_API_SPEC.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/SOCKET_REQUEST_REPLY_API_SPEC.md)
 - [`/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md)
-- [`/home/hep7/project/kairos/zlink/doc/spec/timer/TIMER_POLLER_SPEC.ko.md`](/home/hep7/project/kairos/zlink/doc/spec/timer/TIMER_POLLER_SPEC.ko.md)
+- [`../../spec/core/utilities.ko.md`](../../spec/core/utilities.ko.md)
 
 ## 4. 핵심 결정 요약
 
 - request-reply 는 message-level field 가 아니라 ZMP 상위 프로토콜이다.
 - SPOT 직접 전달도 message-level field 가 아니라 ZMP 상위 프로토콜이다.
 - SPOT request-reply 는 `SPOT routed envelope -> request-reply envelope -> payload` 순서로 싣는다.
+- `zlink.h` 의 현재 공개 인터페이스는 이번 라운드의 기준으로 유지한다.
+- 이번 라운드의 큰 리팩토링 대상은 공개 함수 이름이 아니라 내부 구현 구조다.
+- `ROUTER` 와 `SPOT` 의 typed recv/callback 구현은 임시 메모리 큐가 아니라 내부 `inproc` 소켓 경로를 기준으로 다시 맞춘다.
 - `DEALER.request()` 는 `peer_rid` 를 받지 않고 기존 peer 선택 규칙을 따른다.
 - `ROUTER.request()` 는 `peer_rid` 를 명시적으로 받는다.
 - reply 는 `ctx` 가 아니라 `상대 주소 + request_seq` 기준으로 보낸다.
@@ -244,6 +247,42 @@ ZMP multipart control part 로 표현된다.
 
 - SPOT request-reply 가 `ROUTER` 기반 request-reply 와 같은 의미로 동작한다.
 
+### 5.5A 내부 리팩토링: SPOT routed / reqrep 경로 재구성
+
+목적:
+
+- 현재 `deque + condition_variable` 기반 임시 큐 구현을 걷어내고,
+  문서가 전제하는 내부 `inproc` 소켓 경로로 다시 맞춘다.
+
+작업:
+
+- `spot -> spot`, `spot -> router`, `router -> spot` 경로를 내부 `inproc` 소켓 그래프로 재구성한다.
+- `zlink_spot_recv()` 와 `zlink_router_spot_recv()` 는 별도 메모리 큐가 아니라
+  내부 소켓 경로에서 직접 읽도록 다시 맞춘다.
+- `zlink_spot_handler()` 와 `zlink_router_spot_handler()` 도 같은 수신 plane 위에서 동작하도록 정리한다.
+- routed 경로에 남아 있는 로컬 `deque`, `condition_variable`, 전역 map 기반 임시 큐 상태를 제거한다.
+
+완료 조건:
+
+- SPOT routed / reqrep 수신 경로에 임시 메모리 큐가 남지 않는다.
+- 내부 구조가 `SpotNode` 의 routed `inproc` 경로와 `node router` 경로 기준으로 설명 가능해진다.
+
+### 5.5B 내부 리팩토링: ROUTER request-reply 수신 경로 정리
+
+목적:
+
+- `ROUTER` typed recv/callback 이 별도 메모리 큐에 의존하지 않도록 정리한다.
+
+작업:
+
+- `zlink_router_recv()` 와 `zlink_router_handler()` 의 내부 수신 경로를 raw socket recv 와 envelope parse 기준으로 단순화한다.
+- request-reply 수신을 위해 따로 쌓아 두는 임시 `deque` 와 `condition_variable` 경로를 제거하거나 최소화한다.
+- ordinary message 와 request-reply message 구분은 `request_seq` parse 결과로만 처리한다.
+
+완료 조건:
+
+- `ROUTER` reqrep typed 수신 경로에 별도 메모리 큐가 남지 않는다.
+
 ### 5.6 6단계: 공통 timer / poller 전환
 
 목적:
@@ -259,12 +298,45 @@ ZMP multipart control part 로 표현된다.
 - timer source 가 `poller.wait()` 결과에 함께 나오도록 정리
 - timer 도 기존 소켓과 같은 수신 모델 충돌 규칙을 따르도록 정리
 
+추가 리팩토링:
+
+- 일반 timer 도 thread-per-timer 구현을 제거하고 global shared scheduler 로 통합한다.
+- `spot timer` 는 전역 shared scheduler 가 아니라 `SpotNode` 단위 shared scheduler 로 재구성한다.
+- request-reply timeout 도 요청마다 thread 를 띄우지 않고 shared scheduler 계층에 등록하는 방식으로 바꾼다.
+
+완료 조건:
+
+- 일반 timer 에 timer 당 thread 가 남지 않는다.
+- `spot timer` 는 `SpotNode` 단위 shared scheduler 위에서 동작한다.
+- request timeout 도 shared scheduler 기반으로 동작한다.
+
+### 5.7 7단계: SpotNode routed/topic HWM 옵션 추가
+
+목적:
+
+- 기존 공통 HWM 의미를 `SpotNode` 전용 option 으로 분리하고,
+  topic 경로와 routed 경로를 따로 제어할 수 있게 한다.
+
+작업:
+
+- `zlink_spot_node_option_t` 에 아래 option 을 추가한다.
+  - `TOPIC_SEND_HWM`
+  - `TOPIC_RECV_HWM`
+  - `ROUTED_SEND_HWM`
+  - `ROUTED_RECV_HWM`
+- topic option 은 기존 pub/sub 내부 소켓 HWM 에 매핑한다.
+- routed option 은 새로 정리한 internal routed `inproc` / `node router` 경로 HWM 에 매핑한다.
+
+완료 조건:
+
+- `SpotNode` 는 topic 과 routed 경로의 HWM 을 별도로 설정할 수 있다.
+
 핵심 규칙:
 
 - 기본 사용 모델은 `recv` 또는 `poller` 이다.
 - callback 을 등록하면 callback 전용 모드로 전환한다.
 - callback 과 `recv/poller` 를 섞으면 `EBUSY` 다.
-- 새 timer 기준은 [`TIMER_POLLER_SPEC.ko.md`](/home/hep7/project/kairos/zlink/doc/spec/timer/TIMER_POLLER_SPEC.ko.md) 를 따른다.
+- 새 timer 기준은 [`TIMER_POLLER_SPEC.ko.md`](../../spec/core/utilities.ko.md) 를 따른다.
 
 완료 조건:
 
@@ -415,8 +487,8 @@ core 와 가장 가까운 구현부터 먼저 옮기고,
 
 작업:
 
-- `doc/api` 에 새 request-reply, SPOT routed, timeout option 공개 표면 반영
-- `doc/api` 에 새 공통 timer / poller 공개 표면 반영
+- `doc/spec/core` 에 새 request-reply, SPOT routed, timeout option 공개 표면 반영
+- `doc/spec/core` 에 새 공통 timer / poller 공개 표면 반영
 - `doc/guide` 에 새 사용 흐름과 예제 반영
 - `doc/guide` 에 socket 과 timer 를 같은 poller loop 에서 다루는 예제 반영
 - `doc/internals` 에 encode/decode, pending, SPOT routed 조합 구조 반영
@@ -426,7 +498,7 @@ core 와 가장 가까운 구현부터 먼저 옮기고,
 
 완료 조건:
 
-- `doc/api`, `doc/guide`, `doc/internals` 가 구현 결과와 같은 계약을 설명한다
+- `doc/spec/core`, `doc/guide`, `doc/internals` 가 구현 결과와 같은 계약을 설명한다
 - 개발 중 기준 문서와 공개 문서 사이에 핵심 용어와 API 이름 충돌이 남지 않는다
 
 최종 공개 표면 이름 메모:

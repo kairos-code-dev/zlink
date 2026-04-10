@@ -57,8 +57,9 @@ void test_raw_socket_receive_callback_contracts ()
       zlink_recv_handler (pair, &discard_stream_message, NULL));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_handler (dealer, &discard_stream_message, NULL));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_handler (router, &discard_stream_message, NULL));
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv_handler (router, &discard_stream_message, NULL));
+    TEST_ASSERT_EQUAL_INT (EOPNOTSUPP, zlink_errno ());
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_handler (stream, &discard_stream_message, NULL));
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -92,7 +93,7 @@ void test_raw_socket_receive_callback_contracts ()
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_recv (router, NULL, &parts, &part_count, ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (EOPNOTSUPP, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_recv (stream, NULL, &parts, &part_count, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
@@ -115,9 +116,8 @@ void test_raw_socket_receive_callback_contracts ()
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_poller_add (poller, dealer, dealer, ZLINK_POLLIN));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, router, router, ZLINK_POLLIN));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, router, router, ZLINK_POLLIN));
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_poller_add (poller, stream, stream, ZLINK_POLLIN));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());

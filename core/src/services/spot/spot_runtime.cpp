@@ -345,8 +345,6 @@ void spot_runtime_t::stop_sockets ()
     socket_base_t *peer_ctrl_sub_local = NULL;
     socket_base_t *route_ingress_local = NULL;
     socket_base_t *node_router_local = NULL;
-    socket_base_t *route_ingress_tx_local = NULL;
-    socket_base_t *node_router_tx_local = NULL;
     socket_base_t *ingress = NULL;
     socket_base_t *fanout = NULL;
 
@@ -360,8 +358,6 @@ void spot_runtime_t::stop_sockets ()
         peer_ctrl_sub_local = peer_ctrl_sub;
         route_ingress_local = route_ingress;
         node_router_local = node_router;
-        route_ingress_tx_local = route_ingress_tx;
-        node_router_tx_local = node_router_tx;
         ingress = local_pub_ingress_sub;
         fanout = local_fanout_xpub;
     }
@@ -382,10 +378,6 @@ void spot_runtime_t::stop_sockets ()
         route_ingress_local->stop ();
     if (node_router_local)
         node_router_local->stop ();
-    if (route_ingress_tx_local)
-        route_ingress_tx_local->stop ();
-    if (node_router_tx_local)
-        node_router_tx_local->stop ();
     if (ingress)
         ingress->stop ();
     if (fanout)
@@ -485,10 +477,6 @@ int spot_runtime_t::close_control_sockets ()
             route_ingress_local->set_all_pipes_nodelay ();
         if (node_router_local)
             node_router_local->set_all_pipes_nodelay ();
-        if (route_ingress_tx_local)
-            route_ingress_tx_local->set_all_pipes_nodelay ();
-        if (node_router_tx_local)
-            node_router_tx_local->set_all_pipes_nodelay ();
         if (ingress)
             ingress->set_all_pipes_nodelay ();
         if (fanout)
@@ -780,10 +768,6 @@ int spot_runtime_t::abortive_stop ()
             peer_ctrl_pub_local->set_all_pipes_nodelay ();
         if (peer_ctrl_sub_local)
             peer_ctrl_sub_local->set_all_pipes_nodelay ();
-        if (route_ingress_tx_local)
-            route_ingress_tx_local->set_all_pipes_nodelay ();
-        if (node_router_tx_local)
-            node_router_tx_local->set_all_pipes_nodelay ();
         if (route_ingress_local)
             route_ingress_local->set_all_pipes_nodelay ();
         if (node_router_local)

@@ -88,8 +88,7 @@ struct local_spot_request_reply_state_t
         request_handler (NULL),
         request_handler_userdata (NULL),
         dispatch_event_handler (NULL),
-        dispatch_event_handler_userdata (NULL),
-        route_ingress_tx (NULL)
+        dispatch_event_handler_userdata (NULL)
     {
     }
 
@@ -104,8 +103,6 @@ struct local_spot_request_reply_state_t
     void *request_handler_userdata;
     zlink_spot_dispatch_event_handler_fn dispatch_event_handler;
     void *dispatch_event_handler_userdata;
-    zlink::socket_base_t *route_ingress_tx;
-    std::string route_ingress_endpoint;
 };
 
 struct local_router_spot_state_t
@@ -2481,12 +2478,6 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
     local_spot_state_map_t::iterator it = g_local_spot_states.find (spot_);
     if (it != g_local_spot_states.end ()) {
         std::lock_guard<std::mutex> state_lock (it->second->mutex);
-        if (it->second->route_ingress_tx) {
-            it->second->route_ingress_tx->stop ();
-            it->second->route_ingress_tx->close ();
-            it->second->route_ingress_tx = NULL;
-            it->second->route_ingress_endpoint.clear ();
-        }
         zlink::internal_pair_queue::close (&it->second->recv_queue);
         g_local_spot_states.erase (it);
     }

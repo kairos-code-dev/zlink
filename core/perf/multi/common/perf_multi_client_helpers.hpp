@@ -140,8 +140,7 @@ inline int recv_one_message (void *socket,
     if (!socket)
         return -1;
 
-    const int recv_flags =
-      router_surface ? (flags & ~ZLINK_DONTWAIT) : flags;
+    const int recv_flags = flags;
     const zlink_routing_id_t *source_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
@@ -513,8 +512,7 @@ inline int recv_one_message_header (void *socket,
     if (!socket)
         return -1;
 
-    const int recv_flags =
-      router_surface ? (flags & ~ZLINK_DONTWAIT) : flags;
+    const int recv_flags = flags;
     const zlink_routing_id_t *source_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
@@ -1069,6 +1067,12 @@ inline bool run_echo_window_round_robin (
                         && std::chrono::steady_clock::now () < deadline) {
                         send_pending[idx] = 1;
                     }
+
+                    // ROUTER echo clients keep one in-flight request per socket.
+                    // After one readable reply, trying to drain again can block
+                    // on the typed receive surface and collapse throughput.
+                    if (client_router_send)
+                        break;
                 }
             }
 

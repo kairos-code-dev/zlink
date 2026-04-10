@@ -20,6 +20,12 @@ struct scheduler_state_t;
 
 struct timer_handle_t
 {
+    // Backend ownership is a structural invariant:
+    // - generic timers are managed by a dedicated scheduler thread that belongs
+    //   to the timer/context domain, and must not run on I/O threads
+    // - spot timers are managed by a dedicated scheduler thread that belongs
+    //   to the owning SpotNode, and must not be merged into the generic timer
+    //   backend
     enum backend_kind_t
     {
         backend_global_scheduler = 1,
@@ -103,6 +109,10 @@ struct scheduler_state_t
 
 typedef std::map<void *, std::shared_ptr<scheduler_state_t> > spot_scheduler_map_t;
 
+// Keep the two scheduler families separate.
+// Generic timers and Spot timers may share utility code, but they must not
+// collapse into a single backend because their ownership and scaling model are
+// different.
 std::shared_ptr<scheduler_state_t> g_global_scheduler (new scheduler_state_t ());
 std::mutex g_spot_scheduler_map_mutex;
 spot_scheduler_map_t g_spot_schedulers;
@@ -381,6 +391,9 @@ void timer_handle_release_poller_ref (timer_handle_t *timer_)
 
 void *zlink_timer_new (void)
 {
+    // Generic timers stay on the generic timer scheduler backend. They must not
+    // run on socket I/O threads, and they must not reuse the SpotNode timer
+    // scheduler path.
     std::unique_ptr<timer_handle_t> timer (new (std::nothrow) timer_handle_t (
       timer_handle_t::backend_global_scheduler));
     if (!timer) {
@@ -403,6 +416,9 @@ void *zlink_timer_new (void)
 
 void *zlink_spot_timer_new (void *spot_)
 {
+    // Spot timers stay on the SpotNode-owned scheduler backend so a large
+    // number of Spot timers can be multiplexed per node without spawning a
+    // thread per timer.
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot || !spot->node) {
         errno = EFAULT;

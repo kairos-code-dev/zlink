@@ -11,6 +11,8 @@ namespace zlink
 {
 class ctx_t;
 class discovery_t;
+class mutex_t;
+class socket_base_t;
 struct spot_runtime_t;
 class spot_internal_receiver_t;
 class spot_node_t;
@@ -26,6 +28,7 @@ struct spot_node_access_t
 {
     static void *create (ctx_t *ctx_);
     static ctx_t *ctx (spot_node_t *node_);
+    static mutex_t &sync (spot_node_t *node_);
     static spot_node_t *from_handle (void *node_);
     static int bind (spot_node_t *node_, const char *endpoint_);
     static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
@@ -60,6 +63,9 @@ struct spot_node_access_t
                                void **snapshot_subject_out_,
                                spot_node_monitor_subject_t *subject_kind_out_);
     static spot_runtime_t *runtime (spot_node_t *node_);
+    static void track_owned_socket (spot_node_t *node_, socket_base_t *socket_);
+    static void untrack_owned_socket (spot_node_t *node_,
+                                     const socket_base_t *socket_);
     static spot_internal_receiver_t *ensure_internal_receiver (spot_node_t *node_);
     static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
     static void wake_control_task (spot_node_t *node_);

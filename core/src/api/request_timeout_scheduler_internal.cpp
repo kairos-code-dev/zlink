@@ -14,6 +14,11 @@ namespace zlink
 {
 namespace request_timeout
 {
+namespace
+{
+typedef std::multimap<uint64_t, std::shared_ptr<struct task_t> > schedule_map_t;
+}
+
 struct task_t
 {
     task_t () :
@@ -23,7 +28,8 @@ struct task_t
         completed (false),
         deadline_ns (0),
         handler (NULL),
-        userdata (NULL)
+        userdata (NULL),
+        schedule_it (schedule_map_t::iterator ())
     {
     }
 
@@ -36,12 +42,11 @@ struct task_t
     uint64_t deadline_ns;
     handler_fn handler;
     void *userdata;
+    schedule_map_t::iterator schedule_it;
 };
 
 namespace
 {
-typedef std::multimap<uint64_t, std::shared_ptr<task_t> > schedule_map_t;
-
 std::mutex g_timeout_mutex;
 std::condition_variable g_timeout_cv;
 schedule_map_t g_timeout_schedule;
@@ -91,6 +96,7 @@ void run_timeout_loop ()
         {
             std::lock_guard<std::mutex> lock (task->mutex);
             task->registered = false;
+            task->schedule_it = schedule_map_t::iterator ();
             if (!task->canceled && !task->completed) {
                 task->firing = true;
                 handler = task->handler;
@@ -140,7 +146,8 @@ std::shared_ptr<task_t> schedule (uint32_t timeout_ms_,
 
     {
         std::lock_guard<std::mutex> lock (g_timeout_mutex);
-        g_timeout_schedule.insert (std::make_pair (task->deadline_ns, task));
+        task->schedule_it =
+          g_timeout_schedule.insert (std::make_pair (task->deadline_ns, task));
     }
     g_timeout_cv.notify_all ();
     return task;
@@ -154,17 +161,10 @@ void cancel (const std::shared_ptr<task_t> &task_)
     {
         std::lock_guard<std::mutex> schedule_lock (g_timeout_mutex);
         if (task_->registered) {
-            const schedule_map_t::iterator begin =
-              g_timeout_schedule.lower_bound (task_->deadline_ns);
-            const schedule_map_t::iterator end =
-              g_timeout_schedule.upper_bound (task_->deadline_ns);
-            for (schedule_map_t::iterator it = begin; it != end; ++it) {
-                if (it->second == task_) {
-                    g_timeout_schedule.erase (it);
-                    break;
-                }
-            }
+            if (task_->schedule_it != g_timeout_schedule.end ())
+                g_timeout_schedule.erase (task_->schedule_it);
             task_->registered = false;
+            task_->schedule_it = schedule_map_t::iterator ();
         }
     }
 

@@ -32,6 +32,11 @@ ctx_t *spot_node_access_t::ctx (spot_node_t *node_)
     return node_ ? node_->_ctx : NULL;
 }
 
+mutex_t &spot_node_access_t::sync (spot_node_t *node_)
+{
+    return node_->_sync;
+}
+
 spot_node_t *spot_node_access_t::from_handle (void *node_)
 {
     if (!node_) {
@@ -204,6 +209,20 @@ void *spot_node_access_t::monitor_open (spot_node_t *node_,
 spot_runtime_t *spot_node_access_t::runtime (spot_node_t *node_)
 {
     return node_ ? node_->runtime () : NULL;
+}
+
+void spot_node_access_t::track_owned_socket (spot_node_t *node_,
+                                             socket_base_t *socket_)
+{
+    if (node_ && socket_)
+        node_->track_owned_socket (socket_);
+}
+
+void spot_node_access_t::untrack_owned_socket (spot_node_t *node_,
+                                               const socket_base_t *socket_)
+{
+    if (node_ && socket_)
+        node_->untrack_owned_socket (socket_);
 }
 
 spot_internal_receiver_t *

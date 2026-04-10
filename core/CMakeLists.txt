@@ -947,6 +947,7 @@ set(api-sources
     src/api/monitor_service_api.cpp
     src/api/monitor_service_snapshot_api.cpp
     src/api/monitor_socket_api.cpp
+    src/api/internal_pair_queue_internal.cpp
     src/api/poller_api.cpp
   src/api/service_api.cpp
     src/api/service_discovery_api.cpp

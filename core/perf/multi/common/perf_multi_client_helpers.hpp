@@ -79,26 +79,41 @@ inline send_status_t send_echo_message_flags (void *socket,
                                               std::vector<char> &payload,
                                               size_t payload_size,
                                               bool router_send,
-                                              zlink_send_flags_t base_flags)
+                                              zlink_send_flags_t base_flags,
+                                              bool borrow_payload)
 {
     zlink_msg_t part;
-    if (zlink_msg_init_data (
-          &part,
-          payload_size > 0
-            ? static_cast<void *> (payload.data ())
-            : static_cast<void *> (NULL),
-          payload_size,
-          NULL,
-          NULL)
-        != 0)
+    if (payload_size > payload.size ())
         return send_error;
+    if (borrow_payload) {
+        if (zlink_msg_init_data (&part,
+                                 payload_size > 0
+                                   ? static_cast<void *> (payload.data ())
+                                   : NULL,
+                                 payload_size,
+                                 NULL,
+                                 NULL)
+            != 0)
+            return send_error;
+    } else {
+        if (zlink_msg_init_size (&part, payload_size) != 0)
+            return send_error;
+        if (payload_size > 0) {
+            std::memcpy (
+              zlink_msg_data (&part), payload.data (), payload_size);
+        }
+    }
 
     if (router_send) {
-        if (server_id.empty ())
+        if (server_id.empty ()) {
+            zlink_msg_close (&part);
             return send_error;
+        }
 
-        if (server_id.size () > sizeof (zlink_routing_id_t ().data))
+        if (server_id.size () > sizeof (zlink_routing_id_t ().data)) {
+            zlink_msg_close (&part);
             return send_error;
+        }
 
         zlink_routing_id_t target_rid;
         target_rid.size = static_cast<uint8_t> (server_id.size ());
@@ -108,11 +123,16 @@ inline send_status_t send_echo_message_flags (void *socket,
               server_id.data (),
               static_cast<size_t> (target_rid.size));
         }
-        return classify_send_result (
-          ::zlink_send_rid (socket, &target_rid, &part, 1, base_flags));
+        const int rc =
+          ::zlink_send_rid (socket, &target_rid, &part, 1, base_flags);
+        if (rc < 0)
+            zlink_msg_close (&part);
+        return classify_send_result (rc);
     }
 
     const int payload_rc = ::zlink_send (socket, &part, 1, base_flags);
+    if (payload_rc < 0)
+        zlink_msg_close (&part);
     return classify_send_result (payload_rc);
 }
 
@@ -120,7 +140,8 @@ inline send_status_t send_echo_message (void *socket,
                                         const std::string &server_id,
                                         std::vector<char> &payload,
                                         size_t payload_size,
-                                        bool router_send)
+                                        bool router_send,
+                                        bool borrow_payload)
 {
     return send_echo_message_flags (
       socket,
@@ -128,7 +149,8 @@ inline send_status_t send_echo_message (void *socket,
       payload,
       payload_size,
       router_send,
-      ZLINK_DONTWAIT);
+      ZLINK_DONTWAIT,
+      borrow_payload);
 }
 
 inline int recv_one_message (void *socket,
@@ -846,6 +868,7 @@ inline bool run_echo_window_round_robin (
   double duration_seconds,
   bool allow_send,
   bool collect_latency,
+  bool borrow_payload_per_socket,
   long *recv_total,
   double *lat_sum,
   long *lat_count,
@@ -882,6 +905,9 @@ inline bool run_echo_window_round_robin (
       std::max<size_t> (scratch_capacity, perf_multi_metric::header_size ());
 
     std::vector<char> scratch (scratch_size, '\0');
+    std::vector<std::vector<char> > socket_payloads;
+    if (allow_send && borrow_payload_per_socket)
+        socket_payloads.assign (sockets.size (), payload);
     std::vector<uint8_t> awaiting_reply (sockets.size (), 0);
     std::vector<uint8_t> send_pending (
       sockets.size (), allow_send ? static_cast<uint8_t> (1) : 0);
@@ -895,8 +921,10 @@ inline bool run_echo_window_round_robin (
                 if (send_pending[idx] == 0 || awaiting_reply[idx] != 0)
                     continue;
 
+                std::vector<char> &send_payload =
+                  borrow_payload_per_socket ? socket_payloads[idx] : payload;
                 if (!stamp_metric_payload (
-                      payload,
+                      send_payload,
                       payload_size,
                       run_id,
                       phase,
@@ -909,9 +937,10 @@ inline bool run_echo_window_round_robin (
                 const send_status_t send_rc = send_echo_message (
                   sockets[idx],
                   server_id,
-                  payload,
+                  send_payload,
                   payload_size,
-                  client_router_send);
+                  client_router_send,
+                  borrow_payload_per_socket);
                 if (send_rc == send_ok) {
                     awaiting_reply[idx] = 1;
                     send_pending[idx] = 0;
@@ -1122,6 +1151,7 @@ inline bool run_echo_duration (
   size_t scratch_capacity,
   const std::string &server_id,
   bool client_router_send,
+  bool borrow_payload_per_socket,
   uint32_t run_id,
   double *throughput_out,
   bench_latency_stats_t *latency_out)
@@ -1153,6 +1183,7 @@ inline bool run_echo_duration (
           static_cast<double> (std::max (1, settings.duration_seconds)),
           true,
           true,
+          borrow_payload_per_socket,
           &recv_count,
           &lat_sum,
           &lat_count,

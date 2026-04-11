@@ -49,34 +49,11 @@ inline int run_client_benchmark (const std::string &lib_name,
     const std::vector<size_t> msg_sizes = resolve_case_msg_sizes (fallback_size);
     const size_t max_msg_size =
       resolve_case_max_msg_size (fallback_size, msg_sizes);
+    const bool borrow_payload_per_socket = transport == "tcp";
 
     ctx_guard_t ctx;
     if (!ctx.valid ())
         return 1;
-
-    std::vector<void *> sockets;
-    std::vector<ready_monitor_t> monitors;
-    if (!create_client_sockets (
-          ctx,
-          transport,
-          endpoint,
-          settings,
-          k_client_socket_type,
-          &sockets,
-          &monitors)) {
-        close_client_monitors (&monitors);
-        close_client_sockets (&sockets);
-        return 1;
-    }
-
-    if (!wait_all_client_connect_ready (
-          monitors,
-          settings.connect_ready_timeout_ms)) {
-        close_client_monitors (&monitors);
-        close_client_sockets (&sockets);
-        return 1;
-    }
-    close_client_monitors (&monitors);
 
     const std::string server_id =
       k_server_routing_id ? k_server_routing_id : "SERVER";
@@ -90,6 +67,30 @@ inline int run_client_benchmark (const std::string &lib_name,
         const size_t payload_size =
           std::max<size_t> (msg_size, perf_multi_metric::header_size ());
         const uint32_t run_id = next_metric_run_id ();
+        std::vector<void *> sockets;
+        std::vector<ready_monitor_t> monitors;
+        if (!create_client_sockets (
+              ctx,
+              transport,
+              endpoint,
+              settings,
+              k_client_socket_type,
+              &sockets,
+              &monitors)) {
+            close_client_monitors (&monitors);
+            close_client_sockets (&sockets);
+            return 1;
+        }
+
+        if (!wait_all_client_connect_ready (
+              monitors,
+              settings.connect_ready_timeout_ms)) {
+            close_client_monitors (&monitors);
+            close_client_sockets (&sockets);
+            return 1;
+        }
+        close_client_monitors (&monitors);
+
         double throughput = 0.0;
         bench_latency_stats_t latency;
         if (!run_echo_duration (
@@ -101,6 +102,7 @@ inline int run_client_benchmark (const std::string &lib_name,
               scratch_capacity,
               server_id,
               k_client_router_send,
+              borrow_payload_per_socket,
               run_id,
               &throughput,
               &latency)) {
@@ -110,9 +112,8 @@ inline int run_client_benchmark (const std::string &lib_name,
 
         print_echo_client_result_lines (
           k_pattern, lib_name, transport, msg_size, throughput, latency);
+        close_client_sockets (&sockets);
     }
-
-    close_client_sockets (&sockets);
     return 0;
 }
 

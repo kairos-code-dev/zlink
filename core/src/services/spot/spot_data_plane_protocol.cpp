@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_message_parts_internal.hpp"
 #include "services/spot/spot_mesh_pub_budget.hpp"
 
 #include "services/spot/spot_control_protocol.hpp"
@@ -828,49 +829,42 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
     unsigned int processed = 0;
     size_t processed_bytes = 0;
     for (;;) {
-        msg_t topic_msg;
-        if (topic_msg.init () != 0)
-            return -1;
-        if (mesh_xsub_->recv (&topic_msg, ZLINK_DONTWAIT) != 0) {
-            const int err = errno;
-            topic_msg.close ();
-            if (err == EAGAIN)
+        std::string topic;
+        spot_owned_msg_parts_t frames;
+        if (spot_recv_logical_message_parts (
+              mesh_xsub_, true, &topic, &frames, &processed_bytes)
+            != 0) {
+            if (errno == EAGAIN)
                 return 0;
             return -1;
         }
 
-        const char *topic_data =
-          static_cast<const char *> (topic_msg.data ());
-        const size_t topic_size = topic_msg.size ();
-        const std::string topic (topic_data, topic_size);
-        processed_bytes += topic_size;
-
-        std::vector<std::string> frames;
-        if (recv_remaining_frame_strings (mesh_xsub_, &frames) != 0) {
-            topic_msg.close ();
-            return -1;
-        }
-        topic_msg.close ();
-
-        for (size_t i = 0; i < frames.size (); ++i)
-            processed_bytes += frames[i].size ();
+        const char *topic_data = topic.data ();
+        const size_t topic_size = topic.size ();
 
         if (!spot_control_protocol::is_bootstrap_ctrl_descriptor_topic (
               topic_data, topic_size)) {
+            std::vector<std::string> frame_strings;
+            spot_copy_msg_parts_to_strings (frames, &frame_strings);
             bool is_batch = false;
             const int decode_rc =
-              decode_batch_frame (topic, frames, state_, &is_batch);
+              decode_batch_frame (topic, frame_strings, state_, &is_batch);
             if (decode_rc != 0) {
+                spot_clear_msg_parts (&frames);
                 if (errno == EBADMSG)
                     errno = 0;
                 else
                     return -1;
             } else if (!is_batch) {
-                if (publish_owned_parts (fanout_, topic, frames) != 0)
+                if (spot_publish_msg_parts_consume (fanout_, topic, &frames)
+                    != 0) {
                     return -1;
+                }
             } else if (resume_pending_unbatch (fanout_, runtime_, state_) != 0) {
+                spot_clear_msg_parts (&frames);
                 return -1;
             }
+            spot_clear_msg_parts (&frames);
 
             ++processed;
             if (processed >= mesh_xsub_forward_batch_limit
@@ -879,11 +873,16 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
             continue;
         }
 
-        if (frames.size () < 4)
+        if (frames.size () < 4) {
+            spot_clear_msg_parts (&frames);
             continue;
+        }
 
-        const std::string &peer_data_endpoint = frames[0];
-        const std::string &peer_ctrl_endpoint = frames[1];
+        const std::string peer_data_endpoint =
+          spot_msg_frame_to_string (frames[0]);
+        const std::string peer_ctrl_endpoint =
+          spot_msg_frame_to_string (frames[1]);
+        spot_clear_msg_parts (&frames);
         if (peer_data_endpoint.empty () || peer_ctrl_endpoint.empty ())
             continue;
 

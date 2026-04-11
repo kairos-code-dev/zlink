@@ -876,7 +876,7 @@ def pattern_default_hwm(pattern_name):
 def pattern_default_io_threads(pattern_name):
     if pattern_name in STREAM_VARIANT_PATTERNS:
         return 4
-    return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 2))
+    return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 4))
 
 
 def resolve_pattern_connect_concurrency(clients):

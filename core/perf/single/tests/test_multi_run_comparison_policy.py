@@ -117,7 +117,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             self.assertEqual(RC.pattern_default_clients("STREAM"), 10000)
             self.assertEqual(RC.pattern_default_hwm("DEALER_DEALER"), 100)
             self.assertEqual(RC.pattern_default_hwm("STREAM"), 10)
-            self.assertEqual(RC.pattern_default_io_threads("DEALER_DEALER"), 2)
+            self.assertEqual(RC.pattern_default_io_threads("DEALER_DEALER"), 4)
             self.assertEqual(RC.pattern_default_io_threads("STREAM"), 4)
         finally:
             RC.ALLOW_MULTI = old_allow_multi

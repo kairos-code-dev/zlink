@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_message_parts_internal.hpp"
 
 #include "core/multipart_send_txn.hpp"
 #include "services/spot/spot_control_protocol.hpp"
@@ -80,59 +81,6 @@ int publish_owned_parts (socket_base_t *socket_,
         errno = saved_errno;
         return -1;
     }
-    return 0;
-}
-
-int recv_logical_message (socket_base_t *src_,
-                          bool dontwait_topic_,
-                          std::string *topic_out_,
-                          std::vector<std::string> *parts_out_,
-                          size_t *wire_bytes_out_)
-{
-    if (!src_ || !topic_out_ || !parts_out_ || !wire_bytes_out_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    topic_out_->clear ();
-    parts_out_->clear ();
-    *wire_bytes_out_ = 0;
-
-    msg_t topic_msg;
-    if (topic_msg.init () != 0)
-        return -1;
-
-    if (src_->recv (&topic_msg, dontwait_topic_ ? ZLINK_DONTWAIT : 0) != 0) {
-        const int err = errno;
-        topic_msg.close ();
-        errno = err;
-        return -1;
-    }
-
-    *topic_out_ = std::string (static_cast<const char *> (topic_msg.data ()),
-                               topic_msg.size ());
-    *wire_bytes_out_ += topic_msg.size ();
-    bool more = (topic_msg.flags () & msg_t::more) != 0;
-    topic_msg.close ();
-
-    while (more) {
-        msg_t frame;
-        if (frame.init () != 0)
-            return -1;
-        if (src_->recv (&frame, 0) != 0) {
-            const int err = errno;
-            frame.close ();
-            errno = err;
-            return -1;
-        }
-
-        parts_out_->push_back (
-          std::string (static_cast<const char *> (frame.data ()), frame.size ()));
-        *wire_bytes_out_ += frame.size ();
-        more = (frame.flags () & msg_t::more) != 0;
-        frame.close ();
-    }
-
     return 0;
 }
 
@@ -372,9 +320,11 @@ int spot_data_plane_forwarder_t::recv_and_forward_ingress (
 
     for (;;) {
         std::string topic;
-        std::vector<std::string> parts;
+        spot_owned_msg_parts_t parts;
         size_t wire_bytes = 0;
-        if (recv_logical_message (src_, true, &topic, &parts, &wire_bytes) != 0) {
+        if (spot_recv_logical_message_parts (
+              src_, true, &topic, &parts, &wire_bytes)
+            != 0) {
             if (errno == EAGAIN)
                 return 0;
             return -1;
@@ -382,21 +332,29 @@ int spot_data_plane_forwarder_t::recv_and_forward_ingress (
 
         const bool forward_to_fanout =
           fanout_ && node_ && node_->has_local_filtered_subs ();
-        if (forward_to_fanout && publish_owned_parts (fanout_, topic, parts) != 0)
+        if (forward_to_fanout && !mesh_pub_) {
+            if (spot_publish_msg_parts_consume (fanout_, topic, &parts) != 0)
+                return -1;
+        } else if (forward_to_fanout
+                   && spot_publish_msg_parts (fanout_, topic, parts) != 0) {
+            spot_clear_msg_parts (&parts);
             return -1;
+        }
 
         if (mesh_pub_) {
             const spot_node_batch_config_t config =
               runtime_->peer_batch_config_snapshot ();
             const uint32_t encoded_bytes =
-              logical_message_encoded_bytes (parts);
+              spot_msg_parts_encoded_bytes (parts);
             const bool oversized =
               encoded_bytes >= static_cast<uint32_t> (config.bypass_bytes)
               || encoded_bytes > static_cast<uint32_t> (config.max_bytes);
 
             if (!config.enabled || is_immediate_peer_topic (topic)) {
-                if (publish_owned_parts (mesh_pub_, topic, parts) != 0)
+                if (spot_publish_msg_parts_consume (mesh_pub_, topic, &parts)
+                    != 0) {
                     return -1;
+                }
             } else if (oversized) {
                 std::map<std::string, spot_topic_batch_bucket_t>::iterator it =
                   state_->pending_peer_batches.find (topic);
@@ -405,8 +363,10 @@ int spot_data_plane_forwarder_t::recv_and_forward_ingress (
                     && flush_bucket (state_, mesh_pub_, it) != 0) {
                     return -1;
                 }
-                if (publish_owned_parts (mesh_pub_, topic, parts) != 0)
+                if (spot_publish_msg_parts_consume (mesh_pub_, topic, &parts)
+                    != 0) {
                     return -1;
+                }
             } else {
                 std::map<std::string, spot_topic_batch_bucket_t>::iterator it =
                   state_->pending_peer_batches.find (topic);
@@ -428,9 +388,9 @@ int spot_data_plane_forwarder_t::recv_and_forward_ingress (
                 bucket.last_enqueue_ms = now_ms;
 
                 spot_topic_batch_message_t message;
-                message.payload_bytes = logical_message_payload_bytes (parts);
+                message.payload_bytes = spot_msg_parts_payload_bytes (parts);
                 message.encoded_bytes = encoded_bytes;
-                message.parts.swap (parts);
+                spot_copy_msg_parts_to_strings (parts, &message.parts);
                 bucket.pending_message_count += 1;
                 bucket.pending_payload_bytes += message.payload_bytes;
                 bucket.pending_encoded_bytes += message.encoded_bytes + 4;
@@ -449,6 +409,8 @@ int spot_data_plane_forwarder_t::recv_and_forward_ingress (
                 }
             }
         }
+
+        spot_clear_msg_parts (&parts);
 
         ++forwarded_messages;
         forwarded_bytes += wire_bytes;

@@ -227,9 +227,9 @@ Options:
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --io-threads N         Legacy alias: set PERF_IO_THREADS for both roles.
   --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS
-                         (default: non-stream=2, stream=4).
+                         (default: non-stream=4, stream=4).
   --client-io-threads N  Set PERF_MULTI_CLIENT_IO_THREADS
-                         (default: non-stream=2, stream=4).
+                         (default: non-stream=4, stream=4).
   --msg-sizes LIST       Comma-separated message sizes
                          (default: 64,256,1024,65536,131072,262144;
                          STREAM: 64,256,1024,65536).

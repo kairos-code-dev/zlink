@@ -238,7 +238,7 @@ bool open_delivery_ready_monitor (void *socket_,
     }
 
     const int zero = 0;
-    if (zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero)) != 0) {
+    if (!zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero))) {
         (void) zlink_monitor_close (&monitor);
         delete state;
         return false;

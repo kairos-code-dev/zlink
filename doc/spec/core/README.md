@@ -14,6 +14,7 @@ is defined in `core/include/zlink.h`.
 | Document | Description |
 |----------|-------------|
 | [errors.md](errors.md) | Error codes, error strings, and version query |
+| [errno-map.md](errno-map.md) | Errno matrix for send, request, and reply functions |
 | [context.md](context.md) | Context creation, termination, and option tuning |
 | [message.md](message.md) | Message lifecycle, data access, ownership, and properties |
 | [socket/](socket/README.md) | Socket specifications (common + per-type) |
@@ -43,6 +44,10 @@ is defined in `core/include/zlink.h`.
 |------|-----------|-------------|
 | [`zlink_socket_msg_handler_fn`](socket/README.md) | socket/ | Socket multipart message dispatch callback |
 | [`zlink_subscribe_handler_fn`](socket/README.md) | socket/ | Topic-based message dispatch callback |
+| [`zlink_reply_handler_fn`](socket/README.md) | socket/ | Asynchronous request-reply completion callback |
+| [`zlink_router_handler_fn`](socket/README.md) | socket/ | ROUTER request dispatch callback |
+| [`zlink_spot_handler_fn`](spot.md) | spot.md | SPOT routed message dispatch callback |
+| [`zlink_spot_dispatch_event_handler_fn`](spot.md) | spot.md | SPOT dispatch event callback |
 | [`zlink_monitor_handler_fn`](monitoring.md) | monitoring.md | Socket monitor event callback |
 | [`zlink_service_monitor_handler_fn`](monitoring.md) | monitoring.md | Service monitor event callback |
 | [`zlink_send_ready_handler_fn`](socket/README.md) | socket/ | Send-ready transition callback |

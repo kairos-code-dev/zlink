@@ -128,6 +128,7 @@ int start_request (socket_handle_t handle_,
                    const zlink_routing_id_t *peer_rid_,
                    zlink_msg_t *parts_,
                    size_t part_count_,
+                   zlink_send_flags_t flags_,
                    uint32_t timeout_ms_,
                    zlink_reply_handler_fn handler_,
                    void *userdata_)
@@ -180,7 +181,7 @@ int start_request (socket_handle_t handle_,
     const uint8_t message_type = zlink::request_reply::request_type;
     const int rc =
       send_request_reply_message (handle_.socket, peer_rid_, parts_, part_count_,
-                                  message_type, key.request_seq);
+                                  flags_, message_type, key.request_seq);
     if (rc != 0) {
         std::lock_guard<std::mutex> lock (state->mutex);
         zlink::request_timeout::cancel (pending.timeout_task);

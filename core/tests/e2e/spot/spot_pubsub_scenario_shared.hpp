@@ -51,11 +51,11 @@ void *create_spot_node (void *ctx_, const char *service_name_);
 void *create_spot_pub_handle (void *node_);
 void *create_spot_sub_handle (void *node_, zlink_subscribe_handler_fn handler_);
 int destroy_spot_node_with_handles (void **node_p_);
-typedef int (*spot_publish_fn_t) (void *,
-                                  const char *,
-                                  zlink_msg_t *,
-                                  size_t,
-                                  zlink_send_flags_t);
+typedef zlink_submit_result_t (*spot_publish_fn_t) (void *,
+                                                    const char *,
+                                                    zlink_msg_t *,
+                                                    size_t,
+                                                    zlink_send_flags_t);
 int publish_text (spot_publish_fn_t publish_fn_,
                   void *handle_,
                   const char *topic_id_,

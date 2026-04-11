@@ -8,11 +8,11 @@ extern void goZlinkReplyTrampoline(int errnum_, zlink_msg_t *parts_, size_t part
 extern void goZlinkRouterRequestTrampoline(zlink_routing_id_t *peer_rid_, uint64_t request_seq_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 
 static inline int zlink_dealer_request_go_local(void *dealer, zlink_msg_t *parts, size_t part_count, uint32_t timeout_ms, uintptr_t userdata) {
-	return zlink_dealer_request(dealer, parts, part_count, timeout_ms, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata);
+	return zlink_dealer_request(dealer, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, 0, timeout_ms);
 }
 
 static inline int zlink_router_request_go_local(void *router, const zlink_routing_id_t *peer_rid, zlink_msg_t *parts, size_t part_count, uint32_t timeout_ms, uintptr_t userdata) {
-	return zlink_router_request(router, peer_rid, parts, part_count, timeout_ms, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata);
+	return zlink_router_request(router, peer_rid, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, 0, timeout_ms);
 }
 
 static inline int zlink_router_handler_go_local(void *router, uintptr_t userdata) {

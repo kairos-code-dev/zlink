@@ -134,7 +134,7 @@ class zlink_stream_echo_server_t
         apply_socket_tuning (server, opt);
 
         const std::string endpoint = make_endpoint (opt.host, opt.port);
-        if (zlink_bind (server, endpoint.c_str ()) != 0) {
+        if (!zlink_bind (server, endpoint.c_str ())) {
             std::fprintf (
               stderr, "zlink stream: bind failed: %s endpoint=%s\n",
               zlink_strerror (zlink_errno ()), endpoint.c_str ());
@@ -142,7 +142,9 @@ class zlink_stream_echo_server_t
         }
 
         g_server_instance = this;
-        if (zlink_recv_handler (server, &zlink_stream_echo_server_t::on_packet_static, NULL) != 0) {
+        if (!zlink_recv_handler (server,
+                                 &zlink_stream_echo_server_t::on_packet_static,
+                                 NULL)) {
             std::fprintf (stderr, "zlink stream: dispatch attach failed: %s\n",
                           zlink_strerror (zlink_errno ()));
             return 2;

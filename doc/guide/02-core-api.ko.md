@@ -105,20 +105,8 @@ Routing ID는 전용 함수로 설정/조회한다:
 runtime 중간에도 보통 사용한다. 반면 HWM, timeout, TLS 같은 대부분의
 tuning option은 초기 설정 단계에서 사용한다.
 
-### 2.5 Option 소유권 카테고리
-
-내부적으로 option은 세 카테고리로 분류되어 각 도메인 소유자가 validation/apply를
-담당한다. 공개 API surface(`zlink_set_option` / `zlink_get_option`)는 변경 없이
-유지되지만, 새 option 추가 시 아래 기준으로 소유권을 결정한다.
-
-| 카테고리 | 대표 option | 설명 |
-|----------|-------------|------|
-| **Core Socket** | `SNDHWM`, `RCVHWM`, `LINGER`, `ROUTING_ID` 등 | 소켓 핵심 동작 |
-| **Transport/Network** | `SNDBUF`, `RCVBUF`, `TOS`, `MULTICAST_*` 등 | 네트워크/transport 계층 정책 |
-| **Protocol/Metadata** | ZMP 프로토콜 메타데이터 관련 | 프로토콜 수준 메타데이터 |
-
-이 분류는 transport option 변경이 socket/service 코드에 영향을 주지 않게 하고,
-option 하나를 수정할 때 어떤 모듈이 owner인지 바로 파악할 수 있게 한다.
+상세 option 카테고리와 전체 option 레퍼런스는
+[소켓 옵션 가이드](12-socket-options.ko.md)를 참고.
 
 ## 3. Message Send/Recv
 
@@ -156,8 +144,11 @@ zlink_send(socket, parts, 2, 0);
 - **재시도 대상**: `EAGAIN`, `EINTR`만 재시도, 그 외 오류는 즉시 실패
 - **whole-message 보장**: 멀티파트 메시지는 전체가 성공하거나 전체가 실패한다
 
-이 설계는 `libzmq`의 `pipe/router/xpub/dist` lower layer가 제공하는
-complete-message 기준 accounting과 rollback 메커니즘을 기반으로 한다.
+이 보장 덕분에 멀티파트 메시지는 전체가 큐에 들어가거나 전체가 실패한다.
+부분만 큐에 들어가는 일은 발생하지 않는다.
+
+> Wire 수준 프레임 구조는
+> [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
 
 ### 3.2 Recv
 

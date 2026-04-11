@@ -13,6 +13,7 @@
 | 문서 | 설명 |
 |------|------|
 | [errors.ko.md](errors.ko.md) | 에러 코드, 에러 문자열, 버전 조회 |
+| [errno-map.ko.md](errno-map.ko.md) | send, request, reply 함수별 errno 매트릭스 |
 | [context.ko.md](context.ko.md) | Context 생성, 종료, 옵션 설정 |
 | [message.ko.md](message.ko.md) | 메시지 생명주기, 데이터 접근, ownership, 속성 |
 | [socket/](socket/README.ko.md) | 소켓 스펙 (공통 + 타입별) |
@@ -42,6 +43,10 @@
 |------|-----------|------|
 | [`zlink_socket_msg_handler_fn`](socket/README.ko.md) | socket/ | 소켓 멀티파트 메시지 dispatch 콜백 |
 | [`zlink_subscribe_handler_fn`](socket/README.ko.md) | socket/ | 토픽 기반 메시지 dispatch 콜백 |
+| [`zlink_reply_handler_fn`](socket/README.ko.md) | socket/ | 비동기 request-reply 완료 콜백 |
+| [`zlink_router_handler_fn`](socket/README.ko.md) | socket/ | ROUTER 요청 dispatch 콜백 |
+| [`zlink_spot_handler_fn`](spot.ko.md) | spot.ko.md | SPOT routed 메시지 dispatch 콜백 |
+| [`zlink_spot_dispatch_event_handler_fn`](spot.ko.md) | spot.ko.md | SPOT dispatch 이벤트 콜백 |
 | [`zlink_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 소켓 모니터 이벤트 콜백 |
 | [`zlink_service_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 서비스 모니터 이벤트 콜백 |
 | [`zlink_send_ready_handler_fn`](socket/README.ko.md) | socket/ | send-ready 전환 콜백 |

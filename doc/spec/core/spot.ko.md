@@ -95,7 +95,7 @@ TLS/WSS 설정도 `SpotNode`의 책임이며, `zlink_set_tls_server()` /
 void *zlink_spot_new(void *node);
 int zlink_spot_destroy(void **spot_p);
 
-int zlink_publish(void *spot,
+zlink_submit_result_t zlink_publish(void *spot,
                   const char *topic_id,
                   zlink_msg_t *parts,
                   size_t part_count,
@@ -213,45 +213,53 @@ request-reply message 를 같이 받습니다. 이때 `source_node_rid_` 와
 ### Spot 에서 시작하는 request
 
 ```c
-int zlink_spot_request_spot (void *spot_,
+zlink_submit_result_t zlink_spot_request_spot (void *spot_,
                              const zlink_routing_id_t *dest_node_rid_,
                              const zlink_routing_id_t *dest_spot_rid_,
                              zlink_msg_t *parts_,
                              size_t part_count_,
-                             uint32_t timeout_ms_,
                              zlink_reply_handler_fn handler_,
-                             void *userdata_);
+                             void *userdata_,
+                             zlink_send_flags_t flags_,
+                             uint32_t timeout_ms_);
 
-int zlink_spot_request_router (void *spot_,
+zlink_submit_result_t zlink_spot_request_router (void *spot_,
                                const zlink_routing_id_t *peer_rid_,
                                zlink_msg_t *parts_,
                                size_t part_count_,
-                               uint32_t timeout_ms_,
                                zlink_reply_handler_fn handler_,
-                               void *userdata_);
+                               void *userdata_,
+                               zlink_send_flags_t flags_,
+                               uint32_t timeout_ms_);
 ```
 
 - `zlink_spot_request_spot()` 은 destination node rid 와 destination spot rid
   를 모두 요구합니다.
 - `zlink_spot_request_router()` 는 일반 `ROUTER` peer 로 보냅니다.
 - 두 함수 모두 reply 는 `zlink_reply_handler_fn` 으로 비동기 완료됩니다.
+- 두 함수 모두 request submit이 수락되면 `ZLINK_SUBMIT_OK`를 반환합니다.
+  실패 시에는 `zlink_submit_result_t` 값을 반환합니다.
 
 ### Spot 에서 보내는 reply
 
 ```c
-int zlink_spot_reply_spot (void *spot_,
+zlink_submit_result_t zlink_spot_reply_spot (void *spot_,
                            const zlink_routing_id_t *dest_node_rid_,
                            const zlink_routing_id_t *dest_spot_rid_,
                            uint64_t request_seq_,
                            zlink_msg_t *parts_,
                            size_t part_count_);
 
-int zlink_spot_reply_router (void *spot_,
+zlink_submit_result_t zlink_spot_reply_router (void *spot_,
                              const zlink_routing_id_t *peer_rid_,
                              uint64_t request_seq_,
                              zlink_msg_t *parts_,
                              size_t part_count_);
 ```
+
+두 reply submit 함수는 성공 시 `ZLINK_SUBMIT_OK`를 반환합니다. 실패 시에는
+`zlink_submit_result_t` 값을 반환하고, 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 ### Spot typed receive callback
 
@@ -267,17 +275,18 @@ routed message 와 request-reply message 를 같은 callback 에서 받고,
 ### Router 와 SPOT 사이 request-reply
 
 ```c
-int zlink_router_request_spot (
+zlink_submit_result_t zlink_router_request_spot (
   void *router_,
   const zlink_routing_id_t *dest_node_rid_,
   const zlink_routing_id_t *dest_spot_rid_,
   zlink_msg_t *parts_,
   size_t part_count_,
-  uint32_t timeout_ms_,
   zlink_reply_handler_fn handler_,
-  void *userdata_);
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
 
-int zlink_router_reply_spot (void *router_,
+zlink_submit_result_t zlink_router_reply_spot (void *router_,
                              const zlink_routing_id_t *dest_node_rid_,
                              const zlink_routing_id_t *dest_spot_rid_,
                              uint64_t request_seq_,
@@ -293,6 +302,12 @@ int zlink_router_spot_handler (
 이 표면으로 `router -> spot`, `spot -> router` 조합을 같은 계약으로 맞춥니다.
 `ROUTER` 쪽 reply 주소는 transport `peer_rid` 가 아니라
 `dest_node_rid + dest_spot_rid + request_seq` 조합입니다.
+
+`zlink_router_request_spot()`은 request submit이 수락되면
+`ZLINK_SUBMIT_OK`를 반환합니다. 실패 시에는 `zlink_submit_result_t` 값을
+반환합니다. reply completion은 별도로 `zlink_reply_handler_fn`을 통해
+전달됩니다. `zlink_router_reply_spot()`은 reply submit 결과를 같은 enum으로
+반환합니다.
 
 ## SpotNode Internal Data-Plane HWM
 

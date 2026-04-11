@@ -950,7 +950,7 @@ inline bool setup_tls_client(void* socket, const std::string& transport) {
     static std::string ca_path = write_temp_cert(test_certs::ca_cert_pem, "ca_cert");
     static const char* hostname = "localhost";
 
-    if (zlink_set_tls_client(socket, ca_path.c_str(), hostname, 0) != 0) {
+    if (!zlink_set_tls_client(socket, ca_path.c_str(), hostname, 0)) {
         if (bench_debug_enabled())
             std::cerr << "Failed to set TLS client options: "
                       << zlink_strerror(zlink_errno()) << std::endl;
@@ -967,7 +967,7 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
         std::cerr << "No endpoint available for transport " << transport << std::endl;
         return std::string();
     }
-    if (zlink_bind(socket_, endpoint.c_str()) != 0) {
+    if (!zlink_bind(socket_, endpoint.c_str())) {
         std::cerr << "bind failed for " << endpoint << ": "
                   << zlink_strerror(zlink_errno()) << std::endl;
         return std::string();
@@ -975,9 +975,8 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
     if (transport != "inproc") {
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof(last_endpoint);
-        if (zlink_get_option(socket_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
-                             &size)
-            != 0) {
+        if (!zlink_get_option(socket_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
+                              &size)) {
             std::cerr << "getsockopt(ZLINK_SOCKOPT_LAST_ENDPOINT) failed: "
                       << zlink_strerror(zlink_errno()) << std::endl;
             return std::string();
@@ -1014,7 +1013,7 @@ inline void settle() {
 }
 
 inline bool connect_checked(void *socket_, const std::string& endpoint) {
-    if (zlink_connect(socket_, endpoint.c_str()) != 0) {
+    if (!zlink_connect(socket_, endpoint.c_str())) {
         std::cerr << "connect failed for " << endpoint << ": "
                   << zlink_strerror(zlink_errno()) << std::endl;
         return false;

@@ -32,7 +32,9 @@ int zlink_set_stream_option (void *handle_,
 STREAM 소켓 옵션을 설정합니다. 모든 소켓 타입에 공유되는 공통 옵션은
 `zlink_set_option()`을 사용하세요.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **참고:** `zlink_get_stream_option`, `zlink_set_option`
 
@@ -51,7 +53,9 @@ int zlink_get_stream_option (void *handle_,
 
 STREAM 소켓 옵션의 현재 값을 가져옵니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **참고:** `zlink_set_stream_option`
 
@@ -62,7 +66,7 @@ STREAM 소켓 옵션의 현재 값을 가져옵니다.
 routing id로 특정 피어에게 멀티파트 메시지를 송신합니다.
 
 ```c
-int zlink_send_rid (void *s_,
+zlink_submit_result_t zlink_send_rid (void *s_,
                     const zlink_routing_id_t *target_rid_,
                     zlink_msg_t *parts_,
                     size_t part_count_,
@@ -75,7 +79,9 @@ int zlink_send_rid (void *s_,
 
 적용 대상: ROUTER (directed reply), STREAM (피어 지정 send).
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **에러:** `s_`가 NULL이면 `EFAULT`. 작업이 블로킹되고
 `ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`. 대상 피어가 연결되지 않은 경우
@@ -90,7 +96,7 @@ int zlink_send_rid (void *s_,
 기존 routed send API를 이용한 논블로킹 전송입니다.
 
 ```c
-int zlink_send_rid (void *s_,
+zlink_submit_result_t zlink_send_rid (void *s_,
                     const zlink_routing_id_t *target_rid_,
                     zlink_msg_t *parts_,
                     size_t part_count_,
@@ -98,12 +104,17 @@ int zlink_send_rid (void *s_,
 ```
 
 논블로킹 routed 전송은 `zlink_send_rid(..., ZLINK_DONTWAIT)` 로 처리합니다.
-바인딩은 errno를 `zlink_send_result_t` 결과로 바꿔서 노출할 수 있습니다.
+함수는 `zlink_submit_result_t`를 반환합니다.
+`ZLINK_SUBMIT_BACKPRESSURED`는 내부 `EAGAIN`에,
+`ZLINK_SUBMIT_NOT_CONNECTED`는 내부 `ENOTCONN` 또는 `EHOSTUNREACH`에
+대응합니다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지됩니다.
 
 성공하면 모든 파트의 소유권이 라이브러리로 넘어갑니다. 실패하면
 소유권은 호출자에게 남습니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **참고:** `zlink_send_rid`
 
@@ -130,7 +141,9 @@ int zlink_recv (void *s_,
 부착된 경우 `errno=EBUSY`로 실패합니다. 메시지가 없을 때 즉시 반환하려면
 `ZLINK_DONTWAIT`를 전달하세요.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우, 또는
 `ZLINK_OPT_RCVTIMEO`가 만료된 경우 `EAGAIN`. 수신 핸들러가 부착된 경우 `EBUSY`.

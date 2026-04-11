@@ -28,6 +28,7 @@
 
 // 0MQ definitions and exported functions
 #include "../include/zlink.h"
+#include "core/internal_errno.hpp"
 #include "core/internal_defs.hpp"
 
 extern "C" {

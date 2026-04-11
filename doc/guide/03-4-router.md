@@ -166,6 +166,11 @@ The key identifier is the `peer_rid + request_seq` combination. A reply
 must match both values -- the same `request_seq` from a different
 `peer_rid` is not the same request.
 
+> For the ZMP request-reply envelope wire format, see
+> [ZMP Protocol](../internals/protocol-zmp.md).
+> For ROUTER dispatch internals, see
+> [Services Internals](../internals/services-internals.md).
+
 #### Server: Receive Requests and Reply
 
 ```c

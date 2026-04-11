@@ -41,7 +41,7 @@ options shared across all socket types.
 Send a multipart message on a socket.
 
 ```c
-int zlink_send (void *s_,
+zlink_submit_result_t zlink_send (void *s_,
                 zlink_msg_t *parts_,
                 size_t part_count_,
                 zlink_send_flags_t flags_);
@@ -64,18 +64,20 @@ parameter may be 0 or `ZLINK_DONTWAIT`.
 
 ### Non-blocking send
 
-Non-blocking send that reports the result via an output parameter.
+Non-blocking send using the same `zlink_send` entry point with
+`ZLINK_DONTWAIT`.
 
 ```c
-int zlink_send (void *s_,
+zlink_submit_result_t zlink_send (void *s_,
                 zlink_msg_t *parts_,
                 size_t part_count_,
                 zlink_send_flags_t flags_);
 ```
 
-Use `zlink_send(..., ZLINK_DONTWAIT)` for non-blocking send. Bindings may
-map `EAGAIN` to `ZLINK_SEND_RESULT_BACKPRESSURED` and `ENOTCONN` or
-`EHOSTUNREACH` to `ZLINK_SEND_RESULT_NOT_READY`.
+Use `zlink_send(..., ZLINK_DONTWAIT)` for non-blocking send. The function
+returns `zlink_submit_result_t`. `ZLINK_SUBMIT_BACKPRESSURED` corresponds
+to internal `EAGAIN`, and `ZLINK_SUBMIT_NOT_CONNECTED` corresponds to
+internal `ENOTCONN` or `EHOSTUNREACH`.
 
 **See also:** `zlink_send`
 
@@ -86,19 +88,22 @@ map `EAGAIN` to `ZLINK_SEND_RESULT_BACKPRESSURED` and `ENOTCONN` or
 Send an asynchronous request and register a reply handler.
 
 ```c
-int zlink_dealer_request (void *dealer_,
+zlink_submit_result_t zlink_dealer_request (void *dealer_,
                           zlink_msg_t *parts_,
                           size_t part_count_,
-                          uint32_t timeout_ms_,
                           zlink_reply_handler_fn handler_,
-                          void *userdata_);
+                          void *userdata_,
+                          zlink_send_flags_t flags_,
+                          uint32_t timeout_ms_);
 ```
 
 Sends a multipart request on the DEALER socket and registers `handler_`
 to be invoked when the reply arrives or the timeout expires. On success,
 ownership of all parts is transferred to the library.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` when the request submit is accepted. On
+failure, returns a `zlink_submit_result_t` value. Reply completion is
+delivered separately through `zlink_reply_handler_fn`.
 
 **See also:** `zlink_send`, `zlink_reply_handler_fn`
 
@@ -179,6 +184,8 @@ Supported subjects: raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
 callback mode. After attach, data-plane poller `ZLINK_POLLOUT` on the same
 subject fails with `errno=EBUSY`. Unsupported subjects return `ENOTSUP`.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_send`

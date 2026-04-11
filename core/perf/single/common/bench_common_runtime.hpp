@@ -63,7 +63,7 @@ public:
         _socket(zlink_socket(ctx_, static_cast<zlink_socket_type_t>(type_)))
     {
         if (_socket && handler_
-            && zlink_recv_handler(_socket, handler_, userdata_) != 0) {
+            && !zlink_recv_handler(_socket, handler_, userdata_)) {
             zlink_close(_socket);
             _socket = NULL;
         }
@@ -316,7 +316,7 @@ inline bool transport_available(const std::string& transport) {
 }
 
 inline bool connect_checked(void *socket_, const std::string& endpoint) {
-    if (zlink_connect(socket_, endpoint.c_str()) != 0) {
+    if (!zlink_connect(socket_, endpoint.c_str())) {
         std::cerr << "connect failed for " << endpoint << ": "
                   << zlink_strerror(zlink_errno()) << std::endl;
         return false;

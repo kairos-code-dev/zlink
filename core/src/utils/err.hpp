@@ -19,12 +19,8 @@
 
 #include "utils/likely.hpp"
 
-//  0MQ-specific error codes are defined in zlink.h
-
-// EPROTO is not used by OpenBSD and maybe other platforms.
-#ifndef EPROTO
-#define EPROTO 0
-#endif
+// Public extended errno values are defined in zlink_errno.h and internal
+// classification helpers live in core/internal_errno.hpp.
 
 namespace zlink
 {

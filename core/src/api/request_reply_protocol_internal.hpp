@@ -7,6 +7,7 @@
 
 #include <vector>
 
+#include "api/request_result_internal.hpp"
 #include "core/msg.hpp"
 #include "zlink.h"
 
@@ -244,7 +245,8 @@ inline void complete_reply_callback (zlink_reply_handler_fn handler_,
                                      void *userdata_)
 {
     if (handler_)
-        handler_ (errnum_, parts_, part_count_, userdata_);
+        handler_ (zlink::request_result_internal::from_errno (errnum_), parts_,
+                  part_count_, userdata_);
 }
 }
 }

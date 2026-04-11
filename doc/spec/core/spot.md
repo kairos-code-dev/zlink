@@ -83,7 +83,7 @@ before bind/connect.
 void *zlink_spot_new(void *node);
 int zlink_spot_destroy(void **spot_p);
 
-int zlink_publish(void *spot,
+zlink_submit_result_t zlink_publish(void *spot,
                        const char *topic_id,
                        zlink_msg_t *parts,
                        size_t part_count,
@@ -258,14 +258,15 @@ distinguish which plane triggered readability.
 #### zlink_spot_request_spot
 
 ```c
-int zlink_spot_request_spot (void *spot_,
+zlink_submit_result_t zlink_spot_request_spot (void *spot_,
                              const zlink_routing_id_t *dest_node_rid_,
                              const zlink_routing_id_t *dest_spot_rid_,
                              zlink_msg_t *parts_,
                              size_t part_count_,
-                             uint32_t timeout_ms_,
                              zlink_reply_handler_fn handler_,
-                             void *userdata_);
+                             void *userdata_,
+                             zlink_send_flags_t flags_,
+                             uint32_t timeout_ms_);
 ```
 
 Send a request from a spot to a remote spot via node routing. The reply
@@ -279,24 +280,28 @@ destination node routing ID and a destination spot routing ID.
 | `dest_spot_rid_` | Destination spot routing identity. |
 | `parts_` | Payload message parts. Ownership is transferred. |
 | `part_count_` | Number of payload parts. |
-| `timeout_ms_` | Reply timeout in milliseconds (0 = implementation default 5000 ms). |
 | `handler_` | Reply callback. |
 | `userdata_` | User-supplied context pointer for the reply callback. |
+| `flags_` | Submit policy flags (`0` or `ZLINK_DONTWAIT`). |
+| `timeout_ms_` | Reply timeout in milliseconds (0 = implementation default 5000 ms). |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` when the request submit is accepted. On
+failure, returns a `zlink_submit_result_t` value. Reply completion is
+delivered separately through `zlink_reply_handler_fn`.
 
 **See also:** `zlink_spot_reply_spot`, `zlink_reply_handler_fn`
 
 #### zlink_spot_request_router
 
 ```c
-int zlink_spot_request_router (void *spot_,
+zlink_submit_result_t zlink_spot_request_router (void *spot_,
                                const zlink_routing_id_t *peer_rid_,
                                zlink_msg_t *parts_,
                                size_t part_count_,
-                               uint32_t timeout_ms_,
                                zlink_reply_handler_fn handler_,
-                               void *userdata_);
+                               void *userdata_,
+                               zlink_send_flags_t flags_,
+                               uint32_t timeout_ms_);
 ```
 
 Send a request from a spot to a plain `ROUTER` peer. The reply arrives
@@ -308,11 +313,14 @@ asynchronously via `zlink_reply_handler_fn`.
 | `peer_rid_` | Transport routing identity of the target ROUTER peer. |
 | `parts_` | Payload message parts. Ownership is transferred. |
 | `part_count_` | Number of payload parts. |
-| `timeout_ms_` | Reply timeout in milliseconds (0 = implementation default 5000 ms). |
 | `handler_` | Reply callback. |
 | `userdata_` | User-supplied context pointer for the reply callback. |
+| `flags_` | Submit policy flags (`0` or `ZLINK_DONTWAIT`). |
+| `timeout_ms_` | Reply timeout in milliseconds (0 = implementation default 5000 ms). |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` when the request submit is accepted. On
+failure, returns a `zlink_submit_result_t` value. Reply completion is
+delivered separately through `zlink_reply_handler_fn`.
 
 **See also:** `zlink_spot_reply_router`, `zlink_reply_handler_fn`
 
@@ -321,7 +329,7 @@ asynchronously via `zlink_reply_handler_fn`.
 #### zlink_spot_send_spot
 
 ```c
-int zlink_spot_send_spot (void *spot_,
+zlink_submit_result_t zlink_spot_send_spot (void *spot_,
                           const zlink_routing_id_t *dest_node_rid_,
                           const zlink_routing_id_t *dest_spot_rid_,
                           zlink_msg_t *parts_,
@@ -341,14 +349,16 @@ No reply is expected.
 | `part_count_` | Number of payload parts. |
 | `flags_` | Send flags (e.g. `ZLINK_DONTWAIT`). |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_spot_request_spot`
 
 #### zlink_spot_send_router
 
 ```c
-int zlink_spot_send_router (void *spot_,
+zlink_submit_result_t zlink_spot_send_router (void *spot_,
                             const zlink_routing_id_t *peer_rid_,
                             zlink_msg_t *parts_,
                             size_t part_count_,
@@ -366,7 +376,9 @@ No reply is expected.
 | `part_count_` | Number of payload parts. |
 | `flags_` | Send flags (e.g. `ZLINK_DONTWAIT`). |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_spot_request_router`
 
@@ -375,7 +387,7 @@ No reply is expected.
 #### zlink_spot_reply_spot
 
 ```c
-int zlink_spot_reply_spot (void *spot_,
+zlink_submit_result_t zlink_spot_reply_spot (void *spot_,
                            const zlink_routing_id_t *dest_node_rid_,
                            const zlink_routing_id_t *dest_spot_rid_,
                            uint64_t request_seq_,
@@ -395,14 +407,16 @@ Reply to a spot-routed request. Use the `source_rid_`, `spot_rid_`, and
 | `parts_` | Reply message parts. Ownership is transferred. |
 | `part_count_` | Number of reply parts. |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_spot_request_spot`, `zlink_spot_handler_fn`
 
 #### zlink_spot_reply_router
 
 ```c
-int zlink_spot_reply_router (void *spot_,
+zlink_submit_result_t zlink_spot_reply_router (void *spot_,
                              const zlink_routing_id_t *peer_rid_,
                              uint64_t request_seq_,
                              zlink_msg_t *parts_,
@@ -419,7 +433,9 @@ Reply to a request received from a plain `ROUTER` peer via the spot.
 | `parts_` | Reply message parts. Ownership is transferred. |
 | `part_count_` | Number of reply parts. |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_spot_request_router`
 
@@ -444,7 +460,9 @@ ordinary routed messages and request-reply messages; distinguish them by
 | `handler_` | Callback function, or `NULL` to detach. |
 | `userdata_` | User-supplied context pointer. |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` when the request submit is accepted. On
+failure, returns a `zlink_submit_result_t` value. Reply completion is
+delivered separately through `zlink_reply_handler_fn`.
 
 **See also:** `zlink_spot_handler_fn`, `zlink_spot_recv`
 
@@ -466,7 +484,9 @@ channel becomes readable.
 | `handler_` | Dispatch event callback, or `NULL` to detach. |
 | `userdata_` | User-supplied context pointer. |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_spot_dispatch_event_t`, `zlink_spot_dispatch_event_handler_fn`
 
@@ -497,7 +517,9 @@ Returns `EBUSY` if a typed receive callback is installed.
 | `part_count_out_` | Receives the number of message parts. |
 | `flags_` | Receive flags (e.g. `ZLINK_DONTWAIT`). |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_spot_handler`
 
@@ -506,15 +528,16 @@ Returns `EBUSY` if a typed receive callback is installed.
 #### zlink_router_request_spot
 
 ```c
-int zlink_router_request_spot (
+zlink_submit_result_t zlink_router_request_spot (
   void *router_,
   const zlink_routing_id_t *dest_node_rid_,
   const zlink_routing_id_t *dest_spot_rid_,
   zlink_msg_t *parts_,
   size_t part_count_,
-  uint32_t timeout_ms_,
   zlink_reply_handler_fn handler_,
-  void *userdata_);
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
 ```
 
 Send a request from a `ROUTER` handle to a remote spot. The reply arrives
@@ -527,9 +550,10 @@ asynchronously via `zlink_reply_handler_fn`.
 | `dest_spot_rid_` | Destination spot routing identity. |
 | `parts_` | Payload message parts. Ownership is transferred. |
 | `part_count_` | Number of payload parts. |
-| `timeout_ms_` | Reply timeout in milliseconds (0 = implementation default 5000 ms). |
 | `handler_` | Reply callback. |
 | `userdata_` | User-supplied context pointer for the reply callback. |
+| `flags_` | Submit policy flags (`0` or `ZLINK_DONTWAIT`). |
+| `timeout_ms_` | Reply timeout in milliseconds (0 = implementation default 5000 ms). |
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
@@ -538,7 +562,7 @@ asynchronously via `zlink_reply_handler_fn`.
 #### zlink_router_reply_spot
 
 ```c
-int zlink_router_reply_spot (void *router_,
+zlink_submit_result_t zlink_router_reply_spot (void *router_,
                              const zlink_routing_id_t *dest_node_rid_,
                              const zlink_routing_id_t *dest_spot_rid_,
                              uint64_t request_seq_,
@@ -565,7 +589,7 @@ is `dest_node_rid + dest_spot_rid + request_seq`, not the transport `peer_rid`.
 #### zlink_router_send_spot
 
 ```c
-int zlink_router_send_spot (void *router_,
+zlink_submit_result_t zlink_router_send_spot (void *router_,
                             const zlink_routing_id_t *dest_node_rid_,
                             const zlink_routing_id_t *dest_spot_rid_,
                             zlink_msg_t *parts_,

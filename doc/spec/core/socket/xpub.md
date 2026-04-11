@@ -69,7 +69,7 @@ Retrieves the current value of a PUB/XPUB socket option.
 Publish a multipart message.
 
 ```c
-int zlink_publish (void *subject_,
+zlink_submit_result_t zlink_publish (void *subject_,
                    const char *topic_id_,
                    zlink_msg_t *parts_,
                    size_t part_count_,
@@ -82,7 +82,9 @@ of all parts is transferred to the library.
 - For raw `PUB` / `XPUB`: `topic_id_` must be NULL (raw pub publish).
   Topic matching uses the wire first-frame prefix convention.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **Errors:** `EFAULT` if `subject_` is NULL. `EINVAL` if `topic_id_` is
 NULL for spot/spot_node, or non-NULL for unsupported types. `ENOTSUP` if
@@ -97,20 +99,25 @@ the subject type does not support publish.
 Non-blocking publish using the existing publish API.
 
 ```c
-int zlink_publish (void *subject_,
+zlink_submit_result_t zlink_publish (void *subject_,
                    const char *topic_id_,
                    zlink_msg_t *parts_,
                    size_t part_count_,
                    zlink_send_flags_t flags_);
 ```
 
-Use `zlink_publish(..., ZLINK_DONTWAIT)` for non-blocking publish.
-Bindings may map errno into `zlink_send_result_t`.
+Use `zlink_publish(..., ZLINK_DONTWAIT)` for non-blocking publish. The
+function returns `zlink_submit_result_t`. `ZLINK_SUBMIT_BACKPRESSURED`
+corresponds to internal `EAGAIN`, and `ZLINK_SUBMIT_NOT_CONNECTED`
+corresponds to internal `ENOTCONN` or `EHOSTUNREACH`. `zlink_errno()`
+retains the detailed internal errno for diagnostics.
 
 On success, ownership of all parts is transferred to the library. On
 failure, ownership remains with the caller.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_publish`
 

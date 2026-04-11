@@ -3546,8 +3546,8 @@ napi_value dealer_request(napi_env env, napi_callback_info info)
         return NULL;
     }
     int rc = zlink_dealer_request(
-      dealer, parts.data(), parts.size(), static_cast<uint32_t>(timeout_ms),
-      request_reply_callback_trampoline, state);
+      dealer, parts.data(), parts.size(), request_reply_callback_trampoline,
+      state, 0, static_cast<uint32_t>(timeout_ms));
     if (rc != 0) {
         close_msg_vector(parts);
         if (state->tsfn) {
@@ -3596,7 +3596,8 @@ napi_value router_request(napi_env env, napi_callback_info info)
     }
     int rc = zlink_router_request(
       router, &peer_rid, parts.data(), parts.size(),
-      static_cast<uint32_t>(timeout_ms), request_reply_callback_trampoline, state);
+      request_reply_callback_trampoline, state, 0,
+      static_cast<uint32_t>(timeout_ms));
     if (rc != 0) {
         close_msg_vector(parts);
         if (state->tsfn) {

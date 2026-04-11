@@ -15,7 +15,7 @@
 소켓에서 멀티파트 메시지를 송신합니다.
 
 ```c
-int zlink_send (void *s_,
+zlink_submit_result_t zlink_send (void *s_,
                 zlink_msg_t *parts_,
                 size_t part_count_,
                 zlink_send_flags_t flags_);
@@ -26,7 +26,9 @@ int zlink_send (void *s_,
 이후 접근할 수 없습니다. 실패 시 소유권은 호출자에게 유지됩니다. `flags_`
 매개변수는 0 또는 `ZLINK_DONTWAIT`일 수 있습니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`. Context가
 종료된 경우 `ETERM`.
@@ -37,19 +39,19 @@ int zlink_send (void *s_,
 
 ### 논블로킹 send
 
-논블로킹 송신으로 결과를 출력 매개변수를 통해 반환합니다.
+같은 `zlink_send` 진입점을 `ZLINK_DONTWAIT`와 함께 사용합니다.
 
 ```c
-int zlink_send (void *s_,
+zlink_submit_result_t zlink_send (void *s_,
                 zlink_msg_t *parts_,
                 size_t part_count_,
                 zlink_send_flags_t flags_);
 ```
 
-논블로킹 전송은 `zlink_send(..., ZLINK_DONTWAIT)` 로 처리합니다.
-바인딩은 여기서 나온 errno를 `zlink_send_result_t` 값으로 바꿔서
-노출할 수 있습니다. 예를 들어 `EAGAIN` 은 backpressured,
-`ENOTCONN` 또는 `EHOSTUNREACH` 는 not ready 로 해석합니다.
+논블로킹 전송은 `zlink_send(..., ZLINK_DONTWAIT)` 로 처리합니다. 함수는
+`zlink_submit_result_t`를 반환합니다. `ZLINK_SUBMIT_BACKPRESSURED`는 내부
+`EAGAIN`에, `ZLINK_SUBMIT_NOT_CONNECTED`는 내부 `ENOTCONN` 또는
+`EHOSTUNREACH`에 대응합니다.
 
 성공하면 모든 파트의 소유권이 라이브러리로 넘어갑니다. 실패하면
 소유권은 호출자에게 남습니다.

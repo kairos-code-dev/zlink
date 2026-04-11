@@ -1543,9 +1543,9 @@ void test_socket_runtime_reads_are_safe_during_connect_disconnect ()
     std::atomic<int> control_errors (0);
     std::thread mutator ([&] () {
         for (int i = 0; i < 64; ++i) {
-            if (zlink_disconnect (client, endpoint) != 0)
+            if (!zlink_disconnect (client, endpoint))
                 control_errors.fetch_add (1, std::memory_order_release);
-            if (zlink_connect (client, endpoint) != 0)
+            if (!zlink_connect (client, endpoint))
                 control_errors.fetch_add (1, std::memory_order_release);
         }
     });

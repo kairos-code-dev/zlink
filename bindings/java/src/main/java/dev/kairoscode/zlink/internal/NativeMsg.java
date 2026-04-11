@@ -85,13 +85,14 @@ public final class NativeMsg {
     private static final MethodHandle MH_DEALER_REQUEST = downcall("zlink_dealer_request",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_ROUTER_REQUEST = downcall("zlink_router_request",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT));
     private static final MethodHandle MH_ROUTER_REPLY = downcall("zlink_router_reply",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
@@ -209,7 +210,7 @@ public final class NativeMsg {
                                     MemorySegment userData) {
         try {
             return (int) MH_DEALER_REQUEST.invokeExact(dealer, parts, partCount,
-                timeoutMs, handler, userData);
+                handler, userData, 0, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_dealer_request failed", t);
         }
@@ -221,7 +222,7 @@ public final class NativeMsg {
                                     MemorySegment userData) {
         try {
             return (int) MH_ROUTER_REQUEST.invokeExact(router, peerRid, parts,
-                partCount, timeoutMs, handler, userData);
+                partCount, handler, userData, 0, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_router_request failed", t);
         }

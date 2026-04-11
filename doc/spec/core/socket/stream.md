@@ -29,7 +29,9 @@ int zlink_set_stream_option (void *handle_,
 Configures a STREAM socket option. Use `zlink_set_option()` for common
 options shared across all socket types.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_get_stream_option`, `zlink_set_option`
 
@@ -48,7 +50,9 @@ int zlink_get_stream_option (void *handle_,
 
 Retrieves the current value of a STREAM socket option.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_set_stream_option`
 
@@ -59,7 +63,7 @@ Retrieves the current value of a STREAM socket option.
 Send a multipart message to a specific peer by routing id.
 
 ```c
-int zlink_send_rid (void *s_,
+zlink_submit_result_t zlink_send_rid (void *s_,
                     const zlink_routing_id_t *target_rid_,
                     zlink_msg_t *parts_,
                     size_t part_count_,
@@ -73,7 +77,9 @@ ownership remains with the caller.
 Applicable handle types: ROUTER (directed reply), STREAM (peer-addressed
 send).
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **Errors:** `EFAULT` if `s_` is NULL. `EAGAIN` if the operation would block
 and `ZLINK_DONTWAIT` was set. `EHOSTUNREACH` if the target peer is not
@@ -89,7 +95,7 @@ terminated.
 Non-blocking routed send using the existing routed send API.
 
 ```c
-int zlink_send_rid (void *s_,
+zlink_submit_result_t zlink_send_rid (void *s_,
                     const zlink_routing_id_t *target_rid_,
                     zlink_msg_t *parts_,
                     size_t part_count_,
@@ -97,11 +103,15 @@ int zlink_send_rid (void *s_,
 ```
 
 Use `zlink_send_rid(..., ZLINK_DONTWAIT)` for non-blocking routed send.
-Bindings may convert errno into `zlink_send_result_t`. On success,
+The function returns `zlink_submit_result_t`. `ZLINK_SUBMIT_BACKPRESSURED`
+corresponds to internal `EAGAIN`, and `ZLINK_SUBMIT_NOT_CONNECTED`
+corresponds to internal `ENOTCONN` or `EHOSTUNREACH`. On success,
 ownership of all parts is transferred to the library. On failure,
 ownership remains with the caller.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_send_rid`
 
@@ -129,7 +139,9 @@ mode (no handler attached). If a receive handler has been attached via
 `zlink_recv_handler()`, this call fails with `errno=EBUSY`. Pass
 `ZLINK_DONTWAIT` to return immediately when no message is available.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was
 set, or if `ZLINK_OPT_RCVTIMEO` expired. `EBUSY` if a receive handler is

@@ -46,7 +46,7 @@ bool setup_connected_pubsub_pair (void *pub_socket_,
     }
     apply_single_hwm (pub_socket_);
     apply_single_hwm (sub_socket_);
-    if (zlink_set_subscription (sub_socket_, "") != 0)
+    if (!zlink_set_subscription (sub_socket_, ""))
         return false;
     const std::string endpoint =
       bind_and_resolve_endpoint (pub_socket_, transport_, id_);

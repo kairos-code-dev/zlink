@@ -186,6 +186,11 @@ int rc = zlink_send_rid(router, &target_rid, &msg, 1, 0);
 가장 중요한 값은 `peer_rid + request_seq` 조합이다. `request_seq` 만 맞고
 `peer_rid` 가 다르면 같은 요청 reply 로 보면 안 된다.
 
+> ZMP request-reply envelope wire 형식은
+> [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
+> ROUTER dispatch 내부 구조는
+> [서비스 내부 설계](../internals/services-internals.ko.md)를 참고.
+
 ```c
 static void on_request(const zlink_routing_id_t *peer_rid,
                        uint64_t request_seq,

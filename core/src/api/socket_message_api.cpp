@@ -5,6 +5,7 @@
 #include "api/service_api_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/socket_message_api_internal.hpp"
+#include "api/status_internal.hpp"
 #include "core/recv_internal.hpp"
 
 namespace
@@ -56,56 +57,58 @@ int zlink_xpub_recv (void *s_,
                                             topic_id_len_, flags_);
 }
 
-int zlink_recv (void *s_,
-                zlink_routing_id_t *source_rid_out_,
-                zlink_msg_t **parts_out_,
-                size_t *part_count_out_,
-                zlink_send_flags_t flags_)
+bool zlink_recv (void *s_,
+                 zlink_routing_id_t *source_rid_out_,
+                 zlink_msg_t **parts_out_,
+                 size_t *part_count_out_,
+                 zlink_send_flags_t flags_)
 {
     if (!s_) {
         errno = EFAULT;
-        return -1;
+        return false;
     }
     const int socket_rc = zlink_socket_recv_internal (
       s_, source_rid_out_, parts_out_, part_count_out_, flags_);
     if (socket_rc == 0 || errno != EFAULT)
-        return socket_rc;
+        return zlink::status_internal::from_rc (socket_rc);
 
-    return recv_service_or_fault (s_, source_rid_out_, parts_out_,
-                                  part_count_out_, flags_);
+    return zlink::status_internal::from_rc (
+      recv_service_or_fault (s_, source_rid_out_, parts_out_, part_count_out_,
+                             flags_));
 }
 
-int zlink_subscribe (void *subject_,
-                     zlink_routing_id_t *source_rid_out_,
-                     zlink_msg_t **parts_out_,
-                     size_t *part_count_out_,
-                     char *topic_id_out_,
-                     size_t *topic_id_len_out_,
-                     zlink_send_flags_t flags_)
+bool zlink_subscribe (void *subject_,
+                      zlink_routing_id_t *source_rid_out_,
+                      zlink_msg_t **parts_out_,
+                      size_t *part_count_out_,
+                      char *topic_id_out_,
+                      size_t *topic_id_len_out_,
+                      zlink_send_flags_t flags_)
 {
     if (!subject_) {
         errno = EFAULT;
-        return -1;
+        return false;
     }
 
     const int socket_rc = zlink_socket_subscribe_recv_internal (
       subject_, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
       topic_id_len_out_, flags_);
     if (socket_rc == 0 || errno != EFAULT)
-        return socket_rc;
+        return zlink::status_internal::from_rc (socket_rc);
 
-    return recv_subscribe_service_or_fault (
+    return zlink::status_internal::from_rc (recv_subscribe_service_or_fault (
       subject_, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
-      topic_id_len_out_, flags_);
+      topic_id_len_out_, flags_));
 }
 
-int zlink_subscription_event (void *subject_,
-                              zlink_routing_id_t *source_rid_out_,
-                              int *subscribed_out_,
-                              char *topic_id_out_,
-                              size_t *topic_id_len_out_,
-                              zlink_send_flags_t flags_)
+bool zlink_subscription_event (void *subject_,
+                               zlink_routing_id_t *source_rid_out_,
+                               int *subscribed_out_,
+                               char *topic_id_out_,
+                               size_t *topic_id_len_out_,
+                               zlink_send_flags_t flags_)
 {
-    return zlink_xpub_recv (subject_, source_rid_out_, subscribed_out_,
-                            topic_id_out_, topic_id_len_out_, flags_);
+    return zlink::status_internal::from_rc (
+      zlink_xpub_recv (subject_, source_rid_out_, subscribed_out_,
+                       topic_id_out_, topic_id_len_out_, flags_));
 }

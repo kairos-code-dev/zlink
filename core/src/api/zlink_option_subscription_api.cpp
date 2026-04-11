@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "api/service_api_internal.hpp"
+#include "api/status_internal.hpp"
 #include "api/zlink_option_internal.hpp"
 
 #include "core/msg.hpp"
@@ -112,70 +113,77 @@ int raw_socket_subscription_at (zlink::socket_base_t *socket_,
 }
 }
 
-int zlink_set_subscription (void *handle_, const char *filter_)
+bool zlink_set_subscription (void *handle_, const char *filter_)
 {
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         if (!filter_) {
             errno = EINVAL;
-            return -1;
+            return false;
         }
         const int type = socket_type_of (socket);
         if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {
             errno = EINVAL;
-            return -1;
+            return false;
         }
         const size_t filter_len = strlen (filter_);
         if (type == ZLINK_CORE_SOCKET_XSUB)
-            return xsub_update_subscription (socket, true, filter_, filter_len);
-        return socket->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, filter_,
-                                   filter_len);
+            return zlink::status_internal::from_rc (
+              xsub_update_subscription (socket, true, filter_, filter_len));
+        return zlink::status_internal::from_rc (
+          socket->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, filter_,
+                              filter_len));
     }
     errno = 0;
 
-    return zlink_service_set_subscription (handle_, filter_);
+    return zlink::status_internal::from_rc (
+      zlink_service_set_subscription (handle_, filter_));
 }
 
-int zlink_unset_subscription (void *handle_, const char *filter_)
+bool zlink_unset_subscription (void *handle_, const char *filter_)
 {
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         if (!filter_) {
             errno = EINVAL;
-            return -1;
+            return false;
         }
         const int type = socket_type_of (socket);
         if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {
             errno = EINVAL;
-            return -1;
+            return false;
         }
         const size_t filter_len = strlen (filter_);
         if (type == ZLINK_CORE_SOCKET_XSUB)
-            return xsub_update_subscription (socket, false, filter_,
-                                             filter_len);
-        return socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE, filter_,
-                                   filter_len);
+            return zlink::status_internal::from_rc (
+              xsub_update_subscription (socket, false, filter_, filter_len));
+        return zlink::status_internal::from_rc (
+          socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE, filter_,
+                              filter_len));
     }
     errno = 0;
 
-    return zlink_service_unset_subscription (handle_, filter_);
+    return zlink::status_internal::from_rc (
+      zlink_service_unset_subscription (handle_, filter_));
 }
 
-int zlink_subscription_at (void *handle_,
-                           size_t index_,
-                           char *filter_out_,
-                           size_t *filter_len_inout_,
-                           int *is_pattern_out_)
+bool zlink_subscription_at (void *handle_,
+                            size_t index_,
+                            char *filter_out_,
+                            size_t *filter_len_inout_,
+                            int *is_pattern_out_)
 {
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         const int type = socket_type_of (socket);
         if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {
             errno = EINVAL;
-            return -1;
+            return false;
         }
-        return raw_socket_subscription_at (socket, index_, filter_out_,
-                                           filter_len_inout_, is_pattern_out_);
+        return zlink::status_internal::from_rc (
+          raw_socket_subscription_at (socket, index_, filter_out_,
+                                      filter_len_inout_, is_pattern_out_));
     }
     errno = 0;
 
-    return zlink_service_subscription_at (handle_, index_, filter_out_,
-                                          filter_len_inout_, is_pattern_out_);
+    return zlink::status_internal::from_rc (
+      zlink_service_subscription_at (handle_, index_, filter_out_,
+                                     filter_len_inout_, is_pattern_out_));
 }

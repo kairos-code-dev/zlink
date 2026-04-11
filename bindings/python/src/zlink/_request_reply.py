@@ -172,9 +172,10 @@ class RequestDealer:
             self._socket._handle,
             native_parts,
             len(parts),
-            timeout_ms,
             self._reply_handler,
             ctypes.c_void_p(handle),
+            0,
+            timeout_ms,
         )
         if rc != 0:
             self._pending.pop(handle, None)
@@ -283,9 +284,10 @@ class RequestRouter:
             ctypes.byref(native_rid),
             native_parts,
             len(parts),
-            _timeout_to_ms(timeout),
             self._reply_handler,
             ctypes.c_void_p(handle),
+            0,
+            _timeout_to_ms(timeout),
         )
         if rc != 0:
             self._pending.pop(handle, None)

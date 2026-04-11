@@ -332,7 +332,7 @@ inline bool create_client_sockets (
 
         if (client_socket_type == ZLINK_SOCKET_SUB) {
             static const char k_subscribe_all[] = "";
-            if (zlink_set_subscription (sock, k_subscribe_all) != 0) {
+            if (!zlink_set_subscription (sock, k_subscribe_all)) {
                 if (bench_debug_enabled ()) {
                     std::cerr
                       << "set_subscription failed: "
@@ -364,7 +364,7 @@ inline bool create_client_sockets (
             }
         }
 
-        if (zlink_connect (sock, endpoint.c_str ()) != 0) {
+        if (!zlink_connect (sock, endpoint.c_str ())) {
             std::cerr << "connect failed for " << endpoint << ": "
                       << zlink_strerror (zlink_errno ()) << std::endl;
             if (monitors_out)

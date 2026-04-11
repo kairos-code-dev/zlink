@@ -785,18 +785,20 @@ unsafe extern "C" {
         dealer: *mut c_void,
         parts: *mut zlink_msg_t,
         part_count: usize,
-        timeout_ms: u32,
         handler: zlink_reply_handler_fn,
         userdata: *mut c_void,
+        flags: zlink_send_flags_t,
+        timeout_ms: u32,
     ) -> c_int;
     pub fn zlink_router_request(
         router: *mut c_void,
         peer_rid: *const zlink_routing_id_t,
         parts: *mut zlink_msg_t,
         part_count: usize,
-        timeout_ms: u32,
         handler: zlink_reply_handler_fn,
         userdata: *mut c_void,
+        flags: zlink_send_flags_t,
+        timeout_ms: u32,
     ) -> c_int;
     pub fn zlink_router_reply(
         router: *mut c_void,

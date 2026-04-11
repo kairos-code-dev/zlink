@@ -33,7 +33,9 @@ int zlink_set_router_option (void *handle_,
 Configures a ROUTER socket option. Use `zlink_set_option()` for common
 options shared across all socket types.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_get_router_option`, `zlink_set_option`
 
@@ -52,7 +54,9 @@ int zlink_get_router_option (void *handle_,
 
 Retrieves the current value of a ROUTER socket option.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_set_router_option`
 
@@ -63,7 +67,7 @@ Retrieves the current value of a ROUTER socket option.
 Send a multipart message to a specific peer by routing id.
 
 ```c
-int zlink_send_rid (void *s_,
+zlink_submit_result_t zlink_send_rid (void *s_,
                     const zlink_routing_id_t *target_rid_,
                     zlink_msg_t *parts_,
                     size_t part_count_,
@@ -77,7 +81,9 @@ ownership remains with the caller.
 Applicable handle types: ROUTER (directed reply), STREAM (peer-addressed
 send).
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **Errors:** `EFAULT` if `s_` is NULL. `EAGAIN` if the operation would block
 and `ZLINK_DONTWAIT` was set. `EHOSTUNREACH` if the target peer is not
@@ -93,7 +99,7 @@ terminated.
 Non-blocking directed send using the existing routed send API.
 
 ```c
-int zlink_send_rid (void *s_,
+zlink_submit_result_t zlink_send_rid (void *s_,
                     const zlink_routing_id_t *target_rid_,
                     zlink_msg_t *parts_,
                     size_t part_count_,
@@ -101,13 +107,16 @@ int zlink_send_rid (void *s_,
 ```
 
 Use `zlink_send_rid(..., ZLINK_DONTWAIT)` for non-blocking routed send.
-Bindings may map `EAGAIN` to `ZLINK_SEND_RESULT_BACKPRESSURED` and
-`ENOTCONN` or `EHOSTUNREACH` to `ZLINK_SEND_RESULT_NOT_READY`.
+The function returns `zlink_submit_result_t`. `ZLINK_SUBMIT_BACKPRESSURED`
+corresponds to internal `EAGAIN`, and `ZLINK_SUBMIT_NOT_CONNECTED`
+corresponds to internal `ENOTCONN` or `EHOSTUNREACH`.
 
 On success, ownership of all parts is transferred to the library. On
 failure, ownership remains with the caller.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_send_rid`
 
@@ -118,13 +127,14 @@ failure, ownership remains with the caller.
 Send an asynchronous request to a specific peer and register a reply handler.
 
 ```c
-int zlink_router_request (void *router_,
+zlink_submit_result_t zlink_router_request (void *router_,
                           const zlink_routing_id_t *peer_rid_,
                           zlink_msg_t *parts_,
                           size_t part_count_,
-                          uint32_t timeout_ms_,
                           zlink_reply_handler_fn handler_,
-                          void *userdata_);
+                          void *userdata_,
+                          zlink_send_flags_t flags_,
+                          uint32_t timeout_ms_);
 ```
 
 Sends a multipart request to the peer identified by `peer_rid_` on the
@@ -132,7 +142,9 @@ ROUTER socket and registers `handler_` to be invoked when the reply arrives
 or the timeout expires. On success, ownership of all parts is transferred
 to the library.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` when the request submit is accepted. On
+failure, returns a `zlink_submit_result_t` value. Reply completion is
+delivered separately through `zlink_reply_handler_fn`.
 
 **See also:** `zlink_router_reply`, `zlink_reply_handler_fn`
 
@@ -143,7 +155,7 @@ to the library.
 Send a reply to a previously received request.
 
 ```c
-int zlink_router_reply (void *router_,
+zlink_submit_result_t zlink_router_reply (void *router_,
                         const zlink_routing_id_t *peer_rid_,
                         uint64_t request_seq_,
                         zlink_msg_t *parts_,
@@ -154,7 +166,9 @@ Sends a multipart reply to the peer identified by `peer_rid_` for the
 request with sequence number `request_seq_`. On success, ownership of all
 parts is transferred to the library.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_router_request`, `zlink_router_handler`
 
@@ -174,7 +188,9 @@ Attaches `handler_` to receive incoming requests on the ROUTER socket.
 When a request arrives, the handler is invoked with the peer's routing id,
 the request sequence number, and the message parts.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_router_reply`, `zlink_router_handler_fn`
 

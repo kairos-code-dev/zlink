@@ -870,18 +870,20 @@ ZLINK_EXPORT int zlink_send_rid (void *s_,
 ZLINK_EXPORT int zlink_dealer_request (void *dealer_,
                                        zlink_msg_t *parts_,
                                        size_t part_count_,
-                                       uint32_t timeout_ms_,
                                        zlink_reply_handler_fn handler_,
-                                       void *userdata_);
+                                       void *userdata_,
+                                       zlink_send_flags_t flags_,
+                                       uint32_t timeout_ms_);
 
 ZLINK_EXPORT int zlink_router_request (
   void *router_,
   const zlink_routing_id_t *peer_rid_,
   zlink_msg_t *parts_,
   size_t part_count_,
-  uint32_t timeout_ms_,
   zlink_reply_handler_fn handler_,
-  void *userdata_);
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
 
 ZLINK_EXPORT int zlink_router_reply (void *router_,
                                      const zlink_routing_id_t *peer_rid_,
@@ -905,9 +907,10 @@ ZLINK_EXPORT int zlink_spot_request_spot (void *spot_,
                                           const zlink_routing_id_t *dest_spot_rid_,
                                           zlink_msg_t *parts_,
                                           size_t part_count_,
-                                          uint32_t timeout_ms_,
                                           zlink_reply_handler_fn handler_,
-                                          void *userdata_);
+                                          void *userdata_,
+                                          zlink_send_flags_t flags_,
+                                          uint32_t timeout_ms_);
 
 ZLINK_EXPORT int zlink_spot_send_spot (void *spot_,
                                        const zlink_routing_id_t *dest_node_rid_,
@@ -926,9 +929,10 @@ ZLINK_EXPORT int zlink_spot_request_router (void *spot_,
                                             const zlink_routing_id_t *peer_rid_,
                                             zlink_msg_t *parts_,
                                             size_t part_count_,
-                                            uint32_t timeout_ms_,
                                             zlink_reply_handler_fn handler_,
-                                            void *userdata_);
+                                            void *userdata_,
+                                            zlink_send_flags_t flags_,
+                                            uint32_t timeout_ms_);
 
 ZLINK_EXPORT int zlink_spot_reply_spot (void *spot_,
                                         const zlink_routing_id_t *dest_node_rid_,
@@ -966,9 +970,10 @@ ZLINK_EXPORT int zlink_router_request_spot (
   const zlink_routing_id_t *dest_spot_rid_,
   zlink_msg_t *parts_,
   size_t part_count_,
-  uint32_t timeout_ms_,
   zlink_reply_handler_fn handler_,
-  void *userdata_);
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
 
 ZLINK_EXPORT int zlink_router_reply_spot (void *router_,
                                           const zlink_routing_id_t *dest_node_rid_,

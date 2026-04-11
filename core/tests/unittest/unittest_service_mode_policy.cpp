@@ -77,7 +77,7 @@ std::string bind_socket_test_endpoint (void *socket_)
     for (int i = 0; i < 64; ++i) {
         std::ostringstream endpoint;
         endpoint << "tcp://127.0.0.1:" << (base_port + i);
-        if (zlink_bind (socket_, endpoint.str ().c_str ()) == 0)
+        if (zlink_bind (socket_, endpoint.str ().c_str ()))
             return endpoint.str ();
     }
     return std::string ();

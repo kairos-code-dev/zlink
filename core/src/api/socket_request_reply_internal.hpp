@@ -74,6 +74,7 @@ int send_request_reply_message (void *socket_handle_,
                                 const zlink_routing_id_t *peer_rid_,
                                 zlink_msg_t *parts_,
                                 size_t part_count_,
+                                zlink_send_flags_t flags_,
                                 uint8_t message_type_,
                                 uint64_t request_seq_);
 std::shared_ptr<socket_request_reply_state_t>
@@ -86,6 +87,7 @@ int start_request (socket_handle_t handle_,
                    const zlink_routing_id_t *peer_rid_,
                    zlink_msg_t *parts_,
                    size_t part_count_,
+                   zlink_send_flags_t flags_,
                    uint32_t timeout_ms_,
                    zlink_reply_handler_fn handler_,
                    void *userdata_);

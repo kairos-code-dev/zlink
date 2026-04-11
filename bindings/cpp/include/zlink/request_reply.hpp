@@ -148,9 +148,9 @@ class request_dealer_t
             throw last_error ();
         }
         const int rc = zlink_dealer_request (_socket.handle (), native.data (),
-                                             native.size (),
-                                             static_cast<uint32_t> (timeout_.count ()),
-                                             &detail::reply_callback, state);
+                                             native.size (), &detail::reply_callback,
+                                             state, 0,
+                                             static_cast<uint32_t> (timeout_.count ()));
         if (rc != 0) {
             delete state;
             throw last_error ();
@@ -172,9 +172,9 @@ class request_dealer_t
             throw last_error ();
         }
         const int rc = zlink_dealer_request (_socket.handle (), native.data (),
-                                             native.size (),
-                                             static_cast<uint32_t> (timeout_.count ()),
-                                             &detail::reply_callback, state);
+                                             native.size (), &detail::reply_callback,
+                                             state, 0,
+                                             static_cast<uint32_t> (timeout_.count ()));
         if (rc != 0) {
             delete state;
             throw last_error ();
@@ -272,8 +272,8 @@ class request_router_t
         const int rc = zlink_router_request (_socket.handle (),
                                              routing_id_native (routing_id_),
                                              native.data (), native.size (),
-                                             static_cast<uint32_t> (timeout_.count ()),
-                                             &detail::reply_callback, state);
+                                             &detail::reply_callback, state, 0,
+                                             static_cast<uint32_t> (timeout_.count ()));
         if (rc != 0) {
             delete state;
             throw last_error ();
@@ -298,8 +298,8 @@ class request_router_t
         const int rc = zlink_router_request (_socket.handle (),
                                              routing_id_native (routing_id_),
                                              native.data (), native.size (),
-                                             static_cast<uint32_t> (timeout_.count ()),
-                                             &detail::reply_callback, state);
+                                             &detail::reply_callback, state, 0,
+                                             static_cast<uint32_t> (timeout_.count ()));
         if (rc != 0) {
             delete state;
             throw last_error ();

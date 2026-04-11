@@ -98,6 +98,8 @@ typedef void (*zlink_reply_handler_fn) (
 비동기 request-reply 완료 콜백. 응답이 도착하거나 요청이 타임아웃되면
 호출됩니다. 타임아웃 시 `errno_`에 `ETIMEDOUT`이 설정되고 `parts_`는
 NULL입니다. 성공 시 모든 메시지 파트의 소유권이 콜백으로 이전됩니다.
+`errno_`는 submit 실패가 아니라 request completion 결과를 뜻하며,
+바인딩은 이를 `zlink_request_result_t`로 매핑할 수 있습니다.
 
 ### zlink_router_handler_fn
 
@@ -140,32 +142,92 @@ typedef enum zlink_socket_type_t
 typedef uint32_t zlink_send_flags_t;
 
 #define ZLINK_DONTWAIT  ((zlink_send_flags_t) 0x0001u)
+#define ZLINK_SEND_FLAG_DONTWAIT ZLINK_DONTWAIT
 ```
 
 | 상수 | 설명 |
 |---|---|
 | `ZLINK_DONTWAIT` | 논블로킹 모드; 블로킹 시 `EAGAIN` 반환 |
+| `ZLINK_SEND_FLAG_DONTWAIT` | `ZLINK_DONTWAIT`의 별칭 |
 
 ### 송신 결과
 
 ```c
-typedef enum zlink_send_result_t
+typedef enum zlink_submit_result_t
 {
-    ZLINK_SEND_RESULT_SENT = 0,
-    ZLINK_SEND_RESULT_BACKPRESSURED = 1,
-    ZLINK_SEND_RESULT_NOT_READY = 2
-} zlink_send_result_t;
+    /* Submit succeeded. */
+    ZLINK_SUBMIT_OK = 0,
+
+    /* Normal control-flow result. */
+    ZLINK_SUBMIT_BACKPRESSURED = 1,
+    ZLINK_SUBMIT_NOT_CONNECTED = 2,
+    ZLINK_SUBMIT_NOT_FOUND = 3,
+
+    /* Runtime / lifecycle failure. */
+    ZLINK_SUBMIT_TERMINATED = 4,
+
+    /* Caller contract violation. */
+    ZLINK_SUBMIT_INVALID_HANDLE = 5,
+    ZLINK_SUBMIT_INVALID_ARGUMENT = 6,
+    ZLINK_SUBMIT_NOT_SUPPORTED = 7,
+    ZLINK_SUBMIT_INVALID_STATE = 8,
+    ZLINK_SUBMIT_THREAD_VIOLATION = 9,
+
+    /* Internal failure. */
+    ZLINK_SUBMIT_OUT_OF_MEMORY = 10,
+    ZLINK_SUBMIT_SEQ_EXHAUSTED = 11,
+    ZLINK_SUBMIT_INTERNAL_ERROR = 12
+} zlink_submit_result_t;
 ```
 
-바인딩이 `zlink_send`, `zlink_send_rid`, `zlink_publish`를
-`ZLINK_DONTWAIT`와 함께 호출한 뒤 errno를 명시적인 비블로킹 결과로
-바꿀 때 사용됩니다.
+send, request submit, reply submit API의 공개 결과를 정규화할 때
+사용하는 기준 enum입니다. exported C API는 이 enum을 직접 반환합니다.
+내부 구현 경로는 계속 상세 `errno`를 사용하고, exported API 경계에서 그
+값을 이 공개 결과 계약으로 정규화합니다.
 
 | 상수 | 값 | 설명 |
 |---|---|---|
-| `ZLINK_SEND_RESULT_SENT` | 0 | 메시지가 성공적으로 송신됨 |
-| `ZLINK_SEND_RESULT_BACKPRESSURED` | 1 | 송신 큐가 가득 참 (HWM 도달) |
-| `ZLINK_SEND_RESULT_NOT_READY` | 2 | 소켓이 송신 준비되지 않음 |
+| `ZLINK_SUBMIT_OK` | 0 | 메시지가 성공적으로 송신됨 |
+| `ZLINK_SUBMIT_BACKPRESSURED` | 1 | 송신 큐가 가득 참 (HWM 도달) |
+| `ZLINK_SUBMIT_NOT_CONNECTED` | 2 | 대상 경로나 peer가 아직 연결되지 않음 |
+| `ZLINK_SUBMIT_NOT_FOUND` | 3 | 대상 peer, spot, routed destination을 찾지 못함 |
+| `ZLINK_SUBMIT_TERMINATED` | 4 | context가 종료됨 |
+| `ZLINK_SUBMIT_INVALID_HANDLE` | 5 | 핸들이 NULL이거나 유효하지 않음 |
+| `ZLINK_SUBMIT_INVALID_ARGUMENT` | 6 | API 계약에 맞지 않는 인자 |
+| `ZLINK_SUBMIT_NOT_SUPPORTED` | 7 | 지원하지 않는 작업 또는 flags |
+| `ZLINK_SUBMIT_INVALID_STATE` | 8 | 핸들이 잘못된 상태에 있음 |
+| `ZLINK_SUBMIT_THREAD_VIOLATION` | 9 | 허용된 스레드 모델을 위반함 |
+| `ZLINK_SUBMIT_OUT_OF_MEMORY` | 10 | submit 준비 중 메모리 할당 실패 |
+| `ZLINK_SUBMIT_SEQ_EXHAUSTED` | 11 | request sequence 공간이 소진됨 |
+| `ZLINK_SUBMIT_INTERNAL_ERROR` | 12 | 내부 send/request/reply submit 오류 |
+
+### Request Completion
+
+```c
+typedef enum zlink_request_result_t
+{
+    /* Reply completed successfully. */
+    ZLINK_REQUEST_OK = 0,
+
+    /* Completion failure visible to the requester. */
+    ZLINK_REQUEST_TIMED_OUT = 1,
+    ZLINK_REQUEST_NOT_FOUND = 2,
+    ZLINK_REQUEST_TERMINATED = 3,
+    ZLINK_REQUEST_PROTOCOL_ERROR = 4
+} zlink_request_result_t;
+```
+
+`zlink_reply_handler_fn`의 completion 결과를 정규화할 때 사용하는 기준
+enum입니다. callback은 여전히 내부 `errno_`를 전달하고, 그 값이 이 공개
+completion 계약으로 매핑됩니다.
+
+| 상수 | 값 | 설명 |
+|---|---|---|
+| `ZLINK_REQUEST_OK` | 0 | reply payload를 정상 수신함 |
+| `ZLINK_REQUEST_TIMED_OUT` | 1 | 설정된 시간 안에 reply가 도착하지 않음 |
+| `ZLINK_REQUEST_NOT_FOUND` | 2 | 대상이 없어 error reply로 완료됨 |
+| `ZLINK_REQUEST_TERMINATED` | 3 | request 경로가 명시적인 종료 completion을 방출하기 전까지는 예약값 |
+| `ZLINK_REQUEST_PROTOCOL_ERROR` | 4 | reply envelope 또는 error reply payload가 잘못됨 |
 
 ### 보안 메커니즘
 

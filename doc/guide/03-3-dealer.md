@@ -7,8 +7,8 @@
 The DEALER socket is an asynchronous request socket. It sends to multiple peers using **round-robin** distribution and receives using **fair-queue**. There is no enforced send/recv ordering, enabling free asynchronous messaging.
 
 **Key characteristics:**
-- Send: Round-robin (`lb_t`) -- cyclic distribution across connected peers
-- Receive: Fair-queue (`fq_t`) -- fair reception from all peers
+- Send: Round-robin -- cyclic distribution across connected peers
+- Receive: Fair-queue -- fair reception from all peers
 - No enforced send/recv ordering (asynchronous)
 
 **Valid socket combinations:** DEALER ↔ ROUTER, DEALER ↔ DEALER
@@ -158,6 +158,9 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 When DEALER needs to send a request and wait for a reply, use
 `zlink_dealer_request()` instead of ordinary `send/recv`. This function
 attaches a ZMP request-reply envelope and delivers the reply via callback.
+
+> For the ZMP request-reply envelope wire format, see
+> [ZMP Protocol](../internals/protocol-zmp.md).
 
 ```c
 static void on_reply(int reply_errno,

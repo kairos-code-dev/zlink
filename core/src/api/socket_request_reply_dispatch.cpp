@@ -412,6 +412,7 @@ int send_request_reply_message (void *socket_handle_,
                                 const zlink_routing_id_t *peer_rid_,
                                 zlink_msg_t *parts_,
                                 size_t part_count_,
+                                zlink_send_flags_t flags_,
                                 uint8_t message_type_,
                                 uint64_t request_seq_)
 {
@@ -465,8 +466,8 @@ int send_request_reply_message (void *socket_handle_,
 
     const int rc =
       routed ? zlink_send_rid (socket_handle_, peer_rid_, &combined[0],
-                               total_part_count, 0)
-             : zlink_send (socket_handle_, &combined[0], total_part_count, 0);
+                               total_part_count, flags_)
+             : zlink_send (socket_handle_, &combined[0], total_part_count, flags_);
     if (rc != 0)
         return -1;
 

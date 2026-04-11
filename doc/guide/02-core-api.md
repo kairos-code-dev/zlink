@@ -106,22 +106,8 @@ Options and queries such as `ZLINK_OPT_EVENTS` and
 By contrast, most tuning knobs such as HWM, timeouts, and TLS settings
 are usually closer to initial configuration.
 
-### 2.5 Option Ownership Categories
-
-Internally, options are classified into three categories, each with its
-own domain owner responsible for validation/apply. The public API surface
-(`zlink_set_option` / `zlink_get_option`) remains unchanged, but when
-adding new options, ownership is determined by the following classification:
-
-| Category | Representative Options | Description |
-|----------|----------------------|-------------|
-| **Core Socket** | `SNDHWM`, `RCVHWM`, `LINGER`, `ROUTING_ID`, `SNDTIMEO`, `RCVTIMEO` | Core socket behavior |
-| **Transport/Network** | `RATE`, `RECOVERY_IVL`, `SNDBUF`, `RCVBUF`, `TOS`, `PRIORITY`, `MULTICAST_*` | Network/transport layer policies |
-| **Protocol/Metadata** | ZMP protocol metadata | Protocol-level metadata |
-
-This classification ensures transport option changes do not affect
-socket/service code and makes it immediately clear which module owns
-any given option.
+For detailed option categories and the full option reference, see
+[Socket Options Guide](12-socket-options.md).
 
 ## 3. Sending and Receiving Messages
 
@@ -160,8 +146,11 @@ following common guarantees:
 - **retry targets**: only `EAGAIN` and `EINTR` are retried; other errors fail immediately
 - **whole-message guarantee**: a multipart message either succeeds entirely or fails entirely
 
-This design is based on `libzmq`'s `pipe/router/xpub/dist` lower layer
-complete-message accounting and rollback mechanisms.
+This guarantees that a multipart message either succeeds entirely or
+fails entirely -- no partial messages are ever queued.
+
+> For wire-level frame structure, see
+> [ZMP Protocol](../internals/protocol-zmp.md).
 
 ### 3.2 Receiving
 

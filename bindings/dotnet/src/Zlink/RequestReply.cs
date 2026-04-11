@@ -250,8 +250,8 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
             fixed (ZlinkMsg* nativePtr = nativeParts)
             {
                 int rc = NativeMethods.zlink_dealer_request(_socket.Handle,
-                    (IntPtr)nativePtr, (nuint)nativeParts.Length, timeoutMs,
-                    ReplyHandler, userData);
+                    (IntPtr)nativePtr, (nuint)nativeParts.Length,
+                    ReplyHandler, userData, 0, timeoutMs);
                 if (rc != 0)
                     throw ZlinkException.FromLastError();
             }
@@ -596,7 +596,8 @@ public sealed unsafe class RequestRouter : IDisposable, IAsyncDisposable
             {
                 int rc = NativeMethods.zlink_router_request(_socket.Handle,
                     ref nativeRoutingId, (IntPtr)nativePtr,
-                    (nuint)nativeParts.Length, timeoutMs, ReplyHandler, userData);
+                    (nuint)nativeParts.Length, ReplyHandler, userData, 0,
+                    timeoutMs);
                 if (rc != 0)
                     throw ZlinkException.FromLastError();
             }

@@ -71,7 +71,7 @@ PUB/XPUB 소켓 옵션의 현재 값을 가져옵니다.
 멀티파트 메시지를 발행합니다.
 
 ```c
-int zlink_publish (void *subject_,
+zlink_submit_result_t zlink_publish (void *subject_,
                    const char *topic_id_,
                    zlink_msg_t *parts_,
                    size_t part_count_,
@@ -84,7 +84,9 @@ int zlink_publish (void *subject_,
 - raw `PUB` / `XPUB`: `topic_id_`는 NULL이어야 합니다 (raw pub publish).
   토픽 매칭은 wire first-frame prefix 규칙을 따릅니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **에러:** `subject_`가 NULL이면 `EFAULT`. `topic_id_`가 spot/spot_node에서
 NULL이거나 지원하지 않는 타입이면 `EINVAL`. subject 타입이 publish를
@@ -99,20 +101,25 @@ NULL이거나 지원하지 않는 타입이면 `EINVAL`. subject 타입이 publi
 기존 publish API를 이용한 논블로킹 발행입니다.
 
 ```c
-int zlink_publish (void *subject_,
+zlink_submit_result_t zlink_publish (void *subject_,
                    const char *topic_id_,
                    zlink_msg_t *parts_,
                    size_t part_count_,
                    zlink_send_flags_t flags_);
 ```
 
-논블로킹 발행은 `zlink_publish(..., ZLINK_DONTWAIT)` 로 처리합니다.
-바인딩은 errno를 `zlink_send_result_t` 결과로 바꿔서 노출할 수 있습니다.
+논블로킹 발행은 `zlink_publish(..., ZLINK_DONTWAIT)` 로 처리합니다. 함수는
+`zlink_submit_result_t`를 반환합니다. `ZLINK_SUBMIT_BACKPRESSURED`는 내부
+`EAGAIN`에, `ZLINK_SUBMIT_NOT_CONNECTED`는 내부 `ENOTCONN` 또는
+`EHOSTUNREACH`에 대응합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 성공하면 모든 파트의 소유권이 라이브러리로 넘어갑니다. 실패하면
 소유권은 호출자에게 남습니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **참고:** `zlink_publish`
 

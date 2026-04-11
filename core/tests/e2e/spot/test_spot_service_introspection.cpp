@@ -96,7 +96,7 @@ static bool wait_for_subscription_ready (void *sub_node_,
     void *sub_handle = default_sub_handle (sub_node_);
     if (!resolve_spot_sub_subject_poller_socket (sub_handle))
         return false;
-    return zlink_set_subscription (sub_handle, topic_) == 0
+    return zlink_set_subscription (sub_handle, topic_)
            && wait_for_spot_node_subject_ready (sub_node_, 3000);
 }
 

@@ -9,8 +9,8 @@ DEALER 소켓은 비동기 요청 소켓이다.
 send/recv 순서 강제가 없어 자유로운 비동기 메시징이 가능하다.
 
 **핵심 특성:**
-- 송신: 라운드 로빈 (`lb_t`) — 연결된 피어에 순환 분배
-- 수신: 페어 큐잉 (`fq_t`) — 모든 피어에서 공정하게 수신
+- 송신: 라운드 로빈 — 연결된 피어에 순환 분배
+- 수신: 페어 큐잉 — 모든 피어에서 공정하게 수신
 - send/recv 순서 강제 없음 (비동기)
 
 **유효한 소켓 조합:** DEALER ↔ ROUTER, DEALER ↔ DEALER
@@ -171,6 +171,9 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 `DEALER` 가 응답을 기다리는 흐름은 ordinary `send/recv` 와 별도로
 `zlink_dealer_request()` 를 사용한다. 이 함수는 ZMP request-reply envelope 를
 붙여 보내고, reply 는 callback 으로 완료된다.
+
+> ZMP request-reply envelope wire 형식은
+> [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
 
 ```c
 static void on_reply(int reply_errno,

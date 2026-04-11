@@ -889,7 +889,7 @@ bool create_control_spot(ctx_guard_t &ctx,
         }
         return false;
     }
-    if (zlink_set_subscription(state->control_sub, k_topic) != 0) {
+    if (!zlink_set_subscription(state->control_sub, k_topic)) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] control subscribe failed err="
                       << zlink_errno() << std::endl;

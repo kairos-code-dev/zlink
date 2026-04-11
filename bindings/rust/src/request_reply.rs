@@ -136,9 +136,10 @@ impl RequestDealer {
                 self.socket.inner.handle,
                 native.as_mut_ptr(),
                 native.len(),
-                duration_to_timeout_ms(timeout),
                 dealer_reply_callback,
                 state_ptr.cast(),
+                0,
+                duration_to_timeout_ms(timeout),
             )
         };
         if rc != 0 {
@@ -326,9 +327,10 @@ impl RequestRouter {
                 routing_id.as_raw(),
                 native.as_mut_ptr(),
                 native.len(),
-                duration_to_timeout_ms(timeout),
                 dealer_reply_callback,
                 state_ptr.cast(),
+                0,
+                duration_to_timeout_ms(timeout),
             )
         };
         if rc != 0 {

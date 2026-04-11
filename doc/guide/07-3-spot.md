@@ -95,6 +95,9 @@ flowchart LR
 - Only local publishes enter the mesh; remote receives are never re-published (loop prevention)
 - When Discovery is attached, this mesh topology is configured automatically
 
+> For internal socket wiring and data plane details, see
+> [SPOT Internals](../internals/spot-internals.md).
+
 **Example:** Node 1 publishes topic `price.USD.JPY`. Node 2 has a subscriber for `price.*`.
 
 1. SpotPub on Node 1 sends the message to the local SPOT worker.
@@ -130,6 +133,9 @@ zlink_spot_node_attach_discovery(node, discovery);
 **Note:** It is recommended to call `attach_discovery()` after bind.
 Once Discovery is attached, peers are automatically discovered and
 connected through the Registry.
+
+> For how Discovery constructs the mesh, see
+> [Discovery Internals](../internals/discovery-internals.md).
 
 **Ephemeral port:** `zlink_spot_node_bind()` supports port 0 for dynamic
 port allocation. Use `zlink_spot_node_status_snapshot()` to retrieve the
@@ -296,6 +302,9 @@ should be offloaded to an application queue or worker thread.
 Routed messaging delivers messages directly to a specific SPOT handle or
 ROUTER socket by address, bypassing topic matching. This is separate from
 the topic pub/sub path.
+
+> For the SPOT routed envelope wire format, see
+> [ZMP Protocol](../internals/protocol-zmp.md).
 
 ### Address Model
 
@@ -536,43 +545,33 @@ Examples:
 - Case-sensitive
 - Example: `chat:*` matches both `chat:room1:message` and `chat:room2:join`
 
-## 8. Internal Module Structure
+## 8. Choosing Topic vs Routed
 
-The SPOT internal implementation has a modular structure with separated
-data plane and control plane. The public C API remains unchanged;
-internal changes stay within narrow boundaries.
+| Criterion | Topic (pub/sub) | Routed (direct) |
+|-----------|----------------|-----------------|
+| **Audience** | All matching subscribers | One specific target |
+| **Addressing** | Topic string (prefix matching) | node_rid + spot_rid (or peer_rid) |
+| **Delivery** | Fan-out to N receivers | Point-to-point |
+| **Request-reply** | Not supported | Supported (request_seq) |
+| **Use case** | Market data, events, notifications | Commands, queries, RPC |
 
-| Module | Role |
-|--------|------|
-| `spot_node_access` · `spot_subject_access` | API layer seam (service-local access) |
-| `spot_handle` | Public handle struct (tag validation, pub/sub refs, pending defaults) |
-| `spot_node` | SpotNode orchestration, discovery integration |
-| `spot_pub` | Publish path |
-| `spot_sub` | Subscribe path (option · recv separated) |
-| `spot_data_plane` | Data plane core |
-| `spot_data_plane_forwarding` | Ingress/egress message forwarding |
-| `spot_data_plane_protocol` | Control messages, subscription updates, bootstrap |
-| `spot_runtime` | Runtime lifecycle |
+Use **topic** when the publisher does not care who or how many receivers
+consume the message. Use **routed** when you need to talk to a specific
+SPOT handle or ROUTER and optionally expect a reply.
 
-Multipart publish uses the shared `multipart_send_txn` module to provide
-whole-message guarantees (all-or-nothing).
+Both paths can be active simultaneously on the same SPOT handle.
 
 ## 9. Peer Publish Batching
 
-SpotNode supports optional internal batching of small messages on the peer
-publish path (`mesh_pub`). When enabled, the sender accumulates small
-messages per topic into a single batch frame before sending to peers.
-The receiver unpacks the batch internally and delivers individual logical
-messages through the normal callback/recv path.
-
-This is a **transparent internal optimization** -- application-visible
-publish/subscribe/callback contracts are unchanged. The receiver sees the
-same logical messages in the same order.
+SpotNode supports optional batching of small topic messages on the
+cross-node path. When enabled, the sender accumulates small messages
+per topic into a single batch before sending to peers. The receiver
+unpacks batches internally — application-visible publish/subscribe
+contracts are unchanged.
 
 ### Enabling
 
-Batching is disabled by default. To enable, set the `PEER_BATCH_ENABLE`
-option on SpotNode before bind:
+Batching is disabled by default. Enable it on SpotNode before bind:
 
 ```c
 int enabled = 1;
@@ -582,62 +581,53 @@ zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
 
 **v1 constraint:** All SpotNodes in the mesh must be the same binary
 generation (homogeneous deployment). There is no runtime capability
-negotiation. Enabling batching in a mixed-version mesh may cause
-misinterpretation of batch frames.
+negotiation.
 
 ### Configuration
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `PEER_BATCH_ENABLE` | false | Enable peer batching (operator opt-in) |
-| `PEER_BATCH_DELAY_MS` | 20 | Max delay before topic bucket flush (ms) |
+| `PEER_BATCH_DELAY_MS` | 20 | Max delay before flush (ms) |
 | `PEER_BATCH_MAX_MESSAGES` | 32 | Max messages per bucket before flush |
 | `PEER_BATCH_MAX_BYTES` | 65536 | Max bytes per bucket before flush |
 | `PEER_BATCH_BYPASS_BYTES` | 65536 | Messages at or above this size bypass batching |
-| `PEER_UNBATCH_MAX_MESSAGES_PER_TURN` | 32 | Max messages to unbatch per I/O turn |
-| `PEER_UNBATCH_MAX_BYTES_PER_TURN` | 65536 | Max bytes to unbatch per I/O turn |
 
 ### Behavior
 
-- **Local fanout** is always immediate -- batching applies only to the peer path.
-- **Same-topic ordering** is preserved across batch, bypass, and flush paths.
-- **Oversized messages** (>= `BYPASS_BYTES`) are sent immediately. If a
-  pending bucket exists for the same topic, it is flushed first to maintain order.
-- **Flush triggers:** delay timeout, max messages, max bytes, or shutdown/drain.
+- **Local fanout** is always immediate — batching applies only to cross-node delivery
+- **Same-topic ordering** is preserved
+- **Oversized messages** (>= `BYPASS_BYTES`) are sent immediately
+- **Flush triggers:** delay timeout, max messages, max bytes, or shutdown
 
-### Wire Format
+> For internal wire format details, see [SPOT Internals](../internals/spot-internals.md).
 
-Batch frames use the original topic subject (no reserved internal subject).
-A batch frame consists of exactly 3 parts:
+## 10. Delivery Guarantees
 
-1. **Header** (12 bytes): magic `0x31544253` ("SBT1"), version, flags, header_size
-2. **Metadata** (16 bytes): message_count, total_payload_bytes, encoded_bytes, reserved
-3. **Body** (variable): concatenated encoded logical messages
+### Topic delivery
 
-The receiver validates magic, version, and header_size before treating a
-frame as a batch. Non-matching frames are processed as regular messages.
-
-## 10. Delivery Policy
-
-- Local publish (`spot`) distributes to local SPOT Subs + sends out via PUB (remote propagation)
-- Remote receive (SUB) distributes to local SPOT Subs only (no re-publishing)
-- No re-publishing prevents message loops and duplicates
-- `subscribe()` / `unsubscribe()` return means the local socket filter has been applied;
-  it does not guarantee cluster-wide propagation
+- Local publish delivers to local subscribers and propagates to remote nodes
+- Remote-received messages are delivered locally only (never re-propagated — prevents loops)
+- `subscribe()` / `unsubscribe()` return means the local filter is applied;
+  cluster-wide propagation is not guaranteed at return time
 - Message ordering is preserved within a single `spot` handle
 - Global ordering across different `spot` handles is not guaranteed
-- If both an exact topic and a pattern match the same message on the same subscriber,
+- Duplicate delivery is prevented: if both an exact topic and a pattern match,
   the message is delivered only once
 
-SPOT is a live messaging system. It does not guarantee durable delivery,
-ack/retry, exactly-once semantics, or past message replay for late joiners.
+### Routed delivery
 
-Routed delivery rules:
-- Routed messages follow the same node mesh transport as topic messages
-- Local inproc optimization is used when the destination is in the same process
-- Direct ROUTER-to-ROUTER transport is used for remote delivery
+- Destination in the same process uses an optimized local path
+- Cross-node delivery uses the same mesh transport as topic messages
 - Topic and routed message relative order is not guaranteed
-- Same node-pair message ordering is preserved (best effort)
+- Same node-pair ordering is preserved (best effort)
+
+### What SPOT does not guarantee
+
+SPOT is a live messaging system. It does not provide:
+- Durable delivery or message persistence
+- Ack/retry or exactly-once semantics
+- Past message replay for late joiners
 
 ## 11. Cleanup
 

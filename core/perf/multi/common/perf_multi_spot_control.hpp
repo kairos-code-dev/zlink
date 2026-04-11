@@ -105,7 +105,7 @@ inline bool apply_control_options(void *pub,
     if (zlink_set_option(pub, ZLINK_OPT_LINGER, &linger_ms,
                          sizeof(linger_ms))
           != 0
-        || zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm)) != 0
+        || !zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm))
         || zlink_set_option(pub, ZLINK_OPT_SNDTIMEO, &timeout_ms,
                             sizeof(timeout_ms))
              != 0
@@ -115,7 +115,7 @@ inline bool apply_control_options(void *pub,
         || zlink_set_option(sub, ZLINK_OPT_LINGER, &linger_ms,
                             sizeof(linger_ms))
              != 0
-        || zlink_set_option(sub, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm)) != 0
+        || !zlink_set_option(sub, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm))
         || zlink_set_option(sub, ZLINK_OPT_RCVTIMEO, &timeout_ms,
                             sizeof(timeout_ms))
              != 0) {
@@ -158,7 +158,7 @@ inline bool initialize_client_session(void *node,
     session->local_endpoint = local_endpoint;
     if (zlink_spot_node_connect_peer(node, server_endpoint.c_str())
              != 0
-        || zlink_set_subscription(session->sub, topic) != 0) {
+        || !zlink_set_subscription(session->sub, topic)) {
         destroy_client_session(session);
         return false;
     }
@@ -239,7 +239,7 @@ inline bool initialize_client_slot(ctx_guard_t &ctx,
     if (!apply_sub_options
         || !apply_sub_options(slot->handle, settings)
         || zlink_spot_node_connect_peer(slot->node, endpoint.c_str()) != 0
-        || zlink_set_subscription(slot->handle, topic) != 0) {
+        || !zlink_set_subscription(slot->handle, topic)) {
         perf_destroy_default_spot_handle(&slot->handle);
         zlink_spot_node_destroy(&slot->node);
         slot->handle = NULL;
@@ -328,7 +328,7 @@ inline bool initialize_server_session(ctx_guard_t &ctx,
         || !apply_server_options(session->pub, settings)
         || !apply_control_options(
              session->control_pub, session->control_sub, settings)
-        || zlink_set_subscription(session->control_sub, topic) != 0) {
+        || !zlink_set_subscription(session->control_sub, topic)) {
         destroy_server_session(session);
         return false;
     }

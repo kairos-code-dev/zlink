@@ -7,6 +7,8 @@
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/service_api_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
+#include "api/status_internal.hpp"
+#include "api/submit_result_internal.hpp"
 
 namespace reqrep = zlink::socket_reqrep_internal;
 
@@ -25,103 +27,124 @@ int validate_socket_type (void *socket_, int expected_type_)
 
     return 0;
 }
+
+int validate_request_send_flags (zlink_send_flags_t flags_)
+{
+    if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return 0;
+}
 }
 
-int zlink_dealer_request (void *dealer_,
-                          zlink_msg_t *parts_,
-                          size_t part_count_,
-                          uint32_t timeout_ms_,
-                          zlink_reply_handler_fn handler_,
-                          void *userdata_)
+zlink_submit_result_t zlink_dealer_request (void *dealer_,
+                                            zlink_msg_t *parts_,
+                                            size_t part_count_,
+                                            zlink_reply_handler_fn handler_,
+                                            void *userdata_,
+                                            zlink_send_flags_t flags_,
+                                            uint32_t timeout_ms_)
 {
     if (!handler_) {
         errno = EINVAL;
-        return -1;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
     if (reqrep::validate_request_parts (parts_, part_count_) != 0)
-        return -1;
+        return zlink::submit_result_internal::from_errno (errno);
+    if (validate_request_send_flags (flags_) != 0)
+        return zlink::submit_result_internal::from_errno (errno);
     if (validate_socket_type (dealer_, ZLINK_CORE_SOCKET_DEALER) != 0)
-        return -1;
+        return zlink::submit_result_internal::from_errno (errno);
 
-    return reqrep::start_request (as_socket_handle (dealer_), NULL, parts_,
-                                  part_count_, timeout_ms_, handler_, userdata_);
+    return zlink::submit_result_internal::from_rc (
+      reqrep::start_request (as_socket_handle (dealer_), NULL, parts_,
+                             part_count_, flags_, timeout_ms_, handler_,
+                             userdata_));
 }
 
-int zlink_router_request (void *router_,
-                          const zlink_routing_id_t *peer_rid_,
-                          zlink_msg_t *parts_,
-                          size_t part_count_,
-                          uint32_t timeout_ms_,
-                          zlink_reply_handler_fn handler_,
-                          void *userdata_)
+zlink_submit_result_t zlink_router_request (void *router_,
+                                            const zlink_routing_id_t *peer_rid_,
+                                            zlink_msg_t *parts_,
+                                            size_t part_count_,
+                                            zlink_reply_handler_fn handler_,
+                                            void *userdata_,
+                                            zlink_send_flags_t flags_,
+                                            uint32_t timeout_ms_)
 {
     if (!handler_ || !reqrep::has_valid_routing_id (peer_rid_)) {
         errno = EINVAL;
-        return -1;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
     if (reqrep::validate_request_parts (parts_, part_count_) != 0)
-        return -1;
+        return zlink::submit_result_internal::from_errno (errno);
+    if (validate_request_send_flags (flags_) != 0)
+        return zlink::submit_result_internal::from_errno (errno);
     if (validate_socket_type (router_, ZLINK_CORE_SOCKET_ROUTER) != 0)
-        return -1;
+        return zlink::submit_result_internal::from_errno (errno);
 
-    return reqrep::start_request (as_socket_handle (router_), peer_rid_, parts_,
-                                  part_count_, timeout_ms_, handler_, userdata_);
+    return zlink::submit_result_internal::from_rc (
+      reqrep::start_request (as_socket_handle (router_), peer_rid_, parts_,
+                             part_count_, flags_, timeout_ms_, handler_,
+                             userdata_));
 }
 
-int zlink_router_reply (void *router_,
-                        const zlink_routing_id_t *peer_rid_,
-                        uint64_t request_seq_,
-                        zlink_msg_t *parts_,
-                        size_t part_count_)
+zlink_submit_result_t zlink_router_reply (void *router_,
+                                          const zlink_routing_id_t *peer_rid_,
+                                          uint64_t request_seq_,
+                                          zlink_msg_t *parts_,
+                                          size_t part_count_)
 {
     if (!reqrep::has_valid_routing_id (peer_rid_) || request_seq_ == 0) {
         errno = EINVAL;
-        return -1;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
     if (reqrep::validate_request_parts (parts_, part_count_) != 0)
-        return -1;
+        return zlink::submit_result_internal::from_errno (errno);
     if (validate_socket_type (router_, ZLINK_CORE_SOCKET_ROUTER) != 0)
-        return -1;
+        return zlink::submit_result_internal::from_errno (errno);
 
     socket_handle_t handle = as_socket_handle (router_);
     if (!handle.socket)
-        return -1;
+        return zlink::submit_result_internal::from_errno (errno);
 
-    return reqrep::send_request_reply_message (
-      router_, peer_rid_, parts_, part_count_, zlink::request_reply::reply_type,
-      request_seq_);
+    return zlink::submit_result_internal::from_rc (
+      reqrep::send_request_reply_message (router_, peer_rid_, parts_,
+                                         part_count_, 0,
+                                         zlink::request_reply::reply_type,
+                                         request_seq_));
 }
 
-int zlink_router_handler (void *router_,
-                          zlink_router_handler_fn handler_,
-                          void *userdata_)
+bool zlink_router_handler (void *router_,
+                           zlink_router_handler_fn handler_,
+                           void *userdata_)
 {
     if (!handler_) {
         errno = EINVAL;
-        return -1;
+        return false;
     }
     if (validate_socket_type (router_, ZLINK_CORE_SOCKET_ROUTER) != 0)
-        return -1;
+        return false;
 
     socket_handle_t handle = as_socket_handle (router_);
     if (!handle.socket)
-        return -1;
+        return false;
 
     std::shared_ptr<reqrep::socket_request_reply_state_t> state =
       reqrep::find_or_create_request_reply_state (handle);
     if (reqrep::ensure_internal_dispatch_installed (state) != 0)
-        return -1;
+        return false;
 
     std::lock_guard<std::mutex> lock (state->mutex);
     if (state->router_handler) {
         errno = EBUSY;
-        return -1;
+        return false;
     }
 
     state->router_handler = handler_;
     state->router_handler_userdata = userdata_;
     errno = 0;
-    return 0;
+    return true;
 }
 
 int zlink_router_recv (void *router_,

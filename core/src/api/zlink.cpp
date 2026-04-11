@@ -34,6 +34,7 @@ struct iovec
 #include "api/poller_api_internal.hpp"
 #include "api/service_api_internal.hpp"
 #include "api/socket_api_internal.hpp"
+#include "api/status_internal.hpp"
 #include "api/zlink_testing.hpp"
 #include "utils/mutex.hpp"
 #include "utils/stdint.hpp"
@@ -60,8 +61,8 @@ typedef char
 //  Forward declarations for internal API functions
 int zlink_msg_init_buffer (zlink_msg_t *msg_, const void *buf_, size_t size_);
 int zlink_ctx_set_ext (void *ctx_, int option_, const void *optval_, size_t optvallen_);
-int zlink_set_subscription (void *handle_, const char *filter_);
-int zlink_unset_subscription (void *handle_, const char *filter_);
+bool zlink_set_subscription (void *handle_, const char *filter_);
+bool zlink_unset_subscription (void *handle_, const char *filter_);
 static void *create_socket_handle (void *ctx_, zlink_socket_type_t type_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
@@ -102,11 +103,11 @@ void *zlink_socket (void *ctx_, zlink_socket_type_t type_)
     return create_socket_handle (ctx_, type_);
 }
 
-int zlink_close (void *s_)
+bool zlink_close (void *s_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
-        return -1;
+        return false;
 
     monitor_handler_state_t *monitor_state =
       find_monitor_handler_state (handle.socket);
@@ -116,7 +117,7 @@ int zlink_close (void *s_)
         if (zlink::current_monitor_handler_state () == monitor_state) {
             monitor_state->close_requested.store (true,
                                                  std::memory_order_release);
-            return 0;
+            return true;
         }
 
         const bool monitor_dispatch_detached =
@@ -127,7 +128,7 @@ int zlink_close (void *s_)
                  > 0) {
             if (!monitor_dispatch_detached) {
                 errno = EBUSY;
-                return -1;
+                return false;
             }
         }
     }
@@ -146,13 +147,13 @@ int zlink_close (void *s_)
             if (zlink::socket_base_t::current_socket_msg_dispatch_socket ()
                 == handle.socket) {
                 errno = EBUSY;
-                return -1;
+                return false;
             }
             (void) handle.socket->socket_msg_dispatch_stop ();
         }
         if (handle.socket->stream_dispatch_in_callback ()) {
             errno = EBUSY;
-            return -1;
+            return false;
         }
 
         handle.socket->stop ();
@@ -161,14 +162,14 @@ int zlink_close (void *s_)
         zlink_socket_request_reply_cleanup (s_);
         zlink_spot_request_reply_cleanup_router (s_);
         const int rc = handle.socket->close ();
-        return rc;
+        return zlink::status_internal::from_rc (rc);
     }
 
     if (handle.socket->socket_msg_dispatch_active ()) {
         if (zlink::socket_base_t::current_socket_msg_dispatch_socket ()
             == handle.socket) {
             errno = EBUSY;
-            return -1;
+            return false;
         }
         (void) handle.socket->socket_msg_dispatch_stop ();
     }
@@ -177,7 +178,7 @@ int zlink_close (void *s_)
     zlink_socket_request_reply_cleanup (s_);
     zlink_spot_request_reply_cleanup_router (s_);
     const int rc = handle.socket->close ();
-    return rc;
+    return zlink::status_internal::from_rc (rc);
 }
 
 int zlink_poller_add (void *poller_,

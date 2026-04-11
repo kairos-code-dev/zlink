@@ -68,6 +68,20 @@ control part 여야 한다.
 
 ## 3. request-reply envelope
 
+### Handshake
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    C->>S: HELLO (greeting)
+    S->>C: HELLO (greeting)
+    C->>S: READY (metadata)
+    S->>C: READY (metadata)
+    Note over C,S: 데이터 교환 시작
+```
+
 request-reply 는 payload 앞에 4개 control part 를 붙인다.
 
 ```text
@@ -96,6 +110,23 @@ request-reply 는 payload 앞에 4개 control part 를 붙인다.
 - reply 는 request 에서 받은 `request_seq` 를 그대로 다시 보낸다.
 - `error reply` 는 첫 payload part 에 4바이트 Big Endian errno 를 넣는다.
 - ordinary payload 는 control part 뒤의 나머지 part 전체다.
+
+### Request-Reply 시퀀스 (DEALER → ROUTER)
+
+```mermaid
+sequenceDiagram
+    participant D as DEALER
+    participant R as ROUTER
+
+    D->>D: request_seq=N 할당
+    D->>D: envelope 생성 [0x01, 0x01, 0x01, seq=N]
+    D->>R: [envelope 4 parts] + [payload]
+    R->>R: envelope 파싱 → (peer_rid, request_seq=N, payload)
+    R->>R: router_handler 로 dispatch
+    R->>R: reply envelope 생성 [0x01, 0x01, 0x02, seq=N]
+    R->>D: [routing_id] + [envelope 4 parts] + [reply payload]
+    D->>D: pending[seq=N] 매칭 → reply_handler 호출
+```
 
 ## 4. SPOT routed envelope
 
@@ -139,6 +170,22 @@ SPOT 직접 전달은 payload 앞에 8개 control part 를 붙인다.
 
 빈 값도 part 를 생략하지 않고 길이 0 part 로 보낸다.
 
+### SPOT Routed 메시지 흐름
+
+```mermaid
+sequenceDiagram
+    participant SA as Spot A (Node 1)
+    participant DP1 as Data Plane (Node 1)
+    participant DP2 as Data Plane (Node 2)
+    participant SB as Spot B (Node 2)
+
+    SA->>DP1: spot_send_spot(dest_node, dest_spot, payload)
+    DP1->>DP1: SPOT envelope 생성 [0x02, 0x01, src, ..., dst, ...]
+    DP1->>DP2: [transport routing_id] + [8 control parts] + [payload]
+    DP2->>DP2: SPOT envelope 파싱 → 로컬 Spot B 식별
+    DP2->>SB: spot_handler 또는 spot_recv 큐로 전달
+```
+
 ## 5. SPOT routed + request-reply 조합
 
 SPOT request-reply 는 envelope 두 겹을 순서대로 붙인다.
@@ -157,6 +204,50 @@ SPOT request-reply 는 envelope 두 겹을 순서대로 붙인다.
 - 바깥 8개 part 가 목적지와 source 주소를 정한다.
 - 그 다음 4개 part 가 request/reply 종류와 `request_seq` 를 정한다.
 - payload 는 마지막부터 시작한다.
+
+### SPOT Request-Reply 시퀀스
+
+```mermaid
+sequenceDiagram
+    participant SA as Spot A
+    participant DP1 as Data Plane 1
+    participant DP2 as Data Plane 2
+    participant SB as Spot B
+
+    SA->>DP1: spot_request_spot(dest_node, dest_spot, payload, timeout)
+    DP1->>DP1: SPOT envelope (8) + RR envelope (4) 생성
+    DP1->>DP1: pending[key] 등록 + timeout 스케줄링
+    DP1->>DP2: [12 control parts] + [payload]
+    DP2->>DP2: SPOT envelope 파싱 → RR envelope 파싱
+    DP2->>SB: spot_handler(source_rid, spot_rid, request_seq, payload)
+    SB->>DP2: spot_reply_spot(source_rid, spot_rid, request_seq, reply)
+    DP2->>DP2: SPOT envelope (8) + RR reply envelope (4) 생성
+    DP2->>DP1: [12 control parts] + [reply payload]
+    DP1->>DP1: pending[key] 매칭 → timeout 취소
+    DP1->>SA: reply_handler(0, reply_parts)
+```
+
+### Timeout 시퀀스
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant API as API Layer
+    participant Sched as Timeout Scheduler
+
+    App->>API: spot_request_spot(..., timeout_ms, handler)
+    API->>Sched: schedule(deadline, on_timeout)
+    API->>API: pending[key] 등록
+
+    alt Reply 가 timeout 전에 도착
+        API->>Sched: cancel(task)
+        API->>App: reply_handler(0, parts)
+    else Timeout 이 먼저 발생
+        Sched->>API: on_timeout(key)
+        API->>API: pending[key] 삭제
+        API->>App: reply_handler(ETIMEDOUT, NULL)
+    end
+```
 
 ## 6. encode / decode 흐름
 

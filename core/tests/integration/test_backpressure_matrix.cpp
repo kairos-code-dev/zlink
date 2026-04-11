@@ -338,7 +338,7 @@ static zlink_msg_t make_payload_part ()
     return part;
 }
 
-static int classify_nonblocking_send_errno (zlink_send_result_t *result_out_)
+static int classify_nonblocking_send_errno (zlink_submit_result_t *result_out_)
 {
     if (!result_out_) {
         errno = EFAULT;
@@ -347,11 +347,11 @@ static int classify_nonblocking_send_errno (zlink_send_result_t *result_out_)
 
     switch (errno) {
     case EAGAIN:
-        *result_out_ = ZLINK_SEND_RESULT_BACKPRESSURED;
+        *result_out_ = ZLINK_SUBMIT_BACKPRESSURED;
         return 0;
     case ENOTCONN:
     case EHOSTUNREACH:
-        *result_out_ = ZLINK_SEND_RESULT_NOT_READY;
+        *result_out_ = ZLINK_SUBMIT_NOT_CONNECTED;
         return 0;
     default:
         return -1;
@@ -360,25 +360,25 @@ static int classify_nonblocking_send_errno (zlink_send_result_t *result_out_)
 
 static int try_send_raw_part (void *sender_,
                               const zlink_routing_id_t *target_rid_,
-                              zlink_send_result_t *result_out_)
+                              zlink_submit_result_t *result_out_)
 {
     zlink_msg_t part = make_payload_part ();
     const int rc = target_rid_
       ? zlink_send_rid (sender_, target_rid_, &part, 1, ZLINK_DONTWAIT)
       : zlink_send (sender_, &part, 1, ZLINK_DONTWAIT);
     if (rc == 0) {
-        *result_out_ = ZLINK_SEND_RESULT_SENT;
+        *result_out_ = ZLINK_SUBMIT_OK;
         return 0;
     }
     return classify_nonblocking_send_errno (result_out_);
 }
 
-static int try_publish_part (void *subject_, zlink_send_result_t *result_out_)
+static int try_publish_part (void *subject_, zlink_submit_result_t *result_out_)
 {
     zlink_msg_t part = make_payload_part ();
     const int rc = zlink_publish (subject_, kTopic, &part, 1, ZLINK_DONTWAIT);
     if (rc == 0) {
-        *result_out_ = ZLINK_SEND_RESULT_SENT;
+        *result_out_ = ZLINK_SUBMIT_OK;
         return 0;
     }
     return classify_nonblocking_send_errno (result_out_);
@@ -419,14 +419,14 @@ static size_t measure_send_window_raw (void *sender_,
         *backpressured_out_ = false;
 
     for (size_t i = 0; i < attempt_limit_; ++i) {
-        zlink_send_result_t result = ZLINK_SEND_RESULT_NOT_READY;
+        zlink_submit_result_t result = ZLINK_SUBMIT_NOT_CONNECTED;
         TEST_ASSERT_SUCCESS_ERRNO (
           try_send_raw_part (sender_, target_rid_, &result));
-        if (result == ZLINK_SEND_RESULT_SENT) {
+        if (result == ZLINK_SUBMIT_OK) {
             ++sent;
             continue;
         }
-        TEST_ASSERT_EQUAL_INT (ZLINK_SEND_RESULT_BACKPRESSURED, result);
+        TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED, result);
         if (backpressured_out_)
             *backpressured_out_ = true;
         break;
@@ -444,13 +444,13 @@ static size_t measure_send_window_pubsub (void *pub_,
         *backpressured_out_ = false;
 
     for (size_t i = 0; i < attempt_limit_; ++i) {
-        zlink_send_result_t result = ZLINK_SEND_RESULT_NOT_READY;
+        zlink_submit_result_t result = ZLINK_SUBMIT_NOT_CONNECTED;
         TEST_ASSERT_SUCCESS_ERRNO (try_publish_part (pub_, &result));
-        if (result == ZLINK_SEND_RESULT_SENT) {
+        if (result == ZLINK_SUBMIT_OK) {
             ++sent;
             continue;
         }
-        TEST_ASSERT_EQUAL_INT (ZLINK_SEND_RESULT_BACKPRESSURED, result);
+        TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED, result);
         if (backpressured_out_)
             *backpressured_out_ = true;
         break;

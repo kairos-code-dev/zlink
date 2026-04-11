@@ -73,6 +73,24 @@ int test_assert_success_message_errno_helper (int rc_,
     return rc_;
 }
 
+int test_assert_success_message_errno_helper (zlink_submit_result_t rc_,
+                                              const char *msg_,
+                                              const char *expr_,
+                                              int line_)
+{
+    if (rc_ != ZLINK_SUBMIT_OK) {
+        char buffer[512];
+        buffer[sizeof (buffer) - 1] = 0;
+        snprintf (buffer, sizeof (buffer) - 1,
+                  "%s failed%s%s%s, submit = %i, errno = %i (%s)", expr_,
+                  msg_ ? " (additional info: " : "", msg_ ? msg_ : "",
+                  msg_ ? ")" : "", static_cast<int> (rc_), zlink_errno (),
+                  zlink_strerror (zlink_errno ()));
+        UNITY_TEST_FAIL (line_, buffer);
+    }
+    return static_cast<int> (rc_);
+}
+
 int test_assert_success_message_raw_errno_helper (
   int rc_, const char *msg_, const char *expr_, int line_, bool zero)
 {
@@ -134,6 +152,41 @@ int test_assert_failure_message_raw_errno_helper (
         }
     }
     return rc_;
+}
+
+int test_assert_failure_message_raw_errno_helper (
+  zlink_submit_result_t rc_,
+  int expected_errno_,
+  const char *msg_,
+  const char *expr_,
+  int line_)
+{
+    char buffer[512];
+    buffer[sizeof (buffer) - 1] = 0;
+    if (rc_ == ZLINK_SUBMIT_OK) {
+        snprintf (buffer, sizeof (buffer) - 1,
+                  "%s was unexpectedly successful%s%s%s, expected errno = %i, "
+                  "actual submit result = %i",
+                  expr_, msg_ ? " (additional info: " : "", msg_ ? msg_ : "",
+                  msg_ ? ")" : "", expected_errno_, static_cast<int> (rc_));
+        UNITY_TEST_FAIL (line_, buffer);
+    } else {
+#if defined ZLINK_HAVE_WINDOWS
+        int current_errno = WSAGetLastError ();
+#else
+        int current_errno = errno;
+#endif
+        if (current_errno != expected_errno_) {
+            snprintf (buffer, sizeof (buffer) - 1,
+                      "%s failed with an unexpected error%s%s%s, expected "
+                      "errno = %i, actual errno = %i",
+                      expr_, msg_ ? " (additional info: " : "",
+                      msg_ ? msg_ : "", msg_ ? ")" : "", expected_errno_,
+                      current_errno);
+            UNITY_TEST_FAIL (line_, buffer);
+        }
+    }
+    return static_cast<int> (rc_);
 }
 
 void send_string_expect_success (void *socket_, const char *str_, int flags_)

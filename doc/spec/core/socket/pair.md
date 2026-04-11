@@ -12,7 +12,7 @@ options.
 Send a multipart message on a socket.
 
 ```c
-int zlink_send (void *s_,
+zlink_submit_result_t zlink_send (void *s_,
                 zlink_msg_t *parts_,
                 size_t part_count_,
                 zlink_send_flags_t flags_);
@@ -24,7 +24,9 @@ array is transferred to the library and the caller must not access them
 afterwards. On failure, ownership remains with the caller. The `flags_`
 parameter may be 0 or `ZLINK_DONTWAIT`.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
+`zlink_submit_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was set.
 `ETERM` if the context was terminated.
@@ -35,18 +37,20 @@ parameter may be 0 or `ZLINK_DONTWAIT`.
 
 ### Non-blocking send
 
-Non-blocking send that reports the result via an output parameter.
+Non-blocking send using the same `zlink_send` entry point with
+`ZLINK_DONTWAIT`.
 
 ```c
-int zlink_send (void *s_,
+zlink_submit_result_t zlink_send (void *s_,
                 zlink_msg_t *parts_,
                 size_t part_count_,
                 zlink_send_flags_t flags_);
 ```
 
-Use `zlink_send(..., ZLINK_DONTWAIT)` for non-blocking send. Bindings may
-convert `EAGAIN` to `ZLINK_SEND_RESULT_BACKPRESSURED` and `ENOTCONN` or
-`EHOSTUNREACH` to `ZLINK_SEND_RESULT_NOT_READY`.
+Use `zlink_send(..., ZLINK_DONTWAIT)` for non-blocking send. The function
+returns `zlink_submit_result_t`. `ZLINK_SUBMIT_BACKPRESSURED` corresponds
+to internal `EAGAIN`, and `ZLINK_SUBMIT_NOT_CONNECTED` corresponds to
+internal `ENOTCONN` or `EHOSTUNREACH`.
 
 On success, ownership of all parts is transferred to the library. On
 failure, ownership remains with the caller.

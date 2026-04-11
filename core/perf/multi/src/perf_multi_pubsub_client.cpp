@@ -265,7 +265,7 @@ inline bool create_client_sockets (
 
         apply_benchmark_socket_options (sock, settings.hwm, transport);
         static const char k_subscribe_all[] = "";
-        if (zlink_set_subscription (sock, k_subscribe_all) != 0
+        if (!zlink_set_subscription (sock, k_subscribe_all)
             || !setup_tls_client (sock, transport)) {
             if (bench_debug_enabled ()) {
                 std::cerr << "[multi-pubsub-client] subscribe/tls failed slot="
@@ -275,7 +275,7 @@ inline bool create_client_sockets (
             return false;
         }
 
-        if (zlink_connect (sock, endpoint.c_str ()) != 0) {
+        if (!zlink_connect (sock, endpoint.c_str ())) {
             if (bench_debug_enabled ()) {
                 std::cerr << "[multi-pubsub-client] connect failed slot=" << i
                           << " endpoint=" << endpoint

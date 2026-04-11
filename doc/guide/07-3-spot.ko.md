@@ -93,6 +93,9 @@ flowchart LR
 - 로컬 publish만 mesh로 나가고, 원격 수신은 재발행하지 않는다 (루프 방지)
 - Discovery 연결 시 이 mesh 토폴로지가 자동 구성된다
 
+> 내부 소켓 배선과 데이터 플레인 상세는
+> [SPOT 내부 구조](../internals/spot-internals.ko.md)를 참고.
+
 **예시:** 노드 1이 토픽 `price.USD.JPY`를 publish한다. 노드 2에는 `price.*` 구독자가 있다.
 
 1. 노드 1의 SpotPub이 로컬 SPOT worker에게 메시지를 전송한다.
@@ -127,6 +130,9 @@ zlink_spot_node_attach_discovery(node, discovery);
 
 **주의:** `attach_discovery()`는 bind 이후에 호출하는 것을 권장한다.
 Discovery가 attach되면 Registry를 통해 자동으로 peer를 발견하고 연결한다.
+
+> Discovery가 mesh를 구성하는 방식은
+> [Discovery 내부 구조](../internals/discovery-internals.ko.md)를 참고.
 
 **임시 포트:** `zlink_spot_node_bind()`는 포트 0을 지원하여 OS가 포트를
 자동 할당한다. `zlink_spot_node_status_snapshot()`의 `local_endpoint`로
@@ -281,6 +287,9 @@ thread에서 처리하는 편이 안전하다.
 
 Routed 메시징은 토픽 매칭을 거치지 않고 주소로 특정 SPOT handle 또는 ROUTER
 소켓에 직접 메시지를 전달한다. 토픽 pub/sub 경로와 별개다.
+
+> SPOT routed envelope wire 형식은
+> [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
 
 ### 주소 모델
 
@@ -645,40 +654,31 @@ zlink_timer_handler(spot_timer, on_fire, NULL);
 - 대소문자 구분
 - 예: `chat:*` → `chat:room1:message`, `chat:room2:join` 모두 매칭
 
-## 8. 내부 모듈 구조
+## 8. 토픽 vs Routed 선택 기준
 
-SPOT의 내부 구현은 데이터 플레인과 컨트롤 플레인(control plane, 제어 및 관리 경로)이 분리된 모듈 구조를 가진다.
-공개 C API는 변경 없이 유지되며, 내부 변경이 좁은 범위에서 이루어진다.
+| 기준 | 토픽 (pub/sub) | Routed (직접) |
+|------|---------------|--------------|
+| **수신 대상** | 매칭되는 모든 구독자 | 특정 대상 1개 |
+| **주소 지정** | 토픽 문자열 (접두어 매칭) | node_rid + spot_rid (또는 peer_rid) |
+| **전달 방식** | N개 수신자에게 fan-out | 점대점 (point-to-point) |
+| **Request-reply** | 지원하지 않음 | 지원 (request_seq) |
+| **사용 시점** | 시세 데이터, 이벤트, 알림 | 명령, 조회, RPC |
 
-| 모듈 | 역할 |
-|------|------|
-| `spot_node_access` · `spot_subject_access` | API 계층과의 접합 지점(seam) |
-| `spot_handle` | 공개 handle 구조체 |
-| `spot_node` | SpotNode 오케스트레이션(조정 및 생명주기 관리), 디스커버리 연동 |
-| `spot_pub` | publish 경로 |
-| `spot_sub` | subscribe 경로 (option · recv 분리) |
-| `spot_data_plane` | 데이터 플레인 코어 |
-| `spot_data_plane_forwarding` | ingress/egress 메시지 포워딩 |
-| `spot_data_plane_protocol` | 제어 메시지, 구독 업데이트, 부트스트랩(bootstrap, 초기 연결) |
-| `spot_runtime` | runtime lifecycle |
+publisher가 누가 또는 몇 명이 수신하는지 상관없으면 **토픽**을 사용한다.
+특정 SPOT handle 또는 ROUTER에 말을 걸고 응답을 기대하면 **routed**를 사용한다.
 
-멀티파트 publish는 공통 `multipart_send_txn` 모듈을 사용하여
-whole-message 보장(전체 성공 또는 전체 실패)을 제공한다.
+두 경로는 같은 SPOT handle에서 동시에 사용할 수 있다.
 
 ## 9. Peer Publish Batching
 
-SpotNode는 peer publish 경로(`mesh_pub`)에서 작은 메시지를 topic별로
-모아 하나의 batch frame으로 보내는 내부 최적화를 지원한다.
-receiver는 batch를 내부적으로 풀어서 기존과 동일한 logical message를
-callback/recv 경로로 전달한다.
-
-이것은 **투명한 내부 최적화**이다. application이 보는 publish/subscribe/callback
-계약은 변경되지 않는다. receiver는 동일한 logical message를 동일한 순서로 받는다.
+SpotNode는 노드 간 토픽 메시지 전달 경로에서 작은 메시지를 topic별로
+모아 하나의 batch로 보내는 선택적 최적화를 지원한다.
+receiver는 batch를 내부적으로 풀어서 application이 보는
+publish/subscribe 계약은 변경되지 않는다.
 
 ### 활성화
 
-batching은 기본값 disabled이다. SpotNode의 `PEER_BATCH_ENABLE` 옵션으로
-활성화한다:
+batching은 기본값 disabled이다. SpotNode의 bind 전에 활성화한다:
 
 ```c
 int enabled = 1;
@@ -688,60 +688,51 @@ zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
 
 **v1 제약:** mesh에 참여하는 모든 SpotNode가 동일 세대 binary여야 한다
 (homogeneous deployment). runtime capability negotiation은 없다.
-mixed-version mesh에서 활성화하면 batch frame을 일반 메시지로 오해석할 수 있다.
 
 ### 설정
 
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
 | `PEER_BATCH_ENABLE` | false | peer batching 활성화 (운영자 opt-in) |
-| `PEER_BATCH_DELAY_MS` | 20 | topic bucket flush 최대 지연 (ms) |
+| `PEER_BATCH_DELAY_MS` | 20 | flush 최대 지연 (ms) |
 | `PEER_BATCH_MAX_MESSAGES` | 32 | bucket당 최대 메시지 수 |
 | `PEER_BATCH_MAX_BYTES` | 65536 | bucket당 최대 바이트 |
 | `PEER_BATCH_BYPASS_BYTES` | 65536 | 이 크기 이상 메시지는 즉시 전송 |
-| `PEER_UNBATCH_MAX_MESSAGES_PER_TURN` | 32 | I/O turn당 unbatch 최대 메시지 수 |
-| `PEER_UNBATCH_MAX_BYTES_PER_TURN` | 65536 | I/O turn당 unbatch 최대 바이트 |
 
 ### 동작
 
-- **로컬 fanout**은 항상 즉시 전달된다. batching은 peer 경로에만 적용된다.
-- **같은 topic 내 순서**는 batch, bypass, flush 모든 경로에서 보존된다.
-- **대형 메시지** (>= `BYPASS_BYTES`)는 즉시 전송된다. 같은 topic에
-  pending bucket이 있으면 순서 유지를 위해 먼저 flush한다.
-- **Flush 조건:** delay timeout, max messages, max bytes, shutdown/drain.
+- **로컬 fanout**은 항상 즉시 전달 — batching은 노드 간 전달에만 적용
+- **같은 topic 내 순서**는 보존
+- **대형 메시지** (>= `BYPASS_BYTES`)는 즉시 전송
+- **Flush 조건:** delay timeout, max messages, max bytes, shutdown
 
-### Wire 형식
+> 내부 wire 형식 상세는 [SPOT 내부 구조](../internals/spot-internals.ko.md)를 참고.
 
-batch frame은 원래 topic subject를 그대로 사용한다 (reserved internal subject 없음).
-batch frame은 정확히 3개의 part로 구성된다:
+## 10. 전달 보장
 
-1. **Header** (12바이트): magic `0x31544253` ("SBT1"), version, flags, header_size
-2. **Metadata** (16바이트): message_count, total_payload_bytes, encoded_bytes, reserved
-3. **Body** (가변): 연결된 encoded logical message stream
+### 토픽 전달
 
-receiver는 magic, version, header_size를 검증한 후에만 batch로 처리한다.
-매칭되지 않는 frame은 일반 메시지로 처리된다.
-
-## 10. 전달 정책
-
-- 로컬 publish (`spot`) → 로컬 SPOT Sub 분배 + PUB 송출 (원격 전파)
-- 원격 수신 (SUB) → 로컬 SPOT Sub 분배만 (재발행 없음)
-- 재발행 없음으로 메시지 루프/중복 방지
-- `subscribe()` / `unsubscribe()` 반환은 local socket filter 적용 의미이며,
-  클러스터 전체 전파 완료를 보장하지 않는다
+- 로컬 publish는 로컬 subscriber에게 전달하고 원격 노드로 전파한다
+- 원격에서 수신한 메시지는 로컬에서만 전달한다 (재전파하지 않음 — 루프 방지)
+- `subscribe()` / `unsubscribe()` 반환은 로컬 필터 적용 의미이며,
+  클러스터 전체 전파 완료를 반환 시점에 보장하지 않는다
 - 같은 `spot` handle에서 연속 publish된 메시지의 순서는 보존된다
 - 서로 다른 `spot` handle 사이의 전역 순서는 보장하지 않는다
-- 동일 subscriber에 exact topic + pattern이 둘 다 매칭되더라도 메시지는 1회만 전달된다
+- exact topic과 pattern이 둘 다 매칭되더라도 메시지는 1회만 전달된다
 
-SPOT은 live 메시징 시스템이며, durable delivery, ack/retry, exactly-once,
-late join에 대한 과거 메시지 재전송은 보장하지 않는다.
+### Routed 전달
 
-Routed 전달 규칙:
-- Routed 메시지는 토픽 메시지와 동일한 노드 mesh transport를 사용한다
-- 대상이 같은 프로세스에 있으면 로컬 inproc 최적화를 사용한다
-- 원격 전달은 ROUTER-to-ROUTER 직접 transport를 사용한다
+- 같은 프로세스 내 대상은 최적화된 로컬 경로를 사용한다
+- 노드 간 전달은 토픽 메시지와 동일한 mesh transport를 사용한다
 - 토픽과 routed 메시지 간 상대적 순서는 보장하지 않는다
-- 같은 노드 쌍 간 메시지 순서는 보존한다 (best effort)
+- 같은 노드 쌍 간 순서는 보존한다 (best effort)
+
+### SPOT이 보장하지 않는 것
+
+SPOT은 live 메시징 시스템이며, 다음은 제공하지 않는다:
+- Durable delivery 또는 메시지 영속화
+- Ack/retry 또는 exactly-once
+- Late joiner에 대한 과거 메시지 재전송
 
 ## 11. 정리
 

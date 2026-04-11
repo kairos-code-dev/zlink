@@ -49,8 +49,9 @@ inline int test_stream_send_bytes (void *s_,
     if (size_ > 0 && data_)
         memcpy (zlink_msg_data (&msg), data_, size_);
 
-    const int rc = ::zlink_send_rid (s_, rid_, &msg, 1, flags_ & ZLINK_DONTWAIT);
-    if (rc != 0) {
+    const zlink_submit_result_t rc =
+      ::zlink_send_rid (s_, rid_, &msg, 1, flags_ & ZLINK_DONTWAIT);
+    if (rc != ZLINK_SUBMIT_OK) {
         const int err = errno;
         zlink_msg_close (&msg);
         errno = err;
@@ -71,8 +72,9 @@ inline int test_stream_send_single_msg (void *s_,
         return -1;
     }
     const size_t size = zlink_msg_size (msg_);
-    const int rc = ::zlink_send_rid (s_, rid_, msg_, 1, flags_ & ZLINK_DONTWAIT);
-    if (rc != 0)
+    const zlink_submit_result_t rc =
+      ::zlink_send_rid (s_, rid_, msg_, 1, flags_ & ZLINK_DONTWAIT);
+    if (rc != ZLINK_SUBMIT_OK)
         return -1;
     errno = 0;
     return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size
@@ -92,17 +94,24 @@ inline int zlink_send (void *s_,
 
     int type = 0;
     size_t type_size = sizeof (type);
-    int rc = 0;
-    if (zlink_get_option (s_, ZLINK_OPT_TYPE, &type, &type_size) == 0)
-        rc = zlink::send_msg_internal (s_, &msg, flags_);
-    else
-        rc = ::zlink_send (s_, &msg, 1, flags_ & ZLINK_DONTWAIT);
-
-    if (rc < 0) {
-        const int err = errno;
-        zlink_msg_close (&msg);
-        errno = err;
-        return -1;
+    if (zlink_get_option (s_, ZLINK_OPT_TYPE, &type, &type_size))
+    {
+        const int rc = zlink::send_msg_internal (s_, &msg, flags_);
+        if (rc != 0) {
+            const int err = errno;
+            zlink_msg_close (&msg);
+            errno = err;
+            return -1;
+        }
+    } else {
+        const zlink_submit_result_t rc =
+          ::zlink_send (s_, &msg, 1, flags_ & ZLINK_DONTWAIT);
+        if (rc != ZLINK_SUBMIT_OK) {
+            const int err = errno;
+            zlink_msg_close (&msg);
+            errno = err;
+            return -1;
+        }
     }
     return static_cast<int> (len_);
 }
@@ -114,7 +123,7 @@ inline int zlink_recv (void *s_,
 {
     int type = 0;
     size_t type_size = sizeof (type);
-    if (zlink_get_option (s_, ZLINK_OPT_TYPE, &type, &type_size) == 0)
+    if (zlink_get_option (s_, ZLINK_OPT_TYPE, &type, &type_size))
         return zlink::recv_buffer_internal (s_, buf_, len_, flags_);
 
     zlink_msg_t *parts = NULL;
@@ -170,6 +179,11 @@ int test_assert_success_message_errno_helper (int rc_,
                                               const char *expr_,
                                               int line);
 
+int test_assert_success_message_errno_helper (zlink_submit_result_t rc_,
+                                              const char *msg_,
+                                              const char *expr_,
+                                              int line);
+
 int test_assert_success_message_raw_errno_helper (
   int rc_, const char *msg_, const char *expr_, int line, bool zero_ = false);
 
@@ -181,15 +195,23 @@ int test_assert_success_message_raw_zero_errno_helper (int rc_,
 int test_assert_failure_message_raw_errno_helper (
   int rc_, int expected_errno_, const char *msg_, const char *expr_, int line);
 
+int test_assert_failure_message_raw_errno_helper (
+  zlink_submit_result_t rc_,
+  int expected_errno_,
+  const char *msg_,
+  const char *expr_,
+  int line);
+
 /////////////////////////////////////////////////////////////////////////////
 // Macros extending Unity's TEST_ASSERT_* macros in a similar fashion.
 /////////////////////////////////////////////////////////////////////////////
 
 // For TEST_ASSERT_SUCCESS_ERRNO, TEST_ASSERT_SUCCESS_MESSAGE_ERRNO and
 // TEST_ASSERT_FAILURE_ERRNO, 'expr' must be an expression evaluating
-// to a result in the style of a libzlink API function, i.e. an integer which
-// is non-negative in case of success, and -1 in case of a failure, and sets
-// the value returned by zlink_errno () to the error code.
+// to a result in the style of a libzlink API function. Most public APIs use
+// integer success/failure. Submit APIs may also return zlink_submit_result_t,
+// where success is ZLINK_SUBMIT_OK and failure details remain available
+// through zlink_errno ().
 // TEST_ASSERT_SUCCESS_RAW_ERRNO and TEST_ASSERT_FAILURE_RAW_ERRNO are similar,
 // but used with the native socket API functions, and expect that the error
 // code can be retrieved in the native way (i.e. WSAGetLastError on Windows,

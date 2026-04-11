@@ -116,13 +116,15 @@ int publish_text (spot_publish_fn_t publish_fn_,
         return -1;
     if (size > 0)
         memcpy (zlink_msg_data (&part), payload_, size);
-    const int rc = publish_fn_ (handle_, topic_id_, &part, 1, flags_);
-    if (rc != 0) {
+    const zlink_submit_result_t rc =
+      publish_fn_ (handle_, topic_id_, &part, 1, flags_);
+    if (rc != ZLINK_SUBMIT_OK) {
         const int err = errno;
         zlink_msg_close (&part);
         errno = err;
+        return -1;
     }
-    return rc;
+    return 0;
 }
 
 void *create_spot_pub_handle (void *node_)
@@ -174,7 +176,7 @@ void *create_spot_sub_handle (void *node_, zlink_subscribe_handler_fn handler_)
     }
 
     if (handler_
-        && zlink_subscribe_handler (spot_sub, handler_, handler_userdata) != 0) {
+        && !zlink_subscribe_handler (spot_sub, handler_, handler_userdata)) {
         const int err = errno;
         if (probe)
             remove_queued_spot_probe (spot_sub, false);

@@ -4,6 +4,19 @@ English | [한국어](README.ko.md)
 
 > zlink project documentation navigation
 
+## Directory Purpose
+
+| Directory | Audience | Purpose |
+|-----------|----------|---------|
+| `spec/` | Binding developers, API reviewers | **Public API contract** — function signatures, return values, error codes, ownership rules. Source of truth: `core/include/zlink.h` |
+| `guide/` | Application developers (library users) | **Intent, purpose, usage** — why the API exists, when to use which pattern, practical examples. No internal implementation details |
+| `internals/` | Core library maintainers | **Internal architecture** — socket wiring, data flow, thread model, protocol encoding. Diagram-heavy for understanding before reading code |
+| `building/` | Build/release engineers | Build, test, packaging instructions |
+| `plan/` | Project contributors | Feature roadmap, working specs, migration plans |
+
+**Key rule**: guide does not explain internals. If a guide topic needs
+internal context, link to the internals document instead.
+
 ---
 
 ## Paths by Audience
@@ -39,7 +52,7 @@ English | [한국어](README.ko.md)
 |----------|-------------|
 | [07-0-services.md](guide/07-0-services.md) | Service layer overview |
 | [07-1-discovery.md](guide/07-1-discovery.md) | Service Discovery infrastructure |
-| [07-3-spot.md](guide/07-3-spot.md) | SPOT topic PUB/SUB (location-transparent publish/subscribe) |
+| [07-3-spot.md](guide/07-3-spot.md) | SPOT (location-transparent messaging: topic pub/sub + routed direct delivery) |
 
 ### Reference
 | Document | Description |
@@ -78,7 +91,10 @@ English | [한국어](README.ko.md)
 | [stream-socket.md](internals/stream-socket.md) | STREAM socket internals, WS/WSS optimization, runtime defaults |
 | [socket-option-defaults.md](internals/socket-option-defaults.md) | Effective socket option defaults from code |
 | [threading-model.md](internals/threading-model.md) | Threading and concurrency model |
-| [services-internals.md](internals/services-internals.md) | Service layer internal design |
+| [services-internals.md](internals/services-internals.md) | Service layer internal design (overview) |
+| [spot-internals.md](internals/spot-internals.md) | SPOT/SpotNode internal socket wiring and data flow |
+| [discovery-internals.md](internals/discovery-internals.md) | Discovery service internal architecture |
+| [registry-internals.md](internals/registry-internals.md) | Registry service internal architecture |
 | [design-decisions.md](internals/design-decisions.md) | Design decision records |
 
 ## Build and Development (building/)

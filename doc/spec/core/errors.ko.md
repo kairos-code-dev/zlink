@@ -8,6 +8,10 @@
 에러 코드는 POSIX `errno` 규칙을 따르며, zlink는 `ZLINK_HAUSNUMERO`를 기반으로
 자체 코드를 추가 정의합니다.
 
+공개 확장 errno 정의는 `core/include/zlink_errno.h`에 있습니다.
+`core/include/zlink.h`는 이 헤더를 포함해서 같은 공개 오류 표면을 다시
+노출합니다.
+
 ## 에러 코드 상수
 
 zlink는 시스템 정의 `errno` 코드와의 충돌을 방지하기 위해 높은 기본값을
@@ -62,7 +66,7 @@ zlink가 `ZLINK_HAUSNUMERO`를 기준으로 해당 코드를 정의합니다. PO
 ```c
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 28
+#define ZLINK_VERSION_PATCH 29
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) \
     ((major) * 10000 + (minor) * 100 + (patch))

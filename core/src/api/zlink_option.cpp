@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
+#include "api/status_internal.hpp"
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
 #include "api/zlink_option_internal.hpp"
@@ -254,14 +255,14 @@ int get_socket_option_checked (zlink::socket_base_t *socket_,
     return socket_->getsockopt (option_, optval_, optvallen_);
 }
 
-int zlink_set_option (void *handle_,
-                      zlink_option_t option_,
-                      const void *optval_,
-                      size_t optvallen_)
+bool zlink_set_option (void *handle_,
+                       zlink_option_t option_,
+                       const void *optval_,
+                       size_t optvallen_)
 {
     if (!handle_) {
         errno = EFAULT;
-        return -1;
+        return false;
     }
 
     int socket_option = 0;
@@ -270,35 +271,36 @@ int zlink_set_option (void *handle_,
     else {
         socket_option = map_common_option (option_);
         if (socket_option < 0)
-            return -1;
+            return false;
     }
     if (option_ == ZLINK_OPT_LAST_ENDPOINT || option_ == ZLINK_OPT_FD
         || option_ == ZLINK_OPT_EVENTS || option_ == ZLINK_OPT_TYPE) {
         errno = EINVAL;
-        return -1;
+        return false;
     }
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE) {
             errno = EINVAL;
-            return -1;
+            return false;
         }
-        return socket->setsockopt (socket_option, optval_, optvallen_);
+        return zlink::status_internal::from_rc (
+          socket->setsockopt (socket_option, optval_, optvallen_));
     }
     errno = 0;
 
-    return zlink_service_set_common_option (handle_, option_, socket_option,
-                                            optval_, optvallen_);
+    return zlink::status_internal::from_rc (zlink_service_set_common_option (
+      handle_, option_, socket_option, optval_, optvallen_));
 }
 
-int zlink_get_option (void *handle_,
-                      zlink_option_t option_,
-                      void *optval_,
-                      size_t *optvallen_)
+bool zlink_get_option (void *handle_,
+                       zlink_option_t option_,
+                       void *optval_,
+                       size_t *optvallen_)
 {
     if (!handle_) {
         errno = EFAULT;
-        return -1;
+        return false;
     }
 
     int socket_option = 0;
@@ -307,42 +309,45 @@ int zlink_get_option (void *handle_,
     else {
         socket_option = map_common_option (option_);
         if (socket_option < 0)
-            return -1;
+            return false;
     }
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE) {
             errno = EINVAL;
-            return -1;
+            return false;
         }
-        return socket->getsockopt (socket_option, optval_, optvallen_);
+        return zlink::status_internal::from_rc (
+          socket->getsockopt (socket_option, optval_, optvallen_));
     }
     errno = 0;
 
-    return zlink_service_get_common_option (handle_, option_, socket_option,
-                                            optval_, optvallen_);
+    return zlink::status_internal::from_rc (zlink_service_get_common_option (
+      handle_, option_, socket_option, optval_, optvallen_));
 }
 
-int zlink_set_routing_id (void *handle_, const void *data_, size_t size_)
+bool zlink_set_routing_id (void *handle_, const void *data_, size_t size_)
 {
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         const int type = socket_type_of (socket);
         if (type == ZLINK_CORE_SOCKET_STREAM) {
             errno = EINVAL;
-            return -1;
+            return false;
         }
-        return socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, data_, size_);
+        return zlink::status_internal::from_rc (
+          socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, data_, size_));
     }
     errno = 0;
 
-    return zlink_service_set_routing_id (handle_, data_, size_);
+    return zlink::status_internal::from_rc (
+      zlink_service_set_routing_id (handle_, data_, size_));
 }
 
-int zlink_get_routing_id (void *handle_, zlink_routing_id_t *out_)
+bool zlink_get_routing_id (void *handle_, zlink_routing_id_t *out_)
 {
     if (!out_) {
         errno = EFAULT;
-        return -1;
+        return false;
     }
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
@@ -350,33 +355,34 @@ int zlink_get_routing_id (void *handle_, zlink_routing_id_t *out_)
         const int rc =
           socket->getsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, out_->data, &size);
         if (rc != 0)
-            return rc;
+            return false;
         if (size > sizeof (out_->data)) {
             errno = EINVAL;
-            return -1;
+            return false;
         }
         out_->size = static_cast<uint8_t> (size);
-        return 0;
+        return true;
     }
     errno = 0;
 
-    return zlink_service_get_routing_id (handle_, out_);
+    return zlink::status_internal::from_rc (
+      zlink_service_get_routing_id (handle_, out_));
 }
 
-int zlink_set_tls_server (void *handle_,
-                          const char *cert_,
-                          const char *key_,
-                          int require_client_cert_)
+bool zlink_set_tls_server (void *handle_,
+                           const char *cert_,
+                           const char *key_,
+                           int require_client_cert_)
 {
-    return zlink_service_set_tls_server (handle_, cert_, key_,
-                                         require_client_cert_);
+    return zlink::status_internal::from_rc (zlink_service_set_tls_server (
+      handle_, cert_, key_, require_client_cert_));
 }
 
-int zlink_set_tls_client (void *handle_,
-                          const char *ca_cert_,
-                          const char *hostname_,
-                          int trust_system_)
+bool zlink_set_tls_client (void *handle_,
+                           const char *ca_cert_,
+                           const char *hostname_,
+                           int trust_system_)
 {
-    return zlink_service_set_tls_client (handle_, ca_cert_, hostname_,
-                                         trust_system_);
+    return zlink::status_internal::from_rc (zlink_service_set_tls_client (
+      handle_, ca_cert_, hostname_, trust_system_));
 }

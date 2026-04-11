@@ -8,6 +8,10 @@ Functions for retrieving error information and querying the library version at
 runtime. Error codes follow the POSIX `errno` convention; zlink extends the
 set with its own codes based on `ZLINK_HAUSNUMERO`.
 
+The public extended errno definitions live in `core/include/zlink_errno.h`.
+`core/include/zlink.h` includes that header and re-exports the same public
+error surface.
+
 ## Error Code Constants
 
 zlink uses a high base value to avoid collisions with system-defined `errno`
@@ -63,7 +67,7 @@ defined in `<zlink.h>`:
 ```c
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 28
+#define ZLINK_VERSION_PATCH 29
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) \
     ((major) * 10000 + (minor) * 100 + (patch))

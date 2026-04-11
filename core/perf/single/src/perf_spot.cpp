@@ -445,7 +445,7 @@ int run_case (const std::string &lib_name_,
     const std::string endpoint = bind_node (publisher_node, transport_, base_port);
     if (endpoint.empty ()
         || zlink_spot_node_connect_peer (subscriber_node, endpoint.c_str ()) != 0
-        || zlink_set_subscription (subscriber, k_topic) != 0) {
+        || !zlink_set_subscription (subscriber, k_topic)) {
         cleanup_spot_case (&subscriber, &publisher, &subscriber_node,
                            &publisher_node);
         print_fail ();

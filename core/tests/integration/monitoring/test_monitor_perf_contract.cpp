@@ -506,7 +506,7 @@ bool open_perf_like_connect_monitor (void *socket_, connect_monitor_t *out_)
     }
 
     const int zero = 0;
-    if (zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero)) != 0) {
+    if (!zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero))) {
         (void) zlink_monitor_close (&monitor);
         delete state;
         return false;

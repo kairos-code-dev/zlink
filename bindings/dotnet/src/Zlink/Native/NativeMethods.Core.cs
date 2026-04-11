@@ -137,13 +137,14 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_dealer_request(IntPtr dealer,
-        IntPtr parts, nuint partCount, uint timeoutMs,
-        ZlinkReplyHandlerDelegate handler, IntPtr userData);
+        IntPtr parts, nuint partCount, ZlinkReplyHandlerDelegate handler,
+        IntPtr userData, int flags, uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_request(IntPtr router,
         ref ZlinkRoutingId peerRoutingId, IntPtr parts, nuint partCount,
-        uint timeoutMs, ZlinkReplyHandlerDelegate handler, IntPtr userData);
+        ZlinkReplyHandlerDelegate handler, IntPtr userData, int flags,
+        uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_reply(IntPtr router,

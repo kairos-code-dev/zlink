@@ -14,6 +14,14 @@
 막고, `core/include/zlink.h`를 기준으로 설명 가능하고 일관된 공통 계약을
 강제하는 데 있다.
 
+`cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 아래 문서는
+각 바인딩 구현이 실제로 외부에 제공해야 하는 public API contract를 정의한다.
+이 문서들이 규정하는 것은 공개 타입, 메서드, 시그니처, 반환값, 오류 의미이며,
+바인딩 구현이 노출하는 public 인터페이스는 이 계약과 달라지면 안 된다.
+다만 이 문서는 실제 구현 클래스 계층이나 내부 파일 구조까지 규정하지는 않는다.
+각 바인딩은 같은 공개 계약을 유지하는 범위에서 내부 구조를 언어 관례에 맞게
+자유롭게 설계할 수 있다.
+
 이 문서는 단순 스타일 가이드가 아니다. 다음을 위한 설계 기준 문서다.
 - public API 설계 기준
 - 리뷰 기준
@@ -192,7 +200,7 @@
 
 ### Explicit Non-Blocking Send Outcome
 - non-blocking send 계열은 `bool` 하나로 성공/실패를 숨기지 않는다.
-- send 실패 원인 구분이 코어에 있다면 그대로 enum으로 노출한다.
+- send 결과는 `SendResult` 같은 명시적 enum으로 노출한다.
 - 표준 send 결과 enum:
 
 ```text
@@ -201,8 +209,12 @@ Backpressured
 NotReady
 ```
 
-- 바인딩은 errno 추정으로 `Backpressured`와 `NotReady`를 구분하지 않는다.
-- 이 구분은 코어가 직접 제공해야 한다.
+- 바인딩은 `core` 스펙에 없는 추가 errno 추정으로 `Backpressured`와
+  `NotReady`를 구분하지 않는다.
+- 현재 `zlink.h`는 non-blocking send 전용 결과 API를 따로 제공하지 않는다.
+- 따라서 바인딩은 `core` 스펙에 문서화된 non-blocking send errno를
+  `SendResult`로 고정 매핑해 public API로 노출할 수 있다.
+- 이 매핑은 바인딩 내부에서 임의로 바뀌면 안 되며, 언어별 스펙에 명시되어야 한다.
 
 ### Send Failure Contract
 - blocking send 계열:
@@ -214,7 +226,7 @@ NotReady
   - `trySend`, `tryPublish`
   - `Backpressured`, `NotReady`는 정상 결과값으로 반환한다
   - `EAGAIN` 계열 외의 오류는 반드시 예외 또는 언어별 오류 경로로 전달한다
-  - 바인딩이 send 실패 원인을 임의로 해석해서 예외를 삼키면 안 된다
+  - 문서화된 send-result 매핑 외의 오류를 임의로 삼키면 안 된다
 - binding helper, wrapper, sample 코드도 blocking send 실패를 무시하거나
   무시하면 안 된다
 
@@ -313,6 +325,49 @@ NotReady
 
 - `attachDiscovery` 후 해당 소켓에서 `connect`, `disconnect`, `unbind`,
   `close`는 차단된다. Discovery `close`가 소켓 lifecycle을 관리한다.
+
+## Language Spec File Compliance Rules
+
+각 언어별 스펙 파일(`doc/spec/bindings/{lang}/README.md`)은 아래 규칙을
+반드시 준수해야 한다. 스펙 파일 작성이나 리뷰 시 이 체크리스트를 적용한다.
+
+### Capability Matrix 정합성
+- 각 소켓 타입 클래스는 위 Socket Capability Matrix에서 `Y`인 능력만
+  public 메서드로 노출해야 한다.
+- `—`인 능력은 해당 소켓 타입 클래스에 존재하면 안 된다.
+- 특히 다음 위반이 자주 발생하므로 주의한다:
+  - `RouterSocket` / `StreamSocket`에 plain `send` (routingId 없는 send) 금지 —
+    반드시 `send(routingId, ...)` / `trySend(routingId, ...)` 형태여야 한다.
+  - `PairSocket` / `XPubSocket` / `StreamSocket` / `XSubSocket`에 `attachDiscovery` 금지 —
+    Dealer, Router, Pub, Sub에만 허용된다.
+  - `XPubSocket`에 `onSubscribe` 콜백 금지 —
+    XPub는 `receiveSubscriptionEvent` / `tryReceiveSubscriptionEvent`만 허용된다.
+
+### Routed Send 필수 인자
+- `RouterSocket`과 `StreamSocket`의 send는 routingId를 **필수** 인자로 받아야 한다.
+- routingId를 optional/default 파라미터로 만들면 plain send가 가능해지므로 금지한다.
+
+### Blocking Send 반환값
+- blocking `send` / `publish`는 성공 시 반환값 없이 정상 반환하고,
+  실패 시 예외 또는 언어별 오류 경로로 전달해야 한다.
+- 상태 코드(int, number 등)를 반환하는 방식은 금지한다.
+
+### 언어별 네이밍 일관성
+- 한 바인딩 내에서 네이밍 컨벤션이 혼재되면 안 된다.
+  - Python: 모든 public API는 `snake_case`. (프로퍼티 포함)
+  - Java: `camelCase` 메서드, `PascalCase` 클래스.
+  - C#: `PascalCase` 전체.
+  - Go: `PascalCase` exported.
+  - Rust: `snake_case` 메서드, `PascalCase` 타입.
+  - C++: `snake_case` 메서드, `_t` 접미사 타입.
+  - Node/TypeScript: `camelCase` 메서드, `PascalCase` 클래스.
+
+### C API 전수 커버리지
+- 각 언어별 스펙 파일은 `core/include/zlink.h`의 모든 ZLINK_EXPORT 함수에
+  대응하는 바인딩 인터페이스를 빠짐없이 기술해야 한다.
+- 대응은 1:1이 아닐 수 있다 (옵션 함수 그룹이 하나의 typed facade로 통합되는 등).
+- 그러나 C API의 어떤 기능도 바인딩 스펙에서 누락되면 안 된다.
+- 새로운 C API가 `zlink.h`에 추가되면 모든 언어 스펙 파일도 함께 갱신해야 한다.
 
 ## Service Layer Policy
 - 이 섹션은 소켓 레이어 위에 올라가는 서비스 계층(Spot, Discovery, Registry)의
@@ -746,11 +801,12 @@ callback 반환 시점까지만 유효하다. 밖에서 유지하려면 복사�
 
 ```c
 int zlink_dealer_request(void *dealer, zlink_msg_t *parts, size_t part_count,
-    uint32_t timeout_ms, zlink_reply_handler_fn handler, void *userdata);
+    zlink_reply_handler_fn handler, void *userdata, zlink_send_flags_t flags,
+    uint32_t timeout_ms);
 
 int zlink_router_request(void *router, const zlink_routing_id_t *peer_rid,
-    zlink_msg_t *parts, size_t part_count, uint32_t timeout_ms,
-    zlink_reply_handler_fn handler, void *userdata);
+    zlink_msg_t *parts, size_t part_count, zlink_reply_handler_fn handler,
+    void *userdata, zlink_send_flags_t flags, uint32_t timeout_ms);
 
 int zlink_router_reply(void *router, const zlink_routing_id_t *peer_rid,
     uint64_t request_seq, zlink_msg_t *parts, size_t part_count);

@@ -5,51 +5,55 @@
 #include <string.h>
 
 #include "api/socket_api_internal.hpp"
+#include "api/status_internal.hpp"
 #include "core/address.hpp"
 #include "sockets/proxy.hpp"
 #include "services/discovery/discovery_access.hpp"
 
-int zlink_bind (void *s_, const char *addr_)
+bool zlink_bind (void *s_, const char *addr_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
-        return -1;
-    return handle.socket->bind (addr_);
+        return false;
+    return zlink::status_internal::from_rc (handle.socket->bind (addr_));
 }
 
-int zlink_connect (void *s_, const char *addr_)
+bool zlink_connect (void *s_, const char *addr_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
-        return -1;
-    return handle.socket->connect (addr_);
+        return false;
+    return zlink::status_internal::from_rc (handle.socket->connect (addr_));
 }
 
-int zlink_unbind (void *s_, const char *addr_)
+bool zlink_unbind (void *s_, const char *addr_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
-        return -1;
-    return handle.socket->term_endpoint (addr_);
+        return false;
+    return zlink::status_internal::from_rc (handle.socket->term_endpoint (addr_));
 }
 
-int zlink_disconnect (void *s_, const char *addr_)
+bool zlink_disconnect (void *s_, const char *addr_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
-        return -1;
-    return handle.socket->term_endpoint (addr_);
+        return false;
+    return zlink::status_internal::from_rc (handle.socket->term_endpoint (addr_));
 }
 
-int zlink_socket_attach_discovery (void *s_, void *discovery_)
+bool zlink_socket_attach_discovery (void *s_, void *discovery_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
-        return -1;
+        return false;
 
     zlink::discovery_t *discovery =
       zlink::discovery_access_t::from_handle (discovery_);
-    return discovery ? handle.socket->attach_discovery (discovery) : -1;
+    return discovery
+             ? zlink::status_internal::from_rc (
+                 handle.socket->attach_discovery (discovery))
+             : false;
 }
 
 int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_)

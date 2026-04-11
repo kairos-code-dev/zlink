@@ -97,7 +97,9 @@ typedef void (*zlink_reply_handler_fn) (
 Callback for asynchronous request-reply completion. Invoked when a reply
 arrives or the request times out. On timeout, `errno_` is set to
 `ETIMEDOUT` and `parts_` is NULL. On success, ownership of all message
-parts is transferred to the callback.
+parts is transferred to the callback. `errno_` represents request
+completion, not submit failure. Bindings may map `errno_` to
+`zlink_request_result_t`.
 
 ### zlink_router_handler_fn
 
@@ -141,32 +143,92 @@ Always use the fully qualified `ZLINK_SOCKET_*` constants shown above.
 typedef uint32_t zlink_send_flags_t;
 
 #define ZLINK_DONTWAIT  ((zlink_send_flags_t) 0x0001u)
+#define ZLINK_SEND_FLAG_DONTWAIT ZLINK_DONTWAIT
 ```
 
 | Constant | Description |
 |---|---|
 | `ZLINK_DONTWAIT` | Non-blocking operation; return immediately with `EAGAIN` if the operation would block |
+| `ZLINK_SEND_FLAG_DONTWAIT` | Alias of `ZLINK_DONTWAIT` |
 
 ### Send Result
 
 ```c
-typedef enum zlink_send_result_t
+typedef enum zlink_submit_result_t
 {
-    ZLINK_SEND_RESULT_SENT = 0,
-    ZLINK_SEND_RESULT_BACKPRESSURED = 1,
-    ZLINK_SEND_RESULT_NOT_READY = 2
-} zlink_send_result_t;
+    /* Submit succeeded. */
+    ZLINK_SUBMIT_OK = 0,
+
+    /* Normal control-flow result. */
+    ZLINK_SUBMIT_BACKPRESSURED = 1,
+    ZLINK_SUBMIT_NOT_CONNECTED = 2,
+    ZLINK_SUBMIT_NOT_FOUND = 3,
+
+    /* Runtime / lifecycle failure. */
+    ZLINK_SUBMIT_TERMINATED = 4,
+
+    /* Caller contract violation. */
+    ZLINK_SUBMIT_INVALID_HANDLE = 5,
+    ZLINK_SUBMIT_INVALID_ARGUMENT = 6,
+    ZLINK_SUBMIT_NOT_SUPPORTED = 7,
+    ZLINK_SUBMIT_INVALID_STATE = 8,
+    ZLINK_SUBMIT_THREAD_VIOLATION = 9,
+
+    /* Internal failure. */
+    ZLINK_SUBMIT_OUT_OF_MEMORY = 10,
+    ZLINK_SUBMIT_SEQ_EXHAUSTED = 11,
+    ZLINK_SUBMIT_INTERNAL_ERROR = 12
+} zlink_submit_result_t;
 ```
 
-Used by bindings when they call `zlink_send`, `zlink_send_rid`, or
-`zlink_publish` with `ZLINK_DONTWAIT` and convert errno into an explicit
-non-blocking outcome.
+Used as the canonical normalized submit outcome for send, request submit,
+and reply submit APIs. Exported C APIs return this enum directly. Internal
+implementation paths still use detailed `errno`, and exported API
+boundaries normalize those values into this public contract.
 
 | Constant | Value | Description |
 |---|---|---|
-| `ZLINK_SEND_RESULT_SENT` | 0 | Message was sent successfully |
-| `ZLINK_SEND_RESULT_BACKPRESSURED` | 1 | Send queue is full (HWM reached) |
-| `ZLINK_SEND_RESULT_NOT_READY` | 2 | Socket is not ready to send |
+| `ZLINK_SUBMIT_OK` | 0 | Message was sent successfully |
+| `ZLINK_SUBMIT_BACKPRESSURED` | 1 | Send queue is full (HWM reached) |
+| `ZLINK_SUBMIT_NOT_CONNECTED` | 2 | Target path or peer is not connected |
+| `ZLINK_SUBMIT_NOT_FOUND` | 3 | Target peer, spot, or routed destination was not found |
+| `ZLINK_SUBMIT_TERMINATED` | 4 | Context was terminated |
+| `ZLINK_SUBMIT_INVALID_HANDLE` | 5 | Handle is NULL or invalid |
+| `ZLINK_SUBMIT_INVALID_ARGUMENT` | 6 | Argument is invalid for the API contract |
+| `ZLINK_SUBMIT_NOT_SUPPORTED` | 7 | Operation or flags are not supported |
+| `ZLINK_SUBMIT_INVALID_STATE` | 8 | Handle is in the wrong state |
+| `ZLINK_SUBMIT_THREAD_VIOLATION` | 9 | Handle was accessed from the wrong thread model |
+| `ZLINK_SUBMIT_OUT_OF_MEMORY` | 10 | Allocation failed while preparing the submit |
+| `ZLINK_SUBMIT_SEQ_EXHAUSTED` | 11 | Request sequence space was exhausted |
+| `ZLINK_SUBMIT_INTERNAL_ERROR` | 12 | Internal send/request/reply submit failure |
+
+### Request Completion
+
+```c
+typedef enum zlink_request_result_t
+{
+    /* Reply completed successfully. */
+    ZLINK_REQUEST_OK = 0,
+
+    /* Completion failure visible to the requester. */
+    ZLINK_REQUEST_TIMED_OUT = 1,
+    ZLINK_REQUEST_NOT_FOUND = 2,
+    ZLINK_REQUEST_TERMINATED = 3,
+    ZLINK_REQUEST_PROTOCOL_ERROR = 4
+} zlink_request_result_t;
+```
+
+Used as the canonical normalized completion outcome for
+`zlink_reply_handler_fn`. The callback still passes internal `errno_`, and
+that value maps to this public completion contract.
+
+| Constant | Value | Description |
+|---|---|---|
+| `ZLINK_REQUEST_OK` | 0 | Reply payload was received successfully |
+| `ZLINK_REQUEST_TIMED_OUT` | 1 | Reply did not arrive within the configured timeout |
+| `ZLINK_REQUEST_NOT_FOUND` | 2 | The target could not be found and an error reply completed the request |
+| `ZLINK_REQUEST_TERMINATED` | 3 | Reserved until the request path emits explicit termination completion |
+| `ZLINK_REQUEST_PROTOCOL_ERROR` | 4 | Reply envelope or error reply payload was malformed |
 
 ### Security Mechanisms
 

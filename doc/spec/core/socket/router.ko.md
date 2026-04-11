@@ -36,7 +36,9 @@ int zlink_set_router_option (void *handle_,
 ROUTER 소켓 옵션을 설정합니다. 모든 소켓 타입에 공유되는 공통 옵션은
 `zlink_set_option()`을 사용하세요.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **참고:** `zlink_get_router_option`, `zlink_set_option`
 
@@ -55,7 +57,9 @@ int zlink_get_router_option (void *handle_,
 
 ROUTER 소켓 옵션의 현재 값을 가져옵니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **참고:** `zlink_set_router_option`
 
@@ -66,7 +70,7 @@ ROUTER 소켓 옵션의 현재 값을 가져옵니다.
 routing id로 특정 피어에게 멀티파트 메시지를 송신합니다.
 
 ```c
-int zlink_send_rid (void *s_,
+zlink_submit_result_t zlink_send_rid (void *s_,
                     const zlink_routing_id_t *target_rid_,
                     zlink_msg_t *parts_,
                     size_t part_count_,
@@ -79,7 +83,9 @@ int zlink_send_rid (void *s_,
 
 적용 대상: ROUTER (directed reply), STREAM (피어 지정 send).
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **에러:** `s_`가 NULL이면 `EFAULT`. 작업이 블로킹되고
 `ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`. 대상 피어가 연결되지 않은 경우
@@ -94,7 +100,7 @@ int zlink_send_rid (void *s_,
 기존 routed send API를 이용한 논블로킹 지정 송신입니다.
 
 ```c
-int zlink_send_rid (void *s_,
+zlink_submit_result_t zlink_send_rid (void *s_,
                     const zlink_routing_id_t *target_rid_,
                     zlink_msg_t *parts_,
                     size_t part_count_,
@@ -102,12 +108,17 @@ int zlink_send_rid (void *s_,
 ```
 
 논블로킹 routed 전송은 `zlink_send_rid(..., ZLINK_DONTWAIT)` 로 처리합니다.
-바인딩은 errno를 `zlink_send_result_t`로 바꿔서 노출할 수 있습니다.
+함수는 `zlink_submit_result_t`를 반환합니다.
+`ZLINK_SUBMIT_BACKPRESSURED`는 내부 `EAGAIN`에,
+`ZLINK_SUBMIT_NOT_CONNECTED`는 내부 `ENOTCONN` 또는 `EHOSTUNREACH`에
+대응합니다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지됩니다.
 
 성공하면 모든 파트의 소유권이 라이브러리로 이전됩니다. 실패하면
 소유권은 호출자에게 유지됩니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **참고:** `zlink_send_rid`
 
@@ -118,20 +129,23 @@ int zlink_send_rid (void *s_,
 특정 피어에게 비동기 요청을 송신하고 응답 핸들러를 등록합니다.
 
 ```c
-int zlink_router_request (void *router_,
+zlink_submit_result_t zlink_router_request (void *router_,
                           const zlink_routing_id_t *peer_rid_,
                           zlink_msg_t *parts_,
                           size_t part_count_,
-                          uint32_t timeout_ms_,
                           zlink_reply_handler_fn handler_,
-                          void *userdata_);
+                          void *userdata_,
+                          zlink_send_flags_t flags_,
+                          uint32_t timeout_ms_);
 ```
 
 ROUTER 소켓에서 `peer_rid_`로 식별되는 피어에게 멀티파트 요청을 송신하고,
 응답이 도착하거나 타임아웃이 만료되면 호출될 `handler_`를 등록합니다.
 성공 시 모든 파트의 소유권이 라이브러리로 이전됩니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** request submit이 수락되면 `ZLINK_SUBMIT_OK`를 반환합니다.
+실패 시에는 `zlink_submit_result_t` 값을 반환합니다. reply completion은
+별도로 `zlink_reply_handler_fn`을 통해 전달됩니다.
 
 **참고:** `zlink_router_reply`, `zlink_reply_handler_fn`
 
@@ -142,7 +156,7 @@ ROUTER 소켓에서 `peer_rid_`로 식별되는 피어에게 멀티파트 요청
 이전에 수신한 요청에 대한 응답을 송신합니다.
 
 ```c
-int zlink_router_reply (void *router_,
+zlink_submit_result_t zlink_router_reply (void *router_,
                         const zlink_routing_id_t *peer_rid_,
                         uint64_t request_seq_,
                         zlink_msg_t *parts_,
@@ -153,7 +167,9 @@ int zlink_router_reply (void *router_,
 멀티파트 응답을 송신합니다. 성공 시 모든 파트의 소유권이 라이브러리로
 이전됩니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **참고:** `zlink_router_request`, `zlink_router_handler`
 
@@ -173,7 +189,9 @@ ROUTER 소켓에서 수신 요청을 받을 `handler_`를 부착합니다. 요�
 피어의 routing id, 요청 시퀀스 번호, 메시지 파트와 함께 핸들러가
 호출됩니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
+`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **참고:** `zlink_router_reply`, `zlink_router_handler_fn`
 

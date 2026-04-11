@@ -150,11 +150,22 @@ if [ "$RUN_TESTS" = "ON" ]; then
     # Run tests with ctest
     # Note: Some tests may be skipped based on platform capabilities
     # TIPC tests are Linux-only and will fail on macOS
-    ctest --output-on-failure -j$(sysctl -n hw.ncpu) || {
+    CTEST_JOBS="$(sysctl -n hw.ncpu)"
+    CTEST_ARGS=(--output-on-failure "-j${CTEST_JOBS}")
+    if [ -n "${ZLINK_CTEST_EXCLUDE_REGEX:-}" ]; then
+        echo "Excluding tests matching regex: ${ZLINK_CTEST_EXCLUDE_REGEX}"
+        CTEST_ARGS+=(--exclude-regex "${ZLINK_CTEST_EXCLUDE_REGEX}")
+    fi
+
+    ctest "${CTEST_ARGS[@]}" || {
         echo ""
         echo "Some tests failed. Checking results..."
         # Allow some tests to fail (TIPC tests are Linux-only, some platform-specific tests may fail)
-        FAILED_TESTS=$(ctest --rerun-failed --output-on-failure 2>&1 | grep -c "Failed" || true)
+        FAILED_LOG="Testing/Temporary/LastTestsFailed.log"
+        FAILED_TESTS=0
+        if [ -f "$FAILED_LOG" ]; then
+            FAILED_TESTS=$(wc -l < "$FAILED_LOG")
+        fi
         if [ "$FAILED_TESTS" -gt 20 ]; then
             echo "Too many test failures ($FAILED_TESTS). Build may be broken."
             exit 1

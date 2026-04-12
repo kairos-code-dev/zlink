@@ -527,8 +527,29 @@ impl SendHandle {
 ```rust
 pub struct Message { /* ... */ }
 
+impl Message {
+    /// # Errors: ConfigError
+    pub fn new() -> Result<Self, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn with_size(size: usize) -> Result<Self, ConfigError>;
+    /// Copy bytes into an owned zlink message.
+    /// # Errors: ConfigError
+    pub fn copy_from(data: &[u8]) -> Result<Self, ConfigError>;
+    /// Copy a `bytes::Bytes` buffer into an owned zlink message.
+    /// # Errors: ConfigError
+    pub fn copy_from_bytes(data: bytes::Bytes) -> Result<Self, ConfigError>;
+    /// Copy a `bytes::BytesMut` buffer into an owned zlink message.
+    /// # Errors: ConfigError
+    pub fn copy_from_bytes_mut(data: bytes::BytesMut) -> Result<Self, ConfigError>;
+    pub fn as_bytes(&self) -> &[u8];
+    pub fn size(&self) -> usize;
+    pub fn ref_count(&self) -> i32;
+}
+
 // Message implements Drop (calls zlink_msg_close).
 // Message implements IntoMultipart.
+// Public input adapters are copy-based only; generic external-buffer attach
+// with a release hook is not part of the Rust public surface.
 ```
 
 ### RoutingId
@@ -578,12 +599,13 @@ impl Received {
     pub fn single_part_or_error(self) -> Result<Message, RecvError>;
 
     /// Reply to this received request. Only valid when `request_seq` is
-    /// `Some(..)`; otherwise returns `RecvError`. On submit failure
+    /// `Some(..)`; otherwise returns `SubmitError` for invalid reply
+    /// context. On submit failure
     /// returns `SubmitError`. routing_id / spot_rid / request_seq are
     /// encapsulated — caller does not pass them again.
-    /// # Errors: SubmitError on submit; RecvError if not a request.
+    /// # Errors: SubmitError on invalid reply context or submit failure.
     pub fn reply(&self, parts: Vec<Message>) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError on submit; RecvError if not a request.
+    /// # Errors: SubmitError on invalid reply context or submit failure.
     pub fn reply_with_flags(
         &self,
         parts: Vec<Message>,
@@ -1005,7 +1027,8 @@ impl From<ConfigError> for ZlinkError { /* wraps as ZlinkError::Config */ }
 pub trait IntoMultipart {
     fn into_multipart(self) -> Vec<Message>;
 }
-// Implemented for Message, Vec<Message>, &[u8], Vec<u8>, etc.
+// Implemented for Message, Vec<Message>, &[u8], Vec<u8>,
+// bytes::Bytes, bytes::BytesMut, etc.
 ```
 
 ---
@@ -1206,6 +1229,8 @@ impl SpotNode {
     pub fn set_tls_client(&self, ca_cert_path: &str, hostname: &str,
         trust_system: bool) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
+    pub fn create_spot(&self) -> Result<Spot, ConfigError>;
+    /// # Errors: ConfigError
     pub fn status_snapshot(&self) -> Result<SpotNodeStatus, ConfigError>;
     /// # Errors: ConfigError
     pub fn peers_snapshot(&self) -> Result<Vec<SpotNodePeerEntry>, ConfigError>;
@@ -1213,18 +1238,23 @@ impl SpotNode {
     pub fn peers_query(&self, filter: &SpotNodePeerFilter)
         -> Result<Vec<SpotNodePeerEntry>, ConfigError>;
     /// # Errors: ConfigError
-    pub fn subjects_snapshot(&self) -> Result<Vec<SpotNodeSubjectEntry>, ConfigError>;
+    pub fn subjects_snapshot(&self, filter: Option<&SpotNodeSubjectFilter>)
+        -> Result<Vec<SpotNodeSubjectEntry>, ConfigError>;
+    // close() cascades: closes all live Spot handles before the node becomes invalid.
     /// # Errors: CloseError
     pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
+`SpotNode` owns the lifecycle. `Spot` is created only through
+`SpotNode::create_spot()`. Direct `Spot::new(&node)` construction is
+internal and is not part of the public API contract.
+
 ### Spot
 
 ```rust
 impl Spot {
-    /// # Errors: ConfigError
-    pub fn new(node: &SpotNode) -> Result<Self, ConfigError>;
+    // Spot::new(&node) is internal. Public code must use SpotNode::create_spot().
     /// # Errors: SubmitError
     pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
@@ -1353,6 +1383,8 @@ a plain Rust struct with `pub` fields — the raw `zlink_*_t` C structs are
 never surfaced. Names follow Rust `PascalCase`; fields are `snake_case`
 matching the canonical names.
 
+Primary entry types used in the default service flow:
+
 ```rust
 pub struct MemberPeerEntry {
     pub service_type: ServiceType,
@@ -1377,6 +1409,24 @@ pub struct RegistryTopologyEntry {
     pub last_reported_ms: u64,
 }
 
+pub struct SpotNodeStatus {
+    pub service_name: String,
+    pub local_endpoint: String,
+    pub node_routing_id: RoutingId,
+    pub state: SpotNodeState,
+    pub configured_peer_count: u32,
+    pub active_peer_count: u32,
+    pub connected_peer_count: u32,
+    pub subject_count: u32,
+    pub ready_subject_count: u32,
+    pub last_error: i32,
+    pub last_changed_ms: u64,
+}
+```
+
+Advanced / Diagnostic entry types and filters:
+
+```rust
 pub struct RegistryServiceSummaryEntry {
     pub service_kind: ServiceKind,
     pub service_role: ServiceRole,
@@ -1389,16 +1439,14 @@ pub struct RegistryServiceSummaryEntry {
     pub last_reported_ms: u64,
 }
 
-pub struct SpotNodeStatus {
-    pub service_name: String,
-    pub local_endpoint: String,
-    pub node_routing_id: RoutingId,
-    pub state: SpotNodeState,
-    pub configured_peer_count: u32,
-    pub active_peer_count: u32,
-    pub connected_peer_count: u32,
-    pub subject_count: u32,
-    pub ready_subject_count: u32,
+pub struct RegistryStatus {
+    pub registry_id: u32,
+    pub bind_endpoint: String,
+    pub state: RegistryState,
+    pub topology_entry_count: u32,
+    pub peer_registry_count: u32,
+    pub connected_peer_registry_count: u32,
+    pub list_seq: u64,
     pub last_error: i32,
     pub last_changed_ms: u64,
 }
@@ -1420,6 +1468,33 @@ pub struct SpotNodeSubjectEntry {
     pub ready_peer_count: u32,
     pub active_peer_count: u32,
     pub last_changed_ms: u64,
+}
+
+pub struct RegistryServiceSummaryFilter {
+    pub service_kind: Option<ServiceKind>,
+    pub service_role: Option<ServiceRole>,
+    pub service_name: Option<String>,
+}
+
+pub struct RegistryTopologyFilter {
+    pub service_kind: Option<ServiceKind>,
+    pub service_role: Option<ServiceRole>,
+    pub service_name: Option<String>,
+    pub routing_id: Option<RoutingId>,
+    pub state: Option<TopologyState>,
+    pub source: Option<TopologySource>,
+}
+
+pub struct SpotNodePeerFilter {
+    pub peer_endpoint: Option<String>,
+    pub source: Option<SpotPeerSource>,
+    pub state: Option<SpotPeerState>,
+}
+
+pub struct SpotNodeSubjectFilter {
+    pub role: Option<SpotRole>,
+    pub subject: Option<String>,
+    pub subject_kind: Option<u32>,
 }
 ```
 

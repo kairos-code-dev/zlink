@@ -396,6 +396,8 @@ public final class Message implements AutoCloseable {
     Message(int size);                                               // @throws ConfigException
 
     // --- factories (copy) ---
+    // All public input adapters copy into an owned zlink message.
+    // Public borrowed external-wrap APIs are intentionally not exposed.
     static Message copyOf(byte[] data);                              // @throws ConfigException
     static Message copyOf(byte[] data, int offset, int length);      // @throws ConfigException
     static Message copyOfUtf8(String value);                         // @throws ConfigException
@@ -404,13 +406,6 @@ public final class Message implements AutoCloseable {
     static Message copyOf(ByteSpan span);                            // @throws ConfigException
     static Message copyOf(MemorySegment data);                       // @throws ConfigException
     static Message copyOf(MemorySegment data, long offset, long length); // @throws ConfigException
-
-    // --- factories (zero-copy borrow) ---
-    static Message wrapDirect(ByteBuffer data);                      // @throws ConfigException
-    static Message wrapDirect(ByteBuf buf);                          // @throws ConfigException
-    static Message wrapNative(MemorySegment data);                   // @throws ConfigException
-    static Message wrapNative(MemorySegment data, long offset, long length); // @throws ConfigException
-    static Message wrap(ByteSpan span);                              // @throws ConfigException
 
     // --- accessors ---
     int size();
@@ -798,11 +793,11 @@ public final class Received implements AutoCloseable {
     Message firstPart();                                             // @throws RecvException
     Message singlePartOrThrow();                                     // @throws RecvException
 
-    // reply — requestSeq 가 있을 때만 유효. 없으면 RecvException.
-    void reply(Message part);                                        // @throws SubmitException, RecvException
-    void reply(Message part, SendFlags flags);                       // @throws SubmitException, RecvException
-    void reply(List<Message> parts);                                 // @throws SubmitException, RecvException
-    void reply(List<Message> parts, SendFlags flags);                // @throws SubmitException, RecvException
+    // reply — requestSeq 가 있을 때만 유효. 없거나 invalid reply context 이면 SubmitException.
+    void reply(Message part);                                        // @throws SubmitException
+    void reply(Message part, SendFlags flags);                       // @throws SubmitException
+    void reply(List<Message> parts);                                 // @throws SubmitException
+    void reply(List<Message> parts, SendFlags flags);                // @throws SubmitException
 
     void close();                                                    // @throws CloseException
 }
@@ -999,24 +994,32 @@ public final class SpotNode implements AutoCloseable {
     void setTlsServer(String certPem, String keyPem, boolean requireClientCert); // @throws ConfigException
     void setTlsClient(String caCertPem, String hostname, boolean trustSystem);   // @throws ConfigException
 
+    // --- factory: Spot 생성은 반드시 SpotNode 에서만 ---
+    Spot createSpot();                                               // @throws ConfigException
+
     SpotNodeStatus statusSnapshot();                                 // @throws ConfigException
     List<SpotNodePeerEntry> peersSnapshot();                         // @throws ConfigException
     List<SpotNodePeerEntry> peersQuery(SpotNodePeerFilter filter);   // @throws ConfigException
     List<SpotNodeSubjectEntry> subjectsSnapshot();                   // @throws ConfigException
     List<SpotNodeSubjectEntry> subjectsSnapshot(SpotNodeSubjectFilter filter); // @throws ConfigException
 
+    // close() cascades: 모든 live Spot 먼저 close 한 후 node 종료
     void close();                                                    // @throws CloseException
 }
 ```
 
+`SpotNode` 가 lifecycle 소유자. `Spot` 은 반드시 `SpotNode.createSpot()`
+factory 로만 생성한다. 직접 `new Spot(node)` 호출은 internal 로 격하된다
+(spec 상 public 생성자 아님).
+
 ### Spot
 
 Spot messaging endpoint. Provides pub/sub and subscription management.
-Implements `AutoCloseable`.
+Implements `AutoCloseable`. **`SpotNode.createSpot()` 로만 생성**.
 
 ```java
 public final class Spot implements AutoCloseable {
-    Spot(SpotNode node);
+    // Spot(SpotNode node) 는 internal. public 생성은 SpotNode.createSpot() 사용.
 
     // --- publish ---
     void publish(String topicId, Message part);                      // @throws SubmitException
@@ -1154,6 +1157,8 @@ public final class RegistryQueryClient implements AutoCloseable {
 }
 ```
 
+Primary entry types used in the default service flow:
+
 ### MemberPeerEntry
 
 Discovery / Registry member peer entry value object.
@@ -1187,6 +1192,26 @@ public record RegistryTopologyEntry(RoutingId routingId,
                                     long lastReportedMs) {}
 ```
 
+### SpotNodeStatus
+
+Spot node status snapshot returned by `SpotNode.statusSnapshot`.
+
+```java
+public record SpotNodeStatus(String serviceName,
+                             String localEndpoint,
+                             RoutingId nodeRoutingId,
+                             SpotNodeState state,
+                             int configuredPeerCount,
+                             int activePeerCount,
+                             int connectedPeerCount,
+                             int subjectCount,
+                             int readySubjectCount,
+                             int lastError,
+                             long lastChangedMs) {}
+```
+
+Advanced / Diagnostic entry types and filters:
+
 ### RegistryServiceSummaryEntry
 
 Registry service summary entry value object. Returned by
@@ -1216,24 +1241,6 @@ public record RegistryStatus(int registryId,
                              int peerRegistryCount,
                              int connectedPeerRegistryCount,
                              long listSeq,
-                             int lastError,
-                             long lastChangedMs) {}
-```
-
-### SpotNodeStatus
-
-Spot node status snapshot returned by `SpotNode.statusSnapshot`.
-
-```java
-public record SpotNodeStatus(String serviceName,
-                             String localEndpoint,
-                             RoutingId nodeRoutingId,
-                             SpotNodeState state,
-                             int configuredPeerCount,
-                             int activePeerCount,
-                             int connectedPeerCount,
-                             int subjectCount,
-                             int readySubjectCount,
                              int lastError,
                              long lastChangedMs) {}
 ```

@@ -383,7 +383,9 @@ func (s *StreamSocket) Close() error
 ### Message
 
 ```go
-// NewMessage allocates a new message from data. Returns *ConfigError on failure.
+// NewMessage copies data into an owned message. Generic external-buffer attach
+// with a release hook is not part of the Go public surface.
+// Returns *ConfigError on failure.
 func NewMessage(data []byte) (*Message, error)
 func (m *Message) Data() []byte
 func (m *Message) Size() int
@@ -444,9 +446,10 @@ func (r *Received) FirstPart() (*Message, error)
 func (r *Received) SinglePartOrError() (*Message, error)
 
 // Reply sends a reply for this received request. Only valid when
-// HasRequestSeq() is true; otherwise returns *RecvError. On submit
-// failure returns *SubmitError. RoutingID/SpotRID/RequestSeq are
-// encapsulated — caller does not pass them again.
+// HasRequestSeq() is true; otherwise returns *SubmitError for invalid
+// reply context. Submit failures also return *SubmitError.
+// RoutingID/SpotRID/RequestSeq are encapsulated — caller does not pass
+// them again.
 func (r *Received) Reply(parts []*Message) error
 func (r *Received) ReplyWithFlags(parts []*Message, flags SendFlags) error
 
@@ -919,18 +922,25 @@ func (n *SpotNode) AttachDiscovery(discovery *Discovery) error
 func (n *SpotNode) SetTLSServer(certPath, keyPath string, requireClientCert bool) error
 func (n *SpotNode) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
 // Spot factory and snapshot queries return *ConfigError on failure.
+// Spot must be created only through this SpotNode factory.
 func (n *SpotNode) Spot() (*Spot, error)
 func (n *SpotNode) StatusSnapshot() (*SpotNodeStatus, error)
 func (n *SpotNode) PeersSnapshot() ([]SpotNodePeerEntry, error)
 func (n *SpotNode) PeersQuery(filter *SpotNodePeerFilter) ([]SpotNodePeerEntry, error)
 func (n *SpotNode) SubjectsSnapshot(filters ...*SpotNodeSubjectFilter) ([]SpotNodeSubjectEntry, error)
-// Close closes the spot node. Returns *CloseError on failure.
+// Close closes the spot node after cascading close to all live Spot handles.
+// Returns *CloseError on failure.
 func (n *SpotNode) Close() error
 ```
+
+`SpotNode` owns the lifecycle. `Spot` is created only through
+`SpotNode.Spot()` and remains valid only while the parent node lives.
+There is no standalone `NewSpot` constructor in the public API.
 
 ### Spot
 
 ```go
+// Spot is a pub/sub facade owned by SpotNode and created only by SpotNode.Spot().
 // Publish sends parts on the given topic. Returns *SubmitError on failure.
 func (s *Spot) Publish(topic string, flags SendFlags, parts ...*Message) error
 // Subscription filter mutation returns *ConfigError on failure.
@@ -1016,6 +1026,8 @@ Each field maps 1:1 to the corresponding `zlink_*_t` C struct field,
 named in Go `PascalCase`. Fixed-size C `char[N]` fields are exposed as
 Go `string`; numeric ids and enums use their typed Go equivalents.
 
+Primary entry types used in the default service flow:
+
 ```go
 // MemberPeerEntry — entry from Registry.MemberPeers / Discovery.MemberPeers.
 type MemberPeerEntry struct {
@@ -1047,19 +1059,6 @@ type RegistryTopologyEntry struct {
 
 func (e *RegistryTopologyEntry) HasRoutingID() bool
 
-// RegistryServiceSummaryEntry — entry from Registry.ServiceSummarySnapshot.
-type RegistryServiceSummaryEntry struct {
-    ServiceKind     ServiceKind
-    ServiceRole     ServiceRole
-    ServiceName     string
-    TotalCount      uint32
-    ConnectingCount uint32
-    ReadyCount      uint32
-    ErrorCount      uint32
-    StoppedCount    uint32
-    LastReportedMs  uint64
-}
-
 // SpotNodeStatus — status snapshot from SpotNode.StatusSnapshot.
 type SpotNodeStatus struct {
     ServiceName          string
@@ -1076,6 +1075,36 @@ type SpotNodeStatus struct {
 }
 
 func (s *SpotNodeStatus) HasNodeRoutingID() bool
+```
+
+Advanced / Diagnostic entry types and filters:
+
+```go
+// RegistryServiceSummaryEntry — entry from Registry.ServiceSummarySnapshot.
+type RegistryServiceSummaryEntry struct {
+    ServiceKind     ServiceKind
+    ServiceRole     ServiceRole
+    ServiceName     string
+    TotalCount      uint32
+    ConnectingCount uint32
+    ReadyCount      uint32
+    ErrorCount      uint32
+    StoppedCount    uint32
+    LastReportedMs  uint64
+}
+
+// RegistryStatus — status snapshot from Registry.StatusSnapshot.
+type RegistryStatus struct {
+    RegistryID                 uint32
+    BindEndpoint               string
+    State                      RegistryState
+    TopologyEntryCount         uint32
+    PeerRegistryCount          uint32
+    ConnectedPeerRegistryCount uint32
+    ListSeq                    uint64
+    LastError                  int32
+    LastChangedMs              uint64
+}
 
 // SpotNodePeerEntry — entry from SpotNode.PeersSnapshot / PeersQuery.
 type SpotNodePeerEntry struct {
@@ -1096,6 +1125,38 @@ type SpotNodeSubjectEntry struct {
     ReadyPeerCount   uint32
     ActivePeerCount  uint32
     LastChangedMs    uint64
+}
+
+// RegistryServiceSummaryFilter — optional filter for Registry.ServiceSummarySnapshot.
+type RegistryServiceSummaryFilter struct {
+    ServiceKind *ServiceKind
+    ServiceRole *ServiceRole
+    ServiceName *string
+}
+
+// RegistryTopologyFilter — optional filter for Registry.TopologyQuery /
+// RegistryQueryClient.Snapshot.
+type RegistryTopologyFilter struct {
+    ServiceKind *ServiceKind
+    ServiceRole *ServiceRole
+    ServiceName *string
+    RoutingID   *RoutingID
+    State       *TopologyState
+    Source      *TopologySource
+}
+
+// SpotNodePeerFilter — optional filter for SpotNode.PeersQuery.
+type SpotNodePeerFilter struct {
+    PeerEndpoint *string
+    Source       *SpotPeerSource
+    State        *SpotPeerState
+}
+
+// SpotNodeSubjectFilter — optional filter for SpotNode.SubjectsSnapshot.
+type SpotNodeSubjectFilter struct {
+    Role        *SpotRole
+    Subject     *string
+    SubjectKind *SubjectKind
 }
 ```
 

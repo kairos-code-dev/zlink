@@ -467,14 +467,22 @@ public sealed class Message : IDisposable, IAsyncDisposable
     Message();
     /// <exception cref="ZlinkConfigException"/>
     Message(int size);
+    // Public input adapters are copy-based only; borrowed external-wrap
+    // APIs are intentionally not exposed on managed bindings.
     /// <exception cref="ZlinkConfigException"/>
     Message(ReadOnlySpan<byte> data);
+    /// <exception cref="ZlinkConfigException"/>
+    Message(ReadOnlyMemory<byte> data);
 
     // --- factories ---
     /// <exception cref="ZlinkConfigException"/>
     static Message FromBytes(byte[] data);
     /// <exception cref="ZlinkConfigException"/>
     static Message FromBytes(ReadOnlySpan<byte> data);
+    /// <exception cref="ZlinkConfigException"/>
+    static Message FromBytes(ReadOnlyMemory<byte> data);
+    /// <exception cref="ZlinkConfigException"/>
+    static Message FromSequence(ReadOnlySequence<byte> data);
     /// <exception cref="ZlinkConfigException"/>
     static Message FromString(string value);
     /// <exception cref="ZlinkConfigException"/>
@@ -490,6 +498,8 @@ public sealed class Message : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     ReadOnlySpan<byte> AsReadOnlySpan();
     /// <exception cref="ZlinkConfigException"/>
+    ReadOnlyMemory<byte> AsReadOnlyMemory();
+    /// <exception cref="ZlinkConfigException"/>
     string GetString();
     /// <exception cref="ZlinkConfigException"/>
     string GetString(Encoding encoding);
@@ -499,6 +509,8 @@ public sealed class Message : IDisposable, IAsyncDisposable
     // --- copy to destination ---
     /// <exception cref="ZlinkConfigException"/>
     int CopyTo(Span<byte> destination);
+    /// <exception cref="ZlinkConfigException"/>
+    int CopyTo(IBufferWriter<byte> destination);
     /// <exception cref="ZlinkConfigException"/>
     bool TryCopyTo(Span<byte> destination, out int bytesWritten);
 
@@ -867,9 +879,9 @@ public sealed class Received : IDisposable
     /// <exception cref="ZlinkRecvException"/>
     Message SinglePartOrThrow();
 
-    // Reply — RequestSeq 가 null 이 아닐 때만 유효. null 이면 ZlinkRecvException.
+    // Reply — RequestSeq 가 null 이 아니어야 함. null 또는 invalid reply
+    // context 는 ZlinkSubmitException.
     /// <exception cref="ZlinkSubmitException"/>
-    /// <exception cref="ZlinkRecvException">when RequestSeq is null</exception>
     void Reply(Message part);
     /// <exception cref="ZlinkSubmitException"/>
     void Reply(Message part, SendFlags flags);
@@ -1173,6 +1185,11 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     SpotNodeSubjectEntry[] SubjectsSnapshot(
         SpotNodeSubjectFilter? filter = null);
 
+    // Spot 생성은 반드시 SpotNode 에서만
+    /// <exception cref="ZlinkConfigException"/>
+    Spot CreateSpot();
+
+    // Close/Dispose cascades: live Spot 을 먼저 정리한 후 node 종료
     /// <exception cref="ZlinkCloseException"/>
     void Close();
     /// <exception cref="ZlinkCloseException"/>
@@ -1182,15 +1199,19 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
 }
 ```
 
+`SpotNode` 가 lifecycle 소유자. `Spot` 은 `SpotNode.CreateSpot()` factory
+로만 생성한다. `new Spot(SpotNode)` 는 internal (public 생성자 아님).
+
 ### Spot
 
 Spot messaging endpoint. Provides pub/sub and subscription management.
-Implements `IDisposable` and `IAsyncDisposable`.
+Implements `IDisposable` and `IAsyncDisposable`. **`SpotNode.CreateSpot()`
+로만 생성**.
 
 ```csharp
 public sealed class Spot : IDisposable, IAsyncDisposable
 {
-    Spot(SpotNode node);
+    // Spot(SpotNode) constructor 는 internal. 사용자는 SpotNode.CreateSpot() 을 사용.
 
     // --- publish ---
     /// <exception cref="ZlinkSubmitException"/>
@@ -1348,6 +1369,8 @@ Snapshot / query result value objects returned by the service layer. All
 are pure value objects exposed as records with named typed fields. They
 never expose raw C structs.
 
+Primary entry types used in the default service flow:
+
 #### MemberPeerEntry
 
 Discovery / registry member peer entry.
@@ -1380,6 +1403,27 @@ public sealed record RegistryTopologyEntry(
     uint ErrorCode,
     ulong LastReportedMs);
 ```
+
+#### SpotNodeStatus
+
+Spot node status snapshot.
+
+```csharp
+public sealed record SpotNodeStatus(
+    string ServiceName,
+    string LocalEndpoint,
+    RoutingId? NodeRoutingId,
+    SpotNodeState State,
+    uint ConfiguredPeerCount,
+    uint ActivePeerCount,
+    uint ConnectedPeerCount,
+    uint SubjectCount,
+    uint ReadySubjectCount,
+    int LastError,
+    ulong LastChangedMs);
+```
+
+Advanced / Diagnostic entry types and filters:
 
 #### RegistryServiceSummaryEntry
 
@@ -1415,25 +1459,6 @@ public sealed record RegistryStatus(
     ulong LastChangedMs);
 ```
 
-#### SpotNodeStatus
-
-Spot node status snapshot.
-
-```csharp
-public sealed record SpotNodeStatus(
-    string ServiceName,
-    string LocalEndpoint,
-    RoutingId? NodeRoutingId,
-    SpotNodeState State,
-    uint ConfiguredPeerCount,
-    uint ActivePeerCount,
-    uint ConnectedPeerCount,
-    uint SubjectCount,
-    uint ReadySubjectCount,
-    int LastError,
-    ulong LastChangedMs);
-```
-
 #### SpotNodePeerEntry
 
 Spot node peer entry.
@@ -1461,6 +1486,29 @@ public sealed record SpotNodeSubjectEntry(
     uint ReadyPeerCount,
     uint ActivePeerCount,
     ulong LastChangedMs);
+
+public sealed record RegistryServiceSummaryFilter(
+    ServiceKind? ServiceKind = null,
+    ServiceRole? ServiceRole = null,
+    string? ServiceName = null);
+
+public sealed record RegistryTopologyFilter(
+    ServiceKind? ServiceKind = null,
+    ServiceRole? ServiceRole = null,
+    string? ServiceName = null,
+    RoutingId? RoutingId = null,
+    TopologyState? State = null,
+    TopologySource? Source = null);
+
+public sealed record SpotNodePeerFilter(
+    string? PeerEndpoint = null,
+    SpotPeerSource? Source = null,
+    SpotPeerState? State = null);
+
+public sealed record SpotNodeSubjectFilter(
+    SpotRole? Role = null,
+    string? Subject = null,
+    SubjectKind? SubjectKind = null);
 ```
 
 ---

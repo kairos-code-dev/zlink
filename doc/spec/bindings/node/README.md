@@ -494,7 +494,9 @@ class StreamSocketOptions extends CommonSocketOptions {
 ```typescript
 class Message {
     /** @throws {ConfigError} */
-    constructor(data: Buffer);
+    constructor(data: BufferLike);
+    // Public input adapters are copy-based only; borrowed external-wrap APIs
+    // are intentionally not exposed on managed bindings.
     /** @throws {ConfigError} */
     static from(data: BufferLike): Message;
     /** @throws {ConfigError} */
@@ -561,14 +563,14 @@ class Received {
     /** @throws {RecvError} */
     singlePartOrThrow(): Message;
 
-    /** reply — requestSeq 가 null 이 아닐 때만 유효. null 이면 RecvError. */
-    /** @throws {SubmitError | RecvError} */
+    /** reply — requestSeq 가 null 이 아니어야 함. null 또는 invalid reply context 는 SubmitError. */
+    /** @throws {SubmitError} */
     reply(part: Message): void;
-    /** @throws {SubmitError | RecvError} */
+    /** @throws {SubmitError} */
     reply(part: Message, flags: SendFlags): void;
-    /** @throws {SubmitError | RecvError} */
+    /** @throws {SubmitError} */
     reply(parts: Message[]): void;
-    /** @throws {SubmitError | RecvError} */
+    /** @throws {SubmitError} */
     reply(parts: Message[], flags: SendFlags): void;
 
     /** @throws {CloseError} */
@@ -1066,6 +1068,8 @@ class SpotNode {
     /** @throws {ConfigError} */
     setTlsClient(ca: string, host: string, trust?: number): void;
     /** @throws {ConfigError} */
+    createSpot(): Spot;
+    /** @throws {ConfigError} */
     statusSnapshot(): SpotNodeStatus;
     /** @throws {ConfigError} */
     peersSnapshot(): SpotNodePeerEntry[];
@@ -1073,16 +1077,21 @@ class SpotNode {
     peersQuery(filter?: SpotNodePeerFilter): SpotNodePeerEntry[];
     /** @throws {ConfigError} */
     subjectsSnapshot(filter?: SpotNodeSubjectFilter): SpotNodeSubjectEntry[];
+    // close() cascades: closes all live Spot handles before the node becomes invalid.
     /** @throws {CloseError} */
     close(): void;
 }
 ```
 
+`SpotNode` owns the lifecycle. `Spot` is created only through
+`SpotNode.createSpot()`. Direct `new Spot(node)` construction is internal
+and is not part of the public API contract.
+
 ### Spot
 
 ```typescript
 class Spot {
-    constructor(node: SpotNode);
+    // The SpotNode constructor path is internal. Public code must use SpotNode.createSpot().
     /** @throws {SubmitError} */
     publish(topic: string, payload: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
@@ -1224,6 +1233,8 @@ Value objects returned by `Registry`, `Discovery`, `SpotNode`, and
 and every routing-id field is a `RoutingId` wrapper (never a raw
 `Buffer`).
 
+Primary entry types used in the default service flow:
+
 ```typescript
 /** Discovery / Registry member peer entry. */
 interface MemberPeerEntry {
@@ -1250,6 +1261,25 @@ interface RegistryTopologyEntry {
     readonly lastReportedMs: bigint;         // uint64 epoch ms
 }
 
+/** SpotNode runtime status snapshot. */
+interface SpotNodeStatus {
+    readonly serviceName: string;
+    readonly localEndpoint: string;
+    readonly nodeRoutingId: RoutingId;
+    readonly state: number;                  // zlink_spot_node_state_t
+    readonly configuredPeerCount: number;    // uint32
+    readonly activePeerCount: number;        // uint32
+    readonly connectedPeerCount: number;     // uint32
+    readonly subjectCount: number;           // uint32
+    readonly readySubjectCount: number;      // uint32
+    readonly lastError: number;              // int32
+    readonly lastChangedMs: bigint;          // uint64 epoch ms
+}
+```
+
+Advanced / Diagnostic entry types and filters:
+
+```typescript
 /** Registry service summary roll-up entry. */
 interface RegistryServiceSummaryEntry {
     readonly serviceKind: number;            // zlink_service_kind_t
@@ -1272,21 +1302,6 @@ interface RegistryStatus {
     readonly peerRegistryCount: number;      // uint32
     readonly connectedPeerRegistryCount: number; // uint32
     readonly listSeq: bigint;                // uint64
-    readonly lastError: number;              // int32
-    readonly lastChangedMs: bigint;          // uint64 epoch ms
-}
-
-/** SpotNode runtime status snapshot. */
-interface SpotNodeStatus {
-    readonly serviceName: string;
-    readonly localEndpoint: string;
-    readonly nodeRoutingId: RoutingId;
-    readonly state: number;                  // zlink_spot_node_state_t
-    readonly configuredPeerCount: number;    // uint32
-    readonly activePeerCount: number;        // uint32
-    readonly connectedPeerCount: number;     // uint32
-    readonly subjectCount: number;           // uint32
-    readonly readySubjectCount: number;      // uint32
     readonly lastError: number;              // int32
     readonly lastChangedMs: bigint;          // uint64 epoch ms
 }
@@ -1431,8 +1446,8 @@ class Timer {
 ## Callback Types
 
 ```typescript
-type SocketRecvHandler = (routingId: RoutingId | null, parts: Message[]) => void;
-type SocketSubscribeHandler = (routingId: RoutingId | null, topic: string, parts: Message[]) => void;
+type SocketRecvHandler = (message: Received) => void;
+type SocketSubscribeHandler = (message: TopicMessage) => void;
 type SocketSendReadyHandler = () => void;
 type SpotSubHandler = SocketSubscribeHandler;
 type SpotSendReadyHandler = () => void;

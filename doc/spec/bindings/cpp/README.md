@@ -98,13 +98,7 @@ void bind(const std::string& endpoint);
 /// @throws connect_error_t
 void unbind(const std::string& endpoint);
 /// @throws config_error_t
-void set_option(socket_option_key_t<T> key, const T& value);
-/// @throws config_error_t
-void get_option(socket_option_key_t<T> key, T* value) const;
-/// @throws config_error_t
-void set_option(socket_option_key_t<std::string> key, const std::string& value);
-/// @throws config_error_t
-void get_option(socket_option_key_t<std::string> key, std::string& value) const;
+common_socket_options_t options();
 /// @throws config_error_t
 void set_tls_server(const std::string& cert, const std::string& key,
                     bool require_client_cert = false);
@@ -163,9 +157,7 @@ class pub_socket_t : public publisher_socket_t {
 
     // --- pub-specific options ---
     /// @throws config_error_t
-    void set_option(pub_option_key_t<T> key, const T& value);
-    /// @throws config_error_t
-    void get_option(pub_option_key_t<T> key, T* value) const;
+    pub_socket_options_t pub_options();
 
     // --- discovery ---
     /// @throws config_error_t
@@ -197,9 +189,7 @@ class sub_socket_t : public subscriber_socket_t {
 
     // --- sub-specific options ---
     /// @throws config_error_t
-    void set_option(sub_option_key_t<T> key, const T& value);
-    /// @throws config_error_t
-    void get_option(sub_option_key_t<T> key, T* value) const;
+    sub_socket_options_t sub_options();
 
     // --- discovery ---
     /// @throws config_error_t
@@ -262,7 +252,7 @@ class dealer_socket_t : public message_socket_t {
 
     // --- dealer-specific options ---
     /// @throws config_error_t
-    void set_option(dealer_option_key_t<T> key, const T& value);
+    dealer_socket_options_t dealer_options();
 
     // --- discovery ---
     /// @throws config_error_t
@@ -372,9 +362,7 @@ class router_socket_t : public routed_message_socket_t {
 
     // --- router-specific options ---
     /// @throws config_error_t
-    void set_option(router_option_key_t<T> key, const T& value);
-    /// @throws config_error_t
-    void get_option(router_option_key_t<T> key, T* value) const;
+    router_socket_options_t router_options();
 
     // --- discovery ---
     /// @throws config_error_t
@@ -404,9 +392,7 @@ class xpub_socket_t : public publisher_socket_t {
 
     // --- pub-specific options ---
     /// @throws config_error_t
-    void set_option(pub_option_key_t<T> key, const T& value);
-    /// @throws config_error_t
-    void get_option(pub_option_key_t<T> key, T* value) const;
+    pub_socket_options_t pub_options();
 };
 ```
 
@@ -434,9 +420,7 @@ class xsub_socket_t : public subscriber_socket_t {
 
     // --- sub-specific options ---
     /// @throws config_error_t
-    void set_option(sub_option_key_t<T> key, const T& value);
-    /// @throws config_error_t
-    void get_option(sub_option_key_t<T> key, T* value) const;
+    sub_socket_options_t sub_options();
 };
 ```
 
@@ -472,9 +456,144 @@ class stream_socket_t : public routed_message_socket_t {
 
     // --- stream-specific options ---
     /// @throws config_error_t
-    void set_option(stream_option_key_t<T> key, const T& value);
+    stream_socket_options_t stream_options();
+};
+```
+
+### Socket Option Facades
+
+Raw `set_option(key, value)` / `get_option(key)` bags are not part of the
+canonical public API. C++ exposes typed option facades instead.
+
+```cpp
+class common_socket_options_t {
     /// @throws config_error_t
-    void get_option(stream_option_key_t<T> key, T* value) const;
+    int linger() const;
+    /// @throws config_error_t
+    void linger(int value);
+    /// @throws config_error_t
+    int send_hwm() const;
+    /// @throws config_error_t
+    void send_hwm(int value);
+    /// @throws config_error_t
+    int recv_hwm() const;
+    /// @throws config_error_t
+    void recv_hwm(int value);
+    /// @throws config_error_t
+    int send_timeout() const;
+    /// @throws config_error_t
+    void send_timeout(int value);
+    /// @throws config_error_t
+    int recv_timeout() const;
+    /// @throws config_error_t
+    void recv_timeout(int value);
+    /// @throws config_error_t
+    bool immediate() const;
+    /// @throws config_error_t
+    void immediate(bool value);
+    /// @throws config_error_t
+    int connect_timeout() const;
+    /// @throws config_error_t
+    void connect_timeout(int value);
+    /// @throws config_error_t
+    bool ipv6() const;
+    /// @throws config_error_t
+    void ipv6(bool value);
+    /// @throws config_error_t
+    bool tcp_no_delay() const;
+    /// @throws config_error_t
+    void tcp_no_delay(bool value);
+    /// @throws config_error_t
+    bool tcp_keepalive() const;
+    /// @throws config_error_t
+    void tcp_keepalive(bool value);
+    /// @throws config_error_t
+    int heartbeat_interval() const;
+    /// @throws config_error_t
+    void heartbeat_interval(int value);
+    /// @throws config_error_t
+    int heartbeat_ttl() const;
+    /// @throws config_error_t
+    void heartbeat_ttl(int value);
+    /// @throws config_error_t
+    int heartbeat_timeout() const;
+    /// @throws config_error_t
+    void heartbeat_timeout(int value);
+    /// @throws config_error_t
+    int64_t max_message_size() const;
+    /// @throws config_error_t
+    void max_message_size(int64_t value);
+    /// @throws config_error_t
+    int backlog() const;
+    /// @throws config_error_t
+    void backlog(int value);
+    /// @throws config_error_t
+    int reconnect_interval() const;
+    /// @throws config_error_t
+    void reconnect_interval(int value);
+    /// @throws config_error_t
+    int reconnect_interval_max() const;
+    /// @throws config_error_t
+    void reconnect_interval_max(int value);
+    /// @throws config_error_t
+    std::string last_endpoint() const;
+};
+
+class pub_socket_options_t {
+    /// @throws config_error_t
+    bool verbose() const;
+    /// @throws config_error_t
+    void verbose(bool value);
+    /// @throws config_error_t
+    bool verboser() const;
+    /// @throws config_error_t
+    void verboser(bool value);
+    /// @throws config_error_t
+    bool no_drop() const;
+    /// @throws config_error_t
+    void no_drop(bool value);
+    /// @throws config_error_t
+    bool manual() const;
+    /// @throws config_error_t
+    void manual(bool value);
+};
+
+class sub_socket_options_t {
+    /// @throws config_error_t
+    int topics_count() const;
+};
+
+class dealer_socket_options_t {
+    /// @throws config_error_t
+    bool probe_router() const;
+    /// @throws config_error_t
+    void probe_router(bool value);
+};
+
+class router_socket_options_t {
+    /// @throws config_error_t
+    bool mandatory() const;
+    /// @throws config_error_t
+    void mandatory(bool value);
+    /// @throws config_error_t
+    bool handover() const;
+    /// @throws config_error_t
+    void handover(bool value);
+    /// @throws config_error_t
+    bool probe_router() const;
+    /// @throws config_error_t
+    void probe_router(bool value);
+    /// @throws config_error_t
+    std::optional<routing_id_t> connect_routing_id() const;
+    /// @throws config_error_t
+    void connect_routing_id(const routing_id_t& value);
+};
+
+class stream_socket_options_t {
+    /// @throws config_error_t
+    bool notify() const;
+    /// @throws config_error_t
+    void notify(bool value);
 };
 ```
 
@@ -500,15 +619,19 @@ class message_t {
     bool valid() const noexcept;
 
     // --- factories ---
+    // copy-based factories
     static message_t from_bytes(const void* data, size_t size);
     static message_t from_bytes(const std::vector<uint8_t>& bytes);
     static message_t from_string(const std::string& text);
+    // external attach with explicit release hook — C++ is the only binding
+    // that exposes this generic public path.
     static message_t from_external(void* data, size_t size,
                                    zlink_free_fn* ffn = NULL, void* hint = NULL);
 
     // --- init ---
     void init();
     void init(size_t size);
+    // external attach with explicit release hook.
     void init(void* data, size_t size, zlink_free_fn* ffn = NULL, void* hint = NULL);
 
     // --- accessors ---
@@ -603,16 +726,17 @@ public:
     /// @throws recv_error_t
     message_t single_part_or_throw();
 
-    // reply — request_seq() 가 설정된 경우에만 유효. 아니면 recv_error_t.
+    // reply — request_seq() 가 설정된 경우에만 유효. 아니면
+    // invalid reply context 로 submit_error_t.
     // routing_id / spot_rid / request_seq 는 캡슐화됨 — caller 가 다시
     // 넘길 필요 없음. submit 실패 시 submit_error_t.
-    /// @throws submit_error_t, recv_error_t
+    /// @throws submit_error_t
     void reply(message_t& part);
-    /// @throws submit_error_t, recv_error_t
+    /// @throws submit_error_t
     void reply(message_t& part, send_flags_t flags);
-    /// @throws submit_error_t, recv_error_t
+    /// @throws submit_error_t
     void reply(std::vector<message_t>& parts);
-    /// @throws submit_error_t, recv_error_t
+    /// @throws submit_error_t
     void reply(std::vector<message_t>& parts, send_flags_t flags);
 
     /// @throws close_error_t
@@ -1162,6 +1286,8 @@ rather than raw C structs. All entry types live in `zlink::service`
 and expose typed fields (std::string for text, `routing_id_t` for
 identities, and typed enums for categorical values).
 
+#### Primary
+
 #### member_peer_entry_t
 
 Member peer entry returned by `registry_t::member_peers(...)` and
@@ -1198,16 +1324,29 @@ struct registry_topology_entry_t {
     uint32_t error_code;
     uint64_t last_reported_ms;
 };
+```
 
-struct registry_topology_filter_t {
-    service_kind_t service_kind;
-    service_role_t service_role;
+#### spot_node_status_t
+
+Status snapshot returned by `spot_node_t::status_snapshot()`.
+
+```cpp
+struct spot_node_status_t {
     std::string service_name;
-    std::optional<routing_id_t> routing_id;
-    topology_state_t state;
-    topology_source_t source;
+    std::string local_endpoint;
+    std::optional<routing_id_t> node_routing_id;
+    spot_node_state_t state;
+    uint32_t configured_peer_count;
+    uint32_t active_peer_count;
+    uint32_t connected_peer_count;
+    uint32_t subject_count;
+    uint32_t ready_subject_count;
+    int32_t last_error;
+    uint64_t last_changed_ms;
 };
 ```
+
+#### Advanced / Diagnostic
 
 #### registry_service_summary_entry_t
 
@@ -1247,26 +1386,6 @@ struct registry_status_t {
     uint32_t peer_registry_count;
     uint32_t connected_peer_registry_count;
     uint64_t list_seq;
-    int32_t last_error;
-    uint64_t last_changed_ms;
-};
-```
-
-#### spot_node_status_t
-
-Status snapshot returned by `spot_node_t::status_snapshot()`.
-
-```cpp
-struct spot_node_status_t {
-    std::string service_name;
-    std::string local_endpoint;
-    std::optional<routing_id_t> node_routing_id;
-    spot_node_state_t state;
-    uint32_t configured_peer_count;
-    uint32_t active_peer_count;
-    uint32_t connected_peer_count;
-    uint32_t subject_count;
-    uint32_t ready_subject_count;
     int32_t last_error;
     uint64_t last_changed_ms;
 };
@@ -1314,6 +1433,15 @@ struct spot_node_subject_filter_t {
     std::string subject;
     subject_kind_t subject_kind;
 };
+
+struct registry_topology_filter_t {
+    service_kind_t service_kind;
+    service_role_t service_role;
+    std::string service_name;
+    std::optional<routing_id_t> routing_id;
+    topology_state_t state;
+    topology_source_t source;
+};
 ```
 
 ### service::registry_t
@@ -1331,7 +1459,6 @@ class registry_t {
     registry_t& operator=(registry_t&& other) noexcept;
 
     bool valid() const noexcept;
-    int last_error() const noexcept;
     void* handle() const;
 
     /// @throws bind_error_t
@@ -1386,7 +1513,6 @@ class discovery_t {
     discovery_t& operator=(discovery_t&& other) noexcept;
 
     bool valid() const noexcept;
-    int last_error() const noexcept;
     void* handle() const;
 
     /// @throws connect_error_t
@@ -1434,7 +1560,6 @@ class spot_node_t {
     spot_node_t& operator=(spot_node_t&& other) noexcept;
 
     bool valid() const noexcept;
-    int last_error() const noexcept;
     void* handle() const;
 
     /// @throws bind_error_t
@@ -1460,11 +1585,10 @@ class spot_node_t {
     void set_tls_client(const std::string& ca_cert, const std::string& hostname = "",
                         bool trust_system = false);
 
-    // --- options ---
     /// @throws config_error_t
-    void set(socket_option_key_t<T> key, const T& value);
+    pub_socket_options_t publisher_options();
     /// @throws config_error_t
-    void get(socket_option_key_t<T> key, T& value) const;
+    sub_socket_options_t subscriber_options();
 
     // --- snapshots ---
     /// @throws config_error_t
@@ -1478,6 +1602,11 @@ class spot_node_t {
     std::vector<spot_node_subject_entry_t> subjects_snapshot(
         const spot_node_subject_filter_t* filter = nullptr) const;
 
+    // --- factory: spot_t 생성은 반드시 spot_node_t 에서만 ---
+    /// @throws config_error_t
+    spot_t create_spot();
+
+    // close() cascades: live spot_t 들을 먼저 정리한 후 node 종료
     /// @throws close_error_t
     void close();
 };
@@ -1485,22 +1614,27 @@ class spot_node_t {
 } // namespace service
 ```
 
+`spot_node_t` 가 lifecycle 소유자. `spot_t` 는 반드시
+`spot_node_t::create_spot()` factory 로만 생성한다. 직접 `spot_t(node)`
+호출은 internal (public 생성자 아님).
+
 ### service::spot_t
 
 Spot messaging endpoint. Provides pub/sub, direct messaging, and subscription management.
+**`spot_node_t::create_spot()` 로만 생성**.
 
 ```cpp
 namespace service {
 
 class spot_t {
-    explicit spot_t(spot_node_t& node);
+    // explicit spot_t(spot_node_t&) 은 internal. 사용자 코드에서는
+    // spot_node_t::create_spot() 을 사용한다.
     ~spot_t();
 
     spot_t(spot_t&& other) noexcept;
     spot_t& operator=(spot_t&& other) noexcept;
 
     bool valid() const noexcept;
-    int last_error() const noexcept;
     void* handle() const;
 
     // --- publish ---
@@ -1598,17 +1732,11 @@ class spot_t {
 
     // --- options ---
     /// @throws config_error_t
-    void set(socket_option_key_t<T> key, const T& value);
+    common_socket_options_t options();
     /// @throws config_error_t
-    void get(socket_option_key_t<T> key, T& value) const;
+    pub_socket_options_t publisher_options();
     /// @throws config_error_t
-    void set(pub_option_key_t<T> key, const T& value);
-    /// @throws config_error_t
-    void get(pub_option_key_t<T> key, T& value) const;
-    /// @throws config_error_t
-    void set(sub_option_key_t<T> key, const T& value);
-    /// @throws config_error_t
-    void get(sub_option_key_t<T> key, T& value) const;
+    sub_socket_options_t subscriber_options();
 
     /// @throws close_error_t
     void close();
@@ -1632,7 +1760,6 @@ class registry_query_client_t {
     registry_query_client_t& operator=(registry_query_client_t&& other) noexcept;
 
     bool valid() const noexcept;
-    int last_error() const noexcept;
     void* handle() const;
 
     /// @throws connect_error_t
@@ -1808,11 +1935,13 @@ void zlink_version(int& major, int& minor, int& patch);
 
 /// Start a built-in proxy between frontend and backend sockets.
 /// An optional capture socket receives copies of all messages.
-int proxy(void* frontend, void* backend, void* capture = NULL);
+/// @throws zlink_error_t
+void proxy(void* frontend, void* backend, void* capture = NULL);
 
 /// Start a steerable proxy with an additional control socket.
-int proxy_steerable(void* frontend, void* backend,
-                    void* capture, void* control);
+/// @throws zlink_error_t
+void proxy_steerable(void* frontend, void* backend,
+                     void* capture, void* control);
 
 /// Check if the library supports a given capability (e.g. "ipc", "tls").
 bool has(const std::string& capability);

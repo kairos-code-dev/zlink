@@ -422,11 +422,11 @@ class RecvFlags:
 class Message:
     def __init__(self, size: int | None = None) -> None: ...                 # Raises: ConfigError
     @classmethod
-    def copy_from(cls, data: bytes | bytearray) -> Message: ...              # Raises: ConfigError
-    @classmethod
-    def wrap_buffer(cls, data: bytes | bytearray) -> Message: ...            # Raises: ConfigError
+    def copy_from(cls, data: bytes | bytearray | memoryview) -> Message: ... # Raises: ConfigError
     @staticmethod
-    def from_bytes(data: bytes) -> Message: ...                              # Raises: ConfigError
+    def from_bytes(data: bytes | bytearray | memoryview) -> Message: ...     # Raises: ConfigError
+    # Public input adapters are copy-based only; borrowed external-wrap APIs
+    # are intentionally not exposed on managed bindings.
     def size(self) -> int: ...                                               # Raises: ConfigError
     @property
     def data(self) -> memoryview: ...                                        # Raises: ConfigError
@@ -483,13 +483,14 @@ class Received:
     def first_part(self) -> Message: ...              # Raises: RecvError
     def single_part_or_throw(self) -> Message: ...    # Raises: RecvError
 
-    # reply — request_seq 가 None 이 아닐 때만 유효. None 이면 RecvError.
+    # reply — request_seq 가 None 이 아니어야 함. None 또는 invalid reply
+    # context 는 SubmitError.
     def reply(
         self,
         parts: Message | list[Message],
         *,
         flags: int = 0,
-    ) -> None: ...                                    # Raises: SubmitError, RecvError
+    ) -> None: ...                                    # Raises: SubmitError
 
     def close(self) -> None: ...                      # Raises: CloseError
     def __enter__(self) -> "Received": ...
@@ -931,21 +932,26 @@ class SpotNode:
                        require_client_cert: bool = False) -> None: ...           # Raises: ConfigError
     def set_tls_client(self, ca_cert: str | None, hostname: str | None,
                        trust_system: bool = False) -> None: ...                  # Raises: ConfigError
-    def wrap_handle(self) -> Spot: ...                                           # Raises: ConfigError
+    def create_spot(self) -> Spot: ...                                           # Raises: ConfigError
     def status_snapshot(self) -> SpotNodeStatus: ...                             # Raises: ConfigError
     def peers_snapshot(self) -> list[SpotNodePeerEntry]: ...                     # Raises: ConfigError
     def peers_query(self, filter_: SpotNodePeerFilter | None = None
                     ) -> list[SpotNodePeerEntry]: ...                            # Raises: ConfigError
     def subjects_snapshot(self, filter_: SpotNodeSubjectFilter | None = None
                           ) -> list[SpotNodeSubjectEntry]: ...                   # Raises: ConfigError
+    # close() cascades: closes all live Spot handles before the node becomes invalid.
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
+
+`SpotNode` owns the lifecycle. `Spot` is created only through
+`SpotNode.create_spot()`. Direct `Spot(node)` construction is internal
+and is not part of the public API contract.
 
 ### Spot
 
 ```python
 class Spot:
-    def __init__(self, node: SpotNode) -> None: ...
+    # __init__(node) is internal. Public code must use SpotNode.create_spot().
     def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
     def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
     def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
@@ -1032,6 +1038,8 @@ frozen dataclass-shaped: named fields only, no mutation, no lifecycle
 methods. Field types follow the canonical C struct definitions exposed
 in `core/include/zlink.h`; fixed-size C strings are decoded to `str`.
 
+Primary entry types used in the default service flow:
+
 ```python
 @dataclass(frozen=True)
 class MemberPeerEntry:
@@ -1057,6 +1065,24 @@ class RegistryTopologyEntry:
     last_reported_ms: int
 
 @dataclass(frozen=True)
+class SpotNodeStatus:
+    service_name: str
+    local_endpoint: str
+    node_routing_id: RoutingId
+    state: int                       # zlink_spot_node_state_t
+    configured_peer_count: int
+    active_peer_count: int
+    connected_peer_count: int
+    subject_count: int
+    ready_subject_count: int
+    last_error: int
+    last_changed_ms: int
+```
+
+Advanced / Diagnostic entry types and filters:
+
+```python
+@dataclass(frozen=True)
 class RegistryServiceSummaryEntry:
     service_kind: int                # zlink_service_kind_t
     service_role: int
@@ -1069,16 +1095,14 @@ class RegistryServiceSummaryEntry:
     last_reported_ms: int
 
 @dataclass(frozen=True)
-class SpotNodeStatus:
-    service_name: str
-    local_endpoint: str
-    node_routing_id: RoutingId
-    state: int                       # zlink_spot_node_state_t
-    configured_peer_count: int
-    active_peer_count: int
-    connected_peer_count: int
-    subject_count: int
-    ready_subject_count: int
+class RegistryStatus:
+    registry_id: int
+    bind_endpoint: str
+    state: int                       # zlink_registry_state_t
+    topology_entry_count: int
+    peer_registry_count: int
+    connected_peer_registry_count: int
+    list_seq: int
     last_error: int
     last_changed_ms: int
 
@@ -1100,6 +1124,33 @@ class SpotNodeSubjectEntry:
     ready_peer_count: int
     active_peer_count: int
     last_changed_ms: int
+
+@dataclass(frozen=True)
+class RegistryServiceSummaryFilter:
+    service_kind: int | None = None
+    service_role: int | None = None
+    service_name: str | None = None
+
+@dataclass(frozen=True)
+class RegistryTopologyFilter:
+    service_kind: int | None = None
+    service_role: int | None = None
+    service_name: str | None = None
+    routing_id: RoutingId | None = None
+    state: int | None = None
+    source: int | None = None
+
+@dataclass(frozen=True)
+class SpotNodePeerFilter:
+    peer_endpoint: str | None = None
+    source: int | None = None
+    state: int | None = None
+
+@dataclass(frozen=True)
+class SpotNodeSubjectFilter:
+    role: int | None = None
+    subject: str | None = None
+    subject_kind: int | None = None
 ```
 
 ---

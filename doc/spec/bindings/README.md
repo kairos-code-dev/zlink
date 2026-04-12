@@ -203,8 +203,10 @@
       `zlink_bind_result_t`, `zlink_connect_result_t`,
       `zlink_config_result_t`).
    - Go: `(T, error)` 반환. error 객체에 `int` 코드를 포함한다.
-   - Rust: `Result<T, ZlinkError>` 반환. `ZlinkError` 에 `int` 코드를
-     포함한다. `?` 연산자로 호출측 전파를 쓴다.
+   - Rust: `Result<T, E>` 반환. `E` 는 가능한 한 함수군별 구체 에러
+     (`BindError`, `SubmitError` 등)를 쓰고, 여러 함수군이 섞이는 경계에서만
+     `ZlinkError` 로 승격한다. 에러 값에는 `int` 코드가 포함된다.
+     `?` 연산자로 호출측 전파를 쓴다.
 3. **try\* 변형은 제공하지 않는다.**
    - `trySend`, `tryRecv`, `tryPublish`, `trySubscribe`,
      `tryReceiveSubscriptionEvent`, `tryRequest`, `tryReply` 전부 없다.
@@ -325,7 +327,7 @@ C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 
   전달한다 (submit result 코드로 구분 가능).
   - exception 언어 (C++/Java/.NET/Node/Python): 예외를 던진다.
   - return-based 언어 (C/Go/Rust): 에러 반환 (C=result enum,
-    Go=`error`, Rust=`Err(ZlinkError)`).
+    Go=`error`, Rust=`Err(E)`).
 - 언어별 flags 표현:
   - C / C++: `int flags = 0`
   - Java: `SendFlags flags` overload (기본 blocking 오버로드 유지)
@@ -479,12 +481,13 @@ PAIR / DEALER / ROUTER / SPOT 의 recv 결과. topic 필드가 없는 점 외에
 | `is_single_part()` | `bool` | 동일 |
 | `first_part()` | `Message` | 동일 |
 | `single_part_or_throw()` | `Message` | 동일 |
-| `reply(parts, flags?)` | — | request 였을 때만 유효. `request_seq` 없으면 `RecvError` |
+| `reply(parts, flags?)` | — | request 였을 때만 유효. `request_seq` 없거나 reply context 가 invalid 하면 `SubmitError` |
 | `close()` / 동등 | — | 동일 |
 
 `reply()` 규칙:
-- **`request_seq` 가 `null` 이면 호출 금지**. 호출 시 `RecvError` /
-  `IllegalStateException` 등 언어별 에러 관용구.
+- **`request_seq` 가 `null` 이면 호출 금지**. 호출 시 `SubmitError`
+  계열로 처리한다. `request_seq == 0`, 잘못된 `(routing_id, request_seq)`
+  조합 등 invalid reply context 도 같은 submit domain 으로 본다.
 - `Received` 가 내부적으로 source socket 참조를 보유한다 (binding 이 recv /
   handler 에서 Received 를 만들 때 주입).
 - socket 이 close 된 후 `reply()` 호출하면 `SubmitError(TERMINATED)`.
@@ -942,11 +945,13 @@ RegistryQueryClient (원격 토폴로지 조회)
   - `ServiceEvent`: ServiceMonitor에서 수신하는 이벤트
   - `MonitorSnapshot`: monitor 상태 스냅샷
   - `SpotNodeStatus`: SpotNode 상태 (state, peer count 등)
-  - `SpotNodePeerEntry`: peer 정보
-  - `SpotNodeSubjectEntry`: subject 정보
-  - `RegistryStatus`: Registry 상태
   - `MemberPeerEntry`: 서비스 멤버 peer 정보
   - `RegistryTopologyEntry`: 토폴로지 엔트리
+  - `RegistryStatus`: Registry 상태
+  - `RegistryServiceSummaryEntry`: 서비스 요약 엔트리
+- Advanced / Diagnostic domain object:
+  - `SpotNodePeerEntry`: peer 정보
+  - `SpotNodeSubjectEntry`: subject 정보
 - 필터 객체:
   - `SpotNodePeerFilter`: peer 조회 필터
   - `SpotNodeSubjectFilter`: subject 조회 필터
@@ -1332,24 +1337,25 @@ high-level request 완료는 첫 reply 1건으로 끝난다.
 #### 소유권
 
 - `request()` / `reply()` 호출 시 메시지 ownership 은 기존 send 계약을 따른다.
-- reply handler callback 으로 전달된 `parts` 는 borrowed view 다.
-  callback 반환 후 무효. 바인딩은 callback 에서 복사하여 `Received` 를 만든다.
+- request callback 으로 전달된 `parts` 는 borrowed view 다.
+  callback 반환 후 무효. 바인딩은 이를 복사해 언어별 리스트 타입 또는
+  `Vec<Message>` 로 전달한다.
 - 소켓 close 시 core 가 pending map 의 모든 미완료 request 를 `ZLINK_REQUEST_TERMINATED` callback 으로 reject 한다.
 
 #### Callback 계약
 
 - callback 은 정확히 한 번 호출된다.
-  성공이면 `result = OK` + `received`, 실패면 `result != OK` + `received`
-  가 null/None/nil/None variant.
+  성공이면 `result = OK` + reply parts, 실패면 `result != OK` +
+  empty/null/Err 경로로 전달된다.
 - core callback 시그니처: `void(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, void *userdata_)`
 - 언어별 패턴 (per-function `RequestError` 계승):
-  - C++: `std::function<void(request_result_t, received_t)>`
-  - Java: `BiConsumer<RequestResult, Received>` (실패 시 `received` 는 null)
-  - .NET: `Action<RequestResult, Received?>`
-  - Node: `(result: RequestResult, received: Received | null) => void`
-  - Python: `callback(result: RequestResult, received: Received | None)`
-  - Go: `func(RequestResult, *Received)` (실패 시 nil)
-  - Rust: `FnOnce(Result<Received, RequestError>)` (Rust 관용구;
+  - C++: `std::function<void(request_result_t, std::vector<message_t>)>`
+  - Java: `BiConsumer<RequestResult, List<Message>>`
+  - .NET: `Action<RequestResult, IReadOnlyList<Message>>`
+  - Node: `(result: RequestResult, parts: Message[]) => void`
+  - Python: `callback(result: RequestResult, parts: list[Message])`
+  - Go: `func(RequestResult, []*Message)` (실패 시 nil/empty 허용)
+  - Rust: `FnOnce(Result<Vec<Message>, RequestError>)` (Rust 관용구;
     `RequestError::code` 가 `RequestResult` 에 대응)
 
 ### SPOT Messaging Policy
@@ -1758,6 +1764,78 @@ typedef enum zlink_spot_node_option_t {
 - 다만 모든 바인딩은 hot path에서 불필요한 복사, 할당, 변환을 줄이는 방향을
   기본 정책으로 삼아야 한다.
 
+### High-Performance Buffer Ecosystem Policy (Recommended)
+- canonical public contract 는 계속 `Message` / `List<Message>` / `Received` /
+  `TopicMessage` 를 기준으로 유지한다.
+- 다만 send / publish / request / reply 입력 경로에서는, **해당 언어에서 사실상
+  표준급이고 copy 감소 효과가 큰 버퍼 생태계 타입**을 adapter surface 로
+  지원하는 것을 권장한다.
+- 이 지원은 canonical contract 를 대체하지 않는다.
+  - recv 결과를 외부 라이브러리 타입으로 바꾸지 않는다.
+  - domain object 필드 타입을 외부 라이브러리 타입으로 바꾸지 않는다.
+  - 지원하더라도 `Message` 생성 / 입력 adapter / `from_*` helper /
+    `impl IntoMultipart` 같은 진입점으로 제한한다.
+- 지원 기준:
+  - 그 언어의 네트워킹/IO 생태계에서 널리 쓰이는가
+  - zero-copy 또는 copy 감소 효과가 실질적인가
+  - 특정 프레임워크 종속을 public surface 전체에 강제하지 않는가
+- 비기준:
+  - niche 라이브러리
+  - 특정 회사/프로젝트 내부에서만 주로 쓰는 버퍼 타입
+  - canonical type 을 대체하려는 wrapper
+
+권장 우선순위:
+
+| 언어 | 권장 지원 | 수준 | 비고 |
+|---|---|---|---|
+| Java | Netty `ByteBuf` | Recommended | 네트워크 스택에서 매우 흔하고 direct/off-heap 경로 가치가 큼 |
+| Java | Agrona `DirectBuffer` | Optional | 저지연 계열에서 유용하지만 Netty보다 우선순위는 낮음 |
+| .NET | `ReadOnlyMemory<byte>` / `ReadOnlySequence<byte>` / `IBufferWriter<byte>` | Recommended | 표준 버퍼 생태계. copy 감소 효과가 큼 |
+| .NET | `PipeReader` / `PipeWriter` | Optional | `System.IO.Pipelines` 사용자층에 유용 |
+| Rust | `bytes::Bytes` / `BytesMut` | Recommended | async/network 생태계에서 사실상 표준급 |
+| Python | buffer protocol / `memoryview` | Recommended | `bytes` / `bytearray` 외 zero-copy 입력 경로 확보 |
+| Node | `Buffer` / `Uint8Array` | Baseline | 사실상 기본 지원 범주 |
+| Go | `[]byte` / `[][]byte` | Baseline | 언어 기본 경로가 이미 hot path 표준 |
+
+- 설계 규칙:
+  - adapter 는 input-side convenience 여야 한다. canonical return type 을
+    바꾸지 않는다.
+  - adapter 지원 여부 때문에 overload 폭이 과도하게 늘어나면 안 된다.
+    가능하면 `MessageLike`, `IntoMultipart`, buffer protocol 같은 **한 개의
+    통합 진입점**으로 흡수한다.
+  - 외부 버퍼 타입을 받더라도 ownership / retain / release 규칙은 바인딩이
+    문서로 명확히 정의해야 한다.
+  - 프레임워크별 객체 수명 규칙 (`ByteBuf.retain/release`, pooled buffer 등)을
+    사용자가 추측하게 두면 안 된다.
+  - "지원 가능" 과 "zero-copy 보장" 을 혼동하지 않는다. zero-copy 보장이
+    불가능하면 문서에 copy 가능성을 명시한다.
+
+### External Buffer Attach / Release Hook Policy
+- C API 의 `zlink_msg_init_data(..., zlink_free_fn*, hint)` 는 **external buffer
+  attach + release hook** 능력을 제공한다.
+- 바인딩은 이 능력을 **언어 관용구와 메모리 모델에 맞을 때만** public 으로
+  노출한다.
+- 기본 원칙:
+  - **copy-based `Message` 생성 경로는 모든 바인딩에서 Required**
+  - **release hook 없는 borrowed zero-copy wrap API 는 managed 언어 public
+    surface 에 두지 않는다**
+  - external buffer attach 는 **release 시점을 public contract 로 닫을 수 있을
+    때만** 허용한다
+- 허용:
+  - C++
+    - `from_external(..., zlink_free_fn*, hint)` 같은 형태로 external attach 허용
+    - release hook 이 explicit 하므로 public contract 로 닫을 수 있다
+- 비권장/금지:
+  - Java / .NET / Go / Rust / Python / Node
+    - generic public borrowed wrap (`wrapDirect`, `wrapNative`, `wrap_buffer`
+      등) 금지
+    - 이유: send 후 backing buffer lifetime, retain/release, arena/session,
+      GC 와의 상호작용을 public contract 로 안전하게 닫기 어렵다
+- 예외:
+  - 특정 언어에서 releaser/owner contract 를 **명시적이고 안전한 public 타입**
+    으로 닫을 수 있다면 advanced API 로 재검토할 수 있다
+  - 다만 이 경우에도 canonical 기본 경로는 copy-based 생성이어야 한다
+
 ## Boundary Cost Policy
 - 경계 검증은 가장 이른 안전한 위치에서 한 번 수행하는 것을 우선한다.
 - 같은 검증을 여러 레이어에서 반복하면 이유가 명확해야 한다.
@@ -1847,7 +1925,7 @@ Exception 언어는 예외를 던지고, return-based 언어는 에러 값을 �
 - Node: `throw ZlinkError` (extends `Error`)
 - Python: `raise ZlinkError` (extends `Exception`)
 - Go: `return err` (`ZlinkError` 또는 동등한 typed error)
-- Rust: `Err(ZlinkError)` (`Result<T, ZlinkError>`)
+- Rust: `Err(E)` (`Result<T, E>`; 여러 함수군이 섞일 때만 `ZlinkError`)
 
 ### Error Code 표
 
@@ -2080,7 +2158,10 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 | not connected | `SubmitError(NOT_CONNECTED)` |
 | 기타 실패 | `SubmitError(해당 submit 코드)` |
 
-- 모든 실패는 async completion 경로 (Future reject / callback) 로 전달한다.
+- async request 는 완료 실패를 async completion 경로 (Future reject / await
+  error) 로 전달한다.
+- callback request 는 **submit 실패를 즉시 throw/return** 하고, submit 성공 후의
+  완료 실패만 callback 의 `RequestResult` / `RequestError` 로 전달한다.
 - 함수군별 하위 에러 타입을 사용한다 (Per-Function Error Type Hierarchy 참조).
   - submit 실패: `SubmitException` / `SubmitError`
   - request 완료 실패: `RequestException` / `RequestError`
@@ -2091,7 +2172,9 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
   - Python: `SubmitError` / `RequestError` — `code` attribute
   - C++: `submit_error_t` / `request_error_t` — `.code()` 메서드
   - Go: `*SubmitError` / `*RequestError` — `Code()` 메서드 (interface)
-  - Rust: `Err(SubmitError{..})` / `Err(RequestError{..})` — `.code()` 메서드
+  - Rust: `Err(SubmitError{..})` / `Err(RequestError{..})`, 또는 다중 함수군
+    경계에서는 `Err(ZlinkError::Submit(..))` / `Err(ZlinkError::Request(..))`
+    — `.code()` 메서드
 
 ## Length and Range Boundary Policy
 - 검증 책임은 두 층으로 나눈다.
@@ -2270,9 +2353,10 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
   - multipart-only 기준 surface
   - 모든 실패는 `error` 반환 (`SubmitResult` 코드 포함)
 - Rust
-  - `Result<T, ZlinkError>` + strong newtype + ownership
+  - `Result<T, E>` + strong newtype + ownership
   - multipart-only 기준 surface
-  - 모든 실패는 `Err(ZlinkError)` (`SubmitResult` 코드 포함)
+  - 단일 함수군은 `BindError` / `SubmitError` 같은 concrete error,
+    다중 함수군은 `ZlinkError`
 - Node/Python
   - 언어 관례를 따르되 의미 계약은 동일
   - multipart-only 기준 surface
@@ -2438,7 +2522,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
   우회 방지는 Review Checklist에서 검증한다. 자동화 테스트 항목이 아니다.
 
 ## Sample Policy
-- 샘플 제작 규칙은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)
+- 샘플 제작 규칙은 [`doc/spec/sample/SAMPLE_POLICY.md`](../sample/SAMPLE_POLICY.md)
   를 단일 기준 문서로 사용한다.
 - 이 문서는 `core/samples/`와 `bindings/*/samples/`를 함께 포괄한다.
 - 바인딩 샘플을 추가, 수정, 리뷰할 때는 위 문서를 기준으로 판단한다.

@@ -229,6 +229,31 @@ class dealer_socket_t : public message_socket_t {
     /// @throws handler_error_t
     void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
+    // --- request (coroutine, blocking submit — no flags) ---
+    /// @throws request_error_t (co_await), submit_error_t (submit)
+    async_result_t<received_t> request(message_t& part,
+                                       std::chrono::milliseconds timeout = {});
+    /// @throws request_error_t (co_await), submit_error_t (submit)
+    async_result_t<received_t> request(std::vector<message_t>& parts,
+                                       std::chrono::milliseconds timeout = {});
+
+    // --- request (callback; callback receives request_result_t) ---
+    /// @throws submit_error_t
+    void request(message_t& part,
+                 std::function<void(request_result_t, received_t)> callback,
+                 send_flags_t flags = send_flags_t::none,
+                 std::chrono::milliseconds timeout = {});
+    /// @throws submit_error_t
+    void request(std::vector<message_t>& parts,
+                 std::function<void(request_result_t, received_t)> callback,
+                 send_flags_t flags = send_flags_t::none,
+                 std::chrono::milliseconds timeout = {});
+
+    // --- request configuration ---
+    /// @throws config_error_t
+    void set_default_request_timeout(std::chrono::milliseconds timeout);
+    std::chrono::milliseconds get_default_request_timeout() const;
+
     // --- identity / routing ---
     /// @throws config_error_t
     void set_routing_id(const routing_id_t& routing_id);
@@ -272,6 +297,43 @@ class router_socket_t : public routed_message_socket_t {
     void set_routing_id(const routing_id_t& routing_id);
     /// @throws config_error_t
     void get_routing_id(routing_id_t& routing_id) const;
+
+    // --- request (coroutine, blocking submit — no flags) ---
+    /// @throws request_error_t (co_await), submit_error_t (submit)
+    async_result_t<received_t> request(const routing_id_t& peer_rid,
+                                       message_t& part,
+                                       std::chrono::milliseconds timeout = {});
+    /// @throws request_error_t (co_await), submit_error_t (submit)
+    async_result_t<received_t> request(const routing_id_t& peer_rid,
+                                       std::vector<message_t>& parts,
+                                       std::chrono::milliseconds timeout = {});
+
+    // --- request (callback; callback receives request_result_t) ---
+    /// @throws submit_error_t
+    void request(const routing_id_t& peer_rid,
+                 message_t& part,
+                 std::function<void(request_result_t, received_t)> callback,
+                 send_flags_t flags = send_flags_t::none,
+                 std::chrono::milliseconds timeout = {});
+    /// @throws submit_error_t
+    void request(const routing_id_t& peer_rid,
+                 std::vector<message_t>& parts,
+                 std::function<void(request_result_t, received_t)> callback,
+                 send_flags_t flags = send_flags_t::none,
+                 std::chrono::milliseconds timeout = {});
+
+    // --- reply ---
+    /// @throws submit_error_t
+    void reply(const routing_id_t& rid, uint64_t request_seq,
+               message_t& part, send_flags_t flags = send_flags_t::none);
+    /// @throws submit_error_t
+    void reply(const routing_id_t& rid, uint64_t request_seq,
+               std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+
+    // --- request configuration ---
+    /// @throws config_error_t
+    void set_default_request_timeout(std::chrono::milliseconds timeout);
+    std::chrono::milliseconds get_default_request_timeout() const;
 
     // --- router → spot routed send ---
     /// @throws submit_error_t
@@ -893,80 +955,6 @@ class async_result_t {
     template<typename Rep, typename Period>
     std::future_status wait_for(const std::chrono::duration<Rep, Period>& timeout) const;
     T get();
-};
-```
-
----
-
-## Request-Reply
-
-### request_router_t
-
-Request-reply layer on top of a router_socket_t. Manages request correlation
-and reply dispatch.
-
-```cpp
-class request_router_t {
-    explicit request_router_t(router_socket_t& socket);
-
-    /// @throws config_error_t
-    void set_default_request_timeout(std::chrono::milliseconds timeout);
-    std::chrono::milliseconds get_default_request_timeout() const;
-
-    // --- request (coroutine, blocking submit — no flags) ---
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<received_t> request(const routing_id_t& routing_id, message_t message,
-                                       std::chrono::milliseconds timeout = {});
-
-    // --- request (callback; callback receives request_result_t) ---
-    /// @throws submit_error_t
-    void request(const routing_id_t& routing_id, message_t message,
-                 std::function<void(request_result_t, received_t)> callback,
-                 send_flags_t flags = send_flags_t::none,
-                 std::chrono::milliseconds timeout = {});
-
-    // --- reply ---
-    /// @throws submit_error_t
-    void reply(const routing_id_t& routing_id, uint64_t request_seq, message_t message,
-               send_flags_t flags = send_flags_t::none);
-
-    // --- receive ---
-    /// @throws recv_error_t
-    received_t recv(recv_flags_t flags = recv_flags_t::none);
-    /// @throws handler_error_t
-    void on_receive(std::function<void(received_t)> handler);
-};
-```
-
-### request_dealer_t
-
-Request-reply layer on top of a dealer_socket_t.
-
-```cpp
-class request_dealer_t {
-    explicit request_dealer_t(dealer_socket_t& socket);
-
-    /// @throws config_error_t
-    void set_default_request_timeout(std::chrono::milliseconds timeout);
-    std::chrono::milliseconds get_default_request_timeout() const;
-
-    // --- request (coroutine, blocking submit — no flags) ---
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<received_t> request(message_t message,
-                                       std::chrono::milliseconds timeout = {});
-
-    // --- request (callback; callback receives request_result_t) ---
-    /// @throws submit_error_t
-    void request(message_t message,
-                 std::function<void(request_result_t, received_t)> callback,
-                 send_flags_t flags = send_flags_t::none,
-                 std::chrono::milliseconds timeout = {});
-
-    // --- receive ---
-    /// @throws recv_error_t
-    received_t recv(recv_flags_t flags = recv_flags_t::none);
-    /// @throws handler_error_t
-    void on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
 };
 ```
 

@@ -191,6 +191,16 @@ func (s *DealerSocket) SetProbe(value bool) error
 func (s *DealerSocket) Send(flags SendFlags, parts ...*Message) error
 // Recv receives a message. Returns *RecvError on failure.
 func (s *DealerSocket) Recv(flags RecvFlags) (*Received, error)
+// Request performs a synchronous request — blocks until reply or timeout.
+// timeout = 0 uses the socket default timeout.
+// Returns *SubmitError on submit failure, *RequestError on reply failure
+// (e.g. timeout, protocol error).
+func (s *DealerSocket) Request(parts [][]byte, timeout time.Duration) (Received, error)
+// RequestCallback performs a callback-based request — submit may fail
+// (returned as error). timeout = 0 uses the socket default timeout.
+// Returns *SubmitError on submit failure; the callback receives a
+// RequestResult which maps to *RequestError for failures.
+func (s *DealerSocket) RequestCallback(parts [][]byte, cb func(RequestResult, *Received), flags SendFlags, timeout time.Duration) error
 // OnReceive registers a receive handler. Returns *HandlerError on failure.
 func (s *DealerSocket) OnReceive(handler func(*Received)) error
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
@@ -223,6 +233,18 @@ func (s *RouterSocket) SetConnectRoutingID(id RoutingID) error
 func (s *RouterSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) error
 // Recv receives a message. Returns *RecvError on failure.
 func (s *RouterSocket) Recv(flags RecvFlags) (*Received, error)
+// Request performs a synchronous request to a specific peer — blocks until
+// reply or timeout. timeout = 0 uses the socket default timeout.
+// Returns *SubmitError on submit failure, *RequestError on reply failure
+// (e.g. timeout, protocol error).
+func (s *RouterSocket) Request(peerRid RoutingID, parts [][]byte, timeout time.Duration) (Received, error)
+// RequestCallback performs a callback-based request to a specific peer —
+// submit may fail (returned as error). timeout = 0 uses the socket default
+// timeout. Returns *SubmitError on submit failure; the callback receives a
+// RequestResult which maps to *RequestError for failures.
+func (s *RouterSocket) RequestCallback(peerRid RoutingID, parts [][]byte, cb func(RequestResult, *Received), flags SendFlags, timeout time.Duration) error
+// Reply submits a reply to a request from peer rid. Returns *SubmitError on failure.
+func (s *RouterSocket) Reply(rid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error
 // OnReceive registers a receive handler. Returns *HandlerError on failure.
 func (s *RouterSocket) OnReceive(handler func(*Received)) error
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
@@ -474,6 +496,12 @@ const (
     RequestTerminated    RequestResult = 103
     RequestProtocolError RequestResult = 104
 )
+
+// RequestReplyCallback is invoked on completion of a callback-based request
+// (e.g. RouterSocket.RequestToSpot, Spot.RequestToSpot, Spot.RequestToRouter).
+// The RequestResult conveys completion status; the *Received carries reply
+// parts (non-nil only for RequestOK).
+type RequestReplyCallback func(RequestResult, *Received)
 ```
 
 ### RecvResult
@@ -675,72 +703,6 @@ func (e *ConfigError) Unwrap() error
 Each fallible function's Go doc comment names the concrete error type
 it returns. Callers may type-assert to the concrete type for category
 handling, or treat the value as `ZlinkError` / plain `error`.
-
----
-
-## Request-Reply
-
-### RequestDealer
-
-```go
-func NewRequestDealer(socket *DealerSocket) *RequestDealer
-func (r *RequestDealer) Socket() *DealerSocket
-
-// Synchronous request — blocks until reply or timeout.
-// timeout = 0 uses the socket default timeout.
-// Returns *SubmitError on submit failure, *RequestError on reply failure
-// (e.g. timeout, protocol error).
-func (r *RequestDealer) Request(timeout time.Duration,
-    parts ...*Message) (*Received, error)
-
-// Callback request — submit may fail (returned as error).
-// timeout = 0 uses the socket default timeout.
-// Returns *SubmitError on submit failure; the callback receives a
-// RequestResult which maps to *RequestError for failures.
-func (r *RequestDealer) RequestCallback(callback RequestReplyCallback,
-    flags SendFlags, timeout time.Duration,
-    parts ...*Message) error
-
-// Recv receives a reply. Returns *RecvError on failure.
-func (r *RequestDealer) Recv(flags RecvFlags) (*Received, error)
-// OnReceive registers a receive handler. Returns *HandlerError on failure.
-func (r *RequestDealer) OnReceive(handler func(*Received)) error
-// Close closes the request dealer. Returns *CloseError on failure.
-func (r *RequestDealer) Close() error
-
-type RequestReplyCallback func(RequestResult, *Received)
-```
-
-### RequestRouter
-
-```go
-func NewRequestRouter(socket *RouterSocket) *RequestRouter
-func (r *RequestRouter) Socket() *RouterSocket
-
-// Synchronous request — blocks until reply or timeout.
-// timeout = 0 uses the socket default timeout.
-// Returns *SubmitError on submit failure, *RequestError on reply failure.
-func (r *RequestRouter) Request(routingID RoutingID, timeout time.Duration,
-    parts ...*Message) (*Received, error)
-
-// Callback request — submit may fail (returned as error).
-// timeout = 0 uses the socket default timeout.
-// Returns *SubmitError on submit failure; the callback receives a
-// RequestResult which maps to *RequestError for failures.
-func (r *RequestRouter) RequestCallback(routingID RoutingID,
-    callback RequestReplyCallback, flags SendFlags, timeout time.Duration,
-    parts ...*Message) error
-
-// Reply submits a reply. Returns *SubmitError on failure.
-func (r *RequestRouter) Reply(routingID RoutingID, requestSeq uint64,
-    flags SendFlags, parts ...*Message) error
-// Recv receives a request. Returns *RecvError on failure.
-func (r *RequestRouter) Recv(flags RecvFlags) (*Received, error)
-// OnReceive registers a receive handler. Returns *HandlerError on failure.
-func (r *RequestRouter) OnReceive(handler func(*Received)) error
-// Close closes the request router. Returns *CloseError on failure.
-func (r *RequestRouter) Close() error
-```
 
 ---
 

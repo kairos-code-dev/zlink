@@ -159,6 +159,28 @@ public final class DealerSocket extends Socket {
     void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
+    // --- request (async, no flags) ---
+    CompletableFuture<Received> request(Message part);                           // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<Received> request(Message part, Duration timeout);         // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<Received> request(List<Message> parts);                    // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<Received> request(List<Message> parts, Duration timeout);  // @throws SubmitException; future completes with RequestException on failure
+
+    // --- request (callback, has flags, throws on submit failure) ---
+    void request(Message part,
+                 BiConsumer<RequestResult, Received> callback);                         // @throws SubmitException; callback receives RequestResult
+    void request(Message part,
+                 BiConsumer<RequestResult, Received> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
+    void request(Message part,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags, Duration timeout);                                    // @throws SubmitException; callback receives RequestResult
+    void request(List<Message> parts,
+                 BiConsumer<RequestResult, Received> callback);                         // @throws SubmitException; callback receives RequestResult
+    void request(List<Message> parts,
+                 BiConsumer<RequestResult, Received> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
+    void request(List<Message> parts,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags, Duration timeout);                                    // @throws SubmitException; callback receives RequestResult
+
     DealerSocketOptions options();
 }
 ```
@@ -189,6 +211,34 @@ public final class RouterSocket extends Socket {
     Received recv(RecvFlags flags);                                  // @throws RecvException
     void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
+
+    // --- request to a specific peer (async, no flags) ---
+    CompletableFuture<Received> request(RoutingId rid, Message part);                          // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<Received> request(RoutingId rid, Message part, Duration timeout);        // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<Received> request(RoutingId rid, List<Message> parts);                   // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<Received> request(RoutingId rid, List<Message> parts, Duration timeout); // @throws SubmitException; future completes with RequestException on failure
+
+    // --- request to a specific peer (callback, has flags, throws on submit failure) ---
+    void request(RoutingId rid, Message part,
+                 BiConsumer<RequestResult, Received> callback);                         // @throws SubmitException; callback receives RequestResult
+    void request(RoutingId rid, Message part,
+                 BiConsumer<RequestResult, Received> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
+    void request(RoutingId rid, Message part,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags, Duration timeout);                                    // @throws SubmitException; callback receives RequestResult
+    void request(RoutingId rid, List<Message> parts,
+                 BiConsumer<RequestResult, Received> callback);                         // @throws SubmitException; callback receives RequestResult
+    void request(RoutingId rid, List<Message> parts,
+                 BiConsumer<RequestResult, Received> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
+    void request(RoutingId rid, List<Message> parts,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags, Duration timeout);                                    // @throws SubmitException; callback receives RequestResult
+
+    // --- reply to a received request ---
+    void reply(RoutingId rid, long requestSeq, Message message);                        // @throws SubmitException
+    void reply(RoutingId rid, long requestSeq, Message message, SendFlags flags);       // @throws SubmitException
+    void reply(RoutingId rid, long requestSeq, List<Message> parts);                    // @throws SubmitException
+    void reply(RoutingId rid, long requestSeq, List<Message> parts, SendFlags flags);   // @throws SubmitException
 
     // --- router -> spot routed send ---
     void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);         // @throws SubmitException
@@ -778,105 +828,6 @@ Reports a subscribe/unsubscribe event from XPub sockets.
 ```java
 public record SubscriptionEvent(RoutingId routingId, boolean subscribed,
                                 String topic) {}
-```
-
----
-
-## Request-Reply
-
-### RequestRouter
-
-Request-reply layer on top of a RouterSocket. Manages request correlation
-and reply dispatch. Implements `AutoCloseable`.
-
-```java
-public final class RequestRouter implements AutoCloseable {
-    RequestRouter(RouterSocket socket);
-
-    RouterSocket socket();
-
-    // --- request (async, no flags) ---
-    CompletableFuture<Received> request(RoutingId routingId, Message part);              // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> request(RoutingId routingId, Message part,
-                                        Duration timeout);                               // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> request(RoutingId routingId, List<Message> parts);       // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> request(RoutingId routingId, List<Message> parts,
-                                        Duration timeout);                               // @throws SubmitException; future completes with RequestException on failure
-
-    // --- request (callback, has flags, throws on submit failure) ---
-    void request(RoutingId routingId, Message part,
-                 BiConsumer<RequestResult, Received> callback);                          // @throws SubmitException; callback receives RequestResult
-    void request(RoutingId routingId, Message part,
-                 BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags);                                                       // @throws SubmitException; callback receives RequestResult
-    void request(RoutingId routingId, Message part,
-                 BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags, Duration timeout);                                     // @throws SubmitException; callback receives RequestResult
-    void request(RoutingId routingId, List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback);                          // @throws SubmitException; callback receives RequestResult
-    void request(RoutingId routingId, List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags);                                                       // @throws SubmitException; callback receives RequestResult
-    void request(RoutingId routingId, List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags, Duration timeout);                                     // @throws SubmitException; callback receives RequestResult
-
-    // --- reply ---
-    void reply(RoutingId routingId, long requestSeq, Message message);                   // @throws SubmitException
-    void reply(RoutingId routingId, long requestSeq, Message message, SendFlags flags);  // @throws SubmitException
-    void reply(RoutingId routingId, long requestSeq, List<Message> parts);               // @throws SubmitException
-    void reply(RoutingId routingId, long requestSeq, List<Message> parts, SendFlags flags); // @throws SubmitException
-
-    // --- receive ---
-    Received recv();                                                 // @throws RecvException
-    Received recv(RecvFlags flags);                                  // @throws RecvException
-    void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
-
-    void close();                                                    // @throws CloseException
-}
-```
-
-### RequestDealer
-
-Request-reply layer on top of a DealerSocket. Implements `AutoCloseable`.
-
-```java
-public final class RequestDealer implements AutoCloseable {
-    RequestDealer(DealerSocket socket);
-
-    DealerSocket socket();
-
-    // --- request (async, no flags) ---
-    CompletableFuture<Received> request(Message part);               // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> request(Message part, Duration timeout); // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> request(List<Message> parts);        // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> request(List<Message> parts, Duration timeout); // @throws SubmitException; future completes with RequestException on failure
-
-    // --- request (callback, has flags, throws on submit failure) ---
-    void request(Message part,
-                 BiConsumer<RequestResult, Received> callback);      // @throws SubmitException; callback receives RequestResult
-    void request(Message part,
-                 BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags);                                   // @throws SubmitException; callback receives RequestResult
-    void request(Message part,
-                 BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags, Duration timeout);                 // @throws SubmitException; callback receives RequestResult
-    void request(List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback);      // @throws SubmitException; callback receives RequestResult
-    void request(List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags);                                   // @throws SubmitException; callback receives RequestResult
-    void request(List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags, Duration timeout);                 // @throws SubmitException; callback receives RequestResult
-
-    // --- receive ---
-    Received recv();                                                 // @throws RecvException
-    Received recv(RecvFlags flags);                                  // @throws RecvException
-    void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
-
-    void close();                                                    // @throws CloseException
-}
 ```
 
 ---

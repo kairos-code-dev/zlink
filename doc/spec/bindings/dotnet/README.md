@@ -203,6 +203,36 @@ public sealed class DealerSocket : MessageSocketBase
     void OnReceive(SocketRecvHandler handler);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
+
+    // --- request (async, blocking submit, no flags) ---
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
+    Task<Received> RequestAsync(Message part, CancellationToken ct = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
+    Task<Received> RequestAsync(Message part, TimeSpan timeout,
+                                CancellationToken ct = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
+    Task<Received> RequestAsync(IReadOnlyList<Message> parts,
+                                CancellationToken ct = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
+    Task<Received> RequestAsync(IReadOnlyList<Message> parts, TimeSpan timeout,
+                                CancellationToken ct = default);
+
+    // --- request (callback, has flags) ---
+    // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    void Request(Message part,
+                 Action<RequestResult, Received?> callback,
+                 SendFlags flags = SendFlags.None,
+                 TimeSpan? timeout = null);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    void Request(IReadOnlyList<Message> parts,
+                 Action<RequestResult, Received?> callback,
+                 SendFlags flags = SendFlags.None,
+                 TimeSpan? timeout = null);
 }
 ```
 
@@ -238,6 +268,45 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
     void OnReceive(SocketRecvHandler handler);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
+
+    // --- request (async, blocking submit, no flags) ---
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
+    Task<Received> RequestAsync(RoutingId peerRid, Message part,
+                                CancellationToken ct = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
+    Task<Received> RequestAsync(RoutingId peerRid, Message part, TimeSpan timeout,
+                                CancellationToken ct = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
+    Task<Received> RequestAsync(RoutingId peerRid, IReadOnlyList<Message> parts,
+                                CancellationToken ct = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
+    Task<Received> RequestAsync(RoutingId peerRid, IReadOnlyList<Message> parts,
+                                TimeSpan timeout, CancellationToken ct = default);
+
+    // --- request (callback, has flags) ---
+    // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    void Request(RoutingId peerRid, Message part,
+                 Action<RequestResult, Received?> callback,
+                 SendFlags flags = SendFlags.None,
+                 TimeSpan? timeout = null);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    void Request(RoutingId peerRid, IReadOnlyList<Message> parts,
+                 Action<RequestResult, Received?> callback,
+                 SendFlags flags = SendFlags.None,
+                 TimeSpan? timeout = null);
+
+    // --- reply ---
+    /// <exception cref="ZlinkSubmitException"/>
+    void Reply(RoutingId rid, ulong requestSeq, Message message,
+               SendFlags flags = SendFlags.None);
+    /// <exception cref="ZlinkSubmitException"/>
+    void Reply(RoutingId rid, ulong requestSeq, IReadOnlyList<Message> parts,
+               SendFlags flags = SendFlags.None);
 
     // --- router -> spot routed send ---
     /// <exception cref="ZlinkSubmitException"/>
@@ -841,119 +910,6 @@ public enum RecvFlags
 {
     None = 0,
     DontWait = 1
-}
-```
-
----
-
-## Request-Reply
-
-### RequestRouter
-
-Request-reply layer on top of a RouterSocket. Manages request correlation
-and reply dispatch.
-Implements `IDisposable` and `IAsyncDisposable`.
-
-```csharp
-public sealed class RequestRouter : IDisposable, IAsyncDisposable
-{
-    RequestRouter(RouterSocket socket);
-
-    RouterSocket Socket { get; }
-    /// <exception cref="ZlinkConfigException"/>
-    TimeSpan DefaultRequestTimeout { get; set; }
-
-    // --- request (async, blocking submit, no flags) ---
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<Received> RequestAsync(RoutingId routingId, Message message,
-                                TimeSpan timeout = default, CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<Received> RequestAsync(RoutingId routingId, IReadOnlyList<Message> parts,
-                                TimeSpan timeout = default, CancellationToken ct = default);
-
-    // --- request (callback, has flags) ---
-    // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void Request(RoutingId routingId, Message message,
-                 Action<RequestResult, Received?> callback,
-                 SendFlags flags = SendFlags.None,
-                 TimeSpan timeout = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void Request(RoutingId routingId, IReadOnlyList<Message> parts,
-                 Action<RequestResult, Received?> callback,
-                 SendFlags flags = SendFlags.None,
-                 TimeSpan timeout = default);
-
-    // --- reply ---
-    /// <exception cref="ZlinkSubmitException"/>
-    void Reply(RoutingId routingId, ulong requestSequence, Message message,
-               SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    void Reply(RoutingId routingId, ulong requestSequence, IReadOnlyList<Message> parts,
-               SendFlags flags = SendFlags.None);
-
-    // --- receive ---
-    /// <exception cref="ZlinkRecvException"/>
-    Received Recv(RecvFlags flags = RecvFlags.None);
-    /// <exception cref="ZlinkHandlerException"/>
-    void OnReceive(Action<Received> handler);
-
-    /// <exception cref="ZlinkCloseException"/>
-    void Dispose();
-    /// <exception cref="ZlinkCloseException"/>
-    ValueTask DisposeAsync();
-}
-```
-
-### RequestDealer
-
-Request-reply layer on top of a DealerSocket.
-Implements `IDisposable` and `IAsyncDisposable`.
-
-```csharp
-public sealed class RequestDealer : IDisposable, IAsyncDisposable
-{
-    RequestDealer(DealerSocket socket);
-
-    DealerSocket Socket { get; }
-    /// <exception cref="ZlinkConfigException"/>
-    TimeSpan DefaultRequestTimeout { get; set; }
-
-    // --- request (async, blocking submit, no flags) ---
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<Received> RequestAsync(Message message,
-                                TimeSpan timeout = default, CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<Received> RequestAsync(IReadOnlyList<Message> parts,
-                                TimeSpan timeout = default, CancellationToken ct = default);
-
-    // --- request (callback, has flags) ---
-    // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void Request(Message message,
-                 Action<RequestResult, Received?> callback,
-                 SendFlags flags = SendFlags.None,
-                 TimeSpan timeout = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void Request(IReadOnlyList<Message> parts,
-                 Action<RequestResult, Received?> callback,
-                 SendFlags flags = SendFlags.None,
-                 TimeSpan timeout = default);
-
-    // --- receive ---
-    /// <exception cref="ZlinkRecvException"/>
-    Received Recv(RecvFlags flags = RecvFlags.None);
-    /// <exception cref="ZlinkHandlerException"/>
-    void OnReceive(Action<Received> handler);
-
-    /// <exception cref="ZlinkCloseException"/>
-    void Dispose();
-    /// <exception cref="ZlinkCloseException"/>
-    ValueTask DisposeAsync();
 }
 ```
 

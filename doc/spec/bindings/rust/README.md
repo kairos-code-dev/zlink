@@ -269,6 +269,21 @@ impl DealerSocket {
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
+
+    // --- dealer request (async) — no flags ---
+    // `timeout = None` uses the socket default request timeout.
+    /// # Errors: SubmitError on submit, RequestError on completion
+    pub async fn request(&self, parts: &[&[u8]], timeout: Option<Duration>)
+        -> Result<Received, RequestError>;
+
+    // --- dealer request (callback) ---
+    // `timeout = None` uses the socket default request timeout.
+    // The callback receives Result<Received, RequestError>.
+    /// # Errors: SubmitError on submit; callback receives Result<Received, RequestError>
+    pub fn request_callback<F: FnOnce(Result<Received, RequestError>) + 'static>(
+        &self, parts: &[&[u8]], cb: F, flags: SendFlags, timeout: Option<Duration>)
+        -> Result<(), SubmitError>;
+
     pub fn send_handle(&self) -> SendHandle;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn dealer_options(&self) -> DealerSocketOptions<'_>;
@@ -316,6 +331,28 @@ impl RouterSocket {
     pub fn router_options(&self) -> RouterSocketOptions<'_>;
     /// # Errors: ConfigError
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError>;
+
+    // --- router request (async) — no flags ---
+    // `timeout = None` uses the socket default request timeout.
+    /// # Errors: SubmitError on submit, RequestError on completion
+    pub async fn request(&self, peer_rid: &RoutingId, parts: &[&[u8]],
+        timeout: Option<Duration>) -> Result<Received, RequestError>;
+
+    // --- router request (callback) ---
+    // `timeout = None` uses the socket default request timeout.
+    // The callback receives Result<Received, RequestError>.
+    /// # Errors: SubmitError on submit; callback receives Result<Received, RequestError>
+    pub fn request_callback<F: FnOnce(Result<Received, RequestError>) + 'static>(
+        &self, peer_rid: &RoutingId, parts: &[&[u8]], cb: F,
+        flags: SendFlags, timeout: Option<Duration>) -> Result<(), SubmitError>;
+
+    // --- router reply ---
+    /// # Errors: SubmitError
+    pub fn reply(&self, rid: &RoutingId, request_seq: u64,
+        parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn reply_with_flags(&self, rid: &RoutingId, request_seq: u64,
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
 
     // --- router → spot routed send ---
     /// # Errors: SubmitError
@@ -900,84 +937,6 @@ pub trait IntoMultipart {
     fn into_multipart(self) -> Vec<Message>;
 }
 // Implemented for Message, Vec<Message>, &[u8], Vec<u8>, etc.
-```
-
----
-
-## Request-Reply
-
-### RequestDealer
-
-```rust
-impl RequestDealer {
-    /// # Errors: ConfigError
-    pub fn new(socket: DealerSocket) -> Result<Self, ConfigError>;
-    pub fn set_default_request_timeout(&self, timeout: Duration);
-    pub fn get_default_request_timeout(&self) -> Duration;
-
-    // Async request — no flags. Duration::ZERO uses socket default timeout.
-    // Submit failure yields SubmitError; request failure yields RequestError;
-    // both unify under ZlinkError at this API seam.
-    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
-    pub async fn request(&self, parts: impl IntoMultipart,
-        timeout: Duration) -> Result<Received, ZlinkError>;
-
-    // Callback request — Duration::ZERO uses socket default timeout.
-    // The callback receives Result<Received, RequestError>.
-    /// # Errors: SubmitError (submit failure). Callback receives Result<Received, RequestError>.
-    pub fn request_callback<F>(&self, parts: impl IntoMultipart, callback: F,
-        flags: SendFlags, timeout: Duration)
-        -> Result<(), SubmitError>
-        where F: FnOnce(Result<Received, RequestError>) + Send + 'static;
-
-    /// # Errors: RecvError
-    pub fn recv(&self) -> Result<Received, RecvError>;
-    /// # Errors: RecvError
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
-    /// # Errors: HandlerError
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(Received) + Send + 'static;
-}
-```
-
-### RequestRouter
-
-```rust
-impl RequestRouter {
-    /// # Errors: ConfigError
-    pub fn new(socket: RouterSocket) -> Result<Self, ConfigError>;
-    pub fn set_default_request_timeout(&self, timeout: Duration);
-    pub fn get_default_request_timeout(&self) -> Duration;
-
-    // Async request — no flags. Duration::ZERO uses socket default timeout.
-    // Submit failure yields SubmitError; request failure yields RequestError;
-    // both unify under ZlinkError at this API seam.
-    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
-    pub async fn request(&self, routing_id: RoutingId, parts: impl IntoMultipart,
-        timeout: Duration) -> Result<Received, ZlinkError>;
-
-    // Callback request — Duration::ZERO uses socket default timeout.
-    // The callback receives Result<Received, RequestError>.
-    /// # Errors: SubmitError (submit failure). Callback receives Result<Received, RequestError>.
-    pub fn request_callback<F>(&self, routing_id: RoutingId, parts: impl IntoMultipart,
-        callback: F, flags: SendFlags, timeout: Duration)
-        -> Result<(), SubmitError>
-        where F: FnOnce(Result<Received, RequestError>) + Send + 'static;
-
-    /// # Errors: SubmitError
-    pub fn reply(&self, routing_id: RoutingId, request_seq: u64,
-        parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn reply_with_flags(&self, routing_id: RoutingId, request_seq: u64,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
-
-    /// # Errors: RecvError
-    pub fn recv(&self) -> Result<Received, RecvError>;
-    /// # Errors: RecvError
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
-    pub fn on_receive<F>(&self, handler: F)
-        where F: Fn(Received) + Send + 'static;
-}
 ```
 
 ---

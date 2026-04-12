@@ -436,6 +436,31 @@ request(parts, callback, flags = 0, timeout = 0)    // throws on submit failure
   - 예: `StreamSocket`에 일반 connect surface 금지
 - 소켓 타입별 option도 타입별 capability facade로만 노출한다.
 
+### 소켓 클래스 네이밍/구조 규칙 (중요)
+- **소켓 클래스 이름은 core C API 의 socket 타입 이름을 그대로 따른다**:
+  `PairSocket`, `PubSocket`, `SubSocket`, `XPubSocket`, `XSubSocket`,
+  `DealerSocket`, `RouterSocket`, `StreamSocket`. 바인딩이 임의로 이름을
+  바꾸거나 동의어(`ClientSocket`, `BrokerSocket` 등)를 추가하면 안 된다.
+- **소켓의 기능 함수(`send`, `recv`, `request`, `reply`, `publish`,
+  `subscribe`, `on*` 핸들러 등)는 소켓 클래스의 메서드로 직접 노출한다**.
+  단일 함수 또는 좁은 역할(예: request-reply) 만을 위한 별도 wrapper/
+  "helper" 클래스(`RequestDealer`, `RequestRouter`, `DealerClient`,
+  `RouterRequester` 등) 를 만들지 않는다.
+  - 이유 1: C API 는 `zlink_dealer_request()` / `zlink_router_request()` /
+    `zlink_router_reply()` 를 raw socket handle 위에 직접 두는 계약이다.
+    바인딩 표면이 이 구조를 유지해야 core ↔ 바인딩 대응이 1:1 로 유지된다.
+  - 이유 2: wrapper 클래스는 "래핑된 소켓을 또 하나 들고 다녀야 하는"
+    중복 lifecycle 을 만든다.
+  - 이유 3: 이름에서 역할이 반전돼 읽히기 쉬움 (`RequestDealer` →
+    "requests 를 dealing" 으로 오독).
+- Future/coroutine 브릿지 같은 구현 상태(pending map 등)는 소켓 클래스
+  내부에 두고, 외부로는 메서드만 노출한다.
+- 예외는 **서로 다른 소켓 타입을 조합**하는 service-layer surface 뿐이다
+  (예: `Spot`, `SpotNode`, `Registry`, `Discovery`, `RegistryQueryClient`).
+  이들은 단일 소켓 함수 wrapper 가 아니라 독립된 service 계약이다.
+- 이 규칙은 전 바인딩(C++/Java/.NET/Node/Python/Go/Rust) 에 동일하게
+  적용되며, spec 파일에서 위반이 발견되면 **즉시 수정 대상**이다.
+
 ### Socket Capability Matrix
 - 이 표는 `core/include/zlink.h` C API를 기준으로 각 소켓 타입이 가져야 할
   능력을 정의한다.
@@ -949,7 +974,7 @@ message-level request-reply marker API 와 per-message metadata API 는 제거�
 | Spot | Router | Y | Spot 이 Router 에 request, Router 가 Spot 에 reply |
 | Router | Spot | Y | Router 가 Spot 에 request, Spot 이 Router 에 reply |
 
-RequestDealer 연결 제약:
+`DealerSocket.request()` 연결 제약:
 - 연결 대상은 전부 Router 여야 한다.
   Dealer 에 Router 와 Dealer 가 섞이면 request 가 실패할 수 있다.
 - 바인딩은 이 제약을 런타임에 검증하지 않는다. 사용자 책임이며 API 문서에 명시한다.

@@ -205,6 +205,29 @@ class DealerSocket {
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
     attachDiscovery(discovery: Discovery): void;
+
+    // --- dealer request (async) — no flags, timeout = 0 uses socket default ---
+    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    request(message: MessageLike, timeout?: number): Promise<Received>;
+    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    request(parts: readonly MessageLike[], timeout?: number): Promise<Received>;
+
+    // --- dealer request (callback) — throws on submit failure, timeout = 0 uses socket default ---
+    /**
+     * @throws {SubmitError} on submit failure.
+     * Callback receives `RequestResult` directly (not a `RequestError`).
+     */
+    request(message: MessageLike,
+            callback: RequestResultCallback,
+            flags?: SendFlags, timeout?: number): void;
+    /**
+     * @throws {SubmitError} on submit failure.
+     * Callback receives `RequestResult` directly (not a `RequestError`).
+     */
+    request(parts: readonly MessageLike[],
+            callback: RequestResultCallback,
+            flags?: SendFlags, timeout?: number): void;
+
     /** @throws {CloseError} */
     close(): void;
 }
@@ -240,6 +263,38 @@ class RouterSocket {
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
     attachDiscovery(discovery: Discovery): void;
+
+    // --- router request (async) — no flags, timeout = 0 uses socket default ---
+    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    request(peerRid: BufferLike, message: MessageLike,
+            timeout?: number): Promise<Received>;
+    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    request(peerRid: BufferLike, parts: readonly MessageLike[],
+            timeout?: number): Promise<Received>;
+
+    // --- router request (callback) — throws on submit failure, timeout = 0 uses socket default ---
+    /**
+     * @throws {SubmitError} on submit failure.
+     * Callback receives `RequestResult` directly (not a `RequestError`).
+     */
+    request(peerRid: BufferLike, message: MessageLike,
+            callback: RequestResultCallback,
+            flags?: SendFlags, timeout?: number): void;
+    /**
+     * @throws {SubmitError} on submit failure.
+     * Callback receives `RequestResult` directly (not a `RequestError`).
+     */
+    request(peerRid: BufferLike, parts: readonly MessageLike[],
+            callback: RequestResultCallback,
+            flags?: SendFlags, timeout?: number): void;
+
+    // --- router reply ---
+    /** @throws {SubmitError} */
+    reply(peerRid: BufferLike, requestSeq: bigint, message: MessageLike,
+          flags?: SendFlags): void;
+    /** @throws {SubmitError} */
+    reply(peerRid: BufferLike, requestSeq: bigint, parts: readonly MessageLike[],
+          flags?: SendFlags): void;
 
     // --- router → spot routed send ---
     /** @throws {SubmitError} */
@@ -781,95 +836,6 @@ attach, message lifecycle, and routing-id accessor operations. Wraps a
 class ConfigError extends ZlinkError {
     constructor(result: ConfigResult, internalErrno?: number);
     readonly result: ConfigResult;
-}
-```
-
----
-
-## Request-Reply
-
-### RequestDealer
-
-```typescript
-class RequestDealer {
-    constructor(socket: DealerSocket);
-    socket(): DealerSocket;
-
-    // Promise (async) — no flags, timeout = 0 uses socket default
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    request(message: MessageLike, timeout?: number): Promise<Received>;
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    request(parts: readonly MessageLike[], timeout?: number): Promise<Received>;
-
-    // Callback — throws on submit failure, timeout = 0 uses socket default
-    /**
-     * @throws {SubmitError} on submit failure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    request(message: MessageLike,
-            callback: RequestResultCallback,
-            flags?: SendFlags, timeout?: number): void;
-    /**
-     * @throws {SubmitError} on submit failure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    request(parts: readonly MessageLike[],
-            callback: RequestResultCallback,
-            flags?: SendFlags, timeout?: number): void;
-
-    /** @throws {RecvError} */
-    recv(flags?: RecvFlags): Received;
-    /** @throws {HandlerError} */
-    onReceive(handler: (received: Received) => void): void;
-    /** @throws {CloseError} */
-    close(): void;
-}
-```
-
-### RequestRouter
-
-```typescript
-class RequestRouter {
-    constructor(socket: RouterSocket);
-    socket(): RouterSocket;
-
-    // Promise (async) — no flags, timeout = 0 uses socket default
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    request(routingId: BufferLike, message: MessageLike,
-            timeout?: number): Promise<Received>;
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    request(routingId: BufferLike, parts: readonly MessageLike[],
-            timeout?: number): Promise<Received>;
-
-    // Callback — throws on submit failure, timeout = 0 uses socket default
-    /**
-     * @throws {SubmitError} on submit failure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    request(routingId: BufferLike, message: MessageLike,
-            callback: RequestResultCallback,
-            flags?: SendFlags, timeout?: number): void;
-    /**
-     * @throws {SubmitError} on submit failure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    request(routingId: BufferLike, parts: readonly MessageLike[],
-            callback: RequestResultCallback,
-            flags?: SendFlags, timeout?: number): void;
-
-    /** @throws {SubmitError} */
-    reply(routingId: BufferLike, requestSeq: bigint, message: MessageLike,
-          flags?: SendFlags): void;
-    /** @throws {SubmitError} */
-    reply(routingId: BufferLike, requestSeq: bigint, parts: readonly MessageLike[],
-          flags?: SendFlags): void;
-
-    /** @throws {RecvError} */
-    recv(flags?: RecvFlags): Received;
-    /** @throws {HandlerError} */
-    onReceive(handler: (received: Received) => void): void;
-    /** @throws {CloseError} */
-    close(): void;
 }
 ```
 

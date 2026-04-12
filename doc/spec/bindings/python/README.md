@@ -149,6 +149,21 @@ class DealerSocket:
     def on_send_ready(self, handler: Callable[[DealerSocket], None]) -> None: ...  # Raises: HandlerError
     def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                  # Raises: ConfigError
+
+    # --- request (async) — no flags ---
+    # timeout = 0 uses the socket default timeout.
+    # Raises: SubmitError on submit failure; RequestError on request completion failure.
+    async def request(self, payload: Message | bytes | list,
+                      *, timeout: int = 0) -> Received: ...
+
+    # --- request (callback) — raises on submit failure ---
+    # timeout = 0 uses the socket default timeout.
+    # Raises: SubmitError on submit failure. Callback receives RequestResult;
+    #   non-OK indicates request-completion failure (RequestError semantics).
+    def request(self, payload: Message | bytes | list,
+                callback: Callable[[RequestResult, Received | None], None],
+                *, flags: int = 0, timeout: int = 0) -> None: ...
+
     def close(self) -> None: ...                                                   # Raises: CloseError
 ```
 
@@ -173,6 +188,26 @@ class RouterSocket:
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
     def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
+
+    # --- request (async) — no flags ---
+    # timeout = 0 uses the socket default timeout.
+    # Raises: SubmitError on submit failure; RequestError on request completion failure.
+    async def request(self, peer_rid: RoutingId,
+                      payload: Message | bytes | list,
+                      *, timeout: int = 0) -> Received: ...
+
+    # --- request (callback) — raises on submit failure ---
+    # timeout = 0 uses the socket default timeout.
+    # Raises: SubmitError on submit failure. Callback receives RequestResult;
+    #   non-OK indicates request-completion failure (RequestError semantics).
+    def request(self, peer_rid: RoutingId,
+                payload: Message | bytes | list,
+                callback: Callable[[RequestResult, Received | None], None],
+                *, flags: int = 0, timeout: int = 0) -> None: ...
+
+    # --- reply ---
+    def reply(self, routing_id: RoutingId, request_seq: int,
+              payload: Message | bytes | list, *, flags: int = 0) -> None: ...   # Raises: SubmitError
 
     # --- router → spot routed send ---
     def send_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
@@ -698,58 +733,6 @@ class ConfigError(ZlinkError):
 
     @property
     def result(self) -> ConfigResult: ...
-```
-
----
-
-## Request-Reply
-
-### RequestDealer
-
-```python
-class RequestDealer:
-    def __init__(self, socket: DealerSocket) -> None: ...
-
-    # Async request — no flags, timeout = 0 uses socket default.
-    # Raises: SubmitError on submit failure; RequestError on request completion failure.
-    async def request(self, payload: Message | bytes | list,
-                      *, timeout: int = 0) -> Received: ...
-
-    # Callback request — raises on submit failure, timeout = 0 uses socket default.
-    # Raises: SubmitError on submit failure. Callback receives RequestResult;
-    #   non-OK indicates request-completion failure (RequestError semantics).
-    def request(self, payload: Message | bytes | list,
-                callback: Callable[[RequestResult, Received | None], None],
-                *, flags: int = 0, timeout: int = 0) -> None: ...
-
-    def recv(self, *, flags: int = 0) -> Received: ...                       # Raises: RecvError
-    def on_receive(self, handler: Callable[[Received], None]) -> None: ...   # Raises: HandlerError
-    def close(self) -> None: ...                                             # Raises: CloseError
-```
-
-### RequestRouter
-
-```python
-class RequestRouter:
-    def __init__(self, socket: RouterSocket) -> None: ...
-
-    # Async request — no flags, timeout = 0 uses socket default.
-    # Raises: SubmitError on submit failure; RequestError on request completion failure.
-    async def request(self, routing_id: RoutingId, payload: Message | bytes | list,
-                      *, timeout: int = 0) -> Received: ...
-
-    # Callback request — raises on submit failure, timeout = 0 uses socket default.
-    # Raises: SubmitError on submit failure. Callback receives RequestResult;
-    #   non-OK indicates request-completion failure (RequestError semantics).
-    def request(self, routing_id: RoutingId, payload: Message | bytes | list,
-                callback: Callable[[RequestResult, Received | None], None],
-                *, flags: int = 0, timeout: int = 0) -> None: ...
-
-    def reply(self, routing_id: RoutingId, request_seq: int,
-              payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
-    def recv(self, *, flags: int = 0) -> Received: ...                       # Raises: RecvError
-    def on_receive(self, handler: Callable[[Received], None]) -> None: ...   # Raises: HandlerError
-    def close(self) -> None: ...                                             # Raises: CloseError
 ```
 
 ---

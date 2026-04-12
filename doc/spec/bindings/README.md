@@ -466,18 +466,32 @@ SUB / XSUB / Spot subscribe 의 recv 결과. C API `zlink_subscribe()` 의
 
 #### `Received`
 
-PAIR / DEALER / ROUTER 의 recv 결과. topic 필드가 없는 점 외에는
-`TopicMessage` 와 동일한 편의 메서드 집합을 가진다.
+PAIR / DEALER / ROUTER / SPOT 의 recv 결과. topic 필드가 없는 점 외에는
+`TopicMessage` 와 동일한 편의 메서드 집합 + request-reply 용 `reply()` 를
+가진다.
 
 | 구성 | 타입 | 의미 |
 |------|------|------|
-| `routing_id` | `RoutingId?` | 송신자 routing id |
+| `routing_id` | `RoutingId?` | 송신자 routing id (router=peer_rid, spot=source_node_rid) |
+| `spot_rid` | `RoutingId?` | SPOT routed recv 에서만 설정 (source_spot_rid) |
 | `request_seq` | `uint64?` | request-reply 모드일 때 설정, 아니면 null |
 | `parts` | `List<Message>` | multipart payload |
 | `is_single_part()` | `bool` | 동일 |
 | `first_part()` | `Message` | 동일 |
 | `single_part_or_throw()` | `Message` | 동일 |
+| `reply(parts, flags?)` | — | request 였을 때만 유효. `request_seq` 없으면 `RecvError` |
 | `close()` / 동등 | — | 동일 |
+
+`reply()` 규칙:
+- **`request_seq` 가 `null` 이면 호출 금지**. 호출 시 `RecvError` /
+  `IllegalStateException` 등 언어별 에러 관용구.
+- `Received` 가 내부적으로 source socket 참조를 보유한다 (binding 이 recv /
+  handler 에서 Received 를 만들 때 주입).
+- socket 이 close 된 후 `reply()` 호출하면 `SubmitError(TERMINATED)`.
+- 서버 측 사용자가 `(peerRid, requestSeq)` 를 따로 보관할 필요 없음 —
+  `Received` 하나로 완결.
+- 별도 `router.reply(peerRid, seq, parts)` 저수준 호출도 pull-mode 호환성
+  위해 남겨두되, **권장 경로는 `received.reply(...)`**.
 
 #### `SubscriptionEvent`
 
@@ -720,6 +734,58 @@ raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `cla
 - 서비스 계층도 소켓 계층과 동일한 POSD 원칙, naming policy, error policy,
   ownership policy, testing policy를 따른다.
 - 서비스 계층의 기준은 `core/include/zlink.h`의 Spot/Discovery/Registry C API다.
+
+### Spot / SpotNode Lifecycle (POSD 원칙)
+
+- **`SpotNode` 가 lifecycle 소유자**다. `Spot` 은 그 위의 pub/sub facade 로,
+  `SpotNode` 가 살아 있는 동안만 유효하다.
+- `Spot` 은 독립 생성자로 만들지 않는다. **`SpotNode.createSpot(...)` 등
+  factory 메서드로 생성**한다. 이름은 언어 관용구대로 (`spot_node.new_spot`,
+  `spotNode.createSpot`, 등).
+- `Spot` 생명은 부모 `SpotNode` 에 바인드된다.
+  - `spot.close()` — Spot 만 끝내고 node 는 유지
+  - `spotNode.close()` — node 와 그 아래 모든 live Spot 을 함께 정리
+    (cascading close)
+- 사용자가 `Spot` 과 `SpotNode` 의 close 순서를 수동으로 조합할 필요를
+  제거한다. 바인딩이 `SpotNode.close()` 에서 child spots 를 선처리한 후
+  node 를 내린다.
+- C API 의 raw `zlink_spot_new(...)` + `zlink_spot_node_new(...)` 조합을
+  바인딩 public 생성자로 그대로 노출하지 않는다. 반드시 `SpotNode` 중심의
+  factory 패턴으로 싼다.
+
+### Service Layer Introspection Surface Tiers
+
+서비스 계층의 introspection / snapshot / entry 타입은 **사용 빈도에 따라
+두 계층으로 구분**한다. 바인딩 spec 은 이 구분을 반영한다.
+
+- **Primary (핵심)**: 일반 사용자가 자주 쓰는 snapshot/query surface.
+  `bindings/<lang>/README.md` 의 상위 섹션에 기술한다.
+  - `MemberPeerEntry` (discovery.memberPeers 결과)
+  - `SpotNodeStatus` (spot node 상태)
+  - `RegistryTopologyEntry` (registry.topologySnapshot 결과)
+
+- **Advanced / Diagnostic (진단용)**: 디버깅 / 운영 모니터링 등 특수 용도.
+  spec 에서 "Advanced" 또는 "Diagnostic" 하위 섹션으로 분리 기술한다.
+  - `RegistryServiceSummaryEntry`, `RegistryStatus`
+  - `SpotNodePeerEntry`, `SpotNodeSubjectEntry`
+  - 각종 filter 타입 (`RegistryTopologyFilter`,
+    `RegistryServiceSummaryFilter`, `SpotNodePeerFilter`,
+    `SpotNodeSubjectFilter`)
+
+Primary 타입만으로 기본 사용 시나리오가 성립해야 한다. Advanced 타입을
+배우지 않고도 "서비스 등록 / 검색 / 연결" 흐름이 완결돼야 한다.
+
+### `zlink_errno()` Public Exposure
+
+- 바인딩은 **raw `zlink_errno()` / `zlinkErrno()` 함수를 public 으로 노출하지
+  않는다**. 에러 상세는 **언제나 에러 타입의 `internalErrno` /
+  `internal_errno` 필드**로만 접근한다.
+- 사용자가 에러 조사 시 "가끔 `ZlinkException.getCode()` 쓰고 가끔 `Zlink.
+  errno()` 쓰는" 이중 경로를 만들지 않는다 — 한 진입점으로 통일.
+- 바인딩 내부 구현이 `zlink_errno()` 를 호출해 예외 객체에 채워 넣는 건
+  허용 (내부 해석용). public surface 에만 금지 적용.
+- `Zlink.strerror(errno)` 같은 message lookup 유틸은 convenience 로 남겨두되,
+  raw `errno()` accessor 는 private 또는 삭제.
 
 ### Service Layer Architecture
 - 서비스 계층은 다섯 개의 컴포넌트로 구성된다.
@@ -1630,10 +1696,16 @@ typedef enum zlink_spot_node_option_t {
 ## Option Policy
 
 ### Public Option Surface
-- public raw `setOption/getOption` bag은 금지한다.
-- public raw `setsockopt/getsockopt` bag도 금지한다.
-- 공용 옵션은 언어에 맞는 typed surface로 노출한다.
-- 특화 옵션도 언어에 맞는 capability surface로 노출한다.
+- **public raw `setOption(key, value)` / `getOption(key)` bag 은 금지.**
+- **public raw `setsockopt/getsockopt` bag 도 금지.**
+- 공용 옵션은 언어에 맞는 typed surface (facade) 로만 노출한다.
+- 특화 옵션도 언어에 맞는 capability surface (facade) 로만 노출한다.
+- raw enum key + 범용 setter/getter 를 돌리는 public 경로가 spec 에
+  남아 있으면 정책 위반. (`set_option(ZLINK_OPT_*, value)` 같은 C 계약이
+  바인딩 public API 로 올라오면 안 됨. 바인딩 내부에서 native 호출 경로는
+  허용.)
+- typed facade 가 이미 있으면 **raw 경로를 중복 노출하지 않는다** — 사용자가
+  두 방식 중 고를 필요 없게 한다.
 - 예:
   - Java/.NET: `CommonSocketOptions`, `RouterSocketOptions`
   - Go: typed method set, capability interface

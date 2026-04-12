@@ -148,7 +148,7 @@ int main(int /*argc*/, char ** /*argv*/)
     (void) zlink_set_routing_id(server, server_id, std::strlen(server_id));
 
     const std::string endpoint = endpoint_from_port(port);
-    if (!zlink_bind(server, endpoint.c_str())) {
+    if (zlink_bind(server, endpoint.c_str()) != ZLINK_BIND_OK) {
         zlink_close(server);
         zlink_ctx_term(ctx);
         return 2;

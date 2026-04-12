@@ -181,7 +181,7 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
                                              const std::string &id)
 {
     std::string endpoint = make_endpoint(transport, id);
-    if (!zlink_bind(socket_, endpoint.c_str())) {
+    if (zlink_bind(socket_, endpoint.c_str()) != ZLINK_BIND_OK) {
         std::cerr << "bind failed for " << endpoint << ": "
                   << zlink_strerror(zlink_errno()) << std::endl;
         return std::string();
@@ -240,7 +240,7 @@ inline void settle()
 
 inline bool connect_checked(void *socket_, const std::string &endpoint)
 {
-    if (!zlink_connect(socket_, endpoint.c_str())) {
+    if (zlink_connect(socket_, endpoint.c_str()) != ZLINK_CONNECT_OK) {
         std::cerr << "connect failed for " << endpoint << ": "
                   << zlink_strerror(zlink_errno()) << std::endl;
         return false;

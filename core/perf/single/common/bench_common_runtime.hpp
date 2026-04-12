@@ -316,7 +316,7 @@ inline bool transport_available(const std::string& transport) {
 }
 
 inline bool connect_checked(void *socket_, const std::string& endpoint) {
-    if (!zlink_connect(socket_, endpoint.c_str())) {
+    if (zlink_connect(socket_, endpoint.c_str()) != ZLINK_CONNECT_OK) {
         std::cerr << "connect failed for " << endpoint << ": "
                   << zlink_strerror(zlink_errno()) << std::endl;
         return false;

@@ -364,7 +364,7 @@ inline bool create_client_sockets (
             }
         }
 
-        if (!zlink_connect (sock, endpoint.c_str ())) {
+        if (zlink_connect (sock, endpoint.c_str ()) != ZLINK_CONNECT_OK) {
             std::cerr << "connect failed for " << endpoint << ": "
                       << zlink_strerror (zlink_errno ()) << std::endl;
             if (monitors_out)

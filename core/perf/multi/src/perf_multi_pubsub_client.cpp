@@ -276,7 +276,7 @@ inline bool create_client_sockets (
             return false;
         }
 
-        if (!zlink_connect (sock, endpoint.c_str ())) {
+        if (zlink_connect (sock, endpoint.c_str ()) != ZLINK_CONNECT_OK) {
             if (bench_debug_enabled ()) {
                 std::cerr << "[multi-pubsub-client] connect failed slot=" << i
                           << " endpoint=" << endpoint

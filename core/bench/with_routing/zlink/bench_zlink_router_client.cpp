@@ -277,7 +277,7 @@ int main(int argc, char **argv)
         std::snprintf(rid, sizeof(rid), "RC_C_%d", i);
         (void) zlink_set_routing_id(sock, rid, std::strlen(rid));
 
-        if (!zlink_connect(sock, endpoint.c_str())) {
+        if (zlink_connect(sock, endpoint.c_str()) != ZLINK_CONNECT_OK) {
             std::fprintf(stderr,
                          "rc client: zlink_connect failed at index=%d errno=%d\n",
                          i, zlink_errno());

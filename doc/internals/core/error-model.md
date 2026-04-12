@@ -28,6 +28,18 @@ the implementation.
 Public callers do not need that full detail. They need stable result classes.
 That is why normalization happens only at the exported boundary.
 
+## Implementation Rule
+
+Inside core and benchmark/test helper code, public result enums must be treated
+as named result codes, not as booleans.
+
+- Use `rc == ZLINK_*_OK` or `rc != ZLINK_*_OK`.
+- Do not write boolean-style checks such as `if (!zlink_bind(...))`.
+
+That rule matters because all public result enums use `0` for success. Boolean
+style can silently invert success and failure, which is exactly the kind of bug
+the typed-result policy is meant to prevent.
+
 ## Submit Normalization
 
 Send, request submit, and reply submit share one public result type:

@@ -94,14 +94,14 @@ static bool try_pgm_endpoint (const char *endpoint_, bool *bound_out_)
     zlink_set_option (sub, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm));
     zlink_set_subscription (sub, "");
 
-    if (!zlink_bind (pub, endpoint_)) {
+    if (zlink_bind (pub, endpoint_) != ZLINK_BIND_OK) {
         close_zero_linger (pub);
         close_zero_linger (sub);
         zlink_ctx_term (ctx);
         return false;
     }
 
-    if (!zlink_connect (sub, endpoint_)) {
+    if (zlink_connect (sub, endpoint_) != ZLINK_CONNECT_OK) {
         close_zero_linger (pub);
         close_zero_linger (sub);
         zlink_ctx_term (ctx);

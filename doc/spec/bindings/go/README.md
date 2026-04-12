@@ -424,12 +424,15 @@ func (r RoutingID) Hex() string
 Non-topic recv result used by PAIR / DEALER / ROUTER / STREAM paths.
 
 ```go
-// RoutingID returns the sender routing id. Empty when the transport does
-// not carry a source id (check with HasRoutingID).
+// RoutingID returns the sender routing id (peer_rid on Router,
+// source_node_rid on Spot). Empty when transport carries no source id.
 func (r *Received) RoutingID() RoutingID
 func (r *Received) HasRoutingID() bool
+// SpotRID returns the source spot routing id. Set only on SPOT routed recv.
+func (r *Received) SpotRID() RoutingID
+func (r *Received) HasSpotRID() bool
 // RequestSeq returns the request-reply sequence number. Zero when the
-// socket is not in request-reply mode (check with HasRequestSeq).
+// received message is not a request (check with HasRequestSeq).
 func (r *Received) RequestSeq() uint64
 func (r *Received) HasRequestSeq() bool
 func (r *Received) Parts() []*Message
@@ -439,6 +442,14 @@ func (r *Received) IsSinglePart() bool
 func (r *Received) FirstPart() (*Message, error)
 // SinglePartOrError returns the only part or *RecvError when parts != 1.
 func (r *Received) SinglePartOrError() (*Message, error)
+
+// Reply sends a reply for this received request. Only valid when
+// HasRequestSeq() is true; otherwise returns *RecvError. On submit
+// failure returns *SubmitError. RoutingID/SpotRID/RequestSeq are
+// encapsulated — caller does not pass them again.
+func (r *Received) Reply(parts []*Message) error
+func (r *Received) ReplyWithFlags(parts []*Message, flags SendFlags) error
+
 // Close releases the received bundle. Returns *CloseError on failure.
 func (r *Received) Close() error
 ```

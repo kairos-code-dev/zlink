@@ -474,13 +474,23 @@ request-reply exchange).
 
 ```python
 class Received:
-    routing_id: RoutingId | None             # None when transport carries no source id
+    routing_id: RoutingId | None             # peer_rid (Router) / source_node_rid (Spot)
+    spot_rid: RoutingId | None               # SPOT routed recv 에서만 설정
     request_seq: int | None                  # set when routed over request-reply; None otherwise
     parts: tuple[Message, ...]
 
     def is_single_part(self) -> bool: ...
     def first_part(self) -> Message: ...              # Raises: RecvError
     def single_part_or_throw(self) -> Message: ...    # Raises: RecvError
+
+    # reply — request_seq 가 None 이 아닐 때만 유효. None 이면 RecvError.
+    def reply(
+        self,
+        parts: Message | list[Message],
+        *,
+        flags: int = 0,
+    ) -> None: ...                                    # Raises: SubmitError, RecvError
+
     def close(self) -> None: ...                      # Raises: CloseError
     def __enter__(self) -> "Received": ...
     def __exit__(self, *args) -> None: ...            # Raises: CloseError

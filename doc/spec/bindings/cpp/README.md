@@ -591,11 +591,8 @@ them. Matches the canonical `Received` shape (see
 ```cpp
 class received_t {
 public:
-    received_t(std::optional<routing_id_t> routing_id,
-               std::optional<uint64_t> request_seq,
-               std::vector<message_t> parts);
-
-    const std::optional<routing_id_t>& routing_id() const noexcept;  // nullopt if transport carries no source id
+    const std::optional<routing_id_t>& routing_id() const noexcept;  // peer_rid (Router) / source_node_rid (Spot); nullopt if transport carries no source id
+    const std::optional<routing_id_t>& spot_rid() const noexcept;    // SPOT routed recv 에서만 값 있음
     const std::optional<uint64_t>& request_seq() const noexcept;     // set only for request-reply recv paths
     const std::vector<message_t>& parts() const noexcept;
     std::vector<message_t>& parts() noexcept;
@@ -606,10 +603,26 @@ public:
     /// @throws recv_error_t
     message_t single_part_or_throw();
 
+    // reply — request_seq() 가 설정된 경우에만 유효. 아니면 recv_error_t.
+    // routing_id / spot_rid / request_seq 는 캡슐화됨 — caller 가 다시
+    // 넘길 필요 없음. submit 실패 시 submit_error_t.
+    /// @throws submit_error_t, recv_error_t
+    void reply(message_t& part);
+    /// @throws submit_error_t, recv_error_t
+    void reply(message_t& part, send_flags_t flags);
+    /// @throws submit_error_t, recv_error_t
+    void reply(std::vector<message_t>& parts);
+    /// @throws submit_error_t, recv_error_t
+    void reply(std::vector<message_t>& parts, send_flags_t flags);
+
     /// @throws close_error_t
     void close();
 };
 ```
+
+`received_t` 는 내부적으로 source socket 참조를 보유한다. binding 이 recv /
+handler 에서 `received_t` 를 만들 때 주입하며, `reply()` 는 그 참조를 사용해
+원래 socket 으로 reply 한다.
 
 ### topic_message_t
 

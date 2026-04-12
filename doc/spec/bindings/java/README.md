@@ -790,20 +790,28 @@ sequence, and message parts. Implements `AutoCloseable`.
 
 ```java
 public final class Received implements AutoCloseable {
-    Received(Optional<RoutingId> routingId, List<Message> parts);
-    Received(Optional<RoutingId> routingId, Optional<Long> requestSeq,
-             List<Message> parts);
-
-    Optional<RoutingId> routingId();
-    Optional<Long> requestSeq();
+    Optional<RoutingId> routingId();               // peer_rid (Router) / source_node_rid (Spot)
+    Optional<RoutingId> spotRid();                 // SPOT routed recv 에서만 값 있음
+    Optional<Long> requestSeq();                   // 값이 있으면 request, 없으면 ordinary message
     List<Message> parts();
     boolean isSinglePart();
     Message firstPart();                                             // @throws RecvException
     Message singlePartOrThrow();                                     // @throws RecvException
 
+    // reply — requestSeq 가 있을 때만 유효. 없으면 RecvException.
+    void reply(Message part);                                        // @throws SubmitException, RecvException
+    void reply(Message part, SendFlags flags);                       // @throws SubmitException, RecvException
+    void reply(List<Message> parts);                                 // @throws SubmitException, RecvException
+    void reply(List<Message> parts, SendFlags flags);                // @throws SubmitException, RecvException
+
     void close();                                                    // @throws CloseException
 }
 ```
+
+Received 는 내부적으로 source socket 참조를 보유한다 (binding 이 recv /
+handler 에서 만들 때 주입). `reply()` 호출 시 `routingId` + `spotRid` +
+`requestSeq` 를 캡슐화해 원래 socket 으로 전달. socket 이 close 된 후
+`reply()` 호출하면 `SubmitException(ZLINK_SUBMIT_TERMINATED)`.
 
 ### TopicMessage
 

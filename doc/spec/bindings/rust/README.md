@@ -563,9 +563,11 @@ is available for deterministic cleanup.
 
 ```rust
 pub struct Received {
-    pub routing_id: Option<RoutingId>,   // None when transport carries no source id
+    pub routing_id: Option<RoutingId>,   // peer_rid (Router) / source_node_rid (Spot)
+    pub spot_rid: Option<RoutingId>,     // SPOT routed recv 에만 값 있음
     pub request_seq: Option<u64>,        // Set in request-reply mode, else None
     pub parts: Vec<Message>,
+    // non-public: source socket ref (Arc<SocketInner>) for reply()
 }
 
 impl Received {
@@ -574,6 +576,20 @@ impl Received {
     pub fn first_part(&self) -> Result<&Message, RecvError>;
     /// # Errors: RecvError
     pub fn single_part_or_error(self) -> Result<Message, RecvError>;
+
+    /// Reply to this received request. Only valid when `request_seq` is
+    /// `Some(..)`; otherwise returns `RecvError`. On submit failure
+    /// returns `SubmitError`. routing_id / spot_rid / request_seq are
+    /// encapsulated — caller does not pass them again.
+    /// # Errors: SubmitError on submit; RecvError if not a request.
+    pub fn reply(&self, parts: Vec<Message>) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError on submit; RecvError if not a request.
+    pub fn reply_with_flags(
+        &self,
+        parts: Vec<Message>,
+        flags: SendFlags,
+    ) -> Result<(), SubmitError>;
+
     /// # Errors: CloseError
     pub fn close(self) -> Result<(), CloseError>;
 }

@@ -550,14 +550,27 @@ recv paths. Canonical shape shared with `TopicMessage` except that
 
 ```typescript
 class Received {
-    readonly routingId: RoutingId | null;    // null when transport carries no source id
+    readonly routingId: RoutingId | null;    // peer_rid (Router) / source_node_rid (Spot)
+    readonly spotRid: RoutingId | null;      // SPOT routed recv 에서만 값 있음
     readonly requestSeq: bigint | null;      // set on request-reply recv paths, else null
     readonly parts: Message[];
+
     isSinglePart(): boolean;
     /** @throws {RecvError} */
     firstPart(): Message;
     /** @throws {RecvError} */
     singlePartOrThrow(): Message;
+
+    /** reply — requestSeq 가 null 이 아닐 때만 유효. null 이면 RecvError. */
+    /** @throws {SubmitError | RecvError} */
+    reply(part: Message): void;
+    /** @throws {SubmitError | RecvError} */
+    reply(part: Message, flags: SendFlags): void;
+    /** @throws {SubmitError | RecvError} */
+    reply(parts: Message[]): void;
+    /** @throws {SubmitError | RecvError} */
+    reply(parts: Message[], flags: SendFlags): void;
+
     /** @throws {CloseError} */
     close(): void;
 }

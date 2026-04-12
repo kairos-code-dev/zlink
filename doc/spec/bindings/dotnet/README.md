@@ -856,7 +856,8 @@ Implements `IDisposable`.
 ```csharp
 public sealed class Received : IDisposable
 {
-    RoutingId? RoutingId { get; }            // null when transport carries no source id
+    RoutingId? RoutingId { get; }            // peer_rid (Router) / source_node_rid (Spot)
+    RoutingId? SpotRid { get; }              // SPOT routed recv 에서만 값 있음
     ulong? RequestSeq { get; }               // null when not a request-reply recv
     IReadOnlyList<Message> Parts { get; }
     bool IsSinglePart { get; }
@@ -865,6 +866,17 @@ public sealed class Received : IDisposable
     Message FirstPart();
     /// <exception cref="ZlinkRecvException"/>
     Message SinglePartOrThrow();
+
+    // Reply — RequestSeq 가 null 이 아닐 때만 유효. null 이면 ZlinkRecvException.
+    /// <exception cref="ZlinkSubmitException"/>
+    /// <exception cref="ZlinkRecvException">when RequestSeq is null</exception>
+    void Reply(Message part);
+    /// <exception cref="ZlinkSubmitException"/>
+    void Reply(Message part, SendFlags flags);
+    /// <exception cref="ZlinkSubmitException"/>
+    void Reply(IReadOnlyList<Message> parts);
+    /// <exception cref="ZlinkSubmitException"/>
+    void Reply(IReadOnlyList<Message> parts, SendFlags flags);
 
     /// <exception cref="ZlinkCloseException"/>
     void Dispose();

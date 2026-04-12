@@ -113,9 +113,11 @@
   을 canonical sample에 포함해야 한다.
 - `core/samples/`는 이 규칙에서 제외한다. 코어 request-reply 샘플은
   `request_reply_callback_sample`만 둔다.
-- `request_reply_async_sample` 은 `RequestDealer`/`RequestRouter` 또는 그와 동등한
-  wrapper public API를 직접 사용해야 한다.
-- raw `DealerSocket`/`RouterSocket` recv/send 샘플을 재포장해서는 안 된다.
+- `request_reply_async_sample` 은 `DealerSocket.request()` /
+  `RouterSocket.request()` async/coroutine 변형을 직접 사용해야 한다.
+  (별도 `RequestDealer` / `RequestRouter` wrapper 클래스는 policy 상 금지됨 —
+  `doc/spec/bindings/README.md` Socket Type Capability Policy 참조.)
+- raw `DealerSocket`/`RouterSocket` 의 recv/send 샘플을 재포장해서는 안 된다.
 - async sample은 callback completion으로 결과를 대신 설명하면 안 된다.
 - reply 완료 확인은 `await`, `future.get`, `Task`, `channel receive`,
   `std::future` 등 언어별 async completion 표면으로 보여야 한다.

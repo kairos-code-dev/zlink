@@ -82,7 +82,7 @@ class PairSocket:
     def recv(self, *, flags: int = 0) -> Received: ...                           # Raises: RecvError
     def on_receive(self, handler: Callable[[Received], None]) -> None: ...       # Raises: HandlerError
     def on_send_ready(self, handler: Callable[[PairSocket], None]) -> None: ...  # Raises: HandlerError
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
@@ -101,7 +101,7 @@ class PubSocket:
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
     def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
     def on_send_ready(self, handler: Callable[[PubSocket], None]) -> None: ...   # Raises: HandlerError
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -123,7 +123,7 @@ class SubSocket:
     def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
     def subscribe(self, *, flags: int = 0) -> TopicMessage: ...                    # Raises: RecvError
     def on_subscribe(self, handler: Callable[[TopicMessage], None]) -> None: ...   # Raises: HandlerError
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -147,7 +147,7 @@ class DealerSocket:
     def recv(self, *, flags: int = 0) -> Received: ...                             # Raises: RecvError
     def on_receive(self, handler: Callable[[Received], None]) -> None: ...         # Raises: HandlerError
     def on_send_ready(self, handler: Callable[[DealerSocket], None]) -> None: ...  # Raises: HandlerError
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                  # Raises: ConfigError
 
     # --- request (async) — no flags ---
@@ -186,7 +186,7 @@ class RouterSocket:
     def recv(self, *, flags: int = 0) -> Received: ...                           # Raises: RecvError
     def on_receive(self, handler: Callable[[Received], None]) -> None: ...       # Raises: HandlerError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
 
     # --- request (async) — no flags ---
@@ -259,7 +259,7 @@ class XPubSocket:
     def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
     def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
@@ -280,7 +280,7 @@ class XSubSocket:
     def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
     def subscribe(self, *, flags: int = 0) -> TopicMessage: ...                    # Raises: RecvError
     def on_subscribe(self, handler: Callable[[TopicMessage], None]) -> None: ...   # Raises: HandlerError
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
@@ -301,7 +301,7 @@ class StreamSocket:
     def recv(self, *, flags: int = 0) -> Received: ...                           # Raises: RecvError
     def on_receive(self, handler: Callable[[Received], None]) -> None: ...       # Raises: HandlerError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
@@ -428,8 +428,8 @@ class Message:
     @property
     def data(self) -> memoryview: ...                                        # Raises: ConfigError
     def to_bytes(self) -> bytes: ...                                         # Raises: ConfigError
-    def getProperty(self, name: str) -> str | None: ...                      # Raises: ConfigError
-    def refCount(self) -> int: ...                                           # Raises: ConfigError
+    def get_property(self, name: str) -> str | None: ...                     # Raises: ConfigError
+    def ref_count(self) -> int: ...                                          # Raises: ConfigError
     def send(self, socket) -> None: ...                                      # Raises: SubmitError
     def close(self) -> None: ...                                             # Raises: CloseError
     # supports `with` and `async with` — __exit__ raises CloseError
@@ -437,28 +437,50 @@ class Message:
 
 ### RoutingId
 
+Binary-safe immutable value type (1-255 bytes). Construction from a raw
+`str` is **not** supported by default; string conversion is exposed only
+through convenience helpers (`to_hex()`, `__str__`).
+
 ```python
 class RoutingId:
-    def __init__(self, data: bytes | bytearray) -> None: ...
+    def __init__(self, data: bytes | bytearray) -> None: ...      # Raises: ConfigError
+    @classmethod
+    def from_bytes(cls, data: bytes | bytearray) -> "RoutingId": ...  # Raises: ConfigError
+
     def to_bytes(self) -> bytes: ...
+
+    @property
+    def size(self) -> int: ...       # byte length (1..255)
+
     def __bytes__(self) -> bytes: ...
-    def __len__(self) -> int: ...
-    def __hash__(self) -> int: ...
     def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
+
+    # Convenience only — not part of the canonical shape:
+    def to_hex(self) -> str: ...
+    def __str__(self) -> str: ...
     def __repr__(self) -> str: ...
 ```
 
 ### Received
 
+`Received` is the PAIR / DEALER / ROUTER recv result. It mirrors the
+canonical `Received` shape defined in the binding spec (no `topic` field,
+but with `request_seq` populated when the message arrived as part of a
+request-reply exchange).
+
 ```python
 class Received:
-    routing_id: RoutingId | None
-    parts: tuple[ReceivedMessage, ...]
-    def __iter__(self) -> Iterator: ...
-    def __len__(self) -> int: ...
-    def to_bytes_list(self) -> list[bytes]: ...
-    def close(self) -> None: ...                 # Raises: CloseError
-    # supports `with` and `async with` — __exit__ raises CloseError
+    routing_id: RoutingId | None             # None when transport carries no source id
+    request_seq: int | None                  # set when routed over request-reply; None otherwise
+    parts: tuple[Message, ...]
+
+    def is_single_part(self) -> bool: ...
+    def first_part(self) -> Message: ...              # Raises: RecvError
+    def single_part_or_throw(self) -> Message: ...    # Raises: RecvError
+    def close(self) -> None: ...                      # Raises: CloseError
+    def __enter__(self) -> "Received": ...
+    def __exit__(self, *args) -> None: ...            # Raises: CloseError
 ```
 
 ### TopicMessage
@@ -479,11 +501,14 @@ class TopicMessage:
 
 ### SubscriptionEvent
 
+Value object delivered by `XPubSocket.receive_subscription_event()`.
+Fields only — no `close()` / lifecycle methods.
+
 ```python
 class SubscriptionEvent:
-    routing_id: RoutingId | None
-    topic: bytes
-    subscribed: bool
+    routing_id: RoutingId | None    # subscriber routing id; None if transport carries none
+    topic: str                       # UTF-8 topic string (NOT bytes)
+    subscribed: bool                 # True = subscribe, False = unsubscribe
 ```
 
 ### SubmitResult
@@ -743,8 +768,8 @@ class ConfigError(ZlinkError):
 
 ```python
 class MonitorSocket:
-    def recv(self) -> SocketMonitorEvent: ...                                    # Raises: RecvError
-    def on_event(self, handler: Callable[[SocketMonitorEvent], None]) -> None: ...  # Raises: HandlerError
+    def recv(self) -> MonitorEvent: ...                                          # Raises: RecvError
+    def on_event(self, handler: Callable[[MonitorEvent], None]) -> None: ...     # Raises: HandlerError
     def snapshot(self) -> MonitorSnapshot: ...                                   # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -753,51 +778,78 @@ class MonitorSocket:
 
 ```python
 class ServiceMonitor:
-    def recv(self) -> ServiceMonitorEvent: ...                                    # Raises: RecvError
-    def on_event(self, handler: Callable[[ServiceMonitorEvent], None]) -> None: ...  # Raises: HandlerError
+    def recv(self) -> ServiceEvent: ...                                           # Raises: RecvError
+    def on_event(self, handler: Callable[[ServiceEvent], None]) -> None: ...      # Raises: HandlerError
     def snapshot(self) -> MonitorSnapshot: ...                                    # Raises: ConfigError
     def close(self) -> None: ...                                                  # Raises: CloseError
 ```
 
 ### MonitorSnapshot
 
+Runtime state snapshot exposed by `MonitorSocket.snapshot()` and
+`ServiceMonitor.snapshot()`. Every binding is required to expose the
+canonical fields together with the `is_ready()` convenience accessor.
+
 ```python
 class MonitorSnapshot:
-    source_kind: int
-    state_flags: int
-    detail_flags: int
-    snd_pending_msgs: int
-    rcv_pending_msgs: int
+    source_kind: int                 # monitor target kind
+    state_flags: int                 # state bitmask
+    detail_flags: int                # detail bitmask
+    snd_pending_msgs: int            # pending send-queue messages
+    rcv_pending_msgs: int            # pending receive-queue messages
+
+    def is_ready(self) -> bool: ...  # True when the ready bit is set in state_flags
 ```
 
-### SocketMonitorEvent
+### MonitorEvent
+
+Value object emitted by `MonitorSocket.recv()` / `on_event(...)`.
+Renamed from the legacy `SocketMonitorEvent`; the old name remains
+exported as an alias for backward compatibility.
 
 ```python
-class SocketMonitorEvent:
-    event: int
-    value: int
-    routing_id: RoutingId | None
-    local_addr: str
-    remote_addr: str
+class MonitorEvent:
+    event: MonitorEventType          # enum (CONNECTION_READY, CONNECTED, DISCONNECTED, ...)
+    value: int                       # event-specific detail (e.g. reason code)
+    routing_id: RoutingId | None     # peer routing id when carried by the event, else None
+    local_addr: str                  # local endpoint
+    remote_addr: str                 # remote endpoint
+
+SocketMonitorEvent = MonitorEvent    # legacy alias; prefer MonitorEvent
 ```
 
-### ServiceMonitorEvent / ServiceEvent
+### MonitorEventMask
+
+Bitflag type supplied to `monitor_open(events=...)` to select which
+monitor events to deliver. `ALL` selects every event.
 
 ```python
-class ServiceMonitorEvent:
-    service_kind: int
-    event_type: int
-    status: int
-    error_code: int
-    value: int
-    detail_flags: int
+class MonitorEventMask(IntFlag):
+    NONE = 0
+    ALL = ...
+    # Individual event bits match the C-side MonitorEventType values.
+```
+
+### ServiceEvent (ServiceMonitorEvent)
+
+Value object emitted by `ServiceMonitor.recv()` / `on_event(...)`.
+`ServiceMonitorEvent` is retained as an alias.
+
+```python
+class ServiceEvent:
+    service_kind: int                # zlink_service_kind_t (SPOT, SOCKET, ...)
+    event_type: int                  # UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
+    status: int                      # status code
+    error_code: int                  # errno captured on ERROR events
+    value: int                       # event-specific value
+    detail_flags: int                # detail bitmask
     service_name: str
     endpoint: str
-    routing_id: RoutingId | None
-    subject: str
-    subject_kind: int
+    routing_id: RoutingId | None     # peer routing id, else None
+    subject: str                     # subscribe subject (topic), empty when N/A
+    subject_kind: int                # subject kind enum
 
-ServiceEvent = ServiceMonitorEvent
+ServiceMonitorEvent = ServiceEvent   # legacy alias; prefer ServiceEvent
 ```
 
 ---
@@ -956,6 +1008,83 @@ class RegistryQueryClient:
     def snapshot(self, filter_: RegistryTopologyFilter | None = None
                  ) -> list[RegistryTopologyEntry]: ...                           # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
+```
+
+### Service-Layer Entry Types
+
+Value objects returned by service-layer snapshot/query APIs. All are
+frozen dataclass-shaped: named fields only, no mutation, no lifecycle
+methods. Field types follow the canonical C struct definitions exposed
+in `core/include/zlink.h`; fixed-size C strings are decoded to `str`.
+
+```python
+@dataclass(frozen=True)
+class MemberPeerEntry:
+    service_type: int                # zlink_service_type_t
+    service_role: int
+    service_name: str
+    endpoint: str
+    routing_id: RoutingId
+    value: int                       # int64
+
+@dataclass(frozen=True)
+class RegistryTopologyEntry:
+    routing_id: RoutingId
+    service_kind: int                # zlink_service_kind_t
+    service_role: int
+    service_name: str
+    endpoint: str
+    source: int                      # zlink_topology_source_t
+    state: int                       # zlink_topology_state_t
+    desired_count: int
+    ready_count: int
+    error_code: int
+    last_reported_ms: int
+
+@dataclass(frozen=True)
+class RegistryServiceSummaryEntry:
+    service_kind: int                # zlink_service_kind_t
+    service_role: int
+    service_name: str
+    total_count: int
+    connecting_count: int
+    ready_count: int
+    error_count: int
+    stopped_count: int
+    last_reported_ms: int
+
+@dataclass(frozen=True)
+class SpotNodeStatus:
+    service_name: str
+    local_endpoint: str
+    node_routing_id: RoutingId
+    state: int                       # zlink_spot_node_state_t
+    configured_peer_count: int
+    active_peer_count: int
+    connected_peer_count: int
+    subject_count: int
+    ready_subject_count: int
+    last_error: int
+    last_changed_ms: int
+
+@dataclass(frozen=True)
+class SpotNodePeerEntry:
+    service_name: str
+    local_endpoint: str
+    peer_endpoint: str
+    source: int                      # zlink_spot_peer_source_t
+    state: int                       # zlink_spot_peer_state_t
+    connected_since_ms: int
+    last_changed_ms: int
+
+@dataclass(frozen=True)
+class SpotNodeSubjectEntry:
+    role: int                        # zlink_spot_role_t
+    subject: str
+    subject_kind: int
+    ready_peer_count: int
+    active_peer_count: int
+    last_changed_ms: int
 ```
 
 ---

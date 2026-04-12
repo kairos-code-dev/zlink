@@ -190,9 +190,9 @@ class DealerSocket {
     /** @throws {ConnectError} */
     disconnect(endpoint: string): void;
     /** @throws {ConfigError} */
-    setRoutingId(routingId: BufferLike): void;
+    setRoutingId(routingId: RoutingId): void;
     /** @throws {ConfigError} */
-    getRoutingId(): Buffer;
+    getRoutingId(): RoutingId;
     /** @throws {SubmitError} */
     send(message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
@@ -248,13 +248,13 @@ class RouterSocket {
     /** @throws {ConnectError} */
     disconnect(endpoint: string): void;
     /** @throws {ConfigError} */
-    setRoutingId(routingId: BufferLike): void;
+    setRoutingId(routingId: RoutingId): void;
     /** @throws {ConfigError} */
-    getRoutingId(): Buffer;
+    getRoutingId(): RoutingId;
     /** @throws {SubmitError} */
-    send(routingId: BufferLike, message: MessageLike, flags?: SendFlags): void;
+    send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
-    send(routingId: BufferLike, parts: readonly MessageLike[], flags?: SendFlags): void;
+    send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
     /** @throws {RecvError} */
     recv(flags?: RecvFlags): Received;
     /** @throws {HandlerError} */
@@ -266,10 +266,10 @@ class RouterSocket {
 
     // --- router request (async) — no flags, timeout = 0 uses socket default ---
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    request(peerRid: BufferLike, message: MessageLike,
+    request(peerRid: RoutingId, message: MessageLike,
             timeout?: number): Promise<Received>;
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    request(peerRid: BufferLike, parts: readonly MessageLike[],
+    request(peerRid: RoutingId, parts: readonly MessageLike[],
             timeout?: number): Promise<Received>;
 
     // --- router request (callback) — throws on submit failure, timeout = 0 uses socket default ---
@@ -277,39 +277,39 @@ class RouterSocket {
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
-    request(peerRid: BufferLike, message: MessageLike,
+    request(peerRid: RoutingId, message: MessageLike,
             callback: RequestResultCallback,
             flags?: SendFlags, timeout?: number): void;
     /**
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
-    request(peerRid: BufferLike, parts: readonly MessageLike[],
+    request(peerRid: RoutingId, parts: readonly MessageLike[],
             callback: RequestResultCallback,
             flags?: SendFlags, timeout?: number): void;
 
     // --- router reply ---
     /** @throws {SubmitError} */
-    reply(peerRid: BufferLike, requestSeq: bigint, message: MessageLike,
+    reply(peerRid: RoutingId, requestSeq: bigint, message: MessageLike,
           flags?: SendFlags): void;
     /** @throws {SubmitError} */
-    reply(peerRid: BufferLike, requestSeq: bigint, parts: readonly MessageLike[],
+    reply(peerRid: RoutingId, requestSeq: bigint, parts: readonly MessageLike[],
           flags?: SendFlags): void;
 
     // --- router → spot routed send ---
     /** @throws {SubmitError} */
-    sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
-    sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                parts: readonly MessageLike[], flags?: SendFlags): void;
 
     // --- router → spot routed request (async) — no flags ---
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   message: MessageLike, timeout?: number): Promise<Received>;
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   parts: readonly MessageLike[], timeout?: number): Promise<Received>;
 
     // --- router → spot routed request (callback) — throws on submit failure ---
@@ -317,7 +317,7 @@ class RouterSocket {
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
-    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   message: MessageLike,
                   callback: RequestResultCallback,
                   flags?: SendFlags, timeout?: number): void;
@@ -325,17 +325,17 @@ class RouterSocket {
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
-    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   parts: readonly MessageLike[],
                   callback: RequestResultCallback,
                   flags?: SendFlags, timeout?: number): void;
 
     // --- router → spot routed reply ---
     /** @throws {SubmitError} */
-    replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                 requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
-    replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                 requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
 
     // --- router spot receive ---
@@ -414,13 +414,13 @@ class StreamSocket {
     /** @throws {ConnectError} */
     unbind(endpoint: string): void;
     /** @throws {ConfigError} */
-    setRoutingId(routingId: BufferLike): void;
+    setRoutingId(routingId: RoutingId): void;
     /** @throws {ConfigError} */
-    getRoutingId(): Buffer;
+    getRoutingId(): RoutingId;
     /** @throws {SubmitError} */
-    send(routingId: BufferLike, message: MessageLike, flags?: SendFlags): void;
+    send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
-    send(routingId: BufferLike, parts: readonly MessageLike[], flags?: SendFlags): void;
+    send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
     /** @throws {RecvError} */
     recv(flags?: RecvFlags): Received;
     /** @throws {HandlerError} */
@@ -466,7 +466,7 @@ class RouterSocketOptions extends CommonSocketOptions {
     mandatory: boolean;          // get / set
     handover: boolean;           // get / set
     probe: boolean;              // get / set
-    connectRoutingId: BufferLike;// set only
+    connectRoutingId: RoutingId; // set only
 }
 
 class PubSocketOptions extends CommonSocketOptions {
@@ -515,17 +515,50 @@ type BufferLike = Buffer | Uint8Array | string;
 
 ### RoutingId
 
-Routing IDs are represented as `Buffer` values (1-255 bytes).
+Routing-id value object. Binary-safe, 1-255 bytes, immutable. The binding
+exposes this wrapper type (not a raw `Buffer`) everywhere a routing id
+appears in the public surface.
+
+```typescript
+class RoutingId {
+    /** @throws {ConfigError} */
+    static fromBytes(bytes: Buffer | Uint8Array): RoutingId;
+    toBytes(): Buffer;
+    readonly size: number;             // byte length (1-255)
+    equals(other: RoutingId): boolean;
+    /** Hex-encoded representation (lower-case, no separators). */
+    toHex(): string;
+    /** Alias of `toHex()` for convenient string conversion. */
+    toString(): string;
+}
+```
+
+Rules:
+- `RoutingId` is binary-safe; there is no `RoutingId(string)` constructor.
+  Use `fromBytes` for construction and `toHex()` / `toString()` for
+  display.
+- `RoutingId` instances are immutable; `toBytes()` returns a copy or an
+  immutable view.
+- Any socket or service method that takes a routing id accepts a
+  `RoutingId` value (not a raw `Buffer`).
 
 ### Received
 
+Recv result for PAIR / DEALER / ROUTER / STREAM and router/spot routed
+recv paths. Canonical shape shared with `TopicMessage` except that
+`Received` has no `topic` field.
+
 ```typescript
 class Received {
-    readonly routingId: Buffer | null;
+    readonly routingId: RoutingId | null;    // null when transport carries no source id
+    readonly requestSeq: bigint | null;      // set on request-reply recv paths, else null
     readonly parts: Message[];
-    readonly requestSeq: bigint | null;
-    toBytesList(): Buffer[];
-    /** @throws {ConfigError} */
+    isSinglePart(): boolean;
+    /** @throws {RecvError} */
+    firstPart(): Message;
+    /** @throws {RecvError} */
+    singlePartOrThrow(): Message;
+    /** @throws {CloseError} */
     close(): void;
 }
 ```
@@ -540,6 +573,7 @@ class TopicMessage {
     readonly topic: string;                  // UTF-8
     readonly parts: Message[];
     isSinglePart(): boolean;
+    /** @throws {RecvError} */
     firstPart(): Message;
     /** @throws {RecvError} */
     singlePartOrThrow(): Message;
@@ -550,11 +584,14 @@ class TopicMessage {
 
 ### SubscriptionEvent
 
+Value object emitted by `XPubSocket.receiveSubscriptionEvent`. No
+lifecycle methods.
+
 ```typescript
 class SubscriptionEvent {
-    readonly routingId: Buffer | null;
-    readonly topic: string;
-    readonly subscribed: boolean;
+    readonly routingId: RoutingId | null;
+    readonly topic: string;                  // UTF-8
+    readonly subscribed: boolean;            // true=subscribe, false=unsubscribe
 }
 ```
 
@@ -853,20 +890,27 @@ class ConfigError extends ZlinkError {
 ```typescript
 class MonitorSocket {
     /** @throws {RecvError} */
-    recv(): SocketMonitorEventValue;
+    recv(): MonitorEvent;
     /** @throws {HandlerError} */
-    onEvent(handler: (event: SocketMonitorEventValue) => void): void;
+    onEvent(handler: (event: MonitorEvent) => void): void;
     /** @throws {ConfigError} */
     snapshot(): MonitorSnapshot;
     /** @throws {CloseError} */
     close(): void;
 }
+```
 
-interface SocketMonitorEventValue {
-    event: number;
-    value: number;
-    local: string;
-    remote: string;
+### MonitorEvent
+
+Socket monitor event. Canonical shape shared with every other binding.
+
+```typescript
+class MonitorEvent {
+    readonly event: MonitorEventType;        // CONNECTION_READY, CONNECTED, DISCONNECTED, ...
+    readonly value: number;                  // uint32 — event-specific payload (e.g. reason code)
+    readonly routingId: RoutingId | null;    // peer routing id (null when not applicable)
+    readonly localAddr: string;              // local endpoint
+    readonly remoteAddr: string;             // remote endpoint
 }
 ```
 
@@ -887,13 +931,18 @@ class ServiceMonitor {
 
 ### MonitorSnapshot
 
+Runtime snapshot returned by `MonitorSocket.snapshot()` and
+`ServiceMonitor.snapshot()`.
+
 ```typescript
 interface MonitorSnapshot {
-    sourceKind: number;
-    stateFlags: number;
-    detailFlags: number;
-    sndPendingMsgs: number;
-    rcvPendingMsgs: number;
+    readonly sourceKind: number;             // monitor source kind enum
+    readonly stateFlags: number;             // uint32 bitmask
+    readonly detailFlags: number;            // uint32 bitmask
+    readonly sndPendingMsgs: bigint;         // uint64 send-queue depth
+    readonly rcvPendingMsgs: bigint;         // uint64 recv-queue depth
+    /** Convenience helper — returns true when `stateFlags` has the ready bit set. */
+    isReady(): boolean;
 }
 ```
 
@@ -901,17 +950,17 @@ interface MonitorSnapshot {
 
 ```typescript
 class ServiceEvent {
-    readonly serviceKind: number;
-    readonly eventType: number;
-    readonly status: number;
-    readonly errorCode: number;
-    readonly value: number;
-    readonly detailFlags: number;
+    readonly serviceKind: number;            // zlink_service_type_t (SPOT, SOCKET, ...)
+    readonly eventType: number;              // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
+    readonly status: number;                 // uint32 status code
+    readonly errorCode: number;              // uint32 errno (0 when not an error)
+    readonly value: bigint;                  // uint64 event-specific value
+    readonly detailFlags: number;            // uint32 detail bitmask
     readonly serviceName: string;
     readonly endpoint: string;
-    readonly routingId: Buffer | null;
-    readonly subject: string;
-    readonly subjectKind: number;
+    readonly routingId: RoutingId | null;    // peer routing id (null when not applicable)
+    readonly subject: string;                // subscribe subject (topic)
+    readonly subjectKind: number;            // subject kind enum
 }
 ```
 
@@ -1050,18 +1099,18 @@ class Spot {
 
     // --- routed send (spot → spot) ---
     /** @throws {SubmitError} */
-    sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
-    sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                parts: readonly MessageLike[], flags?: SendFlags): void;
 
     // --- routed request (spot → spot, async) — no flags ---
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   message: MessageLike, timeout?: number): Promise<Received>;
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   parts: readonly MessageLike[], timeout?: number): Promise<Received>;
 
     // --- routed request (spot → spot, callback) — throws on submit failure ---
@@ -1069,7 +1118,7 @@ class Spot {
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
-    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   message: MessageLike,
                   callback: RequestResultCallback,
                   flags?: SendFlags, timeout?: number): void;
@@ -1077,31 +1126,31 @@ class Spot {
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
-    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   parts: readonly MessageLike[],
                   callback: RequestResultCallback,
                   flags?: SendFlags, timeout?: number): void;
 
     // --- routed reply (spot → spot) ---
     /** @throws {SubmitError} */
-    replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                 requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
-    replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+    replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                 requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
 
     // --- routed send (spot → router) ---
     /** @throws {SubmitError} */
-    sendToRouter(peerRid: BufferLike, message: MessageLike, flags?: SendFlags): void;
+    sendToRouter(peerRid: RoutingId, message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
-    sendToRouter(peerRid: BufferLike, parts: readonly MessageLike[], flags?: SendFlags): void;
+    sendToRouter(peerRid: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
 
     // --- routed request (spot → router, async) — no flags ---
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToRouter(peerRid: BufferLike, message: MessageLike,
+    requestToRouter(peerRid: RoutingId, message: MessageLike,
                     timeout?: number): Promise<Received>;
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToRouter(peerRid: BufferLike, parts: readonly MessageLike[],
+    requestToRouter(peerRid: RoutingId, parts: readonly MessageLike[],
                     timeout?: number): Promise<Received>;
 
     // --- routed request (spot → router, callback) — throws on submit failure ---
@@ -1109,23 +1158,23 @@ class Spot {
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
-    requestToRouter(peerRid: BufferLike, message: MessageLike,
+    requestToRouter(peerRid: RoutingId, message: MessageLike,
                     callback: RequestResultCallback,
                     flags?: SendFlags, timeout?: number): void;
     /**
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
-    requestToRouter(peerRid: BufferLike, parts: readonly MessageLike[],
+    requestToRouter(peerRid: RoutingId, parts: readonly MessageLike[],
                     callback: RequestResultCallback,
                     flags?: SendFlags, timeout?: number): void;
 
     // --- routed reply (spot → router) ---
     /** @throws {SubmitError} */
-    replyToRouter(peerRid: BufferLike, requestSeq: bigint,
+    replyToRouter(peerRid: RoutingId, requestSeq: bigint,
                   message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
-    replyToRouter(peerRid: BufferLike, requestSeq: bigint,
+    replyToRouter(peerRid: RoutingId, requestSeq: bigint,
                   parts: readonly MessageLike[], flags?: SendFlags): void;
 
     // --- routed receive ---
@@ -1152,6 +1201,133 @@ class RegistryQueryClient {
     snapshot(filter?: RegistryTopologyFilter): RegistryTopologyEntry[];
     /** @throws {CloseError} */
     close(): void;
+}
+```
+
+### Service-Layer Entry Types
+
+Value objects returned by `Registry`, `Discovery`, `SpotNode`, and
+`RegistryQueryClient` snapshot / query calls. All fields are `readonly`
+and every routing-id field is a `RoutingId` wrapper (never a raw
+`Buffer`).
+
+```typescript
+/** Discovery / Registry member peer entry. */
+interface MemberPeerEntry {
+    readonly serviceType: number;            // zlink_service_type_t
+    readonly serviceRole: number;            // uint16 service role
+    readonly serviceName: string;
+    readonly endpoint: string;
+    readonly routingId: RoutingId;
+    readonly value: bigint;                  // int64 user value
+}
+
+/** Registry topology entry (full topology view). */
+interface RegistryTopologyEntry {
+    readonly routingId: RoutingId;
+    readonly serviceKind: number;            // zlink_service_kind_t
+    readonly serviceRole: number;            // zlink_service_role_t
+    readonly serviceName: string;
+    readonly endpoint: string;
+    readonly source: number;                 // zlink_topology_source_t
+    readonly state: number;                  // zlink_topology_state_t
+    readonly desiredCount: number;           // uint32
+    readonly readyCount: number;             // uint32
+    readonly errorCode: number;              // uint32 errno
+    readonly lastReportedMs: bigint;         // uint64 epoch ms
+}
+
+/** Registry service summary roll-up entry. */
+interface RegistryServiceSummaryEntry {
+    readonly serviceKind: number;            // zlink_service_kind_t
+    readonly serviceRole: number;            // zlink_service_role_t
+    readonly serviceName: string;
+    readonly totalCount: number;             // uint32
+    readonly connectingCount: number;        // uint32
+    readonly readyCount: number;             // uint32
+    readonly errorCount: number;             // uint32
+    readonly stoppedCount: number;           // uint32
+    readonly lastReportedMs: bigint;         // uint64 epoch ms
+}
+
+/** Registry status snapshot. */
+interface RegistryStatus {
+    readonly registryId: number;             // uint32
+    readonly bindEndpoint: string;
+    readonly state: number;                  // zlink_registry_state_t
+    readonly topologyEntryCount: number;     // uint32
+    readonly peerRegistryCount: number;      // uint32
+    readonly connectedPeerRegistryCount: number; // uint32
+    readonly listSeq: bigint;                // uint64
+    readonly lastError: number;              // int32
+    readonly lastChangedMs: bigint;          // uint64 epoch ms
+}
+
+/** SpotNode runtime status snapshot. */
+interface SpotNodeStatus {
+    readonly serviceName: string;
+    readonly localEndpoint: string;
+    readonly nodeRoutingId: RoutingId;
+    readonly state: number;                  // zlink_spot_node_state_t
+    readonly configuredPeerCount: number;    // uint32
+    readonly activePeerCount: number;        // uint32
+    readonly connectedPeerCount: number;     // uint32
+    readonly subjectCount: number;           // uint32
+    readonly readySubjectCount: number;      // uint32
+    readonly lastError: number;              // int32
+    readonly lastChangedMs: bigint;          // uint64 epoch ms
+}
+
+/** SpotNode peer entry. */
+interface SpotNodePeerEntry {
+    readonly serviceName: string;
+    readonly localEndpoint: string;
+    readonly peerEndpoint: string;
+    readonly source: number;                 // zlink_spot_peer_source_t
+    readonly state: number;                  // zlink_spot_peer_state_t
+    readonly connectedSinceMs: bigint;       // uint64 epoch ms
+    readonly lastChangedMs: bigint;          // uint64 epoch ms
+}
+
+/** SpotNode subject entry. */
+interface SpotNodeSubjectEntry {
+    readonly role: number;                   // zlink_spot_role_t
+    readonly subject: string;
+    readonly subjectKind: number;            // uint32
+    readonly readyPeerCount: number;         // uint32
+    readonly activePeerCount: number;        // uint32
+    readonly lastChangedMs: bigint;          // uint64 epoch ms
+}
+
+/** Filter for Registry service summary snapshot. */
+interface RegistryServiceSummaryFilter {
+    readonly serviceKind?: number;
+    readonly serviceRole?: number;
+    readonly serviceName?: string;
+}
+
+/** Filter for Registry topology snapshot / query. */
+interface RegistryTopologyFilter {
+    readonly serviceKind?: number;
+    readonly serviceRole?: number;
+    readonly serviceName?: string;
+    readonly routingId?: RoutingId;
+    readonly state?: number;
+    readonly source?: number;
+}
+
+/** Filter for SpotNode peers query. */
+interface SpotNodePeerFilter {
+    readonly peerEndpoint?: string;
+    readonly source?: number;
+    readonly state?: number;
+}
+
+/** Filter for SpotNode subjects query. */
+interface SpotNodeSubjectFilter {
+    readonly role?: number;
+    readonly subject?: string;
+    readonly subjectKind?: number;
 }
 ```
 
@@ -1242,20 +1418,22 @@ class Timer {
 ## Callback Types
 
 ```typescript
-type SocketRecvHandler = (routingId: Buffer | null, parts: Message[]) => void;
-type SocketSubscribeHandler = (routingId: Buffer | null, topic: string, parts: Message[]) => void;
+type SocketRecvHandler = (routingId: RoutingId | null, parts: Message[]) => void;
+type SocketSubscribeHandler = (routingId: RoutingId | null, topic: string, parts: Message[]) => void;
 type SocketSendReadyHandler = () => void;
 type SpotSubHandler = SocketSubscribeHandler;
 type SpotSendReadyHandler = () => void;
-type SpotRoutedHandler = (sourceRid: Buffer | null, spotRid: Buffer | null,
+type SpotRoutedHandler = (sourceRid: RoutingId | null, spotRid: RoutingId | null,
                           requestSeq: bigint, parts: Message[]) => void;
 type SpotDispatchEventHandler = (event: number) => void;
-type RouterSpotHandler = (sourceNodeRid: Buffer | null, sourceSpotRid: Buffer | null,
+type RouterSpotHandler = (sourceNodeRid: RoutingId | null, sourceSpotRid: RoutingId | null,
                           requestSeq: bigint, parts: Message[]) => void;
 type RequestResultCallback = (result: RequestResult, reply?: Received) => void;
 type TimerHandler = (timer: Timer, fireCount: bigint) => void;
 type ServiceMonitorHandler = (event: ServiceEvent) => void;
 type ServiceMonitorEventMask = number;
+/** Monitor event type enum (CONNECTION_READY, CONNECTED, DISCONNECTED, ...). */
+type MonitorEventType = number;
 ```
 
 ---

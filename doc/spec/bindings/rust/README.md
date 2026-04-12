@@ -533,17 +533,51 @@ pub struct Message { /* ... */ }
 
 ### RoutingId
 
+Binary-safe routing id value object (1-255 bytes). Immutable; the public
+API treats the identifier as raw bytes. String conversions are provided
+as convenience only.
+
 ```rust
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct RoutingId { /* ... */ }
+
+impl RoutingId {
+    /// Construct from raw bytes (must be 1-255 bytes).
+    pub fn from_bytes(bytes: &[u8]) -> RoutingId;
+    /// Borrow the raw byte view (immutable).
+    pub fn as_bytes(&self) -> &[u8];
+    /// Byte length (1-255).
+    pub fn size(&self) -> usize;
+    /// Hex-encoded convenience string.
+    pub fn to_hex(&self) -> String;
+}
+
+impl std::fmt::Display for RoutingId { /* hex form */ }
 ```
 
 ### Received
 
+PAIR / DEALER / ROUTER recv result. Mirrors `TopicMessage` but without a
+topic field. `Drop` releases owned `Message` parts; explicit `close()`
+is available for deterministic cleanup.
+
 ```rust
 pub struct Received {
-    pub routing_id: Option<RoutingId>,
+    pub routing_id: Option<RoutingId>,   // None when transport carries no source id
+    pub request_seq: Option<u64>,        // Set in request-reply mode, else None
     pub parts: Vec<Message>,
 }
+
+impl Received {
+    pub fn is_single_part(&self) -> bool;
+    /// # Errors: RecvError
+    pub fn first_part(&self) -> Result<&Message, RecvError>;
+    /// # Errors: RecvError
+    pub fn single_part_or_error(self) -> Result<Message, RecvError>;
+    /// # Errors: CloseError
+    pub fn close(self) -> Result<(), CloseError>;
+}
+// Drop releases any remaining parts.
 ```
 
 ### TopicMessage
@@ -561,19 +595,27 @@ pub struct TopicMessage {
 
 impl TopicMessage {
     pub fn is_single_part(&self) -> bool;
+    /// # Errors: RecvError
     pub fn first_part(&self) -> Result<&Message, RecvError>;
+    /// # Errors: RecvError
     pub fn single_part_or_error(self) -> Result<Message, RecvError>;
+    /// # Errors: CloseError
     pub fn close(self) -> Result<(), CloseError>;
 }
+// Drop releases any remaining parts.
 ```
 
 ### SubscriptionEvent
 
+Value struct emitted by `XPubSocket::receive_subscription_event`. Pure
+value type: no methods, no lifecycle. `topic` is UTF-8 `String` (never
+raw bytes).
+
 ```rust
 pub struct SubscriptionEvent {
-    pub routing_id: Option<RoutingId>,
-    pub topic: String,
-    pub subscribed: bool,
+    pub routing_id: Option<RoutingId>,   // None when transport carries no source id
+    pub topic: String,                   // UTF-8 subscribe/unsubscribe topic
+    pub subscribed: bool,                // true = subscribe, false = unsubscribe
 }
 ```
 
@@ -994,15 +1036,53 @@ impl ServiceMonitor {
 
 ```rust
 pub struct MonitorSnapshot {
-    pub state_flags: u32,
-    pub detail_flags: u32,
-    pub snd_pending_msgs: u64,
-    pub rcv_pending_msgs: u64,
+    pub source_kind: MonitorSourceKind,   // monitor target category
+    pub state_flags: u32,                 // state bitmask
+    pub detail_flags: u32,                // detail bitmask
+    pub snd_pending_msgs: u64,            // pending send-queue message count
+    pub rcv_pending_msgs: u64,            // pending recv-queue message count
 }
 
 impl MonitorSnapshot {
+    /// Convenience check for the ready bit in `state_flags`.
     pub fn is_ready(&self) -> bool;
     pub fn is_closed(&self) -> bool;
+}
+```
+
+### MonitorEvent
+
+Event emitted by `SocketMonitor::recv` / `on_event`. Required by all
+bindings.
+
+```rust
+pub struct MonitorEvent {
+    pub event: MonitorEventType,         // event kind (CONNECTION_READY, CONNECTED, DISCONNECTED, ...)
+    pub value: u32,                      // event-specific detail (e.g. reason code on DISCONNECTED)
+    pub routing_id: Option<RoutingId>,   // peer routing id when the event carries one
+    pub local_addr: String,              // local endpoint
+    pub remote_addr: String,             // remote endpoint
+}
+```
+
+### ServiceEvent
+
+Event emitted by `ServiceMonitor::recv` / `on_event` (discovery,
+registry, spot). Required by all bindings.
+
+```rust
+pub struct ServiceEvent {
+    pub service_kind: ServiceKind,       // ZLINK_SERVICE_TYPE_SPOT, SOCKET, ...
+    pub event_type: ServiceEventType,    // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
+    pub status: u32,                     // status code
+    pub error_code: u32,                 // errno on error events
+    pub value: u64,                      // event-specific value
+    pub detail_flags: u32,               // detail bitmask
+    pub service_name: String,            // service name
+    pub endpoint: String,                // endpoint
+    pub routing_id: Option<RoutingId>,   // peer routing id
+    pub subject: String,                 // subscribe subject (topic)
+    pub subject_kind: SubjectKind,       // subject category
 }
 ```
 
@@ -1247,6 +1327,83 @@ impl RegistryQueryClient {
         -> Result<Vec<RegistryTopologyEntry>, ConfigError>;
     /// # Errors: CloseError
     pub fn close(&mut self) -> Result<(), CloseError>;
+}
+```
+
+### Service-Layer Entry Types
+
+Value types returned by service-layer snapshot/query calls. Each type is
+a plain Rust struct with `pub` fields — the raw `zlink_*_t` C structs are
+never surfaced. Names follow Rust `PascalCase`; fields are `snake_case`
+matching the canonical names.
+
+```rust
+pub struct MemberPeerEntry {
+    pub service_type: ServiceType,
+    pub service_role: u16,
+    pub service_name: String,
+    pub endpoint: String,
+    pub routing_id: RoutingId,
+    pub value: i64,
+}
+
+pub struct RegistryTopologyEntry {
+    pub routing_id: RoutingId,
+    pub service_kind: ServiceKind,
+    pub service_role: ServiceRole,
+    pub service_name: String,
+    pub endpoint: String,
+    pub source: TopologySource,
+    pub state: TopologyState,
+    pub desired_count: u32,
+    pub ready_count: u32,
+    pub error_code: u32,
+    pub last_reported_ms: u64,
+}
+
+pub struct RegistryServiceSummaryEntry {
+    pub service_kind: ServiceKind,
+    pub service_role: ServiceRole,
+    pub service_name: String,
+    pub total_count: u32,
+    pub connecting_count: u32,
+    pub ready_count: u32,
+    pub error_count: u32,
+    pub stopped_count: u32,
+    pub last_reported_ms: u64,
+}
+
+pub struct SpotNodeStatus {
+    pub service_name: String,
+    pub local_endpoint: String,
+    pub node_routing_id: RoutingId,
+    pub state: SpotNodeState,
+    pub configured_peer_count: u32,
+    pub active_peer_count: u32,
+    pub connected_peer_count: u32,
+    pub subject_count: u32,
+    pub ready_subject_count: u32,
+    pub last_error: i32,
+    pub last_changed_ms: u64,
+}
+
+pub struct SpotNodePeerEntry {
+    pub service_name: String,
+    pub local_endpoint: String,
+    pub peer_endpoint: String,
+    pub source: SpotPeerSource,
+    pub state: SpotPeerState,
+    pub connected_since_ms: u64,
+    pub last_changed_ms: u64,
+}
+
+pub struct SpotNodeSubjectEntry {
+    pub role: SpotRole,
+    pub subject: String,
+    pub subject_kind: u32,
+    pub ready_peer_count: u32,
+    pub active_peer_count: u32,
+    pub last_changed_ms: u64,
 }
 ```
 

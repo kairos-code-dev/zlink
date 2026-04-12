@@ -535,34 +535,79 @@ class message_t {
 
 ### routing_id_t
 
-Immutable binary-safe routing identity value object (max 255 bytes).
+Immutable binary-safe routing identity value object (1-255 bytes).
+Routing ids are binary — the primary construction surface takes raw
+bytes. `to_hex()` / `to_string()` are convenience views only.
 
 ```cpp
 class routing_id_t {
-    routing_id_t() noexcept;
-    explicit routing_id_t(const std::string& bytes);
-    routing_id_t(const void* bytes, size_t size);
+    routing_id_t() noexcept;                                  // empty id
+    routing_id_t(const uint8_t* bytes, size_t size);          // primary binary ctor
     routing_id_t(const zlink_routing_id_t& native);
 
+    /// Named factories (equivalent to the primary byte constructor).
+    static routing_id_t from_bytes(const uint8_t* bytes, size_t size);
+    static routing_id_t from_bytes(const std::vector<uint8_t>& bytes);
+
+    // --- binary accessors ---
+    const uint8_t* data() const noexcept;
     size_t size() const noexcept;
     bool empty() const noexcept;
     std::vector<uint8_t> to_bytes() const;
-    std::string to_string() const;
+
+    // --- convenience (non-canonical string views) ---
+    std::string to_hex() const;        // lowercase hex, no separators
+    std::string to_string() const;     // raw bytes as std::string (may contain non-UTF-8)
+
+    // --- equality / hash ---
+    friend bool operator==(const routing_id_t& a, const routing_id_t& b) noexcept;
+    friend bool operator!=(const routing_id_t& a, const routing_id_t& b) noexcept;
+
     const zlink_routing_id_t& native() const noexcept;
     operator zlink_routing_id_t() const noexcept;
 };
+
+// std::hash specialization (enables use in std::unordered_{map,set}).
+namespace std {
+template<> struct hash<zlink::routing_id_t> {
+    size_t operator()(const zlink::routing_id_t& rid) const noexcept;
+};
+} // namespace std
 ```
+
+Rules:
+- Binary-safe value type. A `routing_id_t(const std::string&)` primary
+  constructor is **forbidden**; use `from_bytes(...)` or the byte
+  pointer/size constructor.
+- Immutable after construction.
 
 ### received_t
 
-Aggregates one recv result with optional routing id and message parts.
+Aggregates one recv result used by PAIR / DEALER / ROUTER / STREAM /
+Spot routed receive paths. Owns `message_t` parts; destructor releases
+them. Matches the canonical `Received` shape (see
+[Bindings Policy — 도메인 객체 Canonical Shape](../README.md#도메인-객체-canonical-shape-모든-바인딩-공통)).
 
 ```cpp
-struct received_t {
-    routing_id_t routing_id;
-    std::vector<message_t> parts;
-    uint64_t request_seq = 0;
-    bool has_request_seq = false;
+class received_t {
+public:
+    received_t(std::optional<routing_id_t> routing_id,
+               std::optional<uint64_t> request_seq,
+               std::vector<message_t> parts);
+
+    const std::optional<routing_id_t>& routing_id() const noexcept;  // nullopt if transport carries no source id
+    const std::optional<uint64_t>& request_seq() const noexcept;     // set only for request-reply recv paths
+    const std::vector<message_t>& parts() const noexcept;
+    std::vector<message_t>& parts() noexcept;
+
+    bool is_single_part() const noexcept;
+    /// @throws recv_error_t
+    message_t& first_part();
+    /// @throws recv_error_t
+    message_t single_part_or_throw();
+
+    /// @throws close_error_t
+    void close();
 };
 ```
 
@@ -596,13 +641,67 @@ public:
 
 ### subscription_event_t
 
-Reports a subscribe/unsubscribe event from xpub sockets.
+Reports a subscribe/unsubscribe event from xpub sockets. Plain value
+struct — no methods, no lifecycle.
 
 ```cpp
 struct subscription_event_t {
-    routing_id_t routing_id;
-    std::string topic;
-    bool subscribed;
+    std::optional<routing_id_t> routing_id;  // nullopt if transport carries no subscriber id
+    std::string topic;                        // UTF-8
+    bool subscribed;                          // true = subscribe, false = unsubscribe
+};
+```
+
+### monitor_event_t
+
+Socket monitor event payload. Value struct returned by
+`monitor_handle_t::recv()`.
+
+```cpp
+struct monitor_event_t {
+    monitor_event_type_t event;               // event kind (CONNECTED, DISCONNECTED, CONNECTION_READY, ...)
+    uint32_t value;                           // event-specific detail (e.g., DISCONNECTED reason code)
+    std::optional<routing_id_t> routing_id;   // peer routing id; nullopt when event carries none
+    std::string local_addr;                   // local endpoint
+    std::string remote_addr;                  // remote endpoint
+};
+```
+
+### monitor_snapshot_t
+
+Runtime status snapshot returned by `monitor_handle_t::snapshot()` and
+`service_monitor_handle_t::snapshot()`.
+
+```cpp
+struct monitor_snapshot_t {
+    monitor_source_kind_t source_kind;        // monitor target kind
+    uint32_t state_flags;                     // state bitmask
+    uint32_t detail_flags;                    // detail bitmask
+    uint64_t snd_pending_msgs;                // send-queue pending message count
+    uint64_t rcv_pending_msgs;                // recv-queue pending message count
+
+    bool is_ready() const noexcept;           // convenience: checks ready bit in state_flags
+};
+```
+
+### service_event_t
+
+Service-layer monitor event payload (discovery / registry / spot).
+Returned by `service_monitor_handle_t::recv()`.
+
+```cpp
+struct service_event_t {
+    service_kind_t service_kind;              // ZLINK_SERVICE_TYPE_SPOT, SOCKET, ...
+    service_event_type_t event_type;          // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
+    uint32_t status;                          // status code
+    uint32_t error_code;                      // errno on error; 0 otherwise
+    uint64_t value;                           // event-specific value
+    uint32_t detail_flags;                    // detail bitmask
+    std::string service_name;                 // service name
+    std::string endpoint;                     // endpoint
+    std::optional<routing_id_t> routing_id;   // peer routing id; nullopt when event carries none
+    std::string subject;                      // subscribe subject (topic)
+    service_event_subject_kind_t subject_kind; // subject kind
 };
 ```
 
@@ -1043,6 +1142,167 @@ class service_monitor_handle_t {
 
 ## Services
 
+### Service-Layer Entry Types
+
+Service-layer snapshot and query methods return named C++ value types
+rather than raw C structs. All entry types live in `zlink::service`
+and expose typed fields (std::string for text, `routing_id_t` for
+identities, and typed enums for categorical values).
+
+#### member_peer_entry_t
+
+Member peer entry returned by `registry_t::member_peers(...)` and
+`discovery_t::member_peers(...)`.
+
+```cpp
+struct member_peer_entry_t {
+    service_type_t service_type;
+    service_role_t service_role;
+    std::string service_name;
+    std::string endpoint;
+    std::optional<routing_id_t> routing_id;   // nullopt when peer carries no routing id
+    int64_t value;
+};
+```
+
+#### registry_topology_entry_t
+
+Topology entry returned by `registry_t::topology_snapshot(...)`,
+`registry_t::topology_query(...)`, and
+`registry_query_client_t::snapshot(...)`.
+
+```cpp
+struct registry_topology_entry_t {
+    std::optional<routing_id_t> routing_id;
+    service_kind_t service_kind;
+    service_role_t service_role;
+    std::string service_name;
+    std::string endpoint;
+    topology_source_t source;
+    topology_state_t state;
+    uint32_t desired_count;
+    uint32_t ready_count;
+    uint32_t error_code;
+    uint64_t last_reported_ms;
+};
+
+struct registry_topology_filter_t {
+    service_kind_t service_kind;
+    service_role_t service_role;
+    std::string service_name;
+    std::optional<routing_id_t> routing_id;
+    topology_state_t state;
+    topology_source_t source;
+};
+```
+
+#### registry_service_summary_entry_t
+
+Service summary entry returned by
+`registry_t::service_summary_snapshot(...)`.
+
+```cpp
+struct registry_service_summary_entry_t {
+    service_kind_t service_kind;
+    service_role_t service_role;
+    std::string service_name;
+    uint32_t total_count;
+    uint32_t connecting_count;
+    uint32_t ready_count;
+    uint32_t error_count;
+    uint32_t stopped_count;
+    uint64_t last_reported_ms;
+};
+
+struct registry_service_summary_filter_t {
+    service_kind_t service_kind;
+    service_role_t service_role;
+    std::string service_name;
+};
+```
+
+#### registry_status_t
+
+Status snapshot returned by `registry_t::status_snapshot()`.
+
+```cpp
+struct registry_status_t {
+    uint32_t registry_id;
+    std::string bind_endpoint;
+    registry_state_t state;
+    uint32_t topology_entry_count;
+    uint32_t peer_registry_count;
+    uint32_t connected_peer_registry_count;
+    uint64_t list_seq;
+    int32_t last_error;
+    uint64_t last_changed_ms;
+};
+```
+
+#### spot_node_status_t
+
+Status snapshot returned by `spot_node_t::status_snapshot()`.
+
+```cpp
+struct spot_node_status_t {
+    std::string service_name;
+    std::string local_endpoint;
+    std::optional<routing_id_t> node_routing_id;
+    spot_node_state_t state;
+    uint32_t configured_peer_count;
+    uint32_t active_peer_count;
+    uint32_t connected_peer_count;
+    uint32_t subject_count;
+    uint32_t ready_subject_count;
+    int32_t last_error;
+    uint64_t last_changed_ms;
+};
+```
+
+#### spot_node_peer_entry_t
+
+Peer entry returned by `spot_node_t::peers_snapshot(...)` and
+`spot_node_t::peers_query(...)`.
+
+```cpp
+struct spot_node_peer_entry_t {
+    std::string service_name;
+    std::string local_endpoint;
+    std::string peer_endpoint;
+    spot_peer_source_t source;
+    spot_peer_state_t state;
+    uint64_t connected_since_ms;
+    uint64_t last_changed_ms;
+};
+
+struct spot_node_peer_filter_t {
+    std::string peer_endpoint;
+    spot_peer_source_t source;
+    spot_peer_state_t state;
+};
+```
+
+#### spot_node_subject_entry_t
+
+Subject entry returned by `spot_node_t::subjects_snapshot(...)`.
+
+```cpp
+struct spot_node_subject_entry_t {
+    spot_role_t role;
+    std::string subject;
+    subject_kind_t subject_kind;
+    uint32_t ready_peer_count;
+    uint32_t active_peer_count;
+    uint64_t last_changed_ms;
+};
+
+struct spot_node_subject_filter_t {
+    spot_role_t role;
+    std::string subject;
+    subject_kind_t subject_kind;
+};
+```
+
 ### service::registry_t
 
 Registry service node. Manages service topology and membership broadcast.
@@ -1073,19 +1333,18 @@ class registry_t {
     void set_broadcast_interval(uint32_t interval_ms);
 
     /// @throws config_error_t
-    void status_snapshot(zlink_registry_status_t& out) const;
+    registry_status_t status_snapshot() const;
     /// @throws config_error_t
-    void service_summary_snapshot(zlink_registry_service_summary_entry_t* entries,
-                                  size_t* count,
-                                  const zlink_registry_service_summary_filter_t* filter = NULL) const;
+    std::vector<registry_service_summary_entry_t> service_summary_snapshot(
+        const registry_service_summary_filter_t* filter = nullptr) const;
     /// @throws config_error_t
-    void topology_snapshot(zlink_registry_topology_entry_t* entries, size_t* count) const;
+    std::vector<registry_topology_entry_t> topology_snapshot() const;
     /// @throws config_error_t
-    void topology_query(zlink_registry_topology_entry_t* entries, size_t* count,
-                        const zlink_registry_topology_filter_t* filter) const;
+    std::vector<registry_topology_entry_t> topology_query(
+        const registry_topology_filter_t& filter) const;
     /// @throws config_error_t
-    void member_peers(service_type service_type, const std::string& service_name,
-                      zlink_member_peer_entry_t* entries, size_t* count) const;
+    std::vector<member_peer_entry_t> member_peers(service_type service_type,
+                                                  const std::string& service_name) const;
     /// @throws config_error_t
     void member_peer_metadata(service_type service_type, const std::string& service_name,
                               service_role service_role, const std::string& endpoint,
@@ -1132,7 +1391,7 @@ class discovery_t {
     /// @throws config_error_t
     void get_metadata(message_t& metadata_out) const;
     /// @throws config_error_t
-    void member_peers(zlink_member_peer_entry_t* entries, size_t* count) const;
+    std::vector<member_peer_entry_t> member_peers() const;
     /// @throws config_error_t
     void member_peer_metadata(service_role service_role, const std::string& endpoint,
                               message_t& metadata_out) const;
@@ -1196,15 +1455,15 @@ class spot_node_t {
 
     // --- snapshots ---
     /// @throws config_error_t
-    void status_snapshot(zlink_spot_node_status_t& out) const;
+    spot_node_status_t status_snapshot() const;
     /// @throws config_error_t
-    void peers_snapshot(zlink_spot_node_peer_entry_t* entries, size_t* count) const;
+    std::vector<spot_node_peer_entry_t> peers_snapshot() const;
     /// @throws config_error_t
-    void peers_query(zlink_spot_node_peer_entry_t* entries, size_t* count,
-                     const zlink_spot_node_peer_filter_t* filter) const;
+    std::vector<spot_node_peer_entry_t> peers_query(
+        const spot_node_peer_filter_t& filter) const;
     /// @throws config_error_t
-    void subjects_snapshot(zlink_spot_node_subject_entry_t* entries, size_t* count,
-                           const zlink_spot_node_subject_filter_t* filter = NULL) const;
+    std::vector<spot_node_subject_entry_t> subjects_snapshot(
+        const spot_node_subject_filter_t* filter = nullptr) const;
 
     /// @throws close_error_t
     void close();
@@ -1366,8 +1625,8 @@ class registry_query_client_t {
     /// @throws connect_error_t
     void connect(const std::string& endpoint);
     /// @throws config_error_t
-    void snapshot(zlink_registry_topology_entry_t* entries, size_t* count,
-                  const zlink_registry_topology_filter_t* filter = NULL) const;
+    std::vector<registry_topology_entry_t> snapshot(
+        const registry_topology_filter_t* filter = nullptr) const;
 
     /// @throws close_error_t
     void close();

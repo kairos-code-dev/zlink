@@ -514,24 +514,35 @@ public sealed class Message : IDisposable, IAsyncDisposable
 
 ### RoutingId
 
-Immutable string-based routing identity value type.
+Immutable binary-safe routing identity value type (1-255 bytes).
+Carries raw bytes; string conversions are convenience only.
 
 ```csharp
 public readonly struct RoutingId : IEquatable<RoutingId>
 {
-    RoutingId(string value);
+    // --- factories (binary-safe) ---
+    /// <exception cref="ZlinkConfigException">Length is 0 or exceeds 255 bytes.</exception>
+    static RoutingId FromBytes(ReadOnlySpan<byte> bytes);
+    /// <exception cref="ZlinkConfigException">Length is 0 or exceeds 255 bytes.</exception>
+    static RoutingId FromBytes(byte[] bytes);
 
-    string Value { get; }
+    // --- accessors ---
+    int Size { get; }                        // 1..255
     bool IsEmpty { get; }
+    ReadOnlySpan<byte> ToBytes();            // zero-copy view of the raw bytes
+    byte[] ToByteArray();                    // heap-allocated copy
 
-    string ToString();
+    // --- string convenience (NOT a primary representation) ---
+    string ToString();                       // UTF-8 decode; non-UTF-8 bytes replaced
+    string ToHex();                          // lowercase hex
+
+    // --- equality ---
     bool Equals(RoutingId other);
     bool Equals(object? obj);
     int GetHashCode();
 
     static bool operator ==(RoutingId left, RoutingId right);
     static bool operator !=(RoutingId left, RoutingId right);
-    static explicit operator string(RoutingId routingId);
 }
 ```
 
@@ -837,18 +848,23 @@ public enum ConfigResult
 ### Received
 
 Aggregates one recv result with optional routing id and message parts.
+Implements `IDisposable`.
 
 ```csharp
-public sealed class Received
+public sealed class Received : IDisposable
 {
-    string RoutingId { get; }
-    RoutingId? RoutingIdValue { get; }
+    RoutingId? RoutingId { get; }            // null when transport carries no source id
+    ulong? RequestSeq { get; }               // null when not a request-reply recv
     IReadOnlyList<Message> Parts { get; }
-    ulong RequestSequence { get; }
-    bool HasRequestSequence { get; }
-    bool HasSinglePart { get; }
+    bool IsSinglePart { get; }
 
+    /// <exception cref="ZlinkRecvException"/>
+    Message FirstPart();
+    /// <exception cref="ZlinkRecvException"/>
     Message SinglePartOrThrow();
+
+    /// <exception cref="ZlinkCloseException"/>
+    void Dispose();
 }
 ```
 
@@ -860,29 +876,31 @@ Implements `IDisposable`.
 ```csharp
 public sealed class TopicMessage : IDisposable
 {
-    RoutingId? RoutingId { get; }          // null when transport carries no source id
-    string Topic { get; }                  // UTF-8
+    RoutingId? RoutingId { get; }            // null when transport carries no source id
+    string Topic { get; }                    // UTF-8
     IReadOnlyList<Message> Parts { get; }
     bool IsSinglePart { get; }
+
+    /// <exception cref="ZlinkRecvException"/>
     Message FirstPart();
+    /// <exception cref="ZlinkRecvException"/>
     Message SinglePartOrThrow();
 
-    void Dispose();                        // @throws ZlinkCloseException
+    /// <exception cref="ZlinkCloseException"/>
+    void Dispose();
 }
 ```
 
 ### SubscriptionEvent
 
 Reports a subscribe/unsubscribe event from XPub sockets.
+Pure value object (no lifecycle). Defined as a record.
 
 ```csharp
-public sealed class SubscriptionEvent
-{
-    string RoutingId { get; }
-    RoutingId? RoutingIdValue { get; }
-    string Topic { get; }
-    bool Subscribed { get; }
-}
+public sealed record SubscriptionEvent(
+    RoutingId? RoutingId,                    // null when transport carries no source id
+    string Topic,                            // UTF-8
+    bool Subscribed);                        // true=subscribe, false=unsubscribe
 ```
 
 ### SendFlags
@@ -920,11 +938,11 @@ Implements `IDisposable` and `IAsyncDisposable`.
 public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 {
     /// <exception cref="ZlinkHandlerException"/>
-    void OnEvent(Action<SocketMonitorEvent> handler);
+    void OnEvent(Action<MonitorEvent> handler);
     /// <exception cref="ZlinkRecvException"/>
-    SocketMonitorEvent Recv();
+    MonitorEvent Recv();
     /// <exception cref="ZlinkRecvException"/>
-    SocketMonitorEvent? Recv(bool nonBlocking);
+    MonitorEvent? Recv(bool nonBlocking);
     /// <exception cref="ZlinkConfigException"/>
     MonitorSnapshot Snapshot();
     /// <exception cref="ZlinkCloseException"/>
@@ -945,11 +963,11 @@ Implements `IDisposable` and `IAsyncDisposable`.
 public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
 {
     /// <exception cref="ZlinkHandlerException"/>
-    void OnEvent(Action<ServiceMonitorEvent> handler);
+    void OnEvent(Action<ServiceEvent> handler);
     /// <exception cref="ZlinkRecvException"/>
-    ServiceMonitorEvent Recv();
+    ServiceEvent Recv();
     /// <exception cref="ZlinkRecvException"/>
-    ServiceMonitorEvent? Recv(bool nonBlocking);
+    ServiceEvent? Recv(bool nonBlocking);
     /// <exception cref="ZlinkConfigException"/>
     MonitorSnapshot Snapshot();
     /// <exception cref="ZlinkCloseException"/>
@@ -959,6 +977,55 @@ public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkCloseException"/>
     ValueTask DisposeAsync();
 }
+```
+
+### MonitorEvent
+
+Socket monitor event. Pure value object.
+
+```csharp
+public sealed record MonitorEvent(
+    MonitorEventType Event,                  // CONNECTION_READY, CONNECTED, DISCONNECTED, ...
+    uint Value,                              // per-event detail (e.g. disconnect reason code)
+    RoutingId? RoutingId,                    // null when event has no associated peer
+    string LocalAddr,
+    string RemoteAddr);
+```
+
+### MonitorSnapshot
+
+Runtime snapshot of a socket or service monitor handle.
+
+```csharp
+public sealed class MonitorSnapshot
+{
+    SourceKind SourceKind { get; }           // monitor target kind
+    uint StateFlags { get; }                 // state bitmask
+    uint DetailFlags { get; }                // detail bitmask
+    ulong SndPendingMsgs { get; }            // send-queue pending messages
+    ulong RcvPendingMsgs { get; }            // recv-queue pending messages
+
+    bool IsReady { get; }                    // ready bit of StateFlags
+}
+```
+
+### ServiceEvent
+
+Service monitor event (discovery / registry / spot). Pure value object.
+
+```csharp
+public sealed record ServiceEvent(
+    ServiceKind ServiceKind,                 // ZLINK_SERVICE_TYPE_SPOT, SOCKET, ...
+    ServiceEventType EventType,              // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
+    uint Status,                             // status code
+    uint ErrorCode,                          // errno on error, 0 otherwise
+    ulong Value,                             // per-event value
+    uint DetailFlags,                        // detail bitmask
+    string ServiceName,
+    string Endpoint,
+    RoutingId? RoutingId,                    // peer routing id (null when not applicable)
+    string Subject,                          // subscribe subject (topic)
+    SubjectKind SubjectKind);                // subject kind
 ```
 
 ---
@@ -1256,6 +1323,127 @@ public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkCloseException"/>
     ValueTask DisposeAsync();
 }
+```
+
+### Service-Layer Entry Types
+
+Snapshot / query result value objects returned by the service layer. All
+are pure value objects exposed as records with named typed fields. They
+never expose raw C structs.
+
+#### MemberPeerEntry
+
+Discovery / registry member peer entry.
+
+```csharp
+public sealed record MemberPeerEntry(
+    ServiceType ServiceType,
+    ServiceRole ServiceRole,
+    string ServiceName,
+    string Endpoint,
+    RoutingId? RoutingId,
+    long Value);
+```
+
+#### RegistryTopologyEntry
+
+Registry topology entry.
+
+```csharp
+public sealed record RegistryTopologyEntry(
+    RoutingId? RoutingId,
+    ServiceKind ServiceKind,
+    ServiceRole ServiceRole,
+    string ServiceName,
+    string Endpoint,
+    TopologySource Source,
+    TopologyState State,
+    uint DesiredCount,
+    uint ReadyCount,
+    uint ErrorCode,
+    ulong LastReportedMs);
+```
+
+#### RegistryServiceSummaryEntry
+
+Registry service summary entry.
+
+```csharp
+public sealed record RegistryServiceSummaryEntry(
+    ServiceKind ServiceKind,
+    ServiceRole ServiceRole,
+    string ServiceName,
+    uint TotalCount,
+    uint ConnectingCount,
+    uint ReadyCount,
+    uint ErrorCount,
+    uint StoppedCount,
+    ulong LastReportedMs);
+```
+
+#### RegistryStatus
+
+Registry status snapshot.
+
+```csharp
+public sealed record RegistryStatus(
+    uint RegistryId,
+    string BindEndpoint,
+    RegistryState State,
+    uint TopologyEntryCount,
+    uint PeerRegistryCount,
+    uint ConnectedPeerRegistryCount,
+    ulong ListSeq,
+    int LastError,
+    ulong LastChangedMs);
+```
+
+#### SpotNodeStatus
+
+Spot node status snapshot.
+
+```csharp
+public sealed record SpotNodeStatus(
+    string ServiceName,
+    string LocalEndpoint,
+    RoutingId? NodeRoutingId,
+    SpotNodeState State,
+    uint ConfiguredPeerCount,
+    uint ActivePeerCount,
+    uint ConnectedPeerCount,
+    uint SubjectCount,
+    uint ReadySubjectCount,
+    int LastError,
+    ulong LastChangedMs);
+```
+
+#### SpotNodePeerEntry
+
+Spot node peer entry.
+
+```csharp
+public sealed record SpotNodePeerEntry(
+    string ServiceName,
+    string LocalEndpoint,
+    string PeerEndpoint,
+    SpotPeerSource Source,
+    SpotPeerState State,
+    ulong ConnectedSinceMs,
+    ulong LastChangedMs);
+```
+
+#### SpotNodeSubjectEntry
+
+Spot node subject entry.
+
+```csharp
+public sealed record SpotNodeSubjectEntry(
+    SpotRole Role,
+    string Subject,
+    SubjectKind SubjectKind,
+    uint ReadyPeerCount,
+    uint ActivePeerCount,
+    ulong LastChangedMs);
 ```
 
 ---

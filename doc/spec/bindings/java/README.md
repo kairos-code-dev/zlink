@@ -442,19 +442,26 @@ public final class Message implements AutoCloseable {
 
 ### RoutingId
 
-Immutable binary-safe routing identity value object (max 255 bytes).
+Immutable binary-safe routing identity value object (1-255 bytes). The
+canonical constructor is `fromBytes(byte[])`; no string-only constructor
+is provided. `toHex()` is offered as a convenience only.
 
 ```java
 public final class RoutingId {
     static final int MAX_LENGTH = 255;
 
-    static RoutingId copyOf(byte[] value);
-    static RoutingId copyOf(byte[] value, int offset, int length);
+    // --- factories (binary-safe) ---
+    static RoutingId fromBytes(byte[] bytes);
+    static RoutingId fromBytes(byte[] bytes, int offset, int length);
 
-    byte[] toByteArray();
+    // --- accessors ---
+    byte[] toBytes();                       // defensive copy of raw bytes
     ByteBuffer asReadOnlyBuffer();
-    int size();
+    int size();                             // 1-255
     boolean empty();
+
+    // --- convenience (not canonical) ---
+    String toHex();
 
     boolean equals(Object other);
     int hashCode();
@@ -778,23 +785,21 @@ public enum ConfigResult {
 
 ### Received
 
-Aggregates one recv result with optional routing id and message parts.
-Implements `AutoCloseable`.
+Aggregates one recv result with optional routing id, optional request
+sequence, and message parts. Implements `AutoCloseable`.
 
 ```java
 public final class Received implements AutoCloseable {
-    Received(RoutingId routingId, Message[] parts);
-    Received(RoutingId routingId, Message[] parts,
-             long requestSequence, boolean hasRequestSequence);
+    Received(Optional<RoutingId> routingId, List<Message> parts);
+    Received(Optional<RoutingId> routingId, Optional<Long> requestSeq,
+             List<Message> parts);
 
-    RoutingId routingId();
-    boolean hasRoutingId();
+    Optional<RoutingId> routingId();
+    Optional<Long> requestSeq();
     List<Message> parts();
-    long requestSequence();
-    boolean hasRequestSequence();
     boolean isSinglePart();
-    Message firstPart();
-    Message singlePartOrThrow();
+    Message firstPart();                                             // @throws RecvException
+    Message singlePartOrThrow();                                     // @throws RecvException
 
     void close();                                                    // @throws CloseException
 }
@@ -822,11 +827,13 @@ public final class TopicMessage implements AutoCloseable {
 
 ### SubscriptionEvent
 
-Reports a subscribe/unsubscribe event from XPub sockets.
+Reports a subscribe/unsubscribe event from XPub sockets. Immutable value
+object; no lifecycle methods.
 
 ```java
-public record SubscriptionEvent(RoutingId routingId, boolean subscribed,
-                                String topic) {}
+public record SubscriptionEvent(Optional<RoutingId> routingId,
+                                String topic,           // UTF-8
+                                boolean subscribed) {}
 ```
 
 ---
@@ -860,6 +867,51 @@ public final class ServiceMonitor implements AutoCloseable {
 
     void close();                                                    // @throws CloseException
 }
+```
+
+### MonitorEvent
+
+Socket monitor event value object. Produced by `MonitorSocket.recv()`.
+
+```java
+public record MonitorEvent(MonitorEventType event,
+                           long value,
+                           Optional<RoutingId> routingId,
+                           String localAddr,
+                           String remoteAddr) {}
+```
+
+### MonitorSnapshot
+
+Runtime state snapshot produced by `MonitorSocket.snapshot()` and
+`ServiceMonitor.snapshot()`. Immutable value object.
+
+```java
+public record MonitorSnapshot(MonitorSourceKind sourceKind,
+                              int stateFlags,
+                              int detailFlags,
+                              long sndPendingMsgs,
+                              long rcvPendingMsgs) {
+    boolean isReady();
+}
+```
+
+### ServiceEvent
+
+Service monitor event value object. Produced by `ServiceMonitor.recv()`.
+
+```java
+public record ServiceEvent(ServiceKind serviceKind,
+                           ServiceEventType eventType,
+                           int status,
+                           int errorCode,
+                           long value,
+                           int detailFlags,
+                           String serviceName,
+                           String endpoint,
+                           Optional<RoutingId> routingId,
+                           String subject,
+                           ServiceEventSubjectKind subjectKind) {}
 ```
 
 ---
@@ -1092,6 +1144,162 @@ public final class RegistryQueryClient implements AutoCloseable {
 
     void close();                                                    // @throws CloseException
 }
+```
+
+### MemberPeerEntry
+
+Discovery / Registry member peer entry value object.
+
+```java
+public record MemberPeerEntry(ServiceType serviceType,
+                              ServiceRole serviceRole,
+                              String serviceName,
+                              String endpoint,
+                              RoutingId routingId,
+                              long value) {}
+```
+
+### RegistryTopologyEntry
+
+Registry topology entry value object. Returned by
+`Registry.topologySnapshot` / `topologyQuery` and
+`RegistryQueryClient.snapshot`.
+
+```java
+public record RegistryTopologyEntry(RoutingId routingId,
+                                    ServiceKind serviceKind,
+                                    ServiceRole serviceRole,
+                                    String serviceName,
+                                    String endpoint,
+                                    TopologySource source,
+                                    TopologyState state,
+                                    int desiredCount,
+                                    int readyCount,
+                                    int errorCode,
+                                    long lastReportedMs) {}
+```
+
+### RegistryServiceSummaryEntry
+
+Registry service summary entry value object. Returned by
+`Registry.serviceSummarySnapshot`.
+
+```java
+public record RegistryServiceSummaryEntry(ServiceKind serviceKind,
+                                          ServiceRole serviceRole,
+                                          String serviceName,
+                                          int totalCount,
+                                          int connectingCount,
+                                          int readyCount,
+                                          int errorCount,
+                                          int stoppedCount,
+                                          long lastReportedMs) {}
+```
+
+### RegistryStatus
+
+Registry status snapshot returned by `Registry.statusSnapshot`.
+
+```java
+public record RegistryStatus(int registryId,
+                             String bindEndpoint,
+                             RegistryState state,
+                             int topologyEntryCount,
+                             int peerRegistryCount,
+                             int connectedPeerRegistryCount,
+                             long listSeq,
+                             int lastError,
+                             long lastChangedMs) {}
+```
+
+### SpotNodeStatus
+
+Spot node status snapshot returned by `SpotNode.statusSnapshot`.
+
+```java
+public record SpotNodeStatus(String serviceName,
+                             String localEndpoint,
+                             RoutingId nodeRoutingId,
+                             SpotNodeState state,
+                             int configuredPeerCount,
+                             int activePeerCount,
+                             int connectedPeerCount,
+                             int subjectCount,
+                             int readySubjectCount,
+                             int lastError,
+                             long lastChangedMs) {}
+```
+
+### SpotNodePeerEntry
+
+Spot node peer entry value object. Returned by
+`SpotNode.peersSnapshot` / `peersQuery`.
+
+```java
+public record SpotNodePeerEntry(String serviceName,
+                                String localEndpoint,
+                                String peerEndpoint,
+                                SpotPeerSource source,
+                                SpotPeerState state,
+                                long connectedSinceMs,
+                                long lastChangedMs) {}
+```
+
+### SpotNodeSubjectEntry
+
+Spot node subject entry value object. Returned by
+`SpotNode.subjectsSnapshot`.
+
+```java
+public record SpotNodeSubjectEntry(SpotRole role,
+                                   String subject,
+                                   ServiceEventSubjectKind subjectKind,
+                                   int readyPeerCount,
+                                   int activePeerCount,
+                                   long lastChangedMs) {}
+```
+
+### SpotNodePeerFilter
+
+Filter for `SpotNode.peersQuery`.
+
+```java
+public record SpotNodePeerFilter(String peerEndpoint,
+                                 SpotPeerSource source,
+                                 SpotPeerState state) {}
+```
+
+### SpotNodeSubjectFilter
+
+Filter for `SpotNode.subjectsSnapshot`.
+
+```java
+public record SpotNodeSubjectFilter(SpotRole role,
+                                    String subject,
+                                    ServiceEventSubjectKind subjectKind) {}
+```
+
+### RegistryServiceSummaryFilter
+
+Filter for `Registry.serviceSummarySnapshot`.
+
+```java
+public record RegistryServiceSummaryFilter(ServiceKind serviceKind,
+                                           ServiceRole serviceRole,
+                                           String serviceName) {}
+```
+
+### RegistryTopologyFilter
+
+Filter for `Registry.topologyQuery` and `RegistryQueryClient.snapshot`.
+
+```java
+public record RegistryTopologyFilter(ServiceKind serviceKind,
+                                     ServiceRole serviceRole,
+                                     String serviceName,
+                                     RoutingId routingId,
+                                     TopologyState state,
+                                     TopologySource source) {}
 ```
 
 ---

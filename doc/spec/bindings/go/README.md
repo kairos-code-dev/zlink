@@ -394,21 +394,48 @@ func (m *Message) Close() error
 
 ### RoutingID
 
+Immutable binary-safe routing id value (1-255 bytes).
+
 ```go
-// NewRoutingID builds a routing id from bytes. Returns *ConfigError on failure.
-func NewRoutingID(data []byte) (RoutingID, error)
+// NewRoutingID builds a routing id from raw bytes (1-255 bytes).
+// Binary-safe: the input is copied verbatim and may contain NUL.
+func NewRoutingID(bytes []byte) RoutingID
+
+// Bytes returns the raw byte view. The returned slice must not be mutated.
 func (r RoutingID) Bytes() []byte
-func (r RoutingID) String() string
+// Size returns the byte length (1-255; 0 when empty/unset).
+func (r RoutingID) Size() int
+
+// Equal compares two routing ids byte-for-byte.
 func (r RoutingID) Equal(other RoutingID) bool
+// Hash returns a stable hash suitable for map keys.
+func (r RoutingID) Hash() uint64
+
+// String / Hex are convenience renderings only; they are not
+// constructors. RoutingID must be built from raw bytes.
+func (r RoutingID) String() string
+func (r RoutingID) Hex() string
 ```
 
 ### Received
 
+Non-topic recv result used by PAIR / DEALER / ROUTER / STREAM paths.
+
 ```go
+// RoutingID returns the sender routing id. Empty when the transport does
+// not carry a source id (check with HasRoutingID).
 func (r *Received) RoutingID() RoutingID
+func (r *Received) HasRoutingID() bool
+// RequestSeq returns the request-reply sequence number. Zero when the
+// socket is not in request-reply mode (check with HasRequestSeq).
+func (r *Received) RequestSeq() uint64
+func (r *Received) HasRequestSeq() bool
 func (r *Received) Parts() []*Message
-func (r *Received) RequestSeq() (uint64, bool)
-// SinglePartOrError returns the only part or a *ConfigError when parts != 1.
+
+func (r *Received) IsSinglePart() bool
+// FirstPart returns parts[0] or *RecvError when parts is empty.
+func (r *Received) FirstPart() (*Message, error)
+// SinglePartOrError returns the only part or *RecvError when parts != 1.
 func (r *Received) SinglePartOrError() (*Message, error)
 // Close releases the received bundle. Returns *CloseError on failure.
 func (r *Received) Close() error
@@ -438,10 +465,17 @@ func (t *TopicMessage) Close() error
 
 ### SubscriptionEvent
 
+XPub-facing subscribe/unsubscribe event. Value struct (no lifecycle).
+
 ```go
-func (s *SubscriptionEvent) RoutingID() RoutingID
-func (s *SubscriptionEvent) Subscribed() bool
-func (s *SubscriptionEvent) Topic() string
+// RoutingID returns the subscriber routing id. Empty when the transport
+// does not carry a source id (check with HasRoutingID).
+func (s SubscriptionEvent) RoutingID() RoutingID
+func (s SubscriptionEvent) HasRoutingID() bool
+// Topic is the subscribed/unsubscribed topic (UTF-8).
+func (s SubscriptionEvent) Topic() string
+// Subscribed is true for subscribe, false for unsubscribe.
+func (s SubscriptionEvent) Subscribed() bool
 ```
 
 ### SendFlags
@@ -748,28 +782,38 @@ func (m *ServiceMonitor) Close() error
 
 ### MonitorSnapshot
 
+Canonical socket / service monitor runtime snapshot.
+
 ```go
 type MonitorSnapshot struct {
-    StateFlags     uint32
-    DetailFlags    uint32
-    SendPendingMsg uint64
-    RecvPendingMsg uint64
+    SourceKind      MonitorSourceKind // monitor target kind
+    StateFlags      uint32            // state bitmask
+    DetailFlags     uint32            // detail bitmask
+    SndPendingMsgs  uint64            // pending send queue depth
+    RcvPendingMsgs  uint64            // pending recv queue depth
 }
 
+// IsReady returns true when the ready bit is set in StateFlags.
 func (s *MonitorSnapshot) IsReady() bool
 ```
 
 ### MonitorEvent
 
+Canonical socket monitor event. `RoutingID` is the empty value when the
+event has no peer (check with `HasRoutingID`).
+
 ```go
 type MonitorEvent struct {
-    Event      uint64
-    Value      uint64
-    RoutingID  RoutingID
-    LocalAddr  string
-    RemoteAddr string
+    Event      MonitorEventType // event kind (CONNECTION_READY, CONNECTED, DISCONNECTED, ...)
+    Value      uint32           // event-specific detail (e.g. DISCONNECTED reason code)
+    RoutingID  RoutingID        // peer routing id (empty when not applicable)
+    LocalAddr  string           // local endpoint
+    RemoteAddr string           // remote endpoint
 }
 
+func (e *MonitorEvent) HasRoutingID() bool
+
+// Convenience predicates over the Event field.
 func (e *MonitorEvent) IsConnected() bool
 func (e *MonitorEvent) IsDisconnected() bool
 func (e *MonitorEvent) IsListening() bool
@@ -779,21 +823,27 @@ func (e *MonitorEvent) IsConnectionReady() bool
 
 ### ServiceMonitorEvent
 
+Canonical service monitor event (discovery / registry / spot). Commonly
+aliased as `ServiceEvent` in Go idiom.
+
 ```go
 type ServiceMonitorEvent struct {
-    ServiceKind uint32
-    EventType   uint32
-    Status      int32
-    ErrorCode   int32
-    Value       uint32
-    DetailFlags uint32
-    ServiceName string
-    Endpoint    string
-    RoutingID   RoutingID
-    Subject     string
-    SubjectKind uint32
+    ServiceKind ServiceKind           // ZLINK_SERVICE_TYPE_SPOT, SOCKET, ...
+    EventType   ServiceMonitorEventType // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
+    Status      uint32                // status code
+    ErrorCode   uint32                // errno on error events
+    Value       uint64                // event-specific value
+    DetailFlags uint32                // detail bitmask
+    ServiceName string                // service name
+    Endpoint    string                // endpoint
+    RoutingID   RoutingID             // peer routing id (empty when n/a)
+    Subject     string                // subscribe subject (topic)
+    SubjectKind SubjectKind           // subject kind
 }
 
+func (e *ServiceMonitorEvent) HasRoutingID() bool
+
+// ServiceEvent is the canonical alias callers use in application code.
 type ServiceEvent = ServiceMonitorEvent
 ```
 
@@ -944,6 +994,96 @@ func (c *RegistryQueryClient) Connect(endpoint string) error
 func (c *RegistryQueryClient) Snapshot(filter *RegistryTopologyFilter) ([]RegistryTopologyEntry, error)
 // Close closes the query client. Returns *CloseError on failure.
 func (c *RegistryQueryClient) Close() error
+```
+
+### Service-Layer Entry Types
+
+Value structs returned by service-layer snapshot/query methods.
+Each field maps 1:1 to the corresponding `zlink_*_t` C struct field,
+named in Go `PascalCase`. Fixed-size C `char[N]` fields are exposed as
+Go `string`; numeric ids and enums use their typed Go equivalents.
+
+```go
+// MemberPeerEntry — entry from Registry.MemberPeers / Discovery.MemberPeers.
+type MemberPeerEntry struct {
+    ServiceType ServiceType
+    ServiceRole ServiceRole
+    ServiceName string
+    Endpoint    string
+    RoutingID   RoutingID
+    Value       int64
+}
+
+func (e *MemberPeerEntry) HasRoutingID() bool
+
+// RegistryTopologyEntry — entry from Registry.TopologySnapshot /
+// Registry.TopologyQuery / RegistryQueryClient.Snapshot.
+type RegistryTopologyEntry struct {
+    RoutingID      RoutingID
+    ServiceKind    ServiceKind
+    ServiceRole    ServiceRole
+    ServiceName    string
+    Endpoint       string
+    Source         TopologySource
+    State          TopologyState
+    DesiredCount   uint32
+    ReadyCount     uint32
+    ErrorCode      uint32
+    LastReportedMs uint64
+}
+
+func (e *RegistryTopologyEntry) HasRoutingID() bool
+
+// RegistryServiceSummaryEntry — entry from Registry.ServiceSummarySnapshot.
+type RegistryServiceSummaryEntry struct {
+    ServiceKind     ServiceKind
+    ServiceRole     ServiceRole
+    ServiceName     string
+    TotalCount      uint32
+    ConnectingCount uint32
+    ReadyCount      uint32
+    ErrorCount      uint32
+    StoppedCount    uint32
+    LastReportedMs  uint64
+}
+
+// SpotNodeStatus — status snapshot from SpotNode.StatusSnapshot.
+type SpotNodeStatus struct {
+    ServiceName          string
+    LocalEndpoint        string
+    NodeRoutingID        RoutingID
+    State                SpotNodeState
+    ConfiguredPeerCount  uint32
+    ActivePeerCount      uint32
+    ConnectedPeerCount   uint32
+    SubjectCount         uint32
+    ReadySubjectCount    uint32
+    LastError            int32
+    LastChangedMs        uint64
+}
+
+func (s *SpotNodeStatus) HasNodeRoutingID() bool
+
+// SpotNodePeerEntry — entry from SpotNode.PeersSnapshot / PeersQuery.
+type SpotNodePeerEntry struct {
+    ServiceName      string
+    LocalEndpoint    string
+    PeerEndpoint     string
+    Source           SpotPeerSource
+    State            SpotPeerState
+    ConnectedSinceMs uint64
+    LastChangedMs    uint64
+}
+
+// SpotNodeSubjectEntry — entry from SpotNode.SubjectsSnapshot.
+type SpotNodeSubjectEntry struct {
+    Role             SpotRole
+    Subject          string
+    SubjectKind      SubjectKind
+    ReadyPeerCount   uint32
+    ActivePeerCount  uint32
+    LastChangedMs    uint64
+}
 ```
 
 ---

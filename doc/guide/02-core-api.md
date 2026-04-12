@@ -17,8 +17,9 @@ void *ctx = zlink_ctx_new();
 /* Configure — increase I/O threads for multi-connection servers */
 zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* default 1; 4 is optimal under heavy load */
 
-/* Query */
-int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS);
+/* Query (error_out receives ZLINK_CONFIG_OK on success) */
+zlink_config_result_t err;
+int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS, &err);
 
 /* Terminate */
 zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
@@ -233,7 +234,7 @@ Each socket type uses a dedicated registration function:
 | SPOT (routed) | `zlink_spot_handler(spot, fn, userdata)` | `void fn(const zlink_routing_id_t *source_rid, const zlink_routing_id_t *spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
 | ROUTER (from SPOT) | `zlink_router_spot_handler(router, fn, userdata)` | `void fn(const zlink_routing_id_t *source_node_rid, const zlink_routing_id_t *source_spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
 | spot, spot_node (topic) | `zlink_subscribe_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)` |
-| DEALER (reply) | `zlink_reply_handler_fn` passed to `zlink_dealer_request()` | `void fn(int errno, zlink_msg_t *parts, size_t count, void *userdata)` |
+| DEALER (reply) | `zlink_reply_handler_fn` passed to `zlink_dealer_request()` | `void fn(zlink_request_result_t result, zlink_msg_t *parts, size_t count, void *userdata)` |
 | Timer | `zlink_timer_handler(timer, fn, userdata)` | `void fn(void *timer, uint64_t fire_count, void *userdata)` |
 | PUB | N/A | Send-only socket |
 

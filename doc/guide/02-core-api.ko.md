@@ -18,7 +18,9 @@ void *ctx = zlink_ctx_new();
 zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* default 1; 4 is optimal under heavy load */
 
 /* Query */
-int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS);
+/* 조회 (error_out 는 성공 시 ZLINK_CONFIG_OK) */
+zlink_config_result_t err;
+int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS, &err);
 
 /* Terminate */
 zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
@@ -231,7 +233,7 @@ zlink_recv_handler(socket, on_message, NULL);
 | SPOT (routed) | `zlink_spot_handler()` | `fn(source_rid, spot_rid, request_seq, parts, count, userdata)` |
 | ROUTER (from SPOT) | `zlink_router_spot_handler()` | `fn(source_node_rid, source_spot_rid, request_seq, parts, count, userdata)` |
 | spot, spot_node (topic) | `zlink_subscribe_handler()` | `fn(rid, topic, topic_len, parts, count, userdata)` |
-| DEALER (reply) | `zlink_dealer_request()` 에 전달 | `fn(errno, parts, count, userdata)` |
+| DEALER (reply) | `zlink_dealer_request()` 에 전달 | `fn(zlink_request_result_t result, parts, count, userdata)` |
 | Timer | `zlink_timer_handler()` | `fn(timer, fire_count, userdata)` |
 | PUB | N/A | Send-only socket |
 

@@ -495,8 +495,11 @@ requester 측                            replier 측
 - 대상 `SpotNode` 가 target `Spot` 으로 전달한다.
 - replier 의 reply 는 같은 경로를 역방향으로 되돌아온다.
 
-`spot → router`, `router → spot` routed request-reply 도 동일한 mesh 경로를
-사용한다. 엔드포인트 facade 만 다를 뿐 전송 경로는 같다.
+위 mesh 경로는 **spot → spot** 전용이다. `spot → router`, `router → spot`
+변형은 다른 경로를 거친다: spot 측은 여전히 로컬 `SpotNode` 를 경유하지만,
+router 측은 SpotNode 에 ROUTER 피어로 직접 transport 연결한다 (mesh-to-mesh
+홉 없음). 각 변형별 라우팅 경로 상세는
+`doc/internals/spot-internals.md` 를 참조한다.
 
 ### Request-Reply 흐름
 
@@ -565,15 +568,19 @@ zlink_msg_t req;
 zlink_msg_init_size(&req, 4);
 memcpy(zlink_msg_data(&req), "ping", 4);
 
-zlink_spot_request_spot(
+/* 시그니처: (spot, dest_node_rid, dest_spot_rid, parts, count,
+   handler, userdata, flags, timeout_ms) */
+zlink_submit_result_t rc = zlink_spot_request_spot(
   spot,
   &dest_node_rid,
   &dest_spot_rid,
   &req,
-  1,
-  1500,
+  1 /* count */,
   on_spot_reply,
-  NULL);
+  NULL /* userdata */,
+  0 /* flags */,
+  1500 /* timeout_ms */);
+if (rc != ZLINK_SUBMIT_OK) { /* submit 실패 처리 */ }
 ```
 
 ### 6.2 spot request handler 와 reply

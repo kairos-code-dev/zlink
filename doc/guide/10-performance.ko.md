@@ -204,13 +204,13 @@ writable로 전환될 때 호출되는 콜백을 설치한다. `ZLINK_DONTWAIT`�
 이 API는 모든 send-capable handle(raw 소켓, SPOT, SPOT Node)에서
 동일하게 동작한다. 기본적으로 송신 백프레셔는 poller `ZLINK_POLLOUT`으로
 감지하며, `zlink_send_ready_handler()`를 등록하면 해당 콜백으로 전환된다.
-콜백 등록 이후 data-plane `ZLINK_POLLOUT`은 `EBUSY`로 실패한다.
+콜백 등록 이후 data-plane `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다.
 
 **동작 규칙:**
 - 여러 번 호출하여 콜백을 교체할 수 있다 (이전 핸들러를 atomic으로 덮어씀).
 - `NULL` 전달은 `EINVAL` — 한번 등록하면 해제는 불가하고 다른 함수로 교체만 가능하다.
 - 자기 콜백 내에서 교체 불가 (`EDEADLK`). 콜백 밖에서는 자유롭게 교체 가능.
-- 등록 이후 data-plane poller `ZLINK_POLLOUT`은 `EBUSY`로 실패한다.
+- 등록 이후 data-plane poller `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다.
 
 ```c
 typedef struct {

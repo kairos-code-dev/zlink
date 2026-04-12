@@ -30,7 +30,7 @@
 |---|---|---|---|
 | **전송** | `send`, `publish`, `send_rid` | 예 -- 동시 호출 가능 | 핫 패스(hot path, 고빈도 데이터 경로) 최적화 |
 | **설정·운영** | `bind`, `connect`, `set_option` 등 | 예 -- 순차 처리 | 메시지마다 호출은 비권장 |
-| **정리** | `close`, `destroy` | 예 -- 명확한 에러 코드 | 사용 중이면 `EBUSY` 반환 |
+| **정리** | `close`, `destroy` | 예 -- 명확한 에러 코드 | 사용 중이면 `ZLINK_CLOSE_BUSY` 반환 |
 
 **요약하면:** `send`는 어느 스레드에서든 마음껏 호출하세요. 연결 추가,
 구독 변경, 옵션 변경도 전송 중에 자유롭게 할 수 있습니다. 다 끝나면
@@ -156,14 +156,14 @@ void *setup_thread(void *arg)
 다른 스레드가 아직 사용 중인 핸들을 닫아도 크래시하지 않습니다 —
 zlink가 명확한 에러 코드를 반환합니다:
 
-| 상황 | 동작 | 에러 코드 |
+| 상황 | 동작 | 결과 |
 |---|---|---|
-| 다른 스레드가 핸들 사용 중 `close` 호출 | 닫기 **거부** | `EBUSY` |
-| `close` 수락 후 API 호출 | 호출 **거부** | `ESHUTDOWN` |
-| `close`/`destroy` 두 번 호출 | 즉시 반환 | `EALREADY` |
+| 다른 스레드가 핸들 사용 중 `close` 호출 | 닫기 **거부** | `ZLINK_CLOSE_BUSY` |
+| `close` 수락 후 API 호출 | 호출 **거부** | `ZLINK_CLOSE_SHUTDOWN` (또는 해당 함수군 `*_TERMINATED`) |
+| `close`/`destroy` 두 번 호출 | 즉시 반환 | `ZLINK_CLOSE_SHUTDOWN` |
 
-`EBUSY` 이후에는 핸들이 정상 상태로 돌아갑니다 — 아무것도 손상되지
-않았으며, 계속 사용하거나 나중에 다시 닫을 수 있습니다.
+`ZLINK_CLOSE_BUSY` 이후에는 핸들이 정상 상태로 돌아갑니다 — 아무것도
+손상되지 않았으며, 계속 사용하거나 나중에 다시 닫을 수 있습니다.
 
 **권장 종료 패턴:**
 
@@ -245,8 +245,8 @@ zlink_send(socket, &msg_a, 1, 0);    zlink_send(socket, &msg_b, 1, 0);  /* safe 
 **콜백에서 하면 안 되는 것:**
 - **블로킹** (sleep, lock, 무거운 연산) — 해당 스레드의 모든 I/O가
   멈춥니다. 작업을 큐에 넣고 워커 스레드에서 처리하세요.
-- **send-ready 콜백 안에서 자기 핸들러 교체** — `EDEADLK`를
-  반환합니다.
+- **send-ready 콜백 안에서 자기 핸들러 교체** — `ZLINK_HANDLER_DEADLOCK`
+  을 반환합니다.
 
 **오프로드 패턴 — 콜백을 빠르게 유지:**
 
@@ -335,17 +335,17 @@ void *control(void *arg)
 |---|---|---|
 | 같은 `zlink_msg_t` 공유 | msg는 스레드 안전하지 않음 | 스레드별 별도 msg 생성 |
 | 콜백에서 무거운 작업 | I/O 스레드 블로킹 | 큐로 오프로드 |
-| `close` 후 API 호출 | `ESHUTDOWN` 반환 | 반환 코드 확인 |
+| `close` 후 API 호출 | `ZLINK_CLOSE_SHUTDOWN` (또는 `*_TERMINATED`) 반환 | 반환 코드 확인 |
 | 메시지마다 `set_option` | 순차 처리 오버헤드 | 변경 시에만 호출 |
 
 ## 9. 에러 코드 요약표
 
-| 에러 | 발생 시점 | 의미 |
+| 결과 | 발생 시점 | 의미 |
 |---|---|---|
-| `EBUSY` | 사용 중 `close` 호출 | 대기 후 재시도 |
-| `ESHUTDOWN` | `close` 후 API 호출 | 핸들 종료 중 |
-| `EDEADLK` | 콜백 내 핸들러 교체 | 외부에서 교체 필요 |
-| `EALREADY` | `close` 두 번 호출 | 이미 종료 진행 중 |
+| `ZLINK_CLOSE_BUSY` | 사용 중 `close` 호출 | 대기 후 재시도 |
+| `ZLINK_CLOSE_SHUTDOWN` | `close` 후 API 호출 (또는 중복 `close`) | 핸들 종료 중 |
+| `ZLINK_HANDLER_DEADLOCK` | 콜백 내 핸들러 교체 | 외부에서 교체 필요 |
+| 함수군 `*_TERMINATED` | 컨텍스트 `term` 이후 데이터 호출 | 컨텍스트 종료됨 — 사용 중단 |
 
 > 구현 세부 사항(admission gate, 순서 의미론, 비용 모델)은
 > [Thread-Safety Internals](../internals/thread-safety.ko.md)를 참고.

@@ -212,10 +212,12 @@ The most basic pattern. DEALER sends requests, ROUTER replies.
 ```c
 /* Server: ROUTER with handler */
 void on_request(const zlink_routing_id_t *source_rid,
+                uint64_t request_seq,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* source_rid contains the DEALER's routing_id */
+    /* source_rid contains the DEALER's routing_id;
+       request_seq is non-zero for request-reply, 0 for one-way */
     printf("Received from [%.*s]: %.*s\n",
            (int)source_rid->size, source_rid->data,
            (int)zlink_msg_size(&parts[0]),

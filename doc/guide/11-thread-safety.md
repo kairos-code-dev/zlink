@@ -30,7 +30,7 @@ public APIs into three categories so you know what to expect:
 |---|---|---|---|
 | **Sending** | `send`, `publish`, `send_rid` | Yes — fully concurrent | Multiple threads can call these on the same handle simultaneously. This is the fast path, optimized for throughput. |
 | **Configuration** | `bind`, `connect`, `disconnect`, `set_option`, `subscribe`, `unsubscribe`, `monitor_open`, `attach_discovery`, queries | Yes — one at a time | Safe to call from any thread. The library processes these one at a time, so don't call them in a tight per-message loop. |
-| **Cleanup** | `close`, `destroy` | Yes — with clear error codes | If another thread is still using the handle, close returns `EBUSY` instead of crashing. Details in [section 4](#4-closing-handles-safely). |
+| **Cleanup** | `close`, `destroy` | Yes — with clear error codes | If another thread is still using the handle, close returns `ZLINK_CLOSE_BUSY` instead of crashing. Details in [section 4](#4-closing-handles-safely). |
 
 **In plain terms:** send as much as you want from any thread. Connect,
 subscribe, and change options whenever you need to — even while sending.
@@ -158,14 +158,14 @@ Every handle type follows the same three-category model:
 Closing a handle while other threads are still using it doesn't crash —
 zlink returns a clear error code instead:
 
-| Situation | What happens | Error code |
+| Situation | What happens | Result |
 |---|---|---|
-| You call `close`/`destroy` while another thread is mid-call on the same handle | Close is **rejected** — the handle stays alive | `EBUSY` |
-| You call any API after `close` has been accepted | The call is **rejected** — the handle is shutting down | `ESHUTDOWN` |
-| You call `close`/`destroy` twice | Second call returns immediately | `EALREADY` |
+| You call `close`/`destroy` while another thread is mid-call on the same handle | Close is **rejected** — the handle stays alive | `ZLINK_CLOSE_BUSY` |
+| You call any API after `close` has been accepted | The call is **rejected** — the handle is shutting down | `ZLINK_CLOSE_SHUTDOWN` (or matching `*_TERMINATED` on the per-function result) |
+| You call `close`/`destroy` twice | Second call returns immediately | `ZLINK_CLOSE_SHUTDOWN` |
 
-After `EBUSY`, the handle goes back to normal — nothing is damaged, you
-can keep using it or try closing again later.
+After `ZLINK_CLOSE_BUSY`, the handle goes back to normal — nothing is
+damaged, you can keep using it or try closing again later.
 
 **Recommended shutdown pattern:**
 
@@ -337,17 +337,17 @@ void *control(void *arg)
 |---|---|---|
 | Two threads writing to the same `zlink_msg_t` | Message objects are not thread-safe | Create a separate `zlink_msg_t` in each thread |
 | Callback does heavy work and throughput drops | Callbacks run on the I/O thread — blocking stalls everything | Push to a queue, process on a worker thread |
-| Calling APIs after `close`/`destroy` | Returns `ESHUTDOWN` or undefined behavior | Coordinate shutdown; check return codes |
+| Calling APIs after `close`/`destroy` | Returns `ZLINK_CLOSE_SHUTDOWN` (or per-function `*_TERMINATED`) or undefined behavior | Coordinate shutdown; check return codes |
 | Calling `connect`/`set_option` in a per-message loop | Configuration APIs are serialized — adds unnecessary overhead | Call them only when configuration actually changes |
 
 ## 9. Error Code Quick Reference
 
-| Error | When you see it | What it means |
+| Result | When you see it | What it means |
 |---|---|---|
-| `EBUSY` | `close`/`destroy` while another thread is using the handle | Wait for the other thread to finish, then try again |
-| `ESHUTDOWN` | Any API call after `close` has been accepted | The handle is shutting down — stop using it |
-| `EDEADLK` | Replacing the send-ready handler from inside its own callback | Don't do this — replace the handler from a different context |
-| `EALREADY` | Calling `close`/`destroy` a second time | Already shutting down — nothing more to do |
+| `ZLINK_CLOSE_BUSY` | `close`/`destroy` while another thread is using the handle | Wait for the other thread to finish, then try again |
+| `ZLINK_CLOSE_SHUTDOWN` | Any API call after `close` has been accepted (or second `close`) | The handle is shutting down — stop using it |
+| `ZLINK_HANDLER_DEADLOCK` | Replacing the send-ready handler from inside its own callback | Don't do this — replace the handler from a different context |
+| per-function `*_TERMINATED` | Data-plane call (`send`/`recv`/...) after context `term` | Context has been terminated — abort use |
 
 ---
 

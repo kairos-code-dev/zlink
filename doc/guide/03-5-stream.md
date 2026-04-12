@@ -117,7 +117,7 @@ zlink_recv_handler(stream, on_message, NULL);
 > backpressure patterns, see [Performance Guide](10-performance.md).
 
 - Only one callback can be attached at a time; calling attach while a
-  callback is already attached returns `-1` with `errno=EBUSY`.
+  callback is already attached returns `ZLINK_HANDLER_BUSY`.
 - The handler is permanent and cannot be detached for the lifetime of
   the socket.
 - Close from inside the callback is not supported (returns `ZLINK_CLOSE_BUSY`).

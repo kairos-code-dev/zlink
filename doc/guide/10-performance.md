@@ -202,13 +202,13 @@ This API works identically on all send-capable handles (raw sockets,
 SPOT, SPOT Node). By default, send backpressure is detected via
 poller `ZLINK_POLLOUT`. Once `zlink_send_ready_handler()` is registered,
 readiness transitions are delivered through the callback instead, and
-data-plane `ZLINK_POLLOUT` returns `EBUSY`.
+data-plane `ZLINK_POLLOUT` returns `ZLINK_HANDLER_BUSY`.
 
 **Behavior rules:**
 - Can be called multiple times to replace the callback (previous handler is atomically overwritten).
 - Passing `NULL` returns `EINVAL` — once registered, the handler cannot be removed, only replaced with another function.
 - Cannot be replaced from within its own callback (`EDEADLK`). Outside the callback, replacement is free.
-- After registration, data-plane poller `ZLINK_POLLOUT` returns `EBUSY`.
+- After registration, data-plane poller `ZLINK_POLLOUT` returns `ZLINK_HANDLER_BUSY`.
 
 ```c
 typedef struct {

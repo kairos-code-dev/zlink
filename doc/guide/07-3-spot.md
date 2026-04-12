@@ -451,9 +451,12 @@ requester side                          replier side
 - The destination `SpotNode` delivers it to the target `Spot`.
 - The replier's reply retraces the path back to the requester.
 
-The same path applies to `spot → router` and `router → spot` routed
-request-reply; the endpoint facades differ but the mesh transport does
-not.
+The mesh path above is **spot → spot** specific. `spot → router` and
+`router → spot` variants traverse different infrastructure: the spot side
+still goes through its local `SpotNode`, but the router side connects to
+the SpotNode directly as a ROUTER peer over transport (not via a mesh-to-
+mesh hop). See `doc/internals/spot-internals.md` for the detailed routing
+paths per variant.
 
 ### 6.1 spot → spot Request
 
@@ -473,15 +476,19 @@ zlink_msg_t req;
 zlink_msg_init_size(&req, 4);
 memcpy(zlink_msg_data(&req), "ping", 4);
 
-zlink_spot_request_spot(
+/* signature: (spot, dest_node_rid, dest_spot_rid, parts, count,
+   handler, userdata, flags, timeout_ms) */
+zlink_submit_result_t rc = zlink_spot_request_spot(
   spot,
   &dest_node_rid,
   &dest_spot_rid,
   &req,
-  1,
-  1500,          /* timeout_ms */
+  1 /* count */,
   on_spot_reply,
-  NULL);
+  NULL /* userdata */,
+  0 /* flags */,
+  1500 /* timeout_ms */);
+if (rc != ZLINK_SUBMIT_OK) { /* handle submit failure */ }
 ```
 
 ### 6.2 SPOT Request Handler and Reply

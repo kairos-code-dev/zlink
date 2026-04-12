@@ -489,6 +489,86 @@ XPub 이 받는 subscribe/unsubscribe 이벤트.
 - value object 로만 노출한다 (메서드 없음, 필드만).
 - `close()` 등 lifecycle 없음 (값 타입).
 
+#### `RoutingId`
+
+Routing id value object. Binary-safe (1-255 bytes).
+
+| 구성 | 타입 | 의미 |
+|------|------|------|
+| `bytes` / `data` | `bytes` / `byte[]` / `Vec<u8>` / `Buffer` | raw bytes (immutable view) |
+| `size` | `int` (1-255) | byte length |
+| `from_bytes(bytes)` | static/ctor | 생성자 |
+| `to_bytes()` | `bytes` | 원본 바이트 반환 |
+| equality / hash | — | 언어별 관용구 (`equals`/`hashCode`, `__eq__`/`__hash__`, `PartialEq+Eq+Hash`) |
+
+규칙:
+- **binary-safe value type**. `RoutingId(string value)` 같은 string 전용
+  생성자를 기본으로 두지 않는다. string 변환은 편의 메서드 (`to_hex()`,
+  `to_string()`) 로만 제공.
+- 불변 (immutable). 한 번 생성하면 내용 변경 불가.
+- Node 에서는 raw `Buffer` 대신 `RoutingId` 래퍼 타입을 그대로 노출한다.
+
+#### `MonitorEvent`
+
+socket monitor 가 방출하는 이벤트. 모든 바인딩이 **필수 노출**.
+
+| 구성 | 타입 | 의미 |
+|------|------|------|
+| `event` | `MonitorEventType` (enum) | 이벤트 종류 (CONNECTION_READY, CONNECTED, DISCONNECTED 등) |
+| `value` | `uint32` | 이벤트 별 상세 값 (예: DISCONNECTED 시 reason code) |
+| `routing_id` | `RoutingId?` | 해당 peer routing id (없는 이벤트는 null) |
+| `local_addr` | `string` | 로컬 endpoint |
+| `remote_addr` | `string` | 원격 endpoint |
+
+#### `MonitorSnapshot`
+
+socket monitor 가 제공하는 런타임 상태 스냅샷. 모든 바인딩이 **필수 노출**.
+
+| 구성 | 타입 | 의미 |
+|------|------|------|
+| `source_kind` | enum | 모니터 대상 종류 |
+| `state_flags` | `uint32` | 상태 비트마스크 |
+| `detail_flags` | `uint32` | 세부 비트마스크 |
+| `snd_pending_msgs` | `uint64` | 송신 큐 대기 메시지 수 |
+| `rcv_pending_msgs` | `uint64` | 수신 큐 대기 메시지 수 |
+| `is_ready()` | `bool` | `state_flags` 에서 ready 비트 확인 편의 메서드 |
+
+#### `ServiceEvent`
+
+service monitor (discovery / registry / spot) 가 방출하는 이벤트.
+모든 바인딩이 **필수 노출**.
+
+| 구성 | 타입 | 의미 |
+|------|------|------|
+| `service_kind` | enum | `ZLINK_SERVICE_TYPE_SPOT`, `SOCKET` 등 |
+| `event_type` | enum | `UP`, `DOWN`, `PROVIDERS_CHANGED`, `ERROR` 등 |
+| `status` | `uint32` | status code |
+| `error_code` | `uint32` | 에러 시 errno |
+| `value` | `uint64` | 이벤트별 값 |
+| `detail_flags` | `uint32` | 세부 플래그 |
+| `service_name` | `string` | 서비스명 |
+| `endpoint` | `string` | 엔드포인트 |
+| `routing_id` | `RoutingId?` | peer routing id |
+| `subject` | `string` | subscribe subject (topic) |
+| `subject_kind` | enum | subject 종류 |
+
+#### 서비스 계층 엔트리 객체
+
+아래는 service-layer snapshot/query 에서 반환되는 value object 들.
+모든 바인딩이 **필드 목록을 spec 에 명시**해야 한다 (C 구조체를 그대로
+노출하면 안 되며 언어별 named field 로 래핑).
+
+- `MemberPeerEntry` — discovery 가 제공하는 멤버 peer 정보
+- `RegistryTopologyEntry` — registry 의 topology 엔트리
+- `RegistryServiceSummaryEntry` — registry service summary 엔트리
+- `SpotNodeStatus` — spot node 상태 스냅샷
+- `SpotNodePeerEntry` — spot node peer 엔트리
+- `SpotNodeSubjectEntry` — spot node subject 엔트리
+
+각 spec 은 이들 타입의 필드를 표 또는 코드 블록으로 명시한다. `Cpp` 는
+raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `class
+<name>_t { ... }` 형식으로 래핑한다.
+
 위 canonical 을 벗어난 추가 메서드/필드는 정책 위반이다. 언어별 spec 에서
 누락이 발견되면 canonical 기준으로 채워 넣고, 추가된 비표준 메서드는 삭제한다.
 

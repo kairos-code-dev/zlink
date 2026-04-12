@@ -58,7 +58,7 @@ zlink_submit_result_t zlink_dealer_request (void *dealer_,
     if (validate_socket_type (dealer_, ZLINK_CORE_SOCKET_DEALER) != 0)
         return zlink::submit_result_internal::from_errno (errno);
 
-    return zlink::submit_result_internal::from_rc (
+    return zlink::submit_result_internal::from_request_submit_rc (
       reqrep::start_request (as_socket_handle (dealer_), NULL, parts_,
                              part_count_, flags_, timeout_ms_, handler_,
                              userdata_));
@@ -84,7 +84,7 @@ zlink_submit_result_t zlink_router_request (void *router_,
     if (validate_socket_type (router_, ZLINK_CORE_SOCKET_ROUTER) != 0)
         return zlink::submit_result_internal::from_errno (errno);
 
-    return zlink::submit_result_internal::from_rc (
+    return zlink::submit_result_internal::from_request_submit_rc (
       reqrep::start_request (as_socket_handle (router_), peer_rid_, parts_,
                              part_count_, flags_, timeout_ms_, handler_,
                              userdata_));
@@ -111,7 +111,7 @@ zlink_submit_result_t zlink_router_reply (void *router_,
 
     return zlink::submit_result_internal::from_rc (
       reqrep::send_request_reply_message (router_, peer_rid_, parts_,
-                                         part_count_, 0,
+                                         part_count_, ZLINK_SEND_FLAGS_NONE,
                                          zlink::request_reply::reply_type,
                                          request_seq_));
 }
@@ -153,7 +153,7 @@ zlink_recv_result_t zlink_router_recv (void *router_,
                                       uint64_t *request_seq_out_,
                                       zlink_msg_t **parts_out_,
                                       size_t *part_count_out_,
-                                      int flags_)
+                                      zlink_recv_flags_t flags_)
 {
     if (!peer_rid_out_ || !request_seq_out_ || !parts_out_ || !part_count_out_) {
         errno = EFAULT;

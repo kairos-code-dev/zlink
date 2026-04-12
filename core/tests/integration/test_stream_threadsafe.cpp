@@ -1005,7 +1005,8 @@ void test_stream_callback_rejects_detach_and_close ()
     TEST_ASSERT_EQUAL_INT (-1, probe.detach_rc.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (EBUSY,
                            probe.detach_errno.load (std::memory_order_acquire));
-    TEST_ASSERT_EQUAL_INT (-1, probe.close_rc.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_BUSY,
+                           probe.close_rc.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (EBUSY,
                            probe.close_errno.load (std::memory_order_acquire));
 

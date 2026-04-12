@@ -510,7 +510,7 @@ zlink_timer_start(spot_timer, 100000000ULL, 0);  /* 100ms, infinite */
 
 /* Pull mode */
 uint64_t fire_count;
-zlink_timer_recv(spot_timer, &fire_count, 0);
+zlink_timer_recv(spot_timer, &fire_count);
 
 /* Or callback mode */
 zlink_timer_handler(spot_timer, on_fire, NULL);

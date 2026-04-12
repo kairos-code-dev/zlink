@@ -25,13 +25,11 @@ typedef int zlink_fd_t;
 #endif
 ```
 
-### zlink_poller_event_mask_t
+### Poller Event Masks
 
-Bitmask type for polling event flags.
-
-```c
-typedef short zlink_poller_event_mask_t;
-```
+The public header does not export a dedicated `zlink_poller_event_mask_t`
+typedef. Poller APIs use raw `short` bitmasks for `events`, `revents`, and
+event-mask parameters.
 
 ### zlink_poller_source_kind_t
 

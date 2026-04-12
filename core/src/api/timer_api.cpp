@@ -207,16 +207,13 @@ zlink_config_result_t zlink_timer_stop (void *timer_)
 }
 
 zlink_recv_result_t zlink_timer_recv (void *timer_,
-                                      uint64_t *fire_count_out_,
-                                      int flags_)
+                                      uint64_t *fire_count_out_)
 {
     timer_handle_t *timer = as_timer_handle (timer_);
     if (!timer || !fire_count_out_) {
         errno = EFAULT;
         return ZLINK_RECV_INVALID_HANDLE;
     }
-    if (validate_recv_flags (flags_) != 0)
-        return zlink::recv_result_internal::from_errno (errno);
 
     std::unique_lock<std::mutex> lock (timer->mutex);
     if (timer->receive_callback_active) {
@@ -225,14 +222,8 @@ zlink_recv_result_t zlink_timer_recv (void *timer_,
     }
 
     timer->recv_in_progress = true;
-    const bool dontwait = (flags_ & ZLINK_DONTWAIT) != 0;
     while (timer->fired_counts.empty ()) {
         if (!timer->running) {
-            timer->recv_in_progress = false;
-            errno = EAGAIN;
-            return ZLINK_RECV_NO_DATA;
-        }
-        if (dontwait) {
             timer->recv_in_progress = false;
             errno = EAGAIN;
             return ZLINK_RECV_NO_DATA;

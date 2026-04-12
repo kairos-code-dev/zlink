@@ -11,13 +11,15 @@
 ## 콜백 타입
 
 ```c
-typedef void (zlink_timer_fn)(int timer_id, void *arg);
+typedef void (*zlink_timer_handler_fn) (void *timer_,
+                                        uint64_t fire_count_,
+                                        void *userdata_);
 typedef void (zlink_thread_fn)(void *);
 ```
 
-`zlink_timer_fn`은 타이머 만료 알림을 위한 콜백 시그니처입니다. `timer_id`는
-어떤 타이머가 발동했는지 식별하고 `arg`는 타이머 생성 시 전달된 사용자 제공
-컨텍스트 포인터입니다.
+`zlink_timer_handler_fn`은 타이머 만료 콜백 시그니처이다. `timer_`는
+발화한 타이머 handle이고 `fire_count_`는 누적 발화 횟수이며 `userdata_`는
+핸들러 등록 시 넘긴 사용자 포인터다.
 
 `zlink_thread_fn`은 `zlink_thread_start`로 시작되는 스레드의 진입점
 시그니처입니다.
@@ -234,17 +236,15 @@ int zlink_timer_stop (void *timer_);
 타이머 발동을 동기적으로 수신한다.
 
 ```c
-int zlink_timer_recv (void *timer_,
-                      uint64_t *fire_count_out_,
-                      int flags_);
+int zlink_timer_recv (void *timer_, uint64_t *fire_count_out_);
 ```
 
-recv 모드에서 다음 타이머 발동을 대기한다. 성공 시 `*fire_count_out_`에
-누적 발동 횟수가 설정된다. `flags_`에 `ZLINK_DONTWAIT`를 전달하면 즉시 반환.
+recv 모드에서 다음 타이머 발동을 기다린다. 성공하면 `*fire_count_out_`에
+누적 발동 횟수가 설정된다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**에러:** 발동이 없고 `ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`.
+**에러:** 타이머가 이미 멈췄고 더 읽을 발동이 없으면 `EAGAIN`.
 
 **참고:** `zlink_timer_handler`
 

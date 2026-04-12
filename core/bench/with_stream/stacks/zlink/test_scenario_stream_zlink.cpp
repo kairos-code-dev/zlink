@@ -17,29 +17,6 @@ static const size_t k_max_payload_size = 4 * 1024 * 1024;
 static const unsigned char k_stream_event_connect = 0x01;
 static const unsigned char k_stream_event_disconnect = 0x00;
 
-int zlink_stream_send_msg (void *socket_,
-                           const zlink_routing_id_t *rid_,
-                           zlink_msg_t *msg_,
-                           int flags_)
-{
-    const size_t size = zlink_msg_size (msg_);
-    return ::zlink_send_rid (socket_, rid_, msg_, 1, flags_) == 0
-             ? static_cast<int> (size)
-             : -1;
-}
-
-bool try_load_routing_id_u32 (const zlink_routing_id_t *rid_, uint32_t *value_out_)
-{
-    if (!rid_ || !value_out_ || rid_->size != 4)
-        return false;
-
-    *value_out_ = (static_cast<uint32_t> (rid_->data[0]) << 24)
-                  | (static_cast<uint32_t> (rid_->data[1]) << 16)
-                  | (static_cast<uint32_t> (rid_->data[2]) << 8)
-                  | static_cast<uint32_t> (rid_->data[3]);
-    return true;
-}
-
 struct server_options_t
 {
     std::string host;
@@ -134,7 +111,7 @@ class zlink_stream_echo_server_t
         apply_socket_tuning (server, opt);
 
         const std::string endpoint = make_endpoint (opt.host, opt.port);
-        if (!zlink_bind (server, endpoint.c_str ())) {
+        if (zlink_bind (server, endpoint.c_str ()) != 0) {
             std::fprintf (
               stderr, "zlink stream: bind failed: %s endpoint=%s\n",
               zlink_strerror (zlink_errno ()), endpoint.c_str ());
@@ -142,9 +119,9 @@ class zlink_stream_echo_server_t
         }
 
         g_server_instance = this;
-        if (!zlink_recv_handler (server,
-                                 &zlink_stream_echo_server_t::on_packet_static,
-                                 NULL)) {
+        if (zlink_recv_handler (
+              server, &zlink_stream_echo_server_t::on_packet_static, NULL)
+            != 0) {
             std::fprintf (stderr, "zlink stream: dispatch attach failed: %s\n",
                           zlink_strerror (zlink_errno ()));
             return 2;
@@ -189,12 +166,10 @@ class zlink_stream_echo_server_t
 
     int on_packet (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
     {
-        uint32_t routing_id_value = 0;
-        if (!try_load_routing_id_u32 (rid_, &routing_id_value)) {
+        if (!rid_ || rid_->size != 4) {
             mark_parse_error ();
             return 0;
         }
-        (void) routing_id_value;
 
         const unsigned char *payload =
           static_cast<const unsigned char *> (zlink_msg_data (msg_));
@@ -209,8 +184,7 @@ class zlink_stream_echo_server_t
         }
 
         recv_msgs.fetch_add (1, std::memory_order_relaxed);
-        if (zlink_stream_send_msg (server, rid_, msg_, 0)
-            != static_cast<int> (payload_size)) {
+        if (zlink_send_rid (server, rid_, msg_, 1, ZLINK_SEND_FLAGS_NONE) != 0) {
             send_error.fetch_add (1, std::memory_order_relaxed);
         }
         return 0;

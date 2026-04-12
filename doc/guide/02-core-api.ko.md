@@ -277,7 +277,7 @@ zlink_timer_start(timer, 100000000ULL, 0);  /* interval_ns, repeat_count */
 
 /* Pull 모드 */
 uint64_t fire_count;
-int rc = zlink_timer_recv(timer, &fire_count, 0);
+int rc = zlink_timer_recv(timer, &fire_count);
 
 /* Callback 모드 */
 void on_fire(void *timer, uint64_t fire_count, void *userdata) {

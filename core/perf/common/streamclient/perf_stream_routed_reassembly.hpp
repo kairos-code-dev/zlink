@@ -2,7 +2,7 @@
 #define PERF_STREAM_ROUTED_REASSEMBLY_HPP
 
 #include "perf_stream_frame_reassembly.hpp"
-#include "../../../include/zlink.h"
+#include <zlink.h>
 
 #include <map>
 #include <cstring>

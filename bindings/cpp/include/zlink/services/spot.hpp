@@ -77,9 +77,10 @@ inline int assign_parts_from_native (zlink_msg_t *parts_native_,
     return 0;
 }
 
-inline int get_string_option (int (*getter_) (void *, zlink_option_t, void *, size_t *),
+template<typename Getter, typename Option>
+inline int get_string_option (Getter getter_,
                               void *handle_,
-                              socket_option option_,
+                              Option option_,
                               size_t initial_capacity_,
                               std::string &value_)
 {
@@ -90,44 +91,7 @@ inline int get_string_option (int (*getter_) (void *, zlink_option_t, void *, si
         std::vector<char> buffer (capacity);
         size_t size = capacity;
         if (getter_ (
-              handle_, static_cast<zlink_option_t> (option_), buffer.data (),
-              &size)
-            == 0) {
-            const size_t bounded = size <= buffer.size () ? size : buffer.size ();
-            size_t out_size = bounded;
-            if (out_size > 0 && buffer[out_size - 1] == '\0')
-                --out_size;
-            value_.assign (buffer.data (), out_size);
-            return 0;
-        }
-
-        if (errno != EINVAL || capacity == max_capacity)
-            return -1;
-
-        capacity *= 2u;
-        if (capacity > max_capacity)
-            capacity = max_capacity;
-    }
-
-    errno = EINVAL;
-    return -1;
-}
-
-inline int get_string_option (int (*getter_) (void *, zlink_pub_option_t, void *, size_t *),
-                              void *handle_,
-                              pub_option option_,
-                              size_t initial_capacity_,
-                              std::string &value_)
-{
-    size_t capacity = initial_capacity_;
-    const size_t max_capacity = 64u * 1024u;
-
-    while (capacity <= max_capacity) {
-        std::vector<char> buffer (capacity);
-        size_t size = capacity;
-        if (getter_ (
-              handle_, static_cast<zlink_pub_option_t> (option_), buffer.data (),
-              &size)
+              handle_, option_, buffer.data (), &size)
             == 0) {
             const size_t bounded = size <= buffer.size () ? size : buffer.size ();
             size_t out_size = bounded;
@@ -152,11 +116,11 @@ inline int get_string_option (int (*getter_) (void *, zlink_pub_option_t, void *
 inline send_result_t to_send_result (int result_) noexcept
 {
     switch (result_) {
-    case ZLINK_SEND_RESULT_SENT:
+    case ZLINK_SUBMIT_OK:
         return send_result_t::sent;
-    case ZLINK_SEND_RESULT_BACKPRESSURED:
+    case ZLINK_SUBMIT_BACKPRESSURED:
         return send_result_t::backpressured;
-    case ZLINK_SEND_RESULT_NOT_READY:
+    case ZLINK_SUBMIT_NOT_CONNECTED:
         return send_result_t::not_ready;
     default:
         return send_result_t::sent;
@@ -321,7 +285,11 @@ class spot_node_t
     get (socket_option_key_t<std::string> key_, std::string &value_) const
     {
         return detail::get_string_option (
-          &zlink_get_option, _node, key_.option, 256u, value_);
+          [](void *handle_, socket_option option_, void *value_, size_t *size_) {
+              return zlink_get_option (
+                handle_, static_cast<zlink_option_t> (option_), value_, size_);
+          },
+          _node, key_.option, 256u, value_);
     }
 
     ZLINK_CPP_NODISCARD int
@@ -755,7 +723,7 @@ class spot_t
 
         const int rc = zlink_subscribe (
           _spot, rid_ptr, &parts_native, &part_count, topic_buffer, &topic_length,
-          static_cast<zlink_send_flags_t> (flags_));
+          static_cast<zlink_recv_flags_t> (flags_));
         if (rc != 0)
             return rc;
 
@@ -796,7 +764,7 @@ class spot_t
 
         const int rc = zlink_subscribe (
           _spot, rid_ptr, &parts_native, &part_count, topic_buffer, &topic_length,
-          static_cast<zlink_send_flags_t> (flags_));
+          static_cast<zlink_recv_flags_t> (flags_));
         if (rc != 0)
             return rc;
 
@@ -861,7 +829,11 @@ class spot_t
     get (socket_option_key_t<std::string> key_, std::string &value_) const
     {
         return detail::get_string_option (
-          &zlink_get_option, _spot, key_.option, 256u, value_);
+          [](void *handle_, socket_option option_, void *value_, size_t *size_) {
+              return zlink_get_option (
+                handle_, static_cast<zlink_option_t> (option_), value_, size_);
+          },
+          _spot, key_.option, 256u, value_);
     }
 
     template<typename T>
@@ -894,7 +866,12 @@ class spot_t
     get (pub_option_key_t<std::string> key_, std::string &value_) const
     {
         return detail::get_string_option (
-          &zlink_get_pub_option, _spot, key_.option, 256u, value_);
+          [](void *handle_, pub_option option_, void *value_, size_t *size_) {
+              return zlink_get_pub_option (
+                handle_, static_cast<zlink_pub_option_t> (option_), value_,
+                size_);
+          },
+          _spot, key_.option, 256u, value_);
     }
 
     template<typename T>

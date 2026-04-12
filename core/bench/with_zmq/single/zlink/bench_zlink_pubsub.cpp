@@ -212,7 +212,7 @@ inline int recv_single_part_header_flags (
       &part_count,
       topic_id,
       &topic_len,
-      static_cast<zlink_send_flags_t> (flags));
+      static_cast<zlink_recv_flags_t> (flags));
     if (rc < 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)

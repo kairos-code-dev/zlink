@@ -427,9 +427,9 @@ inline recv_flag operator| (recv_flag a, recv_flag b)
 
 enum class send_result_t : int
 {
-    sent = ZLINK_SEND_RESULT_SENT,
-    backpressured = ZLINK_SEND_RESULT_BACKPRESSURED,
-    not_ready = ZLINK_SEND_RESULT_NOT_READY
+    sent = ZLINK_SUBMIT_OK,
+    backpressured = ZLINK_SUBMIT_BACKPRESSURED,
+    not_ready = ZLINK_SUBMIT_NOT_CONNECTED
 };
 
 class routing_id_t

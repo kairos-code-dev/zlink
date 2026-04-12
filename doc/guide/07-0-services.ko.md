@@ -119,7 +119,7 @@ raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스(서비스 타입
 
 ```mermaid
 flowchart LR
-    A["C API<br/>(zlink_spot_publish, etc.)"] --> B["service_api.cpp<br/>(validate + delegate)"]
+    A["C API<br/>(zlink_discovery_*, zlink_registry_*, etc.)"] --> B["service_api.cpp<br/>(validate + delegate)"]
     B --> C["*_access.hpp<br/>(service-local 접합 지점)"]
     C --> D["Service Runtime<br/>(concrete implementation)"]
 ```

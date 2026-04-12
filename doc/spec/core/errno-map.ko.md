@@ -4,9 +4,12 @@
 
 # 함수별 결과 Enum
 
-이 문서는 모든 공개 C API 함수의 결과를 정규화하는 기준을 정의한다.
-각 함수는 API 전체에서 숫자 범위가 겹치지 않는 결과 enum을 반환하므로,
-하나의 `int` 에러 코드만으로도 항상 의미를 식별할 수 있다.
+이 문서는 결과 enum을 반환하는 공개 C API의 정규화 기준을 정의한다.
+이 함수들은 API 전체에서 숫자 범위가 겹치지 않는 결과 enum을 반환하므로,
+하나의 `int` 코드만으로도 항상 의미를 식별할 수 있다.
+
+일부 레거시 poller 보조 함수는 여전히 plain `int`와 별도 `error_out_`
+출력으로 동작한다. 이 함수들은 아래 결과 enum 분류표의 대상이 아니다.
 
 내부 구현 경로는 계속 상세 `errno`를 사용하고, exported API 경계에서
 그 값을 여기 정의한 공개 결과 enum으로 정규화한다.
@@ -14,8 +17,10 @@
 ## zlink_errno — 내부 에러 상세
 
 `zlink_errno()`는 호출 스레드의 raw 내부 `errno` 값을 반환한다.
-**result enum이 `INTERNAL_ERROR` 또는 동등한 최종 코드를 반환할 때만
-유용하다.** 그 외에는 result enum 자체가 에러 정보 전부를 담고 있다.
+주로 result enum이 coarse bucket으로 정규화될 때 유용하다. 예를 들어
+`INTERNAL_ERROR`처럼 내부 실패를 한데 묶는 경우나, 별도 public bucket이
+없는 세부 실패가 `TERMINATED` 또는 `INVALID_ARGUMENT` 같은 결과로 접힐 때
+원래 내부 사유를 확인할 수 있다.
 
 ```c
 zlink_submit_result_t rc = zlink_send(s, parts, count, 0);
@@ -26,8 +31,8 @@ if (rc == ZLINK_SUBMIT_INTERNAL_ERROR) {
 }
 ```
 
-- 일반 결과 코드 (`BACKPRESSURED`, `BUSY`, `TERMINATED` 등)에는
-  `zlink_errno()` 호출이 **필요 없다** — result enum으로 충분하다.
+- 일반적인 정규화 결과에서는 `zlink_errno()` 호출이 **필요 없다**.
+  다만 coarse bucket으로 접힌 구현 상세가 필요할 때는 추가로 확인할 수 있다.
 - `zlink_errno()`는 thread-local last-error 저장소 (GetLastError 패턴)다.
   가장 최근 실패만 보존된다.
 
@@ -93,7 +98,7 @@ typedef enum zlink_submit_result_t
 | `INVALID_HANDLE` | `EFAULT` | NULL 핸들 또는 잘못된 포인터 |
 | `INVALID_ARGUMENT` | `EINVAL` | 소켓 타입 불일치, NULL 핸들러, `request_seq` 0, 잘못된 routing ID |
 | `NOT_SUPPORTED` | `ENOTSUP` | 지원하지 않는 작업 또는 잘못된 flags |
-| `INVALID_STATE` | `EFSM` | 소켓이 잘못된 상태에 있음 |
+| `INVALID_STATE` | `EFSM`, 일부 non-request submit 경로의 `EBUSY` | 소켓 또는 핸들이 잘못된 상태에 있음 |
 | `THREAD_VIOLATION` | `EMTHREAD` | 허용된 스레드 모델을 위반함 |
 
 #### 내부 실패
@@ -101,7 +106,7 @@ typedef enum zlink_submit_result_t
 | Result | 내부 errno | 의미 |
 |---|---|---|
 | `OUT_OF_MEMORY` | `ENOMEM` | 메모리 할당 실패 |
-| `SEQ_EXHAUSTED` | `EBUSY` | request sequence 번호 공간 소진 (request 전용) |
+| `SEQ_EXHAUSTED` | `EBUSY` | request submit 경로에서 pending request sequence 번호 공간이 모두 소진됨 |
 | `INTERNAL_ERROR` | `EPROTO` 및 그 외 내부 submit 실패 | 내부 send/request/reply submit 오류 |
 
 ### 적용 대상 함수
@@ -154,7 +159,7 @@ typedef enum zlink_request_result_t
 
 ## zlink_recv_result_t
 
-recv, subscribe, subscription event, monitor recv, timer recv 함수에
+router/SPOT recv, monitor recv, timer recv를 포함한 recv 계열 함수에
 적용된다.
 
 ```c
@@ -174,9 +179,9 @@ typedef enum zlink_recv_result_t
 | Result | 내부 errno | 의미 |
 |---|---|---|
 | `OK` | -- | 데이터를 정상 수신함 |
-| `NO_DATA` | `EAGAIN` | 비차단 모드에서 수신할 데이터가 없음 |
+| `NO_DATA` | `EAGAIN` | 비차단 수신에 데이터가 없거나, API별로 더 이상 반환할 데이터가 없음 (예: 정지된 timer에 남은 fire event가 없음) |
 | `BUSY` | `EBUSY` | 핸들러가 이미 등록되어 있음 |
-| `TERMINATED` | `ETERM` | context가 종료됨 |
+| `TERMINATED` | `ETERM`, 그 외 미분류 recv 내부 실패 | context가 종료되었거나, recv enum에 별도 내부 오류 코드가 없어 종료 계열로 접힌 실패 |
 | `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
 | `NOT_SUPPORTED` | `ENOTSUP` | recv를 지원하지 않는 소켓 타입 |
 
@@ -184,10 +189,14 @@ typedef enum zlink_recv_result_t
 
 | 분류 | 함수 |
 |---|---|
+| Router recv | `zlink_router_recv` |
+| SPOT recv | `zlink_spot_recv` |
+| Router-SPOT recv | `zlink_router_spot_recv` |
 | Recv | `zlink_recv` |
 | Subscribe | `zlink_subscribe` |
 | Subscription event | `zlink_subscription_event` |
-| Monitor recv | `zlink_monitor_recv` |
+| Socket monitor recv | `zlink_socket_monitor_recv` |
+| Service monitor recv | `zlink_service_monitor_recv` |
 | Timer recv | `zlink_timer_recv` |
 
 ---
@@ -196,7 +205,7 @@ typedef enum zlink_recv_result_t
 
 모든 핸들러 등록 함수에 적용된다: recv handler, subscribe handler,
 send-ready handler, router handler, spot handler, router-spot handler,
-spot dispatch-event handler, monitor handler.
+spot dispatch-event handler, monitor handler, timer handler.
 
 ```c
 typedef enum zlink_handler_result_t
@@ -232,7 +241,9 @@ typedef enum zlink_handler_result_t
 | Spot handler | `zlink_spot_handler` |
 | Router-spot handler | `zlink_router_spot_handler` |
 | Spot dispatch-event handler | `zlink_spot_dispatch_event_handler` |
-| Monitor handler | `zlink_monitor_handler` |
+| Socket monitor handler | `zlink_socket_monitor_handler` |
+| Service monitor handler | `zlink_service_monitor_handler` |
+| Timer handler | `zlink_timer_handler` |
 
 ---
 
@@ -263,8 +274,11 @@ typedef enum zlink_close_result_t
 
 | 분류 | 함수 |
 |---|---|
-| Close | `zlink_close` |
-| Destroy | `zlink_destroy` |
+| Context close | `zlink_ctx_term`, `zlink_ctx_shutdown` |
+| Socket close | `zlink_close` |
+| Monitor close | `zlink_monitor_close` |
+| Service destroy | `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_destroy` |
+| Utility destroy | `zlink_poller_destroy`, `zlink_timer_destroy` |
 
 ---
 
@@ -336,7 +350,7 @@ typedef enum zlink_connect_result_t
 
 ## zlink_config_result_t
 
-set/get option, 설정, snapshot, message, poller, proxy 함수에 적용된다.
+set/get option, 설정, snapshot, message, poller 변경, proxy 함수에 적용된다.
 
 ```c
 typedef enum zlink_config_result_t
@@ -354,23 +368,29 @@ typedef enum zlink_config_result_t
 |---|---|---|
 | `OK` | -- | 설정 성공 |
 | `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
-| `INVALID_ARGUMENT` | `EINVAL` | 잘못된 파라미터 |
+| `INVALID_ARGUMENT` | `EINVAL`, 별도 config bucket이 없는 일부 `EBUSY`류 충돌 | 잘못된 파라미터 또는 config 계층의 비지원/충돌 상태 |
 | `NOT_SUPPORTED` | `ENOTSUP` | 지원하지 않는 옵션 |
 
 ### 적용 대상 함수
 
 | 분류 | 함수 |
 |---|---|
+| Context | `zlink_ctx_set` |
+| Message lifecycle | `zlink_msg_init`, `zlink_msg_init_size`, `zlink_msg_init_data`, `zlink_msg_close`, `zlink_msg_move`, `zlink_msg_copy` |
 | Socket option | `zlink_set_option`, `zlink_get_option` |
 | Routing ID | `zlink_set_routing_id`, `zlink_get_routing_id` |
-| TLS | `zlink_set_tls` |
+| TLS | `zlink_set_tls_server`, `zlink_set_tls_client` |
 | Subscription | `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at` |
-| Discovery | `zlink_attach_discovery` |
+| Service attach | `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery` |
 | Registry/discovery config | registry와 discovery 설정 함수 |
-| Snapshot | snapshot 함수 |
-| Message | message 함수 |
-| Poller | poller 함수 |
+| Snapshot/query | service snapshot 및 query 함수 |
+| Poller config | `zlink_poller_add`, `zlink_poller_modify`, `zlink_poller_remove`, `zlink_poller_add_fd`, `zlink_poller_add_timer`, `zlink_poller_modify_fd`, `zlink_poller_remove_fd`, `zlink_poller_remove_timer` |
 | Proxy | proxy 함수 |
+| Timer config | `zlink_timer_start`, `zlink_timer_stop` |
+
+`zlink_poll`, `zlink_poller_size`, `zlink_poller_wait`, `zlink_poller_wait_all`
+은 plain `int` 반환 + `error_out_` 출력 형태이며,
+`zlink_config_result_t`를 직접 반환하는 함수는 아니다.
 
 ---
 
@@ -448,7 +468,7 @@ typedef enum zlink_config_result_t
 | `INVALID_STATE` | -- | -- | Y |
 | `THREAD_VIOLATION` | -- | -- | Y |
 | `OUT_OF_MEMORY` | Y | Y | Y |
-| `SEQ_EXHAUSTED` | -- | -- | Y |
+| `SEQ_EXHAUSTED` | Y | Y | Y |
 | `INTERNAL_ERROR` | Y | Y | Y |
 
 ### SPOT send 함수
@@ -495,9 +515,9 @@ typedef enum zlink_config_result_t
 |---|---|
 | `zlink_submit_result_t` | `zlink_send`, `zlink_send_rid`, `zlink_publish`, `zlink_dealer_request`, `zlink_router_request`, `zlink_router_reply`, `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_router_request_spot`, `zlink_spot_send_spot`, `zlink_spot_send_router`, `zlink_router_send_spot`, `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
 | `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback) |
-| `zlink_recv_result_t` | `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_monitor_recv`, `zlink_timer_recv` |
-| `zlink_handler_result_t` | `zlink_recv_handler`, `zlink_subscribe_handler`, `zlink_send_ready_handler`, `zlink_router_handler`, `zlink_spot_handler`, `zlink_router_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_monitor_handler` |
-| `zlink_close_result_t` | `zlink_close`, `zlink_destroy` |
+| `zlink_recv_result_t` | `zlink_router_recv`, `zlink_spot_recv`, `zlink_router_spot_recv`, `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_socket_monitor_recv`, `zlink_service_monitor_recv`, `zlink_timer_recv` |
+| `zlink_handler_result_t` | `zlink_recv_handler`, `zlink_subscribe_handler`, `zlink_send_ready_handler`, `zlink_router_handler`, `zlink_spot_handler`, `zlink_router_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_service_monitor_handler`, `zlink_timer_handler` |
+| `zlink_close_result_t` | `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_close`, `zlink_monitor_close`, `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_destroy`, `zlink_poller_destroy`, `zlink_timer_destroy` |
 | `zlink_bind_result_t` | `zlink_bind` |
 | `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_unbind` |
-| `zlink_config_result_t` | `zlink_set_option`, `zlink_get_option`, `zlink_set_routing_id`, `zlink_get_routing_id`, `zlink_set_tls`, `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at`, `zlink_attach_discovery` 및 registry/discovery/snapshot/message/poller/proxy 설정 함수 |
+| `zlink_config_result_t` | `zlink_ctx_set`, 메시지 lifecycle/config 함수, socket/TLS/routing/subscription 설정 함수, `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery`, registry/discovery/snapshot/query 함수, poller 변경 함수, proxy 함수, `zlink_timer_start` / `zlink_timer_stop` |

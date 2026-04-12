@@ -166,12 +166,13 @@ int recv_service_monitor_event_unchecked (void *monitor_,
 
 zlink_recv_result_t zlink_socket_monitor_recv (void *monitor_,
                                                zlink_socket_monitor_event_t *out_,
-                                               zlink_send_flags_t flags_)
+                                               zlink_recv_flags_t flags_)
 {
     if (require_monitor_recv_model (monitor_, false) != 0)
         return zlink::recv_result_internal::from_errno (errno);
     return zlink::recv_result_internal::from_rc (
-      recv_socket_monitor_event_unchecked (monitor_, out_, flags_));
+      recv_socket_monitor_event_unchecked (monitor_, out_,
+                                           static_cast<int> (flags_)));
 }
 
 zlink_config_result_t zlink_monitor_snapshot (void *monitor_,
@@ -206,10 +207,11 @@ zlink_config_result_t zlink_monitor_snapshot (void *monitor_,
 zlink_recv_result_t zlink_service_monitor_recv (
   void *monitor_,
   zlink_service_monitor_event_t *out_,
-  zlink_send_flags_t flags_)
+  zlink_recv_flags_t flags_)
 {
     if (require_monitor_recv_model (monitor_, true) != 0)
         return zlink::recv_result_internal::from_errno (errno);
     return zlink::recv_result_internal::from_rc (
-      recv_service_monitor_event_unchecked (monitor_, out_, flags_));
+      recv_service_monitor_event_unchecked (monitor_, out_,
+                                            static_cast<int> (flags_)));
 }

@@ -107,7 +107,7 @@ All services follow a common access layer pattern:
 
 ```mermaid
 flowchart LR
-    A["C API<br/>(zlink_spot_publish, etc.)"] --> B["service_api.cpp<br/>(validate + delegate)"]
+    A["C API<br/>(zlink_discovery_*, zlink_registry_*, etc.)"] --> B["service_api.cpp<br/>(validate + delegate)"]
     B --> C["*_access.hpp<br/>(service-local seam)"]
     C --> D["Service Runtime<br/>(concrete implementation)"]
 ```

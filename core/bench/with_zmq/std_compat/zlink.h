@@ -671,6 +671,32 @@ inline int zlink_recv (void *s_,
     return 0;
 }
 
+inline int zlink_router_recv (void *router_,
+                              const zlink_routing_id_t **peer_rid_out_,
+                              uint64_t *request_seq_out_,
+                              zlink_msg_t **parts_out_,
+                              size_t *part_count_out_,
+                              zlink_recv_flags_t flags_)
+{
+    static thread_local zlink_routing_id_t tls_peer_rid;
+
+    if (request_seq_out_)
+        *request_seq_out_ = 0;
+
+    const int rc =
+      zlink_recv (router_, &tls_peer_rid, parts_out_, part_count_out_,
+                  static_cast<zlink_send_flags_t> (flags_));
+    if (rc != 0) {
+        if (peer_rid_out_)
+            *peer_rid_out_ = NULL;
+        return rc;
+    }
+
+    if (peer_rid_out_)
+        *peer_rid_out_ = tls_peer_rid.size > 0 ? &tls_peer_rid : NULL;
+    return 0;
+}
+
 inline int zlink_publish (void *subject_,
                           const char *topic_id_,
                           zlink_msg_t *parts_,

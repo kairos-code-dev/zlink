@@ -24,7 +24,7 @@ three-tier contract는 내부 설계 도구입니다 — 사용자에게는 "자
 **대상 API:**
 
 - `zlink_send()`
-- `zlink_spot_publish()` / `zlink_spot_node_publish()`
+- `zlink_publish()`
 - 허용된 callback 내 동일 handle `send` / `publish`
 
 **순서 의미론:**
@@ -53,7 +53,7 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
-- `zlink_spot_subscribe()` / `zlink_spot_unsubscribe()`
+- `zlink_set_subscription()` / `zlink_unset_subscription()`
 - `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
 - `zlink_send_ready_handler()`

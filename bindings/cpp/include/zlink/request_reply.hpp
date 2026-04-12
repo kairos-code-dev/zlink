@@ -75,18 +75,18 @@ inline received_t recv_router_received (void *router_handle_, int flags_)
 }
 
 inline void complete_reply_state (cpp_reply_state_t *state_,
-                                  int errnum_,
+                                  zlink_request_result_t result_,
                                   zlink_msg_t *parts_,
                                   size_t part_count_)
 {
     if (!state_)
         return;
     std::unique_ptr<cpp_reply_state_t> holder (state_);
-    if (errnum_ != 0) {
+    if (result_ != ZLINK_REQUEST_OK) {
         if (holder->on_error)
-            holder->on_error (error_t (errnum_));
+            holder->on_error (error_t (result_));
         holder->promise.set_exception (
-          std::make_exception_ptr (error_t (errnum_)));
+          std::make_exception_ptr (error_t (result_)));
         return;
     }
     received_t received = take_received (NULL, parts_, part_count_);
@@ -95,13 +95,13 @@ inline void complete_reply_state (cpp_reply_state_t *state_,
     holder->promise.set_value (std::move (received));
 }
 
-inline void reply_callback (int errno_,
+inline void reply_callback (zlink_request_result_t result_,
                             zlink_msg_t *parts_,
                             size_t part_count_,
                             void *userdata_)
 {
     complete_reply_state (
-      static_cast<cpp_reply_state_t *> (userdata_), errno_, parts_, part_count_);
+      static_cast<cpp_reply_state_t *> (userdata_), result_, parts_, part_count_);
 }
 
 template<typename SocketT> inline int
@@ -149,7 +149,7 @@ class request_dealer_t
         }
         const int rc = zlink_dealer_request (_socket.handle (), native.data (),
                                              native.size (), &detail::reply_callback,
-                                             state, 0,
+                                             state, ZLINK_SEND_FLAGS_NONE,
                                              static_cast<uint32_t> (timeout_.count ()));
         if (rc != 0) {
             delete state;
@@ -173,7 +173,7 @@ class request_dealer_t
         }
         const int rc = zlink_dealer_request (_socket.handle (), native.data (),
                                              native.size (), &detail::reply_callback,
-                                             state, 0,
+                                             state, ZLINK_SEND_FLAGS_NONE,
                                              static_cast<uint32_t> (timeout_.count ()));
         if (rc != 0) {
             delete state;
@@ -272,7 +272,8 @@ class request_router_t
         const int rc = zlink_router_request (_socket.handle (),
                                              routing_id_native (routing_id_),
                                              native.data (), native.size (),
-                                             &detail::reply_callback, state, 0,
+                                             &detail::reply_callback, state,
+                                             ZLINK_SEND_FLAGS_NONE,
                                              static_cast<uint32_t> (timeout_.count ()));
         if (rc != 0) {
             delete state;
@@ -298,7 +299,8 @@ class request_router_t
         const int rc = zlink_router_request (_socket.handle (),
                                              routing_id_native (routing_id_),
                                              native.data (), native.size (),
-                                             &detail::reply_callback, state, 0,
+                                             &detail::reply_callback, state,
+                                             ZLINK_SEND_FLAGS_NONE,
                                              static_cast<uint32_t> (timeout_.count ()));
         if (rc != 0) {
             delete state;

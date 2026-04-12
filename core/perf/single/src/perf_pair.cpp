@@ -42,7 +42,7 @@ int recv_single_part_header_flags (void *socket_,
     size_t part_count = 0;
     const int rc = zlink_recv (
       socket_, NULL, &parts, &part_count,
-      static_cast<zlink_send_flags_t> (flags_));
+      static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
@@ -113,7 +113,7 @@ bool send_pair_samples (void *sender_,
             std::memcpy (
               zlink_msg_data (&part), payload_->data (), payload_->size ());
 
-        if (zlink_send (sender_, &part, 1, 0) != 0) {
+        if (zlink_send (sender_, &part, 1, ZLINK_SEND_FLAGS_NONE) != 0) {
             const int err = zlink_errno ();
             if (err == EINTR)
                 continue;

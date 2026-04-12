@@ -83,7 +83,7 @@ int recv_spot_header_flags (void *subscriber_,
     size_t topic_len = sizeof (topic);
     const int rc = zlink_subscribe (
       subscriber_, NULL, &parts, &part_count, topic, &topic_len,
-      static_cast<zlink_send_flags_t> (flags_));
+      static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)

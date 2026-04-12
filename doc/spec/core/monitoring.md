@@ -366,24 +366,15 @@ typedef struct zlink_service_monitor_open_options_t
 |---|---|
 | `events` | Bitmask of service monitor event flags selecting which events to observe. Uses `zlink_service_monitor_event_mask_t`, the unified mask type for all service monitors. |
 
-### Monitor Target Kind
+### Supported Service Monitor Targets
 
-```c
-typedef enum zlink_monitor_target_kind_t
-{
-    ZLINK_MONITOR_TARGET_SOCKET    = 1,
-    ZLINK_MONITOR_TARGET_DISCOVERY = 2,
-    ZLINK_MONITOR_TARGET_SPOT      = 4,
-    ZLINK_MONITOR_TARGET_SPOT_NODE = 5
-} zlink_monitor_target_kind_t;
-```
+`zlink_service_monitor_open()` is currently defined for handles that expose a
+public service-monitor surface.
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `ZLINK_MONITOR_TARGET_SOCKET` | 1 | Target is a raw socket |
-| `ZLINK_MONITOR_TARGET_DISCOVERY` | 2 | Target is a Discovery handle |
-| `ZLINK_MONITOR_TARGET_SPOT` | 4 | Target is a SPOT facade |
-| `ZLINK_MONITOR_TARGET_SPOT_NODE` | 5 | Target is a SPOT Node |
+- `Discovery` handle: supported
+- `SPOT` facade: not supported on the current public surface
+- `SpotNode` handle: not supported on the current public surface; use status
+  and query APIs instead
 
 ### Service Kind Constants
 

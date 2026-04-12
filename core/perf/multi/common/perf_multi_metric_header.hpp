@@ -24,7 +24,11 @@ struct header_t
     uint32_t phase;
     uint32_t msg_size;
     uint64_t seq;
-    int64_t sent_ts_ns;
+    union
+    {
+        int64_t sent_ts_ns;
+        int64_t sent_ts_us;
+    };
 };
 
 inline size_t header_size ()
@@ -38,6 +42,13 @@ inline uint64_t now_ns ()
       std::chrono::duration_cast<std::chrono::nanoseconds> (
         std::chrono::system_clock::now ().time_since_epoch ())
         .count ());
+}
+
+inline uint64_t now_us ()
+{
+    // Compatibility shim for bench sources that still use the old `*_us`
+    // naming while the shared metric header uses nanosecond timestamps.
+    return now_ns ();
 }
 
 inline void init_header (header_t *out,

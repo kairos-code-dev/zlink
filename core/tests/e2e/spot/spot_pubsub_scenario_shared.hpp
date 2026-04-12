@@ -60,7 +60,7 @@ int publish_text (spot_publish_fn_t publish_fn_,
                   void *handle_,
                   const char *topic_id_,
                   const char *payload_,
-                  zlink_send_flags_t flags_);
+                  int flags_);
 
 void close_spot_parts (zlink_msg_t *parts_, size_t part_count_);
 

@@ -108,7 +108,7 @@ int publish_text (spot_publish_fn_t publish_fn_,
                   void *handle_,
                   const char *topic_id_,
                   const char *payload_,
-                  zlink_send_flags_t flags_)
+                  int flags_)
 {
     zlink_msg_t part;
     const size_t size = payload_ ? strlen (payload_) : 0;
@@ -117,7 +117,9 @@ int publish_text (spot_publish_fn_t publish_fn_,
     if (size > 0)
         memcpy (zlink_msg_data (&part), payload_, size);
     const zlink_submit_result_t rc =
-      publish_fn_ (handle_, topic_id_, &part, 1, flags_);
+      publish_fn_ (
+        handle_, topic_id_, &part, 1,
+        static_cast<zlink_send_flags_t> (flags_));
     if (rc != ZLINK_SUBMIT_OK) {
         const int err = errno;
         zlink_msg_close (&part);

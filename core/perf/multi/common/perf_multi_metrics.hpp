@@ -25,9 +25,18 @@ inline size_t resolve_latency_sample_cap()
 
 struct bench_latency_stats_t {
     bench_latency_stats_t() : mean_ns(0.0), p95_ns(0.0), p99_ns(0.0) {}
-    double mean_ns;
-    double p95_ns;
-    double p99_ns;
+    union {
+        double mean_ns;
+        double mean_us;
+    };
+    union {
+        double p95_ns;
+        double p95_us;
+    };
+    union {
+        double p99_ns;
+        double p99_us;
+    };
 };
 
 class bench_latency_sampler_t {

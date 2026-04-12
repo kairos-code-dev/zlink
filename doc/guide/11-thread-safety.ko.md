@@ -215,8 +215,8 @@ void shutdown_socket(void *socket)
 /* WRONG — two threads sharing the same msg */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 100);
-/* Thread A: */ zlink_send_msg(socket, &msg, 0);
-/* Thread B: */ zlink_send_msg(socket, &msg, 0);  /* data race! */
+/* Thread A: */ zlink_send(socket, &msg, 1, 0);
+/* Thread B: */ zlink_send(socket, &msg, 1, 0);  /* data race! */
 ```
 
 ```c
@@ -225,7 +225,7 @@ zlink_msg_init_size(&msg, 100);
 zlink_msg_t msg_a;                   zlink_msg_t msg_b;
 zlink_msg_init_size(&msg_a, 100);    zlink_msg_init_size(&msg_b, 100);
 memcpy(zlink_msg_data(&msg_a),...);  memcpy(zlink_msg_data(&msg_b),...);
-zlink_send_msg(socket, &msg_a, 0);   zlink_send_msg(socket, &msg_b, 0);  /* safe */
+zlink_send(socket, &msg_a, 1, 0);    zlink_send(socket, &msg_b, 1, 0);  /* safe */
 ```
 
 **콜백 소유권:** 콜백이 `zlink_msg_t *parts`를 받으면 소유권이 콜백으로

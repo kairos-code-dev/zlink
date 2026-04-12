@@ -166,6 +166,10 @@ int zlink::session_base_t::push_msg (msg_t *msg_)
         const int dispatch_rc = _socket->stream_dispatch_msg_from_io (msg_, _pipe);
         if (dispatch_rc < 0)
             return -1;
+        // STREAM dispatch returns >1 when it has already restored msg_ to a
+        // reusable empty state for the caller.
+        if (dispatch_rc > 1)
+            return 0;
         if (dispatch_rc > 0) {
             const int rc = msg_->close ();
             errno_assert (rc == 0);

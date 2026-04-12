@@ -344,10 +344,10 @@ SPOT and SpotNode no longer expose a public service-monitor surface.
 ```c
 void on_service_event(const zlink_service_event_t *ev, void *userdata)
 {
-    if (ev->event_type & ZLINK_DISCOVERY_PROVIDERS_CHANGED) {
+    if (ev->event_type & ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED) {
         printf("provider set changed\n");
     }
-    if (ev->event_type & ZLINK_MONITOR_EVENT_ERROR) {
+    if (ev->event_type & ZLINK_SERVICE_MONITOR_EVENT_ERROR) {
         printf("service error: %d\n", ev->error_code);
     }
 }
@@ -359,7 +359,7 @@ zlink_service_monitor_handler(mon, on_service_event, NULL);
 
 ```c
 zlink_service_event_t ev;
-int rc = zlink_service_monitor_recv(mon, &ev);
+int rc = zlink_service_monitor_recv(mon, &ev, 0);
 if (rc == 0) {
     printf("event: 0x%x, value: %u\n", ev.event_type, ev.value);
 }
@@ -374,18 +374,18 @@ Different services emit different events.
 
 | Constant | Description | `value` | After this event |
 |---|---|---|---|
-| `DISCOVERY_SERVICE_UP` | discovered service came up | — | — |
-| `DISCOVERY_SERVICE_DOWN` | discovered service went down | — | — |
-| `DISCOVERY_PROVIDERS_CHANGED` | provider set changed | — | — |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | discovered service came up | — | — |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | discovered service went down | — | — |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | provider set changed | — | — |
 
 #### Common events (all services)
 
 | Constant | Description |
 |---|---|
-| `MONITOR_EVENT_ERROR` | error occurred |
-| `MONITOR_EVENT_CLOSED` | monitor closed |
+| `ZLINK_SERVICE_MONITOR_EVENT_ERROR` | error occurred |
+| `ZLINK_SERVICE_MONITOR_EVENT_CLOSED` | monitor closed |
 
-See [events.md](../api/events.md) for the full event catalog.
+See [events.md](../spec/core/events.md) for the full event catalog.
 
 ## 9. Multi-Socket Monitoring
 
@@ -574,9 +574,9 @@ a point-in-time view of the current state. Use them for dashboards,
 health checks, and debugging.
 
 ```c
-/* Check current discovery health */
-zlink_discovery_status_t status;
-zlink_discovery_status_snapshot(discovery, &status);
+/* Check current registry health */
+zlink_registry_status_t status;
+zlink_registry_status_snapshot(registry, &status);
 printf("state=%d\n", status.state);
 ```
 

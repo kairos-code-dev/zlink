@@ -25,13 +25,11 @@ typedef int zlink_fd_t;
 #endif
 ```
 
-### zlink_poller_event_mask_t
+### Poller Event Masks
 
-폴링 이벤트 플래그를 위한 비트마스크 타입입니다.
-
-```c
-typedef short zlink_poller_event_mask_t;
-```
+공개 헤더는 `zlink_poller_event_mask_t` 같은 별도 typedef를 내보내지
+않는다. poller API는 `events`, `revents`, 각 이벤트 마스크 인자에 raw
+`short` 비트마스크를 사용한다.
 
 ### zlink_poller_source_kind_t
 

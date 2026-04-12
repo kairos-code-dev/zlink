@@ -52,9 +52,9 @@ class timer_t
 
     int stop () { return zlink_timer_stop (_timer); }
 
-    int recv (uint64_t *fire_count_out_, int flags_ = 0)
+    int recv (uint64_t *fire_count_out_)
     {
-        return zlink_timer_recv (_timer, fire_count_out_, flags_);
+        return zlink_timer_recv (_timer, fire_count_out_);
     }
 
     int set_handler (zlink_timer_handler_fn handler_, void *userdata_ = NULL)

@@ -69,6 +69,25 @@ inline zlink_submit_result_t from_rc (int rc_)
     const int saved_errno = errno;
     return from_errno (saved_errno != 0 ? saved_errno : EIO);
 }
+
+inline zlink_submit_result_t from_request_submit_errno (int err_)
+{
+    // Request submit uses EBUSY specifically when the pending request sequence
+    // space is exhausted.
+    if (err_ == EBUSY)
+        return ZLINK_SUBMIT_SEQ_EXHAUSTED;
+
+    return from_errno (err_);
+}
+
+inline zlink_submit_result_t from_request_submit_rc (int rc_)
+{
+    if (rc_ == 0)
+        return ZLINK_SUBMIT_OK;
+
+    const int saved_errno = errno;
+    return from_request_submit_errno (saved_errno != 0 ? saved_errno : EIO);
+}
 }
 }
 

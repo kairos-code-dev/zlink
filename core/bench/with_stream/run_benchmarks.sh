@@ -1728,7 +1728,7 @@ CSV
             --summary "${size_summary_json}" \
             --report "${size_report_md}" \
             --runs "${RUNS}" \
-            --stacks "$(IFS=,; echo "${ACTIVE_STACKS[*]}")" \
+            --stacks "$(IFS=,; echo "${RUN_STACKS[*]}")" \
             --sizes "${size}" \
             --phases "throughput,latency" \
             --skip-file "${SKIP_CSV}"
@@ -1789,7 +1789,7 @@ PY
         --summary "${SUMMARY_JSON}" \
         --report "${REPORT_MD}" \
         --runs "${RUNS}" \
-        --stacks "$(IFS=,; echo "${ACTIVE_STACKS[*]}")" \
+        --stacks "$(IFS=,; echo "${RUN_STACKS[*]}")" \
         --sizes "$(IFS=,; echo "${RUN_SIZES[*]}")" \
         --phases "throughput,latency" \
         --skip-file "${SKIP_CSV}"

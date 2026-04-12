@@ -366,24 +366,15 @@ typedef struct zlink_service_monitor_open_options_t
 |------|------|
 | `events` | 관찰할 이벤트 플래그 비트마스크 (`zlink_service_monitor_event_mask_t`). |
 
-### Monitor Target Kind
+### 지원되는 서비스 모니터 대상
 
-```c
-typedef enum zlink_monitor_target_kind_t
-{
-    ZLINK_MONITOR_TARGET_SOCKET    = 1,
-    ZLINK_MONITOR_TARGET_DISCOVERY = 2,
-    ZLINK_MONITOR_TARGET_SPOT      = 4,
-    ZLINK_MONITOR_TARGET_SPOT_NODE = 5
-} zlink_monitor_target_kind_t;
-```
+`zlink_service_monitor_open()`은 현재 공개 service-monitor surface를 가진
+handle에 대해서만 정의된다.
 
-| 상수 | 값 | 설명 |
-|------|-----|------|
-| `ZLINK_MONITOR_TARGET_SOCKET` | 1 | 대상이 raw 소켓 |
-| `ZLINK_MONITOR_TARGET_DISCOVERY` | 2 | 대상이 Discovery 핸들 |
-| `ZLINK_MONITOR_TARGET_SPOT` | 4 | 대상이 SPOT 파사드 |
-| `ZLINK_MONITOR_TARGET_SPOT_NODE` | 5 | 대상이 SPOT 노드 |
+- `Discovery` handle: 지원
+- `SPOT` 파사드: 현재 공개 surface에서는 지원하지 않음
+- `SpotNode` handle: 현재 공개 surface에서는 지원하지 않음. 대신 status
+  및 query API를 사용
 
 ### 서비스 종류 상수
 

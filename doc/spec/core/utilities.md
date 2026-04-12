@@ -274,7 +274,7 @@ the same timer.
 Synchronously receive a timer fire event.
 
 ```c
-int zlink_timer_recv (void *timer_, uint64_t *fire_count_out_, int flags_);
+int zlink_timer_recv (void *timer_, uint64_t *fire_count_out_);
 ```
 
 Waits for the timer to fire and writes the cumulative fire count into
@@ -287,10 +287,9 @@ timer.
 |------|-------------|
 | `timer_` | Timer handle |
 | `fire_count_out_` | Pointer to receive the cumulative fire count |
-| `flags_` | Receive flags (e.g. `ZLINK_DONTWAIT` for non-blocking) |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set; `EAGAIN` if
-non-blocking and no event is ready).
+**Returns:** `0` on success, or `-1` on failure (errno is set; `EAGAIN` if the
+timer has stopped and no fire event remains to receive).
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same timer.

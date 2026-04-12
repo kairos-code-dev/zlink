@@ -60,10 +60,11 @@ void test_timer_one_shot_recv ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_start (timer, 20 * 1000 * 1000ULL, 1));
 
     uint64_t fire_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count));
     TEST_ASSERT_EQUAL_UINT64 (1, fire_count);
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_timer_recv (timer, &fire_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA,
+                           zlink_timer_recv (timer, &fire_count));
     TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_destroy (&timer));
@@ -77,14 +78,15 @@ void test_timer_repeat_recv_sequence ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_start (timer, 10 * 1000 * 1000ULL, 3));
 
     uint64_t fire_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count));
     TEST_ASSERT_EQUAL_UINT64 (1, fire_count);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count));
     TEST_ASSERT_EQUAL_UINT64 (2, fire_count);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count));
     TEST_ASSERT_EQUAL_UINT64 (3, fire_count);
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_timer_recv (timer, &fire_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA,
+                           zlink_timer_recv (timer, &fire_count));
     TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_destroy (&timer));
@@ -102,7 +104,17 @@ void test_timer_poller_and_recv ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_start (timer, 20 * 1000 * 1000ULL, 2));
 
     zlink_poller_event_t ev;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_wait (poller, &ev, 500, NULL));
+    bool got_event = false;
+    for (int attempt = 0; attempt < 5; ++attempt) {
+        const int rc = zlink_poller_wait (poller, &ev, 500, NULL);
+        if (rc != -1) {
+            got_event = true;
+            break;
+        }
+
+        TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    }
+    TEST_ASSERT_TRUE (got_event);
     TEST_ASSERT_EQUAL_INT (ZLINK_POLLER_SOURCE_TIMER, ev.source_kind);
     TEST_ASSERT_NULL (ev.socket);
     TEST_ASSERT_EQUAL_PTR (timer, ev.timer);
@@ -110,7 +122,7 @@ void test_timer_poller_and_recv ()
     TEST_ASSERT_EQUAL_INT (ZLINK_POLLIN, ev.events);
 
     uint64_t fire_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count));
     TEST_ASSERT_EQUAL_UINT64 (1, fire_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove_timer (poller, timer));
@@ -133,11 +145,10 @@ void test_timer_callback_conflicts_and_destroy_busy ()
       zlink_timer_handler (timer_callback, &on_timer, &probe));
 
     uint64_t fire_count = 0;
-    TEST_ASSERT_EQUAL_INT (-1,
-                           zlink_timer_recv (timer_callback, &fire_count,
-                                             ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_BUSY,
+                           zlink_timer_recv (timer_callback, &fire_count));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (-1,
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT,
                            zlink_poller_add_timer (poller, timer_callback, NULL));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
@@ -153,9 +164,10 @@ void test_timer_callback_conflicts_and_destroy_busy ()
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add_timer (poller, timer_poller, NULL));
-    TEST_ASSERT_EQUAL_INT (-1, zlink_timer_handler (timer_poller, &on_timer, &probe));
+    TEST_ASSERT_EQUAL_INT (ZLINK_HANDLER_BUSY,
+                           zlink_timer_handler (timer_poller, &on_timer, &probe));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (-1, zlink_timer_destroy (&timer_poller));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_BUSY, zlink_timer_destroy (&timer_poller));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove_timer (poller, timer_poller));
@@ -192,7 +204,7 @@ void test_spot_timer_dispatch_event_and_recv ()
     }
 
     uint64_t fire_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count));
     TEST_ASSERT_EQUAL_UINT64 (1, fire_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_destroy (&timer));

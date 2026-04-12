@@ -777,7 +777,7 @@ ZLINK_EXPORT zlink_recv_result_t zlink_subscription_event (
   int *subscribed_out_,
   char *topic_id_out_,
   size_t *topic_id_len_out_,
-  zlink_send_flags_t flags_);
+  zlink_recv_flags_t flags_);
 
 typedef struct {
     uint64_t event;
@@ -832,7 +832,7 @@ ZLINK_EXPORT zlink_handler_result_t zlink_socket_monitor_handler (
 ZLINK_EXPORT zlink_recv_result_t zlink_socket_monitor_recv (
   void *monitor_,
   zlink_socket_monitor_event_t *out_,
-  zlink_send_flags_t flags_);
+  zlink_recv_flags_t flags_);
 
 /** @brief Read the current snapshot for a socket or service monitor handle. */
 ZLINK_EXPORT zlink_config_result_t zlink_monitor_snapshot (void *monitor_,
@@ -1058,7 +1058,7 @@ ZLINK_EXPORT zlink_handler_result_t zlink_service_monitor_handler (
 ZLINK_EXPORT zlink_recv_result_t zlink_service_monitor_recv (
   void *monitor_,
   zlink_service_monitor_event_t *out_,
-  zlink_send_flags_t flags_);
+  zlink_recv_flags_t flags_);
 
 typedef struct zlink_spot_node_status_t
 {
@@ -1357,8 +1357,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_timer_start (void *timer_,
                                     uint64_t repeat_count_);
 ZLINK_EXPORT zlink_config_result_t zlink_timer_stop (void *timer_);
 ZLINK_EXPORT zlink_recv_result_t zlink_timer_recv (void *timer_,
-                                   uint64_t *fire_count_out_,
-                                   zlink_recv_flags_t flags_);
+                                   uint64_t *fire_count_out_);
 ZLINK_EXPORT zlink_handler_result_t zlink_timer_handler (void *timer_,
                                       zlink_timer_handler_fn handler_,
                                       void *userdata_);
@@ -1386,6 +1385,245 @@ ZLINK_EXPORT void zlink_thread_join (void *thread_);
 #undef ZLINK_EXPORT
 
 #ifdef __cplusplus
+}
+
+// C++ compatibility overloads for legacy call sites that still pass `int`
+// flag literals such as `0` or `ZLINK_DONTWAIT`.
+inline zlink_submit_result_t zlink_send (void *s_,
+                                         zlink_msg_t *parts_,
+                                         size_t part_count_,
+                                         int flags_)
+{
+    return zlink_send (
+      s_, parts_, part_count_, static_cast<zlink_send_flags_t> (flags_));
+}
+
+inline zlink_submit_result_t zlink_send_rid (void *s_,
+                                             const zlink_routing_id_t *target_rid_,
+                                             zlink_msg_t *parts_,
+                                             size_t part_count_,
+                                             int flags_)
+{
+    return zlink_send_rid (s_, target_rid_, parts_, part_count_,
+                           static_cast<zlink_send_flags_t> (flags_));
+}
+
+inline zlink_submit_result_t zlink_publish (void *subject_,
+                                            const char *topic_id_,
+                                            zlink_msg_t *parts_,
+                                            size_t part_count_,
+                                            int flags_)
+{
+    return zlink_publish (
+      subject_, topic_id_, parts_, part_count_,
+      static_cast<zlink_send_flags_t> (flags_));
+}
+
+inline zlink_submit_result_t zlink_dealer_request (
+  void *dealer_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int flags_,
+  uint32_t timeout_ms_)
+{
+    return zlink_dealer_request (
+      dealer_, parts_, part_count_, handler_, userdata_,
+      static_cast<zlink_send_flags_t> (flags_), timeout_ms_);
+}
+
+inline zlink_submit_result_t zlink_router_request (
+  void *router_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int flags_,
+  uint32_t timeout_ms_)
+{
+    return zlink_router_request (
+      router_, peer_rid_, parts_, part_count_, handler_, userdata_,
+      static_cast<zlink_send_flags_t> (flags_), timeout_ms_);
+}
+
+inline zlink_submit_result_t zlink_spot_request_spot (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int flags_,
+  uint32_t timeout_ms_)
+{
+    return zlink_spot_request_spot (
+      spot_, dest_node_rid_, dest_spot_rid_, parts_, part_count_, handler_,
+      userdata_, static_cast<zlink_send_flags_t> (flags_), timeout_ms_);
+}
+
+inline zlink_submit_result_t zlink_spot_send_spot (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  int flags_)
+{
+    return zlink_spot_send_spot (
+      spot_, dest_node_rid_, dest_spot_rid_, parts_, part_count_,
+      static_cast<zlink_send_flags_t> (flags_));
+}
+
+inline zlink_submit_result_t zlink_spot_send_router (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  int flags_)
+{
+    return zlink_spot_send_router (
+      spot_, peer_rid_, parts_, part_count_,
+      static_cast<zlink_send_flags_t> (flags_));
+}
+
+inline zlink_submit_result_t zlink_spot_request_router (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int flags_,
+  uint32_t timeout_ms_)
+{
+    return zlink_spot_request_router (
+      spot_, peer_rid_, parts_, part_count_, handler_, userdata_,
+      static_cast<zlink_send_flags_t> (flags_), timeout_ms_);
+}
+
+inline zlink_submit_result_t zlink_router_request_spot (
+  void *router_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int flags_,
+  uint32_t timeout_ms_)
+{
+    return zlink_router_request_spot (
+      router_, dest_node_rid_, dest_spot_rid_, parts_, part_count_, handler_,
+      userdata_, static_cast<zlink_send_flags_t> (flags_), timeout_ms_);
+}
+
+inline zlink_submit_result_t zlink_router_send_spot (
+  void *router_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  int flags_)
+{
+    return zlink_router_send_spot (
+      router_, dest_node_rid_, dest_spot_rid_, parts_, part_count_,
+      static_cast<zlink_send_flags_t> (flags_));
+}
+
+inline zlink_recv_result_t zlink_router_recv (
+  void *router_,
+  const zlink_routing_id_t **peer_rid_out_,
+  uint64_t *request_seq_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  int flags_)
+{
+    return zlink_router_recv (
+      router_, peer_rid_out_, request_seq_out_, parts_out_, part_count_out_,
+      static_cast<zlink_recv_flags_t> (flags_));
+}
+
+inline zlink_recv_result_t zlink_spot_recv (void *spot_,
+                                            const zlink_routing_id_t **peer_rid_out_,
+                                            uint64_t *request_seq_out_,
+                                            zlink_msg_t **parts_out_,
+                                            size_t *part_count_out_,
+                                            int flags_)
+{
+    return zlink_spot_recv (
+      spot_, peer_rid_out_, request_seq_out_, parts_out_, part_count_out_,
+      static_cast<zlink_recv_flags_t> (flags_));
+}
+
+inline zlink_recv_result_t zlink_router_spot_recv (
+  void *router_,
+  const zlink_routing_id_t **peer_rid_out_,
+  const zlink_routing_id_t **source_spot_rid_out_,
+  uint64_t *request_seq_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  int flags_)
+{
+    return zlink_router_spot_recv (
+      router_, peer_rid_out_, source_spot_rid_out_, request_seq_out_,
+      parts_out_, part_count_out_, static_cast<zlink_recv_flags_t> (flags_));
+}
+
+inline zlink_recv_result_t zlink_recv (void *s_,
+                                       zlink_routing_id_t *source_rid_out_,
+                                       zlink_msg_t **parts_out_,
+                                       size_t *part_count_out_,
+                                       int flags_)
+{
+    return zlink_recv (s_, source_rid_out_, parts_out_, part_count_out_,
+                       static_cast<zlink_recv_flags_t> (flags_));
+}
+
+inline zlink_recv_result_t zlink_subscribe (void *subject_,
+                                            zlink_routing_id_t *source_rid_out_,
+                                            zlink_msg_t **parts_out_,
+                                            size_t *part_count_out_,
+                                            char *topic_id_out_,
+                                            size_t *topic_id_len_out_,
+                                            int flags_)
+{
+    return zlink_subscribe (
+      subject_, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
+      topic_id_len_out_, static_cast<zlink_recv_flags_t> (flags_));
+}
+
+inline zlink_recv_result_t zlink_subscription_event (
+  void *subject_,
+  zlink_routing_id_t *source_rid_out_,
+  int *subscribed_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  int flags_)
+{
+    return zlink_subscription_event (
+      subject_, source_rid_out_, subscribed_out_, topic_id_out_,
+      topic_id_len_out_, static_cast<zlink_recv_flags_t> (flags_));
+}
+
+inline zlink_recv_result_t zlink_socket_monitor_recv (
+  void *monitor_,
+  zlink_monitor_event_t *event_out_,
+  int flags_)
+{
+    return zlink_socket_monitor_recv (
+      monitor_, event_out_, static_cast<zlink_recv_flags_t> (flags_));
+}
+
+inline zlink_recv_result_t zlink_service_monitor_recv (
+  void *monitor_,
+  zlink_service_event_t *event_out_,
+  int flags_)
+{
+    return zlink_service_monitor_recv (
+      monitor_, event_out_, static_cast<zlink_recv_flags_t> (flags_));
 }
 #endif
 

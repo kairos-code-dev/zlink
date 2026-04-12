@@ -5,7 +5,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
+#include <iostream>
 #include <sstream>
+#include <string>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -31,6 +34,22 @@ struct bench_multi_resource_metrics_t
           mem_mb (0.0)
     {
     }
+};
+
+struct server_queue_stats_t
+{
+    server_queue_stats_t ()
+        : has_send_queue_depth (false),
+          send_queue_depth (0.0),
+          has_recv_queue_depth (false),
+          recv_queue_depth (0.0)
+    {
+    }
+
+    bool has_send_queue_depth;
+    double send_queue_depth;
+    bool has_recv_queue_depth;
+    double recv_queue_depth;
 };
 
 struct bench_multi_cpu_sample_t
@@ -247,6 +266,60 @@ inline bench_multi_resource_metrics_t bench_multi_finish_resource_probe (
     }
 
     return metrics;
+}
+
+inline server_queue_stats_t sample_server_queue_stats (void *send_socket_,
+                                                       void *recv_socket_)
+{
+    (void) send_socket_;
+    (void) recv_socket_;
+    return server_queue_stats_t ();
+}
+
+inline void print_server_queue_metrics (const std::string &lib_name_,
+                                        const std::string &pattern_,
+                                        const std::string &transport_,
+                                        size_t msg_size_,
+                                        const server_queue_stats_t &stats_)
+{
+    if (stats_.has_send_queue_depth) {
+        std::cout << "RESULT," << lib_name_ << "," << pattern_ << ","
+                  << transport_ << "," << msg_size_
+                  << ",server_send_queue_depth," << std::fixed
+                  << std::setprecision (2) << stats_.send_queue_depth
+                  << std::endl;
+    }
+    if (stats_.has_recv_queue_depth) {
+        std::cout << "RESULT," << lib_name_ << "," << pattern_ << ","
+                  << transport_ << "," << msg_size_
+                  << ",server_recv_queue_depth," << std::fixed
+                  << std::setprecision (2) << stats_.recv_queue_depth
+                  << std::endl;
+    }
+}
+
+inline bool parse_queue_probe_command (const std::string &line_,
+                                       size_t *msg_size_out_)
+{
+    if (!msg_size_out_)
+        return false;
+
+    static const char k_prefix[] = "QUEUE,";
+    if (line_.compare (0, sizeof (k_prefix) - 1, k_prefix) != 0)
+        return false;
+
+    const char *value = line_.c_str () + (sizeof (k_prefix) - 1);
+    if (!value || *value == '\0')
+        return false;
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long parsed = std::strtoul (value, &end, 10);
+    if (errno != 0 || end == value || !end || *end != '\0' || parsed == 0)
+        return false;
+
+    *msg_size_out_ = static_cast<size_t> (parsed);
+    return true;
 }
 
 #endif

@@ -4,9 +4,13 @@
 
 # Per-Function Result Enums
 
-This document defines the canonical outcome mapping for all public C API
-functions. Each function returns a result enum whose numeric range is unique
-across the entire API, so a single `int` error code is always unambiguous.
+This document defines the canonical outcome mapping for public C APIs that
+return result enums. Those functions use enum ranges that do not overlap
+across the API, so a single `int` code is always unambiguous.
+
+Some legacy poller helpers still use plain `int` returns with a separate
+`error_out_` output. Those helpers are adjacent to this scheme, but they are
+not themselves members of the result-enum families below.
 
 Internal implementation paths still use detailed `errno` values. Exported API
 boundaries normalize those values into the public result enums defined here.
@@ -14,9 +18,10 @@ boundaries normalize those values into the public result enums defined here.
 ## zlink_errno — Internal Error Detail
 
 `zlink_errno()` returns the raw internal `errno` value from the calling
-thread. It is **only useful when a result enum returns an `INTERNAL_ERROR`
-or equivalent terminal code**. In all other cases the result enum itself
-carries the full error information.
+thread. It is most useful when a result enum is a coarse public bucket. That
+includes `INTERNAL_ERROR`, but also cases where the API has no finer public
+result and collapses the failure into buckets such as `TERMINATED` or
+`INVALID_ARGUMENT`.
 
 ```c
 zlink_submit_result_t rc = zlink_send(s, parts, count, 0);
@@ -27,8 +32,8 @@ if (rc == ZLINK_SUBMIT_INTERNAL_ERROR) {
 }
 ```
 
-- Normal result codes (`BACKPRESSURED`, `BUSY`, `TERMINATED`, etc.)
-  **do not require** `zlink_errno()` — the result enum is sufficient.
+- In the common normalized cases, `zlink_errno()` is **not required**.
+  Use it when you need the original internal reason behind a coarse bucket.
 - `zlink_errno()` is a thread-local last-error store (GetLastError pattern).
   Only the most recent failure is retained.
 
@@ -94,7 +99,7 @@ These indicate a bug in the caller.
 | `INVALID_HANDLE` | `EFAULT` | NULL handle or invalid pointer |
 | `INVALID_ARGUMENT` | `EINVAL` | Wrong socket type, NULL handler, zero `request_seq`, invalid routing ID |
 | `NOT_SUPPORTED` | `ENOTSUP` | Operation not supported for this socket type or invalid flags |
-| `INVALID_STATE` | `EFSM` | Socket is in the wrong state |
+| `INVALID_STATE` | `EFSM`, and some non-request submit `EBUSY` state conflicts | Socket or handle is in the wrong state |
 | `THREAD_VIOLATION` | `EMTHREAD` | Socket accessed from the wrong thread model |
 
 #### Internal failure
@@ -102,7 +107,7 @@ These indicate a bug in the caller.
 | Result | Internal errno | Meaning |
 |---|---|---|
 | `OUT_OF_MEMORY` | `ENOMEM` | Memory allocation failed |
-| `SEQ_EXHAUSTED` | `EBUSY` | Request sequence number space exhausted (request only) |
+| `SEQ_EXHAUSTED` | `EBUSY` | Request submit path exhausted the pending request sequence space |
 | `INTERNAL_ERROR` | `EPROTO` and other internal submit failures | Internal send/request/reply submit error |
 
 ### Applicable functions
@@ -156,8 +161,8 @@ have an explicit completion emission path in the current request code.
 
 ## zlink_recv_result_t
 
-Applies to recv, subscribe, subscription event, monitor recv, and timer
-recv functions.
+Applies to recv-style functions, including router/SPOT receives, monitor
+receives, and timer receives.
 
 ```c
 typedef enum zlink_recv_result_t
@@ -176,9 +181,9 @@ typedef enum zlink_recv_result_t
 | Result | Internal errno | Meaning |
 |---|---|---|
 | `OK` | -- | Data was received successfully |
-| `NO_DATA` | `EAGAIN` | Non-blocking mode, no data available |
+| `NO_DATA` | `EAGAIN` | Non-blocking recv has no data, or the API-specific source has no more data to return (for example a stopped timer with no queued fire count) |
 | `BUSY` | `EBUSY` | Handler already attached |
-| `TERMINATED` | `ETERM` | Context was terminated |
+| `TERMINATED` | `ETERM`, plus unclassified recv-side internal failures | Context was terminated, or recv normalization had no finer public bucket for the failure |
 | `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
 | `NOT_SUPPORTED` | `ENOTSUP` | Unsupported socket type for recv |
 
@@ -186,10 +191,14 @@ typedef enum zlink_recv_result_t
 
 | Category | Functions |
 |---|---|
+| Router recv | `zlink_router_recv` |
+| SPOT recv | `zlink_spot_recv` |
+| Router-SPOT recv | `zlink_router_spot_recv` |
 | Recv | `zlink_recv` |
 | Subscribe | `zlink_subscribe` |
 | Subscription event | `zlink_subscription_event` |
-| Monitor recv | `zlink_monitor_recv` |
+| Socket monitor recv | `zlink_socket_monitor_recv` |
+| Service monitor recv | `zlink_service_monitor_recv` |
 | Timer recv | `zlink_timer_recv` |
 
 ---
@@ -198,7 +207,7 @@ typedef enum zlink_recv_result_t
 
 Applies to all handler registration functions: recv handler, subscribe
 handler, send-ready handler, router handler, spot handler, router-spot
-handler, spot dispatch-event handler, and monitor handler.
+handler, spot dispatch-event handler, monitor handlers, and timer handler.
 
 ```c
 typedef enum zlink_handler_result_t
@@ -234,7 +243,9 @@ typedef enum zlink_handler_result_t
 | Spot handler | `zlink_spot_handler` |
 | Router-spot handler | `zlink_router_spot_handler` |
 | Spot dispatch-event handler | `zlink_spot_dispatch_event_handler` |
-| Monitor handler | `zlink_monitor_handler` |
+| Socket monitor handler | `zlink_socket_monitor_handler` |
+| Service monitor handler | `zlink_service_monitor_handler` |
+| Timer handler | `zlink_timer_handler` |
 
 ---
 
@@ -265,8 +276,11 @@ typedef enum zlink_close_result_t
 
 | Category | Functions |
 |---|---|
-| Close | `zlink_close` |
-| Destroy | `zlink_destroy` |
+| Context close | `zlink_ctx_term`, `zlink_ctx_shutdown` |
+| Socket close | `zlink_close` |
+| Monitor close | `zlink_monitor_close` |
+| Service destroy | `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_destroy` |
+| Utility destroy | `zlink_poller_destroy`, `zlink_timer_destroy` |
 
 ---
 
@@ -338,8 +352,8 @@ typedef enum zlink_connect_result_t
 
 ## zlink_config_result_t
 
-Applies to set/get option, configuration, snapshot, message, poller, and
-proxy functions.
+Applies to set/get option, configuration, snapshot, message, poller mutation,
+and proxy functions.
 
 ```c
 typedef enum zlink_config_result_t
@@ -357,23 +371,29 @@ typedef enum zlink_config_result_t
 |---|---|---|
 | `OK` | -- | Configuration succeeded |
 | `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
-| `INVALID_ARGUMENT` | `EINVAL` | Invalid parameter |
+| `INVALID_ARGUMENT` | `EINVAL`, plus some `EBUSY`-style config conflicts that have no dedicated public config bucket | Invalid parameter or a config-layer conflict collapsed into the nearest public bucket |
 | `NOT_SUPPORTED` | `ENOTSUP` | Unsupported option |
 
 ### Applicable functions
 
 | Category | Functions |
 |---|---|
+| Context | `zlink_ctx_set` |
+| Message lifecycle | `zlink_msg_init`, `zlink_msg_init_size`, `zlink_msg_init_data`, `zlink_msg_close`, `zlink_msg_move`, `zlink_msg_copy` |
 | Socket option | `zlink_set_option`, `zlink_get_option` |
 | Routing ID | `zlink_set_routing_id`, `zlink_get_routing_id` |
-| TLS | `zlink_set_tls` |
+| TLS | `zlink_set_tls_server`, `zlink_set_tls_client` |
 | Subscription | `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at` |
-| Discovery | `zlink_attach_discovery` |
+| Service attach | `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery` |
 | Registry/discovery config | Registry and discovery configuration functions |
-| Snapshot | Snapshot functions |
-| Message | Message functions |
-| Poller | Poller functions |
+| Snapshot/query | Service snapshot and query functions |
+| Poller config | `zlink_poller_add`, `zlink_poller_modify`, `zlink_poller_remove`, `zlink_poller_add_fd`, `zlink_poller_add_timer`, `zlink_poller_modify_fd`, `zlink_poller_remove_fd`, `zlink_poller_remove_timer` |
 | Proxy | Proxy functions |
+| Timer config | `zlink_timer_start`, `zlink_timer_stop` |
+
+`zlink_poll`, `zlink_poller_size`, `zlink_poller_wait`, and
+`zlink_poller_wait_all` remain plain `int` APIs with `error_out_`. They do
+not directly return `zlink_config_result_t`.
 
 ---
 
@@ -451,7 +471,7 @@ typedef enum zlink_config_result_t
 | `INVALID_STATE` | -- | -- | Y |
 | `THREAD_VIOLATION` | -- | -- | Y |
 | `OUT_OF_MEMORY` | Y | Y | Y |
-| `SEQ_EXHAUSTED` | -- | -- | Y |
+| `SEQ_EXHAUSTED` | Y | Y | Y |
 | `INTERNAL_ERROR` | Y | Y | Y |
 
 ### SPOT send functions
@@ -498,9 +518,9 @@ typedef enum zlink_config_result_t
 |---|---|
 | `zlink_submit_result_t` | `zlink_send`, `zlink_send_rid`, `zlink_publish`, `zlink_dealer_request`, `zlink_router_request`, `zlink_router_reply`, `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_router_request_spot`, `zlink_spot_send_spot`, `zlink_spot_send_router`, `zlink_router_send_spot`, `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
 | `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback) |
-| `zlink_recv_result_t` | `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_monitor_recv`, `zlink_timer_recv` |
-| `zlink_handler_result_t` | `zlink_recv_handler`, `zlink_subscribe_handler`, `zlink_send_ready_handler`, `zlink_router_handler`, `zlink_spot_handler`, `zlink_router_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_monitor_handler` |
-| `zlink_close_result_t` | `zlink_close`, `zlink_destroy` |
+| `zlink_recv_result_t` | `zlink_router_recv`, `zlink_spot_recv`, `zlink_router_spot_recv`, `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_socket_monitor_recv`, `zlink_service_monitor_recv`, `zlink_timer_recv` |
+| `zlink_handler_result_t` | `zlink_recv_handler`, `zlink_subscribe_handler`, `zlink_send_ready_handler`, `zlink_router_handler`, `zlink_spot_handler`, `zlink_router_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_service_monitor_handler`, `zlink_timer_handler` |
+| `zlink_close_result_t` | `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_close`, `zlink_monitor_close`, `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_destroy`, `zlink_poller_destroy`, `zlink_timer_destroy` |
 | `zlink_bind_result_t` | `zlink_bind` |
 | `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_unbind` |
-| `zlink_config_result_t` | `zlink_set_option`, `zlink_get_option`, `zlink_set_routing_id`, `zlink_get_routing_id`, `zlink_set_tls`, `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at`, `zlink_attach_discovery`, and registry/discovery/snapshot/message/poller/proxy configuration functions |
+| `zlink_config_result_t` | `zlink_ctx_set`, message lifecycle/config functions, socket/TLS/routing/subscription configuration functions, `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery`, registry/discovery/snapshot/query functions, poller mutation functions, proxy functions, and `zlink_timer_start` / `zlink_timer_stop` |

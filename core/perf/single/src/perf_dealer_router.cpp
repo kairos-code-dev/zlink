@@ -131,7 +131,7 @@ bool send_dealer_samples (void *sender_,
             std::memcpy (
               zlink_msg_data (&part), payload_->data (), payload_->size ());
 
-        if (zlink_send (sender_, &part, 1, 0) != 0) {
+        if (zlink_send (sender_, &part, 1, ZLINK_SEND_FLAGS_NONE) != 0) {
             const int err = zlink_errno ();
             if (bench_debug_enabled ()) {
                 std::cerr << "[perf-dealer-router] send failed err=" << err

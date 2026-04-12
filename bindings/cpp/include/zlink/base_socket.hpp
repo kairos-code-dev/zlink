@@ -147,7 +147,7 @@ inline int recv_parts (void *socket_,
     size_t native_part_count = 0;
     const int rc = zlink_recv (
       socket_, source_rid_out_, &native_parts, &native_part_count,
-      static_cast<zlink_send_flags_t> (flags_));
+      static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0)
         return rc;
 
@@ -163,7 +163,7 @@ inline int recv_single_part (void *socket_,
     size_t native_part_count = 0;
     const int rc = zlink_recv (
       socket_, source_rid_out_, &native_parts, &native_part_count,
-      static_cast<zlink_send_flags_t> (flags_));
+      static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0)
         return rc;
 
@@ -186,11 +186,11 @@ inline int recv_single_part (void *socket_,
 inline send_result_t to_send_result (int result_) noexcept
 {
     switch (result_) {
-    case ZLINK_SEND_RESULT_SENT:
+    case ZLINK_SUBMIT_OK:
         return send_result_t::sent;
-    case ZLINK_SEND_RESULT_BACKPRESSURED:
+    case ZLINK_SUBMIT_BACKPRESSURED:
         return send_result_t::backpressured;
-    case ZLINK_SEND_RESULT_NOT_READY:
+    case ZLINK_SUBMIT_NOT_CONNECTED:
         return send_result_t::not_ready;
     default:
         return send_result_t::sent;
@@ -675,7 +675,7 @@ class base_socket_t : public socket_handle_t
           handle (), routing_id_native (source_rid_out_), &parts_native,
           &part_count,
           topic_buffer.data (), &topic_size,
-          static_cast<zlink_send_flags_t> (flags_));
+          static_cast<zlink_recv_flags_t> (flags_));
         if (rc != 0)
             return rc;
 
@@ -708,7 +708,7 @@ class base_socket_t : public socket_handle_t
         const int rc = zlink_subscription_event (
           handle (), routing_id_native (source_rid_out_), &subscribed,
           topic_buffer.data (),
-          &topic_size, static_cast<zlink_send_flags_t> (flags_));
+          &topic_size, static_cast<zlink_recv_flags_t> (flags_));
         if (rc != 0)
             return rc;
 

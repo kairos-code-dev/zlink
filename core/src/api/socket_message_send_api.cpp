@@ -116,7 +116,9 @@ int send_socket_singlepart_fast (socket_handle_t handle_,
         return -1;
     }
 
-    if (handle_.socket->send (core_msg, flags_ & ZLINK_DONTWAIT) != 0)
+    if (handle_.socket->send (
+          core_msg, static_cast<int> (flags_ & ZLINK_DONTWAIT))
+        != 0)
         return -1;
 
     errno = 0;
@@ -199,14 +201,12 @@ int send_stream_message (socket_handle_t handle_,
         return -1;
     }
 
-    uint32_t routing_id = 0;
-    if (!parse_stream_routing_id (rid_, &routing_id))
-        return -1;
-
     const size_t payload_size = core_msg->size ();
     if (handle_.socket->stream_dispatch_in_callback ()) {
         const int send_rc = handle_.socket->stream_dispatch_send_msg_from_io (
-          rid_, core_msg, (flags_ & ZLINK_DONTWAIT) | ZLINK_DONTWAIT);
+          rid_, core_msg,
+          static_cast<zlink_send_flags_t> (
+            (flags_ & ZLINK_DONTWAIT) | ZLINK_DONTWAIT));
         if (send_rc >= 0) {
             errno = 0;
             return stream_payload_result (payload_size);
@@ -214,6 +214,10 @@ int send_stream_message (socket_handle_t handle_,
         if (errno != EAGAIN)
             return -1;
     }
+
+    uint32_t routing_id = 0;
+    if (!parse_stream_routing_id (rid_, &routing_id))
+        return -1;
 
     zlink::msg_t outbound_msg;
     if (clone_stream_send_msg (core_msg, &outbound_msg) != 0)
@@ -227,7 +231,8 @@ int send_stream_message (socket_handle_t handle_,
         return -1;
     }
 
-    const int base_flags = flags_ & ZLINK_DONTWAIT;
+    const zlink_send_flags_t base_flags =
+      static_cast<zlink_send_flags_t> (flags_ & ZLINK_DONTWAIT);
     const int send_rc =
       s_sendmsg (handle_, reinterpret_cast<zlink_msg_t *> (&outbound_msg),
                  base_flags);
@@ -274,7 +279,9 @@ int send_socket_unrouted_parts (socket_handle_t handle_,
     }
 
     if (part_count_ == 1) {
-        const int rc = s_sendmsg (handle_, &parts_[0], flags_ & ZLINK_DONTWAIT);
+        const int rc = s_sendmsg (
+          handle_, &parts_[0],
+          static_cast<zlink_send_flags_t> (flags_ & ZLINK_DONTWAIT));
         if (rc < 0)
             return -1;
         errno = 0;
@@ -314,7 +321,7 @@ int send_socket_routed_parts (socket_handle_t handle_,
     if (part_count_ == 1) {
         const int rc = handle_.socket->send_routed (
           target_rid_, reinterpret_cast<zlink::msg_t *> (&parts_[0]),
-          flags_ & ZLINK_DONTWAIT);
+          static_cast<int> (flags_ & ZLINK_DONTWAIT));
         if (rc != 0)
             return -1;
         errno = 0;

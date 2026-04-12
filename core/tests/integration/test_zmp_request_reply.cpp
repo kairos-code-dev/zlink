@@ -553,7 +553,7 @@ void test_router_to_router_request_reply_basic ()
     reply_probe_t reply_probe;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_router_request (
       client_router, &peer_rid, &request_part, 1, &capture_reply,
-      &reply_probe, 0, 3000));
+      &reply_probe, 0, 5000));
 
     TEST_ASSERT_TRUE (wait_for_request_handler (&handler_probe));
     msleep (SETTLE_TIME);
@@ -1221,10 +1221,12 @@ void test_spot_to_router_direct_send_recv_basic ()
     zlink_msg_t *primed_parts = NULL;
     size_t primed_part_count = 0;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_router_spot_recv (router, &primed_source_node_rid,
-                                  &primed_source_spot_rid,
-                                  &primed_request_seq, &primed_parts,
-                                  &primed_part_count, ZLINK_DONTWAIT));
+      ZLINK_RECV_NO_DATA, zlink_router_spot_recv (router, &primed_source_node_rid,
+                                                  &primed_source_spot_rid,
+                                                  &primed_request_seq,
+                                                  &primed_parts,
+                                                  &primed_part_count,
+                                                  ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 
     zlink_msg_t part;

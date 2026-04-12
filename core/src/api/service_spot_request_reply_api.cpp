@@ -1749,7 +1749,8 @@ extern "C" int zlink_spot_process_route_ingress (void *node_, void *socket_)
               zlink::spot_node_access_t::runtime (
                 static_cast<zlink::spot_node_t *> (node_));
             rc =
-              runtime ? enqueue_runtime_node_router_once (runtime, &combined, 0)
+              runtime ? enqueue_runtime_node_router_once (
+                          runtime, &combined, ZLINK_SEND_FLAGS_NONE)
                       : -1;
         } else {
             rc = process_route_combined_for_local_delivery (&combined);
@@ -1784,7 +1785,7 @@ zlink_submit_result_t zlink_spot_request_spot (
         return zlink::submit_result_internal::from_errno (errno);
     if (validate_request_send_flags (flags_) != 0)
         return zlink::submit_result_internal::from_errno (errno);
-    return zlink::submit_result_internal::from_rc (
+    return zlink::submit_result_internal::from_request_submit_rc (
       start_spot_request_to_spot (spot_, dest_node_rid_, dest_spot_rid_, parts_,
                                   part_count_, flags_, timeout_ms_, handler_,
                                   userdata_));
@@ -1909,7 +1910,7 @@ zlink_submit_result_t zlink_spot_request_router (
         return zlink::submit_result_internal::from_errno (errno);
     if (validate_request_send_flags (flags_) != 0)
         return zlink::submit_result_internal::from_errno (errno);
-    return zlink::submit_result_internal::from_rc (
+    return zlink::submit_result_internal::from_request_submit_rc (
       start_spot_request_to_router (spot_, peer_rid_, parts_, part_count_,
                                     flags_, timeout_ms_, handler_, userdata_));
 }
@@ -1952,9 +1953,9 @@ zlink_submit_result_t zlink_spot_reply_spot (void *spot_,
                        routing_id_key (dest_spot_rid_));
     int rc = local_target
                ? dispatch_local_reply (&combined)
-               : (runtime ? enqueue_spot_state_route_ingress (state.get (),
-                                                              runtime, &combined,
-                                                              0)
+               : (runtime ? enqueue_spot_state_route_ingress (
+                            state.get (), runtime, &combined,
+                            ZLINK_SEND_FLAGS_NONE)
                           : -1);
     if (rc != 0 && !local_target)
         rc = dispatch_local_reply (&combined);
@@ -1996,9 +1997,8 @@ zlink_submit_result_t zlink_spot_reply_router (
       local_target ? NULL : resolve_active_spot_runtime (spot_);
     int rc = local_target
                ? dispatch_local_reply (&combined)
-               : (runtime ? enqueue_runtime_route_ingress_once (runtime,
-                                                                &combined,
-                                                                0)
+               : (runtime ? enqueue_runtime_route_ingress_once (
+                            runtime, &combined, ZLINK_SEND_FLAGS_NONE)
                           : -1);
     if (rc != 0 && !local_target)
         rc = dispatch_local_reply (&combined);
@@ -2075,7 +2075,7 @@ zlink_recv_result_t zlink_spot_recv (void *spot_,
                                      uint64_t *request_seq_out_,
                                      zlink_msg_t **parts_out_,
                                      size_t *part_count_out_,
-                                     int flags_)
+                                     zlink_recv_flags_t flags_)
 {
     if (!source_rid_out_ || !spot_rid_out_ || !request_seq_out_ || !parts_out_
         || !part_count_out_) {
@@ -2132,7 +2132,7 @@ zlink_submit_result_t zlink_router_request_spot (
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
 
-    return zlink::submit_result_internal::from_rc (
+    return zlink::submit_result_internal::from_request_submit_rc (
       start_router_request_to_spot (router_, dest_node_rid_, dest_spot_rid_,
                                     parts_, part_count_, flags_, timeout_ms_,
                                     handler_, userdata_));
@@ -2182,9 +2182,8 @@ zlink_submit_result_t zlink_router_reply_spot (
                        routing_id_key (dest_spot_rid_));
     int rc = local_target
                ? dispatch_local_reply (&combined)
-               : (runtime ? enqueue_runtime_route_ingress_once (runtime,
-                                                                &combined,
-                                                                0)
+               : (runtime ? enqueue_runtime_route_ingress_once (
+                            runtime, &combined, ZLINK_SEND_FLAGS_NONE)
                           : -1);
     if (rc != 0 && !local_target)
         rc = dispatch_local_reply (&combined);
@@ -2290,7 +2289,7 @@ zlink_recv_result_t zlink_router_spot_recv (void *router_,
                                             uint64_t *request_seq_out_,
                                             zlink_msg_t **parts_out_,
                                             size_t *part_count_out_,
-                                            int flags_)
+                                            zlink_recv_flags_t flags_)
 {
     if (!source_node_rid_out_ || !source_spot_rid_out_ || !request_seq_out_
         || !parts_out_ || !part_count_out_) {

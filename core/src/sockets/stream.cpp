@@ -103,6 +103,39 @@ zlink::pipe_t *resolve_connect_event_owner (zlink::pipe_t *pipe_)
     return owner;
 }
 
+zlink::pipe_t *resolve_direct_dispatch_output_pipe (
+  const zlink::stream_t *socket_,
+  uint32_t routing_id_)
+{
+    if (!socket_ || !zlink::stream_dispatch_owns_socket (socket_))
+        return NULL;
+
+    if (zlink::stream_dispatch_context_t::current_routing_id () != routing_id_)
+        return NULL;
+
+    zlink::pipe_t *dispatch_pipe =
+      zlink::stream_dispatch_context_t::current_pipe ();
+    if (!dispatch_pipe)
+        return NULL;
+
+    zlink::pipe_t *out = dispatch_pipe->get_peer ();
+    return out ? out : dispatch_pipe;
+}
+
+void reset_dispatched_msg (zlink::msg_t *msg_)
+{
+    if (!msg_)
+        return;
+
+    if (msg_->check ()) {
+        const int close_rc = msg_->close ();
+        errno_assert (close_rc == 0);
+    }
+
+    const int init_rc = msg_->init ();
+    errno_assert (init_rc == 0);
+}
+
 }
 
 zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
@@ -467,7 +500,15 @@ int zlink::stream_t::stream_dispatch_send_from_io (
         return -1;
     }
 
+    pipe_t *const direct_out =
+      resolve_direct_dispatch_output_pipe (this, routing_id);
+
     if (size_ == 0) {
+        if (direct_out) {
+            direct_out->terminate (false);
+            return 1;
+        }
+
         route_shard_t &shard = route_shard_for (routing_id);
         scoped_fast_lock_t shard_lock (shard.sync);
         route_shard_t::routes_t::iterator it = shard.routes.find (routing_id);
@@ -482,6 +523,13 @@ int zlink::stream_t::stream_dispatch_send_from_io (
     msg_t out_msg;
     if (out_msg.init_buffer (data_, size_) != 0)
         return -1;
+
+    if (direct_out && direct_out->write_and_flush_no_recursive_hwm_check (
+                        &out_msg)) {
+        const int init_rc = out_msg.init ();
+        errno_assert (init_rc == 0);
+        return 1;
+    }
 
     const bool dontwait = (flags_ & ZLINK_DONTWAIT) != 0 || options.sndtimeo == 0;
     const int sndtimeo = options.sndtimeo;
@@ -548,6 +596,24 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
     if (routing_id == 0) {
         errno = EINVAL;
         return -1;
+    }
+
+    pipe_t *const direct_out =
+      resolve_direct_dispatch_output_pipe (this, routing_id);
+
+    if (direct_out) {
+        if (msg_->size () == 0) {
+            direct_out->terminate (false);
+            const int init_rc = msg_->init ();
+            errno_assert (init_rc == 0);
+            return 1;
+        }
+
+        if (direct_out->write_and_flush_no_recursive_hwm_check (msg_)) {
+            const int init_rc = msg_->init ();
+            errno_assert (init_rc == 0);
+            return 1;
+        }
     }
 
     const bool dontwait = (flags_ & ZLINK_DONTWAIT) != 0 || options.sndtimeo == 0;
@@ -679,27 +745,20 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
                                                     routing_id_value);
     _dispatch_inflight.fetch_add (1, std::memory_order_acq_rel);
 
-    msg_t callback_msg;
-    const int init_rc = callback_msg.init ();
-    errno_assert (init_rc == 0);
-    const int move_rc = callback_msg.move (*msg_);
-    errno_assert (move_rc == 0);
-    const int src_init_rc = msg_->init ();
-    errno_assert (src_init_rc == 0);
-
     if (raw_callback) {
-        const int cb_rc =
-          raw_callback (&rid, reinterpret_cast<zlink_msg_t *> (&callback_msg));
+        const int cb_rc = raw_callback (&rid, reinterpret_cast<zlink_msg_t *> (msg_));
+        reset_dispatched_msg (msg_);
         _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel);
         if (cb_rc != 0)
             stop_dispatch_from_callback ();
-        return 1;
+        return 2;
     }
 
-    handler (&rid, reinterpret_cast<zlink_msg_t *> (&callback_msg), 1,
+    handler (&rid, reinterpret_cast<zlink_msg_t *> (msg_), 1,
              _dispatch_msg_handler_userdata.load (std::memory_order_acquire));
+    reset_dispatched_msg (msg_);
     _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel);
-    return 1;
+    return 2;
 }
 
 bool zlink::stream_t::stream_dispatch_owns_tls () const

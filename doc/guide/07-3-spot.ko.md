@@ -603,7 +603,7 @@ zlink_timer_start(spot_timer, 100000000ULL, 0);  /* 100ms, 무한 반복 */
 
 /* Pull 모드 */
 uint64_t fire_count;
-zlink_timer_recv(spot_timer, &fire_count, 0);
+zlink_timer_recv(spot_timer, &fire_count);
 
 /* 또는 callback 모드 */
 zlink_timer_handler(spot_timer, on_fire, NULL);

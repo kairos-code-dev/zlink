@@ -280,7 +280,7 @@ zlink_timer_start(timer, 100000000ULL, 0);  /* interval_ns, repeat_count */
 
 /* Pull mode */
 uint64_t fire_count;
-int rc = zlink_timer_recv(timer, &fire_count, 0);
+int rc = zlink_timer_recv(timer, &fire_count);
 
 /* Callback mode */
 void on_fire(void *timer, uint64_t fire_count, void *userdata) {

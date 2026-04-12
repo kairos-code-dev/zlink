@@ -25,23 +25,25 @@
 #ifdef __cplusplus
 inline int test_send_single_msg (zlink_msg_t *msg_,
                                  void *s_,
-                                 zlink_send_flags_t flags_)
+                                 int flags_)
 {
-    return zlink::send_msg_internal (s_, msg_, flags_);
+    return zlink::send_msg_internal (
+      s_, msg_, static_cast<zlink_send_flags_t> (flags_));
 }
 
 inline int test_recv_single_msg (zlink_msg_t *msg_,
                                  void *s_,
-                                 zlink_send_flags_t flags_)
+                                 int flags_)
 {
-    return zlink::recv_msg_internal (s_, msg_, flags_);
+    return zlink::recv_msg_internal (
+      s_, msg_, static_cast<zlink_send_flags_t> (flags_));
 }
 
 inline int test_stream_send_bytes (void *s_,
                                    const zlink_routing_id_t *rid_,
                                    const void *data_,
                                    size_t size_,
-                                   zlink_send_flags_t flags_)
+                                   int flags_)
 {
     zlink_msg_t msg;
     if (zlink_msg_init_size (&msg, size_) != 0)
@@ -50,7 +52,9 @@ inline int test_stream_send_bytes (void *s_,
         memcpy (zlink_msg_data (&msg), data_, size_);
 
     const zlink_submit_result_t rc =
-      ::zlink_send_rid (s_, rid_, &msg, 1, flags_ & ZLINK_DONTWAIT);
+      ::zlink_send_rid (
+        s_, rid_, &msg, 1,
+        static_cast<zlink_send_flags_t> (flags_ & ZLINK_DONTWAIT));
     if (rc != ZLINK_SUBMIT_OK) {
         const int err = errno;
         zlink_msg_close (&msg);
@@ -65,7 +69,7 @@ inline int test_stream_send_bytes (void *s_,
 inline int test_stream_send_single_msg (void *s_,
                                         const zlink_routing_id_t *rid_,
                                         zlink_msg_t *msg_,
-                                        zlink_send_flags_t flags_)
+                                        int flags_)
 {
     if (!msg_) {
         errno = EINVAL;
@@ -73,7 +77,9 @@ inline int test_stream_send_single_msg (void *s_,
     }
     const size_t size = zlink_msg_size (msg_);
     const zlink_submit_result_t rc =
-      ::zlink_send_rid (s_, rid_, msg_, 1, flags_ & ZLINK_DONTWAIT);
+      ::zlink_send_rid (
+        s_, rid_, msg_, 1,
+        static_cast<zlink_send_flags_t> (flags_ & ZLINK_DONTWAIT));
     if (rc != ZLINK_SUBMIT_OK)
         return -1;
     errno = 0;
@@ -84,7 +90,7 @@ inline int test_stream_send_single_msg (void *s_,
 inline int zlink_send (void *s_,
                        const void *buf_,
                        size_t len_,
-                       zlink_send_flags_t flags_)
+                       int flags_)
 {
     zlink_msg_t msg;
     if (zlink_msg_init_size (&msg, len_) != 0)
@@ -105,7 +111,9 @@ inline int zlink_send (void *s_,
         }
     } else {
         const zlink_submit_result_t rc =
-          ::zlink_send (s_, &msg, 1, flags_ & ZLINK_DONTWAIT);
+          ::zlink_send (
+            s_, &msg, 1,
+            static_cast<zlink_send_flags_t> (flags_ & ZLINK_DONTWAIT));
         if (rc != ZLINK_SUBMIT_OK) {
             const int err = errno;
             zlink_msg_close (&msg);
@@ -119,7 +127,7 @@ inline int zlink_send (void *s_,
 inline int zlink_recv (void *s_,
                        void *buf_,
                        size_t len_,
-                       zlink_send_flags_t flags_)
+                       int flags_)
 {
     int type = 0;
     size_t type_size = sizeof (type);
@@ -128,7 +136,9 @@ inline int zlink_recv (void *s_,
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = ::zlink_recv (s_, NULL, &parts, &part_count, flags_);
+    const int rc = ::zlink_recv (
+      s_, NULL, &parts, &part_count,
+      static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0)
         return -1;
 
@@ -150,7 +160,8 @@ inline int zlink_subscribe (void *subject_,
                             size_t *topic_id_len_)
 {
     return ::zlink_subscribe (subject_, NULL, parts_, part_count_,
-                              topic_id_out_, topic_id_len_, flags_);
+                              topic_id_out_, topic_id_len_,
+                              static_cast<zlink_recv_flags_t> (flags_));
 }
 
 inline bool test_msg_has_more (const zlink_msg_t *msg_)

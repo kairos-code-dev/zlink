@@ -345,10 +345,10 @@ SPOT과 SpotNode는 더 이상 공개 service-monitor surface를 제공하지 �
 ```c
 void on_service_event(const zlink_service_event_t *ev, void *userdata)
 {
-    if (ev->event_type & ZLINK_DISCOVERY_PROVIDERS_CHANGED) {
+    if (ev->event_type & ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED) {
         printf("provider set changed\n");
     }
-    if (ev->event_type & ZLINK_MONITOR_EVENT_ERROR) {
+    if (ev->event_type & ZLINK_SERVICE_MONITOR_EVENT_ERROR) {
         printf("service error: %d\n", ev->error_code);
     }
 }
@@ -360,7 +360,7 @@ zlink_service_monitor_handler(mon, on_service_event, NULL);
 
 ```c
 zlink_service_event_t ev;
-int rc = zlink_service_monitor_recv(mon, &ev);
+int rc = zlink_service_monitor_recv(mon, &ev, 0);
 if (rc == 0) {
     printf("event: 0x%x, value: %u\n", ev.event_type, ev.value);
 }
@@ -375,18 +375,18 @@ if (rc == 0) {
 
 | 상수 | 설명 | `value` | 이후 가능한 동작 |
 |---|---|---|---|
-| `DISCOVERY_SERVICE_UP` | 검색된 서비스 활성화 | — | — |
-| `DISCOVERY_SERVICE_DOWN` | 검색된 서비스 비활성화 | — | — |
-| `DISCOVERY_PROVIDERS_CHANGED` | provider 집합 변경 | — | — |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | 검색된 서비스 활성화 | — | — |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | 검색된 서비스 비활성화 | — | — |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | provider 집합 변경 | — | — |
 
 #### 공통 이벤트 (모든 서비스)
 
 | 상수 | 설명 |
 |---|---|
-| `MONITOR_EVENT_ERROR` | 에러 발생 |
-| `MONITOR_EVENT_CLOSED` | 모니터 닫힘 |
+| `ZLINK_SERVICE_MONITOR_EVENT_ERROR` | 에러 발생 |
+| `ZLINK_SERVICE_MONITOR_EVENT_CLOSED` | 모니터 닫힘 |
 
-상세 이벤트 목록은 [events.ko.md](../api/events.ko.md)를 참고한다.
+상세 이벤트 목록은 [events.ko.md](../spec/core/events.ko.md)를 참고한다.
 
 ## 9. 다중 소켓 모니터링
 
@@ -455,7 +455,7 @@ zlink_monitor_snapshot(mon, &snapshot);
 
 ```c
 zlink_service_event_t ev;
-int rc = zlink_service_monitor_recv(mon, &ev);
+int rc = zlink_service_monitor_recv(mon, &ev, 0);
 if (rc == 0) {
     printf("event: 0x%x, value: %u\n", ev.event_type, ev.value);
 }
@@ -611,9 +611,9 @@ snapshot/status 조회는 운영 관찰/디버깅용이며, aggregate ready coun
 현재 상태를 조회하는 용도다. 운영 대시보드, health check, 디버깅에 활용한다.
 
 ```c
-/* Check current discovery health */
-zlink_discovery_status_t status;
-zlink_discovery_status_snapshot(discovery, &status);
+/* Check current registry health */
+zlink_registry_status_t status;
+zlink_registry_status_snapshot(registry, &status);
 printf("state=%d\n", status.state);
 ```
 

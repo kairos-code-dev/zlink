@@ -13,6 +13,7 @@ struct bench_settings_t
 {
     size_t clients;
     int hwm;
+    int warmup_seconds;
     int duration_seconds;
     int connect_ready_timeout_ms;
 };
@@ -139,6 +140,9 @@ inline bench_settings_t resolve_bench_settings ()
       "PERF_HWM",
       resolve_default_hwm (pattern, resolved_clients),
       1);
+    settings.warmup_seconds =
+      resolve_multi_int_env_with_fallback (
+        "PERF_MULTI_WARMUP_SECONDS", "PERF_WARMUP_SECONDS", 3, 0);
     settings.duration_seconds =
       resolve_multi_int_env_with_fallback (
         "PERF_MULTI_DURATION_SECONDS", "PERF_DURATION_SECONDS", 5, 1);

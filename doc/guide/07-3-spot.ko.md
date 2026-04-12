@@ -471,6 +471,31 @@ request-reply 전용 함수를 사용한다. 구현은 topic 본문에 표식을
 와이어(wire, 프로토콜 전송 레벨) 위에서 `SPOT routed envelope -> request-reply envelope -> payload`
 순서로 control part 를 붙인다.
 
+### 6.0 Routed Mesh 경로
+
+Routed 메시지는 **SpotNode mesh** 를 경유한다. `Spot` 은 사용자 대면 facade,
+`SpotNode` 는 실제 mesh 참여 노드다. request/reply 는 양측의 SpotNode 를
+서로 반대 방향으로 통과한다:
+
+```
+requester 측                            replier 측
+┌──────┐   ┌───────────┐       ┌───────────┐   ┌──────┐
+│ spot │──▶│ spot_node │──────▶│ spot_node │──▶│ spot │  (request)
+└──────┘   └───────────┘       └───────────┘   └──────┘
+   ▲             ▲                    │              │
+   │             │                    │              │
+   └─────────────┴────────────────────┴──────────────┘   (reply, 역방향)
+```
+
+- requester 의 `Spot` 은 `(dest_node_rid, dest_spot_rid)` 로 replier 를
+  지정한다.
+- 로컬 `SpotNode` 가 mesh 를 통해 대상 노드로 request 를 라우팅한다.
+- 대상 `SpotNode` 가 target `Spot` 으로 전달한다.
+- replier 의 reply 는 같은 경로를 역방향으로 되돌아온다.
+
+`spot → router`, `router → spot` routed request-reply 도 동일한 mesh 경로를
+사용한다. 엔드포인트 facade 만 다를 뿐 전송 경로는 같다.
+
 ### Request-Reply 흐름
 
 #### spot → spot request-reply
@@ -523,13 +548,15 @@ SPOT과 ROUTER 사이의 request-reply도 동일한 패턴이다.
 ### 6.1 spot -> spot request
 
 ```c
-static void on_spot_reply(int reply_errno,
+static void on_spot_reply(zlink_request_result_t result,
                           zlink_msg_t *parts,
                           size_t part_count,
                           void *userdata)
 {
-    if (reply_errno == 0)
+    if (result == ZLINK_REQUEST_OK)
         zlink_multipart_close(parts, part_count);
+    /* 그 밖의 result 값: ZLINK_REQUEST_TIMED_OUT, NOT_FOUND,
+       TERMINATED, PROTOCOL_ERROR */
 }
 
 zlink_msg_t req;

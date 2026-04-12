@@ -95,8 +95,9 @@ zlink_send_rid(router, source_rid, &reply, 1, 0);
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-int rc = zlink_recv(router, &source_rid, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_recv(
+    router, &source_rid, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     /* source_rid identifies the sender */
     /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
@@ -104,7 +105,8 @@ if (rc == 0) {
 ```
 
 > 피어별 송신 큐가 가득 차면(HWM) `ROUTER_MANDATORY` 활성 시
-> `EHOSTUNREACH`를 반환하고, 그렇지 않으면 메시지를 조용히 드롭한다.
+> `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환하고, 그렇지 않으면 메시지를 조용히
+> 드롭한다.
 > 고급 backpressure 패턴은 [성능 가이드](10-performance.ko.md)를 참고.
 
 ??? example "Full Sample Code"
@@ -212,16 +214,23 @@ zlink_router_handler(router, on_request, NULL);
 `ROUTER` 가 먼저 request 를 시작할 때는 reply callback 을 받는다.
 
 ```c
-static void on_router_reply(int reply_errno,
+static void on_router_reply(zlink_request_result_t result,
                             zlink_msg_t *parts,
                             size_t part_count,
                             void *userdata)
 {
-    if (reply_errno == 0)
+    if (result == ZLINK_REQUEST_OK)
         zlink_multipart_close(parts, part_count);
+    /* 그 밖의 result 값: ZLINK_REQUEST_TIMED_OUT, NOT_FOUND,
+       TERMINATED, PROTOCOL_ERROR */
 }
 
-zlink_router_request(router, target_rid, &req, 1, 2500, on_router_reply, NULL);
+/* 시그니처: zlink_router_request(router, peer_rid, parts, count,
+   handler, userdata, flags, timeout_ms) */
+zlink_submit_result_t rc = zlink_router_request(
+    router, target_rid, &req, 1,
+    on_router_reply, NULL, 0 /* flags */, 2500 /* timeout_ms */);
+if (rc != ZLINK_SUBMIT_OK) { /* submit 실패 처리 */ }
 ```
 
 #### Typed Recv (Pull 모드)
@@ -390,8 +399,8 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(m
 zlink_msg_t msg2;
 zlink_msg_init_size(&msg2, 4);
 memcpy(zlink_msg_data(&msg2), "DATA", 4);
-int rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
-if (rc == -1 && errno == EHOSTUNREACH) {
+zlink_submit_result_t rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
+if (rc == ZLINK_SUBMIT_NOT_CONNECTED) {
     /* Target "UNKNOWN" not found */
 }
 ```
@@ -595,8 +604,8 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(m
 zlink_msg_t msg2;
 zlink_msg_init_size(&msg2, 4);
 memcpy(zlink_msg_data(&msg2), "DATA", 4);
-int rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
-if (rc == -1 && errno == EHOSTUNREACH) {
+zlink_submit_result_t rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
+if (rc == ZLINK_SUBMIT_NOT_CONNECTED) {
     /* 대상 "UNKNOWN"을 찾을 수 없음 */
 }
 ```

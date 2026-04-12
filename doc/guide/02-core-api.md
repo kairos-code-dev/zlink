@@ -240,30 +240,50 @@ separate thread.
 
 ## 5. Error Handling
 
+zlink's public C API uses **function-specific typed result enums**. Each
+function returns a `zlink_<category>_result_t` enum where `0` is the
+`OK` value and non-zero values identify specific failure modes. The
+canonical enum values are defined in
+[core/errno-map.md](../spec/core/errno-map.md).
+
+The 8 result enum categories:
+
+| Enum | Applies to |
+|------|-----------|
+| `zlink_submit_result_t` | send / publish / request submit / reply submit |
+| `zlink_request_result_t` | request completion (callback) |
+| `zlink_recv_result_t` | recv / subscribe / monitor recv / timer recv |
+| `zlink_handler_result_t` | handler registration (`zlink_*_handler()`) |
+| `zlink_close_result_t` | close / destroy |
+| `zlink_bind_result_t` | bind |
+| `zlink_connect_result_t` | connect / disconnect / unbind |
+| `zlink_config_result_t` | option set/get, snapshot, poller mutation, message lifecycle, timer config |
+
 ```c
 zlink_msg_t part;
 zlink_msg_init_size(&part, size);
 memcpy(zlink_msg_data(&part), data, size);
-int rc = zlink_send(socket, &part, 1, 0);
-if (rc == -1) {
-    int err = zlink_errno();
-    printf("Error: %s\n", zlink_strerror(err));
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, 0);
+if (rc != ZLINK_SUBMIT_OK) {
+    /* typical values: BACKPRESSURED, NOT_CONNECTED, NOT_FOUND,
+       TERMINATED, INVALID_HANDLE, INVALID_ARGUMENT, NOT_SUPPORTED,
+       INVALID_STATE, THREAD_VIOLATION, OUT_OF_MEMORY, INTERNAL_ERROR */
+    printf("send failed: %d\n", (int)rc);
+    if (rc == ZLINK_SUBMIT_INTERNAL_ERROR) {
+        /* INTERNAL_ERROR aggregates rarer failures;
+           zlink_errno() surfaces the underlying reason */
+        int internal = zlink_errno();
+        printf("  internal errno: %s\n", zlink_strerror(internal));
+    }
 }
 ```
 
-Key error codes:
+**`zlink_errno()` is for `INTERNAL_ERROR` detail only.** Other result
+codes are self-descriptive and do not require `zlink_errno()` lookup.
 
-| Error | Description |
-|-------|-------------|
-| `EAGAIN` | Cannot complete immediately in non-blocking mode |
-| `EBUSY` | recv/callback mode conflict (handler already attached) |
-| `ETERM` | Context has been terminated |
-| `ENOTSOCK` | Invalid socket |
-| `EINTR` | Interrupted by signal |
-| `EFSM` | Operation not allowed in current state |
-| `EHOSTUNREACH` | Host unreachable |
-| `ENOTSUP` | Operation not supported on this subject type |
-| `ENOENT` | Target not found (e.g. SPOT destination unknown) |
+Language bindings surface this 8-category structure as typed
+exception/error subclasses — see
+[bindings Per-Function Error Type Hierarchy](../spec/bindings/README.md).
 
 ## 6. Timer API
 
@@ -280,7 +300,9 @@ zlink_timer_start(timer, 100000000ULL, 0);  /* interval_ns, repeat_count */
 
 /* Pull mode */
 uint64_t fire_count;
-int rc = zlink_timer_recv(timer, &fire_count);
+zlink_recv_result_t rc = zlink_timer_recv(timer, &fire_count);
+/* rc values: ZLINK_RECV_OK, NO_DATA (no queued fire), TERMINATED,
+   INVALID_HANDLE, NOT_SUPPORTED */
 
 /* Callback mode */
 void on_fire(void *timer, uint64_t fire_count, void *userdata) {

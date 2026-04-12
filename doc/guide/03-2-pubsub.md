@@ -327,12 +327,13 @@ void *xpub = zlink_socket(ctx, ZLINK_XPUB);
 int nodrop = 1;
 zlink_set_pub_option(xpub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
 
-/* On HWM, send returns EAGAIN instead of dropping */
+/* On HWM, publish returns BACKPRESSURED instead of dropping */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 5);
 memcpy(zlink_msg_data(&msg), "hello", 5);
-int rc = zlink_publish(xpub, NULL, &msg, 1, ZLINK_DONTWAIT);
-if (rc == -1 && zlink_errno() == EAGAIN) {
+zlink_submit_result_t rc = zlink_publish(
+    xpub, NULL, &msg, 1, ZLINK_DONTWAIT);
+if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
     /* HWM reached — retry or apply backpressure logic */
     zlink_msg_close(&msg);
 }
@@ -369,12 +370,12 @@ zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "sunny", 5);
 zlink_publish(pub, "weather", &part, 1, 0);  /* OK */
 
-/* Using zlink_send() on PUB → ENOTSUP */
-zlink_send(pub, &part, 1, 0);  /* errno = ENOTSUP */
+/* Using zlink_send() on PUB → returns ZLINK_SUBMIT_NOT_SUPPORTED */
+zlink_send(pub, &part, 1, 0);  /* returns ZLINK_SUBMIT_NOT_SUPPORTED */
 
 /* SUB: receive via zlink_subscribe(). Cannot send/publish */
-zlink_publish(sub, "weather", &part, 1, 0);  /* errno = ENOTSUP */
-zlink_send(sub, &part, 1, 0);               /* errno = ENOTSUP */
+zlink_publish(sub, "weather", &part, 1, 0);  /* ZLINK_SUBMIT_NOT_SUPPORTED */
+zlink_send(sub, &part, 1, 0);                /* ZLINK_SUBMIT_NOT_SUPPORTED */
 ```
 
 ---

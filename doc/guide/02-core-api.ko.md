@@ -236,32 +236,49 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
 
 ## 5. Error 처리
 
+zlink 공개 C API 는 **함수별 typed result enum** 을 사용한다. 각 함수는
+`zlink_<category>_result_t` 를 반환하며 `0` 은 항상 `OK` 이고 non-zero 값이
+구체 실패 모드를 식별한다. 전체 enum 정의는
+[core/errno-map.md](../spec/core/errno-map.ko.md) 를 참조한다.
+
+8 개 result enum 카테고리:
+
+| Enum | 적용 함수군 |
+|------|------------|
+| `zlink_submit_result_t` | send / publish / request submit / reply submit |
+| `zlink_request_result_t` | request completion (callback) |
+| `zlink_recv_result_t` | recv / subscribe / monitor recv / timer recv |
+| `zlink_handler_result_t` | handler 등록 (`zlink_*_handler()`) |
+| `zlink_close_result_t` | close / destroy |
+| `zlink_bind_result_t` | bind |
+| `zlink_connect_result_t` | connect / disconnect / unbind |
+| `zlink_config_result_t` | option 설정/조회, snapshot, poller 변경, message lifecycle, timer config |
+
 ```c
 zlink_msg_t part;
 zlink_msg_init_size(&part, size);
 memcpy(zlink_msg_data(&part), data, size);
-int rc = zlink_send(socket, &part, 1, 0);
-if (rc == -1) {
-    int err = zlink_errno();
-    printf("Error: %s\n", zlink_strerror(err));
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, 0);
+if (rc != ZLINK_SUBMIT_OK) {
+    /* 대표 값: BACKPRESSURED, NOT_CONNECTED, NOT_FOUND, TERMINATED,
+       INVALID_HANDLE, INVALID_ARGUMENT, NOT_SUPPORTED, INVALID_STATE,
+       THREAD_VIOLATION, OUT_OF_MEMORY, INTERNAL_ERROR */
+    printf("send failed: %d\n", (int)rc);
+    if (rc == ZLINK_SUBMIT_INTERNAL_ERROR) {
+        /* INTERNAL_ERROR 는 coarse bucket; zlink_errno() 로 상세 원인 조회 */
+        int internal = zlink_errno();
+        printf("  internal errno: %s\n", zlink_strerror(internal));
+    }
 }
 ```
 
-주요 error code:
+**`zlink_errno()` 는 `INTERNAL_ERROR` 상세 조회 전용이다.** 다른 result code
+는 자기 서술적이므로 `zlink_errno()` 조회가 불필요하다.
 
-| Error | 값 | 설명 |
-|-------|-----|------|
-| `EAGAIN` | POSIX | Non-blocking mode에서 즉시 완료 불가 |
-| `EBUSY` | POSIX | recv/callback 모드 충돌 (handler가 이미 부착됨) |
-| `EINTR` | POSIX | Signal에 의해 interrupt됨 |
-| `ENOTSOCK` | `HAUSNUMERO + 9` | 유효하지 않은 socket |
-| `EHOSTUNREACH` | `HAUSNUMERO + 17` | Host 도달 불가 |
-| `EFSM` | `HAUSNUMERO + 51` | 현재 state에서 허용되지 않는 연산 |
-| `ETERM` | `HAUSNUMERO + 53` | Context terminated |
-| `ENOTSUP` | `HAUSNUMERO + 1` | 해당 subject type에서 지원하지 않는 연산 |
-| `ENOENT` | — | 대상을 찾을 수 없음 (예: SPOT 대상 미발견) |
-
-> `ZLINK_HAUSNUMERO` = 156384712. POSIX errno와 충돌하지 않는 zlink 전용 base 값이다.
+언어 바인딩은 이 8 카테고리 구조를 typed exception/error 하위 타입으로
+노출한다. 자세한 계약은
+[bindings Per-Function Error Type Hierarchy](../spec/bindings/README.ko.md)
+참조.
 
 ## 6. Timer API
 
@@ -277,7 +294,9 @@ zlink_timer_start(timer, 100000000ULL, 0);  /* interval_ns, repeat_count */
 
 /* Pull 모드 */
 uint64_t fire_count;
-int rc = zlink_timer_recv(timer, &fire_count);
+zlink_recv_result_t rc = zlink_timer_recv(timer, &fire_count);
+/* rc 값: ZLINK_RECV_OK, NO_DATA (큐에 fire 없음), TERMINATED,
+   INVALID_HANDLE, NOT_SUPPORTED */
 
 /* Callback 모드 */
 void on_fire(void *timer, uint64_t fire_count, void *userdata) {

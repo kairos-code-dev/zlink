@@ -90,15 +90,18 @@ DEALER는 `zlink_recv()`로 동기 수신한다.
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-int rc = zlink_recv(dealer, &source_rid, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_recv(
+    dealer, &source_rid, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
 }
+/* 그 밖의 rc 값: ZLINK_RECV_NO_DATA (EAGAIN),
+   TERMINATED, INVALID_HANDLE, NOT_SUPPORTED */
 ```
 
 > HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
-> `EAGAIN`을 반환한다. 고급 backpressure 패턴은
+> `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 고급 backpressure 패턴은
 > [성능 가이드](10-performance.ko.md)를 참고.
 
 ??? example "Full Sample Code -- Recv"
@@ -134,8 +137,8 @@ if (rc == 0) {
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
 memcpy(zlink_msg_data(&msg), "data", 4);
-int rc = zlink_send(dealer, &msg, 1, ZLINK_DONTWAIT);
-if (rc == -1 && errno == EAGAIN) {
+zlink_submit_result_t rc = zlink_send(dealer, &msg, 1, ZLINK_DONTWAIT);
+if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
     /* HWM exceeded or no peer connected */
 }
 ```
@@ -176,13 +179,15 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 > [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
 
 ```c
-static void on_reply(int reply_errno,
+static void on_reply(zlink_request_result_t result,
                      zlink_msg_t *parts,
                      size_t part_count,
                      void *userdata)
 {
-    if (reply_errno != 0) {
-        fprintf(stderr, "request failed: %d\n", reply_errno);
+    if (result != ZLINK_REQUEST_OK) {
+        /* result 값: ZLINK_REQUEST_TIMED_OUT, NOT_FOUND,
+           TERMINATED, PROTOCOL_ERROR */
+        fprintf(stderr, "request failed: %d\n", (int)result);
         return;
     }
 
@@ -200,7 +205,11 @@ zlink_set_dealer_option(
 zlink_msg_t req;
 zlink_msg_init_size(&req, 4);
 memcpy(zlink_msg_data(&req), "ping", 4);
-zlink_dealer_request(dealer, &req, 1, 0, on_reply, NULL);
+/* 시그니처: zlink_dealer_request(dealer, parts, count, handler,
+   userdata, flags, timeout_ms) */
+zlink_submit_result_t rc = zlink_dealer_request(
+    dealer, &req, 1, on_reply, NULL, 0 /* flags */, 0 /* timeout_ms */);
+if (rc != ZLINK_SUBMIT_OK) { /* submit 실패 처리 */ }
 ```
 
 이때 `timeout_ms = 0` 은 socket 기본값을 뜻하고, socket 기본값도 `0` 이면

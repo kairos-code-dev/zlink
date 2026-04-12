@@ -72,8 +72,9 @@ receive synchronously.
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-int rc = zlink_recv(router, &source_rid, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_recv(
+    router, &source_rid, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     /* source_rid identifies the sender */
     /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
@@ -81,8 +82,8 @@ if (rc == 0) {
 ```
 
 > When the per-peer send queue is full (HWM), ROUTER returns
-> `EHOSTUNREACH` with `ROUTER_MANDATORY` enabled, or silently drops
-> the message otherwise. For advanced backpressure patterns, see
+> `ZLINK_SUBMIT_NOT_CONNECTED` with `ROUTER_MANDATORY` enabled, or silently
+> drops the message otherwise. For advanced backpressure patterns, see
 > [Performance Guide](10-performance.md).
 
 ??? example "Full Sample Code"
@@ -196,16 +197,23 @@ zlink_router_handler(router, on_request, NULL);
 When ROUTER initiates a request, the reply is delivered via callback.
 
 ```c
-static void on_router_reply(int reply_errno,
+static void on_router_reply(zlink_request_result_t result,
                             zlink_msg_t *parts,
                             size_t part_count,
                             void *userdata)
 {
-    if (reply_errno == 0)
+    if (result == ZLINK_REQUEST_OK)
         zlink_multipart_close(parts, part_count);
+    /* other result values: ZLINK_REQUEST_TIMED_OUT, NOT_FOUND,
+       TERMINATED, PROTOCOL_ERROR */
 }
 
-zlink_router_request(router, target_rid, &req, 1, 2500, on_router_reply, NULL);
+/* signature: zlink_router_request(router, peer_rid, parts, count,
+   handler, userdata, flags, timeout_ms) */
+zlink_submit_result_t rc = zlink_router_request(
+    router, target_rid, &req, 1,
+    on_router_reply, NULL, 0 /* flags */, 2500 /* timeout_ms */);
+if (rc != ZLINK_SUBMIT_OK) { /* handle submit failure */ }
 ```
 
 #### Typed Recv (Pull Mode)
@@ -315,8 +323,8 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(m
 zlink_msg_t msg2;
 zlink_msg_init_size(&msg2, 4);
 memcpy(zlink_msg_data(&msg2), "DATA", 4);
-int rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
-if (rc == -1 && errno == EHOSTUNREACH) {
+zlink_submit_result_t rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
+if (rc == ZLINK_SUBMIT_NOT_CONNECTED) {
     /* Target "UNKNOWN" not found */
 }
 ```

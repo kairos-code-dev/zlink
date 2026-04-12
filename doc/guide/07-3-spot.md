@@ -425,16 +425,46 @@ single reply. The implementation uses ZMP control parts on the wire
 (`SPOT routed envelope → request-reply envelope → payload`), not topic
 fields.
 
+### 6.0 Routed Mesh Path
+
+Routed messages traverse the **SpotNode mesh** — `Spot` is the
+user-facing facade, `SpotNode` is the underlying mesh participant.
+Request and reply travel through the local and remote SpotNodes in
+opposite directions:
+
+```
+requester side                          replier side
+┌──────┐   ┌───────────┐       ┌───────────┐   ┌──────┐
+│ spot │──▶│ spot_node │──────▶│ spot_node │──▶│ spot │  (request)
+└──────┘   └───────────┘       └───────────┘   └──────┘
+   ▲             ▲                    │              │
+   │             │                    │              │
+   └─────────────┴────────────────────┴──────────────┘   (reply, reversed)
+```
+
+- The requester's `Spot` addresses the replier by
+  `(dest_node_rid, dest_spot_rid)`.
+- The local `SpotNode` routes the request through the mesh to the
+  destination node.
+- The destination `SpotNode` delivers it to the target `Spot`.
+- The replier's reply retraces the path back to the requester.
+
+The same path applies to `spot → router` and `router → spot` routed
+request-reply; the endpoint facades differ but the mesh transport does
+not.
+
 ### 6.1 spot → spot Request
 
 ```c
-static void on_spot_reply(int reply_errno,
+static void on_spot_reply(zlink_request_result_t result,
                           zlink_msg_t *parts,
                           size_t part_count,
                           void *userdata)
 {
-    if (reply_errno == 0)
+    if (result == ZLINK_REQUEST_OK)
         zlink_multipart_close(parts, part_count);
+    /* other result values: ZLINK_REQUEST_TIMED_OUT, NOT_FOUND,
+       TERMINATED, PROTOCOL_ERROR */
 }
 
 zlink_msg_t req;

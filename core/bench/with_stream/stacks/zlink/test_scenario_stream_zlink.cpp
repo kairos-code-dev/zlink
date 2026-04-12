@@ -10,6 +10,11 @@
 #include <string>
 #include <thread>
 
+extern "C" {
+typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *, zlink_msg_t *);
+int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_);
+}
+
 namespace {
 
 static const size_t k_min_payload_size = 16;
@@ -119,8 +124,8 @@ class zlink_stream_echo_server_t
         }
 
         g_server_instance = this;
-        if (zlink_recv_handler (
-              server, &zlink_stream_echo_server_t::on_packet_static, NULL)
+        if (zlink_stream_attach_raw (
+              server, &zlink_stream_echo_server_t::on_raw_packet_static)
             != 0) {
             std::fprintf (stderr, "zlink stream: dispatch attach failed: %s\n",
                           zlink_strerror (zlink_errno ()));
@@ -146,16 +151,17 @@ class zlink_stream_echo_server_t
     }
 
   private:
-    static void on_packet_static (const zlink_routing_id_t *rid_,
-                                  zlink_msg_t *parts_,
-                                  size_t part_count_,
-                                  void *)
+    static int on_raw_packet_static (const zlink_routing_id_t *rid_,
+                                     zlink_msg_t *msg_)
     {
         zlink_stream_echo_server_t *self = g_server_instance;
-        if (self && rid_ && parts_ && part_count_ > 0)
-            (void) self->on_packet (rid_, &parts_[0]);
-        for (size_t i = 0; i < part_count_; ++i)
-            (void) zlink_msg_close (&parts_[i]);
+        if (!self || !rid_ || !msg_) {
+            if (msg_)
+                (void) zlink_msg_close (msg_);
+            return 0;
+        }
+
+        return self->on_raw_packet (rid_, msg_);
     }
 
     void mark_parse_error ()
@@ -164,28 +170,33 @@ class zlink_stream_echo_server_t
         protocol_error.fetch_add (1, std::memory_order_relaxed);
     }
 
-    int on_packet (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
+    int on_raw_packet (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
     {
         if (!rid_ || rid_->size != 4) {
             mark_parse_error ();
+            (void) zlink_msg_close (msg_);
             return 0;
         }
 
         const unsigned char *payload =
           static_cast<const unsigned char *> (zlink_msg_data (msg_));
         const size_t payload_size = zlink_msg_size (msg_);
-        if (payload_size == 0)
+        if (payload_size == 0) {
+            (void) zlink_msg_close (msg_);
             return 0;
+        }
 
         if (payload_size == 1 && payload
             && (payload[0] == k_stream_event_connect
                 || payload[0] == k_stream_event_disconnect)) {
+            (void) zlink_msg_close (msg_);
             return 0;
         }
 
         recv_msgs.fetch_add (1, std::memory_order_relaxed);
         if (zlink_send_rid (server, rid_, msg_, 1, ZLINK_SEND_FLAGS_NONE) != 0) {
             send_error.fetch_add (1, std::memory_order_relaxed);
+            (void) zlink_msg_close (msg_);
         }
         return 0;
     }

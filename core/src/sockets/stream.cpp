@@ -27,7 +27,12 @@ int parse_non_negative_int_env (const char *name_, int default_value_)
     return static_cast<int> (value);
 }
 
-const int stream_batch_size_min = 12288;
+// STREAM echo and proxy traffic is often dominated by small payloads. A large
+// mandatory batch floor improves large-frame throughput, but it also adds copy
+// and queuing cost on 64B-class traffic. Keep the initial batch modest and let
+// the ASIO stream encoder grow dynamically when the socket sustains larger
+// bursts.
+const int stream_batch_size_min = 4096;
 
 // Keep a small read headroom so framed application protocols are less likely
 // to split at the exact payload boundary.
@@ -128,6 +133,11 @@ void reset_dispatched_msg (zlink::msg_t *msg_)
         return;
 
     if (msg_->check ()) {
+        if (msg_->size () == 0 && msg_->flags () == 0
+            && msg_->get_routing_id () == 0 && msg_->group ()[0] == '\0') {
+            return;
+        }
+
         const int close_rc = msg_->close ();
         errno_assert (close_rc == 0);
     }
@@ -239,7 +249,9 @@ int zlink::stream_t::xsend (msg_t *msg_)
         if (msg_->size () == 0) {
             out->terminate (false);
         } else {
-            const bool ok = out->write_and_flush (msg_);
+            const bool ok =
+              out->write_single_message_and_flush_no_recursive_hwm_check (
+                msg_);
             if (unlikely (!ok)) {
                 errno = EAGAIN;
                 return -1;
@@ -305,7 +317,9 @@ int zlink::stream_t::xsend (msg_t *msg_)
             return 0;
             }
 
-            const bool ok = _current_out->write_and_flush (msg_);
+            const bool ok =
+              _current_out->write_single_message_and_flush_no_recursive_hwm_check (
+                msg_);
             if (likely (ok)) {
             } else {
                 _current_out = NULL;
@@ -524,8 +538,9 @@ int zlink::stream_t::stream_dispatch_send_from_io (
     if (out_msg.init_buffer (data_, size_) != 0)
         return -1;
 
-    if (direct_out && direct_out->write_and_flush_no_recursive_hwm_check (
-                        &out_msg)) {
+    if (direct_out
+        && direct_out->write_single_message_and_flush_no_recursive_hwm_check (
+          &out_msg)) {
         const int init_rc = out_msg.init ();
         errno_assert (init_rc == 0);
         return 1;
@@ -552,8 +567,9 @@ int zlink::stream_t::stream_dispatch_send_from_io (
                 return -1;
             }
 
-            if (it->second->write (&out_msg)) {
-                it->second->flush ();
+            if (it->second
+                  ->write_single_message_and_flush_no_recursive_hwm_check (
+                    &out_msg)) {
                 const int init_rc = out_msg.init ();
                 errno_assert (init_rc == 0);
                 return 1;
@@ -609,7 +625,8 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
             return 1;
         }
 
-        if (direct_out->write_and_flush_no_recursive_hwm_check (msg_)) {
+        if (direct_out->write_single_message_and_flush_no_recursive_hwm_check (
+              msg_)) {
             const int init_rc = msg_->init ();
             errno_assert (init_rc == 0);
             return 1;
@@ -642,8 +659,9 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
                 return 1;
             }
 
-            if (it->second->write (msg_)) {
-                it->second->flush ();
+            if (it->second
+                  ->write_single_message_and_flush_no_recursive_hwm_check (
+                    msg_)) {
                 const int init_rc = msg_->init ();
                 errno_assert (init_rc == 0);
                 return 1;
@@ -662,6 +680,42 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
 
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
+}
+
+int zlink::stream_t::stream_dispatch_send_current_msg_from_io (msg_t *msg_,
+                                                               int flags_)
+{
+    if (!msg_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    pipe_t *dispatch_pipe = zlink::stream_dispatch_context_t::current_pipe ();
+    pipe_t *direct_out = dispatch_pipe ? dispatch_pipe->get_peer () : NULL;
+    if (!direct_out && dispatch_pipe)
+        direct_out = dispatch_pipe;
+    if (!direct_out) {
+        errno = EAGAIN;
+        return -1;
+    }
+
+    if (msg_->size () == 0) {
+        direct_out->terminate (false);
+        const int init_rc = msg_->init ();
+        errno_assert (init_rc == 0);
+        return 1;
+    }
+
+    if (direct_out->write_single_message_and_flush_no_recursive_hwm_check (
+          msg_)) {
+        const int init_rc = msg_->init ();
+        errno_assert (init_rc == 0);
+        return 1;
+    }
+
+    LIBZLINK_UNUSED (flags_);
+    errno = EAGAIN;
+    return -1;
 }
 
 std::recursive_mutex *zlink::stream_t::api_sync_mutex ()
@@ -735,11 +789,9 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
         maybe_emit_connect_event (pipe_, routing_id_value);
     }
 
-    unsigned char rid_buf[4];
-    put_uint32 (rid_buf, routing_id_value);
     zlink_routing_id_t rid;
     rid.size = 4;
-    memcpy (rid.data, rid_buf, 4);
+    put_uint32 (rid.data, routing_id_value);
 
     const stream_dispatch_context_t dispatch_scope (this, pipe_,
                                                     routing_id_value);

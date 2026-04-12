@@ -421,6 +421,24 @@ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
     return true;
 }
 
+bool zlink::pipe_t::write_single_message_and_flush_no_recursive_hwm_check (
+  const msg_t *msg_)
+{
+    scoped_fast_lock_t lock (_out_sync);
+    if (unlikely (!_out_active || _state != active))
+        return false;
+
+    if (unlikely (!check_hwm_unlocked ())) {
+        _out_active = false;
+        return false;
+    }
+
+    _out_pipe->write (*msg_, false);
+    _msgs_written++;
+    flush_unlocked ();
+    return true;
+}
+
 void zlink::pipe_t::rollback () const
 {
     scoped_optional_fast_lock_t lock (

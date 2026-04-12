@@ -123,6 +123,7 @@ const bool asio_stream_gather_on =
 // Keep gather enabled for STREAM, but only above a practical payload size.
 // 1KB-ish workloads are faster through the encoder batch path on current stack.
 const size_t asio_stream_gather_threshold = 8192;
+const size_t asio_stream_tiny_gather_threshold = 64;
 
 const bool asio_trace_on =
   env_flag_enabled ("ZLINK_ASIO_TRACE");
@@ -142,7 +143,7 @@ const bool asio_stream_enable_non_tcp_spec_read =
 
 const size_t asio_stream_spec_write_budget_bytes = 2097152;
 
-const size_t asio_stream_read_drain_max_loops = 16;
+const size_t asio_stream_read_drain_max_loops = 64;
 
 const size_t asio_stream_read_drain_max_bytes = 1048576;
 
@@ -229,6 +230,18 @@ size_t stream_encoder_max_write_target (const zlink::options_t &options_)
         return initial_target;
 
     return max_target;
+}
+
+size_t stream_output_target_batch (const zlink::asio_engine_t &engine_,
+                                   const zlink::options_t &options_)
+{
+    if (options_.type == ZLINK_CORE_SOCKET_STREAM) {
+        const size_t stream_target = engine_.stream_encoder_write_target_size ();
+        return stream_target > 0 ? stream_target
+                                 : static_cast<size_t> (options_.out_batch_size);
+    }
+
+    return static_cast<size_t> (options_.out_batch_size);
 }
 
 }
@@ -914,7 +927,10 @@ bool zlink::asio_engine_t::prepare_gather_output ()
     const size_t body_size = _tx_msg.size ();
     const size_t threshold =
       stream_mode ? asio_stream_gather_threshold : asio_gather_threshold;
-    if (body_size > 0 && body_size < threshold) {
+    const bool tiny_stream_gather =
+      stream_mode && body_size > 0
+      && body_size <= asio_stream_tiny_gather_threshold;
+    if (!tiny_stream_gather && body_size > 0 && body_size < threshold) {
         _encoder->load_msg (&_tx_msg);
         return false;
     }
@@ -1514,12 +1530,8 @@ bool zlink::asio_engine_t::prepare_output_buffer ()
     _outpos = NULL;
     _outsize = _encoder->encode (&_outpos, 0);
 
-    const size_t max_out_batch = static_cast<size_t> (_options.out_batch_size);
-    size_t target_out_batch =
-      _options.type == ZLINK_CORE_SOCKET_STREAM ? _stream_encoder_write_target_size
-                                    : max_out_batch;
-    if (target_out_batch < max_out_batch)
-        target_out_batch = max_out_batch;
+    const size_t target_out_batch =
+      stream_output_target_batch (*this, _options);
 
     while (_outsize < target_out_batch) {
         if ((this->*_next_msg) (&_tx_msg) == -1) {
@@ -1672,7 +1684,6 @@ void zlink::asio_engine_t::speculative_write ()
                 start_async_write ();
                 return;
             }
-
             if (stream_tcp_speculative && stream_spec_budget > 0
                 && stream_spec_bytes >= stream_spec_budget) {
                 start_async_write ();
@@ -1702,7 +1713,10 @@ void zlink::asio_engine_t::process_output ()
         _outpos = NULL;
         _outsize = _encoder->encode (&_outpos, 0);
 
-        while (_outsize < static_cast<size_t> (_options.out_batch_size)) {
+        const size_t target_out_batch =
+          stream_output_target_batch (*this, _options);
+
+        while (_outsize < target_out_batch) {
             if ((this->*_next_msg) (&_tx_msg) == -1) {
                 if (errno == ECONNRESET)
                     return;
@@ -1712,7 +1726,7 @@ void zlink::asio_engine_t::process_output ()
             _encoder->load_msg (&_tx_msg);
             unsigned char *bufptr = _outpos + _outsize;
             const size_t n =
-              _encoder->encode (&bufptr, _options.out_batch_size - _outsize);
+              _encoder->encode (&bufptr, target_out_batch - _outsize);
             zlink_assert (n > 0);
             if (_outpos == NULL)
                 _outpos = bufptr;

@@ -47,6 +47,12 @@
 - service/spot 계열이 없는 표면은 `spot_*` 샘플을 제외할 수 있다.
 - request-reply wrapper 표면이 없는 바인딩은 `request_reply_*` 샘플을 제외할 수
   있다.
+- `core/samples/`의 request-reply 샘플은 `request_reply_callback_sample`만
+  포함한다. `request_reply_async_sample`은 제외한다 (코어는 async completion
+  표면을 직접 노출하지 않음).
+- `bindings/*/samples/`의 request-reply wrapper 구현 표면은
+  `request_reply_callback_sample`과 `request_reply_async_sample`을 모두
+  포함한다 (callback 버전과 coroutine/async 버전 둘 다 제공).
 - 서비스 계층 컴포넌트를 구현하는 표면은 다음 샘플을 추가로 포함한다.
   - `discovery_registry_sample` (Discovery + Registry end-to-end)
   - `registry_query_sample` (RegistryQueryClient로 토폴로지 조회)
@@ -103,8 +109,10 @@
 
 ## Async Sample Rules
 - `async sample` 은 async request lifecycle이 핵심 표면인 기능에만 적용한다.
-- request-reply wrapper를 제공하는 표면은 `request_reply_async_sample` 을 canonical
-  sample에 포함해야 한다.
+- request-reply wrapper를 제공하는 바인딩 표면은 `request_reply_async_sample`
+  을 canonical sample에 포함해야 한다.
+- `core/samples/`는 이 규칙에서 제외한다. 코어 request-reply 샘플은
+  `request_reply_callback_sample`만 둔다.
 - `request_reply_async_sample` 은 `RequestDealer`/`RequestRouter` 또는 그와 동등한
   wrapper public API를 직접 사용해야 한다.
 - raw `DealerSocket`/`RouterSocket` recv/send 샘플을 재포장해서는 안 된다.
@@ -216,9 +224,11 @@
 
 ## Sample Coverage Expectations
 - 각 표면은 canonical sample 세트를 공식 샘플 표면으로 유지한다.
-- request-reply wrapper를 구현한 표면:
-  - `request_reply_async_sample`
+- request-reply wrapper를 구현한 바인딩 표면:
   - `request_reply_callback_sample`
+  - `request_reply_async_sample`
+- `core/samples/` (request-reply):
+  - `request_reply_callback_sample`만 포함한다.
 - direct recv 계열:
   - PAIR 또는 동등한 기본 send/recv
   - PUB/SUB 또는 동등한 topic publish/subscribe

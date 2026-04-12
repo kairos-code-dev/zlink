@@ -120,7 +120,7 @@ int zlink_recv (void *socket,
 PUB/SUB sockets use dedicated APIs instead of `zlink_recv()`:
 - Receive: `zlink_subscribe()` / `zlink_subscribe_handler()`
 - Publish: `zlink_publish()`
-- `zlink_send()` / `zlink_recv()` return `ENOTSUP` on all 4 PUB/SUB sockets
+- `zlink_send()` / `zlink_recv()` return `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` on all 4 PUB/SUB sockets
 
 ## 8. Terminology
 
@@ -131,7 +131,7 @@ Terms used throughout the documentation:
 | **hot path** | High-frequency call path. Data transfer APIs like `send`, `publish`. Optimized for concurrent calls |
 | **control path** | Low-frequency call path. Configuration/management APIs like `bind`, `connect`, `set_option`, `monitor`. Correctness guaranteed via internal serialization |
 | **correctness** | Property that multiple threads can use the same handle concurrently without data corruption or crashes |
-| **fail-fast lifecycle gate** | On `close`/`destroy`: returns `EBUSY` immediately if other threads are using the handle; after close is accepted, new API calls return `ESHUTDOWN` |
+| **fail-fast lifecycle gate** | On `close`/`destroy`: returns `ZLINK_CLOSE_BUSY` immediately if other threads are using the handle; after close is accepted, new API calls return `ZLINK_CLOSE_SHUTDOWN` |
 | **admission guard** | Internal gate that checks handle validity and whether shutdown is in progress on API entry |
 | **approximate limit** | Not an exact hard limit. HWM allows slight overshoot for lock-free performance |
 
@@ -185,7 +185,7 @@ zlink_ctx_term(ctx);
 > two modes, see [Core API](02-core-api.md) section 3.2.
 
 > **Callback mode constraints:** After installing `zlink_recv_handler()`,
-> `zlink_recv()` returns `EBUSY` (irreversible transition). The following
+> `zlink_recv()` returns `ZLINK_RECV_BUSY` (irreversible transition). The following
 > recv-related options become ineffective:
 >
 > | Option | Reason |

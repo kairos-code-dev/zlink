@@ -181,8 +181,8 @@ void *sender(void *arg)
     while (atomic_load(&g_running)) {
         zlink_msg_t part;
         zlink_msg_init_size(&part, 32);
-        int rc = zlink_send(socket, &part, 1, 0);
-        if (rc == -1 && zlink_errno() == ESHUTDOWN)
+        zlink_submit_result_t rc = zlink_send(socket, &part, 1, 0);
+        if (rc == ZLINK_SUBMIT_TERMINATED)
             break;  /* handle is shutting down, stop gracefully */
     }
     return NULL;

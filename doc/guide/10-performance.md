@@ -68,7 +68,7 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 When HWM is reached, behavior depends on the socket type and send flags:
 
 - **Blocking send** (`flags=0`): `zlink_send()` blocks until space becomes available in the send queue. Use `ZLINK_OPT_SNDTIMEO` to limit the wait.
-- **Non-blocking send** (`ZLINK_DONTWAIT`): Returns `EAGAIN` immediately. The application decides whether to retry, drop, or buffer externally.
+- **Non-blocking send** (`ZLINK_DONTWAIT`): Returns `ZLINK_SUBMIT_BACKPRESSURED` immediately. The application decides whether to retry, drop, or buffer externally.
 
 > For detailed flow control patterns (DONTWAIT + send-ready handler), see
 > [Send and Receive Flow Control](#4-send-and-receive-flow-control) below.
@@ -96,7 +96,7 @@ sequenceDiagram
     Sender->>Queue: Send messages
     Note over Queue: Queue fills toward 100
     Sender->>Queue: Queue reaches 100 (HWM)
-    Queue-->>Sender: Block / EAGAIN (non-writable)
+    Queue-->>Sender: Block / BACKPRESSURED (non-writable)
 
     Receiver->>Queue: Consume messages
     Note over Queue: Queue drains toward 50
@@ -118,9 +118,9 @@ sequenceDiagram
 | Socket | Behavior When HWM Exceeded |
 |------|-----------------|
 | PUB | Messages **dropped** (slow subscriber protection) |
-| DEALER | **Blocks** (default) or `EAGAIN` (`ZLINK_DONTWAIT`) |
-| ROUTER | `EHOSTUNREACH` with `ROUTER_MANDATORY`, otherwise drops |
-| PAIR | **Blocks** (default) or `EAGAIN` |
+| DEALER | **Blocks** (default) or `ZLINK_SUBMIT_BACKPRESSURED` (`ZLINK_DONTWAIT`) |
+| ROUTER | `ZLINK_SUBMIT_NOT_CONNECTED` with `ROUTER_MANDATORY`, otherwise drops |
+| PAIR | **Blocks** (default) or `ZLINK_SUBMIT_BACKPRESSURED` |
 
 ### Memory Calculation
 
@@ -153,8 +153,8 @@ send queue. Use `ZLINK_OPT_SNDTIMEO` to limit how long the call blocks.
 | SNDTIMEO | Behavior |
 |---|---|
 | -1 (default) | Block indefinitely |
-| 0 | Return `EAGAIN` immediately (same as `ZLINK_DONTWAIT`) |
-| N (ms) | Block up to N milliseconds, then return `EAGAIN` |
+| 0 | Return `ZLINK_SUBMIT_BACKPRESSURED` immediately (same as `ZLINK_DONTWAIT`) |
+| N (ms) | Block up to N milliseconds, then return `ZLINK_SUBMIT_BACKPRESSURED` |
 
 ```c
 /* Block for at most 1 second */
@@ -164,8 +164,8 @@ zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &timeout, sizeof(timeout));
 zlink_msg_t part;
 zlink_msg_init_size(&part, size);
 memcpy(zlink_msg_data(&part), data, size);
-int rc = zlink_send(socket, &part, 1, 0);
-if (rc == -1 && zlink_errno() == EAGAIN) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, 0);
+if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
     /* Timed out — queue is still full */
     zlink_msg_close(&part);
 }
@@ -173,7 +173,7 @@ if (rc == -1 && zlink_errno() == EAGAIN) {
 
 #### Non-Blocking Send (DONTWAIT)
 
-Pass `ZLINK_DONTWAIT` to return immediately with `EAGAIN` when the HWM is
+Pass `ZLINK_DONTWAIT` to return immediately with `ZLINK_SUBMIT_BACKPRESSURED` when the HWM is
 reached. The application decides whether to retry, drop, or buffer
 externally.
 
@@ -181,8 +181,8 @@ externally.
 zlink_msg_t part;
 zlink_msg_init_size(&part, size);
 memcpy(zlink_msg_data(&part), data, size);
-int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
-if (rc == -1 && zlink_errno() == EAGAIN) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
+if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
     /* HWM reached — handle backpressure */
     zlink_msg_close(&part);
 }
@@ -195,7 +195,7 @@ when the socket transitions from non-writable to writable. Combined with
 `ZLINK_DONTWAIT`, this enables reactive flow control:
 
 1. Send with `ZLINK_DONTWAIT`.
-2. On `EAGAIN`, pause sending.
+2. On `ZLINK_SUBMIT_BACKPRESSURED`, pause sending.
 3. When the send-ready callback fires, resume sending.
 
 This API works identically on all send-capable handles (raw sockets,
@@ -224,12 +224,12 @@ void on_send_ready(void *subject, void *userdata)
         zlink_msg_t part;
         zlink_msg_init_size(&part, state->pending_size);
         memcpy(zlink_msg_data(&part), state->pending_data, state->pending_size);
-        int rc = zlink_send(state->socket, &part, 1, ZLINK_DONTWAIT);
+        zlink_submit_result_t rc = zlink_send(state->socket, &part, 1, ZLINK_DONTWAIT);
         if (rc >= 0)
             state->pending_data = NULL;
         else
             zlink_msg_close(&part);
-        /* If still EAGAIN, callback will fire again on next transition */
+        /* If still BACKPRESSURED, callback will fire again on next transition */
     }
 }
 
@@ -241,8 +241,8 @@ zlink_send_ready_handler(socket, on_send_ready, &state);
 zlink_msg_t part;
 zlink_msg_init_size(&part, size);
 memcpy(zlink_msg_data(&part), data, size);
-int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
-if (rc == -1 && zlink_errno() == EAGAIN) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
+if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
     zlink_msg_close(&part);
     /* Buffer for retry when send-ready fires */
     state.pending_data = data;
@@ -303,7 +303,7 @@ and flow control behavior.
 | Trigger | Automatic on message arrival | Explicit `zlink_recv()` call |
 | Execution thread | I/O thread | Application thread |
 | Transition | One-way (permanent) | Default; unavailable after handler attach |
-| DONTWAIT | N/A (always async) | Returns `EAGAIN` if no message |
+| DONTWAIT | N/A (always async) | Returns `ZLINK_RECV_NO_DATA` if no message |
 | Multipart | All parts delivered as `parts[]` array | All parts returned via `parts_out` + `part_count_out` |
 
 ### 4.5 Complete Backpressure Example
@@ -331,8 +331,8 @@ static void flush_queue(sender_t *s)
         zlink_msg_t part;
         zlink_msg_init_size(&part, s->sizes[s->head]);
         memcpy(zlink_msg_data(&part), s->queue[s->head], s->sizes[s->head]);
-        int rc = zlink_send(s->socket, &part, 1, ZLINK_DONTWAIT);
-        if (rc == -1) {
+        zlink_submit_result_t rc = zlink_send(s->socket, &part, 1, ZLINK_DONTWAIT);
+        if (rc != ZLINK_SUBMIT_OK) {
             zlink_msg_close(&part);
             break; /* Still full — wait for next send-ready */
         }
@@ -363,8 +363,8 @@ int main(void)
         zlink_msg_t part;
         zlink_msg_init_size(&part, len);
         memcpy(zlink_msg_data(&part), msg, len);
-        int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
-        if (rc == -1 && zlink_errno() == EAGAIN) {
+        zlink_submit_result_t rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
+        if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
             zlink_msg_close(&part);
             /* Enqueue for later delivery */
             if (sender.count < MAX_PENDING) {
@@ -410,11 +410,11 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ### Timeout Settings
 
 ```c
-/* Send timeout: EAGAIN after 1 second */
+/* Send timeout: BACKPRESSURED after 1 second */
 int timeout = 1000;
 zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &timeout, sizeof(timeout));
 
-/* Receive timeout: EAGAIN after 500ms */
+/* Receive timeout: NO_DATA after 500ms */
 int timeout = 500;
 zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &timeout, sizeof(timeout));
 ```

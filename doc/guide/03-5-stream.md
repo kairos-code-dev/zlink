@@ -113,14 +113,14 @@ zlink_recv_handler(stream, on_message, NULL);
 | Send | `zlink_send_rid()` |
 
 > When the send queue is full (HWM), `zlink_send_rid()` blocks
-> (default) or returns `EAGAIN` with `ZLINK_DONTWAIT`. For advanced
+> (default) or returns `ZLINK_SUBMIT_BACKPRESSURED` with `ZLINK_DONTWAIT`. For advanced
 > backpressure patterns, see [Performance Guide](10-performance.md).
 
 - Only one callback can be attached at a time; calling attach while a
   callback is already attached returns `-1` with `errno=EBUSY`.
 - The handler is permanent and cannot be detached for the lifetime of
   the socket.
-- Close from inside the callback is not supported (fails with `EBUSY`).
+- Close from inside the callback is not supported (returns `ZLINK_CLOSE_BUSY`).
 
 ??? example "Full Sample Code -- Callback"
 

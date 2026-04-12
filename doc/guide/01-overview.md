@@ -140,8 +140,8 @@ int main(void) {
     zlink_routing_id_t source_rid;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    int rc = zlink_recv(server, &source_rid, &parts, &part_count, 0);
-    if (rc == 0)
+    zlink_recv_result_t rc = zlink_recv(server, &source_rid, &parts, &part_count, 0);
+    if (rc == ZLINK_RECV_OK)
         printf("Received: %.*s\n",
                (int)zlink_msg_size(&parts[0]),
                (char *)zlink_msg_data(&parts[0]));

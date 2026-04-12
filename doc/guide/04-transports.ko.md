@@ -82,17 +82,17 @@ zlink_connect(socket, "tcp://localhost:5555");
 ### 에러 처리
 
 ```c
-/* bind failure: port already in use */
-int rc = zlink_bind(socket, "tcp://*:5555");
-if (rc == -1) {
-    if (errno == EADDRINUSE)
-        printf("Port 5555 already in use\n");
+/* bind 실패: 포트 이미 사용 중 */
+zlink_bind_result_t bind_rc = zlink_bind(socket, "tcp://*:5555");
+if (bind_rc == ZLINK_BIND_ADDR_IN_USE) {
+    printf("Port 5555 already in use\n");
 }
 
-/* connect failure: invalid address */
-rc = zlink_connect(socket, "tcp://invalid:99999");
-if (rc == -1) {
-    printf("Connection failed: %s\n", zlink_strerror(errno));
+/* connect 실패: 잘못된 주소 */
+zlink_connect_result_t conn_rc = zlink_connect(
+    socket, "tcp://invalid:99999");
+if (conn_rc != ZLINK_CONNECT_OK) {
+    printf("Connection failed: %d\n", (int)conn_rc);
 }
 ```
 
@@ -134,9 +134,11 @@ zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 ### 에러 처리
 
 ```c
-/* Path too long */
-int rc = zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
-if (rc == -1 && errno == ENAMETOOLONG) {
+/* 경로 너무 김 */
+zlink_bind_result_t rc = zlink_bind(
+    socket, "ipc:///very/long/path/.../endpoint.ipc");
+if (rc == ZLINK_BIND_INVALID_ARGUMENT) {
+    /* IPC 경로 시스템 한계(108자) 초과 — INVALID_ARGUMENT */
     printf("IPC path exceeds system limit (108 characters)\n");
 }
 ```
@@ -164,9 +166,9 @@ zlink_connect(socket_b, "inproc://workers");
 ### 에러 처리
 
 ```c
-/* Attempting connect without bind */
-int rc = zlink_connect(socket, "inproc://nonexistent");
-if (rc == -1) {
+/* bind 없이 connect 시도 */
+zlink_connect_result_t rc = zlink_connect(socket, "inproc://nonexistent");
+if (rc != ZLINK_CONNECT_OK) {
     printf("No bind exists yet\n");
 }
 ```

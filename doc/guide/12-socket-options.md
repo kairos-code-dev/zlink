@@ -28,7 +28,7 @@ Internally, options are classified into three categories:
 | **Applied at** | `pipe_t::check_write()` — checks HWM when writing to pipe |
 | **Default** | `1000` (message count) |
 | **0** | Unlimited |
-| **Effect** | When HWM is reached, `zlink_send()` blocks or returns `EAGAIN`. When the receiver consumes messages and the queue drops below LWM, writable state is restored |
+| **Effect** | When HWM is reached, `zlink_send()` blocks or returns `ZLINK_SUBMIT_BACKPRESSURED`. When the receiver consumes messages and the queue drops below LWM, writable state is restored |
 
 **LWM (Low Water Mark) formula:** `(HWM + 1) / 2`
 
@@ -78,7 +78,7 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 | **Applied at** | `zlink_send()` / `zlink_recv()` blocking paths, logical multipart send module |
 | **Default** | `-1` (infinite wait) |
 | **0** | Equivalent to non-blocking (immediate return) |
-| **>0** | Wait up to specified time (ms), then return `EAGAIN` |
+| **>0** | Wait up to specified time (ms), then return `ZLINK_SUBMIT_BACKPRESSURED` |
 
 **Service application:** Propagated to SPOT pub/sub internal sockets.
 
@@ -227,7 +227,7 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 
 **`0` (default):** Pipe attached immediately on `connect()`. `send()` is possible before connection completes; messages queue up.
 
-**`1`:** Pipe attached only after connection actually completes. `send()` before connection blocks or returns `EAGAIN`. Also, on hiccup (temporary disconnection), pipe is immediately removed.
+**`1`:** Pipe attached only after connection actually completes. `send()` before connection blocks or returns `ZLINK_SUBMIT_BACKPRESSURED`. Also, on hiccup (temporary disconnection), pipe is immediately removed.
 
 ---
 

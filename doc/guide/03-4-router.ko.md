@@ -150,7 +150,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | 미도달 시 `EHOSTUNREACH` 반환 |
+| `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | 미도달 시 `ZLINK_SUBMIT_NOT_CONNECTED` 반환 |
 | `ZLINK_ROUTER_OPT_HANDOVER` | int | 0 | routing_id 충돌 시 기존 연결 대체 |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_router_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER 자신의 routing_id (전용 함수) |
@@ -160,7 +160,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ### ROUTER_MANDATORY
 
-기본적으로 ROUTER는 대상을 찾을 수 없는 메시지를 **조용히 드롭**한다. `ROUTER_MANDATORY`를 활성화하면 `EHOSTUNREACH` 에러를 반환한다.
+기본적으로 ROUTER는 대상을 찾을 수 없는 메시지를 **조용히 드롭**한다. `ROUTER_MANDATORY`를 활성화하면 `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환한다.
 
 ```c
 int mandatory = 1;
@@ -171,8 +171,9 @@ zlink_routing_id_t target_rid = { .data = "UNKNOWN", .size = 7 };
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
 memcpy(zlink_msg_data(&msg), "data", 4);
-int rc = zlink_send_rid(router, &target_rid, &msg, 1, 0);
-/* rc == -1, errno == EHOSTUNREACH */
+zlink_submit_result_t rc = zlink_send_rid(
+    router, &target_rid, &msg, 1, 0);
+/* rc == ZLINK_SUBMIT_NOT_CONNECTED */
 ```
 
 > 참고: `core/tests/test_router_mandatory.cpp` — `test_basic()`
@@ -243,9 +244,10 @@ const zlink_routing_id_t *peer_rid;
 uint64_t request_seq;
 zlink_msg_t *parts;
 size_t part_count;
-int rc = zlink_router_recv(router, &peer_rid, &request_seq,
-                           &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_router_recv(
+    router, &peer_rid, &request_seq,
+    &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     /* request payload 처리 */
     zlink_multipart_close(parts, part_count);
 

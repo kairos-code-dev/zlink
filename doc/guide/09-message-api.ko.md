@@ -286,9 +286,9 @@ memcpy(zlink_msg_data(&parts[0]), "header", 6);
 zlink_msg_init_size(&parts[1], 4);
 memcpy(zlink_msg_data(&parts[1]), "body", 4);
 
-int rc = zlink_send(socket, parts, 2, 0);
-if (rc == -1) {
-    /* Failure: caller still owns parts */
+zlink_submit_result_t rc = zlink_send(socket, parts, 2, 0);
+if (rc != ZLINK_SUBMIT_OK) {
+    /* 실패: caller 가 parts 소유권을 계속 보유 */
     for (size_t i = 0; i < 2; i++)
         zlink_msg_close(&parts[i]);
 }
@@ -305,16 +305,16 @@ zlink_msg_t part;
 zlink_msg_init_size(&part, 100);
 memcpy(zlink_msg_data(&part), data, 100);
 
-int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
-if (rc == -1) {
-    if (errno == EAGAIN) {
-        /* HWM exceeded: retry later */
-    } else if (errno == ENOTSUP) {
-        /* Send not supported on this socket (e.g., SUB socket) */
-    } else if (errno == ETERM) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
+if (rc != ZLINK_SUBMIT_OK) {
+    if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
+        /* HWM 초과: 나중에 retry */
+    } else if (rc == ZLINK_SUBMIT_NOT_SUPPORTED) {
+        /* 해당 socket 에서 send 불가 (예: SUB socket) */
+    } else if (rc == ZLINK_SUBMIT_TERMINATED) {
         /* Context terminated */
     }
-    /* On failure, part is still valid -> must close */
+    /* 실패 시 part 는 여전히 유효 → 반드시 close */
     zlink_msg_close(&part);
 }
 ```
@@ -337,22 +337,22 @@ zlink_msg_close(&msg);
 ### Ownership 규칙 실전
 
 ```c
-/* Pattern 1: Send succeeds → msg parts automatically cleaned up */
+/* Pattern 1: Send 성공 → msg parts 자동 정리 */
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "Hello", 5);
-int rc = zlink_send(socket, &part, 1, 0);
-if (rc != -1) {
-    /* Success: part is now empty. Calling close is safe but unnecessary */
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, 0);
+if (rc == ZLINK_SUBMIT_OK) {
+    /* 성공: part 는 이제 비어있음. close 는 안전하지만 불필요 */
 }
 
-/* Pattern 2: Send fails → manual cleanup required */
+/* Pattern 2: Send 실패 → 수동 정리 필요 */
 zlink_msg_t part2;
 zlink_msg_init_size(&part2, 5);
 memcpy(zlink_msg_data(&part2), "Hello", 5);
 rc = zlink_send(socket, &part2, 1, ZLINK_DONTWAIT);
-if (rc == -1) {
-    /* Failure: part2 is still valid. Must close */
+if (rc != ZLINK_SUBMIT_OK) {
+    /* 실패: part2 여전히 유효. 반드시 close */
     zlink_msg_close(&part2);
 }
 
@@ -558,16 +558,16 @@ zlink_msg_t part;
 zlink_msg_init_size(&part, 100);
 memcpy(zlink_msg_data(&part), data, 100);
 
-int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
-if (rc == -1) {
-    if (errno == EAGAIN) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
+if (rc != ZLINK_SUBMIT_OK) {
+    if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
         /* HWM 초과: 나중에 retry */
-    } else if (errno == ENOTSUP) {
-        /* 해당 socket에서 send 불가 (예: SUB socket) */
-    } else if (errno == ETERM) {
+    } else if (rc == ZLINK_SUBMIT_NOT_SUPPORTED) {
+        /* 해당 socket 에서 send 불가 (예: SUB socket) */
+    } else if (rc == ZLINK_SUBMIT_TERMINATED) {
         /* Context terminated */
     }
-    /* 실패 시 part는 여전히 유효 → 반드시 close */
+    /* 실패 시 part 는 여전히 유효 → 반드시 close */
     zlink_msg_close(&part);
 }
 ```

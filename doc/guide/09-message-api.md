@@ -92,8 +92,8 @@ memcpy(zlink_msg_data(&parts[0]), "header", 6);
 zlink_msg_init_size(&parts[1], 4);
 memcpy(zlink_msg_data(&parts[1]), "body", 4);
 
-int rc = zlink_send(socket, parts, 2, 0);
-if (rc == -1) {
+zlink_submit_result_t rc = zlink_send(socket, parts, 2, 0);
+if (rc != ZLINK_SUBMIT_OK) {
     /* Failure: caller still owns parts */
     for (size_t i = 0; i < 2; i++)
         zlink_msg_close(&parts[i]);
@@ -141,8 +141,8 @@ zlink_msg_close(&msg);
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "Hello", 5);
-int rc = zlink_send(socket, &part, 1, 0);
-if (rc != -1) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, 0);
+if (rc == ZLINK_SUBMIT_OK) {
     /* Success: part is now empty. Calling close is safe but unnecessary */
 }
 
@@ -151,7 +151,7 @@ zlink_msg_t part2;
 zlink_msg_init_size(&part2, 5);
 memcpy(zlink_msg_data(&part2), "Hello", 5);
 rc = zlink_send(socket, &part2, 1, ZLINK_DONTWAIT);
-if (rc == -1) {
+if (rc != ZLINK_SUBMIT_OK) {
     /* Failure: part2 is still valid. Must close */
     zlink_msg_close(&part2);
 }
@@ -366,13 +366,13 @@ zlink_msg_t part;
 zlink_msg_init_size(&part, 100);
 memcpy(zlink_msg_data(&part), data, 100);
 
-int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
-if (rc == -1) {
-    if (errno == EAGAIN) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
+if (rc != ZLINK_SUBMIT_OK) {
+    if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
         /* HWM exceeded: retry later */
-    } else if (errno == ENOTSUP) {
+    } else if (rc == ZLINK_SUBMIT_NOT_SUPPORTED) {
         /* Send not supported on this socket (e.g., SUB socket) */
-    } else if (errno == ETERM) {
+    } else if (rc == ZLINK_SUBMIT_TERMINATED) {
         /* Context terminated */
     }
     /* On failure, part is still valid -> must close */

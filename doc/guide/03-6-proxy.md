@@ -98,9 +98,9 @@ while (running) {
     size_t count = 0;
     char topic[256];
     size_t topic_len = sizeof(topic);
-    int rc = zlink_subscribe(xsub, &rid, &parts, &count,
+    zlink_recv_result_t rc = zlink_subscribe(xsub, &rid, &parts, &count,
                              topic, &topic_len, ZLINK_DONTWAIT);
-    if (rc == 0) {
+    if (rc == ZLINK_RECV_OK) {
         /* Insert custom logic here (filtering, logging, etc.) */
         zlink_publish(xpub, topic, parts, count, 0);
     }
@@ -111,7 +111,7 @@ while (running) {
     size_t sub_len = sizeof(sub_topic);
     rc = zlink_subscription_event(xpub, &rid, &subscribed,
                                   sub_topic, &sub_len, ZLINK_DONTWAIT);
-    if (rc == 0) {
+    if (rc == ZLINK_RECV_OK) {
         /* Insert custom logic here (authorization, remapping, etc.) */
         if (subscribed)
             zlink_set_subscription(xsub, sub_topic);

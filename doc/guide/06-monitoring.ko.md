@@ -360,8 +360,8 @@ zlink_service_monitor_handler(mon, on_service_event, NULL);
 
 ```c
 zlink_service_event_t ev;
-int rc = zlink_service_monitor_recv(mon, &ev, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_service_monitor_recv(mon, &ev, 0);
+if (rc == ZLINK_RECV_OK) {
     printf("event: 0x%x, value: %u\n", ev.event_type, ev.value);
 }
 ```
@@ -455,8 +455,8 @@ zlink_monitor_snapshot(mon, &snapshot);
 
 ```c
 zlink_service_event_t ev;
-int rc = zlink_service_monitor_recv(mon, &ev, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_service_monitor_recv(mon, &ev, 0);
+if (rc == ZLINK_RECV_OK) {
     printf("event: 0x%x, value: %u\n", ev.event_type, ev.value);
 }
 ```

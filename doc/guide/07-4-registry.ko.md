@@ -429,11 +429,11 @@ free(peers);
 /* Retrieve opaque metadata blob for a specific peer */
 zlink_msg_t metadata;
 zlink_msg_init(&metadata);
-int rc = zlink_registry_member_peer_metadata(registry,
+zlink_config_result_t rc = zlink_registry_member_peer_metadata(registry,
     ZLINK_SERVICE_TYPE_SOCKET, "payment-service",
     ZLINK_SERVICE_ROLE_ROUTER, "tcp://10.0.1.5:5555",
     &metadata);
-if (rc == 0) {
+if (rc == ZLINK_CONFIG_OK) {
     printf("metadata size=%zu\n", zlink_msg_size(&metadata));
 }
 zlink_msg_close(&metadata);

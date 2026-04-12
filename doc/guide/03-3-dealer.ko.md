@@ -288,7 +288,7 @@ zlink_send(dealer2, &m2, 1, 0);
 
 ### 피어 없으면 큐잉
 
-연결된 피어가 없으면 메시지는 송신 큐에 쌓인다. HWM 초과 시 블록(기본) 또는 `EAGAIN` 반환(`ZLINK_DONTWAIT`).
+연결된 피어가 없으면 메시지는 송신 큐에 쌓인다. HWM 초과 시 블록(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환(`ZLINK_DONTWAIT`).
 
 ```c
 /* Correct order */

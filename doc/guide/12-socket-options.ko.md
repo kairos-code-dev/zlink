@@ -27,7 +27,7 @@ API 시그니처만 다루는 [socket API 레퍼런스](../api/socket.ko.md)와 
 | **적용 위치** | `pipe_t::check_write()` |
 | **기본값** | `1000` (메시지 수) |
 | **0** | 무제한 |
-| **영향** | HWM 도달 시 block 또는 `EAGAIN` 반환. LWM 이하로 drain되면 복구 |
+| **영향** | HWM 도달 시 block 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환. LWM 이하로 drain되면 복구 |
 
 **LWM (Low Water Mark) 공식:** `(HWM + 1) / 2`
 
@@ -80,7 +80,7 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 | **적용 위치** | `zlink_send()` / `zlink_recv()` blocking 경로 |
 | **기본값** | `-1` (무한 대기) |
 | **0** | non-blocking과 동일 (즉시 반환) |
-| **>0** | 지정 시간(ms)까지 대기 후 `EAGAIN` 반환 |
+| **>0** | 지정 시간(ms)까지 대기 후 `ZLINK_SUBMIT_BACKPRESSURED` 반환 |
 
 **서비스 적용:** SPOT에서 pub/sub 내부 소켓에 전파.
 

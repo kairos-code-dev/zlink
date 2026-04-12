@@ -127,7 +127,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | Return EHOSTUNREACH error for undeliverable messages (set via `zlink_set_router_option()`) |
+| `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | Return `ZLINK_SUBMIT_NOT_CONNECTED` for undeliverable messages (set via `zlink_set_router_option()`) |
 | `ZLINK_ROUTER_OPT_HANDOVER` | int | 0 | Replace existing connection on routing_id conflict |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | Default timeout for `zlink_router_request()`. `0` uses the implementation default of `5000ms` |
 | `zlink_set_routing_id()` | binary | Auto (UUID) | The ROUTER's own routing_id (dedicated function) |
@@ -137,7 +137,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ### ROUTER_MANDATORY
 
-By default, ROUTER **silently drops** messages when the target cannot be found. Enabling `ROUTER_MANDATORY` returns an `EHOSTUNREACH` error instead.
+By default, ROUTER **silently drops** messages when the target cannot be found. Enabling `ROUTER_MANDATORY` returns `ZLINK_SUBMIT_NOT_CONNECTED` instead.
 
 ```c
 int mandatory = 1;
@@ -148,8 +148,9 @@ zlink_routing_id_t target_rid = { .data = "UNKNOWN", .size = 7 };
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
 memcpy(zlink_msg_data(&msg), "data", 4);
-int rc = zlink_send_rid(router, &target_rid, &msg, 1, 0);
-/* rc == -1, errno == EHOSTUNREACH */
+zlink_submit_result_t rc = zlink_send_rid(
+    router, &target_rid, &msg, 1, 0);
+/* rc == ZLINK_SUBMIT_NOT_CONNECTED */
 ```
 
 > Reference: `core/tests/test_router_mandatory.cpp` -- `test_basic()`
@@ -227,9 +228,9 @@ const zlink_routing_id_t *peer_rid;
 uint64_t request_seq;
 zlink_msg_t *parts;
 size_t part_count;
-int rc = zlink_router_recv(router, &peer_rid, &request_seq,
-                           &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_router_recv(
+    router, &peer_rid, &request_seq, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     /* process request payload */
     zlink_multipart_close(parts, part_count);
 
@@ -242,7 +243,7 @@ if (rc == 0) {
 ```
 
 **Note:** `zlink_router_recv()` and `zlink_router_handler()` are mutually
-exclusive. Using both returns `EBUSY`.
+exclusive. Using both returns `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY`.
 
 ## 5. Usage Patterns
 

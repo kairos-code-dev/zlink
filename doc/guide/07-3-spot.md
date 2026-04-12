@@ -218,9 +218,10 @@ zlink_msg_t *parts = NULL;
 size_t part_count = 0;
 char topic_buf[256];
 size_t topic_len = sizeof(topic_buf);
-int rc = zlink_subscribe(spot, &source_rid, &parts, &part_count,
-                              topic_buf, &topic_len, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_subscribe(
+    spot, &source_rid, &parts, &part_count,
+    topic_buf, &topic_len, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     printf("Topic: %.*s, Parts: %zu\n",
            (int)topic_len, topic_buf, part_count);
     for (size_t i = 0; i < part_count; i++)
@@ -285,9 +286,9 @@ should be offloaded to an application queue or worker thread.
 
 - In recv model, use `zlink_subscribe()`
 - Call `zlink_subscribe_handler()` to transition the receive surface once to callback mode
-- In receive callback mode, `zlink_subscribe()` and data-plane `ZLINK_POLLIN` fail with `EBUSY`
+- In receive callback mode, `zlink_subscribe()` and data-plane `ZLINK_POLLIN` return `ZLINK_RECV_BUSY`
 - `zlink_send_ready_handler()` is independent from receive callback mode
-- After send-ready attach, data-plane `ZLINK_POLLOUT` fails with `EBUSY`
+- After send-ready attach, data-plane `ZLINK_POLLOUT` returns `ZLINK_HANDLER_BUSY`
 - Replacing or clearing the callback after transition is not supported
 - Callbacks are invoked on the socket dispatch / I/O path
 - Blocking work in the callback can delay other I/O
@@ -363,9 +364,10 @@ uint64_t request_seq;
 zlink_msg_t *parts;
 size_t part_count;
 
-int rc = zlink_spot_recv(spot, &source_rid, &spot_rid,
-                         &request_seq, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_spot_recv(
+    spot, &source_rid, &spot_rid,
+    &request_seq, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     if (request_seq == 0) {
         /* Ordinary routed message */
     } else {
@@ -553,9 +555,9 @@ zlink_timer_handler(spot_timer, on_fire, NULL);
 | `request_seq=0` | Ordinary routed message (not a request) |
 | `request_seq>0` | Request-reply message; reply required |
 | First reply wins | Extra replies to the same `request_seq` are dropped |
-| Timeout | Delivered as `reply_errno != 0` in the reply callback |
-| Target not found | `ENOENT` error reply (immediate, not timeout) |
-| recv vs callback conflict | Returns `EBUSY` |
+| Timeout | Delivered as `result == ZLINK_REQUEST_TIMED_OUT` in the reply callback |
+| Target not found | `ZLINK_REQUEST_NOT_FOUND` reply (immediate, not timeout) |
+| recv vs callback conflict | Returns `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY` |
 | Topic vs routed | Separate receive surfaces; both can be active simultaneously |
 
 ## 7. Topic Rules

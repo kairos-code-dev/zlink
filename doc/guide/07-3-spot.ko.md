@@ -214,9 +214,10 @@ zlink_msg_t *parts = NULL;
 size_t part_count = 0;
 char topic_buf[256];
 size_t topic_len = sizeof(topic_buf);
-int rc = zlink_subscribe(spot, &source_rid, &parts, &part_count,
-                              topic_buf, &topic_len, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_subscribe(
+    spot, &source_rid, &parts, &part_count,
+    topic_buf, &topic_len, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     printf("Topic: %.*s, Parts: %zu\n",
            (int)topic_len, topic_buf, part_count);
     for (size_t i = 0; i < part_count; i++)
@@ -409,9 +410,10 @@ uint64_t request_seq;
 zlink_msg_t *parts;
 size_t part_count;
 
-int rc = zlink_spot_recv(spot, &source_rid, &spot_rid,
-                         &request_seq, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_spot_recv(
+    spot, &source_rid, &spot_rid,
+    &request_seq, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     if (request_seq == 0) {
         /* 일반 routed 메시지 */
     } else {
@@ -643,18 +645,18 @@ zlink_timer_handler(spot_timer, on_fire, NULL);
 | `request_seq=0` | 일반 routed 메시지 (request 아님) |
 | `request_seq>0` | request-reply 메시지; reply 필요 |
 | 첫 reply 우선 | 같은 `request_seq`에 대한 추가 reply는 드롭 |
-| Timeout | reply callback에 `reply_errno != 0`으로 전달 |
-| 대상 미발견 | `ENOENT` error reply (즉시, timeout 아님) |
-| recv vs callback 충돌 | `EBUSY` 반환 |
+| Timeout | reply callback 에 `result == ZLINK_REQUEST_TIMED_OUT` 으로 전달 |
+| 대상 미발견 | `ZLINK_REQUEST_NOT_FOUND` reply (즉시, timeout 아님) |
+| recv vs callback 충돌 | `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY` 반환 |
 | 토픽 vs routed | 별도 수신 surface; 둘 다 동시에 활성 가능 |
 
 **제약 사항:**
 
 - recv 모드에서는 `zlink_subscribe()`를 사용한다
 - receive callback 전환은 `zlink_subscribe_handler()`로 한 번만 수행한다
-- receive callback 모드에서는 `zlink_subscribe()`와 데이터 플레인 `ZLINK_POLLIN`이 `EBUSY`로 실패한다
+- receive callback 모드에서는 `zlink_subscribe()` 와 데이터 플레인 `ZLINK_POLLIN` 이 `ZLINK_RECV_BUSY` 를 반환한다
 - `zlink_send_ready_handler()`는 receive callback 선행 조건이 없다
-- send-ready attach 이후 데이터 플레인 `ZLINK_POLLOUT`은 `EBUSY`로 실패한다
+- send-ready attach 이후 데이터 플레인 `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다
 - 전환 후 callback 교체나 해제는 지원하지 않는다
 - 콜백은 소켓 dispatch / I/O 경로에서 직접 호출된다
 - 콜백에서 블로킹 작업을 수행하면 다른 I/O 진행에 영향을 줄 수 있다

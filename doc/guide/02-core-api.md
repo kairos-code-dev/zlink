@@ -130,7 +130,8 @@ zlink_send(socket, parts, 2, 0);
 ```
 
 By default `zlink_send()` blocks when the send queue is full (HWM reached).
-Pass `ZLINK_DONTWAIT` to return `EAGAIN` immediately instead of blocking.
+Pass `ZLINK_DONTWAIT` to return `ZLINK_SUBMIT_BACKPRESSURED` immediately
+instead of blocking.
 For advanced backpressure patterns, see
 [Performance Guide](10-performance.md).
 
@@ -143,7 +144,7 @@ following common guarantees:
 
 - **nonblocking**: one-shot attempt with partial local state rollback on failure
 - **blocking**: whole-message retry until the `sndtimeo` deadline
-- **retry targets**: only `EAGAIN` and `EINTR` are retried; other errors fail immediately
+- **retry targets**: only `ZLINK_SUBMIT_BACKPRESSURED` and `EINTR` are retried; other results fail immediately
 - **whole-message guarantee**: a multipart message either succeeds entirely or fails entirely
 
 This guarantees that a multipart message either succeeds entirely or
@@ -169,8 +170,9 @@ zlink_bind(socket, "tcp://*:5556");
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-int rc = zlink_recv(socket, &source_rid, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_recv(
+    socket, &source_rid, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     for (size_t i = 0; i < part_count; i++) {
         printf("Frame %zu: %.*s\n", i,
                (int)zlink_msg_size(&parts[i]),
@@ -180,8 +182,9 @@ if (rc == 0) {
 }
 
 /* Non-blocking recv */
-rc = zlink_recv(socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
-if (rc == -1 && zlink_errno() == EAGAIN) {
+rc = zlink_recv(
+    socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
+if (rc == ZLINK_RECV_NO_DATA) {
     /* No message available right now */
 }
 ```
@@ -191,7 +194,7 @@ if (rc == -1 && zlink_errno() == EAGAIN) {
 Attach a handler callback after socket creation. Messages are dispatched
 asynchronously on the I/O thread. Once attached, the handler cannot be
 removed for the lifetime of the socket. If a handler has been attached,
-`zlink_recv()` fails with `EBUSY`.
+`zlink_recv()` returns `ZLINK_RECV_BUSY`.
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
@@ -217,7 +220,7 @@ zlink_recv_handler(socket, on_message, NULL);
 
 | Flag | Description |
 |------|-------------|
-| `ZLINK_DONTWAIT` | Non-blocking mode (returns EAGAIN immediately if cannot send/recv) |
+| `ZLINK_DONTWAIT` | Non-blocking mode (returns `BACKPRESSURED` / `NO_DATA` immediately if cannot send/recv) |
 
 ## 4. Handler Types
 
@@ -340,7 +343,7 @@ zlink_poller_remove_timer(poller, timer);
 |------|-------------|
 | `repeat_count=0` | Infinite repetition |
 | `repeat_count=N` | Fires exactly N times then stops |
-| recv vs callback | Conflicts return `EBUSY` (same as sockets) |
+| recv vs callback | Conflicts return `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY` (same as sockets) |
 | General timer | Uses global shared scheduler |
 | SPOT timer | Uses SpotNode-local shared scheduler |
 

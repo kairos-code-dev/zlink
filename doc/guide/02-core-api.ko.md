@@ -129,7 +129,8 @@ zlink_send(socket, parts, 2, 0);
 ```
 
 기본적으로 `zlink_send()`는 send queue가 가득 차면(HWM 도달) blocking한다.
-`ZLINK_DONTWAIT` flag를 사용하면 blocking 대신 즉시 `EAGAIN`을 반환한다.
+`ZLINK_DONTWAIT` flag 를 사용하면 blocking 대신 즉시
+`ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다.
 고급 backpressure pattern은
 [Performance 가이드](10-performance.ko.md)를 참고.
 
@@ -141,7 +142,7 @@ zlink_send(socket, parts, 2, 0);
 
 - **nonblocking**: one-shot 시도 후 실패 시 partial local state rollback
 - **blocking**: `sndtimeo` deadline까지 whole-message 단위 재시도
-- **재시도 대상**: `EAGAIN`, `EINTR`만 재시도, 그 외 오류는 즉시 실패
+- **재시도 대상**: `ZLINK_SUBMIT_BACKPRESSURED`, `EINTR` 만 재시도, 그 외 결과는 즉시 실패
 - **whole-message 보장**: 멀티파트 메시지는 전체가 성공하거나 전체가 실패한다
 
 이 보장 덕분에 멀티파트 메시지는 전체가 큐에 들어가거나 전체가 실패한다.
@@ -167,8 +168,9 @@ zlink_bind(socket, "tcp://*:5556");
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-int rc = zlink_recv(socket, &source_rid, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_recv(
+    socket, &source_rid, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     for (size_t i = 0; i < part_count; i++) {
         printf("Frame %zu: %.*s\n", i,
                (int)zlink_msg_size(&parts[i]),
@@ -178,9 +180,10 @@ if (rc == 0) {
 }
 
 /* Non-blocking recv */
-rc = zlink_recv(socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
-if (rc == -1 && zlink_errno() == EAGAIN) {
-    /* No message available right now */
+rc = zlink_recv(
+    socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
+if (rc == ZLINK_RECV_NO_DATA) {
+    /* 수신할 메시지가 없음 */
 }
 ```
 
@@ -188,7 +191,8 @@ if (rc == -1 && zlink_errno() == EAGAIN) {
 
 Socket 생성 후 핸들러 콜백을 부착하면 메시지 도착 시 I/O 스레드에서
 비동기로 호출된다. 한번 부착하면 socket 수명 동안 해제할 수 없다.
-Handler가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한다.
+Handler 가 부착된 상태에서 `zlink_recv()` 호출 시 `ZLINK_RECV_BUSY` 를
+반환한다.
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
@@ -214,7 +218,7 @@ zlink_recv_handler(socket, on_message, NULL);
 
 | Flag | 설명 |
 |--------|------|
-| `ZLINK_DONTWAIT` | Non-blocking mode (send/recv 불가 시 즉시 EAGAIN 반환) |
+| `ZLINK_DONTWAIT` | Non-blocking 모드 (send/recv 불가 시 즉시 `BACKPRESSURED` / `NO_DATA` 반환) |
 
 ## 4. Handler Type
 
@@ -334,7 +338,7 @@ zlink_poller_remove_timer(poller, timer);
 |------|------|
 | `repeat_count=0` | 무한 반복 |
 | `repeat_count=N` | 정확히 N회 fire 후 자동 정지 |
-| recv vs callback | 충돌 시 `EBUSY` 반환 (socket과 동일) |
+| recv vs callback | 충돌 시 `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY` 반환 (socket 과 동일) |
 | 일반 timer | global shared scheduler 사용 |
 | SPOT timer | SpotNode-local shared scheduler 사용 |
 

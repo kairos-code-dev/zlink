@@ -1218,9 +1218,8 @@ class AtomicCounter:
 ```python
 def version() -> tuple[int, int, int]: ...
 
-def errno() -> int:
-    """Return the errno for the current thread."""
-    ...
+# Module-level errno() is NOT public. Access internal errno via
+# ZlinkError.internal_errno on the caught exception.
 
 def strerror(code: int) -> str:
     """Return a human-readable string for the given error number."""

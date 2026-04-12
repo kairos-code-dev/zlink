@@ -1571,8 +1571,8 @@ Static utility class for global library operations.
 ```csharp
 public static class Zlink
 {
-    /// Return the errno for the current thread.
-    static int Errno();
+    // Zlink.Errno() is NOT public. Access internal errno through
+    // ZlinkException.InternalErrno on the caught exception.
 
     /// Return a human-readable string for the given error number.
     static string Strerror(int errnum);

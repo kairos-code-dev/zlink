@@ -1406,8 +1406,8 @@ Static utility class for global library operations.
 public final class Zlink {
     private Zlink() {}
 
-    /// Return the errno for the current thread.
-    static int errno();
+    // Zlink.errno() is NOT public. Access internal errno through
+    // ZlinkException.getInternalErrno() on the caught exception.
 
     /// Return a human-readable string for the given error number.
     static String strerror(int errnum);

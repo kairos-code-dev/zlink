@@ -1797,8 +1797,8 @@ class atomic_counter_t {
 ### Free Functions
 
 ```cpp
-/// Return the errno for the current thread.
-int zlink_errno();
+// Raw zlink_errno() is NOT public. Access internal errno through
+// zlink::zlink_error_t::internal_errno() on the exception object.
 
 /// Return a human-readable string for the given error number.
 const char* zlink_strerror(int errnum);

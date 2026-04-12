@@ -49,8 +49,8 @@ class ContextOptions {
 ```typescript
 function version(): [number, number, number];
 
-/// Return the errno for the current thread.
-function errno(): number;
+// Module-level errno() is NOT public. Access internal errno via
+// ZlinkError.internalErrno on the caught exception.
 
 /// Return a human-readable string for the given error number.
 function strerror(code: number): string;

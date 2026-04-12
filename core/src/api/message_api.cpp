@@ -4,46 +4,54 @@
 
 #include <zlink.h>
 
+#include "api/config_result_internal.hpp"
 #include "core/msg.hpp"
 #include "core/recv_tls_view.hpp"
 
-int zlink_msg_init (zlink_msg_t *msg_)
+zlink_config_result_t zlink_msg_init (zlink_msg_t *msg_)
 {
-    return (reinterpret_cast<zlink::msg_t *> (msg_))->init ();
+    return zlink::config_result_internal::from_rc (
+      (reinterpret_cast<zlink::msg_t *> (msg_))->init ());
 }
 
-int zlink_msg_init_size (zlink_msg_t *msg_, size_t size_)
+zlink_config_result_t zlink_msg_init_size (zlink_msg_t *msg_, size_t size_)
 {
-    return (reinterpret_cast<zlink::msg_t *> (msg_))->init_size (size_);
+    return zlink::config_result_internal::from_rc (
+      (reinterpret_cast<zlink::msg_t *> (msg_))->init_size (size_));
 }
 
-int zlink_msg_init_buffer (zlink_msg_t *msg_, const void *buf_, size_t size_)
+zlink_config_result_t zlink_msg_init_buffer (zlink_msg_t *msg_, const void *buf_, size_t size_)
 {
-    return (reinterpret_cast<zlink::msg_t *> (msg_))->init_buffer (buf_, size_);
+    return zlink::config_result_internal::from_rc (
+      (reinterpret_cast<zlink::msg_t *> (msg_))->init_buffer (buf_, size_));
 }
 
-int zlink_msg_init_data (
+zlink_config_result_t zlink_msg_init_data (
   zlink_msg_t *msg_, void *data_, size_t size_, zlink_free_fn *ffn_, void *hint_)
 {
-    return (reinterpret_cast<zlink::msg_t *> (msg_))
-      ->init_data (data_, size_, ffn_, hint_);
+    return zlink::config_result_internal::from_rc (
+      (reinterpret_cast<zlink::msg_t *> (msg_))
+        ->init_data (data_, size_, ffn_, hint_));
 }
 
-int zlink_msg_close (zlink_msg_t *msg_)
+zlink_config_result_t zlink_msg_close (zlink_msg_t *msg_)
 {
-    return (reinterpret_cast<zlink::msg_t *> (msg_))->close ();
+    return zlink::config_result_internal::from_rc (
+      (reinterpret_cast<zlink::msg_t *> (msg_))->close ());
 }
 
-int zlink_msg_move (zlink_msg_t *dest_, zlink_msg_t *src_)
+zlink_config_result_t zlink_msg_move (zlink_msg_t *dest_, zlink_msg_t *src_)
 {
-    return (reinterpret_cast<zlink::msg_t *> (dest_))
-      ->move (*reinterpret_cast<zlink::msg_t *> (src_));
+    return zlink::config_result_internal::from_rc (
+      (reinterpret_cast<zlink::msg_t *> (dest_))
+        ->move (*reinterpret_cast<zlink::msg_t *> (src_)));
 }
 
-int zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_)
+zlink_config_result_t zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_)
 {
-    return (reinterpret_cast<zlink::msg_t *> (dest_))
-      ->copy (*reinterpret_cast<zlink::msg_t *> (src_));
+    return zlink::config_result_internal::from_rc (
+      (reinterpret_cast<zlink::msg_t *> (dest_))
+        ->copy (*reinterpret_cast<zlink::msg_t *> (src_)));
 }
 
 void *zlink_msg_data (zlink_msg_t *msg_)
@@ -56,9 +64,18 @@ size_t zlink_msg_size (const zlink_msg_t *msg_)
     return ((zlink::msg_t *) msg_)->size ();
 }
 
-int zlink_msg_refcnt (const zlink_msg_t *msg_)
+int zlink_msg_refcnt (const zlink_msg_t *msg_,
+                      zlink_config_result_t *error_out_)
 {
+    if (!msg_) {
+        errno = EFAULT;
+        if (error_out_)
+            *error_out_ = ZLINK_CONFIG_INVALID_HANDLE;
+        return -1;
+    }
     const zlink::msg_t *msg = reinterpret_cast<const zlink::msg_t *> (msg_);
+    if (error_out_)
+        *error_out_ = ZLINK_CONFIG_OK;
     return static_cast<int> (msg->refcnt_value ());
 }
 

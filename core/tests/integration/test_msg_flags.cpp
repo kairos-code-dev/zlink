@@ -47,7 +47,7 @@ void test_shared_refcounted ()
       zlink_msg_init_size (&msg_a, 1024)); // large enough to be a type_lmsg
 
     // Single-owner reference-counted storage reports refcount 1.
-    TEST_ASSERT_EQUAL_INT (1, zlink_msg_refcnt (&msg_a));
+    TEST_ASSERT_EQUAL_INT (1, zlink_msg_refcnt (&msg_a, NULL));
 
     zlink_msg_t msg_b;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg_b));
@@ -55,8 +55,8 @@ void test_shared_refcounted ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_copy (&msg_b, &msg_a));
 
     // Both handles now share the same storage.
-    TEST_ASSERT_EQUAL_INT (2, zlink_msg_refcnt (&msg_a));
-    TEST_ASSERT_EQUAL_INT (2, zlink_msg_refcnt (&msg_b));
+    TEST_ASSERT_EQUAL_INT (2, zlink_msg_refcnt (&msg_a, NULL));
+    TEST_ASSERT_EQUAL_INT (2, zlink_msg_refcnt (&msg_b, NULL));
 
     // cleanup
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg_a));
@@ -71,7 +71,7 @@ void test_shared_const ()
       zlink_msg_init_data (&msg_a, (void *) "TEST", 5, 0, 0));
 
     // Constant messages are not internally refcounted; they report 1.
-    TEST_ASSERT_EQUAL_INT (1, zlink_msg_refcnt (&msg_a));
+    TEST_ASSERT_EQUAL_INT (1, zlink_msg_refcnt (&msg_a, NULL));
 
     // cleanup
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg_a));

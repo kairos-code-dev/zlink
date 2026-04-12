@@ -87,9 +87,10 @@ zlink_submit_result_t zlink_send_rid (void *s_,
 `zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
 `zlink_errno()`로 유지됩니다.
 
-**에러:** `s_`가 NULL이면 `EFAULT`. 작업이 블로킹되고
-`ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`. 대상 피어가 연결되지 않은 경우
-(`ROUTER_MANDATORY` 활성 시) `EHOSTUNREACH`. Context가 종료된 경우 `ETERM`.
+**에러:** `s_`가 NULL이면 `INVALID_HANDLE`. 작업이 블로킹되고
+`ZLINK_DONTWAIT`가 설정된 경우 `BACKPRESSURED`. 대상 피어가 연결되지 않은 경우
+(`ROUTER_MANDATORY` 활성 시) `NOT_CONNECTED`. Context가 종료된 경우 `TERMINATED`.
+[errno-map.ko.md](../errno-map.ko.md)에서 전체 결과 매트릭스를 참조.
 
 **참고:** `zlink_send_rid`, `zlink_recv`
 
@@ -108,17 +109,14 @@ zlink_submit_result_t zlink_send_rid (void *s_,
 ```
 
 논블로킹 routed 전송은 `zlink_send_rid(..., ZLINK_DONTWAIT)` 로 처리합니다.
-함수는 `zlink_submit_result_t`를 반환합니다.
-`ZLINK_SUBMIT_BACKPRESSURED`는 내부 `EAGAIN`에,
-`ZLINK_SUBMIT_NOT_CONNECTED`는 내부 `ENOTCONN` 또는 `EHOSTUNREACH`에
-대응합니다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지됩니다.
+`ZLINK_SUBMIT_BACKPRESSURED`는 작업이 블로킹되는 경우,
+`ZLINK_SUBMIT_NOT_CONNECTED`는 peer에 도달할 수 없는 경우에 반환됩니다.
+[errno-map.ko.md](../errno-map.ko.md)에서 전체 결과 매트릭스를 참조.
 
 성공하면 모든 파트의 소유권이 라이브러리로 이전됩니다. 실패하면
 소유권은 호출자에게 유지됩니다.
 
-**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
-`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
-`zlink_errno()`로 유지됩니다.
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`, 실패 시 실패 이유를 나타내는 `zlink_submit_result_t` 값. [errno-map.ko.md](../errno-map.ko.md) 참조.
 
 **참고:** `zlink_send_rid`
 
@@ -180,18 +178,16 @@ zlink_submit_result_t zlink_router_reply (void *router_,
 ROUTER 소켓에 요청 핸들러를 부착합니다.
 
 ```c
-int zlink_router_handler (void *router_,
-                          zlink_router_handler_fn handler_,
-                          void *userdata_);
+bool zlink_router_handler (void *router_,
+                           zlink_router_handler_fn handler_,
+                           void *userdata_);
 ```
 
 ROUTER 소켓에서 수신 요청을 받을 `handler_`를 부착합니다. 요청이 도착하면
 피어의 routing id, 요청 시퀀스 번호, 메시지 파트와 함께 핸들러가
 호출됩니다.
 
-**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
-`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
-`zlink_errno()`로 유지됩니다.
+**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
 
 **참고:** `zlink_router_reply`, `zlink_router_handler_fn`
 
@@ -229,11 +225,11 @@ recv 모드에서 다음 수신 요청을 받습니다. 성공 시 `*peer_rid_ou
 소켓에서 멀티파트 메시지를 수신합니다.
 
 ```c
-int zlink_recv (void *s_,
-                zlink_routing_id_t *source_rid_out_,
-                zlink_msg_t **parts_out_,
-                size_t *part_count_out_,
-                zlink_send_flags_t flags_);
+bool zlink_recv (void *s_,
+                 zlink_routing_id_t *source_rid_out_,
+                 zlink_msg_t **parts_out_,
+                 size_t *part_count_out_,
+                 zlink_send_flags_t flags_);
 ```
 
 소켓 `s_`에서 완전한 멀티파트 메시지를 수신합니다. 성공 시 `*parts_out_`는
@@ -245,7 +241,7 @@ int zlink_recv (void *s_,
 부착된 경우 `errno=EBUSY`로 실패합니다. 메시지가 없을 때 즉시 반환하려면
 `ZLINK_DONTWAIT`를 전달하세요.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
 
 **에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우, 또는
 `ZLINK_OPT_RCVTIMEO`가 만료된 경우 `EAGAIN`. 수신 핸들러가 부착된 경우 `EBUSY`.
@@ -260,18 +256,18 @@ Context가 종료된 경우 `ETERM`.
 소켓에 메시지 수신 핸들러를 부착합니다.
 
 ```c
-int zlink_recv_handler (void *s_,
-                        zlink_socket_msg_handler_fn handler_,
-                        void *userdata_);
+bool zlink_recv_handler (void *s_,
+                         zlink_socket_msg_handler_fn handler_,
+                         void *userdata_);
 ```
 
 멀티파트 수신 subject에 메시지 수신 핸들러를 부착합니다. 지원 대상은 raw
-`PAIR`, `DEALER`, `ROUTER`, `STREAM`입니다. attach 이후 같은
+`PAIR`, `DEALER`, `STREAM`입니다. attach 이후 같은
 subject의 direct recv와 data-plane poller `ZLINK_POLLIN`은 `errno=EBUSY`로
 실패합니다. 동일 subject에 대한 두 번째 attach도 `errno=EBUSY`입니다.
 지원하지 않는 subject는 `ENOTSUP`를 반환합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
 
 **에러:** 핸들러가 NULL이면 `EINVAL`. 소켓 타입이 메시지 핸들러를
 허용하지 않으면 `ENOTSUP`. 핸들러가 이미 부착된 경우 `EBUSY`.
@@ -304,7 +300,7 @@ ROUTER 주소 지정을 위한 소켓 아이덴티티를 설정합니다. 최대
 send-ready 콜백을 설정하거나 교체합니다.
 
 ```c
-int zlink_send_ready_handler (
+bool zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
@@ -318,6 +314,6 @@ int zlink_send_ready_handler (
 `ZLINK_POLLOUT`은 `errno=EBUSY`로 실패합니다. 지원하지 않는 subject는
 `ENOTSUP`를 반환합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
 
 **참고:** `zlink_send`

@@ -5,55 +5,57 @@
 #include <string.h>
 
 #include "api/socket_api_internal.hpp"
-#include "api/status_internal.hpp"
+#include "api/bind_result_internal.hpp"
+#include "api/connect_result_internal.hpp"
+#include "api/config_result_internal.hpp"
 #include "core/address.hpp"
 #include "sockets/proxy.hpp"
 #include "services/discovery/discovery_access.hpp"
 
-bool zlink_bind (void *s_, const char *addr_)
+zlink_bind_result_t zlink_bind (void *s_, const char *addr_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
-        return false;
-    return zlink::status_internal::from_rc (handle.socket->bind (addr_));
+        return zlink::bind_result_internal::from_errno (EFAULT);
+    return zlink::bind_result_internal::from_rc (handle.socket->bind (addr_));
 }
 
-bool zlink_connect (void *s_, const char *addr_)
+zlink_connect_result_t zlink_connect (void *s_, const char *addr_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
-        return false;
-    return zlink::status_internal::from_rc (handle.socket->connect (addr_));
+        return zlink::connect_result_internal::from_errno (EFAULT);
+    return zlink::connect_result_internal::from_rc (handle.socket->connect (addr_));
 }
 
-bool zlink_unbind (void *s_, const char *addr_)
+zlink_connect_result_t zlink_unbind (void *s_, const char *addr_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
-        return false;
-    return zlink::status_internal::from_rc (handle.socket->term_endpoint (addr_));
+        return zlink::connect_result_internal::from_errno (EFAULT);
+    return zlink::connect_result_internal::from_rc (handle.socket->term_endpoint (addr_));
 }
 
-bool zlink_disconnect (void *s_, const char *addr_)
+zlink_connect_result_t zlink_disconnect (void *s_, const char *addr_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
-        return false;
-    return zlink::status_internal::from_rc (handle.socket->term_endpoint (addr_));
+        return zlink::connect_result_internal::from_errno (EFAULT);
+    return zlink::connect_result_internal::from_rc (handle.socket->term_endpoint (addr_));
 }
 
-bool zlink_socket_attach_discovery (void *s_, void *discovery_)
+zlink_config_result_t zlink_socket_attach_discovery (void *s_, void *discovery_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
-        return false;
+        return ZLINK_CONFIG_INVALID_HANDLE;
 
     zlink::discovery_t *discovery =
       zlink::discovery_access_t::from_handle (discovery_);
-    return discovery
-             ? zlink::status_internal::from_rc (
-                 handle.socket->attach_discovery (discovery))
-             : false;
+    if (!discovery)
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    return zlink::config_result_internal::from_rc (
+      handle.socket->attach_discovery (discovery));
 }
 
 int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_)
@@ -96,53 +98,54 @@ int zlink_stream_detach (void *s_)
     return handle.socket->stream_dispatch_stop ();
 }
 
-int zlink_proxy (void *frontend_, void *backend_, void *capture_)
+zlink_config_result_t zlink_proxy (void *frontend_, void *backend_, void *capture_)
 {
     if (!frontend_ || !backend_) {
         errno = EFAULT;
-        return -1;
+        return ZLINK_CONFIG_INVALID_HANDLE;
     }
 
     socket_handle_t frontend = as_socket_handle (frontend_);
     if (!frontend.socket)
-        return -1;
+        return ZLINK_CONFIG_INVALID_HANDLE;
     socket_handle_t backend = as_socket_handle (backend_);
     if (!backend.socket)
-        return -1;
+        return ZLINK_CONFIG_INVALID_HANDLE;
 
     zlink::socket_base_t *capture_socket = NULL;
     if (capture_) {
         socket_handle_t capture = as_socket_handle (capture_);
         if (!capture.socket)
-            return -1;
+            return ZLINK_CONFIG_INVALID_HANDLE;
         capture_socket = capture.socket;
     }
 
-    return zlink::proxy (frontend.socket, backend.socket, capture_socket);
+    return zlink::config_result_internal::from_rc (
+      zlink::proxy (frontend.socket, backend.socket, capture_socket));
 }
 
-int zlink_proxy_steerable (void *frontend_,
-                           void *backend_,
-                           void *capture_,
-                           void *control_)
+zlink_config_result_t zlink_proxy_steerable (void *frontend_,
+                                            void *backend_,
+                                            void *capture_,
+                                            void *control_)
 {
     if (!frontend_ || !backend_) {
         errno = EFAULT;
-        return -1;
+        return ZLINK_CONFIG_INVALID_HANDLE;
     }
 
     socket_handle_t frontend = as_socket_handle (frontend_);
     if (!frontend.socket)
-        return -1;
+        return ZLINK_CONFIG_INVALID_HANDLE;
     socket_handle_t backend = as_socket_handle (backend_);
     if (!backend.socket)
-        return -1;
+        return ZLINK_CONFIG_INVALID_HANDLE;
 
     zlink::socket_base_t *capture_socket = NULL;
     if (capture_) {
         socket_handle_t capture = as_socket_handle (capture_);
         if (!capture.socket)
-            return -1;
+            return ZLINK_CONFIG_INVALID_HANDLE;
         capture_socket = capture.socket;
     }
 
@@ -150,15 +153,16 @@ int zlink_proxy_steerable (void *frontend_,
     if (control_) {
         socket_handle_t control = as_socket_handle (control_);
         if (!control.socket)
-            return -1;
+            return ZLINK_CONFIG_INVALID_HANDLE;
         control_socket = control.socket;
     }
 
-    return zlink::proxy_steerable (frontend.socket, backend.socket,
-                                   capture_socket, control_socket);
+    return zlink::config_result_internal::from_rc (
+      zlink::proxy_steerable (frontend.socket, backend.socket,
+                              capture_socket, control_socket));
 }
 
-int zlink_has (const char *capability_)
+bool zlink_has (const char *capability_)
 {
     if (strcmp (capability_, "tcp") == 0)
         return true;

@@ -88,18 +88,18 @@ Callback invoked when a send-capable handle transitions to writable.
 
 ```c
 typedef void (*zlink_reply_handler_fn) (
-  int errno_,
+  zlink_request_result_t result_,
   zlink_msg_t *parts_,
   size_t part_count_,
   void *userdata_);
 ```
 
 Callback for asynchronous request-reply completion. Invoked when a reply
-arrives or the request times out. On timeout, `errno_` is set to
-`ETIMEDOUT` and `parts_` is NULL. On success, ownership of all message
-parts is transferred to the callback. `errno_` represents request
-completion, not submit failure. Bindings may map `errno_` to
-`zlink_request_result_t`.
+arrives or the request times out. On timeout, `result_` is set to
+`ZLINK_REQUEST_TIMED_OUT` and `parts_` is NULL. On success, `result_` is
+`ZLINK_REQUEST_OK` and ownership of all message parts is transferred to
+the callback. `result_` represents request completion as a
+`zlink_request_result_t` value, not submit failure.
 
 ### zlink_router_handler_fn
 
@@ -148,7 +148,7 @@ typedef uint32_t zlink_send_flags_t;
 
 | Constant | Description |
 |---|---|
-| `ZLINK_DONTWAIT` | Non-blocking operation; return immediately with `EAGAIN` if the operation would block |
+| `ZLINK_DONTWAIT` | Non-blocking operation; return immediately with `ZLINK_SUBMIT_BACKPRESSURED` if the operation would block |
 | `ZLINK_SEND_FLAG_DONTWAIT` | Alias of `ZLINK_DONTWAIT` |
 
 ### Send Result
@@ -219,8 +219,8 @@ typedef enum zlink_request_result_t
 ```
 
 Used as the canonical normalized completion outcome for
-`zlink_reply_handler_fn`. The callback still passes internal `errno_`, and
-that value maps to this public completion contract.
+`zlink_reply_handler_fn`. The callback receives `result_` directly as a
+`zlink_request_result_t` value.
 
 | Constant | Value | Description |
 |---|---|---|
@@ -389,9 +389,9 @@ number of sockets has been reached. `ETERM` if the context was terminated.
 Attach a message receive handler to a socket.
 
 ```c
-int zlink_recv_handler (void *s_,
-                        zlink_socket_msg_handler_fn handler_,
-                        void *userdata_);
+bool zlink_recv_handler (void *s_,
+                         zlink_socket_msg_handler_fn handler_,
+                         void *userdata_);
 ```
 
 Attach a message receive handler to a multipart receive subject. Supported
@@ -400,7 +400,7 @@ After attach, direct recv and data-plane poller `ZLINK_POLLIN` on the same
 subject fail with `errno=EBUSY`. A second attach on the same subject also
 fails with `errno=EBUSY`. Unsupported subjects return `ENOTSUP`.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `true` on success, `false` on failure (errno is set).
 
 **Errors:** `EINVAL` if the handler is NULL. `ENOTSUP` if the socket type does
 not accept a message handler. `EBUSY` if a handler is already attached.
@@ -414,9 +414,9 @@ not accept a message handler. `EBUSY` if a handler is already attached.
 Attach a topic-based receive handler to a socket.
 
 ```c
-int zlink_subscribe_handler (void *s_,
-                             zlink_subscribe_handler_fn handler_,
-                             void *userdata_);
+bool zlink_subscribe_handler (void *s_,
+                              zlink_subscribe_handler_fn handler_,
+                              void *userdata_);
 ```
 
 Attach a topic-based receive handler to raw `SUB`, raw `XSUB`, `spot`, or
@@ -425,7 +425,7 @@ Attach a topic-based receive handler to raw `SUB`, raw `XSUB`, `spot`, or
 on the same subject also fails with `errno=EBUSY`. Unsupported subjects
 return `ENOTSUP`.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `true` on success, `false` on failure (errno is set).
 
 **Errors:** `EINVAL` if the handler is NULL. `ENOTSUP` if the handle type does
 not accept a subscribe handler. `EBUSY` if a handler is already attached.
@@ -701,7 +701,7 @@ socket lifecycle.
 Install or replace the send-ready callback.
 
 ```c
-int zlink_send_ready_handler (
+bool zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
@@ -714,7 +714,7 @@ Supported subjects: raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
 callback mode. After attach, data-plane poller `ZLINK_POLLOUT` on the same
 subject fails with `errno=EBUSY`. Unsupported subjects return `ENOTSUP`.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `true` on success, `false` on failure (errno is set).
 
 **See also:** `zlink_send`
 

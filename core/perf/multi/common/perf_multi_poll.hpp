@@ -80,7 +80,7 @@ inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_
 
     if (nitems_ == 0 || !items_)
         return perf_idle_wait_ms(timeout_);
-    const int rc = ::zlink_poll(items_, nitems_, timeout_);
+    const int rc = ::zlink_poll(items_, nitems_, timeout_, NULL);
     if (rc < 0 && zlink_errno() == EAGAIN)
         return 0;
     return rc;

@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "utils/err.hpp"
+#include "api/handler_result_internal.hpp"
 #include "api/monitor_api_internal.hpp"
 #include "api/service_api_internal.hpp"
 
@@ -75,11 +76,13 @@ void *open_discovery_service_monitor_internal (
 
 }
 
-int zlink_service_monitor_handler (void *monitor_,
-                                   zlink_service_monitor_handler_fn handler_,
-                                   void *userdata_)
+zlink_handler_result_t zlink_service_monitor_handler (
+  void *monitor_,
+  zlink_service_monitor_handler_fn handler_,
+  void *userdata_)
 {
-    return attach_service_monitor_handler_state (monitor_, handler_, userdata_);
+    return zlink::handler_result_internal::from_rc (
+      attach_service_monitor_handler_state (monitor_, handler_, userdata_));
 }
 
 void *zlink_service_monitor_open (

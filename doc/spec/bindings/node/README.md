@@ -85,12 +85,9 @@ class PairSocket {
     unbind(endpoint: string): void;
     connect(endpoint: string): void;
     disconnect(endpoint: string): void;
-    send(message: MessageLike): void;
-    send(parts: readonly MessageLike[]): void;
-    trySend(message: MessageLike): SendResult;
-    trySend(parts: readonly MessageLike[]): SendResult;
-    recv(): Received;
-    tryRecv(): Received | null;
+    send(message: MessageLike, flags?: SendFlags): void;
+    send(parts: readonly MessageLike[], flags?: SendFlags): void;
+    recv(flags?: RecvFlags): Received;
     onReceive(handler: SocketRecvHandler): void;
     onSendReady(handler: SocketSendReadyHandler): void;
     close(): void;
@@ -107,10 +104,8 @@ class PubSocket {
     unbind(endpoint: string): void;
     connect(endpoint: string): void;
     disconnect(endpoint: string): void;
-    publish(topic: string, message: MessageLike): void;
-    publish(topic: string, parts: readonly MessageLike[]): void;
-    tryPublish(topic: string, message: MessageLike): SendResult;
-    tryPublish(topic: string, parts: readonly MessageLike[]): SendResult;
+    publish(topic: string, message: MessageLike, flags?: SendFlags): void;
+    publish(topic: string, parts: readonly MessageLike[], flags?: SendFlags): void;
     onSendReady(handler: SocketSendReadyHandler): void;
     attachDiscovery(discovery: Discovery): void;
     close(): void;
@@ -129,8 +124,7 @@ class SubSocket {
     disconnect(endpoint: string): void;
     setSubscription(topicOrPattern: string): void;
     unsetSubscription(topicOrPattern: string): void;
-    subscribe(): Subscribed;
-    trySubscribe(): Subscribed | null;
+    subscribe(flags?: RecvFlags): Subscribed;
     onSubscribe(handler: SocketSubscribeHandler): void;
     attachDiscovery(discovery: Discovery): void;
     close(): void;
@@ -149,12 +143,9 @@ class DealerSocket {
     disconnect(endpoint: string): void;
     setRoutingId(routingId: BufferLike): void;
     getRoutingId(): Buffer;
-    send(message: MessageLike): void;
-    send(parts: readonly MessageLike[]): void;
-    trySend(message: MessageLike): SendResult;
-    trySend(parts: readonly MessageLike[]): SendResult;
-    recv(): Received;
-    tryRecv(): Received | null;
+    send(message: MessageLike, flags?: SendFlags): void;
+    send(parts: readonly MessageLike[], flags?: SendFlags): void;
+    recv(flags?: RecvFlags): Received;
     onReceive(handler: SocketRecvHandler): void;
     onSendReady(handler: SocketSendReadyHandler): void;
     attachDiscovery(discovery: Discovery): void;
@@ -174,47 +165,43 @@ class RouterSocket {
     disconnect(endpoint: string): void;
     setRoutingId(routingId: BufferLike): void;
     getRoutingId(): Buffer;
-    send(routingId: BufferLike, message: MessageLike): void;
-    send(routingId: BufferLike, parts: readonly MessageLike[]): void;
-    trySend(routingId: BufferLike, message: MessageLike): SendResult;
-    trySend(routingId: BufferLike, parts: readonly MessageLike[]): SendResult;
-    recv(): Received;
-    tryRecv(): Received | null;
+    send(routingId: BufferLike, message: MessageLike, flags?: SendFlags): void;
+    send(routingId: BufferLike, parts: readonly MessageLike[], flags?: SendFlags): void;
+    recv(flags?: RecvFlags): Received;
     onReceive(handler: SocketRecvHandler): void;
     onSendReady(handler: SocketSendReadyHandler): void;
     attachDiscovery(discovery: Discovery): void;
 
     // --- router → spot routed send ---
-    sendSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-             message: MessageLike): void;
-    sendSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-             parts: readonly MessageLike[]): void;
-    trySendSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-                message: MessageLike): SendResult;
-    trySendSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-                parts: readonly MessageLike[]): SendResult;
+    sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+               message: MessageLike, flags?: SendFlags): void;
+    sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+               parts: readonly MessageLike[], flags?: SendFlags): void;
 
-    // --- router → spot routed request ---
-    requestSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-                message: MessageLike,
-                options?: { timeout?: number }): Promise<Received>;
-    requestSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-                parts: readonly MessageLike[],
-                options?: { timeout?: number }): Promise<Received>;
-    requestSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-                message: MessageLike,
-                callback: (err: Error | null, reply?: Received) => void,
-                options?: { timeout?: number }): void;
+    // --- router → spot routed request (async) — no flags ---
+    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+                  message: MessageLike, timeout?: number): Promise<Received>;
+    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+                  parts: readonly MessageLike[], timeout?: number): Promise<Received>;
+
+    // --- router → spot routed request (callback) — throws on submit failure ---
+    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+                  message: MessageLike,
+                  callback: RequestResultCallback,
+                  flags?: SendFlags, timeout?: number): void;
+    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+                  parts: readonly MessageLike[],
+                  callback: RequestResultCallback,
+                  flags?: SendFlags, timeout?: number): void;
 
     // --- router → spot routed reply ---
-    replySpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-              requestSeq: bigint, message: MessageLike): void;
-    replySpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-              requestSeq: bigint, parts: readonly MessageLike[]): void;
+    replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+                requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
+    replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+                requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
 
     // --- router spot receive ---
-    recvSpot(): Received;
-    tryRecvSpot(): Received | null;
+    recvSpot(flags?: RecvFlags): Received;
     onSpotReceive(handler: RouterSpotHandler): void;
 
     close(): void;
@@ -231,12 +218,9 @@ class XPubSocket {
     unbind(endpoint: string): void;
     connect(endpoint: string): void;
     disconnect(endpoint: string): void;
-    publish(topic: string, message: MessageLike): void;
-    publish(topic: string, parts: readonly MessageLike[]): void;
-    tryPublish(topic: string, message: MessageLike): SendResult;
-    tryPublish(topic: string, parts: readonly MessageLike[]): SendResult;
-    receiveSubscriptionEvent(): SubscriptionEvent;
-    tryReceiveSubscriptionEvent(): SubscriptionEvent | null;
+    publish(topic: string, message: MessageLike, flags?: SendFlags): void;
+    publish(topic: string, parts: readonly MessageLike[], flags?: SendFlags): void;
+    receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent;
     onSendReady(handler: SocketSendReadyHandler): void;
     close(): void;
 }
@@ -254,8 +238,7 @@ class XSubSocket {
     disconnect(endpoint: string): void;
     setSubscription(topicOrPattern: string): void;
     unsetSubscription(topicOrPattern: string): void;
-    subscribe(): Subscribed;
-    trySubscribe(): Subscribed | null;
+    subscribe(flags?: RecvFlags): Subscribed;
     onSubscribe(handler: SocketSubscribeHandler): void;
     close(): void;
 }
@@ -271,12 +254,9 @@ class StreamSocket {
     unbind(endpoint: string): void;
     setRoutingId(routingId: BufferLike): void;
     getRoutingId(): Buffer;
-    send(routingId: BufferLike, message: MessageLike): void;
-    send(routingId: BufferLike, parts: readonly MessageLike[]): void;
-    trySend(routingId: BufferLike, message: MessageLike): SendResult;
-    trySend(routingId: BufferLike, parts: readonly MessageLike[]): SendResult;
-    recv(): Received;
-    tryRecv(): Received | null;
+    send(routingId: BufferLike, message: MessageLike, flags?: SendFlags): void;
+    send(routingId: BufferLike, parts: readonly MessageLike[], flags?: SendFlags): void;
+    recv(flags?: RecvFlags): Received;
     onReceive(handler: SocketRecvHandler): void;
     onSendReady(handler: SocketSendReadyHandler): void;
     close(): void;
@@ -392,16 +372,177 @@ class SubscriptionEvent {
 }
 ```
 
-### SendResult
+### SendFlags
 
 ```typescript
-const SendResult = {
-    Sent: 0,
-    Backpressured: 1,
-    NotReady: 2,
+const SendFlags = {
+    None: 0,
+    DontWait: 1,
 } as const;
 
-type SendResult = typeof SendResult[keyof typeof SendResult];
+type SendFlags = typeof SendFlags[keyof typeof SendFlags];
+```
+
+### RecvFlags
+
+```typescript
+const RecvFlags = {
+    None: 0,
+    DontWait: 1,
+} as const;
+
+type RecvFlags = typeof RecvFlags[keyof typeof RecvFlags];
+```
+
+### SubmitResult
+
+Result codes for send/request/reply/publish operations.
+All failures throw `ZlinkError` with `.code` indicating the failure code.
+
+```typescript
+const SubmitResult = {
+    Ok: 0,
+    Backpressured: 1,
+    NotConnected: 2,
+    NotFound: 3,
+    Terminated: 4,
+    InvalidHandle: 5,
+    InvalidArgument: 6,
+    NotSupported: 7,
+    InvalidState: 8,
+    ThreadViolation: 9,
+    OutOfMemory: 10,
+    SeqExhausted: 11,
+    InternalError: 12,
+} as const;
+
+type SubmitResult = typeof SubmitResult[keyof typeof SubmitResult];
+```
+
+### RequestResult
+
+Result codes for request completion callbacks.
+
+```typescript
+const RequestResult = {
+    Ok: 0,
+    TimedOut: 101,
+    NotFound: 102,
+    Terminated: 103,
+    ProtocolError: 104,
+} as const;
+
+type RequestResult = typeof RequestResult[keyof typeof RequestResult];
+```
+
+### RecvResult
+
+Result codes for recv, subscribe, and subscription event operations.
+
+```typescript
+const RecvResult = {
+    Ok: 0,
+    NoData: 201,
+    Busy: 202,
+    Terminated: 203,
+    InvalidHandle: 204,
+    NotSupported: 205,
+} as const;
+
+type RecvResult = typeof RecvResult[keyof typeof RecvResult];
+```
+
+### HandlerResult
+
+Result codes for handler registration operations (onReceive, onSubscribe, etc.).
+
+```typescript
+const HandlerResult = {
+    Ok: 0,
+    InvalidArgument: 301,
+    Busy: 302,
+    NotSupported: 303,
+    Deadlock: 304,
+    InvalidHandle: 305,
+} as const;
+
+type HandlerResult = typeof HandlerResult[keyof typeof HandlerResult];
+```
+
+### CloseResult
+
+Result codes for close and destroy operations.
+
+```typescript
+const CloseResult = {
+    Ok: 0,
+    Busy: 401,
+    Shutdown: 402,
+    InvalidHandle: 403,
+} as const;
+
+type CloseResult = typeof CloseResult[keyof typeof CloseResult];
+```
+
+### BindResult
+
+Result codes for bind operations.
+
+```typescript
+const BindResult = {
+    Ok: 0,
+    InvalidArgument: 501,
+    AddrInUse: 502,
+    NotSupported: 503,
+    InvalidHandle: 504,
+} as const;
+
+type BindResult = typeof BindResult[keyof typeof BindResult];
+```
+
+### ConnectResult
+
+Result codes for connect, disconnect, and unbind operations.
+
+```typescript
+const ConnectResult = {
+    Ok: 0,
+    InvalidArgument: 601,
+    NotSupported: 602,
+    InvalidHandle: 603,
+} as const;
+
+type ConnectResult = typeof ConnectResult[keyof typeof ConnectResult];
+```
+
+### ConfigResult
+
+Result codes for configuration, option, and snapshot operations.
+
+```typescript
+const ConfigResult = {
+    Ok: 0,
+    InvalidHandle: 701,
+    InvalidArgument: 702,
+    NotSupported: 703,
+} as const;
+
+type ConfigResult = typeof ConfigResult[keyof typeof ConfigResult];
+```
+
+### ZlinkError
+
+Exception thrown when any operation fails.
+The `code` field is a globally unique `int` that spans all result enum
+ranges (0-703). The code alone identifies the error without needing to
+know which enum it belongs to.
+
+```typescript
+class ZlinkError extends Error {
+    readonly code: number;
+    readonly errno: number;
+    constructor(code: number, errno?: number);
+}
 ```
 
 ---
@@ -415,28 +556,19 @@ class RequestDealer {
     constructor(socket: DealerSocket);
     socket(): DealerSocket;
 
-    // Promise overloads
-    request(message: MessageLike, options?: { timeout?: number }): Promise<Received>;
-    request(parts: readonly MessageLike[], options?: { timeout?: number }): Promise<Received>;
-    // Callback overloads
+    // Promise (async) — no flags, timeout = 0 uses socket default
+    request(message: MessageLike, timeout?: number): Promise<Received>;
+    request(parts: readonly MessageLike[], timeout?: number): Promise<Received>;
+
+    // Callback — throws on submit failure, timeout = 0 uses socket default
     request(message: MessageLike,
-            callback: (err: Error | null, reply?: Received) => void,
-            options?: { timeout?: number }): void;
+            callback: RequestResultCallback,
+            flags?: SendFlags, timeout?: number): void;
     request(parts: readonly MessageLike[],
-            callback: (err: Error | null, reply?: Received) => void,
-            options?: { timeout?: number }): void;
+            callback: RequestResultCallback,
+            flags?: SendFlags, timeout?: number): void;
 
-    tryRequest(message: MessageLike, options?: { timeout?: number }): Promise<Received>;
-    tryRequest(parts: readonly MessageLike[], options?: { timeout?: number }): Promise<Received>;
-    tryRequest(message: MessageLike,
-               callback: (err: Error | null, reply?: Received) => void,
-               options?: { timeout?: number }): void;
-    tryRequest(parts: readonly MessageLike[],
-               callback: (err: Error | null, reply?: Received) => void,
-               options?: { timeout?: number }): void;
-
-    recv(): Received;
-    tryRecv(): Received | null;
+    recv(flags?: RecvFlags): Received;
     onReceive(handler: (received: Received) => void): void;
     close(): void;
 }
@@ -449,37 +581,26 @@ class RequestRouter {
     constructor(socket: RouterSocket);
     socket(): RouterSocket;
 
-    // Promise overloads
+    // Promise (async) — no flags, timeout = 0 uses socket default
     request(routingId: BufferLike, message: MessageLike,
-            options?: { timeout?: number }): Promise<Received>;
+            timeout?: number): Promise<Received>;
     request(routingId: BufferLike, parts: readonly MessageLike[],
-            options?: { timeout?: number }): Promise<Received>;
-    // Callback overloads
+            timeout?: number): Promise<Received>;
+
+    // Callback — throws on submit failure, timeout = 0 uses socket default
     request(routingId: BufferLike, message: MessageLike,
-            callback: (err: Error | null, reply?: Received) => void,
-            options?: { timeout?: number }): void;
+            callback: RequestResultCallback,
+            flags?: SendFlags, timeout?: number): void;
     request(routingId: BufferLike, parts: readonly MessageLike[],
-            callback: (err: Error | null, reply?: Received) => void,
-            options?: { timeout?: number }): void;
+            callback: RequestResultCallback,
+            flags?: SendFlags, timeout?: number): void;
 
-    tryRequest(routingId: BufferLike, message: MessageLike,
-               options?: { timeout?: number }): Promise<Received>;
-    tryRequest(routingId: BufferLike, parts: readonly MessageLike[],
-               options?: { timeout?: number }): Promise<Received>;
-    tryRequest(routingId: BufferLike, message: MessageLike,
-               callback: (err: Error | null, reply?: Received) => void,
-               options?: { timeout?: number }): void;
-    tryRequest(routingId: BufferLike, parts: readonly MessageLike[],
-               callback: (err: Error | null, reply?: Received) => void,
-               options?: { timeout?: number }): void;
+    reply(routingId: BufferLike, requestSeq: bigint, message: MessageLike,
+          flags?: SendFlags): void;
+    reply(routingId: BufferLike, requestSeq: bigint, parts: readonly MessageLike[],
+          flags?: SendFlags): void;
 
-    reply(routingId: BufferLike, requestSeq: bigint, message: MessageLike): number;
-    reply(routingId: BufferLike, requestSeq: bigint, parts: readonly MessageLike[]): number;
-    tryReply(routingId: BufferLike, requestSeq: bigint, message: MessageLike): SendResult;
-    tryReply(routingId: BufferLike, requestSeq: bigint, parts: readonly MessageLike[]): SendResult;
-
-    recv(): Received;
-    tryRecv(): Received | null;
+    recv(flags?: RecvFlags): Received;
     onReceive(handler: (received: Received) => void): void;
     close(): void;
 }
@@ -494,7 +615,6 @@ class RequestRouter {
 ```typescript
 class MonitorSocket {
     recv(): SocketMonitorEventValue;
-    tryRecv(): SocketMonitorEventValue | null;
     onEvent(handler: (event: SocketMonitorEventValue) => void): void;
     snapshot(): MonitorSnapshot;
     close(): void;
@@ -513,7 +633,6 @@ interface SocketMonitorEventValue {
 ```typescript
 class ServiceMonitor {
     recv(): ServiceEvent;
-    tryRecv(): ServiceEvent | null;
     onEvent(handler: (event: ServiceEvent) => void): void;
     snapshot(): MonitorSnapshot;
     close(): void;
@@ -621,14 +740,11 @@ class SpotNode {
 ```typescript
 class Spot {
     constructor(node: SpotNode);
-    publish(topic: string, payload: MessageLike): void;
-    publish(topic: string, payloadParts: readonly MessageLike[]): void;
-    tryPublish(topic: string, payload: MessageLike): SendResult;
-    tryPublish(topic: string, payloadParts: readonly MessageLike[]): SendResult;
+    publish(topic: string, payload: MessageLike, flags?: SendFlags): void;
+    publish(topic: string, payloadParts: readonly MessageLike[], flags?: SendFlags): void;
     setSubscription(topicOrPattern: string): void;
     unsetSubscription(topicOrPattern: string): void;
-    subscribe(): Subscribed;
-    trySubscribe(): Subscribed | null;
+    subscribe(flags?: RecvFlags): Subscribed;
     onSubscribe(handler: SpotSubHandler): void;
     onSendReady(handler: SpotSendReadyHandler): void;
     setLinger(milliseconds: number): void;
@@ -639,57 +755,59 @@ class Spot {
     setNoDrop(enabled: boolean): void;
 
     // --- routed send (spot → spot) ---
-    sendSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-             message: MessageLike): void;
-    sendSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-             parts: readonly MessageLike[]): void;
-    trySendSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-                message: MessageLike): SendResult;
-    trySendSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-                parts: readonly MessageLike[]): SendResult;
+    sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+               message: MessageLike, flags?: SendFlags): void;
+    sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+               parts: readonly MessageLike[], flags?: SendFlags): void;
 
-    // --- routed request (spot → spot) ---
-    requestSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-                message: MessageLike,
-                options?: { timeout?: number }): Promise<Received>;
-    requestSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-                parts: readonly MessageLike[],
-                options?: { timeout?: number }): Promise<Received>;
-    requestSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-                message: MessageLike,
-                callback: (err: Error | null, reply?: Received) => void,
-                options?: { timeout?: number }): void;
+    // --- routed request (spot → spot, async) — no flags ---
+    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+                  message: MessageLike, timeout?: number): Promise<Received>;
+    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+                  parts: readonly MessageLike[], timeout?: number): Promise<Received>;
+
+    // --- routed request (spot → spot, callback) — throws on submit failure ---
+    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+                  message: MessageLike,
+                  callback: RequestResultCallback,
+                  flags?: SendFlags, timeout?: number): void;
+    requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+                  parts: readonly MessageLike[],
+                  callback: RequestResultCallback,
+                  flags?: SendFlags, timeout?: number): void;
 
     // --- routed reply (spot → spot) ---
-    replySpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-              requestSeq: bigint, message: MessageLike): void;
-    replySpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
-              requestSeq: bigint, parts: readonly MessageLike[]): void;
+    replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+                requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
+    replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike,
+                requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
 
     // --- routed send (spot → router) ---
-    sendRouter(peerRid: BufferLike, message: MessageLike): void;
-    sendRouter(peerRid: BufferLike, parts: readonly MessageLike[]): void;
-    trySendRouter(peerRid: BufferLike, message: MessageLike): SendResult;
-    trySendRouter(peerRid: BufferLike, parts: readonly MessageLike[]): SendResult;
+    sendToRouter(peerRid: BufferLike, message: MessageLike, flags?: SendFlags): void;
+    sendToRouter(peerRid: BufferLike, parts: readonly MessageLike[], flags?: SendFlags): void;
 
-    // --- routed request (spot → router) ---
-    requestRouter(peerRid: BufferLike, message: MessageLike,
-                  options?: { timeout?: number }): Promise<Received>;
-    requestRouter(peerRid: BufferLike, parts: readonly MessageLike[],
-                  options?: { timeout?: number }): Promise<Received>;
-    requestRouter(peerRid: BufferLike, message: MessageLike,
-                  callback: (err: Error | null, reply?: Received) => void,
-                  options?: { timeout?: number }): void;
+    // --- routed request (spot → router, async) — no flags ---
+    requestToRouter(peerRid: BufferLike, message: MessageLike,
+                    timeout?: number): Promise<Received>;
+    requestToRouter(peerRid: BufferLike, parts: readonly MessageLike[],
+                    timeout?: number): Promise<Received>;
+
+    // --- routed request (spot → router, callback) — throws on submit failure ---
+    requestToRouter(peerRid: BufferLike, message: MessageLike,
+                    callback: RequestResultCallback,
+                    flags?: SendFlags, timeout?: number): void;
+    requestToRouter(peerRid: BufferLike, parts: readonly MessageLike[],
+                    callback: RequestResultCallback,
+                    flags?: SendFlags, timeout?: number): void;
 
     // --- routed reply (spot → router) ---
-    replyRouter(peerRid: BufferLike, requestSeq: bigint,
-                message: MessageLike): void;
-    replyRouter(peerRid: BufferLike, requestSeq: bigint,
-                parts: readonly MessageLike[]): void;
+    replyToRouter(peerRid: BufferLike, requestSeq: bigint,
+                  message: MessageLike, flags?: SendFlags): void;
+    replyToRouter(peerRid: BufferLike, requestSeq: bigint,
+                  parts: readonly MessageLike[], flags?: SendFlags): void;
 
     // --- routed receive ---
-    recvRouted(): Received;
-    tryRecvRouted(): Received | null;
+    recvRouted(flags?: RecvFlags): Received;
     onRoutedReceive(handler: SpotRoutedHandler): void;
     onDispatchEvent(handler: SpotDispatchEventHandler): void;
 
@@ -785,6 +903,7 @@ type SpotRoutedHandler = (sourceRid: Buffer | null, spotRid: Buffer | null,
 type SpotDispatchEventHandler = (event: number) => void;
 type RouterSpotHandler = (sourceNodeRid: Buffer | null, sourceSpotRid: Buffer | null,
                           requestSeq: bigint, parts: Message[]) => void;
+type RequestResultCallback = (result: RequestResult, reply?: Received) => void;
 type TimerHandler = (timer: Timer, fireCount: bigint) => void;
 type ServiceMonitorHandler = (event: ServiceEvent) => void;
 type ServiceMonitorEventMask = number;

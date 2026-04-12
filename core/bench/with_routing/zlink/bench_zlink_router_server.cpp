@@ -100,7 +100,7 @@ int run_echo_server(void *server)
     std::vector<char> payload_buf(1024 * 1024);
 
     while (!g_stop.load(std::memory_order_acquire)) {
-        const int prc = zlink_poll(item, 1, k_poll_timeout_ms);
+        const int prc = zlink_poll(item, 1, k_poll_timeout_ms, NULL);
         if (prc < 0) {
             if (zlink_errno() == EINTR)
                 continue;

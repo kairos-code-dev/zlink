@@ -92,7 +92,7 @@ static void client_task (void *db_)
         // Tick once per 200 ms, pulling in arriving messages
         int centitick;
         for (centitick = 0; centitick < 20; centitick++) {
-            zlink_poll (items, 2, 10);
+            zlink_poll (items, 2, 10, NULL);
             if (items[0].revents & ZLINK_POLLIN) {
                 zlink_msg_t msg;
                 TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));

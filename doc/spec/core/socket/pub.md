@@ -109,17 +109,15 @@ zlink_submit_result_t zlink_publish (void *subject_,
                    zlink_send_flags_t flags_);
 ```
 
-Use `zlink_publish(..., ZLINK_DONTWAIT)` for non-blocking publish. The
-function returns `zlink_submit_result_t`. `ZLINK_SUBMIT_BACKPRESSURED`
-corresponds to internal `EAGAIN`, and `ZLINK_SUBMIT_NOT_CONNECTED`
-corresponds to internal `ENOTCONN` or `EHOSTUNREACH`.
+Use `zlink_publish(..., ZLINK_DONTWAIT)` for non-blocking publish.
+Non-blocking send returns `ZLINK_SUBMIT_BACKPRESSURED` when the operation
+would block, `ZLINK_SUBMIT_NOT_CONNECTED` when the peer is not reachable.
+See [errno-map.md](../errno-map.md) for the full result matrix.
 
 On success, ownership of all parts is transferred to the library. On
 failure, ownership remains with the caller.
 
-**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
-`zlink_submit_result_t` value. Detailed internal errno remains available
-through `zlink_errno()` for diagnostics.
+**Returns:** `ZLINK_SUBMIT_OK` on success, or a `zlink_submit_result_t` value indicating the failure reason. See [errno-map.md](../errno-map.md).
 
 **See also:** `zlink_publish`
 
@@ -130,7 +128,7 @@ through `zlink_errno()` for diagnostics.
 Install or replace the send-ready callback.
 
 ```c
-int zlink_send_ready_handler (
+bool zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
@@ -143,8 +141,6 @@ Supported subjects: raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
 callback mode. After attach, data-plane poller `ZLINK_POLLOUT` on the same
 subject fails with `errno=EBUSY`. Unsupported subjects return `ENOTSUP`.
 
-**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
-`zlink_submit_result_t` value. Detailed internal errno remains available
-through `zlink_errno()` for diagnostics.
+**Returns:** `true` on success, `false` on failure (errno is set).
 
 **See also:** `zlink_send`

@@ -82,7 +82,7 @@ inline bool wait_for_pubsub_monitor_event (void *monitor_,
             deadline - std::chrono::steady_clock::now ())
             .count ());
         const int poll_rc =
-          zlink_poll (&item, 1, timeout_ms > 0 ? timeout_ms : 1);
+          zlink_poll (&item, 1, timeout_ms > 0 ? timeout_ms : 1, NULL);
         if (poll_rc < 0) {
             if (errno == EINTR)
                 continue;

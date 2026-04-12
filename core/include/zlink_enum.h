@@ -395,6 +395,18 @@ typedef enum zlink_poller_source_kind_t
     ZLINK_POLLER_SOURCE_TIMER = 3
 } zlink_poller_source_kind_t;
 
+typedef enum zlink_send_flags_t
+{
+    ZLINK_SEND_FLAGS_NONE     = 0,
+    ZLINK_SEND_FLAGS_DONTWAIT = 0x0001u
+} zlink_send_flags_t;
+
+typedef enum zlink_recv_flags_t
+{
+    ZLINK_RECV_FLAGS_NONE     = 0,
+    ZLINK_RECV_FLAGS_DONTWAIT = 0x0001u
+} zlink_recv_flags_t;
+
 typedef short zlink_poller_event_mask_t;
 
 typedef enum zlink_poller_event_flag_e
@@ -405,44 +417,5 @@ typedef enum zlink_poller_event_flag_e
     ZLINK_POLLPRI = 8,
     ZLINK_POLLITEMS_DFLT = 16
 } zlink_poller_event_flag_e;
-
-typedef enum zlink_submit_result_t
-{
-    /* Submit succeeded. */
-    ZLINK_SUBMIT_OK = 0,
-
-    /* Normal control-flow result. */
-    ZLINK_SUBMIT_BACKPRESSURED = 1,
-    ZLINK_SUBMIT_NOT_CONNECTED = 2,
-    ZLINK_SUBMIT_NOT_FOUND = 3,
-
-    /* Runtime / lifecycle failure. */
-    ZLINK_SUBMIT_TERMINATED = 4,
-
-    /* Caller contract violation. */
-    ZLINK_SUBMIT_INVALID_HANDLE = 5,
-    ZLINK_SUBMIT_INVALID_ARGUMENT = 6,
-    ZLINK_SUBMIT_NOT_SUPPORTED = 7,
-    ZLINK_SUBMIT_INVALID_STATE = 8,
-    ZLINK_SUBMIT_THREAD_VIOLATION = 9,
-
-    /* Internal failure. */
-    ZLINK_SUBMIT_OUT_OF_MEMORY = 10,
-    ZLINK_SUBMIT_SEQ_EXHAUSTED = 11,
-    ZLINK_SUBMIT_INTERNAL_ERROR = 12
-} zlink_submit_result_t;
-
-typedef enum zlink_request_result_t
-{
-    /* Reply completed successfully. */
-    ZLINK_REQUEST_OK = 0,
-
-    /* Completion failure visible to the requester. */
-    ZLINK_REQUEST_TIMED_OUT = 1,
-    ZLINK_REQUEST_NOT_FOUND = 2,
-    /* Reserved until the request path emits explicit termination completion. */
-    ZLINK_REQUEST_TERMINATED = 3,
-    ZLINK_REQUEST_PROTOCOL_ERROR = 4
-} zlink_request_result_t;
 
 #endif

@@ -135,7 +135,7 @@ static bool wait_for_event (void *monitor_,
 {
     for (int attempt = 0; attempt < 50; ++attempt) {
         zlink_pollitem_t item = {monitor_, 0, ZLINK_POLLIN, 0};
-        const int poll_rc = zlink_poll (&item, 1, 200);
+        const int poll_rc = zlink_poll (&item, 1, 200, NULL);
         if (poll_rc <= 0 || (item.revents & ZLINK_POLLIN) == 0)
             continue;
 
@@ -241,7 +241,7 @@ static void collect_sequence_events (void *monitor_,
         return;
 
     zlink_pollitem_t item = {monitor_, 0, ZLINK_POLLIN, 0};
-    const int poll_rc = zlink_poll (&item, 1, poll_timeout_ms_);
+    const int poll_rc = zlink_poll (&item, 1, poll_timeout_ms_, NULL);
     if (poll_rc <= 0 || (item.revents & ZLINK_POLLIN) == 0)
         return;
 

@@ -83,7 +83,7 @@ static inline int wait_for_socket_monitor_event (void *monitor,
             break;
 
         zlink_poller_event_t pe;
-        rc = zlink_poller_wait (poller, &pe, remaining);
+        rc = zlink_poller_wait (poller, &pe, remaining, NULL);
         if (rc <= 0)
             continue;
 
@@ -161,7 +161,7 @@ wait_for_service_monitor_event (void *monitor, uint32_t event_type,
             break;
 
         zlink_poller_event_t pe;
-        rc = zlink_poller_wait (poller, &pe, remaining);
+        rc = zlink_poller_wait (poller, &pe, remaining, NULL);
         if (rc <= 0)
             continue;
 
@@ -204,7 +204,7 @@ wait_for_service_monitor_event_endpoint (void *monitor, uint32_t event_type,
             break;
 
         zlink_poller_event_t pe;
-        rc = zlink_poller_wait (poller, &pe, remaining);
+        rc = zlink_poller_wait (poller, &pe, remaining, NULL);
         if (rc <= 0)
             continue;
 
@@ -258,7 +258,7 @@ wait_for_service_monitor_state (void *monitor, zlink_monitor_state_mask_t state,
             remaining = 200;
 
         zlink_poller_event_t pe;
-        rc = zlink_poller_wait (poller, &pe, remaining);
+        rc = zlink_poller_wait (poller, &pe, remaining, NULL);
         if (rc <= 0)
             continue;
 

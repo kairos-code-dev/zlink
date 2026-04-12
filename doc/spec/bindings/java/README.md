@@ -73,12 +73,12 @@ public final class PairSocket extends Socket {
     void disconnect(String endpoint);
 
     void send(Message part);
+    void send(Message part, SendFlags flags);
     void send(List<Message> parts);
-    SendResult trySend(Message part);
-    SendResult trySend(List<Message> parts);
+    void send(List<Message> parts, SendFlags flags);
 
     Received recv();
-    Optional<Received> tryRecv();
+    Received recv(RecvFlags flags);
     void onReceive(SocketMessageHandler handler);
     void onSendReady(SendReadyHandler handler);
 }
@@ -99,9 +99,9 @@ public final class PubSocket extends Socket {
     void attachDiscovery(Discovery discovery);
 
     void publish(String topicId, Message part);
+    void publish(String topicId, Message part, SendFlags flags);
     void publish(String topicId, List<Message> parts);
-    SendResult tryPublish(String topicId, Message part);
-    SendResult tryPublish(String topicId, List<Message> parts);
+    void publish(String topicId, List<Message> parts, SendFlags flags);
     void onSendReady(SendReadyHandler handler);
 
     PubSocketOptions options();
@@ -125,7 +125,7 @@ public final class SubSocket extends Socket {
     void setSubscription(String filter);
     void unsetSubscription(String filter);
     TopicMessage subscribe();
-    Optional<TopicMessage> trySubscribe();
+    TopicMessage subscribe(RecvFlags flags);
     void onSubscribe(SubscribeHandler handler);
 
     SubSocketOptions options();
@@ -150,12 +150,12 @@ public final class DealerSocket extends Socket {
     RoutingId routingId();
 
     void send(Message part);
+    void send(Message part, SendFlags flags);
     void send(List<Message> parts);
-    SendResult trySend(Message part);
-    SendResult trySend(List<Message> parts);
+    void send(List<Message> parts, SendFlags flags);
 
     Received recv();
-    Optional<Received> tryRecv();
+    Received recv(RecvFlags flags);
     void onReceive(SocketMessageHandler handler);
     void onSendReady(SendReadyHandler handler);
 
@@ -181,40 +181,74 @@ public final class RouterSocket extends Socket {
     RoutingId routingId();
 
     void send(RoutingId rid, Message part);
+    void send(RoutingId rid, Message part, SendFlags flags);
     void send(RoutingId rid, List<Message> parts);
-    SendResult trySend(RoutingId rid, Message part);
-    SendResult trySend(RoutingId rid, List<Message> parts);
+    void send(RoutingId rid, List<Message> parts, SendFlags flags);
 
     Received recv();
-    Optional<Received> tryRecv();
+    Received recv(RecvFlags flags);
     void onReceive(SocketMessageHandler handler);
     void onSendReady(SendReadyHandler handler);
 
-    // --- router → spot routed send ---
-    void sendSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);
-    void sendSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts);
-    SendResult trySendSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);
-    SendResult trySendSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                           List<Message> parts);
+    // --- router -> spot routed send ---
+    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);
+    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part,
+                    SendFlags flags);
+    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts);
+    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts,
+                    SendFlags flags);
 
-    // --- router → spot routed request (async) ---
-    CompletableFuture<Received> requestSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                                            Message part, Duration timeout);
-    CompletableFuture<Received> requestSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                                            List<Message> parts, Duration timeout);
-    void requestSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     List<Message> parts, RequestReplyCallback callback,
-                     Duration timeout);
+    // --- router -> spot routed request (async, no flags) ---
+    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+                                              RoutingId destSpotRid,
+                                              Message part);
+    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+                                              RoutingId destSpotRid,
+                                              Message part, Duration timeout);
+    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+                                              RoutingId destSpotRid,
+                                              List<Message> parts);
+    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+                                              RoutingId destSpotRid,
+                                              List<Message> parts, Duration timeout);
 
-    // --- router → spot routed reply ---
-    void replySpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                   long requestSeq, Message message);
-    void replySpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                   long requestSeq, List<Message> parts);
+    // --- router -> spot routed request (callback, has flags, throws on submit failure) ---
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       Message part,
+                       BiConsumer<RequestResult, Received> callback);
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       Message part,
+                       BiConsumer<RequestResult, Received> callback,
+                       SendFlags flags);
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       Message part,
+                       BiConsumer<RequestResult, Received> callback,
+                       SendFlags flags, Duration timeout);
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       List<Message> parts,
+                       BiConsumer<RequestResult, Received> callback);
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       List<Message> parts,
+                       BiConsumer<RequestResult, Received> callback,
+                       SendFlags flags);
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       List<Message> parts,
+                       BiConsumer<RequestResult, Received> callback,
+                       SendFlags flags, Duration timeout);
+
+    // --- router -> spot routed reply ---
+    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                     long requestSeq, Message message);
+    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                     long requestSeq, Message message, SendFlags flags);
+    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                     long requestSeq, List<Message> parts);
+    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                     long requestSeq, List<Message> parts, SendFlags flags);
 
     // --- router spot receive ---
     Received recvSpot();
-    Optional<Received> tryRecvSpot();
+    Received recvSpot(RecvFlags flags);
     void onSpotReceive(RouterSpotHandler handler);
 
     RouterSocketOptions options();
@@ -235,12 +269,12 @@ public final class XPubSocket extends Socket {
     void disconnect(String endpoint);
 
     void publish(String topicId, Message part);
+    void publish(String topicId, Message part, SendFlags flags);
     void publish(String topicId, List<Message> parts);
-    SendResult tryPublish(String topicId, Message part);
-    SendResult tryPublish(String topicId, List<Message> parts);
+    void publish(String topicId, List<Message> parts, SendFlags flags);
 
     SubscriptionEvent receiveSubscriptionEvent();
-    Optional<SubscriptionEvent> tryReceiveSubscriptionEvent();
+    SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags);
     void onSendReady(SendReadyHandler handler);
 
     PubSocketOptions options();
@@ -263,7 +297,7 @@ public final class XSubSocket extends Socket {
     void setSubscription(String filter);
     void unsetSubscription(String filter);
     TopicMessage subscribe();
-    Optional<TopicMessage> trySubscribe();
+    TopicMessage subscribe(RecvFlags flags);
     void onSubscribe(SubscribeHandler handler);
 
     SubSocketOptions options();
@@ -282,12 +316,12 @@ public final class StreamSocket extends Socket {
     void unbind(String endpoint);
 
     void send(RoutingId rid, Message part);
+    void send(RoutingId rid, Message part, SendFlags flags);
     void send(RoutingId rid, List<Message> parts);
-    SendResult trySend(RoutingId rid, Message part);
-    SendResult trySend(RoutingId rid, List<Message> parts);
+    void send(RoutingId rid, List<Message> parts, SendFlags flags);
 
     Received recv();
-    Optional<Received> tryRecv();
+    Received recv(RecvFlags flags);
     void onReceive(SocketMessageHandler handler);
     void onSendReady(SendReadyHandler handler);
 
@@ -377,6 +411,206 @@ public final class RoutingId {
 }
 ```
 
+### SendFlags
+
+Flags that control send behavior (blocking vs. non-blocking).
+
+```java
+public enum SendFlags {
+    NONE(0),
+    DONT_WAIT(1);
+
+    private final int value;
+    SendFlags(int value) { this.value = value; }
+    public int value() { return value; }
+}
+```
+
+### RecvFlags
+
+Flags that control receive behavior (blocking vs. non-blocking).
+
+```java
+public enum RecvFlags {
+    NONE(0),
+    DONT_WAIT(1);
+
+    private final int value;
+    RecvFlags(int value) { this.value = value; }
+    public int value() { return value; }
+}
+```
+
+### ZlinkException
+
+Unchecked exception thrown when any operation fails.
+The `code` field is a globally unique `int` that spans all result enum
+ranges (0-703). The code alone identifies the error without needing to
+know which enum it belongs to.
+
+```java
+public class ZlinkException extends RuntimeException {
+    public ZlinkException(int code);
+    public ZlinkException(int code, int errno);
+
+    public int getCode();
+    public int getErrno();
+    public String getMessage();
+}
+```
+
+### SubmitResult
+
+Result code for send/request/reply/publish operations.
+Maps 1-to-1 to the C API `zlink_submit_result_t`.
+
+```java
+public enum SubmitResult {
+    OK(0),
+    BACKPRESSURED(1),
+    NOT_CONNECTED(2),
+    NOT_FOUND(3),
+    TERMINATED(4),
+    INVALID_HANDLE(5),
+    INVALID_ARGUMENT(6),
+    NOT_SUPPORTED(7),
+    INVALID_STATE(8),
+    THREAD_VIOLATION(9),
+    OUT_OF_MEMORY(10),
+    SEQ_EXHAUSTED(11),
+    INTERNAL_ERROR(12);
+
+    SubmitResult(int value);
+    public int value();
+    public static SubmitResult fromValue(int value);
+}
+```
+
+### RequestResult
+
+Result code delivered to request completion callbacks and futures.
+
+```java
+public enum RequestResult {
+    OK(0),
+    TIMED_OUT(101),
+    NOT_FOUND(102),
+    TERMINATED(103),
+    PROTOCOL_ERROR(104);
+
+    RequestResult(int value);
+    public int value();
+    public static RequestResult fromValue(int value);
+}
+```
+
+### RecvResult
+
+Result code for recv, subscribe, and subscription event operations.
+
+```java
+public enum RecvResult {
+    OK(0),
+    NO_DATA(201),
+    BUSY(202),
+    TERMINATED(203),
+    INVALID_HANDLE(204),
+    NOT_SUPPORTED(205);
+
+    RecvResult(int value);
+    public int value();
+    public static RecvResult fromValue(int value);
+}
+```
+
+### HandlerResult
+
+Result code for handler registration operations (onReceive, onSubscribe, etc.).
+
+```java
+public enum HandlerResult {
+    OK(0),
+    INVALID_ARGUMENT(301),
+    BUSY(302),
+    NOT_SUPPORTED(303),
+    DEADLOCK(304),
+    INVALID_HANDLE(305);
+
+    HandlerResult(int value);
+    public int value();
+    public static HandlerResult fromValue(int value);
+}
+```
+
+### CloseResult
+
+Result code for close and destroy operations.
+
+```java
+public enum CloseResult {
+    OK(0),
+    BUSY(401),
+    SHUTDOWN(402),
+    INVALID_HANDLE(403);
+
+    CloseResult(int value);
+    public int value();
+    public static CloseResult fromValue(int value);
+}
+```
+
+### BindResult
+
+Result code for bind operations.
+
+```java
+public enum BindResult {
+    OK(0),
+    INVALID_ARGUMENT(501),
+    ADDR_IN_USE(502),
+    NOT_SUPPORTED(503),
+    INVALID_HANDLE(504);
+
+    BindResult(int value);
+    public int value();
+    public static BindResult fromValue(int value);
+}
+```
+
+### ConnectResult
+
+Result code for connect, disconnect, and unbind operations.
+
+```java
+public enum ConnectResult {
+    OK(0),
+    INVALID_ARGUMENT(601),
+    NOT_SUPPORTED(602),
+    INVALID_HANDLE(603);
+
+    ConnectResult(int value);
+    public int value();
+    public static ConnectResult fromValue(int value);
+}
+```
+
+### ConfigResult
+
+Result code for configuration, option, and snapshot operations.
+
+```java
+public enum ConfigResult {
+    OK(0),
+    INVALID_HANDLE(701),
+    INVALID_ARGUMENT(702),
+    NOT_SUPPORTED(703);
+
+    ConfigResult(int value);
+    public int value();
+    public static ConfigResult fromValue(int value);
+}
+```
+
 ### Received
 
 Aggregates one recv result with optional routing id and message parts.
@@ -431,20 +665,6 @@ public record SubscriptionEvent(RoutingId routingId, boolean subscribed,
                                 String topic) {}
 ```
 
-### SendResult
-
-```java
-public enum SendResult {
-    SENT,
-    BACKPRESSURED,
-    NOT_CONNECTED,
-    NOT_FOUND;
-
-    int nativeValue();
-    static SendResult fromNativeValue(int value);
-}
-```
-
 ---
 
 ## Request-Reply
@@ -460,29 +680,41 @@ public final class RequestRouter implements AutoCloseable {
 
     RouterSocket socket();
 
-    // --- request (async) ---
+    // --- request (async, no flags) ---
+    CompletableFuture<Received> request(RoutingId routingId, Message part);
     CompletableFuture<Received> request(RoutingId routingId, Message part,
                                         Duration timeout);
+    CompletableFuture<Received> request(RoutingId routingId, List<Message> parts);
     CompletableFuture<Received> request(RoutingId routingId, List<Message> parts,
                                         Duration timeout);
 
-    // --- tryRequest (async) ---
-    CompletableFuture<Received> tryRequest(RoutingId routingId, Message part,
-                                           Duration timeout);
-
-    // --- request (callback) ---
+    // --- request (callback, has flags, throws on submit failure) ---
+    void request(RoutingId routingId, Message part,
+                 BiConsumer<RequestResult, Received> callback);
+    void request(RoutingId routingId, Message part,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags);
+    void request(RoutingId routingId, Message part,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags, Duration timeout);
     void request(RoutingId routingId, List<Message> parts,
-                 RequestReplyCallback callback, Duration timeout);
+                 BiConsumer<RequestResult, Received> callback);
+    void request(RoutingId routingId, List<Message> parts,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags);
+    void request(RoutingId routingId, List<Message> parts,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags, Duration timeout);
 
     // --- reply ---
-    CompletableFuture<Void> reply(RoutingId routingId, long requestSeq, Message message);
-    CompletableFuture<Void> reply(RoutingId routingId, long requestSeq,
-                                  List<Message> parts);
-    SendResult tryReply(RoutingId routingId, long requestSeq, Message message);
+    void reply(RoutingId routingId, long requestSeq, Message message);
+    void reply(RoutingId routingId, long requestSeq, Message message, SendFlags flags);
+    void reply(RoutingId routingId, long requestSeq, List<Message> parts);
+    void reply(RoutingId routingId, long requestSeq, List<Message> parts, SendFlags flags);
 
     // --- receive ---
     Received recv();
-    Optional<Received> tryRecv();
+    Received recv(RecvFlags flags);
     void onReceive(SocketMessageHandler handler);
 
     void close();
@@ -499,21 +731,33 @@ public final class RequestDealer implements AutoCloseable {
 
     DealerSocket socket();
 
-    // --- request (async) ---
+    // --- request (async, no flags) ---
+    CompletableFuture<Received> request(Message part);
     CompletableFuture<Received> request(Message part, Duration timeout);
+    CompletableFuture<Received> request(List<Message> parts);
     CompletableFuture<Received> request(List<Message> parts, Duration timeout);
 
-    // --- tryRequest (async) ---
-    CompletableFuture<Received> tryRequest(Message part, Duration timeout);
-    CompletableFuture<Received> tryRequest(List<Message> parts, Duration timeout);
-
-    // --- request (callback) ---
-    void request(List<Message> parts, RequestReplyCallback callback,
-                 Duration timeout);
+    // --- request (callback, has flags, throws on submit failure) ---
+    void request(Message part,
+                 BiConsumer<RequestResult, Received> callback);
+    void request(Message part,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags);
+    void request(Message part,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags, Duration timeout);
+    void request(List<Message> parts,
+                 BiConsumer<RequestResult, Received> callback);
+    void request(List<Message> parts,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags);
+    void request(List<Message> parts,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags, Duration timeout);
 
     // --- receive ---
     Received recv();
-    Optional<Received> tryRecv();
+    Received recv(RecvFlags flags);
     void onReceive(SocketMessageHandler handler);
 
     void close();
@@ -532,7 +776,6 @@ Implements `AutoCloseable`.
 ```java
 public final class MonitorSocket implements AutoCloseable {
     MonitorEvent recv();
-    Optional<MonitorEvent> tryRecv();
     MonitorSnapshot snapshot();
 
     void close();
@@ -548,7 +791,6 @@ Implements `AutoCloseable`.
 public final class ServiceMonitor implements AutoCloseable {
     void onEvent(ServiceMonitorHandler handler);
     ServiceEvent recv();
-    Optional<ServiceEvent> tryRecv();
     MonitorSnapshot snapshot();
 
     void close();
@@ -653,9 +895,9 @@ public final class Spot implements AutoCloseable {
 
     // --- publish ---
     void publish(String topicId, Message part);
-    SendResult tryPublish(String topicId, Message part);
+    void publish(String topicId, Message part, SendFlags flags);
     void publish(String topicId, List<Message> parts);
-    SendResult tryPublish(String topicId, List<Message> parts);
+    void publish(String topicId, List<Message> parts, SendFlags flags);
 
     // --- subscribe ---
     void setSubscription(String topicId);
@@ -663,51 +905,106 @@ public final class Spot implements AutoCloseable {
     void onSubscribe(SubscribeHandler handler);
     void onSendReady(SendReadyHandler handler);
     TopicMessage subscribe();
-    Optional<TopicMessage> trySubscribe();
+    TopicMessage subscribe(RecvFlags flags);
 
-    // --- routed send (spot → spot) ---
-    void sendSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);
-    void sendSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts);
-    SendResult trySendSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);
-    SendResult trySendSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                           List<Message> parts);
+    // --- routed send (spot -> spot) ---
+    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);
+    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part,
+                    SendFlags flags);
+    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts);
+    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts,
+                    SendFlags flags);
 
-    // --- routed request (spot → spot, async) ---
-    CompletableFuture<Received> requestSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                                            Message part, Duration timeout);
-    CompletableFuture<Received> requestSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                                            List<Message> parts, Duration timeout);
-    void requestSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     List<Message> parts, RequestReplyCallback callback,
-                     Duration timeout);
+    // --- routed request (spot -> spot, async, no flags) ---
+    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+                                              RoutingId destSpotRid,
+                                              Message part);
+    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+                                              RoutingId destSpotRid,
+                                              Message part, Duration timeout);
+    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+                                              RoutingId destSpotRid,
+                                              List<Message> parts);
+    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+                                              RoutingId destSpotRid,
+                                              List<Message> parts, Duration timeout);
 
-    // --- routed reply (spot → spot) ---
-    void replySpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                   long requestSeq, Message message);
-    void replySpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                   long requestSeq, List<Message> parts);
+    // --- routed request (spot -> spot, callback, has flags, throws on submit failure) ---
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       Message part,
+                       BiConsumer<RequestResult, Received> callback);
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       Message part,
+                       BiConsumer<RequestResult, Received> callback,
+                       SendFlags flags);
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       Message part,
+                       BiConsumer<RequestResult, Received> callback,
+                       SendFlags flags, Duration timeout);
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       List<Message> parts,
+                       BiConsumer<RequestResult, Received> callback);
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       List<Message> parts,
+                       BiConsumer<RequestResult, Received> callback,
+                       SendFlags flags);
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       List<Message> parts,
+                       BiConsumer<RequestResult, Received> callback,
+                       SendFlags flags, Duration timeout);
 
-    // --- routed send (spot → router) ---
-    void sendRouter(RoutingId peerRid, Message part);
-    void sendRouter(RoutingId peerRid, List<Message> parts);
-    SendResult trySendRouter(RoutingId peerRid, Message part);
-    SendResult trySendRouter(RoutingId peerRid, List<Message> parts);
+    // --- routed reply (spot -> spot) ---
+    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                     long requestSeq, Message message);
+    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                     long requestSeq, Message message, SendFlags flags);
+    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                     long requestSeq, List<Message> parts);
+    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                     long requestSeq, List<Message> parts, SendFlags flags);
 
-    // --- routed request (spot → router, async) ---
-    CompletableFuture<Received> requestRouter(RoutingId peerRid, Message part,
-                                              Duration timeout);
-    CompletableFuture<Received> requestRouter(RoutingId peerRid, List<Message> parts,
-                                              Duration timeout);
-    void requestRouter(RoutingId peerRid, List<Message> parts,
-                       RequestReplyCallback callback, Duration timeout);
+    // --- routed send (spot -> router) ---
+    void sendToRouter(RoutingId peerRid, Message part);
+    void sendToRouter(RoutingId peerRid, Message part, SendFlags flags);
+    void sendToRouter(RoutingId peerRid, List<Message> parts);
+    void sendToRouter(RoutingId peerRid, List<Message> parts, SendFlags flags);
 
-    // --- routed reply (spot → router) ---
-    void replyRouter(RoutingId peerRid, long requestSeq, Message message);
-    void replyRouter(RoutingId peerRid, long requestSeq, List<Message> parts);
+    // --- routed request (spot -> router, async, no flags) ---
+    CompletableFuture<Received> requestToRouter(RoutingId peerRid, Message part);
+    CompletableFuture<Received> requestToRouter(RoutingId peerRid, Message part,
+                                                Duration timeout);
+    CompletableFuture<Received> requestToRouter(RoutingId peerRid, List<Message> parts);
+    CompletableFuture<Received> requestToRouter(RoutingId peerRid, List<Message> parts,
+                                                Duration timeout);
+
+    // --- routed request (spot -> router, callback, has flags, throws on submit failure) ---
+    void requestToRouter(RoutingId peerRid, Message part,
+                         BiConsumer<RequestResult, Received> callback);
+    void requestToRouter(RoutingId peerRid, Message part,
+                         BiConsumer<RequestResult, Received> callback,
+                         SendFlags flags);
+    void requestToRouter(RoutingId peerRid, Message part,
+                         BiConsumer<RequestResult, Received> callback,
+                         SendFlags flags, Duration timeout);
+    void requestToRouter(RoutingId peerRid, List<Message> parts,
+                         BiConsumer<RequestResult, Received> callback);
+    void requestToRouter(RoutingId peerRid, List<Message> parts,
+                         BiConsumer<RequestResult, Received> callback,
+                         SendFlags flags);
+    void requestToRouter(RoutingId peerRid, List<Message> parts,
+                         BiConsumer<RequestResult, Received> callback,
+                         SendFlags flags, Duration timeout);
+
+    // --- routed reply (spot -> router) ---
+    void replyToRouter(RoutingId peerRid, long requestSeq, Message message);
+    void replyToRouter(RoutingId peerRid, long requestSeq, Message message, SendFlags flags);
+    void replyToRouter(RoutingId peerRid, long requestSeq, List<Message> parts);
+    void replyToRouter(RoutingId peerRid, long requestSeq, List<Message> parts,
+                       SendFlags flags);
 
     // --- routed receive ---
     Received recvRouted();
-    Optional<Received> tryRecvRouted();
+    Received recvRouted(RecvFlags flags);
     void onRoutedReceive(SpotRoutedHandler handler);
     void onDispatchEvent(SpotDispatchEventHandler handler);
 

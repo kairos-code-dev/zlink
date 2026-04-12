@@ -142,7 +142,7 @@ bool run_measure_once(const std::vector<void *> &sockets,
     }
 
     while (std::chrono::steady_clock::now() < measure_end) {
-        const int poll_rc = zlink_poll(poll_items.data(), clients, 1);
+        const int poll_rc = zlink_poll(poll_items.data(), clients, 1, NULL);
         if (poll_rc <= 0)
             continue;
 
@@ -184,7 +184,7 @@ bool run_measure_once(const std::vector<void *> &sockets,
     const auto drain_end =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(drain_ms);
     while (std::chrono::steady_clock::now() < drain_end) {
-        const int poll_rc = zlink_poll(poll_items.data(), clients, 1);
+        const int poll_rc = zlink_poll(poll_items.data(), clients, 1, NULL);
         if (poll_rc <= 0)
             continue;
 

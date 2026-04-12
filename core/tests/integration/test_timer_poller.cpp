@@ -102,7 +102,7 @@ void test_timer_poller_and_recv ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_start (timer, 20 * 1000 * 1000ULL, 2));
 
     zlink_poller_event_t ev;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_wait (poller, &ev, 500));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_wait (poller, &ev, 500, NULL));
     TEST_ASSERT_EQUAL_INT (ZLINK_POLLER_SOURCE_TIMER, ev.source_kind);
     TEST_ASSERT_NULL (ev.socket);
     TEST_ASSERT_EQUAL_PTR (timer, ev.timer);

@@ -33,32 +33,32 @@ void test_loopback_ipv6 ()
 
 void test_invalid_service_fails ()
 {
-    int rc = zlink_connect (sock, "tcp://localhost:invalid");
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    zlink_connect_result_t rc = zlink_connect (sock, "tcp://localhost:invalid");
+    TEST_ASSERT_TRUE (rc != ZLINK_CONNECT_OK);
 }
 
 void test_hostname_with_spaces_fails ()
 {
-    int rc = zlink_connect (sock, "tcp://in val id:1234");
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    zlink_connect_result_t rc = zlink_connect (sock, "tcp://in val id:1234");
+    TEST_ASSERT_TRUE (rc != ZLINK_CONNECT_OK);
 }
 
 void test_no_hostname_fails ()
 {
-    int rc = zlink_connect (sock, "tcp://");
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    zlink_connect_result_t rc = zlink_connect (sock, "tcp://");
+    TEST_ASSERT_TRUE (rc != ZLINK_CONNECT_OK);
 }
 
 void test_x ()
 {
-    int rc = zlink_connect (sock, "tcp://192.168.0.200:*");
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    zlink_connect_result_t rc = zlink_connect (sock, "tcp://192.168.0.200:*");
+    TEST_ASSERT_TRUE (rc != ZLINK_CONNECT_OK);
 }
 
 void test_invalid_proto_fails ()
 {
-    int rc = zlink_connect (sock, "invalid://localhost:1234");
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    zlink_connect_result_t rc = zlink_connect (sock, "invalid://localhost:1234");
+    TEST_ASSERT_TRUE (rc != ZLINK_CONNECT_OK);
     TEST_ASSERT_EQUAL_INT (EPROTONOSUPPORT, errno);
 }
 

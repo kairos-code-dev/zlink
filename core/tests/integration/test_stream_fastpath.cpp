@@ -36,7 +36,7 @@ static bool wait_monitor_event (void *monitor_,
           {activity_socket_, 0, ZLINK_POLLIN, 0},
         };
         const int count = activity_socket_ ? 2 : 1;
-        const int rc = zlink_poll (items, count, poll_slice_ms);
+        const int rc = zlink_poll (items, count, poll_slice_ms, NULL);
         if (rc <= 0 || (items[0].revents & ZLINK_POLLIN) == 0)
             continue;
 

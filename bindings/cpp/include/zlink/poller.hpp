@@ -55,7 +55,7 @@ class poller_t
 
     int size () const
     {
-        return _poller ? zlink_poller_size (_poller) : -1;
+        return _poller ? zlink_poller_size (_poller, nullptr) : -1;
     }
 
     template<typename SocketLike>
@@ -213,7 +213,7 @@ class poller_t
         }
 
         zlink_poller_event_t native_event;
-        const int rc = zlink_poller_wait (_poller, &native_event, timeout_);
+        const int rc = zlink_poller_wait (_poller, &native_event, timeout_, nullptr);
         if (rc <= 0)
             return rc;
 
@@ -228,7 +228,7 @@ class poller_t
             return -1;
         }
 
-        const int registered = zlink_poller_size (_poller);
+        const int registered = zlink_poller_size (_poller, nullptr);
         if (registered < 0)
             return -1;
 
@@ -239,7 +239,7 @@ class poller_t
 
         _native_events.resize (static_cast<size_t> (registered));
         const int rc = zlink_poller_wait_all (
-          _poller, &_native_events[0], registered, timeout_);
+          _poller, &_native_events[0], registered, timeout_, nullptr);
         if (rc <= 0) {
             if (rc == 0)
                 events_.clear ();

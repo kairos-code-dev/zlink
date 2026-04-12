@@ -75,7 +75,7 @@ inline bool wait_for_monitor_readable (void *monitor_handle_, int timeout_ms_)
     item.events = ZLINK_POLLIN;
     item.revents = 0;
 
-    const int rc = zlink_poll (&item, 1, timeout_ms_);
+    const int rc = zlink_poll (&item, 1, timeout_ms_, NULL);
     return rc > 0 && (item.revents & ZLINK_POLLIN) != 0;
 }
 

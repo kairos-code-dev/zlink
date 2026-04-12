@@ -91,6 +91,33 @@ int test_assert_success_message_errno_helper (zlink_submit_result_t rc_,
     return static_cast<int> (rc_);
 }
 
+#define DEFINE_RESULT_ASSERT_HELPER(TYPE, OK_VAL, LABEL)                       \
+    int test_assert_success_message_errno_helper (                             \
+      TYPE rc_, const char *msg_, const char *expr_, int line_)                \
+    {                                                                          \
+        if (rc_ != OK_VAL) {                                                   \
+            char buffer[512];                                                  \
+            buffer[sizeof (buffer) - 1] = 0;                                   \
+            snprintf (                                                         \
+              buffer, sizeof (buffer) - 1,                                     \
+              "%s failed%s%s%s, " LABEL " = %i, errno = %i (%s)", expr_,       \
+              msg_ ? " (additional info: " : "", msg_ ? msg_ : "",            \
+              msg_ ? ")" : "", static_cast<int> (rc_), zlink_errno (),         \
+              zlink_strerror (zlink_errno ()));                                \
+            UNITY_TEST_FAIL (line_, buffer);                                    \
+        }                                                                      \
+        return static_cast<int> (rc_);                                         \
+    }
+
+DEFINE_RESULT_ASSERT_HELPER (zlink_connect_result_t, ZLINK_CONNECT_OK, "connect")
+DEFINE_RESULT_ASSERT_HELPER (zlink_bind_result_t, ZLINK_BIND_OK, "bind")
+DEFINE_RESULT_ASSERT_HELPER (zlink_config_result_t, ZLINK_CONFIG_OK, "config")
+DEFINE_RESULT_ASSERT_HELPER (zlink_close_result_t, ZLINK_CLOSE_OK, "close")
+DEFINE_RESULT_ASSERT_HELPER (zlink_recv_result_t, ZLINK_RECV_OK, "recv")
+DEFINE_RESULT_ASSERT_HELPER (zlink_handler_result_t, ZLINK_HANDLER_OK, "handler")
+
+#undef DEFINE_RESULT_ASSERT_HELPER
+
 int test_assert_success_message_raw_errno_helper (
   int rc_, const char *msg_, const char *expr_, int line_, bool zero)
 {

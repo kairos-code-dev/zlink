@@ -89,17 +89,17 @@ typedef void (*zlink_send_ready_handler_fn) (void *subject_, void *userdata_);
 
 ```c
 typedef void (*zlink_reply_handler_fn) (
-  int errno_,
+  zlink_request_result_t result_,
   zlink_msg_t *parts_,
   size_t part_count_,
   void *userdata_);
 ```
 
 비동기 request-reply 완료 콜백. 응답이 도착하거나 요청이 타임아웃되면
-호출됩니다. 타임아웃 시 `errno_`에 `ETIMEDOUT`이 설정되고 `parts_`는
-NULL입니다. 성공 시 모든 메시지 파트의 소유권이 콜백으로 이전됩니다.
-`errno_`는 submit 실패가 아니라 request completion 결과를 뜻하며,
-바인딩은 이를 `zlink_request_result_t`로 매핑할 수 있습니다.
+호출됩니다. 타임아웃 시 `result_`는 `ZLINK_REQUEST_TIMED_OUT`이고 `parts_`는
+NULL입니다. 성공 시 `result_`는 `ZLINK_REQUEST_OK`이고 모든 메시지 파트의
+소유권이 콜백으로 이전됩니다. `result_`는 submit 실패가 아니라
+`zlink_request_result_t` 값으로 request completion 결과를 나타냅니다.
 
 ### zlink_router_handler_fn
 
@@ -147,7 +147,7 @@ typedef uint32_t zlink_send_flags_t;
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_DONTWAIT` | 논블로킹 모드; 블로킹 시 `EAGAIN` 반환 |
+| `ZLINK_DONTWAIT` | 논블로킹 모드; 블로킹 시 `ZLINK_SUBMIT_BACKPRESSURED` 반환 |
 | `ZLINK_SEND_FLAG_DONTWAIT` | `ZLINK_DONTWAIT`의 별칭 |
 
 ### 송신 결과
@@ -218,8 +218,8 @@ typedef enum zlink_request_result_t
 ```
 
 `zlink_reply_handler_fn`의 completion 결과를 정규화할 때 사용하는 기준
-enum입니다. callback은 여전히 내부 `errno_`를 전달하고, 그 값이 이 공개
-completion 계약으로 매핑됩니다.
+enum입니다. callback은 `result_`를 `zlink_request_result_t` 값으로
+직접 전달합니다.
 
 | 상수 | 값 | 설명 |
 |---|---|---|
@@ -390,18 +390,18 @@ callback attach를 지원하고, 토픽 기반 subject(`SUB`, `XSUB`)는
 소켓에 메시지 수신 핸들러를 부착합니다.
 
 ```c
-int zlink_recv_handler (void *s_,
-                        zlink_socket_msg_handler_fn handler_,
-                        void *userdata_);
+bool zlink_recv_handler (void *s_,
+                         zlink_socket_msg_handler_fn handler_,
+                         void *userdata_);
 ```
 
 멀티파트 수신 subject에 메시지 수신 핸들러를 부착합니다. 지원 대상은 raw
-`PAIR`, `DEALER`, `ROUTER`, `STREAM`입니다. attach 이후 같은
+`PAIR`, `DEALER`, `STREAM`입니다. attach 이후 같은
 subject의 direct recv와 data-plane poller `ZLINK_POLLIN`은 `errno=EBUSY`로
 실패합니다. 동일 subject에 대한 두 번째 attach도 `errno=EBUSY`입니다.
 지원하지 않는 subject는 `ENOTSUP`를 반환합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
 
 **에러:** 핸들러가 NULL이면 `EINVAL`. 소켓 타입이 메시지 핸들러를
 허용하지 않으면 `ENOTSUP`. 핸들러가 이미 부착된 경우 `EBUSY`.
@@ -415,9 +415,9 @@ subject의 direct recv와 data-plane poller `ZLINK_POLLIN`은 `errno=EBUSY`로
 소켓에 토픽 기반 수신 핸들러를 부착합니다.
 
 ```c
-int zlink_subscribe_handler (void *s_,
-                             zlink_subscribe_handler_fn handler_,
-                             void *userdata_);
+bool zlink_subscribe_handler (void *s_,
+                              zlink_subscribe_handler_fn handler_,
+                              void *userdata_);
 ```
 
 raw `SUB`, raw `XSUB`, `spot`, `spot_node`에 토픽 기반 수신 핸들러를
@@ -426,7 +426,7 @@ poller `ZLINK_POLLIN`은 `errno=EBUSY`로 실패합니다. 동일 subject에 대
 두 번째 attach도 `errno=EBUSY`입니다. 지원하지 않는 subject는 `ENOTSUP`를
 반환합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
 
 **에러:** 핸들러가 NULL이면 `EINVAL`. handle 타입이 subscribe handler를
 허용하지 않으면 `ENOTSUP`. 핸들러가 이미 부착된 경우 `EBUSY`.
@@ -444,9 +444,13 @@ int zlink_close (void *s_);
 ```
 
 소켓을 닫고 관련된 모든 리소스를 해제합니다. 송신 대기열에 남아 있는 메시지는
-`ZLINK_OPT_LINGER` 설정에 따라 폐기되거나 송신됩니다. 다른 스레드에서 동일 핸들에
-대해 콜백이나 API 호출이 진행 중이면 `errno=EBUSY`로 실패합니다. send-ready
-또는 monitor 콜백 내에서의 self-close는 콜백 에필로그까지 지연됩니다.
+`ZLINK_OPT_LINGER` 설정에 따라 폐기되거나 송신됩니다. 공개 핸들은 계층적 계약을
+따릅니다: hot-path send 작업은 여러 스레드에서 동시 호출이 가능하고, 저빈도
+제어 경로는 정확성을 위해 직렬화되며, close/destroy는 엄격한 lifecycle gate를
+사용합니다. 다른 스레드에서 동일 핸들에 대해 콜백이나 API 호출이 진행 중이면
+`errno=EBUSY`로 실패합니다. close가 accepted된 뒤 새 API 진입은
+`errno=ESHUTDOWN`으로 실패합니다. send-ready 또는 monitor 콜백 내에서의
+self-close는 콜백 에필로그까지 지연됩니다.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
@@ -692,9 +696,8 @@ raw ROUTER, DEALER, PUB, SUB 소켓을 discovery 서비스 뷰에 부착합니�
 send-ready 콜백을 설정하거나 교체합니다.
 
 ```c
-int zlink_send_ready_handler (void *s_,
-                               zlink_send_ready_handler_fn handler_,
-                               void *userdata_);
+bool zlink_send_ready_handler (
+  void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
 핸들러는 교체 전용입니다. NULL 전달은 유효하지 않습니다. 교체 성공 시 다음 쓰기
@@ -707,7 +710,7 @@ int zlink_send_ready_handler (void *s_,
 `ZLINK_POLLOUT`은 `errno=EBUSY`로 실패합니다. 지원하지 않는 subject는
 `ENOTSUP`를 반환합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
 
 **참고:** `zlink_send`
 

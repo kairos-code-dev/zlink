@@ -295,7 +295,7 @@ bool wait_for_monitor_ready_recv (void *monitor_, int timeout_ms_)
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
     while (std::chrono::steady_clock::now () < deadline) {
         zlink_pollitem_t item = {monitor_, 0, ZLINK_POLLIN, 0};
-        if (zlink_poll (&item, 1, 100) <= 0 || (item.revents & ZLINK_POLLIN) == 0)
+        if (zlink_poll (&item, 1, 100, NULL) <= 0 || (item.revents & ZLINK_POLLIN) == 0)
             continue;
 
         for (;;) {
@@ -321,7 +321,7 @@ bool wait_for_monitor_ready_recv_with_routing_id (
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
     while (std::chrono::steady_clock::now () < deadline) {
         zlink_pollitem_t item = {monitor_, 0, ZLINK_POLLIN, 0};
-        if (zlink_poll (&item, 1, 100) <= 0 || (item.revents & ZLINK_POLLIN) == 0)
+        if (zlink_poll (&item, 1, 100, NULL) <= 0 || (item.revents & ZLINK_POLLIN) == 0)
             continue;
 
         for (;;) {
@@ -359,7 +359,7 @@ bool wait_for_monitor_ready_recv_with_activity (
         zlink_pollitem_t items[] = {
           {monitor_, 0, ZLINK_POLLIN, 0},
           {activity_socket_, 0, ZLINK_POLLIN, 0}};
-        const int rc = zlink_poll (items, 2, slice_ms);
+        const int rc = zlink_poll (items, 2, slice_ms, NULL);
         if (rc <= 0 || (items[0].revents & ZLINK_POLLIN) == 0)
             continue;
 
@@ -395,7 +395,7 @@ bool wait_for_pubsub_delivery_ready_recv (void *pub_monitor_,
         zlink_pollitem_t items[] = {
           {pub_monitor_, 0, ZLINK_POLLIN, 0},
           {sub_monitor_, 0, ZLINK_POLLIN, 0}};
-        if (zlink_poll (items, 2, 100) <= 0)
+        if (zlink_poll (items, 2, 100, NULL) <= 0)
             continue;
 
         for (int i = 0; i < 2; ++i) {

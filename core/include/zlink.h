@@ -111,8 +111,6 @@ ZLINK_EXPORT void zlink_version (int *major_, int *minor_, int *patch_);
 #define ZLINK_THREAD_PRIORITY_DFLT -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT -1
 
-typedef uint32_t zlink_send_flags_t;
-
 /**
  * @brief Create a new zlink context.
  *
@@ -131,7 +129,7 @@ ZLINK_EXPORT void *zlink_ctx_new (void);
  * @param context_  Context handle.
  * @return 0 on success, -1 on failure (errno is set).
  */
-ZLINK_EXPORT int zlink_ctx_term (void *context_);
+ZLINK_EXPORT zlink_close_result_t zlink_ctx_term (void *context_);
 
 /**
  * @brief Shut down the context immediately.
@@ -142,7 +140,7 @@ ZLINK_EXPORT int zlink_ctx_term (void *context_);
  * @param context_  Context handle.
  * @return 0 on success, -1 on failure (errno is set).
  */
-ZLINK_EXPORT int zlink_ctx_shutdown (void *context_);
+ZLINK_EXPORT zlink_close_result_t zlink_ctx_shutdown (void *context_);
 
 /**
  * @brief Set a context option.
@@ -151,7 +149,7 @@ ZLINK_EXPORT int zlink_ctx_shutdown (void *context_);
  * @param optval_   Option value.
  * @return 0 on success, -1 on failure (errno is set).
  */
-ZLINK_EXPORT int zlink_ctx_set (void *context_,
+ZLINK_EXPORT zlink_config_result_t zlink_ctx_set (void *context_,
                                 zlink_ctx_option_t option_,
                                 int optval_);
 
@@ -161,7 +159,8 @@ ZLINK_EXPORT int zlink_ctx_set (void *context_,
  * @param option_   Option name.
  * @return Option value, or -1 on failure (errno is set).
  */
-ZLINK_EXPORT int zlink_ctx_get (void *context_, zlink_ctx_option_t option_);
+ZLINK_EXPORT int zlink_ctx_get (void *context_, zlink_ctx_option_t option_,
+                                zlink_config_result_t *error_out_);
 
 /******************************************************************************/
 /*  0MQ message definition.                                                   */
@@ -194,10 +193,10 @@ typedef void (zlink_free_fn) (void *data_, void *hint_);
 #define ZLINK_MSG_METADATA_VALUE_MAX 65535
 
 /** @brief Initialize an empty message. Must be closed with zlink_msg_close(). */
-ZLINK_EXPORT int zlink_msg_init (zlink_msg_t *msg_);
+ZLINK_EXPORT zlink_config_result_t zlink_msg_init (zlink_msg_t *msg_);
 
 /** @brief Initialize a message of the given size. */
-ZLINK_EXPORT int zlink_msg_init_size (zlink_msg_t *msg_, size_t size_);
+ZLINK_EXPORT zlink_config_result_t zlink_msg_init_size (zlink_msg_t *msg_, size_t size_);
 
 /**
  * @brief Initialize a message from an external data buffer (zero-copy).
@@ -212,7 +211,7 @@ ZLINK_EXPORT int zlink_msg_init_size (zlink_msg_t *msg_, size_t size_);
  * never frees it. Such messages report as shared because the storage is not
  * uniquely owned by the message object.
  */
-ZLINK_EXPORT int zlink_msg_init_data (
+ZLINK_EXPORT zlink_config_result_t zlink_msg_init_data (
   zlink_msg_t *msg_, void *data_, size_t size_, zlink_free_fn *ffn_, void *hint_);
 
 /**
@@ -222,7 +221,7 @@ ZLINK_EXPORT int zlink_msg_init_data (
  * storage, the underlying buffer is released only when the last owning message
  * is closed or consumed by send.
  */
-ZLINK_EXPORT int zlink_msg_close (zlink_msg_t *msg_);
+ZLINK_EXPORT zlink_config_result_t zlink_msg_close (zlink_msg_t *msg_);
 
 /**
  * @brief Move message content from src_ to dest_ without copying payload.
@@ -231,7 +230,7 @@ ZLINK_EXPORT int zlink_msg_close (zlink_msg_t *msg_);
  * Existing shared/reference-counted state moves with the message; move does
  * not increment any reference count.
  */
-ZLINK_EXPORT int zlink_msg_move (zlink_msg_t *dest_, zlink_msg_t *src_);
+ZLINK_EXPORT zlink_config_result_t zlink_msg_move (zlink_msg_t *dest_, zlink_msg_t *src_);
 
 /**
  * @brief Copy a message from src_ to dest_.
@@ -240,7 +239,7 @@ ZLINK_EXPORT int zlink_msg_move (zlink_msg_t *dest_, zlink_msg_t *src_);
  * messages share the same underlying storage and are tracked internally by
  * reference count rather than duplicating the payload buffer.
  */
-ZLINK_EXPORT int zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
+ZLINK_EXPORT zlink_config_result_t zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
 
 /** @brief Return a pointer to the message data buffer. */
 ZLINK_EXPORT void *zlink_msg_data (zlink_msg_t *msg_);
@@ -255,7 +254,8 @@ ZLINK_EXPORT size_t zlink_msg_size (const zlink_msg_t *msg_);
  * reference count. Message kinds that are not managed by internal reference
  * counting (for example inline or borrowed-constant storage) return 1.
  */
-ZLINK_EXPORT int zlink_msg_refcnt (const zlink_msg_t *msg_);
+ZLINK_EXPORT int zlink_msg_refcnt (const zlink_msg_t *msg_,
+                                   zlink_config_result_t *error_out_);
 
 /** @brief Get a string message property (e.g. metadata). */
 ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
@@ -264,8 +264,9 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 /******************************************************************************/
 /*  0MQ socket definition.                                                    */
 /******************************************************************************/
-#define ZLINK_DONTWAIT ((zlink_send_flags_t) 0x0001u)
-#define ZLINK_SEND_FLAG_DONTWAIT ZLINK_DONTWAIT
+/*  Backward-compatible aliases for send/recv flag enum values.               */
+#define ZLINK_DONTWAIT           ZLINK_SEND_FLAGS_DONTWAIT
+#define ZLINK_SEND_FLAG_DONTWAIT ZLINK_SEND_FLAGS_DONTWAIT
 
 #define ZLINK_NULL 0
 #define ZLINK_PLAIN 1
@@ -362,7 +363,7 @@ ZLINK_EXPORT void *zlink_socket (void *, zlink_socket_type_t type_);
  *
  * Unsupported subjects fail with errno=ENOTSUP.
  */
-ZLINK_EXPORT bool zlink_recv_handler (
+ZLINK_EXPORT zlink_handler_result_t zlink_recv_handler (
   void *s_, zlink_socket_msg_handler_fn handler_, void *userdata_);
 
 /**
@@ -381,7 +382,7 @@ ZLINK_EXPORT bool zlink_recv_handler (
  *
  * Unsupported subjects fail with errno=ENOTSUP.
  */
-ZLINK_EXPORT bool zlink_subscribe_handler (
+ZLINK_EXPORT zlink_handler_result_t zlink_subscribe_handler (
   void *s_, zlink_subscribe_handler_fn handler_, void *userdata_);
 
 /**
@@ -407,7 +408,7 @@ ZLINK_EXPORT bool zlink_subscribe_handler (
  *
  * Unsupported subjects fail with errno=ENOTSUP.
  */
-ZLINK_EXPORT bool zlink_send_ready_handler (
+ZLINK_EXPORT zlink_handler_result_t zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 
 /**
@@ -424,60 +425,60 @@ ZLINK_EXPORT bool zlink_send_ready_handler (
  * STREAM raw callbacks, close from inside the raw callback is not supported
  * and fails with errno=EBUSY.
  */
-ZLINK_EXPORT bool zlink_close (void *s_);
+ZLINK_EXPORT zlink_close_result_t zlink_close (void *s_);
 
-ZLINK_EXPORT bool zlink_set_option (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_set_option (void *handle_,
                                     zlink_option_t option_,
                                     const void *optval_,
                                     size_t optvallen_);
-ZLINK_EXPORT bool zlink_get_option (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_get_option (void *handle_,
                                     zlink_option_t option_,
                                     void *optval_,
                                     size_t *optvallen_);
-ZLINK_EXPORT bool zlink_set_routing_id (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_set_routing_id (void *handle_,
                                         const void *data_,
                                         size_t size_);
-ZLINK_EXPORT bool zlink_get_routing_id (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_get_routing_id (void *handle_,
                                         zlink_routing_id_t *out_);
-ZLINK_EXPORT bool zlink_set_tls_server (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_set_tls_server (void *handle_,
                                         const char *cert_,
                                         const char *key_,
                                         int require_client_cert_);
-ZLINK_EXPORT bool zlink_set_tls_client (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_set_tls_client (void *handle_,
                                         const char *ca_cert_,
                                         const char *hostname_,
                                         int trust_system_);
-ZLINK_EXPORT bool zlink_set_router_option (
+ZLINK_EXPORT zlink_config_result_t zlink_set_router_option (
   void *handle_,
   zlink_router_option_t option_,
   const void *optval_,
   size_t optvallen_);
-ZLINK_EXPORT bool zlink_get_router_option (
+ZLINK_EXPORT zlink_config_result_t zlink_get_router_option (
   void *handle_,
   zlink_router_option_t option_,
   void *optval_,
   size_t *optvallen_);
-ZLINK_EXPORT bool zlink_set_dealer_option (
+ZLINK_EXPORT zlink_config_result_t zlink_set_dealer_option (
   void *handle_,
   zlink_dealer_option_t option_,
   const void *optval_,
   size_t optvallen_);
-ZLINK_EXPORT bool zlink_set_stream_option (
+ZLINK_EXPORT zlink_config_result_t zlink_set_stream_option (
   void *handle_,
   zlink_stream_option_t option_,
   const void *optval_,
   size_t optvallen_);
-ZLINK_EXPORT bool zlink_get_stream_option (
+ZLINK_EXPORT zlink_config_result_t zlink_get_stream_option (
   void *handle_,
   zlink_stream_option_t option_,
   void *optval_,
   size_t *optvallen_);
 
-ZLINK_EXPORT bool zlink_set_spot_option (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_set_spot_option (void *handle_,
                                          zlink_spot_option_t option_,
                                          const void *optval_,
                                          size_t optvallen_);
-ZLINK_EXPORT bool zlink_get_spot_option (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_get_spot_option (void *handle_,
                                          zlink_spot_option_t option_,
                                          void *optval_,
                                          size_t *optvallen_);
@@ -487,11 +488,11 @@ ZLINK_EXPORT bool zlink_get_spot_option (void *handle_,
  * - zlink_pub_option_t for pub-specific options
  * - use zlink_set_option()/zlink_get_option() for common options
  */
-ZLINK_EXPORT bool zlink_set_pub_option (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_set_pub_option (void *handle_,
                                         zlink_pub_option_t option_,
                                         const void *optval_,
                                         size_t optvallen_);
-ZLINK_EXPORT bool zlink_get_pub_option (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_get_pub_option (void *handle_,
                                         zlink_pub_option_t option_,
                                         void *optval_,
                                         size_t *optvallen_);
@@ -501,11 +502,11 @@ ZLINK_EXPORT bool zlink_get_pub_option (void *handle_,
  * - zlink_sub_option_t for sub-specific options
  * - use zlink_set_option()/zlink_get_option() for common options
  */
-ZLINK_EXPORT bool zlink_set_sub_option (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_set_sub_option (void *handle_,
                                         zlink_sub_option_t option_,
                                         const void *optval_,
                                         size_t optvallen_);
-ZLINK_EXPORT bool zlink_get_sub_option (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_get_sub_option (void *handle_,
                                         zlink_sub_option_t option_,
                                         void *optval_,
                                         size_t *optvallen_);
@@ -513,12 +514,12 @@ ZLINK_EXPORT bool zlink_get_sub_option (void *handle_,
 /*
  * SpotNode service-level batching options.
  */
-ZLINK_EXPORT bool zlink_set_spot_node_option (
+ZLINK_EXPORT zlink_config_result_t zlink_set_spot_node_option (
   void *handle_,
   zlink_spot_node_option_t option_,
   const void *optval_,
   size_t optvallen_);
-ZLINK_EXPORT bool zlink_get_spot_node_option (
+ZLINK_EXPORT zlink_config_result_t zlink_get_spot_node_option (
   void *handle_,
   zlink_spot_node_option_t option_,
   void *optval_,
@@ -528,16 +529,16 @@ ZLINK_EXPORT bool zlink_get_spot_node_option (
  * @brief Bind a socket to an address.
  * @param addr_  Endpoint (e.g. @c tcp://host:5555, @c inproc://name).
  */
-ZLINK_EXPORT bool zlink_bind (void *s_, const char *addr_);
+ZLINK_EXPORT zlink_bind_result_t zlink_bind (void *s_, const char *addr_);
 
 /** @brief Connect a socket to a remote address. */
-ZLINK_EXPORT bool zlink_connect (void *s_, const char *addr_);
+ZLINK_EXPORT zlink_connect_result_t zlink_connect (void *s_, const char *addr_);
 
 /** @brief Unbind a socket from an address. */
-ZLINK_EXPORT bool zlink_unbind (void *s_, const char *addr_);
+ZLINK_EXPORT zlink_connect_result_t zlink_unbind (void *s_, const char *addr_);
 
 /** @brief Disconnect a socket from a remote address. */
-ZLINK_EXPORT bool zlink_disconnect (void *s_, const char *addr_);
+ZLINK_EXPORT zlink_connect_result_t zlink_disconnect (void *s_, const char *addr_);
 
 /**
  * @brief Attach a raw ROUTER/DEALER/PUB/SUB socket to a discovery service view.
@@ -549,7 +550,7 @@ ZLINK_EXPORT bool zlink_disconnect (void *s_, const char *addr_);
  * operations fail. Destroy the discovery instance to terminate the attached
  * socket lifecycle.
  */
-ZLINK_EXPORT bool zlink_socket_attach_discovery (void *socket_,
+ZLINK_EXPORT zlink_config_result_t zlink_socket_attach_discovery (void *socket_,
                                                  void *discovery_);
 
 /**
@@ -608,15 +609,15 @@ ZLINK_EXPORT zlink_submit_result_t zlink_router_reply (
   zlink_msg_t *parts_,
   size_t part_count_);
 
-ZLINK_EXPORT bool zlink_router_handler (
+ZLINK_EXPORT zlink_handler_result_t zlink_router_handler (
   void *router_, zlink_router_handler_fn handler_, void *userdata_);
 
-ZLINK_EXPORT int zlink_router_recv (void *router_,
+ZLINK_EXPORT zlink_recv_result_t zlink_router_recv (void *router_,
                                     const zlink_routing_id_t **peer_rid_out_,
                                     uint64_t *request_seq_out_,
                                     zlink_msg_t **parts_out_,
                                     size_t *part_count_out_,
-                                    int flags_);
+                                    zlink_recv_flags_t flags_);
 
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_spot (
   void *spot_,
@@ -669,21 +670,21 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_reply_router (
   zlink_msg_t *parts_,
   size_t part_count_);
 
-ZLINK_EXPORT bool zlink_spot_handler (
+ZLINK_EXPORT zlink_handler_result_t zlink_spot_handler (
   void *spot_, zlink_spot_handler_fn handler_, void *userdata_);
 
-ZLINK_EXPORT bool zlink_spot_dispatch_event_handler (
+ZLINK_EXPORT zlink_handler_result_t zlink_spot_dispatch_event_handler (
   void *spot_,
   zlink_spot_dispatch_event_handler_fn handler_,
   void *userdata_);
 
-ZLINK_EXPORT int zlink_spot_recv (void *spot_,
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_recv (void *spot_,
                                   const zlink_routing_id_t **source_rid_out_,
                                   const zlink_routing_id_t **spot_rid_out_,
                                   uint64_t *request_seq_out_,
                                   zlink_msg_t **parts_out_,
                                   size_t *part_count_out_,
-                                  int flags_);
+                                  zlink_recv_flags_t flags_);
 
 ZLINK_EXPORT zlink_submit_result_t zlink_router_request_spot (
   void *router_,
@@ -712,19 +713,19 @@ ZLINK_EXPORT zlink_submit_result_t zlink_router_send_spot (
   size_t part_count_,
   zlink_send_flags_t flags_);
 
-ZLINK_EXPORT bool zlink_router_spot_handler (
+ZLINK_EXPORT zlink_handler_result_t zlink_router_spot_handler (
   void *router_,
   zlink_router_spot_handler_fn handler_,
   void *userdata_);
 
-ZLINK_EXPORT int zlink_router_spot_recv (
+ZLINK_EXPORT zlink_recv_result_t zlink_router_spot_recv (
   void *router_,
   const zlink_routing_id_t **source_node_rid_out_,
   const zlink_routing_id_t **source_spot_rid_out_,
   uint64_t *request_seq_out_,
   zlink_msg_t **parts_out_,
   size_t *part_count_out_,
-  int flags_);
+  zlink_recv_flags_t flags_);
 
 /**
  * @brief Receive a multipart message from a socket or handle.
@@ -740,11 +741,11 @@ ZLINK_EXPORT int zlink_router_spot_recv (
  * on `parts_out_`, and must not retain the view across the next recv-like call
  * on the same thread.
  */
-ZLINK_EXPORT bool zlink_recv (void *s_,
+ZLINK_EXPORT zlink_recv_result_t zlink_recv (void *s_,
                               zlink_routing_id_t *source_rid_out_,
                               zlink_msg_t **parts_out_,
                               size_t *part_count_out_,
-                              zlink_send_flags_t flags_);
+                              zlink_recv_flags_t flags_);
 
 ZLINK_EXPORT zlink_submit_result_t zlink_publish (void *subject_,
                                                   const char *topic_id_,
@@ -752,25 +753,25 @@ ZLINK_EXPORT zlink_submit_result_t zlink_publish (void *subject_,
                                                   size_t part_count_,
                                                   zlink_send_flags_t flags_);
 
-ZLINK_EXPORT bool zlink_set_subscription (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_set_subscription (void *handle_,
                                           const char *filter_);
-ZLINK_EXPORT bool zlink_unset_subscription (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_unset_subscription (void *handle_,
                                             const char *filter_);
-ZLINK_EXPORT bool zlink_subscription_at (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_subscription_at (void *handle_,
                                          size_t index_,
                                          char *filter_out_,
                                          size_t *filter_len_inout_,
                                          int *is_pattern_out_);
 
-ZLINK_EXPORT bool zlink_subscribe (void *subject_,
+ZLINK_EXPORT zlink_recv_result_t zlink_subscribe (void *subject_,
                                    zlink_routing_id_t *source_rid_out_,
                                    zlink_msg_t **parts_out_,
                                    size_t *part_count_out_,
                                    char *topic_id_out_,
                                    size_t *topic_id_len_out_,
-                                   zlink_send_flags_t flags_);
+                                   zlink_recv_flags_t flags_);
 
-ZLINK_EXPORT bool zlink_subscription_event (
+ZLINK_EXPORT zlink_recv_result_t zlink_subscription_event (
   void *subject_,
   zlink_routing_id_t *source_rid_out_,
   int *subscribed_out_,
@@ -823,21 +824,21 @@ typedef struct zlink_monitor_snapshot_t
 ZLINK_EXPORT void *zlink_socket_monitor_open (
   void *s_, const zlink_socket_monitor_open_options_t *options_);
 
-ZLINK_EXPORT int zlink_socket_monitor_handler (
+ZLINK_EXPORT zlink_handler_result_t zlink_socket_monitor_handler (
   void *monitor_,
   zlink_socket_monitor_handler_fn handler_,
   void *userdata_);
 
-ZLINK_EXPORT int zlink_socket_monitor_recv (
+ZLINK_EXPORT zlink_recv_result_t zlink_socket_monitor_recv (
   void *monitor_,
   zlink_socket_monitor_event_t *out_,
   zlink_send_flags_t flags_);
 
 /** @brief Read the current snapshot for a socket or service monitor handle. */
-ZLINK_EXPORT int zlink_monitor_snapshot (void *monitor_,
+ZLINK_EXPORT zlink_config_result_t zlink_monitor_snapshot (void *monitor_,
                                          zlink_monitor_snapshot_t *out_);
 
-ZLINK_EXPORT int zlink_monitor_close (void **monitor_p_);
+ZLINK_EXPORT zlink_close_result_t zlink_monitor_close (void **monitor_p_);
 
 /** @brief Close all parts in a multipart message array. */
 ZLINK_EXPORT void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
@@ -864,15 +865,15 @@ ZLINK_EXPORT void *zlink_registry_new (void *ctx);
  * @param pub_endpoint     PUB endpoint for broadcasting.
  * @param router_endpoint  ROUTER endpoint for receiving registrations.
  */
-ZLINK_EXPORT int zlink_registry_bind (void *registry,
+ZLINK_EXPORT zlink_bind_result_t zlink_registry_bind (void *registry,
                                       const char *pub_endpoint,
                                       const char *router_endpoint);
 
 /** @brief Set the registry unique ID (used for cluster configuration). */
-ZLINK_EXPORT int zlink_registry_set_id (void *registry, uint32_t registry_id);
+ZLINK_EXPORT zlink_config_result_t zlink_registry_set_id (void *registry, uint32_t registry_id);
 
 /** @brief Add a peer registry PUB endpoint (for cluster synchronization). */
-ZLINK_EXPORT int zlink_registry_add_peer (void *registry,
+ZLINK_EXPORT zlink_config_result_t zlink_registry_add_peer (void *registry,
                                       const char *peer_pub_endpoint);
 
 /**
@@ -883,7 +884,7 @@ ZLINK_EXPORT int zlink_registry_add_peer (void *registry,
  * @param timeout_ms   Expiry time when no heartbeat is received, in
  *                     milliseconds.
  */
-ZLINK_EXPORT int zlink_registry_set_heartbeat (void *registry,
+ZLINK_EXPORT zlink_config_result_t zlink_registry_set_heartbeat (void *registry,
                                            uint32_t interval_ms,
                                            uint32_t timeout_ms);
 
@@ -891,11 +892,11 @@ ZLINK_EXPORT int zlink_registry_set_heartbeat (void *registry,
  * @brief Set the service list broadcast interval in milliseconds.
  * Default is 30000 ms.
  */
-ZLINK_EXPORT int zlink_registry_set_broadcast_interval (void *registry,
+ZLINK_EXPORT zlink_config_result_t zlink_registry_set_broadcast_interval (void *registry,
                                                     uint32_t interval_ms);
 
 /** @brief Destroy the registry and release all resources. */
-ZLINK_EXPORT int zlink_registry_destroy (void **registry_p);
+ZLINK_EXPORT zlink_close_result_t zlink_registry_destroy (void **registry_p);
 
 /* Discovery ---------------------------------------------------------------- */
 
@@ -925,16 +926,16 @@ ZLINK_EXPORT void *zlink_discovery_new (void *ctx,
  * Discovery learns the Registry broadcast and topology-uplink endpoints from
  * this bootstrap connection and configures its internal sockets automatically.
  */
-ZLINK_EXPORT int zlink_discovery_connect_registry (
+ZLINK_EXPORT zlink_connect_result_t zlink_discovery_connect_registry (
   void *discovery, const char *registry_endpoint);
 
-ZLINK_EXPORT int zlink_discovery_set_value (void *discovery_, int64_t value_);
-ZLINK_EXPORT int zlink_discovery_get_value (void *discovery_,
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_set_value (void *discovery_, int64_t value_);
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_get_value (void *discovery_,
                                             int64_t *value_out_);
-ZLINK_EXPORT int zlink_discovery_set_metadata (void *discovery_,
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_set_metadata (void *discovery_,
                                                const void *data_,
                                                size_t size_);
-ZLINK_EXPORT int zlink_discovery_get_metadata (void *discovery_,
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_get_metadata (void *discovery_,
                                                zlink_msg_t *metadata_out_);
 
 /**
@@ -943,7 +944,7 @@ ZLINK_EXPORT int zlink_discovery_get_metadata (void *discovery_,
  * Destroying a discovery also shuts down every attached service participant
  * that delegated lifecycle ownership to this service view.
  */
-ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
+ZLINK_EXPORT zlink_close_result_t zlink_discovery_destroy (void **discovery_p);
 
 /******************************************************************************/
 /*  SPOT PUB/SUB API                                                          */
@@ -961,7 +962,7 @@ ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
 ZLINK_EXPORT void *zlink_spot_new (void *node);
 
 /** @brief Destroy a unified SPOT handle. */
-ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
+ZLINK_EXPORT zlink_close_result_t zlink_spot_destroy (void **spot_p);
 
 /* SPOT Node --------------------------------------------------------------- */
 
@@ -979,7 +980,7 @@ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
  *
  * Attached spot nodes are normally shut down by `zlink_discovery_destroy()`.
  */
-ZLINK_EXPORT int zlink_spot_node_destroy (void **node_p);
+ZLINK_EXPORT zlink_close_result_t zlink_spot_node_destroy (void **node_p);
 
 /** @brief Bind the SPOT node to an endpoint.
  *
@@ -987,14 +988,14 @@ ZLINK_EXPORT int zlink_spot_node_destroy (void **node_p);
  * After a successful bind, use zlink_spot_node_status_snapshot() to retrieve
  * the resolved endpoint (local_endpoint field) with the actual assigned port.
  */
-ZLINK_EXPORT int zlink_spot_node_bind (void *node, const char *endpoint);
+ZLINK_EXPORT zlink_bind_result_t zlink_spot_node_bind (void *node, const char *endpoint);
 
 /**
  * @brief Connect to a peer SPOT node endpoint (mesh topology).
  *
  * Returns EFSM if discovery is already attached.
  */
-ZLINK_EXPORT int zlink_spot_node_connect_peer (void *node,
+ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_peer (void *node,
                                                const char *peer_endpoint);
 
 /**
@@ -1002,7 +1003,7 @@ ZLINK_EXPORT int zlink_spot_node_connect_peer (void *node,
  *
  * Returns EFSM if discovery is already attached.
  */
-ZLINK_EXPORT int zlink_spot_node_disconnect_peer (
+ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer (
   void *node, const char *peer_endpoint);
 
 /**
@@ -1011,7 +1012,7 @@ ZLINK_EXPORT int zlink_spot_node_disconnect_peer (
  * After attach, the node takes its service identity from the discovery and
  * discovery destroy owns participant shutdown.
  */
-ZLINK_EXPORT int zlink_spot_node_attach_discovery (void *node,
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_discovery (void *node,
                                                    void *discovery);
 
 /******************************************************************************/
@@ -1049,12 +1050,12 @@ ZLINK_EXPORT void *zlink_service_monitor_open (
   void *target_,
   const zlink_service_monitor_open_options_t *options_);
 
-ZLINK_EXPORT int zlink_service_monitor_handler (
+ZLINK_EXPORT zlink_handler_result_t zlink_service_monitor_handler (
   void *monitor_,
   zlink_service_monitor_handler_fn handler_,
   void *userdata_);
 
-ZLINK_EXPORT int zlink_service_monitor_recv (
+ZLINK_EXPORT zlink_recv_result_t zlink_service_monitor_recv (
   void *monitor_,
   zlink_service_monitor_event_t *out_,
   zlink_send_flags_t flags_);
@@ -1152,48 +1153,48 @@ typedef struct zlink_member_peer_entry_t
     int64_t value;
 } zlink_member_peer_entry_t;
 
-ZLINK_EXPORT int zlink_spot_node_status_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_status_snapshot (
   void *node_,
   zlink_spot_node_status_t *out_);
-ZLINK_EXPORT int zlink_spot_node_peers_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_peers_snapshot (
   void *node_,
   zlink_spot_node_peer_entry_t *entries_,
   size_t *count_);
-ZLINK_EXPORT int zlink_spot_node_peers_query (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_peers_query (
   void *node_,
   const zlink_spot_node_peer_filter_t *filter_,
   zlink_spot_node_peer_entry_t *entries_,
   size_t *count_);
-ZLINK_EXPORT int zlink_spot_node_subjects_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_subjects_snapshot (
   void *node_,
   const zlink_spot_node_subject_filter_t *filter_,
   zlink_spot_node_subject_entry_t *entries_,
   size_t *count_);
-ZLINK_EXPORT int zlink_registry_status_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_registry_status_snapshot (
   void *registry_,
   zlink_registry_status_t *out_);
-ZLINK_EXPORT int zlink_registry_service_summary_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_registry_service_summary_snapshot (
   void *registry_,
   const zlink_registry_service_summary_filter_t *filter_,
   zlink_registry_service_summary_entry_t *entries_,
   size_t *count_);
-ZLINK_EXPORT int zlink_registry_member_peers (
+ZLINK_EXPORT zlink_config_result_t zlink_registry_member_peers (
   void *registry_,
   zlink_service_type_t service_type_,
   const char *service_name_,
   zlink_member_peer_entry_t *entries_,
   size_t *count_);
-ZLINK_EXPORT int zlink_registry_member_peer_metadata (
+ZLINK_EXPORT zlink_config_result_t zlink_registry_member_peer_metadata (
   void *registry_,
   zlink_service_type_t service_type_,
   const char *service_name_,
   uint16_t service_role_,
   const char *endpoint_,
   zlink_msg_t *metadata_out_);
-ZLINK_EXPORT int zlink_discovery_member_peers (void *discovery_,
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_member_peers (void *discovery_,
                                                zlink_member_peer_entry_t *entries_,
                                                size_t *count_);
-ZLINK_EXPORT int zlink_discovery_member_peer_metadata (
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_member_peer_metadata (
   void *discovery_,
   uint16_t service_role_,
   const char *endpoint_,
@@ -1224,26 +1225,26 @@ typedef struct zlink_registry_topology_filter_t
     zlink_topology_source_t source;
 } zlink_registry_topology_filter_t;
 
-ZLINK_EXPORT int zlink_registry_topology_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_registry_topology_snapshot (
   void *registry,
   zlink_registry_topology_entry_t *entries,
   size_t *count);
-ZLINK_EXPORT int zlink_registry_topology_query (
+ZLINK_EXPORT zlink_config_result_t zlink_registry_topology_query (
   void *registry,
   const zlink_registry_topology_filter_t *filter,
   zlink_registry_topology_entry_t *entries,
   size_t *count);
 
 ZLINK_EXPORT void *zlink_registry_query_client_new (void *ctx);
-ZLINK_EXPORT int zlink_registry_query_client_connect (void *client,
+ZLINK_EXPORT zlink_connect_result_t zlink_registry_query_client_connect (void *client,
                                                       const char *endpoint);
-ZLINK_EXPORT int zlink_registry_query_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_registry_query_snapshot (
   void *client,
   const zlink_registry_topology_filter_t *filter,
   zlink_registry_topology_entry_t *entries,
   size_t *count);
 
-ZLINK_EXPORT int zlink_registry_query_destroy (void **client_p);
+ZLINK_EXPORT zlink_close_result_t zlink_registry_query_destroy (void **client_p);
 
 #if defined _WIN32
 #if defined _WIN64
@@ -1279,50 +1280,54 @@ typedef struct zlink_poller_event_t
 
 ZLINK_EXPORT int zlink_poll (zlink_pollitem_t *items_,
                              int nitems_,
-                             long timeout_);
+                             long timeout_,
+                             zlink_config_result_t *error_out_);
 
 ZLINK_EXPORT void *zlink_poller_new (void);
-ZLINK_EXPORT int zlink_poller_destroy (void **poller_p_);
-ZLINK_EXPORT int zlink_poller_size (void *poller_);
-ZLINK_EXPORT int zlink_poller_add (void *poller_,
+ZLINK_EXPORT zlink_close_result_t zlink_poller_destroy (void **poller_p_);
+ZLINK_EXPORT int zlink_poller_size (void *poller_,
+                                    zlink_config_result_t *error_out_);
+ZLINK_EXPORT zlink_config_result_t zlink_poller_add (void *poller_,
                                    void *socket_,
                                    void *user_data_,
                                    short events_);
-ZLINK_EXPORT int zlink_poller_modify (void *poller_,
+ZLINK_EXPORT zlink_config_result_t zlink_poller_modify (void *poller_,
                                       void *socket_,
                                       short events_);
-ZLINK_EXPORT int zlink_poller_remove (void *poller_, void *socket_);
-ZLINK_EXPORT int zlink_poller_add_fd (void *poller_,
+ZLINK_EXPORT zlink_config_result_t zlink_poller_remove (void *poller_, void *socket_);
+ZLINK_EXPORT zlink_config_result_t zlink_poller_add_fd (void *poller_,
                                       zlink_fd_t fd_,
                                       void *user_data_,
                                       short events_);
-ZLINK_EXPORT int zlink_poller_add_timer (void *poller_,
+ZLINK_EXPORT zlink_config_result_t zlink_poller_add_timer (void *poller_,
                                          void *timer_,
                                          void *user_data_);
-ZLINK_EXPORT int zlink_poller_modify_fd (void *poller_,
+ZLINK_EXPORT zlink_config_result_t zlink_poller_modify_fd (void *poller_,
                                          zlink_fd_t fd_,
                                          short events_);
-ZLINK_EXPORT int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
-ZLINK_EXPORT int zlink_poller_remove_timer (void *poller_, void *timer_);
+ZLINK_EXPORT zlink_config_result_t zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
+ZLINK_EXPORT zlink_config_result_t zlink_poller_remove_timer (void *poller_, void *timer_);
 ZLINK_EXPORT int zlink_poller_wait (void *poller_,
                                     zlink_poller_event_t *event_,
-                                    long timeout_);
+                                    long timeout_,
+                                    zlink_config_result_t *error_out_);
 ZLINK_EXPORT int zlink_poller_wait_all (void *poller_,
                                         zlink_poller_event_t *events_,
                                         int n_events_,
-                                        long timeout_);
+                                        long timeout_,
+                                        zlink_config_result_t *error_out_);
 
 /** @brief Start a built-in proxy between frontend and backend sockets. */
-ZLINK_EXPORT int zlink_proxy (void *frontend_, void *backend_, void *capture_);
+ZLINK_EXPORT zlink_config_result_t zlink_proxy (void *frontend_, void *backend_, void *capture_);
 
 /** @brief Start a steerable proxy with an additional control socket. */
-ZLINK_EXPORT int zlink_proxy_steerable (void *frontend_,
+ZLINK_EXPORT zlink_config_result_t zlink_proxy_steerable (void *frontend_,
                                     void *backend_,
                                     void *capture_,
                                     void *control_);
 
 /** @brief Check if the library supports a given capability (e.g. "ipc", "tls"). */
-ZLINK_EXPORT int zlink_has (const char *capability_);
+ZLINK_EXPORT bool zlink_has (const char *capability_);
 
 /******************************************************************************/
 /*  Atomic utility methods                                                    */
@@ -1346,15 +1351,15 @@ typedef void (*zlink_timer_handler_fn) (void *timer_,
 
 ZLINK_EXPORT void *zlink_timer_new (void);
 ZLINK_EXPORT void *zlink_spot_timer_new (void *spot_);
-ZLINK_EXPORT int zlink_timer_destroy (void **timer_p_);
-ZLINK_EXPORT int zlink_timer_start (void *timer_,
+ZLINK_EXPORT zlink_close_result_t zlink_timer_destroy (void **timer_p_);
+ZLINK_EXPORT zlink_config_result_t zlink_timer_start (void *timer_,
                                     uint64_t interval_ns_,
                                     uint64_t repeat_count_);
-ZLINK_EXPORT int zlink_timer_stop (void *timer_);
-ZLINK_EXPORT int zlink_timer_recv (void *timer_,
+ZLINK_EXPORT zlink_config_result_t zlink_timer_stop (void *timer_);
+ZLINK_EXPORT zlink_recv_result_t zlink_timer_recv (void *timer_,
                                    uint64_t *fire_count_out_,
-                                   int flags_);
-ZLINK_EXPORT int zlink_timer_handler (void *timer_,
+                                   zlink_recv_flags_t flags_);
+ZLINK_EXPORT zlink_handler_result_t zlink_timer_handler (void *timer_,
                                       zlink_timer_handler_fn handler_,
                                       void *userdata_);
 

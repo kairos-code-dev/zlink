@@ -145,9 +145,9 @@ subject가 recv 모드여야 합니다 (핸들러 미부착). subscribe handler�
 소켓에 토픽 기반 수신 핸들러를 부착합니다.
 
 ```c
-int zlink_subscribe_handler (void *s_,
-                             zlink_subscribe_handler_fn handler_,
-                             void *userdata_);
+bool zlink_subscribe_handler (void *s_,
+                              zlink_subscribe_handler_fn handler_,
+                              void *userdata_);
 ```
 
 raw `SUB`, raw `XSUB`, `spot`, `spot_node`에 토픽 기반 수신 핸들러를
@@ -156,7 +156,7 @@ poller `ZLINK_POLLIN`은 `errno=EBUSY`로 실패합니다. 동일 subject에 대
 두 번째 attach도 `errno=EBUSY`입니다. 지원하지 않는 subject는 `ENOTSUP`를
 반환합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
 
 **에러:** 핸들러가 NULL이면 `EINVAL`. handle 타입이 subscribe handler를
 허용하지 않으면 `ENOTSUP`. 핸들러가 이미 부착된 경우 `EBUSY`.

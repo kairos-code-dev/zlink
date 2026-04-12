@@ -201,7 +201,7 @@ inline bool send_router_payload_nonblocking_until_ready (
             return false;
 
         zlink_pollitem_t item = {socket, 0, ZLINK_POLLOUT, 0};
-        const int poll_rc = zlink_poll (&item, 1, 1);
+        const int poll_rc = zlink_poll (&item, 1, 1, NULL);
         if (poll_rc < 0 && zlink_errno () != EINTR)
             return false;
     }
@@ -412,7 +412,7 @@ inline bool run_oneway_phase (void *router1,
                     break;
                 }
                 zlink_pollitem_t item = {router1, 0, ZLINK_POLLIN, 0};
-                const int poll_rc = zlink_poll (&item, 1, 1);
+                const int poll_rc = zlink_poll (&item, 1, 1, NULL);
                 if (poll_rc < 0 && zlink_errno () != EINTR
                     && zlink_errno () != EAGAIN) {
                     if (bench_debug_enabled ()) {

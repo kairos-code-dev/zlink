@@ -87,6 +87,28 @@ values returned via `Result`. Direct access is not exposed.
 
 ---
 
+## Send / Recv Flags
+
+```rust
+bitflags! {
+    pub struct SendFlags: u32 {
+        const NONE = 0;
+        const DONT_WAIT = 0x0001;
+    }
+}
+```
+
+```rust
+bitflags! {
+    pub struct RecvFlags: u32 {
+        const NONE = 0;
+        const DONT_WAIT = 0x0001;
+    }
+}
+```
+
+---
+
 ## Socket Types
 
 All sockets implement `Drop` (calls `close`). Common connection and
@@ -102,9 +124,9 @@ impl PairSocket {
     pub fn connect(&self, addr: &str) -> Result<(), ZlinkError>;
     pub fn disconnect(&self, addr: &str) -> Result<(), ZlinkError>;
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn try_send(&self, parts: impl IntoMultipart) -> Result<SendResult, ZlinkError>;
+    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
     pub fn recv(&self) -> Result<Received, ZlinkError>;
-    pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError>;
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
     pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn(Received) + Send + 'static;
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
@@ -124,8 +146,7 @@ impl PubSocket {
     pub fn connect(&self, addr: &str) -> Result<(), ZlinkError>;
     pub fn disconnect(&self, addr: &str) -> Result<(), ZlinkError>;
     pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn try_publish(&self, topic: &str, parts: impl IntoMultipart)
-        -> Result<SendResult, ZlinkError>;
+    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn() + Send + 'static;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
@@ -146,7 +167,7 @@ impl SubSocket {
     pub fn set_subscription(&self, filter: &str) -> Result<(), ZlinkError>;
     pub fn unset_subscription(&self, filter: &str) -> Result<(), ZlinkError>;
     pub fn subscribe(&self) -> Result<TopicMessage, ZlinkError>;
-    pub fn try_subscribe(&self) -> Result<Option<TopicMessage>, ZlinkError>;
+    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, ZlinkError>;
     pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn(TopicMessage) + Send + 'static;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
@@ -167,9 +188,9 @@ impl DealerSocket {
     pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ZlinkError>;
     pub fn routing_id(&self) -> Result<RoutingId, ZlinkError>;
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn try_send(&self, parts: impl IntoMultipart) -> Result<SendResult, ZlinkError>;
+    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
     pub fn recv(&self) -> Result<Received, ZlinkError>;
-    pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError>;
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
     pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn(Received) + Send + 'static;
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
@@ -194,10 +215,10 @@ impl RouterSocket {
     pub fn routing_id(&self) -> Result<RoutingId, ZlinkError>;
     pub fn send(&self, target: &RoutingId, parts: impl IntoMultipart)
         -> Result<(), ZlinkError>;
-    pub fn try_send(&self, target: &RoutingId, parts: impl IntoMultipart)
-        -> Result<SendResult, ZlinkError>;
+    pub fn send_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
+        flags: SendFlags) -> Result<(), ZlinkError>;
     pub fn recv(&self) -> Result<Received, ZlinkError>;
-    pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError>;
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
     pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn(Received) + Send + 'static;
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
@@ -208,28 +229,34 @@ impl RouterSocket {
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ZlinkError>;
 
     // --- router → spot routed send ---
-    pub fn send_spot(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
+    pub fn send_to_spot(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
         parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn try_send_spot(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
-        parts: impl IntoMultipart) -> Result<SendResult, ZlinkError>;
+    pub fn send_to_spot_with_flags(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
 
-    // --- router → spot routed request (async) ---
-    pub async fn request_spot(&self, dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId, msg: Message) -> Result<Received, ZlinkError>;
-    pub async fn request_spot_with_timeout(&self, dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId, msg: Message, timeout: Duration)
-        -> Result<Received, ZlinkError>;
-    pub fn request_spot_callback<F>(&self, dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId, msg: Message, callback: F)
-        where F: FnOnce(Result<Received, ZlinkError>) + Send + 'static;
+    // --- router → spot routed request (async) — no flags ---
+    // Duration::ZERO uses the socket default timeout.
+    pub async fn request_to_spot(&self, dest_node_rid: RoutingId,
+        dest_spot_rid: RoutingId, parts: impl IntoMultipart,
+        timeout: Duration) -> Result<Received, ZlinkError>;
+
+    // --- router → spot routed request (callback) ---
+    // Duration::ZERO uses the socket default timeout.
+    pub fn request_to_spot_callback<F>(&self, dest_node_rid: RoutingId,
+        dest_spot_rid: RoutingId, parts: impl IntoMultipart, callback: F,
+        flags: SendFlags, timeout: Duration)
+        -> Result<(), ZlinkError>
+        where F: FnOnce(RequestResult, Option<Received>) + Send + 'static;
 
     // --- router → spot routed reply ---
-    pub fn reply_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-        request_seq: u64, msg: Message) -> Result<(), ZlinkError>;
+    pub fn reply_to_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
+        request_seq: u64, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
+    pub fn reply_to_spot_with_flags(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
+        request_seq: u64, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
 
     // --- router spot receive ---
     pub fn recv_spot(&self) -> Result<Received, ZlinkError>;
-    pub fn try_recv_spot(&self) -> Result<Option<Received>, ZlinkError>;
+    pub fn recv_spot_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
     pub fn on_spot_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn(RoutingId, RoutingId, u64, Vec<Message>) + Send + 'static;
 
@@ -246,11 +273,9 @@ impl XPubSocket {
     pub fn connect(&self, addr: &str) -> Result<(), ZlinkError>;
     pub fn disconnect(&self, addr: &str) -> Result<(), ZlinkError>;
     pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn try_publish(&self, topic: &str, parts: impl IntoMultipart)
-        -> Result<SendResult, ZlinkError>;
+    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
     pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, ZlinkError>;
-    pub fn try_receive_subscription_event(&self)
-        -> Result<Option<SubscriptionEvent>, ZlinkError>;
+    pub fn receive_subscription_event_with_flags(&self, flags: RecvFlags) -> Result<SubscriptionEvent, ZlinkError>;
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn() + Send + 'static;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
@@ -270,7 +295,7 @@ impl XSubSocket {
     pub fn set_subscription(&self, filter: &str) -> Result<(), ZlinkError>;
     pub fn unset_subscription(&self, filter: &str) -> Result<(), ZlinkError>;
     pub fn subscribe(&self) -> Result<TopicMessage, ZlinkError>;
-    pub fn try_subscribe(&self) -> Result<Option<TopicMessage>, ZlinkError>;
+    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, ZlinkError>;
     pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn(TopicMessage) + Send + 'static;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
@@ -289,10 +314,10 @@ impl StreamSocket {
     pub fn routing_id(&self) -> Result<RoutingId, ZlinkError>;
     pub fn send(&self, target: &RoutingId, parts: impl IntoMultipart)
         -> Result<(), ZlinkError>;
-    pub fn try_send(&self, target: &RoutingId, parts: impl IntoMultipart)
-        -> Result<SendResult, ZlinkError>;
+    pub fn send_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
+        flags: SendFlags) -> Result<(), ZlinkError>;
     pub fn recv(&self) -> Result<Received, ZlinkError>;
-    pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError>;
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
     pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn(Received) + Send + 'static;
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
@@ -311,8 +336,11 @@ A thread-safe handle for sending from callbacks.
 ```rust
 impl SendHandle {
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
+    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
     pub fn send_to(&self, target: &RoutingId, parts: impl IntoMultipart)
         -> Result<(), ZlinkError>;
+    pub fn send_to_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
+        flags: SendFlags) -> Result<(), ZlinkError>;
 }
 ```
 
@@ -364,14 +392,163 @@ pub struct SubscriptionEvent {
 }
 ```
 
-### SendResult
+### SubmitResult
+
+Result codes for send/request/reply/publish operations.
+All failures are conveyed through `ZlinkError` with `.code()` returning
+a globally unique `i32` that spans all result enum ranges (0-703).
 
 ```rust
-pub enum SendResult {
-    Sent,
-    Backpressured,
-    NotReady,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum SubmitResult {
+    Ok = 0,
+    Backpressured = 1,
+    NotConnected = 2,
+    NotFound = 3,
+    Terminated = 4,
+    InvalidHandle = 5,
+    InvalidArgument = 6,
+    NotSupported = 7,
+    InvalidState = 8,
+    ThreadViolation = 9,
+    OutOfMemory = 10,
+    SeqExhausted = 11,
+    InternalError = 12,
 }
+```
+
+### RequestResult
+
+Result codes for request completion callbacks.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum RequestResult {
+    Ok = 0,
+    TimedOut = 101,
+    NotFound = 102,
+    Terminated = 103,
+    ProtocolError = 104,
+}
+```
+
+### RecvResult
+
+Result codes for recv, subscribe, and subscription event operations.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum RecvResult {
+    Ok = 0,
+    NoData = 201,
+    Busy = 202,
+    Terminated = 203,
+    InvalidHandle = 204,
+    NotSupported = 205,
+}
+```
+
+### HandlerResult
+
+Result codes for handler registration operations (on_receive, on_subscribe, etc.).
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum HandlerResult {
+    Ok = 0,
+    InvalidArgument = 301,
+    Busy = 302,
+    NotSupported = 303,
+    Deadlock = 304,
+    InvalidHandle = 305,
+}
+```
+
+### CloseResult
+
+Result codes for close and destroy operations.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum CloseResult {
+    Ok = 0,
+    Busy = 401,
+    Shutdown = 402,
+    InvalidHandle = 403,
+}
+```
+
+### BindResult
+
+Result codes for bind operations.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum BindResult {
+    Ok = 0,
+    InvalidArgument = 501,
+    AddrInUse = 502,
+    NotSupported = 503,
+    InvalidHandle = 504,
+}
+```
+
+### ConnectResult
+
+Result codes for connect, disconnect, and unbind operations.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum ConnectResult {
+    Ok = 0,
+    InvalidArgument = 601,
+    NotSupported = 602,
+    InvalidHandle = 603,
+}
+```
+
+### ConfigResult
+
+Result codes for configuration, option, and snapshot operations.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum ConfigResult {
+    Ok = 0,
+    InvalidHandle = 701,
+    InvalidArgument = 702,
+    NotSupported = 703,
+}
+```
+
+### ZlinkError
+
+Error type returned by all fallible operations.
+The `code()` method returns a globally unique `i32` that spans all result
+enum ranges (0-703). The code alone identifies the error without needing
+to know which enum it belongs to.
+
+```rust
+#[derive(Debug)]
+pub struct ZlinkError {
+    // internal fields
+}
+
+impl ZlinkError {
+    pub fn code(&self) -> i32;
+    pub fn errno(&self) -> i32;
+}
+
+impl std::fmt::Display for ZlinkError { /* ... */ }
+impl std::error::Error for ZlinkError { /* ... */ }
 ```
 
 ### IntoMultipart trait
@@ -395,26 +572,18 @@ impl RequestDealer {
     pub fn set_default_request_timeout(&self, timeout: Duration);
     pub fn get_default_request_timeout(&self) -> Duration;
 
-    pub async fn request(&self, msg: Message) -> Result<Received, ZlinkError>;
-    pub async fn request_with_timeout(&self, msg: Message, timeout: Duration)
-        -> Result<Received, ZlinkError>;
-    pub async fn try_request(&self, msg: Message) -> Result<Received, ZlinkError>;
-    pub async fn try_request_with_timeout(&self, msg: Message, timeout: Duration)
-        -> Result<Received, ZlinkError>;
+    // Async request — no flags. Duration::ZERO uses socket default timeout.
+    pub async fn request(&self, parts: impl IntoMultipart,
+        timeout: Duration) -> Result<Received, ZlinkError>;
 
-    pub fn request_callback<F>(&self, msg: Message, callback: F)
-        where F: FnOnce(Result<Received, ZlinkError>) + Send + 'static;
-    pub fn request_callback_with_timeout<F>(&self, msg: Message, callback: F,
-        timeout: Duration)
-        where F: FnOnce(Result<Received, ZlinkError>) + Send + 'static;
-    pub fn try_request_callback<F>(&self, msg: Message, callback: F)
-        where F: FnOnce(Result<Received, ZlinkError>) + Send + 'static;
-    pub fn try_request_callback_with_timeout<F>(&self, msg: Message, callback: F,
-        timeout: Duration)
-        where F: FnOnce(Result<Received, ZlinkError>) + Send + 'static;
+    // Callback request — Duration::ZERO uses socket default timeout.
+    pub fn request_callback<F>(&self, parts: impl IntoMultipart, callback: F,
+        flags: SendFlags, timeout: Duration)
+        -> Result<(), ZlinkError>
+        where F: FnOnce(RequestResult, Option<Received>) + Send + 'static;
 
     pub fn recv(&self) -> Result<Received, ZlinkError>;
-    pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError>;
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
     pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn(Received) + Send + 'static;
 }
@@ -428,35 +597,23 @@ impl RequestRouter {
     pub fn set_default_request_timeout(&self, timeout: Duration);
     pub fn get_default_request_timeout(&self) -> Duration;
 
-    pub async fn request(&self, routing_id: RoutingId, msg: Message)
-        -> Result<Received, ZlinkError>;
-    pub async fn request_with_timeout(&self, routing_id: RoutingId,
-        msg: Message, timeout: Duration) -> Result<Received, ZlinkError>;
-    pub async fn try_request(&self, routing_id: RoutingId, msg: Message)
-        -> Result<Received, ZlinkError>;
-    pub async fn try_request_with_timeout(&self, routing_id: RoutingId,
-        msg: Message, timeout: Duration) -> Result<Received, ZlinkError>;
+    // Async request — no flags. Duration::ZERO uses socket default timeout.
+    pub async fn request(&self, routing_id: RoutingId, parts: impl IntoMultipart,
+        timeout: Duration) -> Result<Received, ZlinkError>;
 
-    pub fn request_callback<F>(&self, routing_id: RoutingId, msg: Message,
-        callback: F)
-        where F: FnOnce(Result<Received, ZlinkError>) + Send + 'static;
-    pub fn request_callback_with_timeout<F>(&self, routing_id: RoutingId,
-        msg: Message, callback: F, timeout: Duration)
-        where F: FnOnce(Result<Received, ZlinkError>) + Send + 'static;
-    pub fn try_request_callback<F>(&self, routing_id: RoutingId, msg: Message,
-        callback: F)
-        where F: FnOnce(Result<Received, ZlinkError>) + Send + 'static;
-    pub fn try_request_callback_with_timeout<F>(&self, routing_id: RoutingId,
-        msg: Message, callback: F, timeout: Duration)
-        where F: FnOnce(Result<Received, ZlinkError>) + Send + 'static;
+    // Callback request — Duration::ZERO uses socket default timeout.
+    pub fn request_callback<F>(&self, routing_id: RoutingId, parts: impl IntoMultipart,
+        callback: F, flags: SendFlags, timeout: Duration)
+        -> Result<(), ZlinkError>
+        where F: FnOnce(RequestResult, Option<Received>) + Send + 'static;
 
     pub fn reply(&self, routing_id: RoutingId, request_seq: u64,
-        msg: Message) -> Result<(), ZlinkError>;
-    pub fn try_reply(&self, routing_id: RoutingId, request_seq: u64,
-        msg: Message) -> SendResult;
+        parts: impl IntoMultipart) -> Result<(), ZlinkError>;
+    pub fn reply_with_flags(&self, routing_id: RoutingId, request_seq: u64,
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
 
     pub fn recv(&self) -> Result<Received, ZlinkError>;
-    pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError>;
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
     pub fn on_receive<F>(&self, handler: F)
         where F: Fn(Received) + Send + 'static;
 }
@@ -472,7 +629,6 @@ impl RequestRouter {
 impl SocketMonitor {
     pub fn open<'a>(socket: impl Into<MonitorTarget<'a>>) -> Result<Self, ZlinkError>;
     pub fn recv(&self) -> Result<MonitorEvent, ZlinkError>;
-    pub fn try_recv(&self) -> Result<Option<MonitorEvent>, ZlinkError>;
     pub fn snapshot(&self) -> Result<MonitorSnapshot, ZlinkError>;
     pub fn on_event<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn(&MonitorEvent) + Send + 'static;
@@ -486,7 +642,6 @@ impl SocketMonitor {
 impl ServiceMonitor {
     pub fn open<'a>(target: impl Into<ServiceMonitorTarget<'a>>) -> Result<Self, ZlinkError>;
     pub fn recv(&self) -> Result<ServiceEvent, ZlinkError>;
-    pub fn try_recv(&self) -> Result<Option<ServiceEvent>, ZlinkError>;
     pub fn snapshot(&self) -> Result<MonitorSnapshot, ZlinkError>;
     pub fn on_event<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn(&ServiceEvent) + Send + 'static;
@@ -593,59 +748,70 @@ impl SpotNode {
 impl Spot {
     pub fn new(node: &SpotNode) -> Result<Self, ZlinkError>;
     pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn try_publish(&self, topic: &str, parts: impl IntoMultipart)
-        -> Result<SendResult, ZlinkError>;
+    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
     pub fn set_subscription(&self, filter: &str) -> Result<(), ZlinkError>;
     pub fn unset_subscription(&self, filter: &str) -> Result<(), ZlinkError>;
     pub fn subscribe(&self) -> Result<TopicMessage, ZlinkError>;
-    pub fn try_subscribe(&self) -> Result<Option<TopicMessage>, ZlinkError>;
+    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, ZlinkError>;
     pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn(TopicMessage) + Send + 'static;
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn() + Send + 'static;
 
     // --- routed send (spot → spot) ---
-    pub fn send_spot(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
+    pub fn send_to_spot(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
         parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn try_send_spot(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
-        parts: impl IntoMultipart) -> Result<SendResult, ZlinkError>;
+    pub fn send_to_spot_with_flags(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
 
-    // --- routed request (spot → spot, async) ---
-    pub async fn request_spot(&self, dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId, msg: Message) -> Result<Received, ZlinkError>;
-    pub async fn request_spot_with_timeout(&self, dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId, msg: Message, timeout: Duration)
-        -> Result<Received, ZlinkError>;
-    pub fn request_spot_callback<F>(&self, dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId, msg: Message, callback: F)
-        where F: FnOnce(Result<Received, ZlinkError>) + Send + 'static;
+    // --- routed request (spot → spot, async) — no flags ---
+    // Duration::ZERO uses the socket default timeout.
+    pub async fn request_to_spot(&self, dest_node_rid: RoutingId,
+        dest_spot_rid: RoutingId, parts: impl IntoMultipart,
+        timeout: Duration) -> Result<Received, ZlinkError>;
+
+    // --- routed request (spot → spot, callback) ---
+    // Duration::ZERO uses the socket default timeout.
+    pub fn request_to_spot_callback<F>(&self, dest_node_rid: RoutingId,
+        dest_spot_rid: RoutingId, parts: impl IntoMultipart, callback: F,
+        flags: SendFlags, timeout: Duration)
+        -> Result<(), ZlinkError>
+        where F: FnOnce(RequestResult, Option<Received>) + Send + 'static;
 
     // --- routed reply (spot → spot) ---
-    pub fn reply_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-        request_seq: u64, msg: Message) -> Result<(), ZlinkError>;
+    pub fn reply_to_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
+        request_seq: u64, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
+    pub fn reply_to_spot_with_flags(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
+        request_seq: u64, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
 
     // --- routed send (spot → router) ---
-    pub fn send_router(&self, peer_rid: &RoutingId,
+    pub fn send_to_router(&self, peer_rid: &RoutingId,
         parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn try_send_router(&self, peer_rid: &RoutingId,
-        parts: impl IntoMultipart) -> Result<SendResult, ZlinkError>;
+    pub fn send_to_router_with_flags(&self, peer_rid: &RoutingId,
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
 
-    // --- routed request (spot → router, async) ---
-    pub async fn request_router(&self, peer_rid: RoutingId,
-        msg: Message) -> Result<Received, ZlinkError>;
-    pub async fn request_router_with_timeout(&self, peer_rid: RoutingId,
-        msg: Message, timeout: Duration) -> Result<Received, ZlinkError>;
-    pub fn request_router_callback<F>(&self, peer_rid: RoutingId, msg: Message,
-        callback: F)
-        where F: FnOnce(Result<Received, ZlinkError>) + Send + 'static;
+    // --- routed request (spot → router, async) — no flags ---
+    // Duration::ZERO uses the socket default timeout.
+    pub async fn request_to_router(&self, peer_rid: RoutingId,
+        parts: impl IntoMultipart, timeout: Duration) -> Result<Received, ZlinkError>;
+
+    // --- routed request (spot → router, callback) ---
+    // Duration::ZERO uses the socket default timeout.
+    pub fn request_to_router_callback<F>(&self, peer_rid: RoutingId,
+        parts: impl IntoMultipart, callback: F,
+        flags: SendFlags, timeout: Duration)
+        -> Result<(), ZlinkError>
+        where F: FnOnce(RequestResult, Option<Received>) + Send + 'static;
 
     // --- routed reply (spot → router) ---
-    pub fn reply_router(&self, peer_rid: RoutingId, request_seq: u64,
-        msg: Message) -> Result<(), ZlinkError>;
+    pub fn reply_to_router(&self, peer_rid: RoutingId, request_seq: u64,
+        parts: impl IntoMultipart) -> Result<(), ZlinkError>;
+    pub fn reply_to_router_with_flags(&self, peer_rid: RoutingId, request_seq: u64,
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
 
     // --- routed receive ---
     pub fn recv_routed(&self) -> Result<Received, ZlinkError>;
-    pub fn try_recv_routed(&self) -> Result<Option<Received>, ZlinkError>;
+    pub fn recv_routed_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
     pub fn on_routed_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
         where F: Fn(RoutingId, RoutingId, u64, Vec<Message>) + Send + 'static;
     pub fn on_dispatch_event<F>(&mut self, handler: F) -> Result<(), ZlinkError>

@@ -197,7 +197,7 @@ void spot_sub_t::pump_monitor_events ()
         return;
 
     zlink_pollitem_t item = {raw_monitor_socket, 0, ZLINK_POLLIN, 0};
-    const int poll_rc = zlink_poll (&item, 1, 0);
+    const int poll_rc = zlink_poll (&item, 1, 0, NULL);
     if (poll_rc <= 0 || (item.revents & ZLINK_POLLIN) == 0)
         return;
 

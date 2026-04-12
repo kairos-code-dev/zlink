@@ -22,9 +22,34 @@ typedef int zlink_socket_type_t;
 typedef int zlink_option_t;
 typedef int zlink_ctx_option_t;
 typedef int zlink_pub_option_t;
-typedef uint32_t zlink_send_flags_t;
+typedef int zlink_config_result_t;
+typedef int zlink_submit_result_t;
+typedef int zlink_request_result_t;
+typedef int zlink_recv_result_t;
+typedef int zlink_handler_result_t;
+typedef int zlink_close_result_t;
+typedef int zlink_bind_result_t;
+typedef int zlink_connect_result_t;
+typedef int zlink_send_flags_t;
+typedef int zlink_recv_flags_t;
 typedef uint64_t zlink_socket_monitor_event_mask_t;
 typedef zmq_msg_t zlink_msg_t;
+
+enum {
+    ZLINK_CONFIG_OK = 0,
+    ZLINK_CONFIG_INVALID_ARGUMENT = 702,
+    ZLINK_SUBMIT_OK = 0,
+    ZLINK_SUBMIT_BACKPRESSURED = 1,
+    ZLINK_CLOSE_OK = 0,
+    ZLINK_BIND_OK = 0,
+    ZLINK_CONNECT_OK = 0,
+    ZLINK_RECV_OK = 0,
+    ZLINK_HANDLER_OK = 0,
+    ZLINK_SEND_FLAGS_NONE = 0,
+    ZLINK_SEND_FLAGS_DONTWAIT = 1,
+    ZLINK_RECV_FLAGS_NONE = 0,
+    ZLINK_RECV_FLAGS_DONTWAIT = 1
+};
 #if defined(_WIN32)
 typedef SOCKET zlink_fd_t;
 #else
@@ -497,7 +522,8 @@ inline void zlink_multipart_close (zlink_msg_t *parts_, size_t part_count_)
         zmq_msg_close (&parts_[i]);
 }
 
-inline int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_)
+inline int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_,
+                      zlink_config_result_t *error_out_ = NULL)
 {
     std::vector<zmq_pollitem_t> raw_items (nitems_);
     for (int i = 0; i < nitems_; ++i) {
@@ -510,6 +536,10 @@ inline int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_)
     if (rc >= 0) {
         for (int i = 0; i < nitems_; ++i)
             items_[i].revents = raw_items[i].revents;
+        if (error_out_)
+            *error_out_ = ZLINK_CONFIG_OK;
+    } else if (error_out_) {
+        *error_out_ = ZLINK_CONFIG_INVALID_ARGUMENT;
     }
     return rc;
 }
@@ -1157,8 +1187,10 @@ inline int zlink_poller_wait_all (void *poller_,
 
 inline int zlink_poller_wait (void *poller_,
                               zlink_poller_event_t *event_,
-                              long timeout_)
+                              long timeout_,
+                              zlink_config_result_t *error_out_ = NULL)
 {
+    (void) error_out_;
     return zlink_poller_wait_all (poller_, event_, 1, timeout_);
 }
 

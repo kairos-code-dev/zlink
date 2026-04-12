@@ -138,7 +138,7 @@ class context_t
         if (!_ctx)
             return -1;
         errno = 0;
-        return zlink_ctx_get (_ctx, static_cast<zlink_ctx_option_t> (option_));
+        return zlink_ctx_get (_ctx, static_cast<zlink_ctx_option_t> (option_), nullptr);
     }
 
     void *_ctx;

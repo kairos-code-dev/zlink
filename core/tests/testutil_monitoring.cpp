@@ -11,7 +11,7 @@ static int wait_monitor_readable (void *monitor_, int flags_, long timeout_ms_)
         timeout_ms_ = 0;
 
     zlink_pollitem_t item = {monitor_, 0, ZLINK_POLLIN, 0};
-    const int rc = zlink_poll (&item, 1, timeout_ms_);
+    const int rc = zlink_poll (&item, 1, timeout_ms_, NULL);
     if (rc <= 0 || (item.revents & ZLINK_POLLIN) == 0) {
         errno = EAGAIN;
         return -1;

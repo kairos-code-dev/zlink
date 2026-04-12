@@ -314,7 +314,7 @@ bool wait_for_spot_ready_settle(spot_client_state_t *state)
       + std::chrono::milliseconds(settle_ms);
     while (std::chrono::steady_clock::now() < deadline) {
         zlink_pollitem_t item = {NULL, 0, 0, 0};
-        if (zlink_poll(&item, 0, 5) < 0 && zlink_errno() != EINTR)
+        if (zlink_poll(&item, 0, 5, NULL) < 0 && zlink_errno() != EINTR)
             return false;
     }
 
@@ -714,7 +714,7 @@ void spot_client_recv_worker_loop(spot_recv_worker_t *worker)
           zlink_poller_wait_all(worker->poller,
                                 worker->events.empty() ? NULL : &worker->events[0],
                                 static_cast<int>(worker->events.size()),
-                                5);
+                                5, NULL);
         if (poll_rc < 0) {
             const int err = zlink_errno();
             if (worker->state->recv_workers_stop.load(std::memory_order_acquire))
@@ -1128,7 +1128,7 @@ bool wait_msg_size_start(spot_client_state_t *state,
         }
 
         zlink_pollitem_t item = {NULL, 0, 0, 0};
-        if (zlink_poll(&item, 0, 5) < 0 && zlink_errno() != EINTR)
+        if (zlink_poll(&item, 0, 5, NULL) < 0 && zlink_errno() != EINTR)
             return false;
     }
 

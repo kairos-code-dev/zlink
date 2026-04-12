@@ -145,9 +145,9 @@ subject type does not support subscribe recv.
 Attach a topic-based receive handler to a socket.
 
 ```c
-int zlink_subscribe_handler (void *s_,
-                             zlink_subscribe_handler_fn handler_,
-                             void *userdata_);
+bool zlink_subscribe_handler (void *s_,
+                              zlink_subscribe_handler_fn handler_,
+                              void *userdata_);
 ```
 
 Attach a topic-based receive handler to raw `SUB`, raw `XSUB`, `spot`, or
@@ -156,7 +156,7 @@ Attach a topic-based receive handler to raw `SUB`, raw `XSUB`, `spot`, or
 on the same subject also fails with `errno=EBUSY`. Unsupported subjects
 return `ENOTSUP`.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `true` on success, `false` on failure (errno is set).
 
 **Errors:** `EINVAL` if the handler is NULL. `ENOTSUP` if the handle type does
 not accept a subscribe handler. `EBUSY` if a handler is already attached.

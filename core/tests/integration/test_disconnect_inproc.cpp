@@ -31,7 +31,7 @@ void test_disconnect_inproc ()
           {sub_socket, 0, ZLINK_POLLIN, 0}, // read publications
           {pub_socket, 0, ZLINK_POLLIN, 0}, // read subscriptions
         };
-        int rc = zlink_poll (items, 2, 100);
+        int rc = zlink_poll (items, 2, 100, NULL);
 
         if (items[1].revents & ZLINK_POLLIN) {
             int subscribed = 0;

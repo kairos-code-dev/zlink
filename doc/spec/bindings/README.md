@@ -130,26 +130,19 @@
   - `monitorOpen` 또는 동등한 monitor 진입점
 - generic root base 또는 raw compat base에서 외부 접근을 허용하면 안 되는 기능:
   - `send(...)`
-  - `trySend(...)`
   - `send(routingId, ...)`
-  - `trySend(routingId, ...)`
-  - `send(..., flags)`
   - `sendParts(...)`
   - `sendFrom(...)`
   - `recv()`
-  - `tryRecv()`
   - `recv(flags)` / `recv(size, flags)`
   - `recvInto(...)`
   - `recvMsgInto(...)`
-  - routed receive alias (`receiveRouted`, `tryReceiveRouted` 등)
+  - routed receive alias (`receiveRouted` 등)
   - `publish(...)`
-  - `tryPublish(...)`
   - `setSubscription(...)`
   - `unsetSubscription(...)`
   - `subscribe()`
-  - `trySubscribe()`
   - `receiveSubscriptionEvent()`
-  - `tryReceiveSubscriptionEvent()`
   - `onReceive(...)`
   - `onSubscribe(...)`
   - `onSendReady(...)`
@@ -165,8 +158,8 @@
 - capability-specific shared base는 descendant 전부에 공통인 capability에 한해
   허용할 수 있다.
   - 예: subscriber-only base의 `setSubscription`, `unsetSubscription`,
-    `subscribe`, `trySubscribe`, `onSubscribe`
-  - 예: publisher-only base의 `publish`, `tryPublish`, `onSendReady`
+    `subscribe`, `onSubscribe`
+  - 예: publisher-only base의 `publish`, `onSendReady`
   - 예: discovery-capable socket base의 `attachDiscovery`
 - 위 capability는 capability matrix에서 `Y`인 concrete socket type에만
   public으로 존재해야 한다.
@@ -187,59 +180,150 @@
 - 수신 결과는 언어에 맞는 도메인 객체 또는 동등한 multipart 표현으로
   반환한다.
 
-### Blocking vs Non-Blocking
-- blocking API는 기본 동작 이름을 사용한다.
-  - 예: `send`, `recv`, `publish`, `subscribe`,
-    `receiveSubscriptionEvent`
-- non-blocking API는 `try*` 이름을 사용한다.
-  - 예: `trySend`, `tryRecv`, `tryPublish`, `trySubscribe`,
-    `tryReceiveSubscriptionEvent`
-- public `flags` 파라미터로 blocking/non-blocking을 전환하지 않는다.
-- `SendFlag` / `ReceiveFlag` 같은 transport switch는 internal helper로만
-  사용할 수 있다.
+### Error Handling Policy
 
-### Explicit Non-Blocking Send Outcome
-- non-blocking send 계열은 `bool` 하나로 성공/실패를 숨기지 않는다.
-- send 결과는 `SendResult` 같은 명시적 enum으로 노출한다.
-- 표준 send 결과 enum:
+모든 데이터 경로 함수 (`send`, `recv`, `request`, `reply`, `subscribe`,
+`publish`) 는 동일한 에러 처리 원칙을 따른다.
 
-```text
-Sent
-Backpressured
-NotReady
+#### 원칙
+
+1. **반환값으로 에러를 전달하지 않는다.**
+   - 성공 시 결과를 반환하거나 void 반환한다.
+   - 실패 시 예외를 던진다 (exception 언어).
+   - 예외에는 `int code` (0–703 범위) 를 포함하여 호출자가 실패 원인을
+     구분할 수 있게 한다.
+   - `BACKPRESSURED`, `NOT_CONNECTED`, `NOT_FOUND`를 포함한 모든 실패는
+     예외로 전달한다. 이들은 반환값이 아니다.
+2. **Go / C 는 exception이 없으므로 C API 계약을 따른다.**
+   - C: 함수별 typed result enum 반환
+     (`zlink_submit_result_t`, `zlink_recv_result_t`,
+      `zlink_handler_result_t`, `zlink_close_result_t`,
+      `zlink_bind_result_t`, `zlink_connect_result_t`,
+      `zlink_config_result_t`).
+   - Go: `error` 반환. error 객체에 `int` 코드를 포함한다.
+3. **try\* 변형은 제공하지 않는다.**
+   - `trySend`, `tryRecv`, `tryPublish`, `trySubscribe`,
+     `tryReceiveSubscriptionEvent`, `tryRequest`, `tryReply` 전부 없다.
+   - blocking / non-blocking 전환은 flags 파라미터로 한다.
+4. **`INTERNAL_ERROR` 상세 조회.**
+   - result code 가 `INTERNAL_ERROR` 계열 (12, 104 등) 이면
+     `zlink_errno()` 로 내부 raw errno 를 조회할 수 있다.
+   - 바인딩 예외 객체는 `internalErrno` / `internal_errno` 필드로 이를
+     노출한다 (디버깅 전용).
+   - 그 외 result code 에서는 `zlink_errno()` 호출이 불필요하다.
+
+#### 언어별 에러 표현
+
+| 언어 | 예외 타입 | 코드 접근 | 내부 errno |
+|---|---|---|---|
+| C | — | 함수별 result enum 반환 | `zlink_errno()` |
+| C++ | `zlink_error_t` | `.code()` | `.internal_errno()` |
+| Java | `ZlinkException` | `.getCode()` | `.getInternalErrno()` |
+| .NET | `ZlinkException` | `.Code` | `.InternalErrno` |
+| Go | `error` | `.Code()` | `.InternalErrno()` |
+| Rust | `ZlinkError` | `.code()` | `.internal_errno()` |
+| Node | `ZlinkError` | `.code` | `.internalErrno` |
+| Python | `ZlinkError` | `.code` | `.internal_errno` |
+
+#### Error Codes
+
+- C API 는 함수별 typed result enum 을 반환한다.
+- 모든 enum 값은 0–703 범위에서 겹치지 않는다.
+- 바인딩은 이 코드를 예외 객체의 `int code` 에 포함시킨다.
+- 전체 enum 정의는
+  [errno-map.md](../core/errno-map.md) 를 참조한다.
+
+### Flags Policy
+
+모든 데이터 경로 함수는 `flags` 파라미터를 갖는다.
+
+| 함수 계열 | flags 용도 |
+|---|---|
+| `send`, `publish`, `reply` | `DONTWAIT` — non-blocking submit |
+| `recv`, `subscribe`, `receiveSubscriptionEvent` | `DONTWAIT` — non-blocking receive |
+| `request` (callback) | `DONTWAIT` — non-blocking submit |
+| `request` (coroutine/async) | flags 없음 — 항상 blocking submit |
+
+- flags 기본값은 `0` (blocking).
+- non-blocking 호출에서 데이터 없음 / backpressure 시 예외를 던진다
+  (submit result 코드로 구분 가능).
+- 언어별 flags 표현:
+  - C / C++: `int flags = 0`
+  - Java: `SendFlags flags` overload (기본 blocking 오버로드 유지)
+  - .NET: `SendFlags flags = SendFlags.None`
+  - Go: `flags SendFlags`
+  - Rust: base 함수 (blocking) + `_with_flags` 변형
+  - Node: `flags?: SendFlags`
+  - Python: `*, flags: int = 0`
+
+### Naming Policy
+
+#### 오버로드 우선, 이름 분화 금지
+
+파라미터로 구분 가능한 변형은 동일한 이름을 사용한다.
+별도 이름(`request_callback`, `send_nonblocking` 등)을 만들지 않는다.
+
+```
+// GOOD — 같은 이름, 파라미터로 구분
+request(parts, timeout)                    // coroutine
+request(parts, callback, flags, timeout)   // callback
+
+// BAD — 이름 분화
+request(parts, timeout)
+request_callback(parts, callback, flags, timeout)
 ```
 
-- 바인딩은 `core` 스펙에 없는 추가 errno 추정으로 `Backpressured`와
-  `NotReady`를 구분하지 않는다.
-- 현재 `zlink.h`는 non-blocking send 전용 결과 API를 따로 제공하지 않는다.
-- 따라서 바인딩은 `core` 스펙에 문서화된 non-blocking send errno를
-  `SendResult`로 고정 매핑해 public API로 노출할 수 있다.
-- 이 매핑은 바인딩 내부에서 임의로 바뀌면 안 되며, 언어별 스펙에 명시되어야 한다.
+#### SPOT 대상 네이밍
 
-### Send Failure Contract
-- blocking send 계열:
-  - `send`, `publish`, routed `send`
-  - 성공 시 정상 반환
-  - 실패 시 반드시 예외 또는 언어별 오류 경로로 전달한다
-  - 실패를 `false`, `null`, empty result로 숨기지 않는다
-- non-blocking send 계열:
-  - `trySend`, `tryPublish`
-  - `Backpressured`, `NotReady`는 정상 결과값으로 반환한다
-  - `EAGAIN` 계열 외의 오류는 반드시 예외 또는 언어별 오류 경로로 전달한다
-  - 문서화된 send-result 매핑 외의 오류를 임의로 삼키면 안 된다
-- binding helper, wrapper, sample 코드도 blocking send 실패를 무시하거나
-  무시하면 안 된다
+SPOT routed 대상 함수는 `_to_spot`, `_to_router` 접미사를 사용한다.
 
-### Receive Outcome
-- non-blocking receive 계열은 “데이터 없음”만 정상 경로로 표현한다.
-- 언어별 canonical 표현은 언어 관례를 따른다.
-- 예:
-  - Java: `Optional<T>`
-  - .NET: `bool TryReceive(out ...)`
-  - Go: `(T, bool)` 또는 `(T, error)`
-  - Rust: `Option<T>`
-  - Node/Python: empty/null/None 계열
-- `EAGAIN` 외 오류는 예외 또는 언어별 오류 경로를 유지한다.
+```
+send_to_spot(dest_node_rid, dest_spot_rid, parts, flags)
+request_to_spot(dest_node_rid, dest_spot_rid, parts, callback, flags, timeout)
+reply_to_spot(dest_node_rid, dest_spot_rid, request_seq, parts, flags)
+send_to_router(peer_rid, parts, flags)
+request_to_router(peer_rid, parts, callback, flags, timeout)
+reply_to_router(peer_rid, request_seq, parts, flags)
+```
+
+언어별 관례에 따라 camelCase / PascalCase / snake_case 로 변환한다.
+
+### Request Policy
+
+request 는 coroutine 변형과 callback 변형 두 가지를 제공한다.
+**함수 이름은 둘 다 `request`** 이고 callback 파라미터 유무로 구분한다.
+
+#### Coroutine / Async request
+
+```
+async request(parts, timeout = 0) → Received    // throws on any failure
+```
+
+- flags 파라미터 없음. submit 은 항상 blocking (코루틴 대기).
+- `timeout = 0` 이면 소켓 기본 timeout 을 사용한다. 호출 시 생략 가능.
+- submit 실패 시 예외. reply 실패 시 예외 (ETIMEDOUT 등).
+- 성공 시 `Received` 반환. 하나의 코드 경로로 submit + reply 를 처리한다.
+
+#### Callback request
+
+```
+request(parts, callback, flags = 0, timeout = 0)    // throws on submit failure
+```
+
+- flags 파라미터 있음. `DONTWAIT` 으로 non-blocking submit 가능.
+- `timeout = 0` 이면 소켓 기본 timeout 을 사용한다. 호출 시 생략 가능.
+- submit 실패 시 예외 (반환값 아님). callback 은 등록되지 않는다.
+- submit 성공 시 callback 이 정확히 한 번 호출된다.
+  - 성공: `result = OK`, `received` 포함
+  - 실패: `result != OK` (TIMED_OUT 등), `received = null`
+- callback 시그니처: `(RequestResult result, Received received)`
+
+#### 공통
+
+- `zlink_request_result_t` 전체 정의는
+  [errno-map.md](../core/errno-map.md) 를 참조한다.
+- Go 는 exception 이 없으므로 callback request 의 submit 실패도 error
+  반환으로 처리한다.
 
 ## Domain Object Policy
 - Java, C#, Go, Rust, Node, Python은 가능하면 `out` 파라미터나 raw tuple보다
@@ -250,7 +334,7 @@ NotReady
   - `Received`
   - `TopicMessage`
   - `SubscriptionEvent`
-  - `SendResult`
+  - `SubmitResult` (C/Go only — exception 언어에서는 예외 객체에 코드로 포함)
 - 결과 객체는 payload shape, ownership, optional routing metadata를 함께
   설명해야 한다.
 - 편의 기능은 결과 객체 메서드로 둔다.
@@ -283,17 +367,17 @@ NotReady
 
 | Capability | Pair | Dealer | Router | Pub | Sub | XPub | XSub | Stream |
 |---|---|---|---|---|---|---|---|---|
-| `send` / `trySend` | Y | Y | — | — | — | — | — | — |
-| `send(routingId)` / `trySend(routingId)` | — | — | Y | — | — | — | — | Y |
-| `publish` / `tryPublish` | — | — | — | Y | — | Y | — | — |
+| `send` | Y | Y | — | — | — | — | — | — |
+| `send(routingId)` | — | — | Y | — | — | — | — | Y |
+| `publish` | — | — | — | Y | — | Y | — | — |
 
 #### Receive Capabilities
 
 | Capability | Pair | Dealer | Router | Pub | Sub | XPub | XSub | Stream |
 |---|---|---|---|---|---|---|---|---|
-| `recv` / `tryRecv` | Y | Y | Y | — | — | — | — | Y |
-| `subscribe` / `trySubscribe` | — | — | — | — | Y | — | Y | — |
-| `receiveSubscriptionEvent` / `tryReceiveSubscriptionEvent` | — | — | — | — | — | Y | — | — |
+| `recv` | Y | Y | Y | — | — | — | — | Y |
+| `subscribe` | — | — | — | — | Y | — | Y | — |
+| `receiveSubscriptionEvent` | — | — | — | — | — | Y | — | — |
 
 #### Subscription Management
 
@@ -337,11 +421,11 @@ NotReady
 - `—`인 능력은 해당 소켓 타입 클래스에 존재하면 안 된다.
 - 특히 다음 위반이 자주 발생하므로 주의한다:
   - `RouterSocket` / `StreamSocket`에 plain `send` (routingId 없는 send) 금지 —
-    반드시 `send(routingId, ...)` / `trySend(routingId, ...)` 형태여야 한다.
+    반드시 `send(routingId, ...)` 형태여야 한다.
   - `PairSocket` / `XPubSocket` / `StreamSocket` / `XSubSocket`에 `attachDiscovery` 금지 —
     Dealer, Router, Pub, Sub에만 허용된다.
   - `XPubSocket`에 `onSubscribe` 콜백 금지 —
-    XPub는 `receiveSubscriptionEvent` / `tryReceiveSubscriptionEvent`만 허용된다.
+    XPub는 `receiveSubscriptionEvent`만 허용된다.
 
 ### Routed Send 필수 인자
 - `RouterSocket`과 `StreamSocket`의 send는 routingId를 **필수** 인자로 받아야 한다.
@@ -402,8 +486,8 @@ SpotNode (토폴로지 런타임)
   └── TLS: setTlsServer, setTlsClient
 
 Spot (pub/sub facade — SpotNode 위에 올라감)
-  ├── publish / tryPublish
-  ├── subscribe / trySubscribe
+  ├── publish
+  ├── subscribe
   ├── setSubscription / unsetSubscription
   ├── onSubscribe, onSendReady
   └── close (node는 살아 있음)
@@ -439,15 +523,15 @@ RegistryQueryClient (원격 토폴로지 조회)
 
 | Capability | Spot |
 |---|---|
-| `publish` / `tryPublish` | Y |
-| `subscribe` / `trySubscribe` | Y |
+| `publish` | Y |
+| `subscribe` | Y |
 | `setSubscription` / `unsetSubscription` | Y |
 | `onSubscribe` | Y |
 | `onSendReady` | Y |
 | `close` | Y |
 
 - Spot은 소켓 타입이 아니라 SpotNode 위에 올라가는 pub/sub facade다.
-- Spot은 `recv`/`tryRecv`, `send`/`trySend`, `onReceive`를 갖지 않는다.
+- Spot은 `recv`, `send`, `onReceive`를 갖지 않는다.
 - Spot은 `bind`/`connect`를 갖지 않는다 (SpotNode가 담당).
 - Spot `close`는 facade만 해제하고 SpotNode는 살아 있다.
 
@@ -510,7 +594,7 @@ RegistryQueryClient (원격 토폴로지 조회)
   SPOT 관찰은 `statusSnapshot`, `peersSnapshot`, `subjectsSnapshot` API를 사용한다.
 - ServiceMonitor는 소켓의 SocketMonitor와 별도 타입이다.
 - ServiceMonitor API:
-  - `recv()` / `tryRecv()`: blocking/non-blocking event 수신
+  - `recv()`: blocking/non-blocking event 수신 (flags로 제어)
   - `onEvent(handler)`: callback 등록
   - `snapshot()`: 현재 상태 스냅샷
   - `close()`
@@ -573,8 +657,8 @@ RegistryQueryClient (원격 토폴로지 조회)
 | SpotNode | `peersQuery` | peer 필터 조회 |
 | SpotNode | `subjectsSnapshot` | subject 목록 스냅샷 |
 | SpotNode | `close` | 노드 종료 |
-| Spot | `publish` / `tryPublish` | 토픽 발행 |
-| Spot | `subscribe` / `trySubscribe` | 토픽 구독 수신 |
+| Spot | `publish` | 토픽 발행 |
+| Spot | `subscribe` | 토픽 구독 수신 |
 | Spot | `setSubscription` / `unsetSubscription` | 구독 필터 관리 |
 | Spot | `onSubscribe` | 구독 수신 callback |
 | Spot | `onSendReady` | send ready callback |
@@ -600,7 +684,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 | RegistryQueryClient | `connect` | Registry에 연결 |
 | RegistryQueryClient | `snapshot` | 토폴로지 스냅샷 (필터 선택) |
 | RegistryQueryClient | `close` | 클라이언트 종료 |
-| ServiceMonitor | `recv` / `tryRecv` | event 수신 |
+| ServiceMonitor | `recv` | event 수신 |
 | ServiceMonitor | `onEvent` | event callback |
 | ServiceMonitor | `snapshot` | 상태 스냅샷 |
 | ServiceMonitor | `close` | monitor 종료 |
@@ -618,7 +702,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 - Registry capability matrix 정렬 확인 (구현된 경우)
 - RegistryQueryClient capability matrix 정렬 확인 (구현된 경우)
 - ServiceMonitor canonical surface 존재 확인 — Discovery 전용 (`recv`,
-  `tryRecv`, `onEvent`, `snapshot`)
+  `onEvent`, `snapshot`)
 - typed domain object 존재 확인 (ServiceEvent, SpotNodeStatus,
   MemberPeerEntry 등)
 - typed enum 존재 확인 (ServiceType, ServiceRole, SpotNodeState 등)
@@ -635,8 +719,8 @@ RegistryQueryClient (원격 토폴로지 조회)
 
 #### Service Layer Behavior Tests
 - SpotNode bind → Spot publish → Spot subscribe 경로 성공
-- Spot trySubscribe → 데이터 없음 시 empty 반환
-- Spot tryPublish → explicit outcome 반환
+- Spot subscribe → 데이터 없음 시 empty 반환 (non-blocking)
+- Spot publish 실패 시 예외 확인
 - Spot onSubscribe callback 호출 확인
 - Spot onSendReady callback 호출 확인
 - SpotNode connectPeer → peer 간 publish/subscribe 경로 성공
@@ -655,7 +739,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 
 #### Service Layer Monitor Tests
 - ServiceMonitor blocking recv 성공 경로 (Discovery 전용)
-- ServiceMonitor non-blocking tryRecv empty 경로 (Discovery 전용)
+- ServiceMonitor non-blocking recv empty 경로 (Discovery 전용)
 - ServiceMonitor onEvent callback 호출 확인 (Discovery 전용)
 - ServiceMonitor snapshot 상태 반환 확인 (Discovery 전용)
 - Discovery monitor: serviceUp/serviceDown event 수신 확인 (Discovery
@@ -743,7 +827,7 @@ RegistryQueryClient (원격 토폴로지 조회)
   바인딩은 이 로직을 다시 구현하지 않는다.
 - core 는 callback 기반 비동기 모델을 제공한다.
   바인딩은 callback 위에 coroutine/future/promise 표면을 얹는다.
-- `request()` / `tryRequest()` 는 thread blocking API 가 아니다.
+- `request()` 는 thread blocking API 가 아니다.
 - request-reply 는 Router/Dealer 소켓과 SPOT 의 기능 확장이다.
   별도 추상 레이어가 아니라 기존 표면에 capability 를 얹는다.
 
@@ -787,7 +871,7 @@ RequestDealer 연결 제약:
 
 ```c
 typedef void (*zlink_reply_handler_fn)(
-    int errno_, zlink_msg_t *parts, size_t part_count, void *userdata);
+    zlink_request_result_t result_, zlink_msg_t *parts, size_t part_count, void *userdata);
 
 typedef void (*zlink_router_handler_fn)(
     const zlink_routing_id_t *peer_rid, uint64_t request_seq,
@@ -849,17 +933,25 @@ core 가 request-reply dispatch 를 처리한다. 바인딩은 dispatch owner �
   typed surface 를 사용한다. generic `zlink_recv()` 호출 시 `EOPNOTSUPP`.
 - peer-directed ROUTER 수신 plane 과 spot-origin 수신 plane 은 서로 다른 표면이다.
 
-#### request/tryRequest, reply/tryReply 구분
+#### Request API 변형
 
-`send`/`trySend` 패턴과 동일하다. 같은 core C API 를 호출하고,
-바인딩이 send 단계의 backpressure 처리만 다르게 한다.
+request 는 coroutine 변형과 callback 변형 두 가지를 제공한다.
+**함수 이름은 둘 다 `request`** 이고 callback 파라미터 유무로 구분한다.
+별도 이름(`requestCallback`, `request_callback` 등)을 만들지 않는다.
+tryRequest / tryReply 는 제공하지 않는다.
 
-| | `request()` / `reply()` | `tryRequest()` / `tryReply()` |
+| | `request(parts, timeout)` | `request(parts, callback, flags, timeout)` |
 |---|---|---|
-| backpressure | writable 될 때까지 비동기 대기 | 즉시 실패 반환 |
-| 대기 방식 | async 컨텍스트 대기 (스레드 blocking 아님) | 대기 없음 |
-| 실패 시 | `ZlinkError(errno)` 예외 | `EAGAIN` / `SendResult` |
-| 대응 기존 API | `send()` | `trySend()` |
+| submit | blocking (코루틴 대기) | flags 파라미터로 제어 |
+| reply 전달 | 반환값 (Received) | callback |
+| submit 실패 시 | 예외 | 예외 (callback 등록 안 됨) |
+| reply 실패 시 | 예외 (ETIMEDOUT 등) | callback (`result != OK`) |
+| flags | 없음 (항상 blocking) | 있음 (`DONTWAIT` 가능) |
+
+- 에러 처리는 Error Handling Policy 를 따른다.
+  callback request 도 submit 실패 시 반환값이 아닌 예외를 사용한다.
+- reply 결과는 callback 이 정확히 한 번 전달한다.
+  `(RequestResult result, Received received)`
 
 #### SPOT Request-Reply
 
@@ -875,7 +967,7 @@ high-level request 완료는 첫 reply 1건으로 끝난다.
 - 기본 timeout: `5000ms`. per-call > socket default > 구현 기본 `5000ms`.
 - `timeout_ms = 0` 이면 socket default timeout 을 사용한다.
 - timeout 은 send 대기 + reply 대기를 합산한 전체 경과 시간에 적용된다.
-- timeout 시 core 가 pending map 에서 제거하고 callback 에 `ETIMEDOUT` 전달.
+- timeout 시 core 가 pending map 에서 제거하고 callback 에 `ZLINK_REQUEST_TIMED_OUT` 전달.
 - timeout 후 late reply 는 core 가 drop 한다.
 
 #### Pending map
@@ -906,14 +998,15 @@ high-level request 완료는 첫 reply 1건으로 끝난다.
 - `request()` / `reply()` 호출 시 메시지 ownership 은 기존 send 계약을 따른다.
 - reply handler callback 으로 전달된 `parts` 는 borrowed view 다.
   callback 반환 후 무효. 바인딩은 callback 에서 복사하여 `Received` 를 만든다.
-- 소켓 close 시 core 가 pending map 의 모든 미완료 request 를 `ETERM` callback 으로 reject 한다.
+- 소켓 close 시 core 가 pending map 의 모든 미완료 request 를 `ZLINK_REQUEST_TERMINATED` callback 으로 reject 한다.
 
 #### Callback 계약
 
 - callback 은 정확히 한 번 호출된다.
-  성공이면 `err = null/0` + `received`, 실패면 `err` + `received = null`.
+  성공이면 `result = OK` + `received`, 실패면 `result != OK` + `received = null`.
+- core callback 시그니처: `void(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, void *userdata_)`
 - 언어별 패턴:
-  - C++: `std::function<void(ZlinkError, Received)>`
+  - C++: `std::function<void(RequestResult, Received)>`
   - Java: `BiConsumer<Received, ZlinkException>`
   - .NET: `Action<ZlinkException, Received>`
   - Node: `(err, reply)`
@@ -949,8 +1042,8 @@ int zlink_unset_subscription(void *handle, const char *filter);
 
 바인딩 규칙:
 - C API 는 `try_*` 발행 함수를 따로 두지 않는다.
-- 바인딩의 `tryPublish` 는 `zlink_publish(..., ZLINK_DONTWAIT)` 를 호출한 뒤
-  errno 를 `zlink_send_result_t` 로 분류해서 만든다.
+- non-blocking publish 는 `zlink_publish(..., ZLINK_DONTWAIT)` 를 호출하고
+  errno 를 `zlink_send_result_t` 로 분류한다. 바인딩은 별도 `tryPublish` 를 두지 않는다.
 - `subscribe` 수신은 typed receive surface 또는 handler callback 으로 노출한다.
 - topic filter 설정은 typed subscription API 로 노출한다.
 
@@ -1347,10 +1440,8 @@ typedef enum zlink_spot_node_option_t {
 
 ## Monitor Policy
 - monitor plane도 같은 규칙을 따른다.
-- public monitor receive는:
-  - blocking: `recv()`
-  - non-blocking: `tryRecv()`
-- public `recv(flags)`는 두지 않는다.
+- public monitor receive는 `recv()` 하나로 제공한다.
+  - blocking/non-blocking 은 flags 파라미터 또는 언어별 관례로 제어한다.
 - monitor event는 data plane과 별도지만, blocking/non-blocking 구분 방식은
   동일해야 한다.
 - monitor는 socket의 상태 변화, readiness 변화, lifecycle event를 관찰하는
@@ -1499,33 +1590,33 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 
 **request 오류:**
 
-| 상황 | `request()` | `tryRequest()` |
-|------|------------|---------------|
-| backpressure | writable 대기 (timeout 에 합산) | 즉시 `ZlinkError(EAGAIN)` |
-| timeout | `ZlinkError(ETIMEDOUT)` | 동일 |
-| 대상 없음 | `ZlinkError(ENOENT)` | 동일 |
-| remote error reply | `ZlinkError(해당 errno)` | 동일 |
-| 소켓 close | `ZlinkError(ETERM)` | 동일 |
-| caller 취소 | `ZlinkError(ECANCELED)` | 동일 |
-| pending map 에 없는 reply | 무시 | 무시 |
+| 상황 | `request()` |
+|------|------------|
+| backpressure | writable 대기 (timeout 에 합산) |
+| timeout | `ZlinkError(ETIMEDOUT)` |
+| 대상 없음 | `ZlinkError(ENOENT)` |
+| remote error reply | `ZlinkError(해당 errno)` |
+| 소켓 close | `ZlinkError(ETERM)` |
+| caller 취소 | `ZlinkError(ECANCELED)` |
+| pending map 에 없는 reply | 무시 |
 
 **reply 오류:**
 
-| 상황 | `reply()` | `tryReply()` |
-|------|-----------|-------------|
-| backpressure | writable 대기 | `SendResult::Backpressured` |
-| not ready | writable 대기 | `SendResult::NotReady` |
-| send 성공 | 정상 반환 | `SendResult::Sent` |
-| send 오류 (EAGAIN 외) | `ZlinkError(errno)` 예외 | 동일 |
+| 상황 | `reply()` |
+|------|-----------|
+| 성공 | 정상 반환 |
+| backpressure | 예외 (`BACKPRESSURED`) |
+| not connected | 예외 (`NOT_CONNECTED`) |
+| 기타 실패 | 예외 (해당 submit result 코드) |
 
 - 모든 실패는 async completion 경로 (Future reject / callback) 로 전달한다.
 - 언어별 표현:
-  - Java: `ZlinkException(errno)` — `getErrorCode()` 로 원인 구분
-  - .NET: `ZlinkException(errno)` — `Errno` property
-  - Go: `ZlinkError{Code: errno}` — `Code` 필드
-  - Rust: `Err(ZlinkError{code: errno})` — `code` 필드
-  - Node: `ZlinkError` — `errno` property
-  - Python: `ZlinkError(errno)` — `errno` attribute
+  - Java: `ZlinkException` — `getSubmitResult()` 로 원인 구분
+  - .NET: `ZlinkException` — `SubmitResult` property
+  - Go: `ZlinkError{Code: SubmitResult}` — `Code` 필드
+  - Rust: `Err(ZlinkError{code: SubmitResult})` — `code` 필드
+  - Node: `ZlinkError` — `submitResult` property
+  - Python: `ZlinkError` — `submit_result` attribute
 
 ## Length and Range Boundary Policy
 - 검증 책임은 두 층으로 나눈다.
@@ -1595,11 +1686,11 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
   Go: `ReceiveSubscriptionEvent`
 - 추천 canonical 이름:
   - `bind`, `connect`, `close`
-  - `send`, `trySend`
-  - `recv`, `tryRecv`
-  - `publish`, `tryPublish`
-  - `subscribe`, `trySubscribe`
-  - `receiveSubscriptionEvent`, `tryReceiveSubscriptionEvent`
+  - `send`
+  - `recv`
+  - `publish`
+  - `subscribe`
+  - `receiveSubscriptionEvent`
   - `setSubscription`, `unsetSubscription`
   - `onReceive`, `onSubscribe`, `onSendReady`
 
@@ -1698,18 +1789,15 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 - Go
   - `(T, error)` + strong type + explicit error check
   - multipart-only 기준 surface
-  - `Try*`와 explicit send outcome (`SendResult, error`)
-  - non-blocking receive는 `(T, bool, error)` 또는 동등한 결과 타입
+  - 모든 실패는 `error` 반환 (`SubmitResult` 코드 포함)
 - Rust
   - `Result<T, ZlinkError>` + strong newtype + ownership
   - multipart-only 기준 surface
-  - `try_*`와 explicit send outcome (`Result<SendResult, ZlinkError>`)
-  - non-blocking receive는 `Option<T>` 또는 `Result<Option<T>, ZlinkError>`
+  - 모든 실패는 `Err(ZlinkError)` (`SubmitResult` 코드 포함)
 - Node/Python
   - 언어 관례를 따르되 의미 계약은 동일
   - multipart-only 기준 surface
-  - non-blocking receive는 empty/null/None 계열
-  - non-blocking send는 bool이 아니라 explicit outcome을 사용해야 한다
+  - 모든 실패는 예외 (`SubmitResult` 코드 포함)
 
 언어별 표면은 달라도 의미 계약은 같아야 한다.
 
@@ -1793,7 +1881,6 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 - raw option bag 비노출 확인
 - monitor canonical surface 존재 확인
   - `recv()`
-  - `tryRecv()`
 
 ### Contract Tests
 - FFI/native 호출 매핑 검증
@@ -1816,19 +1903,19 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
   - `subscribe` → core subscribe 중계 성공
   - routed `send` → routing id 포함 중계 성공
 - non-blocking 경로:
-  - `tryRecv` → 데이터 없음 시 empty 반환
-  - `trySubscribe` → 데이터 없음 시 empty 반환
-  - `tryReceiveSubscriptionEvent` → 데이터 없음 시 empty 반환
-  - `trySend` → explicit outcome 반환
-  - `tryPublish` → explicit outcome 반환
+  - `recv` non-blocking → 데이터 없음 시 empty 반환
+  - `subscribe` non-blocking → 데이터 없음 시 empty 반환
+  - `receiveSubscriptionEvent` non-blocking → 데이터 없음 시 empty 반환
+  - `send` 실패 시 예외 또는 오류 경로 확인
+  - `publish` 실패 시 예외 또는 오류 경로 확인
 
 ### Send Failure Contract Tests
 - blocking `send` failure가 예외 또는 언어별 오류 경로로 caller에 전달되는지 확인
 - blocking `publish` failure가 예외 또는 언어별 오류 경로로 caller에 전달되는지 확인
-- `trySend` backpressure 결과 확인
-- `trySend` not-ready 결과 확인
-- `tryPublish` backpressure 또는 not-ready 결과 확인
-- `EAGAIN` 외 오류가 `try*`에서 무시되지 않는지 확인
+- `send` backpressure 예외 확인
+- `send` not-ready 예외 확인
+- `publish` backpressure 또는 not-ready 예외 확인
+- `EAGAIN` 외 오류가 무시되지 않는지 확인
 
 ### Receive Failure Contract Tests
 - callback mode와 direct recv 충돌 시 native 계약대로 오류가 전달되는지 확인
@@ -1862,7 +1949,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 
 ### Monitor Tests
 - blocking monitor `recv` 성공 경로
-- non-blocking monitor `tryRecv` empty path
+- non-blocking monitor recv empty path
 - monitor callback/state 변화와 data plane readiness 일치 여부
 
 ### Note: Performance and Sample Verification
@@ -1948,7 +2035,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 - option 값이 enum/boolean/value object로 승격되었는가
 - 타입별 capability가 제대로 닫혀 있는가
 - blocking send 실패가 예외 또는 오류 경로로 반드시 caller에 전달되는가
-- `trySend`가 `Backpressured`/`NotReady`만 결과값으로 반환하고 나머지를 숨기지 않는가
+- `send` 실패가 backpressure/not-ready를 포함해 모든 오류를 예외로 전달하는가
 - binding이 truncation/overflow를 선검증하는가
 - native 상태 오류를 바인딩이 임의로 추론하지 않는가
 - reflection test와 behavior test가 같이 있는가
@@ -2039,7 +2126,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
   - Boundary test가 값 경계를 검증한다
   - Option test가 typed surface를 검증한다
   - Ownership test가 send/recv ownership을 검증한다
-  - Monitor test가 recv/tryRecv를 검증한다
+  - Monitor test가 recv를 검증한다
 
 #### 7단계: 샘플 정렬
 - Canonical Sample Set 기준으로 샘플을 완성한다.
@@ -2159,7 +2246,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
   - public method signature 제거 여부 재확인
   - public 타입 자체 삭제 또는 internal 이동 여부 결정
 - monitor plane
-  - `recv()` / `tryRecv()` canonical surface 유지 여부 확인
+  - `recv()` canonical surface 유지 여부 확인
 - callback API
   - callback payload shape가 direct receive shape와 동일한지 재확인
 - 단일 메시지 편의 메서드

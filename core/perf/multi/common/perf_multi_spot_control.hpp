@@ -378,7 +378,7 @@ inline bool wait_for_connected_peer_count(void *node,
         }
 
         zlink_pollitem_t item = {NULL, 0, 0, 0};
-        if (zlink_poll(&item, 0, 5) < 0 && zlink_errno() != EINTR)
+        if (zlink_poll(&item, 0, 5, NULL) < 0 && zlink_errno() != EINTR)
             return false;
     }
 
@@ -607,7 +607,7 @@ inline bool wait_for_ready_units(
         }
 
         zlink_pollitem_t item = {NULL, 0, 0, 0};
-        if (zlink_poll(&item, 0, 5) < 0 && zlink_errno() != EINTR)
+        if (zlink_poll(&item, 0, 5, NULL) < 0 && zlink_errno() != EINTR)
             return false;
     }
 
@@ -667,7 +667,7 @@ inline bool wait_for_control_link_ready(StateT *state,
         if (state->control_link_ready.load(std::memory_order_acquire))
             return true;
         zlink_pollitem_t item = {NULL, 0, 0, 0};
-        if (zlink_poll(&item, 0, 5) < 0 && zlink_errno() != EINTR)
+        if (zlink_poll(&item, 0, 5, NULL) < 0 && zlink_errno() != EINTR)
             return false;
     }
 
@@ -704,7 +704,7 @@ inline bool wait_for_started_size(StateT *state,
         }
 
         zlink_pollitem_t item = {NULL, 0, 0, 0};
-        if (zlink_poll(&item, 0, 5) < 0 && zlink_errno() != EINTR)
+        if (zlink_poll(&item, 0, 5, NULL) < 0 && zlink_errno() != EINTR)
             return false;
     }
 

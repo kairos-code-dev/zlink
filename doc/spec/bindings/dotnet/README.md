@@ -84,12 +84,9 @@ public sealed class PairSocket : MessageSocketBase
     PairSocket(Context context);
 
     // inherited from MessageSocketBase
-    void Send(Message message);
-    void Send(IReadOnlyList<Message> parts);
-    SendResult TrySend(Message message);
-    SendResult TrySend(IReadOnlyList<Message> parts);
-    Received Recv();
-    bool TryRecv(out Received? received);
+    void Send(Message message, SendFlags flags = SendFlags.None);
+    void Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+    Received Recv(RecvFlags flags = RecvFlags.None);
     void OnReceive(SocketRecvHandler handler);
     void OnSendReady(Action handler);
 }
@@ -109,10 +106,8 @@ public sealed class PubSocket : PublisherSocketBase
     void AttachDiscovery(Discovery discovery);
 
     // inherited from PublisherSocketBase
-    void Publish(string topic, Message message);
-    void Publish(string topic, IReadOnlyList<Message> parts);
-    SendResult TryPublish(string topic, Message message);
-    SendResult TryPublish(string topic, IReadOnlyList<Message> parts);
+    void Publish(string topic, Message message, SendFlags flags = SendFlags.None);
+    void Publish(string topic, IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
     void OnSendReady(Action handler);
 }
 ```
@@ -133,8 +128,7 @@ public sealed class SubSocket : SubscriberSocketBase
     // inherited from SubscriberSocketBase
     void SetSubscription(string topicOrPattern);
     void UnsetSubscription(string topicOrPattern);
-    Subscribed Subscribe();
-    bool TrySubscribe(out Subscribed? subscribed);
+    Subscribed Subscribe(RecvFlags flags = RecvFlags.None);
     void OnSubscribe(SocketSubscribeHandler handler);
 }
 ```
@@ -156,12 +150,9 @@ public sealed class DealerSocket : MessageSocketBase
     void AttachDiscovery(Discovery discovery);
 
     // inherited from MessageSocketBase
-    void Send(Message message);
-    void Send(IReadOnlyList<Message> parts);
-    SendResult TrySend(Message message);
-    SendResult TrySend(IReadOnlyList<Message> parts);
-    Received Recv();
-    bool TryRecv(out Received? received);
+    void Send(Message message, SendFlags flags = SendFlags.None);
+    void Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+    Received Recv(RecvFlags flags = RecvFlags.None);
     void OnReceive(SocketRecvHandler handler);
     void OnSendReady(Action handler);
 }
@@ -181,49 +172,53 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
     void AttachDiscovery(Discovery discovery);
 
     // inherited from RoutedMessageSocketBase
-    void Send(string routingId, Message message);
-    void Send(RoutingId routingId, Message message);
-    void Send(string routingId, IReadOnlyList<Message> parts);
-    void Send(RoutingId routingId, IReadOnlyList<Message> parts);
-    SendResult TrySend(string routingId, Message message);
-    SendResult TrySend(RoutingId routingId, Message message);
-    SendResult TrySend(string routingId, IReadOnlyList<Message> parts);
-    SendResult TrySend(RoutingId routingId, IReadOnlyList<Message> parts);
-    Received Recv();
-    bool TryRecv(out Received? received);
+    void Send(string routingId, Message message, SendFlags flags = SendFlags.None);
+    void Send(RoutingId routingId, Message message, SendFlags flags = SendFlags.None);
+    void Send(string routingId, IReadOnlyList<Message> parts,
+              SendFlags flags = SendFlags.None);
+    void Send(RoutingId routingId, IReadOnlyList<Message> parts,
+              SendFlags flags = SendFlags.None);
+    Received Recv(RecvFlags flags = RecvFlags.None);
     void OnReceive(SocketRecvHandler handler);
     void OnSendReady(Action handler);
 
-    // --- router → spot routed send ---
-    void SendSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message message);
-    void SendSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                  IReadOnlyList<Message> parts);
-    SendResult TrySendSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                           Message message);
-    SendResult TrySendSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                           IReadOnlyList<Message> parts);
+    // --- router -> spot routed send (throws ZlinkException on failure) ---
+    void SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message message,
+                    SendFlags flags = SendFlags.None);
+    void SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                    IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
 
-    // --- router → spot routed request (async) ---
-    Task<Received> RequestSpotAsync(RoutingId destNodeRid, RoutingId destSpotRid,
-                                    Message message, TimeSpan timeout = default,
-                                    CancellationToken ct = default);
-    Task<Received> RequestSpotAsync(RoutingId destNodeRid, RoutingId destSpotRid,
-                                    IReadOnlyList<Message> parts,
-                                    TimeSpan timeout = default,
-                                    CancellationToken ct = default);
-    void RequestSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message message,
-                     RequestReplyCallback onReply, RequestErrorCallback onError,
-                     TimeSpan timeout = default);
+    // --- router -> spot routed request (async, blocking submit, no flags) ---
+    Task<Received> RequestToSpotAsync(RoutingId destNodeRid, RoutingId destSpotRid,
+                                      Message message, TimeSpan timeout = default,
+                                      CancellationToken ct = default);
+    Task<Received> RequestToSpotAsync(RoutingId destNodeRid, RoutingId destSpotRid,
+                                      IReadOnlyList<Message> parts,
+                                      TimeSpan timeout = default,
+                                      CancellationToken ct = default);
 
-    // --- router → spot routed reply ---
-    void ReplySpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                   ulong requestSequence, Message message);
-    void ReplySpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                   ulong requestSequence, IReadOnlyList<Message> parts);
+    // --- router -> spot routed request (callback, has flags, throws on submit failure) ---
+    void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       Message message,
+                       Action<RequestResult, Received?> callback,
+                       SendFlags flags = SendFlags.None,
+                       TimeSpan timeout = default);
+    void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       IReadOnlyList<Message> parts,
+                       Action<RequestResult, Received?> callback,
+                       SendFlags flags = SendFlags.None,
+                       TimeSpan timeout = default);
+
+    // --- router -> spot routed reply (throws ZlinkException on failure) ---
+    void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                     ulong requestSequence, Message message,
+                     SendFlags flags = SendFlags.None);
+    void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                     ulong requestSequence, IReadOnlyList<Message> parts,
+                     SendFlags flags = SendFlags.None);
 
     // --- router spot receive ---
-    Received RecvSpot();
-    bool TryRecvSpot(out Received? received);
+    Received RecvSpot(RecvFlags flags = RecvFlags.None);
     void OnSpotReceive(Action<Received> handler);
 }
 ```
@@ -239,14 +234,11 @@ public sealed class XPubSocket : PublisherSocketBase
 
     XPubSocketOptions XPubOptions { get; }
 
-    SubscriptionEvent ReceiveSubscriptionEvent();
-    bool TryReceiveSubscriptionEvent(out SubscriptionEvent? subscriptionEvent);
+    SubscriptionEvent ReceiveSubscriptionEvent(RecvFlags flags = RecvFlags.None);
 
     // inherited from PublisherSocketBase
-    void Publish(string topic, Message message);
-    void Publish(string topic, IReadOnlyList<Message> parts);
-    SendResult TryPublish(string topic, Message message);
-    SendResult TryPublish(string topic, IReadOnlyList<Message> parts);
+    void Publish(string topic, Message message, SendFlags flags = SendFlags.None);
+    void Publish(string topic, IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
     void OnSendReady(Action handler);
 }
 ```
@@ -265,8 +257,7 @@ public sealed class XSubSocket : SubscriberSocketBase
     // inherited from SubscriberSocketBase
     void SetSubscription(string topicOrPattern);
     void UnsetSubscription(string topicOrPattern);
-    Subscribed Subscribe();
-    bool TrySubscribe(out Subscribed? subscribed);
+    Subscribed Subscribe(RecvFlags flags = RecvFlags.None);
     void OnSubscribe(SocketSubscribeHandler handler);
 }
 ```
@@ -286,16 +277,13 @@ public sealed class StreamSocket : RoutedMessageSocketBase
     void DetachStream();
 
     // inherited from RoutedMessageSocketBase
-    void Send(string routingId, Message message);
-    void Send(RoutingId routingId, Message message);
-    void Send(string routingId, IReadOnlyList<Message> parts);
-    void Send(RoutingId routingId, IReadOnlyList<Message> parts);
-    SendResult TrySend(string routingId, Message message);
-    SendResult TrySend(RoutingId routingId, Message message);
-    SendResult TrySend(string routingId, IReadOnlyList<Message> parts);
-    SendResult TrySend(RoutingId routingId, IReadOnlyList<Message> parts);
-    Received Recv();
-    bool TryRecv(out Received? received);
+    void Send(string routingId, Message message, SendFlags flags = SendFlags.None);
+    void Send(RoutingId routingId, Message message, SendFlags flags = SendFlags.None);
+    void Send(string routingId, IReadOnlyList<Message> parts,
+              SendFlags flags = SendFlags.None);
+    void Send(RoutingId routingId, IReadOnlyList<Message> parts,
+              SendFlags flags = SendFlags.None);
+    Received Recv(RecvFlags flags = RecvFlags.None);
     void OnReceive(SocketRecvHandler handler);
     void OnSendReady(Action handler);
 }
@@ -368,6 +356,152 @@ public readonly struct RoutingId : IEquatable<RoutingId>
 }
 ```
 
+### ZlinkException
+
+Exception thrown when any operation fails.
+The `Code` property is a globally unique `int` that spans all result enum
+ranges (0-703). The code alone identifies the error without needing to
+know which enum it belongs to.
+
+```csharp
+public class ZlinkException : Exception
+{
+    public ZlinkException(int code);
+    public ZlinkException(int code, int errno);
+
+    public int Code { get; }
+    public int Errno { get; }
+}
+```
+
+### SubmitResult
+
+Result code for send/request/reply/publish operations.
+Maps 1-to-1 to the C API `zlink_submit_result_t`.
+
+```csharp
+public enum SubmitResult
+{
+    Ok = 0,
+    Backpressured = 1,
+    NotConnected = 2,
+    NotFound = 3,
+    Terminated = 4,
+    InvalidHandle = 5,
+    InvalidArgument = 6,
+    NotSupported = 7,
+    InvalidState = 8,
+    ThreadViolation = 9,
+    OutOfMemory = 10,
+    SeqExhausted = 11,
+    InternalError = 12
+}
+```
+
+### RequestResult
+
+Result code delivered to request completion callbacks and async results.
+
+```csharp
+public enum RequestResult
+{
+    Ok = 0,
+    TimedOut = 101,
+    NotFound = 102,
+    Terminated = 103,
+    ProtocolError = 104
+}
+```
+
+### RecvResult
+
+Result code for recv, subscribe, and subscription event operations.
+
+```csharp
+public enum RecvResult
+{
+    Ok = 0,
+    NoData = 201,
+    Busy = 202,
+    Terminated = 203,
+    InvalidHandle = 204,
+    NotSupported = 205
+}
+```
+
+### HandlerResult
+
+Result code for handler registration operations (OnReceive, OnSubscribe, etc.).
+
+```csharp
+public enum HandlerResult
+{
+    Ok = 0,
+    InvalidArgument = 301,
+    Busy = 302,
+    NotSupported = 303,
+    Deadlock = 304,
+    InvalidHandle = 305
+}
+```
+
+### CloseResult
+
+Result code for close and destroy operations.
+
+```csharp
+public enum CloseResult
+{
+    Ok = 0,
+    Busy = 401,
+    Shutdown = 402,
+    InvalidHandle = 403
+}
+```
+
+### BindResult
+
+Result code for bind operations.
+
+```csharp
+public enum BindResult
+{
+    Ok = 0,
+    InvalidArgument = 501,
+    AddrInUse = 502,
+    NotSupported = 503,
+    InvalidHandle = 504
+}
+```
+
+### ConnectResult
+
+Result code for connect, disconnect, and unbind operations.
+
+```csharp
+public enum ConnectResult
+{
+    Ok = 0,
+    InvalidArgument = 601,
+    NotSupported = 602,
+    InvalidHandle = 603
+}
+```
+
+### ConfigResult
+
+Result code for configuration, option, and snapshot operations.
+
+```csharp
+public enum ConfigResult
+{
+    Ok = 0,
+    InvalidHandle = 701,
+    InvalidArgument = 702,
+    NotSupported = 703
+}
+```
+
 ### Received
 
 Aggregates one recv result with optional routing id and message parts.
@@ -425,14 +559,25 @@ public sealed class SubscriptionEvent
 }
 ```
 
-### SendResult
+### SendFlags
 
 ```csharp
-public enum SendResult
+[Flags]
+public enum SendFlags
 {
-    Sent,
-    Backpressured,
-    NotReady
+    None = 0,
+    DontWait = 1
+}
+```
+
+### RecvFlags
+
+```csharp
+[Flags]
+public enum RecvFlags
+{
+    None = 0,
+    DontWait = 1
 }
 ```
 
@@ -454,43 +599,30 @@ public sealed class RequestRouter : IDisposable, IAsyncDisposable
     RouterSocket Socket { get; }
     TimeSpan DefaultRequestTimeout { get; set; }
 
-    // --- RequestAsync ---
+    // --- request (async, blocking submit, no flags) ---
     Task<Received> RequestAsync(RoutingId routingId, Message message,
                                 TimeSpan timeout = default, CancellationToken ct = default);
     Task<Received> RequestAsync(RoutingId routingId, IReadOnlyList<Message> parts,
                                 TimeSpan timeout = default, CancellationToken ct = default);
 
-    // --- TryRequestAsync ---
-    Task<Received> TryRequestAsync(RoutingId routingId, Message message,
-                                   TimeSpan timeout = default, CancellationToken ct = default);
-    Task<Received> TryRequestAsync(RoutingId routingId, IReadOnlyList<Message> parts,
-                                   TimeSpan timeout = default, CancellationToken ct = default);
-
-    // --- Request (callback) ---
+    // --- request (callback, has flags, throws on submit failure) ---
     void Request(RoutingId routingId, Message message,
-                 RequestReplyCallback onReply, RequestErrorCallback onError,
+                 Action<RequestResult, Received?> callback,
+                 SendFlags flags = SendFlags.None,
                  TimeSpan timeout = default);
     void Request(RoutingId routingId, IReadOnlyList<Message> parts,
-                 RequestReplyCallback onReply, RequestErrorCallback onError,
+                 Action<RequestResult, Received?> callback,
+                 SendFlags flags = SendFlags.None,
                  TimeSpan timeout = default);
 
-    // --- TryRequest (callback) ---
-    void TryRequest(RoutingId routingId, Message message,
-                    RequestReplyCallback onReply, RequestErrorCallback onError,
-                    TimeSpan timeout = default);
-    void TryRequest(RoutingId routingId, IReadOnlyList<Message> parts,
-                    RequestReplyCallback onReply, RequestErrorCallback onError,
-                    TimeSpan timeout = default);
+    // --- reply (throws ZlinkException on failure) ---
+    void Reply(RoutingId routingId, ulong requestSequence, Message message,
+               SendFlags flags = SendFlags.None);
+    void Reply(RoutingId routingId, ulong requestSequence, IReadOnlyList<Message> parts,
+               SendFlags flags = SendFlags.None);
 
-    // --- Reply ---
-    void Reply(RoutingId routingId, ulong requestSequence, Message message);
-    void Reply(RoutingId routingId, ulong requestSequence, IReadOnlyList<Message> parts);
-    SendResult TryReply(RoutingId routingId, ulong requestSequence, Message message);
-    SendResult TryReply(RoutingId routingId, ulong requestSequence, IReadOnlyList<Message> parts);
-
-    // --- Receive ---
-    Received Recv();
-    bool TryRecv(out Received? received);
+    // --- receive ---
+    Received Recv(RecvFlags flags = RecvFlags.None);
     void OnReceive(Action<Received> handler);
 
     void Dispose();
@@ -511,33 +643,24 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
     DealerSocket Socket { get; }
     TimeSpan DefaultRequestTimeout { get; set; }
 
-    // --- RequestAsync ---
+    // --- request (async, blocking submit, no flags) ---
     Task<Received> RequestAsync(Message message,
                                 TimeSpan timeout = default, CancellationToken ct = default);
     Task<Received> RequestAsync(IReadOnlyList<Message> parts,
                                 TimeSpan timeout = default, CancellationToken ct = default);
 
-    // --- TryRequestAsync ---
-    Task<Received> TryRequestAsync(Message message,
-                                   TimeSpan timeout = default, CancellationToken ct = default);
-    Task<Received> TryRequestAsync(IReadOnlyList<Message> parts,
-                                   TimeSpan timeout = default, CancellationToken ct = default);
+    // --- request (callback, has flags, throws on submit failure) ---
+    void Request(Message message,
+                 Action<RequestResult, Received?> callback,
+                 SendFlags flags = SendFlags.None,
+                 TimeSpan timeout = default);
+    void Request(IReadOnlyList<Message> parts,
+                 Action<RequestResult, Received?> callback,
+                 SendFlags flags = SendFlags.None,
+                 TimeSpan timeout = default);
 
-    // --- Request (callback) ---
-    void Request(Message message, RequestReplyCallback onReply,
-                 RequestErrorCallback onError, TimeSpan timeout = default);
-    void Request(IReadOnlyList<Message> parts, RequestReplyCallback onReply,
-                 RequestErrorCallback onError, TimeSpan timeout = default);
-
-    // --- TryRequest (callback) ---
-    void TryRequest(Message message, RequestReplyCallback onReply,
-                    RequestErrorCallback onError, TimeSpan timeout = default);
-    void TryRequest(IReadOnlyList<Message> parts, RequestReplyCallback onReply,
-                    RequestErrorCallback onError, TimeSpan timeout = default);
-
-    // --- Receive ---
-    Received Recv();
-    bool TryRecv(out Received? received);
+    // --- receive ---
+    Received Recv(RecvFlags flags = RecvFlags.None);
     void OnReceive(Action<Received> handler);
 
     void Dispose();
@@ -559,7 +682,7 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 {
     void OnEvent(Action<SocketMonitorEvent> handler);
     SocketMonitorEvent Recv();
-    bool TryRecv(out SocketMonitorEvent? monitorEvent);
+    SocketMonitorEvent? Recv(bool nonBlocking);
     MonitorSnapshot Snapshot();
     void Close();
     void Dispose();
@@ -577,7 +700,7 @@ public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
 {
     void OnEvent(Action<ServiceMonitorEvent> handler);
     ServiceMonitorEvent Recv();
-    bool TryRecv(out ServiceMonitorEvent? monitorEvent);
+    ServiceMonitorEvent? Recv(bool nonBlocking);
     MonitorSnapshot Snapshot();
     void Close();
     void Dispose();
@@ -693,72 +816,86 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 {
     Spot(SpotNode node);
 
-    // --- publish ---
-    void Publish(string topic, Message message);
-    void Publish(string topic, IReadOnlyList<Message> parts);
-    SendResult TryPublish(string topic, Message message);
-    SendResult TryPublish(string topic, IReadOnlyList<Message> parts);
+    // --- publish (throws ZlinkException on failure) ---
+    void Publish(string topic, Message message, SendFlags flags = SendFlags.None);
+    void Publish(string topic, IReadOnlyList<Message> parts,
+                 SendFlags flags = SendFlags.None);
 
     // --- subscribe ---
     void SetSubscription(string topicOrPattern);
     void UnsetSubscription(string topicOrPattern);
-    Subscribed Subscribe();
-    bool TrySubscribe(out Subscribed? subscribed);
+    Subscribed Subscribe(RecvFlags flags = RecvFlags.None);
     void OnSubscribe(SpotSubHandler handler);
     void OnSendReady(Action handler);
 
-    // --- routed send (spot → spot) ---
-    void SendSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message message);
-    void SendSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                  IReadOnlyList<Message> parts);
-    SendResult TrySendSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                           Message message);
-    SendResult TrySendSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                           IReadOnlyList<Message> parts);
+    // --- routed send (spot -> spot, throws ZlinkException on failure) ---
+    void SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message message,
+                    SendFlags flags = SendFlags.None);
+    void SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                    IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
 
-    // --- routed request (spot → spot, async) ---
-    Task<Received> RequestSpotAsync(RoutingId destNodeRid, RoutingId destSpotRid,
-                                    Message message, TimeSpan timeout = default,
-                                    CancellationToken ct = default);
-    Task<Received> RequestSpotAsync(RoutingId destNodeRid, RoutingId destSpotRid,
-                                    IReadOnlyList<Message> parts,
-                                    TimeSpan timeout = default,
-                                    CancellationToken ct = default);
-    void RequestSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message message,
-                     RequestReplyCallback onReply, RequestErrorCallback onError,
-                     TimeSpan timeout = default);
-
-    // --- routed reply (spot → spot) ---
-    void ReplySpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                   ulong requestSequence, Message message);
-    void ReplySpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                   ulong requestSequence, IReadOnlyList<Message> parts);
-
-    // --- routed send (spot → router) ---
-    void SendRouter(RoutingId peerRid, Message message);
-    void SendRouter(RoutingId peerRid, IReadOnlyList<Message> parts);
-    SendResult TrySendRouter(RoutingId peerRid, Message message);
-    SendResult TrySendRouter(RoutingId peerRid, IReadOnlyList<Message> parts);
-
-    // --- routed request (spot → router, async) ---
-    Task<Received> RequestRouterAsync(RoutingId peerRid, Message message,
+    // --- routed request (spot -> spot, async, blocking submit, no flags) ---
+    Task<Received> RequestToSpotAsync(RoutingId destNodeRid, RoutingId destSpotRid,
+                                      Message message, TimeSpan timeout = default,
+                                      CancellationToken ct = default);
+    Task<Received> RequestToSpotAsync(RoutingId destNodeRid, RoutingId destSpotRid,
+                                      IReadOnlyList<Message> parts,
                                       TimeSpan timeout = default,
                                       CancellationToken ct = default);
-    Task<Received> RequestRouterAsync(RoutingId peerRid, IReadOnlyList<Message> parts,
-                                      TimeSpan timeout = default,
-                                      CancellationToken ct = default);
-    void RequestRouter(RoutingId peerRid, Message message,
-                       RequestReplyCallback onReply, RequestErrorCallback onError,
+
+    // --- routed request (spot -> spot, callback, has flags, throws on submit failure) ---
+    void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       Message message,
+                       Action<RequestResult, Received?> callback,
+                       SendFlags flags = SendFlags.None,
+                       TimeSpan timeout = default);
+    void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       IReadOnlyList<Message> parts,
+                       Action<RequestResult, Received?> callback,
+                       SendFlags flags = SendFlags.None,
                        TimeSpan timeout = default);
 
-    // --- routed reply (spot → router) ---
-    void ReplyRouter(RoutingId peerRid, ulong requestSequence, Message message);
-    void ReplyRouter(RoutingId peerRid, ulong requestSequence,
-                     IReadOnlyList<Message> parts);
+    // --- routed reply (spot -> spot, throws ZlinkException on failure) ---
+    void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                     ulong requestSequence, Message message,
+                     SendFlags flags = SendFlags.None);
+    void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                     ulong requestSequence, IReadOnlyList<Message> parts,
+                     SendFlags flags = SendFlags.None);
+
+    // --- routed send (spot -> router, throws ZlinkException on failure) ---
+    void SendToRouter(RoutingId peerRid, Message message,
+                      SendFlags flags = SendFlags.None);
+    void SendToRouter(RoutingId peerRid, IReadOnlyList<Message> parts,
+                      SendFlags flags = SendFlags.None);
+
+    // --- routed request (spot -> router, async, blocking submit, no flags) ---
+    Task<Received> RequestToRouterAsync(RoutingId peerRid, Message message,
+                                        TimeSpan timeout = default,
+                                        CancellationToken ct = default);
+    Task<Received> RequestToRouterAsync(RoutingId peerRid, IReadOnlyList<Message> parts,
+                                        TimeSpan timeout = default,
+                                        CancellationToken ct = default);
+
+    // --- routed request (spot -> router, callback, has flags, throws on submit failure) ---
+    void RequestToRouter(RoutingId peerRid, Message message,
+                         Action<RequestResult, Received?> callback,
+                         SendFlags flags = SendFlags.None,
+                         TimeSpan timeout = default);
+    void RequestToRouter(RoutingId peerRid, IReadOnlyList<Message> parts,
+                         Action<RequestResult, Received?> callback,
+                         SendFlags flags = SendFlags.None,
+                         TimeSpan timeout = default);
+
+    // --- routed reply (spot -> router, throws ZlinkException on failure) ---
+    void ReplyToRouter(RoutingId peerRid, ulong requestSequence, Message message,
+                       SendFlags flags = SendFlags.None);
+    void ReplyToRouter(RoutingId peerRid, ulong requestSequence,
+                       IReadOnlyList<Message> parts,
+                       SendFlags flags = SendFlags.None);
 
     // --- routed receive ---
-    Received RecvRouted();
-    bool TryRecvRouted(out Received? received);
+    Received RecvRouted(RecvFlags flags = RecvFlags.None);
     void OnRoutedReceive(Action<Received> handler);
     void OnDispatchEvent(Action<SpotDispatchEvent> handler);
 

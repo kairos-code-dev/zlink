@@ -58,7 +58,7 @@ void test_raw_socket_receive_callback_contracts ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_handler (dealer, &discard_stream_message, NULL));
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_handler (router, &discard_stream_message, NULL));
+      ZLINK_HANDLER_NOT_SUPPORTED, zlink_recv_handler (router, &discard_stream_message, NULL));
     TEST_ASSERT_EQUAL_INT (EOPNOTSUPP, zlink_errno ());
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_handler (stream, &discard_stream_message, NULL));
@@ -68,64 +68,64 @@ void test_raw_socket_receive_callback_contracts ()
       zlink_subscribe_handler (xsub, &discard_spot_message, NULL));
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_handler (sub, &discard_stream_message, NULL));
+      ZLINK_HANDLER_NOT_SUPPORTED, zlink_recv_handler (sub, &discard_stream_message, NULL));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_handler (xsub, &discard_stream_message, NULL));
+      ZLINK_HANDLER_NOT_SUPPORTED, zlink_recv_handler (xsub, &discard_stream_message, NULL));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_handler (pub, &discard_stream_message, NULL));
+      ZLINK_HANDLER_NOT_SUPPORTED, zlink_recv_handler (pub, &discard_stream_message, NULL));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_handler (xpub, &discard_stream_message, NULL));
+      ZLINK_HANDLER_NOT_SUPPORTED, zlink_recv_handler (xpub, &discard_stream_message, NULL));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe_handler (pair, &discard_spot_message, NULL));
+      ZLINK_HANDLER_NOT_SUPPORTED, zlink_subscribe_handler (pair, &discard_spot_message, NULL));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv (pair, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+      ZLINK_RECV_BUSY, zlink_recv (pair, NULL, &parts, &part_count, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv (dealer, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+      ZLINK_RECV_BUSY, zlink_recv (dealer, NULL, &parts, &part_count, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv (router, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+      ZLINK_RECV_NOT_SUPPORTED, zlink_recv (router, NULL, &parts, &part_count, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EOPNOTSUPP, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv (stream, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+      ZLINK_RECV_BUSY, zlink_recv (stream, NULL, &parts, &part_count, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     char topic[32];
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe (sub, NULL, &parts, &part_count, topic, &topic_len,
+      ZLINK_RECV_BUSY, zlink_subscribe (sub, NULL, &parts, &part_count, topic, &topic_len,
                            ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
     topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe (xsub, NULL, &parts, &part_count, topic, &topic_len,
+      ZLINK_RECV_BUSY, zlink_subscribe (xsub, NULL, &parts, &part_count, topic, &topic_len,
                            ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, pair, pair, ZLINK_POLLIN));
+    TEST_ASSERT_TRUE (
+      zlink_poller_add (poller, pair, pair, ZLINK_POLLIN) != ZLINK_CONFIG_OK);
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, dealer, dealer, ZLINK_POLLIN));
+    TEST_ASSERT_TRUE (
+      zlink_poller_add (poller, dealer, dealer, ZLINK_POLLIN) != ZLINK_CONFIG_OK);
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_poller_add (poller, router, router, ZLINK_POLLIN));
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, stream, stream, ZLINK_POLLIN));
+    TEST_ASSERT_TRUE (
+      zlink_poller_add (poller, stream, stream, ZLINK_POLLIN) != ZLINK_CONFIG_OK);
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, sub, sub, ZLINK_POLLIN));
+    TEST_ASSERT_TRUE (
+      zlink_poller_add (poller, sub, sub, ZLINK_POLLIN) != ZLINK_CONFIG_OK);
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, xsub, xsub, ZLINK_POLLIN));
+    TEST_ASSERT_TRUE (
+      zlink_poller_add (poller, xsub, xsub, ZLINK_POLLIN) != ZLINK_CONFIG_OK);
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
@@ -177,42 +177,42 @@ void test_raw_socket_send_ready_contracts ()
       zlink_send_ready_handler (stream, &noop_send_ready_handler, NULL));
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_send_ready_handler (sub, &noop_send_ready_handler, NULL));
+      ZLINK_HANDLER_NOT_SUPPORTED, zlink_send_ready_handler (sub, &noop_send_ready_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, pair, pair, ZLINK_POLLOUT));
+    TEST_ASSERT_TRUE (
+      zlink_poller_add (poller, pair, pair, ZLINK_POLLOUT) != ZLINK_CONFIG_OK);
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, pub, pub, ZLINK_POLLOUT));
+    TEST_ASSERT_TRUE (
+      zlink_poller_add (poller, pub, pub, ZLINK_POLLOUT) != ZLINK_CONFIG_OK);
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, xpub, xpub, ZLINK_POLLOUT));
+    TEST_ASSERT_TRUE (
+      zlink_poller_add (poller, xpub, xpub, ZLINK_POLLOUT) != ZLINK_CONFIG_OK);
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, dealer, dealer, ZLINK_POLLOUT));
+    TEST_ASSERT_TRUE (
+      zlink_poller_add (poller, dealer, dealer, ZLINK_POLLOUT) != ZLINK_CONFIG_OK);
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, router, router, ZLINK_POLLOUT));
+    TEST_ASSERT_TRUE (
+      zlink_poller_add (poller, router, router, ZLINK_POLLOUT) != ZLINK_CONFIG_OK);
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, stream, stream, ZLINK_POLLOUT));
+    TEST_ASSERT_TRUE (
+      zlink_poller_add (poller, stream, stream, ZLINK_POLLOUT) != ZLINK_CONFIG_OK);
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv (pair, NULL, &parts, &part_count, ZLINK_DONTWAIT));
-    TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv (dealer, NULL, &parts, &part_count, ZLINK_DONTWAIT));
-    TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv (router, NULL, &parts, &part_count, ZLINK_DONTWAIT));
-    TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv (stream, NULL, &parts, &part_count, ZLINK_DONTWAIT));
-    TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
+    TEST_ASSERT_TRUE (
+      zlink_recv (pair, NULL, &parts, &part_count, ZLINK_DONTWAIT) != ZLINK_RECV_OK);
+    TEST_ASSERT_TRUE (zlink_errno () != EBUSY);
+    TEST_ASSERT_TRUE (
+      zlink_recv (dealer, NULL, &parts, &part_count, ZLINK_DONTWAIT) != ZLINK_RECV_OK);
+    TEST_ASSERT_TRUE (zlink_errno () != EBUSY);
+    TEST_ASSERT_TRUE (
+      zlink_recv (router, NULL, &parts, &part_count, ZLINK_DONTWAIT) != ZLINK_RECV_OK);
+    TEST_ASSERT_TRUE (zlink_errno () != EBUSY);
+    TEST_ASSERT_TRUE (
+      zlink_recv (stream, NULL, &parts, &part_count, ZLINK_DONTWAIT) != ZLINK_RECV_OK);
+    TEST_ASSERT_TRUE (zlink_errno () != EBUSY);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     close_zero_linger (sub);

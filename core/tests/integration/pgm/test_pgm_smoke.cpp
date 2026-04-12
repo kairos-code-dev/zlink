@@ -121,7 +121,7 @@ static bool try_pgm_endpoint (const char *endpoint_, bool *bound_out_)
             break;
 
         zlink_pollitem_t items[] = {{sub, 0, ZLINK_POLLIN, 0}};
-        const int poll_rc = zlink_poll (items, 1, 200);
+        const int poll_rc = zlink_poll (items, 1, 200, NULL);
         if (poll_rc < 0)
             break;
 

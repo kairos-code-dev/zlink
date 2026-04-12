@@ -2,17 +2,41 @@
 
 [Spec Index](../README.md) · [Core Index](README.md)
 
-# Submit Result And Request Completion
+# Per-Function Result Enums
 
-This document defines the canonical outcome mapping for send, request, and
-reply APIs.
+This document defines the canonical outcome mapping for all public C API
+functions. Each function returns a result enum whose numeric range is unique
+across the entire API, so a single `int` error code is always unambiguous.
 
-The public C API now returns `zlink_submit_result_t` for send, request
-submit, and reply submit. Internal implementation paths still use detailed
-`errno` values, and exported API boundaries normalize those values into the
-public result enums defined here.
+Internal implementation paths still use detailed `errno` values. Exported API
+boundaries normalize those values into the public result enums defined here.
+
+## zlink_errno — Internal Error Detail
+
+`zlink_errno()` returns the raw internal `errno` value from the calling
+thread. It is **only useful when a result enum returns an `INTERNAL_ERROR`
+or equivalent terminal code**. In all other cases the result enum itself
+carries the full error information.
+
+```c
+zlink_submit_result_t rc = zlink_send(s, parts, count, 0);
+if (rc == ZLINK_SUBMIT_INTERNAL_ERROR) {
+    int detail = zlink_errno();          /* e.g. EPROTO, ENOMEM */
+    const char *msg = zlink_strerror(detail);
+    log("internal error: %s", msg);
+}
+```
+
+- Normal result codes (`BACKPRESSURED`, `BUSY`, `TERMINATED`, etc.)
+  **do not require** `zlink_errno()` — the result enum is sufficient.
+- `zlink_errno()` is a thread-local last-error store (GetLastError pattern).
+  Only the most recent failure is retained.
+
+---
 
 ## zlink_submit_result_t
+
+Applies to send, request submit, and reply submit functions.
 
 ```c
 typedef enum zlink_submit_result_t
@@ -21,47 +45,47 @@ typedef enum zlink_submit_result_t
     ZLINK_SUBMIT_OK = 0,
 
     /* Normal control-flow result. */
-    ZLINK_SUBMIT_BACKPRESSURED = 1,
-    ZLINK_SUBMIT_NOT_CONNECTED = 2,
-    ZLINK_SUBMIT_NOT_FOUND = 3,
+    ZLINK_SUBMIT_BACKPRESSURED    = 1,
+    ZLINK_SUBMIT_NOT_CONNECTED    = 2,
+    ZLINK_SUBMIT_NOT_FOUND        = 3,
 
     /* Runtime / lifecycle failure. */
-    ZLINK_SUBMIT_TERMINATED = 4,
+    ZLINK_SUBMIT_TERMINATED       = 4,
 
     /* Caller contract violation. */
-    ZLINK_SUBMIT_INVALID_HANDLE = 5,
+    ZLINK_SUBMIT_INVALID_HANDLE   = 5,
     ZLINK_SUBMIT_INVALID_ARGUMENT = 6,
-    ZLINK_SUBMIT_NOT_SUPPORTED = 7,
-    ZLINK_SUBMIT_INVALID_STATE = 8,
+    ZLINK_SUBMIT_NOT_SUPPORTED    = 7,
+    ZLINK_SUBMIT_INVALID_STATE    = 8,
     ZLINK_SUBMIT_THREAD_VIOLATION = 9,
 
     /* Internal failure. */
-    ZLINK_SUBMIT_OUT_OF_MEMORY = 10,
-    ZLINK_SUBMIT_SEQ_EXHAUSTED = 11,
-    ZLINK_SUBMIT_INTERNAL_ERROR = 12
+    ZLINK_SUBMIT_OUT_OF_MEMORY    = 10,
+    ZLINK_SUBMIT_SEQ_EXHAUSTED    = 11,
+    ZLINK_SUBMIT_INTERNAL_ERROR   = 12
 } zlink_submit_result_t;
 ```
 
-## Submit Result Classification
+### Submit Result Classification
 
-### Normal control-flow result
+#### Normal control-flow result
 
 These are expected outcomes that callers may handle directly.
 
 | Result | Internal errno | Meaning |
 |---|---|---|
-| `OK` | — | Submit succeeded |
+| `OK` | -- | Submit succeeded |
 | `BACKPRESSURED` | `EAGAIN` | Send queue full (HWM) or not writable yet |
 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | Target peer or path is not connected |
 | `NOT_FOUND` | `ENOENT` | Target peer, spot, or routed destination was not found |
 
-### Runtime / lifecycle failure
+#### Runtime / lifecycle failure
 
 | Result | Internal errno | Meaning |
 |---|---|---|
 | `TERMINATED` | `ETERM` | Context was terminated |
 
-### Caller contract violation
+#### Caller contract violation
 
 These indicate a bug in the caller.
 
@@ -73,7 +97,7 @@ These indicate a bug in the caller.
 | `INVALID_STATE` | `EFSM` | Socket is in the wrong state |
 | `THREAD_VIOLATION` | `EMTHREAD` | Socket accessed from the wrong thread model |
 
-### Internal failure
+#### Internal failure
 
 | Result | Internal errno | Meaning |
 |---|---|---|
@@ -81,25 +105,39 @@ These indicate a bug in the caller.
 | `SEQ_EXHAUSTED` | `EBUSY` | Request sequence number space exhausted (request only) |
 | `INTERNAL_ERROR` | `EPROTO` and other internal submit failures | Internal send/request/reply submit error |
 
+### Applicable functions
+
+| Category | Functions |
+|---|---|
+| Send | `zlink_send`, `zlink_send_rid`, `zlink_publish` |
+| Socket request | `zlink_dealer_request`, `zlink_router_request` |
+| Socket reply | `zlink_router_reply` |
+| SPOT request | `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_router_request_spot` |
+| SPOT send | `zlink_spot_send_spot`, `zlink_spot_send_router`, `zlink_router_send_spot` |
+| SPOT reply | `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
+
+---
+
 ## zlink_request_result_t
+
+Applies to request completion delivered through `zlink_reply_handler_fn`.
+This enum is separate from the submit result -- it represents the outcome
+of the request after it was successfully submitted.
 
 ```c
 typedef enum zlink_request_result_t
 {
-    /* Reply completed successfully. */
-    ZLINK_REQUEST_OK = 0,
-
-    /* Completion failure visible to the requester. */
-    ZLINK_REQUEST_TIMED_OUT = 1,
-    ZLINK_REQUEST_NOT_FOUND = 2,
-    ZLINK_REQUEST_TERMINATED = 3,
-    ZLINK_REQUEST_PROTOCOL_ERROR = 4
+    ZLINK_REQUEST_OK              = 0,
+    ZLINK_REQUEST_TIMED_OUT       = 101,
+    ZLINK_REQUEST_NOT_FOUND       = 102,
+    ZLINK_REQUEST_TERMINATED      = 103,
+    ZLINK_REQUEST_PROTOCOL_ERROR  = 104
 } zlink_request_result_t;
 ```
 
-This enum applies only to request completion, not submit.
+### Request Completion Classification
 
-| Completion | Callback errno | Meaning |
+| Result | Callback errno | Meaning |
 |---|---|---|
 | `OK` | `0` | Reply payload was received successfully |
 | `TIMED_OUT` | `ETIMEDOUT` | Reply did not arrive within `timeout_ms` |
@@ -107,10 +145,242 @@ This enum applies only to request completion, not submit.
 | `TERMINATED` | `ETERM` | Reserved until the request path emits explicit termination completion |
 | `PROTOCOL_ERROR` | `EPROTO` | Reply envelope or error reply payload was malformed |
 
+### Applicable functions
+
+`zlink_reply_handler_fn` receives `errno_` as the first parameter. Known
+completion `errno_` values in the current implementation are `0`,
+`ETIMEDOUT`, `ENOENT`, and `EPROTO`. `ETERM` is reserved and does not yet
+have an explicit completion emission path in the current request code.
+
+---
+
+## zlink_recv_result_t
+
+Applies to recv, subscribe, subscription event, monitor recv, and timer
+recv functions.
+
+```c
+typedef enum zlink_recv_result_t
+{
+    ZLINK_RECV_OK                 = 0,
+    ZLINK_RECV_NO_DATA            = 201,  /* EAGAIN    */
+    ZLINK_RECV_BUSY               = 202,  /* EBUSY     */
+    ZLINK_RECV_TERMINATED         = 203,  /* ETERM     */
+    ZLINK_RECV_INVALID_HANDLE     = 204,  /* EFAULT    */
+    ZLINK_RECV_NOT_SUPPORTED      = 205   /* ENOTSUP   */
+} zlink_recv_result_t;
+```
+
+### Recv Result Classification
+
+| Result | Internal errno | Meaning |
+|---|---|---|
+| `OK` | -- | Data was received successfully |
+| `NO_DATA` | `EAGAIN` | Non-blocking mode, no data available |
+| `BUSY` | `EBUSY` | Handler already attached |
+| `TERMINATED` | `ETERM` | Context was terminated |
+| `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
+| `NOT_SUPPORTED` | `ENOTSUP` | Unsupported socket type for recv |
+
+### Applicable functions
+
+| Category | Functions |
+|---|---|
+| Recv | `zlink_recv` |
+| Subscribe | `zlink_subscribe` |
+| Subscription event | `zlink_subscription_event` |
+| Monitor recv | `zlink_monitor_recv` |
+| Timer recv | `zlink_timer_recv` |
+
+---
+
+## zlink_handler_result_t
+
+Applies to all handler registration functions: recv handler, subscribe
+handler, send-ready handler, router handler, spot handler, router-spot
+handler, spot dispatch-event handler, and monitor handler.
+
+```c
+typedef enum zlink_handler_result_t
+{
+    ZLINK_HANDLER_OK              = 0,
+    ZLINK_HANDLER_INVALID_ARGUMENT = 301, /* EINVAL    */
+    ZLINK_HANDLER_BUSY            = 302,  /* EBUSY     */
+    ZLINK_HANDLER_NOT_SUPPORTED   = 303,  /* ENOTSUP   */
+    ZLINK_HANDLER_DEADLOCK        = 304,  /* EDEADLK   */
+    ZLINK_HANDLER_INVALID_HANDLE  = 305   /* EFAULT    */
+} zlink_handler_result_t;
+```
+
+### Handler Result Classification
+
+| Result | Internal errno | Meaning |
+|---|---|---|
+| `OK` | -- | Handler registered successfully |
+| `INVALID_ARGUMENT` | `EINVAL` | NULL handler |
+| `BUSY` | `EBUSY` | Handler already attached |
+| `NOT_SUPPORTED` | `ENOTSUP` | Unsupported subject |
+| `DEADLOCK` | `EDEADLK` | Reentrant call (send-ready handler only) |
+| `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
+
+### Applicable functions
+
+| Category | Functions |
+|---|---|
+| Recv handler | `zlink_recv_handler` |
+| Subscribe handler | `zlink_subscribe_handler` |
+| Send-ready handler | `zlink_send_ready_handler` |
+| Router handler | `zlink_router_handler` |
+| Spot handler | `zlink_spot_handler` |
+| Router-spot handler | `zlink_router_spot_handler` |
+| Spot dispatch-event handler | `zlink_spot_dispatch_event_handler` |
+| Monitor handler | `zlink_monitor_handler` |
+
+---
+
+## zlink_close_result_t
+
+Applies to close and destroy functions.
+
+```c
+typedef enum zlink_close_result_t
+{
+    ZLINK_CLOSE_OK                = 0,
+    ZLINK_CLOSE_BUSY              = 401,  /* EBUSY     */
+    ZLINK_CLOSE_SHUTDOWN          = 402,  /* ESHUTDOWN */
+    ZLINK_CLOSE_INVALID_HANDLE    = 403   /* EFAULT    */
+} zlink_close_result_t;
+```
+
+### Close Result Classification
+
+| Result | Internal errno | Meaning |
+|---|---|---|
+| `OK` | -- | Close/destroy succeeded |
+| `BUSY` | `EBUSY` | In-flight callback or API call |
+| `SHUTDOWN` | `ESHUTDOWN` | Already closed |
+| `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
+
+### Applicable functions
+
+| Category | Functions |
+|---|---|
+| Close | `zlink_close` |
+| Destroy | `zlink_destroy` |
+
+---
+
+## zlink_bind_result_t
+
+Applies to the bind function.
+
+```c
+typedef enum zlink_bind_result_t
+{
+    ZLINK_BIND_OK                 = 0,
+    ZLINK_BIND_INVALID_ARGUMENT   = 501,  /* EINVAL    */
+    ZLINK_BIND_ADDR_IN_USE        = 502,  /* EADDRINUSE */
+    ZLINK_BIND_NOT_SUPPORTED      = 503,  /* ENOTSUP   */
+    ZLINK_BIND_INVALID_HANDLE     = 504   /* EFAULT    */
+} zlink_bind_result_t;
+```
+
+### Bind Result Classification
+
+| Result | Internal errno | Meaning |
+|---|---|---|
+| `OK` | -- | Bind succeeded |
+| `INVALID_ARGUMENT` | `EINVAL` | Invalid endpoint |
+| `ADDR_IN_USE` | `EADDRINUSE` | Address already bound |
+| `NOT_SUPPORTED` | `ENOTSUP` | Unsupported transport |
+| `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
+
+### Applicable functions
+
+| Category | Functions |
+|---|---|
+| Bind | `zlink_bind` |
+
+---
+
+## zlink_connect_result_t
+
+Applies to connect, disconnect, and unbind functions.
+
+```c
+typedef enum zlink_connect_result_t
+{
+    ZLINK_CONNECT_OK              = 0,
+    ZLINK_CONNECT_INVALID_ARGUMENT = 601, /* EINVAL    */
+    ZLINK_CONNECT_NOT_SUPPORTED   = 602,  /* ENOTSUP   */
+    ZLINK_CONNECT_INVALID_HANDLE  = 603   /* EFAULT    */
+} zlink_connect_result_t;
+```
+
+### Connect Result Classification
+
+| Result | Internal errno | Meaning |
+|---|---|---|
+| `OK` | -- | Connect/disconnect/unbind succeeded |
+| `INVALID_ARGUMENT` | `EINVAL` | Invalid endpoint |
+| `NOT_SUPPORTED` | `ENOTSUP` | Unsupported transport |
+| `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
+
+### Applicable functions
+
+| Category | Functions |
+|---|---|
+| Connect | `zlink_connect` |
+| Disconnect | `zlink_disconnect` |
+| Unbind | `zlink_unbind` |
+
+---
+
+## zlink_config_result_t
+
+Applies to set/get option, configuration, snapshot, message, poller, and
+proxy functions.
+
+```c
+typedef enum zlink_config_result_t
+{
+    ZLINK_CONFIG_OK               = 0,
+    ZLINK_CONFIG_INVALID_HANDLE   = 701,  /* EFAULT    */
+    ZLINK_CONFIG_INVALID_ARGUMENT = 702,  /* EINVAL    */
+    ZLINK_CONFIG_NOT_SUPPORTED    = 703   /* ENOTSUP   */
+} zlink_config_result_t;
+```
+
+### Config Result Classification
+
+| Result | Internal errno | Meaning |
+|---|---|---|
+| `OK` | -- | Configuration succeeded |
+| `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
+| `INVALID_ARGUMENT` | `EINVAL` | Invalid parameter |
+| `NOT_SUPPORTED` | `ENOTSUP` | Unsupported option |
+
+### Applicable functions
+
+| Category | Functions |
+|---|---|
+| Socket option | `zlink_set_option`, `zlink_get_option` |
+| Routing ID | `zlink_set_routing_id`, `zlink_get_routing_id` |
+| TLS | `zlink_set_tls` |
+| Subscription | `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at` |
+| Discovery | `zlink_attach_discovery` |
+| Registry/discovery config | Registry and discovery configuration functions |
+| Snapshot | Snapshot functions |
+| Message | Message functions |
+| Poller | Poller functions |
+| Proxy | Proxy functions |
+
+---
+
 ## Submit Matrix
 
 `Y` = the submit path can produce this normalized result.
-`—` = the submit path never produces this normalized result.
+`--` = the submit path never produces this normalized result.
 
 ### Send functions
 
@@ -118,17 +388,17 @@ This enum applies only to request completion, not submit.
 |---|---|---|---|
 | `OK` | Y | Y | Y |
 | `BACKPRESSURED` | Y | Y | Y |
-| `NOT_CONNECTED` | — | Y | — |
-| `NOT_FOUND` | — | — | — |
+| `NOT_CONNECTED` | -- | Y | -- |
+| `NOT_FOUND` | -- | -- | -- |
 | `TERMINATED` | Y | Y | Y |
 | `INVALID_HANDLE` | Y | Y | Y |
 | `INVALID_ARGUMENT` | Y | Y | Y |
 | `NOT_SUPPORTED` | Y | Y | Y |
 | `INVALID_STATE` | Y | Y | Y |
 | `THREAD_VIOLATION` | Y | Y | Y |
-| `OUT_OF_MEMORY` | — | — | — |
-| `SEQ_EXHAUSTED` | — | — | — |
-| `INTERNAL_ERROR` | — | — | — |
+| `OUT_OF_MEMORY` | -- | -- | -- |
+| `SEQ_EXHAUSTED` | -- | -- | -- |
+| `INTERNAL_ERROR` | -- | -- | -- |
 
 ### Socket request functions
 
@@ -136,8 +406,8 @@ This enum applies only to request completion, not submit.
 |---|---|---|
 | `OK` | Y | Y |
 | `BACKPRESSURED` | Y | Y |
-| `NOT_CONNECTED` | — | — |
-| `NOT_FOUND` | — | — |
+| `NOT_CONNECTED` | -- | -- |
+| `NOT_FOUND` | -- | -- |
 | `TERMINATED` | Y | Y |
 | `INVALID_HANDLE` | Y | Y |
 | `INVALID_ARGUMENT` | Y | Y |
@@ -154,16 +424,16 @@ This enum applies only to request completion, not submit.
 |---|---|
 | `OK` | Y |
 | `BACKPRESSURED` | Y |
-| `NOT_CONNECTED` | — |
-| `NOT_FOUND` | — |
+| `NOT_CONNECTED` | -- |
+| `NOT_FOUND` | -- |
 | `TERMINATED` | Y |
 | `INVALID_HANDLE` | Y |
 | `INVALID_ARGUMENT` | Y |
 | `NOT_SUPPORTED` | Y |
 | `INVALID_STATE` | Y |
 | `THREAD_VIOLATION` | Y |
-| `OUT_OF_MEMORY` | — |
-| `SEQ_EXHAUSTED` | — |
+| `OUT_OF_MEMORY` | -- |
+| `SEQ_EXHAUSTED` | -- |
 | `INTERNAL_ERROR` | Y |
 
 ### SPOT request functions
@@ -174,14 +444,14 @@ This enum applies only to request completion, not submit.
 | `BACKPRESSURED` | Y | Y | Y |
 | `NOT_CONNECTED` | Y | Y | Y |
 | `NOT_FOUND` | Y | Y | Y |
-| `TERMINATED` | — | — | — |
+| `TERMINATED` | -- | -- | -- |
 | `INVALID_HANDLE` | Y | Y | Y |
 | `INVALID_ARGUMENT` | Y | Y | Y |
 | `NOT_SUPPORTED` | Y | Y | Y |
-| `INVALID_STATE` | — | — | Y |
-| `THREAD_VIOLATION` | — | — | Y |
+| `INVALID_STATE` | -- | -- | Y |
+| `THREAD_VIOLATION` | -- | -- | Y |
 | `OUT_OF_MEMORY` | Y | Y | Y |
-| `SEQ_EXHAUSTED` | — | — | Y |
+| `SEQ_EXHAUSTED` | -- | -- | Y |
 | `INTERNAL_ERROR` | Y | Y | Y |
 
 ### SPOT send functions
@@ -192,14 +462,14 @@ This enum applies only to request completion, not submit.
 | `BACKPRESSURED` | Y | Y | Y |
 | `NOT_CONNECTED` | Y | Y | Y |
 | `NOT_FOUND` | Y | Y | Y |
-| `TERMINATED` | — | — | — |
+| `TERMINATED` | -- | -- | -- |
 | `INVALID_HANDLE` | Y | Y | Y |
 | `INVALID_ARGUMENT` | Y | Y | Y |
 | `NOT_SUPPORTED` | Y | Y | Y |
-| `INVALID_STATE` | — | — | Y |
-| `THREAD_VIOLATION` | — | — | Y |
-| `OUT_OF_MEMORY` | — | — | — |
-| `SEQ_EXHAUSTED` | — | — | — |
+| `INVALID_STATE` | -- | -- | Y |
+| `THREAD_VIOLATION` | -- | -- | Y |
+| `OUT_OF_MEMORY` | -- | -- | -- |
+| `SEQ_EXHAUSTED` | -- | -- | -- |
 | `INTERNAL_ERROR` | Y | Y | Y |
 
 ### SPOT reply functions
@@ -210,37 +480,27 @@ This enum applies only to request completion, not submit.
 | `BACKPRESSURED` | Y | Y | Y |
 | `NOT_CONNECTED` | Y | Y | Y |
 | `NOT_FOUND` | Y | Y | Y |
-| `TERMINATED` | — | — | — |
+| `TERMINATED` | -- | -- | -- |
 | `INVALID_HANDLE` | Y | Y | Y |
 | `INVALID_ARGUMENT` | Y | Y | Y |
 | `NOT_SUPPORTED` | Y | Y | Y |
-| `INVALID_STATE` | — | — | Y |
-| `THREAD_VIOLATION` | — | — | Y |
-| `OUT_OF_MEMORY` | — | — | — |
-| `SEQ_EXHAUSTED` | — | — | — |
+| `INVALID_STATE` | -- | -- | Y |
+| `THREAD_VIOLATION` | -- | -- | Y |
+| `OUT_OF_MEMORY` | -- | -- | -- |
+| `SEQ_EXHAUSTED` | -- | -- | -- |
 | `INTERNAL_ERROR` | Y | Y | Y |
 
-## Request Callback Completion
+---
 
-`zlink_reply_handler_fn` receives `errno_` as the first parameter. This is a
-request completion result, separate from submit.
+## All Functions by Result Enum
 
-Known completion `errno_` values in the current implementation are `0`,
-`ETIMEDOUT`, `ENOENT`, and `EPROTO`. `ETERM` is reserved and does not yet
-have an explicit completion emission path in the current request code.
-
-## Applicable Functions
-
-`zlink_submit_result_t` applies to submit of these 15 functions:
-
-| Category | Functions |
+| Result enum | Functions |
 |---|---|
-| Send | `zlink_send`, `zlink_send_rid`, `zlink_publish` |
-| Socket request | `zlink_dealer_request`, `zlink_router_request` |
-| Socket reply | `zlink_router_reply` |
-| SPOT request | `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_router_request_spot` |
-| SPOT send | `zlink_spot_send_spot`, `zlink_spot_send_router`, `zlink_router_send_spot` |
-| SPOT reply | `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
-
-`zlink_request_result_t` applies to completion delivered through
-`zlink_reply_handler_fn`.
+| `zlink_submit_result_t` | `zlink_send`, `zlink_send_rid`, `zlink_publish`, `zlink_dealer_request`, `zlink_router_request`, `zlink_router_reply`, `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_router_request_spot`, `zlink_spot_send_spot`, `zlink_spot_send_router`, `zlink_router_send_spot`, `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
+| `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback) |
+| `zlink_recv_result_t` | `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_monitor_recv`, `zlink_timer_recv` |
+| `zlink_handler_result_t` | `zlink_recv_handler`, `zlink_subscribe_handler`, `zlink_send_ready_handler`, `zlink_router_handler`, `zlink_spot_handler`, `zlink_router_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_monitor_handler` |
+| `zlink_close_result_t` | `zlink_close`, `zlink_destroy` |
+| `zlink_bind_result_t` | `zlink_bind` |
+| `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_unbind` |
+| `zlink_config_result_t` | `zlink_set_option`, `zlink_get_option`, `zlink_set_routing_id`, `zlink_get_routing_id`, `zlink_set_tls`, `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at`, `zlink_attach_discovery`, and registry/discovery/snapshot/message/poller/proxy configuration functions |

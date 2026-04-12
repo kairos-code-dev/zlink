@@ -500,7 +500,7 @@ int zlink::proxy_steerable (class socket_base_t *frontend_,
 
     while (state != terminated) {
         //  Wait while there are either requests or replies to process.
-        rc = zlink_poll (&items[0], qt_poll_items, -1);
+        rc = zlink_poll (&items[0], qt_poll_items, -1, NULL);
         if (unlikely (rc < 0))
             return close_and_return (&msg, -1);
 
@@ -514,7 +514,7 @@ int zlink::proxy_steerable (class socket_base_t *frontend_,
         //  because pollout shall most of the time return directly.
         //  POLLOUT is only checked when frontend and backend sockets are not the same.
         if (frontend_ != backend_) {
-            rc = zlink_poll (&itemsout[0], 2, 0);
+            rc = zlink_poll (&itemsout[0], 2, 0, NULL);
             if (unlikely (rc < 0)) {
                 return close_and_return (&msg, -1);
             }

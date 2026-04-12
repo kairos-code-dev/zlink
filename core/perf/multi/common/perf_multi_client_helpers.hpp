@@ -169,17 +169,17 @@ inline int recv_one_message (void *socket,
     size_t part_count = 0;
     const int rc =
       router_surface
-        ? ::zlink_router_recv (
+        ? static_cast<int> (::zlink_router_recv (
             socket,
             &source_rid,
             &request_seq,
             &parts,
             &part_count,
-            recv_flags)
-        : ::zlink_recv (
+            recv_flags))
+        : static_cast<int> (::zlink_recv (
             socket, NULL, &parts, &part_count,
-            static_cast<zlink_send_flags_t> (recv_flags));
-    if (rc < 0) {
+            static_cast<zlink_send_flags_t> (recv_flags)));
+    if (rc != 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
             return 0;
@@ -541,17 +541,17 @@ inline int recv_one_message_header (void *socket,
     size_t part_count = 0;
     const int rc =
       router_surface
-        ? ::zlink_router_recv (
+        ? static_cast<int> (::zlink_router_recv (
             socket,
             &source_rid,
             &request_seq,
             &parts,
             &part_count,
-            recv_flags)
-        : ::zlink_recv (
+            recv_flags))
+        : static_cast<int> (::zlink_recv (
             socket, NULL, &parts, &part_count,
-            static_cast<zlink_send_flags_t> (recv_flags));
-    if (rc < 0) {
+            static_cast<zlink_send_flags_t> (recv_flags)));
+    if (rc != 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
             return 0;

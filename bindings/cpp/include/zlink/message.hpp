@@ -230,7 +230,7 @@ class message_t
      */
     int ref_count () const noexcept
     {
-        return _valid ? zlink_msg_refcnt (&_msg) : -1;
+        return _valid ? zlink_msg_refcnt (&_msg, nullptr) : -1;
     }
 
     /**

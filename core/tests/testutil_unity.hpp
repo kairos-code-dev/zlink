@@ -184,6 +184,36 @@ int test_assert_success_message_errno_helper (zlink_submit_result_t rc_,
                                               const char *expr_,
                                               int line);
 
+int test_assert_success_message_errno_helper (zlink_connect_result_t rc_,
+                                              const char *msg_,
+                                              const char *expr_,
+                                              int line);
+
+int test_assert_success_message_errno_helper (zlink_bind_result_t rc_,
+                                              const char *msg_,
+                                              const char *expr_,
+                                              int line);
+
+int test_assert_success_message_errno_helper (zlink_config_result_t rc_,
+                                              const char *msg_,
+                                              const char *expr_,
+                                              int line);
+
+int test_assert_success_message_errno_helper (zlink_close_result_t rc_,
+                                              const char *msg_,
+                                              const char *expr_,
+                                              int line);
+
+int test_assert_success_message_errno_helper (zlink_recv_result_t rc_,
+                                              const char *msg_,
+                                              const char *expr_,
+                                              int line);
+
+int test_assert_success_message_errno_helper (zlink_handler_result_t rc_,
+                                              const char *msg_,
+                                              const char *expr_,
+                                              int line);
+
 int test_assert_success_message_raw_errno_helper (
   int rc_, const char *msg_, const char *expr_, int line, bool zero_ = false);
 

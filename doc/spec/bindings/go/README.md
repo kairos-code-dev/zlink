@@ -80,10 +80,8 @@ func (s *PairSocket) Bind(endpoint string) error
 func (s *PairSocket) Unbind(endpoint string) error
 func (s *PairSocket) Connect(endpoint string) error
 func (s *PairSocket) Disconnect(endpoint string) error
-func (s *PairSocket) Send(parts ...*Message) error
-func (s *PairSocket) TrySend(parts ...*Message) (SendResult, error)
-func (s *PairSocket) Recv() (*Received, error)
-func (s *PairSocket) TryRecv() (*Received, bool, error)
+func (s *PairSocket) Send(flags SendFlags, parts ...*Message) error
+func (s *PairSocket) Recv(flags RecvFlags) (*Received, error)
 func (s *PairSocket) OnReceive(handler func(*Received)) error
 func (s *PairSocket) OnSendReady(handler func()) error
 func (s *PairSocket) SetSendHWM(value int) error
@@ -109,8 +107,7 @@ func (s *PubSocket) Bind(endpoint string) error
 func (s *PubSocket) Unbind(endpoint string) error
 func (s *PubSocket) Connect(endpoint string) error
 func (s *PubSocket) Disconnect(endpoint string) error
-func (s *PubSocket) Publish(topic string, parts ...*Message) error
-func (s *PubSocket) TryPublish(topic string, parts ...*Message) (SendResult, error)
+func (s *PubSocket) Publish(topic string, flags SendFlags, parts ...*Message) error
 func (s *PubSocket) OnSendReady(handler func()) error
 func (s *PubSocket) SetNoDrop(value bool) error
 func (s *PubSocket) NoDrop() (bool, error)
@@ -133,8 +130,7 @@ func (s *SubSocket) Connect(endpoint string) error
 func (s *SubSocket) Disconnect(endpoint string) error
 func (s *SubSocket) SetSubscription(filter string) error
 func (s *SubSocket) UnsetSubscription(filter string) error
-func (s *SubSocket) Subscribe() (*TopicMessage, error)
-func (s *SubSocket) TrySubscribe() (*TopicMessage, bool, error)
+func (s *SubSocket) Subscribe(flags RecvFlags) (*TopicMessage, error)
 func (s *SubSocket) OnSubscribe(handler func(*TopicMessage)) error
 func (s *SubSocket) AttachDiscovery(discovery *Discovery) error
 func (s *SubSocket) SubscriptionAt(index int) (string, bool, error)
@@ -152,10 +148,8 @@ func (s *DealerSocket) Disconnect(endpoint string) error
 func (s *DealerSocket) SetRoutingID(id RoutingID) error
 func (s *DealerSocket) RoutingID() (RoutingID, error)
 func (s *DealerSocket) SetProbe(value bool) error
-func (s *DealerSocket) Send(parts ...*Message) error
-func (s *DealerSocket) TrySend(parts ...*Message) (SendResult, error)
-func (s *DealerSocket) Recv() (*Received, error)
-func (s *DealerSocket) TryRecv() (*Received, bool, error)
+func (s *DealerSocket) Send(flags SendFlags, parts ...*Message) error
+func (s *DealerSocket) Recv(flags RecvFlags) (*Received, error)
 func (s *DealerSocket) OnReceive(handler func(*Received)) error
 func (s *DealerSocket) OnSendReady(handler func()) error
 func (s *DealerSocket) AttachDiscovery(discovery *Discovery) error
@@ -175,33 +169,27 @@ func (s *RouterSocket) SetMandatory(value bool) error
 func (s *RouterSocket) SetHandover(value bool) error
 func (s *RouterSocket) SetProbe(value bool) error
 func (s *RouterSocket) SetConnectRoutingID(id RoutingID) error
-func (s *RouterSocket) SendTo(target RoutingID, parts ...*Message) error
-func (s *RouterSocket) TrySendTo(target RoutingID, parts ...*Message) (SendResult, error)
-func (s *RouterSocket) Recv() (*Received, error)
-func (s *RouterSocket) TryRecv() (*Received, bool, error)
+func (s *RouterSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) error
+func (s *RouterSocket) Recv(flags RecvFlags) (*Received, error)
 func (s *RouterSocket) OnReceive(handler func(*Received)) error
 func (s *RouterSocket) OnSendReady(handler func()) error
 func (s *RouterSocket) AttachDiscovery(discovery *Discovery) error
 
 // --- router → spot routed send ---
-func (s *RouterSocket) SendSpot(destNodeRid, destSpotRid RoutingID,
-    parts ...*Message) error
-func (s *RouterSocket) TrySendSpot(destNodeRid, destSpotRid RoutingID,
-    parts ...*Message) (SendResult, error)
+func (s *RouterSocket) SendToSpot(destNodeRid, destSpotRid RoutingID,
+    flags SendFlags, parts ...*Message) error
 
-// --- router → spot routed request ---
-func (s *RouterSocket) RequestSpot(ctx context.Context,
-    destNodeRid, destSpotRid RoutingID, parts ...*Message) (*Received, error)
-func (s *RouterSocket) RequestSpotAsync(destNodeRid, destSpotRid RoutingID,
-    timeout time.Duration, callback RequestReplyCallback, parts ...*Message)
+// --- router → spot routed request (callback) ---
+func (s *RouterSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID,
+    callback RequestReplyCallback, flags SendFlags,
+    timeout time.Duration, parts ...*Message) error
 
 // --- router → spot routed reply ---
-func (s *RouterSocket) ReplySpot(destNodeRid, destSpotRid RoutingID,
-    requestSeq uint64, parts ...*Message) error
+func (s *RouterSocket) ReplyToSpot(destNodeRid, destSpotRid RoutingID,
+    requestSeq uint64, flags SendFlags, parts ...*Message) error
 
 // --- router spot receive ---
-func (s *RouterSocket) RecvSpot() (*Received, error)
-func (s *RouterSocket) TryRecvSpot() (*Received, bool, error)
+func (s *RouterSocket) RecvSpot(flags RecvFlags) (*Received, error)
 func (s *RouterSocket) OnSpotReceive(handler func(sourceNodeRid,
     sourceSpotRid RoutingID, requestSeq uint64, parts []*Message)) error
 
@@ -215,10 +203,8 @@ func (s *XPubSocket) Bind(endpoint string) error
 func (s *XPubSocket) Unbind(endpoint string) error
 func (s *XPubSocket) Connect(endpoint string) error
 func (s *XPubSocket) Disconnect(endpoint string) error
-func (s *XPubSocket) Publish(topic string, parts ...*Message) error
-func (s *XPubSocket) TryPublish(topic string, parts ...*Message) (SendResult, error)
-func (s *XPubSocket) ReceiveSubscriptionEvent() (*SubscriptionEvent, error)
-func (s *XPubSocket) TryReceiveSubscriptionEvent() (*SubscriptionEvent, bool, error)
+func (s *XPubSocket) Publish(topic string, flags SendFlags, parts ...*Message) error
+func (s *XPubSocket) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error)
 func (s *XPubSocket) OnSendReady(handler func()) error
 func (s *XPubSocket) SetNoDrop(value bool) error
 func (s *XPubSocket) NoDrop() (bool, error)
@@ -240,8 +226,7 @@ func (s *XSubSocket) Connect(endpoint string) error
 func (s *XSubSocket) Disconnect(endpoint string) error
 func (s *XSubSocket) SetSubscription(filter string) error
 func (s *XSubSocket) UnsetSubscription(filter string) error
-func (s *XSubSocket) Subscribe() (*TopicMessage, error)
-func (s *XSubSocket) TrySubscribe() (*TopicMessage, bool, error)
+func (s *XSubSocket) Subscribe(flags RecvFlags) (*TopicMessage, error)
 func (s *XSubSocket) OnSubscribe(handler func(*TopicMessage)) error
 func (s *XSubSocket) SubscriptionAt(index int) (string, bool, error)
 func (s *XSubSocket) TopicsCount() (int, error)
@@ -255,10 +240,8 @@ func (s *StreamSocket) Bind(endpoint string) error
 func (s *StreamSocket) Unbind(endpoint string) error
 func (s *StreamSocket) SetRoutingID(id RoutingID) error
 func (s *StreamSocket) RoutingID() (RoutingID, error)
-func (s *StreamSocket) SendTo(target RoutingID, parts ...*Message) error
-func (s *StreamSocket) TrySendTo(target RoutingID, parts ...*Message) (SendResult, error)
-func (s *StreamSocket) Recv() (*Received, error)
-func (s *StreamSocket) TryRecv() (*Received, bool, error)
+func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) error
+func (s *StreamSocket) Recv(flags RecvFlags) (*Received, error)
 func (s *StreamSocket) OnReceive(handler func(*Received)) error
 func (s *StreamSocket) OnSendReady(handler func()) error
 func (s *StreamSocket) SetNotify(value bool) error
@@ -331,18 +314,180 @@ func (s *SubscriptionEvent) Subscribed() bool
 func (s *SubscriptionEvent) Topic() string
 ```
 
-### SendResult
+### SendFlags
 
 ```go
-type SendResult int
+type SendFlags int
 
 const (
-    SendResultSent          SendResult = 0
-    SendResultBackpressured SendResult = 1
-    SendResultNotReady      SendResult = 2
+    SendFlagsNone     SendFlags = 0
+    SendFlagsDontWait SendFlags = 1
 )
+```
 
-func (r SendResult) Sent() bool
+### RecvFlags
+
+```go
+type RecvFlags int
+
+const (
+    RecvFlagsNone     RecvFlags = 0
+    RecvFlagsDontWait RecvFlags = 1
+)
+```
+
+### SubmitResult
+
+Submit result codes for send/request/reply/publish operations.
+All failures are conveyed through `error` with a `Code() int` method.
+The code is globally unique across all result enums (0-703).
+
+```go
+type SubmitResult int
+
+const (
+    SubmitOK              SubmitResult = 0
+    SubmitBackpressured   SubmitResult = 1
+    SubmitNotConnected    SubmitResult = 2
+    SubmitNotFound        SubmitResult = 3
+    SubmitTerminated      SubmitResult = 4
+    SubmitInvalidHandle   SubmitResult = 5
+    SubmitInvalidArgument SubmitResult = 6
+    SubmitNotSupported    SubmitResult = 7
+    SubmitInvalidState    SubmitResult = 8
+    SubmitThreadViolation SubmitResult = 9
+    SubmitOutOfMemory     SubmitResult = 10
+    SubmitSeqExhausted    SubmitResult = 11
+    SubmitInternalError   SubmitResult = 12
+)
+```
+
+### RequestResult
+
+Result codes for request completion callbacks.
+
+```go
+type RequestResult int
+
+const (
+    RequestOK            RequestResult = 0
+    RequestTimedOut      RequestResult = 101
+    RequestNotFound      RequestResult = 102
+    RequestTerminated    RequestResult = 103
+    RequestProtocolError RequestResult = 104
+)
+```
+
+### RecvResult
+
+Result codes for recv, subscribe, and subscription event operations.
+
+```go
+type RecvResult int
+
+const (
+    RecvOK            RecvResult = 0
+    RecvNoData        RecvResult = 201
+    RecvBusy          RecvResult = 202
+    RecvTerminated    RecvResult = 203
+    RecvInvalidHandle RecvResult = 204
+    RecvNotSupported  RecvResult = 205
+)
+```
+
+### HandlerResult
+
+Result codes for handler registration operations (OnReceive, OnSubscribe, etc.).
+
+```go
+type HandlerResult int
+
+const (
+    HandlerOK              HandlerResult = 0
+    HandlerInvalidArgument HandlerResult = 301
+    HandlerBusy            HandlerResult = 302
+    HandlerNotSupported    HandlerResult = 303
+    HandlerDeadlock        HandlerResult = 304
+    HandlerInvalidHandle   HandlerResult = 305
+)
+```
+
+### CloseResult
+
+Result codes for close and destroy operations.
+
+```go
+type CloseResult int
+
+const (
+    CloseOK            CloseResult = 0
+    CloseBusy          CloseResult = 401
+    CloseShutdown      CloseResult = 402
+    CloseInvalidHandle CloseResult = 403
+)
+```
+
+### BindResult
+
+Result codes for bind operations.
+
+```go
+type BindResult int
+
+const (
+    BindOK              BindResult = 0
+    BindInvalidArgument BindResult = 501
+    BindAddrInUse       BindResult = 502
+    BindNotSupported    BindResult = 503
+    BindInvalidHandle   BindResult = 504
+)
+```
+
+### ConnectResult
+
+Result codes for connect, disconnect, and unbind operations.
+
+```go
+type ConnectResult int
+
+const (
+    ConnectOK              ConnectResult = 0
+    ConnectInvalidArgument ConnectResult = 601
+    ConnectNotSupported    ConnectResult = 602
+    ConnectInvalidHandle   ConnectResult = 603
+)
+```
+
+### ConfigResult
+
+Result codes for configuration, option, and snapshot operations.
+
+```go
+type ConfigResult int
+
+const (
+    ConfigOK              ConfigResult = 0
+    ConfigInvalidHandle   ConfigResult = 701
+    ConfigInvalidArgument ConfigResult = 702
+    ConfigNotSupported    ConfigResult = 703
+)
+```
+
+### ZlinkError
+
+All failures are returned as `error`. The `Code() int` method returns
+a globally unique code that spans all result enum ranges (0-703).
+The code alone identifies the error without needing to know which
+enum it belongs to.
+
+```go
+type ZlinkError struct {
+    // internal fields
+}
+
+func (e *ZlinkError) Code() int
+func (e *ZlinkError) Errno() int
+func (e *ZlinkError) Error() string
 ```
 
 ---
@@ -354,18 +499,23 @@ func (r SendResult) Sent() bool
 ```go
 func NewRequestDealer(socket *DealerSocket) *RequestDealer
 func (r *RequestDealer) Socket() *DealerSocket
-func (r *RequestDealer) Request(ctx context.Context, parts ...*Message) (*Received, error)
-func (r *RequestDealer) TryRequest(ctx context.Context, parts ...*Message) (*Received, error)
-func (r *RequestDealer) RequestAsync(timeout time.Duration, callback RequestReplyCallback,
-    parts ...*Message)
-func (r *RequestDealer) TryRequestAsync(timeout time.Duration, callback RequestReplyCallback,
-    parts ...*Message)
-func (r *RequestDealer) Recv() (*Received, error)
-func (r *RequestDealer) TryRecv() (*Received, bool, error)
+
+// Synchronous request — blocks until reply or timeout.
+// timeout = 0 uses the socket default timeout.
+func (r *RequestDealer) Request(timeout time.Duration,
+    parts ...*Message) (*Received, error)
+
+// Callback request — submit may fail (returned as error).
+// timeout = 0 uses the socket default timeout.
+func (r *RequestDealer) RequestCallback(callback RequestReplyCallback,
+    flags SendFlags, timeout time.Duration,
+    parts ...*Message) error
+
+func (r *RequestDealer) Recv(flags RecvFlags) (*Received, error)
 func (r *RequestDealer) OnReceive(handler func(*Received)) error
 func (r *RequestDealer) Close() error
 
-type RequestReplyCallback func(*Received, error)
+type RequestReplyCallback func(RequestResult, *Received)
 ```
 
 ### RequestRouter
@@ -373,20 +523,21 @@ type RequestReplyCallback func(*Received, error)
 ```go
 func NewRequestRouter(socket *RouterSocket) *RequestRouter
 func (r *RequestRouter) Socket() *RouterSocket
-func (r *RequestRouter) Request(ctx context.Context, routingID RoutingID,
+
+// Synchronous request — blocks until reply or timeout.
+// timeout = 0 uses the socket default timeout.
+func (r *RequestRouter) Request(routingID RoutingID, timeout time.Duration,
     parts ...*Message) (*Received, error)
-func (r *RequestRouter) TryRequest(ctx context.Context, routingID RoutingID,
-    parts ...*Message) (*Received, error)
-func (r *RequestRouter) RequestAsync(routingID RoutingID, timeout time.Duration,
-    callback RequestReplyCallback, parts ...*Message)
-func (r *RequestRouter) TryRequestAsync(routingID RoutingID, timeout time.Duration,
-    callback RequestReplyCallback, parts ...*Message)
-func (r *RequestRouter) Reply(routingID RoutingID, requestSeq uint64,
+
+// Callback request — submit may fail (returned as error).
+// timeout = 0 uses the socket default timeout.
+func (r *RequestRouter) RequestCallback(routingID RoutingID,
+    callback RequestReplyCallback, flags SendFlags, timeout time.Duration,
     parts ...*Message) error
-func (r *RequestRouter) TryReply(routingID RoutingID, requestSeq uint64,
-    parts ...*Message) (SendResult, error)
-func (r *RequestRouter) Recv() (*Received, error)
-func (r *RequestRouter) TryRecv() (*Received, bool, error)
+
+func (r *RequestRouter) Reply(routingID RoutingID, requestSeq uint64,
+    flags SendFlags, parts ...*Message) error
+func (r *RequestRouter) Recv(flags RecvFlags) (*Received, error)
 func (r *RequestRouter) OnReceive(handler func(*Received)) error
 func (r *RequestRouter) Close() error
 ```
@@ -400,7 +551,6 @@ func (r *RequestRouter) Close() error
 ```go
 func OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*SocketMonitor, error)
 func (m *SocketMonitor) Recv() (*MonitorEvent, error)
-func (m *SocketMonitor) TryRecv() (*MonitorEvent, bool, error)
 func (m *SocketMonitor) Snapshot() (*MonitorSnapshot, error)
 func (m *SocketMonitor) OnEvent(handler func(*MonitorEvent)) error
 func (m *SocketMonitor) Close() error
@@ -410,7 +560,6 @@ func (m *SocketMonitor) Close() error
 
 ```go
 func (m *ServiceMonitor) Recv() (*ServiceMonitorEvent, error)
-func (m *ServiceMonitor) TryRecv() (*ServiceMonitorEvent, bool, error)
 func (m *ServiceMonitor) Snapshot() (*MonitorSnapshot, error)
 func (m *ServiceMonitor) OnEvent(handler func(*ServiceMonitorEvent)) error
 func (m *ServiceMonitor) Close() error
@@ -526,12 +675,10 @@ func (n *SpotNode) Close() error
 ### Spot
 
 ```go
-func (s *Spot) Publish(topic string, parts ...*Message) error
-func (s *Spot) TryPublish(topic string, parts ...*Message) (SendResult, error)
+func (s *Spot) Publish(topic string, flags SendFlags, parts ...*Message) error
 func (s *Spot) SetSubscription(filter string) error
 func (s *Spot) UnsetSubscription(filter string) error
-func (s *Spot) Subscribe() (*TopicMessage, error)
-func (s *Spot) TrySubscribe() (*TopicMessage, bool, error)
+func (s *Spot) Subscribe(flags RecvFlags) (*TopicMessage, error)
 func (s *Spot) OnSubscribe(handler func(*TopicMessage)) error
 func (s *Spot) OnSendReady(handler func()) error
 func (s *Spot) SetSendHWM(value int) error
@@ -542,37 +689,34 @@ func (s *Spot) SetSendTimeout(value time.Duration) error
 func (s *Spot) SetNoDrop(value bool) error
 
 // --- routed send (spot → spot) ---
-func (s *Spot) SendSpot(destNodeRid, destSpotRid RoutingID, parts ...*Message) error
-func (s *Spot) TrySendSpot(destNodeRid, destSpotRid RoutingID,
-    parts ...*Message) (SendResult, error)
+func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID,
+    flags SendFlags, parts ...*Message) error
 
-// --- routed request (spot → spot) ---
-func (s *Spot) RequestSpot(ctx context.Context, destNodeRid, destSpotRid RoutingID,
-    parts ...*Message) (*Received, error)
-func (s *Spot) RequestSpotAsync(destNodeRid, destSpotRid RoutingID,
-    timeout time.Duration, callback RequestReplyCallback, parts ...*Message)
+// --- routed request (spot → spot, callback) ---
+// timeout = 0 uses the socket default timeout.
+func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID,
+    callback RequestReplyCallback, flags SendFlags,
+    timeout time.Duration, parts ...*Message) error
 
 // --- routed reply (spot → spot) ---
-func (s *Spot) ReplySpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64,
-    parts ...*Message) error
+func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64,
+    flags SendFlags, parts ...*Message) error
 
 // --- routed send (spot → router) ---
-func (s *Spot) SendRouter(peerRid RoutingID, parts ...*Message) error
-func (s *Spot) TrySendRouter(peerRid RoutingID, parts ...*Message) (SendResult, error)
+func (s *Spot) SendToRouter(peerRid RoutingID, flags SendFlags, parts ...*Message) error
 
-// --- routed request (spot → router) ---
-func (s *Spot) RequestRouter(ctx context.Context, peerRid RoutingID,
-    parts ...*Message) (*Received, error)
-func (s *Spot) RequestRouterAsync(peerRid RoutingID, timeout time.Duration,
-    callback RequestReplyCallback, parts ...*Message)
+// --- routed request (spot → router, callback) ---
+// timeout = 0 uses the socket default timeout.
+func (s *Spot) RequestToRouter(peerRid RoutingID,
+    callback RequestReplyCallback, flags SendFlags,
+    timeout time.Duration, parts ...*Message) error
 
 // --- routed reply (spot → router) ---
-func (s *Spot) ReplyRouter(peerRid RoutingID, requestSeq uint64,
-    parts ...*Message) error
+func (s *Spot) ReplyToRouter(peerRid RoutingID, requestSeq uint64,
+    flags SendFlags, parts ...*Message) error
 
 // --- routed receive ---
-func (s *Spot) RecvRouted() (*Received, error)
-func (s *Spot) TryRecvRouted() (*Received, bool, error)
+func (s *Spot) RecvRouted(flags RecvFlags) (*Received, error)
 func (s *Spot) OnRoutedReceive(handler func(sourceRid, spotRid RoutingID,
     requestSeq uint64, parts []*Message)) error
 func (s *Spot) OnDispatchEvent(handler func(event SpotDispatchEvent)) error

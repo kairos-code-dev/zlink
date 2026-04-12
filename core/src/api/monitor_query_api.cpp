@@ -2,7 +2,9 @@
 
 #include "utils/precompiled.hpp"
 
+#include "api/config_result_internal.hpp"
 #include "api/monitor_api_internal.hpp"
+#include "api/recv_result_internal.hpp"
 #include "api/socket_api_internal.hpp"
 
 #include <cstring>
@@ -162,31 +164,32 @@ int recv_service_monitor_event_unchecked (void *monitor_,
     return 0;
 }
 
-int zlink_socket_monitor_recv (void *monitor_,
-                               zlink_socket_monitor_event_t *out_,
-                               zlink_send_flags_t flags_)
+zlink_recv_result_t zlink_socket_monitor_recv (void *monitor_,
+                                               zlink_socket_monitor_event_t *out_,
+                                               zlink_send_flags_t flags_)
 {
     if (require_monitor_recv_model (monitor_, false) != 0)
-        return -1;
-    return recv_socket_monitor_event_unchecked (monitor_, out_, flags_);
+        return zlink::recv_result_internal::from_errno (errno);
+    return zlink::recv_result_internal::from_rc (
+      recv_socket_monitor_event_unchecked (monitor_, out_, flags_));
 }
 
-int zlink_monitor_snapshot (void *monitor_,
-                            zlink_monitor_snapshot_t *out_)
+zlink_config_result_t zlink_monitor_snapshot (void *monitor_,
+                                              zlink_monitor_snapshot_t *out_)
 {
     if (!out_) {
         errno = EINVAL;
-        return -1;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
 
     socket_handle_t handle = as_socket_handle (monitor_);
     if (!handle.socket)
-        return -1;
+        return ZLINK_CONFIG_INVALID_HANDLE;
 
     monitor_handler_state_t *state = find_monitor_handler_state (handle.socket);
     if (!state) {
         errno = EINVAL;
-        return -1;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
 
     monitor_snapshot_provider_fn provider =
@@ -194,17 +197,19 @@ int zlink_monitor_snapshot (void *monitor_,
     void *subject = state->snapshot_subject.load (std::memory_order_acquire);
     if (!provider) {
         errno = ENOTSUP;
-        return -1;
+        return ZLINK_CONFIG_NOT_SUPPORTED;
     }
 
-    return provider (subject, out_);
+    return zlink::config_result_internal::from_rc (provider (subject, out_));
 }
 
-int zlink_service_monitor_recv (void *monitor_,
-                                zlink_service_monitor_event_t *out_,
-                                zlink_send_flags_t flags_)
+zlink_recv_result_t zlink_service_monitor_recv (
+  void *monitor_,
+  zlink_service_monitor_event_t *out_,
+  zlink_send_flags_t flags_)
 {
     if (require_monitor_recv_model (monitor_, true) != 0)
-        return -1;
-    return recv_service_monitor_event_unchecked (monitor_, out_, flags_);
+        return zlink::recv_result_internal::from_errno (errno);
+    return zlink::recv_result_internal::from_rc (
+      recv_service_monitor_event_unchecked (monitor_, out_, flags_));
 }

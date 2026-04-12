@@ -82,7 +82,7 @@ static bool wait_for_spot_node_subject_ready (void *node_, int timeout_ms_)
         if (wait_ms <= 0)
             break;
         zlink_pollitem_t item = {NULL, 0, 0, 0};
-        (void) zlink_poll (&item, 0, wait_ms);
+        (void) zlink_poll (&item, 0, wait_ms, NULL);
     }
 
     return false;

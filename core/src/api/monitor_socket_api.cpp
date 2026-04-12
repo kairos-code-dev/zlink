@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
+#include "api/handler_result_internal.hpp"
 #include "api/monitor_api_internal.hpp"
 #include "api/socket_api_internal.hpp"
 
@@ -114,9 +115,11 @@ void *zlink_socket_monitor_open (
       s_, options_->events, &zlink_monitor_ignore_handler, NULL);
 }
 
-int zlink_socket_monitor_handler (void *monitor_,
-                                  zlink_socket_monitor_handler_fn handler_,
-                                  void *userdata_)
+zlink_handler_result_t zlink_socket_monitor_handler (
+  void *monitor_,
+  zlink_socket_monitor_handler_fn handler_,
+  void *userdata_)
 {
-    return attach_socket_monitor_handler_state (monitor_, handler_, userdata_);
+    return zlink::handler_result_internal::from_rc (
+      attach_socket_monitor_handler_state (monitor_, handler_, userdata_));
 }

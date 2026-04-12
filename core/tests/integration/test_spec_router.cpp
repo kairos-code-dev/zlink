@@ -112,8 +112,8 @@ void test_destroy_queue_on_disconnect (const char *bind_address_)
 
     // Disconnect may take time and need command processing.
     zlink_pollitem_t poller[2] = {{a, 0, 0, 0}, {b, 0, 0, 0}};
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poll (poller, 2, 100));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poll (poller, 2, 100));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poll (poller, 2, 100, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poll (poller, 2, 100, NULL));
 
     // No messages should be available, sending should fail.
     zlink_msg_t msg;

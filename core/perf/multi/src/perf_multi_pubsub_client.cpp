@@ -153,7 +153,8 @@ bool run_recv_duration (const std::vector<void *> &sockets,
         const int poll_rc =
           zlink_poller_wait_all (poller, events.empty () ? NULL : &events[0],
                                  static_cast<int> (events.size ()),
-                                 timeout_ms > 5 ? 5 : std::max (1, timeout_ms));
+                                 timeout_ms > 5 ? 5 : std::max (1, timeout_ms),
+                                 NULL);
         if (poll_rc < 0) {
             const int err = zlink_errno ();
             if (err == EINTR || err == EAGAIN)

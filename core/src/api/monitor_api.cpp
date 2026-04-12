@@ -6,6 +6,7 @@
 
 #include <map>
 
+#include "api/close_result_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "core/ctx.hpp"
 #include "services/control/service_control_runtime.hpp"
@@ -351,16 +352,16 @@ int set_monitor_handler_state (zlink::socket_base_t *socket_,
     return 0;
 }
 
-int zlink_monitor_close (void **monitor_p_)
+zlink_close_result_t zlink_monitor_close (void **monitor_p_)
 {
     if (!monitor_p_ || !*monitor_p_) {
         errno = EFAULT;
-        return -1;
+        return ZLINK_CLOSE_INVALID_HANDLE;
     }
     void *monitor = *monitor_p_;
     socket_handle_t handle = as_socket_handle (monitor);
     if (!handle.socket)
-        return -1;
+        return ZLINK_CLOSE_INVALID_HANDLE;
 
     zlink::socket_base_t *socket = handle.socket;
     const int linger = 0;
@@ -390,16 +391,16 @@ int zlink_monitor_close (void **monitor_p_)
         }
     }
     if (monitor_state && zlink::current_monitor_handler_state () == monitor_state) {
-        const int rc = zlink_close (monitor);
-        if (rc == 0)
+        const zlink_close_result_t rc = zlink_close (monitor);
+        if (rc == ZLINK_CLOSE_OK)
             *monitor_p_ = NULL;
         return rc;
     }
     if (stop_socket_before_close) {
         socket->stop ();
     }
-    const int rc = zlink_close (monitor);
-    if (rc == 0)
+    const zlink_close_result_t rc = zlink_close (monitor);
+    if (rc == ZLINK_CLOSE_OK)
         *monitor_p_ = NULL;
     return rc;
 }

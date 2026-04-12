@@ -4,6 +4,10 @@
 
 #include <memory>
 
+#include "api/close_result_internal.hpp"
+#include "api/config_result_internal.hpp"
+#include "api/handler_result_internal.hpp"
+#include "api/recv_result_internal.hpp"
 #include "api/service_api_internal.hpp"
 #include "api/timer_api_internal.hpp"
 
@@ -119,23 +123,23 @@ void *zlink_spot_timer_new (void *spot_)
     return timer.release ();
 }
 
-int zlink_timer_destroy (void **timer_p_)
+zlink_close_result_t zlink_timer_destroy (void **timer_p_)
 {
     if (!timer_p_ || !*timer_p_) {
         errno = EFAULT;
-        return -1;
+        return ZLINK_CLOSE_INVALID_HANDLE;
     }
 
     timer_handle_t *timer = as_timer_handle (*timer_p_);
     if (!timer)
-        return -1;
+        return ZLINK_CLOSE_INVALID_HANDLE;
 
     scheduler_state_t *scheduler = timer->scheduler;
     std::unique_lock<std::mutex> scheduler_lock (scheduler->mutex);
     std::unique_lock<std::mutex> timer_lock (timer->mutex);
     if (timer->poller_refs > 0) {
         errno = EBUSY;
-        return -1;
+        return ZLINK_CLOSE_BUSY;
     }
     timer->destroyed = true;
     timer->running = false;
@@ -159,17 +163,21 @@ int zlink_timer_destroy (void **timer_p_)
 
     delete timer;
     *timer_p_ = NULL;
-    return 0;
+    return ZLINK_CLOSE_OK;
 }
 
-int zlink_timer_start (void *timer_,
-                       uint64_t interval_ns_,
-                       uint64_t repeat_count_)
+zlink_config_result_t zlink_timer_start (void *timer_,
+                                         uint64_t interval_ns_,
+                                         uint64_t repeat_count_)
 {
     timer_handle_t *timer = as_timer_handle (timer_);
-    if (!timer || interval_ns_ == 0) {
+    if (!timer) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    if (interval_ns_ == 0) {
         errno = EINVAL;
-        return -1;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
 
     scheduler_state_t *scheduler = timer->scheduler;
@@ -185,33 +193,35 @@ int zlink_timer_start (void *timer_,
     drain_timer_signal_locked (timer);
     schedule_timer_locked (timer, monotonic_now_ns () + interval_ns_);
     scheduler->cv.notify_all ();
-    return 0;
+    return ZLINK_CONFIG_OK;
 }
 
-int zlink_timer_stop (void *timer_)
+zlink_config_result_t zlink_timer_stop (void *timer_)
 {
     timer_handle_t *timer = as_timer_handle (timer_);
     if (!timer)
-        return -1;
+        return ZLINK_CONFIG_INVALID_HANDLE;
 
     stop_timer_scheduler (timer);
-    return 0;
+    return ZLINK_CONFIG_OK;
 }
 
-int zlink_timer_recv (void *timer_, uint64_t *fire_count_out_, int flags_)
+zlink_recv_result_t zlink_timer_recv (void *timer_,
+                                      uint64_t *fire_count_out_,
+                                      int flags_)
 {
     timer_handle_t *timer = as_timer_handle (timer_);
     if (!timer || !fire_count_out_) {
         errno = EFAULT;
-        return -1;
+        return ZLINK_RECV_INVALID_HANDLE;
     }
     if (validate_recv_flags (flags_) != 0)
-        return -1;
+        return zlink::recv_result_internal::from_errno (errno);
 
     std::unique_lock<std::mutex> lock (timer->mutex);
     if (timer->receive_callback_active) {
         errno = EBUSY;
-        return -1;
+        return ZLINK_RECV_BUSY;
     }
 
     timer->recv_in_progress = true;
@@ -220,12 +230,12 @@ int zlink_timer_recv (void *timer_, uint64_t *fire_count_out_, int flags_)
         if (!timer->running) {
             timer->recv_in_progress = false;
             errno = EAGAIN;
-            return -1;
+            return ZLINK_RECV_NO_DATA;
         }
         if (dontwait) {
             timer->recv_in_progress = false;
             errno = EAGAIN;
-            return -1;
+            return ZLINK_RECV_NO_DATA;
         }
         timer->recv_cv.wait (lock);
     }
@@ -235,28 +245,32 @@ int zlink_timer_recv (void *timer_, uint64_t *fire_count_out_, int flags_)
     drain_timer_signal_locked (timer);
     ensure_timer_signal_locked (timer);
     timer->recv_in_progress = false;
-    return 0;
+    return ZLINK_RECV_OK;
 }
 
-int zlink_timer_handler (void *timer_,
-                         zlink_timer_handler_fn handler_,
-                         void *userdata_)
+zlink_handler_result_t zlink_timer_handler (void *timer_,
+                                            zlink_timer_handler_fn handler_,
+                                            void *userdata_)
 {
     timer_handle_t *timer = as_timer_handle (timer_);
-    if (!timer || !handler_) {
+    if (!timer) {
+        errno = EFAULT;
+        return ZLINK_HANDLER_INVALID_ARGUMENT;
+    }
+    if (!handler_) {
         errno = EINVAL;
-        return -1;
+        return ZLINK_HANDLER_INVALID_ARGUMENT;
     }
 
     std::lock_guard<std::mutex> lock (timer->mutex);
     if (timer->recv_in_progress || timer->poller_refs > 0
         || timer->receive_callback_active) {
         errno = EBUSY;
-        return -1;
+        return ZLINK_HANDLER_BUSY;
     }
 
     timer->receive_callback_active = true;
     timer->handler = handler_;
     timer->handler_userdata = userdata_;
-    return 0;
+    return ZLINK_HANDLER_OK;
 }

@@ -29,8 +29,8 @@ void test_zlink_socket_null_context ()
 
 void test_zlink_close_null_socket ()
 {
-    int rc = zlink_close (NULL);
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    zlink_close_result_t rc = zlink_close (NULL);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_INVALID_HANDLE, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
@@ -38,8 +38,8 @@ void test_zlink_setsockopt_null_socket ()
 {
     int hwm = 100;
     size_t hwm_size = sizeof hwm;
-    int rc = zlink_set_option (NULL, ZLINK_OPT_SNDHWM, &hwm, hwm_size);
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    zlink_config_result_t rc = zlink_set_option (NULL, ZLINK_OPT_SNDHWM, &hwm, hwm_size);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_HANDLE, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
@@ -47,8 +47,8 @@ void test_zlink_getsockopt_null_socket ()
 {
     int hwm;
     size_t hwm_size = sizeof hwm;
-    int rc = zlink_get_option (NULL, ZLINK_OPT_SNDHWM, &hwm, &hwm_size);
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    zlink_config_result_t rc = zlink_get_option (NULL, ZLINK_OPT_SNDHWM, &hwm, &hwm_size);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_HANDLE, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
@@ -66,29 +66,29 @@ void test_zlink_socket_monitor_open_null_socket ()
 
 void test_zlink_bind_null_socket ()
 {
-    int rc = zlink_bind (NULL, "inproc://socket");
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    zlink_bind_result_t rc = zlink_bind (NULL, "inproc://socket");
+    TEST_ASSERT_EQUAL_INT (ZLINK_BIND_INVALID_ARGUMENT, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_connect_null_socket ()
 {
-    int rc = zlink_connect (NULL, "inproc://socket");
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    zlink_connect_result_t rc = zlink_connect (NULL, "inproc://socket");
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_INVALID_ARGUMENT, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_unbind_null_socket ()
 {
-    int rc = zlink_unbind (NULL, "inproc://socket");
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    zlink_connect_result_t rc = zlink_unbind (NULL, "inproc://socket");
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_INVALID_ARGUMENT, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_disconnect_null_socket ()
 {
-    int rc = zlink_disconnect (NULL, "inproc://socket");
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    zlink_connect_result_t rc = zlink_disconnect (NULL, "inproc://socket");
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_INVALID_ARGUMENT, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 

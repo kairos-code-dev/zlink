@@ -69,7 +69,7 @@ void test_ctx_thread_opts ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_ctx_set (get_test_context (), ZLINK_THREAD_SCHED_POLICY, TEST_POLICY));
     TEST_ASSERT_EQUAL_INT (
-      TEST_POLICY, zlink_ctx_get (get_test_context (), ZLINK_THREAD_SCHED_POLICY));
+      TEST_POLICY, zlink_ctx_get (get_test_context (), ZLINK_THREAD_SCHED_POLICY, NULL));
 
     // test priority:
 
@@ -117,7 +117,7 @@ void test_ctx_thread_opts ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_ctx_set (get_test_context (), ZLINK_THREAD_NAME_PREFIX, 1234));
     TEST_ASSERT_EQUAL_INT (
-      1234, zlink_ctx_get (get_test_context (), ZLINK_THREAD_NAME_PREFIX));
+      1234, zlink_ctx_get (get_test_context (), ZLINK_THREAD_NAME_PREFIX, NULL));
 }
 
 void test_ctx_zero_copy ()
@@ -125,13 +125,13 @@ void test_ctx_zero_copy ()
 #ifdef ZLINK_ZERO_COPY_RECV
     int zero_copy;
     // Default value is 1.
-    zero_copy = zlink_ctx_get (get_test_context (), ZLINK_ZERO_COPY_RECV);
+    zero_copy = zlink_ctx_get (get_test_context (), ZLINK_ZERO_COPY_RECV, NULL);
     TEST_ASSERT_EQUAL_INT (1, zero_copy);
 
     // Test we can set it to 0.
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_ctx_set (get_test_context (), ZLINK_ZERO_COPY_RECV, 0));
-    zero_copy = zlink_ctx_get (get_test_context (), ZLINK_ZERO_COPY_RECV);
+    zero_copy = zlink_ctx_get (get_test_context (), ZLINK_ZERO_COPY_RECV, NULL);
     TEST_ASSERT_EQUAL_INT (0, zero_copy);
 
     // Create a TCP socket pair using the context and test that messages can be
@@ -159,37 +159,37 @@ void test_ctx_zero_copy ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_ctx_set (get_test_context (), ZLINK_ZERO_COPY_RECV, 1));
     TEST_ASSERT_EQUAL_INT (
-      1, zlink_ctx_get (get_test_context (), ZLINK_ZERO_COPY_RECV));
+      1, zlink_ctx_get (get_test_context (), ZLINK_ZERO_COPY_RECV, NULL));
 #endif
 }
 
 void test_ctx_option_max_sockets ()
 {
     TEST_ASSERT_EQUAL_INT (ZLINK_MAX_SOCKETS_DFLT,
-                           zlink_ctx_get (get_test_context (), ZLINK_MAX_SOCKETS));
+                           zlink_ctx_get (get_test_context (), ZLINK_MAX_SOCKETS, NULL));
 }
 
 void test_ctx_option_socket_limit ()
 {
 #if defined(ZLINK_USE_SELECT)
-    TEST_ASSERT_EQUAL_INT (FD_SETSIZE - 1, zlink_ctx_get (get_test_context (), ZLINK_SOCKET_LIMIT));
+    TEST_ASSERT_EQUAL_INT (FD_SETSIZE - 1, zlink_ctx_get (get_test_context (), ZLINK_SOCKET_LIMIT, NULL));
 #elif defined(ZLINK_USE_POLL) || defined(ZLINK_USE_EPOLL)                          \
   || defined(ZLINK_USE_DEVPOLL) || defined(ZLINK_USE_KQUEUE)
-    TEST_ASSERT_EQUAL_INT (65535, zlink_ctx_get (get_test_context (), ZLINK_SOCKET_LIMIT));
+    TEST_ASSERT_EQUAL_INT (65535, zlink_ctx_get (get_test_context (), ZLINK_SOCKET_LIMIT, NULL));
 #endif
 }
 
 void test_ctx_option_io_threads ()
 {
     TEST_ASSERT_EQUAL_INT (ZLINK_IO_THREADS_DFLT,
-                           zlink_ctx_get (get_test_context (), ZLINK_IO_THREADS));
+                           zlink_ctx_get (get_test_context (), ZLINK_IO_THREADS, NULL));
 }
 
 void test_ctx_option_msg_t_size ()
 {
 #if defined(ZLINK_MSG_T_SIZE)
     TEST_ASSERT_EQUAL_INT (sizeof (zlink_msg_t),
-                           zlink_ctx_get (get_test_context (), ZLINK_MSG_T_SIZE));
+                           zlink_ctx_get (get_test_context (), ZLINK_MSG_T_SIZE, NULL));
 #endif
 }
 
@@ -231,7 +231,7 @@ void test_ctx_option_invalid ()
 {
     TEST_ASSERT_EQUAL_INT (-1, zlink_ctx_set (get_test_context (), static_cast<zlink_ctx_option_t>(-1), 0));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_EQUAL_INT (-1, zlink_ctx_get (get_test_context (), static_cast<zlink_ctx_option_t>(-1)));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_ctx_get (get_test_context (), static_cast<zlink_ctx_option_t>(-1), NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 }
 

@@ -29,8 +29,8 @@ class context_t {
     void* handle() noexcept;
     const void* handle() const noexcept;
 
-    int shutdown();
-    int term() noexcept;
+    void shutdown();
+    void term() noexcept;
 
     context_options_t options();
 };
@@ -45,21 +45,21 @@ class context_options_t {
     explicit context_options_t(context_t& ctx);
 
     int ioThreads() const;
-    int ioThreads(int value);
+    void ioThreads(int value);
     int maxSockets() const;
-    int maxSockets(int value);
+    void maxSockets(int value);
     int maxMsgSize() const;
-    int maxMsgSize(int value);
+    void maxMsgSize(int value);
     int threadPriority() const;
-    int threadPriority(int value);
+    void threadPriority(int value);
     int threadSchedulingPolicy() const;
-    int threadSchedulingPolicy(int value);
+    void threadSchedulingPolicy(int value);
     bool blocky() const;
-    int blocky(bool enabled);
+    void blocky(bool enabled);
     int socketLimit() const;
     int msgTSize() const;
-    int addThreadAffinity(int cpu);
-    int removeThreadAffinity(int cpu);
+    void addThreadAffinity(int cpu);
+    void removeThreadAffinity(int cpu);
 };
 ```
 
@@ -75,21 +75,21 @@ Individual socket classes re-expose them as public.
 ```cpp
 // Available on all socket types
 bool valid() const noexcept;
-int bind(const std::string& endpoint);
-int unbind(const std::string& endpoint);
-int set_option(socket_option_key_t<T> key, const T& value);
-int get_option(socket_option_key_t<T> key, T* value) const;
-int set_option(socket_option_key_t<std::string> key, const std::string& value);
-int get_option(socket_option_key_t<std::string> key, std::string& value) const;
-int set_tls_server(const std::string& cert, const std::string& key,
-                   bool require_client_cert = false);
-int set_tls_client(const std::string& ca_cert, const std::string& hostname,
-                   bool trust_system = false);
+void bind(const std::string& endpoint);
+void unbind(const std::string& endpoint);
+void set_option(socket_option_key_t<T> key, const T& value);
+void get_option(socket_option_key_t<T> key, T* value) const;
+void set_option(socket_option_key_t<std::string> key, const std::string& value);
+void get_option(socket_option_key_t<std::string> key, std::string& value) const;
+void set_tls_server(const std::string& cert, const std::string& key,
+                    bool require_client_cert = false);
+void set_tls_client(const std::string& ca_cert, const std::string& hostname,
+                    bool trust_system = false);
 monitor_handle_t monitor_handle(monitor_event events = monitor_event::all) const;
 
 // Available on connectable socket types (all except stream_socket_t)
-int connect(const std::string& endpoint);
-int disconnect(const std::string& endpoint);
+void connect(const std::string& endpoint);
+void disconnect(const std::string& endpoint);
 ```
 
 ### pair_socket_t
@@ -100,17 +100,14 @@ Bidirectional exclusive pair socket. Sends and receives messages without routing
 class pair_socket_t : public message_socket_t {
     explicit pair_socket_t(context_t& ctx);
 
-    // --- send ---
-    void send(message_t& part);
-    void send(std::vector<message_t>& parts);
-    send_result_t try_send(message_t& part);
-    send_result_t try_send(std::vector<message_t>& parts);
+    // --- send (throws zlink_error_t on failure) ---
+    void send(message_t& part, send_flags_t flags = send_flags_t::none);
+    void send(std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
 
-    // --- receive ---
-    received_t recv();
-    maybe_t<received_t> try_recv();
-    int on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
-    int on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
+    // --- receive (throws zlink_error_t on failure) ---
+    received_t recv(recv_flags_t flags = recv_flags_t::none);
+    void on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
+    void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 };
 ```
 
@@ -122,19 +119,17 @@ Publisher socket. Sends topic-prefixed messages to all matching subscribers.
 class pub_socket_t : public publisher_socket_t {
     explicit pub_socket_t(context_t& ctx);
 
-    // --- publish ---
-    void publish(const std::string& topic_id, message_t& part);
-    void publish(const std::string& topic_id, std::vector<message_t>& parts);
-    send_result_t try_publish(const std::string& topic_id, message_t& part);
-    send_result_t try_publish(const std::string& topic_id, std::vector<message_t>& parts);
-    int on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
+    // --- publish (throws zlink_error_t on failure) ---
+    void publish(const std::string& topic_id, message_t& part, send_flags_t flags = send_flags_t::none);
+    void publish(const std::string& topic_id, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
     // --- pub-specific options ---
-    int set_option(pub_option_key_t<T> key, const T& value);
-    int get_option(pub_option_key_t<T> key, T* value) const;
+    void set_option(pub_option_key_t<T> key, const T& value);
+    void get_option(pub_option_key_t<T> key, T* value) const;
 
     // --- discovery ---
-    int attach_discovery(DiscoveryT& discovery);
+    void attach_discovery(DiscoveryT& discovery);
 };
 ```
 
@@ -147,21 +142,20 @@ class sub_socket_t : public subscriber_socket_t {
     explicit sub_socket_t(context_t& ctx);
 
     // --- subscription ---
-    int set_subscription(const std::string& filter);
-    int unset_subscription(const std::string& filter);
-    int subscription_at(size_t index, std::string& filter, bool* is_pattern = NULL);
+    void set_subscription(const std::string& filter);
+    void unset_subscription(const std::string& filter);
+    void subscription_at(size_t index, std::string& filter, bool* is_pattern = NULL);
 
-    // --- receive ---
-    subscribed_t subscribe();
-    maybe_t<subscribed_t> try_subscribe();
-    int on_subscribe(zlink_subscribe_handler_fn handler, void* userdata = NULL);
+    // --- receive (throws zlink_error_t on failure) ---
+    subscribed_t subscribe(recv_flags_t flags = recv_flags_t::none);
+    void on_subscribe(zlink_subscribe_handler_fn handler, void* userdata = NULL);
 
     // --- sub-specific options ---
-    int set_option(sub_option_key_t<T> key, const T& value);
-    int get_option(sub_option_key_t<T> key, T* value) const;
+    void set_option(sub_option_key_t<T> key, const T& value);
+    void get_option(sub_option_key_t<T> key, T* value) const;
 
     // --- discovery ---
-    int attach_discovery(DiscoveryT& discovery);
+    void attach_discovery(DiscoveryT& discovery);
 };
 ```
 
@@ -173,25 +167,24 @@ Asynchronous client socket for fair-queued request distribution.
 class dealer_socket_t : public message_socket_t {
     explicit dealer_socket_t(context_t& ctx);
 
-    // --- send / receive ---
-    void send(message_t& part);
-    void send(std::vector<message_t>& parts);
-    send_result_t try_send(message_t& part);
-    send_result_t try_send(std::vector<message_t>& parts);
-    received_t recv();
-    maybe_t<received_t> try_recv();
-    int on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
-    int on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
+    // --- send (throws zlink_error_t on failure) ---
+    void send(message_t& part, send_flags_t flags = send_flags_t::none);
+    void send(std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+
+    // --- receive (throws zlink_error_t on failure) ---
+    received_t recv(recv_flags_t flags = recv_flags_t::none);
+    void on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
+    void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
     // --- identity / routing ---
-    int set_routing_id(const routing_id_t& routing_id);
-    int get_routing_id(routing_id_t& routing_id) const;
+    void set_routing_id(const routing_id_t& routing_id);
+    void get_routing_id(routing_id_t& routing_id) const;
 
     // --- dealer-specific options ---
-    int set_option(dealer_option_key_t<T> key, const T& value);
+    void set_option(dealer_option_key_t<T> key, const T& value);
 
     // --- discovery ---
-    int attach_discovery(DiscoveryT& discovery);
+    void attach_discovery(DiscoveryT& discovery);
 };
 ```
 
@@ -203,61 +196,53 @@ Server socket that routes messages to specific peers by routing id.
 class router_socket_t : public routed_message_socket_t {
     explicit router_socket_t(context_t& ctx);
 
-    // --- routed send ---
-    void send(const routing_id_t& target_rid, message_t& part);
-    void send(const routing_id_t& target_rid, std::vector<message_t>& parts);
-    send_result_t try_send(const routing_id_t& target_rid, message_t& part);
-    send_result_t try_send(const routing_id_t& target_rid, std::vector<message_t>& parts);
+    // --- routed send (throws zlink_error_t on failure) ---
+    void send(const routing_id_t& target_rid, message_t& part, send_flags_t flags = send_flags_t::none);
+    void send(const routing_id_t& target_rid, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
 
-    // --- receive ---
-    received_t recv();
-    maybe_t<received_t> try_recv();
-    int on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
-    int on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
+    // --- receive (throws zlink_error_t on failure) ---
+    received_t recv(recv_flags_t flags = recv_flags_t::none);
+    void on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
+    void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
     // --- identity / routing ---
-    int set_routing_id(const routing_id_t& routing_id);
-    int get_routing_id(routing_id_t& routing_id) const;
+    void set_routing_id(const routing_id_t& routing_id);
+    void get_routing_id(routing_id_t& routing_id) const;
 
-    // --- router → spot routed send ---
-    void send_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
-                   message_t& part);
-    void send_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
-                   std::vector<message_t>& parts);
-    send_result_t try_send_spot(const routing_id_t& dest_node_rid,
-                                const routing_id_t& dest_spot_rid,
-                                message_t& part);
-    send_result_t try_send_spot(const routing_id_t& dest_node_rid,
-                                const routing_id_t& dest_spot_rid,
-                                std::vector<message_t>& parts);
+    // --- router → spot routed send (throws zlink_error_t on failure) ---
+    void send_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
+                      message_t& part, send_flags_t flags = send_flags_t::none);
+    void send_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
+                      std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
 
-    // --- router → spot routed request (async) ---
-    async_result_t<received_t> request_spot(const routing_id_t& dest_node_rid,
-                                            const routing_id_t& dest_spot_rid,
-                                            message_t message,
-                                            std::chrono::milliseconds timeout = {});
-    void request_spot(const routing_id_t& dest_node_rid,
-                      const routing_id_t& dest_spot_rid,
-                      message_t message,
-                      std::function<void(received_t)> on_reply,
-                      std::function<void(error_t)> on_error,
-                      std::chrono::milliseconds timeout = {});
+    // --- router → spot routed request (coroutine, blocking submit — no flags) ---
+    async_result_t<received_t> request_to_spot(const routing_id_t& dest_node_rid,
+                                               const routing_id_t& dest_spot_rid,
+                                               message_t message,
+                                               std::chrono::milliseconds timeout = {});
 
-    // --- router → spot routed reply ---
-    void reply_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
-                    uint64_t request_seq, message_t message);
+    // --- router → spot routed request (callback, throws on submit failure) ---
+    void request_to_spot(const routing_id_t& dest_node_rid,
+                         const routing_id_t& dest_spot_rid,
+                         message_t message,
+                         std::function<void(request_result_t, received_t)> callback,
+                         send_flags_t flags = send_flags_t::none,
+                         std::chrono::milliseconds timeout = {});
 
-    // --- router spot receive ---
-    received_t recv_spot();
-    maybe_t<received_t> try_recv_spot();
-    int on_spot_receive(zlink_router_spot_handler_fn handler, void* userdata = NULL);
+    // --- router → spot routed reply (throws zlink_error_t on failure) ---
+    void reply_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
+                       uint64_t request_seq, message_t message, send_flags_t flags = send_flags_t::none);
+
+    // --- router spot receive (throws zlink_error_t on failure) ---
+    received_t recv_spot(recv_flags_t flags = recv_flags_t::none);
+    void on_spot_receive(zlink_router_spot_handler_fn handler, void* userdata = NULL);
 
     // --- router-specific options ---
-    int set_option(router_option_key_t<T> key, const T& value);
-    int get_option(router_option_key_t<T> key, T* value) const;
+    void set_option(router_option_key_t<T> key, const T& value);
+    void get_option(router_option_key_t<T> key, T* value) const;
 
     // --- discovery ---
-    int attach_discovery(DiscoveryT& discovery);
+    void attach_discovery(DiscoveryT& discovery);
 };
 ```
 
@@ -269,20 +254,17 @@ Extended publisher. Like pub_socket_t but also receives subscription events.
 class xpub_socket_t : public publisher_socket_t {
     explicit xpub_socket_t(context_t& ctx);
 
-    // --- publish ---
-    void publish(const std::string& topic_id, message_t& part);
-    void publish(const std::string& topic_id, std::vector<message_t>& parts);
-    send_result_t try_publish(const std::string& topic_id, message_t& part);
-    send_result_t try_publish(const std::string& topic_id, std::vector<message_t>& parts);
-    int on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
+    // --- publish (throws zlink_error_t on failure) ---
+    void publish(const std::string& topic_id, message_t& part, send_flags_t flags = send_flags_t::none);
+    void publish(const std::string& topic_id, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
-    // --- subscription events ---
-    subscription_event_t receive_subscription_event();
-    maybe_t<subscription_event_t> try_receive_subscription_event();
+    // --- subscription events (throws zlink_error_t on failure) ---
+    subscription_event_t receive_subscription_event(recv_flags_t flags = recv_flags_t::none);
 
     // --- pub-specific options ---
-    int set_option(pub_option_key_t<T> key, const T& value);
-    int get_option(pub_option_key_t<T> key, T* value) const;
+    void set_option(pub_option_key_t<T> key, const T& value);
+    void get_option(pub_option_key_t<T> key, T* value) const;
 };
 ```
 
@@ -295,18 +277,17 @@ class xsub_socket_t : public subscriber_socket_t {
     explicit xsub_socket_t(context_t& ctx);
 
     // --- subscription ---
-    int set_subscription(const std::string& filter);
-    int unset_subscription(const std::string& filter);
-    int subscription_at(size_t index, std::string& filter, bool* is_pattern = NULL);
+    void set_subscription(const std::string& filter);
+    void unset_subscription(const std::string& filter);
+    void subscription_at(size_t index, std::string& filter, bool* is_pattern = NULL);
 
-    // --- receive ---
-    subscribed_t subscribe();
-    maybe_t<subscribed_t> try_subscribe();
-    int on_subscribe(zlink_subscribe_handler_fn handler, void* userdata = NULL);
+    // --- receive (throws zlink_error_t on failure) ---
+    subscribed_t subscribe(recv_flags_t flags = recv_flags_t::none);
+    void on_subscribe(zlink_subscribe_handler_fn handler, void* userdata = NULL);
 
     // --- sub-specific options ---
-    int set_option(sub_option_key_t<T> key, const T& value);
-    int get_option(sub_option_key_t<T> key, T* value) const;
+    void set_option(sub_option_key_t<T> key, const T& value);
+    void get_option(sub_option_key_t<T> key, T* value) const;
 };
 ```
 
@@ -318,27 +299,24 @@ Raw TCP stream socket. Bind-only; connect is deleted.
 class stream_socket_t : public routed_message_socket_t {
     explicit stream_socket_t(context_t& ctx);
 
-    int connect(const std::string&) = delete;
+    void connect(const std::string&) = delete;
 
-    // --- routed send ---
-    void send(const routing_id_t& target_rid, message_t& part);
-    void send(const routing_id_t& target_rid, std::vector<message_t>& parts);
-    send_result_t try_send(const routing_id_t& target_rid, message_t& part);
-    send_result_t try_send(const routing_id_t& target_rid, std::vector<message_t>& parts);
+    // --- routed send (throws zlink_error_t on failure) ---
+    void send(const routing_id_t& target_rid, message_t& part, send_flags_t flags = send_flags_t::none);
+    void send(const routing_id_t& target_rid, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
 
-    // --- receive ---
-    received_t recv();
-    maybe_t<received_t> try_recv();
-    int on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
-    int on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
+    // --- receive (throws zlink_error_t on failure) ---
+    received_t recv(recv_flags_t flags = recv_flags_t::none);
+    void on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
+    void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
     // --- identity ---
-    int set_routing_id(const routing_id_t& routing_id);
-    int get_routing_id(routing_id_t& routing_id) const;
+    void set_routing_id(const routing_id_t& routing_id);
+    void get_routing_id(routing_id_t& routing_id) const;
 
     // --- stream-specific options ---
-    int set_option(stream_option_key_t<T> key, const T& value);
-    int get_option(stream_option_key_t<T> key, T* value) const;
+    void set_option(stream_option_key_t<T> key, const T& value);
+    void get_option(stream_option_key_t<T> key, T* value) const;
 };
 ```
 
@@ -371,9 +349,9 @@ class message_t {
                                    zlink_free_fn* ffn = NULL, void* hint = NULL);
 
     // --- init ---
-    int init();
-    int init(size_t size);
-    int init(void* data, size_t size, zlink_free_fn* ffn = NULL, void* hint = NULL);
+    void init();
+    void init(size_t size);
+    void init(void* data, size_t size, zlink_free_fn* ffn = NULL, void* hint = NULL);
 
     // --- accessors ---
     void* data() noexcept;
@@ -381,19 +359,19 @@ class message_t {
     size_t size() const noexcept;
     int ref_count() const noexcept;
     const char* get_property(const std::string& property) const;
-    int get_property(const std::string& property, std::string& out) const;
+    void get_property(const std::string& property, std::string& out) const;
 
     // --- conversions ---
     std::vector<uint8_t> to_bytes() const;
     std::string to_string() const;
 
     // --- lifecycle ---
-    int close() noexcept;
+    void close() noexcept;
     zlink_msg_t* handle() noexcept;
     const zlink_msg_t* handle() const noexcept;
-    int adopt(zlink_msg_t* src);
-    int move_to(zlink_msg_t* dest);
-    int copy_to(zlink_msg_t* dest) const;
+    void adopt(zlink_msg_t* src);
+    void move_to(zlink_msg_t* dest);
+    void copy_to(zlink_msg_t* dest) const;
 };
 ```
 
@@ -454,13 +432,168 @@ struct subscription_event_t {
 };
 ```
 
-### send_result_t
+### Error and Result Types
+
+#### submit_result_t
+
+Maps to C API `zlink_submit_result_t`.
 
 ```cpp
-enum class send_result_t : int {
-    sent,
-    backpressured,
-    not_ready
+enum class submit_result_t : int {
+    ok               = 0,
+    backpressured    = 1,
+    not_connected    = 2,
+    not_found        = 3,
+    terminated       = 4,
+    invalid_handle   = 5,
+    invalid_argument = 6,
+    not_supported    = 7,
+    invalid_state    = 8,
+    thread_violation = 9,
+    out_of_memory    = 10,
+    seq_exhausted    = 11,
+    internal_error   = 12
+};
+```
+
+#### request_result_t
+
+Maps to C API `zlink_request_result_t`.
+Values are offset to 101-104 to avoid collision with `submit_result_t` codes.
+
+```cpp
+enum class request_result_t : int {
+    ok             = 0,
+    timed_out      = 101,
+    not_found      = 102,
+    terminated     = 103,
+    protocol_error = 104
+};
+```
+
+#### recv_result_t
+
+Maps to C API `zlink_recv_result_t`.
+Covers recv, subscribe, and subscription event operations.
+
+```cpp
+enum class recv_result_t : int {
+    ok             = 0,
+    no_data        = 201,
+    busy           = 202,
+    terminated     = 203,
+    invalid_handle = 204,
+    not_supported  = 205
+};
+```
+
+#### handler_result_t
+
+Maps to C API `zlink_handler_result_t`.
+Covers handler registration operations (on_receive, on_subscribe, etc.).
+
+```cpp
+enum class handler_result_t : int {
+    ok               = 0,
+    invalid_argument = 301,
+    busy             = 302,
+    not_supported    = 303,
+    deadlock         = 304,
+    invalid_handle   = 305
+};
+```
+
+#### close_result_t
+
+Maps to C API `zlink_close_result_t`.
+Covers close and destroy operations.
+
+```cpp
+enum class close_result_t : int {
+    ok             = 0,
+    busy           = 401,
+    shutdown       = 402,
+    invalid_handle = 403
+};
+```
+
+#### bind_result_t
+
+Maps to C API `zlink_bind_result_t`.
+Covers bind operations.
+
+```cpp
+enum class bind_result_t : int {
+    ok               = 0,
+    invalid_argument = 501,
+    addr_in_use      = 502,
+    not_supported    = 503,
+    invalid_handle   = 504
+};
+```
+
+#### connect_result_t
+
+Maps to C API `zlink_connect_result_t`.
+Covers connect, disconnect, and unbind operations.
+
+```cpp
+enum class connect_result_t : int {
+    ok               = 0,
+    invalid_argument = 601,
+    not_supported    = 602,
+    invalid_handle   = 603
+};
+```
+
+#### config_result_t
+
+Maps to C API `zlink_config_result_t`.
+Covers configuration, option, and snapshot operations.
+
+```cpp
+enum class config_result_t : int {
+    ok               = 0,
+    invalid_handle   = 701,
+    invalid_argument = 702,
+    not_supported    = 703
+};
+```
+
+#### zlink_error_t
+
+Exception thrown by all socket operations on failure.
+The `code` field is a globally unique `int` that spans all result enum
+ranges (0-703). The code alone identifies the error without needing to
+know which enum it belongs to.
+
+```cpp
+class zlink_error_t : public std::runtime_error {
+public:
+    explicit zlink_error_t(int errnum);
+    explicit zlink_error_t(int code);
+
+    int errnum() const noexcept;
+    int code() const noexcept;
+    const char* what() const noexcept override;
+};
+```
+
+#### send_flags_t
+
+```cpp
+enum class send_flags_t : int {
+    none      = 0,
+    dontwait  = 1
+};
+```
+
+#### recv_flags_t
+
+```cpp
+enum class recv_flags_t : int {
+    none      = 0,
+    dontwait  = 1
 };
 ```
 
@@ -517,42 +650,22 @@ class request_router_t {
     void set_default_request_timeout(std::chrono::milliseconds timeout);
     std::chrono::milliseconds get_default_request_timeout() const;
 
-    // --- request (async) ---
-    async_result_t<received_t> request(const routing_id_t& routing_id, message_t message);
+    // --- request (coroutine, blocking submit — no flags) ---
     async_result_t<received_t> request(const routing_id_t& routing_id, message_t message,
-                                       std::chrono::milliseconds timeout);
+                                       std::chrono::milliseconds timeout = {});
 
-    // --- request (callback) ---
+    // --- request (callback, throws on submit failure) ---
     void request(const routing_id_t& routing_id, message_t message,
-                 std::function<void(received_t)> on_reply,
-                 std::function<void(error_t)> on_error,
-                 std::chrono::milliseconds timeout);
-    void request(const routing_id_t& routing_id, message_t message,
-                 std::function<void(received_t)> on_reply,
-                 std::function<void(error_t)> on_error);
+                 std::function<void(request_result_t, received_t)> callback,
+                 send_flags_t flags = send_flags_t::none,
+                 std::chrono::milliseconds timeout = {});
 
-    // --- try_request (async) ---
-    async_result_t<received_t> try_request(const routing_id_t& routing_id, message_t message);
-    async_result_t<received_t> try_request(const routing_id_t& routing_id, message_t message,
-                                           std::chrono::milliseconds timeout);
+    // --- reply (throws zlink_error_t on failure) ---
+    void reply(const routing_id_t& routing_id, uint64_t request_seq, message_t message,
+               send_flags_t flags = send_flags_t::none);
 
-    // --- try_request (callback) ---
-    void try_request(const routing_id_t& routing_id, message_t message,
-                     std::function<void(received_t)> on_reply,
-                     std::function<void(error_t)> on_error,
-                     std::chrono::milliseconds timeout);
-    void try_request(const routing_id_t& routing_id, message_t message,
-                     std::function<void(received_t)> on_reply,
-                     std::function<void(error_t)> on_error);
-
-    // --- reply ---
-    void reply(const routing_id_t& routing_id, uint64_t request_seq, message_t message);
-    send_result_t try_reply(const routing_id_t& routing_id, uint64_t request_seq,
-                            message_t message);
-
-    // --- receive ---
-    received_t recv();
-    maybe_t<received_t> try_recv();
+    // --- receive (throws zlink_error_t on failure) ---
+    received_t recv(recv_flags_t flags = recv_flags_t::none);
     void on_receive(std::function<void(received_t)> handler);
 };
 ```
@@ -568,38 +681,19 @@ class request_dealer_t {
     void set_default_request_timeout(std::chrono::milliseconds timeout);
     std::chrono::milliseconds get_default_request_timeout() const;
 
-    // --- request (async) ---
-    async_result_t<received_t> request(message_t message);
+    // --- request (coroutine, blocking submit — no flags) ---
     async_result_t<received_t> request(message_t message,
-                                       std::chrono::milliseconds timeout);
+                                       std::chrono::milliseconds timeout = {});
 
-    // --- request (callback) ---
+    // --- request (callback, throws on submit failure) ---
     void request(message_t message,
-                 std::function<void(received_t)> on_reply,
-                 std::function<void(error_t)> on_error,
-                 std::chrono::milliseconds timeout);
-    void request(message_t message,
-                 std::function<void(received_t)> on_reply,
-                 std::function<void(error_t)> on_error);
+                 std::function<void(request_result_t, received_t)> callback,
+                 send_flags_t flags = send_flags_t::none,
+                 std::chrono::milliseconds timeout = {});
 
-    // --- try_request (async) ---
-    async_result_t<received_t> try_request(message_t message);
-    async_result_t<received_t> try_request(message_t message,
-                                           std::chrono::milliseconds timeout);
-
-    // --- try_request (callback) ---
-    void try_request(message_t message,
-                     std::function<void(received_t)> on_reply,
-                     std::function<void(error_t)> on_error,
-                     std::chrono::milliseconds timeout);
-    void try_request(message_t message,
-                     std::function<void(received_t)> on_reply,
-                     std::function<void(error_t)> on_error);
-
-    // --- receive ---
-    received_t recv();
-    maybe_t<received_t> try_recv();
-    int on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
+    // --- receive (throws zlink_error_t on failure) ---
+    received_t recv(recv_flags_t flags = recv_flags_t::none);
+    void on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
 };
 ```
 
@@ -627,11 +721,11 @@ class monitor_handle_t {
     void* handle() noexcept;
     const void* handle() const noexcept;
 
-    int on_event(monitor_event_handler_fn handler, void* userdata = NULL);
+    void on_event(monitor_event_handler_fn handler, void* userdata = NULL);
     monitor_event_t recv();
-    maybe_t<monitor_event_t> try_recv();
+    maybe_t<monitor_event_t> recv(non_blocking_t);
     monitor_snapshot_t snapshot() const;
-    int close() noexcept;
+    void close() noexcept;
 };
 ```
 
@@ -651,11 +745,11 @@ class service_monitor_handle_t {
     void* handle() noexcept;
     const void* handle() const noexcept;
 
-    int on_event(service_event_handler_fn handler, void* userdata = NULL);
+    void on_event(service_event_handler_fn handler, void* userdata = NULL);
     service_event_t recv();
-    maybe_t<service_event_t> try_recv();
+    maybe_t<service_event_t> recv(non_blocking_t);
     monitor_snapshot_t snapshot() const;
-    int close() noexcept;
+    void close() noexcept;
 };
 ```
 
@@ -681,26 +775,26 @@ class registry_t {
     int last_error() const noexcept;
     void* handle() const;
 
-    int bind(const std::string& pub_endpoint, const std::string& router_endpoint);
-    int set_id(uint32_t registry_id);
-    int add_peer(const std::string& peer_pub_endpoint);
-    int set_heartbeat(uint32_t interval_ms, uint32_t timeout_ms);
-    int set_broadcast_interval(uint32_t interval_ms);
+    void bind(const std::string& pub_endpoint, const std::string& router_endpoint);
+    void set_id(uint32_t registry_id);
+    void add_peer(const std::string& peer_pub_endpoint);
+    void set_heartbeat(uint32_t interval_ms, uint32_t timeout_ms);
+    void set_broadcast_interval(uint32_t interval_ms);
 
-    int status_snapshot(zlink_registry_status_t& out) const;
-    int service_summary_snapshot(zlink_registry_service_summary_entry_t* entries,
-                                 size_t* count,
-                                 const zlink_registry_service_summary_filter_t* filter = NULL) const;
-    int topology_snapshot(zlink_registry_topology_entry_t* entries, size_t* count) const;
-    int topology_query(zlink_registry_topology_entry_t* entries, size_t* count,
-                       const zlink_registry_topology_filter_t* filter) const;
-    int member_peers(service_type service_type, const std::string& service_name,
-                     zlink_member_peer_entry_t* entries, size_t* count) const;
-    int member_peer_metadata(service_type service_type, const std::string& service_name,
-                             service_role service_role, const std::string& endpoint,
-                             message_t& metadata_out) const;
+    void status_snapshot(zlink_registry_status_t& out) const;
+    void service_summary_snapshot(zlink_registry_service_summary_entry_t* entries,
+                                  size_t* count,
+                                  const zlink_registry_service_summary_filter_t* filter = NULL) const;
+    void topology_snapshot(zlink_registry_topology_entry_t* entries, size_t* count) const;
+    void topology_query(zlink_registry_topology_entry_t* entries, size_t* count,
+                        const zlink_registry_topology_filter_t* filter) const;
+    void member_peers(service_type service_type, const std::string& service_name,
+                      zlink_member_peer_entry_t* entries, size_t* count) const;
+    void member_peer_metadata(service_type service_type, const std::string& service_name,
+                              service_role service_role, const std::string& endpoint,
+                              message_t& metadata_out) const;
 
-    int close();
+    void close();
 };
 
 } // namespace service
@@ -725,20 +819,20 @@ class discovery_t {
     int last_error() const noexcept;
     void* handle() const;
 
-    int connect_registry(const std::string& endpoint);
-    int set_value(int64_t value);
-    int get_value(int64_t* value_out) const;
-    int set_metadata(const void* data, size_t size);
-    int set_metadata(const std::vector<uint8_t>& bytes);
-    int set_metadata(const std::string& text);
-    int get_metadata(message_t& metadata_out) const;
-    int member_peers(zlink_member_peer_entry_t* entries, size_t* count) const;
-    int member_peer_metadata(service_role service_role, const std::string& endpoint,
-                             message_t& metadata_out) const;
+    void connect_registry(const std::string& endpoint);
+    void set_value(int64_t value);
+    void get_value(int64_t* value_out) const;
+    void set_metadata(const void* data, size_t size);
+    void set_metadata(const std::vector<uint8_t>& bytes);
+    void set_metadata(const std::string& text);
+    void get_metadata(message_t& metadata_out) const;
+    void member_peers(zlink_member_peer_entry_t* entries, size_t* count) const;
+    void member_peer_metadata(service_role service_role, const std::string& endpoint,
+                              message_t& metadata_out) const;
 
     service_monitor_handle_t monitor_open(service_monitor_event events = service_monitor_event::all);
 
-    int close();
+    void close();
 };
 
 } // namespace service
@@ -762,33 +856,33 @@ class spot_node_t {
     int last_error() const noexcept;
     void* handle() const;
 
-    int bind(const std::string& endpoint);
+    void bind(const std::string& endpoint);
     std::string last_endpoint() const;
-    int connect_peer(const std::string& endpoint);
-    int disconnect_peer(const std::string& endpoint);
-    int attach_discovery(discovery_t& discovery);
+    void connect_peer(const std::string& endpoint);
+    void disconnect_peer(const std::string& endpoint);
+    void attach_discovery(discovery_t& discovery);
 
-    int set_routing_id(const routing_id_t& routing_id);
-    int get_routing_id(routing_id_t& out) const;
+    void set_routing_id(const routing_id_t& routing_id);
+    void get_routing_id(routing_id_t& out) const;
 
-    int set_tls_server(const std::string& cert, const std::string& key,
-                       bool require_client_cert = false);
-    int set_tls_client(const std::string& ca_cert, const std::string& hostname = "",
-                       bool trust_system = false);
+    void set_tls_server(const std::string& cert, const std::string& key,
+                        bool require_client_cert = false);
+    void set_tls_client(const std::string& ca_cert, const std::string& hostname = "",
+                        bool trust_system = false);
 
     // --- options ---
-    int set(socket_option_key_t<T> key, const T& value);
-    int get(socket_option_key_t<T> key, T& value) const;
+    void set(socket_option_key_t<T> key, const T& value);
+    void get(socket_option_key_t<T> key, T& value) const;
 
     // --- snapshots ---
-    int status_snapshot(zlink_spot_node_status_t& out) const;
-    int peers_snapshot(zlink_spot_node_peer_entry_t* entries, size_t* count) const;
-    int peers_query(zlink_spot_node_peer_entry_t* entries, size_t* count,
-                    const zlink_spot_node_peer_filter_t* filter) const;
-    int subjects_snapshot(zlink_spot_node_subject_entry_t* entries, size_t* count,
-                          const zlink_spot_node_subject_filter_t* filter = NULL) const;
+    void status_snapshot(zlink_spot_node_status_t& out) const;
+    void peers_snapshot(zlink_spot_node_peer_entry_t* entries, size_t* count) const;
+    void peers_query(zlink_spot_node_peer_entry_t* entries, size_t* count,
+                     const zlink_spot_node_peer_filter_t* filter) const;
+    void subjects_snapshot(zlink_spot_node_subject_entry_t* entries, size_t* count,
+                           const zlink_spot_node_subject_filter_t* filter = NULL) const;
 
-    int close();
+    void close();
 };
 
 } // namespace service
@@ -812,94 +906,83 @@ class spot_t {
     int last_error() const noexcept;
     void* handle() const;
 
-    // --- publish ---
-    void publish(const std::string& topic, message_t& part);
-    void publish(const std::string& topic, std::vector<message_t>& parts);
-    void publish(const char* topic, message_t& part);
-    void publish(const char* topic, std::vector<message_t>& parts);
-    send_result_t try_publish(const std::string& topic, message_t& part);
-    send_result_t try_publish(const std::string& topic, std::vector<message_t>& parts);
-    send_result_t try_publish(const char* topic, message_t& part);
-    send_result_t try_publish(const char* topic, std::vector<message_t>& parts);
+    // --- publish (throws zlink_error_t on failure) ---
+    void publish(const std::string& topic, message_t& part, send_flags_t flags = send_flags_t::none);
+    void publish(const std::string& topic, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    void publish(const char* topic, message_t& part, send_flags_t flags = send_flags_t::none);
+    void publish(const char* topic, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
 
-    // --- subscribe ---
-    subscribed_t subscribe();
-    maybe_t<subscribed_t> try_subscribe();
-    int set_subscription(const std::string& filter);
-    int unset_subscription(const std::string& filter);
-    int subscription_at(size_t index, std::string& filter_out, bool* is_pattern_out = NULL) const;
-    int on_subscribe(zlink_subscribe_handler_fn handler, void* userdata = NULL);
-    int on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
+    // --- subscribe (throws zlink_error_t on failure) ---
+    subscribed_t subscribe(recv_flags_t flags = recv_flags_t::none);
+    void set_subscription(const std::string& filter);
+    void unset_subscription(const std::string& filter);
+    void subscription_at(size_t index, std::string& filter_out, bool* is_pattern_out = NULL) const;
+    void on_subscribe(zlink_subscribe_handler_fn handler, void* userdata = NULL);
+    void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
     // --- identity ---
-    int set_routing_id(const routing_id_t& routing_id);
-    int get_routing_id(routing_id_t& out) const;
+    void set_routing_id(const routing_id_t& routing_id);
+    void get_routing_id(routing_id_t& out) const;
 
-    // --- routed send (spot → spot) ---
-    void send_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
-                   message_t& part);
-    void send_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
-                   std::vector<message_t>& parts);
-    send_result_t try_send_spot(const routing_id_t& dest_node_rid,
-                                const routing_id_t& dest_spot_rid,
-                                message_t& part);
-    send_result_t try_send_spot(const routing_id_t& dest_node_rid,
-                                const routing_id_t& dest_spot_rid,
-                                std::vector<message_t>& parts);
+    // --- routed send (spot → spot, throws zlink_error_t on failure) ---
+    void send_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
+                      message_t& part, send_flags_t flags = send_flags_t::none);
+    void send_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
+                      std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
 
-    // --- routed request (spot → spot, async) ---
-    async_result_t<received_t> request_spot(const routing_id_t& dest_node_rid,
-                                            const routing_id_t& dest_spot_rid,
-                                            message_t message,
-                                            std::chrono::milliseconds timeout = {});
-    void request_spot(const routing_id_t& dest_node_rid,
-                      const routing_id_t& dest_spot_rid,
-                      message_t message,
-                      std::function<void(received_t)> on_reply,
-                      std::function<void(error_t)> on_error,
-                      std::chrono::milliseconds timeout = {});
+    // --- routed request (spot → spot, coroutine, blocking submit — no flags) ---
+    async_result_t<received_t> request_to_spot(const routing_id_t& dest_node_rid,
+                                               const routing_id_t& dest_spot_rid,
+                                               message_t message,
+                                               std::chrono::milliseconds timeout = {});
 
-    // --- routed reply (spot → spot) ---
-    void reply_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
-                    uint64_t request_seq, message_t message);
+    // --- routed request (spot → spot, callback, throws on submit failure) ---
+    void request_to_spot(const routing_id_t& dest_node_rid,
+                         const routing_id_t& dest_spot_rid,
+                         message_t message,
+                         std::function<void(request_result_t, received_t)> callback,
+                         send_flags_t flags = send_flags_t::none,
+                         std::chrono::milliseconds timeout = {});
 
-    // --- routed send (spot → router) ---
-    void send_router(const routing_id_t& peer_rid, message_t& part);
-    void send_router(const routing_id_t& peer_rid, std::vector<message_t>& parts);
-    send_result_t try_send_router(const routing_id_t& peer_rid, message_t& part);
-    send_result_t try_send_router(const routing_id_t& peer_rid,
-                                  std::vector<message_t>& parts);
+    // --- routed reply (spot → spot, throws zlink_error_t on failure) ---
+    void reply_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
+                       uint64_t request_seq, message_t message, send_flags_t flags = send_flags_t::none);
 
-    // --- routed request (spot → router, async) ---
-    async_result_t<received_t> request_router(const routing_id_t& peer_rid,
-                                              message_t message,
-                                              std::chrono::milliseconds timeout = {});
-    void request_router(const routing_id_t& peer_rid,
-                        message_t message,
-                        std::function<void(received_t)> on_reply,
-                        std::function<void(error_t)> on_error,
-                        std::chrono::milliseconds timeout = {});
+    // --- routed send (spot → router, throws zlink_error_t on failure) ---
+    void send_to_router(const routing_id_t& peer_rid, message_t& part, send_flags_t flags = send_flags_t::none);
+    void send_to_router(const routing_id_t& peer_rid, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
 
-    // --- routed reply (spot → router) ---
-    void reply_router(const routing_id_t& peer_rid, uint64_t request_seq,
-                      message_t message);
+    // --- routed request (spot → router, coroutine, blocking submit — no flags) ---
+    async_result_t<received_t> request_to_router(const routing_id_t& peer_rid,
+                                                 message_t message,
+                                                 std::chrono::milliseconds timeout = {});
 
-    // --- routed receive ---
-    received_t recv_routed();
-    maybe_t<received_t> try_recv_routed();
-    int on_routed_receive(zlink_spot_handler_fn handler, void* userdata = NULL);
-    int on_dispatch_event(zlink_spot_dispatch_event_handler_fn handler,
-                          void* userdata = NULL);
+    // --- routed request (spot → router, callback, throws on submit failure) ---
+    void request_to_router(const routing_id_t& peer_rid,
+                           message_t message,
+                           std::function<void(request_result_t, received_t)> callback,
+                           send_flags_t flags = send_flags_t::none,
+                           std::chrono::milliseconds timeout = {});
+
+    // --- routed reply (spot → router, throws zlink_error_t on failure) ---
+    void reply_to_router(const routing_id_t& peer_rid, uint64_t request_seq,
+                         message_t message, send_flags_t flags = send_flags_t::none);
+
+    // --- routed receive (throws zlink_error_t on failure) ---
+    received_t recv_routed(recv_flags_t flags = recv_flags_t::none);
+    void on_routed_receive(zlink_spot_handler_fn handler, void* userdata = NULL);
+    void on_dispatch_event(zlink_spot_dispatch_event_handler_fn handler,
+                           void* userdata = NULL);
 
     // --- options ---
-    int set(socket_option_key_t<T> key, const T& value);
-    int get(socket_option_key_t<T> key, T& value) const;
-    int set(pub_option_key_t<T> key, const T& value);
-    int get(pub_option_key_t<T> key, T& value) const;
-    int set(sub_option_key_t<T> key, const T& value);
-    int get(sub_option_key_t<T> key, T& value) const;
+    void set(socket_option_key_t<T> key, const T& value);
+    void get(socket_option_key_t<T> key, T& value) const;
+    void set(pub_option_key_t<T> key, const T& value);
+    void get(pub_option_key_t<T> key, T& value) const;
+    void set(sub_option_key_t<T> key, const T& value);
+    void get(sub_option_key_t<T> key, T& value) const;
 
-    int close();
+    void close();
 };
 
 } // namespace service
@@ -923,11 +1006,11 @@ class registry_query_client_t {
     int last_error() const noexcept;
     void* handle() const;
 
-    int connect(const std::string& endpoint);
-    int snapshot(zlink_registry_topology_entry_t* entries, size_t* count,
-                 const zlink_registry_topology_filter_t* filter = NULL) const;
+    void connect(const std::string& endpoint);
+    void snapshot(zlink_registry_topology_entry_t* entries, size_t* count,
+                  const zlink_registry_topology_filter_t* filter = NULL) const;
 
-    int close();
+    void close();
 };
 
 } // namespace service
@@ -956,22 +1039,22 @@ class poller_t {
 
     // --- socket registration ---
     template<typename SocketLike>
-    int add(SocketLike& socket, poll_event events, void* user = NULL);
+    void add(SocketLike& socket, poll_event events, void* user = NULL);
     template<typename SocketLike>
-    int modify(SocketLike& socket, poll_event events);
+    void modify(SocketLike& socket, poll_event events);
     template<typename SocketLike>
-    int remove(SocketLike& socket);
+    void remove(SocketLike& socket);
 
     // --- file descriptor registration ---
-    int add(zlink_fd_t fd, poll_event events, void* user = NULL);
-    int modify(zlink_fd_t fd, poll_event events);
-    int remove(zlink_fd_t fd);
+    void add(zlink_fd_t fd, poll_event events, void* user = NULL);
+    void modify(zlink_fd_t fd, poll_event events);
+    void remove(zlink_fd_t fd);
 
     // --- wait ---
     int wait(poll_event_t* event, long timeout = -1);
     int wait_all(std::vector<poll_event_t>& events, long timeout = -1);
 
-    int destroy() noexcept;
+    void destroy() noexcept;
 };
 ```
 
@@ -999,11 +1082,11 @@ class timer_t {
     void* handle() noexcept;
     const void* handle() const noexcept;
 
-    int start(uint64_t interval_ns, uint64_t repeat_count);
-    int stop();
-    int recv(uint64_t* fire_count_out, int flags = 0);
-    int set_handler(zlink_timer_handler_fn handler, void* userdata = NULL);
-    int destroy();
+    void start(uint64_t interval_ns, uint64_t repeat_count);
+    void stop();
+    void recv(uint64_t* fire_count_out, int flags = 0);
+    void set_handler(zlink_timer_handler_fn handler, void* userdata = NULL);
+    void destroy();
 };
 ```
 

@@ -2,6 +2,8 @@
 
 #include "utils/precompiled.hpp"
 
+#include "api/close_result_internal.hpp"
+#include "api/config_result_internal.hpp"
 #include "core/ctx.hpp"
 #include "utils/err.hpp"
 #include "utils/ip.hpp"
@@ -82,11 +84,11 @@ void *zlink_ctx_new (void)
     return ctx;
 }
 
-int zlink_ctx_term (void *ctx_)
+zlink_close_result_t zlink_ctx_term (void *ctx_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
-        return -1;
+        return ZLINK_CLOSE_INVALID_HANDLE;
     }
 
     const int rc = (static_cast<zlink::ctx_t *> (ctx_))->terminate ();
@@ -97,25 +99,29 @@ int zlink_ctx_term (void *ctx_)
     }
 
     errno = en;
-    return rc;
+    return zlink::close_result_internal::from_rc (rc);
 }
 
-int zlink_ctx_shutdown (void *ctx_)
+zlink_close_result_t zlink_ctx_shutdown (void *ctx_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
-        return -1;
+        return ZLINK_CLOSE_INVALID_HANDLE;
     }
-    return (static_cast<zlink::ctx_t *> (ctx_))->shutdown ();
+    return zlink::close_result_internal::from_rc (
+      (static_cast<zlink::ctx_t *> (ctx_))->shutdown ());
 }
 
-int zlink_ctx_set (void *ctx_, zlink_ctx_option_t option_, int optval_)
+zlink_config_result_t zlink_ctx_set (void *ctx_,
+                                     zlink_ctx_option_t option_,
+                                     int optval_)
 {
     if (!is_public_ctx_set_option (option_)) {
         errno = EINVAL;
-        return -1;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
-    return zlink_ctx_set_ext (ctx_, option_, &optval_, sizeof (int));
+    return zlink::config_result_internal::from_rc (
+      zlink_ctx_set_ext (ctx_, option_, &optval_, sizeof (int)));
 }
 
 int zlink_ctx_set_ext (void *ctx_,
@@ -131,15 +137,29 @@ int zlink_ctx_set_ext (void *ctx_,
       ->set (option_, optval_, optvallen_);
 }
 
-int zlink_ctx_get (void *ctx_, zlink_ctx_option_t option_)
+int zlink_ctx_get (void *ctx_,
+                   zlink_ctx_option_t option_,
+                   zlink_config_result_t *error_out_)
 {
     if (!is_public_ctx_get_option (option_)) {
         errno = EINVAL;
+        if (error_out_)
+            *error_out_ = ZLINK_CONFIG_INVALID_ARGUMENT;
         return -1;
     }
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
+        if (error_out_)
+            *error_out_ = ZLINK_CONFIG_INVALID_HANDLE;
         return -1;
     }
-    return (static_cast<zlink::ctx_t *> (ctx_))->get (option_);
+    const int result = (static_cast<zlink::ctx_t *> (ctx_))->get (option_);
+    if (result < 0) {
+        if (error_out_)
+            *error_out_ = zlink::config_result_internal::from_errno (errno);
+    } else {
+        if (error_out_)
+            *error_out_ = ZLINK_CONFIG_OK;
+    }
+    return result;
 }

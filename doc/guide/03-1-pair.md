@@ -114,15 +114,17 @@ zlink_bind(pair, "tcp://*:5556");
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-int rc = zlink_recv(pair, &source_rid, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_recv(
+    pair, &source_rid, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
 }
 ```
 
 > When HWM is reached, `zlink_send()` blocks (default) or returns
-> `EAGAIN` with `ZLINK_DONTWAIT`. For advanced backpressure patterns,
+> `ZLINK_SUBMIT_BACKPRESSURED` with `ZLINK_DONTWAIT`. For advanced
+> backpressure patterns,
 > see [Performance Guide](10-performance.md).
 
 ??? example "Full Sample Code"

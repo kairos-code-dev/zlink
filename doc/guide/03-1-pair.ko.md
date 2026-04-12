@@ -114,15 +114,16 @@ zlink_bind(pair, "tcp://*:5556");
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-int rc = zlink_recv(pair, &source_rid, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_recv(
+    pair, &source_rid, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
 }
 ```
 
 > HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
-> `EAGAIN`을 반환한다. 고급 backpressure 패턴은
+> `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 고급 backpressure 패턴은
 > [성능 가이드](10-performance.ko.md)를 참고.
 
 ??? example "Full Sample Code"
@@ -292,7 +293,7 @@ zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
 
 ### HWM 동작
 
-피어가 없거나 느릴 때, 송신 메시지는 HWM까지 큐잉된다. HWM 초과 시 `zlink_send()`가 블록(기본) 또는 `EAGAIN` 반환(`ZLINK_DONTWAIT`).
+피어가 없거나 느릴 때, 송신 메시지는 HWM까지 큐잉된다. HWM 초과 시 `zlink_send()`가 블록(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환(`ZLINK_DONTWAIT`).
 
 ### LINGER 설정
 

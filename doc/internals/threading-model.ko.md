@@ -9,7 +9,7 @@
 | 스레드 | 역할 | 수량 |
 |--------|------|------|
 | Application Thread | zlink_send/recv 호출 | 사용자 정의 |
-| I/O Thread | Boost.Asio io_context 비동기 처리 | 설정 가능 (기본 2) |
+| I/O Thread | Boost.Asio io_context 비동기 처리 | 설정 가능 (기본 1; `ZLINK_IO_THREADS_DFLT` 참조) |
 | Reaper Thread | 종료된 소켓/세션 자원 정리 | 1 |
 
 ### 1.2 스레드 다이어그램

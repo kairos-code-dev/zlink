@@ -6,7 +6,21 @@ stable public results at the API boundary.
 ## Layers
 
 - Internal execution paths keep using `int errno`.
-- Exported C APIs normalize submit failures to `zlink_submit_result_t`.
+- Exported C APIs normalize failures into **eight function-specific typed
+  result enums**. The exact enum depends on the function category:
+  - `zlink_submit_result_t` — send / publish / request submit / reply submit
+  - `zlink_request_result_t` — request completion (callback)
+  - `zlink_recv_result_t` — recv / subscribe / monitor recv / timer recv
+  - `zlink_handler_result_t` — handler registration
+  - `zlink_close_result_t` — close / destroy
+  - `zlink_bind_result_t` — bind
+  - `zlink_connect_result_t` — connect / disconnect / unbind
+  - `zlink_config_result_t` — option set/get, snapshot, poller mutation,
+    message lifecycle, timer config
+- Result enum values are globally unique across the 0-703 range so a single
+  `int` always identifies the origin unambiguously.
+- See [doc/spec/core/errno-map.md](/home/hep7/project/kairos/zlink/doc/spec/core/errno-map.md)
+  for the canonical enum catalog.
 - Request reply callbacks still pass raw `errno_`, but that completion channel
   is normalized by contract as `zlink_request_result_t`.
 
@@ -43,7 +57,10 @@ the typed-result policy is meant to prevent.
 ## Submit Normalization
 
 Send, request submit, and reply submit share one public result type:
-`zlink_submit_result_t`.
+`zlink_submit_result_t` (13 values: OK, BACKPRESSURED, NOT_CONNECTED,
+NOT_FOUND, TERMINATED, INVALID_HANDLE, INVALID_ARGUMENT, NOT_SUPPORTED,
+INVALID_STATE, THREAD_VIOLATION, OUT_OF_MEMORY, SEQ_EXHAUSTED,
+INTERNAL_ERROR).
 
 The normalization helper lives in
 [core/src/api/submit_result_internal.hpp](/home/hep7/project/kairos/zlink/core/src/api/submit_result_internal.hpp).
@@ -52,9 +69,28 @@ It maps the internal submit errno catalog to public submit results.
 ## Request Completion Normalization
 
 Request completion uses a separate public result type:
-`zlink_request_result_t`.
+`zlink_request_result_t` (5 values: OK, TIMED_OUT, NOT_FOUND, TERMINATED,
+PROTOCOL_ERROR).
 
 The normalization helper lives in
 [core/src/api/request_result_internal.hpp](/home/hep7/project/kairos/zlink/core/src/api/request_result_internal.hpp).
 It maps callback completion errno values to the public completion result
 contract.
+
+## Binding Surface
+
+Language bindings inherit this 8-category structure as eight per-function
+exception/error subclasses (e.g. `SubmitException` / `BindException` /
+`RecvException` ...). The method signature reveals which failure category
+can occur. See
+[doc/spec/bindings/README.md](/home/hep7/project/kairos/zlink/doc/spec/bindings/README.md)
+(Per-Function Error Type Hierarchy) for the canonical binding rule and
+[doc/spec/core/errno-map.md](/home/hep7/project/kairos/zlink/doc/spec/core/errno-map.md)
+for the full enum catalog.
+
+## `zlink_errno()` Scope
+
+`zlink_errno()` exists primarily as an **`INTERNAL_ERROR` detail accessor**
+(and for the handful of coarse buckets that still collapse multiple causes).
+When a public result enum is already self-descriptive (e.g. `BACKPRESSURED`,
+`NOT_FOUND`, `TIMED_OUT`), callers do not need to consult `zlink_errno()`.

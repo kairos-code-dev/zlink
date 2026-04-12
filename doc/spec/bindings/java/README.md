@@ -807,11 +807,10 @@ Implements `AutoCloseable`.
 
 ```java
 public final class TopicMessage implements AutoCloseable {
-    TopicMessage(RoutingId routingId, String topicId, Message[] parts);
+    TopicMessage(RoutingId routingId, String topic, Message[] parts);
 
-    boolean hasRoutingId();
-    RoutingId routingId();
-    String topicId();
+    Optional<RoutingId> routingId();
+    String topic();                          // UTF-8
     List<Message> parts();
     boolean isSinglePart();
     Message firstPart();

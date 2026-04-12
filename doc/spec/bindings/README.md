@@ -429,6 +429,69 @@ request(parts, callback, flags = 0, timeout = 0)    // throws on submit failure
 - 편의 기능은 결과 객체 메서드로 둔다.
   - 예: `singlePartOrThrow()`
 
+### 도메인 객체 Canonical Shape (모든 바인딩 공통)
+
+각 도메인 객체는 아래 canonical field/method 집합을 **그대로** 노출한다.
+언어별로 명명법(camelCase / snake_case / PascalCase) 만 변환하고,
+**필드 타입과 메서드 의미는 바꾸지 않는다.** 언어별 "편의" 라는 이유로
+canonical 에 없는 메서드를 추가하거나(`__iter__`, `to_bytes_list` 등) 일부
+메서드만 생략하면 안 된다.
+
+#### `TopicMessage`
+
+SUB / XSUB / Spot subscribe 의 recv 결과. C API `zlink_subscribe()` 의
+4개 out 파라미터를 하나로 묶는다.
+
+| 구성 | 타입 | 의미 |
+|------|------|------|
+| `routing_id` | `RoutingId?` (optional) | 송신자 routing id. transport 가 carry 안 하면 null/None/empty |
+| `topic` | **`string` (UTF-8)** | 매칭된 topic. **bytes 가 아니다.** |
+| `parts` | `List<Message>` / `Vec<Message>` | multipart payload |
+| `is_single_part()` | `bool` | `parts.size() == 1` |
+| `first_part()` | `Message` | `parts[0]`; 비어있으면 에러/예외 |
+| `single_part_or_throw()` | `Message` | `is_single_part()` 면 part 반환, 아니면 에러/예외 |
+| `close()` / `Dispose()` / `Drop` | — | 보유 parts 정리. 언어별 lifecycle 관용구 적용 |
+
+규칙:
+- `Subscribed` 나 그와 유사한 subclass 를 만들지 않는다. `TopicMessage`
+  하나만 노출한다.
+- `topic` 은 UTF-8 `string` 이다. `bytes` / `byte[]` / `Vec<u8>` 으로
+  노출하지 않는다 (내부적으로 raw bytes 로 왔더라도 공개 API 는 decode).
+- `RoutingId` 필드는 typed `RoutingId` 하나만 둔다. `RoutingId: string` +
+  `RoutingIdValue: RoutingId?` 같은 이중 property 금지.
+
+#### `Received`
+
+PAIR / DEALER / ROUTER 의 recv 결과. topic 필드가 없는 점 외에는
+`TopicMessage` 와 동일한 편의 메서드 집합을 가진다.
+
+| 구성 | 타입 | 의미 |
+|------|------|------|
+| `routing_id` | `RoutingId?` | 송신자 routing id |
+| `request_seq` | `uint64?` | request-reply 모드일 때 설정, 아니면 null |
+| `parts` | `List<Message>` | multipart payload |
+| `is_single_part()` | `bool` | 동일 |
+| `first_part()` | `Message` | 동일 |
+| `single_part_or_throw()` | `Message` | 동일 |
+| `close()` / 동등 | — | 동일 |
+
+#### `SubscriptionEvent`
+
+XPub 이 받는 subscribe/unsubscribe 이벤트.
+
+| 구성 | 타입 | 의미 |
+|------|------|------|
+| `routing_id` | `RoutingId?` | 구독자 routing id |
+| `topic` | `string` (UTF-8) | 구독/해제 topic |
+| `subscribed` | `bool` | true=subscribe, false=unsubscribe |
+
+규칙:
+- value object 로만 노출한다 (메서드 없음, 필드만).
+- `close()` 등 lifecycle 없음 (값 타입).
+
+위 canonical 을 벗어난 추가 메서드/필드는 정책 위반이다. 언어별 spec 에서
+누락이 발견되면 canonical 기준으로 채워 넣고, 추가된 비표준 메서드는 삭제한다.
+
 ## Socket Type Capability Policy
 - 소켓 타입별 능력은 타입 자체에만 노출한다.
 - 관련 없는 소켓은 관련 없는 함수에 접근할 수 없어야 한다.

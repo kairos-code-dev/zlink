@@ -191,7 +191,7 @@ class sub_socket_t : public subscriber_socket_t {
 
     // --- receive ---
     /// @throws recv_error_t
-    subscribed_t subscribe(recv_flags_t flags = recv_flags_t::none);
+    topic_message_t subscribe(recv_flags_t flags = recv_flags_t::none);
     /// @throws handler_error_t
     void on_subscribe(zlink_subscribe_handler_fn handler, void* userdata = NULL);
 
@@ -428,7 +428,7 @@ class xsub_socket_t : public subscriber_socket_t {
 
     // --- receive ---
     /// @throws recv_error_t
-    subscribed_t subscribe(recv_flags_t flags = recv_flags_t::none);
+    topic_message_t subscribe(recv_flags_t flags = recv_flags_t::none);
     /// @throws handler_error_t
     void on_subscribe(zlink_subscribe_handler_fn handler, void* userdata = NULL);
 
@@ -566,15 +566,31 @@ struct received_t {
 };
 ```
 
-### subscribed_t
+### topic_message_t
 
-Aggregates one subscribe recv result with topic and source routing id.
+Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
+Owns `message_t` parts; destructor releases them.
 
 ```cpp
-struct subscribed_t {
-    routing_id_t routing_id;
-    std::string topic;
-    std::vector<message_t> parts;
+class topic_message_t {
+public:
+    topic_message_t(std::optional<routing_id_t> routing_id,
+                    std::string topic,
+                    std::vector<message_t> parts);
+
+    const std::optional<routing_id_t>& routing_id() const noexcept;  // nullopt if transport carries no source id
+    const std::string& topic() const noexcept;                       // UTF-8
+    const std::vector<message_t>& parts() const noexcept;
+    std::vector<message_t>& parts() noexcept;
+
+    bool is_single_part() const noexcept;
+    /// @throws recv_error_t
+    message_t& first_part();
+    /// @throws recv_error_t
+    message_t single_part_or_throw();
+
+    /// @throws close_error_t
+    void close();
 };
 ```
 
@@ -1227,7 +1243,7 @@ class spot_t {
 
     // --- subscribe ---
     /// @throws recv_error_t
-    subscribed_t subscribe(recv_flags_t flags = recv_flags_t::none);
+    topic_message_t subscribe(recv_flags_t flags = recv_flags_t::none);
     /// @throws config_error_t
     void set_subscription(const std::string& filter);
     /// @throws config_error_t

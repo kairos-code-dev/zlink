@@ -548,11 +548,22 @@ pub struct Received {
 
 ### TopicMessage
 
+Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
+`Drop` releases owned `Message` parts; explicit `close()` is available
+for deterministic cleanup.
+
 ```rust
 pub struct TopicMessage {
-    pub routing_id: Option<RoutingId>,
-    pub topic: String,
+    pub routing_id: Option<RoutingId>,   // None when transport carries no source id
+    pub topic: String,                   // UTF-8
     pub parts: Vec<Message>,
+}
+
+impl TopicMessage {
+    pub fn is_single_part(&self) -> bool;
+    pub fn first_part(&self) -> Result<&Message, RecvError>;
+    pub fn single_part_or_error(self) -> Result<Message, RecvError>;
+    pub fn close(self) -> Result<(), CloseError>;
 }
 ```
 

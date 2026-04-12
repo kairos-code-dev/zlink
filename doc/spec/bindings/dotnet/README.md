@@ -166,7 +166,7 @@ public sealed class SubSocket : SubscriberSocketBase
     /// <exception cref="ZlinkConfigException"/>
     void UnsetSubscription(string topicOrPattern);
     /// <exception cref="ZlinkRecvException"/>
-    Subscribed Subscribe(RecvFlags flags = RecvFlags.None);
+    TopicMessage Subscribe(RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSubscribe(SocketSubscribeHandler handler);
 }
@@ -405,7 +405,7 @@ public sealed class XSubSocket : SubscriberSocketBase
     /// <exception cref="ZlinkConfigException"/>
     void UnsetSubscription(string topicOrPattern);
     /// <exception cref="ZlinkRecvException"/>
-    Subscribed Subscribe(RecvFlags flags = RecvFlags.None);
+    TopicMessage Subscribe(RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSubscribe(SocketSubscribeHandler handler);
 }
@@ -854,27 +854,21 @@ public sealed class Received
 
 ### TopicMessage
 
-Topic-aware recv result used by SUB and Spot subscribe paths.
+Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
+Implements `IDisposable`.
 
 ```csharp
-public class TopicMessage
+public sealed class TopicMessage : IDisposable
 {
-    string RoutingId { get; }
-    RoutingId? RoutingIdValue { get; }
-    string Topic { get; }
+    RoutingId? RoutingId { get; }          // null when transport carries no source id
+    string Topic { get; }                  // UTF-8
     IReadOnlyList<Message> Parts { get; }
-    bool HasSinglePart { get; }
-
+    bool IsSinglePart { get; }
+    Message FirstPart();
     Message SinglePartOrThrow();
+
+    void Dispose();                        // @throws ZlinkCloseException
 }
-```
-
-### Subscribed
-
-Topic-aware recv result from subscriber sockets. Extends `TopicMessage`.
-
-```csharp
-public sealed class Subscribed : TopicMessage { }
 ```
 
 ### SubscriptionEvent
@@ -1129,7 +1123,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     void UnsetSubscription(string topicOrPattern);
     /// <exception cref="ZlinkRecvException"/>
-    Subscribed Subscribe(RecvFlags flags = RecvFlags.None);
+    TopicMessage Subscribe(RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSubscribe(SpotSubHandler handler);
     /// <exception cref="ZlinkHandlerException"/>

@@ -416,11 +416,21 @@ func (r *Received) Close() error
 
 ### TopicMessage
 
+Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
+
 ```go
+// RoutingID returns the sender routing id. Empty when the transport does
+// not carry a source id (check with HasRoutingID).
 func (t *TopicMessage) RoutingID() RoutingID
+func (t *TopicMessage) HasRoutingID() bool
+// Topic is the matched topic (UTF-8).
 func (t *TopicMessage) Topic() string
 func (t *TopicMessage) Parts() []*Message
-// SinglePartOrError returns the only part or a *ConfigError when parts != 1.
+
+func (t *TopicMessage) IsSinglePart() bool
+// FirstPart returns parts[0] or *RecvError when parts is empty.
+func (t *TopicMessage) FirstPart() (*Message, error)
+// SinglePartOrError returns the only part or *RecvError when parts != 1.
 func (t *TopicMessage) SinglePartOrError() (*Message, error)
 // Close releases the topic message. Returns *CloseError on failure.
 func (t *TopicMessage) Close() error

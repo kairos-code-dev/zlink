@@ -121,8 +121,8 @@ class SubSocket:
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
     def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
     def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
-    def subscribe(self, *, flags: int = 0) -> Subscribed: ...                    # Raises: RecvError
-    def on_subscribe(self, handler: Callable[[Subscribed], None]) -> None: ...   # Raises: HandlerError
+    def subscribe(self, *, flags: int = 0) -> TopicMessage: ...                    # Raises: RecvError
+    def on_subscribe(self, handler: Callable[[TopicMessage], None]) -> None: ...   # Raises: HandlerError
     def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -278,8 +278,8 @@ class XSubSocket:
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
     def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
     def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
-    def subscribe(self, *, flags: int = 0) -> Subscribed: ...                    # Raises: RecvError
-    def on_subscribe(self, handler: Callable[[Subscribed], None]) -> None: ...   # Raises: HandlerError
+    def subscribe(self, *, flags: int = 0) -> TopicMessage: ...                    # Raises: RecvError
+    def on_subscribe(self, handler: Callable[[TopicMessage], None]) -> None: ...   # Raises: HandlerError
     def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -461,20 +461,20 @@ class Received:
     # supports `with` and `async with` — __exit__ raises CloseError
 ```
 
-### TopicMessage / Subscribed
+### TopicMessage
 
 ```python
 class TopicMessage:
-    topic: bytes
-    routing_id: RoutingId | None
-    parts: tuple[ReceivedMessage, ...]
-    def __iter__(self) -> Iterator: ...
-    def __len__(self) -> int: ...
-    def to_bytes_list(self) -> list[bytes]: ...
-    def close(self) -> None: ...                 # Raises: CloseError
+    routing_id: RoutingId | None             # None when transport carries no source id
+    topic: str                               # UTF-8
+    parts: tuple[Message, ...]
 
-class Subscribed(TopicMessage):
-    pass
+    def is_single_part(self) -> bool: ...
+    def first_part(self) -> Message: ...
+    def single_part_or_throw(self) -> Message: ...
+    def close(self) -> None: ...             # Raises: CloseError
+    def __enter__(self) -> "TopicMessage": ...
+    def __exit__(self, *args) -> None: ...
 ```
 
 ### SubscriptionEvent
@@ -884,8 +884,8 @@ class Spot:
     def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
     def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
     def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
-    def subscribe(self, *, flags: int = 0) -> Subscribed: ...                    # Raises: RecvError
-    def on_subscribe(self, handler: Callable[[Subscribed], None]) -> None: ...   # Raises: HandlerError
+    def subscribe(self, *, flags: int = 0) -> TopicMessage: ...                    # Raises: RecvError
+    def on_subscribe(self, handler: Callable[[TopicMessage], None]) -> None: ...   # Raises: HandlerError
     def on_send_ready(self, handler: Callable[[Spot], None]) -> None: ...        # Raises: HandlerError
 
     # --- routed send (spot → spot) ---

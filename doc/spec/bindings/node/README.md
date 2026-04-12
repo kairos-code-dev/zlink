@@ -165,7 +165,7 @@ class SubSocket {
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {RecvError} */
-    subscribe(flags?: RecvFlags): Subscribed;
+    subscribe(flags?: RecvFlags): TopicMessage;
     /** @throws {HandlerError} */
     onSubscribe(handler: SocketSubscribeHandler): void;
     /** @throws {ConfigError} */
@@ -395,7 +395,7 @@ class XSubSocket {
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {RecvError} */
-    subscribe(flags?: RecvFlags): Subscribed;
+    subscribe(flags?: RecvFlags): TopicMessage;
     /** @throws {HandlerError} */
     onSubscribe(handler: SocketSubscribeHandler): void;
     /** @throws {CloseError} */
@@ -530,15 +530,20 @@ class Received {
 }
 ```
 
-### Subscribed
+### TopicMessage
+
+Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
 
 ```typescript
-class Subscribed {
-    readonly routingId: Buffer | null;
-    readonly topic: string;
+class TopicMessage {
+    readonly routingId: RoutingId | null;    // null when transport carries no source id
+    readonly topic: string;                  // UTF-8
     readonly parts: Message[];
-    toBytesList(): Buffer[];
-    /** @throws {ConfigError} */
+    isSinglePart(): boolean;
+    firstPart(): Message;
+    /** @throws {RecvError} */
+    singlePartOrThrow(): Message;
+    /** @throws {CloseError} */
     close(): void;
 }
 ```
@@ -1025,7 +1030,7 @@ class Spot {
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {RecvError} */
-    subscribe(flags?: RecvFlags): Subscribed;
+    subscribe(flags?: RecvFlags): TopicMessage;
     /** @throws {HandlerError} */
     onSubscribe(handler: SpotSubHandler): void;
     /** @throws {HandlerError} */

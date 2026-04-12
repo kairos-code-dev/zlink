@@ -13,12 +13,15 @@ binding must expose. Unexported methods and internal helpers are omitted.
 ### Context
 
 ```go
+// NewContext creates a new zlink context. Returns *ConfigError on failure.
 func NewContext() (*Context, error)
+// Close terminates the context. Returns *CloseError on failure.
 func (c *Context) Close() error
+// Shutdown requests a graceful shutdown. Returns *CloseError on failure.
 func (c *Context) Shutdown() error
 func (c *Context) Options() *ContextOptions
 
-// Socket factories
+// Socket factories — each returns *ConfigError on failure.
 func (c *Context) PairSocket() (*PairSocket, error)
 func (c *Context) PubSocket() (*PubSocket, error)
 func (c *Context) SubSocket() (*SubSocket, error)
@@ -36,6 +39,7 @@ func (c *Context) RegistryQueryClient() (*RegistryQueryClient, error)
 ### ContextOptions
 
 ```go
+// All ContextOptions getters and setters return *ConfigError on failure.
 func (o *ContextOptions) SetIOThreads(value int) error
 func (o *ContextOptions) IOThreads() (int, error)
 func (o *ContextOptions) SetMaxSockets(value int) error
@@ -76,14 +80,23 @@ inherited from internal base types. Only the public methods are shown.
 ### PairSocket
 
 ```go
+// Bind binds the socket to endpoint. Returns *BindError on failure.
 func (s *PairSocket) Bind(endpoint string) error
+// Unbind detaches a previously bound endpoint. Returns *ConnectError on failure.
 func (s *PairSocket) Unbind(endpoint string) error
+// Connect connects the socket to endpoint. Returns *ConnectError on failure.
 func (s *PairSocket) Connect(endpoint string) error
+// Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *PairSocket) Disconnect(endpoint string) error
+// Send submits parts on the socket. Returns *SubmitError on failure.
 func (s *PairSocket) Send(flags SendFlags, parts ...*Message) error
+// Recv receives a message. Returns *RecvError on failure.
 func (s *PairSocket) Recv(flags RecvFlags) (*Received, error)
+// OnReceive registers a receive handler. Returns *HandlerError on failure.
 func (s *PairSocket) OnReceive(handler func(*Received)) error
+// OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *PairSocket) OnSendReady(handler func()) error
+// Option setters/getters return *ConfigError on failure.
 func (s *PairSocket) SetSendHWM(value int) error
 func (s *PairSocket) SendHWM() (int, error)
 func (s *PairSocket) SetRecvHWM(value int) error
@@ -95,20 +108,29 @@ func (s *PairSocket) SetTCPKeepalive(value bool) error
 func (s *PairSocket) SetTCPNoDelay(value bool) error
 func (s *PairSocket) SetIPv6(value bool) error
 func (s *PairSocket) LastEndpoint() (string, error)
+// TLS configuration returns *ConfigError on failure.
 func (s *PairSocket) SetTLSServer(certPath, keyPath string, requireClientCert bool) error
 func (s *PairSocket) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
+// Close closes the socket. Returns *CloseError on failure.
 func (s *PairSocket) Close() error
 ```
 
 ### PubSocket
 
 ```go
+// Bind binds the socket to endpoint. Returns *BindError on failure.
 func (s *PubSocket) Bind(endpoint string) error
+// Unbind detaches a previously bound endpoint. Returns *ConnectError on failure.
 func (s *PubSocket) Unbind(endpoint string) error
+// Connect connects the socket to endpoint. Returns *ConnectError on failure.
 func (s *PubSocket) Connect(endpoint string) error
+// Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *PubSocket) Disconnect(endpoint string) error
+// Publish sends parts on the given topic. Returns *SubmitError on failure.
 func (s *PubSocket) Publish(topic string, flags SendFlags, parts ...*Message) error
+// OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *PubSocket) OnSendReady(handler func()) error
+// Option setters/getters return *ConfigError on failure.
 func (s *PubSocket) SetNoDrop(value bool) error
 func (s *PubSocket) NoDrop() (bool, error)
 func (s *PubSocket) SetVerbose(value bool) error
@@ -117,95 +139,143 @@ func (s *PubSocket) SetVerboser(value bool) error
 func (s *PubSocket) Verboser() (bool, error)
 func (s *PubSocket) SetManual(value bool) error
 func (s *PubSocket) Manual() (bool, error)
+// AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
 func (s *PubSocket) AttachDiscovery(discovery *Discovery) error
+// Close closes the socket. Returns *CloseError on failure.
 func (s *PubSocket) Close() error
 ```
 
 ### SubSocket
 
 ```go
+// Bind binds the socket to endpoint. Returns *BindError on failure.
 func (s *SubSocket) Bind(endpoint string) error
+// Unbind detaches a previously bound endpoint. Returns *ConnectError on failure.
 func (s *SubSocket) Unbind(endpoint string) error
+// Connect connects the socket to endpoint. Returns *ConnectError on failure.
 func (s *SubSocket) Connect(endpoint string) error
+// Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *SubSocket) Disconnect(endpoint string) error
+// Subscription filter mutation returns *ConfigError on failure.
 func (s *SubSocket) SetSubscription(filter string) error
 func (s *SubSocket) UnsetSubscription(filter string) error
+// Subscribe receives the next topic message. Returns *RecvError on failure.
 func (s *SubSocket) Subscribe(flags RecvFlags) (*TopicMessage, error)
+// OnSubscribe registers a subscription handler. Returns *HandlerError on failure.
 func (s *SubSocket) OnSubscribe(handler func(*TopicMessage)) error
+// AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
 func (s *SubSocket) AttachDiscovery(discovery *Discovery) error
+// SubscriptionAt / TopicsCount are snapshot queries. Return *ConfigError on failure.
 func (s *SubSocket) SubscriptionAt(index int) (string, bool, error)
 func (s *SubSocket) TopicsCount() (int, error)
+// Close closes the socket. Returns *CloseError on failure.
 func (s *SubSocket) Close() error
 ```
 
 ### DealerSocket
 
 ```go
+// Bind binds the socket to endpoint. Returns *BindError on failure.
 func (s *DealerSocket) Bind(endpoint string) error
+// Unbind detaches a previously bound endpoint. Returns *ConnectError on failure.
 func (s *DealerSocket) Unbind(endpoint string) error
+// Connect connects the socket to endpoint. Returns *ConnectError on failure.
 func (s *DealerSocket) Connect(endpoint string) error
+// Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *DealerSocket) Disconnect(endpoint string) error
+// RoutingID / probe configuration returns *ConfigError on failure.
 func (s *DealerSocket) SetRoutingID(id RoutingID) error
 func (s *DealerSocket) RoutingID() (RoutingID, error)
 func (s *DealerSocket) SetProbe(value bool) error
+// Send submits parts on the socket. Returns *SubmitError on failure.
 func (s *DealerSocket) Send(flags SendFlags, parts ...*Message) error
+// Recv receives a message. Returns *RecvError on failure.
 func (s *DealerSocket) Recv(flags RecvFlags) (*Received, error)
+// OnReceive registers a receive handler. Returns *HandlerError on failure.
 func (s *DealerSocket) OnReceive(handler func(*Received)) error
+// OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *DealerSocket) OnSendReady(handler func()) error
+// AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
 func (s *DealerSocket) AttachDiscovery(discovery *Discovery) error
+// Close closes the socket. Returns *CloseError on failure.
 func (s *DealerSocket) Close() error
 ```
 
 ### RouterSocket
 
 ```go
+// Bind binds the socket to endpoint. Returns *BindError on failure.
 func (s *RouterSocket) Bind(endpoint string) error
+// Unbind detaches a previously bound endpoint. Returns *ConnectError on failure.
 func (s *RouterSocket) Unbind(endpoint string) error
+// Connect connects the socket to endpoint. Returns *ConnectError on failure.
 func (s *RouterSocket) Connect(endpoint string) error
+// Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *RouterSocket) Disconnect(endpoint string) error
+// RoutingID and router-specific flags return *ConfigError on failure.
 func (s *RouterSocket) SetRoutingID(id RoutingID) error
 func (s *RouterSocket) RoutingID() (RoutingID, error)
 func (s *RouterSocket) SetMandatory(value bool) error
 func (s *RouterSocket) SetHandover(value bool) error
 func (s *RouterSocket) SetProbe(value bool) error
 func (s *RouterSocket) SetConnectRoutingID(id RoutingID) error
+// SendTo submits parts to a specific peer. Returns *SubmitError on failure.
 func (s *RouterSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) error
+// Recv receives a message. Returns *RecvError on failure.
 func (s *RouterSocket) Recv(flags RecvFlags) (*Received, error)
+// OnReceive registers a receive handler. Returns *HandlerError on failure.
 func (s *RouterSocket) OnReceive(handler func(*Received)) error
+// OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *RouterSocket) OnSendReady(handler func()) error
+// AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
 func (s *RouterSocket) AttachDiscovery(discovery *Discovery) error
 
 // --- router → spot routed send ---
+// SendToSpot submits parts routed to a spot. Returns *SubmitError on failure.
 func (s *RouterSocket) SendToSpot(destNodeRid, destSpotRid RoutingID,
     flags SendFlags, parts ...*Message) error
 
 // --- router → spot routed request (callback) ---
+// RequestToSpot submits a routed request. Returns *SubmitError on submit failure;
+// callback receives RequestResult (maps to *RequestError on completion failure).
 func (s *RouterSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID,
     callback RequestReplyCallback, flags SendFlags,
     timeout time.Duration, parts ...*Message) error
 
 // --- router → spot routed reply ---
+// ReplyToSpot submits a routed reply. Returns *SubmitError on failure.
 func (s *RouterSocket) ReplyToSpot(destNodeRid, destSpotRid RoutingID,
     requestSeq uint64, flags SendFlags, parts ...*Message) error
 
 // --- router spot receive ---
+// RecvSpot receives a routed spot message. Returns *RecvError on failure.
 func (s *RouterSocket) RecvSpot(flags RecvFlags) (*Received, error)
+// OnSpotReceive registers a spot receive handler. Returns *HandlerError on failure.
 func (s *RouterSocket) OnSpotReceive(handler func(sourceNodeRid,
     sourceSpotRid RoutingID, requestSeq uint64, parts []*Message)) error
 
+// Close closes the socket. Returns *CloseError on failure.
 func (s *RouterSocket) Close() error
 ```
 
 ### XPubSocket
 
 ```go
+// Bind binds the socket to endpoint. Returns *BindError on failure.
 func (s *XPubSocket) Bind(endpoint string) error
+// Unbind detaches a previously bound endpoint. Returns *ConnectError on failure.
 func (s *XPubSocket) Unbind(endpoint string) error
+// Connect connects the socket to endpoint. Returns *ConnectError on failure.
 func (s *XPubSocket) Connect(endpoint string) error
+// Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *XPubSocket) Disconnect(endpoint string) error
+// Publish sends parts on the given topic. Returns *SubmitError on failure.
 func (s *XPubSocket) Publish(topic string, flags SendFlags, parts ...*Message) error
+// ReceiveSubscriptionEvent receives an XPub subscription event. Returns *RecvError on failure.
 func (s *XPubSocket) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error)
+// OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *XPubSocket) OnSendReady(handler func()) error
+// Option setters/getters return *ConfigError on failure.
 func (s *XPubSocket) SetNoDrop(value bool) error
 func (s *XPubSocket) NoDrop() (bool, error)
 func (s *XPubSocket) SetVerbose(value bool) error
@@ -214,36 +284,54 @@ func (s *XPubSocket) SetVerboser(value bool) error
 func (s *XPubSocket) Verboser() (bool, error)
 func (s *XPubSocket) SetManual(value bool) error
 func (s *XPubSocket) Manual() (bool, error)
+// Close closes the socket. Returns *CloseError on failure.
 func (s *XPubSocket) Close() error
 ```
 
 ### XSubSocket
 
 ```go
+// Bind binds the socket to endpoint. Returns *BindError on failure.
 func (s *XSubSocket) Bind(endpoint string) error
+// Unbind detaches a previously bound endpoint. Returns *ConnectError on failure.
 func (s *XSubSocket) Unbind(endpoint string) error
+// Connect connects the socket to endpoint. Returns *ConnectError on failure.
 func (s *XSubSocket) Connect(endpoint string) error
+// Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *XSubSocket) Disconnect(endpoint string) error
+// Subscription filter mutation returns *ConfigError on failure.
 func (s *XSubSocket) SetSubscription(filter string) error
 func (s *XSubSocket) UnsetSubscription(filter string) error
+// Subscribe receives the next topic message. Returns *RecvError on failure.
 func (s *XSubSocket) Subscribe(flags RecvFlags) (*TopicMessage, error)
+// OnSubscribe registers a subscription handler. Returns *HandlerError on failure.
 func (s *XSubSocket) OnSubscribe(handler func(*TopicMessage)) error
+// SubscriptionAt / TopicsCount are snapshot queries. Return *ConfigError on failure.
 func (s *XSubSocket) SubscriptionAt(index int) (string, bool, error)
 func (s *XSubSocket) TopicsCount() (int, error)
+// Close closes the socket. Returns *CloseError on failure.
 func (s *XSubSocket) Close() error
 ```
 
 ### StreamSocket
 
 ```go
+// Bind binds the socket to endpoint. Returns *BindError on failure.
 func (s *StreamSocket) Bind(endpoint string) error
+// Unbind detaches a previously bound endpoint. Returns *ConnectError on failure.
 func (s *StreamSocket) Unbind(endpoint string) error
+// RoutingID configuration returns *ConfigError on failure.
 func (s *StreamSocket) SetRoutingID(id RoutingID) error
 func (s *StreamSocket) RoutingID() (RoutingID, error)
+// SendTo submits parts to a specific peer. Returns *SubmitError on failure.
 func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) error
+// Recv receives a message. Returns *RecvError on failure.
 func (s *StreamSocket) Recv(flags RecvFlags) (*Received, error)
+// OnReceive registers a receive handler. Returns *HandlerError on failure.
 func (s *StreamSocket) OnReceive(handler func(*Received)) error
+// OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *StreamSocket) OnSendReady(handler func()) error
+// Option setters/getters return *ConfigError on failure.
 func (s *StreamSocket) SetNotify(value bool) error
 func (s *StreamSocket) Notify() (bool, error)
 func (s *StreamSocket) SetSendHWM(value int) error
@@ -257,8 +345,10 @@ func (s *StreamSocket) SetTCPKeepalive(value bool) error
 func (s *StreamSocket) SetTCPNoDelay(value bool) error
 func (s *StreamSocket) SetIPv6(value bool) error
 func (s *StreamSocket) LastEndpoint() (string, error)
+// TLS configuration returns *ConfigError on failure.
 func (s *StreamSocket) SetTLSServer(certPath, keyPath string, requireClientCert bool) error
 func (s *StreamSocket) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
+// Close closes the socket. Returns *CloseError on failure.
 func (s *StreamSocket) Close() error
 ```
 
@@ -269,17 +359,21 @@ func (s *StreamSocket) Close() error
 ### Message
 
 ```go
+// NewMessage allocates a new message from data. Returns *ConfigError on failure.
 func NewMessage(data []byte) (*Message, error)
 func (m *Message) Data() []byte
 func (m *Message) Size() int
 func (m *Message) RefCount() int
+// GetProperty reads a message property. Returns *ConfigError on failure.
 func (m *Message) GetProperty(name string) (string, bool, error)
+// Close releases the message. Returns *CloseError on failure.
 func (m *Message) Close() error
 ```
 
 ### RoutingID
 
 ```go
+// NewRoutingID builds a routing id from bytes. Returns *ConfigError on failure.
 func NewRoutingID(data []byte) (RoutingID, error)
 func (r RoutingID) Bytes() []byte
 func (r RoutingID) String() string
@@ -292,7 +386,9 @@ func (r RoutingID) Equal(other RoutingID) bool
 func (r *Received) RoutingID() RoutingID
 func (r *Received) Parts() []*Message
 func (r *Received) RequestSeq() (uint64, bool)
+// SinglePartOrError returns the only part or a *ConfigError when parts != 1.
 func (r *Received) SinglePartOrError() (*Message, error)
+// Close releases the received bundle. Returns *CloseError on failure.
 func (r *Received) Close() error
 ```
 
@@ -302,7 +398,9 @@ func (r *Received) Close() error
 func (t *TopicMessage) RoutingID() RoutingID
 func (t *TopicMessage) Topic() string
 func (t *TopicMessage) Parts() []*Message
+// SinglePartOrError returns the only part or a *ConfigError when parts != 1.
 func (t *TopicMessage) SinglePartOrError() (*Message, error)
+// Close releases the topic message. Returns *CloseError on failure.
 func (t *TopicMessage) Close() error
 ```
 
@@ -475,20 +573,108 @@ const (
 
 ### ZlinkError
 
-All failures are returned as `error`. The `Code() int` method returns
-a globally unique code that spans all result enum ranges (0-703).
-The code alone identifies the error without needing to know which
-enum it belongs to.
+All failures are returned as `error`. The Go binding mirrors the C API's
+per-function typed result enums as **eight concrete error struct types**,
+one per function category. Each struct implements the `error` interface
+and the common `ZlinkError` interface so callers may catch any zlink
+failure with a single type assertion or narrow to a specific category.
+
+`ZlinkError` is the common interface. The `Code() int` method returns
+a globally unique code that spans all result enum ranges (0-703); the
+code alone identifies the error without needing to know which enum it
+belongs to. `InternalErrno() int` returns the underlying OS errno (0 if
+not applicable).
 
 ```go
-type ZlinkError struct {
-    // internal fields
+type ZlinkError interface {
+    error
+    Code() int
+    InternalErrno() int
+}
+```
+
+The eight concrete error types follow the pattern below. Each carries
+its category-specific result code enum plus the OS errno. All implement
+`ZlinkError` and (optionally) `Unwrap() error` for compatibility with
+`errors.Is` / `errors.As`.
+
+```go
+type SubmitError struct {
+    Result SubmitResult
+    InternalErrno  int
 }
 
-func (e *ZlinkError) Code() int
-func (e *ZlinkError) Errno() int
-func (e *ZlinkError) Error() string
+func (e *SubmitError) Error() string
+func (e *SubmitError) Code() int
+func (e *SubmitError) Unwrap() error
+
+type RequestError struct {
+    Result RequestResult
+    InternalErrno  int
+}
+
+func (e *RequestError) Error() string
+func (e *RequestError) Code() int
+func (e *RequestError) Unwrap() error
+
+type RecvError struct {
+    Result RecvResult
+    InternalErrno  int
+}
+
+func (e *RecvError) Error() string
+func (e *RecvError) Code() int
+func (e *RecvError) Unwrap() error
+
+type HandlerError struct {
+    Result HandlerResult
+    InternalErrno  int
+}
+
+func (e *HandlerError) Error() string
+func (e *HandlerError) Code() int
+func (e *HandlerError) Unwrap() error
+
+type CloseError struct {
+    Result CloseResult
+    InternalErrno  int
+}
+
+func (e *CloseError) Error() string
+func (e *CloseError) Code() int
+func (e *CloseError) Unwrap() error
+
+type BindError struct {
+    Result BindResult
+    InternalErrno  int
+}
+
+func (e *BindError) Error() string
+func (e *BindError) Code() int
+func (e *BindError) Unwrap() error
+
+type ConnectError struct {
+    Result ConnectResult
+    InternalErrno  int
+}
+
+func (e *ConnectError) Error() string
+func (e *ConnectError) Code() int
+func (e *ConnectError) Unwrap() error
+
+type ConfigError struct {
+    Result ConfigResult
+    InternalErrno  int
+}
+
+func (e *ConfigError) Error() string
+func (e *ConfigError) Code() int
+func (e *ConfigError) Unwrap() error
 ```
+
+Each fallible function's Go doc comment names the concrete error type
+it returns. Callers may type-assert to the concrete type for category
+handling, or treat the value as `ZlinkError` / plain `error`.
 
 ---
 
@@ -502,17 +688,24 @@ func (r *RequestDealer) Socket() *DealerSocket
 
 // Synchronous request — blocks until reply or timeout.
 // timeout = 0 uses the socket default timeout.
+// Returns *SubmitError on submit failure, *RequestError on reply failure
+// (e.g. timeout, protocol error).
 func (r *RequestDealer) Request(timeout time.Duration,
     parts ...*Message) (*Received, error)
 
 // Callback request — submit may fail (returned as error).
 // timeout = 0 uses the socket default timeout.
+// Returns *SubmitError on submit failure; the callback receives a
+// RequestResult which maps to *RequestError for failures.
 func (r *RequestDealer) RequestCallback(callback RequestReplyCallback,
     flags SendFlags, timeout time.Duration,
     parts ...*Message) error
 
+// Recv receives a reply. Returns *RecvError on failure.
 func (r *RequestDealer) Recv(flags RecvFlags) (*Received, error)
+// OnReceive registers a receive handler. Returns *HandlerError on failure.
 func (r *RequestDealer) OnReceive(handler func(*Received)) error
+// Close closes the request dealer. Returns *CloseError on failure.
 func (r *RequestDealer) Close() error
 
 type RequestReplyCallback func(RequestResult, *Received)
@@ -526,19 +719,26 @@ func (r *RequestRouter) Socket() *RouterSocket
 
 // Synchronous request — blocks until reply or timeout.
 // timeout = 0 uses the socket default timeout.
+// Returns *SubmitError on submit failure, *RequestError on reply failure.
 func (r *RequestRouter) Request(routingID RoutingID, timeout time.Duration,
     parts ...*Message) (*Received, error)
 
 // Callback request — submit may fail (returned as error).
 // timeout = 0 uses the socket default timeout.
+// Returns *SubmitError on submit failure; the callback receives a
+// RequestResult which maps to *RequestError for failures.
 func (r *RequestRouter) RequestCallback(routingID RoutingID,
     callback RequestReplyCallback, flags SendFlags, timeout time.Duration,
     parts ...*Message) error
 
+// Reply submits a reply. Returns *SubmitError on failure.
 func (r *RequestRouter) Reply(routingID RoutingID, requestSeq uint64,
     flags SendFlags, parts ...*Message) error
+// Recv receives a request. Returns *RecvError on failure.
 func (r *RequestRouter) Recv(flags RecvFlags) (*Received, error)
+// OnReceive registers a receive handler. Returns *HandlerError on failure.
 func (r *RequestRouter) OnReceive(handler func(*Received)) error
+// Close closes the request router. Returns *CloseError on failure.
 func (r *RequestRouter) Close() error
 ```
 
@@ -549,19 +749,28 @@ func (r *RequestRouter) Close() error
 ### SocketMonitor
 
 ```go
+// OpenSocketMonitor creates a monitor on the given socket. Returns *ConfigError on failure.
 func OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*SocketMonitor, error)
+// Recv receives the next monitor event. Returns *RecvError on failure.
 func (m *SocketMonitor) Recv() (*MonitorEvent, error)
+// Snapshot captures the monitor snapshot. Returns *ConfigError on failure.
 func (m *SocketMonitor) Snapshot() (*MonitorSnapshot, error)
+// OnEvent registers an event handler. Returns *HandlerError on failure.
 func (m *SocketMonitor) OnEvent(handler func(*MonitorEvent)) error
+// Close closes the monitor. Returns *CloseError on failure.
 func (m *SocketMonitor) Close() error
 ```
 
 ### ServiceMonitor
 
 ```go
+// Recv receives the next service event. Returns *RecvError on failure.
 func (m *ServiceMonitor) Recv() (*ServiceMonitorEvent, error)
+// Snapshot captures the monitor snapshot. Returns *ConfigError on failure.
 func (m *ServiceMonitor) Snapshot() (*MonitorSnapshot, error)
+// OnEvent registers an event handler. Returns *HandlerError on failure.
 func (m *ServiceMonitor) OnEvent(handler func(*ServiceMonitorEvent)) error
+// Close closes the monitor. Returns *CloseError on failure.
 func (m *ServiceMonitor) Close() error
 ```
 
@@ -623,13 +832,16 @@ type ServiceEvent = ServiceMonitorEvent
 ### Registry
 
 ```go
+// Bind binds the registry endpoints. Returns *BindError on failure.
 func (r *Registry) Bind(pubEndpoint, routerEndpoint string) error
+// Registry configuration returns *ConfigError on failure.
 func (r *Registry) SetId(registryID uint32) error
 func (r *Registry) AddPeer(peerPubEndpoint string) error
 func (r *Registry) SetTLSServer(certPath, keyPath string, requireClientCert bool) error
 func (r *Registry) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
 func (r *Registry) SetHeartbeat(intervalMS, timeoutMS uint32) error
 func (r *Registry) SetBroadcastInterval(intervalMS uint32) error
+// Snapshot and query methods return *ConfigError on failure.
 func (r *Registry) StatusSnapshot() (*RegistryStatus, error)
 func (r *Registry) ServiceSummarySnapshot(filter *RegistryServiceSummaryFilter) ([]RegistryServiceSummaryEntry, error)
 func (r *Registry) MemberPeers(serviceType ServiceType, serviceName string) ([]MemberPeerEntry, error)
@@ -637,13 +849,16 @@ func (r *Registry) MemberPeerMetadata(serviceType ServiceType, serviceName strin
     serviceRole ServiceRole, endpoint string) (*Message, error)
 func (r *Registry) TopologySnapshot() ([]RegistryTopologyEntry, error)
 func (r *Registry) TopologyQuery(filter *RegistryTopologyFilter) ([]RegistryTopologyEntry, error)
+// Close closes the registry. Returns *CloseError on failure.
 func (r *Registry) Close() error
 ```
 
 ### Discovery
 
 ```go
+// ConnectRegistry connects discovery to a registry. Returns *ConnectError on failure.
 func (d *Discovery) ConnectRegistry(endpoint string) error
+// Discovery option getters/setters and snapshot queries return *ConfigError on failure.
 func (d *Discovery) SetValue(value int64) error
 func (d *Discovery) GetValue() (int64, error)
 func (d *Discovery) SetMetadata(data []byte) error
@@ -652,35 +867,47 @@ func (d *Discovery) MemberPeers() ([]MemberPeerEntry, error)
 func (d *Discovery) MemberPeerMetadata(serviceRole ServiceRole, endpoint string) (*Message, error)
 func (d *Discovery) MonitorOpen(events ...ServiceMonitorEventMask) (*ServiceMonitor, error)
 func (d *Discovery) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
+// Close closes the discovery handle. Returns *CloseError on failure.
 func (d *Discovery) Close() error
 ```
 
 ### SpotNode
 
 ```go
+// Bind binds the spot node endpoint. Returns *BindError on failure.
 func (n *SpotNode) Bind(endpoint string) error
+// ConnectPeer / DisconnectPeer manage peer links. Return *ConnectError on failure.
 func (n *SpotNode) ConnectPeer(endpoint string) error
 func (n *SpotNode) DisconnectPeer(endpoint string) error
+// AttachDiscovery and TLS setters return *ConfigError on failure.
 func (n *SpotNode) AttachDiscovery(discovery *Discovery) error
 func (n *SpotNode) SetTLSServer(certPath, keyPath string, requireClientCert bool) error
 func (n *SpotNode) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
+// Spot factory and snapshot queries return *ConfigError on failure.
 func (n *SpotNode) Spot() (*Spot, error)
 func (n *SpotNode) StatusSnapshot() (*SpotNodeStatus, error)
 func (n *SpotNode) PeersSnapshot() ([]SpotNodePeerEntry, error)
 func (n *SpotNode) PeersQuery(filter *SpotNodePeerFilter) ([]SpotNodePeerEntry, error)
 func (n *SpotNode) SubjectsSnapshot(filters ...*SpotNodeSubjectFilter) ([]SpotNodeSubjectEntry, error)
+// Close closes the spot node. Returns *CloseError on failure.
 func (n *SpotNode) Close() error
 ```
 
 ### Spot
 
 ```go
+// Publish sends parts on the given topic. Returns *SubmitError on failure.
 func (s *Spot) Publish(topic string, flags SendFlags, parts ...*Message) error
+// Subscription filter mutation returns *ConfigError on failure.
 func (s *Spot) SetSubscription(filter string) error
 func (s *Spot) UnsetSubscription(filter string) error
+// Subscribe receives the next topic message. Returns *RecvError on failure.
 func (s *Spot) Subscribe(flags RecvFlags) (*TopicMessage, error)
+// OnSubscribe registers a subscription handler. Returns *HandlerError on failure.
 func (s *Spot) OnSubscribe(handler func(*TopicMessage)) error
+// OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *Spot) OnSendReady(handler func()) error
+// Option setters return *ConfigError on failure.
 func (s *Spot) SetSendHWM(value int) error
 func (s *Spot) SetRecvHWM(value int) error
 func (s *Spot) SetLinger(value time.Duration) error
@@ -689,46 +916,61 @@ func (s *Spot) SetSendTimeout(value time.Duration) error
 func (s *Spot) SetNoDrop(value bool) error
 
 // --- routed send (spot → spot) ---
+// SendToSpot submits parts routed to a spot. Returns *SubmitError on failure.
 func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID,
     flags SendFlags, parts ...*Message) error
 
 // --- routed request (spot → spot, callback) ---
 // timeout = 0 uses the socket default timeout.
+// Returns *SubmitError on submit failure; the callback receives a
+// RequestResult which maps to *RequestError for failures.
 func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID,
     callback RequestReplyCallback, flags SendFlags,
     timeout time.Duration, parts ...*Message) error
 
 // --- routed reply (spot → spot) ---
+// ReplyToSpot submits a routed reply. Returns *SubmitError on failure.
 func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64,
     flags SendFlags, parts ...*Message) error
 
 // --- routed send (spot → router) ---
+// SendToRouter submits parts routed to a router peer. Returns *SubmitError on failure.
 func (s *Spot) SendToRouter(peerRid RoutingID, flags SendFlags, parts ...*Message) error
 
 // --- routed request (spot → router, callback) ---
 // timeout = 0 uses the socket default timeout.
+// Returns *SubmitError on submit failure; the callback receives a
+// RequestResult which maps to *RequestError for failures.
 func (s *Spot) RequestToRouter(peerRid RoutingID,
     callback RequestReplyCallback, flags SendFlags,
     timeout time.Duration, parts ...*Message) error
 
 // --- routed reply (spot → router) ---
+// ReplyToRouter submits a routed reply. Returns *SubmitError on failure.
 func (s *Spot) ReplyToRouter(peerRid RoutingID, requestSeq uint64,
     flags SendFlags, parts ...*Message) error
 
 // --- routed receive ---
+// RecvRouted receives a routed message. Returns *RecvError on failure.
 func (s *Spot) RecvRouted(flags RecvFlags) (*Received, error)
+// OnRoutedReceive registers a routed receive handler. Returns *HandlerError on failure.
 func (s *Spot) OnRoutedReceive(handler func(sourceRid, spotRid RoutingID,
     requestSeq uint64, parts []*Message)) error
+// OnDispatchEvent registers a dispatch event handler. Returns *HandlerError on failure.
 func (s *Spot) OnDispatchEvent(handler func(event SpotDispatchEvent)) error
 
+// Close closes the spot. Returns *CloseError on failure.
 func (s *Spot) Close() error
 ```
 
 ### RegistryQueryClient
 
 ```go
+// Connect connects the query client. Returns *ConnectError on failure.
 func (c *RegistryQueryClient) Connect(endpoint string) error
+// Snapshot queries the registry topology. Returns *ConfigError on failure.
 func (c *RegistryQueryClient) Snapshot(filter *RegistryTopologyFilter) ([]RegistryTopologyEntry, error)
+// Close closes the query client. Returns *CloseError on failure.
 func (c *RegistryQueryClient) Close() error
 ```
 
@@ -739,12 +981,17 @@ func (c *RegistryQueryClient) Close() error
 ### Timer
 
 ```go
+// NewTimer / NewTimerFromSpot allocate a timer. Return *ConfigError on failure.
 func NewTimer() (*Timer, error)
 func NewTimerFromSpot(spot *Spot) (*Timer, error)
+// Start / Stop configure the timer. Return *ConfigError on failure.
 func (t *Timer) Start(intervalNs, repeatCount uint64) error
 func (t *Timer) Stop() error
+// Recv drains the next timer fire. Returns *RecvError on failure.
 func (t *Timer) Recv(flags int) (uint64, error)
+// OnFire registers a fire handler. Returns *HandlerError on failure.
 func (t *Timer) OnFire(handler func(timer *Timer, fireCount uint64)) error
+// Close closes the timer. Returns *CloseError on failure.
 func (t *Timer) Close() error
 ```
 
@@ -757,7 +1004,9 @@ func (t *Timer) Close() error
 Event poller for multiplexing socket, file descriptor, and timer readiness.
 
 ```go
+// NewPoller allocates a poller. Returns *ConfigError on failure.
 func NewPoller() (*Poller, error)
+// Poller Add/Modify/Remove mutations return *ConfigError on failure.
 func (p *Poller) AddSocket(socket SocketTarget, events int16, userData ...interface{}) error
 func (p *Poller) ModifySocket(socket SocketTarget, events int16) error
 func (p *Poller) RemoveSocket(socket SocketTarget) error
@@ -767,14 +1016,17 @@ func (p *Poller) RemoveFd(fd int) error
 func (p *Poller) AddTimer(timer *Timer, userData ...interface{}) error
 func (p *Poller) RemoveTimer(timer *Timer) error
 func (p *Poller) Size() int
+// Wait / WaitAll block for readiness. Return *RecvError on failure.
 func (p *Poller) Wait(timeout time.Duration) (*PollerEvent, error)
 func (p *Poller) WaitAll(timeout time.Duration) ([]PollerEvent, error)
+// Close closes the poller. Returns *CloseError on failure.
 func (p *Poller) Close() error
 ```
 
 ### Legacy Poll
 
 ```go
+// Poll blocks until any item is ready or timeout elapses. Returns *RecvError on failure.
 func Poll(items []PollItem, timeout time.Duration) (int, error)
 
 type PollItem struct {
@@ -813,7 +1065,9 @@ func (s *Stopwatch) Stop() uint64
 ```
 
 ```go
+// Has queries a runtime capability. Returns *ConfigError on failure.
 func Has(capability string) (bool, error)
+// Proxy / ProxySteerable run zlink proxies. Return *ConfigError on failure.
 func Proxy(frontend, backend, capture SocketTarget) error
 func ProxySteerable(frontend, backend, capture, control SocketTarget) error
 func Sleep(seconds int)

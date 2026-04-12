@@ -187,20 +187,24 @@
 
 #### 원칙
 
-1. **반환값으로 에러를 전달하지 않는다.**
+1. **Exception 언어는 반환값으로 에러를 전달하지 않는다.**
+   - 대상: C++, Java, .NET, Node, Python.
    - 성공 시 결과를 반환하거나 void 반환한다.
-   - 실패 시 예외를 던진다 (exception 언어).
+   - 실패 시 예외를 던진다.
    - 예외에는 `int code` (0–703 범위) 를 포함하여 호출자가 실패 원인을
      구분할 수 있게 한다.
-   - `BACKPRESSURED`, `NOT_CONNECTED`, `NOT_FOUND`를 포함한 모든 실패는
+   - `BACKPRESSURED`, `NOT_CONNECTED`, `NOT_FOUND` 를 포함한 모든 실패는
      예외로 전달한다. 이들은 반환값이 아니다.
-2. **Go / C 는 exception이 없으므로 C API 계약을 따른다.**
+2. **C / Go / Rust 는 exception 이 없으므로 return-based 계약을 따른다.**
+   바인딩은 각 언어 관용구에 맞는 스타일로 처리한다.
    - C: 함수별 typed result enum 반환
      (`zlink_submit_result_t`, `zlink_recv_result_t`,
       `zlink_handler_result_t`, `zlink_close_result_t`,
       `zlink_bind_result_t`, `zlink_connect_result_t`,
       `zlink_config_result_t`).
-   - Go: `error` 반환. error 객체에 `int` 코드를 포함한다.
+   - Go: `(T, error)` 반환. error 객체에 `int` 코드를 포함한다.
+   - Rust: `Result<T, ZlinkError>` 반환. `ZlinkError` 에 `int` 코드를
+     포함한다. `?` 연산자로 호출측 전파를 쓴다.
 3. **try\* 변형은 제공하지 않는다.**
    - `trySend`, `tryRecv`, `tryPublish`, `trySubscribe`,
      `tryReceiveSubscriptionEvent`, `tryRequest`, `tryReply` 전부 없다.
@@ -208,30 +212,102 @@
 4. **`INTERNAL_ERROR` 상세 조회.**
    - result code 가 `INTERNAL_ERROR` 계열 (12, 104 등) 이면
      `zlink_errno()` 로 내부 raw errno 를 조회할 수 있다.
-   - 바인딩 예외 객체는 `internalErrno` / `internal_errno` 필드로 이를
-     노출한다 (디버깅 전용).
+   - 바인딩의 에러 타입(exception 언어는 예외 객체, return-based 언어는
+     에러 값)은 `internalErrno` / `internal_errno` 필드로 이를 노출한다
+     (디버깅 전용).
    - 그 외 result code 에서는 `zlink_errno()` 호출이 불필요하다.
 
 #### 언어별 에러 표현
 
-| 언어 | 예외 타입 | 코드 접근 | 내부 errno |
-|---|---|---|---|
-| C | — | 함수별 result enum 반환 | `zlink_errno()` |
-| C++ | `zlink_error_t` | `.code()` | `.internal_errno()` |
-| Java | `ZlinkException` | `.getCode()` | `.getInternalErrno()` |
-| .NET | `ZlinkException` | `.Code` | `.InternalErrno` |
-| Go | `error` | `.Code()` | `.InternalErrno()` |
-| Rust | `ZlinkError` | `.code()` | `.internal_errno()` |
-| Node | `ZlinkError` | `.code` | `.internalErrno` |
-| Python | `ZlinkError` | `.code` | `.internal_errno` |
+| 언어 | 처리 방식 | 에러 타입 | 코드 접근 | 내부 errno |
+|---|---|---|---|---|
+| C | return | 함수별 result enum 반환 | enum 값 자체 | `zlink_errno()` |
+| C++ | throw | `zlink_error_t` | `.code()` | `.internal_errno()` |
+| Java | throw | `ZlinkException` | `.getCode()` | `.getInternalErrno()` |
+| .NET | throw | `ZlinkException` | `.Code` | `.InternalErrno` |
+| Go | return | `error` | `.Code()` | `.InternalErrno()` |
+| Rust | return (`Result`) | `ZlinkError` | `.code()` | `.internal_errno()` |
+| Node | throw | `ZlinkError` | `.code` | `.internalErrno` |
+| Python | throw | `ZlinkError` | `.code` | `.internal_errno` |
+
+- `return` 그룹(C / Go / Rust) 은 호출자가 반환값을 명시적으로 검사한다.
+  Go 는 `if err != nil`, Rust 는 `match` / `?` 연산자 관용구를 쓴다.
+- `throw` 그룹(C++ / Java / .NET / Node / Python) 은 예외를 전파한다. caller
+  는 언어별 `try`/`catch` 또는 상위 propagation 에서 처리한다.
 
 #### Error Codes
 
 - C API 는 함수별 typed result enum 을 반환한다.
 - 모든 enum 값은 0–703 범위에서 겹치지 않는다.
-- 바인딩은 이 코드를 예외 객체의 `int code` 에 포함시킨다.
+- 바인딩은 이 코드를 언어별 에러 타입의 `int code` 에 포함시킨다
+  (exception 언어는 예외 객체, return-based 언어는 반환 에러 값).
 - 전체 enum 정의는
   [errno-map.md](../core/errno-map.md) 를 참조한다.
+
+#### Per-Function Error Type Hierarchy
+
+C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 계승**한다.
+단일 `ZlinkException` / `ZlinkError` 만 두면 시그니처만으로 발생 가능한 에러
+집합을 알 수 없기 때문이다.
+
+각 바인딩은 8 개의 함수군 에러 타입을 `ZlinkException` / `ZlinkError` 의
+하위 타입으로 제공한다. 메서드 시그니처는 해당 함수군의 구체 에러 타입을
+노출해야 한다.
+
+| C result enum | 함수군 | 하위 에러 타입 (의미 계약) |
+|--------------|--------|--------------------------|
+| `zlink_submit_result_t` | send / publish / request submit / reply submit | `SubmitError` |
+| `zlink_request_result_t` | request completion (callback) | `RequestError` |
+| `zlink_recv_result_t` | recv / subscribe / subscription event / monitor recv / timer recv | `RecvError` |
+| `zlink_handler_result_t` | handler 등록 | `HandlerError` |
+| `zlink_close_result_t` | close / destroy | `CloseError` |
+| `zlink_bind_result_t` | bind | `BindError` |
+| `zlink_connect_result_t` | connect / disconnect / unbind | `ConnectError` |
+| `zlink_config_result_t` | option set/get, snapshot, poller mutation, proxy, timer config | `ConfigError` |
+
+##### 언어별 네이밍
+
+| 언어 | 최상위 타입 | 하위 타입 네이밍 | 기반 타입 | 예시 시그니처 |
+|------|-----------|----------------|----------|-------------|
+| C | — | 함수별 typed enum 그대로 | — | `zlink_bind_result_t zlink_bind(...)` |
+| C++ | `zlink_error_t` | `zlink::<category>_error_t` (snake_case + `_t`) | `std::runtime_error` 계열 | `void bind(...) /* @throws bind_error_t */` |
+| Java | `ZlinkException` | `<Category>Exception` | **unchecked** (`RuntimeException`) | `void bind(...) /* @throws BindException */` |
+| .NET | `ZlinkException` | `Zlink<Category>Exception` | `System.Exception` (unchecked; .NET 의 모든 exception 은 unchecked) | `void Bind(...) /* throws ZlinkBindException */` |
+| Node | `ZlinkError` | `<Category>Error` | `Error` | `bind(ep): void /* @throws BindError */` |
+| Python | `ZlinkError` | `<Category>Error` | `Exception` | `def bind(ep): ...  # raises BindError` |
+| Go | `error` (interface) | `*<Category>Error` (typed error struct) | `error` 인터페이스 구현 | `func (s) Bind(ep) error  // returns *BindError` |
+| Rust | `ZlinkError` (enum) | `<Category>Error` (variant 또는 별도 타입) | `std::error::Error` 구현 | `fn bind(ep) -> Result<(), BindError>` |
+
+- `Category` 는 `Submit`/`Request`/`Recv`/`Handler`/`Close`/`Bind`/`Connect`/
+  `Config` 의 8 개.
+- `ZlinkException` / `ZlinkError` 는 모든 하위 타입의 부모로서 "모두 잡기"
+  관용구를 유지한다. caller 는 세분화가 필요하면 하위 타입으로, 아니면
+  부모로 캐치한다.
+- 각 하위 에러 타입은 해당 함수군의 `ErrorCode` 중첩 enum 을 전용으로
+  가진다. 다른 함수군 코드는 그 타입에서 표현되지 않는다.
+- **Java / .NET 은 unchecked exception 체계를 따른다.** 메서드 시그니처에
+  `throws` 절을 강제하지 않는다. 발생 가능 exception 은 Javadoc `@throws`
+  / XML doc `/// <exception cref="...">` 로 명시한다.
+- Rust / Go 는 반환 타입으로 구체 하위 에러를 선언한다. 동적 언어
+  (Node/Python) 는 TSDoc `@throws` / Python docstring `Raises:` 로 동일
+  정보를 제공한다.
+
+##### 시그니처 선언 규칙
+
+- 메서드가 단일 함수군 에러만 던질/반환할 수 있으면 구체 하위 타입만
+  명시한다.
+  - Java: `@throws BindException` (Javadoc, 시그니처에 `throws` 절 불필요)
+  - .NET: `/// <exception cref="ZlinkBindException">`
+  - C++: `/// @throws bind_error_t` (noexcept 로 표시하지 않음)
+  - Node: TSDoc `@throws {BindError}`
+  - Python: docstring `Raises: BindError`
+  - Go: 반환 타입 문서 `returns *BindError`
+  - Rust: 반환 타입 `Result<T, BindError>`
+- 메서드가 여러 함수군에 걸칠 경우 (예: service 계층 조합 호출) 공통 부모
+  `ZlinkException` / `ZlinkError` 를 선언하고 doc 에 실제 발생 가능한
+  하위 타입을 나열한다.
+- validation 예외 (language-native `IllegalArgumentException` 등) 는 위 체계
+  와 별도이며, `ZlinkException` / `ZlinkError` 계층에 들어가지 않는다.
 
 ### Flags Policy
 
@@ -245,8 +321,11 @@
 | `request` (coroutine/async) | flags 없음 — 항상 blocking submit |
 
 - flags 기본값은 `0` (blocking).
-- non-blocking 호출에서 데이터 없음 / backpressure 시 예외를 던진다
-  (submit result 코드로 구분 가능).
+- non-blocking 호출에서 데이터 없음 / backpressure 시 언어 관용구에 맞춰
+  전달한다 (submit result 코드로 구분 가능).
+  - exception 언어 (C++/Java/.NET/Node/Python): 예외를 던진다.
+  - return-based 언어 (C/Go/Rust): 에러 반환 (C=result enum,
+    Go=`error`, Rust=`Err(ZlinkError)`).
 - 언어별 flags 표현:
   - C / C++: `int flags = 0`
   - Java: `SendFlags flags` overload (기본 blocking 오버로드 유지)
@@ -312,18 +391,27 @@ request(parts, callback, flags = 0, timeout = 0)    // throws on submit failure
 
 - flags 파라미터 있음. `DONTWAIT` 으로 non-blocking submit 가능.
 - `timeout = 0` 이면 소켓 기본 timeout 을 사용한다. 호출 시 생략 가능.
-- submit 실패 시 예외 (반환값 아님). callback 은 등록되지 않는다.
+- submit 실패 시 언어 관용구로 전달 (exception 언어=예외, return-based
+  언어=에러 반환). 실패 시 callback 은 등록되지 않는다.
 - submit 성공 시 callback 이 정확히 한 번 호출된다.
   - 성공: `result = OK`, `received` 포함
-  - 실패: `result != OK` (TIMED_OUT 등), `received = null`
-- callback 시그니처: `(RequestResult result, Received received)`
+  - 실패: `result != OK` (TIMED_OUT 등), `received = null` / `None` /
+    `nil` / `Option::None`
+- callback 시그니처는 언어 관용구를 따른다.
+  - 공통 패턴 (C++/Java/.NET/Node/Python/Go):
+    `(RequestResult result, Received? received)` — 결과 enum 과 optional
+    received 튜플
+  - Rust 관용구: `FnOnce(Result<Received, RequestError>)` — `Result` 타입
+    이 Rust 에서 에러 + 값을 표현하는 표준 방식이므로 이 패턴을 허용한다.
+    `RequestError::code` 는 `RequestResult` enum 값과 1:1 대응한다.
 
 #### 공통
 
 - `zlink_request_result_t` 전체 정의는
   [errno-map.md](../core/errno-map.md) 를 참조한다.
-- Go 는 exception 이 없으므로 callback request 의 submit 실패도 error
-  반환으로 처리한다.
+- Go / Rust 는 exception 이 없으므로 callback request 의 submit 실패도
+  return-based 로 처리한다 (Go: `*SubmitError` 반환, Rust:
+  `Result<_, SubmitError>` 반환).
 
 ## Domain Object Policy
 - Java, C#, Go, Rust, Node, Python은 가능하면 `out` 파라미터나 raw tuple보다
@@ -334,7 +422,8 @@ request(parts, callback, flags = 0, timeout = 0)    // throws on submit failure
   - `Received`
   - `TopicMessage`
   - `SubscriptionEvent`
-  - `SubmitResult` (C/Go only — exception 언어에서는 예외 객체에 코드로 포함)
+  - `SubmitResult` (C / Go / Rust — return-based 언어에서 반환 객체/에러에
+    포함. exception 언어에서는 예외 객체 `.code` 로 노출)
 - 결과 객체는 payload shape, ownership, optional routing metadata를 함께
   설명해야 한다.
 - 편의 기능은 결과 객체 메서드로 둔다.
@@ -944,12 +1033,14 @@ tryRequest / tryReply 는 제공하지 않는다.
 |---|---|---|
 | submit | blocking (코루틴 대기) | flags 파라미터로 제어 |
 | reply 전달 | 반환값 (Received) | callback |
-| submit 실패 시 | 예외 | 예외 (callback 등록 안 됨) |
-| reply 실패 시 | 예외 (ETIMEDOUT 등) | callback (`result != OK`) |
+| submit 실패 시 | 예외 또는 에러 반환 | 예외 또는 에러 반환 (callback 등록 안 됨) |
+| reply 실패 시 | 예외 또는 에러 반환 (ETIMEDOUT 등) | callback (`result != OK`) |
 | flags | 없음 (항상 blocking) | 있음 (`DONTWAIT` 가능) |
 
 - 에러 처리는 Error Handling Policy 를 따른다.
-  callback request 도 submit 실패 시 반환값이 아닌 예외를 사용한다.
+  callback request 의 submit 실패도 언어 관용구를 그대로 적용한다:
+  exception 언어 (C++/Java/.NET/Node/Python) 는 예외, return-based 언어
+  (C/Go/Rust) 는 에러 반환.
 - reply 결과는 callback 이 정확히 한 번 전달한다.
   `(RequestResult result, Received received)`
 
@@ -1003,16 +1094,18 @@ high-level request 완료는 첫 reply 1건으로 끝난다.
 #### Callback 계약
 
 - callback 은 정확히 한 번 호출된다.
-  성공이면 `result = OK` + `received`, 실패면 `result != OK` + `received = null`.
+  성공이면 `result = OK` + `received`, 실패면 `result != OK` + `received`
+  가 null/None/nil/None variant.
 - core callback 시그니처: `void(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, void *userdata_)`
-- 언어별 패턴:
-  - C++: `std::function<void(RequestResult, Received)>`
-  - Java: `BiConsumer<Received, ZlinkException>`
-  - .NET: `Action<ZlinkException, Received>`
-  - Node: `(err, reply)`
-  - Python: `callback(err, received)`
-  - Go: `func(Received, error)`
-  - Rust: `FnOnce(Result<Received, ZlinkError>)`
+- 언어별 패턴 (per-function `RequestError` 계승):
+  - C++: `std::function<void(request_result_t, received_t)>`
+  - Java: `BiConsumer<RequestResult, Received>` (실패 시 `received` 는 null)
+  - .NET: `Action<RequestResult, Received?>`
+  - Node: `(result: RequestResult, received: Received | null) => void`
+  - Python: `callback(result: RequestResult, received: Received | None)`
+  - Go: `func(RequestResult, *Received)` (실패 시 nil)
+  - Rust: `FnOnce(Result<Received, RequestError>)` (Rust 관용구;
+    `RequestError::code` 가 `RequestResult` 에 대응)
 
 ### SPOT Messaging Policy
 
@@ -1183,7 +1276,7 @@ typedef void (*zlink_timer_handler_fn)(
 
 int zlink_timer_handler(void *timer,
     zlink_timer_handler_fn handler, void *userdata);
-int zlink_timer_recv(void *timer, uint64_t *fire_count_out, int flags);
+int zlink_timer_recv(void *timer, uint64_t *fire_count_out);
 ```
 
 규칙:
@@ -1495,18 +1588,132 @@ typedef enum zlink_spot_node_option_t {
 - socket type/state/runtime 문제
 - transport, TLS, endpoint, protocol 오류
 
-이 경우 바인딩은 native 오류를 언어별 예외로 변환하여 caller에 전달한다.
-- Java: `ZlinkException`
-- .NET: `ZlinkException`
-- Go: `error` (`ZlinkError` 또는 동등한 typed error)
-- Rust: `Result<T, ZlinkError>`
-- Node: `ZlinkError` (extends `Error`)
-- Python: `ZlinkError` (extends `Exception`)
+이 경우 바인딩은 native 오류를 언어별 관용구로 변환하여 caller에 전달한다.
+Exception 언어는 예외를 던지고, return-based 언어는 에러 값을 반환한다.
+- C++: `throw zlink_error_t`
+- Java: `throw ZlinkException`
+- .NET: `throw ZlinkException`
+- Node: `throw ZlinkError` (extends `Error`)
+- Python: `raise ZlinkError` (extends `Exception`)
+- Go: `return err` (`ZlinkError` 또는 동등한 typed error)
+- Rust: `Err(ZlinkError)` (`Result<T, ZlinkError>`)
 
 ### Error Code 표
 
-zlink 에서 사용하는 주요 errno 코드와 의미. 바인딩은 이 코드를 언어별
-예외/오류 타입에 매핑하여 caller 가 원인을 구분할 수 있게 한다.
+zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별 에러 타입에
+매핑하여 caller 가 원인을 구분할 수 있게 한다.
+
+코드는 두 계층으로 나뉜다.
+
+1. **Public result enum 코드 (0–703)** — 공개 C API 함수의 반환 enum 값.
+   바인딩이 직접 마주하고 언어별 에러 타입으로 노출해야 하는 값이다.
+   전체 정의는 [core/errno-map.md](../core/errno-map.md) 참조.
+2. **Internal errno** — `zlink_errno()` 로 조회되는 내부 raw errno.
+   `INTERNAL_ERROR` 같은 coarse bucket 의 상세 원인 조회용. 바인딩은 이 값을
+   `internalErrno` / `internal_errno` 필드로 노출한다 (디버깅 전용).
+
+#### Public Result Enum 카탈로그
+
+바인딩은 아래 8 개 enum 의 **모든 값을 누락 없이** 언어별 표현으로 매핑해야
+한다. OK (0) 는 모든 enum 에 공통이며 에러로 취급하지 않는다.
+
+##### `zlink_submit_result_t` (send, request submit, reply submit)
+
+| 값 | 상수 | 내부 errno | 분류 | 의미 |
+|----|------|-----------|------|------|
+| 0 | `OK` | — | 성공 | 제출 성공 |
+| 1 | `BACKPRESSURED` | `EAGAIN` | 제어 흐름 | send 큐 포화 (HWM) |
+| 2 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | 제어 흐름 | 대상 peer/경로 미연결 |
+| 3 | `NOT_FOUND` | `ENOENT` | 제어 흐름 | 대상 peer/spot/route 없음 |
+| 4 | `TERMINATED` | `ETERM` | 런타임/생명주기 | context 종료됨 |
+| 5 | `INVALID_HANDLE` | `EFAULT` | caller 계약 위반 | NULL handle / invalid pointer |
+| 6 | `INVALID_ARGUMENT` | `EINVAL` | caller 계약 위반 | 잘못된 인자 |
+| 7 | `NOT_SUPPORTED` | `ENOTSUP` | caller 계약 위반 | 해당 소켓 타입에서 지원 안 함 |
+| 8 | `INVALID_STATE` | `EFSM`, `EBUSY` | caller 계약 위반 | 소켓/handle 상태 오류 |
+| 9 | `THREAD_VIOLATION` | `EMTHREAD` | caller 계약 위반 | 잘못된 스레드에서 접근 |
+| 10 | `OUT_OF_MEMORY` | `ENOMEM` | 내부 실패 | 메모리 할당 실패 |
+| 11 | `SEQ_EXHAUSTED` | `EBUSY` | 내부 실패 | request seq 공간 고갈 |
+| 12 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 실패 | 내부 submit 실패 (상세는 `zlink_errno()`) |
+
+##### `zlink_request_result_t` (request completion callback)
+
+| 값 | 상수 | 내부 errno | 의미 |
+|----|------|-----------|------|
+| 0 | `OK` | `0` | reply payload 수신 성공 |
+| 101 | `TIMED_OUT` | `ETIMEDOUT` | `timeout_ms` 내 reply 미도착 |
+| 102 | `NOT_FOUND` | `ENOENT` | 대상 없음, 에러 reply 로 완료 |
+| 103 | `TERMINATED` | `ETERM` | (예약) 명시적 종료 완료 경로 |
+| 104 | `PROTOCOL_ERROR` | `EPROTO` | reply envelope / error reply payload 손상 |
+
+##### `zlink_recv_result_t` (recv, subscribe, subscription event, monitor recv, timer recv)
+
+| 값 | 상수 | 내부 errno | 의미 |
+|----|------|-----------|------|
+| 0 | `OK` | — | 수신 성공 |
+| 201 | `NO_DATA` | `EAGAIN` | non-blocking recv 데이터 없음 / source 고갈 |
+| 202 | `BUSY` | `EBUSY` | handler 이미 attach 됨 |
+| 203 | `TERMINATED` | `ETERM` 외 | context 종료 또는 분류되지 않은 recv 내부 실패 |
+| 204 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
+| 205 | `NOT_SUPPORTED` | `ENOTSUP` | recv 미지원 소켓 타입 |
+
+##### `zlink_handler_result_t` (handler 등록)
+
+| 값 | 상수 | 내부 errno | 의미 |
+|----|------|-----------|------|
+| 0 | `OK` | — | handler 등록 성공 |
+| 301 | `INVALID_ARGUMENT` | `EINVAL` | NULL handler |
+| 302 | `BUSY` | `EBUSY` | handler 이미 attach 됨 |
+| 303 | `NOT_SUPPORTED` | `ENOTSUP` | 미지원 subject |
+| 304 | `DEADLOCK` | `EDEADLK` | reentrant 호출 (send-ready handler 전용) |
+| 305 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
+
+##### `zlink_close_result_t` (close, destroy)
+
+| 값 | 상수 | 내부 errno | 의미 |
+|----|------|-----------|------|
+| 0 | `OK` | — | close/destroy 성공 |
+| 401 | `BUSY` | `EBUSY` | in-flight callback / API 호출 |
+| 402 | `SHUTDOWN` | `ESHUTDOWN` | 이미 close 됨 |
+| 403 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
+
+##### `zlink_bind_result_t` (bind)
+
+| 값 | 상수 | 내부 errno | 의미 |
+|----|------|-----------|------|
+| 0 | `OK` | — | bind 성공 |
+| 501 | `INVALID_ARGUMENT` | `EINVAL` | 잘못된 endpoint |
+| 502 | `ADDR_IN_USE` | `EADDRINUSE` | 주소 이미 사용 중 |
+| 503 | `NOT_SUPPORTED` | `ENOTSUP` | 미지원 transport |
+| 504 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
+
+##### `zlink_connect_result_t` (connect, disconnect, unbind)
+
+| 값 | 상수 | 내부 errno | 의미 |
+|----|------|-----------|------|
+| 0 | `OK` | — | connect/disconnect/unbind 성공 |
+| 601 | `INVALID_ARGUMENT` | `EINVAL` | 잘못된 endpoint |
+| 602 | `NOT_SUPPORTED` | `ENOTSUP` | 미지원 transport |
+| 603 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
+
+##### `zlink_config_result_t` (option set/get, message lifecycle, snapshot, poller mutation, proxy, timer config)
+
+| 값 | 상수 | 내부 errno | 의미 |
+|----|------|-----------|------|
+| 0 | `OK` | — | 설정 성공 |
+| 701 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
+| 702 | `INVALID_ARGUMENT` | `EINVAL`, `EBUSY` | 잘못된 인자 또는 config 계층 conflict |
+| 703 | `NOT_SUPPORTED` | `ENOTSUP` | 미지원 옵션 |
+
+##### Non-OK 값 총합
+
+- 총 **39 개** non-OK 코드 (submit 12 + request 4 + recv 5 + handler 5 +
+  close 3 + bind 4 + connect 3 + config 3 = 39). 값 범위:
+  1–12, 101–104, 201–205, 301–305, 401–403, 501–504, 601–603, 701–703.
+- 값 범위는 enum 간 겹치지 않으므로 단일 `int` 로 유일하게 구분된다.
+- 바인딩은 39 개 값 모두에 대해 언어별 에러 표현을 제공해야 한다. 누락 시
+  caller 가 해당 원인을 구분할 방법이 없다.
+
+언어별 enum/상수 매핑 스타일은 아래 `언어별 ErrorCode 매핑` 절을 참조한다.
 
 #### POSIX 표준 errno
 
@@ -1554,23 +1761,36 @@ zlink 고유 오류 코드. POSIX errno 와 충돌하지 않도록 `ZLINK_HAUSNU
 
 #### 언어별 ErrorCode 매핑
 
-각 바인딩은 errno 정수값을 언어별 enum 으로 매핑하여 타입 안전한 오류 구분을
-제공한다.
+각 바인딩은 Public Result Enum 카탈로그의 39 개 non-OK 코드를 언어별
+enum/상수로 매핑하여 타입 안전한 분기를 제공한다.
 
-| 언어 | enum 타입 | 접근 방식 |
-|------|----------|----------|
-| Java | `ErrorCode` enum | `ZlinkException.getErrorCode()` |
-| .NET | `ErrorCode` enum | `ZlinkException.ErrorCode` |
-| Go | `ErrorKind` enum | `ZlinkError.Kind` (native/validation/state) + `Code` |
-| Rust | `i32` code | `ZlinkError.code()` |
-| Node | `number` errno | `ZlinkError.errno` |
-| Python | `int` errno + `ErrorCode` enum | `ZlinkError.errno`, `ZlinkError.error_code` |
-| C++ | `int` errno | `ZlinkError.code()` |
+| 언어 | 처리 | ErrorCode 타입 | 접근 방식 |
+|------|------|---------------|----------|
+| C | return | 함수별 typed enum (`zlink_*_result_t`) | 반환값 자체 |
+| C++ | throw | 통합 `ErrorCode` enum | `zlink_error_t.code()` |
+| Java | throw | 통합 `ErrorCode` enum | `ZlinkException.getCode()` |
+| .NET | throw | 통합 `ErrorCode` enum | `ZlinkException.Code` |
+| Node | throw | 통합 `ErrorCode` enum (또는 string 상수) | `ZlinkError.code` |
+| Python | throw | 통합 `ErrorCode` enum | `ZlinkError.code` |
+| Go | return | 통합 `ErrorCode` typed int 상수 | `ZlinkError.Code()` |
+| Rust | return (`Result`) | 통합 `ErrorCode` enum variant | `ZlinkError.code()` |
+
+- 통합 enum 의 각 variant 는 Public Result Enum 카탈로그의 39 개 값과
+  1:1 대응한다. 원본 C 의 enum 분리 (submit / recv / handler / close /
+  bind / connect / config / request) 를 유지하거나, 언어 관용구에 따라
+  단일 enum 으로 통합해도 된다. 둘 중 어떤 스타일이든 **값은 누락 없이 모두
+  표현해야 한다**.
+- 상수/variant 이름은 원본 `UPPER_SNAKE_CASE` 를 그대로 쓰거나 언어 스타일
+  (`PascalCase` / `camelCase`) 로 변환한다. 숫자 값과 의미는 고정이다.
+- `internalErrno` / `internal_errno` 필드는 별도로 제공하며, 주로
+  `INTERNAL_ERROR` 같은 coarse bucket 의 상세 원인 조회용이다.
 
 ### Request-Reply Error Policy
 
-별도 `RequestError` 타입을 도입하지 않는다.
-기존 `ZlinkError` + errno 체계를 그대로 사용한다.
+request-reply 는 Per-Function Error Type Hierarchy 의 **`RequestError`**
+(request completion) 과 **`SubmitError`** (request submit) 두 하위 타입을
+사용한다. `RequestError` 는 `zlink_request_result_t` 에 대응하며,
+`SubmitError` 는 `zlink_submit_result_t` 에 대응한다.
 
 오류 코드는 두 계층으로 나뉜다.
 
@@ -1588,35 +1808,39 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 | `EPROTO` | envelope parse 실패 또는 잘못된 remote reply |
 | `EBUSY` | 수신 표면 충돌 (handler 중복 등록) |
 
-**request 오류:**
+**request 오류 (`RequestError`):**
 
 | 상황 | `request()` |
 |------|------------|
 | backpressure | writable 대기 (timeout 에 합산) |
-| timeout | `ZlinkError(ETIMEDOUT)` |
-| 대상 없음 | `ZlinkError(ENOENT)` |
-| remote error reply | `ZlinkError(해당 errno)` |
-| 소켓 close | `ZlinkError(ETERM)` |
-| caller 취소 | `ZlinkError(ECANCELED)` |
+| timeout | `RequestError(TIMED_OUT)` |
+| 대상 없음 | `RequestError(NOT_FOUND)` |
+| remote error reply | `RequestError(해당 코드)` |
+| 소켓 close | `RequestError(TERMINATED)` |
+| protocol error | `RequestError(PROTOCOL_ERROR)` |
 | pending map 에 없는 reply | 무시 |
 
-**reply 오류:**
+**reply 오류 (`SubmitError`):**
 
 | 상황 | `reply()` |
 |------|-----------|
 | 성공 | 정상 반환 |
-| backpressure | 예외 (`BACKPRESSURED`) |
-| not connected | 예외 (`NOT_CONNECTED`) |
-| 기타 실패 | 예외 (해당 submit result 코드) |
+| backpressure | `SubmitError(BACKPRESSURED)` |
+| not connected | `SubmitError(NOT_CONNECTED)` |
+| 기타 실패 | `SubmitError(해당 submit 코드)` |
 
 - 모든 실패는 async completion 경로 (Future reject / callback) 로 전달한다.
+- 함수군별 하위 에러 타입을 사용한다 (Per-Function Error Type Hierarchy 참조).
+  - submit 실패: `SubmitException` / `SubmitError`
+  - request 완료 실패: `RequestException` / `RequestError`
 - 언어별 표현:
-  - Java: `ZlinkException` — `getSubmitResult()` 로 원인 구분
-  - .NET: `ZlinkException` — `SubmitResult` property
-  - Go: `ZlinkError{Code: SubmitResult}` — `Code` 필드
-  - Rust: `Err(ZlinkError{code: SubmitResult})` — `code` 필드
-  - Node: `ZlinkError` — `submitResult` property
-  - Python: `ZlinkError` — `submit_result` attribute
+  - Java: `SubmitException` / `RequestException` — `getCode()` 로 원인 구분 (unchecked)
+  - .NET: `ZlinkSubmitException` / `ZlinkRequestException` — `Code` property
+  - Node: `SubmitError` / `RequestError` — `code` property
+  - Python: `SubmitError` / `RequestError` — `code` attribute
+  - C++: `submit_error_t` / `request_error_t` — `.code()` 메서드
+  - Go: `*SubmitError` / `*RequestError` — `Code()` 메서드 (interface)
+  - Rust: `Err(SubmitError{..})` / `Err(RequestError{..})` — `.code()` 메서드
 
 ## Length and Range Boundary Policy
 - 검증 책임은 두 층으로 나눈다.
@@ -1765,27 +1989,31 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 ## Cross-Language Alignment
 
 ### Shared Behavioral Contract
-- blocking send/receive 계열은 실패 시 예외 또는 언어별 오류 경로
-- non-blocking receive는 “데이터 없음”만 비예외 경로
-- non-blocking send는 explicit outcome
+- blocking send/receive 계열은 실패 시 언어별 에러 경로 (exception 언어는
+  예외, return-based 언어는 에러 반환)
+- non-blocking receive 는 "데이터 없음"도 동일한 에러 경로로 전달
+  (result code 로 구분). 별도 `try*` API 는 제공하지 않는다.
+- non-blocking send 는 explicit outcome (submit result code)
 - multipart-only
 - typed option surface
 
 ### Language-Specific Return Style
 - C API
-  - raw contract와 errno
+  - raw contract와 함수별 typed result enum
   - multipart-only 기준 surface
-  - blocking API + explicit non-blocking entry
+  - blocking API + explicit non-blocking entry (`flags` 파라미터)
 - C++
   - RAII와 typed wrapper
   - multipart-only 기준 surface
-  - `try*`와 explicit send outcome을 지원해야 한다
+  - 실패는 `throw zlink_error_t` (`SubmitResult` 코드 포함)
 - .NET
-  - `Try*` + `out` + enum result
+  - typed option surface + `ZlinkException`
   - multipart-only 기준 surface
+  - 실패는 `throw ZlinkException` (`Code` 포함)
 - Java
-  - domain object + `Optional<T>` + enum result
+  - domain object + `ZlinkException`
   - multipart-only 기준 surface
+  - 실패는 `throw ZlinkException` (`getCode()` 포함)
 - Go
   - `(T, error)` + strong type + explicit error check
   - multipart-only 기준 surface
@@ -1797,7 +2025,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 - Node/Python
   - 언어 관례를 따르되 의미 계약은 동일
   - multipart-only 기준 surface
-  - 모든 실패는 예외 (`SubmitResult` 코드 포함)
+  - 모든 실패는 `throw` / `raise` (`SubmitResult` 코드 포함)
 
 언어별 표면은 달라도 의미 계약은 같아야 한다.
 

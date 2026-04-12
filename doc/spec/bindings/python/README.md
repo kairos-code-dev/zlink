@@ -16,13 +16,16 @@ must expose. Internal/private methods are omitted.
 class Context:
     def __init__(self) -> None: ...
     @property
-    def options(self) -> ContextOptions: ...
-    def shutdown(self) -> None: ...
-    def close(self) -> None: ...
-    # supports `with` and `async with`
+    def options(self) -> ContextOptions: ...  # Raises: ConfigError
+    def shutdown(self) -> None: ...           # Raises: CloseError
+    def close(self) -> None: ...              # Raises: CloseError
+    # supports `with` and `async with` — __exit__ raises CloseError
 ```
 
 ### ContextOptions
+
+All `ContextOptions` getters, setters, and mutator methods raise
+`ConfigError` on failure.
 
 ```python
 class ContextOptions:
@@ -70,17 +73,17 @@ All sockets support `with` / `async with` context managers.
 class PairSocket:
     def __init__(self, context: Context) -> None: ...
     @property
-    def options(self) -> CommonSocketOptions: ...
-    def bind(self, endpoint: str) -> None: ...
-    def unbind(self, endpoint: str) -> None: ...
-    def connect(self, endpoint: str) -> None: ...
-    def disconnect(self, endpoint: str) -> None: ...
-    def send(self, payload: Message | bytes | list, *, flags: int = 0) -> None: ...
-    def recv(self, *, flags: int = 0) -> Received: ...
-    def on_receive(self, handler: Callable[[Received], None]) -> None: ...
-    def on_send_ready(self, handler: Callable[[PairSocket], None]) -> None: ...
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...
-    def close(self) -> None: ...
+    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
+    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
+    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
+    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
+    def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
+    def send(self, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    def recv(self, *, flags: int = 0) -> Received: ...                           # Raises: RecvError
+    def on_receive(self, handler: Callable[[Received], None]) -> None: ...       # Raises: HandlerError
+    def on_send_ready(self, handler: Callable[[PairSocket], None]) -> None: ...  # Raises: HandlerError
+    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
 ### PubSocket
@@ -89,18 +92,18 @@ class PairSocket:
 class PubSocket:
     def __init__(self, context: Context) -> None: ...
     @property
-    def options(self) -> CommonSocketOptions: ...
+    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
     @property
-    def publisher_options(self) -> PubSocketOptions: ...
-    def bind(self, endpoint: str) -> None: ...
-    def unbind(self, endpoint: str) -> None: ...
-    def connect(self, endpoint: str) -> None: ...
-    def disconnect(self, endpoint: str) -> None: ...
-    def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...
-    def on_send_ready(self, handler: Callable[[PubSocket], None]) -> None: ...
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...
-    def attach_discovery(self, discovery: Discovery) -> None: ...
-    def close(self) -> None: ...
+    def publisher_options(self) -> PubSocketOptions: ...                         # Raises: ConfigError
+    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
+    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
+    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
+    def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
+    def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    def on_send_ready(self, handler: Callable[[PubSocket], None]) -> None: ...   # Raises: HandlerError
+    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
+    def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
 ### SubSocket
@@ -109,20 +112,20 @@ class PubSocket:
 class SubSocket:
     def __init__(self, context: Context) -> None: ...
     @property
-    def options(self) -> CommonSocketOptions: ...
+    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
     @property
-    def subscriber_options(self) -> SubSocketOptions: ...
-    def bind(self, endpoint: str) -> None: ...
-    def unbind(self, endpoint: str) -> None: ...
-    def connect(self, endpoint: str) -> None: ...
-    def disconnect(self, endpoint: str) -> None: ...
-    def set_subscription(self, topic: bytes | str) -> None: ...
-    def unset_subscription(self, topic: bytes | str) -> None: ...
-    def subscribe(self, *, flags: int = 0) -> Subscribed: ...
-    def on_subscribe(self, handler: Callable[[Subscribed], None]) -> None: ...
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...
-    def attach_discovery(self, discovery: Discovery) -> None: ...
-    def close(self) -> None: ...
+    def subscriber_options(self) -> SubSocketOptions: ...                        # Raises: ConfigError
+    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
+    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
+    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
+    def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
+    def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
+    def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
+    def subscribe(self, *, flags: int = 0) -> Subscribed: ...                    # Raises: RecvError
+    def on_subscribe(self, handler: Callable[[Subscribed], None]) -> None: ...   # Raises: HandlerError
+    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
+    def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
 ### DealerSocket
@@ -131,22 +134,22 @@ class SubSocket:
 class DealerSocket:
     def __init__(self, context: Context) -> None: ...
     @property
-    def options(self) -> CommonSocketOptions: ...
+    def options(self) -> CommonSocketOptions: ...                                  # Raises: ConfigError
     @property
-    def dealer_options(self) -> DealerSocketOptions: ...
-    def bind(self, endpoint: str) -> None: ...
-    def unbind(self, endpoint: str) -> None: ...
-    def connect(self, endpoint: str) -> None: ...
-    def disconnect(self, endpoint: str) -> None: ...
-    def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...
-    def get_routing_id(self) -> RoutingId | None: ...
-    def send(self, payload: Message | bytes | list, *, flags: int = 0) -> None: ...
-    def recv(self, *, flags: int = 0) -> Received: ...
-    def on_receive(self, handler: Callable[[Received], None]) -> None: ...
-    def on_send_ready(self, handler: Callable[[DealerSocket], None]) -> None: ...
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...
-    def attach_discovery(self, discovery: Discovery) -> None: ...
-    def close(self) -> None: ...
+    def dealer_options(self) -> DealerSocketOptions: ...                           # Raises: ConfigError
+    def bind(self, endpoint: str) -> None: ...                                     # Raises: BindError
+    def unbind(self, endpoint: str) -> None: ...                                   # Raises: ConnectError
+    def connect(self, endpoint: str) -> None: ...                                  # Raises: ConnectError
+    def disconnect(self, endpoint: str) -> None: ...                               # Raises: ConnectError
+    def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...           # Raises: ConfigError
+    def get_routing_id(self) -> RoutingId | None: ...                              # Raises: ConfigError
+    def send(self, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    def recv(self, *, flags: int = 0) -> Received: ...                             # Raises: RecvError
+    def on_receive(self, handler: Callable[[Received], None]) -> None: ...         # Raises: HandlerError
+    def on_send_ready(self, handler: Callable[[DealerSocket], None]) -> None: ...  # Raises: HandlerError
+    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def attach_discovery(self, discovery: Discovery) -> None: ...                  # Raises: ConfigError
+    def close(self) -> None: ...                                                   # Raises: CloseError
 ```
 
 ### RouterSocket
@@ -155,28 +158,29 @@ class DealerSocket:
 class RouterSocket:
     def __init__(self, context: Context) -> None: ...
     @property
-    def options(self) -> CommonSocketOptions: ...
+    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
     @property
-    def router_options(self) -> RouterSocketOptions: ...
-    def bind(self, endpoint: str) -> None: ...
-    def unbind(self, endpoint: str) -> None: ...
-    def connect(self, endpoint: str) -> None: ...
-    def disconnect(self, endpoint: str) -> None: ...
-    def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...
-    def get_routing_id(self) -> RoutingId | None: ...
-    def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> None: ...
-    def recv(self, *, flags: int = 0) -> Received: ...
-    def on_receive(self, handler: Callable[[Received], None]) -> None: ...
-    def on_send_ready(self, handler: Callable) -> None: ...
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...
-    def attach_discovery(self, discovery: Discovery) -> None: ...
+    def router_options(self) -> RouterSocketOptions: ...                         # Raises: ConfigError
+    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
+    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
+    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
+    def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
+    def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
+    def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
+    def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    def recv(self, *, flags: int = 0) -> Received: ...                           # Raises: RecvError
+    def on_receive(self, handler: Callable[[Received], None]) -> None: ...       # Raises: HandlerError
+    def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
+    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
 
     # --- router → spot routed send ---
     def send_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-                     payload: Message | bytes | list, *, flags: int = 0) -> None: ...
+                     payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
 
     # --- router → spot routed request (async) — no flags ---
     # timeout = 0 uses the socket default timeout.
+    # Raises: SubmitError on submit failure; RequestError on request completion failure.
     async def request_to_spot(self, dest_node_rid: RoutingId,
                               dest_spot_rid: RoutingId,
                               payload: Message | bytes | list,
@@ -184,6 +188,8 @@ class RouterSocket:
 
     # --- router → spot routed request (callback) — raises on submit failure ---
     # timeout = 0 uses the socket default timeout.
+    # Raises: SubmitError on submit failure. Callback receives RequestResult;
+    #   non-OK indicates request-completion failure (RequestError semantics).
     def request_to_spot(self, dest_node_rid: RoutingId,
                         dest_spot_rid: RoutingId,
                         payload: Message | bytes | list,
@@ -193,13 +199,13 @@ class RouterSocket:
     # --- router → spot routed reply ---
     def reply_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
                       request_seq: int,
-                      payload: Message | bytes | list, *, flags: int = 0) -> None: ...
+                      payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
 
     # --- router spot receive ---
-    def recv_spot(self, *, flags: int = 0) -> Received: ...
-    def on_spot_receive(self, handler: Callable) -> None: ...
+    def recv_spot(self, *, flags: int = 0) -> Received: ...                      # Raises: RecvError
+    def on_spot_receive(self, handler: Callable) -> None: ...                    # Raises: HandlerError
 
-    def close(self) -> None: ...
+    def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
 ### XPubSocket
@@ -208,18 +214,18 @@ class RouterSocket:
 class XPubSocket:
     def __init__(self, context: Context) -> None: ...
     @property
-    def options(self) -> CommonSocketOptions: ...
+    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
     @property
-    def publisher_options(self) -> PubSocketOptions: ...
-    def bind(self, endpoint: str) -> None: ...
-    def unbind(self, endpoint: str) -> None: ...
-    def connect(self, endpoint: str) -> None: ...
-    def disconnect(self, endpoint: str) -> None: ...
-    def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...
-    def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent: ...
-    def on_send_ready(self, handler: Callable) -> None: ...
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...
-    def close(self) -> None: ...
+    def publisher_options(self) -> PubSocketOptions: ...                         # Raises: ConfigError
+    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
+    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
+    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
+    def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
+    def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent: ...  # Raises: RecvError
+    def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
+    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
 ### XSubSocket
@@ -228,19 +234,19 @@ class XPubSocket:
 class XSubSocket:
     def __init__(self, context: Context) -> None: ...
     @property
-    def options(self) -> CommonSocketOptions: ...
+    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
     @property
-    def subscriber_options(self) -> SubSocketOptions: ...
-    def bind(self, endpoint: str) -> None: ...
-    def unbind(self, endpoint: str) -> None: ...
-    def connect(self, endpoint: str) -> None: ...
-    def disconnect(self, endpoint: str) -> None: ...
-    def set_subscription(self, topic: bytes | str) -> None: ...
-    def unset_subscription(self, topic: bytes | str) -> None: ...
-    def subscribe(self, *, flags: int = 0) -> Subscribed: ...
-    def on_subscribe(self, handler: Callable[[Subscribed], None]) -> None: ...
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...
-    def close(self) -> None: ...
+    def subscriber_options(self) -> SubSocketOptions: ...                        # Raises: ConfigError
+    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
+    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
+    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
+    def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
+    def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
+    def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
+    def subscribe(self, *, flags: int = 0) -> Subscribed: ...                    # Raises: RecvError
+    def on_subscribe(self, handler: Callable[[Subscribed], None]) -> None: ...   # Raises: HandlerError
+    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
 ### StreamSocket
@@ -249,22 +255,24 @@ class XSubSocket:
 class StreamSocket:
     def __init__(self, context: Context) -> None: ...
     @property
-    def options(self) -> CommonSocketOptions: ...
+    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
     @property
-    def stream_options(self) -> StreamSocketOptions: ...
-    def bind(self, endpoint: str) -> None: ...
-    def unbind(self, endpoint: str) -> None: ...
-    def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...
-    def get_routing_id(self) -> RoutingId | None: ...
-    def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> None: ...
-    def recv(self, *, flags: int = 0) -> Received: ...
-    def on_receive(self, handler: Callable[[Received], None]) -> None: ...
-    def on_send_ready(self, handler: Callable) -> None: ...
-    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...
-    def close(self) -> None: ...
+    def stream_options(self) -> StreamSocketOptions: ...                         # Raises: ConfigError
+    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
+    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
+    def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
+    def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
+    def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    def recv(self, *, flags: int = 0) -> Received: ...                           # Raises: RecvError
+    def on_receive(self, handler: Callable[[Received], None]) -> None: ...       # Raises: HandlerError
+    def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
+    def monitor_open(self, events: MonitorEvent = MonitorEvent.ALL) -> MonitorSocket: ...  # Raises: ConfigError
+    def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
 ### Socket Option Classes
+
+All option-class getters and setters raise `ConfigError` on failure.
 
 ```python
 class CommonSocketOptions:
@@ -374,22 +382,22 @@ class RecvFlags:
 
 ```python
 class Message:
-    def __init__(self, size: int | None = None) -> None: ...
+    def __init__(self, size: int | None = None) -> None: ...                 # Raises: ConfigError
     @classmethod
-    def copy_from(cls, data: bytes | bytearray) -> Message: ...
+    def copy_from(cls, data: bytes | bytearray) -> Message: ...              # Raises: ConfigError
     @classmethod
-    def wrap_buffer(cls, data: bytes | bytearray) -> Message: ...
+    def wrap_buffer(cls, data: bytes | bytearray) -> Message: ...            # Raises: ConfigError
     @staticmethod
-    def from_bytes(data: bytes) -> Message: ...
-    def size(self) -> int: ...
+    def from_bytes(data: bytes) -> Message: ...                              # Raises: ConfigError
+    def size(self) -> int: ...                                               # Raises: ConfigError
     @property
-    def data(self) -> memoryview: ...
-    def to_bytes(self) -> bytes: ...
-    def getProperty(self, name: str) -> str | None: ...
-    def refCount(self) -> int: ...
-    def send(self, socket) -> None: ...
-    def close(self) -> None: ...
-    # supports `with` and `async with`
+    def data(self) -> memoryview: ...                                        # Raises: ConfigError
+    def to_bytes(self) -> bytes: ...                                         # Raises: ConfigError
+    def getProperty(self, name: str) -> str | None: ...                      # Raises: ConfigError
+    def refCount(self) -> int: ...                                           # Raises: ConfigError
+    def send(self, socket) -> None: ...                                      # Raises: SubmitError
+    def close(self) -> None: ...                                             # Raises: CloseError
+    # supports `with` and `async with` — __exit__ raises CloseError
 ```
 
 ### RoutingId
@@ -414,8 +422,8 @@ class Received:
     def __iter__(self) -> Iterator: ...
     def __len__(self) -> int: ...
     def to_bytes_list(self) -> list[bytes]: ...
-    def close(self) -> None: ...
-    # supports `with` and `async with`
+    def close(self) -> None: ...                 # Raises: CloseError
+    # supports `with` and `async with` — __exit__ raises CloseError
 ```
 
 ### TopicMessage / Subscribed
@@ -428,7 +436,7 @@ class TopicMessage:
     def __iter__(self) -> Iterator: ...
     def __len__(self) -> int: ...
     def to_bytes_list(self) -> list[bytes]: ...
-    def close(self) -> None: ...
+    def close(self) -> None: ...                 # Raises: CloseError
 
 class Subscribed(TopicMessage):
     pass
@@ -446,7 +454,8 @@ class SubscriptionEvent:
 ### SubmitResult
 
 Result codes for send/request/reply/publish operations.
-All failures raise `ZlinkError` with `.code` indicating the failure code.
+All failures raise `SubmitError` (a `ZlinkError` subclass) with
+`.result` exposing the typed enum and `.code` the globally unique int.
 
 ```python
 class SubmitResult(IntEnum):
@@ -557,20 +566,138 @@ class ConfigResult(IntEnum):
 
 ### ZlinkError
 
-Exception raised when any operation fails.
-The `code` property is a globally unique `int` that spans all result enum
-ranges (0-703). The code alone identifies the error without needing to
-know which enum it belongs to.
+Common base class for all zlink exceptions. Per the binding-wide
+**Per-Function Error Type Hierarchy** policy, `ZlinkError` is never
+raised directly; each failing operation raises one of the **8
+function-category subclasses** below. Callers that want to handle every
+zlink failure uniformly can still catch `ZlinkError`; callers that need
+discrimination catch the specific subclass.
+
+Every subclass wraps the matching C-API result enum
+(`SubmitResult` / `RequestResult` / `RecvResult` / `HandlerResult` /
+`CloseResult` / `BindResult` / `ConnectResult` / `ConfigResult`) in its
+`result` property and exposes the platform `internal_errno` captured
+at failure site.
+
+The `code` property is a globally unique `int` that spans all result
+enum ranges (0-703). The code alone identifies the error without
+needing to know which enum it belongs to; `result` provides the typed
+enum view for code that prefers enum matching.
 
 ```python
 class ZlinkError(Exception):
-    def __init__(self, code: int, errno: int = 0): ...
+    def __init__(self, code: int, internal_errno: int = 0): ...
 
     @property
     def code(self) -> int: ...
 
     @property
-    def errno(self) -> int: ...
+    def internal_errno(self) -> int: ...
+```
+
+### SubmitError
+
+Raised by send / publish / request submit / reply submit operations.
+Wraps `SubmitResult`.
+
+```python
+class SubmitError(ZlinkError):
+    def __init__(self, result: SubmitResult, internal_errno: int = 0) -> None: ...
+
+    @property
+    def result(self) -> SubmitResult: ...
+```
+
+### RequestError
+
+Reported to request-completion callbacks (and raised by async request
+variants) when a request fails after submit. Wraps `RequestResult`.
+
+```python
+class RequestError(ZlinkError):
+    def __init__(self, result: RequestResult, internal_errno: int = 0) -> None: ...
+
+    @property
+    def result(self) -> RequestResult: ...
+```
+
+### RecvError
+
+Raised by recv / subscribe / subscription-event / monitor recv / timer
+recv operations. Wraps `RecvResult`.
+
+```python
+class RecvError(ZlinkError):
+    def __init__(self, result: RecvResult, internal_errno: int = 0) -> None: ...
+
+    @property
+    def result(self) -> RecvResult: ...
+```
+
+### HandlerError
+
+Raised by handler-registration operations (`on_receive`,
+`on_send_ready`, `on_subscribe`, `on_event`, `on_fire`, etc.).
+Wraps `HandlerResult`.
+
+```python
+class HandlerError(ZlinkError):
+    def __init__(self, result: HandlerResult, internal_errno: int = 0) -> None: ...
+
+    @property
+    def result(self) -> HandlerResult: ...
+```
+
+### CloseError
+
+Raised by `close()` / `destroy()` / `__exit__` / `shutdown()`
+operations. Wraps `CloseResult`.
+
+```python
+class CloseError(ZlinkError):
+    def __init__(self, result: CloseResult, internal_errno: int = 0) -> None: ...
+
+    @property
+    def result(self) -> CloseResult: ...
+```
+
+### BindError
+
+Raised by `bind()` operations. Wraps `BindResult`.
+
+```python
+class BindError(ZlinkError):
+    def __init__(self, result: BindResult, internal_errno: int = 0) -> None: ...
+
+    @property
+    def result(self) -> BindResult: ...
+```
+
+### ConnectError
+
+Raised by `connect()` / `disconnect()` / `unbind()` operations.
+Wraps `ConnectResult`.
+
+```python
+class ConnectError(ZlinkError):
+    def __init__(self, result: ConnectResult, internal_errno: int = 0) -> None: ...
+
+    @property
+    def result(self) -> ConnectResult: ...
+```
+
+### ConfigError
+
+Raised by option set/get, snapshot, poller mutation, timer config,
+`attach_discovery`, message lifecycle, and `set_tls_*` operations.
+Wraps `ConfigResult`.
+
+```python
+class ConfigError(ZlinkError):
+    def __init__(self, result: ConfigResult, internal_errno: int = 0) -> None: ...
+
+    @property
+    def result(self) -> ConfigResult: ...
 ```
 
 ---
@@ -583,18 +710,21 @@ class ZlinkError(Exception):
 class RequestDealer:
     def __init__(self, socket: DealerSocket) -> None: ...
 
-    # Async request — no flags, timeout = 0 uses socket default
+    # Async request — no flags, timeout = 0 uses socket default.
+    # Raises: SubmitError on submit failure; RequestError on request completion failure.
     async def request(self, payload: Message | bytes | list,
                       *, timeout: int = 0) -> Received: ...
 
-    # Callback request — raises on submit failure, timeout = 0 uses socket default
+    # Callback request — raises on submit failure, timeout = 0 uses socket default.
+    # Raises: SubmitError on submit failure. Callback receives RequestResult;
+    #   non-OK indicates request-completion failure (RequestError semantics).
     def request(self, payload: Message | bytes | list,
                 callback: Callable[[RequestResult, Received | None], None],
                 *, flags: int = 0, timeout: int = 0) -> None: ...
 
-    def recv(self, *, flags: int = 0) -> Received: ...
-    def on_receive(self, handler: Callable[[Received], None]) -> None: ...
-    def close(self) -> None: ...
+    def recv(self, *, flags: int = 0) -> Received: ...                       # Raises: RecvError
+    def on_receive(self, handler: Callable[[Received], None]) -> None: ...   # Raises: HandlerError
+    def close(self) -> None: ...                                             # Raises: CloseError
 ```
 
 ### RequestRouter
@@ -603,20 +733,23 @@ class RequestDealer:
 class RequestRouter:
     def __init__(self, socket: RouterSocket) -> None: ...
 
-    # Async request — no flags, timeout = 0 uses socket default
+    # Async request — no flags, timeout = 0 uses socket default.
+    # Raises: SubmitError on submit failure; RequestError on request completion failure.
     async def request(self, routing_id: RoutingId, payload: Message | bytes | list,
                       *, timeout: int = 0) -> Received: ...
 
-    # Callback request — raises on submit failure, timeout = 0 uses socket default
+    # Callback request — raises on submit failure, timeout = 0 uses socket default.
+    # Raises: SubmitError on submit failure. Callback receives RequestResult;
+    #   non-OK indicates request-completion failure (RequestError semantics).
     def request(self, routing_id: RoutingId, payload: Message | bytes | list,
                 callback: Callable[[RequestResult, Received | None], None],
                 *, flags: int = 0, timeout: int = 0) -> None: ...
 
     def reply(self, routing_id: RoutingId, request_seq: int,
-              payload: Message | bytes | list, *, flags: int = 0) -> None: ...
-    def recv(self, *, flags: int = 0) -> Received: ...
-    def on_receive(self, handler: Callable[[Received], None]) -> None: ...
-    def close(self) -> None: ...
+              payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    def recv(self, *, flags: int = 0) -> Received: ...                       # Raises: RecvError
+    def on_receive(self, handler: Callable[[Received], None]) -> None: ...   # Raises: HandlerError
+    def close(self) -> None: ...                                             # Raises: CloseError
 ```
 
 ---
@@ -627,20 +760,20 @@ class RequestRouter:
 
 ```python
 class MonitorSocket:
-    def recv(self) -> SocketMonitorEvent: ...
-    def on_event(self, handler: Callable[[SocketMonitorEvent], None]) -> None: ...
-    def snapshot(self) -> MonitorSnapshot: ...
-    def close(self) -> None: ...
+    def recv(self) -> SocketMonitorEvent: ...                                    # Raises: RecvError
+    def on_event(self, handler: Callable[[SocketMonitorEvent], None]) -> None: ...  # Raises: HandlerError
+    def snapshot(self) -> MonitorSnapshot: ...                                   # Raises: ConfigError
+    def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
 ### ServiceMonitor
 
 ```python
 class ServiceMonitor:
-    def recv(self) -> ServiceMonitorEvent: ...
-    def on_event(self, handler: Callable[[ServiceMonitorEvent], None]) -> None: ...
-    def snapshot(self) -> MonitorSnapshot: ...
-    def close(self) -> None: ...
+    def recv(self) -> ServiceMonitorEvent: ...                                    # Raises: RecvError
+    def on_event(self, handler: Callable[[ServiceMonitorEvent], None]) -> None: ...  # Raises: HandlerError
+    def snapshot(self) -> MonitorSnapshot: ...                                    # Raises: ConfigError
+    def close(self) -> None: ...                                                  # Raises: CloseError
 ```
 
 ### MonitorSnapshot
@@ -693,26 +826,26 @@ ServiceEvent = ServiceMonitorEvent
 ```python
 class Registry:
     def __init__(self, ctx: Context) -> None: ...
-    def bind(self, pub_endpoint: str, router_endpoint: str) -> None: ...
-    def set_id(self, registry_id: int) -> None: ...
-    def add_peer(self, peer_pub_endpoint: str) -> None: ...
+    def bind(self, pub_endpoint: str, router_endpoint: str) -> None: ...         # Raises: BindError
+    def set_id(self, registry_id: int) -> None: ...                              # Raises: ConfigError
+    def add_peer(self, peer_pub_endpoint: str) -> None: ...                      # Raises: ConfigError
     def set_tls_server(self, cert: str, key: str,
-                       require_client_cert: bool = False) -> None: ...
+                       require_client_cert: bool = False) -> None: ...           # Raises: ConfigError
     def set_tls_client(self, ca_cert: str | None, hostname: str | None,
-                       trust_system: bool = False) -> None: ...
-    def set_heartbeat(self, interval_ms: int, timeout_ms: int) -> None: ...
-    def set_broadcast_interval(self, interval_ms: int) -> None: ...
-    def status_snapshot(self) -> RegistryStatus: ...
+                       trust_system: bool = False) -> None: ...                  # Raises: ConfigError
+    def set_heartbeat(self, interval_ms: int, timeout_ms: int) -> None: ...      # Raises: ConfigError
+    def set_broadcast_interval(self, interval_ms: int) -> None: ...              # Raises: ConfigError
+    def status_snapshot(self) -> RegistryStatus: ...                             # Raises: ConfigError
     def service_summary_snapshot(self,
         filter_: RegistryServiceSummaryFilter | None = None
-    ) -> list[RegistryServiceSummaryEntry]: ...
+    ) -> list[RegistryServiceSummaryEntry]: ...                                  # Raises: ConfigError
     def member_peers(self, service_type: int,
-                     service_name: str) -> list[MemberPeerEntry]: ...
+                     service_name: str) -> list[MemberPeerEntry]: ...            # Raises: ConfigError
     def member_peer_metadata(self, service_type: int, service_name: str,
-                             service_role: int, endpoint: str) -> bytes: ...
-    def topology_snapshot(self) -> list[RegistryTopologyEntry]: ...
-    def topology_query(self, filter_: RegistryTopologyFilter) -> list[RegistryTopologyEntry]: ...
-    def close(self) -> None: ...
+                             service_role: int, endpoint: str) -> bytes: ...     # Raises: ConfigError
+    def topology_snapshot(self) -> list[RegistryTopologyEntry]: ...              # Raises: ConfigError
+    def topology_query(self, filter_: RegistryTopologyFilter) -> list[RegistryTopologyEntry]: ...  # Raises: ConfigError
+    def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
 ### Discovery
@@ -720,18 +853,18 @@ class Registry:
 ```python
 class Discovery:
     def __init__(self, ctx: Context, service_type: int, service_name: str) -> None: ...
-    def connect_registry(self, registry_endpoint: str) -> None: ...
-    def set_value(self, value: int) -> None: ...
-    def get_value(self) -> int: ...
-    def set_metadata(self, data: bytes | bytearray) -> None: ...
-    def get_metadata(self) -> bytes: ...
-    def member_peers(self) -> list[MemberPeerEntry]: ...
-    def member_peer_metadata(self, service_role: int, endpoint: str) -> bytes: ...
+    def connect_registry(self, registry_endpoint: str) -> None: ...              # Raises: ConnectError
+    def set_value(self, value: int) -> None: ...                                 # Raises: ConfigError
+    def get_value(self) -> int: ...                                              # Raises: ConfigError
+    def set_metadata(self, data: bytes | bytearray) -> None: ...                 # Raises: ConfigError
+    def get_metadata(self) -> bytes: ...                                         # Raises: ConfigError
+    def member_peers(self) -> list[MemberPeerEntry]: ...                         # Raises: ConfigError
+    def member_peer_metadata(self, service_role: int, endpoint: str) -> bytes: ...  # Raises: ConfigError
     def set_tls_client(self, ca_cert: str | None, hostname: str | None,
-                       trust_system: bool = False) -> None: ...
+                       trust_system: bool = False) -> None: ...                  # Raises: ConfigError
     def monitor_open(self, events: ServiceMonitorMask = ServiceMonitorMask.ALL
-                     ) -> ServiceMonitor: ...
-    def close(self) -> None: ...
+                     ) -> ServiceMonitor: ...                                    # Raises: ConfigError
+    def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
 ### SpotNode
@@ -739,25 +872,25 @@ class Discovery:
 ```python
 class SpotNode:
     def __init__(self, ctx: Context) -> None: ...
-    def bind(self, endpoint: str) -> None: ...
-    def last_endpoint(self) -> str: ...
-    def connect_peer(self, endpoint: str) -> None: ...
-    def disconnect_peer(self, endpoint: str) -> None: ...
-    def attach_discovery(self, discovery: Discovery) -> None: ...
-    def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...
-    def get_routing_id(self) -> RoutingId | None: ...
+    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
+    def last_endpoint(self) -> str: ...                                          # Raises: ConfigError
+    def connect_peer(self, endpoint: str) -> None: ...                           # Raises: ConnectError
+    def disconnect_peer(self, endpoint: str) -> None: ...                        # Raises: ConnectError
+    def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
+    def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
+    def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
     def set_tls_server(self, cert: str, key: str,
-                       require_client_cert: bool = False) -> None: ...
+                       require_client_cert: bool = False) -> None: ...           # Raises: ConfigError
     def set_tls_client(self, ca_cert: str | None, hostname: str | None,
-                       trust_system: bool = False) -> None: ...
-    def wrap_handle(self) -> Spot: ...
-    def status_snapshot(self) -> SpotNodeStatus: ...
-    def peers_snapshot(self) -> list[SpotNodePeerEntry]: ...
+                       trust_system: bool = False) -> None: ...                  # Raises: ConfigError
+    def wrap_handle(self) -> Spot: ...                                           # Raises: ConfigError
+    def status_snapshot(self) -> SpotNodeStatus: ...                             # Raises: ConfigError
+    def peers_snapshot(self) -> list[SpotNodePeerEntry]: ...                     # Raises: ConfigError
     def peers_query(self, filter_: SpotNodePeerFilter | None = None
-                    ) -> list[SpotNodePeerEntry]: ...
+                    ) -> list[SpotNodePeerEntry]: ...                            # Raises: ConfigError
     def subjects_snapshot(self, filter_: SpotNodeSubjectFilter | None = None
-                          ) -> list[SpotNodeSubjectEntry]: ...
-    def close(self) -> None: ...
+                          ) -> list[SpotNodeSubjectEntry]: ...                   # Raises: ConfigError
+    def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
 ### Spot
@@ -765,19 +898,20 @@ class SpotNode:
 ```python
 class Spot:
     def __init__(self, node: SpotNode) -> None: ...
-    def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...
-    def set_subscription(self, topic: bytes | str) -> None: ...
-    def unset_subscription(self, topic: bytes | str) -> None: ...
-    def subscribe(self, *, flags: int = 0) -> Subscribed: ...
-    def on_subscribe(self, handler: Callable[[Subscribed], None]) -> None: ...
-    def on_send_ready(self, handler: Callable[[Spot], None]) -> None: ...
+    def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
+    def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
+    def subscribe(self, *, flags: int = 0) -> Subscribed: ...                    # Raises: RecvError
+    def on_subscribe(self, handler: Callable[[Subscribed], None]) -> None: ...   # Raises: HandlerError
+    def on_send_ready(self, handler: Callable[[Spot], None]) -> None: ...        # Raises: HandlerError
 
     # --- routed send (spot → spot) ---
     def send_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-                     payload: Message | bytes | list, *, flags: int = 0) -> None: ...
+                     payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
 
     # --- routed request (spot → spot, async) — no flags ---
     # timeout = 0 uses the socket default timeout.
+    # Raises: SubmitError on submit failure; RequestError on request completion failure.
     async def request_to_spot(self, dest_node_rid: RoutingId,
                               dest_spot_rid: RoutingId,
                               payload: Message | bytes | list,
@@ -785,6 +919,8 @@ class Spot:
 
     # --- routed request (spot → spot, callback) — raises on submit failure ---
     # timeout = 0 uses the socket default timeout.
+    # Raises: SubmitError on submit failure. Callback receives RequestResult;
+    #   non-OK indicates request-completion failure (RequestError semantics).
     def request_to_spot(self, dest_node_rid: RoutingId,
                         dest_spot_rid: RoutingId,
                         payload: Message | bytes | list,
@@ -794,20 +930,23 @@ class Spot:
     # --- routed reply (spot → spot) ---
     def reply_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
                       request_seq: int,
-                      payload: Message | bytes | list, *, flags: int = 0) -> None: ...
+                      payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
 
     # --- routed send (spot → router) ---
     def send_to_router(self, peer_rid: RoutingId,
-                       payload: Message | bytes | list, *, flags: int = 0) -> None: ...
+                       payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
 
     # --- routed request (spot → router, async) — no flags ---
     # timeout = 0 uses the socket default timeout.
+    # Raises: SubmitError on submit failure; RequestError on request completion failure.
     async def request_to_router(self, peer_rid: RoutingId,
                                 payload: Message | bytes | list,
                                 *, timeout: int = 0) -> Received: ...
 
     # --- routed request (spot → router, callback) — raises on submit failure ---
     # timeout = 0 uses the socket default timeout.
+    # Raises: SubmitError on submit failure. Callback receives RequestResult;
+    #   non-OK indicates request-completion failure (RequestError semantics).
     def request_to_router(self, peer_rid: RoutingId,
                           payload: Message | bytes | list,
                           callback: Callable[[RequestResult, Received | None], None],
@@ -815,14 +954,14 @@ class Spot:
 
     # --- routed reply (spot → router) ---
     def reply_to_router(self, peer_rid: RoutingId, request_seq: int,
-                        payload: Message | bytes | list, *, flags: int = 0) -> None: ...
+                        payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
 
     # --- routed receive ---
-    def recv_routed(self, *, flags: int = 0) -> Received: ...
-    def on_routed_receive(self, handler: Callable) -> None: ...
-    def on_dispatch_event(self, handler: Callable) -> None: ...
+    def recv_routed(self, *, flags: int = 0) -> Received: ...                    # Raises: RecvError
+    def on_routed_receive(self, handler: Callable) -> None: ...                  # Raises: HandlerError
+    def on_dispatch_event(self, handler: Callable) -> None: ...                  # Raises: HandlerError
 
-    def close(self) -> None: ...
+    def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
 ### RegistryQueryClient
@@ -830,10 +969,10 @@ class Spot:
 ```python
 class RegistryQueryClient:
     def __init__(self, ctx: Context) -> None: ...
-    def connect(self, endpoint: str) -> None: ...
+    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def snapshot(self, filter_: RegistryTopologyFilter | None = None
-                 ) -> list[RegistryTopologyEntry]: ...
-    def close(self) -> None: ...
+                 ) -> list[RegistryTopologyEntry]: ...                           # Raises: ConfigError
+    def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
 ---
@@ -843,18 +982,18 @@ class RegistryQueryClient:
 ```python
 class Poller:
     def __init__(self) -> None: ...
-    def add_socket(self, socket, events: int, tag: object = None) -> None: ...
-    def add_fd(self, fd: int, events: int, tag: object = None) -> None: ...
-    def add_timer(self, timer: Timer, user_data: object = None) -> None: ...
-    def modify_socket(self, socket, events: int) -> None: ...
-    def modify_fd(self, fd: int, events: int) -> None: ...
-    def remove_socket(self, socket) -> None: ...
-    def remove_fd(self, fd: int) -> None: ...
-    def remove_timer(self, timer: Timer) -> None: ...
-    def size(self) -> int: ...
-    def poll(self, timeout_ms: int) -> list[dict]: ...
-    def close(self) -> None: ...
-    # supports `with` and `async with`
+    def add_socket(self, socket, events: int, tag: object = None) -> None: ...   # Raises: ConfigError
+    def add_fd(self, fd: int, events: int, tag: object = None) -> None: ...      # Raises: ConfigError
+    def add_timer(self, timer: Timer, user_data: object = None) -> None: ...     # Raises: ConfigError
+    def modify_socket(self, socket, events: int) -> None: ...                    # Raises: ConfigError
+    def modify_fd(self, fd: int, events: int) -> None: ...                       # Raises: ConfigError
+    def remove_socket(self, socket) -> None: ...                                 # Raises: ConfigError
+    def remove_fd(self, fd: int) -> None: ...                                    # Raises: ConfigError
+    def remove_timer(self, timer: Timer) -> None: ...                            # Raises: ConfigError
+    def size(self) -> int: ...                                                   # Raises: ConfigError
+    def poll(self, timeout_ms: int) -> list[dict]: ...                           # Raises: RecvError
+    def close(self) -> None: ...                                                 # Raises: CloseError
+    # supports `with` and `async with` — __exit__ raises CloseError
 ```
 
 ---
@@ -867,13 +1006,13 @@ class Poller:
 class Timer:
     def __init__(self) -> None: ...
     @classmethod
-    def from_spot(cls, spot: Spot) -> Timer: ...
-    def start(self, interval_ns: int, repeat_count: int) -> None: ...
-    def stop(self) -> None: ...
-    def recv(self, flags: int = 0) -> int: ...
-    def on_fire(self, handler: Callable[[Timer, int], None]) -> None: ...
-    def close(self) -> None: ...
-    # supports `with` and `async with`
+    def from_spot(cls, spot: Spot) -> Timer: ...                                 # Raises: ConfigError
+    def start(self, interval_ns: int, repeat_count: int) -> None: ...            # Raises: ConfigError
+    def stop(self) -> None: ...                                                  # Raises: ConfigError
+    def recv(self, flags: int = 0) -> int: ...                                   # Raises: RecvError
+    def on_fire(self, handler: Callable[[Timer, int], None]) -> None: ...        # Raises: HandlerError
+    def close(self) -> None: ...                                                 # Raises: CloseError
+    # supports `with` and `async with` — __exit__ raises CloseError
 ```
 
 ---
@@ -889,15 +1028,21 @@ class Stopwatch:
     def __init__(self) -> None: ...
 
     def intermediate(self) -> int:
-        """Return elapsed microseconds without stopping."""
+        """Return elapsed microseconds without stopping.
+
+        Raises: ConfigError
+        """
         ...
 
     def stop(self) -> int:
-        """Stop the stopwatch and return total elapsed microseconds."""
+        """Stop the stopwatch and return total elapsed microseconds.
+
+        Raises: ConfigError
+        """
         ...
 
-    def close(self) -> None: ...
-    # supports `with` and `async with`
+    def close(self) -> None: ...                 # Raises: CloseError
+    # supports `with` and `async with` — __exit__ raises CloseError
 ```
 
 ### Thread
@@ -907,11 +1052,17 @@ Background thread managed by the C library.
 ```python
 class Thread:
     def __init__(self, target: Callable[[], None]) -> None:
-        """Start a new thread running the given callable."""
+        """Start a new thread running the given callable.
+
+        Raises: ConfigError
+        """
         ...
 
     def join(self) -> None:
-        """Wait for the thread to finish and release its handle."""
+        """Wait for the thread to finish and release its handle.
+
+        Raises: CloseError
+        """
         ...
 ```
 
@@ -923,14 +1074,14 @@ Lock-free atomic counter.
 class AtomicCounter:
     def __init__(self) -> None: ...
 
-    def set(self, value: int) -> None: ...
-    def increment(self) -> int: ...
-    def decrement(self) -> int: ...
+    def set(self, value: int) -> None: ...       # Raises: ConfigError
+    def increment(self) -> int: ...              # Raises: ConfigError
+    def decrement(self) -> int: ...              # Raises: ConfigError
     @property
-    def value(self) -> int: ...
+    def value(self) -> int: ...                  # Raises: ConfigError
 
-    def close(self) -> None: ...
-    # supports `with` and `async with`
+    def close(self) -> None: ...                 # Raises: CloseError
+    # supports `with` and `async with` — __exit__ raises CloseError
 ```
 
 ---
@@ -953,11 +1104,17 @@ def has(capability: str) -> bool:
     ...
 
 def proxy(frontend, backend, capture=None) -> None:
-    """Start a built-in proxy between frontend and backend sockets."""
+    """Start a built-in proxy between frontend and backend sockets.
+
+    Raises: ConfigError
+    """
     ...
 
 def proxy_steerable(frontend, backend, capture, control) -> None:
-    """Start a steerable proxy with an additional control socket."""
+    """Start a steerable proxy with an additional control socket.
+
+    Raises: ConfigError
+    """
     ...
 
 def sleep(seconds: int) -> None:
@@ -965,6 +1122,9 @@ def sleep(seconds: int) -> None:
     ...
 
 def multipart_close(parts: list[Message]) -> None:
-    """Close all parts in a multipart message array."""
+    """Close all parts in a multipart message array.
+
+    Raises: CloseError
+    """
     ...
 ```

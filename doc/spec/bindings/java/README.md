@@ -25,8 +25,8 @@ public final class Context implements AutoCloseable {
     Context();
 
     ContextOptions options();
-    void shutdown();
-    void close();
+    void shutdown();                                                 // @throws CloseException
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -36,22 +36,22 @@ Typed facade for context configuration options.
 
 ```java
 public final class ContextOptions {
-    int ioThreads();
-    void ioThreads(int count);
-    int maxSockets();
-    void maxSockets(int count);
-    int socketLimit();
-    int threadPriority();
-    void threadPriority(int priority);
-    int threadSchedulingPolicy();
-    void threadSchedulingPolicy(int policy);
-    int maxMsgSize();
-    void maxMsgSize(int bytes);
-    int msgTSize();
-    boolean blocky();
-    void blocky(boolean enabled);
-    void addThreadAffinity(int cpu);
-    void removeThreadAffinity(int cpu);
+    int ioThreads();                                                 // @throws ConfigException
+    void ioThreads(int count);                                       // @throws ConfigException
+    int maxSockets();                                                // @throws ConfigException
+    void maxSockets(int count);                                      // @throws ConfigException
+    int socketLimit();                                               // @throws ConfigException
+    int threadPriority();                                            // @throws ConfigException
+    void threadPriority(int priority);                               // @throws ConfigException
+    int threadSchedulingPolicy();                                    // @throws ConfigException
+    void threadSchedulingPolicy(int policy);                         // @throws ConfigException
+    int maxMsgSize();                                                // @throws ConfigException
+    void maxMsgSize(int bytes);                                      // @throws ConfigException
+    int msgTSize();                                                  // @throws ConfigException
+    boolean blocky();                                                // @throws ConfigException
+    void blocky(boolean enabled);                                    // @throws ConfigException
+    void addThreadAffinity(int cpu);                                 // @throws ConfigException
+    void removeThreadAffinity(int cpu);                              // @throws ConfigException
 }
 ```
 
@@ -67,20 +67,20 @@ Bidirectional exclusive pair socket.
 public final class PairSocket extends Socket {
     PairSocket(Context ctx);
 
-    void bind(String endpoint);
-    void connect(String endpoint);
-    void unbind(String endpoint);
-    void disconnect(String endpoint);
+    void bind(String endpoint);                                      // @throws BindException
+    void connect(String endpoint);                                   // @throws ConnectException
+    void unbind(String endpoint);                                    // @throws ConnectException
+    void disconnect(String endpoint);                                // @throws ConnectException
 
-    void send(Message part);
-    void send(Message part, SendFlags flags);
-    void send(List<Message> parts);
-    void send(List<Message> parts, SendFlags flags);
+    void send(Message part);                                         // @throws SubmitException
+    void send(Message part, SendFlags flags);                        // @throws SubmitException
+    void send(List<Message> parts);                                  // @throws SubmitException
+    void send(List<Message> parts, SendFlags flags);                 // @throws SubmitException
 
-    Received recv();
-    Received recv(RecvFlags flags);
-    void onReceive(SocketMessageHandler handler);
-    void onSendReady(SendReadyHandler handler);
+    Received recv();                                                 // @throws RecvException
+    Received recv(RecvFlags flags);                                  // @throws RecvException
+    void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
+    void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 }
 ```
 
@@ -92,17 +92,17 @@ Publisher socket. Sends topic-prefixed messages to all matching subscribers.
 public final class PubSocket extends Socket {
     PubSocket(Context ctx);
 
-    void bind(String endpoint);
-    void connect(String endpoint);
-    void unbind(String endpoint);
-    void disconnect(String endpoint);
-    void attachDiscovery(Discovery discovery);
+    void bind(String endpoint);                                      // @throws BindException
+    void connect(String endpoint);                                   // @throws ConnectException
+    void unbind(String endpoint);                                    // @throws ConnectException
+    void disconnect(String endpoint);                                // @throws ConnectException
+    void attachDiscovery(Discovery discovery);                       // @throws ConfigException
 
-    void publish(String topicId, Message part);
-    void publish(String topicId, Message part, SendFlags flags);
-    void publish(String topicId, List<Message> parts);
-    void publish(String topicId, List<Message> parts, SendFlags flags);
-    void onSendReady(SendReadyHandler handler);
+    void publish(String topicId, Message part);                      // @throws SubmitException
+    void publish(String topicId, Message part, SendFlags flags);     // @throws SubmitException
+    void publish(String topicId, List<Message> parts);               // @throws SubmitException
+    void publish(String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
+    void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     PubSocketOptions options();
 }
@@ -116,17 +116,17 @@ Subscriber socket. Receives topic-filtered messages from publishers.
 public final class SubSocket extends Socket {
     SubSocket(Context ctx);
 
-    void bind(String endpoint);
-    void connect(String endpoint);
-    void unbind(String endpoint);
-    void disconnect(String endpoint);
-    void attachDiscovery(Discovery discovery);
+    void bind(String endpoint);                                      // @throws BindException
+    void connect(String endpoint);                                   // @throws ConnectException
+    void unbind(String endpoint);                                    // @throws ConnectException
+    void disconnect(String endpoint);                                // @throws ConnectException
+    void attachDiscovery(Discovery discovery);                       // @throws ConfigException
 
-    void setSubscription(String filter);
-    void unsetSubscription(String filter);
-    TopicMessage subscribe();
-    TopicMessage subscribe(RecvFlags flags);
-    void onSubscribe(SubscribeHandler handler);
+    void setSubscription(String filter);                             // @throws ConfigException
+    void unsetSubscription(String filter);                           // @throws ConfigException
+    TopicMessage subscribe();                                        // @throws RecvException
+    TopicMessage subscribe(RecvFlags flags);                         // @throws RecvException
+    void onSubscribe(SubscribeHandler handler);                      // @throws HandlerException
 
     SubSocketOptions options();
 }
@@ -140,24 +140,24 @@ Asynchronous client socket for fair-queued request distribution.
 public final class DealerSocket extends Socket {
     DealerSocket(Context ctx);
 
-    void bind(String endpoint);
-    void connect(String endpoint);
-    void unbind(String endpoint);
-    void disconnect(String endpoint);
-    void attachDiscovery(Discovery discovery);
+    void bind(String endpoint);                                      // @throws BindException
+    void connect(String endpoint);                                   // @throws ConnectException
+    void unbind(String endpoint);                                    // @throws ConnectException
+    void disconnect(String endpoint);                                // @throws ConnectException
+    void attachDiscovery(Discovery discovery);                       // @throws ConfigException
 
-    void setRoutingId(RoutingId rid);
-    RoutingId routingId();
+    void setRoutingId(RoutingId rid);                                // @throws ConfigException
+    RoutingId routingId();                                           // @throws ConfigException
 
-    void send(Message part);
-    void send(Message part, SendFlags flags);
-    void send(List<Message> parts);
-    void send(List<Message> parts, SendFlags flags);
+    void send(Message part);                                         // @throws SubmitException
+    void send(Message part, SendFlags flags);                        // @throws SubmitException
+    void send(List<Message> parts);                                  // @throws SubmitException
+    void send(List<Message> parts, SendFlags flags);                 // @throws SubmitException
 
-    Received recv();
-    Received recv(RecvFlags flags);
-    void onReceive(SocketMessageHandler handler);
-    void onSendReady(SendReadyHandler handler);
+    Received recv();                                                 // @throws RecvException
+    Received recv(RecvFlags flags);                                  // @throws RecvException
+    void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
+    void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     DealerSocketOptions options();
 }
@@ -171,85 +171,85 @@ Server socket that routes messages to specific peers by routing id.
 public final class RouterSocket extends Socket {
     RouterSocket(Context ctx);
 
-    void bind(String endpoint);
-    void connect(String endpoint);
-    void unbind(String endpoint);
-    void disconnect(String endpoint);
-    void attachDiscovery(Discovery discovery);
+    void bind(String endpoint);                                      // @throws BindException
+    void connect(String endpoint);                                   // @throws ConnectException
+    void unbind(String endpoint);                                    // @throws ConnectException
+    void disconnect(String endpoint);                                // @throws ConnectException
+    void attachDiscovery(Discovery discovery);                       // @throws ConfigException
 
-    void setRoutingId(RoutingId rid);
-    RoutingId routingId();
+    void setRoutingId(RoutingId rid);                                // @throws ConfigException
+    RoutingId routingId();                                           // @throws ConfigException
 
-    void send(RoutingId rid, Message part);
-    void send(RoutingId rid, Message part, SendFlags flags);
-    void send(RoutingId rid, List<Message> parts);
-    void send(RoutingId rid, List<Message> parts, SendFlags flags);
+    void send(RoutingId rid, Message part);                          // @throws SubmitException
+    void send(RoutingId rid, Message part, SendFlags flags);         // @throws SubmitException
+    void send(RoutingId rid, List<Message> parts);                   // @throws SubmitException
+    void send(RoutingId rid, List<Message> parts, SendFlags flags);  // @throws SubmitException
 
-    Received recv();
-    Received recv(RecvFlags flags);
-    void onReceive(SocketMessageHandler handler);
-    void onSendReady(SendReadyHandler handler);
+    Received recv();                                                 // @throws RecvException
+    Received recv(RecvFlags flags);                                  // @throws RecvException
+    void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
+    void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // --- router -> spot routed send ---
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);
+    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);         // @throws SubmitException
     void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part,
-                    SendFlags flags);
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts);
+                    SendFlags flags);                                                    // @throws SubmitException
+    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts);  // @throws SubmitException
     void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts,
-                    SendFlags flags);
+                    SendFlags flags);                                                    // @throws SubmitException
 
     // --- router -> spot routed request (async, no flags) ---
     CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
-                                              Message part);
+                                              Message part);                             // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
-                                              Message part, Duration timeout);
+                                              Message part, Duration timeout);           // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
-                                              List<Message> parts);
+                                              List<Message> parts);                      // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
-                                              List<Message> parts, Duration timeout);
+                                              List<Message> parts, Duration timeout);    // @throws SubmitException; future completes with RequestException on failure
 
     // --- router -> spot routed request (callback, has flags, throws on submit failure) ---
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
-                       BiConsumer<RequestResult, Received> callback);
+                       BiConsumer<RequestResult, Received> callback);                    // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
                        BiConsumer<RequestResult, Received> callback,
-                       SendFlags flags);
+                       SendFlags flags);                                                 // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
                        BiConsumer<RequestResult, Received> callback,
-                       SendFlags flags, Duration timeout);
+                       SendFlags flags, Duration timeout);                               // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts,
-                       BiConsumer<RequestResult, Received> callback);
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       List<Message> parts,
-                       BiConsumer<RequestResult, Received> callback,
-                       SendFlags flags);
+                       BiConsumer<RequestResult, Received> callback);                    // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts,
                        BiConsumer<RequestResult, Received> callback,
-                       SendFlags flags, Duration timeout);
+                       SendFlags flags);                                                 // @throws SubmitException; callback receives RequestResult
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       List<Message> parts,
+                       BiConsumer<RequestResult, Received> callback,
+                       SendFlags flags, Duration timeout);                               // @throws SubmitException; callback receives RequestResult
 
     // --- router -> spot routed reply ---
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, Message message);
+                     long requestSeq, Message message);                                  // @throws SubmitException
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, Message message, SendFlags flags);
+                     long requestSeq, Message message, SendFlags flags);                 // @throws SubmitException
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, List<Message> parts);
+                     long requestSeq, List<Message> parts);                              // @throws SubmitException
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, List<Message> parts, SendFlags flags);
+                     long requestSeq, List<Message> parts, SendFlags flags);             // @throws SubmitException
 
     // --- router spot receive ---
-    Received recvSpot();
-    Received recvSpot(RecvFlags flags);
-    void onSpotReceive(RouterSpotHandler handler);
+    Received recvSpot();                                             // @throws RecvException
+    Received recvSpot(RecvFlags flags);                              // @throws RecvException
+    void onSpotReceive(RouterSpotHandler handler);                   // @throws HandlerException
 
     RouterSocketOptions options();
 }
@@ -263,19 +263,19 @@ Extended publisher. Like PubSocket but also receives subscription events.
 public final class XPubSocket extends Socket {
     XPubSocket(Context ctx);
 
-    void bind(String endpoint);
-    void connect(String endpoint);
-    void unbind(String endpoint);
-    void disconnect(String endpoint);
+    void bind(String endpoint);                                      // @throws BindException
+    void connect(String endpoint);                                   // @throws ConnectException
+    void unbind(String endpoint);                                    // @throws ConnectException
+    void disconnect(String endpoint);                                // @throws ConnectException
 
-    void publish(String topicId, Message part);
-    void publish(String topicId, Message part, SendFlags flags);
-    void publish(String topicId, List<Message> parts);
-    void publish(String topicId, List<Message> parts, SendFlags flags);
+    void publish(String topicId, Message part);                      // @throws SubmitException
+    void publish(String topicId, Message part, SendFlags flags);     // @throws SubmitException
+    void publish(String topicId, List<Message> parts);               // @throws SubmitException
+    void publish(String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
 
-    SubscriptionEvent receiveSubscriptionEvent();
-    SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags);
-    void onSendReady(SendReadyHandler handler);
+    SubscriptionEvent receiveSubscriptionEvent();                    // @throws RecvException
+    SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags);     // @throws RecvException
+    void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     PubSocketOptions options();
 }
@@ -289,16 +289,16 @@ Extended subscriber. Like SubSocket with raw subscription forwarding.
 public final class XSubSocket extends Socket {
     XSubSocket(Context ctx);
 
-    void bind(String endpoint);
-    void connect(String endpoint);
-    void unbind(String endpoint);
-    void disconnect(String endpoint);
+    void bind(String endpoint);                                      // @throws BindException
+    void connect(String endpoint);                                   // @throws ConnectException
+    void unbind(String endpoint);                                    // @throws ConnectException
+    void disconnect(String endpoint);                                // @throws ConnectException
 
-    void setSubscription(String filter);
-    void unsetSubscription(String filter);
-    TopicMessage subscribe();
-    TopicMessage subscribe(RecvFlags flags);
-    void onSubscribe(SubscribeHandler handler);
+    void setSubscription(String filter);                             // @throws ConfigException
+    void unsetSubscription(String filter);                           // @throws ConfigException
+    TopicMessage subscribe();                                        // @throws RecvException
+    TopicMessage subscribe(RecvFlags flags);                         // @throws RecvException
+    void onSubscribe(SubscribeHandler handler);                      // @throws HandlerException
 
     SubSocketOptions options();
 }
@@ -312,21 +312,21 @@ Raw TCP stream socket. Bind-only; does not support `connect`.
 public final class StreamSocket extends Socket {
     StreamSocket(Context ctx);
 
-    void bind(String endpoint);
-    void unbind(String endpoint);
+    void bind(String endpoint);                                      // @throws BindException
+    void unbind(String endpoint);                                    // @throws ConnectException
 
-    void send(RoutingId rid, Message part);
-    void send(RoutingId rid, Message part, SendFlags flags);
-    void send(RoutingId rid, List<Message> parts);
-    void send(RoutingId rid, List<Message> parts, SendFlags flags);
+    void send(RoutingId rid, Message part);                          // @throws SubmitException
+    void send(RoutingId rid, Message part, SendFlags flags);         // @throws SubmitException
+    void send(RoutingId rid, List<Message> parts);                   // @throws SubmitException
+    void send(RoutingId rid, List<Message> parts, SendFlags flags);  // @throws SubmitException
 
-    Received recv();
-    Received recv(RecvFlags flags);
-    void onReceive(SocketMessageHandler handler);
-    void onSendReady(SendReadyHandler handler);
+    Received recv();                                                 // @throws RecvException
+    Received recv(RecvFlags flags);                                  // @throws RecvException
+    void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
+    void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
-    void attachStreamRaw(StreamPacketHandler handler);
-    void detachStream();
+    void attachStreamRaw(StreamPacketHandler handler);               // @throws ConfigException
+    void detachStream();                                             // @throws ConfigException
 
     StreamSocketOptions options();
 }
@@ -342,25 +342,25 @@ Owns one native message frame. Implements `AutoCloseable`.
 
 ```java
 public final class Message implements AutoCloseable {
-    Message();
-    Message(int size);
+    Message();                                                       // @throws ConfigException
+    Message(int size);                                               // @throws ConfigException
 
     // --- factories (copy) ---
-    static Message copyOf(byte[] data);
-    static Message copyOf(byte[] data, int offset, int length);
-    static Message copyOfUtf8(String value);
-    static Message copyOf(ByteBuffer data);
-    static Message copyOf(ByteBuf buf);
-    static Message copyOf(ByteSpan span);
-    static Message copyOf(MemorySegment data);
-    static Message copyOf(MemorySegment data, long offset, long length);
+    static Message copyOf(byte[] data);                              // @throws ConfigException
+    static Message copyOf(byte[] data, int offset, int length);      // @throws ConfigException
+    static Message copyOfUtf8(String value);                         // @throws ConfigException
+    static Message copyOf(ByteBuffer data);                          // @throws ConfigException
+    static Message copyOf(ByteBuf buf);                              // @throws ConfigException
+    static Message copyOf(ByteSpan span);                            // @throws ConfigException
+    static Message copyOf(MemorySegment data);                       // @throws ConfigException
+    static Message copyOf(MemorySegment data, long offset, long length); // @throws ConfigException
 
     // --- factories (zero-copy borrow) ---
-    static Message wrapDirect(ByteBuffer data);
-    static Message wrapDirect(ByteBuf buf);
-    static Message wrapNative(MemorySegment data);
-    static Message wrapNative(MemorySegment data, long offset, long length);
-    static Message wrap(ByteSpan span);
+    static Message wrapDirect(ByteBuffer data);                      // @throws ConfigException
+    static Message wrapDirect(ByteBuf buf);                          // @throws ConfigException
+    static Message wrapNative(MemorySegment data);                   // @throws ConfigException
+    static Message wrapNative(MemorySegment data, long offset, long length); // @throws ConfigException
+    static Message wrap(ByteSpan span);                              // @throws ConfigException
 
     // --- accessors ---
     int size();
@@ -373,7 +373,7 @@ public final class Message implements AutoCloseable {
     ByteBuffer dataBuffer();
     int readIntLe(int offset);
     long readLongLe(int offset);
-    String getProperty(String key);
+    String getProperty(String key);                                  // @throws ConfigException
 
     // --- copy to destination ---
     int copyTo(byte[] destination);
@@ -383,10 +383,10 @@ public final class Message implements AutoCloseable {
     boolean tryCopyTo(ByteBuffer destination);
 
     // --- batch close ---
-    static void closeAll(Message[] parts);
-    static void closeAll(Iterable<? extends Message> parts);
+    static void closeAll(Message[] parts);                           // @throws CloseException
+    static void closeAll(Iterable<? extends Message> parts);         // @throws CloseException
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -443,19 +443,134 @@ public enum RecvFlags {
 
 ### ZlinkException
 
-Unchecked exception thrown when any operation fails.
+Abstract unchecked parent of all zlink exceptions.
+Every failing operation throws one of the eight concrete subclasses below,
+each of which corresponds to a C API function-category result enum
+(`SubmitException`, `RequestException`, `RecvException`, `HandlerException`,
+`CloseException`, `BindException`, `ConnectException`, `ConfigException`).
+All subclasses extend `RuntimeException` indirectly via `ZlinkException`, so
+they are unchecked; callers do not need `throws` clauses. Catch
+`ZlinkException` for the "catch-all" idiom, or a specific subclass when
+finer-grained handling is required.
+
 The `code` field is a globally unique `int` that spans all result enum
 ranges (0-703). The code alone identifies the error without needing to
-know which enum it belongs to.
+know which enum it belongs to. `internalErrno` carries the OS-level
+errno when available (0 otherwise).
 
 ```java
-public class ZlinkException extends RuntimeException {
-    public ZlinkException(int code);
-    public ZlinkException(int code, int errno);
+public abstract class ZlinkException extends RuntimeException {
+    protected ZlinkException(int code);
+    protected ZlinkException(int code, int internalErrno);
 
     public int getCode();
-    public int getErrno();
+    public int getInternalErrno();
     public String getMessage();
+}
+```
+
+### SubmitException
+
+Thrown by send / publish / reply / request (callback submit) operations.
+Wraps a `SubmitResult`.
+
+```java
+public final class SubmitException extends ZlinkException {
+    public SubmitException(SubmitResult result);
+    public SubmitException(SubmitResult result, int internalErrno);
+    public SubmitResult getResult();
+}
+```
+
+### RequestException
+
+Thrown by request completion paths (coroutine/future variants) and used as
+the category for request-specific failures. Wraps a `RequestResult`.
+Callback-style `request(...)` methods deliver `RequestResult` directly to
+the callback rather than throwing this exception.
+
+```java
+public final class RequestException extends ZlinkException {
+    public RequestException(RequestResult result);
+    public RequestException(RequestResult result, int internalErrno);
+    public RequestResult getResult();
+}
+```
+
+### RecvException
+
+Thrown by recv / subscribe / subscription-event / monitor recv / timer recv
+operations. Wraps a `RecvResult`.
+
+```java
+public final class RecvException extends ZlinkException {
+    public RecvException(RecvResult result);
+    public RecvException(RecvResult result, int internalErrno);
+    public RecvResult getResult();
+}
+```
+
+### HandlerException
+
+Thrown by handler registration methods (`onReceive`, `onSubscribe`,
+`onSendReady`, `onSpotReceive`, etc.). Wraps a `HandlerResult`.
+
+```java
+public final class HandlerException extends ZlinkException {
+    public HandlerException(HandlerResult result);
+    public HandlerException(HandlerResult result, int internalErrno);
+    public HandlerResult getResult();
+}
+```
+
+### CloseException
+
+Thrown by `close()` / `destroy()` operations. Wraps a `CloseResult`.
+
+```java
+public final class CloseException extends ZlinkException {
+    public CloseException(CloseResult result);
+    public CloseException(CloseResult result, int internalErrno);
+    public CloseResult getResult();
+}
+```
+
+### BindException
+
+Thrown by `bind(...)` operations. Wraps a `BindResult`.
+
+```java
+public final class BindException extends ZlinkException {
+    public BindException(BindResult result);
+    public BindException(BindResult result, int internalErrno);
+    public BindResult getResult();
+}
+```
+
+### ConnectException
+
+Thrown by `connect(...)`, `disconnect(...)`, and `unbind(...)` operations.
+Wraps a `ConnectResult`.
+
+```java
+public final class ConnectException extends ZlinkException {
+    public ConnectException(ConnectResult result);
+    public ConnectException(ConnectResult result, int internalErrno);
+    public ConnectResult getResult();
+}
+```
+
+### ConfigException
+
+Thrown by option set/get, snapshot, poller mutation, proxy, timer
+configuration, TLS setup, discovery attach, and message lifecycle
+operations. Wraps a `ConfigResult`.
+
+```java
+public final class ConfigException extends ZlinkException {
+    public ConfigException(ConfigResult result);
+    public ConfigException(ConfigResult result, int internalErrno);
+    public ConfigResult getResult();
 }
 ```
 
@@ -631,7 +746,7 @@ public final class Received implements AutoCloseable {
     Message firstPart();
     Message singlePartOrThrow();
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -652,7 +767,7 @@ public final class TopicMessage implements AutoCloseable {
     Message firstPart();
     Message singlePartOrThrow();
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -681,43 +796,43 @@ public final class RequestRouter implements AutoCloseable {
     RouterSocket socket();
 
     // --- request (async, no flags) ---
-    CompletableFuture<Received> request(RoutingId routingId, Message part);
+    CompletableFuture<Received> request(RoutingId routingId, Message part);              // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<Received> request(RoutingId routingId, Message part,
-                                        Duration timeout);
-    CompletableFuture<Received> request(RoutingId routingId, List<Message> parts);
+                                        Duration timeout);                               // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<Received> request(RoutingId routingId, List<Message> parts);       // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<Received> request(RoutingId routingId, List<Message> parts,
-                                        Duration timeout);
+                                        Duration timeout);                               // @throws SubmitException; future completes with RequestException on failure
 
     // --- request (callback, has flags, throws on submit failure) ---
     void request(RoutingId routingId, Message part,
-                 BiConsumer<RequestResult, Received> callback);
+                 BiConsumer<RequestResult, Received> callback);                          // @throws SubmitException; callback receives RequestResult
     void request(RoutingId routingId, Message part,
                  BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags);
+                 SendFlags flags);                                                       // @throws SubmitException; callback receives RequestResult
     void request(RoutingId routingId, Message part,
                  BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags, Duration timeout);
+                 SendFlags flags, Duration timeout);                                     // @throws SubmitException; callback receives RequestResult
     void request(RoutingId routingId, List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback);
-    void request(RoutingId routingId, List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags);
+                 BiConsumer<RequestResult, Received> callback);                          // @throws SubmitException; callback receives RequestResult
     void request(RoutingId routingId, List<Message> parts,
                  BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags, Duration timeout);
+                 SendFlags flags);                                                       // @throws SubmitException; callback receives RequestResult
+    void request(RoutingId routingId, List<Message> parts,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags, Duration timeout);                                     // @throws SubmitException; callback receives RequestResult
 
     // --- reply ---
-    void reply(RoutingId routingId, long requestSeq, Message message);
-    void reply(RoutingId routingId, long requestSeq, Message message, SendFlags flags);
-    void reply(RoutingId routingId, long requestSeq, List<Message> parts);
-    void reply(RoutingId routingId, long requestSeq, List<Message> parts, SendFlags flags);
+    void reply(RoutingId routingId, long requestSeq, Message message);                   // @throws SubmitException
+    void reply(RoutingId routingId, long requestSeq, Message message, SendFlags flags);  // @throws SubmitException
+    void reply(RoutingId routingId, long requestSeq, List<Message> parts);               // @throws SubmitException
+    void reply(RoutingId routingId, long requestSeq, List<Message> parts, SendFlags flags); // @throws SubmitException
 
     // --- receive ---
-    Received recv();
-    Received recv(RecvFlags flags);
-    void onReceive(SocketMessageHandler handler);
+    Received recv();                                                 // @throws RecvException
+    Received recv(RecvFlags flags);                                  // @throws RecvException
+    void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -732,35 +847,35 @@ public final class RequestDealer implements AutoCloseable {
     DealerSocket socket();
 
     // --- request (async, no flags) ---
-    CompletableFuture<Received> request(Message part);
-    CompletableFuture<Received> request(Message part, Duration timeout);
-    CompletableFuture<Received> request(List<Message> parts);
-    CompletableFuture<Received> request(List<Message> parts, Duration timeout);
+    CompletableFuture<Received> request(Message part);               // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<Received> request(Message part, Duration timeout); // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<Received> request(List<Message> parts);        // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<Received> request(List<Message> parts, Duration timeout); // @throws SubmitException; future completes with RequestException on failure
 
     // --- request (callback, has flags, throws on submit failure) ---
     void request(Message part,
-                 BiConsumer<RequestResult, Received> callback);
+                 BiConsumer<RequestResult, Received> callback);      // @throws SubmitException; callback receives RequestResult
     void request(Message part,
                  BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags);
+                 SendFlags flags);                                   // @throws SubmitException; callback receives RequestResult
     void request(Message part,
                  BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags, Duration timeout);
+                 SendFlags flags, Duration timeout);                 // @throws SubmitException; callback receives RequestResult
     void request(List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback);
-    void request(List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags);
+                 BiConsumer<RequestResult, Received> callback);      // @throws SubmitException; callback receives RequestResult
     void request(List<Message> parts,
                  BiConsumer<RequestResult, Received> callback,
-                 SendFlags flags, Duration timeout);
+                 SendFlags flags);                                   // @throws SubmitException; callback receives RequestResult
+    void request(List<Message> parts,
+                 BiConsumer<RequestResult, Received> callback,
+                 SendFlags flags, Duration timeout);                 // @throws SubmitException; callback receives RequestResult
 
     // --- receive ---
-    Received recv();
-    Received recv(RecvFlags flags);
-    void onReceive(SocketMessageHandler handler);
+    Received recv();                                                 // @throws RecvException
+    Received recv(RecvFlags flags);                                  // @throws RecvException
+    void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -775,10 +890,10 @@ Implements `AutoCloseable`.
 
 ```java
 public final class MonitorSocket implements AutoCloseable {
-    MonitorEvent recv();
-    MonitorSnapshot snapshot();
+    MonitorEvent recv();                                             // @throws RecvException
+    MonitorSnapshot snapshot();                                      // @throws ConfigException
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -789,11 +904,11 @@ Implements `AutoCloseable`.
 
 ```java
 public final class ServiceMonitor implements AutoCloseable {
-    void onEvent(ServiceMonitorHandler handler);
-    ServiceEvent recv();
-    MonitorSnapshot snapshot();
+    void onEvent(ServiceMonitorHandler handler);                    // @throws HandlerException
+    ServiceEvent recv();                                             // @throws RecvException
+    MonitorSnapshot snapshot();                                      // @throws ConfigException
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -810,25 +925,25 @@ Implements `AutoCloseable`.
 public final class Registry implements AutoCloseable {
     Registry(Context ctx);
 
-    void bind(String pubEndpoint, String routerEndpoint);
-    void setId(int id);
-    void addPeer(String peerPubEndpoint);
-    void setHeartbeat(int intervalMs, int timeoutMs);
-    void setBroadcastInterval(int intervalMs);
-    void setTlsServer(String certPem, String keyPem, boolean requireClientCert);
-    void setTlsClient(String caCertPem, String hostname, boolean trustSystem);
+    void bind(String pubEndpoint, String routerEndpoint);            // @throws BindException
+    void setId(int id);                                              // @throws ConfigException
+    void addPeer(String peerPubEndpoint);                            // @throws ConnectException
+    void setHeartbeat(int intervalMs, int timeoutMs);                // @throws ConfigException
+    void setBroadcastInterval(int intervalMs);                       // @throws ConfigException
+    void setTlsServer(String certPem, String keyPem, boolean requireClientCert); // @throws ConfigException
+    void setTlsClient(String caCertPem, String hostname, boolean trustSystem);   // @throws ConfigException
 
-    RegistryStatus statusSnapshot();
-    List<RegistryServiceSummaryEntry> serviceSummarySnapshot();
+    RegistryStatus statusSnapshot();                                 // @throws ConfigException
+    List<RegistryServiceSummaryEntry> serviceSummarySnapshot();      // @throws ConfigException
     List<RegistryServiceSummaryEntry> serviceSummarySnapshot(
-        RegistryServiceSummaryFilter filter);
-    List<RegistryTopologyEntry> topologySnapshot();
-    List<RegistryTopologyEntry> topologyQuery(RegistryTopologyFilter filter);
-    List<MemberPeerEntry> memberPeers(ServiceType serviceType, String serviceName);
+        RegistryServiceSummaryFilter filter);                        // @throws ConfigException
+    List<RegistryTopologyEntry> topologySnapshot();                  // @throws ConfigException
+    List<RegistryTopologyEntry> topologyQuery(RegistryTopologyFilter filter); // @throws ConfigException
+    List<MemberPeerEntry> memberPeers(ServiceType serviceType, String serviceName); // @throws ConfigException
     byte[] memberPeerMetadata(ServiceType serviceType, String serviceName,
-                              ServiceRole serviceRole, String endpoint);
+                              ServiceRole serviceRole, String endpoint); // @throws ConfigException
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -841,20 +956,20 @@ Implements `AutoCloseable`.
 public final class Discovery implements AutoCloseable {
     Discovery(Context ctx, ServiceType serviceType, String serviceName);
 
-    void connectRegistry(String registryEndpoint);
-    void setValue(long value);
-    long getValue();
-    void setMetadata(byte[] metadata);
-    byte[] getMetadata();
-    void setTlsClient(String caCertPem, String hostname, boolean trustSystem);
+    void connectRegistry(String registryEndpoint);                   // @throws ConnectException
+    void setValue(long value);                                       // @throws ConfigException
+    long getValue();                                                 // @throws ConfigException
+    void setMetadata(byte[] metadata);                               // @throws ConfigException
+    byte[] getMetadata();                                            // @throws ConfigException
+    void setTlsClient(String caCertPem, String hostname, boolean trustSystem); // @throws ConfigException
 
-    List<MemberPeerEntry> memberPeers();
-    byte[] memberPeerMetadata(ServiceRole serviceRole, String endpoint);
+    List<MemberPeerEntry> memberPeers();                             // @throws ConfigException
+    byte[] memberPeerMetadata(ServiceRole serviceRole, String endpoint); // @throws ConfigException
 
-    ServiceMonitor monitorOpen();
-    ServiceMonitor monitorOpen(ServiceMonitorEventMask... events);
+    ServiceMonitor monitorOpen();                                    // @throws ConfigException
+    ServiceMonitor monitorOpen(ServiceMonitorEventMask... events);   // @throws ConfigException
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -867,20 +982,20 @@ Implements `AutoCloseable`.
 public final class SpotNode implements AutoCloseable {
     SpotNode(Context ctx);
 
-    void bind(String endpoint);
-    void connectPeer(String peerEndpoint);
-    void disconnectPeer(String peerEndpoint);
-    void attachDiscovery(Discovery discovery);
-    void setTlsServer(String certPem, String keyPem, boolean requireClientCert);
-    void setTlsClient(String caCertPem, String hostname, boolean trustSystem);
+    void bind(String endpoint);                                      // @throws BindException
+    void connectPeer(String peerEndpoint);                           // @throws ConnectException
+    void disconnectPeer(String peerEndpoint);                        // @throws ConnectException
+    void attachDiscovery(Discovery discovery);                       // @throws ConfigException
+    void setTlsServer(String certPem, String keyPem, boolean requireClientCert); // @throws ConfigException
+    void setTlsClient(String caCertPem, String hostname, boolean trustSystem);   // @throws ConfigException
 
-    SpotNodeStatus statusSnapshot();
-    List<SpotNodePeerEntry> peersSnapshot();
-    List<SpotNodePeerEntry> peersQuery(SpotNodePeerFilter filter);
-    List<SpotNodeSubjectEntry> subjectsSnapshot();
-    List<SpotNodeSubjectEntry> subjectsSnapshot(SpotNodeSubjectFilter filter);
+    SpotNodeStatus statusSnapshot();                                 // @throws ConfigException
+    List<SpotNodePeerEntry> peersSnapshot();                         // @throws ConfigException
+    List<SpotNodePeerEntry> peersQuery(SpotNodePeerFilter filter);   // @throws ConfigException
+    List<SpotNodeSubjectEntry> subjectsSnapshot();                   // @throws ConfigException
+    List<SpotNodeSubjectEntry> subjectsSnapshot(SpotNodeSubjectFilter filter); // @throws ConfigException
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -894,121 +1009,121 @@ public final class Spot implements AutoCloseable {
     Spot(SpotNode node);
 
     // --- publish ---
-    void publish(String topicId, Message part);
-    void publish(String topicId, Message part, SendFlags flags);
-    void publish(String topicId, List<Message> parts);
-    void publish(String topicId, List<Message> parts, SendFlags flags);
+    void publish(String topicId, Message part);                      // @throws SubmitException
+    void publish(String topicId, Message part, SendFlags flags);     // @throws SubmitException
+    void publish(String topicId, List<Message> parts);               // @throws SubmitException
+    void publish(String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
 
     // --- subscribe ---
-    void setSubscription(String topicId);
-    void unsetSubscription(String topicIdOrPattern);
-    void onSubscribe(SubscribeHandler handler);
-    void onSendReady(SendReadyHandler handler);
-    TopicMessage subscribe();
-    TopicMessage subscribe(RecvFlags flags);
+    void setSubscription(String topicId);                            // @throws ConfigException
+    void unsetSubscription(String topicIdOrPattern);                 // @throws ConfigException
+    void onSubscribe(SubscribeHandler handler);                      // @throws HandlerException
+    void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
+    TopicMessage subscribe();                                        // @throws RecvException
+    TopicMessage subscribe(RecvFlags flags);                         // @throws RecvException
 
     // --- routed send (spot -> spot) ---
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);
+    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);         // @throws SubmitException
     void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part,
-                    SendFlags flags);
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts);
+                    SendFlags flags);                                                    // @throws SubmitException
+    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts);  // @throws SubmitException
     void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts,
-                    SendFlags flags);
+                    SendFlags flags);                                                    // @throws SubmitException
 
     // --- routed request (spot -> spot, async, no flags) ---
     CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
-                                              Message part);
+                                              Message part);                             // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
-                                              Message part, Duration timeout);
+                                              Message part, Duration timeout);           // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
-                                              List<Message> parts);
+                                              List<Message> parts);                      // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
-                                              List<Message> parts, Duration timeout);
+                                              List<Message> parts, Duration timeout);    // @throws SubmitException; future completes with RequestException on failure
 
     // --- routed request (spot -> spot, callback, has flags, throws on submit failure) ---
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
-                       BiConsumer<RequestResult, Received> callback);
+                       BiConsumer<RequestResult, Received> callback);                    // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
                        BiConsumer<RequestResult, Received> callback,
-                       SendFlags flags);
+                       SendFlags flags);                                                 // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
                        BiConsumer<RequestResult, Received> callback,
-                       SendFlags flags, Duration timeout);
+                       SendFlags flags, Duration timeout);                               // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts,
-                       BiConsumer<RequestResult, Received> callback);
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       List<Message> parts,
-                       BiConsumer<RequestResult, Received> callback,
-                       SendFlags flags);
+                       BiConsumer<RequestResult, Received> callback);                    // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts,
                        BiConsumer<RequestResult, Received> callback,
-                       SendFlags flags, Duration timeout);
+                       SendFlags flags);                                                 // @throws SubmitException; callback receives RequestResult
+    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                       List<Message> parts,
+                       BiConsumer<RequestResult, Received> callback,
+                       SendFlags flags, Duration timeout);                               // @throws SubmitException; callback receives RequestResult
 
     // --- routed reply (spot -> spot) ---
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, Message message);
+                     long requestSeq, Message message);                                  // @throws SubmitException
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, Message message, SendFlags flags);
+                     long requestSeq, Message message, SendFlags flags);                 // @throws SubmitException
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, List<Message> parts);
+                     long requestSeq, List<Message> parts);                              // @throws SubmitException
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, List<Message> parts, SendFlags flags);
+                     long requestSeq, List<Message> parts, SendFlags flags);             // @throws SubmitException
 
     // --- routed send (spot -> router) ---
-    void sendToRouter(RoutingId peerRid, Message part);
-    void sendToRouter(RoutingId peerRid, Message part, SendFlags flags);
-    void sendToRouter(RoutingId peerRid, List<Message> parts);
-    void sendToRouter(RoutingId peerRid, List<Message> parts, SendFlags flags);
+    void sendToRouter(RoutingId peerRid, Message part);                                  // @throws SubmitException
+    void sendToRouter(RoutingId peerRid, Message part, SendFlags flags);                 // @throws SubmitException
+    void sendToRouter(RoutingId peerRid, List<Message> parts);                           // @throws SubmitException
+    void sendToRouter(RoutingId peerRid, List<Message> parts, SendFlags flags);          // @throws SubmitException
 
     // --- routed request (spot -> router, async, no flags) ---
-    CompletableFuture<Received> requestToRouter(RoutingId peerRid, Message part);
+    CompletableFuture<Received> requestToRouter(RoutingId peerRid, Message part);        // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<Received> requestToRouter(RoutingId peerRid, Message part,
-                                                Duration timeout);
-    CompletableFuture<Received> requestToRouter(RoutingId peerRid, List<Message> parts);
+                                                Duration timeout);                       // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<Received> requestToRouter(RoutingId peerRid, List<Message> parts); // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<Received> requestToRouter(RoutingId peerRid, List<Message> parts,
-                                                Duration timeout);
+                                                Duration timeout);                       // @throws SubmitException; future completes with RequestException on failure
 
     // --- routed request (spot -> router, callback, has flags, throws on submit failure) ---
     void requestToRouter(RoutingId peerRid, Message part,
-                         BiConsumer<RequestResult, Received> callback);
+                         BiConsumer<RequestResult, Received> callback);                  // @throws SubmitException; callback receives RequestResult
     void requestToRouter(RoutingId peerRid, Message part,
                          BiConsumer<RequestResult, Received> callback,
-                         SendFlags flags);
+                         SendFlags flags);                                               // @throws SubmitException; callback receives RequestResult
     void requestToRouter(RoutingId peerRid, Message part,
                          BiConsumer<RequestResult, Received> callback,
-                         SendFlags flags, Duration timeout);
+                         SendFlags flags, Duration timeout);                             // @throws SubmitException; callback receives RequestResult
     void requestToRouter(RoutingId peerRid, List<Message> parts,
-                         BiConsumer<RequestResult, Received> callback);
-    void requestToRouter(RoutingId peerRid, List<Message> parts,
-                         BiConsumer<RequestResult, Received> callback,
-                         SendFlags flags);
+                         BiConsumer<RequestResult, Received> callback);                  // @throws SubmitException; callback receives RequestResult
     void requestToRouter(RoutingId peerRid, List<Message> parts,
                          BiConsumer<RequestResult, Received> callback,
-                         SendFlags flags, Duration timeout);
+                         SendFlags flags);                                               // @throws SubmitException; callback receives RequestResult
+    void requestToRouter(RoutingId peerRid, List<Message> parts,
+                         BiConsumer<RequestResult, Received> callback,
+                         SendFlags flags, Duration timeout);                             // @throws SubmitException; callback receives RequestResult
 
     // --- routed reply (spot -> router) ---
-    void replyToRouter(RoutingId peerRid, long requestSeq, Message message);
-    void replyToRouter(RoutingId peerRid, long requestSeq, Message message, SendFlags flags);
-    void replyToRouter(RoutingId peerRid, long requestSeq, List<Message> parts);
+    void replyToRouter(RoutingId peerRid, long requestSeq, Message message);                  // @throws SubmitException
+    void replyToRouter(RoutingId peerRid, long requestSeq, Message message, SendFlags flags); // @throws SubmitException
+    void replyToRouter(RoutingId peerRid, long requestSeq, List<Message> parts);              // @throws SubmitException
     void replyToRouter(RoutingId peerRid, long requestSeq, List<Message> parts,
-                       SendFlags flags);
+                       SendFlags flags);                                                      // @throws SubmitException
 
     // --- routed receive ---
-    Received recvRouted();
-    Received recvRouted(RecvFlags flags);
-    void onRoutedReceive(SpotRoutedHandler handler);
-    void onDispatchEvent(SpotDispatchEventHandler handler);
+    Received recvRouted();                                           // @throws RecvException
+    Received recvRouted(RecvFlags flags);                            // @throws RecvException
+    void onRoutedReceive(SpotRoutedHandler handler);                 // @throws HandlerException
+    void onDispatchEvent(SpotDispatchEventHandler handler);          // @throws HandlerException
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -1021,11 +1136,11 @@ Implements `AutoCloseable`.
 public final class RegistryQueryClient implements AutoCloseable {
     RegistryQueryClient(Context ctx);
 
-    void connect(String endpoint);
-    List<RegistryTopologyEntry> snapshot();
-    List<RegistryTopologyEntry> snapshot(RegistryTopologyFilter filter);
+    void connect(String endpoint);                                   // @throws ConnectException
+    List<RegistryTopologyEntry> snapshot();                          // @throws ConfigException
+    List<RegistryTopologyEntry> snapshot(RegistryTopologyFilter filter); // @throws ConfigException
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -1043,28 +1158,28 @@ public final class Poller implements AutoCloseable {
     Poller();
 
     // --- socket registration ---
-    void add(Socket socket, int events);
-    void add(Socket socket, int events, Object tag);
-    void add(Socket socket, PollEventType... events);
-    void add(Socket socket, Object tag, PollEventType... events);
-    void modify(Socket socket, int events);
-    void modify(Socket socket, PollEventType... events);
-    boolean remove(Socket socket);
+    void add(Socket socket, int events);                             // @throws ConfigException
+    void add(Socket socket, int events, Object tag);                 // @throws ConfigException
+    void add(Socket socket, PollEventType... events);                // @throws ConfigException
+    void add(Socket socket, Object tag, PollEventType... events);    // @throws ConfigException
+    void modify(Socket socket, int events);                          // @throws ConfigException
+    void modify(Socket socket, PollEventType... events);             // @throws ConfigException
+    boolean remove(Socket socket);                                   // @throws ConfigException
 
     // --- file descriptor registration ---
-    void addFd(int fd, int events);
-    void addFd(int fd, int events, Object tag);
-    void addFd(int fd, PollEventType... events);
-    void addFd(int fd, Object tag, PollEventType... events);
-    void modifyFd(int fd, int events);
-    void modifyFd(int fd, PollEventType... events);
-    boolean removeFd(int fd);
+    void addFd(int fd, int events);                                  // @throws ConfigException
+    void addFd(int fd, int events, Object tag);                      // @throws ConfigException
+    void addFd(int fd, PollEventType... events);                     // @throws ConfigException
+    void addFd(int fd, Object tag, PollEventType... events);         // @throws ConfigException
+    void modifyFd(int fd, int events);                               // @throws ConfigException
+    void modifyFd(int fd, PollEventType... events);                  // @throws ConfigException
+    boolean removeFd(int fd);                                        // @throws ConfigException
 
     // --- poll ---
     int size();
-    int pollCount(int timeoutMs);
-    boolean pollAny(int timeoutMs);
-    List<PollEvent> poll(int timeoutMs);
+    int pollCount(int timeoutMs);                                    // @throws ConfigException
+    boolean pollAny(int timeoutMs);                                  // @throws ConfigException
+    List<PollEvent> poll(int timeoutMs);                             // @throws ConfigException
 
     // --- ready accessors ---
     int readyCount();
@@ -1074,8 +1189,8 @@ public final class Poller implements AutoCloseable {
     int readyEvents(int index);
     short readyRevents(int index);
 
-    void clear();
-    void close();
+    void clear();                                                    // @throws ConfigException
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -1092,15 +1207,15 @@ Implements `AutoCloseable`.
 public final class Timer implements AutoCloseable {
     Timer();
 
-    static Timer fromSpot(Spot spot);
+    static Timer fromSpot(Spot spot);                                // @throws ConfigException
 
-    void start(long intervalNs, long repeatCount);
-    void stop();
-    long recv();
-    long recv(int flags);
-    void onFire(TimerHandler handler);
+    void start(long intervalNs, long repeatCount);                   // @throws ConfigException
+    void stop();                                                     // @throws ConfigException
+    long recv();                                                     // @throws RecvException
+    long recv(int flags);                                            // @throws RecvException
+    void onFire(TimerHandler handler);                               // @throws HandlerException
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -1139,17 +1254,17 @@ public final class Zlink {
 
     /// Start a built-in proxy between frontend and backend sockets.
     /// An optional capture socket receives copies of all messages.
-    static void proxy(Socket frontend, Socket backend, Socket capture);
+    static void proxy(Socket frontend, Socket backend, Socket capture);         // @throws ConfigException
 
     /// Start a steerable proxy with an additional control socket.
     static void proxySteerable(Socket frontend, Socket backend,
-                               Socket capture, Socket control);
+                               Socket capture, Socket control);                 // @throws ConfigException
 
     /// Sleep for the given number of seconds.
     static void sleep(int seconds);
 
     /// Close all parts in a multipart message array.
-    static void multipartClose(Message[] parts);
+    static void multipartClose(Message[] parts);                                // @throws CloseException
 }
 ```
 
@@ -1167,7 +1282,7 @@ public final class Stopwatch implements AutoCloseable {
     /// Stop the stopwatch and return total elapsed microseconds.
     long stop();
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -1180,9 +1295,9 @@ public final class ZlinkThread implements AutoCloseable {
     ZlinkThread(Runnable task);
 
     /// Wait for the thread to finish and release its handle.
-    void join();
+    void join();                                                     // @throws ConfigException
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```
 
@@ -1199,6 +1314,6 @@ public final class AtomicCounter implements AutoCloseable {
     int decrement();
     int value();
 
-    void close();
+    void close();                                                    // @throws CloseException
 }
 ```

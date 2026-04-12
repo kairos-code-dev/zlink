@@ -14,19 +14,29 @@ binding must expose. Private/internal items are omitted.
 
 ```rust
 impl Context {
-    pub fn new() -> Result<Self, ZlinkError>;
-    pub fn shutdown(&self) -> Result<(), ZlinkError>;
+    /// # Errors: ConfigError
+    pub fn new() -> Result<Self, ConfigError>;
+    /// # Errors: CloseError
+    pub fn shutdown(&self) -> Result<(), CloseError>;
     pub fn options(&self) -> ContextOptions<'_>;
 
-    // Socket factories
-    pub fn pair_socket(&self) -> Result<PairSocket, ZlinkError>;
-    pub fn pub_socket(&self) -> Result<PubSocket, ZlinkError>;
-    pub fn sub_socket(&self) -> Result<SubSocket, ZlinkError>;
-    pub fn dealer_socket(&self) -> Result<DealerSocket, ZlinkError>;
-    pub fn router_socket(&self) -> Result<RouterSocket, ZlinkError>;
-    pub fn xpub_socket(&self) -> Result<XPubSocket, ZlinkError>;
-    pub fn xsub_socket(&self) -> Result<XSubSocket, ZlinkError>;
-    pub fn stream_socket(&self) -> Result<StreamSocket, ZlinkError>;
+    // Socket factories — each returns ConfigError on failure.
+    /// # Errors: ConfigError
+    pub fn pair_socket(&self) -> Result<PairSocket, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn pub_socket(&self) -> Result<PubSocket, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn sub_socket(&self) -> Result<SubSocket, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn dealer_socket(&self) -> Result<DealerSocket, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn router_socket(&self) -> Result<RouterSocket, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn xpub_socket(&self) -> Result<XPubSocket, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn xsub_socket(&self) -> Result<XSubSocket, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn stream_socket(&self) -> Result<StreamSocket, ConfigError>;
 }
 // Drop calls zlink_ctx_term
 ```
@@ -34,23 +44,40 @@ impl Context {
 ### ContextOptions
 
 ```rust
+// All ContextOptions getters/setters return ConfigError on failure.
 impl<'a> ContextOptions<'a> {
-    pub fn io_threads(&self) -> Result<i32, ZlinkError>;
-    pub fn set_io_threads(&self, threads: i32) -> Result<(), ZlinkError>;
-    pub fn max_sockets(&self) -> Result<i32, ZlinkError>;
-    pub fn set_max_sockets(&self, max: i32) -> Result<(), ZlinkError>;
-    pub fn socket_limit(&self) -> Result<i32, ZlinkError>;
-    pub fn thread_priority(&self) -> Result<i32, ZlinkError>;
-    pub fn set_thread_priority(&self, priority: i32) -> Result<(), ZlinkError>;
-    pub fn thread_scheduling_policy(&self) -> Result<i32, ZlinkError>;
-    pub fn set_thread_scheduling_policy(&self, policy: i32) -> Result<(), ZlinkError>;
-    pub fn max_msg_size(&self) -> Result<i32, ZlinkError>;
-    pub fn set_max_msg_size(&self, size: i32) -> Result<(), ZlinkError>;
-    pub fn msg_t_size(&self) -> Result<i32, ZlinkError>;
-    pub fn blocky(&self) -> Result<bool, ZlinkError>;
-    pub fn set_blocky(&self, blocky: bool) -> Result<(), ZlinkError>;
-    pub fn add_thread_affinity(&self, cpu: i32) -> Result<(), ZlinkError>;
-    pub fn remove_thread_affinity(&self, cpu: i32) -> Result<(), ZlinkError>;
+    /// # Errors: ConfigError
+    pub fn io_threads(&self) -> Result<i32, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_io_threads(&self, threads: i32) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn max_sockets(&self) -> Result<i32, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_max_sockets(&self, max: i32) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn socket_limit(&self) -> Result<i32, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn thread_priority(&self) -> Result<i32, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_thread_priority(&self, priority: i32) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn thread_scheduling_policy(&self) -> Result<i32, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_thread_scheduling_policy(&self, policy: i32) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn max_msg_size(&self) -> Result<i32, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_max_msg_size(&self, size: i32) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn msg_t_size(&self) -> Result<i32, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn blocky(&self) -> Result<bool, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_blocky(&self, blocky: bool) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn add_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn remove_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError>;
 }
 ```
 
@@ -61,15 +88,17 @@ pub fn version() -> (i32, i32, i32);
 pub fn has(capability: &str) -> bool;
 
 /// Start a built-in proxy between frontend and backend sockets.
+/// # Errors: ConfigError
 pub fn proxy<'a>(frontend: impl Into<PollTarget<'a>>,
                  backend: impl Into<PollTarget<'a>>,
-                 capture: Option<impl Into<PollTarget<'a>>>) -> Result<(), ZlinkError>;
+                 capture: Option<impl Into<PollTarget<'a>>>) -> Result<(), ConfigError>;
 
 /// Start a steerable proxy with an additional control socket.
+/// # Errors: ConfigError
 pub fn proxy_steerable<'a>(frontend: impl Into<PollTarget<'a>>,
                            backend: impl Into<PollTarget<'a>>,
                            capture: Option<impl Into<PollTarget<'a>>>,
-                           control: impl Into<PollTarget<'a>>) -> Result<(), ZlinkError>;
+                           control: impl Into<PollTarget<'a>>) -> Result<(), ConfigError>;
 
 /// Sleep for the given number of seconds.
 pub fn sleep(seconds: i32);
@@ -80,10 +109,12 @@ pub fn multipart_close(parts: &mut [Message]);
 
 ### Errno / Strerror
 
-Errors are mapped through the `ZlinkError` type, which implements
-`std::error::Error` and `Display`. The C-level `zlink_errno()` and
-`zlink_strerror()` are used internally to construct `ZlinkError`
-values returned via `Result`. Direct access is not exposed.
+Errors are mapped through per-category error types (see
+[Per-Function Error Types](#per-function-error-types)) which all
+implement `std::error::Error` and `Display` and convert into the
+top-level `ZlinkError` enum via `From`. The C-level `zlink_errno()` and
+`zlink_strerror()` are used internally to construct error values
+returned via `Result`. Direct access is not exposed.
 
 ---
 
@@ -119,21 +150,32 @@ as direct methods on each socket type.
 
 ```rust
 impl PairSocket {
-    pub fn bind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn unbind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn connect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn disconnect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
-    pub fn recv(&self) -> Result<Received, ZlinkError>;
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: BindError
+    pub fn bind(&self, addr: &str) -> Result<(), BindError>;
+    /// # Errors: ConnectError
+    pub fn unbind(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: SubmitError
+    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: RecvError
+    pub fn recv(&self) -> Result<Received, RecvError>;
+    /// # Errors: RecvError
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    /// # Errors: HandlerError
+    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(Received) + Send + 'static;
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: HandlerError
+    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
     pub fn send_handle(&self) -> SendHandle;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -141,18 +183,27 @@ impl PairSocket {
 
 ```rust
 impl PubSocket {
-    pub fn bind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn unbind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn connect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn disconnect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: BindError
+    pub fn bind(&self, addr: &str) -> Result<(), BindError>;
+    /// # Errors: ConnectError
+    pub fn unbind(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: SubmitError
+    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: HandlerError
+    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn pub_options(&self) -> PubSocketOptions<'_, Self>;
-    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ZlinkError>;
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+    /// # Errors: ConfigError
+    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -160,20 +211,31 @@ impl PubSocket {
 
 ```rust
 impl SubSocket {
-    pub fn bind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn unbind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn connect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn disconnect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn set_subscription(&self, filter: &str) -> Result<(), ZlinkError>;
-    pub fn unset_subscription(&self, filter: &str) -> Result<(), ZlinkError>;
-    pub fn subscribe(&self) -> Result<TopicMessage, ZlinkError>;
-    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, ZlinkError>;
-    pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: BindError
+    pub fn bind(&self, addr: &str) -> Result<(), BindError>;
+    /// # Errors: ConnectError
+    pub fn unbind(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConfigError
+    pub fn set_subscription(&self, filter: &str) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn unset_subscription(&self, filter: &str) -> Result<(), ConfigError>;
+    /// # Errors: RecvError
+    pub fn subscribe(&self) -> Result<TopicMessage, RecvError>;
+    /// # Errors: RecvError
+    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, RecvError>;
+    /// # Errors: HandlerError
+    pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(TopicMessage) + Send + 'static;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn sub_options(&self) -> SubSocketOptions<'_, Self>;
-    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ZlinkError>;
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+    /// # Errors: ConfigError
+    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -181,25 +243,39 @@ impl SubSocket {
 
 ```rust
 impl DealerSocket {
-    pub fn bind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn unbind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn connect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn disconnect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ZlinkError>;
-    pub fn routing_id(&self) -> Result<RoutingId, ZlinkError>;
-    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
-    pub fn recv(&self) -> Result<Received, ZlinkError>;
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: BindError
+    pub fn bind(&self, addr: &str) -> Result<(), BindError>;
+    /// # Errors: ConnectError
+    pub fn unbind(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConfigError
+    pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn routing_id(&self) -> Result<RoutingId, ConfigError>;
+    /// # Errors: SubmitError
+    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: RecvError
+    pub fn recv(&self) -> Result<Received, RecvError>;
+    /// # Errors: RecvError
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    /// # Errors: HandlerError
+    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(Received) + Send + 'static;
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: HandlerError
+    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
     pub fn send_handle(&self) -> SendHandle;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn dealer_options(&self) -> DealerSocketOptions<'_>;
-    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ZlinkError>;
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+    /// # Errors: ConfigError
+    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -207,60 +283,86 @@ impl DealerSocket {
 
 ```rust
 impl RouterSocket {
-    pub fn bind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn unbind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn connect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn disconnect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ZlinkError>;
-    pub fn routing_id(&self) -> Result<RoutingId, ZlinkError>;
+    /// # Errors: BindError
+    pub fn bind(&self, addr: &str) -> Result<(), BindError>;
+    /// # Errors: ConnectError
+    pub fn unbind(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConfigError
+    pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn routing_id(&self) -> Result<RoutingId, ConfigError>;
+    /// # Errors: SubmitError
     pub fn send(&self, target: &RoutingId, parts: impl IntoMultipart)
-        -> Result<(), ZlinkError>;
+        -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
     pub fn send_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
-        flags: SendFlags) -> Result<(), ZlinkError>;
-    pub fn recv(&self) -> Result<Received, ZlinkError>;
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+        flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: RecvError
+    pub fn recv(&self) -> Result<Received, RecvError>;
+    /// # Errors: RecvError
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    /// # Errors: HandlerError
+    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(Received) + Send + 'static;
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: HandlerError
+    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
     pub fn send_handle(&self) -> SendHandle;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn router_options(&self) -> RouterSocketOptions<'_>;
-    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ZlinkError>;
+    /// # Errors: ConfigError
+    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError>;
 
     // --- router → spot routed send ---
+    /// # Errors: SubmitError
     pub fn send_to_spot(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
-        parts: impl IntoMultipart) -> Result<(), ZlinkError>;
+        parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
     pub fn send_to_spot_with_flags(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
 
     // --- router → spot routed request (async) — no flags ---
     // Duration::ZERO uses the socket default timeout.
+    // Submit failure yields SubmitError; request failure (timeout, etc.)
+    // yields RequestError; both unify under ZlinkError at this API seam.
+    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
     pub async fn request_to_spot(&self, dest_node_rid: RoutingId,
         dest_spot_rid: RoutingId, parts: impl IntoMultipart,
         timeout: Duration) -> Result<Received, ZlinkError>;
 
     // --- router → spot routed request (callback) ---
     // Duration::ZERO uses the socket default timeout.
+    // The callback receives Result<Received, RequestError>.
+    /// # Errors: SubmitError (submit failure). Callback receives Result<Received, RequestError>.
     pub fn request_to_spot_callback<F>(&self, dest_node_rid: RoutingId,
         dest_spot_rid: RoutingId, parts: impl IntoMultipart, callback: F,
         flags: SendFlags, timeout: Duration)
-        -> Result<(), ZlinkError>
-        where F: FnOnce(RequestResult, Option<Received>) + Send + 'static;
+        -> Result<(), SubmitError>
+        where F: FnOnce(Result<Received, RequestError>) + Send + 'static;
 
     // --- router → spot routed reply ---
+    /// # Errors: SubmitError
     pub fn reply_to_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-        request_seq: u64, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
+        request_seq: u64, parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
     pub fn reply_to_spot_with_flags(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-        request_seq: u64, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
+        request_seq: u64, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
 
     // --- router spot receive ---
-    pub fn recv_spot(&self) -> Result<Received, ZlinkError>;
-    pub fn recv_spot_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
-    pub fn on_spot_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: RecvError
+    pub fn recv_spot(&self) -> Result<Received, RecvError>;
+    /// # Errors: RecvError
+    pub fn recv_spot_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    /// # Errors: HandlerError
+    pub fn on_spot_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(RoutingId, RoutingId, u64, Vec<Message>) + Send + 'static;
 
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -268,19 +370,29 @@ impl RouterSocket {
 
 ```rust
 impl XPubSocket {
-    pub fn bind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn unbind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn connect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn disconnect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
-    pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, ZlinkError>;
-    pub fn receive_subscription_event_with_flags(&self, flags: RecvFlags) -> Result<SubscriptionEvent, ZlinkError>;
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: BindError
+    pub fn bind(&self, addr: &str) -> Result<(), BindError>;
+    /// # Errors: ConnectError
+    pub fn unbind(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: SubmitError
+    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: RecvError
+    pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError>;
+    /// # Errors: RecvError
+    pub fn receive_subscription_event_with_flags(&self, flags: RecvFlags) -> Result<SubscriptionEvent, RecvError>;
+    /// # Errors: HandlerError
+    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn pub_options(&self) -> PubSocketOptions<'_, Self>;
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -288,19 +400,29 @@ impl XPubSocket {
 
 ```rust
 impl XSubSocket {
-    pub fn bind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn unbind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn connect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn disconnect(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn set_subscription(&self, filter: &str) -> Result<(), ZlinkError>;
-    pub fn unset_subscription(&self, filter: &str) -> Result<(), ZlinkError>;
-    pub fn subscribe(&self) -> Result<TopicMessage, ZlinkError>;
-    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, ZlinkError>;
-    pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: BindError
+    pub fn bind(&self, addr: &str) -> Result<(), BindError>;
+    /// # Errors: ConnectError
+    pub fn unbind(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConfigError
+    pub fn set_subscription(&self, filter: &str) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn unset_subscription(&self, filter: &str) -> Result<(), ConfigError>;
+    /// # Errors: RecvError
+    pub fn subscribe(&self) -> Result<TopicMessage, RecvError>;
+    /// # Errors: RecvError
+    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, RecvError>;
+    /// # Errors: HandlerError
+    pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(TopicMessage) + Send + 'static;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn sub_options(&self) -> SubSocketOptions<'_, Self>;
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -308,24 +430,35 @@ impl XSubSocket {
 
 ```rust
 impl StreamSocket {
-    pub fn bind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn unbind(&self, addr: &str) -> Result<(), ZlinkError>;
-    pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ZlinkError>;
-    pub fn routing_id(&self) -> Result<RoutingId, ZlinkError>;
+    /// # Errors: BindError
+    pub fn bind(&self, addr: &str) -> Result<(), BindError>;
+    /// # Errors: ConnectError
+    pub fn unbind(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConfigError
+    pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn routing_id(&self) -> Result<RoutingId, ConfigError>;
+    /// # Errors: SubmitError
     pub fn send(&self, target: &RoutingId, parts: impl IntoMultipart)
-        -> Result<(), ZlinkError>;
+        -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
     pub fn send_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
-        flags: SendFlags) -> Result<(), ZlinkError>;
-    pub fn recv(&self) -> Result<Received, ZlinkError>;
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+        flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: RecvError
+    pub fn recv(&self) -> Result<Received, RecvError>;
+    /// # Errors: RecvError
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    /// # Errors: HandlerError
+    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(Received) + Send + 'static;
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: HandlerError
+    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
     pub fn send_handle(&self) -> SendHandle;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn stream_options(&self) -> StreamSocketOptions<'_>;
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -335,12 +468,16 @@ A thread-safe handle for sending from callbacks.
 
 ```rust
 impl SendHandle {
-    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
+    /// # Errors: SubmitError
+    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
     pub fn send_to(&self, target: &RoutingId, parts: impl IntoMultipart)
-        -> Result<(), ZlinkError>;
+        -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
     pub fn send_to_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
-        flags: SendFlags) -> Result<(), ZlinkError>;
+        flags: SendFlags) -> Result<(), SubmitError>;
 }
 ```
 
@@ -394,9 +531,9 @@ pub struct SubscriptionEvent {
 
 ### SubmitResult
 
-Result codes for send/request/reply/publish operations.
-All failures are conveyed through `ZlinkError` with `.code()` returning
-a globally unique `i32` that spans all result enum ranges (0-703).
+Result codes for send/request/reply/publish operations. Surfaced by
+`SubmitError::code()`; the top-level `ZlinkError::code()` returns a
+globally unique `i32` that spans all result enum ranges (0-703).
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -529,26 +666,231 @@ pub enum ConfigResult {
 }
 ```
 
+## Per-Function Error Types
+
+The Rust binding mirrors the C API's **eight function-category result
+enums** as eight concrete error struct types, one per function category.
+Each struct implements `std::error::Error` + `Display`, converts into
+the top-level `ZlinkError` via `From`/`Into`, and carries its
+category-specific result code enum plus the OS errno.
+
+Function signatures return `Result<T, <Category>Error>` naming the
+specific category. Callers that need to handle any zlink failure catch
+`ZlinkError`; callers that need to narrow to a category match or
+downcast to the specific struct.
+
 ### ZlinkError
 
-Error type returned by all fallible operations.
-The `code()` method returns a globally unique `i32` that spans all result
-enum ranges (0-703). The code alone identifies the error without needing
-to know which enum it belongs to.
+`ZlinkError` is the top-level error enum that aggregates all eight
+per-category error types. Every per-category error converts into
+`ZlinkError` via `From`, so callers may write
+`fn foo() -> Result<(), ZlinkError>` at API seams where multiple
+categories can fail.
 
 ```rust
 #[derive(Debug)]
-pub struct ZlinkError {
-    // internal fields
+pub enum ZlinkError {
+    Submit(SubmitError),
+    Request(RequestError),
+    Recv(RecvError),
+    Handler(HandlerError),
+    Close(CloseError),
+    Bind(BindError),
+    Connect(ConnectError),
+    Config(ConfigError),
 }
 
 impl ZlinkError {
+    /// Globally unique code spanning all result enum ranges (0-703).
+    /// The code alone identifies the error without needing to know
+    /// which enum it belongs to.
     pub fn code(&self) -> i32;
-    pub fn errno(&self) -> i32;
+    /// Underlying OS errno (0 if not applicable).
+    pub fn internal_errno(&self) -> i32;
 }
 
 impl std::fmt::Display for ZlinkError { /* ... */ }
 impl std::error::Error for ZlinkError { /* ... */ }
+
+impl From<SubmitError>  for ZlinkError { /* ... */ }
+impl From<RequestError> for ZlinkError { /* ... */ }
+impl From<RecvError>    for ZlinkError { /* ... */ }
+impl From<HandlerError> for ZlinkError { /* ... */ }
+impl From<CloseError>   for ZlinkError { /* ... */ }
+impl From<BindError>    for ZlinkError { /* ... */ }
+impl From<ConnectError> for ZlinkError { /* ... */ }
+impl From<ConfigError>  for ZlinkError { /* ... */ }
+```
+
+### SubmitError
+
+Errors from `send` / `publish` / `reply` / request submit operations.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SubmitError {
+    pub code: SubmitResult,
+    pub internal_errno: i32,
+}
+
+impl SubmitError {
+    pub fn code(&self) -> SubmitResult;
+    pub fn internal_errno(&self) -> i32;
+}
+
+impl std::fmt::Display for SubmitError { /* ... */ }
+impl std::error::Error for SubmitError {}
+impl From<SubmitError> for ZlinkError { /* wraps as ZlinkError::Submit */ }
+```
+
+### RequestError
+
+Errors from request completion (delivered via callback parameter).
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RequestError {
+    pub code: RequestResult,
+    pub internal_errno: i32,
+}
+
+impl RequestError {
+    pub fn code(&self) -> RequestResult;
+    pub fn internal_errno(&self) -> i32;
+}
+
+impl std::fmt::Display for RequestError { /* ... */ }
+impl std::error::Error for RequestError {}
+impl From<RequestError> for ZlinkError { /* wraps as ZlinkError::Request */ }
+```
+
+### RecvError
+
+Errors from `recv` / `subscribe` / `receive_subscription_event` /
+monitor recv / timer recv operations.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecvError {
+    pub code: RecvResult,
+    pub internal_errno: i32,
+}
+
+impl RecvError {
+    pub fn code(&self) -> RecvResult;
+    pub fn internal_errno(&self) -> i32;
+}
+
+impl std::fmt::Display for RecvError { /* ... */ }
+impl std::error::Error for RecvError {}
+impl From<RecvError> for ZlinkError { /* wraps as ZlinkError::Recv */ }
+```
+
+### HandlerError
+
+Errors from handler registration (`on_receive`, `on_subscribe`,
+`on_send_ready`, `on_event`, `on_fire`, `on_dispatch_event`, etc.).
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HandlerError {
+    pub code: HandlerResult,
+    pub internal_errno: i32,
+}
+
+impl HandlerError {
+    pub fn code(&self) -> HandlerResult;
+    pub fn internal_errno(&self) -> i32;
+}
+
+impl std::fmt::Display for HandlerError { /* ... */ }
+impl std::error::Error for HandlerError {}
+impl From<HandlerError> for ZlinkError { /* wraps as ZlinkError::Handler */ }
+```
+
+### CloseError
+
+Errors from `close` / `destroy` operations.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CloseError {
+    pub code: CloseResult,
+    pub internal_errno: i32,
+}
+
+impl CloseError {
+    pub fn code(&self) -> CloseResult;
+    pub fn internal_errno(&self) -> i32;
+}
+
+impl std::fmt::Display for CloseError { /* ... */ }
+impl std::error::Error for CloseError {}
+impl From<CloseError> for ZlinkError { /* wraps as ZlinkError::Close */ }
+```
+
+### BindError
+
+Errors from `bind` operations.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BindError {
+    pub code: BindResult,
+    pub internal_errno: i32,
+}
+
+impl BindError {
+    pub fn code(&self) -> BindResult;
+    pub fn internal_errno(&self) -> i32;
+}
+
+impl std::fmt::Display for BindError { /* ... */ }
+impl std::error::Error for BindError {}
+impl From<BindError> for ZlinkError { /* wraps as ZlinkError::Bind */ }
+```
+
+### ConnectError
+
+Errors from `connect` / `disconnect` / `unbind` operations.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConnectError {
+    pub code: ConnectResult,
+    pub internal_errno: i32,
+}
+
+impl ConnectError {
+    pub fn code(&self) -> ConnectResult;
+    pub fn internal_errno(&self) -> i32;
+}
+
+impl std::fmt::Display for ConnectError { /* ... */ }
+impl std::error::Error for ConnectError {}
+impl From<ConnectError> for ZlinkError { /* wraps as ZlinkError::Connect */ }
+```
+
+### ConfigError
+
+Errors from option get/set, snapshot, poller mutation, timer start/stop,
+`attach_discovery`, message lifecycle, and TLS configuration operations.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConfigError {
+    pub code: ConfigResult,
+    pub internal_errno: i32,
+}
+
+impl ConfigError {
+    pub fn code(&self) -> ConfigResult;
+    pub fn internal_errno(&self) -> i32;
+}
+
+impl std::fmt::Display for ConfigError { /* ... */ }
+impl std::error::Error for ConfigError {}
+impl From<ConfigError> for ZlinkError { /* wraps as ZlinkError::Config */ }
 ```
 
 ### IntoMultipart trait
@@ -568,23 +910,32 @@ pub trait IntoMultipart {
 
 ```rust
 impl RequestDealer {
-    pub fn new(socket: DealerSocket) -> Result<Self, ZlinkError>;
+    /// # Errors: ConfigError
+    pub fn new(socket: DealerSocket) -> Result<Self, ConfigError>;
     pub fn set_default_request_timeout(&self, timeout: Duration);
     pub fn get_default_request_timeout(&self) -> Duration;
 
     // Async request — no flags. Duration::ZERO uses socket default timeout.
+    // Submit failure yields SubmitError; request failure yields RequestError;
+    // both unify under ZlinkError at this API seam.
+    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
     pub async fn request(&self, parts: impl IntoMultipart,
         timeout: Duration) -> Result<Received, ZlinkError>;
 
     // Callback request — Duration::ZERO uses socket default timeout.
+    // The callback receives Result<Received, RequestError>.
+    /// # Errors: SubmitError (submit failure). Callback receives Result<Received, RequestError>.
     pub fn request_callback<F>(&self, parts: impl IntoMultipart, callback: F,
         flags: SendFlags, timeout: Duration)
-        -> Result<(), ZlinkError>
-        where F: FnOnce(RequestResult, Option<Received>) + Send + 'static;
+        -> Result<(), SubmitError>
+        where F: FnOnce(Result<Received, RequestError>) + Send + 'static;
 
-    pub fn recv(&self) -> Result<Received, ZlinkError>;
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: RecvError
+    pub fn recv(&self) -> Result<Received, RecvError>;
+    /// # Errors: RecvError
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    /// # Errors: HandlerError
+    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(Received) + Send + 'static;
 }
 ```
@@ -593,27 +944,37 @@ impl RequestDealer {
 
 ```rust
 impl RequestRouter {
-    pub fn new(socket: RouterSocket) -> Result<Self, ZlinkError>;
+    /// # Errors: ConfigError
+    pub fn new(socket: RouterSocket) -> Result<Self, ConfigError>;
     pub fn set_default_request_timeout(&self, timeout: Duration);
     pub fn get_default_request_timeout(&self) -> Duration;
 
     // Async request — no flags. Duration::ZERO uses socket default timeout.
+    // Submit failure yields SubmitError; request failure yields RequestError;
+    // both unify under ZlinkError at this API seam.
+    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
     pub async fn request(&self, routing_id: RoutingId, parts: impl IntoMultipart,
         timeout: Duration) -> Result<Received, ZlinkError>;
 
     // Callback request — Duration::ZERO uses socket default timeout.
+    // The callback receives Result<Received, RequestError>.
+    /// # Errors: SubmitError (submit failure). Callback receives Result<Received, RequestError>.
     pub fn request_callback<F>(&self, routing_id: RoutingId, parts: impl IntoMultipart,
         callback: F, flags: SendFlags, timeout: Duration)
-        -> Result<(), ZlinkError>
-        where F: FnOnce(RequestResult, Option<Received>) + Send + 'static;
+        -> Result<(), SubmitError>
+        where F: FnOnce(Result<Received, RequestError>) + Send + 'static;
 
+    /// # Errors: SubmitError
     pub fn reply(&self, routing_id: RoutingId, request_seq: u64,
-        parts: impl IntoMultipart) -> Result<(), ZlinkError>;
+        parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
     pub fn reply_with_flags(&self, routing_id: RoutingId, request_seq: u64,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
 
-    pub fn recv(&self) -> Result<Received, ZlinkError>;
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
+    /// # Errors: RecvError
+    pub fn recv(&self) -> Result<Received, RecvError>;
+    /// # Errors: RecvError
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
     pub fn on_receive<F>(&self, handler: F)
         where F: Fn(Received) + Send + 'static;
 }
@@ -627,12 +988,17 @@ impl RequestRouter {
 
 ```rust
 impl SocketMonitor {
-    pub fn open<'a>(socket: impl Into<MonitorTarget<'a>>) -> Result<Self, ZlinkError>;
-    pub fn recv(&self) -> Result<MonitorEvent, ZlinkError>;
-    pub fn snapshot(&self) -> Result<MonitorSnapshot, ZlinkError>;
-    pub fn on_event<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: ConfigError
+    pub fn open<'a>(socket: impl Into<MonitorTarget<'a>>) -> Result<Self, ConfigError>;
+    /// # Errors: RecvError
+    pub fn recv(&self) -> Result<MonitorEvent, RecvError>;
+    /// # Errors: ConfigError
+    pub fn snapshot(&self) -> Result<MonitorSnapshot, ConfigError>;
+    /// # Errors: HandlerError
+    pub fn on_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(&MonitorEvent) + Send + 'static;
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -640,12 +1006,17 @@ impl SocketMonitor {
 
 ```rust
 impl ServiceMonitor {
-    pub fn open<'a>(target: impl Into<ServiceMonitorTarget<'a>>) -> Result<Self, ZlinkError>;
-    pub fn recv(&self) -> Result<ServiceEvent, ZlinkError>;
-    pub fn snapshot(&self) -> Result<MonitorSnapshot, ZlinkError>;
-    pub fn on_event<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: ConfigError
+    pub fn open<'a>(target: impl Into<ServiceMonitorTarget<'a>>) -> Result<Self, ConfigError>;
+    /// # Errors: RecvError
+    pub fn recv(&self) -> Result<ServiceEvent, RecvError>;
+    /// # Errors: ConfigError
+    pub fn snapshot(&self) -> Result<MonitorSnapshot, ConfigError>;
+    /// # Errors: HandlerError
+    pub fn on_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(&ServiceEvent) + Send + 'static;
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -673,28 +1044,44 @@ impl MonitorSnapshot {
 
 ```rust
 impl Registry {
-    pub fn new(ctx: &Context) -> Result<Self, ZlinkError>;
-    pub fn bind(&self, pub_endpoint: &str, router_endpoint: &str) -> Result<(), ZlinkError>;
-    pub fn set_id(&self, id: u32) -> Result<(), ZlinkError>;
-    pub fn add_peer(&self, peer_pub_endpoint: &str) -> Result<(), ZlinkError>;
-    pub fn set_heartbeat(&self, interval_ms: u32, timeout_ms: u32) -> Result<(), ZlinkError>;
-    pub fn set_broadcast_interval(&self, interval_ms: u32) -> Result<(), ZlinkError>;
+    /// # Errors: ConfigError
+    pub fn new(ctx: &Context) -> Result<Self, ConfigError>;
+    /// # Errors: BindError
+    pub fn bind(&self, pub_endpoint: &str, router_endpoint: &str) -> Result<(), BindError>;
+    /// # Errors: ConfigError
+    pub fn set_id(&self, id: u32) -> Result<(), ConfigError>;
+    /// # Errors: ConnectError
+    pub fn add_peer(&self, peer_pub_endpoint: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConfigError
+    pub fn set_heartbeat(&self, interval_ms: u32, timeout_ms: u32) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_broadcast_interval(&self, interval_ms: u32) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
     pub fn set_tls_server(&self, cert_path: &str, key_path: &str,
-        require_client_cert: bool) -> Result<(), ZlinkError>;
+        require_client_cert: bool) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
     pub fn set_tls_client(&self, ca_cert_path: &str, hostname: &str,
-        trust_system: bool) -> Result<(), ZlinkError>;
-    pub fn status_snapshot(&self) -> Result<RegistryStatus, ZlinkError>;
-    pub fn service_summary_snapshot(&self) -> Result<Vec<RegistryServiceSummaryEntry>, ZlinkError>;
+        trust_system: bool) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn status_snapshot(&self) -> Result<RegistryStatus, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn service_summary_snapshot(&self) -> Result<Vec<RegistryServiceSummaryEntry>, ConfigError>;
+    /// # Errors: ConfigError
     pub fn service_summary_query(&self, filter: &RegistryServiceSummaryFilter)
-        -> Result<Vec<RegistryServiceSummaryEntry>, ZlinkError>;
+        -> Result<Vec<RegistryServiceSummaryEntry>, ConfigError>;
+    /// # Errors: ConfigError
     pub fn member_peers(&self, service_type: ServiceType, service_name: &str)
-        -> Result<Vec<MemberPeerEntry>, ZlinkError>;
+        -> Result<Vec<MemberPeerEntry>, ConfigError>;
+    /// # Errors: ConfigError
     pub fn member_peer_metadata(&self, service_type: ServiceType, service_name: &str,
-        service_role: ServiceRole, endpoint: &str) -> Result<Message, ZlinkError>;
-    pub fn topology_snapshot(&self) -> Result<Vec<RegistryTopologyEntry>, ZlinkError>;
+        service_role: ServiceRole, endpoint: &str) -> Result<Message, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn topology_snapshot(&self) -> Result<Vec<RegistryTopologyEntry>, ConfigError>;
+    /// # Errors: ConfigError
     pub fn topology_query(&self, filter: &RegistryTopologyFilter)
-        -> Result<Vec<RegistryTopologyEntry>, ZlinkError>;
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+        -> Result<Vec<RegistryTopologyEntry>, ConfigError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -702,20 +1089,31 @@ impl Registry {
 
 ```rust
 impl Discovery {
+    /// # Errors: ConfigError
     pub fn new(ctx: &Context, service_type: ServiceType, service_name: &str)
-        -> Result<Self, ZlinkError>;
-    pub fn connect_registry(&self, endpoint: &str) -> Result<(), ZlinkError>;
-    pub fn set_value(&self, value: i64) -> Result<(), ZlinkError>;
-    pub fn get_value(&self) -> Result<i64, ZlinkError>;
-    pub fn set_metadata(&self, data: &[u8]) -> Result<(), ZlinkError>;
-    pub fn get_metadata(&self) -> Result<Message, ZlinkError>;
-    pub fn member_peers(&self) -> Result<Vec<MemberPeerEntry>, ZlinkError>;
+        -> Result<Self, ConfigError>;
+    /// # Errors: ConnectError
+    pub fn connect_registry(&self, endpoint: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConfigError
+    pub fn set_value(&self, value: i64) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn get_value(&self) -> Result<i64, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_metadata(&self, data: &[u8]) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn get_metadata(&self) -> Result<Message, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn member_peers(&self) -> Result<Vec<MemberPeerEntry>, ConfigError>;
+    /// # Errors: ConfigError
     pub fn member_peer_metadata(&self, service_role: ServiceRole, endpoint: &str)
-        -> Result<Message, ZlinkError>;
-    pub fn monitor_open(&self) -> Result<ServiceMonitor, ZlinkError>;
+        -> Result<Message, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn monitor_open(&self) -> Result<ServiceMonitor, ConfigError>;
+    /// # Errors: ConfigError
     pub fn set_tls_client(&self, ca_cert_path: &str, hostname: &str,
-        trust_system: bool) -> Result<(), ZlinkError>;
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+        trust_system: bool) -> Result<(), ConfigError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -723,22 +1121,35 @@ impl Discovery {
 
 ```rust
 impl SpotNode {
-    pub fn new(ctx: &Context) -> Result<Self, ZlinkError>;
-    pub fn bind(&self, endpoint: &str) -> Result<(), ZlinkError>;
-    pub fn last_endpoint(&self) -> Result<String, ZlinkError>;
-    pub fn connect_peer(&self, peer_endpoint: &str) -> Result<(), ZlinkError>;
-    pub fn disconnect_peer(&self, peer_endpoint: &str) -> Result<(), ZlinkError>;
-    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ZlinkError>;
+    /// # Errors: ConfigError
+    pub fn new(ctx: &Context) -> Result<Self, ConfigError>;
+    /// # Errors: BindError
+    pub fn bind(&self, endpoint: &str) -> Result<(), BindError>;
+    /// # Errors: ConfigError
+    pub fn last_endpoint(&self) -> Result<String, ConfigError>;
+    /// # Errors: ConnectError
+    pub fn connect_peer(&self, peer_endpoint: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect_peer(&self, peer_endpoint: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConfigError
+    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
     pub fn set_tls_server(&self, cert_path: &str, key_path: &str,
-        require_client_cert: bool) -> Result<(), ZlinkError>;
+        require_client_cert: bool) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
     pub fn set_tls_client(&self, ca_cert_path: &str, hostname: &str,
-        trust_system: bool) -> Result<(), ZlinkError>;
-    pub fn status_snapshot(&self) -> Result<SpotNodeStatus, ZlinkError>;
-    pub fn peers_snapshot(&self) -> Result<Vec<SpotNodePeerEntry>, ZlinkError>;
+        trust_system: bool) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn status_snapshot(&self) -> Result<SpotNodeStatus, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn peers_snapshot(&self) -> Result<Vec<SpotNodePeerEntry>, ConfigError>;
+    /// # Errors: ConfigError
     pub fn peers_query(&self, filter: &SpotNodePeerFilter)
-        -> Result<Vec<SpotNodePeerEntry>, ZlinkError>;
-    pub fn subjects_snapshot(&self) -> Result<Vec<SpotNodeSubjectEntry>, ZlinkError>;
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+        -> Result<Vec<SpotNodePeerEntry>, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn subjects_snapshot(&self) -> Result<Vec<SpotNodeSubjectEntry>, ConfigError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -746,78 +1157,110 @@ impl SpotNode {
 
 ```rust
 impl Spot {
-    pub fn new(node: &SpotNode) -> Result<Self, ZlinkError>;
-    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
-    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
-    pub fn set_subscription(&self, filter: &str) -> Result<(), ZlinkError>;
-    pub fn unset_subscription(&self, filter: &str) -> Result<(), ZlinkError>;
-    pub fn subscribe(&self) -> Result<TopicMessage, ZlinkError>;
-    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, ZlinkError>;
-    pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: ConfigError
+    pub fn new(node: &SpotNode) -> Result<Self, ConfigError>;
+    /// # Errors: SubmitError
+    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: ConfigError
+    pub fn set_subscription(&self, filter: &str) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn unset_subscription(&self, filter: &str) -> Result<(), ConfigError>;
+    /// # Errors: RecvError
+    pub fn subscribe(&self) -> Result<TopicMessage, RecvError>;
+    /// # Errors: RecvError
+    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, RecvError>;
+    /// # Errors: HandlerError
+    pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(TopicMessage) + Send + 'static;
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: HandlerError
+    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
 
     // --- routed send (spot → spot) ---
+    /// # Errors: SubmitError
     pub fn send_to_spot(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
-        parts: impl IntoMultipart) -> Result<(), ZlinkError>;
+        parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
     pub fn send_to_spot_with_flags(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
 
     // --- routed request (spot → spot, async) — no flags ---
     // Duration::ZERO uses the socket default timeout.
+    // Submit failure yields SubmitError; request failure yields RequestError;
+    // both unify under ZlinkError at this API seam.
+    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
     pub async fn request_to_spot(&self, dest_node_rid: RoutingId,
         dest_spot_rid: RoutingId, parts: impl IntoMultipart,
         timeout: Duration) -> Result<Received, ZlinkError>;
 
     // --- routed request (spot → spot, callback) ---
     // Duration::ZERO uses the socket default timeout.
+    // The callback receives Result<Received, RequestError>.
+    /// # Errors: SubmitError (submit failure). Callback receives Result<Received, RequestError>.
     pub fn request_to_spot_callback<F>(&self, dest_node_rid: RoutingId,
         dest_spot_rid: RoutingId, parts: impl IntoMultipart, callback: F,
         flags: SendFlags, timeout: Duration)
-        -> Result<(), ZlinkError>
-        where F: FnOnce(RequestResult, Option<Received>) + Send + 'static;
+        -> Result<(), SubmitError>
+        where F: FnOnce(Result<Received, RequestError>) + Send + 'static;
 
     // --- routed reply (spot → spot) ---
+    /// # Errors: SubmitError
     pub fn reply_to_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-        request_seq: u64, parts: impl IntoMultipart) -> Result<(), ZlinkError>;
+        request_seq: u64, parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
     pub fn reply_to_spot_with_flags(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-        request_seq: u64, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
+        request_seq: u64, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
 
     // --- routed send (spot → router) ---
+    /// # Errors: SubmitError
     pub fn send_to_router(&self, peer_rid: &RoutingId,
-        parts: impl IntoMultipart) -> Result<(), ZlinkError>;
+        parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
     pub fn send_to_router_with_flags(&self, peer_rid: &RoutingId,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
 
     // --- routed request (spot → router, async) — no flags ---
     // Duration::ZERO uses the socket default timeout.
+    // Submit failure yields SubmitError; request failure yields RequestError;
+    // both unify under ZlinkError at this API seam.
+    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
     pub async fn request_to_router(&self, peer_rid: RoutingId,
         parts: impl IntoMultipart, timeout: Duration) -> Result<Received, ZlinkError>;
 
     // --- routed request (spot → router, callback) ---
     // Duration::ZERO uses the socket default timeout.
+    // The callback receives Result<Received, RequestError>.
+    /// # Errors: SubmitError (submit failure). Callback receives Result<Received, RequestError>.
     pub fn request_to_router_callback<F>(&self, peer_rid: RoutingId,
         parts: impl IntoMultipart, callback: F,
         flags: SendFlags, timeout: Duration)
-        -> Result<(), ZlinkError>
-        where F: FnOnce(RequestResult, Option<Received>) + Send + 'static;
+        -> Result<(), SubmitError>
+        where F: FnOnce(Result<Received, RequestError>) + Send + 'static;
 
     // --- routed reply (spot → router) ---
+    /// # Errors: SubmitError
     pub fn reply_to_router(&self, peer_rid: RoutingId, request_seq: u64,
-        parts: impl IntoMultipart) -> Result<(), ZlinkError>;
+        parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
     pub fn reply_to_router_with_flags(&self, peer_rid: RoutingId, request_seq: u64,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), ZlinkError>;
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
 
     // --- routed receive ---
-    pub fn recv_routed(&self) -> Result<Received, ZlinkError>;
-    pub fn recv_routed_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError>;
-    pub fn on_routed_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: RecvError
+    pub fn recv_routed(&self) -> Result<Received, RecvError>;
+    /// # Errors: RecvError
+    pub fn recv_routed_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    /// # Errors: HandlerError
+    pub fn on_routed_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(RoutingId, RoutingId, u64, Vec<Message>) + Send + 'static;
-    pub fn on_dispatch_event<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: HandlerError
+    pub fn on_dispatch_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(SpotDispatchEvent) + Send + 'static;
 
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -825,11 +1268,15 @@ impl Spot {
 
 ```rust
 impl RegistryQueryClient {
-    pub fn new(ctx: &Context) -> Result<Self, ZlinkError>;
-    pub fn connect(&self, endpoint: &str) -> Result<(), ZlinkError>;
+    /// # Errors: ConfigError
+    pub fn new(ctx: &Context) -> Result<Self, ConfigError>;
+    /// # Errors: ConnectError
+    pub fn connect(&self, endpoint: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConfigError
     pub fn snapshot(&self, filter: Option<&RegistryTopologyFilter>)
-        -> Result<Vec<RegistryTopologyEntry>, ZlinkError>;
-    pub fn close(&mut self) -> Result<(), ZlinkError>;
+        -> Result<Vec<RegistryTopologyEntry>, ConfigError>;
+    /// # Errors: CloseError
+    pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
 
@@ -841,12 +1288,18 @@ impl RegistryQueryClient {
 
 ```rust
 impl Timer {
-    pub fn new() -> Result<Self, ZlinkError>;
-    pub fn from_spot(spot: &Spot) -> Result<Self, ZlinkError>;
-    pub fn start(&self, interval_ns: u64, repeat_count: u64) -> Result<(), ZlinkError>;
-    pub fn stop(&self) -> Result<(), ZlinkError>;
-    pub fn recv(&self, flags: i32) -> Result<u64, ZlinkError>;
-    pub fn on_fire<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    /// # Errors: ConfigError
+    pub fn new() -> Result<Self, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn from_spot(spot: &Spot) -> Result<Self, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn start(&self, interval_ns: u64, repeat_count: u64) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn stop(&self) -> Result<(), ConfigError>;
+    /// # Errors: RecvError
+    pub fn recv(&self, flags: i32) -> Result<u64, RecvError>;
+    /// # Errors: HandlerError
+    pub fn on_fire<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(&Timer, u64) + Send + 'static;
 }
 // Drop calls zlink_timer_destroy
@@ -858,28 +1311,40 @@ impl Timer {
 
 ```rust
 impl Poller {
-    pub fn new() -> Result<Self, ZlinkError>;
+    /// # Errors: ConfigError
+    pub fn new() -> Result<Self, ConfigError>;
+    /// # Errors: ConfigError
     pub fn add_socket<'a>(&self, socket: impl Into<PollTarget<'a>>,
-        events: i16) -> Result<(), ZlinkError>;
+        events: i16) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
     pub fn modify_socket<'a>(&self, socket: impl Into<PollTarget<'a>>,
-        events: i16) -> Result<(), ZlinkError>;
+        events: i16) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
     pub fn remove_socket<'a>(&self, socket: impl Into<PollTarget<'a>>)
-        -> Result<(), ZlinkError>;
+        -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
     pub fn add_fd(&self, fd: RawFd, events: i16, user_data: Option<*mut c_void>)
-        -> Result<(), ZlinkError>;
-    pub fn modify_fd(&self, fd: RawFd, events: i16) -> Result<(), ZlinkError>;
-    pub fn remove_fd(&self, fd: RawFd) -> Result<(), ZlinkError>;
+        -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn modify_fd(&self, fd: RawFd, events: i16) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn remove_fd(&self, fd: RawFd) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
     pub fn add_timer(&self, timer: &Timer, user_data: Option<*mut c_void>)
-        -> Result<(), ZlinkError>;
-    pub fn remove_timer(&self, timer: &Timer) -> Result<(), ZlinkError>;
-    pub fn wait(&self, timeout_ms: i64) -> Result<Option<PollEvent>, ZlinkError>;
-    pub fn wait_all(&self, timeout_ms: i64) -> Result<Vec<PollEvent>, ZlinkError>;
+        -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn remove_timer(&self, timer: &Timer) -> Result<(), ConfigError>;
+    /// # Errors: RecvError
+    pub fn wait(&self, timeout_ms: i64) -> Result<Option<PollEvent>, RecvError>;
+    /// # Errors: RecvError
+    pub fn wait_all(&self, timeout_ms: i64) -> Result<Vec<PollEvent>, RecvError>;
     pub fn size(&self) -> i32;
 }
 // Drop calls zlink_poller_destroy
 
 /// Legacy poll function for simple use cases.
-pub fn poll(items: &mut [PollItem], timeout_ms: i64) -> Result<i32, ZlinkError>;
+/// # Errors: RecvError
+pub fn poll(items: &mut [PollItem], timeout_ms: i64) -> Result<i32, RecvError>;
 
 pub struct PollEvent {
     // ...

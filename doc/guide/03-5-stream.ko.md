@@ -114,7 +114,7 @@ zlink_recv_handler(stream, on_message, NULL);
 | 전송 | `zlink_send_rid()` |
 
 > 송신 큐가 가득 차면(HWM) `zlink_send_rid()`는 블록(기본) 또는
-> `ZLINK_DONTWAIT`로 `EAGAIN`을 반환한다. 고급 backpressure 패턴은
+> `ZLINK_DONTWAIT` 로 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 고급 backpressure 패턴은
 > [성능 가이드](10-performance.ko.md)를 참고.
 
 - 한 번에 하나의 receive callback만 등록 가능하며, 이미 등록된 상태에서 attach를

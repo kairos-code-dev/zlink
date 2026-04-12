@@ -113,12 +113,12 @@ zlink_set_subscription(sub, "weather");
 
 | Socket | Direction | Receive API | Notes |
 |--------|-----------|-------------|-------|
-| PUB | Send only | N/A | Cannot receive (`ENOTSUP`) |
+| PUB | Send only | N/A | Cannot receive (`ZLINK_RECV_NOT_SUPPORTED`) |
 | SUB | Receive only | `zlink_subscribe()` / `zlink_subscribe_handler()` | Topic + data separated |
 | XPUB | Bidirectional | `zlink_subscription_event()` | Receives subscription events |
 | XSUB | Receive only | `zlink_subscribe()` / `zlink_subscribe_handler()` | No local filter; receives all |
 
-> **Note:** `zlink_send()` / `zlink_recv()` return `ENOTSUP` on all 4
+> **Note:** `zlink_send()` / `zlink_recv()` return `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` on all 4
 > PUB/SUB sockets. Use `zlink_publish()` for publishing and
 > `zlink_subscribe()` / `zlink_subscribe_handler()` for receiving.
 
@@ -318,7 +318,7 @@ zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 #### XPUB_NODROP — Backpressure Instead of Drop
 
 Setting `ZLINK_PUB_OPT_NODROP` disables lossy mode. When the HWM is
-reached, instead of dropping messages, `EAGAIN` is returned so the
+reached, instead of dropping messages, `ZLINK_SUBMIT_BACKPRESSURED` is returned so the
 caller can handle backpressure directly.
 
 ```c
@@ -342,7 +342,7 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 | Mode | Behavior on HWM | When to Use |
 |------|-----------------|-------------|
 | Default (lossy) | Silent drop — no error, message lost | Only latest data matters (sensor, tick) |
-| `XPUB_NODROP=1` | Returns `EAGAIN` — caller controls | Message loss is not acceptable |
+| `XPUB_NODROP=1` | Returns `ZLINK_SUBMIT_BACKPRESSURED` — caller controls | Message loss is not acceptable |
 
 > `ZLINK_PUB_OPT_NODROP` is an XPUB-only socket option.
 > It is not available on regular PUB sockets.
@@ -472,7 +472,7 @@ flowchart LR
 | `zlink_subscription_event()` | — | — | OK | — |
 | Local filter | N/A | **On** | N/A | **Off** |
 
-> `zlink_send()` / `zlink_recv()` return `ENOTSUP` on all 4 PUB/SUB sockets.
+> `zlink_send()` / `zlink_recv()` return `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` on all 4 PUB/SUB sockets.
 > Use `zlink_publish()` for publishing and `zlink_subscribe()` for receiving.
 
 > Proxy patterns (built-in `zlink_proxy()`, manual proxy construction,

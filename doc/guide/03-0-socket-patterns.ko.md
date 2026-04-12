@@ -121,7 +121,7 @@ int zlink_recv (void *socket,
 PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
 - 수신: `zlink_subscribe()` / `zlink_subscribe_handler()`
 - 발행: `zlink_publish()`
-- `zlink_send()` / `zlink_recv()`는 PUB/SUB 4소켓 모두 `ENOTSUP`
+- `zlink_send()` / `zlink_recv()`는 PUB/SUB 4 소켓 모두 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED`
 
 ## 8. 용어 정리
 

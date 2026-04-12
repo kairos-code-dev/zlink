@@ -18,7 +18,7 @@ int zlink_proxy (void *frontend, void *backend, void *capture);
 - `capture`가 NULL이 아니면 통과하는 모든 메시지를 capture 소켓에 복사
 - **blocking 함수** — 별도 스레드에서 실행
 - **소켓 타입 제한 없음** — 내부적으로 `socket_base_t`의 internal recv/send를
-  직접 호출하므로 공개 API의 `ENOTSUP` 제한과 무관하게 동작
+  직접 호출하므로 공개 API 의 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 제한과 무관하게 동작
 
 ### 지원 소켓 조합 예시
 
@@ -132,7 +132,7 @@ while (running) {
 > **핵심:** `zlink_proxy()` 내부는 공개 API가 아닌 `socket_base_t`의
 > internal method를 직접 호출하여 데이터를 전달한다.
 > 공개 API에서 XSUB에 `zlink_send()`나 XPUB에 `zlink_recv()`를
-> 호출하면 `ENOTSUP`이다. proxy 동작은 `zlink_proxy()` 함수 또는
+> 호출하면 `ZLINK_RECV_NOT_SUPPORTED` 를 반환한다. proxy 동작은 `zlink_proxy()` 함수 또는
 > 위의 수동 구성(전용 API 조합)으로만 가능하다.
 
 ## 4. 요청/응답 프록시 — ROUTER/DEALER

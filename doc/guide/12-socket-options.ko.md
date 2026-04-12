@@ -236,7 +236,7 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 가능하고, 메시지는 큐에 쌓인다.
 
 **`1`:** 연결이 실제로 완료된 후에만 pipe가 attach된다. 연결 전 `send()`는
-block되거나 `EAGAIN`을 반환한다. 또한 hiccup(일시적 연결 끊김) 시 pipe가 즉시
+block 되거나 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 또한 hiccup(일시적 연결 끊김) 시 pipe가 즉시
 제거된다.
 
 ---

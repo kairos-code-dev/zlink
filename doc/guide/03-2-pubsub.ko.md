@@ -114,13 +114,13 @@ zlink_set_subscription(sub, "weather");
 
 | 소켓 | 방향 | 수신 API | 비고 |
 |------|------|----------|------|
-| PUB | 송신 전용 | N/A | 수신 불가 (`ENOTSUP`) |
+| PUB | 송신 전용 | N/A | 수신 불가 (`ZLINK_RECV_NOT_SUPPORTED`) |
 | SUB | 수신 전용 | `zlink_subscribe()` / `zlink_subscribe_handler()` | 토픽 + 데이터 분리 반환 |
 | XPUB | 양방향 | `zlink_subscription_event()` | 구독 이벤트 수신 |
 | XSUB | 수신 전용 | `zlink_subscribe()` / `zlink_subscribe_handler()` | 필터 없이 전체 수신 |
 
 > **참고:** PUB/SUB 계열 4소켓에서 `zlink_send()`/`zlink_recv()`는
-> 모두 `ENOTSUP`이다. 발행은 `zlink_publish()`, 수신은
+> 모두 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 이다. 발행은 `zlink_publish()`, 수신은
 > `zlink_subscribe()` / `zlink_subscribe_handler()`를 사용한다.
 
 PUB/SUB 계열 소켓의 수신은 두 가지 모드를 지원한다:
@@ -317,7 +317,7 @@ zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 #### XPUB_NODROP — drop 대신 backpressure
 
 `ZLINK_PUB_OPT_NODROP`을 활성화하면 lossy mode가 꺼진다. HWM 도달 시
-message를 drop하지 않고 `EAGAIN`을 반환하여 caller가 직접
+message를 drop하지 않고 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환하여 caller 가 직접
 backpressure를 제어할 수 있다.
 
 ```c
@@ -341,7 +341,7 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 | Mode | HWM 도달 시 동작 | 사용 시점 |
 |------|------------------|-----------|
 | 기본 (lossy) | Silent drop — error 없이 message 유실 | 최신 data만 중요한 경우 (sensor, tick) |
-| `XPUB_NODROP=1` | `EAGAIN` 반환 — caller가 제어 | Message 유실이 허용되지 않는 경우 |
+| `XPUB_NODROP=1` | `ZLINK_SUBMIT_BACKPRESSURED` 반환 — caller 가 제어 | Message 유실이 허용되지 않는 경우 |
 
 > `ZLINK_PUB_OPT_NODROP`은 XPUB socket 전용 option이다.
 > 일반 PUB에서는 사용할 수 없다.
@@ -421,7 +421,7 @@ XPUB는 어떤 client가 어떤 topic을 구독/해지했는지 알 수 있다.
 | `zlink_subscription_event()` | — | — | 가능 | — |
 | 로컬 필터 | N/A | **켜짐** | N/A | **꺼짐** |
 
-> `zlink_send()` / `zlink_recv()`는 PUB/SUB 계열 4소켓 모두 `ENOTSUP`이다.
+> `zlink_send()` / `zlink_recv()`는 PUB/SUB 계열 4소켓 모두 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 이다.
 > 발행은 `zlink_publish()`, 수신은 `zlink_subscribe()` 전용 API를 사용한다.
 
 > Proxy 패턴에서 XSUB/XPUB을 사용하는 방법은

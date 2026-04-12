@@ -294,7 +294,7 @@ zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
 
 ### HWM Behavior
 
-When there is no peer or the peer is slow, outgoing messages are queued up to the HWM. When the HWM is exceeded, `zlink_send()` blocks (default) or returns `EAGAIN` (`ZLINK_DONTWAIT`).
+When there is no peer or the peer is slow, outgoing messages are queued up to the HWM. When the HWM is exceeded, `zlink_send()` blocks (default) or returns `ZLINK_SUBMIT_BACKPRESSURED` (`ZLINK_DONTWAIT`).
 
 ### LINGER Setting
 

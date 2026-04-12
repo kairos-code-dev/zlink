@@ -18,7 +18,7 @@ int zlink_proxy (void *frontend, void *backend, void *capture);
 - If `capture` is non-NULL, copies all passing messages to the capture socket
 - **Blocking function** — run in a dedicated thread
 - **No socket type restriction** — internally calls `socket_base_t` internal
-  recv/send methods, independent of public API `ENOTSUP` restrictions
+  recv/send methods, independent of public API `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` restrictions
 
 ### Supported Socket Combinations
 
@@ -131,7 +131,7 @@ while (running) {
 
 > **Key point:** `zlink_proxy()` internally calls `socket_base_t` internal
 > methods, not public APIs. Calling `zlink_send()` on XSUB or
-> `zlink_recv()` on XPUB returns `ENOTSUP`. Proxy operation is only
+> `zlink_recv()` on XPUB returns `ZLINK_RECV_NOT_SUPPORTED`. Proxy operation is only
 > possible via `zlink_proxy()` or the manual approach above
 > (using dedicated APIs like `subscribe()`, `publish()`, etc.).
 

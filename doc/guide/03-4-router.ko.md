@@ -582,7 +582,7 @@ void worker_thread(void *arg) {
 
   +----------+   send_rid      + - - - - - +
   |  ROUTER  +-------X---------  "UNKNOWN"       rc = -1
-  +----------+   target=       + - - - - - +    errno = EHOSTUNREACH
+  +----------+   target=       + - - - - - +    ZLINK_SUBMIT_NOT_CONNECTED
                  "UNKNOWN"
 ```
 

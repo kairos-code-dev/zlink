@@ -97,6 +97,7 @@ perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
 | MULTI_ROUTER_ROUTER | client 각 소켓 | `CONNECTION_READY` |
 | MULTI_PUBSUB | client 각 소켓 | runner orchestration (`CLIENT_READY`/`START`) — connect + subscribe 후 runner START 신호로 active 진입 |
 | MULTI_SPOT | client 각 spot | control handshake barrier (`CONNECTED`/`READY_COUNT`/`START`) |
+| MULTI_SPOT_REQREP | client 각 spot(requester) | MULTI_SPOT 와 동일한 control handshake barrier (`CONNECTED`/`READY_COUNT`/`START`) |
 | MULTI_STREAM | client 각 연결 | transport connect 완료 + stream protocol ready (`connect_ok == target clients`) |
 
 - `expected_clients`는 해당 케이스에서 runner가 요구한 client 수와 동일하다.
@@ -116,12 +117,17 @@ perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
   짧은 control settle(기본 25ms)을 거쳐 `READY_COUNT` 를 전송한다.
 - server 는 expected client 수의 `READY` 를 모두 받은 뒤에만 `START` 를
   broadcast 한다.
+- MULTI_SPOT_REQREP 은 같은 SpotNode mesh 위의 routed request-reply 이므로,
+  위 SPOT 의 control handshake barrier 규칙을 그대로 따른다. requester 가
+  모든 replier 와 mesh 구성을 끝내고 `READY_COUNT` 를 보내는 흐름은 동일하며,
+  routed request/reply 경로는 `START` broadcast 이후에만 시작한다.
 - multi policy 는 `event.value` 와 `snapshot.ready_count` gate 를 금지한다.
 - multi policy 는 delivery-ready event gate도 사용하지 않는다.
-- multi SPOT 은 service monitor gate 도 사용하지 않는다.
-- multi SPOT 의 짧은 control settle 은 control socket connect 직후 publish
-  순서를 정렬하기 위한 barrier 내부 절차다. raw pattern 의 monitor ready gate 와
-  동일한 public 계약으로 취급하지 않는다.
+- multi SPOT / multi SPOT_REQREP 은 service monitor gate 도 사용하지 않는다.
+- multi SPOT / multi SPOT_REQREP 의 짧은 control settle 은 control socket
+  connect 직후 request/publish 순서를 정렬하기 위한 barrier 내부 절차다.
+  raw pattern 의 monitor ready gate 와 동일한 public 계약으로 취급하지
+  않는다.
 - ready bool/count를 복사하기 위한 별도 구조체, heap alloc,
   mutex/cv wrapper, pattern별 별도 ready monitor 계층은 만들지 않는다.
 - `READY,<endpoint>` / `CLIENT_READY,<msg_size>` 같은 stdout 제어 메시지는
@@ -212,7 +218,7 @@ runner(스크립트/Python 엔진)와 server/client 바이너리는 **stdin/stdo
 | 메시지 | 형식 | 의미 |
 |--------|------|------|
 | `READY` | `READY,<endpoint>` | bind 완료, benchmark endpoint 전달 |
-| `CONTROL_READY` | `CONTROL_READY,<endpoint>` | SPOT control plane bind 완료 |
+| `CONTROL_READY` | `CONTROL_READY,<endpoint>` | SPOT / SPOT_REQREP control plane bind 완료 |
 | `RESULT` | `RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>` | 측정 결과 |
 | `UNSUPPORTED` | `UNSUPPORTED,<lib>,<pattern>,<transport>` | transport 미지원 |
 
@@ -221,8 +227,8 @@ runner(스크립트/Python 엔진)와 server/client 바이너리는 **stdin/stdo
 | 메시지 | 형식 | 의미 |
 |--------|------|------|
 | `CLIENT_READY` | `CLIENT_READY,<msg_size>` | client가 해당 size 케이스 준비 완료 |
-| `CLIENT_CONTROL_ENDPOINT` | `CLIENT_CONTROL_ENDPOINT,<endpoint>` | SPOT client control endpoint 전달 |
-| `CONTROL_CONNECTED` | `CONTROL_CONNECTED,<endpoint>` | SPOT control link 연결 완료 |
+| `CLIENT_CONTROL_ENDPOINT` | `CLIENT_CONTROL_ENDPOINT,<endpoint>` | SPOT / SPOT_REQREP client control endpoint 전달 |
+| `CONTROL_CONNECTED` | `CONTROL_CONNECTED,<endpoint>` | SPOT / SPOT_REQREP control link 연결 완료 |
 | `RESULT` | `RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>` | 측정 결과 |
 | `UNSUPPORTED` | `UNSUPPORTED,<lib>,<pattern>,<transport>` | transport 미지원 |
 | `SKIP` | `SKIP,<lib>,<pattern>,<transport>,<reason>` | 건너뛰기 |
@@ -232,7 +238,7 @@ runner(스크립트/Python 엔진)와 server/client 바이너리는 **stdin/stdo
 | 메시지 | 형식 | 의미 |
 |--------|------|------|
 | `START` | `START,<msg_size>` | 해당 size 케이스 active 시작 |
-| `CONNECT_CONTROL` | `CONNECT_CONTROL,<client_endpoint>` | SPOT client control endpoint를 server에 전달 |
+| `CONNECT_CONTROL` | `CONNECT_CONTROL,<client_endpoint>` | SPOT / SPOT_REQREP client control endpoint를 server에 전달 |
 | `STOP` | `STOP` | graceful shutdown 요청 |
 | `QUIT` | `QUIT` | graceful shutdown 요청 (`STOP`과 동일) |
 
@@ -243,9 +249,10 @@ runner(스크립트/Python 엔진)와 server/client 바이너리는 **stdin/stdo
 | `START` | `START,<msg_size>` | 해당 size 케이스 active 시작 |
 | `PHASE_ACTIVE` | `PHASE_ACTIVE,<msg_size>` | one-way 패턴(PUBSUB, DEALER_DEALER)에서 active phase 전환 |
 
-#### SPOT Client ↔ Server (direct control channel)
+#### SPOT / SPOT_REQREP Client ↔ Server (direct control channel)
 
-SPOT 패턴은 runner 경유 외에 client/server 간 직접 control channel도 사용한다.
+SPOT 과 SPOT_REQREP 패턴은 runner 경유 외에 client/server 간 직접 control
+channel도 사용한다.
 
 | 방향 | 메시지 | 형식 | 의미 |
 |------|--------|------|------|
@@ -338,6 +345,16 @@ Runner                    Server                      Client
 - runner: client control endpoint를 `CONNECT_CONTROL` 로 server에 전달.
 - client↔server direct channel: `CONNECTED` → `READY_COUNT,<size>,<count>` → `START,<size>`.
 - runner: `CLIENT_READY` 수신 후 server/client에 `START,<size>` 전달.
+
+**SPOT_REQREP 패턴:** 위 SPOT 다이어그램과 동일한 orchestration/handshake 를
+그대로 사용한다. 차이는 데이터 플레인뿐이다.
+
+- server(replier) 는 publish loop 대신 recv request → send reply loop 를
+  돌린다.
+- client(requester) 는 subscribe 측정 대신 send request → recv reply 왕복을
+  측정한다.
+- routed 경로는 `spot(requester) -> spot_node -> spot_node -> spot(replier)`
+  이며, reply 는 역방향으로 돌아온다.
 
 **STREAM 패턴:**
 
@@ -438,7 +455,7 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
-| ready | event-based | raw=`CONNECTION_READY`, SPOT=control handshake barrier | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS`, `PERF_MULTI_SPOT_READY_SETTLE_MS`, `PERF_MULTI_SPOT_CONTROL_SETTLE_MS` |
+| ready | event-based | raw=`CONNECTION_READY`, SPOT/SPOT_REQREP=control handshake barrier | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS`, `PERF_MULTI_SPOT_READY_SETTLE_MS`, `PERF_MULTI_SPOT_CONTROL_SETTLE_MS` |
 | active | time-based | 5s | `PERF_MULTI_DURATION_SECONDS` |
 
 > `PERF_MULTI_SETTLE_MS`는 호환성 때문에 남아 있을 수 있지만 benchmark phase를
@@ -494,7 +511,7 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 | 방향 | 단위 | 의미 | 측정 지점 | 패턴 |
 |------|------|------|-----------|------|
-| echo | `ops/s` | 왕복 완료 수/초 | client 측 recv | MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_STREAM |
+| echo | `ops/s` | 왕복 완료 수/초 | client 측 recv | MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_STREAM, MULTI_SPOT_REQREP |
 | one-way | `msg/s` | 단방향 수신 수/초 | receiver 측 recv | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT |
 
 - echo 패턴: client가 send → server echo → client recv. 1 rtt = 2 message hops. client가 echo를 수신한 횟수를 카운트한다.
@@ -539,7 +556,7 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 | 유형 | divisor | 적용 패턴 |
 |------|---------|-----------|
-| 양방향 RTT | `2` | MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_STREAM |
+| 양방향 RTT | `2` | MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_STREAM, MULTI_SPOT_REQREP |
 | 단방향 | `received_count` | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT |
 
 ### 5.3 계산식
@@ -658,7 +675,7 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 
 ### 8.1 지원 패턴
 
-MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MULTI_SPOT, MULTI_STREAM
+MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MULTI_SPOT, MULTI_SPOT_REQREP, MULTI_STREAM
 
 #### 바인딩 소스 파일 명명 규칙
 
@@ -690,6 +707,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | MULTI_ROUTER_ROUTER | `*_router_router_server.cpp` | `comp_src_router_router_server` | `*_router_router_client.cpp` | `comp_src_router_router_client` |
 | MULTI_PUBSUB | `*_pubsub_server.cpp` | `comp_src_pubsub_server` | `*_pubsub_client.cpp` | `comp_src_pubsub_client` |
 | MULTI_SPOT | `*_spot_server.cpp` | `comp_src_spot_server` | `*_spot_client.cpp` | `comp_src_spot_client` |
+| MULTI_SPOT_REQREP | `*_spot_reqrep_server.cpp` (replier) | `comp_src_spot_reqrep_server` | `*_spot_reqrep_client.cpp` (requester) | `comp_src_spot_reqrep_client` |
 | MULTI_STREAM | `*_stream_server.cpp` | `comp_src_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
@@ -725,7 +743,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 |--------|------|
 | MULTI_DEALER / MULTI_ROUTER / MULTI_PUBSUB | `[64, 256, 1024, 65536, 131072, 262144]` |
 | MULTI_STREAM | `[64, 256, 1024, 65536]` |
-| MULTI_SPOT | `[64, 256, 1024, 65536, 131072, 262144]` |
+| MULTI_SPOT / MULTI_SPOT_REQREP | `[64, 256, 1024, 65536, 131072, 262144]` |
 
 - STREAM 계열은 대량 동시 연결 환경에서 테스트하므로 65536B까지만 측정한다.
 
@@ -734,7 +752,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | 패턴군 | transport |
 |--------|-----------|
 | MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB | tcp, tls, ws, wss (Python 엔진 기본값에 ipc 포함, 단 shell wrapper 기본값은 tcp,tls,ws,wss; Windows: ipc 제외) |
-| MULTI_SPOT | tcp, tls, ws, wss |
+| MULTI_SPOT / MULTI_SPOT_REQREP | tcp, tls, ws, wss |
 | MULTI_STREAM | tcp, tls, ws, wss |
 
 ---
@@ -1117,17 +1135,18 @@ pattern별 공식 start contract 를 사용한다.
 | 항목 | 규칙 |
 |------|------|
 | raw 연결 확인 API | `zlink_socket_monitor_open(...)` 뒤에 `CONNECTION_READY` 직접 대기 helper 사용 |
-| SPOT 연결 확인 API | service monitor 사용 금지. spot control topic 위의 `CONNECTED`/`READY_COUNT`/`START` handshake 사용 |
+| SPOT / SPOT_REQREP 연결 확인 API | service monitor 사용 금지. spot control topic 위의 `CONNECTED`/`READY_COUNT`/`START` handshake 사용 |
 | 대기 방식 | app thread에서 타임아웃 기반 bounded wait — busy-wait/sleep 금지 |
 | 타임아웃 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` (기본 5000ms) 초과 시 run 실패 처리 |
 | Monitor HWM | raw monitor 사용 시 `PERF_MULTI_MONITOR_HWM` (기본 1,000) |
 
 - raw monitor handle은 pattern 파일 안에서 직접 열고 닫되, ready gate는
   expected client 수 `CONNECTION_READY` counting 으로 끝낸다.
-- SPOT 은 `CONNECTED` 확인 뒤 client 의 `READY_COUNT` 와 server 의 `START`
-  control message 로 gate 를 닫는다.
+- SPOT / SPOT_REQREP 은 `CONNECTED` 확인 뒤 client 의 `READY_COUNT` 와
+  server 의 `START` control message 로 gate 를 닫는다.
 - server 측에서도 raw는 동일하게 `CONNECTION_READY` 를 기준으로 준비를 판정하고,
-  SPOT 은 `READY_COUNT` 집계 후 `START` broadcast 로 준비를 판정한다.
+  SPOT / SPOT_REQREP 은 `READY_COUNT` 집계 후 `START` broadcast 로 준비를
+  판정한다.
 
 ### 13.3 코어 로직 인라인 (multi 보충)
 
@@ -1173,7 +1192,7 @@ def bandwidth_mbps(throughput, msg_size, is_echo):
     return throughput * msg_size * multiplier / 1_000_000
 
 def latency_rtt_ns(elapsed_ns, roundtrip_count):
-    """MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_STREAM"""
+    """MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_STREAM, MULTI_SPOT_REQREP"""
     return elapsed_ns / max(1, roundtrip_count * 2)
 
 def latency_oneway_ns(elapsed_ns, count):

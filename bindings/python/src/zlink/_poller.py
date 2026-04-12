@@ -3,7 +3,15 @@
 import ctypes
 
 from ._ffi import ZlinkPollerEvent, lib
-from ._core import _raise_last_error
+from ._core import (
+    CloseError,
+    CloseResult,
+    ConfigError,
+    ConfigResult,
+    RecvError,
+    RecvResult,
+    _raise_result_error,
+)
 
 
 class Poller:
@@ -24,10 +32,11 @@ class Poller:
             self._handle, socket._handle, user_data, int(events)
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         self._items[user_data.value] = {
             "socket": socket,
             "fd": None,
+            "timer": None,
             "tag": tag,
         }
 
@@ -36,34 +45,60 @@ class Poller:
         self._next_user_data += 1
         rc = lib().zlink_poller_add_fd(self._handle, fd, user_data, int(events))
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         self._items[user_data.value] = {
             "socket": None,
             "fd": int(fd),
+            "timer": None,
             "tag": tag,
+        }
+
+    def add_timer(self, timer, user_data=None):
+        user_data_ptr = ctypes.c_void_p(self._next_user_data)
+        self._next_user_data += 1
+        rc = lib().zlink_poller_add_timer(self._handle, timer._handle, user_data_ptr)
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        self._items[user_data_ptr.value] = {
+            "socket": None,
+            "fd": None,
+            "timer": timer,
+            "tag": user_data,
         }
 
     def modify_socket(self, socket, events):
         rc = lib().zlink_poller_modify(self._handle, socket._handle, int(events))
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def modify_fd(self, fd, events):
         rc = lib().zlink_poller_modify_fd(self._handle, int(fd), int(events))
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def remove_socket(self, socket):
         rc = lib().zlink_poller_remove(self._handle, socket._handle)
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         self._remove_item(lambda item: item["socket"] is socket)
 
     def remove_fd(self, fd):
         rc = lib().zlink_poller_remove_fd(self._handle, int(fd))
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         self._remove_item(lambda item: item["fd"] == int(fd))
+
+    def remove_timer(self, timer):
+        rc = lib().zlink_poller_remove_timer(self._handle, timer._handle)
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        self._remove_item(lambda item: item["timer"] is timer)
+
+    def size(self):
+        rc = lib().zlink_poller_size(self._handle)
+        if rc < 0:
+            _raise_result_error(ConfigError, ConfigResult, 702, lib().zlink_errno())
+        return int(rc)
 
     def poll(self, timeout_ms):
         if not self._items:
@@ -73,7 +108,7 @@ class Poller:
             self._handle, events, len(self._items), int(timeout_ms)
         )
         if ready < 0:
-            _raise_last_error()
+            _raise_result_error(RecvError, RecvResult, 201, lib().zlink_errno())
         results = []
         for index in range(ready):
             event = events[index]
@@ -84,8 +119,10 @@ class Poller:
                 {
                     "socket": item["socket"],
                     "fd": item["fd"],
+                    "timer": item["timer"],
                     "events": int(event.events),
                     "tag": item["tag"],
+                    "user_data": item["tag"],
                 }
             )
         return results
@@ -98,7 +135,7 @@ class Poller:
         self._handle = None
         self._items = {}
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
 
     def __enter__(self):
         return self

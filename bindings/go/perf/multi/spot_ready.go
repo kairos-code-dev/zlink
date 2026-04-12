@@ -54,16 +54,12 @@ func waitForMultiSpotReady(
 		Name: "multi spot perf endpoint",
 		Probe: func() (bool, error) {
 			perfcommon.StampPayload(payload)
-			result, err := publisher.TryPublish("bench.topic", perfcommon.NewMessage(payload))
+			err := publisher.Publish("bench.topic", zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					return false, nil
 				}
 				return false, err
-			}
-			if result != zlink.SendResultSent {
-				time.Sleep(250 * time.Microsecond)
-				return false, nil
 			}
 			_ = drainMultiSpotOnce(subs, nil, time.Now().Add(24*time.Hour), tracker)
 			time.Sleep(250 * time.Microsecond)

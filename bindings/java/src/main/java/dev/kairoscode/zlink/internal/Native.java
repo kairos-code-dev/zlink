@@ -310,6 +310,144 @@ public final class Native {
       "zlink_set_tls_client",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_PROXY = downcall("zlink_proxy",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_PROXY_STEERABLE = downcall(
+      "zlink_proxy_steerable",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+
+    private static final MethodHandle MH_ATOMIC_COUNTER_NEW = downcall(
+      "zlink_atomic_counter_new",
+      FunctionDescriptor.of(ValueLayout.ADDRESS));
+    private static final MethodHandle MH_ATOMIC_COUNTER_SET = downcall(
+      "zlink_atomic_counter_set",
+      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_ATOMIC_COUNTER_INC = downcall(
+      "zlink_atomic_counter_inc",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_ATOMIC_COUNTER_DEC = downcall(
+      "zlink_atomic_counter_dec",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_ATOMIC_COUNTER_VALUE = downcall(
+      "zlink_atomic_counter_value",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_ATOMIC_COUNTER_DESTROY = downcall(
+      "zlink_atomic_counter_destroy",
+      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+
+    private static final MethodHandle MH_TIMER_NEW = downcall("zlink_timer_new",
+      FunctionDescriptor.of(ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_TIMER_NEW = downcall(
+      "zlink_spot_timer_new",
+      FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_TIMER_DESTROY = downcall(
+      "zlink_timer_destroy",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_TIMER_START = downcall(
+      "zlink_timer_start",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_TIMER_STOP = downcall(
+      "zlink_timer_stop",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_TIMER_RECV = downcall(
+      "zlink_timer_recv",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS));
+    private static final MethodHandle MH_TIMER_HANDLER = downcall(
+      "zlink_timer_handler",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+
+    private static final MethodHandle MH_STOPWATCH_START = downcall(
+      "zlink_stopwatch_start",
+      FunctionDescriptor.of(ValueLayout.ADDRESS));
+    private static final MethodHandle MH_STOPWATCH_INTERMEDIATE = downcall(
+      "zlink_stopwatch_intermediate",
+      FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_STOPWATCH_STOP = downcall(
+      "zlink_stopwatch_stop",
+      FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+
+    private static final MethodHandle MH_THREAD_START = downcall(
+      "zlink_thread_start",
+      FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS));
+    private static final MethodHandle MH_THREAD_JOIN = downcall(
+      "zlink_thread_join",
+      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+
+    private static final MethodHandle MH_ROUTER_REQUEST_SPOT = downcall(
+      "zlink_router_request_spot",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+        ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_ROUTER_REPLY_SPOT = downcall(
+      "zlink_router_reply_spot",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_ROUTER_SEND_SPOT = downcall(
+      "zlink_router_send_spot",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+        ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_ROUTER_SPOT_HANDLER = downcall(
+      "zlink_router_spot_handler",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_ROUTER_SPOT_RECV = downcall(
+      "zlink_router_spot_recv",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+
+    private static final MethodHandle MH_SPOT_REQUEST_SPOT = downcall(
+      "zlink_spot_request_spot",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+        ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_SEND_SPOT = downcall(
+      "zlink_spot_send_spot",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+        ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_SEND_ROUTER = downcall(
+      "zlink_spot_send_router",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_REQUEST_ROUTER = downcall(
+      "zlink_spot_request_router",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_REPLY_SPOT = downcall(
+      "zlink_spot_reply_spot",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_SPOT_REPLY_ROUTER = downcall(
+      "zlink_spot_reply_router",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
+        ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_SPOT_HANDLER = downcall(
+      "zlink_spot_handler",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_DISPATCH_EVENT_HANDLER = downcall(
+      "zlink_spot_dispatch_event_handler",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_RECV = downcall(
+      "zlink_spot_recv",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
 
     private static final MethodHandle MH_REG_NEW = downcall("zlink_registry_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -1165,6 +1303,367 @@ public final class Native {
             MH_SLEEP.invokeExact(seconds);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_sleep failed", t);
+        }
+    }
+
+    public static int proxy(MemorySegment frontend, MemorySegment backend,
+                            MemorySegment capture) {
+        try {
+            return (int) MH_PROXY.invokeExact(frontend, backend, capture);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_proxy failed", t);
+        }
+    }
+
+    public static int proxySteerable(MemorySegment frontend,
+                                     MemorySegment backend,
+                                     MemorySegment capture,
+                                     MemorySegment control) {
+        try {
+            return (int) MH_PROXY_STEERABLE.invokeExact(frontend, backend,
+                capture, control);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_proxy_steerable failed", t);
+        }
+    }
+
+    public static MemorySegment atomicCounterNew() {
+        try {
+            return (MemorySegment) MH_ATOMIC_COUNTER_NEW.invokeExact();
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_atomic_counter_new failed", t);
+        }
+    }
+
+    public static void atomicCounterSet(MemorySegment counter, int value) {
+        try {
+            MH_ATOMIC_COUNTER_SET.invokeExact(counter, value);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_atomic_counter_set failed", t);
+        }
+    }
+
+    public static int atomicCounterInc(MemorySegment counter) {
+        try {
+            return (int) MH_ATOMIC_COUNTER_INC.invokeExact(counter);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_atomic_counter_inc failed", t);
+        }
+    }
+
+    public static int atomicCounterDec(MemorySegment counter) {
+        try {
+            return (int) MH_ATOMIC_COUNTER_DEC.invokeExact(counter);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_atomic_counter_dec failed", t);
+        }
+    }
+
+    public static int atomicCounterValue(MemorySegment counter) {
+        try {
+            return (int) MH_ATOMIC_COUNTER_VALUE.invokeExact(counter);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_atomic_counter_value failed", t);
+        }
+    }
+
+    public static void atomicCounterDestroy(MemorySegment counter) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment holder = arena.allocate(ValueLayout.ADDRESS);
+            holder.set(ValueLayout.ADDRESS, 0, counter);
+            MH_ATOMIC_COUNTER_DESTROY.invokeExact(holder);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_atomic_counter_destroy failed", t);
+        }
+    }
+
+    public static MemorySegment timerNew() {
+        try {
+            return (MemorySegment) MH_TIMER_NEW.invokeExact();
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_timer_new failed", t);
+        }
+    }
+
+    public static MemorySegment spotTimerNew(MemorySegment spot) {
+        try {
+            return (MemorySegment) MH_SPOT_TIMER_NEW.invokeExact(spot);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_timer_new failed", t);
+        }
+    }
+
+    public static int timerDestroy(MemorySegment timer) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment holder = arena.allocate(ValueLayout.ADDRESS);
+            holder.set(ValueLayout.ADDRESS, 0, timer);
+            return (int) MH_TIMER_DESTROY.invokeExact(holder);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_timer_destroy failed", t);
+        }
+    }
+
+    public static int timerStart(MemorySegment timer, long intervalNs,
+                                 long repeatCount) {
+        try {
+            return (int) MH_TIMER_START.invokeExact(timer, intervalNs,
+                repeatCount);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_timer_start failed", t);
+        }
+    }
+
+    public static int timerStop(MemorySegment timer) {
+        try {
+            return (int) MH_TIMER_STOP.invokeExact(timer);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_timer_stop failed", t);
+        }
+    }
+
+    public static int timerRecv(MemorySegment timer, MemorySegment fireCountOut) {
+        try {
+            return (int) MH_TIMER_RECV.invokeExact(timer, fireCountOut);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_timer_recv failed", t);
+        }
+    }
+
+    public static int timerHandler(MemorySegment timer, MemorySegment handler,
+                                   MemorySegment userdata) {
+        try {
+            return (int) MH_TIMER_HANDLER.invokeExact(timer, handler, userdata);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_timer_handler failed", t);
+        }
+    }
+
+    public static MemorySegment stopwatchStart() {
+        try {
+            return (MemorySegment) MH_STOPWATCH_START.invokeExact();
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_stopwatch_start failed", t);
+        }
+    }
+
+    public static long stopwatchIntermediate(MemorySegment watch) {
+        try {
+            return (long) MH_STOPWATCH_INTERMEDIATE.invokeExact(watch);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_stopwatch_intermediate failed", t);
+        }
+    }
+
+    public static long stopwatchStop(MemorySegment watch) {
+        try {
+            return (long) MH_STOPWATCH_STOP.invokeExact(watch);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_stopwatch_stop failed", t);
+        }
+    }
+
+    public static MemorySegment threadStart(MemorySegment func,
+                                            MemorySegment arg) {
+        try {
+            return (MemorySegment) MH_THREAD_START.invokeExact(func, arg);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_thread_start failed", t);
+        }
+    }
+
+    public static void threadJoin(MemorySegment thread) {
+        try {
+            MH_THREAD_JOIN.invokeExact(thread);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_thread_join failed", t);
+        }
+    }
+
+    public static int routerRequestSpot(MemorySegment router,
+                                        MemorySegment destNodeRid,
+                                        MemorySegment destSpotRid,
+                                        MemorySegment parts,
+                                        long partCount,
+                                        MemorySegment handler,
+                                        MemorySegment userdata,
+                                        int flags, int timeoutMs) {
+        try {
+            return (int) MH_ROUTER_REQUEST_SPOT.invokeExact(router,
+                destNodeRid, destSpotRid, parts, partCount, handler, userdata,
+                flags, timeoutMs);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_router_request_spot failed", t);
+        }
+    }
+
+    public static int routerReplySpot(MemorySegment router,
+                                      MemorySegment destNodeRid,
+                                      MemorySegment destSpotRid,
+                                      long requestSeq,
+                                      MemorySegment parts,
+                                      long partCount) {
+        try {
+            return (int) MH_ROUTER_REPLY_SPOT.invokeExact(router, destNodeRid,
+                destSpotRid, requestSeq, parts, partCount);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_router_reply_spot failed", t);
+        }
+    }
+
+    public static int routerSendSpot(MemorySegment router,
+                                     MemorySegment destNodeRid,
+                                     MemorySegment destSpotRid,
+                                     MemorySegment parts,
+                                     long partCount, int flags) {
+        try {
+            return (int) MH_ROUTER_SEND_SPOT.invokeExact(router, destNodeRid,
+                destSpotRid, parts, partCount, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_router_send_spot failed", t);
+        }
+    }
+
+    public static int routerSpotHandler(MemorySegment router,
+                                        MemorySegment handler,
+                                        MemorySegment userdata) {
+        try {
+            return (int) MH_ROUTER_SPOT_HANDLER.invokeExact(router, handler,
+                userdata);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_router_spot_handler failed", t);
+        }
+    }
+
+    public static int routerSpotRecv(MemorySegment router,
+                                     MemorySegment sourceNodeRidOut,
+                                     MemorySegment sourceSpotRidOut,
+                                     MemorySegment requestSeqOut,
+                                     MemorySegment partsOut,
+                                     MemorySegment partCountOut, int flags) {
+        try {
+            return (int) MH_ROUTER_SPOT_RECV.invokeExact(router,
+                sourceNodeRidOut, sourceSpotRidOut, requestSeqOut, partsOut,
+                partCountOut, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_router_spot_recv failed", t);
+        }
+    }
+
+    public static int spotRequestSpot(MemorySegment spot,
+                                      MemorySegment destNodeRid,
+                                      MemorySegment destSpotRid,
+                                      MemorySegment parts,
+                                      long partCount,
+                                      MemorySegment handler,
+                                      MemorySegment userdata,
+                                      int flags, int timeoutMs) {
+        try {
+            return (int) MH_SPOT_REQUEST_SPOT.invokeExact(spot, destNodeRid,
+                destSpotRid, parts, partCount, handler, userdata, flags,
+                timeoutMs);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_request_spot failed", t);
+        }
+    }
+
+    public static int spotSendSpot(MemorySegment spot,
+                                   MemorySegment destNodeRid,
+                                   MemorySegment destSpotRid,
+                                   MemorySegment parts,
+                                   long partCount, int flags) {
+        try {
+            return (int) MH_SPOT_SEND_SPOT.invokeExact(spot, destNodeRid,
+                destSpotRid, parts, partCount, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_send_spot failed", t);
+        }
+    }
+
+    public static int spotSendRouter(MemorySegment spot,
+                                     MemorySegment peerRid,
+                                     MemorySegment parts,
+                                     long partCount, int flags) {
+        try {
+            return (int) MH_SPOT_SEND_ROUTER.invokeExact(spot, peerRid, parts,
+                partCount, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_send_router failed", t);
+        }
+    }
+
+    public static int spotRequestRouter(MemorySegment spot,
+                                        MemorySegment peerRid,
+                                        MemorySegment parts,
+                                        long partCount,
+                                        MemorySegment handler,
+                                        MemorySegment userdata,
+                                        int flags, int timeoutMs) {
+        try {
+            return (int) MH_SPOT_REQUEST_ROUTER.invokeExact(spot, peerRid,
+                parts, partCount, handler, userdata, flags, timeoutMs);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_request_router failed", t);
+        }
+    }
+
+    public static int spotReplySpot(MemorySegment spot,
+                                    MemorySegment destNodeRid,
+                                    MemorySegment destSpotRid,
+                                    long requestSeq,
+                                    MemorySegment parts,
+                                    long partCount) {
+        try {
+            return (int) MH_SPOT_REPLY_SPOT.invokeExact(spot, destNodeRid,
+                destSpotRid, requestSeq, parts, partCount);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_reply_spot failed", t);
+        }
+    }
+
+    public static int spotReplyRouter(MemorySegment spot,
+                                      MemorySegment peerRid,
+                                      long requestSeq,
+                                      MemorySegment parts,
+                                      long partCount) {
+        try {
+            return (int) MH_SPOT_REPLY_ROUTER.invokeExact(spot, peerRid,
+                requestSeq, parts, partCount);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_reply_router failed", t);
+        }
+    }
+
+    public static int spotHandler(MemorySegment spot, MemorySegment handler,
+                                  MemorySegment userdata) {
+        try {
+            return (int) MH_SPOT_HANDLER.invokeExact(spot, handler, userdata);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_handler failed", t);
+        }
+    }
+
+    public static int spotDispatchEventHandler(MemorySegment spot,
+                                               MemorySegment handler,
+                                               MemorySegment userdata) {
+        try {
+            return (int) MH_SPOT_DISPATCH_EVENT_HANDLER.invokeExact(spot,
+                handler, userdata);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+                "zlink_spot_dispatch_event_handler failed", t);
+        }
+    }
+
+    public static int spotRecv(MemorySegment spot, MemorySegment sourceRidOut,
+                               MemorySegment spotRidOut,
+                               MemorySegment requestSeqOut,
+                               MemorySegment partsOut,
+                               MemorySegment partCountOut, int flags) {
+        try {
+            return (int) MH_SPOT_RECV.invokeExact(spot, sourceRidOut,
+                spotRidOut, requestSeqOut, partsOut, partCountOut, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_recv failed", t);
         }
     }
 

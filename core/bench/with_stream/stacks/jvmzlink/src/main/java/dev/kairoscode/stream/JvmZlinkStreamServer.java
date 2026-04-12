@@ -2,7 +2,6 @@ package dev.kairoscode.stream;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.StreamSocket;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -123,8 +122,7 @@ public final class JvmZlinkStreamServer {
 
                 metrics.recvMsgs.incrementAndGet();
                 try {
-                    if (server.trySend(routingId, payload) != SendResult.SENT)
-                        metrics.sendError.incrementAndGet();
+                    server.send(routingId, payload);
                 } catch (Throwable t) {
                     metrics.sendError.incrementAndGet();
                 }

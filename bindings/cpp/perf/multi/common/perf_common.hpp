@@ -232,7 +232,7 @@ inline int poll_connect_ready_count (connect_monitor_t &mon)
     int ready = 0;
     for (;;) {
         const zlink::maybe_t<zlink::monitor_event_t> ev =
-          mon.monitor->try_recv ();
+          mon.monitor->recv (zlink::non_blocking_t {});
         if (!ev)
             break;
         if (static_cast<uint64_t> (ev->event)
@@ -262,8 +262,12 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon,
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
-    if (poller.add (*mon.monitor, zlink::poll_event::pollin, NULL) != 0)
+    try {
+        poller.add (*mon.monitor, zlink::poll_event::pollin, NULL);
+    }
+    catch (const zlink::zlink_error_t &) {
         return false;
+    }
 
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (timeout_ms);
@@ -326,11 +330,14 @@ inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;
     events.reserve (active_indices.size ());
-    for (size_t i = 0; i < active_indices.size (); ++i) {
-        if (poller.add (*monitors[active_indices[i]].monitor,
-                        zlink::poll_event::pollin, NULL)
-            != 0)
-            return false;
+    try {
+        for (size_t i = 0; i < active_indices.size (); ++i) {
+            poller.add (*monitors[active_indices[i]].monitor,
+                        zlink::poll_event::pollin, NULL);
+        }
+    }
+    catch (const zlink::zlink_error_t &) {
+        return false;
     }
 
     const auto deadline = std::chrono::steady_clock::now ()

@@ -17,12 +17,12 @@ void test_poller_modify_switches_event_mask ()
     sleep_ms (50);
 
     zlink::poller_t poller;
-    assert (poller.add (receiver, zlink::poll_event::pollin) == 0);
+    poller.add (receiver, zlink::poll_event::pollin);
     assert (poller.size () == 1);
 
     send_string_expect_success (sender, "ping");
 
-    assert (poller.modify (receiver, zlink::poll_event::pollout) == 0);
+    poller.modify (receiver, zlink::poll_event::pollout);
 
     std::vector<zlink::poll_event_t> events;
     assert (poller.wait (events, 1000) == 1);
@@ -31,7 +31,7 @@ void test_poller_modify_switches_event_mask ()
     assert ((events[0].revents & ZLINK_POLLOUT) != 0);
     assert ((events[0].revents & ZLINK_POLLIN) == 0);
 
-    assert (poller.modify (receiver, zlink::poll_event::pollin) == 0);
+    poller.modify (receiver, zlink::poll_event::pollin);
 
     events.clear ();
     assert (poller.wait (events, 1000) == 1);

@@ -6,6 +6,7 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.SendResult;
+import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SocketPollSet;
 import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.perf.PerfUtil;
@@ -49,7 +50,7 @@ final class PerfMultiStream {
                 }
                 if (pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
                     while (true) {
-                        var maybe = server.tryRecv();
+                        var maybe = PerfUtil.tryRecv(server);
                         if (maybe.isEmpty()) {
                             break;
                         }
@@ -118,10 +119,12 @@ final class PerfMultiStream {
         while (!pending.isEmpty()) {
             PendingReply reply = pending.peekFirst();
             try (Message payload = Message.copyOf(reply.payload())) {
-                SendResult result = server.trySend(reply.routingId(), List.of(payload));
-                if (result == SendResult.SENT) {
+                server.send(reply.routingId(), List.of(payload), SendFlags.DONT_WAIT);
                     pending.removeFirst();
                     continue;
+            } catch (dev.kairoscode.zlink.ZlinkException ex) {
+                if (ex.errno() != 11 && ex.errno() != 4) {
+                    throw ex;
                 }
                 return;
             }

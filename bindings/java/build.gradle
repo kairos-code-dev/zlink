@@ -28,6 +28,10 @@ dependencies {
 test {
     useJUnitPlatform()
     jvmArgs '--enable-native-access=ALL-UNNAMED'
+    def reqrepDebug = System.getProperty('zlink.reqrep.debug')
+    if (reqrepDebug != null) {
+        systemProperty 'zlink.reqrep.debug', reqrepDebug
+    }
     filter {
         excludeTestsMatching 'dev.kairoscode.zlink.integration.*'
     }
@@ -36,6 +40,10 @@ test {
 tasks.register('integrationTest', Test) {
     useJUnitPlatform()
     jvmArgs '--enable-native-access=ALL-UNNAMED'
+    def reqrepDebug = System.getProperty('zlink.reqrep.debug')
+    if (reqrepDebug != null) {
+        systemProperty 'zlink.reqrep.debug', reqrepDebug
+    }
     shouldRunAfter test
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath

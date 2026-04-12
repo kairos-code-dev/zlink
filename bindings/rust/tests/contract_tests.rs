@@ -218,6 +218,8 @@ fn request_reply_wrapper_roundtrip() {
             .unwrap(),
         b"pong"
     );
+    drop(router);
+    drop(dealer);
 }
 
 #[test]
@@ -245,4 +247,6 @@ fn request_router_exposes_request_sequence() {
     let part = received.single_part().unwrap();
     assert_eq!(part.data(), b"plain-data");
     assert!(request_seq.is_some());
+    drop(dealer);
+    drop(router);
 }

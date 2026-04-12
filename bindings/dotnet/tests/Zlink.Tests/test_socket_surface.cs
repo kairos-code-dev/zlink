@@ -22,8 +22,10 @@ public sealed class test_socket_surface
     private static bool HasPublicInstanceMethod(Type type, string name,
         params Type[] parameterTypes)
     {
-        return type.GetMethod(name, BindingFlags.Instance | BindingFlags.Public,
-            binder: null, types: parameterTypes, modifiers: null) != null;
+        return PublicInstanceMethods(type).Any(method =>
+            method.Name == name
+            && method.GetParameters().Select(p => p.ParameterType)
+                .SequenceEqual(parameterTypes));
     }
 
     [Fact]
@@ -41,9 +43,9 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(DealerSocket), "Send",
             typeof(string), typeof(Message)));
         Assert.True(HasPublicInstanceMethod(typeof(PairSocket), "Recv",
-            Type.EmptyTypes));
+            typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
-            "Recv", Type.EmptyTypes));
+            "Recv", typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(PairSocket),
             nameof(MessageSocketBase.OnSendReady)));
         Assert.True(HasPublicInstanceMethod(typeof(PubSocket),
@@ -57,9 +59,9 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Send",
             typeof(Message)));
         Assert.True(HasPublicInstanceMethod(typeof(RouterSocket), "Recv",
-            Type.EmptyTypes));
+            typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(StreamSocket), "Recv",
-            Type.EmptyTypes));
+            typeof(RecvFlags)));
 
         Assert.True(HasPublicInstanceMethod(typeof(StreamSocket),
             nameof(StreamSocket.AttachStreamRaw)));
@@ -87,7 +89,7 @@ public sealed class test_socket_surface
             nameof(MessageSocketBase.OnReceive)));
         Assert.True(HasPublicInstanceMethod(typeof(XPubSocket),
             nameof(XPubSocket.ReceiveSubscriptionEvent)));
-        Assert.True(HasPublicInstanceMethod(typeof(XPubSocket),
+        Assert.False(HasPublicInstanceMethod(typeof(XPubSocket),
             nameof(XPubSocket.TryReceiveSubscriptionEvent),
             typeof(SubscriptionEvent).MakeByRefType()));
         Assert.False(HasPublicInstanceMethod(typeof(PubSocket),
@@ -168,18 +170,24 @@ public sealed class test_socket_surface
         Assert.Equal(SocketEvent.All,
             typeof(SocketBase).GetMethod(nameof(SocketBase.MonitorOpen))!
                 .GetParameters()[0].DefaultValue);
-        Assert.True(typeof(Discovery).GetMethod(nameof(Discovery.MonitorOpen))!
-            .GetParameters()[0].HasDefaultValue);
-        Assert.Equal(ServiceMonitorEvents.All,
-            typeof(Discovery).GetMethod(nameof(Discovery.MonitorOpen))!
-                .GetParameters()[0].DefaultValue);
+        MethodInfo discoveryMonitorOpen = typeof(Discovery).GetMethods(
+            BindingFlags.Instance | BindingFlags.Public)
+            .Single(method =>
+                method.Name == nameof(Discovery.MonitorOpen)
+                && method.GetParameters().Length == 1
+                && method.GetParameters()[0].ParameterType
+                    == typeof(ServiceMonitorEventMask[]));
+        Assert.True(discoveryMonitorOpen.GetParameters()[0]
+            .GetCustomAttribute<ParamArrayAttribute>() != null);
     }
 
     [Fact]
     public void monitor_surface_exposes_canonical_receive_methods_only()
     {
         Assert.True(HasPublicInstanceMethod(typeof(SocketMonitor), "Recv"));
-        Assert.True(HasPublicInstanceMethod(typeof(SocketMonitor), "TryRecv",
+        Assert.True(HasPublicInstanceMethod(typeof(SocketMonitor), "Recv",
+            typeof(bool)));
+        Assert.False(HasPublicInstanceMethod(typeof(SocketMonitor), "TryRecv",
             typeof(SocketMonitorEvent?).MakeByRefType()));
         Assert.True(HasPublicInstanceMethod(typeof(SocketMonitor),
             "OnEvent"));
@@ -194,16 +202,20 @@ public sealed class test_socket_surface
             nameof(RequestDealer.RequestAsync), typeof(Message),
             typeof(System.Threading.CancellationToken)));
         Assert.True(HasPublicInstanceMethod(typeof(RequestDealer),
+            nameof(RequestDealer.Request), typeof(Message),
+            typeof(Action<RequestResult, Received?>), typeof(SendFlags),
+            typeof(TimeSpan)));
+        Assert.False(HasPublicInstanceMethod(typeof(RequestDealer),
             nameof(RequestDealer.TryRequestAsync), typeof(Message),
             typeof(TimeSpan), typeof(System.Threading.CancellationToken)));
         Assert.True(HasPublicInstanceMethod(typeof(RequestDealer),
-            nameof(RequestDealer.OnReceive), typeof(SocketRecvHandler)));
+            nameof(RequestDealer.OnReceive), typeof(Action<Received>)));
         Assert.True(HasPublicInstanceMethod(typeof(RequestRouter),
-            nameof(RequestRouter.OnReceive), typeof(SocketRecvHandler)));
+            nameof(RequestRouter.OnReceive), typeof(Action<Received>)));
         Assert.True(HasPublicInstanceMethod(typeof(RequestRouter),
             nameof(RequestRouter.Reply), typeof(RoutingId), typeof(ulong),
-            typeof(Message)));
-        Assert.True(HasPublicInstanceMethod(typeof(RequestRouter),
+            typeof(Message), typeof(SendFlags)));
+        Assert.False(HasPublicInstanceMethod(typeof(RequestRouter),
             nameof(RequestRouter.TryReply), typeof(RoutingId), typeof(ulong),
             typeof(Message)));
     }
@@ -267,12 +279,16 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
             "MemberPeerMetadata", typeof(ServiceRole), typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen",
+            typeof(ServiceMonitorEventMask[])));
+        Assert.False(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen",
             typeof(ServiceMonitorEvents)));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery),
             "GetMemberPeerMetadata"));
 
         Assert.True(HasPublicInstanceMethod(typeof(ServiceMonitor), "Recv"));
-        Assert.True(HasPublicInstanceMethod(typeof(ServiceMonitor), "TryRecv",
+        Assert.True(HasPublicInstanceMethod(typeof(ServiceMonitor), "Recv",
+            typeof(bool)));
+        Assert.False(HasPublicInstanceMethod(typeof(ServiceMonitor), "TryRecv",
             typeof(ServiceMonitorEvent?).MakeByRefType()));
         Assert.True(HasPublicInstanceMethod(typeof(ServiceMonitor), "OnEvent",
             typeof(Action<ServiceMonitorEvent>)));
@@ -284,7 +300,7 @@ public sealed class test_socket_surface
             typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(SocketBase), "MonitorOpen",
             typeof(SocketEvent)));
-        Assert.True(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen",
+        Assert.False(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen",
             typeof(ServiceMonitorEvents)));
     }
 

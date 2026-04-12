@@ -4,7 +4,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 
 test('router can send reply in a synchronous request-reply exchange', () => {
   const ctx = new zlink.Context();
@@ -17,11 +17,11 @@ test('router can send reply in a synchronous request-reply exchange', () => {
   dealer.send('request');
   const request = router.recv();
   assert.ok(Buffer.isBuffer(request.routingId));
-  assert.equal(request.parts[0].data.toString(), 'request');
+  assert.equal(request.parts[0].data().toString(), 'request');
   router.send(request.routingId, 'reply');
 
   const response = dealer.recv();
-  assert.equal(response.parts[0].data.toString(), 'reply');
+  assert.equal(response.parts[0].data().toString(), 'reply');
 
   dealer.close();
   router.close();
@@ -43,10 +43,10 @@ test('router can send multiple replies in a synchronous request-reply loop', () 
     dealer.send(`request-${i}`);
     const request = router.recv();
     assert.ok(Buffer.isBuffer(request.routingId));
-    assert.equal(request.parts[0].data.toString(), `request-${i}`);
+    assert.equal(request.parts[0].data().toString(), `request-${i}`);
     router.send(request.routingId, `reply-${i}`);
     const reply = dealer.recv();
-    assert.equal(reply.parts[0].data.toString(), `reply-${i}`);
+    assert.equal(reply.parts[0].data().toString(), `reply-${i}`);
     roundsCompleted += 1;
   }
 
@@ -57,7 +57,7 @@ test('router can send multiple replies in a synchronous request-reply loop', () 
   ctx.close();
 });
 
-test('router tryRecv + send works as synchronous request-reply', () => {
+test('router recv + send works as synchronous request-reply', () => {
   const ctx = new zlink.Context();
   const router = new zlink.RouterSocket(ctx);
   const dealer = new zlink.DealerSocket(ctx);
@@ -69,12 +69,12 @@ test('router tryRecv + send works as synchronous request-reply', () => {
 
   const request = router.recv();
   assert.ok(Buffer.isBuffer(request.routingId));
-  assert.equal(request.parts[0].data.toString(), 'sync-request');
+  assert.equal(request.parts[0].data().toString(), 'sync-request');
 
   router.send(request.routingId, 'sync-reply');
 
   const response = dealer.recv();
-  assert.equal(response.parts[0].data.toString(), 'sync-reply');
+  assert.equal(response.parts[0].data().toString(), 'sync-reply');
 
   dealer.close();
   router.close();

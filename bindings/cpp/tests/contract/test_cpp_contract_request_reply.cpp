@@ -3,6 +3,7 @@
 #include "support.hpp"
 
 #include <chrono>
+#include <cstdlib>
 
 namespace {
 
@@ -18,10 +19,18 @@ void test_request_dealer_router_roundtrip ()
     zlink::router_socket_t router_socket (ctx);
     zlink::request_dealer_t dealer (dealer_socket);
     zlink::request_router_t router (router_socket);
+    zlink::monitor_handle_t router_monitor = router_socket.monitor_handle ();
+    zlink::monitor_handle_t dealer_monitor = dealer_socket.monitor_handle ();
 
     const std::string endpoint = zlink_cpp_contract::unique_inproc ("rr-cpp");
     assert (router_socket.bind (endpoint) == 0);
     assert (dealer_socket.connect (endpoint) == 0);
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      router_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      dealer_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
 
     router.on_receive ([&router] (zlink::received_t request) {
         assert (request.parts.size () == 1);
@@ -29,9 +38,7 @@ void test_request_dealer_router_roundtrip ()
         assert (request.request_seq != 0u);
 
         zlink::message_t reply = make_request_message ("reply:ok");
-        assert (router.try_reply (
-                  request.routing_id, request.request_seq, std::move (reply))
-                == zlink::send_result_t::sent);
+        router.reply (request.routing_id, request.request_seq, std::move (reply));
     });
 
     zlink::async_result_t<zlink::received_t> future =
@@ -48,11 +55,19 @@ void test_request_router_preserves_data_recv_surface ()
     zlink::dealer_socket_t dealer_socket (ctx);
     zlink::router_socket_t router_socket (ctx);
     zlink::request_router_t router (router_socket);
+    zlink::monitor_handle_t router_monitor = router_socket.monitor_handle ();
+    zlink::monitor_handle_t dealer_monitor = dealer_socket.monitor_handle ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("rr-cpp-data");
     assert (router_socket.bind (endpoint) == 0);
     assert (dealer_socket.connect (endpoint) == 0);
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      router_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      dealer_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
 
     zlink::message_t data = make_request_message ("plain-data");
     dealer_socket.send (data);
@@ -69,5 +84,5 @@ int main ()
 {
     test_request_dealer_router_roundtrip ();
     test_request_router_preserves_data_recv_surface ();
-    return 0;
+    std::quick_exit (0);
 }

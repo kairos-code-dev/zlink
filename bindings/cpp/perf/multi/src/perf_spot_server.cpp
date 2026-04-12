@@ -252,10 +252,11 @@ bool run_phase (zlink::service::spot_t &spot_,
         }
 
         const zlink::send_result_t result =
-          spot_.try_publish (k_topic, outbound);
+          perf::multi::try_publish_nowait (spot_, k_topic, outbound);
         if (result == zlink::send_result_t::sent) {
             ++seq_;
-            if (outbound.init (payload_size) != 0)
+            outbound.init (payload_size);
+            if (!outbound.valid ())
                 return false;
             continue;
         }

@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 
 test('dealer/router uses routing id through Received and routed send', () => {
   const ctx = new zlink.Context();
@@ -17,7 +17,7 @@ test('dealer/router uses routing id through Received and routed send', () => {
 
   assert.equal(request.parts.length, 1);
   assert.ok(Object.isFrozen(request.parts));
-  assert.equal(request.parts[0].data.toString(), 'hello');
+  assert.equal(request.parts[0].data().toString(), 'hello');
   assert.ok(Buffer.isBuffer(request.routingId));
   assert.equal(request.parts[0].refCount(), 1);
   assert.notEqual(request.parts[0].getProperty('Routing-Id'), null);
@@ -28,8 +28,8 @@ test('dealer/router uses routing id through Received and routed send', () => {
   const response = dealer.recv();
   assert.equal(response.parts.length, 1);
   assert.ok(Object.isFrozen(response.parts));
-  assert.equal(response.parts[0].data.toString(), 'world');
-  assert.equal(typeof router.trySend, 'function');
+  assert.equal(response.parts[0].data().toString(), 'world');
+  assert.equal(typeof router.reply, 'function');
 
   dealer.close();
   router.close();

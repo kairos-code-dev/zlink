@@ -65,7 +65,8 @@ internal static partial class NativeMethods
         int optval);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_ctx_get(IntPtr context, int option);
+    internal static extern int zlink_ctx_get(IntPtr context, int option,
+        out int errorOut);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_close(IntPtr socket);

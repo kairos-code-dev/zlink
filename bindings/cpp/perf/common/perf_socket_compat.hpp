@@ -49,7 +49,6 @@ class socket_t : public base_socket_t
     using base_socket_t::subscribe;
     using base_socket_t::subscription_at;
     using base_socket_t::subscription_event;
-    using base_socket_t::try_publish;
     using base_socket_t::unbind;
     using base_socket_t::unset_subscription;
 

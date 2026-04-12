@@ -49,8 +49,9 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         get
         {
             EnsureNotDisposed();
-            int rc = NativeMethods.zlink_poller_size(_handle);
-            ZlinkException.ThrowIfError(rc);
+            int rc = NativeMethods.zlink_poller_size(_handle, out _);
+            if (rc < 0)
+                throw ZlinkException.FromLastError();
             return rc;
         }
     }
@@ -171,6 +172,11 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         _nativeEvents = Array.Empty<ZlinkPollerEvent>();
     }
 
+    public void Close()
+    {
+        Dispose();
+    }
+
     public int Wait(List<PollEvent> events, int timeoutMs)
     {
         EnsureNotDisposed();
@@ -183,8 +189,9 @@ public sealed class Poller : IDisposable, IAsyncDisposable
 
         EnsureEventCapacity(_items.Count);
         int ready = NativeMethods.zlink_poller_wait_all(_handle, _nativeEvents,
-            _items.Count, timeoutMs);
-        ZlinkException.ThrowIfError(ready);
+            _items.Count, timeoutMs, out _);
+        if (ready < 0)
+            throw ZlinkException.FromLastError();
         if (ready == 0)
             return 0;
 
@@ -205,8 +212,9 @@ public sealed class Poller : IDisposable, IAsyncDisposable
 
         EnsureEventCapacity(_items.Count);
         int ready = NativeMethods.zlink_poller_wait_all(_handle, _nativeEvents,
-            _items.Count, timeoutMs);
-        ZlinkException.ThrowIfError(ready);
+            _items.Count, timeoutMs, out _);
+        if (ready < 0)
+            throw ZlinkException.FromLastError();
         totalReady = ready;
         if (ready == 0)
             return 0;

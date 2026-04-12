@@ -1,15 +1,35 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
+import asyncio
 
 from ._enums import RouterOption, SocketType
 from ._ffi import lib
 from ._core import (
+    BindError,
+    CloseError,
+    ConfigError,
+    ConnectError,
+    HandlerError,
+    Message,
+    RecvError,
+    RecvResult,
+    Received,
+    RequestError,
+    RequestResult,
     RoutingId,
+    SubmitError,
+    SubmitResult,
     SubscriptionEvent,
+    _clone_native_msg,
+    _copy_routing_id,
     ZlinkRoutingId,
     _is_eagain,
-    _raise_last_error,
+    _raise_result_error,
+    _request_result_from_errno,
+    _recv_result_from_errno,
+    _submit_result_from_errno,
+    _routing_id_bytes,
     _validated_routing_id_bytes,
 )
 from ._socket_base import (
@@ -180,23 +200,15 @@ class XPubSocket(_EndpointSocket, _PublisherOptionSocket, _PublisherSocket):
             flags,
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
         return SubscriptionEvent(
-            topic_buf.raw[: topic_len.value],
-            bool(subscribed.value),
-            bytes(routing_id.data[: routing_id.size]) or None,
+            routing_id=_routing_id_bytes(routing_id),
+            topic=topic_buf.raw[: topic_len.value],
+            subscribed=bool(subscribed.value),
         )
 
-    def receive_subscription_event(self):
-        return self._subscription_event(0)
-
-    def try_receive_subscription_event(self):
-        try:
-            return self._subscription_event(1)
-        except Exception as exc:
-            if _is_eagain(exc):
-                return None
-            raise
+    def receive_subscription_event(self, *, flags=0):
+        return self._subscription_event(flags)
 
 
 class XSubSocket(_EndpointSocket, _SubscriberOptionSocket, _SubscriberSocket):

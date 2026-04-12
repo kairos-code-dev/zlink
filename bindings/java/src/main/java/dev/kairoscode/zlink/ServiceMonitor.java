@@ -75,10 +75,16 @@ public final class ServiceMonitor implements AutoCloseable {
 
     /** Blocks until the next service event is available. */
     public ServiceEvent recv() {
+        return recv(RecvFlags.NONE);
+    }
+
+    /** Returns the next service event when one is ready. */
+    public ServiceEvent recv(RecvFlags flags) {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment event = arena.allocate(NativeLayouts.SERVICE_EVENT_LAYOUT);
-            int rc = Native.serviceMonitorRecv(handle, event, 0);
+            int rc = Native.serviceMonitorRecv(handle, event,
+              flags == null ? 0 : flags.value());
             if (rc != 0) {
                 throw ZlinkException.fromLastError("zlink_service_monitor_recv");
             }
@@ -87,7 +93,7 @@ public final class ServiceMonitor implements AutoCloseable {
     }
 
     /** Returns the next service event when one is ready. */
-    public Optional<ServiceEvent> tryRecv() {
+    Optional<ServiceEvent> tryRecv() {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment event = arena.allocate(NativeLayouts.SERVICE_EVENT_LAYOUT);

@@ -537,8 +537,7 @@ public final class Message implements AutoCloseable {
                 MemorySegment src = parts.asSlice((long) i * msgSize, msgSize);
                 Message msg = out[i];
                 if (msg == null || !msg.isReusable()) {
-                    msg = new Message(sharedArena ? Arena.ofShared()
-                        : Arena.ofConfined(), false);
+                    msg = new Message(Arena.ofShared(), false);
                     int initRc = NativeMsg.msgInit(msg.msg);
                     if (initRc != 0) {
                         msg.arena.close();

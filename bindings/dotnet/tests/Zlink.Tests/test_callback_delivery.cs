@@ -53,16 +53,14 @@ public sealed class test_callback_delivery
         Assert.Equal(callbackContext.ThreadId, callbackThreadId);
         Assert.Equal("ping", receivedPayload);
 
-        Received? reply = null;
-        Assert.True(CoreTestSupport.WaitUntil(
-            () => sender.TryRecv(out reply), 3000));
+        Received reply = CoreTestSupport.ReceiveMessageWithTimeout(sender, 3000);
         try
         {
-            Assert.Equal("pong", reply!.SinglePartOrThrow().GetString());
+            Assert.Equal("pong", reply.SinglePartOrThrow().GetString());
         }
         finally
         {
-            foreach (Message part in reply!.Parts)
+            foreach (Message part in reply.Parts)
                 part.Dispose();
         }
     }

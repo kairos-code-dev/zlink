@@ -59,12 +59,12 @@ func main() {
 			requestDone <- fmt.Errorf("missing request sequence")
 			return
 		}
-		requestDone <- router.Reply(received.RoutingID(), requestSeq, samplecommon.Message("pong"))
+		requestDone <- router.Reply(received.RoutingID(), requestSeq, zlink.SendFlagsNone, samplecommon.Message("pong"))
 	}))
 
-	dealer.RequestAsync(2*time.Second, func(reply *zlink.Received, err error) {
-		if err != nil {
-			replyDone <- err
+	samplecommon.Must(dealer.RequestCallback(func(result zlink.RequestResult, reply *zlink.Received) {
+		if result != zlink.RequestOK {
+			replyDone <- fmt.Errorf("request failed: %d", result)
 			return
 		}
 		defer reply.Close()
@@ -78,7 +78,7 @@ func main() {
 			return
 		}
 		replyDone <- nil
-	}, samplecommon.Message("ping"))
+	}, zlink.SendFlagsNone, 2*time.Second, samplecommon.Message("ping")))
 
 	samplecommon.Must(<-requestDone)
 	samplecommon.Must(<-replyDone)

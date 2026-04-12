@@ -59,11 +59,11 @@ func startMultiStreamEchoServer(server *zlink.StreamSocket) {
 	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
 	go func() {
 		for {
-			received, err := server.Recv()
+			received, err := server.Recv(zlink.RecvFlagsNone)
 			if err != nil {
 				return
 			}
-			perfcommon.Must(server.SendTo(received.RoutingID(),
+			perfcommon.Must(server.SendTo(received.RoutingID(), zlink.SendFlagsNone,
 				perfcommon.CloneMessages(received.Parts())...))
 			perfcommon.Must(received.Close())
 		}

@@ -26,7 +26,10 @@ def main(argv=None):
             publisher.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
             while not stop_event.is_set():
-                publisher.publish(TOPIC, stamp_payload(payload, phase=1))
+                publisher.publish(
+                    TOPIC,
+                    stamp_payload(new_payload(args.msg_size), phase=1),
+                )
 
 
 if __name__ == "__main__":

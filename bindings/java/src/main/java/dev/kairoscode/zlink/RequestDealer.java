@@ -16,6 +16,10 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BiConsumer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -38,23 +42,75 @@ public final class RequestDealer implements AutoCloseable {
     private static final ConcurrentMap<Long, CompletableFuture<Received>> PENDING =
       new ConcurrentHashMap<>();
     private static final long RECV_POLL_SLEEP_MS = 1L;
+    private static final boolean DEBUG_REQREP =
+      Boolean.getBoolean("zlink.reqrep.debug");
     private static final Object CLOSED = new Object();
 
     private final DealerSocket socket;
     private final LinkedBlockingQueue<Object> dataQueue = new LinkedBlockingQueue<>();
     private final Thread dispatchThread;
     private volatile SocketMessageHandler dataHandler;
+    private volatile boolean dispatchStarted;
     private volatile boolean closed;
 
     public RequestDealer(DealerSocket socket) {
         this.socket = Objects.requireNonNull(socket, "socket");
         this.dispatchThread = new Thread(this::dispatchLoop, "zlink-request-dealer-dispatch");
         this.dispatchThread.setDaemon(true);
-        this.dispatchThread.start();
+        RoutingId rid = socket.routingId();
+        debug("construct routingId=" + (rid == null ? "null" : rid.size()));
     }
 
     public DealerSocket socket() {
         return socket;
+    }
+
+    public CompletableFuture<Received> request(Message part) {
+        return request(List.of(part));
+    }
+
+    public CompletableFuture<Received> request(List<Message> parts) {
+        return request(parts, Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
+    }
+
+    public void request(Message part, BiConsumer<RequestResult, Received> callback) {
+        request(List.of(part), callback);
+    }
+
+    public void request(List<Message> parts,
+                        BiConsumer<RequestResult, Received> callback) {
+        request(parts, callback, SendFlags.NONE,
+            Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
+    }
+
+    public void request(Message part, BiConsumer<RequestResult, Received> callback,
+                        SendFlags flags) {
+        request(List.of(part), callback, flags);
+    }
+
+    public void request(List<Message> parts, BiConsumer<RequestResult, Received> callback,
+                        SendFlags flags) {
+        request(parts, callback, flags, Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
+    }
+
+    public void request(Message part, BiConsumer<RequestResult, Received> callback,
+                        SendFlags flags, Duration timeout) {
+        request(List.of(part), callback, flags, timeout);
+    }
+
+    public void request(List<Message> parts, BiConsumer<RequestResult, Received> callback,
+                        SendFlags flags, Duration timeout) {
+        Objects.requireNonNull(callback, "callback");
+        RoutingId rid = socket.routingId();
+        debug("request submit partCount=" + parts.size() + " routingId="
+          + (rid == null ? "null" : rid.size()));
+        requestInternal(parts, timeout, flags).whenComplete((reply, error) -> {
+            RequestResult result = error == null ? RequestResult.OK
+                : RequestReplySupport.requestResult(error);
+            debug("callback result=" + result + " reply="
+              + (reply == null ? "null" : reply.parts().size()));
+            callback.accept(result, reply);
+        });
     }
 
     public CompletableFuture<Received> request(Message part, Duration timeout) {
@@ -62,6 +118,17 @@ public final class RequestDealer implements AutoCloseable {
     }
 
     public CompletableFuture<Received> request(List<Message> parts, Duration timeout) {
+        return requestInternal(parts, timeout, SendFlags.NONE);
+    }
+
+    public CompletableFuture<Received> request(Message part, Duration timeout,
+                                                SendFlags flags) {
+        return requestInternal(List.of(part), timeout, flags);
+    }
+
+    private CompletableFuture<Received> requestInternal(List<Message> parts,
+                                                         Duration timeout,
+                                                         SendFlags flags) {
         Objects.requireNonNull(parts, "parts");
         List<Message> payload = RequestReplySupport.clonePayload(parts);
         long requestId = NEXT_REQUEST_ID.getAndIncrement();
@@ -71,40 +138,40 @@ public final class RequestDealer implements AutoCloseable {
             MemorySegment nativeParts = movePayloadToNative(arena, payload);
             int rc = NativeMsg.dealerRequest(socket.handle(), nativeParts,
               payload.size(), toTimeoutInt(timeoutMs), REPLY_CALLBACK,
-              MemorySegment.ofAddress(requestId));
+              MemorySegment.ofAddress(requestId), flags == null ? 0 : flags.value());
+            debug("dealerRequest rc=" + rc + " requestId=" + requestId);
             if (rc != 0) {
-                PENDING.remove(requestId);
-                future.completeExceptionally(
-                  ZlinkException.fromLastError("zlink_dealer_request"));
+                RequestReplySupport.closeAll(payload);
+                throw new SubmitException(SubmitResult.fromValue(rc));
             }
         } catch (Throwable error) {
             PENDING.remove(requestId);
-            future.completeExceptionally(RequestReplySupport.unwrap(error));
             RequestReplySupport.closeAll(payload);
+            if (error instanceof SubmitException submitException) {
+                throw submitException;
+            }
+            throw error instanceof RuntimeException runtimeException
+                ? runtimeException
+                : new IllegalStateException("request submission failed", error);
         }
         return future;
     }
 
-    public CompletableFuture<Received> tryRequest(Message part, Duration timeout) {
-        return request(part, timeout);
-    }
-
-    public CompletableFuture<Received> tryRequest(List<Message> parts, Duration timeout) {
-        return request(parts, timeout);
-    }
-
-    public void request(List<Message> parts,
-                        Duration timeout,
-                        RequestReplyCallback callback) {
-        Objects.requireNonNull(callback, "callback");
-        request(parts, timeout)
-          .whenComplete((reply, error) -> callback.onComplete(
-            RequestReplySupport.unwrap(error), reply));
-    }
-
     public Received recv() {
+        return recv(RecvFlags.NONE);
+    }
+
+    public Received recv(RecvFlags flags) {
+        Objects.requireNonNull(flags, "flags");
         if (dataHandler != null) {
             throw new IllegalStateException("socket is in callback mode; direct recv is not allowed");
+        }
+        if (flags == RecvFlags.DONT_WAIT) {
+            Optional<Received> maybe = tryRecv();
+            if (maybe.isPresent()) {
+                return maybe.get();
+            }
+            throw new RecvException(RecvResult.NO_DATA);
         }
         try {
             Object item = dataQueue.take();
@@ -118,7 +185,7 @@ public final class RequestDealer implements AutoCloseable {
         }
     }
 
-    public Optional<Received> tryRecv() {
+    Optional<Received> tryRecv() {
         if (dataHandler != null) {
             throw new IllegalStateException("socket is in callback mode; direct recv is not allowed");
         }
@@ -131,6 +198,7 @@ public final class RequestDealer implements AutoCloseable {
 
     public void onReceive(SocketMessageHandler handler) {
         this.dataHandler = Objects.requireNonNull(handler, "handler");
+        startDispatchIfNeeded();
     }
 
     @Override
@@ -141,7 +209,9 @@ public final class RequestDealer implements AutoCloseable {
         closed = true;
         dataQueue.offer(CLOSED);
         socket.close();
-        dispatchThread.interrupt();
+        if (dispatchStarted) {
+            dispatchThread.interrupt();
+        }
         try {
             dispatchThread.join(TimeUnit.SECONDS.toMillis(1));
         } catch (InterruptedException ex) {
@@ -163,6 +233,10 @@ public final class RequestDealer implements AutoCloseable {
     private void dispatchLoop() {
         while (!closed) {
             try {
+                if (dataHandler == null) {
+                    Thread.sleep(RECV_POLL_SLEEP_MS);
+                    continue;
+                }
                 Optional<Received> maybeReceived = socket.tryRecv();
                 if (maybeReceived.isPresent()) {
                     try (Received received = maybeReceived.get()) {
@@ -189,6 +263,19 @@ public final class RequestDealer implements AutoCloseable {
                 }
                 throw ex;
             }
+        }
+    }
+
+    private void startDispatchIfNeeded() {
+        if (dispatchStarted) {
+            return;
+        }
+        synchronized (this) {
+            if (dispatchStarted) {
+                return;
+            }
+            dispatchStarted = true;
+            dispatchThread.start();
         }
     }
 
@@ -237,25 +324,78 @@ public final class RequestDealer implements AutoCloseable {
         return timeoutMs >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) timeoutMs;
     }
 
+    private static byte[][] snapshotParts(MemorySegment parts, long partCount) {
+        int count = Math.toIntExact(partCount);
+        if (count == 0 || parts == null || parts.address() == 0) {
+            return new byte[0][];
+        }
+        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+        MemorySegment vector = MemorySegment.ofAddress(parts.address()).reinterpret(
+            msgSize * count);
+        byte[][] snapshot = new byte[count][];
+        for (int i = 0; i < count; i++) {
+            MemorySegment src = vector.asSlice((long) i * msgSize, msgSize);
+            int size = Math.toIntExact(NativeMsg.msgSize(src));
+            byte[] bytes = new byte[size];
+            if (size > 0) {
+                MemorySegment data = NativeMsg.msgData(src).reinterpret(size);
+                MemorySegment.copy(data, 0, MemorySegment.ofArray(bytes), 0, size);
+            }
+            snapshot[i] = bytes;
+        }
+        return snapshot;
+    }
+
+    private static Message[] materializeSnapshot(byte[][] snapshot) {
+        Message[] parts = new Message[snapshot.length];
+        for (int i = 0; i < snapshot.length; i++) {
+            parts[i] = Message.sharedCopyOf(snapshot[i]);
+        }
+        return parts;
+    }
+
     private static void handleReplyCallback(int errno,
                                             MemorySegment parts,
                                             long partCount,
                                             MemorySegment userData) {
         long requestId = userData.address();
         CompletableFuture<Received> future = PENDING.remove(requestId);
-        if (errno != 0) {
-            if (future != null) {
-                future.completeExceptionally(
-                  ZlinkException.fromErrno("zlink_dealer_request", errno));
-            } else if (parts != null && parts.address() != 0 && partCount > 0) {
-                NativeMsg.msgvClose(parts, partCount);
+        try {
+            if (errno != 0) {
+                if (future != null) {
+                    future.completeExceptionally(new RequestException(
+                        requestResult(errno), errno));
+                }
+                return;
             }
-            return;
+            Received received = new Received(null,
+                materializeSnapshot(snapshotParts(parts, partCount)), true);
+            if (future == null || !future.complete(received)) {
+                received.close();
+            }
+        } catch (Throwable error) {
+            if (future != null) {
+                future.completeExceptionally(error);
+            }
         }
-        Message[] replyParts = Message.fromOwnedMsgVector(parts, partCount);
-        Received received = new Received(null, replyParts, true);
-        if (future == null || !future.complete(received)) {
-            received.close();
+    }
+
+    private static RequestResult requestResult(int errno) {
+        try {
+            return RequestResult.fromValue(errno);
+        } catch (IllegalArgumentException ignored) {
+            return RequestResult.PROTOCOL_ERROR;
+        }
+    }
+
+    private static void debug(String message) {
+        if (DEBUG_REQREP) {
+            try {
+                Files.writeString(Path.of("/tmp/zlink-reqrep.log"),
+                    "[dealer] " + message + System.lineSeparator(),
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } catch (Exception ignored) {
+            }
         }
     }
 

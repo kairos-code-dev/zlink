@@ -12,12 +12,13 @@ public sealed class XPubSocket : PublisherSocketBase
         XPubOptions = new XPubSocketOptions(this);
     }
 
-    public SubscriptionEvent ReceiveSubscriptionEvent()
+    public SubscriptionEvent ReceiveSubscriptionEvent(
+        RecvFlags flags = RecvFlags.None)
     {
-        return Kernel.ReceiveSubscriptionEvent();
+        return Kernel.ReceiveSubscriptionEvent(flags);
     }
 
-    public bool TryReceiveSubscriptionEvent(out SubscriptionEvent? subscriptionEvent)
+    internal bool TryReceiveSubscriptionEvent(out SubscriptionEvent? subscriptionEvent)
     {
         subscriptionEvent = Kernel.TryReceiveSubscriptionEvent();
         return subscriptionEvent != null;

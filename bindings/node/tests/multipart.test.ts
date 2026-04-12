@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 
 test('pair sockets send and receive multipart through canonical api', () => {
   const ctx = new zlink.Context();
@@ -17,7 +17,7 @@ test('pair sockets send and receive multipart through canonical api', () => {
   ]);
 
   const received = left.recv();
-  assert.deepEqual(received.parts.map((part) => part.data.toString()), ['a', 'b']);
+  assert.deepEqual(received.parts.map((part) => part.data().toString()), ['a', 'b']);
 
   right.close();
   left.close();

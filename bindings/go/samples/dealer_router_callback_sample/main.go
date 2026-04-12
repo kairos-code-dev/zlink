@@ -38,15 +38,15 @@ func main() {
 	done := make(chan result, 1)
 	samplecommon.Must(router.OnReceive(func(received *zlink.Received) {
 		defer received.Close()
-		if err := router.SendTo(received.RoutingID(), samplecommon.Message("pong")); err != nil {
+		if err := router.SendTo(received.RoutingID(), zlink.SendFlagsNone, samplecommon.Message("pong")); err != nil {
 			done <- result{err: err}
 			return
 		}
 		done <- result{payload: "pong"}
 	}))
 
-	samplecommon.Must(dealer.Send(samplecommon.Message("ping")))
-	reply, err := dealer.Recv()
+	samplecommon.Must(dealer.Send(zlink.SendFlagsNone, samplecommon.Message("ping")))
+	reply, err := dealer.Recv(zlink.RecvFlagsNone)
 	samplecommon.Must(err)
 	defer reply.Close()
 	out := <-done

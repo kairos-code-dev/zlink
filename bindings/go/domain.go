@@ -7,35 +7,119 @@ package zlink
 */
 import "C"
 
-type SendResult int
+type SendFlags int
 
 const (
-	SendResultSent SendResult = iota
-	SendResultBackpressured
-	SendResultNotReady
+	SendFlagsNone     SendFlags = 0
+	SendFlagsDontWait SendFlags = 1
 )
 
-func sendResultFromC(raw C.zlink_send_result_t) (SendResult, error) {
-	switch raw {
-	case C.ZLINK_SEND_RESULT_SENT:
-		return SendResultSent, nil
-	case C.ZLINK_SEND_RESULT_BACKPRESSURED:
-		return SendResultBackpressured, nil
-	case C.ZLINK_SEND_RESULT_NOT_READY:
-		return SendResultNotReady, nil
-	default:
-		return 0, stateError("unknown send result: %d", int(raw))
-	}
-}
+type RecvFlags int
 
-func (r SendResult) Sent() bool {
-	return r == SendResultSent
-}
+const (
+	RecvFlagsNone     RecvFlags = 0
+	RecvFlagsDontWait RecvFlags = 1
+)
+
+type SubmitResult int
+
+const (
+	SubmitOK              SubmitResult = 0
+	SubmitBackpressured   SubmitResult = 1
+	SubmitNotConnected    SubmitResult = 2
+	SubmitNotFound        SubmitResult = 3
+	SubmitTerminated      SubmitResult = 4
+	SubmitInvalidHandle   SubmitResult = 5
+	SubmitInvalidArgument SubmitResult = 6
+	SubmitNotSupported    SubmitResult = 7
+	SubmitInvalidState    SubmitResult = 8
+	SubmitThreadViolation SubmitResult = 9
+	SubmitOutOfMemory     SubmitResult = 10
+	SubmitSeqExhausted    SubmitResult = 11
+	SubmitInternalError   SubmitResult = 12
+)
+
+type RequestResult int
+
+const (
+	RequestOK            RequestResult = 0
+	RequestTimedOut      RequestResult = 101
+	RequestNotFound      RequestResult = 102
+	RequestTerminated    RequestResult = 103
+	RequestProtocolError RequestResult = 104
+)
+
+type RecvResult int
+
+const (
+	RecvOK            RecvResult = 0
+	RecvNoData        RecvResult = 201
+	RecvBusy          RecvResult = 202
+	RecvTerminated    RecvResult = 203
+	RecvInvalidHandle RecvResult = 204
+	RecvNotSupported  RecvResult = 205
+)
+
+type HandlerResult int
+
+const (
+	HandlerOK              HandlerResult = 0
+	HandlerInvalidArgument HandlerResult = 301
+	HandlerBusy            HandlerResult = 302
+	HandlerNotSupported    HandlerResult = 303
+	HandlerDeadlock        HandlerResult = 304
+	HandlerInvalidHandle   HandlerResult = 305
+)
+
+type CloseResult int
+
+const (
+	CloseOK            CloseResult = 0
+	CloseBusy          CloseResult = 401
+	CloseShutdown      CloseResult = 402
+	CloseInvalidHandle CloseResult = 403
+)
+
+type BindResult int
+
+const (
+	BindOK              BindResult = 0
+	BindInvalidArgument BindResult = 501
+	BindAddrInUse       BindResult = 502
+	BindNotSupported    BindResult = 503
+	BindInvalidHandle   BindResult = 504
+)
+
+type ConnectResult int
+
+const (
+	ConnectOK              ConnectResult = 0
+	ConnectInvalidArgument ConnectResult = 601
+	ConnectNotSupported    ConnectResult = 602
+	ConnectInvalidHandle   ConnectResult = 603
+)
+
+type ConfigResult int
+
+const (
+	ConfigOK              ConfigResult = 0
+	ConfigInvalidHandle   ConfigResult = 701
+	ConfigInvalidArgument ConfigResult = 702
+	ConfigNotSupported    ConfigResult = 703
+)
+
+type SpotDispatchEvent int
+
+const (
+	SpotDispatchEventSubscribeReadable SpotDispatchEvent = 1
+	SpotDispatchEventRoutedReadable    SpotDispatchEvent = 2
+	SpotDispatchEventTimerReadable     SpotDispatchEvent = 3
+)
 
 type Received struct {
-	routingID RoutingID
-	parts     []*Message
-	requestSeq uint64
+	routingID     RoutingID
+	parts         []*Message
+	requestSeq    uint64
 	hasRequestSeq bool
 }
 
@@ -62,10 +146,10 @@ func (r *Received) RequestSeq() (uint64, bool) {
 
 func (r *Received) SinglePartOrError() (*Message, error) {
 	if r == nil {
-		return nil, stateError("received value is nil")
+		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	if len(r.parts) != 1 {
-		return nil, stateError("expected 1 part, got %d", len(r.parts))
+		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	return r.parts[0], nil
 }
@@ -112,10 +196,10 @@ func (t *TopicMessage) Parts() []*Message {
 
 func (t *TopicMessage) SinglePartOrError() (*Message, error) {
 	if t == nil {
-		return nil, stateError("topic message is nil")
+		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	if len(t.parts) != 1 {
-		return nil, stateError("expected 1 part, got %d", len(t.parts))
+		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	return t.parts[0], nil
 }

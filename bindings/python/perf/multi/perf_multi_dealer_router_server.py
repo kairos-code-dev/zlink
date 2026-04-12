@@ -3,7 +3,7 @@ import threading
 
 import zlink
 
-from perf_multi_common import parse_server_args, safe_poll, tcp_endpoint
+from perf_multi_common import parse_server_args, recv_nonblocking, safe_poll, tcp_endpoint
 
 
 def main(argv=None):
@@ -28,14 +28,11 @@ def main(argv=None):
                     if not events:
                         continue
                     while True:
-                        received = router.try_recv()
+                        received = recv_nonblocking(router)
                         if received is None:
                             break
                         with received:
-                            router.send(
-                                received.to_bytes_list()[0],
-                                routing_id=received.routing_id,
-                            )
+                            router.send(received.routing_id, received.to_bytes_list()[0])
 
 
 if __name__ == "__main__":

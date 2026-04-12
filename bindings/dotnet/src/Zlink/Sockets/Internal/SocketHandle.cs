@@ -50,6 +50,12 @@ internal sealed class SocketHandle : IDisposable
 
     ~SocketHandle()
     {
-        Dispose();
+        try
+        {
+            Dispose();
+        }
+        catch
+        {
+        }
     }
 }

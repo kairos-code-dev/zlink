@@ -30,7 +30,7 @@ func main() {
 
 	topic := "prices"
 	samplecommon.Must(subscriber.SetSubscription(topic))
-	_, err = publisher.ReceiveSubscriptionEvent()
+	_, err = publisher.ReceiveSubscriptionEvent(zlink.RecvFlagsNone)
 	samplecommon.Must(err)
 
 	type result struct {
@@ -49,7 +49,7 @@ func main() {
 	}))
 
 	payload := "101.25"
-	samplecommon.Must(publisher.Publish(topic, samplecommon.Message(payload)))
+	samplecommon.Must(publisher.Publish(topic, zlink.SendFlagsNone, samplecommon.Message(payload)))
 	out := <-delivered
 	samplecommon.Must(out.err)
 	got := out.value

@@ -12,11 +12,7 @@ import (
 )
 
 func isPairLoopTransient(err error) bool {
-	if perfcommon.IsTransient(err) {
-		return true
-	}
-	zerr, ok := err.(*zlink.ZlinkError)
-	return ok && zerr.Kind == zlink.ErrorKindNative && zerr.Code == 14
+	return perfcommon.IsTransient(err)
 }
 
 func runPair(cfg benchmarkConfig) perfcommon.Result {
@@ -58,7 +54,7 @@ func runPair(cfg benchmarkConfig) perfcommon.Result {
 
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampPayload(payload)
-		err := client.Send(perfcommon.NewMessage(payload))
+		err := client.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 		if err != nil {
 			if perfcommon.DebugEnabled() {
 				fmt.Fprintf(os.Stderr, "pair client send error: %v\n", err)
@@ -70,7 +66,7 @@ func runPair(cfg benchmarkConfig) perfcommon.Result {
 		}
 		var reply *zlink.Received
 		if usePollingRecv {
-			reply, err = client.Recv()
+			reply, err = client.Recv(zlink.RecvFlagsNone)
 			if err != nil {
 				if perfcommon.DebugEnabled() {
 					fmt.Fprintf(os.Stderr, "pair client recv error: %v\n", err)
@@ -114,7 +110,7 @@ func startPairEchoServer(server *zlink.PairSocket) func() {
 				return
 			default:
 			}
-			received, err := server.Recv()
+			received, err := server.Recv(zlink.RecvFlagsNone)
 			if err != nil {
 				if perfcommon.DebugEnabled() {
 					fmt.Fprintf(os.Stderr, "pair server recv error: %v\n", err)
@@ -127,7 +123,7 @@ func startPairEchoServer(server *zlink.PairSocket) func() {
 			if received == nil {
 				continue
 			}
-			err = server.Send(perfcommon.CloneMessages(received.Parts())...)
+		err = server.Send(zlink.SendFlagsNone, perfcommon.CloneMessages(received.Parts())...)
 			if err != nil && !isPairLoopTransient(err) {
 				if perfcommon.DebugEnabled() {
 					fmt.Fprintf(os.Stderr, "pair server send error: %v\n", err)

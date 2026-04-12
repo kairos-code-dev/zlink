@@ -1,6 +1,6 @@
 'use strict';
 
-const zlink = require('../../dist');
+const zlink = require('../../dist/canonical');
 
 const TOPIC = 'spot:child';
 
@@ -27,9 +27,16 @@ async function main() {
 
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
-      const received = spot.trySubscribe();
+      let received = null;
+      try {
+        received = spot.subscribe(zlink.RecvFlags.DontWait);
+      } catch (error) {
+        if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
+          throw error;
+        }
+      }
       if (received) {
-        console.log(`RECEIVED,${received.topic},${received.parts[0].data.toString()}`);
+        console.log(`RECEIVED,${received.topic},${received.parts[0].data().toString()}`);
         return;
       }
       await new Promise((resolve) => setImmediate(resolve));

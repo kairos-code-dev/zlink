@@ -379,7 +379,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         PublishSingleCore(topic, message, 0);
     }
 
-    public SendResult TryPublish(string topic, Message message)
+    internal SendResult TryPublish(string topic, Message message)
     {
         ValidateTopicId(topic, nameof(topic));
         if (message == null)
@@ -450,7 +450,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         PublishCore(topic, copied.AsSpan(), 0, nameof(parts));
     }
 
-    public SendResult TryPublish(string topic, IReadOnlyList<Message> parts)
+    internal SendResult TryPublish(string topic, IReadOnlyList<Message> parts)
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
@@ -478,13 +478,18 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public Subscribed Subscribe()
+    public Subscribed Subscribe(RecvFlags flags = RecvFlags.None)
     {
         EnsureNotDisposed();
-        return SubscribeCore(0);
+        if (_subscribeHandler != null)
+        {
+            throw new ZlinkRecvException(RecvResult.Busy,
+                (int)ErrorCode.EBusy);
+        }
+        return SubscribeCore((int)flags);
     }
 
-    public bool TrySubscribe(out Subscribed? subscribed)
+    internal bool TrySubscribe(out Subscribed? subscribed)
     {
         EnsureNotDisposed();
         subscribed = TryReceiveCore(() => SubscribeCore(1));
@@ -804,7 +809,9 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             int rc = NativeMethods.zlink_subscribe(_handle, IntPtr.Zero,
                 out IntPtr nativeParts, out nuint partCount, topicBuffer,
                 ref topicLength, flags);
-            ZlinkException.ThrowIfError(rc);
+            if (rc != 0)
+                throw ZlinkException.CreateRecvException(
+                    NativeMethods.zlink_errno());
 
             int boundedLength = topicLength > TopicBufferSize - 1
                 ? TopicBufferSize - 1
@@ -1071,7 +1078,9 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             int rc = NativeMethods.zlink_subscribe(_handle, IntPtr.Zero,
                 out nativeParts, out partCount, topicBuffer, ref topicLength,
                 flags);
-            ZlinkException.ThrowIfError(rc);
+            if (rc != 0)
+                throw ZlinkException.CreateRecvException(
+                    NativeMethods.zlink_errno());
             return CopyFirstFrameAndCollectPending(nativeParts, partCount,
                 destination, out pendingFrames);
         }
@@ -1089,8 +1098,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         {
             return operation();
         }
-        catch (ZlinkException ex) when (ZlinkException.MapErrorCode(ex.Errno)
-            == ErrorCode.EAgain)
+        catch (ZlinkException ex) when (ZlinkException.MapErrorCode(
+            ex.InternalErrno) is ErrorCode.EAgain or ErrorCode.EBusy)
         {
             return null;
         }

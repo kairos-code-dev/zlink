@@ -108,6 +108,99 @@ public enum SendResult
     NotReady = 2
 }
 
+[Flags]
+public enum SendFlags
+{
+    None = 0,
+    DontWait = 1
+}
+
+[Flags]
+public enum RecvFlags
+{
+    None = 0,
+    DontWait = 1
+}
+
+public enum SubmitResult
+{
+    Ok = 0,
+    Backpressured = 1,
+    NotConnected = 2,
+    NotFound = 3,
+    Terminated = 4,
+    InvalidHandle = 5,
+    InvalidArgument = 6,
+    NotSupported = 7,
+    InvalidState = 8,
+    ThreadViolation = 9,
+    OutOfMemory = 10,
+    SeqExhausted = 11,
+    InternalError = 12
+}
+
+public enum RequestResult
+{
+    Ok = 0,
+    TimedOut = 101,
+    NotFound = 102,
+    Terminated = 103,
+    ProtocolError = 104
+}
+
+public enum RecvResult
+{
+    Ok = 0,
+    NoData = 201,
+    Busy = 202,
+    Terminated = 203,
+    InvalidHandle = 204,
+    NotSupported = 205
+}
+
+public enum HandlerResult
+{
+    Ok = 0,
+    InvalidArgument = 301,
+    Busy = 302,
+    NotSupported = 303,
+    Deadlock = 304,
+    InvalidHandle = 305
+}
+
+public enum CloseResult
+{
+    Ok = 0,
+    Busy = 401,
+    Shutdown = 402,
+    InvalidHandle = 403
+}
+
+public enum BindResult
+{
+    Ok = 0,
+    InvalidArgument = 501,
+    AddrInUse = 502,
+    NotSupported = 503,
+    InvalidHandle = 504
+}
+
+public enum ConnectResult
+{
+    Ok = 0,
+    InvalidArgument = 601,
+    NotSupported = 602,
+    InvalidHandle = 603
+}
+
+public enum ConfigResult
+{
+    Ok = 0,
+    InvalidHandle = 701,
+    InvalidArgument = 702,
+    NotSupported = 703
+}
+
 public enum ErrorCode
 {
     None = 0,
@@ -203,6 +296,22 @@ public enum MonitorSnapshotDetail
     None = 0,
     SendPendingMessages = 1 << 1,
     ReceivePendingMessages = 1 << 2
+}
+
+[Flags]
+public enum ServiceMonitorEventMask : uint
+{
+    None = 0,
+    Error = 1u << 4,
+    DiscoveryServiceUp = 1u << 5,
+    DiscoveryServiceDown = 1u << 6,
+    DiscoveryProvidersChanged = 1u << 7,
+    Closed = 1u << 17,
+    All = Error
+        | Closed
+        | DiscoveryServiceUp
+        | DiscoveryServiceDown
+        | DiscoveryProvidersChanged
 }
 
 [Flags]

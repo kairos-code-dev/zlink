@@ -11,7 +11,6 @@ from perf_multi_common import (
     parse_client_args,
     print_result_lines,
     result_metrics,
-    safe_poll,
 )
 
 
@@ -31,28 +30,21 @@ def main(argv=None):
                 spot.set_subscription(TOPIC)
                 clients.append((node, spot))
 
+            time.sleep(0.05)
             started = time.perf_counter()
             deadline = started + args.duration
-            with zlink.Poller() as poller:
+            while time.perf_counter() < deadline:
                 for _, spot in clients:
-                    poller.add_socket(spot, zlink.PollEvent.POLLIN)
-                while time.perf_counter() < deadline:
-                    safe_poll(poller, 50)
-                    for _, spot in clients:
-                        while True:
-                            received = spot.try_subscribe()
-                            if received is None:
-                                break
-                            with received:
-                                data = received.to_bytes_list()[0]
-                                if not is_active_message(
-                                    data,
-                                    expected_msg_size=args.msg_size,
-                                    run_id=None,
-                                ):
-                                    continue
-                                latencies.append(latency_ns_from_message(data))
-                                count += 1
+                    with spot.subscribe() as received:
+                        data = received.to_bytes_list()[0]
+                    if not is_active_message(
+                        data,
+                        expected_msg_size=args.msg_size,
+                        run_id=None,
+                    ):
+                        continue
+                    latencies.append(latency_ns_from_message(data))
+                    count += 1
 
             metrics = result_metrics(
                 count=count,

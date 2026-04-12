@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-export type BufferLike = Buffer | Uint8Array;
+export type BufferLike = Buffer | Uint8Array | string;
 
 export function normalizeBufferLike(
   value: BufferLike | string,

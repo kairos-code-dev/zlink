@@ -7,7 +7,7 @@ import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PollEventType;
-import dev.kairoscode.zlink.SendResult;
+import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SocketPollSet;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.perf.PerfUtil;
@@ -109,10 +109,8 @@ final class PerfMultiDealerDealer {
                                           Message part, long deadlineNs) {
         while (true) {
             try {
-                SendResult result = client.trySend(part);
-                if (result == SendResult.SENT) {
+                client.send(part, SendFlags.DONT_WAIT);
                     return;
-                }
             } catch (ZlinkException ex) {
                 if (ex.errno() == 11 || ex.errno() == 4) {
                     // Treat transient backpressure and interrupts the same as an

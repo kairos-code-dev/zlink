@@ -156,14 +156,13 @@ class message_t
      * @brief Initialize an empty message if needed.
      * @return 0 on success, -1 on failure.
      */
-    int init ()
+    void init ()
     {
         if (_valid)
-            return 0;
+            return;
         if (zlink_msg_init (&_msg) != 0)
-            return -1;
+            return;
         _valid = true;
-        return 0;
     }
 
     /**
@@ -171,13 +170,12 @@ class message_t
      * @param size_ Payload size in bytes.
      * @return 0 on success, -1 on failure.
      */
-    int init (size_t size_)
+    void init (size_t size_)
     {
         close ();
         if (zlink_msg_init_size (&_msg, size_) != 0)
-            return -1;
+            return;
         _valid = true;
-        return 0;
     }
 
     /**
@@ -188,16 +186,15 @@ class message_t
      * @param hint_ Optional callback context pointer.
      * @return 0 on success, -1 on failure.
      */
-    int init (void *data_,
+    void init (void *data_,
               size_t size_,
               zlink_free_fn *ffn_ = NULL,
               void *hint_ = NULL)
     {
         close ();
         if (zlink_msg_init_data (&_msg, data_, size_, ffn_, hint_) != 0)
-            return -1;
+            return;
         _valid = true;
-        return 0;
     }
 
     /**
@@ -279,13 +276,12 @@ class message_t
      * @brief Close and invalidate the message.
      * @return 0 on success, -1 on failure.
      */
-    int close () noexcept
+    void close () noexcept
     {
         if (!_valid)
-            return 0;
-        const int rc = zlink_msg_close (&_msg);
+            return;
+        (void) zlink_msg_close (&_msg);
         _valid = false;
-        return rc;
     }
 
     /**
@@ -304,23 +300,21 @@ class message_t
      * @param src_ Source native message that transfers ownership on success.
      * @return 0 on success, -1 on failure.
      */
-    int adopt (zlink_msg_t *src_)
+    void adopt (zlink_msg_t *src_)
     {
         if (!src_)
-            return -1;
+            return;
 
         close ();
         if (zlink_msg_init (&_msg) != 0)
-            return -1;
+            return;
 
-        const int rc = zlink_msg_move (&_msg, src_);
-        if (rc == 0) {
+        if (zlink_msg_move (&_msg, src_) == 0) {
             _valid = true;
-            return 0;
+            return;
         }
 
         zlink_msg_close (&_msg);
-        return rc;
     }
 
     /**
@@ -328,21 +322,19 @@ class message_t
      * @param dest_ Destination native message.
      * @return 0 on success, -1 on failure.
      */
-    int move_to (zlink_msg_t *dest_)
+    void move_to (zlink_msg_t *dest_)
     {
         if (!dest_ || !_valid)
-            return -1;
+            return;
         if (zlink_msg_init (dest_) != 0)
-            return -1;
+            return;
 
-        const int rc = zlink_msg_move (dest_, &_msg);
-        if (rc == 0) {
+        if (zlink_msg_move (dest_, &_msg) == 0) {
             _valid = false;
-            return rc;
+            return;
         }
 
         zlink_msg_close (dest_);
-        return rc;
     }
 
     /**
@@ -350,18 +342,16 @@ class message_t
      * @param dest_ Destination native message.
      * @return 0 on success, -1 on failure.
      */
-    int copy_to (zlink_msg_t *dest_) const
+    void copy_to (zlink_msg_t *dest_) const
     {
         if (!dest_ || !_valid)
-            return -1;
+            return;
         if (zlink_msg_init (dest_) != 0)
-            return -1;
-        const int rc = zlink_msg_copy (dest_, const_cast<zlink_msg_t *> (&_msg));
-        if (rc == 0)
-            return rc;
+            return;
+        if (zlink_msg_copy (dest_, const_cast<zlink_msg_t *> (&_msg)) == 0)
+            return;
 
         zlink_msg_close (dest_);
-        return rc;
     }
 
   private:

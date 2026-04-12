@@ -5,6 +5,7 @@ use crate::ctx::Context;
 use crate::domain::{SendResult, SubscriptionEvent};
 use crate::error::{ZlinkError, check_rc};
 use crate::ffi;
+use crate::flags::{RecvFlags, SendFlags};
 use crate::message::IntoMultipart;
 use crate::options::{CommonSocketOptions, PubSocketOptions};
 
@@ -29,6 +30,15 @@ impl XPubSocket {
         self.inner.publish(topic, parts)
     }
 
+    pub fn publish_with_flags(
+        &self,
+        topic: &str,
+        parts: impl IntoMultipart,
+        flags: SendFlags,
+    ) -> Result<(), ZlinkError> {
+        self.inner.publish_with_flags(topic, parts, flags)
+    }
+
     pub fn try_publish(
         &self,
         topic: &str,
@@ -39,6 +49,13 @@ impl XPubSocket {
 
     pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, ZlinkError> {
         self.inner.receive_subscription_event()
+    }
+
+    pub fn receive_subscription_event_with_flags(
+        &self,
+        flags: RecvFlags,
+    ) -> Result<SubscriptionEvent, ZlinkError> {
+        self.inner.receive_subscription_event_with_flags(flags)
     }
 
     pub fn try_receive_subscription_event(&self) -> Result<Option<SubscriptionEvent>, ZlinkError> {

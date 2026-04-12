@@ -28,12 +28,12 @@ public abstract class SubscriberSocketBase : ConnectableSocketBase
         Kernel.UnsetSubscription(topicOrPattern);
     }
 
-    public Subscribed Subscribe()
+    public Subscribed Subscribe(RecvFlags flags = RecvFlags.None)
     {
-        return Kernel.Subscribe();
+        return Kernel.Subscribe(flags);
     }
 
-    public bool TrySubscribe(out Subscribed? subscribed)
+    internal bool TrySubscribe(out Subscribed? subscribed)
     {
         subscribed = Kernel.TrySubscribe();
         return subscribed != null;

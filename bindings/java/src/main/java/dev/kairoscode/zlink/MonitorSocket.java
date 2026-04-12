@@ -16,11 +16,22 @@ public final class MonitorSocket implements AutoCloseable {
     }
 
     public MonitorEvent recv() {
-        ensureOpen();
-        return Native.monitorRecv(handle, ReceiveFlag.NONE.getValue());
+        return recv(RecvFlags.NONE);
     }
 
-    public Optional<MonitorEvent> tryRecv() {
+    public MonitorEvent recv(RecvFlags flags) {
+        ensureOpen();
+        if (flags == RecvFlags.DONT_WAIT) {
+            Optional<MonitorEvent> maybe = tryRecv();
+            if (maybe.isPresent()) {
+                return maybe.get();
+            }
+            throw new RecvException(RecvResult.NO_DATA);
+        }
+        return Native.monitorRecv(handle, flags.value());
+    }
+
+    Optional<MonitorEvent> tryRecv() {
         ensureOpen();
         try {
             return Optional.of(Native.monitorRecv(handle,

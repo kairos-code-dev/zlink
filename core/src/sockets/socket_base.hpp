@@ -170,6 +170,8 @@ class socket_base_t : public own_t,
       const zlink_routing_id_t *rid_,
       zlink::msg_t *msg_,
       int flags_);
+    virtual int stream_dispatch_send_current_msg_from_io (zlink::msg_t *msg_,
+                                                          int flags_);
     virtual std::recursive_mutex *api_sync_mutex ();
 
     //  These functions are used by the polling mechanism to determine

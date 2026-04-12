@@ -34,27 +34,27 @@ public final class RequestReplyAsyncSample {
 
             CompletableFuture<Void> replyHandled = new CompletableFuture<>();
 
-                router.onReceive(received -> {
-                    try (received) {
-                        String request = SampleSupport.singleUtf8(received);
-                        if (!SampleSupport.DEALER_REQUEST.equals(request)) {
-                            throw new IllegalStateException("unexpected request: " + request);
-                        }
-                        if (!received.hasRequestSequence()) {
-                            throw new IllegalStateException("missing request sequence");
-                        }
-                        try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
-                            router.reply(received.routingId(),
-                                received.requestSequence(), reply)
-                            .whenComplete((ignored, error) -> {
-                                if (error != null) {
-                                    replyHandled.completeExceptionally(error);
-                                    return;
-                                }
-                                requestHandled.countDown();
-                                replyHandled.complete(null);
-                            });
+            router.onReceive(received -> {
+                try (received) {
+                    String request = SampleSupport.singleUtf8(received);
+                    if (!SampleSupport.DEALER_REQUEST.equals(request)) {
+                        throw new IllegalStateException("unexpected request: " + request);
                     }
+                    if (!received.hasRequestSequence()) {
+                        throw new IllegalStateException("missing request sequence");
+                    }
+                    try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
+                        router.reply(received.routingId(),
+                            received.requestSequence(), reply);
+                    }
+                    requestHandled.countDown();
+                    replyHandled.complete(null);
+                } catch (Throwable error) {
+                    replyHandled.completeExceptionally(error);
+                    throw error instanceof RuntimeException runtimeException
+                        ? runtimeException
+                        : new IllegalStateException(
+                            "request reply async sample failed", error);
                 }
             });
 

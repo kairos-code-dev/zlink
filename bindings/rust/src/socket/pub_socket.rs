@@ -5,6 +5,7 @@ use crate::ctx::Context;
 use crate::domain::SendResult;
 use crate::error::{ZlinkError, check_rc};
 use crate::ffi;
+use crate::flags::SendFlags;
 use crate::message::IntoMultipart;
 use crate::options::{CommonSocketOptions, PubSocketOptions};
 
@@ -30,6 +31,15 @@ impl PubSocket {
 
     pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
         self.inner.publish(topic, parts)
+    }
+
+    pub fn publish_with_flags(
+        &self,
+        topic: &str,
+        parts: impl IntoMultipart,
+        flags: SendFlags,
+    ) -> Result<(), ZlinkError> {
+        self.inner.publish_with_flags(topic, parts, flags)
     }
 
     pub fn try_publish(

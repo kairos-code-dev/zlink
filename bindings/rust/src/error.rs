@@ -3,6 +3,93 @@ use std::fmt;
 
 use crate::ffi;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum SubmitResult {
+    Ok = 0,
+    Backpressured = 1,
+    NotConnected = 2,
+    BadRoute = 3,
+    MessageTooLarge = 4,
+    Terminated = 5,
+    InvalidArgument = 6,
+    NotSupported = 7,
+    InvalidState = 8,
+    ThreadViolation = 9,
+    OutOfMemory = 10,
+    SeqExhausted = 11,
+    InternalError = 12,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum RequestResult {
+    Ok = 0,
+    TimedOut = 101,
+    NotFound = 102,
+    Terminated = 103,
+    ProtocolError = 104,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum RecvResult {
+    Ok = 0,
+    NoData = 201,
+    Busy = 202,
+    Terminated = 203,
+    InvalidHandle = 204,
+    NotSupported = 205,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum HandlerResult {
+    Ok = 0,
+    InvalidArgument = 301,
+    Busy = 302,
+    NotSupported = 303,
+    Deadlock = 304,
+    InvalidHandle = 305,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum CloseResult {
+    Ok = 0,
+    Busy = 401,
+    Shutdown = 402,
+    InvalidHandle = 403,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum BindResult {
+    Ok = 0,
+    InvalidArgument = 501,
+    AddrInUse = 502,
+    NotSupported = 503,
+    InvalidHandle = 504,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum ConnectResult {
+    Ok = 0,
+    InvalidArgument = 601,
+    NotSupported = 602,
+    InvalidHandle = 603,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum ConfigResult {
+    Ok = 0,
+    InvalidHandle = 701,
+    InvalidArgument = 702,
+    NotSupported = 703,
+}
+
 /// Error type for all zlink operations.
 ///
 /// Wraps the native errno code and a human-readable description from the core
@@ -56,6 +143,10 @@ impl ZlinkError {
     pub fn code(&self) -> i32 {
         self.code
     }
+
+    pub fn internal_errno(&self) -> i32 {
+        self.code
+    }
 }
 
 impl fmt::Display for ZlinkError {
@@ -66,11 +157,20 @@ impl fmt::Display for ZlinkError {
 
 impl std::error::Error for ZlinkError {}
 
-/// Check a C return code; -1 becomes `Err(ZlinkError::last())`.
+/// Check a public zlink result code; any non-zero value becomes an error.
 pub(crate) fn check_rc(rc: i32) -> Result<(), ZlinkError> {
-    if rc == -1 {
+    if rc != 0 {
         Err(ZlinkError::last())
     } else {
         Ok(())
     }
 }
+
+pub type SubmitError = ZlinkError;
+pub type RequestError = ZlinkError;
+pub type RecvError = ZlinkError;
+pub type HandlerError = ZlinkError;
+pub type CloseError = ZlinkError;
+pub type BindError = ZlinkError;
+pub type ConnectError = ZlinkError;
+pub type ConfigError = ZlinkError;

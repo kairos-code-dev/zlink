@@ -15,6 +15,7 @@ from perf_metrics import (
     parse_result_lines,
     print_result_lines,
     is_active_message,
+    payload_phase,
     render_effective_options,
     render_markdown_summary,
     result_metrics,
@@ -23,6 +24,7 @@ from perf_metrics import (
     tcp_endpoint,
     unique_endpoint,
     wait_monitor_event,
+    _require_zlink,
 )
 
 
@@ -39,3 +41,14 @@ def parse_single_args(argv, *, pattern):
     if args.msg_size < 16:
         raise SystemExit("--msg-size must be >= 16")
     return args
+
+
+def recv_nonblocking(sock, *, method="recv"):
+    zlink_mod = _require_zlink()
+    recv_method = getattr(sock, method)
+    try:
+        return recv_method(flags=zlink_mod.RecvFlags.DONT_WAIT)
+    except zlink_mod.RecvError as exc:
+        if exc.result == zlink_mod.RecvResult.NO_DATA:
+            return None
+        raise

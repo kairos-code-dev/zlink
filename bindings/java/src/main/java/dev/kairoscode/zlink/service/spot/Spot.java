@@ -5,7 +5,11 @@ package dev.kairoscode.zlink.service.spot;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.RecvException;
+import dev.kairoscode.zlink.RecvFlags;
+import dev.kairoscode.zlink.RecvResult;
 import dev.kairoscode.zlink.SendResult;
+import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SendReadyHandler;
 import dev.kairoscode.zlink.SubscribeHandler;
 import dev.kairoscode.zlink.TopicMessage;
@@ -106,7 +110,12 @@ public final class Spot implements AutoCloseable {
         publishInternal(topicId, part, false);
     }
 
-    public SendResult tryPublish(String topicId, Message part) {
+    public void publish(String topicId, Message part, SendFlags flags) {
+        Objects.requireNonNull(flags, "flags");
+        publishInternal(topicId, part, flags == SendFlags.DONT_WAIT);
+    }
+
+    SendResult tryPublish(String topicId, Message part) {
         Objects.requireNonNull(part, "part");
         return publishInternal(topicId, part, true);
     }
@@ -116,7 +125,12 @@ public final class Spot implements AutoCloseable {
         publishInternal(topicId, parts, false);
     }
 
-    public SendResult tryPublish(String topicId, List<Message> parts) {
+    public void publish(String topicId, List<Message> parts, SendFlags flags) {
+        Objects.requireNonNull(flags, "flags");
+        publishInternal(topicId, parts, flags == SendFlags.DONT_WAIT);
+    }
+
+    SendResult tryPublish(String topicId, List<Message> parts) {
         return publishInternal(topicId, parts, true);
     }
 
@@ -318,7 +332,18 @@ public final class Spot implements AutoCloseable {
                 "blocking subscribe returned no delivery"));
     }
 
-    public Optional<TopicMessage> trySubscribe() {
+    public TopicMessage subscribe(RecvFlags flags) {
+        Objects.requireNonNull(flags, "flags");
+        if (flags == RecvFlags.DONT_WAIT) {
+            return receiveTopicMessage(true).orElseThrow(
+                () -> new RecvException(RecvResult.NO_DATA));
+        }
+        return receiveTopicMessage(false).orElseThrow(
+            () -> new IllegalStateException(
+                "blocking subscribe returned no delivery"));
+    }
+
+    Optional<TopicMessage> trySubscribe() {
         return receiveTopicMessage(true);
     }
 

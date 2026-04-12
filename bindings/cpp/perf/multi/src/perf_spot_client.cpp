@@ -273,8 +273,9 @@ class callback_slot_t
 
         perf_metric::header_t header;
         zlink::message_t part;
+        part.adopt (&parts_[0]);
         const bool header_ok =
-          part.adopt (&parts_[0]) == 0
+          part.valid ()
           && perf_metric::decode_payload_header (
             part.data (), part.size (), &header);
         if (!header_ok) {
@@ -568,7 +569,7 @@ class spot_client_bench_t
                                 std::max (1, timeout_ms_));
         while (std::chrono::steady_clock::now () < deadline) {
             const zlink::maybe_t<zlink::subscribed_t> maybe_received =
-              _control_spot->try_subscribe ();
+              perf::multi::try_subscribe_nowait (*_control_spot);
             if (!maybe_received) {
                 std::this_thread::yield ();
                 continue;
@@ -729,7 +730,7 @@ class spot_client_bench_t
     {
         for (;;) {
             const zlink::maybe_t<zlink::subscribed_t> maybe_received =
-              slot_.spot->try_subscribe ();
+              perf::multi::try_subscribe_nowait (*slot_.spot);
             if (!maybe_received)
                 return true;
 
@@ -873,11 +874,14 @@ class spot_client_bench_t
         for (size_t i = 0; i < _slots.size (); ++i) {
             client_slot_t *slot = _slots[i].get ();
             recv_worker_t &worker = _recv_workers[i % worker_count];
-            if (!slot
-                || worker.poller.add (*slot->spot,
-                                      zlink::poll_event::pollin,
-                                      slot)
-                     != 0) {
+            if (!slot) {
+                debug_log ("recv worker slot missing");
+                return false;
+            }
+            try {
+                worker.poller.add (*slot->spot, zlink::poll_event::pollin, slot);
+            }
+            catch (const zlink::zlink_error_t &) {
                 debug_log ("recv worker poller add failed");
                 return false;
             }

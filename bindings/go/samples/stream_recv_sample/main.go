@@ -27,7 +27,7 @@ func main() {
 	_, err = conn.Write([]byte(sent))
 	samplecommon.Must(err)
 
-	received, err := server.Recv()
+	received, err := server.Recv(zlink.RecvFlagsNone)
 	samplecommon.Must(err)
 	defer received.Close()
 	part, err := received.SinglePartOrError()
@@ -36,7 +36,7 @@ func main() {
 		samplecommon.Must(fmt.Errorf("unexpected payload %q", string(part.Data())))
 	}
 
-	samplecommon.Must(server.SendTo(received.RoutingID(), samplecommon.Message(sent)))
+	samplecommon.Must(server.SendTo(received.RoutingID(), zlink.SendFlagsNone, samplecommon.Message(sent)))
 
 	buffer := make([]byte, len(sent))
 	_, err = io.ReadFull(conn, buffer)

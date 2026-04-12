@@ -25,11 +25,11 @@ func TestPairSendRecvRoundTrip(t *testing.T) {
 		t.Fatalf("Connect() error = %v", err)
 	}
 
-	if err := client.Send(newMessage(t, "hello-pair")); err != nil {
+	if err := client.Send(zlink.SendFlagsNone, newMessage(t, "hello-pair")); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 
-	received, err := server.Recv()
+	received, err := server.Recv(zlink.RecvFlagsNone)
 	if err != nil {
 		t.Fatalf("Recv() error = %v", err)
 	}
@@ -57,11 +57,11 @@ func TestPairMultipartRoundTrip(t *testing.T) {
 	_ = server.Bind(endpoint)
 	_ = client.Connect(endpoint)
 
-	if err := client.Send(newMessage(t, "frame-1"), newMessage(t, "frame-2")); err != nil {
+	if err := client.Send(zlink.SendFlagsNone, newMessage(t, "frame-1"), newMessage(t, "frame-2")); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 
-	received, err := server.Recv()
+	received, err := server.Recv(zlink.RecvFlagsNone)
 	if err != nil {
 		t.Fatalf("Recv() error = %v", err)
 	}
@@ -72,7 +72,7 @@ func TestPairMultipartRoundTrip(t *testing.T) {
 	}
 }
 
-func TestPairTryRecvEmpty(t *testing.T) {
+func TestPairRecvEmpty(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
@@ -80,28 +80,28 @@ func TestPairTryRecvEmpty(t *testing.T) {
 	defer socket.Close()
 	_ = socket.Bind(inprocEndpoint("pair-try-recv"))
 
-	received, ok, err := socket.TryRecv()
-	if err != nil {
-		t.Fatalf("TryRecv() error = %v", err)
+	received, err := socket.Recv(zlink.RecvFlagsDontWait)
+	if err == nil {
+		t.Fatalf("Recv() should return an error on empty non-blocking receive")
 	}
-	if ok || received != nil {
-		t.Fatalf("TryRecv() = (%v, %v), want (nil, false)", received, ok)
+	if received != nil {
+		t.Fatalf("Recv() = %v, want nil", received)
 	}
 }
 
-func TestSubTrySubscribeEmpty(t *testing.T) {
+func TestSubSubscribeEmpty(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
 	socket, _ := ctx.SubSocket()
 	defer socket.Close()
 
-	message, ok, err := socket.TrySubscribe()
-	if err != nil {
-		t.Fatalf("TrySubscribe() error = %v", err)
+	message, err := socket.Subscribe(zlink.RecvFlagsDontWait)
+	if err == nil {
+		t.Fatalf("Subscribe() should return an error on empty non-blocking receive")
 	}
-	if ok || message != nil {
-		t.Fatalf("TrySubscribe() = (%v, %v), want (nil, false)", message, ok)
+	if message != nil {
+		t.Fatalf("Subscribe() = %v, want nil", message)
 	}
 }
 
@@ -125,21 +125,21 @@ func TestDealerRouterRoundTrip(t *testing.T) {
 	_ = dealer.Connect(endpoint)
 	_ = dealer.SetRecvTimeout(5 * time.Second)
 
-	if err := dealer.Send(newMessage(t, "request")); err != nil {
+	if err := dealer.Send(zlink.SendFlagsNone, newMessage(t, "request")); err != nil {
 		t.Fatalf("dealer Send() error = %v", err)
 	}
 
-	request, err := router.Recv()
+	request, err := router.Recv(zlink.RecvFlagsNone)
 	if err != nil {
 		t.Fatalf("router Recv() error = %v", err)
 	}
 	defer request.Close()
 
-	if err := router.SendTo(request.RoutingID(), newMessage(t, "response")); err != nil {
+	if err := router.SendTo(request.RoutingID(), zlink.SendFlagsNone, newMessage(t, "response")); err != nil {
 		t.Fatalf("router SendTo() error = %v", err)
 	}
 
-	response, err := dealer.Recv()
+	response, err := dealer.Recv(zlink.RecvFlagsNone)
 	if err != nil {
 		t.Fatalf("dealer Recv() error = %v", err)
 	}
@@ -166,11 +166,11 @@ func TestPubSubRoundTrip(t *testing.T) {
 	_ = subSocket.SetSubscription("market.")
 	_ = subSocket.SetRecvTimeout(5 * time.Second)
 
-	if err := pubSocket.Publish("market.price", newMessage(t, "42.5")); err != nil {
+	if err := pubSocket.Publish("market.price", zlink.SendFlagsNone, newMessage(t, "42.5")); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 
-	message, err := subSocket.Subscribe()
+	message, err := subSocket.Subscribe(zlink.RecvFlagsNone)
 	if err != nil {
 		t.Fatalf("Subscribe() error = %v", err)
 	}
@@ -181,18 +181,18 @@ func TestPubSubRoundTrip(t *testing.T) {
 	}
 }
 
-func TestXPubTryReceiveSubscriptionEventEmpty(t *testing.T) {
+func TestXPubReceiveSubscriptionEventEmpty(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
 	socket, _ := ctx.XPubSocket()
 	defer socket.Close()
 
-	event, ok, err := socket.TryReceiveSubscriptionEvent()
-	if err != nil {
-		t.Fatalf("TryReceiveSubscriptionEvent() error = %v", err)
+	event, err := socket.ReceiveSubscriptionEvent(zlink.RecvFlagsDontWait)
+	if err == nil {
+		t.Fatalf("ReceiveSubscriptionEvent() should return an error on empty non-blocking receive")
 	}
-	if ok || event != nil {
-		t.Fatalf("TryReceiveSubscriptionEvent() = (%v, %v), want (nil, false)", event, ok)
+	if event != nil {
+		t.Fatalf("ReceiveSubscriptionEvent() = %v, want nil", event)
 	}
 }

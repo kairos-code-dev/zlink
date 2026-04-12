@@ -21,11 +21,11 @@ public final class DealerSocket extends Socket {
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
     public RoutingId routingId() { return super.routingId(); }
     public void send(Message part) { super.send(part); }
+    public void send(Message part, SendFlags flags) { super.send(part, SendFlag.fromValue(flags.value())); }
     public void send(List<Message> parts) { super.send(parts); }
-    public SendResult trySend(Message part) { return super.trySend(part); }
-    public SendResult trySend(List<Message> parts) { return super.trySend(parts); }
+    public void send(List<Message> parts, SendFlags flags) { super.send(parts, SendFlag.fromValue(flags.value())); }
     public Received recv() { return super.recv(); }
-    public Optional<Received> tryRecv() { return super.tryRecv(); }
+    public Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
     public void onReceive(SocketMessageHandler handler) { super.onReceive(handler); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     @Override public DealerSocketOptions options() { return options; }

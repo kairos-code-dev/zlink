@@ -13,6 +13,7 @@ from perf_common import (
     print_result_lines,
     result_metrics,
     safe_poll,
+    recv_nonblocking,
     stamp_payload,
     tcp_endpoint,
     wait_monitor_event,
@@ -74,7 +75,9 @@ def main(argv=None):
                             while True:
                                 safe_poll(poller, 50)
                                 while True:
-                                    received = subscriber.try_subscribe()
+                                    received = recv_nonblocking(
+                                        subscriber, method="subscribe"
+                                    )
                                     if received is None:
                                         break
                                     with received:

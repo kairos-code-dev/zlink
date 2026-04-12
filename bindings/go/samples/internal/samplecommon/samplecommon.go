@@ -1,6 +1,7 @@
 package samplecommon
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -105,16 +106,12 @@ func WaitSpotPeerConnected(node *zlink.SpotNode, timeout time.Duration) {
 func WaitServiceEvent(monitor *zlink.ServiceMonitor, eventMask uint32) *zlink.ServiceMonitorEvent {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		event, ok, err := monitor.TryRecv()
+		event, err := monitor.Recv()
 		if isTemporaryEmpty(err) {
 			runtime.Gosched()
 			continue
 		}
 		Must(err)
-		if !ok {
-			runtime.Gosched()
-			continue
-		}
 		if event != nil && (event.EventType&eventMask) != 0 {
 			return event
 		}
@@ -143,6 +140,9 @@ func isTemporaryEmpty(err error) bool {
 	if err == nil {
 		return false
 	}
-	zerr, ok := err.(*zlink.ZlinkError)
-	return ok && zerr.Kind == zlink.ErrorKindNative && zerr.Code == int(syscall.EAGAIN)
+	var zerr zlink.ZlinkError
+	if !errors.As(err, &zerr) {
+		return false
+	}
+	return zerr.InternalErrno() == int(syscall.EAGAIN)
 }

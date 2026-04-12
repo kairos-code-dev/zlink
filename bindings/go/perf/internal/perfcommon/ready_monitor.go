@@ -16,19 +16,29 @@ func waitMonitorReady(
 	deadline := time.Now().Add(timeout)
 	readyEvents := 0
 	for time.Now().Before(deadline) && readyEvents < minEvents {
-		event, ok, err := monitor.TryRecv()
-		if err != nil {
-			if IsTransient(err) {
-				time.Sleep(50 * time.Millisecond)
-				continue
+		type result struct {
+			event *zlink.MonitorEvent
+			err   error
+		}
+		ch := make(chan result, 1)
+		go func() {
+			event, err := monitor.Recv()
+			ch <- result{event: event, err: err}
+		}()
+		select {
+		case out := <-ch:
+			if out.err != nil {
+				if IsTransient(out.err) {
+					time.Sleep(50 * time.Millisecond)
+					continue
+				}
+				return out.err
 			}
-			return err
+			if out.event != nil {
+				readyEvents++
+			}
+		case <-time.After(50 * time.Millisecond):
 		}
-		if !ok || event == nil {
-			time.Sleep(50 * time.Millisecond)
-			continue
-		}
-		readyEvents++
 	}
 	if readyEvents >= minEvents {
 		return nil

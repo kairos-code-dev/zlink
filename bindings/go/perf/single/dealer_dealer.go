@@ -45,14 +45,14 @@ func runDealerDealer(cfg benchmarkConfig) perfcommon.Result {
 
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampPayload(payload)
-		err := client.Send(perfcommon.NewMessage(payload))
+		err := client.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
 			}
 			perfcommon.Must(err)
 		}
-		reply, err := client.Recv()
+		reply, err := client.Recv(zlink.RecvFlagsNone)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -84,14 +84,14 @@ func startDealerEchoServer(server *zlink.DealerSocket) func() {
 				return
 			default:
 			}
-			received, err := server.Recv()
+			received, err := server.Recv(zlink.RecvFlagsNone)
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					continue
 				}
 				return
 			}
-			err = server.Send(perfcommon.CloneMessages(received.Parts())...)
+			err = server.Send(zlink.SendFlagsNone, perfcommon.CloneMessages(received.Parts())...)
 			if err != nil && !perfcommon.IsTransient(err) {
 				perfcommon.Must(err)
 			}

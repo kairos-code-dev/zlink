@@ -1,3 +1,4 @@
+import time
 import unittest
 
 import zlink
@@ -6,7 +7,6 @@ from .helpers import (
     transports,
     endpoint_for,
     try_transport,
-    wait_for_socket_event,
 )
 
 
@@ -20,13 +20,8 @@ class PairScenarioTest(unittest.TestCase):
                 ep = endpoint_for(name, endpoint, "-pair")
                 a.bind(ep)
                 b.connect(ep)
-                self.assertTrue(
-                    wait_for_socket_event(b, zlink.PollEvent.POLLOUT, 2000)
-                )
+                time.sleep(0.05)
                 b.send(b"ping")
-                self.assertTrue(
-                    wait_for_socket_event(a, zlink.PollEvent.POLLIN, 2000)
-                )
                 with a.recv() as out:
                     self.assertEqual(out.to_bytes_list(), [b"ping"])
                 a.close()

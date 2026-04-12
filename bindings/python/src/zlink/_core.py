@@ -1,29 +1,224 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
-import errno
+import errno as _errno
 import sys
 import types
 
-from ._enums import ContextOption
+from ._enums import (
+    BindResult,
+    CloseResult,
+    ConfigResult,
+    ConnectResult,
+    ContextOption,
+    HandlerResult,
+    RecvResult,
+    RequestResult,
+    SubmitResult,
+)
 from ._ffi import ZlinkMsg, ZlinkRoutingId, lib
 
 
 class ZlinkError(RuntimeError):
-    def __init__(self, errno, message):
-        super().__init__(message)
-        self.errno = errno
+    def __init__(self, code: int, internal_errno: int = 0):
+        self._code = int(code)
+        self._internal_errno = int(internal_errno)
+        super().__init__(
+            f"{self.__class__.__name__}(code={self._code}, internal_errno={self._internal_errno})"
+        )
+
+    @property
+    def code(self):
+        return self._code
+
+    @property
+    def internal_errno(self):
+        return self._internal_errno
+
+    @property
+    def errno(self):
+        return self._internal_errno
+
+
+class _TypedZlinkError(ZlinkError):
+    _result_type = None
+
+    def __init__(self, result, internal_errno: int = 0):
+        if self._result_type is None:
+            raise TypeError("typed zlink error missing result type")
+        self._result = self._result_type(int(result))
+        super().__init__(int(self._result), internal_errno)
+
+    @property
+    def result(self):
+        return self._result
+
+
+class SubmitError(_TypedZlinkError):
+    _result_type = SubmitResult
+
+
+class RequestError(_TypedZlinkError):
+    _result_type = RequestResult
+
+
+class RecvError(_TypedZlinkError):
+    _result_type = RecvResult
+
+
+class HandlerError(_TypedZlinkError):
+    _result_type = HandlerResult
+
+
+class CloseError(_TypedZlinkError):
+    _result_type = CloseResult
+
+
+class BindError(_TypedZlinkError):
+    _result_type = BindResult
+
+
+class ConnectError(_TypedZlinkError):
+    _result_type = ConnectResult
+
+
+class ConfigError(_TypedZlinkError):
+    _result_type = ConfigResult
+
+
+def _submit_result_from_errno(err):
+    if err in (_errno.EAGAIN,):
+        return SubmitResult.BACKPRESSURED
+    if err in (_errno.ENOTCONN, getattr(_errno, "EHOSTUNREACH", -1)):
+        return SubmitResult.NOT_CONNECTED
+    if err in (_errno.ENOENT,):
+        return SubmitResult.NOT_FOUND
+    if err in (_errno.EINVAL,):
+        return SubmitResult.INVALID_ARGUMENT
+    if err in (_errno.EFAULT,):
+        return SubmitResult.INVALID_HANDLE
+    if err in (_errno.ENOTSUP, getattr(_errno, "EOPNOTSUPP", _errno.ENOTSUP)):
+        return SubmitResult.NOT_SUPPORTED
+    if err in (_errno.EBUSY, getattr(_errno, "EFSM", _errno.EBUSY)):
+        return SubmitResult.INVALID_STATE
+    if err in (getattr(_errno, "EMTHREAD", _errno.EBUSY),):
+        return SubmitResult.THREAD_VIOLATION
+    if err in (_errno.ENOMEM, _errno.ENOBUFS):
+        return SubmitResult.OUT_OF_MEMORY
+    return SubmitResult.INTERNAL_ERROR
+
+
+def _request_result_from_errno(err):
+    if err == 0:
+        return RequestResult.OK
+    if err in (_errno.ETIMEDOUT,):
+        return RequestResult.TIMED_OUT
+    if err in (_errno.ENOENT,):
+        return RequestResult.NOT_FOUND
+    if err in (getattr(_errno, "ETERM", 0),):
+        return RequestResult.TERMINATED
+    return RequestResult.PROTOCOL_ERROR
+
+
+def _recv_result_from_errno(err):
+    if err == 0:
+        return RecvResult.OK
+    if err == _errno.EAGAIN:
+        return RecvResult.NO_DATA
+    if err == _errno.EBUSY:
+        return RecvResult.BUSY
+    if err in (getattr(_errno, "ETERM", 0),):
+        return RecvResult.TERMINATED
+    if err == _errno.EFAULT:
+        return RecvResult.INVALID_HANDLE
+    if err in (_errno.ENOTSUP, getattr(_errno, "EOPNOTSUPP", _errno.ENOTSUP)):
+        return RecvResult.NOT_SUPPORTED
+    return RecvResult.TERMINATED
+
+
+def _handler_result_from_errno(err):
+    if err == 0:
+        return HandlerResult.OK
+    if err == _errno.EINVAL:
+        return HandlerResult.INVALID_ARGUMENT
+    if err == _errno.EBUSY:
+        return HandlerResult.BUSY
+    if err in (_errno.ENOTSUP, getattr(_errno, "EOPNOTSUPP", _errno.ENOTSUP)):
+        return HandlerResult.NOT_SUPPORTED
+    if err == _errno.EDEADLK:
+        return HandlerResult.DEADLOCK
+    if err == _errno.EFAULT:
+        return HandlerResult.INVALID_HANDLE
+    return HandlerResult.INVALID_HANDLE
+
+
+def _close_result_from_errno(err):
+    if err == 0:
+        return CloseResult.OK
+    if err == _errno.EBUSY:
+        return CloseResult.BUSY
+    if err in (getattr(_errno, "ESHUTDOWN", None),):
+        return CloseResult.SHUTDOWN
+    if err == _errno.EFAULT:
+        return CloseResult.INVALID_HANDLE
+    return CloseResult.INVALID_HANDLE
+
+
+def _bind_result_from_errno(err):
+    if err == 0:
+        return BindResult.OK
+    if err == _errno.EINVAL:
+        return BindResult.INVALID_ARGUMENT
+    if err == _errno.EADDRINUSE:
+        return BindResult.ADDR_IN_USE
+    if err in (_errno.ENOTSUP, getattr(_errno, "EOPNOTSUPP", _errno.ENOTSUP)):
+        return BindResult.NOT_SUPPORTED
+    if err == _errno.EFAULT:
+        return BindResult.INVALID_HANDLE
+    return BindResult.INVALID_HANDLE
+
+
+def _connect_result_from_errno(err):
+    if err == 0:
+        return ConnectResult.OK
+    if err == _errno.EINVAL:
+        return ConnectResult.INVALID_ARGUMENT
+    if err in (_errno.ENOTSUP, getattr(_errno, "EOPNOTSUPP", _errno.ENOTSUP)):
+        return ConnectResult.NOT_SUPPORTED
+    if err == _errno.EFAULT:
+        return ConnectResult.INVALID_HANDLE
+    return ConnectResult.INVALID_HANDLE
+
+
+def _config_result_from_errno(err):
+    if err == 0:
+        return ConfigResult.OK
+    if err == _errno.EFAULT:
+        return ConfigResult.INVALID_HANDLE
+    if err == _errno.EINVAL:
+        return ConfigResult.INVALID_ARGUMENT
+    if err in (_errno.ENOTSUP, getattr(_errno, "EOPNOTSUPP", _errno.ENOTSUP)):
+        return ConfigResult.NOT_SUPPORTED
+    return ConfigResult.INVALID_ARGUMENT
+
+
+def _raise_zlink_error(error_type, result, internal_errno=None):
+    if internal_errno is None:
+        internal_errno = lib().zlink_errno()
+    raise error_type(result, internal_errno)
+
+
+def _raise_result_error(error_type, result_type, rc, internal_errno=None):
+    try:
+        result = result_type(int(rc))
+    except ValueError:
+        result = result_type(0)
+    _raise_zlink_error(error_type, result, internal_errno)
 
 
 def _raise_last_error():
-    L = lib()
-    err = L.zlink_errno()
-    msg = L.zlink_strerror(err)
-    if msg:
-        message = msg.decode("utf-8", errors="replace")
-    else:
-        message = "zlink error"
-    raise ZlinkError(err, message)
+    err = lib().zlink_errno()
+    raise ZlinkError(err, err)
 
 
 def _as_bytes_view(data):
@@ -203,7 +398,7 @@ def _init_msg_from_buffer(msg, data, *, borrow):
         if rc == 0 and size:
             ctypes.memmove(_msg_data_ptr(msg), ptr, size)
     if rc != 0:
-        _raise_last_error()
+        _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
     return keepalive
 
 
@@ -211,11 +406,11 @@ def _clone_native_msg(src):
     dst = ZlinkMsg()
     rc = lib().zlink_msg_init(ctypes.byref(dst))
     if rc != 0:
-        _raise_last_error()
+        _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
     rc = lib().zlink_msg_copy(ctypes.byref(dst), ctypes.byref(src))
     if rc != 0:
         lib().zlink_msg_close(ctypes.byref(dst))
-        _raise_last_error()
+        _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
     return dst
 
 
@@ -232,7 +427,7 @@ def _routing_id_bytes(routing_id):
 
 
 def _is_eagain(exc):
-    return isinstance(exc, ZlinkError) and exc.errno == errno.EAGAIN
+    return isinstance(exc, ZlinkError) and exc.errno == _errno.EAGAIN
 
 
 def _report_unhandled_callback_exception(handler):
@@ -290,7 +485,7 @@ def _recv_native_parts(handle, flags):
         int(flags),
     )
     if rc != 0:
-        _raise_last_error()
+        _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
     return _routing_id_bytes(routing_id), _ReceivedPartsOwner(
         parts, int(part_count.value)
     )
@@ -309,33 +504,37 @@ class Context:
     def __init__(self):
         self._handle = lib().zlink_ctx_new()
         if not self._handle:
-            _raise_last_error()
-        self.options = ContextOptions(self)
+            _raise_result_error(ConfigError, ConfigResult, 701, lib().zlink_errno())
+        self._options = ContextOptions(self)
+
+    @property
+    def options(self):
+        return self._options
 
     def _set_option(self, option, value):
         rc = lib().zlink_ctx_set(
             self._handle, int(option), _validated_int32(value)
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def _get_option(self, option):
         rc = lib().zlink_ctx_get(self._handle, int(option))
         if rc == -1 and lib().zlink_errno() != 0:
-            _raise_last_error()
+            _raise_zlink_error(ConfigError, _config_result_from_errno(lib().zlink_errno()))
         return rc
 
     def shutdown(self):
         rc = lib().zlink_ctx_shutdown(self._handle)
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
 
     def close(self):
         if self._handle:
             rc = lib().zlink_ctx_term(self._handle)
             self._handle = None
             if rc != 0:
-                _raise_last_error()
+                _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
 
     def __enter__(self):
         return self
@@ -355,43 +554,43 @@ class ContextOptions:
         self._context = context
 
     @property
-    def ioThreads(self):
+    def io_threads(self):
         return self._context._get_option(ContextOption.IO_THREADS)
 
-    @ioThreads.setter
-    def ioThreads(self, value):
+    @io_threads.setter
+    def io_threads(self, value):
         self._context._set_option(ContextOption.IO_THREADS, value)
 
     @property
-    def maxSockets(self):
+    def max_sockets(self):
         return self._context._get_option(ContextOption.MAX_SOCKETS)
 
-    @maxSockets.setter
-    def maxSockets(self, value):
+    @max_sockets.setter
+    def max_sockets(self, value):
         self._context._set_option(ContextOption.MAX_SOCKETS, value)
 
     @property
-    def maxMsgSize(self):
+    def max_msg_size(self):
         return self._context._get_option(ContextOption.MAX_MSGSZ)
 
-    @maxMsgSize.setter
-    def maxMsgSize(self, value):
+    @max_msg_size.setter
+    def max_msg_size(self, value):
         self._context._set_option(ContextOption.MAX_MSGSZ, value)
 
     @property
-    def threadPriority(self):
+    def thread_priority(self):
         return self._context._get_option(ContextOption.THREAD_PRIORITY)
 
-    @threadPriority.setter
-    def threadPriority(self, value):
+    @thread_priority.setter
+    def thread_priority(self, value):
         self._context._set_option(ContextOption.THREAD_PRIORITY, value)
 
     @property
-    def threadSchedulingPolicy(self):
+    def thread_scheduling_policy(self):
         return self._context._get_option(ContextOption.THREAD_SCHED_POLICY)
 
-    @threadSchedulingPolicy.setter
-    def threadSchedulingPolicy(self, value):
+    @thread_scheduling_policy.setter
+    def thread_scheduling_policy(self, value):
         self._context._set_option(ContextOption.THREAD_SCHED_POLICY, value)
 
     @property
@@ -403,17 +602,17 @@ class ContextOptions:
         self._context._set_option(ContextOption.CTX_OPT_BLOCKY, int(bool(value)))
 
     @property
-    def socketLimit(self):
+    def socket_limit(self):
         return self._context._get_option(ContextOption.SOCKET_LIMIT)
 
     @property
-    def msgTSize(self):
+    def msg_t_size(self):
         return self._context._get_option(ContextOption.MSG_T_SIZE)
 
-    def addThreadAffinity(self, cpu):
+    def add_thread_affinity(self, cpu):
         self._context._set_option(ContextOption.THREAD_AFFINITY_CPU_ADD, cpu)
 
-    def removeThreadAffinity(self, cpu):
+    def remove_thread_affinity(self, cpu):
         self._context._set_option(ContextOption.THREAD_AFFINITY_CPU_REMOVE, cpu)
 
 
@@ -479,7 +678,7 @@ class ReceivedMessage:
             return
         rc = lib().zlink_msg_close(ctypes.byref(self._msg))
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
 
     def __enter__(self):
         return self
@@ -495,13 +694,14 @@ class ReceivedMessage:
 
 
 class ReceivedMultipart:
-    def __init__(self, owner, routing_id=None):
+    def __init__(self, owner, routing_id=None, request_seq=None):
         self._owner = owner
         self.parts = tuple(
             ReceivedMessage._from_owner(owner, index)
             for index in range(owner._part_count)
         )
         self.routing_id = routing_id
+        self.request_seq = request_seq
 
     def __iter__(self):
         return iter(self.parts)
@@ -529,7 +729,7 @@ class ReceivedMultipart:
 
 
 class TopicMessage:
-    def __init__(self, topic, owner, routing_id=None):
+    def __init__(self, topic, owner, routing_id=None, request_seq=None):
         self.topic = topic
         self._owner = owner
         self.parts = tuple(
@@ -537,6 +737,7 @@ class TopicMessage:
             for index in range(owner._part_count)
         )
         self.routing_id = routing_id
+        self.request_seq = request_seq
 
     def __iter__(self):
         return iter(self.parts)
@@ -593,7 +794,7 @@ class Message:
         else:
             rc = lib().zlink_msg_init_size(ctypes.byref(self._msg), size)
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         self._valid = True
 
     @classmethod
@@ -650,7 +851,7 @@ class Message:
         self._valid = False
         self._keepalive = None
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
 
     def __enter__(self):
         return self

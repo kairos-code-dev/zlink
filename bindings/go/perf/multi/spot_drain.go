@@ -3,6 +3,7 @@ package main
 import (
 	"time"
 
+	"zlink"
 	"zlink/perf/internal/perfcommon"
 )
 
@@ -14,14 +15,14 @@ func drainMultiSpotOnce(
 ) int {
 	processed := 0
 	for index, sub := range subs {
-		message, ok, err := sub.spot.TrySubscribe()
+		message, err := sub.spot.Subscribe(zlink.RecvFlagsDontWait)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
 			}
 			perfcommon.Must(err)
 		}
-		if !ok || message == nil {
+		if message == nil {
 			continue
 		}
 		processed++

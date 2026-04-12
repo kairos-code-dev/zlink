@@ -76,8 +76,12 @@ final class TopicPlane {
 
             int rc = Native.subscribe(socket.handle(), rid, partsOut, partCountOut,
                 topicOut, topicLenOut, flags.getValue());
-            if (rc != 0)
+            if (rc != 0) {
+                if (flags == ReceiveFlag.DONTWAIT) {
+                    throw new RecvException(RecvResult.NO_DATA, Native.errno());
+                }
                 throw ZlinkException.fromLastError("zlink_subscribe");
+            }
 
             byte[] routingId = Socket.decodeRoutingId(rid);
             long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
@@ -122,16 +126,8 @@ final class TopicPlane {
                     return Optional.of(new TopicMessage(Socket.toRoutingId(routingId),
                         topicId, parts));
                 }
-            }
-
-            int errno = Native.errno();
-            if (errno == Socket.ERRNO_EINTR)
-                continue;
-            if (errno == Socket.ERRNO_EAGAIN
-                || errno == Socket.ERRNO_EWOULDBLOCK_WIN) {
                 return Optional.empty();
             }
-            throw ZlinkException.fromLastError("zlink_subscribe");
         }
     }
 

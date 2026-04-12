@@ -24,7 +24,7 @@ public sealed class Message : IDisposable, IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(size));
         int rc = NativeMethods.zlink_msg_init_size(ref _msg, (nuint)size);
         if (rc != 0)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         _valid = true;
     }
 
@@ -187,9 +187,9 @@ public sealed class Message : IDisposable, IAsyncDisposable
     {
         if (_valid)
             return;
-        int rc = NativeMethods.zlink_msg_init(ref _msg);
+            int rc = NativeMethods.zlink_msg_init(ref _msg);
         if (rc != 0)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         _valid = true;
     }
 
@@ -221,14 +221,14 @@ public sealed class Message : IDisposable, IAsyncDisposable
     internal void MoveTo(ref ZlinkMsg dest)
     {
         EnsureValid();
-        int rc = NativeMethods.zlink_msg_init(ref dest);
+            int rc = NativeMethods.zlink_msg_init(ref dest);
         if (rc != 0)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         try
         {
             rc = NativeMethods.zlink_msg_move(ref dest, ref _msg);
             if (rc != 0)
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
             _valid = false;
         }
         catch
@@ -252,12 +252,12 @@ public sealed class Message : IDisposable, IAsyncDisposable
 
         int rc = NativeMethods.zlink_msg_init(ref _msg);
         if (rc != 0)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         try
         {
             rc = NativeMethods.zlink_msg_move(ref _msg, ref src);
             if (rc != 0)
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
             _valid = true;
         }
         catch
@@ -278,12 +278,12 @@ public sealed class Message : IDisposable, IAsyncDisposable
         EnsureValid();
         int rc = NativeMethods.zlink_msg_init(ref dest);
         if (rc != 0)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         try
         {
             rc = NativeMethods.zlink_msg_copy(ref dest, ref _msg);
             if (rc != 0)
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         }
         catch
         {
@@ -389,7 +389,7 @@ public sealed class Message : IDisposable, IAsyncDisposable
                     if (rc != 0)
                     {
                         msg.Dispose();
-                        throw ZlinkException.FromLastError();
+                        throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
                     }
                     result[i] = msg;
                     built++;
@@ -421,7 +421,7 @@ public sealed class Message : IDisposable, IAsyncDisposable
             ZlinkMsg* src = (ZlinkMsg*)message;
             int rc = NativeMethods.zlink_msg_move(ref result._msg, ref *src);
             if (rc != 0)
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
             return result;
         }
         catch

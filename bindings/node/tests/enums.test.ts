@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 
 test('socket and service constants match aligned header values', () => {
   assert.equal(zlink.SocketType.PAIR, 0x1001);

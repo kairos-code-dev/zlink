@@ -14,6 +14,16 @@ public sealed class DealerSocket : MessageSocketBase
         DealerOptions = new DealerSocketOptions(this);
     }
 
+    public void SetRoutingId(RoutingId routingId)
+    {
+        Kernel.SetOption(SocketOptions.RoutingId, routingId.Value);
+    }
+
+    public RoutingId GetRoutingId()
+    {
+        return new RoutingId(Kernel.GetOption(SocketOptions.RoutingId));
+    }
+
     public void AttachDiscovery(Discovery discovery)
     {
         Kernel.AttachDiscovery(discovery);

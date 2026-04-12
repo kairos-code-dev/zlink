@@ -37,8 +37,7 @@ namespace detail
 struct cpp_reply_state_t
 {
     std::promise<received_t> promise;
-    std::function<void(received_t)> on_reply;
-    std::function<void(error_t)> on_error;
+    std::function<void(request_result_t, received_t)> on_complete;
 };
 
 inline received_t take_received (const zlink_routing_id_t *rid_,
@@ -83,15 +82,17 @@ inline void complete_reply_state (cpp_reply_state_t *state_,
         return;
     std::unique_ptr<cpp_reply_state_t> holder (state_);
     if (result_ != ZLINK_REQUEST_OK) {
-        if (holder->on_error)
-            holder->on_error (error_t (result_));
+        if (holder->on_complete)
+            holder->on_complete (static_cast<request_result_t> (result_),
+                                 received_t ());
         holder->promise.set_exception (
-          std::make_exception_ptr (error_t (result_)));
+          std::make_exception_ptr (
+            request_error_t (static_cast<request_result_t> (result_))));
         return;
     }
     received_t received = take_received (NULL, parts_, part_count_);
-    if (holder->on_reply)
-        holder->on_reply (received);
+    if (holder->on_complete)
+        holder->on_complete (request_result_t::ok, received);
     holder->promise.set_value (std::move (received));
 }
 
@@ -141,91 +142,77 @@ class request_dealer_t
                                         std::chrono::milliseconds timeout_)
     {
         detail::cpp_reply_state_t *state = new detail::cpp_reply_state_t ();
-        async_result_t<received_t> result (state->promise.get_future ());
+        std::future<received_t> future = state->promise.get_future ();
         std::vector<zlink_msg_t> native;
         if (detail::prepare_native_parts<dealer_socket_t> (message_, native) != 0) {
             delete state;
             throw last_error ();
         }
         const int rc = zlink_dealer_request (_socket.handle (), native.data (),
-                                             native.size (), &detail::reply_callback,
-                                             state, ZLINK_SEND_FLAGS_NONE,
+                                             native.size (),
+                                             &detail::reply_callback, state,
+                                             ZLINK_SEND_FLAGS_NONE,
                                              static_cast<uint32_t> (timeout_.count ()));
         if (rc != 0) {
             delete state;
             throw last_error ();
         }
-        return result;
+        return async_result_t<received_t> (std::move (future));
     }
 
     void request (message_t message_,
-                  std::function<void(received_t)> on_reply_,
-                  std::function<void(error_t)> on_error_,
-                  std::chrono::milliseconds timeout_)
+                  std::function<void(request_result_t, received_t)> callback_,
+                  send_flags_t flags_ = send_flags_t::none,
+                  std::chrono::milliseconds timeout_ = std::chrono::milliseconds ())
     {
         detail::cpp_reply_state_t *state = new detail::cpp_reply_state_t ();
-        state->on_reply = on_reply_;
-        state->on_error = on_error_;
+        state->on_complete = callback_;
         std::vector<zlink_msg_t> native;
         if (detail::prepare_native_parts<dealer_socket_t> (message_, native) != 0) {
             delete state;
             throw last_error ();
         }
-        const int rc = zlink_dealer_request (_socket.handle (), native.data (),
-                                             native.size (), &detail::reply_callback,
-                                             state, ZLINK_SEND_FLAGS_NONE,
-                                             static_cast<uint32_t> (timeout_.count ()));
+        const int rc = zlink_dealer_request (
+          _socket.handle (), native.data (), native.size (),
+          &detail::reply_callback, state,
+          static_cast<zlink_send_flags_t> (flags_),
+          static_cast<uint32_t> (timeout_.count ()));
         if (rc != 0) {
             delete state;
             throw last_error ();
         }
     }
 
-    void request (message_t message_,
-                  std::function<void(received_t)> on_reply_,
-                  std::function<void(error_t)> on_error_)
+    received_t recv (recv_flags_t flags_ = recv_flags_t::none)
     {
-        request (std::move (message_), on_reply_, on_error_, _default_timeout);
+        return _socket.recv (flags_);
     }
 
-    async_result_t<received_t> try_request (message_t message_)
+    void on_receive (std::function<void(received_t)> handler_)
     {
-        return request (std::move (message_), _default_timeout);
-    }
-
-    async_result_t<received_t> try_request (message_t message_,
-                                            std::chrono::milliseconds timeout_)
-    {
-        return request (std::move (message_), timeout_);
-    }
-
-    void try_request (message_t message_,
-                      std::function<void(received_t)> on_reply_,
-                      std::function<void(error_t)> on_error_,
-                      std::chrono::milliseconds timeout_)
-    {
-        request (std::move (message_), on_reply_, on_error_, timeout_);
-    }
-
-    void try_request (message_t message_,
-                      std::function<void(received_t)> on_reply_,
-                      std::function<void(error_t)> on_error_)
-    {
-        request (std::move (message_), on_reply_, on_error_, _default_timeout);
-    }
-
-    received_t recv () { return _socket.recv (); }
-
-    maybe_t<received_t> try_recv () { return _socket.try_recv (); }
-
-    int on_receive (zlink_socket_msg_handler_fn handler_, void *userdata_ = NULL)
-    {
-        return _socket.on_receive (handler_, userdata_);
+        std::lock_guard<std::mutex> lock (_callback_mutex);
+        _callback = handler_;
+        _socket.on_receive (&request_dealer_t::receive_trampoline, this);
     }
 
   private:
+    static void receive_trampoline (const zlink_routing_id_t *peer_rid_,
+                                    zlink_msg_t *parts_,
+                                    size_t part_count_,
+                                    void *userdata_)
+    {
+        request_dealer_t *self = static_cast<request_dealer_t *> (userdata_);
+        if (!self || !self->_callback)
+            return;
+        received_t received = detail::take_received (
+          peer_rid_, parts_, part_count_, 0, false);
+        self->_callback (std::move (received));
+    }
+
     dealer_socket_t &_socket;
     std::chrono::milliseconds _default_timeout;
+    std::function<void(received_t)> _callback;
+    std::mutex _callback_mutex;
 };
 
 class request_router_t
@@ -234,12 +221,9 @@ class request_router_t
     explicit request_router_t (router_socket_t &socket_)
         : _socket (socket_),
           _default_timeout (std::chrono::milliseconds (5000)),
-          _callback_mode (false)
+          _callback_mode (false),
+          _handler_installed (false)
     {
-        const int rc =
-          zlink_router_handler (_socket.handle (), &request_callback, this);
-        if (rc != 0)
-            throw last_error ();
     }
 
     void set_default_request_timeout (std::chrono::milliseconds timeout_)
@@ -284,13 +268,12 @@ class request_router_t
 
     void request (const routing_id_t &routing_id_,
                   message_t message_,
-                  std::function<void(received_t)> on_reply_,
-                  std::function<void(error_t)> on_error_,
-                  std::chrono::milliseconds timeout_)
+                  std::function<void(request_result_t, received_t)> callback_,
+                  send_flags_t flags_ = send_flags_t::none,
+                  std::chrono::milliseconds timeout_ = std::chrono::milliseconds ())
     {
         detail::cpp_reply_state_t *state = new detail::cpp_reply_state_t ();
-        state->on_reply = on_reply_;
-        state->on_error = on_error_;
+        state->on_complete = callback_;
         std::vector<zlink_msg_t> native;
         if (detail::prepare_native_parts<router_socket_t> (message_, native) != 0) {
             delete state;
@@ -300,7 +283,7 @@ class request_router_t
                                              routing_id_native (routing_id_),
                                              native.data (), native.size (),
                                              &detail::reply_callback, state,
-                                             ZLINK_SEND_FLAGS_NONE,
+                                             static_cast<zlink_send_flags_t> (flags_),
                                              static_cast<uint32_t> (timeout_.count ()));
         if (rc != 0) {
             delete state;
@@ -308,49 +291,10 @@ class request_router_t
         }
     }
 
-    void request (const routing_id_t &routing_id_,
-                  message_t message_,
-                  std::function<void(received_t)> on_reply_,
-                  std::function<void(error_t)> on_error_)
-    {
-        request (routing_id_, std::move (message_), on_reply_, on_error_,
-                 _default_timeout);
-    }
-
-    async_result_t<received_t> try_request (const routing_id_t &routing_id_,
-                                            message_t message_)
-    {
-        return request (routing_id_, std::move (message_), _default_timeout);
-    }
-
-    async_result_t<received_t> try_request (const routing_id_t &routing_id_,
-                                            message_t message_,
-                                            std::chrono::milliseconds timeout_)
-    {
-        return request (routing_id_, std::move (message_), timeout_);
-    }
-
-    void try_request (const routing_id_t &routing_id_,
-                      message_t message_,
-                      std::function<void(received_t)> on_reply_,
-                      std::function<void(error_t)> on_error_,
-                      std::chrono::milliseconds timeout_)
-    {
-        request (routing_id_, std::move (message_), on_reply_, on_error_, timeout_);
-    }
-
-    void try_request (const routing_id_t &routing_id_,
-                      message_t message_,
-                      std::function<void(received_t)> on_reply_,
-                      std::function<void(error_t)> on_error_)
-    {
-        request (routing_id_, std::move (message_), on_reply_, on_error_,
-                 _default_timeout);
-    }
-
     void reply (const routing_id_t &routing_id_,
                 uint64_t request_seq_,
-                message_t message_)
+                message_t message_,
+                send_flags_t flags_ = send_flags_t::none)
     {
         std::vector<zlink_msg_t> native;
         if (detail::prepare_native_parts<router_socket_t> (message_, native) != 0)
@@ -359,19 +303,12 @@ class request_router_t
                                            routing_id_native (routing_id_),
                                            request_seq_, native.data (),
                                            native.size ());
+        (void) flags_;
         if (rc != 0)
             throw last_error ();
     }
 
-    send_result_t try_reply (const routing_id_t &routing_id_,
-                             uint64_t request_seq_,
-                             message_t message_)
-    {
-        reply (routing_id_, request_seq_, std::move (message_));
-        return send_result_t::sent;
-    }
-
-    received_t recv ()
+    received_t recv (recv_flags_t flags_ = recv_flags_t::none)
     {
         {
             std::unique_lock<std::mutex> lock (_mutex);
@@ -383,28 +320,9 @@ class request_router_t
                 return received;
             }
         }
-        return detail::recv_router_received (_socket.handle (), 0);
-    }
-
-    maybe_t<received_t> try_recv ()
-    {
-        std::lock_guard<std::mutex> lock (_mutex);
-        if (_callback_mode)
-            throw std::logic_error ("socket is in callback mode");
-        if (_queue.empty ()) {
-            try {
-                return maybe_t<received_t> (
-                  detail::recv_router_received (_socket.handle (), ZLINK_DONTWAIT));
-            }
-            catch (const error_t &err) {
-                if (err.code () == EAGAIN)
-                    return maybe_t<received_t> ();
-                throw;
-            }
-        }
-        received_t received = std::move (_queue.front ());
-        _queue.pop ();
-        return maybe_t<received_t> (std::move (received));
+        return detail::recv_router_received (
+          _socket.handle (), static_cast<int> (flags_ == recv_flags_t::dontwait
+                                                 ? ZLINK_DONTWAIT : 0));
     }
 
     void on_receive (std::function<void(received_t)> handler_)
@@ -412,6 +330,13 @@ class request_router_t
         std::lock_guard<std::mutex> lock (_mutex);
         _callback = handler_;
         _callback_mode = static_cast<bool> (_callback);
+        if (_callback_mode && !_handler_installed) {
+            const int rc =
+              zlink_router_handler (_socket.handle (), &request_callback, this);
+            if (rc != 0)
+                throw last_error ();
+            _handler_installed = true;
+        }
     }
 
   private:
@@ -446,6 +371,7 @@ class request_router_t
     std::queue<received_t> _queue;
     std::function<void(received_t)> _callback;
     bool _callback_mode;
+    bool _handler_installed;
 };
 
 } // namespace zlink

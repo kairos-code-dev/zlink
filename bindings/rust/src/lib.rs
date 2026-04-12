@@ -23,11 +23,13 @@ mod ffi;
 mod ctx;
 mod domain;
 mod error;
+mod flags;
 mod message;
 pub mod monitor;
 mod options;
 pub mod poller;
 mod request_reply;
+mod runtime;
 pub mod service;
 pub mod socket;
 
@@ -35,7 +37,12 @@ pub mod socket;
 
 pub use ctx::{Context, ContextOptions, has, version};
 pub use domain::{Received, SendResult, SubscriptionEvent, TopicMessage};
-pub use error::ZlinkError;
+pub use error::{
+    BindError, BindResult, CloseError, CloseResult, ConfigError, ConfigResult, ConnectError,
+    ConnectResult, HandlerError, HandlerResult, RecvError, RecvResult, RequestError,
+    RequestResult, SubmitError, SubmitResult, ZlinkError,
+};
+pub use flags::{RecvFlags, SendFlags};
 pub use message::{IntoMultipart, Message, RoutingId};
 pub use monitor::{
     MONITOR_EVENT_ALL, MONITOR_EVENT_CONNECTION_READY, SERVICE_MONITOR_EVENT_DISCOVERY_CLOSED,
@@ -53,6 +60,7 @@ pub use options::{
 };
 pub use poller::{POLLIN, POLLOUT, PollEvent, PollTarget, Poller};
 pub use request_reply::{RequestDealer, RequestRouter};
+pub use runtime::{multipart_close, proxy, proxy_steerable, sleep};
 pub use service::{
     Discovery, MemberPeerEntry, Registry, RegistryQueryClient, RegistryServiceSummaryEntry,
     RegistryServiceSummaryFilter, RegistryState, RegistryStatus, RegistryTopologyEntry,

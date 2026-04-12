@@ -48,24 +48,27 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
         return SocketMonitorEvent.FromNative(ref native);
     }
 
-    public bool TryRecv(out SocketMonitorEvent? monitorEvent)
+    public SocketMonitorEvent? Recv(bool nonBlocking)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_socket_monitor_recv(_handle, out var native,
-            1);
+            nonBlocking ? 1 : 0);
         if (rc == 0)
         {
-            monitorEvent = SocketMonitorEvent.FromNative(ref native);
-            return true;
+            return SocketMonitorEvent.FromNative(ref native);
         }
-        if (ZlinkException.MapErrorCode(NativeMethods.zlink_errno())
+        if (nonBlocking && ZlinkException.MapErrorCode(NativeMethods.zlink_errno())
             == ErrorCode.EAgain)
         {
-            monitorEvent = null;
-            return false;
+            return null;
         }
-        monitorEvent = null;
         throw ZlinkException.FromLastError();
+    }
+
+    internal bool TryRecv(out SocketMonitorEvent? monitorEvent)
+    {
+        monitorEvent = Recv(true);
+        return monitorEvent != null;
     }
 
     public MonitorSnapshot Snapshot()

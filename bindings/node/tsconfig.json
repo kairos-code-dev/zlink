@@ -16,7 +16,13 @@
     ]
   },
   "include": [
-    "src/**/*.ts"
+    "src/canonical.ts",
+    "src/errors.ts",
+    "src/message.ts",
+    "src/buffer_like.ts",
+    "src/native.ts",
+    "src/validation.ts",
+    "src/socket/constants.ts"
   ],
   "exclude": [
     "dist",

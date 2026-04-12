@@ -1002,7 +1002,10 @@ impl Spot {
                 ffi::ZLINK_DONTWAIT as u32,
             )
         };
-        if rc == -1 {
+        if rc == crate::error::RecvResult::NoData as i32 {
+            return Ok(None);
+        }
+        if rc != 0 {
             let errno = unsafe { ffi::zlink_errno() };
             if errno == libc::EAGAIN {
                 return Ok(None);
@@ -1028,7 +1031,7 @@ impl Spot {
         let rc = unsafe {
             ffi::zlink_subscribe_handler(self.handle, subscribe_trampoline::<F>, userdata)
         };
-        if rc == -1 {
+        if rc != 0 {
             drop(cb);
             return Err(ZlinkError::last());
         }
@@ -1044,7 +1047,7 @@ impl Spot {
         let rc = unsafe {
             ffi::zlink_send_ready_handler(self.handle, send_ready_trampoline::<F>, userdata)
         };
-        if rc == -1 {
+        if rc != 0 {
             drop(cb);
             return Err(ZlinkError::last());
         }

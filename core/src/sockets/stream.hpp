@@ -53,6 +53,8 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     int stream_dispatch_send_msg_from_io (const zlink_routing_id_t *rid_,
                                           zlink::msg_t *msg_,
                                           int flags_) ZLINK_OVERRIDE;
+    int stream_dispatch_send_current_msg_from_io (zlink::msg_t *msg_,
+                                                  int flags_) ZLINK_OVERRIDE;
     std::recursive_mutex *api_sync_mutex () ZLINK_OVERRIDE;
 
   private:

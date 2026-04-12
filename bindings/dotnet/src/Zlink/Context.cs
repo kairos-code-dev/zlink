@@ -15,7 +15,7 @@ public sealed class Context : IDisposable, IAsyncDisposable
         Options = new ContextOptions(this);
         _handle = NativeMethods.zlink_ctx_new();
         if (_handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
     internal IntPtr Handle => _handle;
@@ -34,9 +34,11 @@ public sealed class Context : IDisposable, IAsyncDisposable
     {
         EnsureNotDisposed();
         EnumValidation.EnsureContextOption(option, nameof(option));
-        int value = NativeMethods.zlink_ctx_get(_handle, (int)option);
-        if (value < 0)
-            throw ZlinkException.FromLastError();
+        int value = NativeMethods.zlink_ctx_get(_handle, (int)option,
+            out int errorOut);
+        if (errorOut != (int)ConfigResult.Ok)
+            throw new ZlinkConfigException((ConfigResult)errorOut,
+                NativeMethods.zlink_errno());
         return value;
     }
 
@@ -44,15 +46,18 @@ public sealed class Context : IDisposable, IAsyncDisposable
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_ctx_shutdown(_handle);
-        ZlinkException.ThrowIfError(rc);
+        if (rc < 0)
+            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
     }
 
     public void Dispose()
     {
         if (_handle == IntPtr.Zero)
             return;
-        NativeMethods.zlink_ctx_term(_handle);
+        int rc = NativeMethods.zlink_ctx_term(_handle);
         _handle = IntPtr.Zero;
+        if (rc < 0)
+            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
         GC.SuppressFinalize(this);
     }
 

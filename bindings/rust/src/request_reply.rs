@@ -1,24 +1,23 @@
+use std::ffi::c_void;
+use std::ptr;
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::domain::{Received, SendResult};
-use crate::error::{ZlinkError, check_rc};
+use crate::error::{RecvResult, RequestResult, ZlinkError, check_rc};
 use crate::ffi;
-use crate::message::{Message, RoutingId};
+use crate::flags::{RecvFlags, SendFlags};
+use crate::message::{IntoMultipart, Message, RoutingId};
 use crate::socket::{DealerSocket, RouterSocket, prepare_send_parts, take_parts};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
-type DataHandler = Arc<dyn Fn(Received) + Send + Sync + 'static>;
-
 struct ReplyCallbackState {
     tx: mpsc::Sender<Result<Received, ZlinkError>>,
-}
-
-struct RouterRequestState {
-    tx: mpsc::Sender<Received>,
-    handler: Mutex<Option<DataHandler>>,
 }
 
 pub struct RequestDealer {
@@ -28,15 +27,25 @@ pub struct RequestDealer {
 
 pub struct RequestRouter {
     socket: RouterSocket,
-    state: Arc<RouterRequestState>,
-    data_rx: Mutex<mpsc::Receiver<Received>>,
     default_timeout: Mutex<Duration>,
+    stop_flag: Arc<AtomicBool>,
+    callback_thread: Mutex<Option<JoinHandle<()>>>,
 }
 
 unsafe impl Send for RequestDealer {}
 unsafe impl Sync for RequestDealer {}
 unsafe impl Send for RequestRouter {}
 unsafe impl Sync for RequestRouter {}
+
+impl Drop for RequestRouter {
+    fn drop(&mut self) {
+        self.stop_flag.store(true, Ordering::SeqCst);
+        let _ = self.socket.close();
+        if let Some(thread) = self.callback_thread.lock().unwrap().take() {
+            let _ = thread.join();
+        }
+    }
+}
 
 impl RequestDealer {
     pub fn new(socket: DealerSocket) -> Result<Self, ZlinkError> {
@@ -59,6 +68,14 @@ impl RequestDealer {
             .await
     }
 
+    pub async fn request_parts(
+        &self,
+        parts: impl IntoMultipart,
+        timeout: Duration,
+    ) -> Result<Received, ZlinkError> {
+        self.request_impl_parts(parts, timeout, SendFlags::NONE)
+    }
+
     pub async fn request_with_timeout(
         &self,
         msg: Message,
@@ -74,12 +91,29 @@ impl RequestDealer {
         self.request_callback_with_timeout(msg, callback, self.get_default_request_timeout());
     }
 
-    pub fn request_callback_with_timeout<F>(&self, msg: Message, callback: F, timeout: Duration)
+    pub fn request_callback_with_flags<F>(
+        &self,
+        parts: impl IntoMultipart,
+        callback: F,
+        flags: SendFlags,
+        timeout: Duration,
+    ) -> Result<(), ZlinkError>
     where
         F: FnOnce(Result<Received, ZlinkError>) + Send + 'static,
     {
-        let result = self.request_impl(msg, timeout);
-        callback(result);
+        callback(self.request_impl_parts(parts, timeout, flags));
+        Ok(())
+    }
+
+    pub fn request_callback_with_timeout<F>(
+        &self,
+        msg: Message,
+        callback: F,
+        timeout: Duration,
+    ) where
+        F: FnOnce(Result<Received, ZlinkError>) + Send + 'static,
+    {
+        callback(self.request_impl(msg, timeout));
     }
 
     pub async fn try_request(&self, msg: Message) -> Result<Received, ZlinkError> {
@@ -102,16 +136,23 @@ impl RequestDealer {
         self.try_request_callback_with_timeout(msg, callback, self.get_default_request_timeout());
     }
 
-    pub fn try_request_callback_with_timeout<F>(&self, msg: Message, callback: F, timeout: Duration)
-    where
+    pub fn try_request_callback_with_timeout<F>(
+        &self,
+        msg: Message,
+        callback: F,
+        timeout: Duration,
+    ) where
         F: FnOnce(Result<Received, ZlinkError>) + Send + 'static,
     {
-        let result = self.request_impl(msg, timeout);
-        callback(result);
+        callback(self.request_impl(msg, timeout));
     }
 
     pub fn recv(&self) -> Result<Received, ZlinkError> {
         self.socket.recv()
+    }
+
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError> {
+        self.socket.recv_with_flags(flags)
     }
 
     pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError> {
@@ -126,11 +167,19 @@ impl RequestDealer {
     }
 
     fn request_impl(&self, msg: Message, timeout: Duration) -> Result<Received, ZlinkError> {
-        let mut parts = vec![msg];
+        self.request_impl_parts(msg, timeout, SendFlags::NONE)
+    }
+
+    fn request_impl_parts(
+        &self,
+        parts: impl IntoMultipart,
+        timeout: Duration,
+        flags: SendFlags,
+    ) -> Result<Received, ZlinkError> {
+        let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
         let (tx, rx) = mpsc::channel();
-        let state = Box::new(ReplyCallbackState { tx });
-        let state_ptr = Box::into_raw(state);
+        let state_ptr = Box::into_raw(Box::new(ReplyCallbackState { tx }));
         let rc = unsafe {
             ffi::zlink_dealer_request(
                 self.socket.inner.handle,
@@ -138,37 +187,28 @@ impl RequestDealer {
                 native.len(),
                 dealer_reply_callback,
                 state_ptr.cast(),
-                0,
+                flags.bits(),
                 duration_to_timeout_ms(timeout),
             )
         };
         if rc != 0 {
-            unsafe { drop(Box::from_raw(state_ptr)); }
+            unsafe {
+                drop(Box::from_raw(state_ptr));
+            }
             return Err(ZlinkError::last());
         }
-        rx.recv().unwrap_or_else(|_| Err(ZlinkError::state("request callback dropped")))
+        rx.recv()
+            .unwrap_or_else(|_| Err(ZlinkError::state("request callback dropped")))
     }
 }
 
 impl RequestRouter {
     pub fn new(socket: RouterSocket) -> Result<Self, ZlinkError> {
-        let (tx, rx) = mpsc::channel();
-        let state = Arc::new(RouterRequestState {
-            tx,
-            handler: Mutex::new(None),
-        });
-        check_rc(unsafe {
-            ffi::zlink_router_handler(
-                socket.inner.handle,
-                router_request_callback,
-                Arc::as_ptr(&state) as *mut _,
-            )
-        })?;
         Ok(Self {
             socket,
-            state,
-            data_rx: Mutex::new(rx),
             default_timeout: Mutex::new(DEFAULT_TIMEOUT),
+            stop_flag: Arc::new(AtomicBool::new(false)),
+            callback_thread: Mutex::new(None),
         })
     }
 
@@ -187,6 +227,15 @@ impl RequestRouter {
     ) -> Result<Received, ZlinkError> {
         self.request_with_timeout(routing_id, msg, self.get_default_request_timeout())
             .await
+    }
+
+    pub async fn request_parts(
+        &self,
+        routing_id: RoutingId,
+        parts: impl IntoMultipart,
+        timeout: Duration,
+    ) -> Result<Received, ZlinkError> {
+        self.request_impl_parts(&routing_id, parts, timeout, SendFlags::NONE)
     }
 
     pub async fn request_with_timeout(
@@ -228,6 +277,21 @@ impl RequestRouter {
         );
     }
 
+    pub fn request_callback_with_flags<F>(
+        &self,
+        routing_id: RoutingId,
+        parts: impl IntoMultipart,
+        callback: F,
+        flags: SendFlags,
+        timeout: Duration,
+    ) -> Result<(), ZlinkError>
+    where
+        F: FnOnce(Result<Received, ZlinkError>) + Send + 'static,
+    {
+        callback(self.request_impl_parts(&routing_id, parts, timeout, flags));
+        Ok(())
+    }
+
     pub fn request_callback_with_timeout<F>(
         &self,
         routing_id: RoutingId,
@@ -237,8 +301,7 @@ impl RequestRouter {
     ) where
         F: FnOnce(Result<Received, ZlinkError>) + Send + 'static,
     {
-        let result = self.request_impl(&routing_id, msg, timeout);
-        callback(result);
+        callback(self.request_impl(&routing_id, msg, timeout));
     }
 
     pub fn try_request_callback<F>(&self, routing_id: RoutingId, msg: Message, callback: F)
@@ -262,8 +325,7 @@ impl RequestRouter {
     ) where
         F: FnOnce(Result<Received, ZlinkError>) + Send + 'static,
     {
-        let result = self.request_impl(&routing_id, msg, timeout);
-        callback(result);
+        callback(self.request_impl(&routing_id, msg, timeout));
     }
 
     pub fn reply(
@@ -272,9 +334,19 @@ impl RequestRouter {
         request_seq: u64,
         msg: Message,
     ) -> Result<(), ZlinkError> {
-        let mut parts = vec![msg];
+        self.reply_with_flags(routing_id, request_seq, msg, SendFlags::NONE)
+    }
+
+    pub fn reply_with_flags(
+        &self,
+        routing_id: &RoutingId,
+        request_seq: u64,
+        parts: impl IntoMultipart,
+        _flags: SendFlags,
+    ) -> Result<(), ZlinkError> {
+        let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
-        check_rc(unsafe {
+        let rc = unsafe {
             ffi::zlink_router_reply(
                 self.socket.inner.handle,
                 routing_id.as_raw(),
@@ -282,7 +354,8 @@ impl RequestRouter {
                 native.as_mut_ptr(),
                 native.len(),
             )
-        })
+        };
+        check_rc(rc)
     }
 
     pub fn try_reply(
@@ -296,18 +369,39 @@ impl RequestRouter {
     }
 
     pub fn recv(&self) -> Result<Received, ZlinkError> {
-        recv_data(&self.state.handler, &self.data_rx)
+        self.recv_with_flags(RecvFlags::NONE)
+    }
+
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError> {
+        router_recv(self.socket.inner.handle, flags.bits())?
+            .ok_or_else(|| ZlinkError::native(RecvResult::NoData as i32, "no data"))
     }
 
     pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError> {
-        try_recv_data(&self.state.handler, &self.data_rx)
+        router_recv(self.socket.inner.handle, ffi::ZLINK_DONTWAIT)
     }
 
-    pub fn on_receive<F>(&self, handler: F)
+    pub fn on_receive<F>(&self, handler: F) -> Result<(), ZlinkError>
     where
-        F: Fn(Received) + Send + Sync + 'static,
+        F: Fn(Received) + Send + 'static,
     {
-        *self.state.handler.lock().unwrap() = Some(Arc::new(handler));
+        let mut slot = self.callback_thread.lock().unwrap();
+        if slot.is_some() {
+            return Err(ZlinkError::state("request router callback already installed"));
+        }
+        let handle = self.socket.inner.handle as usize;
+        let stop_flag = Arc::clone(&self.stop_flag);
+        *slot = Some(std::thread::spawn(move || loop {
+            if stop_flag.load(Ordering::SeqCst) {
+                return;
+            }
+            match router_recv(handle as *mut c_void, 0) {
+                Ok(Some(received)) => handler(received),
+                Ok(None) => continue,
+                Err(_) => return,
+            }
+        }));
+        Ok(())
     }
 
     fn request_impl(
@@ -316,11 +410,20 @@ impl RequestRouter {
         msg: Message,
         timeout: Duration,
     ) -> Result<Received, ZlinkError> {
-        let mut parts = vec![msg];
+        self.request_impl_parts(routing_id, msg, timeout, SendFlags::NONE)
+    }
+
+    fn request_impl_parts(
+        &self,
+        routing_id: &RoutingId,
+        parts: impl IntoMultipart,
+        timeout: Duration,
+        flags: SendFlags,
+    ) -> Result<Received, ZlinkError> {
+        let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
         let (tx, rx) = mpsc::channel();
-        let state = Box::new(ReplyCallbackState { tx });
-        let state_ptr = Box::into_raw(state);
+        let state_ptr = Box::into_raw(Box::new(ReplyCallbackState { tx }));
         let rc = unsafe {
             ffi::zlink_router_request(
                 self.socket.inner.handle,
@@ -329,15 +432,18 @@ impl RequestRouter {
                 native.len(),
                 dealer_reply_callback,
                 state_ptr.cast(),
-                0,
+                flags.bits(),
                 duration_to_timeout_ms(timeout),
             )
         };
         if rc != 0 {
-            unsafe { drop(Box::from_raw(state_ptr)); }
+            unsafe {
+                drop(Box::from_raw(state_ptr));
+            }
             return Err(ZlinkError::last());
         }
-        rx.recv().unwrap_or_else(|_| Err(ZlinkError::state("request callback dropped")))
+        rx.recv()
+            .unwrap_or_else(|_| Err(ZlinkError::state("request callback dropped")))
     }
 }
 
@@ -350,70 +456,87 @@ fn duration_to_timeout_ms(timeout: Duration) -> u32 {
     }
 }
 
-fn recv_data(
-    data_handler: &Mutex<Option<DataHandler>>,
-    data_rx: &Mutex<mpsc::Receiver<Received>>,
-) -> Result<Received, ZlinkError> {
-    if data_handler.lock().unwrap().is_some() {
-        return Err(ZlinkError::state("socket is in callback mode"));
-    }
-    data_rx
-        .lock()
-        .unwrap()
-        .recv()
-        .map_err(|_| ZlinkError::state("request handler closed"))
+fn empty_routing_id() -> RoutingId {
+    RoutingId::from_raw(ffi::zlink_routing_id_t {
+        size: 0,
+        data: [0; 255],
+    })
 }
 
-fn try_recv_data(
-    data_handler: &Mutex<Option<DataHandler>>,
-    data_rx: &Mutex<mpsc::Receiver<Received>>,
+fn borrowed_parts_to_owned(
+    parts: *mut ffi::zlink_msg_t,
+    part_count: usize,
+) -> Result<Vec<Message>, ZlinkError> {
+    let mut out = Vec::with_capacity(part_count);
+    for i in 0..part_count {
+        let part = unsafe { parts.add(i) };
+        let size = unsafe { ffi::zlink_msg_size(part.cast_const()) };
+        let data = unsafe { ffi::zlink_msg_data(part) } as *const u8;
+        let bytes = if data.is_null() || size == 0 {
+            &[][..]
+        } else {
+            unsafe { std::slice::from_raw_parts(data, size) }
+        };
+        out.push(Message::from_bytes(bytes)?);
+    }
+    Ok(out)
+}
+
+fn router_recv(
+    handle: *mut c_void,
+    flags: u32,
 ) -> Result<Option<Received>, ZlinkError> {
-    if data_handler.lock().unwrap().is_some() {
-        return Err(ZlinkError::state("socket is in callback mode"));
+    let mut peer_rid = ptr::null();
+    let mut request_seq = 0u64;
+    let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
+    let mut part_count: usize = 0;
+    let rc = unsafe {
+        ffi::zlink_router_recv(
+            handle,
+            &mut peer_rid,
+            &mut request_seq,
+            &mut parts_ptr,
+            &mut part_count,
+            flags,
+        )
+    };
+    if rc == RecvResult::NoData as i32 {
+        return Ok(None);
     }
-    match data_rx.lock().unwrap().try_recv() {
-        Ok(received) => Ok(Some(received)),
-        Err(mpsc::TryRecvError::Empty) => Ok(None),
-        Err(mpsc::TryRecvError::Disconnected) => Err(ZlinkError::state("request handler closed")),
+    if rc != 0 {
+        return Err(ZlinkError::last());
     }
+
+    let routing_id = if peer_rid.is_null() {
+        empty_routing_id()
+    } else {
+        unsafe { RoutingId::from_raw(*peer_rid) }
+    };
+    let parts = take_parts(parts_ptr, part_count);
+    let received = if request_seq == 0 {
+        Received::new(routing_id, parts)
+    } else {
+        Received::with_request_seq(routing_id, parts, request_seq)
+    };
+    Ok(Some(received))
 }
 
 unsafe extern "C" fn dealer_reply_callback(
-    errno_: i32,
+    result_: i32,
     parts: *mut ffi::zlink_msg_t,
     part_count: usize,
-    userdata: *mut std::ffi::c_void,
+    userdata: *mut c_void,
 ) {
     let state = unsafe { Box::from_raw(userdata.cast::<ReplyCallbackState>()) };
-    let result = if errno_ == 0 {
-        let owned = take_parts(parts, part_count);
-        state
-            .tx
-            .send(Ok(Received::new(RoutingId::from_raw(ffi::zlink_routing_id_t {
-                size: 0,
-                data: [0; 255],
-            }), owned)))
+    let result = if result_ == RequestResult::Ok as i32 {
+        state.tx.send(
+            borrowed_parts_to_owned(parts, part_count)
+                .map(|owned| Received::new(empty_routing_id(), owned)),
+        )
     } else {
         state
             .tx
-            .send(Err(ZlinkError::native(errno_, "request failed")))
+            .send(Err(ZlinkError::native(result_, "request failed")))
     };
     let _ = result;
-}
-
-unsafe extern "C" fn router_request_callback(
-    peer_rid: *const ffi::zlink_routing_id_t,
-    request_seq: u64,
-    parts: *mut ffi::zlink_msg_t,
-    part_count: usize,
-    userdata: *mut std::ffi::c_void,
-) {
-    let state = unsafe { &*(userdata as *const RouterRequestState) };
-    let routing_id = unsafe { RoutingId::from_raw(*peer_rid) };
-    let received = Received::with_request_seq(routing_id, take_parts(parts, part_count), request_seq);
-    if let Some(handler) = state.handler.lock().unwrap().as_ref().cloned() {
-        handler(received);
-    } else {
-        let _ = state.tx.send(received);
-    }
 }

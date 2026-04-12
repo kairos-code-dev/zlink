@@ -19,25 +19,39 @@ class monitor_handle_t
     static monitor_handle_t open (const SocketLike &socket_,
                                   monitor_event events_ = monitor_event::all)
     {
-        return monitor_handle_t (socket_, events_);
+        zlink_socket_monitor_open_options_t options;
+        options.events =
+          static_cast<zlink_socket_monitor_event_mask_t> (events_);
+        void *monitor = zlink_socket_monitor_open (
+          const_cast<void *> (socket_.handle ()), &options);
+        if (!monitor)
+            throw config_error_t (
+              config_result_t::invalid_handle, zlink_errno ());
+        return monitor_handle_t (monitor);
     }
 
-    ~monitor_handle_t () { (void) close (); }
+    ~monitor_handle_t () { close (); }
 
     monitor_handle_t (monitor_handle_t &&other) noexcept
-        : _monitor (other._monitor)
+        : _monitor (other._monitor), _event_handler (other._event_handler),
+          _event_userdata (other._event_userdata)
     {
         other._monitor = NULL;
+        other._event_handler = NULL;
+        other._event_userdata = NULL;
     }
 
     monitor_handle_t &operator= (monitor_handle_t &&other) noexcept
     {
         if (this == &other)
             return *this;
-
-        (void) close ();
+        close ();
         _monitor = other._monitor;
+        _event_handler = other._event_handler;
+        _event_userdata = other._event_userdata;
         other._monitor = NULL;
+        other._event_handler = NULL;
+        other._event_userdata = NULL;
         return *this;
     }
 
@@ -45,85 +59,61 @@ class monitor_handle_t
     monitor_handle_t &operator= (const monitor_handle_t &) = delete;
 
     bool valid () const noexcept { return _monitor != NULL; }
-
     void *handle () noexcept { return _monitor; }
     const void *handle () const noexcept { return _monitor; }
 
-    int on_event (monitor_event_handler_fn handler_, void *userdata_ = NULL)
+    void on_event (monitor_event_handler_fn handler_, void *userdata_ = NULL)
     {
-        if (!handler_) {
-            errno = EINVAL;
-            return -1;
-        }
-        monitor_event_handler_fn previous_handler = _event_handler;
-        void *previous_userdata = _event_userdata;
+        detail::throw_if_failed<handler_error_t> (
+          static_cast<handler_result_t> (
+            zlink_socket_monitor_handler (
+              _monitor, &monitor_handle_t::event_trampoline, this)));
         _event_handler = handler_;
         _event_userdata = userdata_;
-        const int rc = zlink_socket_monitor_handler (
-          _monitor, &monitor_handle_t::event_trampoline, this);
-        if (rc != 0) {
-            _event_handler = previous_handler;
-            _event_userdata = previous_userdata;
-        }
-        return rc;
     }
 
-    ZLINK_CPP_NODISCARD monitor_event_t recv ()
+    monitor_event_t recv ()
     {
         zlink_monitor_event_t event;
-        const int rc = zlink_socket_monitor_recv (_monitor, &event, 0);
-        throw_on_error (rc);
+        detail::throw_if_failed<recv_error_t> (
+          static_cast<recv_result_t> (
+            zlink_socket_monitor_recv (_monitor, &event, 0)));
         return monitor_event_t (event);
     }
 
-    ZLINK_CPP_NODISCARD maybe_t<monitor_event_t> try_recv ()
+    maybe_t<monitor_event_t> recv (non_blocking_t)
     {
         zlink_monitor_event_t event;
-        const int rc = zlink_socket_monitor_recv (_monitor, &event, ZLINK_DONTWAIT);
-        if (rc == 0)
+        const recv_result_t result = static_cast<recv_result_t> (
+          zlink_socket_monitor_recv (_monitor, &event, ZLINK_DONTWAIT));
+        if (result == recv_result_t::ok)
             return maybe_t<monitor_event_t> (monitor_event_t (event));
-        if (errno == EAGAIN)
+        if (result == recv_result_t::no_data || result == recv_result_t::busy)
             return maybe_t<monitor_event_t> ();
-        throw_on_error (rc);
-        return maybe_t<monitor_event_t> ();
+        throw recv_error_t (result, zlink_errno ());
     }
 
-    ZLINK_CPP_NODISCARD monitor_snapshot_t snapshot () const
+    monitor_snapshot_t snapshot () const
     {
         zlink_monitor_snapshot_t snapshot;
-        const int rc = zlink_monitor_snapshot (_monitor, &snapshot);
-        throw_on_error (rc);
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_monitor_snapshot (_monitor, &snapshot)));
         return monitor_snapshot_t (snapshot);
     }
 
-    int close () noexcept
+    void close () noexcept
     {
         if (!_monitor)
-            return 0;
-
+            return;
         void *monitor = _monitor;
-        const int rc = zlink_monitor_close (&monitor);
-        if (rc == 0) {
-            _monitor = NULL;
-            _event_handler = NULL;
-            _event_userdata = NULL;
-        }
-        return rc;
+        (void) zlink_monitor_close (&monitor);
+        _monitor = NULL;
+        _event_handler = NULL;
+        _event_userdata = NULL;
     }
 
   private:
-    template<typename SocketLike>
-    explicit monitor_handle_t (const SocketLike &socket_,
-                               monitor_event events_ = monitor_event::all)
-        : _monitor (NULL)
-    {
-        zlink_socket_monitor_open_options_t options;
-        options.events =
-          static_cast<zlink_socket_monitor_event_mask_t> (events_);
-        _monitor = zlink_socket_monitor_open (
-          const_cast<void *> (socket_.handle ()), &options);
-    }
-
     explicit monitor_handle_t (void *monitor_) : _monitor (monitor_) {}
 
     friend class base_socket_t;

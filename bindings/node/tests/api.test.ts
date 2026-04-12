@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 
 async function reservePort() {
   const server = net.createServer();
@@ -58,7 +58,7 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(zlink.SpotNodePubMode, undefined);
   assert.equal(zlink.SpotNodePubQueueFullPolicy, undefined);
   assert.equal(typeof discoveryMonitor.recv, 'function');
-  assert.equal(typeof discoveryMonitor.tryRecv, 'function');
+  assert.equal(typeof discoveryMonitor.recv, 'function');
   assert.equal(typeof discoveryMonitor.onEvent, 'function');
   assert.equal(registry.setEndpoints, undefined);
   assert.equal(registry.start, undefined);
@@ -70,7 +70,7 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(node.subSocket, undefined);
   assert.equal(node.pubPeers, undefined);
   assert.equal(node.subPeers, undefined);
-  assert.throws(() => registry.bind('inproc://registry-pub-2', 'inproc://registry-router-2'), /only be called once/);
+  assert.throws(() => registry.bind('inproc://registry-pub-2', 'inproc://registry-router-2'), /busy|only be called once/i);
 
   discoveryMonitor.close();
   query.close();
@@ -125,7 +125,7 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
   assert.throws(() => discovery.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
   assert.throws(() => node.setTlsServer(Buffer.from('cert'), 'key'), /cert/);
   assert.throws(() => node.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
-  assert.equal(typeof zlink.Message.fromBuffer(Buffer.from('message')).close, 'function');
+  assert.equal(typeof zlink.Message.from(Buffer.from('message')).close, 'function');
 
   node.close();
   discovery.close();

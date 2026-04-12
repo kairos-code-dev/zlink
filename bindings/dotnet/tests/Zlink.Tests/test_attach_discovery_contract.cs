@@ -18,11 +18,11 @@ public sealed class test_attach_discovery_contract
 
         dealer.AttachDiscovery(discovery);
 
-        Assert.Throws<ZlinkException>(() =>
+        Assert.Throws<ZlinkConnectException>(() =>
             dealer.Connect("tcp://127.0.0.1:5555"));
-        Assert.Throws<ZlinkException>(() =>
+        Assert.Throws<ZlinkConnectException>(() =>
             dealer.Disconnect("tcp://127.0.0.1:5555"));
-        Assert.Throws<ZlinkException>(() =>
+        Assert.Throws<ZlinkConnectException>(() =>
             dealer.Unbind("tcp://127.0.0.1:5555"));
     }
 }

@@ -87,7 +87,7 @@ final class PerfMultiSpot {
                 + Duration.ofSeconds(config.durationSeconds() + 20L).toNanos();
             while (System.nanoTime() < finishDeadline) {
                 Optional<dev.kairoscode.zlink.TopicMessage> maybe =
-                    subscriber.trySubscribe();
+                    PerfUtil.trySubscribe(subscriber);
                 if (maybe.isEmpty()) {
                     sleepQuietly(Duration.ofMillis(1));
                     continue;

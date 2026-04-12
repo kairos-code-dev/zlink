@@ -1,6 +1,7 @@
 package perfcommon
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"zlink"
@@ -213,19 +215,29 @@ func OpenMonitor(socket zlink.SocketTarget) *zlink.SocketMonitor {
 func WaitMonitorEvent(mon *zlink.SocketMonitor) *zlink.MonitorEvent {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		event, ok, err := mon.TryRecv()
-		if err != nil {
-			if zerr, ok := err.(*zlink.ZlinkError); ok && zerr.Code == 4 {
-				time.Sleep(50 * time.Millisecond)
-				continue
+		type result struct {
+			event *zlink.MonitorEvent
+			err   error
+		}
+		ch := make(chan result, 1)
+		go func() {
+			event, err := mon.Recv()
+			ch <- result{event: event, err: err}
+		}()
+		select {
+		case out := <-ch:
+			if out.err != nil {
+				if IsTransient(out.err) {
+					time.Sleep(50 * time.Millisecond)
+					continue
+				}
+				Must(out.err)
 			}
-			Must(err)
+			if out.event != nil {
+				return out.event
+			}
+		case <-time.After(50 * time.Millisecond):
 		}
-		if !ok || event == nil {
-			time.Sleep(50 * time.Millisecond)
-			continue
-		}
-		return event
 	}
 	Must(fmt.Errorf("timed out waiting for monitor event"))
 	return nil
@@ -250,6 +262,14 @@ func CloneMessages(parts []*zlink.Message) []*zlink.Message {
 }
 
 func IsTransient(err error) bool {
-	zerr, ok := err.(*zlink.ZlinkError)
-	return ok && (zerr.Code == 4 || zerr.Code == 11 || zerr.Code == 14)
+	var zerr zlink.ZlinkError
+	if !errors.As(err, &zerr) {
+		return false
+	}
+	switch zerr.InternalErrno() {
+	case int(syscall.EAGAIN), int(syscall.EINTR):
+		return true
+	default:
+		return false
+	}
 }

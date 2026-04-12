@@ -39,10 +39,13 @@ func main() {
 	var message *zlink.TopicMessage
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		samplecommon.MustStep("publisher.Publish", publisher.Publish(topic, samplecommon.Message(payload)))
-		received, ok, err := subscriber.TrySubscribe()
-		samplecommon.MustStep("subscriber.TrySubscribe", err)
-		if ok {
+		samplecommon.MustStep("publisher.Publish", publisher.Publish(topic, zlink.SendFlagsNone, samplecommon.Message(payload)))
+		received, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
+		if err != nil {
+			runtime.Gosched()
+			continue
+		}
+		if received != nil {
 			message = received
 			break
 		}

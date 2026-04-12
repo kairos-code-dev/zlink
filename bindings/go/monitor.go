@@ -126,41 +126,29 @@ func resolveServiceMonitorEvents(events []ServiceMonitorEventMask) ServiceMonito
 
 func OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*SocketMonitor, error) {
 	if socket == nil {
-		return nil, validationError("monitor target must not be nil")
+		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	options := C.zlink_socket_monitor_open_options_t{
 		events: C.zlink_socket_monitor_event_mask_t(resolveMonitorEvents(events)),
 	}
 	handle := C.zlink_socket_monitor_open(socket.raw(), &options)
 	if handle == nil {
-		return nil, lastError()
+		return nil, configErrorFromErrno(currentErrno())
 	}
 	return &SocketMonitor{handle: handle}, nil
 }
 
 func (m *SocketMonitor) Recv() (*MonitorEvent, error) {
 	var raw C.zlink_socket_monitor_event_t
-	if err := checkRC(C.zlink_socket_monitor_recv(m.handle, &raw, 0)); err != nil {
+	if err := recvErrorFromResult(C.zlink_socket_monitor_recv(m.handle, &raw, 0)); err != nil {
 		return nil, err
 	}
 	return monitorEventFromC(raw), nil
 }
 
-func (m *SocketMonitor) TryRecv() (*MonitorEvent, bool, error) {
-	var raw C.zlink_socket_monitor_event_t
-	rc := C.zlink_socket_monitor_recv(m.handle, &raw, C.ZLINK_DONTWAIT)
-	if rc == -1 {
-		if emptyErrno() {
-			return nil, false, nil
-		}
-		return nil, false, lastError()
-	}
-	return monitorEventFromC(raw), true, nil
-}
-
 func (m *SocketMonitor) Snapshot() (*MonitorSnapshot, error) {
 	var raw C.zlink_monitor_snapshot_t
-	if err := checkRC(C.zlink_monitor_snapshot(m.handle, &raw)); err != nil {
+	if err := configErrorFromResult(C.zlink_monitor_snapshot(m.handle, &raw)); err != nil {
 		return nil, err
 	}
 	return &MonitorSnapshot{
@@ -173,11 +161,11 @@ func (m *SocketMonitor) Snapshot() (*MonitorSnapshot, error) {
 
 func (m *SocketMonitor) OnEvent(handler func(*MonitorEvent)) error {
 	if handler == nil {
-		return validationError("monitor handler must not be nil")
+		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	state := newMonitorCallbackState(handler)
 	handle := cgo.NewHandle(state)
-	if err := checkRC(C.zlink_socket_monitor_handler_go_local(m.handle, C.uintptr_t(handle))); err != nil {
+	if err := handlerErrorFromResult(C.zlink_socket_monitor_handler_go_local(m.handle, C.uintptr_t(handle))); err != nil {
 		state.close()
 		handle.Delete()
 		return err
@@ -194,7 +182,7 @@ func (m *SocketMonitor) Close() error {
 		return nil
 	}
 	handle := m.handle
-	if err := checkRC(C.zlink_monitor_close(&handle)); err != nil {
+	if err := closeErrorFromResult(C.zlink_monitor_close(&handle)); err != nil {
 		return err
 	}
 	if m.callback != 0 {
@@ -207,27 +195,15 @@ func (m *SocketMonitor) Close() error {
 
 func (m *ServiceMonitor) Recv() (*ServiceMonitorEvent, error) {
 	var raw C.zlink_service_monitor_event_t
-	if err := checkRC(C.zlink_service_monitor_recv(m.handle, &raw, 0)); err != nil {
+	if err := recvErrorFromResult(C.zlink_service_monitor_recv(m.handle, &raw, 0)); err != nil {
 		return nil, err
 	}
 	return serviceMonitorEventFromC(raw), nil
 }
 
-func (m *ServiceMonitor) TryRecv() (*ServiceMonitorEvent, bool, error) {
-	var raw C.zlink_service_monitor_event_t
-	rc := C.zlink_service_monitor_recv(m.handle, &raw, C.ZLINK_DONTWAIT)
-	if rc == -1 {
-		if emptyErrno() {
-			return nil, false, nil
-		}
-		return nil, false, lastError()
-	}
-	return serviceMonitorEventFromC(raw), true, nil
-}
-
 func (m *ServiceMonitor) Snapshot() (*MonitorSnapshot, error) {
 	var raw C.zlink_monitor_snapshot_t
-	if err := checkRC(C.zlink_monitor_snapshot(m.handle, &raw)); err != nil {
+	if err := configErrorFromResult(C.zlink_monitor_snapshot(m.handle, &raw)); err != nil {
 		return nil, err
 	}
 	return &MonitorSnapshot{
@@ -240,11 +216,11 @@ func (m *ServiceMonitor) Snapshot() (*MonitorSnapshot, error) {
 
 func (m *ServiceMonitor) OnEvent(handler func(*ServiceMonitorEvent)) error {
 	if handler == nil {
-		return validationError("service monitor handler must not be nil")
+		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	state := newServiceMonitorCallbackState(handler)
 	handle := cgo.NewHandle(state)
-	if err := checkRC(C.zlink_service_monitor_handler_go_local(m.handle, C.uintptr_t(handle))); err != nil {
+	if err := handlerErrorFromResult(C.zlink_service_monitor_handler_go_local(m.handle, C.uintptr_t(handle))); err != nil {
 		state.close()
 		handle.Delete()
 		return err
@@ -261,7 +237,7 @@ func (m *ServiceMonitor) Close() error {
 		return nil
 	}
 	handle := m.handle
-	if err := checkRC(C.zlink_monitor_close(&handle)); err != nil {
+	if err := closeErrorFromResult(C.zlink_monitor_close(&handle)); err != nil {
 		return err
 	}
 	if m.callback != 0 {

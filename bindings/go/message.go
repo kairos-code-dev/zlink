@@ -25,10 +25,10 @@ type RoutingID struct {
 
 func NewRoutingID(data []byte) (RoutingID, error) {
 	if data == nil {
-		return RoutingID{}, validationError("routing id must not be nil")
+		return RoutingID{}, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	if len(data) > maxRoutingIDSize {
-		return RoutingID{}, validationError("routing id length %d exceeds %d", len(data), maxRoutingIDSize)
+		return RoutingID{}, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	cloned := append([]byte(nil), data...)
 	return RoutingID{data: cloned}, nil
@@ -71,7 +71,7 @@ type Message struct {
 
 func NewMessage(data []byte) (*Message, error) {
 	m := &Message{}
-	if err := checkRC(C.zlink_msg_init_size(&m.msg, C.size_t(len(data)))); err != nil {
+	if err := configErrorFromResult(ConfigResult(C.zlink_msg_init_size(&m.msg, C.size_t(len(data))))); err != nil {
 		return nil, err
 	}
 	if len(data) > 0 {
@@ -83,10 +83,10 @@ func NewMessage(data []byte) (*Message, error) {
 
 func (m *Message) clone() (*Message, error) {
 	dup := &Message{}
-	if err := checkRC(C.zlink_msg_init(&dup.msg)); err != nil {
+	if err := configErrorFromResult(ConfigResult(C.zlink_msg_init(&dup.msg))); err != nil {
 		return nil, err
 	}
-	if err := checkRC(C.zlink_msg_copy(&dup.msg, &m.msg)); err != nil {
+	if err := configErrorFromResult(ConfigResult(C.zlink_msg_copy(&dup.msg, &m.msg))); err != nil {
 		_ = dup.Close()
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (m *Message) Close() error {
 	if m == nil || m.closed {
 		return nil
 	}
-	if err := checkRC(C.zlink_msg_close(&m.msg)); err != nil {
+	if err := configErrorFromResult(ConfigResult(C.zlink_msg_close(&m.msg))); err != nil {
 		return err
 	}
 	m.closed = true
@@ -127,18 +127,23 @@ func (m *Message) RefCount() int {
 	if m == nil || m.closed {
 		return 0
 	}
-	return int(C.zlink_msg_refcnt(&m.msg))
+	var result C.zlink_config_result_t
+	count := C.zlink_msg_refcnt(&m.msg, &result)
+	if result != 0 {
+		return 0
+	}
+	return int(count)
 }
 
 func (m *Message) GetProperty(name string) (string, bool, error) {
 	if m == nil || m.closed {
-		return "", false, stateError("message is closed")
+		return "", false, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	if name == "" {
-		return "", false, validationError("property name must not be empty")
+		return "", false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	if strings.IndexByte(name, 0) >= 0 {
-		return "", false, validationError("property name contains null byte")
+		return "", false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	cname := C.CString(name)
 	defer C.free(unsafe.Pointer(cname))

@@ -86,6 +86,25 @@ final class RequestReplySupport {
         return error;
     }
 
+    static RequestResult requestResult(Throwable error) {
+        Throwable cause = unwrap(error);
+        if (cause instanceof RequestException requestException) {
+            return requestException.getResult();
+        }
+        if (cause instanceof java.util.concurrent.TimeoutException) {
+            return RequestResult.TIMED_OUT;
+        }
+        return RequestResult.PROTOCOL_ERROR;
+    }
+
+    static SubmitResult submitResult(Throwable error) {
+        Throwable cause = unwrap(error);
+        if (cause instanceof SubmitException submitException) {
+            return submitException.getResult();
+        }
+        return SubmitResult.INTERNAL_ERROR;
+    }
+
     static boolean isClosedSignal(IllegalStateException ex) {
         String message = ex.getMessage();
         return message != null && message.contains("closed");

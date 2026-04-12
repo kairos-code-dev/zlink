@@ -8,7 +8,7 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.RouterSocket;
-import dev.kairoscode.zlink.SendResult;
+import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
@@ -40,7 +40,7 @@ final class PerfMultiDealerRouter {
                 while (stops < config.clients()) {
                     pollSet.poll(-1);
                     while (true) {
-                        Optional<dev.kairoscode.zlink.Received> maybe = server.tryRecv();
+                        Optional<dev.kairoscode.zlink.Received> maybe = PerfUtil.tryRecv(server);
                         if (maybe.isEmpty()) {
                             break;
                         }
@@ -101,7 +101,7 @@ final class PerfMultiDealerRouter {
                             break;
                         }
                         while (true) {
-                            Optional<dev.kairoscode.zlink.Received> maybe = client.tryRecv();
+                            Optional<dev.kairoscode.zlink.Received> maybe = PerfUtil.tryRecv(client);
                             if (maybe.isEmpty()) {
                                 break;
                             }
@@ -127,9 +127,13 @@ final class PerfMultiDealerRouter {
     private static void sendUntilSent(DealerSocket client, SocketPollSet pollSet,
                                       List<Message> parts) {
         while (true) {
-            SendResult result = client.trySend(parts);
-            if (result == SendResult.SENT) {
+            try {
+                client.send(parts, SendFlags.DONT_WAIT);
                 return;
+            } catch (dev.kairoscode.zlink.ZlinkException ex) {
+                if (ex.errno() != 11 && ex.errno() != 4) {
+                    throw ex;
+                }
             }
             pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
             pollSet.poll(-1);

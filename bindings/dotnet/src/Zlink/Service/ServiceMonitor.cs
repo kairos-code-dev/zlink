@@ -45,24 +45,27 @@ public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
         return ServiceMonitorEvent.FromNative(ref native);
     }
 
-    public bool TryRecv(out ServiceMonitorEvent? monitorEvent)
+    public ServiceMonitorEvent? Recv(bool nonBlocking)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_service_monitor_recv(_handle, out var native,
-            1);
+            nonBlocking ? 1 : 0);
         if (rc == 0)
         {
-            monitorEvent = ServiceMonitorEvent.FromNative(ref native);
-            return true;
+            return ServiceMonitorEvent.FromNative(ref native);
         }
-        if (ZlinkException.MapErrorCode(NativeMethods.zlink_errno())
+        if (nonBlocking && ZlinkException.MapErrorCode(NativeMethods.zlink_errno())
             == ErrorCode.EAgain)
         {
-            monitorEvent = null;
-            return false;
+            return null;
         }
-        monitorEvent = null;
         throw ZlinkException.FromLastError();
+    }
+
+    internal bool TryRecv(out ServiceMonitorEvent? monitorEvent)
+    {
+        monitorEvent = Recv(true);
+        return monitorEvent != null;
     }
 
     public MonitorSnapshot Snapshot()

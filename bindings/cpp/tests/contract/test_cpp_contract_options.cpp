@@ -209,15 +209,15 @@ void test_context_options ()
 {
     zlink::context_t ctx;
     zlink::context_options_t options = ctx.options ();
-    assert (options.blocky (false) == 0);
+    options.blocky (false);
     assert (!options.blocky ());
 
-    assert (options.ioThreads (2) == 0);
+    options.ioThreads (2);
     assert (options.ioThreads () == 2);
-    assert (options.maxSockets (128) == 0);
+    options.maxSockets (128);
     assert (options.maxSockets () == 128);
-    assert (options.addThreadAffinity (0) == 0);
-    assert (options.removeThreadAffinity (0) == 0);
+    options.addThreadAffinity (0);
+    options.removeThreadAffinity (0);
     assert (options.socketLimit () >= options.maxSockets ());
     assert (options.msgTSize () > 0);
 }
@@ -236,16 +236,16 @@ void test_socket_common_and_router_options ()
 
     zlink::stream_socket_t stream (ctx);
     const int notify = 1;
-    assert (stream.set_option (zlink::stream_options::notify, notify) == 0);
+    stream.set_option (zlink::stream_options::notify, notify);
 
     int got_notify = 0;
-    assert (stream.get_option (zlink::stream_options::notify, &got_notify) == 0);
+    stream.get_option (zlink::stream_options::notify, &got_notify);
     assert (got_notify == notify);
 
     const zlink::routing_id_t expected_routing_id ("router-alpha");
-    assert (router.set_routing_id (expected_routing_id) == 0);
+    router.set_routing_id (expected_routing_id);
     zlink::routing_id_t routing_id;
-    assert (router.get_routing_id (routing_id) == 0);
+    router.get_routing_id (routing_id);
     assert (routing_id.to_string () == "router-alpha");
 }
 

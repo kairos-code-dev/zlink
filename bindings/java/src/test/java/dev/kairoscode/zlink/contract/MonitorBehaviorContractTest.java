@@ -5,12 +5,16 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEvent;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PairSocket;
+import dev.kairoscode.zlink.RecvException;
+import dev.kairoscode.zlink.RecvFlags;
+import dev.kairoscode.zlink.RecvResult;
 import dev.kairoscode.zlink.TestSupport;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class MonitorBehaviorContractTest {
@@ -56,7 +60,9 @@ public class MonitorBehaviorContractTest {
 
             MonitorEvent event = monitor.recv();
             assertEquals(MonitorEventType.LISTENING.getValue(), event.event());
-            assertTrue(monitor.tryRecv().isEmpty());
+            RecvException ex = assertThrows(RecvException.class,
+                () -> monitor.recv(RecvFlags.DONT_WAIT));
+            assertEquals(RecvResult.NO_DATA, ex.getResult());
         }
     }
 }

@@ -47,7 +47,7 @@ export class Message {
     Object.freeze(this);
   }
 
-  static fromBuffer(buffer: BufferLike): Message {
+  static from(buffer: BufferLike): Message {
     return new Message(normalizeBufferLike(buffer, 'buffer'));
   }
 
@@ -76,11 +76,11 @@ export class Message {
     };
   }
 
-  get data(): Buffer {
+  data(): Buffer {
     return this._buffer;
   }
 
-  get size(): number {
+  size(): number {
     return this._buffer.length;
   }
 
@@ -135,6 +135,10 @@ export class Received {
     return this.parts[0];
   }
 
+  toBytesList(): Buffer[] {
+    return this.parts.map((part) => part.data());
+  }
+
   close(): void {}
 }
 
@@ -156,6 +160,10 @@ export class Subscribed {
     return this.parts[0];
   }
 
+  toBytesList(): Buffer[] {
+    return this.parts.map((part) => part.data());
+  }
+
   close(): void {}
 }
 
@@ -171,4 +179,4 @@ export class SubscriptionEvent {
   }
 }
 
-export type MessageLike = Message | BufferLike | string;
+export type MessageLike = Message | BufferLike;

@@ -409,6 +409,12 @@ class asio_engine_t : public i_engine
     zlink::session_base_t *&_session;
     zlink::socket_base_t *&_socket;
 
+  public:
+    size_t stream_encoder_write_target_size () const
+    {
+        return _stream_encoder_write_target_size;
+    }
+
     ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_engine_t)
 };
 }  // namespace zlink

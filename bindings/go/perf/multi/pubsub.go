@@ -77,7 +77,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 				err,
 			))
 		}
-		result, err := publisher.TryPublish("bench.topic", msg)
+		err = publisher.Publish("bench.topic", zlink.SendFlagsDontWait, msg)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -89,9 +89,6 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 				cfg.transport,
 				err,
 			))
-		}
-		if result != zlink.SendResultSent {
-			time.Sleep(250 * time.Microsecond)
 		}
 	}
 	<-recvDone
@@ -107,14 +104,14 @@ func drainMultiPubSubAvailable(
 	processed := false
 	for index, socket := range subs {
 		for {
-			message, ok, err := socket.TrySubscribe()
+			message, err := socket.Subscribe(zlink.RecvFlagsDontWait)
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					break
 				}
-				perfcommon.Must(fmt.Errorf("multi pubsub try-subscribe[%d]: %w", index, err))
+				perfcommon.Must(fmt.Errorf("multi pubsub subscribe[%d]: %w", index, err))
 			}
-			if !ok || message == nil {
+			if message == nil {
 				break
 			}
 			processed = true

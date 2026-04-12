@@ -289,7 +289,10 @@ impl SocketMonitor {
         let rc = unsafe {
             ffi::zlink_socket_monitor_recv(self.handle, raw.as_mut_ptr(), ffi::ZLINK_DONTWAIT)
         };
-        if rc == -1 {
+        if rc == crate::error::RecvResult::NoData as i32 {
+            return Ok(None);
+        }
+        if rc != 0 {
             let errno = unsafe { ffi::zlink_errno() };
             if errno == libc::EAGAIN {
                 return Ok(None);
@@ -326,7 +329,7 @@ impl SocketMonitor {
 
         let rc =
             unsafe { ffi::zlink_socket_monitor_handler(self.handle, trampoline::<F>, userdata) };
-        if rc == -1 {
+        if rc != 0 {
             drop(cb);
             return Err(ZlinkError::last());
         }
@@ -482,7 +485,10 @@ impl ServiceMonitor {
         let rc = unsafe {
             ffi::zlink_service_monitor_recv(self.handle, raw.as_mut_ptr(), ffi::ZLINK_DONTWAIT)
         };
-        if rc == -1 {
+        if rc == crate::error::RecvResult::NoData as i32 {
+            return Ok(None);
+        }
+        if rc != 0 {
             let errno = unsafe { ffi::zlink_errno() };
             if errno == libc::EAGAIN {
                 return Ok(None);
@@ -519,7 +525,7 @@ impl ServiceMonitor {
 
         let rc =
             unsafe { ffi::zlink_service_monitor_handler(self.handle, trampoline::<F>, userdata) };
-        if rc == -1 {
+        if rc != 0 {
             drop(cb);
             return Err(ZlinkError::last());
         }

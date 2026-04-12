@@ -127,6 +127,13 @@ impl Message {
     pub(crate) unsafe fn from_raw(raw: ffi::zlink_msg_t) -> Self {
         Self { inner: raw }
     }
+
+    pub(crate) fn close_now(&mut self) {
+        unsafe {
+            ffi::zlink_msg_close(&mut self.inner);
+            let _ = ffi::zlink_msg_init(&mut self.inner);
+        }
+    }
 }
 
 impl Drop for Message {

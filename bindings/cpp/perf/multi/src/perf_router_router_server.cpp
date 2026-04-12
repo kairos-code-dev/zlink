@@ -66,10 +66,14 @@ bool try_send_reply (zlink::socket_t &sock,
       sock.send (reply.client_id, reply.payload, zlink::send_flag::dontwait);
     if (payload_sent != 0) {
         if (payload_sent < 0 && errno == EAGAIN) {
-            return poller.modify (
-                     sock,
-                     zlink::poll_event::pollin | zlink::poll_event::pollout)
-                   == 0;
+            try {
+                poller.modify (
+                  sock, zlink::poll_event::pollin | zlink::poll_event::pollout);
+                return true;
+            }
+            catch (const zlink::zlink_error_t &) {
+                return false;
+            }
         }
         return false;
     }
@@ -77,7 +81,13 @@ bool try_send_reply (zlink::socket_t &sock,
     reply.pending = false;
     reply.client_id = zlink::empty_routing_id ();
     reply.payload = zlink::message_t ();
-    return poller.modify (sock, zlink::poll_event::pollin) == 0;
+    try {
+        poller.modify (sock, zlink::poll_event::pollin);
+        return true;
+    }
+    catch (const zlink::zlink_error_t &) {
+        return false;
+    }
 }
 
 } // namespace

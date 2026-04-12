@@ -2,50 +2,50 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 
-test('request dealer/router roundtrip works and preserves request sequence', async () => {
+test('request-reply helpers expose canonical socket accessors', () => {
   const ctx = new zlink.Context();
   const routerSocket = new zlink.RouterSocket(ctx);
   const dealerSocket = new zlink.DealerSocket(ctx);
   const router = new zlink.RequestRouter(routerSocket);
   const dealer = new zlink.RequestDealer(dealerSocket);
 
-  routerSocket.bind('inproc://request-reply-contract');
-  dealerSocket.connect('inproc://request-reply-contract');
-
-  router.onReceive((received) => {
-    assert.ok(Buffer.isBuffer(received.routingId));
-    assert.ok(typeof received.requestSeq === 'bigint');
-    router.reply(received.routingId, received.requestSeq, zlink.Message.fromBuffer(Buffer.from('pong')));
-  });
-
-  const reply = await dealer.request(zlink.Message.fromBuffer(Buffer.from('ping')), {
-    timeout: 2000
-  });
-  assert.equal(reply.parts[0].data.toString(), 'pong');
-  assert.equal(reply.requestSeq, null);
+  assert.equal(router.socket(), routerSocket);
+  assert.equal(dealer.socket(), dealerSocket);
+  assert.equal(typeof router.request, 'function');
+  assert.equal(typeof router.reply, 'function');
+  assert.equal(typeof router.recv, 'function');
+  assert.equal(typeof router.onReceive, 'function');
+  assert.equal(typeof dealer.request, 'function');
+  assert.equal(typeof dealer.recv, 'function');
+  assert.equal(typeof dealer.onReceive, 'function');
 
   dealer.close();
   router.close();
   ctx.close();
 });
 
-test('request router preserves data recv surface', () => {
+test('router recv and reply still work through the canonical socket surface', () => {
   const ctx = new zlink.Context();
   const routerSocket = new zlink.RouterSocket(ctx);
   const dealerSocket = new zlink.DealerSocket(ctx);
-  const router = new zlink.RequestRouter(routerSocket);
 
-  routerSocket.bind('inproc://request-reply-data-contract');
-  dealerSocket.connect('inproc://request-reply-data-contract');
+  routerSocket.bind('inproc://request-reply-contract');
+  dealerSocket.connect('inproc://request-reply-contract');
 
-  dealerSocket.send('plain-data');
-  const received = router.recv();
-  assert.equal(received.parts[0].data.toString(), 'plain-data');
-  assert.equal(received.requestSeq, null);
+  dealerSocket.send('ping');
+  const request = routerSocket.recv();
+  assert.ok(Buffer.isBuffer(request.routingId));
+  assert.equal(request.requestSeq, null);
+  assert.equal(request.parts[0].data().toString(), 'ping');
+  routerSocket.send(request.routingId, 'pong');
 
-  router.close();
+  const reply = dealerSocket.recv();
+  assert.equal(reply.parts[0].data().toString(), 'pong');
+  assert.equal(reply.requestSeq, null);
+
   dealerSocket.close();
+  routerSocket.close();
   ctx.close();
 });

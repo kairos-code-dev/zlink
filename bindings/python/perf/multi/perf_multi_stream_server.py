@@ -3,7 +3,13 @@ import threading
 
 import zlink
 
-from perf_multi_common import parse_len32be_frames, parse_server_args, safe_poll, tcp_endpoint
+from perf_multi_common import (
+    parse_len32be_frames,
+    parse_server_args,
+    recv_nonblocking,
+    safe_poll,
+    tcp_endpoint,
+)
 
 
 def main(argv=None):
@@ -27,7 +33,7 @@ def main(argv=None):
             buffer.extend(chunk)
             frames = parse_len32be_frames(buffer)
         for frame in frames:
-            server.send(frame, routing_id=routing_id)
+            server.send(routing_id, frame)
 
     threading.Thread(target=wait_stop, daemon=True).start()
 
@@ -42,7 +48,7 @@ def main(argv=None):
                     if not events:
                         continue
                     while True:
-                        received = server.try_recv()
+                        received = recv_nonblocking(server)
                         if received is None:
                             break
                         with received:

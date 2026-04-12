@@ -32,7 +32,7 @@ pub struct PollTarget<'a> {
 }
 
 impl<'a> PollTarget<'a> {
-    fn raw(&self) -> *mut c_void {
+    pub(crate) fn raw(&self) -> *mut c_void {
         self.handle
     }
 }
@@ -98,7 +98,7 @@ impl Poller {
         let rc = unsafe {
             ffi::zlink_poller_wait(self.handle, &mut raw, timeout_ms as std::ffi::c_long)
         };
-        if rc == -1 {
+        if rc != 0 {
             let errno = unsafe { ffi::zlink_errno() };
             if errno == libc::EAGAIN || errno == libc::ETIMEDOUT {
                 return Ok(None);
@@ -139,7 +139,7 @@ impl Poller {
                 timeout_ms as std::ffi::c_long,
             )
         };
-        if rc == -1 {
+        if rc != 0 {
             let errno = unsafe { ffi::zlink_errno() };
             if errno == libc::EAGAIN || errno == libc::ETIMEDOUT {
                 return Ok(Vec::new());

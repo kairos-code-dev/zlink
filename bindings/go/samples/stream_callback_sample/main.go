@@ -22,7 +22,7 @@ func main() {
 	done := make(chan error, 1)
 	samplecommon.Must(server.OnReceive(func(received *zlink.Received) {
 		defer received.Close()
-		done <- server.SendTo(received.RoutingID(), samplecommon.Message("hello-stream"))
+		done <- server.SendTo(received.RoutingID(), zlink.SendFlagsNone, samplecommon.Message("hello-stream"))
 	}))
 
 	conn := samplecommon.DialEndpoint(endpoint)

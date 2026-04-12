@@ -8,6 +8,9 @@
 
 namespace {
 
+static napi_value create_routing_id_value(napi_env env, const zlink_routing_id_t &rid);
+static napi_value unsupported_spot_node(napi_env env, const char *method);
+
 static const size_t k_spot_send_ready_slot_count = 8;
 
 struct spot_send_ready_js_state_t
@@ -23,6 +26,559 @@ struct spot_send_ready_js_state_t
 static std::mutex g_spot_send_ready_slots_mu;
 static spot_send_ready_js_state_t
   g_spot_send_ready_slots[k_spot_send_ready_slot_count];
+
+static bool parse_routing_id_value(napi_env env,
+                                   napi_value value,
+                                   zlink_routing_id_t *routing_id)
+{
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, value, &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "routingId must be Buffer");
+        return false;
+    }
+    if (len == 0 || len > sizeof(routing_id->data)) {
+        napi_throw_range_error(env, NULL, "routingId length must be 1..255 bytes");
+        return false;
+    }
+    memset(routing_id, 0, sizeof(*routing_id));
+    routing_id->size = static_cast<uint8_t>(len);
+    memcpy(routing_id->data, data, len);
+    return true;
+}
+
+static const size_t k_spot_routed_slot_count = 8;
+static const size_t k_router_spot_slot_count = 8;
+static const size_t k_spot_dispatch_event_slot_count = 8;
+
+struct spot_routed_js_payload_t
+{
+    std::vector<unsigned char> source_rid;
+    std::vector<unsigned char> spot_rid;
+    uint64_t request_seq;
+    std::vector<std::vector<unsigned char> > parts;
+};
+
+struct spot_routed_js_state_t
+{
+    spot_routed_js_state_t () : used (false), spot (NULL), env (NULL), tsfn (NULL) {}
+
+    bool used;
+    void *spot;
+    napi_env env;
+    napi_threadsafe_function tsfn;
+};
+
+struct router_spot_js_state_t
+{
+    router_spot_js_state_t () : used (false), router (NULL), env (NULL), tsfn (NULL) {}
+
+    bool used;
+    void *router;
+    napi_env env;
+    napi_threadsafe_function tsfn;
+};
+
+struct spot_dispatch_event_js_payload_t
+{
+    int event;
+};
+
+struct spot_dispatch_event_js_state_t
+{
+    spot_dispatch_event_js_state_t ()
+      : used (false), spot (NULL), env (NULL), tsfn (NULL) {}
+
+    bool used;
+    void *spot;
+    napi_env env;
+    napi_threadsafe_function tsfn;
+};
+
+static std::mutex g_spot_routed_slots_mu;
+static spot_routed_js_state_t g_spot_routed_slots[k_spot_routed_slot_count];
+static std::mutex g_router_spot_slots_mu;
+static router_spot_js_state_t g_router_spot_slots[k_router_spot_slot_count];
+static std::mutex g_spot_dispatch_event_slots_mu;
+static spot_dispatch_event_js_state_t
+  g_spot_dispatch_event_slots[k_spot_dispatch_event_slot_count];
+
+static spot_routed_js_state_t *find_spot_routed_slot_by_spot_unsafe(void *spot)
+{
+    for (size_t i = 0; i < k_spot_routed_slot_count; ++i) {
+        if (g_spot_routed_slots[i].used && g_spot_routed_slots[i].spot == spot)
+            return &g_spot_routed_slots[i];
+    }
+    return NULL;
+}
+
+static spot_routed_js_state_t *find_free_spot_routed_slot_unsafe()
+{
+    for (size_t i = 0; i < k_spot_routed_slot_count; ++i) {
+        if (!g_spot_routed_slots[i].used)
+            return &g_spot_routed_slots[i];
+    }
+    return NULL;
+}
+
+static void reset_spot_routed_slot_unsafe(spot_routed_js_state_t *state)
+{
+    if (!state)
+        return;
+    state->used = false;
+    state->spot = NULL;
+    state->env = NULL;
+    state->tsfn = NULL;
+}
+
+static void spot_routed_tsfn_finalize(napi_env env,
+                                      void *finalize_data,
+                                      void *finalize_hint)
+{
+    (void) env;
+    (void) finalize_hint;
+    spot_routed_js_state_t *state =
+      static_cast<spot_routed_js_state_t *>(finalize_data);
+    if (!state)
+        return;
+    std::lock_guard<std::mutex> lock(g_spot_routed_slots_mu);
+    reset_spot_routed_slot_unsafe(state);
+}
+
+static void spot_routed_tsfn_call_js(napi_env env,
+                                     napi_value js_cb,
+                                     void *context,
+                                     void *data)
+{
+    (void) context;
+    std::unique_ptr<spot_routed_js_payload_t> payload(
+      static_cast<spot_routed_js_payload_t *>(data));
+    if (!env || !js_cb || !payload)
+        return;
+
+    napi_value argv[4];
+    if (!payload->source_rid.empty()) {
+        if (napi_create_buffer_copy(
+              env, payload->source_rid.size(), payload->source_rid.data(), NULL,
+              &argv[0])
+            != napi_ok) {
+            return;
+        }
+    } else {
+        napi_get_null(env, &argv[0]);
+    }
+    if (!payload->spot_rid.empty()) {
+        if (napi_create_buffer_copy(
+              env, payload->spot_rid.size(), payload->spot_rid.data(), NULL,
+              &argv[1])
+            != napi_ok) {
+            return;
+        }
+    } else {
+        napi_get_null(env, &argv[1]);
+    }
+    napi_create_bigint_uint64(env, payload->request_seq, &argv[2]);
+    if (napi_create_array_with_length(env, payload->parts.size(), &argv[3])
+        != napi_ok) {
+        return;
+    }
+    for (size_t i = 0; i < payload->parts.size(); ++i) {
+        const std::vector<unsigned char> &part = payload->parts[i];
+        napi_value part_buf;
+        if (napi_create_buffer_copy(
+              env, part.size(), part.empty() ? NULL : part.data(), NULL,
+              &part_buf)
+            != napi_ok) {
+            return;
+        }
+        napi_set_element(env, argv[3], static_cast<uint32_t>(i), part_buf);
+    }
+
+    napi_value recv;
+    napi_value this_arg;
+    napi_get_undefined(env, &this_arg);
+    (void) napi_call_function(env, this_arg, js_cb, 4, argv, &recv);
+}
+
+static void release_spot_routed_handler_slot(void *spot)
+{
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_spot_routed_slots_mu);
+        spot_routed_js_state_t *state = find_spot_routed_slot_by_spot_unsafe(spot);
+        if (!state)
+            return;
+        tsfn = state->tsfn;
+        reset_spot_routed_slot_unsafe(state);
+    }
+    if (tsfn)
+        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
+}
+
+static void spot_routed_dispatch(void *closure,
+                                 const zlink_routing_id_t *source_rid,
+                                 const zlink_routing_id_t *spot_rid,
+                                 uint64_t request_seq,
+                                 zlink_msg_t *parts,
+                                 size_t part_count,
+                                 void *userdata)
+{
+    (void) userdata;
+    spot_routed_js_state_t *state =
+      static_cast<spot_routed_js_state_t *>(closure);
+    if (!state)
+        return;
+
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_spot_routed_slots_mu);
+        if (!state->used || !state->tsfn)
+            return;
+        tsfn = state->tsfn;
+    }
+
+    std::unique_ptr<spot_routed_js_payload_t> payload(
+      new spot_routed_js_payload_t());
+    if (source_rid && source_rid->size > 0) {
+        payload->source_rid.assign(source_rid->data, source_rid->data + source_rid->size);
+    }
+    if (spot_rid && spot_rid->size > 0) {
+        payload->spot_rid.assign(spot_rid->data, spot_rid->data + spot_rid->size);
+    }
+    payload->request_seq = request_seq;
+    payload->parts.reserve(part_count);
+    for (size_t i = 0; i < part_count; ++i) {
+        const size_t size = zlink_msg_size(&parts[i]);
+        const unsigned char *data = static_cast<const unsigned char *>(zlink_msg_data(&parts[i]));
+        payload->parts.push_back(std::vector<unsigned char>(data, data + size));
+    }
+
+    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
+        != napi_ok) {
+        return;
+    }
+    (void) payload.release();
+}
+
+static napi_value create_spot_routed_value(napi_env env,
+                                           const zlink_routing_id_t *source_rid,
+                                           const zlink_routing_id_t *spot_rid,
+                                           uint64_t request_seq,
+                                           zlink_msg_t *parts,
+                                           size_t part_count)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+
+    napi_value source_value = source_rid ? create_routing_id_value(env, *source_rid)
+                                         : (napi_value) NULL;
+    if (!source_rid || source_rid->size == 0) {
+        napi_get_null(env, &source_value);
+    }
+    napi_set_named_property(env, obj, "sourceRid", source_value);
+    napi_set_named_property(env, obj, "sourceNodeRid", source_value);
+
+    napi_value spot_value = spot_rid ? create_routing_id_value(env, *spot_rid)
+                                     : (napi_value) NULL;
+    if (!spot_rid || spot_rid->size == 0) {
+        napi_get_null(env, &spot_value);
+    }
+    napi_set_named_property(env, obj, "spotRid", spot_value);
+    napi_set_named_property(env, obj, "sourceSpotRid", spot_value);
+
+    napi_value request_seq_value;
+    napi_create_bigint_uint64(env, request_seq, &request_seq_value);
+    napi_set_named_property(env, obj, "requestSeq", request_seq_value);
+
+    napi_value parts_array;
+    napi_create_array_with_length(env, part_count, &parts_array);
+    for (size_t i = 0; i < part_count; ++i) {
+        napi_value part_buf;
+        napi_create_buffer_copy(
+          env,
+          zlink_msg_size(&parts[i]),
+          zlink_msg_size(&parts[i]) > 0 ? zlink_msg_data(&parts[i]) : NULL,
+          NULL,
+          &part_buf);
+        napi_set_element(env, parts_array, static_cast<uint32_t>(i), part_buf);
+    }
+    napi_set_named_property(env, obj, "parts", parts_array);
+    return obj;
+}
+
+static napi_value create_spot_routed_event_value(napi_env env,
+                                                 const zlink_routing_id_t *source_rid,
+                                                 const zlink_routing_id_t *spot_rid,
+                                                 uint64_t request_seq,
+                                                 zlink_msg_t *parts,
+                                                 size_t part_count)
+{
+    return create_spot_routed_value(env, source_rid, spot_rid, request_seq, parts, part_count);
+}
+
+static spot_dispatch_event_js_state_t *find_spot_dispatch_event_slot_by_spot_unsafe(void *spot)
+{
+    for (size_t i = 0; i < k_spot_dispatch_event_slot_count; ++i) {
+        if (g_spot_dispatch_event_slots[i].used
+            && g_spot_dispatch_event_slots[i].spot == spot) {
+            return &g_spot_dispatch_event_slots[i];
+        }
+    }
+    return NULL;
+}
+
+static spot_dispatch_event_js_state_t *find_free_spot_dispatch_event_slot_unsafe()
+{
+    for (size_t i = 0; i < k_spot_dispatch_event_slot_count; ++i) {
+        if (!g_spot_dispatch_event_slots[i].used)
+            return &g_spot_dispatch_event_slots[i];
+    }
+    return NULL;
+}
+
+static void reset_spot_dispatch_event_slot_unsafe(spot_dispatch_event_js_state_t *state)
+{
+    if (!state)
+        return;
+    state->used = false;
+    state->spot = NULL;
+    state->env = NULL;
+    state->tsfn = NULL;
+}
+
+static void spot_dispatch_event_tsfn_finalize(napi_env env,
+                                              void *finalize_data,
+                                              void *finalize_hint)
+{
+    (void) env;
+    (void) finalize_hint;
+    spot_dispatch_event_js_state_t *state =
+      static_cast<spot_dispatch_event_js_state_t *>(finalize_data);
+    if (!state)
+        return;
+    std::lock_guard<std::mutex> lock(g_spot_dispatch_event_slots_mu);
+    reset_spot_dispatch_event_slot_unsafe(state);
+}
+
+static void spot_dispatch_event_tsfn_call_js(napi_env env,
+                                             napi_value js_cb,
+                                             void *context,
+                                             void *data)
+{
+    (void) context;
+    std::unique_ptr<spot_dispatch_event_js_payload_t> payload(
+      static_cast<spot_dispatch_event_js_payload_t *>(data));
+    if (!env || !js_cb || !payload)
+        return;
+
+    napi_value argv[1];
+    napi_create_int32(env, payload->event, &argv[0]);
+    napi_value recv;
+    napi_value this_arg;
+    napi_get_undefined(env, &this_arg);
+    (void) napi_call_function(env, this_arg, js_cb, 1, argv, &recv);
+}
+
+static void release_spot_dispatch_event_handler_slot(void *spot)
+{
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_spot_dispatch_event_slots_mu);
+        spot_dispatch_event_js_state_t *state =
+          find_spot_dispatch_event_slot_by_spot_unsafe(spot);
+        if (!state)
+            return;
+        tsfn = state->tsfn;
+        reset_spot_dispatch_event_slot_unsafe(state);
+    }
+    if (tsfn)
+        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
+}
+
+static void spot_dispatch_event_dispatch(void *closure, void *spot_, int event)
+{
+    (void) spot_;
+    spot_dispatch_event_js_state_t *state =
+      static_cast<spot_dispatch_event_js_state_t *>(closure);
+    if (!state)
+        return;
+
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_spot_dispatch_event_slots_mu);
+        if (!state->used || !state->tsfn)
+            return;
+        tsfn = state->tsfn;
+    }
+
+    std::unique_ptr<spot_dispatch_event_js_payload_t> payload(
+      new spot_dispatch_event_js_payload_t());
+    payload->event = event;
+    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
+        != napi_ok) {
+        return;
+    }
+    (void) payload.release();
+}
+
+static router_spot_js_state_t *find_router_spot_slot_by_router_unsafe(void *router)
+{
+    for (size_t i = 0; i < k_router_spot_slot_count; ++i) {
+        if (g_router_spot_slots[i].used && g_router_spot_slots[i].router == router)
+            return &g_router_spot_slots[i];
+    }
+    return NULL;
+}
+
+static router_spot_js_state_t *find_free_router_spot_slot_unsafe()
+{
+    for (size_t i = 0; i < k_router_spot_slot_count; ++i) {
+        if (!g_router_spot_slots[i].used)
+            return &g_router_spot_slots[i];
+    }
+    return NULL;
+}
+
+static void reset_router_spot_slot_unsafe(router_spot_js_state_t *state)
+{
+    if (!state)
+        return;
+    state->used = false;
+    state->router = NULL;
+    state->env = NULL;
+    state->tsfn = NULL;
+}
+
+static void router_spot_tsfn_finalize(napi_env env,
+                                      void *finalize_data,
+                                      void *finalize_hint)
+{
+    (void) env;
+    (void) finalize_hint;
+    router_spot_js_state_t *state =
+      static_cast<router_spot_js_state_t *>(finalize_data);
+    if (!state)
+        return;
+    std::lock_guard<std::mutex> lock(g_router_spot_slots_mu);
+    reset_router_spot_slot_unsafe(state);
+}
+
+static void router_spot_tsfn_call_js(napi_env env,
+                                     napi_value js_cb,
+                                     void *context,
+                                     void *data)
+{
+    (void) context;
+    std::unique_ptr<spot_routed_js_payload_t> payload(
+      static_cast<spot_routed_js_payload_t *>(data));
+    if (!env || !js_cb || !payload)
+        return;
+
+    napi_value argv[4];
+    if (!payload->source_rid.empty()) {
+        if (napi_create_buffer_copy(
+              env, payload->source_rid.size(), payload->source_rid.data(), NULL,
+              &argv[0])
+            != napi_ok) {
+            return;
+        }
+    } else {
+        napi_get_null(env, &argv[0]);
+    }
+    if (!payload->spot_rid.empty()) {
+        if (napi_create_buffer_copy(
+              env, payload->spot_rid.size(), payload->spot_rid.data(), NULL,
+              &argv[1])
+            != napi_ok) {
+            return;
+        }
+    } else {
+        napi_get_null(env, &argv[1]);
+    }
+    napi_create_bigint_uint64(env, payload->request_seq, &argv[2]);
+    if (napi_create_array_with_length(env, payload->parts.size(), &argv[3])
+        != napi_ok) {
+        return;
+    }
+    for (size_t i = 0; i < payload->parts.size(); ++i) {
+        const std::vector<unsigned char> &part = payload->parts[i];
+        napi_value part_buf;
+        if (napi_create_buffer_copy(
+              env, part.size(), part.empty() ? NULL : part.data(), NULL,
+              &part_buf)
+            != napi_ok) {
+            return;
+        }
+        napi_set_element(env, argv[3], static_cast<uint32_t>(i), part_buf);
+    }
+
+    napi_value recv;
+    napi_value this_arg;
+    napi_get_undefined(env, &this_arg);
+    (void) napi_call_function(env, this_arg, js_cb, 4, argv, &recv);
+}
+
+static void release_router_spot_handler_slot(void *router)
+{
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_router_spot_slots_mu);
+        router_spot_js_state_t *state = find_router_spot_slot_by_router_unsafe(router);
+        if (!state)
+            return;
+        tsfn = state->tsfn;
+        reset_router_spot_slot_unsafe(state);
+    }
+    if (tsfn)
+        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
+}
+
+static void router_spot_dispatch(void *closure,
+                                 const zlink_routing_id_t *source_node_rid,
+                                 const zlink_routing_id_t *source_spot_rid,
+                                 uint64_t request_seq,
+                                 zlink_msg_t *parts,
+                                 size_t part_count,
+                                 void *userdata)
+{
+    (void) userdata;
+    router_spot_js_state_t *state =
+      static_cast<router_spot_js_state_t *>(closure);
+    if (!state)
+        return;
+
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_router_spot_slots_mu);
+        if (!state->used || !state->tsfn)
+            return;
+        tsfn = state->tsfn;
+    }
+
+    std::unique_ptr<spot_routed_js_payload_t> payload(
+      new spot_routed_js_payload_t());
+    if (source_node_rid && source_node_rid->size > 0) {
+        payload->source_rid.assign(
+          source_node_rid->data, source_node_rid->data + source_node_rid->size);
+    }
+    if (source_spot_rid && source_spot_rid->size > 0) {
+        payload->spot_rid.assign(
+          source_spot_rid->data, source_spot_rid->data + source_spot_rid->size);
+    }
+    payload->request_seq = request_seq;
+    payload->parts.reserve(part_count);
+    for (size_t i = 0; i < part_count; ++i) {
+        const size_t size = zlink_msg_size(&parts[i]);
+        const unsigned char *data = static_cast<const unsigned char *>(zlink_msg_data(&parts[i]));
+        payload->parts.push_back(std::vector<unsigned char>(data, data + size));
+    }
+
+    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
+        != napi_ok) {
+        return;
+    }
+    (void) payload.release();
+}
 
 spot_send_ready_js_state_t *find_spot_send_ready_slot_by_spot_unsafe(void *spot)
 {
@@ -265,8 +821,12 @@ napi_value create_message_snapshot_value(napi_env env,
     napi_value data;
     napi_create_buffer_copy(
       env, zlink_msg_size(msg), zlink_msg_data(msg), NULL, &data);
+    zlink_config_result_t refcnt_err = ZLINK_CONFIG_OK;
+    const int refcnt = zlink_msg_refcnt(msg, &refcnt_err);
+    if (refcnt_err != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "message refcnt failed");
     napi_value ref_count;
-    napi_create_int32(env, zlink_msg_refcnt(msg), &ref_count);
+    napi_create_int32(env, refcnt, &ref_count);
     napi_value props = create_message_properties_snapshot(env, routing_id, msg);
 
     napi_set_named_property(env, obj, "data", data);
@@ -353,6 +913,104 @@ bool build_spot_node_subject_filter(napi_env env,
 }
 
 } // namespace
+
+napi_value router_spot_send(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "routerSpotSend not implemented");
+    return NULL;
+}
+
+napi_value spot_send_spot(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "spotSendSpot not implemented");
+    return NULL;
+}
+
+napi_value spot_request_spot(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "spotRequestSpot not implemented");
+    return NULL;
+}
+
+napi_value spot_reply_spot(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "spotReplySpot not implemented");
+    return NULL;
+}
+
+napi_value spot_send_router(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "spotSendRouter not implemented");
+    return NULL;
+}
+
+napi_value spot_request_router(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "spotRequestRouter not implemented");
+    return NULL;
+}
+
+napi_value spot_reply_router(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "spotReplyRouter not implemented");
+    return NULL;
+}
+
+napi_value spot_routed_handler(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "spotRoutedHandler not implemented");
+    return NULL;
+}
+
+napi_value spot_dispatch_event_handler(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "spotDispatchEventHandler not implemented");
+    return NULL;
+}
+
+napi_value spot_recv_routed(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "spotRecvRouted not implemented");
+    return NULL;
+}
+
+napi_value router_spot_request(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "routerSpotRequest not implemented");
+    return NULL;
+}
+
+napi_value router_spot_reply(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "routerSpotReply not implemented");
+    return NULL;
+}
+
+napi_value router_spot_handler(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "routerSpotHandler not implemented");
+    return NULL;
+}
+
+napi_value router_spot_recv(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    napi_throw_error(env, NULL, "routerSpotRecv not implemented");
+    return NULL;
+}
 
 napi_value spot_node_new(napi_env env, napi_callback_info info)
 {
@@ -793,11 +1451,11 @@ napi_value spot_try_publish(napi_env env, napi_callback_info info)
     int rc = zlink_publish(spot, topic.c_str(), parts.data(), parts.size(),
                            ZLINK_DONTWAIT);
     if (rc == 0) {
-        rc = ZLINK_SEND_RESULT_SENT;
+        rc = ZLINK_SUBMIT_OK;
     } else {
         switch (zlink_errno()) {
         case EAGAIN:
-            rc = ZLINK_SEND_RESULT_BACKPRESSURED;
+            rc = ZLINK_SUBMIT_BACKPRESSURED;
             break;
 #ifdef ENOTCONN
         case ENOTCONN:
@@ -808,7 +1466,7 @@ napi_value spot_try_publish(napi_env env, napi_callback_info info)
 #ifdef ETIMEDOUT
         case ETIMEDOUT:
 #endif
-            rc = ZLINK_SEND_RESULT_NOT_READY;
+            rc = ZLINK_SUBMIT_NOT_CONNECTED;
             break;
         default:
             rc = -1;

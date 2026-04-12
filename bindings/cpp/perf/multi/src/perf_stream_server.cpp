@@ -94,8 +94,15 @@ bool perf_stream_server (const std::string &transport, size_t)
 
     int rc = 0;
     zlink::poller_t poller;
-    if (!poller.valid () || poller.add (server.sock (), zlink::poll_event::pollin) != 0)
+    if (!poller.valid ()) {
         return false;
+    }
+    try {
+        poller.add (server.sock (), zlink::poll_event::pollin);
+    }
+    catch (const zlink::zlink_error_t &) {
+        return false;
+    }
     g_stream_session.pending_capacity = std::max<size_t> (
       64,
       std::max<size_t> (
@@ -111,7 +118,10 @@ bool perf_stream_server (const std::string &transport, size_t)
         const zlink::poll_event wait_events =
           want_send ? (zlink::poll_event::pollin | zlink::poll_event::pollout)
                     : zlink::poll_event::pollin;
-        if (poller.modify (server.sock (), wait_events) != 0) {
+        try {
+            poller.modify (server.sock (), wait_events);
+        }
+        catch (const zlink::zlink_error_t &) {
             rc = 1;
             break;
         }

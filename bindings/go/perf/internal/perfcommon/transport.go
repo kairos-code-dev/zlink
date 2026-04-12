@@ -12,6 +12,7 @@ package perfcommon
 import "C"
 
 import (
+	"errors"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -31,9 +32,9 @@ import (
 	"sync"
 	"time"
 	"unsafe"
+	"syscall"
 
 	"github.com/gorilla/websocket"
-	"zlink"
 )
 
 type StreamConn interface {
@@ -142,8 +143,7 @@ func ConfigureTLSClient(socket interface {
 }
 
 func isNativeErrCode(err error, code int) bool {
-	zerr, ok := err.(*zlink.ZlinkError)
-	return ok && zerr.Kind == zlink.ErrorKindNative && zerr.Code == code
+	return errors.Is(err, syscall.Errno(code))
 }
 
 func rawSocketHandle(value any) (unsafe.Pointer, error) {
@@ -218,11 +218,7 @@ func setRawIntOption(handle unsafe.Pointer, option C.zlink_option_t, value int) 
 
 func nativeError() error {
 	code := int(C.zlink_errno())
-	return &zlink.ZlinkError{
-		Kind:    zlink.ErrorKindNative,
-		Code:    code,
-		Message: C.GoString(C.zlink_strerror(C.int(code))),
-	}
+	return fmt.Errorf("%s: %w", C.GoString(C.zlink_strerror(C.int(code))), syscall.Errno(code))
 }
 
 func buildTLSAssets() (tlsAssetSet, error) {

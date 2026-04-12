@@ -428,6 +428,10 @@ public abstract class Socket implements AutoCloseable {
         return topicPlane.subscriptionEvent(ReceiveFlag.NONE);
     }
 
+    SubscriptionEvent receiveSubscriptionEvent(ReceiveFlag flags) {
+        return topicPlane.subscriptionEvent(flags);
+    }
+
     SubscriptionEvent subscriptionEvent(ReceiveFlag flags) {
         return topicPlane.subscriptionEvent(flags);
     }
@@ -1226,7 +1230,7 @@ public abstract class Socket implements AutoCloseable {
                 continue;
             if ((nonBlocking || explicitNonBlocking)
                 && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                return;
+                throw new SubmitException(SubmitResult.BACKPRESSURED, errno);
             }
             throw ZlinkException.fromLastError(
                 routingId == null ? "zlink_send" : "zlink_send_rid");
@@ -1329,7 +1333,7 @@ public abstract class Socket implements AutoCloseable {
                 continue;
             if ((nonBlocking || explicitNonBlocking)
                 && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                return;
+                throw new SubmitException(SubmitResult.BACKPRESSURED, errno);
             }
             throw ZlinkException.fromLastError("zlink_publish");
         }
@@ -1417,8 +1421,10 @@ public abstract class Socket implements AutoCloseable {
         int errno = Native.errno();
         if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)
             return SendResult.BACKPRESSURED;
-        if (errno == ERRNO_ENOTCONN || errno == ERRNO_ENOTCONN_WIN
-            || errno == ERRNO_EHOSTUNREACH || errno == ERRNO_EHOSTUNREACH_WIN) {
+        if (errno == ERRNO_ENOTCONN || errno == ERRNO_ENOTCONN_WIN) {
+            return SendResult.NOT_READY;
+        }
+        if (errno == ERRNO_EHOSTUNREACH || errno == ERRNO_EHOSTUNREACH_WIN) {
             return SendResult.NOT_READY;
         }
         throw ZlinkException.fromLastError(apiName);

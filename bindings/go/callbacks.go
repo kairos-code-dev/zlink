@@ -188,6 +188,44 @@ func (s *sendReadyCallbackState) close() {
 	s.dispatcher.close()
 }
 
+type spotRoutedCallbackState struct {
+	dispatcher *callbackDispatcher
+	handler    func(RoutingID, RoutingID, uint64, []*Message)
+}
+
+func newSpotRoutedCallbackState(handler func(RoutingID, RoutingID, uint64, []*Message)) *spotRoutedCallbackState {
+	return &spotRoutedCallbackState{
+		dispatcher: newCallbackDispatcher(),
+		handler:    handler,
+	}
+}
+
+func (s *spotRoutedCallbackState) close() {
+	if s == nil {
+		return
+	}
+	s.dispatcher.close()
+}
+
+type spotDispatchCallbackState struct {
+	dispatcher *callbackDispatcher
+	handler    func(SpotDispatchEvent)
+}
+
+func newSpotDispatchCallbackState(handler func(SpotDispatchEvent)) *spotDispatchCallbackState {
+	return &spotDispatchCallbackState{
+		dispatcher: newCallbackDispatcher(),
+		handler:    handler,
+	}
+}
+
+func (s *spotDispatchCallbackState) close() {
+	if s == nil {
+		return
+	}
+	s.dispatcher.close()
+}
+
 type monitorCallbackState struct {
 	dispatcher *callbackDispatcher
 	handler    func(*MonitorEvent)
@@ -257,6 +295,29 @@ func goZlinkRecvTrampoline(sourceRID *C.zlink_routing_id_t, parts *C.zlink_msg_t
 	_ = received.Close()
 }
 
+//export goZlinkRouterRecvTrampoline
+func goZlinkRouterRecvTrampoline(sourceRID *C.zlink_routing_id_t, requestSeq C.uint64_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
+	state := cgo.Handle(userdata).Value().(*recvCallbackState)
+	received := &Received{
+		routingID:     routingIDFromC(*sourceRID),
+		parts:         mustTakeParts(parts, partCount),
+		requestSeq:    uint64(requestSeq),
+		hasRequestSeq: requestSeq != 0,
+	}
+	if state.dispatcher.enqueue(&callbackTask{
+		label: "router receive",
+		invoke: func() {
+			state.handler(received)
+		},
+		cleanup: func() {
+			_ = received.Close()
+		},
+	}) {
+		return
+	}
+	_ = received.Close()
+}
+
 //export goZlinkSubscribeTrampoline
 func goZlinkSubscribeTrampoline(sourceRID *C.zlink_routing_id_t, topic *C.char, topicLen C.size_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
 	state := cgo.Handle(userdata).Value().(*subscribeCallbackState)
@@ -286,6 +347,50 @@ func goZlinkSendReadyTrampoline(_ unsafe.Pointer, userdata C.uintptr_t) {
 		label: "send-ready",
 		invoke: func() {
 			state.handler()
+		},
+	})
+}
+
+//export goZlinkSpotRoutedTrampoline
+func goZlinkSpotRoutedTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpotRID *C.zlink_routing_id_t, requestSeq C.uint64_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
+	state := cgo.Handle(userdata).Value().(*spotRoutedCallbackState)
+	clonedParts, err := takeParts(parts, partCount)
+	if err != nil {
+		_ = err
+		return
+	}
+	sourceNode := routingIDFromC(*sourceNodeRID)
+	sourceSpot := routingIDFromC(*sourceSpotRID)
+	if state.dispatcher.enqueue(&callbackTask{
+		label: "spot-routed",
+		invoke: func() {
+			defer MultipartClose(clonedParts)
+			state.handler(sourceNode, sourceSpot, uint64(requestSeq), clonedParts)
+		},
+	}) {
+		return
+	}
+	MultipartClose(clonedParts)
+}
+
+//export goZlinkSpotDispatchEventTrampoline
+func goZlinkSpotDispatchEventTrampoline(event C.zlink_spot_dispatch_event_t, userdata C.uintptr_t) {
+	state := cgo.Handle(userdata).Value().(*spotDispatchCallbackState)
+	state.dispatcher.enqueue(&callbackTask{
+		label: "spot-dispatch",
+		invoke: func() {
+			state.handler(SpotDispatchEvent(event))
+		},
+	})
+}
+
+//export goZlinkTimerTrampoline
+func goZlinkTimerTrampoline(timer unsafe.Pointer, fireCount C.uint64_t, userdata C.uintptr_t) {
+	state := cgo.Handle(userdata).Value().(*timerCallbackState)
+	state.dispatcher.enqueue(&callbackTask{
+		label: "timer-fire",
+		invoke: func() {
+			state.handler(state.timer, uint64(fireCount))
 		},
 	})
 }

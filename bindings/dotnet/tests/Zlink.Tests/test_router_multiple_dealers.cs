@@ -31,7 +31,7 @@ public sealed class test_router_multiple_dealers
         router.Bind(endpoint);
         dealer1.Connect(endpoint);
         dealer2.Connect(endpoint);
-        Thread.Sleep(100);
+        Thread.Sleep(300);
 
         CoreTestSupport.SendWithRetry(dealer1, "from_dealer1"u8, 2000);
         CoreTestSupport.SendWithRetry(dealer2, "from_dealer2"u8, 2000);

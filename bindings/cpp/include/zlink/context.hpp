@@ -2,8 +2,7 @@
 #ifndef ZLINK_CPP_CONTEXT_HPP_INCLUDED
 #define ZLINK_CPP_CONTEXT_HPP_INCLUDED
 
-#include "types.hpp"
-#include <cerrno>
+#include "error.hpp"
 
 namespace zlink
 {
@@ -15,55 +14,39 @@ class context_options_t
   public:
     explicit context_options_t (context_t &ctx_) : _ctx (ctx_) {}
 
-    ZLINK_CPP_NODISCARD int ioThreads () const;
-    ZLINK_CPP_NODISCARD int ioThreads (int value_);
-    ZLINK_CPP_NODISCARD int maxSockets () const;
-    ZLINK_CPP_NODISCARD int maxSockets (int value_);
-    ZLINK_CPP_NODISCARD int maxMsgSize () const;
-    ZLINK_CPP_NODISCARD int maxMsgSize (int value_);
-    ZLINK_CPP_NODISCARD int threadPriority () const;
-    ZLINK_CPP_NODISCARD int threadPriority (int value_);
-    ZLINK_CPP_NODISCARD int threadSchedulingPolicy () const;
-    ZLINK_CPP_NODISCARD int threadSchedulingPolicy (int value_);
-    ZLINK_CPP_NODISCARD bool blocky () const;
-    ZLINK_CPP_NODISCARD int blocky (bool enabled_);
-    ZLINK_CPP_NODISCARD int socketLimit () const;
-    ZLINK_CPP_NODISCARD int msgTSize () const;
-    ZLINK_CPP_NODISCARD int addThreadAffinity (int cpu_);
-    ZLINK_CPP_NODISCARD int removeThreadAffinity (int cpu_);
+    int ioThreads () const;
+    void ioThreads (int value_);
+    int maxSockets () const;
+    void maxSockets (int value_);
+    int maxMsgSize () const;
+    void maxMsgSize (int value_);
+    int threadPriority () const;
+    void threadPriority (int value_);
+    int threadSchedulingPolicy () const;
+    void threadSchedulingPolicy (int value_);
+    bool blocky () const;
+    void blocky (bool enabled_);
+    int socketLimit () const;
+    int msgTSize () const;
+    void addThreadAffinity (int cpu_);
+    void removeThreadAffinity (int cpu_);
 
   private:
     context_t &_ctx;
 };
 
-/**
- * @brief RAII wrapper for a zlink context.
- */
 class context_t
 {
   public:
-    /**
-     * @brief Create a context with default options.
-     */
     context_t () : _ctx (zlink_ctx_new ()) {}
 
-    /**
-     * @brief Create a context and set IO thread count.
-     * @param io_threads Number of IO threads.
-     */
     explicit context_t (int io_threads) : _ctx (zlink_ctx_new ())
     {
         if (_ctx)
-            zlink_ctx_set (_ctx, ZLINK_IO_THREADS, io_threads);
+            (void) zlink_ctx_set (_ctx, ZLINK_IO_THREADS, io_threads);
     }
 
-    /**
-     * @brief Terminate and release the context.
-     */
-    ~context_t ()
-    {
-        (void) term ();
-    }
+    ~context_t () { (void) term (); }
 
     context_t (context_t &&other) noexcept : _ctx (other._ctx)
     {
@@ -74,7 +57,6 @@ class context_t
     {
         if (this == &other)
             return *this;
-
         (void) term ();
         _ctx = other._ctx;
         other._ctx = NULL;
@@ -85,39 +67,24 @@ class context_t
     context_t &operator= (const context_t &) = delete;
 
     bool valid () const noexcept { return _ctx != NULL; }
-
-    /**
-     * @brief Access the raw context handle.
-     * @return Mutable native handle.
-     */
     void *handle () noexcept { return _ctx; }
-    /**
-     * @brief Access the raw context handle.
-     * @return Const native handle.
-     */
     const void *handle () const noexcept { return _ctx; }
 
-    /**
-     * @brief Request asynchronous context shutdown.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int shutdown ()
-    {
-        return _ctx ? zlink_ctx_shutdown (_ctx) : -1;
-    }
-
-    /**
-     * @brief Terminate and release the context early.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int term () noexcept
+    void shutdown ()
     {
         if (!_ctx)
-            return 0;
+            throw close_error_t (close_result_t::invalid_handle);
+        detail::throw_if_failed<close_error_t> (
+          static_cast<close_result_t> (zlink_ctx_shutdown (_ctx)));
+    }
 
+    void term () noexcept
+    {
+        if (!_ctx)
+            return;
         void *ctx = _ctx;
         _ctx = NULL;
-        return zlink_ctx_term (ctx);
+        (void) zlink_ctx_term (ctx);
     }
 
     context_options_t options () { return context_options_t (*this); }
@@ -125,20 +92,21 @@ class context_t
   private:
     friend class context_options_t;
 
-    ZLINK_CPP_NODISCARD int set_option_raw (context_option option_, int value_)
+    int get_option_raw (zlink_ctx_option_t option_, zlink_config_result_t *error_out_) const
     {
-        return _ctx
-                 ? zlink_ctx_set (
-                     _ctx, static_cast<zlink_ctx_option_t> (option_), value_)
-                 : -1;
+        if (!_ctx) {
+            if (error_out_)
+                *error_out_ = ZLINK_CONFIG_INVALID_HANDLE;
+            return -1;
+        }
+        return zlink_ctx_get (_ctx, option_, error_out_);
     }
 
-    ZLINK_CPP_NODISCARD int get_option_raw (context_option option_) const
+    zlink_config_result_t set_option_raw (zlink_ctx_option_t option_, int value_)
     {
         if (!_ctx)
-            return -1;
-        errno = 0;
-        return zlink_ctx_get (_ctx, static_cast<zlink_ctx_option_t> (option_), nullptr);
+            return ZLINK_CONFIG_INVALID_HANDLE;
+        return zlink_ctx_set (_ctx, option_, value_);
     }
 
     void *_ctx;
@@ -146,82 +114,127 @@ class context_t
 
 inline int context_options_t::ioThreads () const
 {
-    return _ctx.get_option_raw (context_option::io_threads);
+    zlink_config_result_t error = ZLINK_CONFIG_OK;
+    const int value = _ctx.get_option_raw (ZLINK_IO_THREADS, &error);
+    if (error != ZLINK_CONFIG_OK)
+        throw config_error_t (static_cast<config_result_t> (error));
+    return value;
 }
 
-inline int context_options_t::ioThreads (int value_)
+inline void context_options_t::ioThreads (int value_)
 {
-    return _ctx.set_option_raw (context_option::io_threads, value_);
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (_ctx.set_option_raw (ZLINK_IO_THREADS, value_)));
 }
 
 inline int context_options_t::maxSockets () const
 {
-    return _ctx.get_option_raw (context_option::max_sockets);
+    zlink_config_result_t error = ZLINK_CONFIG_OK;
+    const int value = _ctx.get_option_raw (ZLINK_MAX_SOCKETS, &error);
+    if (error != ZLINK_CONFIG_OK)
+        throw config_error_t (static_cast<config_result_t> (error));
+    return value;
 }
 
-inline int context_options_t::maxSockets (int value_)
+inline void context_options_t::maxSockets (int value_)
 {
-    return _ctx.set_option_raw (context_option::max_sockets, value_);
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (_ctx.set_option_raw (ZLINK_MAX_SOCKETS, value_)));
 }
 
 inline int context_options_t::maxMsgSize () const
 {
-    return _ctx.get_option_raw (context_option::max_msgsz);
+    zlink_config_result_t error = ZLINK_CONFIG_OK;
+    const int value = _ctx.get_option_raw (ZLINK_MAX_MSGSZ, &error);
+    if (error != ZLINK_CONFIG_OK)
+        throw config_error_t (static_cast<config_result_t> (error));
+    return value;
 }
 
-inline int context_options_t::maxMsgSize (int value_)
+inline void context_options_t::maxMsgSize (int value_)
 {
-    return _ctx.set_option_raw (context_option::max_msgsz, value_);
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (_ctx.set_option_raw (ZLINK_MAX_MSGSZ, value_)));
 }
 
 inline int context_options_t::threadPriority () const
 {
-    return _ctx.get_option_raw (context_option::thread_priority);
+    zlink_config_result_t error = ZLINK_CONFIG_OK;
+    const int value = _ctx.get_option_raw (ZLINK_THREAD_PRIORITY, &error);
+    if (error != ZLINK_CONFIG_OK)
+        throw config_error_t (static_cast<config_result_t> (error));
+    return value;
 }
 
-inline int context_options_t::threadPriority (int value_)
+inline void context_options_t::threadPriority (int value_)
 {
-    return _ctx.set_option_raw (context_option::thread_priority, value_);
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        _ctx.set_option_raw (ZLINK_THREAD_PRIORITY, value_)));
 }
 
 inline int context_options_t::threadSchedulingPolicy () const
 {
-    return _ctx.get_option_raw (context_option::thread_sched_policy);
+    zlink_config_result_t error = ZLINK_CONFIG_OK;
+    const int value = _ctx.get_option_raw (ZLINK_THREAD_SCHED_POLICY, &error);
+    if (error != ZLINK_CONFIG_OK)
+        throw config_error_t (static_cast<config_result_t> (error));
+    return value;
 }
 
-inline int context_options_t::threadSchedulingPolicy (int value_)
+inline void context_options_t::threadSchedulingPolicy (int value_)
 {
-    return _ctx.set_option_raw (context_option::thread_sched_policy, value_);
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        _ctx.set_option_raw (ZLINK_THREAD_SCHED_POLICY, value_)));
 }
 
 inline bool context_options_t::blocky () const
 {
-    return _ctx.get_option_raw (context_option::blocky) != 0;
+    zlink_config_result_t error = ZLINK_CONFIG_OK;
+    const int value = _ctx.get_option_raw (ZLINK_CTX_OPT_BLOCKY, &error);
+    if (error != ZLINK_CONFIG_OK)
+        throw config_error_t (static_cast<config_result_t> (error));
+    return value != 0;
 }
 
-inline int context_options_t::blocky (bool enabled_)
+inline void context_options_t::blocky (bool enabled_)
 {
-    return _ctx.set_option_raw (context_option::blocky, enabled_ ? 1 : 0);
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        _ctx.set_option_raw (ZLINK_CTX_OPT_BLOCKY, enabled_ ? 1 : 0)));
 }
 
 inline int context_options_t::socketLimit () const
 {
-    return _ctx.get_option_raw (context_option::socket_limit);
+    zlink_config_result_t error = ZLINK_CONFIG_OK;
+    const int value = _ctx.get_option_raw (ZLINK_SOCKET_LIMIT, &error);
+    if (error != ZLINK_CONFIG_OK)
+        throw config_error_t (static_cast<config_result_t> (error));
+    return value;
 }
 
 inline int context_options_t::msgTSize () const
 {
-    return _ctx.get_option_raw (context_option::msg_t_size);
+    zlink_config_result_t error = ZLINK_CONFIG_OK;
+    const int value = _ctx.get_option_raw (ZLINK_MSG_T_SIZE, &error);
+    if (error != ZLINK_CONFIG_OK)
+        throw config_error_t (static_cast<config_result_t> (error));
+    return value;
 }
 
-inline int context_options_t::addThreadAffinity (int cpu_)
+inline void context_options_t::addThreadAffinity (int cpu_)
 {
-    return _ctx.set_option_raw (context_option::thread_affinity_cpu_add, cpu_);
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        _ctx.set_option_raw (ZLINK_THREAD_AFFINITY_CPU_ADD, cpu_)));
 }
 
-inline int context_options_t::removeThreadAffinity (int cpu_)
+inline void context_options_t::removeThreadAffinity (int cpu_)
 {
-    return _ctx.set_option_raw (context_option::thread_affinity_cpu_remove, cpu_);
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        _ctx.set_option_raw (ZLINK_THREAD_AFFINITY_CPU_REMOVE, cpu_)));
 }
 
 } // namespace zlink

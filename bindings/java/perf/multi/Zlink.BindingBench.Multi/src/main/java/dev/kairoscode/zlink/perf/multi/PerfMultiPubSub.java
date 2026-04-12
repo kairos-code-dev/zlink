@@ -86,7 +86,7 @@ final class PerfMultiPubSub {
                             break;
                         }
                         while (true) {
-                            Optional<dev.kairoscode.zlink.TopicMessage> maybe = sub.trySubscribe();
+                            Optional<dev.kairoscode.zlink.TopicMessage> maybe = PerfUtil.trySubscribe(sub);
                             if (maybe.isEmpty()) {
                                 break;
                             }

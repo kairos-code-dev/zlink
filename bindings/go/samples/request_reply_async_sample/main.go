@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"time"
 	"zlink"
@@ -58,21 +57,18 @@ func main() {
 			requestDone <- fmt.Errorf("missing request sequence")
 			return
 		}
-		requestDone <- router.Reply(received.RoutingID(), requestSeq, samplecommon.Message("pong"))
+		requestDone <- router.Reply(received.RoutingID(), requestSeq, zlink.SendFlagsNone, samplecommon.Message("pong"))
 	}))
 
 	replyCh := make(chan *zlink.Received, 1)
 	errCh := make(chan error, 1)
-	go func() {
-		requestCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		reply, err := dealer.Request(requestCtx, samplecommon.Message("ping"))
-		if err != nil {
-			errCh <- err
+	samplecommon.Must(dealer.RequestCallback(func(result zlink.RequestResult, reply *zlink.Received) {
+		if result != zlink.RequestOK {
+			errCh <- fmt.Errorf("request failed: %d", result)
 			return
 		}
 		replyCh <- reply
-	}()
+	}, zlink.SendFlagsNone, 2*time.Second, samplecommon.Message("ping")))
 
 	var reply *zlink.Received
 	select {

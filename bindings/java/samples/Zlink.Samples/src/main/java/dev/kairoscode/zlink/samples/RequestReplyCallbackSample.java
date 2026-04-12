@@ -48,7 +48,7 @@ public final class RequestReplyCallbackSample {
                         }
                         try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
                             router.reply(received.routingId(),
-                                received.requestSequence(), reply).join();
+                                received.requestSequence(), reply);
                         }
                     }
                 } finally {
@@ -59,16 +59,16 @@ public final class RequestReplyCallbackSample {
             try (Message request = Message.copyOfUtf8(SampleSupport.DEALER_REQUEST)) {
                 dealer.request(
                     List.of(request),
-                    Duration.ofSeconds(2),
-                    (error, reply) -> {
-                        try {
-                            if (error != null) {
-                                failure.compareAndSet(null, error);
-                                return;
-                            }
-                            try (reply) {
-                                String value = SampleSupport.singleUtf8(reply);
-                                if (!SampleSupport.DEALER_REPLY.equals(value)) {
+                (result, reply) -> {
+                    try {
+                        if (result != dev.kairoscode.zlink.RequestResult.OK) {
+                            failure.compareAndSet(null,
+                                new IllegalStateException("request failed: " + result));
+                            return;
+                        }
+                        try (reply) {
+                            String value = SampleSupport.singleUtf8(reply);
+                            if (!SampleSupport.DEALER_REPLY.equals(value)) {
                                     failure.compareAndSet(null,
                                         new IllegalStateException("unexpected reply: " + value));
                                 }
@@ -76,7 +76,9 @@ public final class RequestReplyCallbackSample {
                         } finally {
                             replyHandled.countDown();
                         }
-                    });
+                    },
+                    dev.kairoscode.zlink.SendFlags.NONE,
+                    Duration.ofSeconds(2));
             }
 
             SampleSupport.await(requestHandled, "request reply callback request");

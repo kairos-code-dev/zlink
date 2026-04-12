@@ -97,7 +97,7 @@ inline bool wait_for_socket_monitor_event (zlink::monitor_handle_t &monitor_,
             continue;
 
         const zlink::maybe_t<zlink::monitor_event_t> event =
-          monitor_.try_recv ();
+          monitor_.recv (zlink::non_blocking_t {});
         if (!event)
             continue;
         if (static_cast<uint64_t> (event->event) != event_type_)
@@ -129,7 +129,7 @@ wait_for_service_monitor_event (zlink::service_monitor_handle_t &monitor_,
             continue;
 
         const zlink::maybe_t<zlink::service_event_t> event =
-          monitor_.try_recv ();
+          monitor_.recv (zlink::non_blocking_t {});
         if (!event)
             continue;
         if (event->event_type != event_type_)
@@ -162,7 +162,7 @@ wait_for_service_monitor_event_endpoint (
             continue;
 
         const zlink::maybe_t<zlink::service_event_t> event =
-          monitor_.try_recv ();
+          monitor_.recv (zlink::non_blocking_t {});
         if (!event)
             continue;
         if (event->event_type != event_type_)
@@ -204,7 +204,7 @@ wait_for_service_monitor_state (zlink::service_monitor_handle_t &monitor_,
         if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
             continue;
 
-        (void) monitor_.try_recv ();
+        (void) monitor_.recv (zlink::non_blocking_t {});
     }
 
     return false;

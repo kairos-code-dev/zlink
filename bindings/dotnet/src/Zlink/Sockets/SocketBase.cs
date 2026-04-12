@@ -30,18 +30,40 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
 
     public void Bind(string address)
     {
-        _kernel.Bind(address);
+        try
+        {
+            _kernel.Bind(address);
+        }
+        catch (ZlinkException ex)
+        {
+            throw new ZlinkBindException(BindResult.InvalidArgument, ex.InternalErrno);
+        }
     }
 
     public void Unbind(string address)
     {
-        _kernel.Unbind(address);
+        try
+        {
+            _kernel.Unbind(address);
+        }
+        catch (ZlinkException ex)
+        {
+            throw new ZlinkConnectException(ConnectResult.InvalidArgument, ex.InternalErrno);
+        }
     }
 
     public SocketMonitor MonitorOpen(SocketEvent events = SocketEvent.All)
     {
         EnumValidation.EnsureSocketEvents(events, nameof(events));
-        return _kernel.MonitorOpen(events);
+        try
+        {
+            return _kernel.MonitorOpen(events);
+        }
+        catch (ZlinkException ex)
+        {
+            throw new ZlinkConfigException(ConfigResult.InvalidArgument,
+                ex.InternalErrno);
+        }
     }
 
     public void Close()
@@ -128,7 +150,14 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
 
     public void Dispose()
     {
-        _kernel.Dispose();
+        try
+        {
+            _kernel.Dispose();
+        }
+        catch (ZlinkException ex)
+        {
+            throw new ZlinkCloseException(CloseResult.InvalidHandle, ex.InternalErrno);
+        }
         GC.SuppressFinalize(this);
     }
 

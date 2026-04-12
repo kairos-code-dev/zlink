@@ -9,8 +9,6 @@
     "noCheck": true
   },
   "include": [
-    "samples/**/*.ts",
-    "perf/**/*.ts",
     "tests/**/*.ts"
   ],
   "exclude": [

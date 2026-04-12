@@ -25,7 +25,7 @@ struct monitor_wait_traits<zlink::monitor_handle_t>
 
     static zlink::maybe_t<event_t> try_recv (zlink::monitor_handle_t &monitor)
     {
-        return monitor.try_recv ();
+        return monitor.recv (zlink::non_blocking_t {});
     }
 
     static uint64_t event_type (const event_t &event)
@@ -46,7 +46,7 @@ struct monitor_wait_traits<zlink::service_monitor_handle_t>
 
     static zlink::maybe_t<event_t> try_recv (zlink::service_monitor_handle_t &monitor)
     {
-        return monitor.try_recv ();
+        return monitor.recv (zlink::non_blocking_t {});
     }
 
     static uint64_t event_type (const event_t &event)
@@ -95,8 +95,12 @@ inline bool wait_monitor_event (MonitorT &monitor,
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
-    if (poller.add (monitor, zlink::poll_event::pollin, NULL) != 0)
+    try {
+        poller.add (monitor, zlink::poll_event::pollin, NULL);
+    }
+    catch (const zlink::zlink_error_t &) {
         return false;
+    }
 
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms

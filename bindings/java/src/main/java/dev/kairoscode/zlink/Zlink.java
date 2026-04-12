@@ -6,6 +6,7 @@ import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.util.List;
 import java.util.Objects;
 
 public final class Zlink {
@@ -27,9 +28,34 @@ public final class Zlink {
         }
     }
 
-    static void sleep(int seconds) {
+    public static int[] version() {
+        return Native.version();
+    }
+
+    public static void proxy(Socket frontend, Socket backend, Socket capture) {
+        Objects.requireNonNull(frontend, "frontend");
+        Objects.requireNonNull(backend, "backend");
+        Native.proxy(frontend.handle(), backend.handle(),
+            capture == null ? MemorySegment.NULL : capture.handle());
+    }
+
+    public static void proxySteerable(Socket frontend, Socket backend,
+                                      Socket capture, Socket control) {
+        Objects.requireNonNull(frontend, "frontend");
+        Objects.requireNonNull(backend, "backend");
+        Objects.requireNonNull(control, "control");
+        Native.proxySteerable(frontend.handle(), backend.handle(),
+            capture == null ? MemorySegment.NULL : capture.handle(),
+            control.handle());
+    }
+
+    public static void sleep(int seconds) {
         if (seconds < 0)
             throw new IllegalArgumentException("seconds must be >= 0");
         Native.sleep(seconds);
+    }
+
+    public static void multipartClose(Message[] parts) {
+        Message.closeAll(parts);
     }
 }

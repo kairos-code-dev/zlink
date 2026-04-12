@@ -13,12 +13,12 @@
   "engines": {
     "node": ">=22"
   },
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/canonical.js",
+  "types": "dist/canonical.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "require": "./dist/index.js"
+      "types": "./dist/canonical.d.ts",
+      "require": "./dist/canonical.js"
     }
   },
   "files": [
@@ -32,7 +32,7 @@
   "scripts": {
     "clean": "rm -rf dist dist-tools",
     "build": "npm run clean && tsc -p tsconfig.json && tsc -p tsconfig.tools.json && ln -sfn ../dist dist-tools/dist",
-    "rebuild-native": "node-gyp rebuild",
+    "rebuild-native": "node-gyp configure build",
     "perf:single": "./perf/single/run_benchmarks.sh",
     "perf:multi": "./perf/multi/run_benchmarks.sh",
     "perf": "./perf/run_benchmarks.sh",

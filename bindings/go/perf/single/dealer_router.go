@@ -50,14 +50,14 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampPayload(payload)
-		err := dealer.Send(perfcommon.NewMessage(payload))
+		err := dealer.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
 			}
 			perfcommon.Must(err)
 		}
-		reply, err := dealer.Recv()
+		reply, err := dealer.Recv(zlink.RecvFlagsNone)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -84,14 +84,14 @@ func waitForDealerRouterReady(dealer *zlink.DealerSocket) {
 		Name: "dealer/router perf endpoint",
 		Probe: func() (bool, error) {
 			perfcommon.StampPayload(payload)
-			err := dealer.Send(perfcommon.NewMessage(payload))
+			err := dealer.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					return false, nil
 				}
 				return false, err
 			}
-			reply, err := dealer.Recv()
+			reply, err := dealer.Recv(zlink.RecvFlagsNone)
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					return false, nil
@@ -121,17 +121,17 @@ func startRouterEchoServer(router *zlink.RouterSocket) func() {
 				return
 			default:
 			}
-			received, ok, err := router.TryRecv()
-			if err != nil {
-				if perfcommon.IsTransient(err) {
+			received, err := router.Recv(zlink.RecvFlagsDontWait)
+				if err != nil {
+					if perfcommon.IsTransient(err) {
+						continue
+					}
+					return
+				}
+				if received == nil {
 					continue
 				}
-				return
-			}
-			if !ok || received == nil {
-				continue
-			}
-			err = router.SendTo(received.RoutingID(),
+			err = router.SendTo(received.RoutingID(), zlink.SendFlagsNone,
 				perfcommon.CloneMessages(received.Parts())...)
 			if err != nil && !perfcommon.IsTransient(err) {
 				perfcommon.Must(err)

@@ -10,6 +10,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import dev.kairoscode.zlink.service.discovery.Discovery;
+import dev.kairoscode.zlink.service.spot.Spot;
 
 /**
  * Reflection bridge for package-private binding internals used by subpackages.
@@ -23,6 +24,8 @@ public final class InternalAccess {
         method(Context.class, "handle");
     private static final Method DISCOVERY_HANDLE =
         method(Discovery.class, "handle");
+    private static final Method SPOT_HANDLE =
+        method(Spot.class, "handle");
     private static final Constructor<ServiceMonitor> SERVICE_MONITOR_CTOR =
         constructor(ServiceMonitor.class, MemorySegment.class);
     private static final Method MESSAGE_DATA_SEGMENT =
@@ -59,6 +62,10 @@ public final class InternalAccess {
 
     public static MemorySegment discoveryHandle(Discovery discovery) {
         return (MemorySegment) invoke(DISCOVERY_HANDLE, discovery);
+    }
+
+    public static MemorySegment spotHandle(Spot spot) {
+        return (MemorySegment) invoke(SPOT_HANDLE, spot);
     }
 
     public static ServiceMonitor serviceMonitor(MemorySegment handle) {

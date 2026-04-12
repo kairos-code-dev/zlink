@@ -83,15 +83,23 @@ bool run_phase (zlink::socket_t &publisher,
           k_topic, payload_part, zlink::send_flag::dontwait);
         if (sent == 0) {
             pending = false;
-            if (poller.modify (publisher, static_cast<zlink::poll_event> (0)) != 0)
+            try {
+                poller.modify (publisher, static_cast<zlink::poll_event> (0));
+            }
+            catch (const zlink::zlink_error_t &) {
                 return false;
+            }
             continue;
         }
 
         if (errno == EAGAIN) {
             pending = true;
-            if (poller.modify (publisher, zlink::poll_event::pollout) != 0)
+            try {
+                poller.modify (publisher, zlink::poll_event::pollout);
+            }
+            catch (const zlink::zlink_error_t &) {
                 return false;
+            }
         } else {
             return false;
         }

@@ -22,12 +22,6 @@ func main() {
 	defer serverMon.Close()
 	clientMon := samplecommon.OpenMonitor(client)
 	defer clientMon.Close()
-	if event, ok, err := serverMon.TryRecv(); err != nil || ok || event != nil {
-		samplecommon.Must(fmt.Errorf("monitor sample expected empty server TryRecv"))
-	}
-	if event, ok, err := clientMon.TryRecv(); err != nil || ok || event != nil {
-		samplecommon.Must(fmt.Errorf("monitor sample expected empty client TryRecv"))
-	}
 
 	endpoint := samplecommon.UniqueTCP("monitor")
 	samplecommon.Must(server.Bind(endpoint))
@@ -38,5 +32,5 @@ func main() {
 	if !serverEvent.IsConnectionReady() || !clientEvent.IsConnectionReady() {
 		samplecommon.Must(fmt.Errorf("monitor sample expected CONNECTION_READY"))
 	}
-	fmt.Println("[monitor/recv] recv: \"connection-ready\" -> tryRecv: empty")
+	fmt.Println("[monitor/recv] recv: \"connection-ready\"")
 }

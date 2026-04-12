@@ -3,7 +3,7 @@ package dev.kairoscode.zlink.samples;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.SendResult;
+import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.StreamSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
@@ -31,11 +31,7 @@ public final class StreamCallbackSample {
                     }
                     try (Message reply = Message.copyOfUtf8(
                              SampleSupport.STREAM_PAYLOAD)) {
-                        SendResult result = server.trySend(rid, reply);
-                        if (result != SendResult.SENT) {
-                            throw new IllegalStateException(
-                                "unexpected stream send result: " + result);
-                        }
+                        server.send(rid, reply, SendFlags.DONT_WAIT);
                     }
                     delivered.countDown();
                 });

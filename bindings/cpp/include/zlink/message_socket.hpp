@@ -23,40 +23,12 @@ class message_socket_t : public base_socket_t
         throw_on_error (rc);
     }
 
-    ZLINK_CPP_NODISCARD send_result_t try_send (message_t &part_)
-    {
-        send_result_t result = send_result_t::sent;
-        const int rc = base_socket_t::try_send (result, part_);
-        throw_on_error (rc);
-        return result;
-    }
-
-    ZLINK_CPP_NODISCARD send_result_t try_send (std::vector<message_t> &parts_)
-    {
-        send_result_t result = send_result_t::sent;
-        const int rc = base_socket_t::try_send (result, parts_);
-        throw_on_error (rc);
-        return result;
-    }
-
     ZLINK_CPP_NODISCARD received_t recv ()
     {
         received_t received;
         const int rc = base_socket_t::receive (received);
         throw_on_error (rc);
         return received;
-    }
-
-    ZLINK_CPP_NODISCARD maybe_t<received_t> try_recv ()
-    {
-        received_t received;
-        const int rc = base_socket_t::receive (received, recv_flag::dontwait);
-        if (rc == 0)
-            return maybe_t<received_t> (std::move (received));
-        if (errno == EAGAIN)
-            return maybe_t<received_t> ();
-        throw_on_error (rc);
-        return maybe_t<received_t> ();
     }
 
     ZLINK_CPP_NODISCARD int on_receive (zlink_socket_msg_handler_fn handler_,
@@ -92,25 +64,6 @@ class routed_message_socket_t : public message_socket_t
     {
         const int rc = base_socket_t::send (target_rid_, parts_);
         throw_on_error (rc);
-    }
-
-    ZLINK_CPP_NODISCARD send_result_t
-    try_send (const routing_id_t &target_rid_, message_t &part_)
-    {
-        send_result_t result = send_result_t::sent;
-        const int rc = base_socket_t::try_send (result, target_rid_, part_);
-        throw_on_error (rc);
-        return result;
-    }
-
-    ZLINK_CPP_NODISCARD send_result_t
-    try_send (const routing_id_t &target_rid_,
-              std::vector<message_t> &parts_)
-    {
-        send_result_t result = send_result_t::sent;
-        const int rc = base_socket_t::try_send (result, target_rid_, parts_);
-        throw_on_error (rc);
-        return result;
     }
 
   protected:

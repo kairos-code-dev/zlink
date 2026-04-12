@@ -101,6 +101,12 @@ public final class NativeMsg {
             "zlink_router_handler",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_ROUTER_RECV = downcall(
+            "zlink_router_recv",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT));
 
     private NativeMsg() {}
 
@@ -207,10 +213,10 @@ public final class NativeMsg {
     public static int dealerRequest(MemorySegment dealer, MemorySegment parts,
                                     long partCount, int timeoutMs,
                                     MemorySegment handler,
-                                    MemorySegment userData) {
+                                    MemorySegment userData, int flags) {
         try {
             return (int) MH_DEALER_REQUEST.invokeExact(dealer, parts, partCount,
-                handler, userData, 0, timeoutMs);
+                handler, userData, flags, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_dealer_request failed", t);
         }
@@ -219,10 +225,10 @@ public final class NativeMsg {
     public static int routerRequest(MemorySegment router, MemorySegment peerRid,
                                     MemorySegment parts, long partCount,
                                     int timeoutMs, MemorySegment handler,
-                                    MemorySegment userData) {
+                                    MemorySegment userData, int flags) {
         try {
             return (int) MH_ROUTER_REQUEST.invokeExact(router, peerRid, parts,
-                partCount, handler, userData, 0, timeoutMs);
+                partCount, handler, userData, flags, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_router_request failed", t);
         }
@@ -247,6 +253,20 @@ public final class NativeMsg {
                 userData);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_router_handler failed", t);
+        }
+    }
+
+    public static int routerRecv(MemorySegment router,
+                                 MemorySegment peerRidOut,
+                                 MemorySegment requestSeqOut,
+                                 MemorySegment partsOut,
+                                 MemorySegment partCountOut,
+                                 int flags) {
+        try {
+            return (int) MH_ROUTER_RECV.invokeExact(router, peerRidOut,
+                requestSeqOut, partsOut, partCountOut, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_router_recv failed", t);
         }
     }
 

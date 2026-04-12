@@ -560,6 +560,12 @@ int zlink::socket_base_t::stream_dispatch_send_msg_from_io (
     return 0;
 }
 
+int zlink::socket_base_t::stream_dispatch_send_current_msg_from_io (msg_t *,
+                                                                    int)
+{
+    return 0;
+}
+
 int zlink::socket_base_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
 {
     LIBZLINK_UNUSED (msg_);

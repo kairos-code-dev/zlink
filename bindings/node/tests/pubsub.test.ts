@@ -6,7 +6,7 @@ const net = require('node:net');
 const { spawn } = require('node:child_process');
 const { once } = require('node:events');
 const path = require('node:path');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 
 async function reservePort() {
   const server = net.createServer();
@@ -52,11 +52,18 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
       serverSpot.publish(topic, 'payload');
-      const received = clientSpot.trySubscribe();
+      let received = null;
+      try {
+        received = clientSpot.subscribe(zlink.RecvFlags.DontWait);
+      } catch (error) {
+        if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
+          throw error;
+        }
+      }
       if (received) {
         assert.equal(received.topic, topic);
         assert.deepEqual(
-          received.parts.map((part) => part.data.toString()),
+          received.parts.map((part) => part.data().toString()),
           ['payload']
         );
         return;
@@ -121,43 +128,6 @@ test('remote spot peer delivery works across child processes', async () => {
   const fixturesDir = path.join(__dirname, '..', '..', 'tests', 'fixtures');
   const serverPath = path.join(fixturesDir, 'spot_child_server.js');
   const clientPath = path.join(fixturesDir, 'spot_child_client.js');
-
-  const waitForExit = (child) => {
-    if (child.exitCode !== null || child.signalCode !== null) {
-      return Promise.resolve();
-    }
-    return once(child, 'exit').then(() => {});
-  };
-
-  const terminateChildTree = async (child) => {
-    if (child.exitCode !== null || child.signalCode !== null) {
-      return;
-    }
-    try {
-      process.kill(-child.pid, 'SIGTERM');
-    } catch (error) {
-      if (!error || error.code !== 'ESRCH') {
-        throw error;
-      }
-      return;
-    }
-
-    const exited = await Promise.race([
-      waitForExit(child).then(() => true),
-      new Promise((resolve) => setTimeout(() => resolve(false), 2000))
-    ]);
-    if (exited) {
-      return;
-    }
-    try {
-      process.kill(-child.pid, 'SIGKILL');
-    } catch (error) {
-      if (!error || error.code !== 'ESRCH') {
-        throw error;
-      }
-    }
-    await Promise.allSettled([waitForExit(child)]);
-  };
 
   const waitForLine = (child, expected, timeoutMs, sink) => {
     return new Promise((resolve, reject) => {
@@ -231,10 +201,23 @@ test('remote spot peer delivery works across child processes', async () => {
     const [clientCode] = await once(client, 'exit');
     assert.equal(clientCode, 0, clientStderr);
   } finally {
-    if (server.stdin.writable) {
-      server.stdin.end();
+    try {
+      if (server.stdin.writable) {
+        server.stdin.end();
+      }
+    } catch (_) {
+      // ignore
     }
-    await Promise.allSettled([terminateChildTree(server), terminateChildTree(client)]);
+    try {
+      process.kill(-server.pid, 'SIGKILL');
+    } catch (_) {
+      // ignore
+    }
+    try {
+      process.kill(-client.pid, 'SIGKILL');
+    } catch (_) {
+      // ignore
+    }
   }
 });
 
@@ -244,7 +227,6 @@ test('canonical pub/sub surface hides opposite-direction methods', () => {
   const sub = new zlink.SubSocket(ctx);
 
   assert.equal(pub.recv, undefined);
-  assert.equal(typeof pub.tryPublish, 'function');
   assert.equal(pub.send, undefined);
   assert.equal(sub.send, undefined);
   assert.equal(typeof sub.subscribe, 'function');
@@ -254,7 +236,18 @@ test('canonical pub/sub surface hides opposite-direction methods', () => {
   ctx.close();
 });
 
-test('sub sockets receive Subscribed domain objects and TrySubscribe returns null when empty', () => {
+function subscribeMaybe(socket) {
+  try {
+    return socket.subscribe(zlink.RecvFlags.DontWait);
+  } catch (error) {
+    if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+test('sub sockets receive Subscribed domain objects and non-blocking receive returns null when empty', () => {
   const ctx = new zlink.Context();
   const pub = new zlink.PubSocket(ctx);
   const sub = new zlink.SubSocket(ctx);
@@ -263,14 +256,14 @@ test('sub sockets receive Subscribed domain objects and TrySubscribe returns nul
   sub.connect('inproc://subscribed-contract');
   sub.setSubscription('topic');
 
-  assert.equal(sub.trySubscribe(), null);
+  assert.equal(subscribeMaybe(sub), null);
 
   pub.publish('topic', 'payload');
 
   const received = sub.subscribe();
   assert.equal(received.topic, 'topic');
   assert.equal(received.routingId, null);
-  assert.deepEqual(received.parts.map((part) => part.data.toString()), ['payload']);
+  assert.deepEqual(received.parts.map((part) => part.data().toString()), ['payload']);
 
   sub.close();
   pub.close();
@@ -304,7 +297,7 @@ test('onSubscribe delivers topic-aware multipart payloads', async () => {
   assert.ok(Buffer.isBuffer(received.routingId));
   assert.equal(received.topic, 'topic');
   assert.deepEqual(
-    received.parts.map((part) => part.data.toString()),
+    received.parts.map((part) => part.data().toString()),
     ['payload']
   );
 

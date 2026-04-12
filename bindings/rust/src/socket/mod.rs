@@ -25,8 +25,9 @@ use std::time::Duration;
 
 use crate::ctx::duration_to_millis;
 use crate::domain::{Received, SendResult, SubscriptionEvent, TopicMessage};
-use crate::error::{ZlinkError, check_rc};
+use crate::error::{RecvResult, ZlinkError, check_rc};
 use crate::ffi;
+use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, Message, RoutingId};
 use crate::service::Discovery;
 
@@ -129,9 +130,19 @@ impl SocketInner {
     // -- Send (non-routed) -------------------------------------------------
 
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
+        self.send_with_flags(parts, SendFlags::NONE)
+    }
+
+    pub fn send_with_flags(
+        &self,
+        parts: impl IntoMultipart,
+        flags: SendFlags,
+    ) -> Result<(), ZlinkError> {
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
-        let rc = unsafe { ffi::zlink_send(self.handle, native.as_mut_ptr(), native.len(), 0) };
+        let rc = unsafe {
+            ffi::zlink_send(self.handle, native.as_mut_ptr(), native.len(), flags.bits())
+        };
         // Native took ownership, close the empty source messages
         drop(parts);
         check_rc(rc)
@@ -155,6 +166,15 @@ impl SocketInner {
     // -- Send (routed) -----------------------------------------------------
 
     pub fn send_to(&self, target: &RoutingId, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
+        self.send_to_with_flags(target, parts, SendFlags::NONE)
+    }
+
+    pub fn send_to_with_flags(
+        &self,
+        target: &RoutingId,
+        parts: impl IntoMultipart,
+        flags: SendFlags,
+    ) -> Result<(), ZlinkError> {
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
         let rc = unsafe {
@@ -163,7 +183,7 @@ impl SocketInner {
                 target.as_raw(),
                 native.as_mut_ptr(),
                 native.len(),
-                0,
+                flags.bits(),
             )
         };
         drop(parts);
@@ -193,6 +213,10 @@ impl SocketInner {
     // -- Recv (direct) -----------------------------------------------------
 
     pub fn recv(&self) -> Result<Received, ZlinkError> {
+        self.recv_with_flags(RecvFlags::NONE)
+    }
+
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError> {
         let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
         let mut part_count: usize = 0;
@@ -203,7 +227,7 @@ impl SocketInner {
                 rid.as_mut_ptr(),
                 &mut parts_ptr,
                 &mut part_count,
-                0,
+                flags.bits(),
             )
         };
         check_rc(rc)?;
@@ -227,7 +251,10 @@ impl SocketInner {
                 ffi::ZLINK_DONTWAIT,
             )
         };
-        if rc == -1 {
+        if rc == RecvResult::NoData as i32 {
+            return Ok(None);
+        }
+        if rc != 0 {
             let errno = unsafe { ffi::zlink_errno() };
             if errno == libc::EAGAIN {
                 return Ok(None);
@@ -243,6 +270,15 @@ impl SocketInner {
     // -- Publish -----------------------------------------------------------
 
     pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
+        self.publish_with_flags(topic, parts, SendFlags::NONE)
+    }
+
+    pub fn publish_with_flags(
+        &self,
+        topic: &str,
+        parts: impl IntoMultipart,
+        flags: SendFlags,
+    ) -> Result<(), ZlinkError> {
         let c_topic =
             CString::new(topic).map_err(|_| ZlinkError::validation("topic contains null byte"))?;
         let mut parts = parts.into_parts();
@@ -253,7 +289,7 @@ impl SocketInner {
                 c_topic.as_ptr(),
                 native.as_mut_ptr(),
                 native.len(),
-                0,
+                flags.bits(),
             )
         };
         drop(parts);
@@ -285,6 +321,10 @@ impl SocketInner {
     // -- Subscribe (blocking recv) -----------------------------------------
 
     pub fn subscribe_recv(&self) -> Result<TopicMessage, ZlinkError> {
+        self.subscribe_recv_with_flags(RecvFlags::NONE)
+    }
+
+    pub fn subscribe_recv_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, ZlinkError> {
         let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
         let mut part_count: usize = 0;
@@ -299,7 +339,7 @@ impl SocketInner {
                 &mut part_count,
                 topic_buf.as_mut_ptr(),
                 &mut topic_len,
-                0,
+                flags.bits(),
             )
         };
         check_rc(rc)?;
@@ -328,7 +368,10 @@ impl SocketInner {
                 ffi::ZLINK_DONTWAIT as u32,
             )
         };
-        if rc == -1 {
+        if rc == RecvResult::NoData as i32 {
+            return Ok(None);
+        }
+        if rc != 0 {
             let errno = unsafe { ffi::zlink_errno() };
             if errno == libc::EAGAIN {
                 return Ok(None);
@@ -363,6 +406,13 @@ impl SocketInner {
     // -- Subscription event (XPUB) -----------------------------------------
 
     pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, ZlinkError> {
+        self.receive_subscription_event_with_flags(RecvFlags::NONE)
+    }
+
+    pub fn receive_subscription_event_with_flags(
+        &self,
+        flags: RecvFlags,
+    ) -> Result<SubscriptionEvent, ZlinkError> {
         let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         let mut subscribed: i32 = 0;
         let mut topic_buf = [0i8; 256];
@@ -375,7 +425,7 @@ impl SocketInner {
                 &mut subscribed,
                 topic_buf.as_mut_ptr(),
                 &mut topic_len,
-                0,
+                flags.bits(),
             )
         };
         check_rc(rc)?;
@@ -405,7 +455,10 @@ impl SocketInner {
                 ffi::ZLINK_DONTWAIT as u32,
             )
         };
-        if rc == -1 {
+        if rc == RecvResult::NoData as i32 {
+            return Ok(None);
+        }
+        if rc != 0 {
             let errno = unsafe { ffi::zlink_errno() };
             if errno == libc::EAGAIN {
                 return Ok(None);
@@ -430,7 +483,7 @@ impl SocketInner {
     {
         let (cb, userdata) = CallbackBox::new(handler);
         let rc = unsafe { ffi::zlink_recv_handler(self.handle, recv_trampoline::<F>, userdata) };
-        if rc == -1 {
+        if rc != 0 {
             drop(cb); // free on failure
             return Err(ZlinkError::last());
         }
@@ -446,7 +499,7 @@ impl SocketInner {
         let rc = unsafe {
             ffi::zlink_subscribe_handler(self.handle, subscribe_trampoline::<F>, userdata)
         };
-        if rc == -1 {
+        if rc != 0 {
             drop(cb);
             return Err(ZlinkError::last());
         }
@@ -462,7 +515,7 @@ impl SocketInner {
         let rc = unsafe {
             ffi::zlink_send_ready_handler(self.handle, send_ready_trampoline::<F>, userdata)
         };
-        if rc == -1 {
+        if rc != 0 {
             drop(cb);
             return Err(ZlinkError::last());
         }
@@ -865,19 +918,15 @@ pub(crate) fn cstr_buf_to_string(buf: &[i8], len: usize) -> String {
 /// Map the return code from a DONTWAIT send to `SendResult`.
 ///
 /// When `zlink_send` / `zlink_send_rid` / `zlink_publish` is called with
-/// `ZLINK_DONTWAIT`, the return value on success is the `zlink_send_result_t`
-/// enum value (0 = Sent, 1 = Backpressured, 2 = NotReady). On error it
-/// returns -1 and sets errno.
+/// `ZLINK_DONTWAIT`, the return value is the public `zlink_submit_result_t`
+/// enum (0 = Sent, 1 = Backpressured, 2 = NotReady, other non-zero values are
+/// submit failures).
 pub(crate) fn check_send_result(rc: i32) -> Result<SendResult, ZlinkError> {
-    if rc == -1 {
-        return Err(ZlinkError::last());
-    }
-    // rc is the zlink_send_result_t value
     match rc {
         0 => Ok(SendResult::Sent),
         1 => Ok(SendResult::Backpressured),
         2 => Ok(SendResult::NotReady),
-        _ => Ok(SendResult::Sent), // unknown positive value → treat as sent
+        _ => Err(ZlinkError::last()),
     }
 }
 

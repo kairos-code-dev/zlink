@@ -175,39 +175,11 @@ void test_pair_send_recv_multipart ()
     assert (inbound.parts[1].to_string () == "two");
 }
 
-void test_pair_try_send_success ()
-{
-    zlink::context_t ctx;
-    zlink::pair_socket_t left (ctx);
-    zlink::pair_socket_t right (ctx);
-    zlink::monitor_handle_t left_monitor = left.monitor_handle ();
-    zlink::monitor_handle_t right_monitor = right.monitor_handle ();
-
-    const std::string endpoint = zlink_cpp_contract::unique_inproc ("pair-try-send");
-    assert (left.bind (endpoint) == 0);
-    assert (right.connect (endpoint) == 0);
-    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
-      left_monitor,
-      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
-    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
-      right_monitor,
-      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
-
-    zlink::message_t outbound = zlink_cpp_contract::make_message ("try-send");
-    const zlink::send_result_t result = right.try_send (outbound);
-    assert (result == zlink::send_result_t::sent);
-
-    const zlink::received_t inbound = left.recv ();
-    assert (inbound.parts.size () == 1);
-    assert (inbound.parts[0].to_string () == "try-send");
-}
-
 } // namespace
 
 int main ()
 {
     test_pair_send_recv_single_part ();
     test_pair_send_recv_multipart ();
-    test_pair_try_send_success ();
     return 0;
 }

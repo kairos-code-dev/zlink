@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 namespace Zlink;
 
 [Flags]
-internal enum SendFlags
+internal enum PerfSendFlags
 {
     None = 0,
     DontWait = 1,
@@ -51,20 +51,20 @@ internal static class PerfRawSocketCompat
     }
 
     internal static bool TrySend(SocketBase socket, ReadOnlySpan<byte> buffer,
-        SendFlags flags, out int written)
+        PerfSendFlags flags, out int written)
     {
         SocketState state = GetState(socket);
         written = buffer.Length;
         byte[] frame = buffer.ToArray();
 
-        if ((flags & SendFlags.SendMore) != 0)
+        if ((flags & PerfSendFlags.SendMore) != 0)
         {
             state.PendingSendFrames.Add(frame);
             return true;
         }
 
         return FlushPendingFrames(socket, state, frame,
-            (flags & SendFlags.DontWait) != 0);
+            (flags & PerfSendFlags.DontWait) != 0);
     }
 
     internal static bool TryDequeueFrame(SocketBase socket, ReceiveFlags flags,
@@ -130,8 +130,8 @@ internal static class PerfRawSocketCompat
                 SendResult result = publisher.TryPublish(string.Empty, message);
                 if (!nonBlocking && result != SendResult.Sent)
                 {
-                    throw new ZlinkException((int)ErrorCode.EAgain,
-                        "send would block");
+                    throw new ZlinkSubmitException(SubmitResult.Backpressured,
+                        (int)ErrorCode.EAgain);
                 }
                 return result == SendResult.Sent;
             }
@@ -242,13 +242,13 @@ internal static class PerfCompatExtensions
 {
     private const int BorrowedSendThreshold = 65536;
 
-    internal static int Send(this SocketBase socket, byte[] buffer, SendFlags flags)
+    internal static int Send(this SocketBase socket, byte[] buffer, PerfSendFlags flags)
     {
         if (buffer == null)
             throw new ArgumentNullException(nameof(buffer));
 
-        bool nonBlocking = (flags & SendFlags.DontWait) != 0;
-        bool multipart = (flags & SendFlags.SendMore) != 0;
+        bool nonBlocking = (flags & PerfSendFlags.DontWait) != 0;
+        bool multipart = (flags & PerfSendFlags.SendMore) != 0;
         SocketType type = socket.Kernel.Type;
         bool canBorrow = !multipart
             && !PerfRawSocketCompat.HasPendingSendFrames(socket)
@@ -271,23 +271,25 @@ internal static class PerfCompatExtensions
                     string.Empty, buffer);
                 if (pubResult == SendResult.Sent)
                     return buffer.Length;
-                throw new ZlinkException((int)ErrorCode.EAgain, "send would block");
+                throw new ZlinkSubmitException(SubmitResult.Backpressured,
+                    (int)ErrorCode.EAgain);
             }
 
             SendResult result = socket.Kernel.TrySendBorrowedSingle(buffer);
             if (result == SendResult.Sent)
                 return buffer.Length;
-            throw new ZlinkException((int)ErrorCode.EAgain, "send would block");
+            throw new ZlinkSubmitException(SubmitResult.Backpressured,
+                (int)ErrorCode.EAgain);
         }
 
         return Send(socket, buffer.AsSpan(), flags);
     }
 
     internal static int Send(this SocketBase socket, ReadOnlySpan<byte> buffer,
-        SendFlags flags)
+        PerfSendFlags flags)
     {
-        bool nonBlocking = (flags & SendFlags.DontWait) != 0;
-        bool multipart = (flags & SendFlags.SendMore) != 0;
+        bool nonBlocking = (flags & PerfSendFlags.DontWait) != 0;
+        bool multipart = (flags & PerfSendFlags.SendMore) != 0;
         SocketType type = socket.Kernel.Type;
 
         if (!nonBlocking && !multipart
@@ -309,19 +311,21 @@ internal static class PerfCompatExtensions
         {
             SendResult result = socket.Kernel.TryPublishRawSingle(string.Empty, buffer);
             if (result != SendResult.Sent)
-                throw new ZlinkException((int)ErrorCode.EAgain, "send would block");
+                throw new ZlinkSubmitException(SubmitResult.Backpressured,
+                    (int)ErrorCode.EAgain);
             return buffer.Length;
         }
 
         if (!PerfRawSocketCompat.TrySend(socket, buffer, flags, out int written))
         {
-            throw new ZlinkException((int)ErrorCode.EAgain, "send would block");
+            throw new ZlinkSubmitException(SubmitResult.Backpressured,
+                (int)ErrorCode.EAgain);
         }
         return written;
     }
 
     internal static bool TrySend(this SocketBase socket, ReadOnlySpan<byte> buffer,
-        SendFlags flags, out int written)
+        PerfSendFlags flags, out int written)
     {
         return PerfRawSocketCompat.TrySend(socket, buffer, flags, out written);
     }
@@ -331,7 +335,8 @@ internal static class PerfCompatExtensions
     {
         if (!TryReceive(socket, buffer, flags, out int bytesWritten))
         {
-            throw new ZlinkException((int)ErrorCode.EAgain, "receive would block");
+            throw new ZlinkRecvException(RecvResult.NoData,
+                (int)ErrorCode.EAgain);
         }
         return bytesWritten;
     }
@@ -394,7 +399,8 @@ internal static class PerfCompatExtensions
         if (PerfRawSocketCompat.TryDequeueFrame(socket, flags, out byte[]? frame))
             return Message.FromBytes(frame!);
 
-        throw new ZlinkException((int)ErrorCode.EAgain, "receive would block");
+        throw new ZlinkRecvException(RecvResult.NoData,
+            (int)ErrorCode.EAgain);
     }
 
     internal static SocketMonitorEvent Receive(this SocketMonitor monitor,
@@ -404,15 +410,15 @@ internal static class PerfCompatExtensions
         {
             if (monitor.TryRecv(out SocketMonitorEvent? evt))
                 return evt!.Value;
-            throw new ZlinkException((int)ErrorCode.EAgain,
-                "monitor receive would block");
+            throw new ZlinkRecvException(RecvResult.NoData,
+                (int)ErrorCode.EAgain);
         }
 
         return monitor.Recv();
     }
 
     internal static int StreamSend(this SocketBase socket, string routingId,
-        ReadOnlySpan<byte> payload, SendFlags flags)
+        ReadOnlySpan<byte> payload, PerfSendFlags flags)
     {
         using Message message = Message.FromBytes(payload);
         SendResult result = ((RoutedMessageSocketBase)socket).TrySend(routingId,
@@ -420,7 +426,8 @@ internal static class PerfCompatExtensions
         if (result == SendResult.Sent)
             return payload.Length;
 
-        throw new ZlinkException((int)ErrorCode.EAgain, "send would block");
+        throw new ZlinkSubmitException(SubmitResult.Backpressured,
+            (int)ErrorCode.EAgain);
     }
 
     internal static void SendBorrowedSingle(this SocketBase socket,

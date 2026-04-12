@@ -169,10 +169,12 @@ class dealer_dealer_client_bench_t
             return false;
         if (state.pollout_enabled == enabled)
             return true;
-        if (_poller.modify (*state.sock,
+        try {
+            _poller.modify (*state.sock,
                             enabled ? zlink::poll_event::pollout
-                                    : static_cast<zlink::poll_event> (0))
-            != 0) {
+                                    : static_cast<zlink::poll_event> (0));
+        }
+        catch (const zlink::zlink_error_t &) {
             debug_log ("poller modify failed errno=" + std::to_string (errno));
             return false;
         }

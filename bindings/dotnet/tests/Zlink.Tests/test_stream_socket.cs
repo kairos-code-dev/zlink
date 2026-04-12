@@ -126,11 +126,11 @@ public sealed class test_stream_socket
             }, modifiers: null) != null;
     }
 
-    private static bool HasPublicReceiveWithoutRoutingId()
+    private static bool HasPublicReceiveWithFlags()
     {
         return typeof(StreamSocket).GetMethod("Recv",
             BindingFlags.Instance | BindingFlags.Public, binder: null,
-            types: Type.EmptyTypes,
+            types: new[] { typeof(RecvFlags) },
             modifiers: null) != null;
     }
 
@@ -334,7 +334,7 @@ public sealed class test_stream_socket
     [Fact]
     public void stream_recv_api_dispatch_conflict()
     {
-        Assert.True(HasPublicReceiveWithoutRoutingId());
+        Assert.True(HasPublicReceiveWithFlags());
     }
 
     [Fact]

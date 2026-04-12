@@ -148,7 +148,7 @@ const size_t asio_stream_read_drain_max_loops = 64;
 const size_t asio_stream_read_drain_max_bytes = 1048576;
 
 const size_t stream_target_default_size = 4096;
-const size_t stream_target_initial_cap = 8192;
+const size_t stream_target_initial_cap = 12288;
 
 size_t clamp_stream_target_limit (size_t target_,
                                   const zlink::options_t &options_,
@@ -243,6 +243,7 @@ size_t stream_output_target_batch (const zlink::asio_engine_t &engine_,
 
     return static_cast<size_t> (options_.out_batch_size);
 }
+
 
 }
 
@@ -1530,8 +1531,7 @@ bool zlink::asio_engine_t::prepare_output_buffer ()
     _outpos = NULL;
     _outsize = _encoder->encode (&_outpos, 0);
 
-    const size_t target_out_batch =
-      stream_output_target_batch (*this, _options);
+    size_t target_out_batch = stream_output_target_batch (*this, _options);
 
     while (_outsize < target_out_batch) {
         if ((this->*_next_msg) (&_tx_msg) == -1) {
@@ -1713,8 +1713,7 @@ void zlink::asio_engine_t::process_output ()
         _outpos = NULL;
         _outsize = _encoder->encode (&_outpos, 0);
 
-        const size_t target_out_batch =
-          stream_output_target_batch (*this, _options);
+        size_t target_out_batch = stream_output_target_batch (*this, _options);
 
         while (_outsize < target_out_batch) {
             if ((this->*_next_msg) (&_tx_msg) == -1) {

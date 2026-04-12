@@ -105,7 +105,8 @@ inline int get_common_option(const SocketLike &socket,
 inline zlink::message_t message_from_buffer(const void *data, size_t size)
 {
     zlink::message_t msg;
-    assert(msg.init_size(size) == 0);
+    msg.init(size);
+    assert(msg.valid());
     if (size > 0) {
         assert(data);
         std::memcpy(msg.data(), data, size);
@@ -188,7 +189,8 @@ inline int routed_raw_send(SocketLike &socket,
 inline int monitor_recv_nowait(zlink::monitor_handle_t &monitor,
                                zlink::monitor_event_t *event)
 {
-    const zlink::maybe_t<zlink::monitor_event_t> received = monitor.try_recv();
+    const zlink::maybe_t<zlink::monitor_event_t> received =
+      monitor.recv (zlink::non_blocking_t {});
     if (!received) {
         errno = EAGAIN;
         return -1;

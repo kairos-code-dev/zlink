@@ -3,9 +3,12 @@
 import { requireNative } from './native';
 import { normalizeBufferLike } from './buffer_like';
 import { Message, Received, Subscribed, SubscriptionEvent, METADATA_KEY_USER_MIN, METADATA_VALUE_MAX } from './message';
+import { BindError, BindResult } from './errors';
 import {
   SocketType,
-  SocketOption
+  SocketOption,
+  SendFlags,
+  RecvFlags
 } from './socket/constants';
 import { BaseSocket } from './socket/base_socket';
 import { MonitorSocket } from './socket/monitor_socket';
@@ -20,6 +23,24 @@ import {
 } from './socket/socket_support';
 import type { BufferLike } from './buffer_like';
 import type { MessageLike, MessageSnapshot } from './message';
+import {
+  CloseError,
+  CloseResult,
+  ConfigError,
+  ConfigResult,
+  ConnectError,
+  ConnectResult,
+  HandlerError,
+  HandlerResult,
+  RecvError,
+  RecvResult,
+  RequestError,
+  RequestResult,
+  SubmitError,
+  SubmitResult,
+  ZlinkError,
+  createError
+} from './errors';
 
 export type { BufferLike, MessageLike };
 export {
@@ -30,17 +51,28 @@ export {
   MonitorSocket,
   SocketType,
   SocketOption,
+  SendFlags,
+  RecvFlags,
+  SubmitResult,
+  RequestResult,
+  RecvResult,
+  HandlerResult,
+  CloseResult,
+  BindResult,
+  ConnectResult,
+  ConfigResult,
+  ZlinkError,
+  SubmitError,
+  RequestError,
+  RecvError,
+  HandlerError,
+  CloseError,
+  BindError,
+  ConnectError,
+  ConfigError,
   METADATA_KEY_USER_MIN,
   METADATA_VALUE_MAX
 };
-
-export const SendResult = Object.freeze({
-  Sent: 0,
-  Backpressured: 1,
-  NotReady: 2
-} as const);
-
-export type SendResult = typeof SendResult[keyof typeof SendResult];
 export type SocketRecvHandler = (routingId: Buffer | null, parts: Message[]) => void;
 export type SocketSubscribeHandler = (
   routingId: Buffer | null,

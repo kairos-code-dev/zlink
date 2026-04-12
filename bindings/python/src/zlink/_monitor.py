@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
-import errno
 import queue
 import threading
 
@@ -15,10 +14,17 @@ from ._ffi import (
     lib,
 )
 from ._core import (
-    ZlinkError,
-    _raise_last_error,
+    CloseError,
+    CloseResult,
+    ConfigError,
+    ConfigResult,
+    HandlerError,
+    HandlerResult,
+    RecvError,
+    RecvResult,
     _report_unhandled_callback_exception,
     _routing_id_bytes,
+    _raise_result_error,
 )
 from ._socket_base import _enter_callback, _leave_callback
 
@@ -105,14 +111,6 @@ class _BaseMonitor:
         if not self._handle:
             _raise_last_error()
 
-    def try_recv(self):
-        try:
-            return self.recv()
-        except ZlinkError as exc:
-            if exc.errno == errno.EAGAIN:
-                return None
-            raise
-
     def _start_event_dispatch(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
@@ -145,7 +143,7 @@ class _BaseMonitor:
         callback = native_handler(_callback)
         rc = register(self._handle, callback, None)
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
         self._handler_cb = callback
         self._handler_queue = events
 
@@ -171,7 +169,7 @@ class _BaseMonitor:
         snapshot = ZlinkMonitorSnapshot()
         rc = lib().zlink_monitor_snapshot(self._handle, ctypes.byref(snapshot))
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return MonitorSnapshot(
             source_kind=int(snapshot.source_kind),
             state_flags=int(snapshot.state_flags),
@@ -205,7 +203,7 @@ class _BaseMonitor:
         rc = lib().zlink_monitor_close(ctypes.byref(handle))
         self._handle = None
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
 
     def __enter__(self):
         return self
@@ -235,19 +233,7 @@ class MonitorSocket(_BaseMonitor):
         native = ZlinkMonitorEvent()
         rc = lib().zlink_socket_monitor_recv(self._handle, ctypes.byref(native), 0)
         if rc != 0:
-            _raise_last_error()
-        return self._decode_event(native)
-
-    def try_recv(self):
-        native = ZlinkMonitorEvent()
-        rc = lib().zlink_socket_monitor_recv(self._handle, ctypes.byref(native), 1)
-        if rc != 0:
-            try:
-                _raise_last_error()
-            except ZlinkError as exc:
-                if exc.errno == errno.EAGAIN:
-                    return None
-                raise
+            _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
         return self._decode_event(native)
 
     def on_event(self, handler):
@@ -275,19 +261,7 @@ class ServiceMonitor(_BaseMonitor):
         native = ZlinkServiceEvent()
         rc = lib().zlink_service_monitor_recv(self._handle, ctypes.byref(native), 0)
         if rc != 0:
-            _raise_last_error()
-        return self._decode_event(native)
-
-    def try_recv(self):
-        native = ZlinkServiceEvent()
-        rc = lib().zlink_service_monitor_recv(self._handle, ctypes.byref(native), 1)
-        if rc != 0:
-            try:
-                _raise_last_error()
-            except ZlinkError as exc:
-                if exc.errno == errno.EAGAIN:
-                    return None
-                raise
+            _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
         return self._decode_event(native)
 
     def on_event(self, handler):

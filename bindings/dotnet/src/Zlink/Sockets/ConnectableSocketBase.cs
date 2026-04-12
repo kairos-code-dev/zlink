@@ -20,11 +20,27 @@ public abstract class ConnectableSocketBase : SocketBase
 
     public void Connect(string address)
     {
-        Kernel.Connect(address);
+        try
+        {
+            Kernel.Connect(address);
+        }
+        catch (ZlinkException ex)
+        {
+            throw new ZlinkConnectException(ConnectResult.InvalidArgument,
+                ex.InternalErrno);
+        }
     }
 
     public void Disconnect(string address)
     {
-        Kernel.Disconnect(address);
+        try
+        {
+            Kernel.Disconnect(address);
+        }
+        catch (ZlinkException ex)
+        {
+            throw new ZlinkConnectException(ConnectResult.InvalidArgument,
+                ex.InternalErrno);
+        }
     }
 }

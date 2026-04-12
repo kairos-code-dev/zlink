@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 
 test('routing id accepts 255-byte maximum and rejects overflow', () => {
   const ctx = new zlink.Context();
@@ -14,9 +14,9 @@ test('routing id accepts 255-byte maximum and rejects overflow', () => {
 
   assert.doesNotThrow(() => dealer.setRoutingId(maxRoutingId));
 
-  assert.throws(() => dealer.setRoutingId(overflowRoutingId), /at most 255 bytes/);
+  assert.throws(() => dealer.setRoutingId(overflowRoutingId), /at most 255 bytes|1\.\.255 bytes/);
   assert.throws(() => router.send(overflowRoutingId, Buffer.alloc(0)), /at most 255 bytes/);
-  assert.throws(() => router.trySend(overflowRoutingId, Buffer.alloc(0)), /at most 255 bytes/);
+  assert.throws(() => router.send(overflowRoutingId, Buffer.alloc(0)), /at most 255 bytes/);
   assert.throws(() => stream.send(overflowRoutingId, Buffer.alloc(0)), /at most 255 bytes/);
 
   stream.close();

@@ -6,7 +6,7 @@ const { spawn } = require('node:child_process');
 const { once } = require('node:events');
 const net = require('node:net');
 const path = require('node:path');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 
 async function reservePort() {
   const server = net.createServer();
@@ -29,12 +29,13 @@ async function waitFor(deadlineMs, read) {
   return null;
 }
 
-test('socket monitor exposes recv and tryRecv with empty path', () => {
+test('socket monitor exposes recv and snapshot surface', () => {
   const ctx = new zlink.Context();
   const socket = new zlink.PairSocket(ctx);
   const monitor = socket.monitorOpen();
 
-  assert.equal(monitor.tryRecv(), null);
+  assert.equal(typeof monitor.recv, 'function');
+  assert.equal(typeof monitor.snapshot, 'function');
 
   monitor.close();
   socket.close();
@@ -127,12 +128,22 @@ test('discovery service monitor reports service-up events', async () => {
   const monitor = discovery.monitorOpen(zlink.ServiceMonitorEvent.ALL);
 
   try {
+    const eventPromise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('discovery service monitor timeout'));
+      }, 5000);
+      monitor.onEvent((event) => {
+        clearTimeout(timeout);
+        resolve(event);
+      });
+    });
+
     registry.bind(pubEndpoint, routerEndpoint);
     discovery.connectRegistry(routerEndpoint);
     node.attachDiscovery(discovery);
 
     node.bind(serviceEndpoint);
-    const event = await waitFor(5000, () => monitor.tryRecv());
+    const event = await eventPromise;
     assert.ok(event);
     assert.equal(event.eventType, zlink.ServiceMonitorEvent.DISCOVERY_SERVICE_UP);
     assert.equal(event.serviceName, 'monitor-service-up');
@@ -144,42 +155,15 @@ test('discovery service monitor reports service-up events', async () => {
   }
 });
 
-test('discovery service monitor onEvent reports service-up events', async () => {
+test('discovery service monitor onEvent surface is exposed', async () => {
   const ctx = new zlink.Context();
-  const registry = new zlink.Registry(ctx);
   const discovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'monitor-service-up');
-  const node = new zlink.SpotNode(ctx);
-  const pubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const routerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const serviceEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const monitor = discovery.monitorOpen(zlink.ServiceMonitorEvent.ALL);
 
-  try {
-    const eventPromise = new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('discovery service monitor onEvent timeout'));
-      }, 5000);
-      monitor.onEvent((event) => {
-        clearTimeout(timeout);
-        resolve(event);
-      });
-    });
-
-    registry.bind(pubEndpoint, routerEndpoint);
-    discovery.connectRegistry(routerEndpoint);
-    node.attachDiscovery(discovery);
-    node.bind(serviceEndpoint);
-
-    const event = await eventPromise;
-    assert.equal(event.eventType, zlink.ServiceMonitorEvent.DISCOVERY_SERVICE_UP);
-    assert.equal(event.serviceName, 'monitor-service-up');
-    assert.throws(() => monitor.tryRecv(), /busy|state|current/i);
-  } finally {
-    monitor.close();
-    discovery.close();
-    registry.close();
-    ctx.close();
-  }
+  assert.equal(typeof monitor.onEvent, 'function');
+  monitor.close();
+  discovery.close();
+  ctx.close();
 });
 
 test('spot node subject status reflects remote sub readiness after direct peer connect', async () => {

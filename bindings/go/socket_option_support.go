@@ -16,9 +16,9 @@ import (
 
 func setNativeOption(raw unsafe.Pointer, closed bool, closedMessage string, option C.zlink_option_t, ptr unsafe.Pointer, size C.size_t) error {
 	if raw == nil || closed {
-		return stateError(closedMessage)
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	return checkRC(C.zlink_set_option(raw, option, ptr, size))
+	return configErrorFromResult(ConfigResult(C.zlink_set_option(raw, option, ptr, size)))
 }
 
 func setNativeIntOption(raw unsafe.Pointer, closed bool, closedMessage string, option C.zlink_option_t, value int32) error {
@@ -43,22 +43,22 @@ func setNativeDurationOption(raw unsafe.Pointer, closed bool, closedMessage stri
 
 func setNativePubBoolOption(raw unsafe.Pointer, closed bool, closedMessage string, option C.zlink_pub_option_t, value bool) error {
 	if raw == nil || closed {
-		return stateError(closedMessage)
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	var rawValue C.int
 	if value {
 		rawValue = 1
 	}
-	return checkRC(C.zlink_set_pub_option(raw, option, unsafe.Pointer(&rawValue), C.size_t(C.sizeof_int)))
+	return configErrorFromResult(ConfigResult(C.zlink_set_pub_option(raw, option, unsafe.Pointer(&rawValue), C.size_t(C.sizeof_int))))
 }
 
 func getNativePubBoolOption(raw unsafe.Pointer, closed bool, closedMessage string, option C.zlink_pub_option_t) (bool, error) {
 	if raw == nil || closed {
-		return false, stateError(closedMessage)
+		return false, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	var rawValue C.int
 	size := C.size_t(C.sizeof_int)
-	if err := checkRC(C.zlink_get_pub_option(raw, option, unsafe.Pointer(&rawValue), &size)); err != nil {
+	if err := configErrorFromResult(ConfigResult(C.zlink_get_pub_option(raw, option, unsafe.Pointer(&rawValue), &size))); err != nil {
 		return false, err
 	}
 	return rawValue != 0, nil

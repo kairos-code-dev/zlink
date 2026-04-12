@@ -2,6 +2,9 @@ package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.RecvException;
+import dev.kairoscode.zlink.RecvFlags;
+import dev.kairoscode.zlink.RecvResult;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.time.Duration;
@@ -28,18 +31,19 @@ public final class SpotRecvSample {
                 try (Message payload = Message.copyOfUtf8(SampleSupport.SPOT_PAYLOAD)) {
                     publisher.publish(SampleSupport.SPOT_TOPIC, payload);
                 }
-                var received = subscriber.trySubscribe();
-                if (received.isPresent()) {
-                    try (var topicMessage = received.get()) {
-                        String value = topicMessage.topicId() + "/"
-                            + topicMessage.singlePartOrThrow().toUtf8String();
-                        if (!published.equals(value)) {
-                            throw new IllegalStateException(
-                                "unexpected delivery: " + value);
-                        }
-                        System.out.println("[spot/recv] publish: \"" + published
-                            + "\" \u2192 subscribe: \"" + value + "\"");
-                        return;
+                try (var topicMessage = subscriber.subscribe(RecvFlags.DONT_WAIT)) {
+                    String value = topicMessage.topicId() + "/"
+                        + topicMessage.singlePartOrThrow().toUtf8String();
+                    if (!published.equals(value)) {
+                        throw new IllegalStateException(
+                            "unexpected delivery: " + value);
+                    }
+                    System.out.println("[spot/recv] publish: \"" + published
+                        + "\" \u2192 subscribe: \"" + value + "\"");
+                    return;
+                } catch (RecvException ex) {
+                    if (ex.getResult() != RecvResult.NO_DATA) {
+                        throw ex;
                     }
                 }
                 Thread.onSpinWait();

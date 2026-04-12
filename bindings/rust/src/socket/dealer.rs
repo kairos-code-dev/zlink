@@ -5,6 +5,7 @@ use crate::ctx::Context;
 use crate::domain::{Received, SendResult};
 use crate::error::{ZlinkError, check_rc};
 use crate::ffi;
+use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, RoutingId};
 use crate::options::{CommonSocketOptions, DealerSocketOptions};
 
@@ -31,12 +32,24 @@ impl DealerSocket {
         self.inner.send(parts)
     }
 
+    pub fn send_with_flags(
+        &self,
+        parts: impl IntoMultipart,
+        flags: SendFlags,
+    ) -> Result<(), ZlinkError> {
+        self.inner.send_with_flags(parts, flags)
+    }
+
     pub fn try_send(&self, parts: impl IntoMultipart) -> Result<SendResult, ZlinkError> {
         self.inner.try_send(parts)
     }
 
     pub fn recv(&self) -> Result<Received, ZlinkError> {
         self.inner.recv()
+    }
+
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError> {
+        self.inner.recv_with_flags(flags)
     }
 
     pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError> {

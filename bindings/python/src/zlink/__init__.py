@@ -1,10 +1,18 @@
 # SPDX-License-Identifier: MPL-2.0
 
 from ._core import (
+    BindError,
     Context,
     ContextOptions,
+    CloseError,
+    ConfigError,
+    ConnectError,
     Message,
+    HandlerError,
+    RecvError,
+    RequestError,
     Received,
+    SubmitError,
     Subscribed,
     TopicMessage,
     RoutingId,
@@ -13,7 +21,6 @@ from ._core import (
     METADATA_KEY_USER_MIN,
     METADATA_VALUE_MAX,
 )
-from ._ffi import lib as _lib
 from ._socket_base import (
     CommonSocketOptions,
     DealerSocketOptions,
@@ -62,12 +69,35 @@ from ._spot import (
     SpotNodeSubjectEntry,
     SpotNodeSubjectFilter,
 )
+from ._utils import (
+    AtomicCounter,
+    Stopwatch,
+    Thread,
+    Timer,
+    errno,
+    has,
+    multipart_close,
+    proxy,
+    proxy_steerable,
+    sleep,
+    strerror,
+    version,
+)
 from ._enums import (
     SocketType,
     ContextOption,
     SocketOption,
     RouterOption,
-    SendResult,
+    SendFlags,
+    RecvFlags,
+    SubmitResult,
+    RequestResult,
+    RecvResult,
+    HandlerResult,
+    CloseResult,
+    BindResult,
+    ConnectResult,
+    ConfigResult,
     ErrorCode,
     ProtocolError,
     MonitorEvent,
@@ -94,19 +124,15 @@ from ._enums import (
 SERVICE_TYPE_SPOT = ServiceType.SPOT
 
 
-def version():
-    import ctypes
-
-    L = _lib()
-    major = ctypes.c_int()
-    minor = ctypes.c_int()
-    patch = ctypes.c_int()
-    L.zlink_version(ctypes.byref(major), ctypes.byref(minor), ctypes.byref(patch))
-    return major.value, minor.value, patch.value
-
-
 __all__ = [
     "version",
+    "errno",
+    "strerror",
+    "has",
+    "proxy",
+    "proxy_steerable",
+    "sleep",
+    "multipart_close",
     "Context",
     "ContextOptions",
     "CommonSocketOptions",
@@ -131,6 +157,10 @@ __all__ = [
     "TopicMessage",
     "RoutingId",
     "SubscriptionEvent",
+    "AtomicCounter",
+    "Stopwatch",
+    "Thread",
+    "Timer",
     "Poller",
     "MonitorSnapshot",
     "MonitorSocket",
@@ -156,11 +186,28 @@ __all__ = [
     "SpotNodeSubjectEntry",
     "SpotNodeSubjectFilter",
     "ZlinkError",
+    "SubmitError",
+    "RequestError",
+    "RecvError",
+    "HandlerError",
+    "CloseError",
+    "BindError",
+    "ConnectError",
+    "ConfigError",
     "SocketType",
     "ContextOption",
     "SocketOption",
     "RouterOption",
-    "SendResult",
+    "SendFlags",
+    "RecvFlags",
+    "SubmitResult",
+    "RequestResult",
+    "RecvResult",
+    "HandlerResult",
+    "CloseResult",
+    "BindResult",
+    "ConnectResult",
+    "ConfigResult",
     "ErrorCode",
     "ProtocolError",
     "MonitorEvent",

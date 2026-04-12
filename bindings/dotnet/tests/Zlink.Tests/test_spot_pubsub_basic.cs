@@ -54,7 +54,8 @@ public sealed class test_spot_pubsub_basic
                 part.Dispose();
         });
 
-        Assert.Throws<ZlinkException>(() => spot.TrySubscribe(out _));
+        Assert.Throws<ZlinkRecvException>(() =>
+            spot.Subscribe(RecvFlags.DontWait));
     }
 
     [Fact]
@@ -104,12 +105,10 @@ public sealed class test_spot_pubsub_basic
         while (DateTime.UtcNow < deadline)
         {
             using Message message = Message.FromString("node-backed");
-            if (publisher.TryPublish("spot:test", message) == SendResult.Sent)
-            {
-                string? received = TryReceiveSpotUtf8(subscriber);
-                if (received == "node-backed")
-                    return;
-            }
+            publisher.Publish("spot:test", message);
+            string? received = TryReceiveSpotUtf8(subscriber);
+            if (received == "node-backed")
+                return;
             Thread.Sleep(10);
         }
 
@@ -132,7 +131,8 @@ public sealed class test_spot_pubsub_basic
                 part.Dispose();
         });
 
-        Assert.Throws<ZlinkException>(() => spot.TrySubscribe(out _));
+        Assert.Throws<ZlinkRecvException>(() =>
+            spot.Subscribe(RecvFlags.DontWait));
     }
 
     [Fact]
@@ -175,7 +175,7 @@ public sealed class test_spot_pubsub_basic
         while (DateTime.UtcNow < deadline && !receivedSignal.IsSet)
         {
             using Message message = Message.FromString("node-callback");
-            _ = publisher.TryPublish("spot:callback", message);
+            publisher.Publish("spot:callback", message);
             receivedSignal.Wait(10);
         }
 
@@ -231,7 +231,7 @@ public sealed class test_spot_pubsub_basic
         while (DateTime.UtcNow < deadline && !receivedSignal.IsSet)
         {
             using Message message = Message.FromString("node-callback");
-            _ = publisher.TryPublish("spot:callback", message);
+            publisher.Publish("spot:callback", message);
             receivedSignal.Wait(10);
         }
 
@@ -242,8 +242,15 @@ public sealed class test_spot_pubsub_basic
 
     private static string? TryReceiveSpotUtf8(Spot subscriber)
     {
-        if (!subscriber.TrySubscribe(out Subscribed? subscribed))
+        Subscribed subscribed;
+        try
+        {
+            subscribed = subscriber.Subscribe(RecvFlags.DontWait);
+        }
+        catch (ZlinkRecvException)
+        {
             return null;
+        }
 
         try
         {

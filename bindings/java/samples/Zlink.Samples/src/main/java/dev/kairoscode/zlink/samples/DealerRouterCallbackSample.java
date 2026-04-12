@@ -5,7 +5,7 @@ import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.SendResult;
+import dev.kairoscode.zlink.SendFlags;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -34,11 +34,7 @@ public final class DealerRouterCallbackSample {
                     throw new IllegalStateException("unexpected routed request");
                 }
                 try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
-                    SendResult result = router.trySend(rid, reply);
-                    if (result != SendResult.SENT) {
-                        throw new IllegalStateException(
-                            "unexpected routed send result: " + result);
-                    }
+                    router.send(rid, reply, SendFlags.DONT_WAIT);
                 }
             });
 

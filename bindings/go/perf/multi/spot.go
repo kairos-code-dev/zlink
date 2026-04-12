@@ -57,15 +57,12 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampPayload(payload)
-		result, err := publisher.TryPublish("bench.topic", perfcommon.NewMessage(payload))
+		err := publisher.Publish("bench.topic", zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
 			}
 			perfcommon.Must(err)
-		}
-		if result != zlink.SendResultSent {
-			time.Sleep(250 * time.Microsecond)
 		}
 		_ = drainMultiSpotOnce(subs, stats, window.ActiveAt, tracker)
 	}

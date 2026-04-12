@@ -36,18 +36,6 @@ class subscriber_socket_t : public base_socket_t
         return subscribed;
     }
 
-    ZLINK_CPP_NODISCARD maybe_t<subscribed_t> try_subscribe ()
-    {
-        subscribed_t subscribed;
-        const int rc = base_socket_t::subscribe (subscribed, recv_flag::dontwait);
-        if (rc == 0)
-            return maybe_t<subscribed_t> (std::move (subscribed));
-        if (errno == EAGAIN)
-            return maybe_t<subscribed_t> ();
-        throw_on_error (rc);
-        return maybe_t<subscribed_t> ();
-    }
-
     ZLINK_CPP_NODISCARD int
     on_subscribe (zlink_subscribe_handler_fn handler_,
                   void *userdata_ = NULL)

@@ -63,30 +63,63 @@ internal static class RequestReplySupport
             if (task.IsFaulted)
             {
                 ZlinkException error = task.Exception?.GetBaseException() as ZlinkException
-                    ?? new ZlinkException((int)ErrorCode.Unknown,
-                        task.Exception?.GetBaseException().Message ?? "request failed");
+                    ?? new ZlinkRequestException(RequestResult.ProtocolError);
                 CallbackDelivery.Post(context, () => onError(error));
                 return;
             }
             if (task.IsCanceled)
             {
                 CallbackDelivery.Post(context, () => onError(
-                    new ZlinkException((int)ErrorCode.ETimedOut, "request canceled")));
+                    new ZlinkRequestException(RequestResult.TimedOut)));
                 return;
             }
             CallbackDelivery.Post(context, () => onReply(task.Result));
         }, TaskScheduler.Default);
     }
 
+    internal static void AttachResultCallback(Func<Task<Received>> invoke,
+        Action<RequestResult, Received?> callback)
+    {
+        if (callback == null)
+            throw new ArgumentNullException(nameof(callback));
+        SynchronizationContext? context = SynchronizationContext.Current;
+        _ = invoke().ContinueWith(task =>
+        {
+            if (task.IsFaulted)
+            {
+                Exception error = task.Exception?.GetBaseException()
+                    ?? new ZlinkRequestException(RequestResult.ProtocolError);
+                if (error is ZlinkRequestException requestError)
+                {
+                    CallbackDelivery.Post(context, () => callback(
+                        requestError.Result, null));
+                    return;
+                }
+
+                CallbackDelivery.Post(context, () => callback(
+                    RequestResult.ProtocolError, null));
+                return;
+            }
+            if (task.IsCanceled)
+            {
+                CallbackDelivery.Post(context, () => callback(
+                    RequestResult.Terminated, null));
+                return;
+            }
+            CallbackDelivery.Post(context, () => callback(RequestResult.Ok,
+                task.Result));
+        }, TaskScheduler.Default);
+    }
+
     internal static unsafe void MovePartsToNative(IReadOnlyList<Message> parts,
-        out Zlink.Native.ZlinkMsg[] nativeParts)
+        out global::Zlink.Native.ZlinkMsg[] nativeParts)
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
         if (parts.Count == 0)
             throw new ArgumentException("parts must not be empty", nameof(parts));
 
-        nativeParts = new Zlink.Native.ZlinkMsg[parts.Count];
+        nativeParts = new global::Zlink.Native.ZlinkMsg[parts.Count];
         int built = 0;
         try
         {
@@ -107,7 +140,7 @@ internal static class RequestReplySupport
     }
 
     internal static void RestoreManagedParts(IReadOnlyList<Message> parts,
-        Zlink.Native.ZlinkMsg[] nativeParts, int built)
+        global::Zlink.Native.ZlinkMsg[] nativeParts, int built)
     {
         for (int i = built - 1; i >= 0; i--)
         {

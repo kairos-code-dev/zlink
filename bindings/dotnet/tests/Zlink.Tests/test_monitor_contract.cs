@@ -69,6 +69,6 @@ public sealed class test_monitor_contract
 
         using SocketMonitor monitor = server.MonitorOpen();
 
-        Assert.False(monitor.TryRecv(out _));
+        Assert.Null(monitor.Recv(true));
     }
 }

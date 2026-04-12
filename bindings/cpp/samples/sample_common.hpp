@@ -72,8 +72,12 @@ inline bool wait_for_monitor_readable (MonitorLike &monitor_, int timeout_ms_)
     zlink::poller_t poller;
     if (!poller.valid ())
         return false;
-    if (poller.add (monitor_, zlink::poll_event::pollin) != 0)
+    try {
+        poller.add (monitor_, zlink::poll_event::pollin);
+    }
+    catch (const zlink::zlink_error_t &) {
         return false;
+    }
 
     zlink::poll_event_t event;
     const int rc = poller.wait (&event, timeout_ms_);
@@ -97,7 +101,8 @@ inline bool wait_for_socket_monitor_event (zlink::monitor_handle_t &monitor_,
         if (!wait_for_monitor_readable (monitor_, remaining_ms))
             continue;
 
-        const zlink::maybe_t<zlink::monitor_event_t> event = monitor_.try_recv ();
+        const zlink::maybe_t<zlink::monitor_event_t> event =
+          monitor_.recv (zlink::non_blocking_t {});
         if (!event)
             continue;
         if (static_cast<uint64_t> (event->event) != event_type_)
@@ -150,7 +155,8 @@ wait_for_service_monitor_event (zlink::service_monitor_handle_t &monitor_,
         if (!wait_for_monitor_readable (monitor_, remaining_ms))
             continue;
 
-        const zlink::maybe_t<zlink::service_event_t> event = monitor_.try_recv ();
+        const zlink::maybe_t<zlink::service_event_t> event =
+          monitor_.recv (zlink::non_blocking_t {});
         if (!event)
             continue;
         if (event->event_type != event_type_)
@@ -182,7 +188,8 @@ wait_for_service_monitor_event_endpoint (
         if (!wait_for_monitor_readable (monitor_, remaining_ms))
             continue;
 
-        const zlink::maybe_t<zlink::service_event_t> event = monitor_.try_recv ();
+        const zlink::maybe_t<zlink::service_event_t> event =
+          monitor_.recv (zlink::non_blocking_t {});
         if (!event)
             continue;
         if (event->event_type != event_type_)
@@ -224,7 +231,7 @@ wait_for_service_monitor_state (zlink::service_monitor_handle_t &monitor_,
         if (!wait_for_monitor_readable (monitor_, remaining_ms))
             continue;
 
-        (void) monitor_.try_recv ();
+        (void) monitor_.recv (zlink::non_blocking_t {});
     }
 
     return false;

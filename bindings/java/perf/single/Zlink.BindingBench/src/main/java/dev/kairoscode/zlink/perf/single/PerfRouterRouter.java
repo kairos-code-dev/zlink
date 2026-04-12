@@ -62,7 +62,7 @@ final class PerfRouterRouter {
                     while (finished.getCount() > 0L) {
                         pollSet.poll(-1);
                         while (true) {
-                            Optional<dev.kairoscode.zlink.Received> maybe = receiver.tryRecv();
+                            Optional<dev.kairoscode.zlink.Received> maybe = PerfUtil.tryRecv(receiver);
                             if (maybe.isEmpty()) {
                                 break;
                             }

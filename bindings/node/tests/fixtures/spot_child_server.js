@@ -1,7 +1,7 @@
 'use strict';
 
 const readline = require('node:readline');
-const zlink = require('../../dist');
+const zlink = require('../../dist/canonical');
 
 const TOPIC = 'spot:child';
 
@@ -33,11 +33,10 @@ async function main() {
       const deadline = Date.now() + 5000;
       let sent = 0;
       while (Date.now() < deadline) {
-        if (spot.tryPublish(TOPIC, Buffer.from('payload')) === zlink.SendResult.Sent) {
-          sent += 1;
-          if (sent === 1) {
-            console.log('PUBLISHED');
-          }
+        spot.publish(TOPIC, Buffer.from('payload'));
+        sent += 1;
+        if (sent === 1) {
+          console.log('PUBLISHED');
         }
         await new Promise((resolve) => setImmediate(resolve));
       }

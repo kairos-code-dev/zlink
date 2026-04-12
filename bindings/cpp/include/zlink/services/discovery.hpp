@@ -102,11 +102,8 @@ class discovery_t
         if (rc != 0)
             return rc;
 
-        if (metadata_out_.adopt (&native) == 0)
-            return 0;
-
-        zlink_msg_close (&native);
-        return -1;
+        metadata_out_.adopt (&native);
+        return 0;
     }
 
     ZLINK_CPP_NODISCARD int
@@ -128,11 +125,8 @@ class discovery_t
         if (rc != 0)
             return rc;
 
-        if (metadata_out_.adopt (&native) == 0)
-            return 0;
-
-        zlink_msg_close (&native);
-        return -1;
+        metadata_out_.adopt (&native);
+        return 0;
     }
 
     ZLINK_CPP_NODISCARD service_monitor_handle_t

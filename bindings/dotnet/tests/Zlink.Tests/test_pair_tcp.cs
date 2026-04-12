@@ -206,7 +206,7 @@ public sealed class test_pair_tcp
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        Assert.False(receiver.TryRecv(out _));
+        Assert.Throws<ZlinkRecvException>(() => receiver.Recv(RecvFlags.DontWait));
     }
 
     [Fact]
@@ -230,8 +230,9 @@ public sealed class test_pair_tcp
                 part.Dispose();
         });
 
-        var ex = Assert.Throws<ZlinkException>(() => receiver.TryRecv(out _));
-        Assert.Equal(ErrorCode.EBusy, ZlinkException.MapErrorCode(ex.Errno));
+        var ex = Assert.Throws<ZlinkRecvException>(() =>
+            receiver.Recv(RecvFlags.DontWait));
+        Assert.Equal(RecvResult.Busy, ex.Result);
     }
 
     [Fact]
@@ -288,7 +289,17 @@ public sealed class test_pair_tcp
         for (int i = 0; i < 1024; i++)
         {
             using Message payload = Message.FromString($"bp-{i}");
-            result = sender.TrySend(payload);
+            try
+            {
+                sender.Send(payload, SendFlags.DontWait);
+                result = SendResult.Sent;
+            }
+            catch (ZlinkSubmitException ex)
+            {
+                result = ex.Result == SubmitResult.Backpressured
+                    ? SendResult.Backpressured
+                    : throw ex;
+            }
             if (result != SendResult.Sent)
                 break;
         }
@@ -307,8 +318,8 @@ public sealed class test_pair_tcp
         router.RouterOptions.Mandatory = true;
 
         using Message message = Message.FromString("no-route");
-        SendResult result = router.TrySend("UNKNOWN", message);
-
-        Assert.Equal(SendResult.NotReady, result);
+        var ex = Assert.Throws<ZlinkSubmitException>(() =>
+            router.Send("UNKNOWN", message, SendFlags.DontWait));
+        Assert.Equal(SubmitResult.NotConnected, ex.Result);
     }
 }

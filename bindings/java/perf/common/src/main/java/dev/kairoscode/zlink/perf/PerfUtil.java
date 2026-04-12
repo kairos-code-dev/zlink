@@ -4,11 +4,23 @@ package dev.kairoscode.zlink.perf;
 
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorSocket;
+import dev.kairoscode.zlink.PairSocket;
+import dev.kairoscode.zlink.DealerSocket;
+import dev.kairoscode.zlink.RouterSocket;
+import dev.kairoscode.zlink.RecvException;
+import dev.kairoscode.zlink.RecvFlags;
+import dev.kairoscode.zlink.RecvResult;
+import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.Socket;
+import dev.kairoscode.zlink.StreamSocket;
+import dev.kairoscode.zlink.SubSocket;
+import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.service.spot.SpotNode;
+import dev.kairoscode.zlink.service.spot.Spot;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 
 public final class PerfUtil {
@@ -198,6 +210,38 @@ public final class PerfUtil {
         PerfTransport.waitForMonitorEvent(monitor, expectedMask, expectedCount, timeout, label);
     }
 
+    public static Optional<dev.kairoscode.zlink.MonitorEvent> tryRecv(MonitorSocket monitor) {
+        return tryOptional(() -> monitor.recv(RecvFlags.DONT_WAIT));
+    }
+
+    public static Optional<dev.kairoscode.zlink.ServiceEvent> tryRecv(ServiceMonitor monitor) {
+        return tryOptional(() -> monitor.recv(RecvFlags.DONT_WAIT));
+    }
+
+    public static Optional<dev.kairoscode.zlink.Received> tryRecv(PairSocket socket) {
+        return tryOptional(() -> socket.recv(RecvFlags.DONT_WAIT));
+    }
+
+    public static Optional<dev.kairoscode.zlink.Received> tryRecv(DealerSocket socket) {
+        return tryOptional(() -> socket.recv(RecvFlags.DONT_WAIT));
+    }
+
+    public static Optional<dev.kairoscode.zlink.Received> tryRecv(RouterSocket socket) {
+        return tryOptional(() -> socket.recv(RecvFlags.DONT_WAIT));
+    }
+
+    public static Optional<dev.kairoscode.zlink.Received> tryRecv(StreamSocket socket) {
+        return tryOptional(() -> socket.recv(RecvFlags.DONT_WAIT));
+    }
+
+    public static Optional<TopicMessage> trySubscribe(SubSocket socket) {
+        return tryOptional(() -> socket.subscribe(RecvFlags.DONT_WAIT));
+    }
+
+    public static Optional<TopicMessage> trySubscribe(Spot spot) {
+        return tryOptional(() -> spot.subscribe(RecvFlags.DONT_WAIT));
+    }
+
     public static void applyMonitorOptions(MonitorSocket monitor, Config config) {
         PerfTransport.applyMonitorOptions(monitor, config);
     }
@@ -229,5 +273,21 @@ public final class PerfUtil {
 
     public static PerfCallbackMetrics callbackMetrics(String workerName) {
         return new PerfCallbackMetrics(workerName);
+    }
+
+    private static <T> Optional<T> tryOptional(CheckedSupplier<T> supplier) {
+        try {
+            return Optional.ofNullable(supplier.get());
+        } catch (RecvException ex) {
+            if (ex.getResult() == RecvResult.NO_DATA) {
+                return Optional.empty();
+            }
+            throw ex;
+        }
+    }
+
+    @FunctionalInterface
+    private interface CheckedSupplier<T> {
+        T get();
     }
 }

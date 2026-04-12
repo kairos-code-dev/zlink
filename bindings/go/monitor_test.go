@@ -7,7 +7,7 @@ import (
 	"zlink"
 )
 
-func TestMonitorRecvAndTryRecv(t *testing.T) {
+func TestMonitorRecv(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
@@ -28,10 +28,6 @@ func TestMonitorRecvAndTryRecv(t *testing.T) {
 		t.Fatalf("OpenSocketMonitor(client) error = %v", err)
 	}
 	defer clientMon.Close()
-
-	if event, ok, err := serverMon.TryRecv(); err != nil || ok || event != nil {
-		t.Fatalf("TryRecv() = (%v, %v, %v), want (nil, false, nil)", event, ok, err)
-	}
 
 	if err := server.Bind(endpoint); err != nil {
 		t.Fatalf("Bind() error = %v", err)

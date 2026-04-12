@@ -125,10 +125,10 @@ template<typename T> class has_on_event_t
 
 static_assert (has_subscribe_result_t<zlink::service::spot_t>::value,
                "spot_t must expose subscribe receive");
-static_assert (has_try_subscribe_result_t<zlink::service::spot_t>::value,
-               "spot_t must expose try_subscribe");
-static_assert (has_try_publish_t<zlink::service::spot_t>::value,
-               "spot_t must expose try_publish");
+static_assert (!has_try_subscribe_result_t<zlink::service::spot_t>::value,
+               "spot_t must not expose try_subscribe");
+static_assert (!has_try_publish_t<zlink::service::spot_t>::value,
+               "spot_t must not expose try_publish");
 static_assert (!has_filter_subscribe_alias_t<zlink::service::spot_t>::value,
                "spot_t must not expose subscribe(filter) alias");
 static_assert (!has_filter_unsubscribe_alias_t<zlink::service::spot_t>::value,

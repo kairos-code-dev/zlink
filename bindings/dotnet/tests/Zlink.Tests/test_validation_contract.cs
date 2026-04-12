@@ -85,7 +85,7 @@ public sealed class test_validation_contract
             "svc-validation");
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            discovery.MonitorOpen((ServiceMonitorEvents)(1u << 30)));
+            discovery.MonitorOpen((ServiceMonitorEventMask)(1u << 30)));
     }
 
     [Fact]

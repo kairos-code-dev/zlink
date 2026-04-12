@@ -14,6 +14,7 @@ from perf_common import (
     print_result_lines,
     result_metrics,
     safe_poll,
+    recv_nonblocking,
     stamp_payload,
 )
 
@@ -57,7 +58,9 @@ def main(argv=None):
                             while True:
                                 safe_poll(poller, 50)
                                 while True:
-                                    received = sub_spot.try_subscribe()
+                                    received = recv_nonblocking(
+                                        sub_spot, method="subscribe"
+                                    )
                                     if received is None:
                                         break
                                     with received:

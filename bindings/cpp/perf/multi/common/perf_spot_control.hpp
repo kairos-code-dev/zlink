@@ -64,6 +64,48 @@ inline void stop_control_connect_gate (control_connect_gate_t *gate_)
     gate_->cv.notify_all ();
 }
 
+template<typename SpotHandle>
+inline zlink::send_result_t
+try_publish_nowait (SpotHandle &spot_, const std::string &topic_,
+                    zlink::message_t &outbound)
+{
+    try {
+        spot_.publish (topic_, outbound, zlink::send_flags_t::dontwait);
+        return zlink::send_result_t::sent;
+    }
+    catch (const zlink::submit_error_t &err) {
+        switch (err.result ()) {
+        case zlink::submit_result_t::backpressured:
+            return zlink::send_result_t::backpressured;
+        case zlink::submit_result_t::not_connected:
+        case zlink::submit_result_t::not_found:
+            return zlink::send_result_t::not_ready;
+        default:
+            errno = err.internal_errno ();
+            return zlink::send_result_t::not_ready;
+        }
+    }
+}
+
+template<typename SpotHandle>
+inline zlink::maybe_t<zlink::subscribed_t>
+try_subscribe_nowait (SpotHandle &spot_)
+{
+    try {
+        return zlink::maybe_t<zlink::subscribed_t> (
+          spot_.subscribe (zlink::recv_flags_t::dontwait));
+    }
+    catch (const zlink::recv_error_t &err) {
+        switch (err.result ()) {
+        case zlink::recv_result_t::no_data:
+        case zlink::recv_result_t::busy:
+            return zlink::maybe_t<zlink::subscribed_t> ();
+        default:
+            throw;
+        }
+    }
+}
+
 inline void start_client_start_watcher (start_signal_state_t *start_gate_)
 {
     if (!start_gate_)
@@ -267,7 +309,7 @@ inline bool publish_control_message (SpotHandle &spot_,
         }
 
         const zlink::send_result_t result =
-          spot_.try_publish (topic_.c_str (), outbound);
+          try_publish_nowait (spot_, topic_, outbound);
         if (result == zlink::send_result_t::sent)
             return true;
         if (result != zlink::send_result_t::backpressured
@@ -301,7 +343,7 @@ inline bool wait_for_ready_counts (SpotHandle &spot_,
                             std::max (1, timeout_ms_));
     while (std::chrono::steady_clock::now () < deadline) {
         const zlink::maybe_t<zlink::subscribed_t> maybe_received =
-          spot_.try_subscribe ();
+          try_subscribe_nowait (spot_);
         if (!maybe_received) {
             if (!idle_fn_ ())
                 return false;

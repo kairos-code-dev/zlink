@@ -19,22 +19,24 @@ public abstract class PublisherSocketBase : ConnectableSocketBase
     {
     }
 
-    public void Publish(string topic, Message message)
+    public void Publish(string topic, Message message,
+        SendFlags flags = SendFlags.None)
     {
-        Kernel.Publish(topic, message);
+        Kernel.Publish(topic, message, flags);
     }
 
-    public void Publish(string topic, IReadOnlyList<Message> parts)
+    public void Publish(string topic, IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
     {
-        Kernel.Publish(topic, parts);
+        Kernel.Publish(topic, parts, flags);
     }
 
-    public SendResult TryPublish(string topic, Message message)
+    internal SendResult TryPublish(string topic, Message message)
     {
         return Kernel.TryPublish(topic, message);
     }
 
-    public SendResult TryPublish(string topic, IReadOnlyList<Message> parts)
+    internal SendResult TryPublish(string topic, IReadOnlyList<Message> parts)
     {
         return Kernel.TryPublish(topic, parts);
     }

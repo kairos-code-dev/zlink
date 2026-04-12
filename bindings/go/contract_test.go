@@ -1,7 +1,6 @@
 package zlink_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -174,7 +173,7 @@ func TestRequestReplyWrapperSupportsDealerRouterRoundTrip(t *testing.T) {
 			t.Errorf("NewMessage() error = %v", err)
 			return
 		}
-		if err := router.Reply(routingID, requestSeq, reply); err != nil {
+		if err := router.Reply(routingID, requestSeq, zlink.SendFlagsNone, reply); err != nil {
 			t.Errorf("Reply() error = %v", err)
 		}
 	}); err != nil {
@@ -185,7 +184,7 @@ func TestRequestReplyWrapperSupportsDealerRouterRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMessage() error = %v", err)
 	}
-	reply, err := dealer.Request(context.Background(), request)
+	reply, err := dealer.Request(2*time.Second, request)
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
@@ -220,9 +219,6 @@ func TestRequestRouterPreservesDataReceiveSurface(t *testing.T) {
 	}
 	defer dealerSocket.Close()
 
-	router := zlink.NewRequestRouter(routerSocket)
-	defer router.Close()
-
 	endpoint := inprocEndpoint("request-reply-data")
 	if err := routerSocket.Bind(endpoint); err != nil {
 		t.Fatalf("Bind() error = %v", err)
@@ -235,10 +231,10 @@ func TestRequestRouterPreservesDataReceiveSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMessage() error = %v", err)
 	}
-	if err := dealerSocket.Send(payload); err != nil {
+	if err := dealerSocket.Send(zlink.SendFlagsNone, payload); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
-	received, err := router.Recv()
+	received, err := routerSocket.Recv(zlink.RecvFlagsNone)
 	if err != nil {
 		t.Fatalf("Recv() error = %v", err)
 	}

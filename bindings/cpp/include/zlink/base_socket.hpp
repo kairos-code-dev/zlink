@@ -91,7 +91,8 @@ inline int move_parts_to_native (std::vector<message_t> &parts_,
             errno = EINVAL;
             break;
         }
-        if (parts_[moved].move_to (&native_[moved]) != 0)
+        parts_[moved].move_to (&native_[moved]);
+        if (parts_[moved].valid ())
             break;
     }
 
@@ -99,7 +100,8 @@ inline int move_parts_to_native (std::vector<message_t> &parts_,
         return 0;
 
     for (size_t i = 0; i < moved; ++i) {
-        if (parts_[i].init () == 0)
+        parts_[i].init ();
+        if (parts_[i].valid ())
             (void) zlink_msg_move (parts_[i].handle (), &native_[i]);
         (void) zlink_msg_close (&native_[i]);
     }
@@ -114,7 +116,8 @@ inline void restore_parts_from_native (std::vector<message_t> &parts_,
     const size_t count =
       native_.size () < parts_.size () ? native_.size () : parts_.size ();
     for (size_t i = 0; i < count; ++i) {
-        if (parts_[i].init () == 0)
+        parts_[i].init ();
+        if (parts_[i].valid ())
             (void) zlink_msg_move (parts_[i].handle (), &native_[i]);
         (void) zlink_msg_close (&native_[i]);
     }
@@ -321,13 +324,15 @@ class base_socket_t : public socket_handle_t
         }
 
         zlink_msg_t native_part;
-        if (part_.move_to (&native_part) != 0)
+        part_.move_to (&native_part);
+        if (part_.valid ())
             return -1;
 
         const int rc = zlink_send (
           handle (), &native_part, 1, static_cast<zlink_send_flags_t> (flags_));
         if (rc != 0) {
-            if (part_.init () == 0)
+            part_.init ();
+            if (part_.valid ())
                 (void) zlink_msg_move (part_.handle (), &native_part);
             (void) zlink_msg_close (&native_part);
         }
@@ -359,7 +364,8 @@ class base_socket_t : public socket_handle_t
         }
 
         zlink_msg_t native_part;
-        if (part_.move_to (&native_part) != 0)
+        part_.move_to (&native_part);
+        if (part_.valid ())
             return -1;
 
         const int rc = zlink_send_rid (
@@ -369,7 +375,8 @@ class base_socket_t : public socket_handle_t
           1,
           static_cast<zlink_send_flags_t> (flags_));
         if (rc != 0) {
-            if (part_.init () == 0)
+            part_.init ();
+            if (part_.valid ())
                 (void) zlink_msg_move (part_.handle (), &native_part);
             (void) zlink_msg_close (&native_part);
         }
@@ -403,7 +410,8 @@ class base_socket_t : public socket_handle_t
         }
 
         zlink_msg_t native_part;
-        if (part_.move_to (&native_part) != 0)
+        part_.move_to (&native_part);
+        if (part_.valid ())
             return -1;
 
         const int rc =
@@ -416,14 +424,16 @@ class base_socket_t : public socket_handle_t
         const int err = errno;
         if (detail::classify_nonblocking_send_errno (err, result_)) {
             if (result_ != send_result_t::sent) {
-                if (part_.init () == 0)
+                part_.init ();
+                if (part_.valid ())
                     (void) zlink_msg_move (part_.handle (), &native_part);
                 (void) zlink_msg_close (&native_part);
             }
             return 0;
         }
 
-        if (part_.init () == 0)
+        part_.init ();
+        if (part_.valid ())
             (void) zlink_msg_move (part_.handle (), &native_part);
         (void) zlink_msg_close (&native_part);
         errno = err;
@@ -468,7 +478,8 @@ class base_socket_t : public socket_handle_t
         }
 
         zlink_msg_t native_part;
-        if (part_.move_to (&native_part) != 0)
+        part_.move_to (&native_part);
+        if (part_.valid ())
             return -1;
 
         const int rc = zlink_send_rid (
@@ -482,14 +493,16 @@ class base_socket_t : public socket_handle_t
         const int err = errno;
         if (detail::classify_nonblocking_send_errno (err, result_)) {
             if (result_ != send_result_t::sent) {
-                if (part_.init () == 0)
+                part_.init ();
+                if (part_.valid ())
                     (void) zlink_msg_move (part_.handle (), &native_part);
                 (void) zlink_msg_close (&native_part);
             }
             return 0;
         }
 
-        if (part_.init () == 0)
+        part_.init ();
+        if (part_.valid ())
             (void) zlink_msg_move (part_.handle (), &native_part);
         (void) zlink_msg_close (&native_part);
         errno = err;

@@ -45,7 +45,7 @@ func main() {
 	}))
 
 	sent := "hello-pair"
-	samplecommon.Must(client.Send(samplecommon.Message(sent)))
+	samplecommon.Must(client.Send(zlink.SendFlagsNone, samplecommon.Message(sent)))
 	out := <-delivered
 	samplecommon.Must(out.err)
 	got := out.payload

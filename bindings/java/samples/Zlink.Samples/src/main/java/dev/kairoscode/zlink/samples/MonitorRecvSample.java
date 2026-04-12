@@ -3,6 +3,9 @@ package dev.kairoscode.zlink.samples;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PairSocket;
+import dev.kairoscode.zlink.RecvException;
+import dev.kairoscode.zlink.RecvFlags;
+import dev.kairoscode.zlink.RecvResult;
 
 public final class MonitorRecvSample {
     public static void main(String[] args) {
@@ -25,10 +28,25 @@ public final class MonitorRecvSample {
                 || clientEvent.event() != MonitorEventType.CONNECTION_READY.getValue()) {
                 throw new IllegalStateException("expected connection-ready events");
             }
-            if (serverMonitor.tryRecv().isPresent() || clientMonitor.tryRecv().isPresent()) {
-                throw new IllegalStateException("monitor tryRecv unexpectedly returned an event");
+            try {
+                serverMonitor.recv(RecvFlags.DONT_WAIT);
+                throw new IllegalStateException(
+                    "monitor recv(DONT_WAIT) unexpectedly returned an event");
+            } catch (RecvException ex) {
+                if (ex.getResult() != RecvResult.NO_DATA) {
+                    throw ex;
+                }
             }
-            System.out.println("[monitor/recv] recv: \"connection-ready\" \u2192 tryRecv: empty");
+            try {
+                clientMonitor.recv(RecvFlags.DONT_WAIT);
+                throw new IllegalStateException(
+                    "monitor recv(DONT_WAIT) unexpectedly returned an event");
+            } catch (RecvException ex) {
+                if (ex.getResult() != RecvResult.NO_DATA) {
+                    throw ex;
+                }
+            }
+            System.out.println("[monitor/recv] recv: \"connection-ready\" \u2192 recv(DONT_WAIT): empty");
         }
     }
 }

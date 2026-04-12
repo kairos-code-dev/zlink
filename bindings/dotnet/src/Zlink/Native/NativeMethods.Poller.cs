@@ -12,7 +12,8 @@ internal static partial class NativeMethods
     internal static extern int zlink_poller_destroy(ref IntPtr poller);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_poller_size(IntPtr poller);
+    internal static extern int zlink_poller_size(IntPtr poller,
+        out int errorOut);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poller_add(IntPtr poller, IntPtr socket,
@@ -38,17 +39,20 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poller_wait_all(IntPtr poller,
-        [Out] ZlinkPollerEvent[] events, int nEvents, long timeout);
+        [Out] ZlinkPollerEvent[] events, int nEvents, long timeout,
+        out int errorOut);
 
     [DllImport(LibraryName, EntryPoint = "zlink_poll",
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poll(
-        [In, Out] ZlinkPollItemUnix[] items, int nitems, long timeout);
+        [In, Out] ZlinkPollItemUnix[] items, int nitems, long timeout,
+        out int errorOut);
 
     [DllImport(LibraryName, EntryPoint = "zlink_poll",
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poll(
-        [In, Out] ZlinkPollItemWindows[] items, int nitems, long timeout);
+        [In, Out] ZlinkPollItemWindows[] items, int nitems, long timeout,
+        out int errorOut);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_proxy(IntPtr frontend, IntPtr backend,

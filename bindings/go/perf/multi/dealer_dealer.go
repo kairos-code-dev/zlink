@@ -57,14 +57,14 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 	go func() {
 		defer close(recvDone)
 		for time.Now().Before(recvStopAt) {
-			received, ok, err := server.TryRecv()
+			received, err := server.Recv(zlink.RecvFlagsDontWait)
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					continue
 				}
 				perfcommon.Must(fmt.Errorf("multi dealer/dealer server recv: %w", err))
 			}
-			if !ok || received == nil {
+			if received == nil {
 				time.Sleep(50 * time.Microsecond)
 				continue
 			}
@@ -88,7 +88,7 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 			payload := perfcommon.PreparePayload(cfg.msgSize)
 			for time.Now().Before(window.StopAt) {
 				perfcommon.StampPayload(payload)
-				err := socket.Send(perfcommon.NewMessage(payload))
+				err := socket.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 				if err != nil {
 					if perfcommon.IsTransient(err) {
 						continue

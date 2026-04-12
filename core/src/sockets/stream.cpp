@@ -32,7 +32,7 @@ int parse_non_negative_int_env (const char *name_, int default_value_)
 // and queuing cost on 64B-class traffic. Keep the initial batch modest and let
 // the ASIO stream encoder grow dynamically when the socket sustains larger
 // bursts.
-const int stream_batch_size_min = 4096;
+const int stream_batch_size_min = 12288;
 
 // Keep a small read headroom so framed application protocols are less likely
 // to split at the exact payload boundary.
@@ -713,7 +713,27 @@ int zlink::stream_t::stream_dispatch_send_current_msg_from_io (msg_t *msg_,
         return 1;
     }
 
-    LIBZLINK_UNUSED (flags_);
+    const bool dontwait = (flags_ & ZLINK_DONTWAIT) != 0 || options.sndtimeo == 0;
+    const int sndtimeo = options.sndtimeo;
+    const std::chrono::steady_clock::time_point deadline =
+      sndtimeo < 0
+        ? std::chrono::steady_clock::time_point::max ()
+        : std::chrono::steady_clock::now ()
+            + std::chrono::milliseconds (sndtimeo);
+
+    while (!dontwait) {
+        if (sndtimeo >= 0 && std::chrono::steady_clock::now () >= deadline)
+            break;
+
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        if (direct_out->write_single_message_and_flush_no_recursive_hwm_check (
+              msg_)) {
+            const int init_rc = msg_->init ();
+            errno_assert (init_rc == 0);
+            return 1;
+        }
+    }
+
     errno = EAGAIN;
     return -1;
 }

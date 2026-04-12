@@ -22,7 +22,7 @@ func TestSendConsumesMessageOwnership(t *testing.T) {
 	_ = client.Connect(endpoint)
 
 	msg := newMessage(t, "owned")
-	if err := client.Send(msg); err != nil {
+	if err := client.Send(zlink.SendFlagsNone, msg); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 	if data := msg.Data(); data != nil {
@@ -42,9 +42,9 @@ func TestRecvOwnershipCanBeExplicitlyReleased(t *testing.T) {
 
 	_ = server.Bind(endpoint)
 	_ = client.Connect(endpoint)
-	_ = client.Send(newMessage(t, "recv-owned"))
+	_ = client.Send(zlink.SendFlagsNone, newMessage(t, "recv-owned"))
 
-	received, err := server.Recv()
+	received, err := server.Recv(zlink.RecvFlagsNone)
 	if err != nil {
 		t.Fatalf("Recv() error = %v", err)
 	}
@@ -80,11 +80,11 @@ func TestMultipartRecvShapeMatchesCallbackShape(t *testing.T) {
 		t.Fatalf("direct Connect() error = %v", err)
 	}
 
-	if err := directClient.Send(newMessage(t, "frame-a"), newMessage(t, "frame-b")); err != nil {
+	if err := directClient.Send(zlink.SendFlagsNone, newMessage(t, "frame-a"), newMessage(t, "frame-b")); err != nil {
 		t.Fatalf("direct Send() error = %v", err)
 	}
 
-	directReceived, err := directServer.Recv()
+	directReceived, err := directServer.Recv(zlink.RecvFlagsNone)
 	if err != nil {
 		t.Fatalf("direct Recv() error = %v", err)
 	}
@@ -115,7 +115,7 @@ func TestMultipartRecvShapeMatchesCallbackShape(t *testing.T) {
 	if err := callbackClient.Connect(callbackEndpoint); err != nil {
 		t.Fatalf("callback Connect() error = %v", err)
 	}
-	if err := callbackClient.Send(newMessage(t, "frame-a"), newMessage(t, "frame-b")); err != nil {
+	if err := callbackClient.Send(zlink.SendFlagsNone, newMessage(t, "frame-a"), newMessage(t, "frame-b")); err != nil {
 		t.Fatalf("callback Send() error = %v", err)
 	}
 

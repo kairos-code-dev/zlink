@@ -145,11 +145,8 @@ class registry_t
         if (rc != 0)
             return rc;
 
-        if (metadata_out_.adopt (&native) == 0)
-            return 0;
-
-        zlink_msg_close (&native);
-        return -1;
+        metadata_out_.adopt (&native);
+        return 0;
     }
 
     ZLINK_CPP_NODISCARD int close ()

@@ -94,7 +94,7 @@ bool wait_for_any_socket_monitor_event (zlink::monitor_handle_t &monitor_,
             continue;
         }
 
-        if (monitor_.try_recv ())
+        if (monitor_.recv (zlink::non_blocking_t {}))
             return true;
     }
 
@@ -117,7 +117,7 @@ void test_socket_monitor_open_recv_snapshot ()
     assert (!endpoint.empty ());
     assert (client.connect (endpoint) == 0);
 
-    (void) monitor.try_recv ();
+    (void) monitor.recv (zlink::non_blocking_t {});
     assert (wait_for_any_socket_monitor_event (monitor, 2000));
     const zlink::monitor_snapshot_t snapshot = monitor.snapshot ();
     assert (snapshot.ready () || snapshot.closed ());
@@ -131,12 +131,9 @@ void test_socket_monitor_on_event_callback ()
 
     zlink::monitor_handle_t monitor = server.monitor_handle ();
     assert (monitor.valid ());
-    assert (monitor.on_event (
-              static_cast<zlink::monitor_event_handler_fn> (NULL), NULL)
-            != 0);
 
     monitor_callback_state_t callback_state;
-    assert (monitor.on_event (&socket_monitor_callback, &callback_state) == 0);
+    monitor.on_event (&socket_monitor_callback, &callback_state);
 
     assert (server.bind ("tcp://127.0.0.1:*") == 0);
     std::string endpoint;
@@ -170,10 +167,8 @@ void test_discovery_service_monitor_open_recv ()
     zlink::service_monitor_handle_t monitor = discovery.monitor_open (
       zlink::service_monitor_event::discovery_service_up);
     assert (monitor.valid ());
-    assert (monitor.on_event (
-              static_cast<zlink::service_event_handler_fn> (NULL), NULL)
-            != 0);
-    (void) monitor.try_recv ();
+    monitor.on_event (static_cast<zlink::service_event_handler_fn> (NULL), NULL);
+    (void) monitor.recv (zlink::non_blocking_t {});
 }
 
 } // namespace

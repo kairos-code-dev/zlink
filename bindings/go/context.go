@@ -40,7 +40,7 @@ type ContextOptions struct {
 func NewContext() (*Context, error) {
 	handle := C.zlink_ctx_new()
 	if handle == nil {
-		return nil, lastError()
+		return nil, configErrorFromErrno(currentErrno())
 	}
 	ctx := &Context{handle: handle}
 	ctx.options = &ContextOptions{ctx: ctx}
@@ -55,7 +55,7 @@ func (c *Context) Close() error {
 	if c == nil || c.closed {
 		return nil
 	}
-	if err := checkRC(C.zlink_ctx_term(c.handle)); err != nil {
+	if err := closeErrorFromResult(C.zlink_ctx_term(c.handle)); err != nil {
 		return err
 	}
 	c.closed = true
@@ -67,7 +67,7 @@ func (c *Context) Shutdown() error {
 	if c == nil || c.closed {
 		return nil
 	}
-	return checkRC(C.zlink_ctx_shutdown(c.handle))
+	return closeErrorFromResult(C.zlink_ctx_shutdown(c.handle))
 }
 
 func (c *Context) Options() *ContextOptions {
@@ -148,21 +148,22 @@ func (o *ContextOptions) Blocky() (bool, error) {
 
 func (c *Context) setIntOption(option C.zlink_ctx_option_t, value int) error {
 	if c == nil || c.closed {
-		return stateError("context is closed")
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	if value < math.MinInt32 || value > math.MaxInt32 {
-		return validationError("context option overflows C int: %d", value)
+		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
-	return checkRC(C.zlink_ctx_set(c.handle, option, C.int(value)))
+	return configErrorFromResult(ConfigResult(C.zlink_ctx_set(c.handle, option, C.int(value))))
 }
 
 func (c *Context) getIntOption(option C.zlink_ctx_option_t) (int, error) {
 	if c == nil || c.closed {
-		return 0, stateError("context is closed")
+		return 0, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	value := C.zlink_ctx_get(c.handle, option)
-	if value == -1 {
-		return 0, lastError()
+	var result C.zlink_config_result_t
+	value := C.zlink_ctx_get(c.handle, option, &result)
+	if result != 0 {
+		return 0, configErrorFromResult(result)
 	}
 	return int(value), nil
 }
@@ -173,7 +174,7 @@ func durationToMillis(value time.Duration) (int32, error) {
 	}
 	ms := value / time.Millisecond
 	if ms > math.MaxInt32 {
-		return 0, validationError("duration overflows int milliseconds: %s", value)
+		return 0, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	return int32(ms), nil
 }

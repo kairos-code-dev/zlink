@@ -39,5 +39,8 @@ export const SocketOption = Object.freeze({
   STREAM_NOTIFY: 0x3501
 } as const);
 
-export const SendFlag = Object.freeze({ NONE: 0, DONTWAIT: 0x0001, SNDMORE: 0x0002 } as const);
-export const ReceiveFlag = Object.freeze({ NONE: 0, DONTWAIT: 0x0001 } as const);
+export const SendFlags = Object.freeze({ None: 0, DontWait: 0x0001 } as const);
+export type SendFlags = typeof SendFlags[keyof typeof SendFlags];
+
+export const RecvFlags = Object.freeze({ None: 0, DontWait: 0x0001 } as const);
+export type RecvFlags = typeof RecvFlags[keyof typeof RecvFlags];

@@ -17,19 +17,18 @@ API directly. The public contract is:
 - the capability matrix from `bindings/README.md` is enforced by concrete
   socket types instead of one generic bag
 - blocking APIs use direct names like `send`, `recv`, `publish`, `subscribe`
-- non-blocking APIs use `try*` names like `try_send`, `try_recv`,
-  `try_publish`, `try_subscribe`
+- non-blocking behavior is expressed through `SendFlags` and `RecvFlags`
 - `Context` exposes typed `ContextOptions` instead of raw `set/get`
 - `Message` exposes zero-copy `data` plus diagnostic `getProperty` and
   `refCount`
 - receive and subscribe return domain objects such as `Received`,
   `Subscribed`, `TopicMessage`, `RoutingId`, and `SubscriptionEvent`
+- request/reply surfaces use `request`, `reply`, `request_to_router`,
+  `request_to_spot`, `recv_routed`, and `reply_to_router`
 - raw public option bags like `setsockopt` and `getsockopt` are not exposed
 - typed option families are exposed through properties and capability objects
-- monitor sockets use canonical `monitor_open()`, `recv()`, and `try_recv()` entrypoints
-- service monitors use canonical `monitor_open()`, `recv()`, `try_recv()`, and `on_event()`
-- monitor and service-monitor callback delivery uses a Python-managed dispatcher thread
-  rather than a native callback trampoline
+- monitor sockets use canonical `monitor_open()`, `recv()`, and `snapshot()`
+- service monitors use canonical `monitor_open()`, `recv()`, and `on_event()`
 - resource-owning types support sync and async context manager cleanup
 - `*_READY_CHANGED` monitor events do not expose aggregate ready counts
 - monitor snapshots are state/queue inspection surfaces, not ready-count gates
@@ -56,16 +55,18 @@ methods:
 
 Examples of policy-enforced capability boundaries:
 
-- `SubSocket` exposes `subscribe`, `try_subscribe`, `set_subscription`,
+- `SubSocket` exposes `subscribe`, `set_subscription`,
   `unset_subscription`, and `on_subscribe`, but not direct `recv`
 - `XPubSocket` is the only Python socket surface that exposes
-  `receive_subscription_event` / `try_receive_subscription_event`
+  `receive_subscription_event`
 - `StreamSocket` keeps routed send/receive but does not expose generic
   `connect` / `disconnect`
 - `Spot` is a pub/sub service facade on top of `SpotNode`; it exposes
-  `publish`, `try_publish`, `subscribe`, `try_subscribe`, `set_subscription`,
-  `unset_subscription`, `on_subscribe`, and `on_send_ready`, but not
-  `recv` / `try_recv` / `send` / `try_send`
+  `publish`, `subscribe`, `set_subscription`, `unset_subscription`,
+  `on_subscribe`, `on_send_ready`, `send_to_spot`, `request_to_spot`,
+  `reply_to_spot`, `send_to_router`, `request_to_router`,
+  `reply_to_router`, `recv_routed`, `on_routed_receive`, and
+  `on_dispatch_event`, but not direct `recv` / `send`
 - `attach_discovery()` is only available on the discovery-aware socket subset,
   and after `attach_discovery` the native lifecycle contract blocks manual
   `connect`, `disconnect`, `unbind`, and `close`
@@ -78,7 +79,20 @@ Common hot-path helpers are value-typed:
 - `Subscribed`
 - `RoutingId`
 - `SubscriptionEvent`
-- `SendResult`
+- `SendFlags`
+- `RecvFlags`
+- `SubmitResult`
+- `RequestResult`
+- `RecvResult`
+- `HandlerResult`
+- `CloseResult`
+- `BindResult`
+- `ConnectResult`
+- `ConfigResult`
+- `Timer`
+- `Stopwatch`
+- `Thread`
+- `AtomicCounter`
 
 Service and topology helpers are also surfaced as domain objects:
 
@@ -101,8 +115,8 @@ policy requires it:
 - typed integer options fail on signed/unsigned overflow instead of truncating
 - send/receive convenience does not change the multipart-only contract
 - blocking send/publish inside receive callbacks raises an explicit error instead of
-  silently degrading to non-blocking behavior; use `try_send` / `try_publish` for
-  explicit non-blocking behavior
+  silently degrading to non-blocking behavior; use `SendFlags.DONT_WAIT`
+  or `RecvFlags.DONT_WAIT` for explicit non-blocking behavior
 
 ## Typed Options
 

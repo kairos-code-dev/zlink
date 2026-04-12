@@ -42,7 +42,7 @@ def main(argv=None):
                     local_latencies = []
                     deadline = time.perf_counter() + args.duration
                     while time.perf_counter() < deadline:
-                        sock.send(stamp_payload(payload, phase=1), routing_id=b"SERVER")
+                        sock.send(b"SERVER", stamp_payload(payload, phase=1))
                         with sock.recv() as received:
                             data = received.to_bytes_list()[0]
                             if not is_active_message(

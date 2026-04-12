@@ -6,6 +6,7 @@ use crate::ctx::Context;
 use crate::domain::TopicMessage;
 use crate::error::{ZlinkError, check_rc};
 use crate::ffi;
+use crate::flags::RecvFlags;
 use crate::options::{CommonSocketOptions, SubSocketOptions};
 
 /// XSUB socket – extended subscribe, pairs with XPUB.
@@ -26,6 +27,10 @@ impl XSubSocket {
 
     pub fn subscribe(&self) -> Result<TopicMessage, ZlinkError> {
         self.inner.subscribe_recv()
+    }
+
+    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, ZlinkError> {
+        self.inner.subscribe_recv_with_flags(flags)
     }
 
     pub fn try_subscribe(&self) -> Result<Option<TopicMessage>, ZlinkError> {

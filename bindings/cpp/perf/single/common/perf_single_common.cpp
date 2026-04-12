@@ -9,6 +9,28 @@
 namespace perf {
 namespace single {
 
+namespace {
+
+inline zlink::maybe_t<zlink::subscribed_t>
+try_subscribe_nowait (zlink::service::spot_t &spot_)
+{
+    try {
+        return zlink::maybe_t<zlink::subscribed_t> (
+          spot_.subscribe (zlink::recv_flags_t::dontwait));
+    }
+    catch (const zlink::recv_error_t &err) {
+        switch (err.result ()) {
+        case zlink::recv_result_t::no_data:
+        case zlink::recv_result_t::busy:
+            return zlink::maybe_t<zlink::subscribed_t> ();
+        default:
+            throw;
+        }
+    }
+}
+
+} // namespace
+
 // latency_stats_builder_t methods removed: now a typedef to
 // the unified header-only perf::latency_sampler_t in
 // common/perf_latency_sampler.hpp.
@@ -428,7 +450,8 @@ void callback_receiver_t::recv_handler (const zlink_routing_id_t *,
 
     if (part_count_ == 1) {
         zlink::message_t part;
-        if (part.adopt (&parts_[0]) == 0) {
+        part.adopt (&parts_[0]);
+        if (part.valid ()) {
             event.header_ok = perf_single_metric::decode_payload_header (
               part.data (), part.size (), &event.header);
         }
@@ -459,13 +482,17 @@ void callback_receiver_t::worker_loop ()
         return;
 
     zlink::poller_t poller;
-    if (poller.add (*_socket, zlink::poll_event::pollin) != 0) {
+    try {
+        poller.add (*_socket, zlink::poll_event::pollin);
+    }
+    catch (const zlink::zlink_error_t &) {
         _failed.store (true, std::memory_order_release);
         return;
     }
 
-    std::vector<zlink::poll_event_t> events (1);
-    while (!_stop_worker && !_failed.load (std::memory_order_acquire)) {
+    try {
+        std::vector<zlink::poll_event_t> events (1);
+        while (!_stop_worker && !_failed.load (std::memory_order_acquire)) {
         const int poll_rc = poller.wait_all (events, 5);
         if (poll_rc < 0) {
             const int err = errno;
@@ -531,6 +558,19 @@ void callback_receiver_t::worker_loop ()
             }
             _result_cv.notify_all ();
         }
+    }
+    }
+    catch (const zlink::recv_error_t &err) {
+        const zlink::recv_result_t result = err.result ();
+        if (result != zlink::recv_result_t::no_data
+            && result != zlink::recv_result_t::busy)
+            _failed.store (true, std::memory_order_release);
+    }
+    catch (const zlink::zlink_error_t &) {
+        _failed.store (true, std::memory_order_release);
+    }
+    catch (...) {
+        _failed.store (true, std::memory_order_release);
     }
 }
 
@@ -781,7 +821,8 @@ void subscribe_callback_receiver_t::subscribe_handler (
 
     if (part_count_ == 1) {
         zlink::message_t part;
-        if (part.adopt (&parts_[0]) == 0) {
+        part.adopt (&parts_[0]);
+        if (part.valid ()) {
             event.header_ok = perf_single_metric::decode_payload_header (
               part.data (), part.size (), &event.header);
         }
@@ -810,12 +851,18 @@ void subscribe_callback_receiver_t::worker_loop ()
 {
     zlink::poller_t poller;
     if (_socket) {
-        if (poller.add (*_socket, zlink::poll_event::pollin) != 0) {
+        try {
+            poller.add (*_socket, zlink::poll_event::pollin);
+        }
+        catch (const zlink::zlink_error_t &) {
             _failed.store (true, std::memory_order_release);
             return;
         }
     } else if (_spot) {
-        if (poller.add (*_spot, zlink::poll_event::pollin) != 0) {
+        try {
+            poller.add (*_spot, zlink::poll_event::pollin);
+        }
+        catch (const zlink::zlink_error_t &) {
             _failed.store (true, std::memory_order_release);
             return;
         }
@@ -823,8 +870,9 @@ void subscribe_callback_receiver_t::worker_loop ()
         return;
     }
 
-    std::vector<zlink::poll_event_t> events (1);
-    while (!_stop_worker && !_failed.load (std::memory_order_acquire)) {
+    try {
+        std::vector<zlink::poll_event_t> events (1);
+        while (!_stop_worker && !_failed.load (std::memory_order_acquire)) {
         const int poll_rc = poller.wait_all (events, 5);
         if (poll_rc < 0) {
             const int err = errno;
@@ -848,7 +896,7 @@ void subscribe_callback_receiver_t::worker_loop ()
                 rc = _socket->subscribe (received, zlink::recv_flag::dontwait);
             } else if (_spot) {
                 const zlink::maybe_t<zlink::subscribed_t> maybe =
-                  _spot->try_subscribe ();
+                  try_subscribe_nowait (*_spot);
                 if (maybe) {
                     received = std::move (*maybe);
                     rc = 0;
@@ -896,6 +944,19 @@ void subscribe_callback_receiver_t::worker_loop ()
             }
             _result_cv.notify_all ();
         }
+    }
+    }
+    catch (const zlink::recv_error_t &err) {
+        const zlink::recv_result_t result = err.result ();
+        if (result != zlink::recv_result_t::no_data
+            && result != zlink::recv_result_t::busy)
+            _failed.store (true, std::memory_order_release);
+    }
+    catch (const zlink::zlink_error_t &) {
+        _failed.store (true, std::memory_order_release);
+    }
+    catch (...) {
+        _failed.store (true, std::memory_order_release);
     }
 }
 

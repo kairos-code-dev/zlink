@@ -13,6 +13,7 @@ from perf_metrics import (
     latency_ns_from_message,
     new_payload,
     is_active_message,
+    payload_phase,
     parse_result_lines,
     print_result_lines,
     render_effective_options,
@@ -22,6 +23,7 @@ from perf_metrics import (
     stamp_payload,
     tcp_endpoint,
     wait_monitor_event,
+    _require_zlink,
 )
 
 
@@ -81,3 +83,14 @@ def parse_len32be_frames(buffer):
     if offset:
         del buffer[:offset]
     return frames
+
+
+def recv_nonblocking(sock, *, method="recv"):
+    zlink_mod = _require_zlink()
+    recv_method = getattr(sock, method)
+    try:
+        return recv_method(flags=zlink_mod.RecvFlags.DONT_WAIT)
+    except zlink_mod.RecvError as exc:
+        if exc.result == zlink_mod.RecvResult.NO_DATA:
+            return None
+        raise

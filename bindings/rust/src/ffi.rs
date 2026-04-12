@@ -812,6 +812,14 @@ unsafe extern "C" {
         handler: zlink_router_handler_fn,
         userdata: *mut c_void,
     ) -> c_int;
+    pub fn zlink_router_recv(
+        router: *mut c_void,
+        peer_rid_out: *mut *const zlink_routing_id_t,
+        request_seq_out: *mut u64,
+        parts_out: *mut *mut zlink_msg_t,
+        part_count_out: *mut usize,
+        flags: zlink_send_flags_t,
+    ) -> c_int;
     pub fn zlink_recv(
         socket: *mut c_void,
         source_rid_out: *mut zlink_routing_id_t,
@@ -1078,4 +1086,5 @@ unsafe extern "C" {
 
     // -- Capability --------------------------------------------------------
     pub fn zlink_has(capability: *const c_char) -> c_int;
+    pub fn zlink_sleep(seconds: c_int);
 }

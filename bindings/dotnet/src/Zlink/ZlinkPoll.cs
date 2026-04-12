@@ -66,8 +66,10 @@ public static class ZlinkPoll
                 items[i].Revents = 0;
             }
 
-            rc = NativeMethods.zlink_poll(items, count, boundedTimeoutMs);
-            ZlinkException.ThrowIfError(rc);
+            rc = NativeMethods.zlink_poll(items, count, boundedTimeoutMs,
+                out _);
+            if (rc < 0)
+                throw ZlinkException.FromLastError();
             for (int i = 0; i < count; i++)
                 revents[i] = (PollEvents)items[i].Revents;
             return rc;
@@ -82,8 +84,10 @@ public static class ZlinkPoll
             unixItems[i].Revents = 0;
         }
 
-        rc = NativeMethods.zlink_poll(unixItems, count, boundedTimeoutMs);
-        ZlinkException.ThrowIfError(rc);
+        rc = NativeMethods.zlink_poll(unixItems, count, boundedTimeoutMs,
+            out _);
+        if (rc < 0)
+            throw ZlinkException.FromLastError();
         for (int i = 0; i < count; i++)
             revents[i] = (PollEvents)unixItems[i].Revents;
         return rc;

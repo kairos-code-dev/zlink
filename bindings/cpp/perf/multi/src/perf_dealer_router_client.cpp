@@ -174,8 +174,12 @@ class dealer_router_client_bench_t
         const zlink::poll_event events =
           enabled ? (zlink::poll_event::pollin | zlink::poll_event::pollout)
                   : zlink::poll_event::pollin;
-        if (_poller.modify (*state.sock, events) != 0)
+        try {
+            _poller.modify (*state.sock, events);
+        }
+        catch (const zlink::zlink_error_t &) {
             return false;
+        }
         state.pollout_enabled = enabled;
         return true;
     }

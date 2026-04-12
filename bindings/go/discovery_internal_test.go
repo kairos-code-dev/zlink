@@ -1,6 +1,7 @@
 package zlink
 
 import (
+	"fmt"
 	"syscall"
 	"testing"
 )
@@ -24,7 +25,7 @@ func TestQueryCountedSnapshotRetriesENOBUFS(t *testing.T) {
 			fetchCalls++
 			switch fetchCalls {
 			case 2:
-				return 0, &ZlinkError{Kind: ErrorKindNative, Code: int(syscall.ENOBUFS), Message: "No buffer space available"}
+				return 0, fmt.Errorf("No buffer space available: %w", syscall.ENOBUFS)
 			case 4:
 				values[0] = 11
 				values[1] = 29

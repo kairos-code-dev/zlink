@@ -17,7 +17,6 @@ def main(argv=None):
 
     endpoint = tcp_endpoint()
     stop = threading.Event()
-    payload = new_payload(args.msg_size)
 
     def wait_stop():
         sys.stdin.readline()
@@ -32,7 +31,10 @@ def main(argv=None):
             with node.wrap_handle() as spot:
                 print(f"READY,{endpoint}", flush=True)
                 while not stop.is_set():
-                    spot.publish(TOPIC, stamp_payload(payload, phase=1))
+                    spot.publish(
+                        TOPIC,
+                        [stamp_payload(new_payload(args.msg_size), phase=1)],
+                    )
                     time.sleep(0.001)
                 sys.stdout.flush()
                 os._exit(0)

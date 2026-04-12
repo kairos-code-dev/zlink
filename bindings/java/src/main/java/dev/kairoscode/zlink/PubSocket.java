@@ -18,9 +18,9 @@ public final class PubSocket extends Socket {
     public void disconnect(String endpoint) { super.disconnect(endpoint); }
     public void attachDiscovery(Discovery discovery) { super.attachDiscovery(discovery); }
     public void publish(String topicId, Message part) { super.publish(topicId, part); }
+    public void publish(String topicId, Message part, SendFlags flags) { super.publish(topicId, part, SendFlag.fromValue(flags.value())); }
     public void publish(String topicId, List<Message> parts) { super.publish(topicId, parts); }
-    public SendResult tryPublish(String topicId, Message part) { return super.tryPublish(topicId, part); }
-    public SendResult tryPublish(String topicId, List<Message> parts) { return super.tryPublish(topicId, parts); }
+    public void publish(String topicId, List<Message> parts, SendFlags flags) { super.publish(topicId, parts, SendFlag.fromValue(flags.value())); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     @Override public PubSocketOptions options() { return options; }
 }

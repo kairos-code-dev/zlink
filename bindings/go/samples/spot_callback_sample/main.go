@@ -57,7 +57,7 @@ func main() {
 	var got string
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		samplecommon.MustStep("publisher.Publish", publisher.Publish(topic, samplecommon.Message(payload)))
+		samplecommon.MustStep("publisher.Publish", publisher.Publish(topic, zlink.SendFlagsNone, samplecommon.Message(payload)))
 		select {
 		case out := <-delivered:
 			samplecommon.Must(out.err)

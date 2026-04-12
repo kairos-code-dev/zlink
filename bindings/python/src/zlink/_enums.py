@@ -25,6 +25,7 @@ class ContextOption(IntEnum):
     THREAD_AFFINITY_CPU_ADD = 7
     THREAD_AFFINITY_CPU_REMOVE = 8
     THREAD_NAME_PREFIX = 9
+    CTX_OPT_BLOCKY = 10
 
 
 class SocketOption(IntEnum):
@@ -79,6 +80,87 @@ class SocketOption(IntEnum):
     ROUTING_ID = 5
     SUBSCRIBE = 6
     UNSUBSCRIBE = 7
+
+
+class SendFlags(IntEnum):
+    NONE = 0
+    DONT_WAIT = 1
+
+
+class RecvFlags(IntEnum):
+    NONE = 0
+    DONT_WAIT = 1
+
+
+class SubmitResult(IntEnum):
+    OK = 0
+    BACKPRESSURED = 1
+    NOT_CONNECTED = 2
+    NOT_FOUND = 3
+    TERMINATED = 4
+    INVALID_HANDLE = 5
+    INVALID_ARGUMENT = 6
+    NOT_SUPPORTED = 7
+    INVALID_STATE = 8
+    THREAD_VIOLATION = 9
+    OUT_OF_MEMORY = 10
+    SEQ_EXHAUSTED = 11
+    INTERNAL_ERROR = 12
+
+
+class RequestResult(IntEnum):
+    OK = 0
+    TIMED_OUT = 101
+    NOT_FOUND = 102
+    TERMINATED = 103
+    PROTOCOL_ERROR = 104
+
+
+class RecvResult(IntEnum):
+    OK = 0
+    NO_DATA = 201
+    BUSY = 202
+    TERMINATED = 203
+    INVALID_HANDLE = 204
+    NOT_SUPPORTED = 205
+
+
+class HandlerResult(IntEnum):
+    OK = 0
+    INVALID_ARGUMENT = 301
+    BUSY = 302
+    NOT_SUPPORTED = 303
+    DEADLOCK = 304
+    INVALID_HANDLE = 305
+
+
+class CloseResult(IntEnum):
+    OK = 0
+    BUSY = 401
+    SHUTDOWN = 402
+    INVALID_HANDLE = 403
+
+
+class BindResult(IntEnum):
+    OK = 0
+    INVALID_ARGUMENT = 501
+    ADDR_IN_USE = 502
+    NOT_SUPPORTED = 503
+    INVALID_HANDLE = 504
+
+
+class ConnectResult(IntEnum):
+    OK = 0
+    INVALID_ARGUMENT = 601
+    NOT_SUPPORTED = 602
+    INVALID_HANDLE = 603
+
+
+class ConfigResult(IntEnum):
+    OK = 0
+    INVALID_HANDLE = 701
+    INVALID_ARGUMENT = 702
+    NOT_SUPPORTED = 703
 
 
 class SendResult(IntEnum):

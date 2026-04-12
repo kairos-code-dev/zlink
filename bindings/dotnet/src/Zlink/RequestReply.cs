@@ -10,13 +10,13 @@ using Zlink.Native;
 
 namespace Zlink;
 
-public delegate void RequestReplyCallback(Received reply);
-public delegate void RequestErrorCallback(ZlinkException error);
+internal delegate void RequestReplyCallback(Received reply);
+internal delegate void RequestErrorCallback(ZlinkException error);
 
 internal sealed class RequestCallState
 {
     private CancellationTokenRegistration _cancellationRegistration;
-    private Timer? _timeoutTimer;
+    private System.Threading.Timer? _timeoutTimer;
     private int _completed;
 
     internal RequestCallState(TaskCompletionSource<Received> completion)
@@ -56,7 +56,7 @@ internal sealed class RequestCallState
         _cancellationRegistration = cancellationRegistration;
     }
 
-    internal void SetTimeoutTimer(Timer? timeoutTimer)
+    internal void SetTimeoutTimer(System.Threading.Timer? timeoutTimer)
     {
         _timeoutTimer = timeoutTimer;
     }
@@ -112,54 +112,66 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
 
     public Task<Received> RequestAsync(IReadOnlyList<Message> parts,
         TimeSpan timeout, CancellationToken ct = default)
-        => RequestCoreAsync(parts, timeout, ct);
+        => RequestCoreAsync(parts, timeout, ct, 0);
 
-    public Task<Received> TryRequestAsync(Message message,
+    public void Request(Message message, Action<RequestResult, Received?> callback,
+        SendFlags flags = SendFlags.None, TimeSpan timeout = default)
+        => Request(new[] { message }, callback, flags, timeout);
+
+    public void Request(IReadOnlyList<Message> parts,
+        Action<RequestResult, Received?> callback,
+        SendFlags flags = SendFlags.None, TimeSpan timeout = default)
+        => RequestReplySupport.AttachResultCallback(
+            () => RequestCoreAsync(parts, timeout, CancellationToken.None,
+                (int)flags),
+            callback);
+
+    internal Task<Received> TryRequestAsync(Message message,
         CancellationToken ct = default)
         => RequestAsync(message, ct);
 
-    public Task<Received> TryRequestAsync(Message message, TimeSpan timeout,
+    internal Task<Received> TryRequestAsync(Message message, TimeSpan timeout,
         CancellationToken ct = default)
         => RequestAsync(message, timeout, ct);
 
-    public Task<Received> TryRequestAsync(IReadOnlyList<Message> parts,
+    internal Task<Received> TryRequestAsync(IReadOnlyList<Message> parts,
         CancellationToken ct = default)
         => RequestAsync(parts, ct);
 
-    public Task<Received> TryRequestAsync(IReadOnlyList<Message> parts,
+    internal Task<Received> TryRequestAsync(IReadOnlyList<Message> parts,
         TimeSpan timeout, CancellationToken ct = default)
         => RequestAsync(parts, timeout, ct);
 
-    public void Request(Message message, RequestReplyCallback onReply,
+    internal void Request(Message message, RequestReplyCallback onReply,
         RequestErrorCallback onError)
         => Request(new[] { message }, onReply, onError, DefaultRequestTimeout);
 
-    public void Request(Message message, RequestReplyCallback onReply,
+    internal void Request(Message message, RequestReplyCallback onReply,
         RequestErrorCallback onError, TimeSpan timeout)
         => Request(new[] { message }, onReply, onError, timeout);
 
-    public void Request(IReadOnlyList<Message> parts, RequestReplyCallback onReply,
+    internal void Request(IReadOnlyList<Message> parts, RequestReplyCallback onReply,
         RequestErrorCallback onError)
         => Request(parts, onReply, onError, DefaultRequestTimeout);
 
-    public void Request(IReadOnlyList<Message> parts, RequestReplyCallback onReply,
+    internal void Request(IReadOnlyList<Message> parts, RequestReplyCallback onReply,
         RequestErrorCallback onError, TimeSpan timeout)
         => RequestReplySupport.AttachCallback(() => RequestAsync(parts, timeout),
             onReply, onError);
 
-    public void TryRequest(Message message, RequestReplyCallback onReply,
+    internal void TryRequest(Message message, RequestReplyCallback onReply,
         RequestErrorCallback onError)
         => Request(message, onReply, onError);
 
-    public void TryRequest(Message message, RequestReplyCallback onReply,
+    internal void TryRequest(Message message, RequestReplyCallback onReply,
         RequestErrorCallback onError, TimeSpan timeout)
         => Request(message, onReply, onError, timeout);
 
-    public void TryRequest(IReadOnlyList<Message> parts,
+    internal void TryRequest(IReadOnlyList<Message> parts,
         RequestReplyCallback onReply, RequestErrorCallback onError)
         => Request(parts, onReply, onError);
 
-    public void TryRequest(IReadOnlyList<Message> parts,
+    internal void TryRequest(IReadOnlyList<Message> parts,
         RequestReplyCallback onReply, RequestErrorCallback onError,
         TimeSpan timeout)
         => Request(parts, onReply, onError, timeout);
@@ -174,15 +186,17 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            throw new ZlinkException((int)ErrorCode.Eterm, "socket is closed");
+            throw new ZlinkCloseException(CloseResult.InvalidHandle,
+                (int)ErrorCode.Eterm);
         }
         catch (InvalidOperationException)
         {
-            throw new ZlinkException((int)ErrorCode.Eterm, "socket is closed");
+            throw new ZlinkCloseException(CloseResult.InvalidHandle,
+                (int)ErrorCode.Eterm);
         }
     }
 
-    public bool TryRecv(out Received? received)
+    internal bool TryRecv(out Received? received)
     {
         if (_dataHandler != null)
             throw new InvalidOperationException("socket is in callback mode");
@@ -212,7 +226,7 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
     }
 
     private unsafe Task<Received> RequestCoreAsync(IReadOnlyList<Message> parts,
-        TimeSpan timeout, CancellationToken ct)
+        TimeSpan timeout, CancellationToken ct, int flags)
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
@@ -240,18 +254,18 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
                 }, handle));
             }
 
-            state.SetTimeoutTimer(new Timer(static userdata =>
+            state.SetTimeoutTimer(new System.Threading.Timer(static userdata =>
             {
                 RequestCallState callbackState = (RequestCallState)((GCHandle)userdata!).Target!;
-                callbackState.TrySetException(new ZlinkException(
-                    (int)ErrorCode.ETimedOut, "request timed out"));
+                callbackState.TrySetException(new ZlinkRequestException(
+                    RequestResult.TimedOut, (int)ErrorCode.ETimedOut));
             }, handle, (int)timeoutMs, Timeout.Infinite));
 
             fixed (ZlinkMsg* nativePtr = nativeParts)
             {
                 int rc = NativeMethods.zlink_dealer_request(_socket.Handle,
                     (IntPtr)nativePtr, (nuint)nativeParts.Length,
-                    ReplyHandler, userData, 0, timeoutMs);
+                    ReplyHandler, userData, flags, timeoutMs);
                 if (rc != 0)
                     throw ZlinkException.FromLastError();
             }
@@ -282,9 +296,15 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
                     continue;
                 DeliverData(RequestReplySupport.CloneReceived(received));
             }
-            catch (ZlinkException ex) when (ex.Errno == (int)ErrorCode.Eterm)
+            catch (ZlinkException ex) when (ZlinkException.MapErrorCode(
+                ex.InternalErrno) is ErrorCode.Eterm or ErrorCode.ENotSup)
             {
                 break;
+            }
+            catch (ZlinkException ex) when (ZlinkException.MapErrorCode(
+                ex.InternalErrno) == ErrorCode.EBusy)
+            {
+                Thread.Sleep(PollDelay);
             }
             catch (ObjectDisposedException)
             {
@@ -326,8 +346,8 @@ public sealed class RequestDealer : IDisposable, IAsyncDisposable
         {
             if (errno != 0)
             {
-                state.TrySetException(new ZlinkException(errno,
-                    $"request failed (errno={errno})"));
+                state.TrySetException(new ZlinkRequestException(
+                    RequestResult.ProtocolError, errno));
                 return;
             }
             Message[] replyParts = Message.FromNativeVector(parts, partCount);
@@ -402,82 +422,97 @@ public sealed unsafe class RequestRouter : IDisposable, IAsyncDisposable
     public Task<Received> RequestAsync(RoutingId routingId,
         IReadOnlyList<Message> parts, TimeSpan timeout,
         CancellationToken ct = default)
-        => RequestCoreAsync(routingId, parts, timeout, ct);
+        => RequestCoreAsync(routingId, parts, timeout, ct, 0);
 
-    public Task<Received> TryRequestAsync(RoutingId routingId, Message message,
+    public void Request(RoutingId routingId, Message message,
+        Action<RequestResult, Received?> callback,
+        SendFlags flags = SendFlags.None, TimeSpan timeout = default)
+        => Request(routingId, new[] { message }, callback, flags, timeout);
+
+    public void Request(RoutingId routingId, IReadOnlyList<Message> parts,
+        Action<RequestResult, Received?> callback,
+        SendFlags flags = SendFlags.None, TimeSpan timeout = default)
+        => RequestReplySupport.AttachResultCallback(
+            () => RequestCoreAsync(routingId, parts, timeout,
+                CancellationToken.None, (int)flags),
+            callback);
+
+    internal Task<Received> TryRequestAsync(RoutingId routingId, Message message,
         CancellationToken ct = default)
         => RequestAsync(routingId, message, ct);
 
-    public Task<Received> TryRequestAsync(RoutingId routingId, Message message,
+    internal Task<Received> TryRequestAsync(RoutingId routingId, Message message,
         TimeSpan timeout, CancellationToken ct = default)
         => RequestAsync(routingId, message, timeout, ct);
 
-    public Task<Received> TryRequestAsync(RoutingId routingId,
+    internal Task<Received> TryRequestAsync(RoutingId routingId,
         IReadOnlyList<Message> parts, CancellationToken ct = default)
         => RequestAsync(routingId, parts, ct);
 
-    public Task<Received> TryRequestAsync(RoutingId routingId,
+    internal Task<Received> TryRequestAsync(RoutingId routingId,
         IReadOnlyList<Message> parts, TimeSpan timeout,
         CancellationToken ct = default)
         => RequestAsync(routingId, parts, timeout, ct);
 
-    public void Request(RoutingId routingId, Message message,
+    internal void Request(RoutingId routingId, Message message,
         RequestReplyCallback onReply, RequestErrorCallback onError)
         => Request(routingId, new[] { message }, onReply, onError,
             DefaultRequestTimeout);
 
-    public void Request(RoutingId routingId, Message message,
+    internal void Request(RoutingId routingId, Message message,
         RequestReplyCallback onReply, RequestErrorCallback onError,
         TimeSpan timeout)
         => Request(routingId, new[] { message }, onReply, onError, timeout);
 
-    public void Request(RoutingId routingId, IReadOnlyList<Message> parts,
+    internal void Request(RoutingId routingId, IReadOnlyList<Message> parts,
         RequestReplyCallback onReply, RequestErrorCallback onError)
         => Request(routingId, parts, onReply, onError, DefaultRequestTimeout);
 
-    public void Request(RoutingId routingId, IReadOnlyList<Message> parts,
+    internal void Request(RoutingId routingId, IReadOnlyList<Message> parts,
         RequestReplyCallback onReply, RequestErrorCallback onError,
         TimeSpan timeout)
         => RequestReplySupport.AttachCallback(
             () => RequestAsync(routingId, parts, timeout), onReply, onError);
 
-    public void TryRequest(RoutingId routingId, Message message,
+    internal void TryRequest(RoutingId routingId, Message message,
         RequestReplyCallback onReply, RequestErrorCallback onError)
         => Request(routingId, message, onReply, onError);
 
-    public void TryRequest(RoutingId routingId, Message message,
+    internal void TryRequest(RoutingId routingId, Message message,
         RequestReplyCallback onReply, RequestErrorCallback onError,
         TimeSpan timeout)
         => Request(routingId, message, onReply, onError, timeout);
 
-    public void TryRequest(RoutingId routingId, IReadOnlyList<Message> parts,
+    internal void TryRequest(RoutingId routingId, IReadOnlyList<Message> parts,
         RequestReplyCallback onReply, RequestErrorCallback onError)
         => Request(routingId, parts, onReply, onError);
 
-    public void TryRequest(RoutingId routingId, IReadOnlyList<Message> parts,
+    internal void TryRequest(RoutingId routingId, IReadOnlyList<Message> parts,
         RequestReplyCallback onReply, RequestErrorCallback onError,
         TimeSpan timeout)
         => Request(routingId, parts, onReply, onError, timeout);
 
-    public void Reply(RoutingId routingId, ulong requestSequence, Message message)
-        => Reply(routingId, requestSequence, new[] { message });
+    public void Reply(RoutingId routingId, ulong requestSequence, Message message,
+        SendFlags flags = SendFlags.None)
+        => Reply(routingId, requestSequence, new[] { message }, flags);
 
     public unsafe void Reply(RoutingId routingId, ulong requestSequence,
-        IReadOnlyList<Message> parts)
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
+        _ = flags;
         SendResult result = TryReply(routingId, requestSequence, parts);
         if (result != SendResult.Sent)
         {
-            throw new ZlinkException((int)ErrorCode.EAgain,
-                "reply send is backpressured");
+            throw new ZlinkSubmitException(SubmitResult.Backpressured,
+                (int)ErrorCode.EAgain);
         }
     }
 
-    public SendResult TryReply(RoutingId routingId, ulong requestSequence,
+    internal SendResult TryReply(RoutingId routingId, ulong requestSequence,
         Message message)
         => TryReply(routingId, requestSequence, new[] { message });
 
-    public unsafe SendResult TryReply(RoutingId routingId, ulong requestSequence,
+    internal unsafe SendResult TryReply(RoutingId routingId, ulong requestSequence,
         IReadOnlyList<Message> parts)
     {
         byte[] ridBytes = RoutingIdCodec.FromPublicString(routingId.Value,
@@ -516,15 +551,17 @@ public sealed unsafe class RequestRouter : IDisposable, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            throw new ZlinkException((int)ErrorCode.Eterm, "socket is closed");
+            throw new ZlinkCloseException(CloseResult.InvalidHandle,
+                (int)ErrorCode.Eterm);
         }
         catch (InvalidOperationException)
         {
-            throw new ZlinkException((int)ErrorCode.Eterm, "socket is closed");
+            throw new ZlinkCloseException(CloseResult.InvalidHandle,
+                (int)ErrorCode.Eterm);
         }
     }
 
-    public bool TryRecv(out Received? received)
+    internal bool TryRecv(out Received? received)
     {
         if (_dataHandler != null)
             throw new InvalidOperationException("socket is in callback mode");
@@ -556,7 +593,8 @@ public sealed unsafe class RequestRouter : IDisposable, IAsyncDisposable
     }
 
     private unsafe Task<Received> RequestCoreAsync(RoutingId routingId,
-        IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct)
+        IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct,
+        int flags)
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
@@ -584,11 +622,11 @@ public sealed unsafe class RequestRouter : IDisposable, IAsyncDisposable
                     callbackState.TrySetCanceled(CancellationToken.None);
                 }, handle));
             }
-            state.SetTimeoutTimer(new Timer(static userdata =>
+            state.SetTimeoutTimer(new System.Threading.Timer(static userdata =>
             {
                 RequestCallState callbackState = (RequestCallState)((GCHandle)userdata!).Target!;
-                callbackState.TrySetException(new ZlinkException(
-                    (int)ErrorCode.ETimedOut, "request timed out"));
+                callbackState.TrySetException(new ZlinkRequestException(
+                    RequestResult.TimedOut, (int)ErrorCode.ETimedOut));
             }, handle, (int)timeoutMs, Timeout.Infinite));
             IntPtr userData = GCHandle.ToIntPtr(handle);
 
@@ -596,7 +634,7 @@ public sealed unsafe class RequestRouter : IDisposable, IAsyncDisposable
             {
                 int rc = NativeMethods.zlink_router_request(_socket.Handle,
                     ref nativeRoutingId, (IntPtr)nativePtr,
-                    (nuint)nativeParts.Length, ReplyHandler, userData, 0,
+                    (nuint)nativeParts.Length, ReplyHandler, userData, flags,
                     timeoutMs);
                 if (rc != 0)
                     throw ZlinkException.FromLastError();
@@ -628,9 +666,15 @@ public sealed unsafe class RequestRouter : IDisposable, IAsyncDisposable
                     continue;
                 DeliverData(RequestReplySupport.CloneReceived(received));
             }
-            catch (ZlinkException ex) when (ex.Errno == (int)ErrorCode.Eterm)
+            catch (ZlinkException ex) when (ZlinkException.MapErrorCode(
+                ex.InternalErrno) is ErrorCode.Eterm or ErrorCode.ENotSup)
             {
                 break;
+            }
+            catch (ZlinkException ex) when (ZlinkException.MapErrorCode(
+                ex.InternalErrno) == ErrorCode.EBusy)
+            {
+                Thread.Sleep(PollDelay);
             }
             catch (ObjectDisposedException)
             {
@@ -684,8 +728,8 @@ public sealed unsafe class RequestRouter : IDisposable, IAsyncDisposable
         {
             if (errno != 0)
             {
-                state.TrySetException(new ZlinkException(errno,
-                    $"request failed (errno={errno})"));
+                state.TrySetException(new ZlinkRequestException(
+                    RequestResult.ProtocolError, errno));
                 return;
             }
             Message[] replyParts = Message.FromNativeVector(parts, partCount);

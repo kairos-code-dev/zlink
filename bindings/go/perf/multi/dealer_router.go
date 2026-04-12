@@ -78,18 +78,21 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 			payload := perfcommon.PreparePayload(cfg.msgSize)
 			for time.Now().Before(window.StopAt) {
 				perfcommon.StampPayload(payload)
-				err := socket.Send(perfcommon.NewMessage(payload))
+				err := socket.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 				if err != nil {
 					if perfcommon.IsTransient(err) {
 						continue
 					}
 					perfcommon.Must(fmt.Errorf("multi dealer/router send: %w", err))
 				}
-				reply, ok, err := socket.TryRecv()
+				reply, err := socket.Recv(zlink.RecvFlagsDontWait)
 				if err != nil {
+					if perfcommon.IsTransient(err) {
+						continue
+					}
 					perfcommon.Must(fmt.Errorf("multi dealer/router recv: %w", err))
 				}
-				if !ok || reply == nil {
+				if reply == nil {
 					continue
 				}
 				part, err := reply.SinglePartOrError()
@@ -111,18 +114,21 @@ func waitForDealerReady(dealer *zlink.DealerSocket) {
 		Name: "multi dealer/router perf endpoint",
 		Probe: func() (bool, error) {
 			perfcommon.StampPayload(payload)
-			err := dealer.Send(perfcommon.NewMessage(payload))
+			err := dealer.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					return false, nil
 				}
 				return false, fmt.Errorf("multi dealer/router ready send: %w", err)
 			}
-			reply, ok, err := dealer.TryRecv()
+			reply, err := dealer.Recv(zlink.RecvFlagsDontWait)
 			if err != nil {
+				if perfcommon.IsTransient(err) {
+					return false, nil
+				}
 				return false, fmt.Errorf("multi dealer/router ready recv: %w", err)
 			}
-			if !ok || reply == nil {
+			if reply == nil {
 				return false, nil
 			}
 			return true, reply.Close()

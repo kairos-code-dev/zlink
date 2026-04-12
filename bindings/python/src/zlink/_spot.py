@@ -12,7 +12,7 @@ from ._socket_base import (
     _enter_callback,
     _leave_callback,
 )
-from ._enums import SendResult, SpotNodeState, SpotPeerSource, SpotPeerState
+from ._enums import SpotNodeState, SpotPeerSource, SpotPeerState
 from ._ffi import (
     ZlinkMsg,
     ZlinkRoutingId,
@@ -24,18 +24,34 @@ from ._ffi import (
     lib,
 )
 from ._core import (
+    CloseError,
+    CloseResult,
+    ConfigError,
+    ConfigResult,
+    HandlerError,
+    HandlerResult,
     Message,
     Subscribed,
+    Received,
     ZlinkError,
+    RecvError,
+    RecvResult,
+    RequestError,
+    RequestResult,
+    SubmitError,
+    SubmitResult,
     _SOCKET_SEND_READY_HANDLER,
     _ReceivedPartsOwner,
+    _REPLY_HANDLER,
     _as_bytes_view,
     _clone_native_msg,
     _is_eagain,
     _init_msg_from_buffer,
     _report_unhandled_callback_exception,
     _raise_last_error,
+    _raise_result_error,
     _routing_id_bytes,
+    _request_result_from_errno,
     _validated_c_string_bytes,
     _validated_c_string_text,
     _validated_routing_id_bytes,
@@ -43,7 +59,32 @@ from ._core import (
 
 
 _SPOT_CALLBACK_SENTINEL = object()
+_ERRNO_ETERM = getattr(errno, "ETERM", 156)
 
+_SPOT_ROUTED_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.POINTER(ZlinkRoutingId),
+    ctypes.POINTER(ZlinkRoutingId),
+    ctypes.c_uint64,
+    ctypes.POINTER(ZlinkMsg),
+    ctypes.c_size_t,
+    ctypes.c_void_p,
+)
+_ROUTER_SPOT_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.POINTER(ZlinkRoutingId),
+    ctypes.POINTER(ZlinkRoutingId),
+    ctypes.c_uint64,
+    ctypes.POINTER(ZlinkMsg),
+    ctypes.c_size_t,
+    ctypes.c_void_p,
+)
+_SPOT_DISPATCH_EVENT_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_void_p,
+    ctypes.c_int,
+    ctypes.c_void_p,
+)
 
 _SPOT_SUBSCRIBE_HANDLER = ctypes.CFUNCTYPE(
     None,
@@ -67,6 +108,103 @@ def _fixed_buffer_value(value, size):
     if len(raw) >= size:
         raise ValueError(f"value exceeds fixed buffer size {size - 1}")
     return raw
+
+
+def _timeout_to_ms(timeout):
+    if timeout in (None, 0):
+        return 0
+    return max(1, int(float(timeout) * 1000))
+
+
+def _payload_parts(payload):
+    if isinstance(payload, (list, tuple)):
+        parts = list(payload)
+    else:
+        parts = [payload]
+    if not parts:
+        raise ValueError("payload must not be empty")
+    return parts
+
+
+def _clone_payload(payload):
+    native_parts = []
+    for part in _payload_parts(payload):
+        if isinstance(part, Message):
+            native_parts.append(_clone_native_msg(part._msg))
+            continue
+        native = ZlinkMsg()
+        _init_msg_from_buffer(native, part, borrow=False)
+        native_parts.append(native)
+    return native_parts
+
+
+def _prepare_native_parts(native_parts):
+    parts_array = (ZlinkMsg * len(native_parts))()
+    for index, native in enumerate(native_parts):
+        parts_array[index] = native
+    return parts_array
+
+
+def _close_native_parts_array(parts_array, part_count):
+    for index in range(part_count):
+        lib().zlink_msg_close(ctypes.byref(parts_array[index]))
+
+
+def _make_received_owner(parts_ptr, part_count):
+    parts_array = (ZlinkMsg * part_count)()
+    for index in range(part_count):
+        parts_array[index] = _clone_native_msg(parts_ptr[index])
+    return _clone_received_owner(parts_array, part_count)
+
+
+def _make_routed_received(
+    source_node_rid,
+    source_spot_rid,
+    request_seq,
+    parts_ptr,
+    part_count,
+):
+    routing_id = _routing_id_bytes(source_node_rid)
+    owner = _make_received_owner(parts_ptr, int(part_count))
+    received = Received(
+        owner,
+        routing_id=routing_id,
+        request_seq=int(request_seq),
+    )
+    received.source_node_rid = routing_id
+    received.spot_rid = _routing_id_bytes(source_spot_rid)
+    received.source_spot_rid = received.spot_rid
+    return received
+
+
+def _make_received(request_seq, parts_ptr, part_count, routing_id=None):
+    owner = _make_received_owner(parts_ptr, int(part_count))
+    received = Received(owner, routing_id=routing_id, request_seq=request_seq)
+    return received
+
+
+class _PendingRequest:
+    def __init__(self, *, loop=None, callback=None):
+        self.loop = loop
+        self.future = loop.create_future() if loop is not None else None
+        self.callback = callback
+
+    def resolve(self, result, received, errnum=0):
+        if self.future is not None:
+            if result == RequestResult.OK:
+                self.loop.call_soon_threadsafe(self.future.set_result, received)
+            else:
+                self.loop.call_soon_threadsafe(
+                    self.future.set_exception,
+                    RequestError(result, errnum),
+                )
+            return
+        if self.callback is None:
+            return
+        try:
+            self.callback(result, received if result == RequestResult.OK else None)
+        except Exception:
+            _report_unhandled_callback_exception(self.callback)
 
 
 class SpotNodeStatus:
@@ -391,6 +529,12 @@ class Spot:
         obj = cls.__new__(cls)
         obj._own = True
         obj._handle = handle
+        obj._request_pending = {}
+        obj._request_reply_handler = None
+        obj._routed_handler = None
+        obj._routed_handler_cb = None
+        obj._dispatch_handler = None
+        obj._dispatch_handler_cb = None
         obj._handler = None
         obj._handler_cb = None
         obj._handler_queue = None
@@ -404,6 +548,12 @@ class Spot:
         return obj
 
     def __init__(self, node):
+        self._request_pending = {}
+        self._request_reply_handler = None
+        self._routed_handler = None
+        self._routed_handler_cb = None
+        self._dispatch_handler = None
+        self._dispatch_handler_cb = None
         self._handler = None
         self._handler_cb = None
         self._handler_queue = None
@@ -438,7 +588,7 @@ class Spot:
             native_parts.append(native)
         return native_parts
 
-    def publish(self, topic, payload):
+    def publish(self, topic, payload, *, flags=0):
         _ensure_not_in_callback("blocking publish")
         topic_bytes = _validated_c_string_bytes(topic, field="topic")
         native_parts = self._native_parts_from_payload(payload)
@@ -446,25 +596,12 @@ class Spot:
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
-        rc = lib().zlink_publish(self._handle, topic_bytes, parts_array, part_count, 0)
+        rc = lib().zlink_publish(
+            self._handle, topic_bytes, parts_array, part_count, int(flags)
+        )
         if rc != 0:
-            for index in range(part_count):
-                lib().zlink_msg_close(ctypes.byref(parts_array[index]))
-            _raise_last_error()
-
-    def try_publish(self, topic, payload):
-        topic_bytes = _validated_c_string_bytes(topic, field="topic")
-        native_parts = self._native_parts_from_payload(payload)
-        part_count = len(native_parts)
-        parts_array = (ZlinkMsg * part_count)()
-        for index, native in enumerate(native_parts):
-            parts_array[index] = native
-        rc = lib().zlink_publish(self._handle, topic_bytes, parts_array, part_count, 1)
-        result = SendResult.SENT if rc == 0 else _classify_nonblocking_send_errno()
-        if result is not SendResult.SENT:
-            for index in range(part_count):
-                lib().zlink_msg_close(ctypes.byref(parts_array[index]))
-        return result
+            _close_native_parts_array(parts_array, part_count)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
 
     def _recv_subscribed(self, flags):
         routing_id = ZlinkRoutingId()
@@ -483,23 +620,14 @@ class Spot:
             flags,
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
         owner = _ReceivedPartsOwner(parts, int(part_count.value))
         topic = topic_buf.raw[: topic_len.value]
         return Subscribed(topic, owner, _routing_id_bytes(routing_id))
 
-    def subscribe(self):
+    def subscribe(self, *, flags=0):
         self._ensure_subscribe_direct_mode()
-        return self._recv_subscribed(0)
-
-    def try_subscribe(self):
-        self._ensure_subscribe_direct_mode()
-        try:
-            return self._recv_subscribed(1)
-        except Exception as exc:
-            if _is_eagain(exc):
-                return None
-            raise
+        return self._recv_subscribed(flags)
 
     def set_subscription(self, topic):
         rc = lib().zlink_set_subscription(
@@ -507,7 +635,7 @@ class Spot:
             _validated_c_string_bytes(topic, field="subscription"),
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def unset_subscription(self, topic):
         rc = lib().zlink_unset_subscription(
@@ -515,7 +643,7 @@ class Spot:
             _validated_c_string_bytes(topic, field="subscription"),
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def _set_pub_option(self, option, value):
         view = _as_bytes_view(value)
@@ -663,11 +791,258 @@ class Spot:
         self._send_ready_handler_thread = thread
         thread.start()
 
+    def _ensure_request_reply_handler(self):
+        if self._request_reply_handler is None:
+            self._request_reply_handler = _REPLY_HANDLER(self._on_reply)
+        return self._request_reply_handler
+
+    def _request_with_native(self, native_func, routing_ids, payload, *, callback=None, flags=0, timeout=0):
+        if callback is None:
+            return self._request_async(native_func, routing_ids, payload, flags=flags, timeout=timeout)
+        self._request_callback(native_func, routing_ids, payload, callback, flags=flags, timeout=timeout)
+        return None
+
+    def _request_async(self, native_func, routing_ids, payload, *, flags=0, timeout=0):
+        async def _run():
+            loop = asyncio.get_running_loop()
+            pending = _PendingRequest(loop=loop)
+            handle = id(pending)
+            self._request_pending[handle] = pending
+            try:
+                self._start_request(native_func, routing_ids, payload, flags, timeout, handle)
+            except Exception:
+                self._request_pending.pop(handle, None)
+                raise
+            return await pending.future
+
+        return _run()
+
+    def _request_callback(self, native_func, routing_ids, payload, callback, *, flags=0, timeout=0):
+        pending = _PendingRequest(callback=callback)
+        handle = id(pending)
+        self._request_pending[handle] = pending
+        try:
+            self._start_request(native_func, routing_ids, payload, flags, timeout, handle)
+        except Exception:
+            self._request_pending.pop(handle, None)
+            raise
+
+    def _start_request(self, native_func, routing_ids, payload, flags, timeout, handle):
+        native_parts = _clone_payload(payload)
+        parts_array = _prepare_native_parts(native_parts)
+        native_rids = [_copy_routing_id(rid) for rid in routing_ids]
+        reply_handler = self._ensure_request_reply_handler()
+        if len(native_rids) == 2:
+            rc = native_func(
+                self._handle,
+                ctypes.byref(native_rids[0]),
+                ctypes.byref(native_rids[1]),
+                parts_array,
+                len(native_parts),
+                reply_handler,
+                ctypes.c_void_p(handle),
+                int(flags),
+                _timeout_to_ms(timeout),
+            )
+        elif len(native_rids) == 1:
+            rc = native_func(
+                self._handle,
+                ctypes.byref(native_rids[0]),
+                parts_array,
+                len(native_parts),
+                reply_handler,
+                ctypes.c_void_p(handle),
+                int(flags),
+                _timeout_to_ms(timeout),
+            )
+        else:
+            raise ValueError("routing_ids must not be empty")
+        if rc != 0:
+            _close_native_parts_array(parts_array, len(native_parts))
+            self._request_pending.pop(handle, None)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+
+    def _on_reply(self, errnum, parts, part_count, userdata):
+        handle = ctypes.cast(userdata, ctypes.c_void_p).value
+        pending = self._request_pending.pop(handle, None)
+        if pending is None:
+            return
+        result = _request_result_from_errno(int(errnum))
+        received = None
+        if result == RequestResult.OK:
+            received = _make_received(None, parts, part_count)
+        pending.resolve(result, received, int(errnum))
+
+    def send_to_spot(self, dest_node_rid, dest_spot_rid, payload, *, flags=0):
+        _ensure_not_in_callback("blocking send")
+        native_parts = _clone_payload(payload)
+        parts_array = _prepare_native_parts(native_parts)
+        native_node = _copy_routing_id(dest_node_rid)
+        native_spot = _copy_routing_id(dest_spot_rid)
+        rc = lib().zlink_spot_send_spot(
+            self._handle,
+            ctypes.byref(native_node),
+            ctypes.byref(native_spot),
+            parts_array,
+            len(native_parts),
+            int(flags),
+        )
+        if rc != 0:
+            _close_native_parts_array(parts_array, len(native_parts))
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+
+    def request_to_spot(self, dest_node_rid, dest_spot_rid, payload, callback=None, *, flags=0, timeout=0):
+        return self._request_with_native(
+            lib().zlink_spot_request_spot,
+            (dest_node_rid, dest_spot_rid),
+            payload,
+            callback=callback,
+            flags=flags,
+            timeout=timeout,
+        )
+
+    def reply_to_spot(self, dest_node_rid, dest_spot_rid, request_seq, payload, *, flags=0):
+        native_parts = _clone_payload(payload)
+        parts_array = _prepare_native_parts(native_parts)
+        native_node = _copy_routing_id(dest_node_rid)
+        native_spot = _copy_routing_id(dest_spot_rid)
+        rc = lib().zlink_spot_reply_spot(
+            self._handle,
+            ctypes.byref(native_node),
+            ctypes.byref(native_spot),
+            ctypes.c_uint64(request_seq),
+            parts_array,
+            len(native_parts),
+        )
+        if rc != 0:
+            _close_native_parts_array(parts_array, len(native_parts))
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+
+    def send_to_router(self, peer_rid, payload, *, flags=0):
+        _ensure_not_in_callback("blocking send")
+        native_parts = _clone_payload(payload)
+        parts_array = _prepare_native_parts(native_parts)
+        native_peer = _copy_routing_id(peer_rid)
+        rc = lib().zlink_spot_send_router(
+            self._handle,
+            ctypes.byref(native_peer),
+            parts_array,
+            len(native_parts),
+            int(flags),
+        )
+        if rc != 0:
+            _close_native_parts_array(parts_array, len(native_parts))
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+
+    def request_to_router(self, peer_rid, payload, callback=None, *, flags=0, timeout=0):
+        return self._request_with_native(
+            lib().zlink_spot_request_router,
+            (peer_rid,),
+            payload,
+            callback=callback,
+            flags=flags,
+            timeout=timeout,
+        )
+
+    def reply_to_router(self, peer_rid, request_seq, payload, *, flags=0):
+        native_parts = _clone_payload(payload)
+        parts_array = _prepare_native_parts(native_parts)
+        native_peer = _copy_routing_id(peer_rid)
+        rc = lib().zlink_spot_reply_router(
+            self._handle,
+            ctypes.byref(native_peer),
+            ctypes.c_uint64(request_seq),
+            parts_array,
+            len(native_parts),
+        )
+        if rc != 0:
+            _close_native_parts_array(parts_array, len(native_parts))
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+
+    def recv_routed(self, *, flags=0):
+        source_node_rid = ZlinkRoutingId()
+        source_spot_rid = ZlinkRoutingId()
+        request_seq = ctypes.c_uint64()
+        parts = ctypes.POINTER(ZlinkMsg)()
+        part_count = ctypes.c_size_t()
+        rc = lib().zlink_spot_recv(
+            self._handle,
+            ctypes.byref(source_node_rid),
+            ctypes.byref(source_spot_rid),
+            ctypes.byref(request_seq),
+            ctypes.byref(parts),
+            ctypes.byref(part_count),
+            int(flags),
+        )
+        if rc != 0:
+            _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
+        return _make_routed_received(
+            source_node_rid,
+            source_spot_rid,
+            int(request_seq.value),
+            parts,
+            int(part_count.value),
+        )
+
+    def on_routed_receive(self, handler):
+        if handler is None:
+            raise ValueError("handler must not be None")
+        if self._routed_handler_cb is not None:
+            raise RuntimeError("routed handler is already attached")
+
+        def _callback(source_node_rid_ptr, source_spot_rid_ptr, request_seq, parts_ptr, part_count, _):
+            try:
+                received = _make_routed_received(
+                    source_node_rid_ptr.contents,
+                    source_spot_rid_ptr.contents,
+                    int(request_seq),
+                    parts_ptr,
+                    int(part_count),
+                )
+                handler(received)
+            except Exception:
+                _report_unhandled_callback_exception(handler)
+            else:
+                received.close()
+
+        callback = _SPOT_ROUTED_HANDLER(_callback)
+        rc = lib().zlink_spot_handler(self._handle, callback, None)
+        if rc != 0:
+            _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
+        self._routed_handler = handler
+        self._routed_handler_cb = callback
+
+    def on_dispatch_event(self, handler):
+        if handler is None:
+            raise ValueError("handler must not be None")
+        if self._dispatch_handler_cb is not None:
+            raise RuntimeError("dispatch handler is already attached")
+
+        def _callback(_spot, event, _):
+            try:
+                handler(self, int(event))
+            except Exception:
+                _report_unhandled_callback_exception(handler)
+
+        callback = _SPOT_DISPATCH_EVENT_HANDLER(_callback)
+        rc = lib().zlink_spot_dispatch_event_handler(self._handle, callback, None)
+        if rc != 0:
+            _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
+        self._dispatch_handler = handler
+        self._dispatch_handler_cb = callback
+
+    def _cancel_pending_requests(self):
+        for handle, pending in list(self._request_pending.items()):
+            self._request_pending.pop(handle, None)
+            pending.resolve(RequestResult.TERMINATED, None, _ERRNO_ETERM)
+
     def close(self):
         if not self._handle:
             return
         handler_cb = self._handler_cb
         send_ready_handler_cb = self._send_ready_handler_cb
+        routed_handler_cb = self._routed_handler_cb
+        dispatch_handler_cb = self._dispatch_handler_cb
         stop = self._subscribe_stop
         thread = self._subscribe_thread
         handler_queue = self._handler_queue
@@ -702,6 +1077,12 @@ class Spot:
         self._send_ready_handler_thread = None
         self._send_ready_handler_stop = None
         self._send_ready_handler_queue = None
+        self._routed_handler = None
+        self._routed_handler_cb = None
+        self._dispatch_handler = None
+        self._dispatch_handler_cb = None
+        self._cancel_pending_requests()
+        self._request_reply_handler = None
         handle = ctypes.c_void_p(self._handle)
         self._handle = None
         rc = lib().zlink_spot_destroy(ctypes.byref(handle))
@@ -709,6 +1090,8 @@ class Spot:
         self._send_ready_handler_cb = None
         del handler_cb
         del send_ready_handler_cb
+        del routed_handler_cb
+        del dispatch_handler_cb
         if rc != 0:
             _raise_last_error()
 

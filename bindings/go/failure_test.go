@@ -8,7 +8,7 @@ import (
 	"zlink"
 )
 
-func TestTrySendReturnsExplicitOutcome(t *testing.T) {
+func TestSendDontWaitReturnsErrorWhenUnroutable(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
@@ -16,16 +16,12 @@ func TestTrySendReturnsExplicitOutcome(t *testing.T) {
 	defer socket.Close()
 	_ = socket.Bind(inprocEndpoint("try-send"))
 
-	result, err := socket.TrySend(newMessage(t, "data"))
-	if err != nil {
-		t.Fatalf("TrySend() error = %v", err)
-	}
-	if result != zlink.SendResultNotReady && result != zlink.SendResultBackpressured && result != zlink.SendResultSent {
-		t.Fatalf("unexpected SendResult = %v", result)
+	if err := socket.Send(zlink.SendFlagsDontWait, newMessage(t, "data")); err == nil {
+		t.Fatalf("Send() with DontWait on idle socket should surface an error")
 	}
 }
 
-func TestTryPublishReturnsExplicitOutcome(t *testing.T) {
+func TestPublishDontWaitReturnsErrorWhenUnroutable(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
@@ -33,12 +29,8 @@ func TestTryPublishReturnsExplicitOutcome(t *testing.T) {
 	defer socket.Close()
 	_ = socket.Bind(inprocEndpoint("try-publish"))
 
-	result, err := socket.TryPublish("topic", newMessage(t, "data"))
-	if err != nil {
-		t.Fatalf("TryPublish() error = %v", err)
-	}
-	if result != zlink.SendResultNotReady && result != zlink.SendResultBackpressured && result != zlink.SendResultSent {
-		t.Fatalf("unexpected SendResult = %v", result)
+	if err := socket.Publish("topic", zlink.SendFlagsDontWait, newMessage(t, "data")); err != nil {
+		t.Fatalf("Publish() with DontWait on idle socket should succeed: %v", err)
 	}
 }
 
@@ -60,7 +52,7 @@ func TestBlockingSendFailureSurfacesError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRoutingID() error = %v", err)
 	}
-	if err := router.SendTo(rid, newMessage(t, "data")); err == nil {
+	if err := router.SendTo(rid, zlink.SendFlagsNone, newMessage(t, "data")); err == nil {
 		t.Fatalf("SendTo() should surface an error when no peer exists")
 	}
 }
@@ -87,7 +79,7 @@ func TestBlockingSendFailurePreservesMessagePayload(t *testing.T) {
 	msg := newMessage(t, "preserve-me")
 	defer msg.Close()
 
-	if err := router.SendTo(rid, msg); err == nil {
+	if err := router.SendTo(rid, zlink.SendFlagsNone, msg); err == nil {
 		t.Fatalf("SendTo() should surface an error when no peer exists")
 	}
 	if got := string(msg.Data()); got != "preserve-me" {
@@ -95,7 +87,7 @@ func TestBlockingSendFailurePreservesMessagePayload(t *testing.T) {
 	}
 }
 
-func TestTrySendDoesNotSwallowNonEagainErrors(t *testing.T) {
+func TestSendDoesNotSwallowClosedSocketErrors(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
@@ -104,12 +96,12 @@ func TestTrySendDoesNotSwallowNonEagainErrors(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	if _, err := socket.TrySend(newMessage(t, "data")); err == nil {
-		t.Fatalf("TrySend() on closed socket should surface an error")
+	if err := socket.Send(zlink.SendFlagsNone, newMessage(t, "data")); err == nil {
+		t.Fatalf("Send() on closed socket should surface an error")
 	}
 }
 
-func TestTryPublishDoesNotSwallowNonEagainErrors(t *testing.T) {
+func TestPublishDoesNotSwallowClosedSocketErrors(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
@@ -118,12 +110,12 @@ func TestTryPublishDoesNotSwallowNonEagainErrors(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	if _, err := socket.TryPublish("topic", newMessage(t, "data")); err == nil {
-		t.Fatalf("TryPublish() on closed socket should surface an error")
+	if err := socket.Publish("topic", zlink.SendFlagsNone, newMessage(t, "data")); err == nil {
+		t.Fatalf("Publish() on closed socket should surface an error")
 	}
 }
 
-func TestTryPublishFailurePreservesMessagePayload(t *testing.T) {
+func TestPublishFailurePreservesMessagePayload(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
@@ -134,15 +126,15 @@ func TestTryPublishFailurePreservesMessagePayload(t *testing.T) {
 	if err := socket.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	if _, err := socket.TryPublish("topic", msg); err == nil {
-		t.Fatalf("TryPublish() on closed socket should surface an error")
+	if err := socket.Publish("topic", zlink.SendFlagsNone, msg); err == nil {
+		t.Fatalf("Publish() on closed socket should surface an error")
 	}
 	if got := string(msg.Data()); got != "preserve-me" {
-		t.Fatalf("message payload after TryPublish() failure = %q, want %q", got, "preserve-me")
+		t.Fatalf("message payload after Publish() failure = %q, want %q", got, "preserve-me")
 	}
 }
 
-func TestTryRecvDoesNotSwallowNonEagainErrors(t *testing.T) {
+func TestRecvDoesNotSwallowClosedSocketErrors(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
@@ -151,12 +143,12 @@ func TestTryRecvDoesNotSwallowNonEagainErrors(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	if _, _, err := socket.TryRecv(); err == nil {
-		t.Fatalf("TryRecv() on closed socket should surface an error")
+	if _, err := socket.Recv(zlink.RecvFlagsDontWait); err == nil {
+		t.Fatalf("Recv() on closed socket should surface an error")
 	}
 }
 
-func TestTrySubscribeDoesNotSwallowNonEagainErrors(t *testing.T) {
+func TestSubscribeDoesNotSwallowClosedSocketErrors(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
@@ -165,12 +157,12 @@ func TestTrySubscribeDoesNotSwallowNonEagainErrors(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	if _, _, err := socket.TrySubscribe(); err == nil {
-		t.Fatalf("TrySubscribe() on closed socket should surface an error")
+	if _, err := socket.Subscribe(zlink.RecvFlagsDontWait); err == nil {
+		t.Fatalf("Subscribe() on closed socket should surface an error")
 	}
 }
 
-func TestTryReceiveSubscriptionEventDoesNotSwallowNonEagainErrors(t *testing.T) {
+func TestReceiveSubscriptionEventDoesNotSwallowClosedSocketErrors(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
@@ -179,8 +171,8 @@ func TestTryReceiveSubscriptionEventDoesNotSwallowNonEagainErrors(t *testing.T) 
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	if _, _, err := socket.TryReceiveSubscriptionEvent(); err == nil {
-		t.Fatalf("TryReceiveSubscriptionEvent() on closed socket should surface an error")
+	if _, err := socket.ReceiveSubscriptionEvent(zlink.RecvFlagsDontWait); err == nil {
+		t.Fatalf("ReceiveSubscriptionEvent() on closed socket should surface an error")
 	}
 }
 
@@ -224,11 +216,11 @@ func TestCallbackModeConflictsWithDirectRecv(t *testing.T) {
 		t.Fatalf("OnReceive() error = %v", err)
 	}
 
-	if _, err := server.Recv(); err == nil {
+	if _, err := server.Recv(zlink.RecvFlagsNone); err == nil {
 		t.Fatalf("Recv() after OnReceive() should fail")
 	}
 
-	if err := client.Send(newMessage(t, "callback-data")); err != nil {
+	if err := client.Send(zlink.SendFlagsNone, newMessage(t, "callback-data")); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 
@@ -264,7 +256,7 @@ func TestReceiveCallbackCanUseBlockingSend(t *testing.T) {
 			sendErrs <- err
 			return
 		}
-		if err := server.Send(reply); err != nil {
+		if err := server.Send(zlink.SendFlagsNone, reply); err != nil {
 			_ = reply.Close()
 			sendErrs <- err
 			return
@@ -274,7 +266,7 @@ func TestReceiveCallbackCanUseBlockingSend(t *testing.T) {
 		t.Fatalf("OnReceive() error = %v", err)
 	}
 
-	if err := client.Send(newMessage(t, "request")); err != nil {
+	if err := client.Send(zlink.SendFlagsNone, newMessage(t, "request")); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 
@@ -287,7 +279,7 @@ func TestReceiveCallbackCanUseBlockingSend(t *testing.T) {
 		t.Fatalf("callback send did not complete within 5s")
 	}
 
-	reply, err := client.Recv()
+	reply, err := client.Recv(zlink.RecvFlagsNone)
 	if err != nil {
 		t.Fatalf("Recv() error = %v", err)
 	}
@@ -332,10 +324,10 @@ func TestReceiveCallbackPanicDoesNotCloseSocketOrStopFutureCallbacks(t *testing.
 		t.Fatalf("OnReceive() error = %v", err)
 	}
 
-	if err := client.Send(newMessage(t, "first")); err != nil {
+	if err := client.Send(zlink.SendFlagsNone, newMessage(t, "first")); err != nil {
 		t.Fatalf("Send(first) error = %v", err)
 	}
-	if err := client.Send(newMessage(t, "second")); err != nil {
+	if err := client.Send(zlink.SendFlagsNone, newMessage(t, "second")); err != nil {
 		t.Fatalf("Send(second) error = %v", err)
 	}
 
@@ -374,7 +366,7 @@ func TestCloseInsideReceiveCallbackDoesNotDeadlock(t *testing.T) {
 		t.Fatalf("OnReceive() error = %v", err)
 	}
 
-	if err := client.Send(newMessage(t, "close-from-callback")); err != nil {
+	if err := client.Send(zlink.SendFlagsNone, newMessage(t, "close-from-callback")); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 

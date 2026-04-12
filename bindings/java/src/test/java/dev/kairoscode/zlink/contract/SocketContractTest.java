@@ -8,12 +8,17 @@ import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.PubSocketOptions;
+import dev.kairoscode.zlink.RecvException;
+import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RequestDealer;
 import dev.kairoscode.zlink.RequestRouter;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendResult;
+import dev.kairoscode.zlink.SendFlags;
+import dev.kairoscode.zlink.SubmitException;
+import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.ServiceMonitorEventMask;
 import dev.kairoscode.zlink.ServiceType;
@@ -215,9 +220,6 @@ public class SocketContractTest {
                 try (var monitor = socket.monitorOpen()) {
                     assertTrue(monitor.snapshot().sndPendingMsgs() >= 0L);
                 }
-                try (var serviceMonitor = discovery.monitorOpen()) {
-                    assertDoesNotThrow(serviceMonitor::tryRecv);
-                }
             });
         }
     }
@@ -281,15 +283,15 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(Spot.class, "monitorOpen", int.class));
             assertFalse(hasPublicMethod(dev.kairoscode.zlink.service.spot.SpotNode.class,
                 "monitorOpen", int.class));
-            assertFalse(hasPublicMethod(MonitorSocket.class, "recv",
+            assertTrue(hasPublicMethod(MonitorSocket.class, "recv",
                 RECEIVE_FLAG_CLASS));
-            assertFalse(hasPublicMethod(PairSocket.class, "send", Message.class,
+            assertTrue(hasPublicMethod(PairSocket.class, "send", Message.class,
                 SEND_FLAG_CLASS));
-            assertFalse(hasPublicMethod(PairSocket.class, "recv",
+            assertTrue(hasPublicMethod(PairSocket.class, "recv",
                 RECEIVE_FLAG_CLASS));
-            assertFalse(hasPublicMethod(PubSocket.class, "publish", String.class,
+            assertTrue(hasPublicMethod(PubSocket.class, "publish", String.class,
                 Message.class, SEND_FLAG_CLASS));
-            assertFalse(hasPublicMethod(SubSocket.class, "subscribe",
+            assertTrue(hasPublicMethod(SubSocket.class, "subscribe",
                 RECEIVE_FLAG_CLASS));
             assertFalse(hasPublicMethod(Message.class, "dataSegment"));
             assertFalse(hasPublicMethod(Message.class, "dataSegment", int.class));
@@ -309,13 +311,13 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(XPubSocket.class, "subscriptionEvent"));
             assertFalse(hasPublicConstructor(ServiceMonitor.class,
                 MemorySegment.class));
-            assertTrue(hasPublicMethod(PairSocket.class, "trySend", Message.class));
-            assertTrue(hasPublicMethod(PairSocket.class, "tryRecv"));
-            assertTrue(hasPublicMethod(MonitorSocket.class, "tryRecv"));
-            assertTrue(hasPublicMethod(PubSocket.class, "tryPublish",
+            assertFalse(hasPublicMethod(PairSocket.class, "trySend", Message.class));
+            assertFalse(hasPublicMethod(PairSocket.class, "tryRecv"));
+            assertFalse(hasPublicMethod(MonitorSocket.class, "tryRecv"));
+            assertFalse(hasPublicMethod(PubSocket.class, "tryPublish",
                 String.class, Message.class));
-            assertTrue(hasPublicMethod(SubSocket.class, "trySubscribe"));
-            assertTrue(hasPublicMethod(XPubSocket.class,
+            assertFalse(hasPublicMethod(SubSocket.class, "trySubscribe"));
+            assertFalse(hasPublicMethod(XPubSocket.class,
                 "tryReceiveSubscriptionEvent"));
             assertEquals(PubSocketOptions.class, pub.options().getClass());
             assertTrue(hasPublicMethod(PubSocketOptions.class, "verbose"));
@@ -362,11 +364,12 @@ public class SocketContractTest {
             server.bind(endpoint);
             client.connect(endpoint);
 
-            assertTrue(server.tryRecv().isEmpty());
+            assertThrows(RecvException.class,
+                () -> server.recv(RecvFlags.DONT_WAIT));
             try (Message outbound = Message.copyOfUtf8("pair-try")) {
-                assertEquals(SendResult.SENT, client.trySend(outbound));
+                client.send(outbound, SendFlags.DONT_WAIT);
             }
-            try (var received = server.tryRecv().orElseThrow()) {
+            try (var received = server.recv(RecvFlags.DONT_WAIT)) {
                 assertEquals(List.of("pair-try"),
                     List.of(received.singlePartOrThrow().toUtf8String()));
             }

@@ -13,6 +13,7 @@ from perf_common import (
     print_result_lines,
     result_metrics,
     safe_poll,
+    recv_nonblocking,
     stamp_payload,
     unique_endpoint,
     wait_monitor_event,
@@ -28,11 +29,11 @@ def main(argv=None):
     def send_loop(router):
         warmup_end = time.perf_counter() + args.warmup
         while time.perf_counter() < warmup_end:
-            router.send(stamp_payload(payload, phase=0), routing_id=b"SERVER")
+            router.send(b"SERVER", stamp_payload(payload, phase=0))
 
         active_end = time.perf_counter() + args.duration
         while time.perf_counter() < active_end:
-            router.send(stamp_payload(payload, phase=1), routing_id=b"SERVER")
+            router.send(b"SERVER", stamp_payload(payload, phase=1))
     with zlink.Context() as ctx:
         with zlink.RouterSocket(ctx) as server:
             with zlink.RouterSocket(ctx) as client:
@@ -64,7 +65,7 @@ def main(argv=None):
                             while True:
                                 safe_poll(poller, 50)
                                 while True:
-                                    received = server.try_recv()
+                                    received = recv_nonblocking(server)
                                     if received is None:
                                         break
                                     with received:

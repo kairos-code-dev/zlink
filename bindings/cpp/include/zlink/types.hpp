@@ -407,6 +407,12 @@ enum class send_flag : int
     sndmore = 0x0002
 };
 
+enum class send_flags_t : int
+{
+    none = 0,
+    dontwait = 1
+};
+
 inline send_flag operator| (send_flag a, send_flag b)
 {
     return static_cast<send_flag> (static_cast<int> (a)
@@ -417,6 +423,12 @@ enum class recv_flag : int
 {
     none = 0,
     dontwait = ZLINK_DONTWAIT
+};
+
+enum class recv_flags_t : int
+{
+    none = 0,
+    dontwait = 1
 };
 
 inline recv_flag operator| (recv_flag a, recv_flag b)
@@ -430,6 +442,85 @@ enum class send_result_t : int
     sent = ZLINK_SUBMIT_OK,
     backpressured = ZLINK_SUBMIT_BACKPRESSURED,
     not_ready = ZLINK_SUBMIT_NOT_CONNECTED
+};
+
+enum class submit_result_t : int
+{
+    ok = ZLINK_SUBMIT_OK,
+    backpressured = ZLINK_SUBMIT_BACKPRESSURED,
+    not_connected = ZLINK_SUBMIT_NOT_CONNECTED,
+    not_found = ZLINK_SUBMIT_NOT_FOUND,
+    terminated = ZLINK_SUBMIT_TERMINATED,
+    invalid_handle = ZLINK_SUBMIT_INVALID_HANDLE,
+    invalid_argument = ZLINK_SUBMIT_INVALID_ARGUMENT,
+    not_supported = ZLINK_SUBMIT_NOT_SUPPORTED,
+    invalid_state = ZLINK_SUBMIT_INVALID_STATE,
+    thread_violation = ZLINK_SUBMIT_THREAD_VIOLATION,
+    out_of_memory = ZLINK_SUBMIT_OUT_OF_MEMORY,
+    seq_exhausted = ZLINK_SUBMIT_SEQ_EXHAUSTED,
+    internal_error = ZLINK_SUBMIT_INTERNAL_ERROR
+};
+
+enum class request_result_t : int
+{
+    ok = ZLINK_REQUEST_OK,
+    timed_out = ZLINK_REQUEST_TIMED_OUT,
+    not_found = ZLINK_REQUEST_NOT_FOUND,
+    terminated = ZLINK_REQUEST_TERMINATED,
+    protocol_error = ZLINK_REQUEST_PROTOCOL_ERROR
+};
+
+enum class recv_result_t : int
+{
+    ok = ZLINK_RECV_OK,
+    no_data = ZLINK_RECV_NO_DATA,
+    busy = ZLINK_RECV_BUSY,
+    terminated = ZLINK_RECV_TERMINATED,
+    invalid_handle = ZLINK_RECV_INVALID_HANDLE,
+    not_supported = ZLINK_RECV_NOT_SUPPORTED
+};
+
+enum class handler_result_t : int
+{
+    ok = ZLINK_HANDLER_OK,
+    invalid_argument = ZLINK_HANDLER_INVALID_ARGUMENT,
+    busy = ZLINK_HANDLER_BUSY,
+    not_supported = ZLINK_HANDLER_NOT_SUPPORTED,
+    deadlock = ZLINK_HANDLER_DEADLOCK,
+    invalid_handle = ZLINK_HANDLER_INVALID_HANDLE
+};
+
+enum class close_result_t : int
+{
+    ok = ZLINK_CLOSE_OK,
+    busy = ZLINK_CLOSE_BUSY,
+    shutdown = ZLINK_CLOSE_SHUTDOWN,
+    invalid_handle = ZLINK_CLOSE_INVALID_HANDLE
+};
+
+enum class bind_result_t : int
+{
+    ok = ZLINK_BIND_OK,
+    invalid_argument = ZLINK_BIND_INVALID_ARGUMENT,
+    addr_in_use = ZLINK_BIND_ADDR_IN_USE,
+    not_supported = ZLINK_BIND_NOT_SUPPORTED,
+    invalid_handle = ZLINK_BIND_INVALID_HANDLE
+};
+
+enum class connect_result_t : int
+{
+    ok = ZLINK_CONNECT_OK,
+    invalid_argument = ZLINK_CONNECT_INVALID_ARGUMENT,
+    not_supported = ZLINK_CONNECT_NOT_SUPPORTED,
+    invalid_handle = ZLINK_CONNECT_INVALID_HANDLE
+};
+
+enum class config_result_t : int
+{
+    ok = ZLINK_CONFIG_OK,
+    invalid_handle = ZLINK_CONFIG_INVALID_HANDLE,
+    invalid_argument = ZLINK_CONFIG_INVALID_ARGUMENT,
+    not_supported = ZLINK_CONFIG_NOT_SUPPORTED
 };
 
 class routing_id_t
@@ -559,6 +650,10 @@ template<typename T> class maybe_t
   private:
     bool _has_value;
     T _value;
+};
+
+struct non_blocking_t
+{
 };
 
 enum class error_code : int

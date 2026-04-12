@@ -3,10 +3,13 @@ package dev.kairoscode.zlink.integration.contract;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.RecvException;
+import dev.kairoscode.zlink.RecvFlags;
+import dev.kairoscode.zlink.RecvResult;
 import dev.kairoscode.zlink.ServiceEvent;
 import dev.kairoscode.zlink.ServiceEventType;
 import dev.kairoscode.zlink.PairSocket;
-import dev.kairoscode.zlink.SendResult;
+import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.ServiceType;
 import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.TestSupport;
@@ -88,7 +91,7 @@ class ServiceContractsIntegrationTest {
              Discovery discovery = new Discovery(ctx, ServiceType.SOCKET,
                "svc-monitor");
              var monitor = discovery.monitorOpen()) {
-            assertDoesNotThrow(monitor::tryRecv);
+            assertDoesNotThrow(monitor::snapshot);
         }
 
         try (Context ctx = new Context();
@@ -196,16 +199,16 @@ class ServiceContractsIntegrationTest {
             Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
             while (Instant.now().isBefore(deadline)) {
                 try (var payload = dev.kairoscode.zlink.Message.copyOfUtf8("perf-body")) {
-                    assertEquals(SendResult.SENT,
-                        publisher.tryPublish("perf-topic", payload));
+                    publisher.publish("perf-topic", payload, SendFlags.DONT_WAIT);
                 }
-                var delivery = subscriber.trySubscribe();
-                if (delivery.isPresent()) {
-                    try (var topicMessage = delivery.get()) {
-                        assertEquals("perf-topic", topicMessage.topicId());
-                        assertArrayEquals("perf-body".getBytes(),
-                            topicMessage.singlePartOrThrow().toByteArray());
-                        return;
+                try (var topicMessage = subscriber.subscribe(RecvFlags.DONT_WAIT)) {
+                    assertEquals("perf-topic", topicMessage.topicId());
+                    assertArrayEquals("perf-body".getBytes(),
+                        topicMessage.singlePartOrThrow().toByteArray());
+                    return;
+                } catch (RecvException ex) {
+                    if (ex.getResult() != RecvResult.NO_DATA) {
+                        throw ex;
                     }
                 }
                 Thread.onSpinWait();
@@ -245,7 +248,7 @@ class ServiceContractsIntegrationTest {
                     payloadRef.set(received.singlePartOrThrow().toByteArray());
                     try (Message reply = Message.copyOfUtf8("callback-send")) {
                         try {
-                            subscriber.publish(topicId, reply);
+                            subscriber.publish(topicId, reply, SendFlags.DONT_WAIT);
                             throw new IllegalStateException(
                                 "blocking publish in Spot callback must be rejected");
                         } catch (IllegalStateException ex) {
@@ -260,8 +263,8 @@ class ServiceContractsIntegrationTest {
             });
 
             try (Message payload = Message.copyOfUtf8("spot-body")) {
-                assertEquals(SendResult.SENT,
-                    publisher.tryPublish("spot-callback-topic", payload));
+                publisher.publish("spot-callback-topic", payload,
+                    SendFlags.DONT_WAIT);
             }
 
             assertTrue(delivered.await(TestSupport.DEFAULT_TIMEOUT_MS,

@@ -208,9 +208,9 @@ class DealerSocket {
 
     // --- dealer request (async) — no flags, timeout = 0 uses socket default ---
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    request(message: MessageLike, timeout?: number): Promise<Received>;
+    request(message: MessageLike, timeout?: number): Promise<Message[]>;
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    request(parts: readonly MessageLike[], timeout?: number): Promise<Received>;
+    request(parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
 
     // --- dealer request (callback) — throws on submit failure, timeout = 0 uses socket default ---
     /**
@@ -267,10 +267,10 @@ class RouterSocket {
     // --- router request (async) — no flags, timeout = 0 uses socket default ---
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
     request(peerRid: RoutingId, message: MessageLike,
-            timeout?: number): Promise<Received>;
+            timeout?: number): Promise<Message[]>;
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
     request(peerRid: RoutingId, parts: readonly MessageLike[],
-            timeout?: number): Promise<Received>;
+            timeout?: number): Promise<Message[]>;
 
     // --- router request (callback) — throws on submit failure, timeout = 0 uses socket default ---
     /**
@@ -307,10 +307,10 @@ class RouterSocket {
     // --- router → spot routed request (async) — no flags ---
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  message: MessageLike, timeout?: number): Promise<Received>;
+                  message: MessageLike, timeout?: number): Promise<Message[]>;
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  parts: readonly MessageLike[], timeout?: number): Promise<Received>;
+                  parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
 
     // --- router → spot routed request (callback) — throws on submit failure ---
     /**
@@ -1108,10 +1108,10 @@ class Spot {
     // --- routed request (spot → spot, async) — no flags ---
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  message: MessageLike, timeout?: number): Promise<Received>;
+                  message: MessageLike, timeout?: number): Promise<Message[]>;
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  parts: readonly MessageLike[], timeout?: number): Promise<Received>;
+                  parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
 
     // --- routed request (spot → spot, callback) — throws on submit failure ---
     /**
@@ -1148,10 +1148,10 @@ class Spot {
     // --- routed request (spot → router, async) — no flags ---
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
     requestToRouter(peerRid: RoutingId, message: MessageLike,
-                    timeout?: number): Promise<Received>;
+                    timeout?: number): Promise<Message[]>;
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
     requestToRouter(peerRid: RoutingId, parts: readonly MessageLike[],
-                    timeout?: number): Promise<Received>;
+                    timeout?: number): Promise<Message[]>;
 
     // --- routed request (spot → router, callback) — throws on submit failure ---
     /**
@@ -1428,7 +1428,7 @@ type SpotRoutedHandler = (sourceRid: RoutingId | null, spotRid: RoutingId | null
 type SpotDispatchEventHandler = (event: number) => void;
 type RouterSpotHandler = (sourceNodeRid: RoutingId | null, sourceSpotRid: RoutingId | null,
                           requestSeq: bigint, parts: Message[]) => void;
-type RequestResultCallback = (result: RequestResult, reply?: Received) => void;
+type RequestResultCallback = (result: RequestResult, parts: Message[]) => void;
 type TimerHandler = (timer: Timer, fireCount: bigint) => void;
 type ServiceMonitorHandler = (event: ServiceEvent) => void;
 type ServiceMonitorEventMask = number;

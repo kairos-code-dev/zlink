@@ -195,12 +195,13 @@ func (s *DealerSocket) Recv(flags RecvFlags) (*Received, error)
 // timeout = 0 uses the socket default timeout.
 // Returns *SubmitError on submit failure, *RequestError on reply failure
 // (e.g. timeout, protocol error).
-func (s *DealerSocket) Request(parts [][]byte, timeout time.Duration) (Received, error)
+func (s *DealerSocket) Request(parts [][]byte, timeout time.Duration) ([]*Message, error)
 // RequestCallback performs a callback-based request — submit may fail
 // (returned as error). timeout = 0 uses the socket default timeout.
 // Returns *SubmitError on submit failure; the callback receives a
 // RequestResult which maps to *RequestError for failures.
-func (s *DealerSocket) RequestCallback(parts [][]byte, cb func(RequestResult, *Received), flags SendFlags, timeout time.Duration) error
+// The reply parts slice is nil/empty on failure.
+func (s *DealerSocket) RequestCallback(parts [][]byte, cb func(RequestResult, []*Message), flags SendFlags, timeout time.Duration) error
 // OnReceive registers a receive handler. Returns *HandlerError on failure.
 func (s *DealerSocket) OnReceive(handler func(*Received)) error
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
@@ -237,12 +238,13 @@ func (s *RouterSocket) Recv(flags RecvFlags) (*Received, error)
 // reply or timeout. timeout = 0 uses the socket default timeout.
 // Returns *SubmitError on submit failure, *RequestError on reply failure
 // (e.g. timeout, protocol error).
-func (s *RouterSocket) Request(peerRid RoutingID, parts [][]byte, timeout time.Duration) (Received, error)
+func (s *RouterSocket) Request(peerRid RoutingID, parts [][]byte, timeout time.Duration) ([]*Message, error)
 // RequestCallback performs a callback-based request to a specific peer —
 // submit may fail (returned as error). timeout = 0 uses the socket default
 // timeout. Returns *SubmitError on submit failure; the callback receives a
 // RequestResult which maps to *RequestError for failures.
-func (s *RouterSocket) RequestCallback(peerRid RoutingID, parts [][]byte, cb func(RequestResult, *Received), flags SendFlags, timeout time.Duration) error
+// The reply parts slice is nil/empty on failure.
+func (s *RouterSocket) RequestCallback(peerRid RoutingID, parts [][]byte, cb func(RequestResult, []*Message), flags SendFlags, timeout time.Duration) error
 // Reply submits a reply to a request from peer rid. Returns *SubmitError on failure.
 func (s *RouterSocket) Reply(rid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error
 // OnReceive registers a receive handler. Returns *HandlerError on failure.
@@ -543,9 +545,9 @@ const (
 
 // RequestReplyCallback is invoked on completion of a callback-based request
 // (e.g. RouterSocket.RequestToSpot, Spot.RequestToSpot, Spot.RequestToRouter).
-// The RequestResult conveys completion status; the *Received carries reply
-// parts (non-nil only for RequestOK).
-type RequestReplyCallback func(RequestResult, *Received)
+// The RequestResult conveys completion status; the []*Message slice carries
+// reply parts (nil/empty on failure; non-empty only for RequestOK).
+type RequestReplyCallback func(RequestResult, []*Message)
 ```
 
 ### RecvResult

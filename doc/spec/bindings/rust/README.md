@@ -274,13 +274,13 @@ impl DealerSocket {
     // `timeout = None` uses the socket default request timeout.
     /// # Errors: SubmitError on submit, RequestError on completion
     pub async fn request(&self, parts: &[&[u8]], timeout: Option<Duration>)
-        -> Result<Received, RequestError>;
+        -> Result<Vec<Message>, RequestError>;
 
     // --- dealer request (callback) ---
     // `timeout = None` uses the socket default request timeout.
-    // The callback receives Result<Received, RequestError>.
-    /// # Errors: SubmitError on submit; callback receives Result<Received, RequestError>
-    pub fn request_callback<F: FnOnce(Result<Received, RequestError>) + 'static>(
+    // The callback receives Result<Vec<Message>, RequestError>.
+    /// # Errors: SubmitError on submit; callback receives Result<Vec<Message>, RequestError>
+    pub fn request_callback<F: FnOnce(Result<Vec<Message>, RequestError>) + 'static>(
         &self, parts: &[&[u8]], cb: F, flags: SendFlags, timeout: Option<Duration>)
         -> Result<(), SubmitError>;
 
@@ -336,13 +336,13 @@ impl RouterSocket {
     // `timeout = None` uses the socket default request timeout.
     /// # Errors: SubmitError on submit, RequestError on completion
     pub async fn request(&self, peer_rid: &RoutingId, parts: &[&[u8]],
-        timeout: Option<Duration>) -> Result<Received, RequestError>;
+        timeout: Option<Duration>) -> Result<Vec<Message>, RequestError>;
 
     // --- router request (callback) ---
     // `timeout = None` uses the socket default request timeout.
-    // The callback receives Result<Received, RequestError>.
-    /// # Errors: SubmitError on submit; callback receives Result<Received, RequestError>
-    pub fn request_callback<F: FnOnce(Result<Received, RequestError>) + 'static>(
+    // The callback receives Result<Vec<Message>, RequestError>.
+    /// # Errors: SubmitError on submit; callback receives Result<Vec<Message>, RequestError>
+    pub fn request_callback<F: FnOnce(Result<Vec<Message>, RequestError>) + 'static>(
         &self, peer_rid: &RoutingId, parts: &[&[u8]], cb: F,
         flags: SendFlags, timeout: Option<Duration>) -> Result<(), SubmitError>;
 
@@ -369,17 +369,17 @@ impl RouterSocket {
     /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
     pub async fn request_to_spot(&self, dest_node_rid: RoutingId,
         dest_spot_rid: RoutingId, parts: impl IntoMultipart,
-        timeout: Duration) -> Result<Received, ZlinkError>;
+        timeout: Duration) -> Result<Vec<Message>, ZlinkError>;
 
     // --- router → spot routed request (callback) ---
     // Duration::ZERO uses the socket default timeout.
-    // The callback receives Result<Received, RequestError>.
-    /// # Errors: SubmitError (submit failure). Callback receives Result<Received, RequestError>.
+    // The callback receives Result<Vec<Message>, RequestError>.
+    /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
     pub fn request_to_spot_callback<F>(&self, dest_node_rid: RoutingId,
         dest_spot_rid: RoutingId, parts: impl IntoMultipart, callback: F,
         flags: SendFlags, timeout: Duration)
         -> Result<(), SubmitError>
-        where F: FnOnce(Result<Received, RequestError>) + Send + 'static;
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
 
     // --- router → spot routed reply ---
     /// # Errors: SubmitError
@@ -1243,17 +1243,17 @@ impl Spot {
     /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
     pub async fn request_to_spot(&self, dest_node_rid: RoutingId,
         dest_spot_rid: RoutingId, parts: impl IntoMultipart,
-        timeout: Duration) -> Result<Received, ZlinkError>;
+        timeout: Duration) -> Result<Vec<Message>, ZlinkError>;
 
     // --- routed request (spot → spot, callback) ---
     // Duration::ZERO uses the socket default timeout.
-    // The callback receives Result<Received, RequestError>.
-    /// # Errors: SubmitError (submit failure). Callback receives Result<Received, RequestError>.
+    // The callback receives Result<Vec<Message>, RequestError>.
+    /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
     pub fn request_to_spot_callback<F>(&self, dest_node_rid: RoutingId,
         dest_spot_rid: RoutingId, parts: impl IntoMultipart, callback: F,
         flags: SendFlags, timeout: Duration)
         -> Result<(), SubmitError>
-        where F: FnOnce(Result<Received, RequestError>) + Send + 'static;
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
 
     // --- routed reply (spot → spot) ---
     /// # Errors: SubmitError
@@ -1277,17 +1277,17 @@ impl Spot {
     // both unify under ZlinkError at this API seam.
     /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
     pub async fn request_to_router(&self, peer_rid: RoutingId,
-        parts: impl IntoMultipart, timeout: Duration) -> Result<Received, ZlinkError>;
+        parts: impl IntoMultipart, timeout: Duration) -> Result<Vec<Message>, ZlinkError>;
 
     // --- routed request (spot → router, callback) ---
     // Duration::ZERO uses the socket default timeout.
-    // The callback receives Result<Received, RequestError>.
-    /// # Errors: SubmitError (submit failure). Callback receives Result<Received, RequestError>.
+    // The callback receives Result<Vec<Message>, RequestError>.
+    /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
     pub fn request_to_router_callback<F>(&self, peer_rid: RoutingId,
         parts: impl IntoMultipart, callback: F,
         flags: SendFlags, timeout: Duration)
         -> Result<(), SubmitError>
-        where F: FnOnce(Result<Received, RequestError>) + Send + 'static;
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
 
     // --- routed reply (spot → router) ---
     /// # Errors: SubmitError

@@ -231,21 +231,21 @@ class dealer_socket_t : public message_socket_t {
 
     // --- request (coroutine, blocking submit — no flags) ---
     /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<received_t> request(message_t& part,
-                                       std::chrono::milliseconds timeout = {});
+    async_result_t<std::vector<message_t>> request(message_t& part,
+                                                   std::chrono::milliseconds timeout = {});
     /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<received_t> request(std::vector<message_t>& parts,
-                                       std::chrono::milliseconds timeout = {});
+    async_result_t<std::vector<message_t>> request(std::vector<message_t>& parts,
+                                                   std::chrono::milliseconds timeout = {});
 
     // --- request (callback; callback receives request_result_t) ---
     /// @throws submit_error_t
     void request(message_t& part,
-                 std::function<void(request_result_t, received_t)> callback,
+                 std::function<void(request_result_t, std::vector<message_t>)> callback,
                  send_flags_t flags = send_flags_t::none,
                  std::chrono::milliseconds timeout = {});
     /// @throws submit_error_t
     void request(std::vector<message_t>& parts,
-                 std::function<void(request_result_t, received_t)> callback,
+                 std::function<void(request_result_t, std::vector<message_t>)> callback,
                  send_flags_t flags = send_flags_t::none,
                  std::chrono::milliseconds timeout = {});
 
@@ -300,25 +300,25 @@ class router_socket_t : public routed_message_socket_t {
 
     // --- request (coroutine, blocking submit — no flags) ---
     /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<received_t> request(const routing_id_t& peer_rid,
-                                       message_t& part,
-                                       std::chrono::milliseconds timeout = {});
+    async_result_t<std::vector<message_t>> request(const routing_id_t& peer_rid,
+                                                   message_t& part,
+                                                   std::chrono::milliseconds timeout = {});
     /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<received_t> request(const routing_id_t& peer_rid,
-                                       std::vector<message_t>& parts,
-                                       std::chrono::milliseconds timeout = {});
+    async_result_t<std::vector<message_t>> request(const routing_id_t& peer_rid,
+                                                   std::vector<message_t>& parts,
+                                                   std::chrono::milliseconds timeout = {});
 
     // --- request (callback; callback receives request_result_t) ---
     /// @throws submit_error_t
     void request(const routing_id_t& peer_rid,
                  message_t& part,
-                 std::function<void(request_result_t, received_t)> callback,
+                 std::function<void(request_result_t, std::vector<message_t>)> callback,
                  send_flags_t flags = send_flags_t::none,
                  std::chrono::milliseconds timeout = {});
     /// @throws submit_error_t
     void request(const routing_id_t& peer_rid,
                  std::vector<message_t>& parts,
-                 std::function<void(request_result_t, received_t)> callback,
+                 std::function<void(request_result_t, std::vector<message_t>)> callback,
                  send_flags_t flags = send_flags_t::none,
                  std::chrono::milliseconds timeout = {});
 
@@ -345,17 +345,17 @@ class router_socket_t : public routed_message_socket_t {
 
     // --- router → spot routed request (coroutine, blocking submit — no flags) ---
     /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<received_t> request_to_spot(const routing_id_t& dest_node_rid,
-                                               const routing_id_t& dest_spot_rid,
-                                               message_t message,
-                                               std::chrono::milliseconds timeout = {});
+    async_result_t<std::vector<message_t>> request_to_spot(const routing_id_t& dest_node_rid,
+                                                           const routing_id_t& dest_spot_rid,
+                                                           message_t message,
+                                                           std::chrono::milliseconds timeout = {});
 
     // --- router → spot routed request (callback; callback receives request_result_t) ---
     /// @throws submit_error_t
     void request_to_spot(const routing_id_t& dest_node_rid,
                          const routing_id_t& dest_spot_rid,
                          message_t message,
-                         std::function<void(request_result_t, received_t)> callback,
+                         std::function<void(request_result_t, std::vector<message_t>)> callback,
                          send_flags_t flags = send_flags_t::none,
                          std::chrono::milliseconds timeout = {});
 
@@ -1530,17 +1530,17 @@ class spot_t {
 
     // --- routed request (spot → spot, coroutine, blocking submit — no flags) ---
     /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<received_t> request_to_spot(const routing_id_t& dest_node_rid,
-                                               const routing_id_t& dest_spot_rid,
-                                               message_t message,
-                                               std::chrono::milliseconds timeout = {});
+    async_result_t<std::vector<message_t>> request_to_spot(const routing_id_t& dest_node_rid,
+                                                           const routing_id_t& dest_spot_rid,
+                                                           message_t message,
+                                                           std::chrono::milliseconds timeout = {});
 
     // --- routed request (spot → spot, callback; callback receives request_result_t) ---
     /// @throws submit_error_t
     void request_to_spot(const routing_id_t& dest_node_rid,
                          const routing_id_t& dest_spot_rid,
                          message_t message,
-                         std::function<void(request_result_t, received_t)> callback,
+                         std::function<void(request_result_t, std::vector<message_t>)> callback,
                          send_flags_t flags = send_flags_t::none,
                          std::chrono::milliseconds timeout = {});
 
@@ -1557,15 +1557,15 @@ class spot_t {
 
     // --- routed request (spot → router, coroutine, blocking submit — no flags) ---
     /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<received_t> request_to_router(const routing_id_t& peer_rid,
-                                                 message_t message,
-                                                 std::chrono::milliseconds timeout = {});
+    async_result_t<std::vector<message_t>> request_to_router(const routing_id_t& peer_rid,
+                                                             message_t message,
+                                                             std::chrono::milliseconds timeout = {});
 
     // --- routed request (spot → router, callback; callback receives request_result_t) ---
     /// @throws submit_error_t
     void request_to_router(const routing_id_t& peer_rid,
                            message_t message,
-                           std::function<void(request_result_t, received_t)> callback,
+                           std::function<void(request_result_t, std::vector<message_t>)> callback,
                            send_flags_t flags = send_flags_t::none,
                            std::chrono::milliseconds timeout = {});
 

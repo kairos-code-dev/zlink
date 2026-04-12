@@ -154,14 +154,15 @@ class DealerSocket:
     # timeout = 0 uses the socket default timeout.
     # Raises: SubmitError on submit failure; RequestError on request completion failure.
     async def request(self, payload: Message | bytes | list,
-                      *, timeout: int = 0) -> Received: ...
+                      *, timeout: int = 0) -> list[Message]: ...
 
     # --- request (callback) — raises on submit failure ---
     # timeout = 0 uses the socket default timeout.
     # Raises: SubmitError on submit failure. Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
+    # Callback receives an empty list on failure.
     def request(self, payload: Message | bytes | list,
-                callback: Callable[[RequestResult, Received | None], None],
+                callback: Callable[[RequestResult, list[Message]], None],
                 *, flags: int = 0, timeout: int = 0) -> None: ...
 
     def close(self) -> None: ...                                                   # Raises: CloseError
@@ -194,15 +195,16 @@ class RouterSocket:
     # Raises: SubmitError on submit failure; RequestError on request completion failure.
     async def request(self, peer_rid: RoutingId,
                       payload: Message | bytes | list,
-                      *, timeout: int = 0) -> Received: ...
+                      *, timeout: int = 0) -> list[Message]: ...
 
     # --- request (callback) — raises on submit failure ---
     # timeout = 0 uses the socket default timeout.
     # Raises: SubmitError on submit failure. Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
+    # Callback receives an empty list on failure.
     def request(self, peer_rid: RoutingId,
                 payload: Message | bytes | list,
-                callback: Callable[[RequestResult, Received | None], None],
+                callback: Callable[[RequestResult, list[Message]], None],
                 *, flags: int = 0, timeout: int = 0) -> None: ...
 
     # --- reply ---
@@ -219,16 +221,17 @@ class RouterSocket:
     async def request_to_spot(self, dest_node_rid: RoutingId,
                               dest_spot_rid: RoutingId,
                               payload: Message | bytes | list,
-                              *, timeout: int = 0) -> Received: ...
+                              *, timeout: int = 0) -> list[Message]: ...
 
     # --- router → spot routed request (callback) — raises on submit failure ---
     # timeout = 0 uses the socket default timeout.
     # Raises: SubmitError on submit failure. Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
+    # Callback receives an empty list on failure.
     def request_to_spot(self, dest_node_rid: RoutingId,
                         dest_spot_rid: RoutingId,
                         payload: Message | bytes | list,
-                        callback: Callable[[RequestResult, Received | None], None],
+                        callback: Callable[[RequestResult, list[Message]], None],
                         *, flags: int = 0, timeout: int = 0) -> None: ...
 
     # --- router → spot routed reply ---
@@ -950,16 +953,17 @@ class Spot:
     async def request_to_spot(self, dest_node_rid: RoutingId,
                               dest_spot_rid: RoutingId,
                               payload: Message | bytes | list,
-                              *, timeout: int = 0) -> Received: ...
+                              *, timeout: int = 0) -> list[Message]: ...
 
     # --- routed request (spot → spot, callback) — raises on submit failure ---
     # timeout = 0 uses the socket default timeout.
     # Raises: SubmitError on submit failure. Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
+    # Callback receives an empty list on failure.
     def request_to_spot(self, dest_node_rid: RoutingId,
                         dest_spot_rid: RoutingId,
                         payload: Message | bytes | list,
-                        callback: Callable[[RequestResult, Received | None], None],
+                        callback: Callable[[RequestResult, list[Message]], None],
                         *, flags: int = 0, timeout: int = 0) -> None: ...
 
     # --- routed reply (spot → spot) ---
@@ -976,15 +980,16 @@ class Spot:
     # Raises: SubmitError on submit failure; RequestError on request completion failure.
     async def request_to_router(self, peer_rid: RoutingId,
                                 payload: Message | bytes | list,
-                                *, timeout: int = 0) -> Received: ...
+                                *, timeout: int = 0) -> list[Message]: ...
 
     # --- routed request (spot → router, callback) — raises on submit failure ---
     # timeout = 0 uses the socket default timeout.
     # Raises: SubmitError on submit failure. Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
+    # Callback receives an empty list on failure.
     def request_to_router(self, peer_rid: RoutingId,
                           payload: Message | bytes | list,
-                          callback: Callable[[RequestResult, Received | None], None],
+                          callback: Callable[[RequestResult, list[Message]], None],
                           *, flags: int = 0, timeout: int = 0) -> None: ...
 
     # --- routed reply (spot → router) ---

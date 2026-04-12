@@ -160,25 +160,25 @@ public final class DealerSocket extends Socket {
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // --- request (async, no flags) ---
-    CompletableFuture<Received> request(Message part);                           // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> request(Message part, Duration timeout);         // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> request(List<Message> parts);                    // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> request(List<Message> parts, Duration timeout);  // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> request(Message part);                           // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> request(Message part, Duration timeout);         // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> request(List<Message> parts);                    // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> request(List<Message> parts, Duration timeout);  // @throws SubmitException; future completes with RequestException on failure
 
     // --- request (callback, has flags, throws on submit failure) ---
     void request(Message part,
-                 BiConsumer<RequestResult, Received> callback);                         // @throws SubmitException; callback receives RequestResult
+                 BiConsumer<RequestResult, List<Message>> callback);                         // @throws SubmitException; callback receives RequestResult
     void request(Message part,
-                 BiConsumer<RequestResult, Received> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
+                 BiConsumer<RequestResult, List<Message>> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
     void request(Message part,
-                 BiConsumer<RequestResult, Received> callback,
+                 BiConsumer<RequestResult, List<Message>> callback,
                  SendFlags flags, Duration timeout);                                    // @throws SubmitException; callback receives RequestResult
     void request(List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback);                         // @throws SubmitException; callback receives RequestResult
+                 BiConsumer<RequestResult, List<Message>> callback);                         // @throws SubmitException; callback receives RequestResult
     void request(List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
+                 BiConsumer<RequestResult, List<Message>> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
     void request(List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback,
+                 BiConsumer<RequestResult, List<Message>> callback,
                  SendFlags flags, Duration timeout);                                    // @throws SubmitException; callback receives RequestResult
 
     DealerSocketOptions options();
@@ -213,25 +213,25 @@ public final class RouterSocket extends Socket {
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // --- request to a specific peer (async, no flags) ---
-    CompletableFuture<Received> request(RoutingId rid, Message part);                          // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> request(RoutingId rid, Message part, Duration timeout);        // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> request(RoutingId rid, List<Message> parts);                   // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> request(RoutingId rid, List<Message> parts, Duration timeout); // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> request(RoutingId rid, Message part);                          // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> request(RoutingId rid, Message part, Duration timeout);        // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts);                   // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts, Duration timeout); // @throws SubmitException; future completes with RequestException on failure
 
     // --- request to a specific peer (callback, has flags, throws on submit failure) ---
     void request(RoutingId rid, Message part,
-                 BiConsumer<RequestResult, Received> callback);                         // @throws SubmitException; callback receives RequestResult
+                 BiConsumer<RequestResult, List<Message>> callback);                         // @throws SubmitException; callback receives RequestResult
     void request(RoutingId rid, Message part,
-                 BiConsumer<RequestResult, Received> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
+                 BiConsumer<RequestResult, List<Message>> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
     void request(RoutingId rid, Message part,
-                 BiConsumer<RequestResult, Received> callback,
+                 BiConsumer<RequestResult, List<Message>> callback,
                  SendFlags flags, Duration timeout);                                    // @throws SubmitException; callback receives RequestResult
     void request(RoutingId rid, List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback);                         // @throws SubmitException; callback receives RequestResult
+                 BiConsumer<RequestResult, List<Message>> callback);                         // @throws SubmitException; callback receives RequestResult
     void request(RoutingId rid, List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
+                 BiConsumer<RequestResult, List<Message>> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
     void request(RoutingId rid, List<Message> parts,
-                 BiConsumer<RequestResult, Received> callback,
+                 BiConsumer<RequestResult, List<Message>> callback,
                  SendFlags flags, Duration timeout);                                    // @throws SubmitException; callback receives RequestResult
 
     // --- reply to a received request ---
@@ -249,41 +249,41 @@ public final class RouterSocket extends Socket {
                     SendFlags flags);                                                    // @throws SubmitException
 
     // --- router -> spot routed request (async, no flags) ---
-    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
                                               Message part);                             // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
                                               Message part, Duration timeout);           // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
                                               List<Message> parts);                      // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
                                               List<Message> parts, Duration timeout);    // @throws SubmitException; future completes with RequestException on failure
 
     // --- router -> spot routed request (callback, has flags, throws on submit failure) ---
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
-                       BiConsumer<RequestResult, Received> callback);                    // @throws SubmitException; callback receives RequestResult
+                       BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
-                       BiConsumer<RequestResult, Received> callback,
+                       BiConsumer<RequestResult, List<Message>> callback,
                        SendFlags flags);                                                 // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
-                       BiConsumer<RequestResult, Received> callback,
+                       BiConsumer<RequestResult, List<Message>> callback,
                        SendFlags flags, Duration timeout);                               // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts,
-                       BiConsumer<RequestResult, Received> callback);                    // @throws SubmitException; callback receives RequestResult
+                       BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts,
-                       BiConsumer<RequestResult, Received> callback,
+                       BiConsumer<RequestResult, List<Message>> callback,
                        SendFlags flags);                                                 // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts,
-                       BiConsumer<RequestResult, Received> callback,
+                       BiConsumer<RequestResult, List<Message>> callback,
                        SendFlags flags, Duration timeout);                               // @throws SubmitException; callback receives RequestResult
 
     // --- router -> spot routed reply ---
@@ -1033,41 +1033,41 @@ public final class Spot implements AutoCloseable {
                     SendFlags flags);                                                    // @throws SubmitException
 
     // --- routed request (spot -> spot, async, no flags) ---
-    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
                                               Message part);                             // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
                                               Message part, Duration timeout);           // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
                                               List<Message> parts);                      // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> requestToSpot(RoutingId destNodeRid,
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
                                               RoutingId destSpotRid,
                                               List<Message> parts, Duration timeout);    // @throws SubmitException; future completes with RequestException on failure
 
     // --- routed request (spot -> spot, callback, has flags, throws on submit failure) ---
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
-                       BiConsumer<RequestResult, Received> callback);                    // @throws SubmitException; callback receives RequestResult
+                       BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
-                       BiConsumer<RequestResult, Received> callback,
+                       BiConsumer<RequestResult, List<Message>> callback,
                        SendFlags flags);                                                 // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
-                       BiConsumer<RequestResult, Received> callback,
+                       BiConsumer<RequestResult, List<Message>> callback,
                        SendFlags flags, Duration timeout);                               // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts,
-                       BiConsumer<RequestResult, Received> callback);                    // @throws SubmitException; callback receives RequestResult
+                       BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts,
-                       BiConsumer<RequestResult, Received> callback,
+                       BiConsumer<RequestResult, List<Message>> callback,
                        SendFlags flags);                                                 // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts,
-                       BiConsumer<RequestResult, Received> callback,
+                       BiConsumer<RequestResult, List<Message>> callback,
                        SendFlags flags, Duration timeout);                               // @throws SubmitException; callback receives RequestResult
 
     // --- routed reply (spot -> spot) ---
@@ -1087,29 +1087,29 @@ public final class Spot implements AutoCloseable {
     void sendToRouter(RoutingId peerRid, List<Message> parts, SendFlags flags);          // @throws SubmitException
 
     // --- routed request (spot -> router, async, no flags) ---
-    CompletableFuture<Received> requestToRouter(RoutingId peerRid, Message part);        // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> requestToRouter(RoutingId peerRid, Message part,
+    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid, Message part);        // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid, Message part,
                                                 Duration timeout);                       // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> requestToRouter(RoutingId peerRid, List<Message> parts); // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<Received> requestToRouter(RoutingId peerRid, List<Message> parts,
+    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid, List<Message> parts); // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid, List<Message> parts,
                                                 Duration timeout);                       // @throws SubmitException; future completes with RequestException on failure
 
     // --- routed request (spot -> router, callback, has flags, throws on submit failure) ---
     void requestToRouter(RoutingId peerRid, Message part,
-                         BiConsumer<RequestResult, Received> callback);                  // @throws SubmitException; callback receives RequestResult
+                         BiConsumer<RequestResult, List<Message>> callback);                  // @throws SubmitException; callback receives RequestResult
     void requestToRouter(RoutingId peerRid, Message part,
-                         BiConsumer<RequestResult, Received> callback,
+                         BiConsumer<RequestResult, List<Message>> callback,
                          SendFlags flags);                                               // @throws SubmitException; callback receives RequestResult
     void requestToRouter(RoutingId peerRid, Message part,
-                         BiConsumer<RequestResult, Received> callback,
+                         BiConsumer<RequestResult, List<Message>> callback,
                          SendFlags flags, Duration timeout);                             // @throws SubmitException; callback receives RequestResult
     void requestToRouter(RoutingId peerRid, List<Message> parts,
-                         BiConsumer<RequestResult, Received> callback);                  // @throws SubmitException; callback receives RequestResult
+                         BiConsumer<RequestResult, List<Message>> callback);                  // @throws SubmitException; callback receives RequestResult
     void requestToRouter(RoutingId peerRid, List<Message> parts,
-                         BiConsumer<RequestResult, Received> callback,
+                         BiConsumer<RequestResult, List<Message>> callback,
                          SendFlags flags);                                               // @throws SubmitException; callback receives RequestResult
     void requestToRouter(RoutingId peerRid, List<Message> parts,
-                         BiConsumer<RequestResult, Received> callback,
+                         BiConsumer<RequestResult, List<Message>> callback,
                          SendFlags flags, Duration timeout);                             // @throws SubmitException; callback receives RequestResult
 
     // --- routed reply (spot -> router) ---

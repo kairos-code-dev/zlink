@@ -375,13 +375,17 @@ request 는 coroutine 변형과 callback 변형 두 가지를 제공한다.
 #### Coroutine / Async request
 
 ```
-async request(parts, timeout = 0) → Received    // throws on any failure
+async request(parts, timeout = 0) → List<Message>    // throws on any failure
 ```
 
 - flags 파라미터 없음. submit 은 항상 blocking (코루틴 대기).
 - `timeout = 0` 이면 소켓 기본 timeout 을 사용한다. 호출 시 생략 가능.
 - submit 실패 시 예외. reply 실패 시 예외 (ETIMEDOUT 등).
-- 성공 시 `Received` 반환. 하나의 코드 경로로 submit + reply 를 처리한다.
+- **성공 시 reply payload 의 `List<Message>` 만 반환한다.** caller 는 이미
+  자기가 보낸 request 의 routing_id 와 request_seq 를 알고 있으므로
+  `Received` 를 되돌려 받을 필요가 없다. 별도 `Reply` 타입은 만들지 않는다.
+- multipart reply 가 가능하므로 단일 `Message` 가 아닌 `List<Message>` 를
+  반환한다. 단일 part reply 는 `list[0]` 으로 꺼낸다.
 
 #### Callback request
 
@@ -394,14 +398,14 @@ request(parts, callback, flags = 0, timeout = 0)    // throws on submit failure
 - submit 실패 시 언어 관용구로 전달 (exception 언어=예외, return-based
   언어=에러 반환). 실패 시 callback 은 등록되지 않는다.
 - submit 성공 시 callback 이 정확히 한 번 호출된다.
-  - 성공: `result = OK`, `received` 포함
-  - 실패: `result != OK` (TIMED_OUT 등), `received = null` / `None` /
-    `nil` / `Option::None`
-- callback 시그니처는 언어 관용구를 따른다.
+  - 성공: `result = OK`, reply parts 포함
+  - 실패: `result != OK` (TIMED_OUT 등), parts 는 empty / null / None /
+    `Option::None`
+- callback 시그니처는 언어 관용구를 따르며 **reply payload 는 `List<Message>`**
+  로 전달한다 (`Received` 가 아니다):
   - 공통 패턴 (C++/Java/.NET/Node/Python/Go):
-    `(RequestResult result, Received? received)` — 결과 enum 과 optional
-    received 튜플
-  - Rust 관용구: `FnOnce(Result<Received, RequestError>)` — `Result` 타입
+    `(RequestResult result, List<Message> parts)` — 결과 enum 과 parts 리스트
+  - Rust 관용구: `FnOnce(Result<Vec<Message>, RequestError>)` — `Result` 타입
     이 Rust 에서 에러 + 값을 표현하는 표준 방식이므로 이 패턴을 허용한다.
     `RequestError::code` 는 `RequestResult` enum 값과 1:1 대응한다.
 
@@ -1200,7 +1204,7 @@ tryRequest / tryReply 는 제공하지 않는다.
 | | `request(parts, timeout)` | `request(parts, callback, flags, timeout)` |
 |---|---|---|
 | submit | blocking (코루틴 대기) | flags 파라미터로 제어 |
-| reply 전달 | 반환값 (Received) | callback |
+| reply 전달 | 반환값 `List<Message>` | callback |
 | submit 실패 시 | 예외 또는 에러 반환 | 예외 또는 에러 반환 (callback 등록 안 됨) |
 | reply 실패 시 | 예외 또는 에러 반환 (ETIMEDOUT 등) | callback (`result != OK`) |
 | flags | 없음 (항상 blocking) | 있음 (`DONTWAIT` 가능) |
@@ -1210,7 +1214,7 @@ tryRequest / tryReply 는 제공하지 않는다.
   exception 언어 (C++/Java/.NET/Node/Python) 는 예외, return-based 언어
   (C/Go/Rust) 는 에러 반환.
 - reply 결과는 callback 이 정확히 한 번 전달한다.
-  `(RequestResult result, Received received)`
+  `(RequestResult result, List<Message> parts)`
 
 #### SPOT Request-Reply
 
@@ -1246,11 +1250,18 @@ high-level request 완료는 첫 reply 1건으로 끝난다.
 
 #### 반환 타입
 
-- `request()` 성공 시 기존 `Received` domain object 를 반환한다.
-  별도 `Reply` 타입은 만들지 않는다.
-- `Received` 에 `routingId` 와 `requestSeq` 가 포함된다.
-- request handler 는 `peer_rid`, `request_seq`, payload 를 함께 전달한다.
-  별도 `Request` 타입이나 `onRequest` 전용 callback 은 만들지 않는다.
+- `request()` 성공 시 **reply payload `List<Message>` 만** 반환한다
+  (`Vec<Message>` / `IReadOnlyList<Message>` / `Message[]` /
+  `tuple[Message, ...]` 등 언어별 리스트 타입).
+- caller 는 이미 자기가 보낸 request 의 대상 routing_id 와 request_seq 를
+  알고 있으므로, 그걸 wrap 한 `Received` 를 되돌려받을 필요가 없다.
+- 별도 `Reply` 타입은 만들지 않는다.
+- multipart reply 지원이 목적이므로 단일 `Message` 가 아닌 리스트 형태다.
+  단일 part reply 는 `parts[0]` 으로 꺼낸다.
+- request handler (서버 측) 는 `peer_rid`, `request_seq`, payload 를 함께
+  전달한다. 별도 `Request` 타입이나 `onRequest` 전용 callback 은 만들지
+  않는다. (server 측은 누가 어떤 request_seq 로 보냈는지 알아야 하므로
+  차이가 있다.)
 
 #### 소유권
 

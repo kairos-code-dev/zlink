@@ -111,6 +111,10 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
         Threads::Threads
         OpenSSL::SSL
         OpenSSL::Crypto)
+    target_include_directories(
+        perf_stream_client PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/common/streamclient
+        ${PERF_EXTERNAL_INCLUDE_DIR}/boost)
     target_compile_options(perf_stream_client PRIVATE ${PERF_CXX_FLAGS})
     target_compile_features(perf_stream_client PRIVATE cxx_std_17)
 

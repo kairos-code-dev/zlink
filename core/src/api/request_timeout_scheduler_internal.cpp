@@ -28,9 +28,16 @@ struct task_t
         completed (false),
         deadline_ns (0),
         handler (NULL),
+        cleanup (NULL),
         userdata (NULL),
         schedule_it (schedule_map_t::iterator ())
     {
+    }
+
+    ~task_t ()
+    {
+        if (cleanup && userdata)
+            cleanup (userdata);
     }
 
     std::mutex mutex;
@@ -41,6 +48,7 @@ struct task_t
     bool completed;
     uint64_t deadline_ns;
     handler_fn handler;
+    cleanup_fn cleanup;
     void *userdata;
     schedule_map_t::iterator schedule_it;
 };
@@ -101,6 +109,8 @@ void run_timeout_loop ()
                 task->firing = true;
                 handler = task->handler;
                 userdata = task->userdata;
+                task->userdata = NULL;
+                task->cleanup = NULL;
             }
         }
 
@@ -129,7 +139,8 @@ void ensure_started ()
 
 std::shared_ptr<task_t> schedule (uint32_t timeout_ms_,
                                   handler_fn handler_,
-                                  void *userdata_)
+                                  void *userdata_,
+                                  cleanup_fn cleanup_)
 {
     if (timeout_ms_ == 0 || !handler_)
         return std::shared_ptr<task_t> ();
@@ -138,6 +149,7 @@ std::shared_ptr<task_t> schedule (uint32_t timeout_ms_,
 
     std::shared_ptr<task_t> task (new task_t ());
     task->handler = handler_;
+    task->cleanup = cleanup_;
     task->userdata = userdata_;
     task->deadline_ns =
       monotonic_now_ns ()

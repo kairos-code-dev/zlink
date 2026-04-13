@@ -10,10 +10,10 @@ set(SPLIT_ONLY_TEST_TARGETS)
 set(INTEGRATION_TEST_ROOT "integration")
 set(E2E_TEST_ROOT "e2e")
 
-set(STREAM_SCENARIO_ROOT "${CMAKE_SOURCE_DIR}/core/bench/with_stream/stacks")
+set(STREAM_SCENARIO_ROOT "${ZLINK_CORE_SOURCE_DIR}/bench/with_stream/stacks")
 if(NOT EXISTS "${STREAM_SCENARIO_ROOT}")
   set(STREAM_SCENARIO_ROOT
-      "${CMAKE_SOURCE_DIR}/core/bench/benchwithstreamcompare/stacks")
+      "${ZLINK_CORE_SOURCE_DIR}/bench/benchwithstreamcompare/stacks")
 endif()
 
 set(tests
@@ -43,6 +43,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_reconnect_options
   ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
   ${INTEGRATION_TEST_ROOT}/test_xpub_nodrop
+  ${INTEGRATION_TEST_ROOT}/test_spot_dispatch_event
   ${INTEGRATION_TEST_ROOT}/test_timer_poller
   ${INTEGRATION_TEST_ROOT}/test_router_handover
   ${INTEGRATION_TEST_ROOT}/test_router_multiple_dealers
@@ -178,11 +179,11 @@ endif()
 
 add_library(
   unity STATIC
-  "${CMAKE_SOURCE_DIR}/core/external/unity/unity.c" "${CMAKE_SOURCE_DIR}/core/external/unity/unity.h"
-  "${CMAKE_SOURCE_DIR}/core/external/unity/unity_internals.h")
-set_target_properties(unity PROPERTIES PUBLIC_HEADER "${CMAKE_SOURCE_DIR}/core/external/unity/unity.h")
+  "${ZLINK_CORE_SOURCE_DIR}/external/unity/unity.c" "${ZLINK_CORE_SOURCE_DIR}/external/unity/unity.h"
+  "${ZLINK_CORE_SOURCE_DIR}/external/unity/unity_internals.h")
+set_target_properties(unity PROPERTIES PUBLIC_HEADER "${ZLINK_CORE_SOURCE_DIR}/external/unity/unity.h")
 target_compile_definitions(unity PUBLIC "UNITY_USE_COMMAND_LINE_ARGS" "UNITY_EXCLUDE_FLOAT")
-target_include_directories(unity PUBLIC "${CMAKE_SOURCE_DIR}/core/external/unity")
+target_include_directories(unity PUBLIC "${ZLINK_CORE_SOURCE_DIR}/external/unity")
 
 set(TESTUTIL_SOURCES
   testutil.cpp
@@ -217,7 +218,7 @@ else()
 endif()
 
 if(MSVC_VERSION LESS 1700)
-  set_source_files_properties("${CMAKE_SOURCE_DIR}/core/external/unity/unity.c" PROPERTIES LANGUAGE CXX)
+  set_source_files_properties("${ZLINK_CORE_SOURCE_DIR}/external/unity/unity.c" PROPERTIES LANGUAGE CXX)
 endif()
 
 if(MSVC_VERSION LESS 1600)
@@ -225,8 +226,7 @@ if(MSVC_VERSION LESS 1600)
 endif()
 
 # add include dirs for all targets
-# Note: Using CMAKE_SOURCE_DIR instead of Zlink_SOURCE_DIR since project name is now zlink
-include_directories("${CMAKE_SOURCE_DIR}/core/include" "${CMAKE_BINARY_DIR}")
+include_directories("${ZLINK_CORE_SOURCE_DIR}/include" "${CMAKE_BINARY_DIR}")
 include_directories("${CMAKE_CURRENT_LIST_DIR}")
 
 # Add Boost include directory for ASIO tests (ASIO is mandatory)
@@ -325,8 +325,8 @@ if(TARGET test_thread_safe_contract_policy)
   target_compile_definitions(
     test_thread_safe_contract_policy
     PRIVATE
-      TEST_ZLINK_HEADER_PATH="${CMAKE_SOURCE_DIR}/core/include/zlink.h"
-      TEST_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+      TEST_ZLINK_HEADER_PATH="${ZLINK_CORE_SOURCE_DIR}/include/zlink.h"
+      TEST_REPO_ROOT="${ZLINK_REPO_ROOT}")
 endif()
 
 target_sources(

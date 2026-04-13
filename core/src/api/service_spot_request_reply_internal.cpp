@@ -20,14 +20,22 @@ bool pending_spot_key_t::operator< (const pending_spot_key_t &other_) const
     return source_spot_rid < other_.source_spot_rid;
 }
 
+spot_dispatch_state_t::spot_dispatch_state_t () :
+    handler (NULL),
+    handler_userdata (NULL),
+    runtime (NULL),
+    task_id (0),
+    pending_event_mask (0),
+    running (false)
+{
+}
+
 spot_request_reply_state_t::spot_request_reply_state_t (void *owner_) :
     owner (owner_),
     default_timeout_ms (zlink::request_reply::default_timeout_ms),
     next_request_seq (1),
     request_handler (NULL),
-    request_handler_userdata (NULL),
-    dispatch_event_handler (NULL),
-    dispatch_event_handler_userdata (NULL)
+    request_handler_userdata (NULL)
 {
 }
 

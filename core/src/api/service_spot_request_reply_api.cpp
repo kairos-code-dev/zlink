@@ -12,6 +12,7 @@
 #include "api/internal_pair_queue_internal.hpp"
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/service_api_internal.hpp"
+#include "api/service_spot_dispatch_context_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
@@ -20,8 +21,10 @@
 #include "api/handler_result_internal.hpp"
 #include "api/recv_result_internal.hpp"
 #include "core/multipart_send_txn.hpp"
+#include "core/ctx.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
+#include "services/control/service_control_runtime.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -79,6 +82,29 @@ int validate_request_send_flags (zlink_send_flags_t flags_)
     return 0;
 }
 
+uint32_t dispatch_event_bit (zlink_spot_dispatch_event_t event_)
+{
+    switch (event_) {
+    case ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE:
+        return 1u << 0;
+    case ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE:
+        return 1u << 1;
+    case ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE:
+        return 1u << 2;
+    default:
+        return 0;
+    }
+}
+
+zlink_spot_dispatch_event_t next_dispatch_event (uint32_t mask_)
+{
+    if ((mask_ & (1u << 0)) != 0)
+        return ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE;
+    if ((mask_ & (1u << 1)) != 0)
+        return ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE;
+    return ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE;
+}
+
 zlink::ctx_t *resolve_spot_ctx (void *spot_)
 {
     spot_handle_t *spot = as_spot_handle (spot_);
@@ -129,21 +155,190 @@ std::shared_ptr<spot_request_reply_state_t> try_find_spot_state (void *spot_)
              : std::shared_ptr<spot_request_reply_state_t> ();
 }
 
+void close_spot_dispatch_parts (zlink_msg_t *parts_, size_t part_count_)
+{
+    if (!parts_)
+        return;
+    for (size_t i = 0; i < part_count_; ++i)
+        zlink_msg_close (&parts_[i]);
+}
+
+int copy_topic_to_output_local (const char *topic_data_,
+                                size_t topic_size_,
+                                char *topic_id_out_,
+                                size_t *topic_id_len_out_)
+{
+    if (!topic_id_len_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (!topic_id_out_) {
+        *topic_id_len_out_ = topic_size_;
+        errno = 0;
+        return 0;
+    }
+
+    if (*topic_id_len_out_ < topic_size_) {
+        *topic_id_len_out_ = topic_size_;
+        errno = EMSGSIZE;
+        return -1;
+    }
+
+    if (topic_size_ > 0)
+        memcpy (topic_id_out_, topic_data_, topic_size_);
+    *topic_id_len_out_ = topic_size_;
+    errno = 0;
+    return 0;
+}
+
+int copy_routing_id_frame_local (const zlink_msg_t &frame_,
+                                 zlink_routing_id_t *source_rid_out_)
+{
+    if (!source_rid_out_)
+        return 0;
+
+    const size_t routing_id_size = zlink_msg_size (&frame_);
+    const size_t routing_id_copy =
+      routing_id_size > sizeof (source_rid_out_->data)
+        ? sizeof (source_rid_out_->data)
+        : routing_id_size;
+    source_rid_out_->size = static_cast<uint8_t> (routing_id_copy);
+    if (routing_id_copy > 0) {
+        memcpy (source_rid_out_->data,
+                zlink_msg_data (&const_cast<zlink_msg_t &> (frame_)),
+                routing_id_copy);
+    }
+    return 0;
+}
+
+void run_pending_spot_dispatch_events (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    while (true) {
+        zlink::spot_reqrep_internal::spot_dispatch_state_t &dispatch =
+          state_->dispatch;
+        zlink_spot_dispatch_event_t event =
+          ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE;
+        {
+            std::lock_guard<std::mutex> dispatch_lock (
+              dispatch.mutex);
+            if (dispatch.pending_event_mask == 0) {
+                dispatch.running = false;
+                return;
+            }
+            event = next_dispatch_event (dispatch.pending_event_mask);
+            dispatch.pending_event_mask &= ~dispatch_event_bit (event);
+        }
+
+        zlink_spot_dispatch_event_handler_fn handler = NULL;
+        void *userdata = NULL;
+        void *owner = NULL;
+        {
+            std::lock_guard<std::mutex> lock (state_->mutex);
+            handler = dispatch.handler;
+            userdata = dispatch.handler_userdata;
+            owner = state_->owner;
+        }
+
+        if (!handler || !owner) {
+            std::lock_guard<std::mutex> dispatch_lock (
+              dispatch.mutex);
+            dispatch.pending_event_mask = 0;
+            dispatch.running = false;
+            return;
+        }
+
+        const zlink::spot_dispatch_event_callback_context_t dispatch_scope (owner);
+        handler (owner, event, userdata);
+    }
+}
+
+uint32_t dispatch_runtime_key (void *spot_)
+{
+    const uintptr_t value = reinterpret_cast<uintptr_t> (spot_);
+    return static_cast<uint32_t> (value ^ (value >> 32));
+}
+
+void spot_dispatch_event_task_main (void *arg_)
+{
+    if (!arg_)
+        return;
+
+    std::shared_ptr<spot_request_reply_state_t> state =
+      try_find_spot_state (arg_);
+    if (!state)
+        return;
+
+    run_pending_spot_dispatch_events (state);
+}
+
+int install_spot_dispatch_event_task (spot_request_reply_state_t *state_)
+{
+    if (!state_ || !state_->owner) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink::ctx_t *ctx = resolve_spot_ctx (state_->owner);
+    if (!ctx)
+        return -1;
+
+    zlink::service_control_runtime_t *runtime =
+      ctx->service_data_runtime_for_key (dispatch_runtime_key (state_->owner));
+    if (!runtime) {
+        errno = ETERM;
+        return -1;
+    }
+
+    const uint64_t task_id = runtime->add_periodic_task (
+      &spot_dispatch_event_task_main, state_->owner, 24u * 60u * 60u * 1000u,
+      false);
+    if (task_id == 0)
+        return -1;
+
+    state_->dispatch.runtime = runtime;
+    state_->dispatch.task_id = task_id;
+    return 0;
+}
+
 void maybe_dispatch_spot_event (spot_request_reply_state_t *state_,
                                 zlink_spot_dispatch_event_t event_)
 {
-    zlink_spot_dispatch_event_handler_fn handler = NULL;
-    void *userdata = NULL;
-    void *owner = NULL;
+    if (!state_)
+        return;
+
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
-        handler = state_->dispatch_event_handler;
-        userdata = state_->dispatch_event_handler_userdata;
-        owner = state_->owner;
+        if (!state_->dispatch.handler)
+            return;
     }
 
-    if (handler)
-        handler (owner, event_, userdata);
+    bool should_run = false;
+    {
+        std::lock_guard<std::mutex> dispatch_lock (state_->dispatch.mutex);
+        state_->dispatch.pending_event_mask |= dispatch_event_bit (event_);
+        if (!state_->dispatch.running) {
+            state_->dispatch.running = true;
+            should_run = true;
+        }
+    }
+
+    if (should_run) {
+        zlink::service_control_runtime_t *runtime = NULL;
+        uint64_t task_id = 0;
+        {
+            std::lock_guard<std::mutex> lock (state_->mutex);
+            runtime = state_->dispatch.runtime;
+            task_id = state_->dispatch.task_id;
+        }
+
+        if (!runtime || task_id == 0 || runtime->wakeup_task (task_id) != 0) {
+            std::lock_guard<std::mutex> dispatch_lock (
+              state_->dispatch.mutex);
+            state_->dispatch.running = false;
+        }
+    }
 }
 
 void notify_spot_dispatch_event (void *spot_,
@@ -216,6 +411,58 @@ int queue_spot_message (
     }
 
     maybe_dispatch_spot_event (state_, ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE);
+    return 0;
+}
+
+int queue_spot_subscribe_message (
+  spot_request_reply_state_t *state_,
+  const zlink_routing_id_t *source_rid_,
+  const char *topic_,
+  size_t topic_len_,
+  zlink_msg_t *parts_,
+  size_t part_count_)
+{
+    if (!state_ || !topic_ || (!parts_ && part_count_ > 0)) {
+        close_spot_dispatch_parts (parts_, part_count_);
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (zlink::internal_pair_queue::ensure (resolve_spot_ctx (state_->owner),
+                                            "zlink.spot.subscribe.recv",
+                                            &state_->subscribe_queue)
+        != 0) {
+        close_spot_dispatch_parts (parts_, part_count_);
+        return -1;
+    }
+
+    const void *source_data =
+      has_valid_routing_id (source_rid_) ? source_rid_->data : NULL;
+    const size_t source_size =
+      has_valid_routing_id (source_rid_) ? source_rid_->size : 0;
+    const int topic_flags = part_count_ > 0 ? ZLINK_SNDMORE : 0;
+    if (zlink::internal_pair_queue::send_buffer_frame (
+          state_->subscribe_queue.tx, source_data, source_size, ZLINK_SNDMORE)
+        != 0
+        || zlink::internal_pair_queue::send_buffer_frame (
+             state_->subscribe_queue.tx, topic_, topic_len_, topic_flags)
+             != 0) {
+        close_spot_dispatch_parts (parts_, part_count_);
+        return -1;
+    }
+
+    for (size_t i = 0; i < part_count_; ++i) {
+        const int flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
+        if (state_->subscribe_queue.tx->send (
+              reinterpret_cast<zlink::msg_t *> (&parts_[i]), flags)
+            != 0) {
+            close_spot_dispatch_parts (&parts_[i], part_count_ - i);
+            return -1;
+        }
+    }
+
+    maybe_dispatch_spot_event (state_,
+                               ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE);
     return 0;
 }
 
@@ -328,6 +575,101 @@ int recv_internal_spot_queue (zlink::internal_pair_queue::queue_t *queue_,
     zlink_msg_close (&source_frame);
     zlink_msg_close (&spot_frame);
     zlink_msg_close (&seq_frame);
+
+    if (!zlink::internal_pair_queue::frame_has_more (*first_payload))
+        return zlink::recv_tls_view::commit_reserved_single (parts_out_,
+                                                             part_count_out_);
+    return zlink::internal_pair_queue::export_followup_sequence_from_reserved_first (
+      queue_->rx, parts_out_, part_count_out_);
+}
+
+int recv_internal_spot_subscribe_queue (
+  zlink::internal_pair_queue::queue_t *queue_,
+  zlink_routing_id_t *source_rid_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  int flags_)
+{
+    if (!queue_ || !queue_->rx || !parts_out_ || !part_count_out_
+        || !topic_id_len_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (source_rid_out_)
+        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
+
+    zlink_msg_t source_frame;
+    zlink_msg_t topic_frame;
+    zlink_msg_t *first_payload = NULL;
+    zlink_msg_init (&source_frame);
+    zlink_msg_init (&topic_frame);
+
+    if (zlink::recv_tls_view::begin_with_first_slot (
+          parts_out_, part_count_out_, &first_payload)
+        != 0)
+        return -1;
+
+    while (queue_->rx->recv (reinterpret_cast<zlink::msg_t *> (&source_frame),
+                             flags_)
+           != 0) {
+        const int saved_errno = errno;
+        zlink_msg_close (&source_frame);
+        if ((flags_ & ZLINK_DONTWAIT) != 0 || saved_errno != EAGAIN) {
+            zlink::recv_tls_view::abort ();
+            errno = saved_errno;
+            return -1;
+        }
+        if (zlink::wait_socket_events_internal (queue_->rx, ZLINK_POLLIN, -1)
+            <= 0) {
+            zlink::recv_tls_view::abort ();
+            errno = saved_errno;
+            return -1;
+        }
+        zlink_msg_init (&source_frame);
+    }
+    if (zlink::internal_pair_queue::recv_followup_with_retry (
+          queue_->rx, &topic_frame, flags_)
+        != 0) {
+        const int saved_errno = errno;
+        zlink_msg_close (&source_frame);
+        zlink_msg_close (&topic_frame);
+        zlink::recv_tls_view::abort ();
+        errno = saved_errno;
+        return -1;
+    }
+
+    if (copy_routing_id_frame_local (source_frame, source_rid_out_) != 0
+        || copy_topic_to_output_local (
+             static_cast<const char *> (zlink_msg_data (&topic_frame)),
+             zlink_msg_size (&topic_frame), topic_id_out_, topic_id_len_out_)
+             != 0) {
+        const int saved_errno = errno;
+        zlink_msg_close (&source_frame);
+        zlink_msg_close (&topic_frame);
+        zlink::recv_tls_view::abort ();
+        errno = saved_errno;
+        return -1;
+    }
+
+    zlink_msg_close (&source_frame);
+    if (!zlink::internal_pair_queue::frame_has_more (topic_frame)) {
+        zlink_msg_close (&topic_frame);
+        return zlink::recv_tls_view::commit (parts_out_, part_count_out_);
+    }
+    zlink_msg_close (&topic_frame);
+
+    if (zlink::internal_pair_queue::recv_followup_with_retry (
+          queue_->rx, first_payload, flags_)
+        != 0) {
+        const int saved_errno = errno;
+        zlink_msg_close (first_payload);
+        zlink::recv_tls_view::abort ();
+        errno = saved_errno;
+        return -1;
+    }
 
     if (!zlink::internal_pair_queue::frame_has_more (*first_payload))
         return zlink::recv_tls_view::commit_reserved_single (parts_out_,
@@ -754,6 +1096,16 @@ struct router_spot_timeout_callback_ctx_t
     std::shared_ptr<router_spot_request_reply_state_t> state;
     uint64_t request_seq;
 };
+
+void destroy_spot_timeout_callback_ctx (void *userdata_)
+{
+    delete static_cast<spot_timeout_callback_ctx_t *> (userdata_);
+}
+
+void destroy_router_spot_timeout_callback_ctx (void *userdata_)
+{
+    delete static_cast<router_spot_timeout_callback_ctx_t *> (userdata_);
+}
 
 void on_spot_request_timeout (void *userdata_)
 {
@@ -1364,7 +1716,8 @@ int start_spot_request_common (void *spot_,
         pending.timeout_task =
           zlink::request_timeout::schedule (resolved_timeout_ms,
                                             &on_spot_request_timeout,
-                                            timeout_ctx.release ());
+                                            timeout_ctx.release (),
+                                            &destroy_spot_timeout_callback_ctx);
         if (!pending.timeout_task) {
             errno = ENOMEM;
             return -1;
@@ -1520,7 +1873,8 @@ int start_router_request_to_spot (void *router_,
         pending.timeout_task =
           zlink::request_timeout::schedule (resolved_timeout_ms,
                                             &on_router_spot_request_timeout,
-                                            timeout_ctx.release ());
+                                            timeout_ctx.release (),
+                                            &destroy_router_spot_timeout_callback_ctx);
         if (!pending.timeout_task) {
             errno = ENOMEM;
             return -1;
@@ -1671,6 +2025,79 @@ int process_route_combined_for_local_delivery (std::vector<zlink_msg_t> *combine
       spot_envelope.source_endpoint_rid, spot_envelope.payload_parts,
       spot_envelope.payload_part_count);
 }
+}
+
+bool in_spot_dispatch_event_callback (void *spot_)
+{
+    return spot_ != NULL
+           && zlink::spot_dispatch_event_callback_context_t::current_handle ()
+                == spot_;
+}
+
+int spot_dispatch_queue_subscribe_message (
+  void *spot_,
+  const zlink_routing_id_t *source_rid_,
+  const char *topic_,
+  size_t topic_len_,
+  zlink_msg_t *parts_,
+  size_t part_count_)
+{
+    std::shared_ptr<spot_request_reply_state_t> state =
+      try_find_spot_state (spot_);
+    if (!state) {
+        close_spot_dispatch_parts (parts_, part_count_);
+        errno = 0;
+        return 0;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        if (!state->dispatch.handler) {
+            close_spot_dispatch_parts (parts_, part_count_);
+            errno = 0;
+            return 0;
+        }
+    }
+
+    return queue_spot_subscribe_message (state.get (), source_rid_, topic_,
+                                         topic_len_, parts_, part_count_);
+}
+
+int spot_dispatch_subscribe_recv_internal (
+  void *spot_,
+  zlink_routing_id_t *source_rid_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  zlink_send_flags_t flags_)
+{
+    std::shared_ptr<spot_request_reply_state_t> state =
+      try_find_spot_state (spot_);
+    if (!state) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (!in_spot_dispatch_event_callback (spot_)) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    if (validate_recv_flags (flags_) != 0)
+        return -1;
+
+    if (zlink::internal_pair_queue::ensure (resolve_spot_ctx (spot_),
+                                            "zlink.spot.subscribe.recv",
+                                            &state->subscribe_queue)
+        != 0) {
+        return -1;
+    }
+
+    return recv_internal_spot_subscribe_queue (&state->subscribe_queue,
+                                               source_rid_out_, parts_out_,
+                                               part_count_out_, topic_id_out_,
+                                               topic_id_len_out_, flags_);
 }
 
 extern "C" int zlink_spot_process_route_ingress (void *node_, void *socket_)
@@ -1983,7 +2410,7 @@ zlink_handler_result_t zlink_spot_handler (void *spot_,
     std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     std::lock_guard<std::mutex> lock (state->mutex);
-    if (state->request_handler || state->dispatch_event_handler) {
+    if (state->request_handler || state->dispatch.handler) {
         spot_revert_callback_transition (as_spot_handle (spot_));
         errno = EBUSY;
         return ZLINK_HANDLER_BUSY;
@@ -2013,15 +2440,41 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler (
 
     std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
-    std::lock_guard<std::mutex> lock (state->mutex);
-    if (state->request_handler || state->dispatch_event_handler) {
-        spot_revert_callback_transition (as_spot_handle (spot_));
-        errno = EBUSY;
-        return ZLINK_HANDLER_BUSY;
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        if (state->request_handler || state->dispatch.handler) {
+            spot_revert_callback_transition (as_spot_handle (spot_));
+            errno = EBUSY;
+            return ZLINK_HANDLER_BUSY;
+        }
+
+        state->dispatch.handler = handler_;
+        state->dispatch.handler_userdata = userdata_;
+        if (install_spot_dispatch_event_task (state.get ()) != 0) {
+            state->dispatch.handler = NULL;
+            state->dispatch.handler_userdata = NULL;
+            spot_revert_callback_transition (as_spot_handle (spot_));
+            return zlink::handler_result_internal::from_rc (-1);
+        }
     }
 
-    state->dispatch_event_handler = handler_;
-    state->dispatch_event_handler_userdata = userdata_;
+    if (spot_install_dispatch_event_sub_handler (as_spot_handle (spot_)) != 0) {
+        zlink::service_control_runtime_t *dispatch_runtime = NULL;
+        uint64_t dispatch_task_id = 0;
+        {
+            std::lock_guard<std::mutex> lock (state->mutex);
+            state->dispatch.handler = NULL;
+            state->dispatch.handler_userdata = NULL;
+            dispatch_runtime = state->dispatch.runtime;
+            dispatch_task_id = state->dispatch.task_id;
+            state->dispatch.runtime = NULL;
+            state->dispatch.task_id = 0;
+        }
+        if (dispatch_runtime && dispatch_task_id != 0)
+            (void) dispatch_runtime->remove_task (dispatch_task_id);
+        spot_revert_callback_transition (as_spot_handle (spot_));
+        return zlink::handler_result_internal::from_rc (-1);
+    }
     return ZLINK_HANDLER_OK;
 }
 
@@ -2050,7 +2503,9 @@ zlink_recv_result_t zlink_spot_recv (void *spot_,
     std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     std::unique_lock<std::mutex> lock (state->mutex);
-    if (state->request_handler || state->dispatch_event_handler) {
+    if (state->request_handler
+        || (state->dispatch.handler
+            && !in_spot_dispatch_event_callback (spot_))) {
         errno = EBUSY;
         return ZLINK_RECV_BUSY;
     }
@@ -2289,12 +2744,45 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
     if (!spot)
         return;
 
+    std::vector<std::shared_ptr<zlink::request_timeout::task_t> > timeout_tasks;
+    zlink::service_control_runtime_t *dispatch_runtime = NULL;
+    uint64_t dispatch_task_id = 0;
     std::shared_ptr<spot_request_reply_state_t> state =
       try_find_spot_state (spot);
     if (state) {
+        {
+            std::lock_guard<std::mutex> dispatch_lock (
+              state->dispatch.mutex);
+            state->dispatch.pending_event_mask = 0;
+            state->dispatch.running = false;
+        }
+
         std::lock_guard<std::mutex> state_lock (state->mutex);
+        for (std::map<pending_spot_key_t, pending_reply_t>::iterator it =
+               state->pending_replies.begin ();
+             it != state->pending_replies.end (); ++it) {
+            timeout_tasks.push_back (it->second.timeout_task);
+        }
+        state->pending_replies.clear ();
+        state->pending_sequences.clear ();
+        state->request_handler = NULL;
+        state->request_handler_userdata = NULL;
+        state->dispatch.handler = NULL;
+        state->dispatch.handler_userdata = NULL;
+        dispatch_runtime = state->dispatch.runtime;
+        dispatch_task_id = state->dispatch.task_id;
+        state->dispatch.runtime = NULL;
+        state->dispatch.task_id = 0;
+    }
+    if (dispatch_runtime && dispatch_task_id != 0)
+        (void) dispatch_runtime->remove_task (dispatch_task_id);
+    if (state) {
+        std::lock_guard<std::mutex> state_lock (state->mutex);
+        zlink::internal_pair_queue::close (&state->subscribe_queue);
         zlink::internal_pair_queue::close (&state->recv_queue);
     }
+    for (size_t i = 0; i < timeout_tasks.size (); ++i)
+        zlink::request_timeout::cancel (timeout_tasks[i]);
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
     g_spot_owner_states.erase (spot_);
     for (spot_state_identity_index_t::iterator it =
@@ -2314,9 +2802,22 @@ extern "C" void zlink_spot_request_reply_cleanup_router (void *router_)
     if (!handle.socket)
         return;
 
+    std::vector<std::shared_ptr<zlink::request_timeout::task_t> > timeout_tasks;
     std::shared_ptr<router_spot_request_reply_state_t> state =
       std::static_pointer_cast<router_spot_request_reply_state_t> (
         handle.socket->router_spot_request_reply_state ());
+    if (state) {
+        std::lock_guard<std::mutex> state_lock (state->mutex);
+        for (std::map<uint64_t, pending_reply_t>::iterator it =
+               state->pending_replies.begin ();
+             it != state->pending_replies.end (); ++it) {
+            timeout_tasks.push_back (it->second.timeout_task);
+        }
+        state->pending_replies.clear ();
+        state->pending_sequences.clear ();
+    }
+    for (size_t i = 0; i < timeout_tasks.size (); ++i)
+        zlink::request_timeout::cancel (timeout_tasks[i]);
     handle.socket->clear_router_spot_request_reply_state ();
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
     for (router_state_identity_index_t::iterator it =

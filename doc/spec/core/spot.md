@@ -152,7 +152,9 @@ before the node participates in bind/connect/discovery.
 model. It returns the next available message with its source routing ID and
 topic. `source_rid_out_`, `parts_out_`, and `topic_id_out_` are filled on
 success. Pass `ZLINK_DONTWAIT` in `flags_` for non-blocking operation.
-Returns `EBUSY` in callback model.
+Returns `EBUSY` in callback model, except when it is called from the active
+`zlink_spot_dispatch_event_handler()` callback for the same `spot_` to drain a
+readable subscribe plane.
 
 Use `zlink_spot_node_status_snapshot()`, `zlink_spot_node_peers_snapshot()`,
 and `zlink_spot_node_subjects_snapshot()` for observability.
@@ -220,9 +222,45 @@ typedef void (*zlink_spot_dispatch_event_handler_fn) (
   void *userdata_);
 ```
 
-Notifies the application when a specific internal channel becomes readable.
-This is useful for advanced I/O integration where the caller needs to
-distinguish which plane triggered readability.
+`zlink_spot_dispatch_event_handler_fn` is the Spot dispatch callback.
+Delivery must be serialized per `spot_`. The implementation must not invoke
+this callback concurrently or reentrantly for the same `spot_`. A subsequent
+dispatch callback for the same `spot_` may run only after the previous
+callback has returned.
+
+This is a public API contract. Even if subscribe, routed, and timer events
+originate from different internal execution paths, dispatch callback delivery
+must remain serialized per `spot_` so the caller can process Spot messaging
+sequentially inside the callback.
+
+While this dispatch callback is active for a given `spot_`, the caller may use
+the synchronous receive surfaces for that same `spot_` to drain the readable
+plane that triggered the event:
+- `SUBSCRIBE_READABLE` -> `zlink_subscribe()`
+- `ROUTED_READABLE` -> `zlink_spot_recv()`
+- `TIMER_READABLE` -> `zlink_timer_recv()`
+
+This exception is scoped to the active dispatch callback for the same `spot_`.
+Outside that callback context, the usual recv-versus-callback exclusivity rules
+still apply.
+
+The serialization scope is per `spot_`. The API does not require global
+serialization across different Spot handles. The implementation may process
+dispatch callbacks for different `spot_` handles in parallel, provided the
+serialized, non-reentrant contract is preserved for each individual `spot_`.
+
+The implementation must also preserve a high-performance data path. To do so,
+it may decouple internal topic, routed, and timer producer paths from user
+callback execution, for example by using a per-spot queue, mailbox, or
+scheduler. Any such mechanism is acceptable as long as the public contract
+remains the same: sequential processing for the same `spot_`, and parallelism
+across different `spot_` handles when available.
+
+A dispatch event is a readability notification, not a promise that exactly one
+logical message or timer fire is available. The implementation may coalesce
+multiple readiness causes into a single callback delivery. The caller is
+expected to drain the indicated plane until the corresponding recv call reports
+that no more data is available.
 
 | Parameter | Description |
 |-----------|-------------|
@@ -421,9 +459,9 @@ through `zlink_errno()` for diagnostics.
 #### zlink_spot_handler
 
 ```c
-int zlink_spot_handler (void *spot_,
-                        zlink_spot_handler_fn handler_,
-                        void *userdata_);
+zlink_handler_result_t zlink_spot_handler (void *spot_,
+                                           zlink_spot_handler_fn handler_,
+                                           void *userdata_);
 ```
 
 Attach a typed receive callback for routed messages on a spot. Only one
@@ -434,19 +472,18 @@ ordinary routed messages and request-reply messages; distinguish them by
 | Parameter | Description |
 |-----------|-------------|
 | `spot_` | Spot handle. |
-| `handler_` | Callback function, or `NULL` to detach. |
+| `handler_` | Callback function. `NULL` is invalid. |
 | `userdata_` | User-supplied context pointer. |
 
-**Returns:** `ZLINK_SUBMIT_OK` when the request submit is accepted. On
-failure, returns a `zlink_submit_result_t` value. Reply completion is
-delivered separately through `zlink_reply_handler_fn`.
+**Returns:** `ZLINK_HANDLER_OK` on success. On failure, returns a
+`zlink_handler_result_t` value.
 
 **See also:** `zlink_spot_handler_fn`, `zlink_spot_recv`
 
 #### zlink_spot_dispatch_event_handler
 
 ```c
-int zlink_spot_dispatch_event_handler (
+zlink_handler_result_t zlink_spot_dispatch_event_handler (
   void *spot_,
   zlink_spot_dispatch_event_handler_fn handler_,
   void *userdata_);
@@ -455,14 +492,32 @@ int zlink_spot_dispatch_event_handler (
 Attach a dispatch event handler that is notified when a specific internal
 channel becomes readable.
 
+For the same `spot_`, dispatch callback delivery is serialized. The
+implementation must not invoke `handler_` concurrently or reentrantly for the
+same `spot_`. The next dispatch callback for the same `spot_` may run only
+after the previous callback has returned. This remains true even when
+subscribe, routed, and timer events originate from different internal
+execution paths.
+
+This requirement is scoped to the individual `spot_`. Different Spot handles
+may be dispatched in parallel. The implementation may use internal queueing or
+scheduling to preserve per-spot ordering without imposing global
+serialization.
+
+When `handler_` is executing for a given `spot_`, the caller may invoke
+`zlink_subscribe()`, `zlink_spot_recv()`, and `zlink_timer_recv()` on that same
+`spot_` to drain the readable plane indicated by `event_`. Outside the active
+dispatch callback for that same `spot_`, the usual recv-versus-callback
+conflict rules remain unchanged.
+
 | Parameter | Description |
 |-----------|-------------|
 | `spot_` | Spot handle. |
-| `handler_` | Dispatch event callback, or `NULL` to detach. |
+| `handler_` | Dispatch event callback. `NULL` is invalid. |
 | `userdata_` | User-supplied context pointer. |
 
-**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
-`zlink_submit_result_t` value. Detailed internal errno remains available
+**Returns:** `ZLINK_HANDLER_OK` on success. On failure, returns a
+`zlink_handler_result_t` value. Detailed internal errno remains available
 through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_spot_dispatch_event_t`, `zlink_spot_dispatch_event_handler_fn`
@@ -470,19 +525,21 @@ through `zlink_errno()` for diagnostics.
 #### zlink_spot_recv
 
 ```c
-int zlink_spot_recv (void *spot_,
-                     const zlink_routing_id_t **source_rid_out_,
-                     const zlink_routing_id_t **spot_rid_out_,
-                     uint64_t *request_seq_out_,
-                     zlink_msg_t **parts_out_,
-                     size_t *part_count_out_,
-                     int flags_);
+zlink_recv_result_t zlink_spot_recv (void *spot_,
+                                     const zlink_routing_id_t **source_rid_out_,
+                                     const zlink_routing_id_t **spot_rid_out_,
+                                     uint64_t *request_seq_out_,
+                                     zlink_msg_t **parts_out_,
+                                     size_t *part_count_out_,
+                                     int flags_);
 ```
 
 Synchronous pull-style receive for routed messages on a spot (recv mode).
 Returns the next available routed message along with its origin and request
 context. Pass `ZLINK_DONTWAIT` in `flags_` for non-blocking operation.
-Returns `EBUSY` if a typed receive callback is installed.
+Returns `EBUSY` if a typed receive callback is installed. When called from the
+active `zlink_spot_dispatch_event_handler()` callback for the same `spot_`, it
+may be used to drain a readable routed plane.
 
 | Parameter | Description |
 |-----------|-------------|

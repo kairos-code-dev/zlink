@@ -174,7 +174,8 @@ void *zlink_timer_new (void);
 
 ### zlink_spot_timer_new
 
-Spot 소유 타이머를 생성한다. Spot dispatch event context에서 실행된다.
+Spot 소유 타이머를 생성한다. 생성된 타이머의 수명과 event delivery 는 연결된
+Spot 과 함께 동작한다.
 
 ```c
 void *zlink_spot_timer_new (void *spot_);

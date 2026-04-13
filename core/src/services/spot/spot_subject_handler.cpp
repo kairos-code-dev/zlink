@@ -98,6 +98,28 @@ void spot_subject_composite_sub_handler_adapter (
                    spot->handler_userdata);
 }
 
+void spot_sub_dispatch_event_handler_adapter (
+  const zlink_routing_id_t *source_rid_,
+  const char *topic_,
+  size_t topic_len_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_)
+{
+    spot_handle_t *spot = static_cast<spot_handle_t *> (userdata_);
+    if (!spot || !spot->check_tag ()) {
+        close_spot_parts (parts_, part_count_);
+        return;
+    }
+
+    if (spot_dispatch_queue_subscribe_message (spot, source_rid_, topic_,
+                                               topic_len_, parts_,
+                                               part_count_)
+        != 0) {
+        close_spot_parts (parts_, part_count_);
+    }
+}
+
 int spot_pub_install_send_ready_handler (void *spot_pub_,
                                          zlink_send_ready_handler_fn handler_,
                                          void *userdata_)
@@ -230,6 +252,21 @@ int spot_install_recv_handler (spot_handle_t *spot_,
     if (rc != 0)
         spot_revert_callback_transition (spot_);
     return rc;
+}
+
+int spot_install_dispatch_event_sub_handler (spot_handle_t *spot_)
+{
+    if (!spot_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink::spot_sub_t *sub = ensure_spot_sub (spot_);
+    if (!sub)
+        return -1;
+
+    return sub->set_direct_handler (&spot_sub_dispatch_event_handler_adapter,
+                                    spot_);
 }
 
 int spot_node_install_recv_handler (zlink::spot_node_t *node_,

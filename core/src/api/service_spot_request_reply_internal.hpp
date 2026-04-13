@@ -10,12 +10,15 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <stdint.h>
 
 #include "api/internal_pair_queue_internal.hpp"
 #include "api/request_timeout_scheduler_internal.hpp"
 
 namespace zlink
 {
+class service_control_runtime_t;
+
 namespace spot_reqrep_internal
 {
 struct pending_spot_key_t
@@ -48,6 +51,19 @@ struct parsed_spot_envelope_t
     size_t payload_part_count;
 };
 
+struct spot_dispatch_state_t
+{
+    spot_dispatch_state_t ();
+
+    zlink_spot_dispatch_event_handler_fn handler;
+    void *handler_userdata;
+    zlink::service_control_runtime_t *runtime;
+    uint64_t task_id;
+    std::mutex mutex;
+    uint32_t pending_event_mask;
+    bool running;
+};
+
 struct spot_request_reply_state_t
 {
     explicit spot_request_reply_state_t (void *owner_);
@@ -58,11 +74,11 @@ struct spot_request_reply_state_t
     uint64_t next_request_seq;
     std::set<uint64_t> pending_sequences;
     std::map<pending_spot_key_t, pending_reply_t> pending_replies;
+    zlink::internal_pair_queue::queue_t subscribe_queue;
     zlink::internal_pair_queue::queue_t recv_queue;
     zlink_spot_handler_fn request_handler;
     void *request_handler_userdata;
-    zlink_spot_dispatch_event_handler_fn dispatch_event_handler;
-    void *dispatch_event_handler_userdata;
+    spot_dispatch_state_t dispatch;
 };
 
 struct router_spot_request_reply_state_t

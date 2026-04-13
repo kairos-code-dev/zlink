@@ -1485,7 +1485,14 @@ int zlink_router_spot_handler(void *router, zlink_router_spot_handler_fn handler
 
 Spot 의 핵심 event dispatcher 는 `zlink_spot_dispatch_event_handler()` 다.
 이 handler 를 등록하면 Spot 에 관련된 모든 이벤트가 하나의 callback 으로 올라온다.
-callback 안에서 event 종류를 확인하고 recv 를 호출하면 동기화 문제 없이 처리할 수 있다.
+같은 `spot` 에 대해서는 callback 이 순차적으로 전달되어야 한다. 구현은 같은
+`spot` 의 dispatch callback 을 동시에 호출하거나 재진입 호출해서는 안 된다.
+callback 안에서 event 종류를 확인하고 recv 를 호출하면서 Spot 메시징을
+순차적으로 처리할 수 있어야 한다.
+
+이 직렬화는 `spot` 단위다. 서로 다른 `spot` 사이에는 전역 직렬화를 요구하지
+않는다. 구현은 다른 Spot 들을 병렬로 처리할 수 있어야 하며, 그 과정에서도
+같은 `spot` 의 순차 처리 계약은 유지되어야 한다.
 
 ```c
 typedef enum zlink_spot_dispatch_event_t {
@@ -1497,22 +1504,26 @@ typedef enum zlink_spot_dispatch_event_t {
 typedef void (*zlink_spot_dispatch_event_handler_fn)(
     void *spot, zlink_spot_dispatch_event_t event, void *userdata);
 
-int zlink_spot_dispatch_event_handler(void *spot,
+zlink_handler_result_t zlink_spot_dispatch_event_handler(void *spot,
     zlink_spot_dispatch_event_handler_fn handler, void *userdata);
 ```
 
 사용 패턴:
 - dispatch event handler 를 등록한다.
 - callback 이 호출되면 `event` 를 확인한다.
+- 같은 `spot` 의 활성 dispatch callback 안에서는 기본 recv surface 를 사용할 수 있다.
 - `SUBSCRIBE_READABLE` 이면 `zlink_subscribe()` 로 pub/sub 메시지를 recv 한다.
 - `ROUTED_READABLE` 이면 `zlink_spot_recv()` 로 routed/request 메시지를 recv 한다.
 - `TIMER_READABLE` 이면 `zlink_timer_recv()` 로 timer fire 를 recv 한다.
-- 모든 recv 가 같은 callback context 안에서 실행되므로 lock 이 필요 없다.
+- dispatch event 는 readable 알림이다. callback 1회가 메시지 1개를 뜻하지는 않는다.
+- callback 안에서는 해당 plane 을 더 이상 읽을 것이 없을 때까지 drain 할 수 있어야 한다.
+- 같은 `spot` 의 dispatch callback 은 직렬화되므로 Spot 메시징을 순차적으로 처리할 수 있다.
+- 서로 다른 `spot` 은 병렬 처리될 수 있으므로 고성능 room 실행 모델을 구성할 수 있다.
 
 #### Spot Timer API
 
 Spot 소유 timer 는 `zlink_spot_timer_new(spot)` 로 생성하고, 이후 공통
-`zlink_timer_*` 함수로 제어한다. Spot dispatch event context 에서 실행된다.
+`zlink_timer_*` 함수로 제어한다.
 
 ```c
 void *zlink_spot_timer_new(void *spot);
@@ -1537,7 +1548,7 @@ int zlink_timer_recv(void *timer, uint64_t *fire_count_out);
 - `interval_ns` 는 나노초 단위다. `repeat_count = 0` 이면 무한 반복.
 - timer fire 는 dispatch event handler 에 `TIMER_READABLE` 로 올라온다.
 - timer handler callback 을 직접 등록하거나 `zlink_timer_recv()` 로 polling 할 수 있다.
-- timer callback 도 같은 dispatch context 에서 실행된다.
+- dispatch callback 안에서는 `zlink_timer_recv()` 로 pending fire 를 순차 처리할 수 있다.
 
 바인딩 규칙:
 - timer 는 typed wrapper 로 노출한다.
@@ -1548,14 +1559,17 @@ int zlink_timer_recv(void *timer, uint64_t *fire_count_out);
 #### Dispatch 모델 요약
 
 ```
-zlink_spot_dispatch_event_handler callback (단일 context, 동기화 불필요)
+zlink_spot_dispatch_event_handler callback
+  (serialized per spot, non-reentrant)
   ├── SUBSCRIBE_READABLE → zlink_subscribe()    (pub/sub 메시지)
   ├── ROUTED_READABLE    → zlink_spot_recv()    (routed / request 메시지)
   └── TIMER_READABLE     → zlink_timer_recv()   (timer fire)
 ```
 
-이 callback 안에서 recv, send, reply 를 호출하거나
-다른 handler 의 상태를 읽어도 lock 이 필요 없다.
+같은 `spot` 에 대해서는 이 callback 안에서 recv, send, reply 를 순차적으로
+처리할 수 있어야 한다.
+서로 다른 `spot` 은 필요하면 병렬로 실행될 수 있어야 한다.
+callback 안에서는 event 로 알려진 plane 을 drain 할 수 있어야 한다.
 
 #### Typed Receive Surface
 
@@ -1571,8 +1585,8 @@ typedef void (*zlink_spot_handler_fn)(
     uint64_t request_seq,
     zlink_msg_t *parts, size_t part_count, void *userdata);
 
-int zlink_spot_handler(void *spot, zlink_spot_handler_fn handler, void *userdata);
-int zlink_spot_recv(void *spot, ...);
+zlink_handler_result_t zlink_spot_handler(void *spot, zlink_spot_handler_fn handler, void *userdata);
+zlink_recv_result_t zlink_spot_recv(void *spot, ...);
 ```
 
 - `request_seq = 0` 이면 ordinary routed message 또는 pub/sub message 다.

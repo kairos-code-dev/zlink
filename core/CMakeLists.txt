@@ -15,6 +15,12 @@ project(zlink VERSION 1.6.1 LANGUAGES C CXX)
 # declarations without changing the installed ABI.
 add_compile_definitions(ZLINK_INTERNAL_BUILD=1)
 
+set(ZLINK_CORE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+get_filename_component(ZLINK_REPO_ROOT "${ZLINK_CORE_SOURCE_DIR}" DIRECTORY)
+if(NOT EXISTS "${ZLINK_REPO_ROOT}/LICENSE")
+  set(ZLINK_REPO_ROOT "${ZLINK_CORE_SOURCE_DIR}")
+endif()
+
 include(CheckIncludeFiles)
 include(CheckCCompilerFlag)
 include(CheckCXXCompilerFlag)
@@ -956,8 +962,9 @@ set(api-sources
     src/api/service_mode_api.cpp
   src/api/service_poller_api.cpp
   src/api/service_registry_api.cpp
-  src/api/service_spot_node_api.cpp
+    src/api/service_spot_node_api.cpp
     src/api/service_spot_api.cpp
+    src/api/service_spot_dispatch_context.cpp
     src/api/request_timeout_scheduler_internal.cpp
     src/api/service_spot_request_reply_internal.cpp
     src/api/service_spot_request_reply_api.cpp
@@ -1224,7 +1231,7 @@ endif()
 set(public_headers include/zlink.h include/zlink_enum.h include/zlink_errno.h include/zlink_utils.h)
 
 set(readme-docs
-    ${CMAKE_SOURCE_DIR}/LICENSE)
+    ${ZLINK_REPO_ROOT}/LICENSE)
 
 # -----------------------------------------------------------------------------
 # optional modules
@@ -1606,7 +1613,21 @@ endif()
 # -----------------------------------------------------------------------------
 # benchmarks
 option(BUILD_BENCHMARKS "Build benchmark tools for performance comparison" OFF)
-if(BUILD_BENCHMARKS AND BUILD_SHARED)
+
+# Process-based core tests spawn helper binaries from core/perf.
+# Build those helpers automatically with tests without enabling the full
+# benchmark comparison tree.
+set(ZLINK_BUILD_TEST_PERF_HELPERS OFF)
+if(ZLINK_BUILD_TESTS AND BUILD_SHARED)
+  set(ZLINK_BUILD_TEST_PERF_HELPERS ON)
+endif()
+
+if((BUILD_BENCHMARKS OR ZLINK_BUILD_TEST_PERF_HELPERS) AND BUILD_SHARED)
+  if(ZLINK_BUILD_TEST_PERF_HELPERS AND NOT BUILD_BENCHMARKS)
+    add_subdirectory(perf)
+  endif()
+
+  if(BUILD_BENCHMARKS)
   option(ZLINK_BUILD_BENCH_ZMQ "Build ZeroMQ comparison benchmarks" ON)
   option(ZLINK_BUILD_BENCH_ZLINK "Build zlink benchmarks" ON)
   option(ZLINK_BUILD_BENCH_BEAST "Build Beast benchmarks" ON)
@@ -1637,6 +1658,7 @@ if(BUILD_BENCHMARKS AND BUILD_SHARED)
   if(ZLINK_BUILD_BENCH_BEAST
      AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/benchwithbeast/CMakeLists.txt")
     add_subdirectory(bench/benchwithbeast)
+  endif()
   endif()
 endif()
 

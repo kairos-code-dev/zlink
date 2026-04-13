@@ -53,6 +53,22 @@ int spot_transition_to_callback_mode (spot_handle_t *spot_);
 void spot_revert_callback_transition (spot_handle_t *spot_);
 int spot_node_require_recv_model (zlink::spot_node_t *node_);
 int spot_require_recv_model (spot_handle_t *spot_);
+bool in_spot_dispatch_event_callback (void *spot_);
+int spot_dispatch_subscribe_recv_internal (void *spot_,
+                                          zlink_routing_id_t *source_rid_out_,
+                                          zlink_msg_t **parts_out_,
+                                          size_t *part_count_out_,
+                                          char *topic_id_out_,
+                                          size_t *topic_id_len_out_,
+                                          zlink_send_flags_t flags_);
+int spot_dispatch_queue_subscribe_message (
+  void *spot_,
+  const zlink_routing_id_t *source_rid_,
+  const char *topic_,
+  size_t topic_len_,
+  zlink_msg_t *parts_,
+  size_t part_count_);
+int spot_install_dispatch_event_sub_handler (spot_handle_t *spot_);
 int spot_activate_send_ready_mode (spot_handle_t *spot_,
                                    bool *already_active_out_);
 void spot_revert_send_ready_mode (spot_handle_t *spot_);

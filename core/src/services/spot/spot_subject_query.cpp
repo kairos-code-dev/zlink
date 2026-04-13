@@ -159,6 +159,10 @@ int spot_subject_recv (void *subject_,
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return -1;
+        if (in_spot_dispatch_event_callback (spot))
+            return spot_dispatch_subscribe_recv_internal (
+              spot, source_rid_out_, parts_out_, part_count_out_,
+              topic_id_out_, topic_id_len_out_, flags_);
         if (spot_require_recv_model (spot) != 0)
             return -1;
         zlink::spot_sub_t *sub = ensure_spot_sub (spot);

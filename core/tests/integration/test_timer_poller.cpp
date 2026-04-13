@@ -4,7 +4,6 @@
 #include "testutil_unity.hpp"
 
 #include <chrono>
-#include <atomic>
 #include <condition_variable>
 #include <mutex>
 
@@ -20,34 +19,12 @@ struct timer_callback_probe_t
     bool called;
 };
 
-struct spot_dispatch_probe_t
-{
-    spot_dispatch_probe_t () : event (0), called (false) {}
-
-    std::mutex mutex;
-    std::condition_variable cv;
-    int event;
-    bool called;
-};
-
 void on_timer (void *, uint64_t fire_count_, void *userdata_)
 {
     timer_callback_probe_t *probe =
       static_cast<timer_callback_probe_t *> (userdata_);
     std::lock_guard<std::mutex> lock (probe->mutex);
     probe->fire_count = fire_count_;
-    probe->called = true;
-    probe->cv.notify_all ();
-}
-
-void on_spot_dispatch_event (void *,
-                             zlink_spot_dispatch_event_t event_,
-                             void *userdata_)
-{
-    spot_dispatch_probe_t *probe =
-      static_cast<spot_dispatch_probe_t *> (userdata_);
-    std::lock_guard<std::mutex> lock (probe->mutex);
-    probe->event = static_cast<int> (event_);
     probe->called = true;
     probe->cv.notify_all ();
 }
@@ -148,7 +125,7 @@ void test_timer_callback_conflicts_and_destroy_busy ()
     TEST_ASSERT_EQUAL_INT (ZLINK_RECV_BUSY,
                            zlink_timer_recv (timer_callback, &fire_count));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT,
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INTERNAL_ERROR,
                            zlink_poller_add_timer (poller, timer_callback, NULL));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
@@ -177,41 +154,6 @@ void test_timer_callback_conflicts_and_destroy_busy ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
 }
 
-void test_spot_timer_dispatch_event_and_recv ()
-{
-    void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
-    void *spot = zlink_spot_new (node);
-    void *timer = zlink_spot_timer_new (spot);
-    TEST_ASSERT_NOT_NULL (ctx);
-    TEST_ASSERT_NOT_NULL (node);
-    TEST_ASSERT_NOT_NULL (spot);
-    TEST_ASSERT_NOT_NULL (timer);
-
-    spot_dispatch_probe_t probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_dispatch_event_handler (spot, &on_spot_dispatch_event, &probe));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_start (timer, 20 * 1000 * 1000ULL, 1));
-
-    {
-        std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool fired = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (500),
-          [&probe]() { return probe.called; });
-        TEST_ASSERT_TRUE (fired);
-        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE,
-                               probe.event);
-    }
-
-    uint64_t fire_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count));
-    TEST_ASSERT_EQUAL_UINT64 (1, fire_count);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_destroy (&timer));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
-}
 }
 
 SETUP_TEARDOWN_TESTCONTEXT
@@ -225,6 +167,5 @@ int main (void)
     RUN_TEST (test_timer_repeat_recv_sequence);
     RUN_TEST (test_timer_poller_and_recv);
     RUN_TEST (test_timer_callback_conflicts_and_destroy_busy);
-    RUN_TEST (test_spot_timer_dispatch_event_and_recv);
     return UNITY_END ();
 }

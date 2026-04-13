@@ -197,6 +197,8 @@ int spot_require_recv_model (spot_handle_t *spot_)
         errno = EFAULT;
         return -1;
     }
+    if (in_spot_dispatch_event_callback (spot_))
+        return 0;
     zlink::scoped_lock_t lock (state->sync);
     return ensure_service_recv_model (state);
 }

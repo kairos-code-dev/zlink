@@ -163,6 +163,8 @@ handle에 `zlink_set_tls_server()` 또는 `zlink_set_tls_client()`를 호출하�
 다음 메시지와 source routing ID, topic을 반환합니다. 성공 시 `source_rid_out_`,
 `parts_out_`, `topic_id_out_`이 채워집니다. non-blocking 동작은 `flags_`에
 `ZLINK_DONTWAIT`를 전달합니다. callback 모드에서는 `EBUSY`로 실패합니다.
+다만 같은 `spot_`의 활성 `zlink_spot_dispatch_event_handler()` callback 안에서
+readable subscribe plane을 비우는 경우에는 호출할 수 있습니다.
 
 관찰/운영 상태 확인은 `zlink_spot_node_status_snapshot()`,
 `zlink_spot_node_peers_snapshot()`, `zlink_spot_node_subjects_snapshot()`을
@@ -259,6 +261,64 @@ int zlink_spot_handler (
 한 `Spot` 에 한 개의 typed receive callback 만 설치할 수 있습니다. ordinary
 routed message 와 request-reply message 를 같은 callback 에서 받고,
 `request_seq` 값으로 구분합니다.
+
+### Spot dispatch event callback
+
+```c
+typedef enum zlink_spot_dispatch_event_t
+{
+    ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,
+    ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE    = 2,
+    ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE     = 3
+} zlink_spot_dispatch_event_t;
+
+typedef void (*zlink_spot_dispatch_event_handler_fn) (
+  void *spot_,
+  zlink_spot_dispatch_event_t event_,
+  void *userdata_);
+
+zlink_handler_result_t zlink_spot_dispatch_event_handler (
+  void *spot_,
+  zlink_spot_dispatch_event_handler_fn handler_,
+  void *userdata_);
+```
+
+`zlink_spot_dispatch_event_handler_fn` 은 Spot dispatch callback 입니다.
+같은 `spot_` 에 대해서는 callback delivery 가 순차적이어야 합니다. 구현은
+같은 `spot_` 에 대해 이 callback 을 동시에 호출하거나, callback 실행 중에
+다시 재진입 호출해서는 안 됩니다. 이전 callback 이 반환된 뒤에만 다음
+dispatch callback 을 같은 `spot_` 에 대해 호출할 수 있습니다.
+
+이 계약은 public API contract 입니다. 토픽 수신, routed 수신, timer fire 가
+내부적으로 서로 다른 실행 경로에서 발생하더라도 callback delivery 는 `spot_`
+단위로 직렬화되어야 합니다. 호출자는 dispatch callback 안에서 Spot 관련
+메시징을 순차적으로 처리할 수 있어야 합니다.
+
+같은 `spot_`의 이 dispatch callback 이 실행 중일 때 호출자는 그 `spot_`에
+대해 event 로 알려진 readable plane을 동기식 recv surface로 비울 수 있습니다.
+- `SUBSCRIBE_READABLE` -> `zlink_subscribe()`
+- `ROUTED_READABLE` -> `zlink_spot_recv()`
+- `TIMER_READABLE` -> `zlink_timer_recv()`
+
+이 예외는 같은 `spot_`의 활성 dispatch callback 문맥에만 적용됩니다.
+그 밖의 문맥에서는 recv 와 callback 의 배타 규칙이 그대로 적용됩니다.
+
+이 직렬화 범위는 `spot_` 단위입니다. 서로 다른 `spot_` 사이에는 전역 직렬화를
+요구하지 않습니다. 구현은 서로 다른 Spot 의 dispatch callback 을 병렬로
+실행할 수 있어야 하며, 이 병렬성 때문에 같은 `spot_` 의 순차 처리 계약이
+깨지면 안 됩니다.
+
+구현은 고성능 데이터 경로를 유지할 수 있어야 합니다. 이를 위해 내부 topic,
+routed, timer producer 경로와 user callback 실행 경로를 분리할 수 있습니다.
+예를 들어 `spot_` 단위 queue, mailbox, scheduler 를 사용해 callback delivery 를
+직렬화하는 것은 허용됩니다. 다만 어떤 내부 방식을 쓰더라도 public contract 는
+같습니다. 호출자는 같은 `spot_` 에 대해 메시징을 순차적으로 처리할 수 있어야
+하고, 서로 다른 `spot_` 은 병렬 처리될 수 있어야 합니다.
+
+dispatch event 는 readability notification 이며, callback 1회가 논리 메시지
+1개 또는 timer fire 1개를 보장하지는 않습니다. 구현은 여러 readiness cause 를
+한 번의 callback 으로 합칠 수 있습니다. 호출자는 callback 안에서 해당 plane 을
+더 이상 읽을 것이 없을 때까지 drain 하는 것을 기대할 수 있어야 합니다.
 
 ### Router 와 SPOT 사이 request-reply
 

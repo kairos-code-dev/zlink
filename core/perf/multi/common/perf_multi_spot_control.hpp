@@ -13,6 +13,12 @@
 #include <string>
 #include <thread>
 
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 namespace perf_multi_spot_control {
 
 using ::setup_tls_client;

@@ -10,6 +10,10 @@
 #define EPROTO 0
 #endif
 
+#ifndef ESHUTDOWN
+#define ESHUTDOWN ENOTCONN
+#endif
+
 namespace zlink
 {
 namespace internal_errno

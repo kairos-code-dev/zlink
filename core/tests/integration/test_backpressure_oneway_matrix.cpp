@@ -1182,5 +1182,5 @@ int main (int, char **)
     RUN_TEST (test_multi_spot_backpressure_oneway_matrix);
     const int status = UNITY_END ();
     fflush (NULL);
-    std::quick_exit (status);
+    ::quick_exit (status);
 }

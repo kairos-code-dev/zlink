@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <thread>
 #include <vector>
@@ -102,11 +103,14 @@ int recv_router_router_header_flags (void *receiver_,
         *header_ok_out_ = false;
 
     const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     const int rc = zlink_router_recv (
-      receiver_, &source_rid, &request_seq, &parts, &part_count, flags_);
+      receiver_, &source_rid, &source_spot_rid, &request_seq, &parts,
+      &part_count,
+      static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
@@ -117,7 +121,9 @@ int recv_router_router_header_flags (void *receiver_,
     const bool rid_ok =
       source_rid && source_rid->size == 7
       && std::memcmp (source_rid->data, "ROUTER2", 7) == 0;
-    const bool shape_ok = rid_ok && request_seq == 0 && parts && part_count == 1;
+    const bool shape_ok =
+      rid_ok && (!source_spot_rid || source_spot_rid->size == 0)
+      && request_seq == 0 && parts && part_count == 1;
     if (!shape_ok) {
         if (parts)
             zlink_multipart_close (parts, part_count);
@@ -181,7 +187,7 @@ bool send_router_samples (void *sender_,
                             ZLINK_SEND_FLAGS_NONE)
             != 0) {
             const int err = zlink_errno ();
-            if (err == EINTR)
+            if (err == EINTR || err == EAGAIN)
                 continue;
             return false;
         }
@@ -324,23 +330,25 @@ void run_router_router (const std::string &transport,
     ctx_guard_t ctx;
     if (!ctx.valid ()) {
         print_fail ();
-        return;
+        fflush (NULL);
+        std::_Exit (1);
     }
 
     socket_guard_t receiver (ctx.get (), ZLINK_SOCKET_ROUTER);
     socket_guard_t sender (ctx.get (), ZLINK_SOCKET_ROUTER);
     if (!receiver.valid () || !sender.valid ()) {
         print_fail ();
-        return;
+        fflush (NULL);
+        std::_Exit (1);
     }
 
     if (!setup_router_router_session (
           receiver.get (), sender.get (), transport,
           lib_name + "_router_router")) {
         print_fail ();
-        return;
+        fflush (NULL);
+        std::_Exit (1);
     }
-
     const int duration_s = std::max (1, resolve_single_duration_seconds ());
     const int recv_timeout_ms = resolve_single_recv_timeout_ms ();
     unsigned long long received = 0;
@@ -354,7 +362,8 @@ void run_router_router (const std::string &transport,
                            &received,
                            &latency)) {
         print_fail ();
-        return;
+        fflush (NULL);
+        std::_Exit (1);
     }
 
     print_result (lib_name,
@@ -366,6 +375,8 @@ void run_router_router (const std::string &transport,
                   latency.mean_ns,
                   latency.p95_ns,
                   latency.p99_ns);
+    fflush (NULL);
+    std::_Exit (0);
 }
 
 int main (int argc, char **argv)

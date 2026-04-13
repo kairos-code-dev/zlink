@@ -399,7 +399,7 @@ inline bool run_oneway_phase (void *pub_socket,
             }
             if (::zlink_publish (pub_socket, k_pubsub_topic, &part, 1,
                                  static_cast<zlink_send_flags_t> (0))
-                < 0) {
+                != ZLINK_SUBMIT_OK) {
                 ::zlink_msg_close (&part);
                 send_failed = true;
                 break;
@@ -429,7 +429,7 @@ inline bool run_oneway_phase (void *pub_socket,
             }
             if (::zlink_publish (pub_socket, k_pubsub_topic, &part, 1,
                                  static_cast<zlink_send_flags_t> (0))
-                < 0) {
+                != ZLINK_SUBMIT_OK) {
                 ::zlink_msg_close (&part);
                 send_failed = true;
                 break;

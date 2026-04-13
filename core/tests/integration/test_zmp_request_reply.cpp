@@ -218,6 +218,7 @@ void capture_reply (zlink_request_result_t result_,
 }
 
 void reply_from_router_handler (const zlink_routing_id_t *peer_rid_,
+                                const zlink_routing_id_t *source_spot_rid_,
                                 uint64_t request_seq_,
                                 zlink_msg_t *parts_,
                                 size_t part_count_,
@@ -233,6 +234,8 @@ void reply_from_router_handler (const zlink_routing_id_t *peer_rid_,
         probe->invoked = true;
         probe->request_seq = request_seq_;
         probe->peer_rid_value = *peer_rid_;
+        TEST_ASSERT_NOT_NULL (source_spot_rid_);
+        TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid_->size);
         probe->peer_rid.assign (
           reinterpret_cast<const char *> (peer_rid_->data), peer_rid_->size);
         probe->request_payload =
@@ -242,6 +245,7 @@ void reply_from_router_handler (const zlink_routing_id_t *peer_rid_,
 }
 
 void capture_router_request_event (const zlink_routing_id_t *peer_rid_,
+                                   const zlink_routing_id_t *source_spot_rid_,
                                    uint64_t request_seq_,
                                    zlink_msg_t *parts_,
                                    size_t part_count_,
@@ -255,6 +259,8 @@ void capture_router_request_event (const zlink_routing_id_t *peer_rid_,
     request_event_t event;
     event.request_seq = request_seq_;
     event.peer_rid_value = *peer_rid_;
+    TEST_ASSERT_NOT_NULL (source_spot_rid_);
+    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid_->size);
     event.peer_rid.assign (
       reinterpret_cast<const char *> (peer_rid_->data), peer_rid_->size);
     event.request_payload =
@@ -996,7 +1002,7 @@ void test_spot_to_router_request_reply_basic ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router, "router-srv", 10));
 
     router_spot_request_handler_probe_t handler_probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_spot_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_handler (
       router, &capture_router_spot_request, &handler_probe));
 
     zlink_msg_t request_part;
@@ -1167,7 +1173,7 @@ void test_spot_to_router_direct_send_handler_basic ()
 
     router_spot_request_handler_probe_t probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_router_spot_handler (router, &capture_router_spot_request, &probe));
+      zlink_router_handler (router, &capture_router_spot_request, &probe));
 
     const zlink_routing_id_t router_rid = get_routing_id_value (router);
     zlink_msg_t part;
@@ -1221,12 +1227,12 @@ void test_spot_to_router_direct_send_recv_basic ()
     zlink_msg_t *primed_parts = NULL;
     size_t primed_part_count = 0;
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_RECV_NO_DATA, zlink_router_spot_recv (router, &primed_source_node_rid,
-                                                  &primed_source_spot_rid,
-                                                  &primed_request_seq,
-                                                  &primed_parts,
-                                                  &primed_part_count,
-                                                  ZLINK_DONTWAIT));
+      ZLINK_RECV_NO_DATA, zlink_router_recv (router, &primed_source_node_rid,
+                                             &primed_source_spot_rid,
+                                             &primed_request_seq,
+                                             &primed_parts,
+                                             &primed_part_count,
+                                             ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 
     zlink_msg_t part;
@@ -1242,8 +1248,8 @@ void test_spot_to_router_direct_send_recv_basic ()
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_router_spot_recv (router, &source_node_rid, &source_spot_rid,
-                              &request_seq, &parts, &part_count, 0));
+      zlink_router_recv (router, &source_node_rid, &source_spot_rid,
+                         &request_seq, &parts, &part_count, 0));
 
     TEST_ASSERT_NOT_NULL (source_node_rid);
     TEST_ASSERT_NOT_NULL (source_spot_rid);

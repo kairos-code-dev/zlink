@@ -100,10 +100,10 @@ inline int zlink_send (void *s_,
 
     int type = 0;
     size_t type_size = sizeof (type);
-    if (zlink_get_option (s_, ZLINK_OPT_TYPE, &type, &type_size))
-    {
+    if (zlink_get_option (s_, ZLINK_OPT_TYPE, &type, &type_size)
+        == ZLINK_CONFIG_OK) {
         const int rc = zlink::send_msg_internal (s_, &msg, flags_);
-        if (rc != 0) {
+        if (rc < 0) {
             const int err = errno;
             zlink_msg_close (&msg);
             errno = err;
@@ -124,6 +124,196 @@ inline int zlink_send (void *s_,
     return static_cast<int> (len_);
 }
 
+inline zlink_submit_result_t zlink_send_rid (
+  void *s_,
+  const zlink_routing_id_t *target_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  int flags_)
+{
+    return ::zlink_send_rid (
+      s_, target_rid_, parts_, part_count_,
+      static_cast<zlink_send_flags_t> (flags_));
+}
+
+inline zlink_submit_result_t zlink_send (void *s_,
+                                         zlink_msg_t *parts_,
+                                         size_t part_count_,
+                                         int flags_)
+{
+    return ::zlink_send (
+      s_, parts_, part_count_, static_cast<zlink_send_flags_t> (flags_));
+}
+
+inline zlink_submit_result_t zlink_publish (void *subject_,
+                                            const char *topic_id_,
+                                            zlink_msg_t *parts_,
+                                            size_t part_count_,
+                                            int flags_)
+{
+    return ::zlink_publish (
+      subject_, topic_id_, parts_, part_count_,
+      static_cast<zlink_send_flags_t> (flags_));
+}
+
+inline zlink_submit_result_t zlink_dealer_request (
+  void *dealer_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int flags_,
+  uint32_t timeout_ms_)
+{
+    return ::zlink_dealer_request (
+      dealer_, parts_, part_count_, handler_, userdata_,
+      static_cast<zlink_send_flags_t> (flags_), timeout_ms_);
+}
+
+inline zlink_submit_result_t zlink_router_request (
+  void *router_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int flags_,
+  uint32_t timeout_ms_)
+{
+    return ::zlink_router_request (
+      router_, peer_rid_, parts_, part_count_, handler_, userdata_,
+      static_cast<zlink_send_flags_t> (flags_), timeout_ms_);
+}
+
+inline zlink_submit_result_t zlink_spot_request_spot (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int flags_,
+  uint32_t timeout_ms_)
+{
+    return ::zlink_spot_request_spot (
+      spot_, dest_node_rid_, dest_spot_rid_, parts_, part_count_, handler_,
+      userdata_, static_cast<zlink_send_flags_t> (flags_), timeout_ms_);
+}
+
+inline zlink_submit_result_t zlink_spot_send_spot (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  int flags_)
+{
+    return ::zlink_spot_send_spot (
+      spot_, dest_node_rid_, dest_spot_rid_, parts_, part_count_,
+      static_cast<zlink_send_flags_t> (flags_));
+}
+
+inline zlink_submit_result_t zlink_spot_send_router (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  int flags_)
+{
+    return ::zlink_spot_send_router (
+      spot_, peer_rid_, parts_, part_count_,
+      static_cast<zlink_send_flags_t> (flags_));
+}
+
+inline zlink_submit_result_t zlink_spot_request_router (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int flags_,
+  uint32_t timeout_ms_)
+{
+    return ::zlink_spot_request_router (
+      spot_, peer_rid_, parts_, part_count_, handler_, userdata_,
+      static_cast<zlink_send_flags_t> (flags_), timeout_ms_);
+}
+
+inline zlink_submit_result_t zlink_router_request_spot (
+  void *router_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int flags_,
+  uint32_t timeout_ms_)
+{
+    return ::zlink_router_request_spot (
+      router_, dest_node_rid_, dest_spot_rid_, parts_, part_count_, handler_,
+      userdata_, static_cast<zlink_send_flags_t> (flags_), timeout_ms_);
+}
+
+inline zlink_submit_result_t zlink_router_send_spot (
+  void *router_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  int flags_)
+{
+    return ::zlink_router_send_spot (
+      router_, dest_node_rid_, dest_spot_rid_, parts_, part_count_,
+      static_cast<zlink_send_flags_t> (flags_));
+}
+
+inline zlink_recv_result_t zlink_recv (void *s_,
+                                       zlink_routing_id_t *source_rid_out_,
+                                       zlink_msg_t **parts_out_,
+                                       size_t *part_count_out_,
+                                       int flags_)
+{
+    return ::zlink_recv (
+      s_, source_rid_out_, parts_out_, part_count_out_,
+      static_cast<zlink_recv_flags_t> (flags_));
+}
+
+inline zlink_recv_result_t zlink_router_recv (
+  void *router_,
+  const zlink_routing_id_t **source_node_rid_out_,
+  const zlink_routing_id_t **source_spot_rid_out_,
+  uint64_t *request_seq_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  int flags_)
+{
+    return ::zlink_router_recv (
+      router_,
+      source_node_rid_out_,
+      source_spot_rid_out_,
+      request_seq_out_,
+      parts_out_,
+      part_count_out_,
+      static_cast<zlink_recv_flags_t> (flags_));
+}
+
+inline zlink_recv_result_t zlink_spot_recv (
+  void *spot_,
+  const zlink_routing_id_t **source_rid_out_,
+  const zlink_routing_id_t **spot_rid_out_,
+  uint64_t *request_seq_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  int flags_)
+{
+    return ::zlink_spot_recv (
+      spot_, source_rid_out_, spot_rid_out_, request_seq_out_, parts_out_,
+      part_count_out_, static_cast<zlink_recv_flags_t> (flags_));
+}
+
 inline int zlink_recv (void *s_,
                        void *buf_,
                        size_t len_,
@@ -131,15 +321,16 @@ inline int zlink_recv (void *s_,
 {
     int type = 0;
     size_t type_size = sizeof (type);
-    if (zlink_get_option (s_, ZLINK_OPT_TYPE, &type, &type_size))
+    if (zlink_get_option (s_, ZLINK_OPT_TYPE, &type, &type_size)
+        == ZLINK_CONFIG_OK)
         return zlink::recv_buffer_internal (s_, buf_, len_, flags_);
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = ::zlink_recv (
+    const zlink_recv_result_t rc = ::zlink_recv (
       s_, NULL, &parts, &part_count,
       static_cast<zlink_recv_flags_t> (flags_));
-    if (rc != 0)
+    if (rc != ZLINK_RECV_OK)
         return -1;
 
     const size_t copy_len =
@@ -162,6 +353,41 @@ inline int zlink_subscribe (void *subject_,
     return ::zlink_subscribe (subject_, NULL, parts_, part_count_,
                               topic_id_out_, topic_id_len_,
                               static_cast<zlink_recv_flags_t> (flags_));
+}
+
+inline zlink_recv_result_t zlink_subscribe (void *subject_,
+                                            zlink_routing_id_t *source_rid_out_,
+                                            zlink_msg_t **parts_out_,
+                                            size_t *part_count_out_,
+                                            char *topic_id_out_,
+                                            size_t *topic_id_len_out_,
+                                            int flags_)
+{
+    return ::zlink_subscribe (
+      subject_,
+      source_rid_out_,
+      parts_out_,
+      part_count_out_,
+      topic_id_out_,
+      topic_id_len_out_,
+      static_cast<zlink_recv_flags_t> (flags_));
+}
+
+inline zlink_recv_result_t zlink_subscription_event (
+  void *subject_,
+  zlink_routing_id_t *source_rid_out_,
+  int *subscribed_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  int flags_)
+{
+    return ::zlink_subscription_event (
+      subject_,
+      source_rid_out_,
+      subscribed_out_,
+      topic_id_out_,
+      topic_id_len_out_,
+      static_cast<zlink_recv_flags_t> (flags_));
 }
 
 inline bool test_msg_has_more (const zlink_msg_t *msg_)

@@ -64,9 +64,9 @@ inline bool parse_endpoint_arg (int argc,
     return false;
 }
 
-inline send_status_t classify_send_result (int rc)
+inline send_status_t classify_send_result (zlink_submit_result_t rc)
 {
-    if (rc >= 0)
+    if (rc == ZLINK_SUBMIT_OK)
         return send_ok;
     const int err = zlink_errno ();
     if (err == EAGAIN)
@@ -123,15 +123,16 @@ inline send_status_t send_echo_message_flags (void *socket,
               server_id.data (),
               static_cast<size_t> (target_rid.size));
         }
-        const int rc =
+        const zlink_submit_result_t rc =
           ::zlink_send_rid (socket, &target_rid, &part, 1, base_flags);
-        if (rc < 0)
+        if (rc != ZLINK_SUBMIT_OK)
             zlink_msg_close (&part);
         return classify_send_result (rc);
     }
 
-    const int payload_rc = ::zlink_send (socket, &part, 1, base_flags);
-    if (payload_rc < 0)
+    const zlink_submit_result_t payload_rc =
+      ::zlink_send (socket, &part, 1, base_flags);
+    if (payload_rc != ZLINK_SUBMIT_OK)
         zlink_msg_close (&part);
     return classify_send_result (payload_rc);
 }
@@ -164,22 +165,24 @@ inline int recv_one_message (void *socket,
 
     const int recv_flags = flags;
     const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc =
+    const zlink_recv_result_t rc =
       router_surface
-        ? static_cast<int> (::zlink_router_recv (
+        ? ::zlink_router_recv (
             socket,
             &source_rid,
+            &source_spot_rid,
             &request_seq,
             &parts,
             &part_count,
-            recv_flags))
-        : static_cast<int> (::zlink_recv (
+            static_cast<zlink_recv_flags_t> (recv_flags))
+        : ::zlink_recv (
             socket, NULL, &parts, &part_count,
-            static_cast<zlink_send_flags_t> (recv_flags)));
-    if (rc != 0) {
+            static_cast<zlink_recv_flags_t> (recv_flags));
+    if (rc != ZLINK_RECV_OK) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
             return 0;
@@ -332,7 +335,8 @@ inline bool create_client_sockets (
 
         if (client_socket_type == ZLINK_SOCKET_SUB) {
             static const char k_subscribe_all[] = "";
-            if (!zlink_set_subscription (sock, k_subscribe_all)) {
+            if (zlink_set_subscription (sock, k_subscribe_all)
+                != ZLINK_CONFIG_OK) {
                 if (bench_debug_enabled ()) {
                     std::cerr
                       << "set_subscription failed: "
@@ -536,22 +540,24 @@ inline int recv_one_message_header (void *socket,
 
     const int recv_flags = flags;
     const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc =
+    const zlink_recv_result_t rc =
       router_surface
-        ? static_cast<int> (::zlink_router_recv (
+        ? ::zlink_router_recv (
             socket,
             &source_rid,
+            &source_spot_rid,
             &request_seq,
             &parts,
             &part_count,
-            recv_flags))
-        : static_cast<int> (::zlink_recv (
+            static_cast<zlink_recv_flags_t> (recv_flags))
+        : ::zlink_recv (
             socket, NULL, &parts, &part_count,
-            static_cast<zlink_send_flags_t> (recv_flags)));
-    if (rc != 0) {
+            static_cast<zlink_recv_flags_t> (recv_flags));
+    if (rc != ZLINK_RECV_OK) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
             return 0;
@@ -1046,11 +1052,12 @@ inline bool run_echo_window_round_robin (
                       &header,
                       &decoded);
                     if (recv_rc < 0) {
-                        if (bench_debug_enabled()) {
+                        if (bench_debug_enabled ()) {
                             std::cerr << "[perf-multi-echo] recv error phase="
-                                      << static_cast<unsigned int>(phase)
+                                      << static_cast<unsigned int> (phase)
                                       << " idx=" << idx
-                                      << " errno=" << zlink_errno() << std::endl;
+                                      << " errno=" << zlink_errno ()
+                                      << std::endl;
                         }
                         fatal_error = true;
                         break;
@@ -1065,11 +1072,13 @@ inline bool run_echo_window_round_robin (
                           header, run_id, phase, expected_msg_size)) {
                         ++local_recv;
                         if (collect_latency) {
-                            const uint64_t now_ns = perf_multi_metric::now_ns ();
+                            const uint64_t now_ns =
+                              perf_multi_metric::now_ns ();
                             if (header.sent_ts_ns > 0
                                 && now_ns >= header.sent_ts_ns) {
                                 const double sample_ns =
-                                  static_cast<double> (now_ns - header.sent_ts_ns)
+                                  static_cast<double> (
+                                    now_ns - header.sent_ts_ns)
                                   * 0.5;
                                 lat_sum_local += sample_ns;
                                 lat_count_local++;
@@ -1097,9 +1106,6 @@ inline bool run_echo_window_round_robin (
                         send_pending[idx] = 1;
                     }
 
-                    // ROUTER echo clients keep one in-flight request per socket.
-                    // After one readable reply, trying to drain again can block
-                    // on the typed receive surface and collapse throughput.
                     if (client_router_send)
                         break;
                 }

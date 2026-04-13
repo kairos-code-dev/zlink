@@ -105,17 +105,22 @@ the callback. `result_` represents request completion as a
 
 ```c
 typedef void (*zlink_router_handler_fn) (
-  const zlink_routing_id_t *peer_rid_,
+  const zlink_routing_id_t *source_node_rid_,
+  const zlink_routing_id_t *source_spot_rid_,
   uint64_t request_seq_,
   zlink_msg_t *parts_,
   size_t part_count_,
   void *userdata_);
 ```
 
-Callback for incoming requests on a ROUTER socket. `peer_rid_` identifies
-the requesting peer, `request_seq_` is the sequence number to pass to
-`zlink_router_reply()`. Ownership of all message parts is transferred to
-the callback.
+Callback for incoming routed traffic on a ROUTER socket.
+`source_node_rid_` identifies the source node for every routed delivery.
+For plain ROUTER peers, `source_spot_rid_` is `NULL`. For spot-originated
+traffic, `source_spot_rid_` identifies the source spot.
+`request_seq_ == 0` means a fire-and-forget routed message.
+`request_seq_ != 0` means a request that must be replied to with the
+matching ROUTER reply surface. Ownership of all message parts is
+transferred to the callback.
 
 ## Constants
 

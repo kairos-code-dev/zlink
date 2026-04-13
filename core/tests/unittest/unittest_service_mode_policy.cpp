@@ -77,7 +77,7 @@ std::string bind_socket_test_endpoint (void *socket_)
     for (int i = 0; i < 64; ++i) {
         std::ostringstream endpoint;
         endpoint << "tcp://127.0.0.1:" << (base_port + i);
-        if (zlink_bind (socket_, endpoint.str ().c_str ()))
+        if (zlink_bind (socket_, endpoint.str ().c_str ()) == ZLINK_BIND_OK)
             return endpoint.str ();
     }
     return std::string ();
@@ -103,8 +103,8 @@ void test_spot_callback_policy ()
       zlink_poller_add (poller, spot, spot, ZLINK_POLLIN));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, spot));
 
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     zlink_msg_t *parts = NULL;
@@ -112,8 +112,9 @@ void test_spot_callback_policy ()
     char topic[64];
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe (spot, NULL, &parts, &part_count, topic, &topic_len,
-                           ZLINK_DONTWAIT));
+      ZLINK_RECV_NO_DATA,
+      zlink_subscribe (spot, NULL, &parts, &part_count, topic, &topic_len,
+                       ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -121,15 +122,16 @@ void test_spot_callback_policy ()
 
     topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe (spot, NULL, &parts, &part_count, topic, &topic_len,
-                           ZLINK_DONTWAIT));
+      ZLINK_RECV_BUSY,
+      zlink_subscribe (spot, NULL, &parts, &part_count, topic, &topic_len,
+                       ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, spot, spot, ZLINK_POLLIN));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_poller_add (poller, spot, spot, ZLINK_POLLIN));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
@@ -152,20 +154,21 @@ void test_stream_send_ready_is_independent_from_recv_callback ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_send_ready_handler (stream, &noop_send_ready_handler, NULL));
 
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, stream, stream, ZLINK_POLLOUT));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_poller_add (poller, stream, stream, ZLINK_POLLOUT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv (stream, NULL, &parts, &part_count, ZLINK_DONTWAIT));
-    TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
+      ZLINK_RECV_NO_DATA,
+      zlink_recv (stream, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_handler (stream, &noop_socket_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, stream, stream, ZLINK_POLLIN));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_poller_add (poller, stream, stream, ZLINK_POLLIN));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
@@ -243,22 +246,23 @@ void test_spot_node_topic_surface_and_callback_modes ()
       zlink_send_ready_handler (node, &noop_send_ready_handler, NULL));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_subscribe_handler (node, &noop_spot_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (-1, zlink_send (node, &part, 1, 0));
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_NOT_SUPPORTED, zlink_send (node, &part, 1, 0));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_send_rid (node, &routing_id, &routed_part, 1, 0));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_SUBMIT_OK, zlink_send_rid (node, &routing_id, &routed_part, 1, 0));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     zlink_msg_close (&routed_part);
     zlink_msg_close (&part);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe (node, NULL, &parts, &part_count, topic, &topic_len,
-                           ZLINK_DONTWAIT));
+      ZLINK_RECV_BUSY,
+      zlink_subscribe (node, NULL, &parts, &part_count, topic, &topic_len,
+                       ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, node, node, ZLINK_POLLIN));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_poller_add (poller, node, node, ZLINK_POLLIN));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, node, node, ZLINK_POLLOUT));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_poller_add (poller, node, node, ZLINK_POLLOUT));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
@@ -277,13 +281,13 @@ void test_spot_tls_configuration_is_node_owned ()
     TEST_ASSERT_NOT_NULL (spot);
 
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_set_tls_server (spot, "server.crt", "server.key", 0));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_set_tls_server (spot, "server.crt", "server.key", 0));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_set_tls_client (spot, "ca.crt", "localhost", 0));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_set_tls_client (spot, "ca.crt", "localhost", 0));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -392,7 +396,8 @@ void test_socket_attach_discovery_rejects_unsupported_socket_type ()
     void *pair = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (pair);
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_attach_discovery (pair, discovery));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_socket_attach_discovery (pair, discovery));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (pair));
@@ -414,13 +419,16 @@ void test_socket_attach_discovery_gates_manual_peer_apis ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_discovery (dealer, discovery));
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_connect (dealer, "tcp://127.0.0.1:39001"));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONNECT_OK, zlink_connect (dealer, "tcp://127.0.0.1:39001"));
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (-1, zlink_disconnect (dealer, "tcp://127.0.0.1:39001"));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONNECT_OK, zlink_disconnect (dealer, "tcp://127.0.0.1:39001"));
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (-1, zlink_unbind (dealer, "tcp://127.0.0.1:39001"));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONNECT_OK, zlink_unbind (dealer, "tcp://127.0.0.1:39001"));
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (-1, zlink_close (dealer));
+    TEST_ASSERT_NOT_EQUAL (ZLINK_CLOSE_OK, zlink_close (dealer));
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
@@ -442,7 +450,8 @@ void test_socket_attach_discovery_fails_after_bind_without_registry ()
     const std::string endpoint = bind_socket_test_endpoint (router);
     TEST_ASSERT_FALSE (endpoint.empty ());
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_attach_discovery (router, discovery));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_socket_attach_discovery (router, discovery));
     TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (router));

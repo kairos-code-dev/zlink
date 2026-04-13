@@ -35,9 +35,7 @@ router_spot_request_reply_state_t::router_spot_request_reply_state_t (
   void *owner_) :
     owner (owner_),
     default_timeout_ms (zlink::request_reply::default_timeout_ms),
-    next_request_seq (1),
-    handler (NULL),
-    handler_userdata (NULL)
+    next_request_seq (1)
 {
 }
 

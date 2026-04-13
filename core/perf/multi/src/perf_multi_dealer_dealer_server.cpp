@@ -74,10 +74,10 @@ inline recv_result_t receive_one_message (
     source_rid.size = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = ::zlink_recv (
+    const zlink_recv_result_t rc = ::zlink_recv (
       server, &source_rid, &parts, &part_count,
-      static_cast<zlink_send_flags_t> (flags));
-    if (rc < 0) {
+      static_cast<zlink_recv_flags_t> (flags));
+    if (rc != ZLINK_RECV_OK) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR || err == ETIMEDOUT)
             return recv_none;

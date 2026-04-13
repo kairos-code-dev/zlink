@@ -293,8 +293,8 @@ inline bool wait_for_socket_monitor_event(ready_monitor_t &monitor_,
 
         for (;;) {
             zlink_socket_monitor_event_t event;
-            if (zlink_socket_monitor_recv(monitor_.monitor, &event,
-                                          ZLINK_DONTWAIT)
+            if (zlink_socket_monitor_recv(
+                  monitor_.monitor, &event, ZLINK_RECV_FLAGS_DONTWAIT)
                 != 0) {
                 const int err = zlink_errno();
                 if (err == EAGAIN || err == EINTR)
@@ -343,8 +343,8 @@ inline bool wait_for_service_monitor_event(ready_monitor_t &monitor_,
 
         for (;;) {
             zlink_service_monitor_event_t event;
-            if (zlink_service_monitor_recv(monitor_.monitor, &event,
-                                           ZLINK_DONTWAIT)
+            if (zlink_service_monitor_recv(
+                  monitor_.monitor, &event, ZLINK_RECV_FLAGS_DONTWAIT)
                 != 0) {
                 const int err = zlink_errno();
                 if (err == EAGAIN || err == EINTR)

@@ -87,7 +87,8 @@ inline bool connect_peer(void *node, const std::string &endpoint)
         errno = EINVAL;
         return false;
     }
-    return zlink_spot_node_connect_peer(node, endpoint.c_str()) == 0;
+    return zlink_spot_node_connect_peer(node, endpoint.c_str())
+           == ZLINK_CONNECT_OK;
 }
 
 inline bool apply_control_options(void *pub,
@@ -104,21 +105,23 @@ inline bool apply_control_options(void *pub,
 
     if (zlink_set_option(pub, ZLINK_OPT_LINGER, &linger_ms,
                          sizeof(linger_ms))
-          != 0
-        || !zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm))
+          != ZLINK_CONFIG_OK
+        || zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm))
+             != ZLINK_CONFIG_OK
         || zlink_set_option(pub, ZLINK_OPT_SNDTIMEO, &timeout_ms,
                             sizeof(timeout_ms))
-             != 0
+             != ZLINK_CONFIG_OK
         || zlink_set_pub_option(pub, ZLINK_PUB_OPT_NODROP, &nodrop,
                                 sizeof(nodrop))
-             != 0
+             != ZLINK_CONFIG_OK
         || zlink_set_option(sub, ZLINK_OPT_LINGER, &linger_ms,
                             sizeof(linger_ms))
-             != 0
-        || !zlink_set_option(sub, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm))
+             != ZLINK_CONFIG_OK
+        || zlink_set_option(sub, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm))
+             != ZLINK_CONFIG_OK
         || zlink_set_option(sub, ZLINK_OPT_RCVTIMEO, &timeout_ms,
                             sizeof(timeout_ms))
-             != 0) {
+             != ZLINK_CONFIG_OK) {
         return false;
     }
 
@@ -157,8 +160,8 @@ inline bool initialize_client_session(void *node,
 
     session->local_endpoint = local_endpoint;
     if (zlink_spot_node_connect_peer(node, server_endpoint.c_str())
-             != 0
-        || !zlink_set_subscription(session->sub, topic)) {
+             != ZLINK_CONNECT_OK
+        || zlink_set_subscription(session->sub, topic) != ZLINK_CONFIG_OK) {
         destroy_client_session(session);
         return false;
     }
@@ -238,8 +241,9 @@ inline bool initialize_client_slot(ctx_guard_t &ctx,
 
     if (!apply_sub_options
         || !apply_sub_options(slot->handle, settings)
-        || zlink_spot_node_connect_peer(slot->node, endpoint.c_str()) != 0
-        || !zlink_set_subscription(slot->handle, topic)) {
+        || zlink_spot_node_connect_peer(slot->node, endpoint.c_str())
+             != ZLINK_CONNECT_OK
+        || zlink_set_subscription(slot->handle, topic) != ZLINK_CONFIG_OK) {
         perf_destroy_default_spot_handle(&slot->handle);
         zlink_spot_node_destroy(&slot->node);
         slot->handle = NULL;
@@ -328,7 +332,8 @@ inline bool initialize_server_session(ctx_guard_t &ctx,
         || !apply_server_options(session->pub, settings)
         || !apply_control_options(
              session->control_pub, session->control_sub, settings)
-        || !zlink_set_subscription(session->control_sub, topic)) {
+        || zlink_set_subscription(session->control_sub, topic)
+             != ZLINK_CONFIG_OK) {
         destroy_server_session(session);
         return false;
     }
@@ -447,7 +452,8 @@ inline bool publish_control_payload(void *control_pub,
     if (zlink_msg_init_size(&part, payload.size()) != 0)
         return false;
     std::memcpy(zlink_msg_data(&part), payload.data(), payload.size());
-    const int rc = zlink_publish(control_pub, topic, &part, 1, 0);
+    const int rc = zlink_publish(
+      control_pub, topic, &part, 1, static_cast<zlink_send_flags_t>(0));
     const int saved_errno = rc == 0 ? 0 : errno;
     (void) zlink_msg_close(&part);
     if (rc == 0)
@@ -627,7 +633,8 @@ inline bool ensure_connected(void *node,
         && connected_flag->load(std::memory_order_acquire)) {
         return true;
     }
-    if (zlink_spot_node_connect_peer(node, endpoint.c_str()) != 0)
+    if (zlink_spot_node_connect_peer(node, endpoint.c_str())
+        != ZLINK_CONNECT_OK)
         return false;
     if (connected_flag)
         connected_flag->store(true, std::memory_order_release);

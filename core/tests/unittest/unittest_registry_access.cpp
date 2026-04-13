@@ -39,8 +39,8 @@ void test_registry_status_snapshot_tracks_configured_state ()
       zlink_registry_add_peer (registry, "wss://peer-b"));
 
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_registry_add_peer (registry, "inproc://peer-c"));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_registry_add_peer (registry, "inproc://peer-c"));
     TEST_ASSERT_EQUAL_INT (EPROTONOSUPPORT, errno);
 
     memset (&status, 0, sizeof (status));

@@ -208,8 +208,8 @@ send_status_t try_publish_locked(spot_server_state_t *state,
         return send_status_fatal;
     }
 
-    const int rc =
-      zlink_publish(state->pub, k_topic, &part, 1, ZLINK_DONTWAIT);
+    const int rc = zlink_publish(
+      state->pub, k_topic, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT);
     const int saved_errno = rc == 0 ? 0 : errno;
     (void) zlink_msg_close(&part);
 

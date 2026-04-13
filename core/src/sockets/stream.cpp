@@ -713,27 +713,7 @@ int zlink::stream_t::stream_dispatch_send_current_msg_from_io (msg_t *msg_,
         return 1;
     }
 
-    const bool dontwait = (flags_ & ZLINK_DONTWAIT) != 0 || options.sndtimeo == 0;
-    const int sndtimeo = options.sndtimeo;
-    const std::chrono::steady_clock::time_point deadline =
-      sndtimeo < 0
-        ? std::chrono::steady_clock::time_point::max ()
-        : std::chrono::steady_clock::now ()
-            + std::chrono::milliseconds (sndtimeo);
-
-    while (!dontwait) {
-        if (sndtimeo >= 0 && std::chrono::steady_clock::now () >= deadline)
-            break;
-
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
-        if (direct_out->write_single_message_and_flush_no_recursive_hwm_check (
-              msg_)) {
-            const int init_rc = msg_->init ();
-            errno_assert (init_rc == 0);
-            return 1;
-        }
-    }
-
+    LIBZLINK_UNUSED (flags_);
     errno = EAGAIN;
     return -1;
 }

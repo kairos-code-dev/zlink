@@ -361,12 +361,14 @@ std::string bind_client_spot_endpoint(void *node,
         return std::string();
     }
 
-    if (base_bind_port > 0 && zlink_spot_node_bind(node, bind_endpoint.c_str()) != 0)
+    if (base_bind_port > 0
+        && zlink_spot_node_bind(node, bind_endpoint.c_str())
+             != ZLINK_BIND_OK)
         return std::string();
 
     zlink_spot_node_status_t status;
     std::memset(&status, 0, sizeof(status));
-    if (zlink_spot_node_status_snapshot(node, &status) != 0
+    if (zlink_spot_node_status_snapshot(node, &status) != ZLINK_CONFIG_OK
         || status.local_endpoint[0] == '\0') {
         errno = zlink_errno() != 0 ? zlink_errno() : EIO;
         return std::string();
@@ -881,7 +883,7 @@ bool create_control_spot(ctx_guard_t &ctx,
     }
     if (zlink_spot_node_connect_peer(state->control_node,
                                      server_control_endpoint.c_str())
-        != 0) {
+        != ZLINK_CONNECT_OK) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] control connect failed endpoint="
                       << server_control_endpoint
@@ -889,14 +891,18 @@ bool create_control_spot(ctx_guard_t &ctx,
         }
         return false;
     }
-    if (!zlink_set_subscription(state->control_sub, k_topic)) {
+    if (zlink_set_subscription(state->control_sub, k_topic)
+        != ZLINK_CONFIG_OK) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] control subscribe failed err="
                       << zlink_errno() << std::endl;
         }
         return false;
     }
-    if (zlink_publish(state->control_pub, k_topic, NULL, 0, 0) != 0) {
+    if (zlink_publish(
+          state->control_pub, k_topic, NULL, 0,
+          static_cast<zlink_send_flags_t>(0))
+        != ZLINK_SUBMIT_OK) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] control primer publish failed err="
                       << zlink_errno() << std::endl;
@@ -963,9 +969,10 @@ bool create_spot_slots(ctx_guard_t &ctx,
         }
 
         if (!apply_spot_sub_options(slot->handle, settings)
-            || zlink_spot_node_connect_peer(slot->node, endpoint.c_str()) != 0
+            || zlink_spot_node_connect_peer(slot->node, endpoint.c_str())
+                 != ZLINK_CONNECT_OK
             || zlink_set_subscription (slot->handle, k_topic)
-                 != 0) {
+                 != ZLINK_CONFIG_OK) {
             if (bench_debug_enabled())
                 std::cerr << "[multi-spot-client] slot create failed slot=" << i
                           << " node=" << (slot->node != NULL)

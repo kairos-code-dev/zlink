@@ -82,7 +82,7 @@ bool handle_router_once(void *server, char *id_buf, size_t id_cap,
         std::memcpy (zlink_msg_data (&reply_parts[0]), id_buf, id_len);
     if (payload_len > 0)
         std::memcpy (zlink_msg_data (&reply_parts[1]), payload_buf, payload_len);
-    if (::zlink_send (server, reply_parts, 2, 0) < 0) {
+    if (::zlink_send (server, reply_parts, 2, 0) != ZLINK_SUBMIT_OK) {
         zlink_msg_close (&reply_parts[0]);
         zlink_msg_close (&reply_parts[1]);
         return false;

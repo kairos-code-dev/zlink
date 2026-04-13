@@ -78,7 +78,7 @@ inline bool publish_once (void *server,
 
     if (::zlink_publish (
           server, k_pubsub_topic, &payload_part, 1, ZLINK_DONTWAIT)
-        >= 0) {
+        == ZLINK_SUBMIT_OK) {
         if (publish_ok_count)
             ++(*publish_ok_count);
         if (bench_debug_enabled ()

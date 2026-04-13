@@ -178,7 +178,8 @@ void *create_spot_sub_handle (void *node_, zlink_subscribe_handler_fn handler_)
     }
 
     if (handler_
-        && !zlink_subscribe_handler (spot_sub, handler_, handler_userdata)) {
+        && zlink_subscribe_handler (spot_sub, handler_, handler_userdata)
+             != ZLINK_HANDLER_OK) {
         const int err = errno;
         if (probe)
             remove_queued_spot_probe (spot_sub, false);

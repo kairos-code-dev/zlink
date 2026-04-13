@@ -266,7 +266,8 @@ inline bool create_client_sockets (
 
         apply_benchmark_socket_options (sock, settings.hwm, transport);
         static const char k_subscribe_all[] = "";
-        if (!zlink_set_subscription (sock, k_subscribe_all)
+        if (zlink_set_subscription (sock, k_subscribe_all)
+              != ZLINK_CONFIG_OK
             || !setup_tls_client (sock, transport)) {
             if (bench_debug_enabled ()) {
                 std::cerr << "[multi-pubsub-client] subscribe/tls failed slot="

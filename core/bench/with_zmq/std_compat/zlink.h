@@ -673,15 +673,18 @@ inline int zlink_recv (void *s_,
 
 inline int zlink_router_recv (void *router_,
                               const zlink_routing_id_t **peer_rid_out_,
+                              const zlink_routing_id_t **source_spot_rid_out_,
                               uint64_t *request_seq_out_,
                               zlink_msg_t **parts_out_,
                               size_t *part_count_out_,
                               zlink_recv_flags_t flags_)
 {
     static thread_local zlink_routing_id_t tls_peer_rid;
+    static thread_local zlink_routing_id_t tls_source_spot_rid;
 
     if (request_seq_out_)
         *request_seq_out_ = 0;
+    std::memset (&tls_source_spot_rid, 0, sizeof (tls_source_spot_rid));
 
     const int rc =
       zlink_recv (router_, &tls_peer_rid, parts_out_, part_count_out_,
@@ -689,11 +692,15 @@ inline int zlink_router_recv (void *router_,
     if (rc != 0) {
         if (peer_rid_out_)
             *peer_rid_out_ = NULL;
+        if (source_spot_rid_out_)
+            *source_spot_rid_out_ = &tls_source_spot_rid;
         return rc;
     }
 
     if (peer_rid_out_)
         *peer_rid_out_ = tls_peer_rid.size > 0 ? &tls_peer_rid : NULL;
+    if (source_spot_rid_out_)
+        *source_spot_rid_out_ = &tls_source_spot_rid;
     return 0;
 }
 

@@ -196,29 +196,6 @@ request-reply messages. `request_seq == 0` indicates an ordinary message;
 | `part_count_` | Number of payload parts. |
 | `userdata_` | User-supplied context pointer. |
 
-```c
-typedef void (*zlink_router_spot_handler_fn) (
-  const zlink_routing_id_t *source_node_rid_,
-  const zlink_routing_id_t *source_spot_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  void *userdata_);
-```
-
-`zlink_router_spot_handler_fn` receives `spot -> router` ordinary direct
-messages and request-reply messages. Use `source_node_rid_` and
-`source_spot_rid_` as the reply address.
-
-| Parameter | Description |
-|-----------|-------------|
-| `source_node_rid_` | Routing identity of the originating node. |
-| `source_spot_rid_` | Routing identity of the originating spot. |
-| `request_seq_` | Request sequence number (0 for fire-and-forget). |
-| `parts_` | Payload message parts. Callback consumes ownership. |
-| `part_count_` | Number of payload parts. |
-| `userdata_` | User-supplied context pointer. |
-
 ### Dispatch event types
 
 ```c
@@ -612,58 +589,36 @@ Send a fire-and-forget message from a `ROUTER` handle to a remote spot.
 
 **See also:** `zlink_router_request_spot`
 
-#### zlink_router_spot_handler
+#### ROUTER receive surface for SPOT traffic
 
 ```c
-int zlink_router_spot_handler (
+zlink_handler_result_t zlink_router_handler (
   void *router_,
-  zlink_router_spot_handler_fn handler_,
+  zlink_router_handler_fn handler_,
   void *userdata_);
-```
-
-Attach a typed receive callback for spot-routed messages arriving at a
-`ROUTER` handle. Only one typed receive callback may be installed per router.
-
-| Parameter | Description |
-|-----------|-------------|
-| `router_` | ROUTER handle. |
-| `handler_` | Callback function, or `NULL` to detach. |
-| `userdata_` | User-supplied context pointer. |
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**See also:** `zlink_router_spot_handler_fn`, `zlink_router_spot_recv`
-
-#### zlink_router_spot_recv
-
-```c
-int zlink_router_spot_recv (
+zlink_recv_result_t zlink_router_recv (
   void *router_,
   const zlink_routing_id_t **source_node_rid_out_,
   const zlink_routing_id_t **source_spot_rid_out_,
   uint64_t *request_seq_out_,
   zlink_msg_t **parts_out_,
   size_t *part_count_out_,
-  int flags_);
+  zlink_recv_flags_t flags_);
 ```
 
-Synchronous pull-style receive for spot-routed messages arriving at a
-`ROUTER` handle (recv mode). Returns `EBUSY` if a typed receive callback
-is installed.
+`ROUTER` uses one typed receive surface for all routed traffic. That single
+surface handles both ordinary `ROUTER` messages and SPOT-originated routed
+messages.
 
-| Parameter | Description |
-|-----------|-------------|
-| `router_` | ROUTER handle. |
-| `source_node_rid_out_` | Receives a pointer to the source node routing identity. |
-| `source_spot_rid_out_` | Receives a pointer to the source spot routing identity. |
-| `request_seq_out_` | Receives the request sequence number (0 for fire-and-forget). |
-| `parts_out_` | Receives a pointer to the message parts array. Caller takes ownership. |
-| `part_count_out_` | Receives the number of message parts. |
-| `flags_` | Receive flags (e.g. `ZLINK_DONTWAIT`). |
+- For ordinary `ROUTER` traffic, `source_node_rid_` is the peer routing
+  identity and `source_spot_rid_` is an empty routing identity.
+- For SPOT-originated traffic, `source_node_rid_` and `source_spot_rid_`
+  together identify the reply address.
+- `request_seq_ == 0` means ordinary direct send.
+- `request_seq_ != 0` means request-reply traffic.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**See also:** `zlink_router_spot_handler`
+There is no separate `zlink_router_spot_handler()` or
+`zlink_router_spot_recv()` contract.
 
 ## Spot option
 

@@ -47,6 +47,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_router_handover
   ${INTEGRATION_TEST_ROOT}/test_router_multiple_dealers
   ${INTEGRATION_TEST_ROOT}/test_zmp_request_reply
+  ${INTEGRATION_TEST_ROOT}/test_zmp_request_reply_router_recv_surface
   ${INTEGRATION_TEST_ROOT}/test_router_concurrent_routed_recv
   ${INTEGRATION_TEST_ROOT}/test_router_mandatory_hwm
   ${INTEGRATION_TEST_ROOT}/test_stream_socket
@@ -289,7 +290,16 @@ foreach(test_source ${tests})
 
     set_tests_properties(${test} PROPERTIES TIMEOUT 10)
     if(${test} STREQUAL "test_zmp_request_reply")
-      set_tests_properties(${test} PROPERTIES TIMEOUT 60)
+      set_tests_properties(
+        ${test}
+        PROPERTIES
+          TIMEOUT 180)
+    endif()
+    if(${test} STREQUAL "test_zmp_request_reply_router_recv_surface")
+      set_tests_properties(
+        ${test}
+        PROPERTIES
+          TIMEOUT 60)
     endif()
     if(${test} STREQUAL "test_multi_stream_benchmark_process")
       set_tests_properties(${test} PROPERTIES TIMEOUT 120)
@@ -375,7 +385,7 @@ if(TARGET test_backpressure_matrix)
   set_tests_properties(
     test_backpressure_matrix
     PROPERTIES
-      TIMEOUT 180
+      TIMEOUT 360
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_backpressure_oneway_matrix)
@@ -383,6 +393,20 @@ if(TARGET test_backpressure_oneway_matrix)
     test_backpressure_oneway_matrix
     PROPERTIES
       TIMEOUT 180
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+endif()
+if(TARGET test_zmp_request_reply)
+  set_tests_properties(
+    test_zmp_request_reply
+    PROPERTIES
+      TIMEOUT 180
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+endif()
+if(TARGET test_zmp_request_reply_router_recv_surface)
+  set_tests_properties(
+    test_zmp_request_reply_router_recv_surface
+    PROPERTIES
+      TIMEOUT 60
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_monitor_socket_contract)

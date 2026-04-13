@@ -235,24 +235,18 @@ int capture_stream_route_callback (const zlink_routing_id_t *rid_,
     return 0;
 }
 
-void capture_stream_route_handler (const zlink_routing_id_t *rid_,
-                                   zlink_msg_t *parts_,
-                                   size_t part_count_,
-                                   void *userdata_)
+int capture_stream_route_raw_callback (const zlink_routing_id_t *rid_,
+                                       zlink_msg_t *msg_)
 {
-    if (part_count_ > 0)
-        (void) capture_stream_route_callback (rid_, &parts_[0], userdata_);
-    for (size_t i = 1; i < part_count_; ++i)
-        (void) zlink_msg_close (&parts_[i]);
+    return capture_stream_route_callback (rid_, msg_, NULL);
 }
 
 void establish_stream_route (void *server_, int raw_fd_, zlink_routing_id_t *rid_)
 {
     stream_route_probe_t probe;
     g_stream_route_probe = &probe;
-    errno = 0;
-    const int attach_rc = zlink_recv_handler (server_, &capture_stream_route_handler, NULL);
-    TEST_ASSERT_TRUE (attach_rc == 0 || errno == EBUSY);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_raw (server_, &capture_stream_route_raw_callback));
 
     const unsigned char request = 0xA5;
     TEST_ASSERT_EQUAL_INT (0, send_all (raw_fd_, &request, sizeof (request)));
@@ -260,6 +254,7 @@ void establish_stream_route (void *server_, int raw_fd_, zlink_routing_id_t *rid
 
     *rid_ = probe.rid;
     g_stream_route_probe = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server_));
 }
 
 void fill_stream_send_queue_until_hwm (void *server_, const zlink_routing_id_t *rid_)
@@ -463,8 +458,9 @@ void test_stream_nonblocking_send_preserves_message_for_retry ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&msg, kPayloadSize));
     memset (zlink_msg_data (&msg), 0x6C, kPayloadSize);
 
-    const int send_rc = zlink_send_rid (server, &rid, &msg, 1, ZLINK_DONTWAIT);
-    TEST_ASSERT_EQUAL_INT (-1, send_rc);
+    const zlink_submit_result_t send_rc =
+      zlink_send_rid (server, &rid, &msg, 1, ZLINK_DONTWAIT);
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED, send_rc);
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
     TEST_ASSERT_EQUAL_UINT64 (kPayloadSize, zlink_msg_size (&msg));
 

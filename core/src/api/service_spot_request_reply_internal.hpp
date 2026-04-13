@@ -76,9 +76,6 @@ struct router_spot_request_reply_state_t
     uint64_t next_request_seq;
     std::set<uint64_t> pending_sequences;
     std::map<uint64_t, pending_reply_t> pending_replies;
-    zlink::internal_pair_queue::queue_t recv_queue;
-    zlink_router_spot_handler_fn handler;
-    void *handler_userdata;
 };
 
 typedef std::map<std::string, std::weak_ptr<spot_request_reply_state_t> >

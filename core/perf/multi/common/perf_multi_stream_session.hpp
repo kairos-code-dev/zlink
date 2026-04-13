@@ -356,7 +356,7 @@ inline bool drain_recv_socket_once(session_t *session,
                      &source_rid,
                      &parts,
                      &part_count,
-                     ZLINK_DONTWAIT);
+                     ZLINK_RECV_FLAGS_DONTWAIT);
         if (rc == 0) {
             if (!process_recv_parts(
                   session, &source_rid, parts, part_count, stop_token)) {

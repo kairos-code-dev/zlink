@@ -96,8 +96,9 @@ static bool wait_for_subscription_ready (void *sub_node_,
     void *sub_handle = default_sub_handle (sub_node_);
     if (!resolve_spot_sub_subject_poller_socket (sub_handle))
         return false;
-    return zlink_set_subscription (sub_handle, topic_)
-           && wait_for_spot_node_subject_ready (sub_node_, 3000);
+    if (zlink_set_subscription (sub_handle, topic_) != ZLINK_CONFIG_OK)
+        return false;
+    return wait_for_spot_node_subject_ready (sub_node_, 3000);
 }
 
 static void subscribe_probe_handler (const zlink_routing_id_t *,
@@ -355,10 +356,12 @@ static void test_spot_recv_model_receive_regression ()
     char topic[256];
     memset (topic, 0, sizeof (topic));
     size_t topic_len = sizeof (topic);
-    TEST_ASSERT_FAILURE_ERRNO (
-      EAGAIN,
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_NO_DATA,
       zlink_subscribe (sub, NULL, &parts, &part_count, topic, &topic_len,
                        ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
@@ -466,7 +469,8 @@ static void test_spot_node_snapshot_status_peers_subjects ()
     memset (&filter, 0, sizeof (filter));
     filter.role = ZLINK_SPOT_ROLE_PUB;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_node_subjects_snapshot (sub_node, &filter, NULL, &subject_count));
+      ZLINK_CONFIG_NOT_SUPPORTED,
+      zlink_spot_node_subjects_snapshot (sub_node, &filter, NULL, &subject_count));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
@@ -557,8 +561,9 @@ static void test_discovery_local_value_metadata_contract ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&metadata));
 
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1,
-                           zlink_discovery_set_metadata (discovery, "abcde", 5));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_discovery_set_metadata (discovery, "abcde", 5));
     TEST_ASSERT_EQUAL_INT (EMSGSIZE, errno);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));

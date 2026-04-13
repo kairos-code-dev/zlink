@@ -123,7 +123,7 @@ const bool asio_stream_gather_on =
 // Keep gather enabled for STREAM, but only above a practical payload size.
 // 1KB-ish workloads are faster through the encoder batch path on current stack.
 const size_t asio_stream_gather_threshold = 8192;
-const size_t asio_stream_tiny_gather_threshold = 64;
+const size_t asio_stream_tiny_gather_threshold = 0;
 
 const bool asio_trace_on =
   env_flag_enabled ("ZLINK_ASIO_TRACE");
@@ -858,6 +858,11 @@ void zlink::asio_engine_t::start_async_write ()
             _outpos += bytes;
             _outsize -= bytes;
             if (_outsize == 0) {
+                // Continue pumping queued pipe data after the synchronous tail
+                // write completes. Returning here can strand additional STREAM
+                // messages in the pipe until some unrelated event re-arms
+                // output, which breaks wakeup after peer reads.
+                speculative_write ();
                 return;
             }
         }

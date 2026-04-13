@@ -506,7 +506,8 @@ bool open_perf_like_connect_monitor (void *socket_, connect_monitor_t *out_)
     }
 
     const int zero = 0;
-    if (!zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero))) {
+    if (zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero))
+        != ZLINK_CONFIG_OK) {
         (void) zlink_monitor_close (&monitor);
         delete state;
         return false;
@@ -992,8 +993,9 @@ void test_pubsub_raw_socket_callback_model_is_accepted ()
     char topic[32];
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe (client, NULL, &parts, &part_count, topic, &topic_len,
-                           ZLINK_DONTWAIT));
+      ZLINK_RECV_BUSY,
+      zlink_subscribe (client, NULL, &parts, &part_count, topic, &topic_len,
+                       ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
 
     close_socket_zero_linger (client);
@@ -1021,7 +1023,7 @@ void test_pubsub_raw_socket_rejects_multipart_send_api ()
             perf_multi_metric::header_size ());
 
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_send (pub, parts, 2, 0));
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_NOT_SUPPORTED, zlink_send (pub, parts, 2, 0));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
 
     zlink_msg_close (&parts[0]);

@@ -163,8 +163,8 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_,
     const bool routing_id_ok = identify_peer (pipe_, locally_initiated_);
     if (routing_id_ok) {
         _fq.attach (pipe_);
+        (void) pipe_->check_read ();
         if (socket_msg_dispatch_active ()) {
-            pipe_->check_read ();
             _fq.deactivate (pipe_);
         }
     } else
@@ -258,6 +258,7 @@ void zlink::router_t::xread_activated (pipe_t *pipe_)
         if (routing_id_ok) {
             _anonymous_pipes.erase (it);
             _fq.attach (pipe_);
+            (void) pipe_->check_read ();
         }
     }
 
@@ -399,7 +400,6 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
     out_pipe_t *out_pipe = lookup_out_pipe (
       blob_t (const_cast<unsigned char *> (target_rid_->data),
               target_rid_->size, zlink::reference_tag_t ()));
-
     if (out_pipe) {
         _current_out = out_pipe->pipe;
 
@@ -516,12 +516,8 @@ int zlink::router_t::xrecv_routed (msg_t *msg_,
                                    zlink_routing_id_t *source_rid_out_)
 {
     if (_prefetched) {
-        if (source_rid_out_) {
-            if (_prefetched_id.size () > 0)
-                copy_source_rid_from_msg (_prefetched_id, source_rid_out_);
-            else
-                copy_router_pipe_source_rid (_current_in, source_rid_out_);
-        }
+        if (source_rid_out_)
+            copy_router_pipe_source_rid (_current_in, source_rid_out_);
 
         const int rc = msg_->move (_prefetched_msg);
         errno_assert (rc == 0);
@@ -602,7 +598,7 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
     if (_dispatch_source_rid_valid)
         source_rid = _dispatch_source_rid;
     else
-        resolve_socket_msg_source_rid (pipe_, &source_rid);
+        copy_router_pipe_source_rid (pipe_, &source_rid);
 
     invoke_socket_msg_handler (handler, &source_rid, &_dispatch_parts[0],
                                _dispatch_parts.size ());
@@ -747,7 +743,6 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         const bool ok = pipe_->read (&msg);
         if (!ok)
             return false;
-
         if (msg.size () == 0) {
             //  Fall back on the auto-generation
             unsigned char buf[5];

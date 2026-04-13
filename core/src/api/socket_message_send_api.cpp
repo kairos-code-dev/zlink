@@ -215,8 +215,8 @@ int send_stream_message (socket_handle_t handle_,
             && stream_routing_id_matches_value (rid_, current_routing_id)) {
             const int send_rc =
               handle_.socket->stream_dispatch_send_current_msg_from_io (
-                core_msg,
-                static_cast<zlink_send_flags_t> (flags_ & ZLINK_DONTWAIT));
+                core_msg, static_cast<zlink_send_flags_t> (
+                            (flags_ & ZLINK_DONTWAIT) | ZLINK_DONTWAIT));
             if (send_rc >= 0) {
                 errno = 0;
                 return 0;
@@ -569,7 +569,7 @@ zlink_submit_result_t zlink_send_rid (void *s_,
                           target_rid_, current_routing_id)) {
                         const int send_rc =
                           handle.socket->stream_dispatch_send_current_msg_from_io (
-                            core_msg, flags_);
+                            core_msg, ZLINK_DONTWAIT);
                         if (send_rc >= 0) {
                             errno = 0;
                             return zlink::submit_result_internal::from_rc (0);

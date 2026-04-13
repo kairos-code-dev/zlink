@@ -45,7 +45,7 @@ is defined in `core/include/zlink.h`.
 | [`zlink_socket_msg_handler_fn`](socket/README.md) | socket/ | Socket multipart message dispatch callback |
 | [`zlink_subscribe_handler_fn`](socket/README.md) | socket/ | Topic-based message dispatch callback |
 | [`zlink_reply_handler_fn`](socket/README.md) | socket/ | Asynchronous request-reply completion callback |
-| [`zlink_router_handler_fn`](socket/README.md) | socket/ | ROUTER request dispatch callback |
+| [`zlink_router_handler_fn`](socket/README.md) | socket/ | ROUTER routed message dispatch callback |
 | [`zlink_spot_handler_fn`](spot.md) | spot.md | SPOT routed message dispatch callback |
 | [`zlink_spot_dispatch_event_handler_fn`](spot.md) | spot.md | SPOT dispatch event callback |
 | [`zlink_monitor_handler_fn`](monitoring.md) | monitoring.md | Socket monitor event callback |

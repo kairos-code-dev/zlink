@@ -46,7 +46,7 @@ bool setup_connected_pubsub_pair (void *pub_socket_,
     }
     apply_single_hwm (pub_socket_);
     apply_single_hwm (sub_socket_);
-    if (!zlink_set_subscription (sub_socket_, ""))
+    if (zlink_set_subscription (sub_socket_, "") != ZLINK_CONFIG_OK)
         return false;
     const std::string endpoint =
       bind_and_resolve_endpoint (pub_socket_, transport_, id_);
@@ -170,7 +170,10 @@ bool send_pubsub_samples (void *publisher_,
             std::memcpy (
               zlink_msg_data (&part), payload_->data (), payload_->size ());
 
-        if (zlink_publish (publisher_, k_pubsub_topic, &part, 1, 0) != 0) {
+        if (zlink_publish (
+              publisher_, k_pubsub_topic, &part, 1,
+              static_cast<zlink_send_flags_t> (0))
+            != 0) {
             const int err = zlink_errno ();
             if (bench_debug_enabled ()) {
                 std::cerr << "[perf-pubsub] publish failed err=" << err

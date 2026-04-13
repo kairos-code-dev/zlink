@@ -119,7 +119,8 @@ inline bool set_tls_path_option(void *socket,
                                 const std::string &value,
                                 const char *name)
 {
-    if (zlink_set_option(socket, option, value.c_str(), value.size()))
+    if (zlink_set_option(socket, option, value.c_str(), value.size())
+        == ZLINK_CONFIG_OK)
         return true;
 
     if (bench_debug_enabled()) {
@@ -139,7 +140,8 @@ inline bool setup_tls_server(void *socket, const std::string &transport)
     static std::string key_path =
       write_temp_cert(perf_tls_certs::server_key_pem, "server_key");
 
-    if (zlink_set_tls_server(socket, cert_path.c_str(), key_path.c_str(), 0)) {
+    if (zlink_set_tls_server(socket, cert_path.c_str(), key_path.c_str(), 0)
+        == ZLINK_CONFIG_OK) {
         return true;
     }
 
@@ -166,7 +168,8 @@ inline bool setup_tls_client(void *socket, const std::string &transport)
       write_temp_cert(perf_tls_certs::ca_cert_pem, "ca_cert");
     static const char *hostname = "localhost";
 
-    if (zlink_set_tls_client(socket, ca_path.c_str(), hostname, 0))
+    if (zlink_set_tls_client(socket, ca_path.c_str(), hostname, 0)
+        == ZLINK_CONFIG_OK)
         return true;
 
     if (zlink_errno() != EFAULT) {
@@ -190,7 +193,7 @@ inline bool setup_tls_client(void *socket, const std::string &transport)
                 ZLINK_OPT_TLS_TRUST_SYSTEM,
                 &trust_system,
                 sizeof(trust_system))
-                == 0;
+                == ZLINK_CONFIG_OK;
 }
 
 #endif

@@ -95,10 +95,11 @@ inline send_status_t send_one_message (void *socket,
         return send_status_fatal;
     }
 
-    const int rc = ::zlink_send (socket, &part, 1, ZLINK_DONTWAIT);
-    if (rc < 0)
+    const zlink_submit_result_t rc =
+      ::zlink_send (socket, &part, 1, ZLINK_DONTWAIT);
+    if (rc != ZLINK_SUBMIT_OK)
         zlink_msg_close (&part);
-    if (rc >= 0)
+    if (rc == ZLINK_SUBMIT_OK)
         return send_status_ok;
 
     const int err = zlink_errno ();

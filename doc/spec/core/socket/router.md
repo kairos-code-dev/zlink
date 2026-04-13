@@ -174,63 +174,85 @@ through `zlink_errno()` for diagnostics.
 
 ### zlink_router_handler
 
-Attach a request handler to a ROUTER socket.
+Attach the routed receive handler to a ROUTER socket.
 
 ```c
-bool zlink_router_handler (void *router_,
-                           zlink_router_handler_fn handler_,
-                           void *userdata_);
+zlink_handler_result_t zlink_router_handler (void *router_,
+                                             zlink_router_handler_fn handler_,
+                                             void *userdata_);
 ```
 
-Attaches `handler_` to receive incoming requests on the ROUTER socket.
-When a request arrives, the handler is invoked with the peer's routing id,
-the request sequence number, and the message parts.
+Attaches the single direct receive callback for a ROUTER socket. The
+callback receives both plain ROUTER traffic and spot-originated routed
+traffic. Plain ROUTER traffic sets `source_spot_rid_` to `NULL`.
+Spot-originated traffic sets both `source_node_rid_` and
+`source_spot_rid_`.
 
-**Returns:** `true` on success, `false` on failure (errno is set).
+Only one routed receive callback may be attached to a ROUTER handle.
+While the callback is attached, direct routed recv on the same ROUTER
+handle fails with `ZLINK_RECV_BUSY`.
 
-**See also:** `zlink_router_reply`, `zlink_router_handler_fn`
+**Returns:** `ZLINK_HANDLER_OK` on success. On failure, returns a
+`zlink_handler_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
+
+**See also:** `zlink_router_reply`, `zlink_router_reply_spot`,
+`zlink_router_handler_fn`, `zlink_router_recv`
 
 ---
 
 ### zlink_router_recv
 
-Receive a request in recv mode on a ROUTER socket.
+Receive routed traffic in recv mode on a ROUTER socket.
 
 ```c
-int zlink_router_recv (void *router_,
-                       const zlink_routing_id_t **peer_rid_out_,
-                       uint64_t *request_seq_out_,
-                       zlink_msg_t **parts_out_,
-                       size_t *part_count_out_,
-                       int flags_);
+zlink_recv_result_t zlink_router_recv (
+  void *router_,
+  const zlink_routing_id_t **source_node_rid_out_,
+  const zlink_routing_id_t **source_spot_rid_out_,
+  uint64_t *request_seq_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  zlink_recv_flags_t flags_);
 ```
 
-Receives the next incoming request in recv mode. On success,
-`*peer_rid_out_` points to the requesting peer's routing id,
-`*request_seq_out_` receives the sequence number for use with
-`zlink_router_reply()`, and `*parts_out_` / `*part_count_out_` receive
-the payload frames. The parts array is a thread-local view owned by the
-library; each part must be closed by the caller.
+Receives the next routed delivery for a ROUTER socket. This is the only
+direct recv surface for ROUTER. It covers both plain ROUTER traffic and
+spot-originated routed traffic.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+On success, `*source_node_rid_out_` points to the source node routing id.
+For plain ROUTER traffic, `*source_spot_rid_out_` is `NULL`. For
+spot-originated traffic, `*source_spot_rid_out_` points to the source
+spot routing id.
 
-**Errors:** `EAGAIN` if `ZLINK_DONTWAIT` was set and no request is
-available.
+`*request_seq_out_ == 0` means a fire-and-forget routed message.
+`*request_seq_out_ != 0` means a request. Plain ROUTER requests are
+replied to with `zlink_router_reply()`. Spot-originated requests are
+replied to with `zlink_router_reply_spot()`.
 
-**See also:** `zlink_router_reply`, `zlink_router_handler`
+The returned payload view follows the standard recv ownership rule: the
+library owns the array view, while the caller must close each returned
+part.
+
+**Returns:** `ZLINK_RECV_OK` on success. On failure, returns a
+`zlink_recv_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
+
+**See also:** `zlink_router_reply`, `zlink_router_reply_spot`,
+`zlink_router_handler`
 
 ---
 
 ### zlink_recv
 
-Receive a multipart message from a socket.
+Receive a multipart message from a non-ROUTER socket.
 
 ```c
-bool zlink_recv (void *s_,
-                 zlink_routing_id_t *source_rid_out_,
-                 zlink_msg_t **parts_out_,
-                 size_t *part_count_out_,
-                 zlink_send_flags_t flags_);
+zlink_recv_result_t zlink_recv (void *s_,
+                                zlink_routing_id_t *source_rid_out_,
+                                zlink_msg_t **parts_out_,
+                                size_t *part_count_out_,
+                                zlink_recv_flags_t flags_);
 ```
 
 Receives a complete multipart message from socket `s_`. On success,
@@ -239,15 +261,13 @@ message parts, and `*source_rid_out_` is set to the routing id of the
 sender (where applicable). Ownership of the parts array and each part is
 transferred to the caller, who must close every part (or call
 `zlink_multipart_close()`) and free the array. The socket must be in recv
-mode (no handler attached). If a receive handler has been attached via
-`zlink_recv_handler()`, this call fails with `errno=EBUSY`. Pass
-`ZLINK_DONTWAIT` to return immediately when no message is available.
+mode (no handler attached). ROUTER sockets are excluded from this
+surface. If `s_` is a ROUTER socket, this call fails with
+`ZLINK_RECV_NOT_SUPPORTED`. Use `zlink_router_recv()` instead.
 
-**Returns:** `true` on success, `false` on failure (errno is set).
-
-**Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was
-set, or if `ZLINK_OPT_RCVTIMEO` expired. `EBUSY` if a receive handler is
-attached. `ETERM` if the context was terminated.
+**Returns:** `ZLINK_RECV_OK` on success. On failure, returns a
+`zlink_recv_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_send`, `zlink_recv_handler`, `zlink_multipart_close`
 

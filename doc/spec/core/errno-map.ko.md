@@ -191,7 +191,6 @@ typedef enum zlink_recv_result_t
 |---|---|
 | Router recv | `zlink_router_recv` |
 | SPOT recv | `zlink_spot_recv` |
-| Router-SPOT recv | `zlink_router_spot_recv` |
 | Recv | `zlink_recv` |
 | Subscribe | `zlink_subscribe` |
 | Subscription event | `zlink_subscription_event` |
@@ -204,8 +203,8 @@ typedef enum zlink_recv_result_t
 ## zlink_handler_result_t
 
 모든 핸들러 등록 함수에 적용된다: recv handler, subscribe handler,
-send-ready handler, router handler, spot handler, router-spot handler,
-spot dispatch-event handler, monitor handler, timer handler.
+send-ready handler, router handler, spot handler, spot dispatch-event
+handler, monitor handler, timer handler.
 
 ```c
 typedef enum zlink_handler_result_t
@@ -239,7 +238,6 @@ typedef enum zlink_handler_result_t
 | Send-ready handler | `zlink_send_ready_handler` |
 | Router handler | `zlink_router_handler` |
 | Spot handler | `zlink_spot_handler` |
-| Router-spot handler | `zlink_router_spot_handler` |
 | Spot dispatch-event handler | `zlink_spot_dispatch_event_handler` |
 | Socket monitor handler | `zlink_socket_monitor_handler` |
 | Service monitor handler | `zlink_service_monitor_handler` |
@@ -515,8 +513,8 @@ typedef enum zlink_config_result_t
 |---|---|
 | `zlink_submit_result_t` | `zlink_send`, `zlink_send_rid`, `zlink_publish`, `zlink_dealer_request`, `zlink_router_request`, `zlink_router_reply`, `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_router_request_spot`, `zlink_spot_send_spot`, `zlink_spot_send_router`, `zlink_router_send_spot`, `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
 | `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback) |
-| `zlink_recv_result_t` | `zlink_router_recv`, `zlink_spot_recv`, `zlink_router_spot_recv`, `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_socket_monitor_recv`, `zlink_service_monitor_recv`, `zlink_timer_recv` |
-| `zlink_handler_result_t` | `zlink_recv_handler`, `zlink_subscribe_handler`, `zlink_send_ready_handler`, `zlink_router_handler`, `zlink_spot_handler`, `zlink_router_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_service_monitor_handler`, `zlink_timer_handler` |
+| `zlink_recv_result_t` | `zlink_router_recv`, `zlink_spot_recv`, `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_socket_monitor_recv`, `zlink_service_monitor_recv`, `zlink_timer_recv` |
+| `zlink_handler_result_t` | `zlink_recv_handler`, `zlink_subscribe_handler`, `zlink_send_ready_handler`, `zlink_router_handler`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_service_monitor_handler`, `zlink_timer_handler` |
 | `zlink_close_result_t` | `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_close`, `zlink_monitor_close`, `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_destroy`, `zlink_poller_destroy`, `zlink_timer_destroy` |
 | `zlink_bind_result_t` | `zlink_bind` |
 | `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_unbind` |

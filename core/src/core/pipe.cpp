@@ -251,10 +251,15 @@ bool zlink::pipe_t::check_read ()
     // Hot path: PAIR/DEALER steady-state recv reaches this path for every
     // message. Any extra locking or bookkeeping here shows up directly in
     // small-message throughput.
-    if (unlikely (!_in_active))
-        return false;
     if (unlikely (_state != active && _state != waiting_for_delimiter))
         return false;
+    if (unlikely (!_in_active)) {
+        // Recover from a missed read-activation edge if data is already
+        // visible in the inbound pipe.
+        if (!_in_pipe->check_read ())
+            return false;
+        _in_active = true;
+    }
 
     //  Check if there's an item in the pipe.
     if (!_in_pipe->check_read ()) {
@@ -277,10 +282,13 @@ bool zlink::pipe_t::check_read ()
 
 bool zlink::pipe_t::read (msg_t *msg_)
 {
-    if (unlikely (!_in_active))
-        return false;
     if (unlikely (_state != active && _state != waiting_for_delimiter))
         return false;
+    if (unlikely (!_in_active)) {
+        if (!_in_pipe->check_read ())
+            return false;
+        _in_active = true;
+    }
 
     while (true) {
         if (!_in_pipe->read (msg_)) {
@@ -463,7 +471,6 @@ void zlink::pipe_t::process_activate_read ()
             notify = true;
         }
     }
-
     if (notify)
         _sink->read_activated (this);
 }
@@ -904,6 +911,7 @@ void zlink::pipe_t::flush_unlocked ()
     if (_state == term_ack_sent)
         return;
 
-    if (_out_pipe && !_out_pipe->flush ())
+    const bool sleeping = _out_pipe && !_out_pipe->flush ();
+    if (sleeping)
         send_activate_read (_peer);
 }

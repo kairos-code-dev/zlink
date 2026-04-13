@@ -96,7 +96,8 @@ inline bool wait_for_socket_monitor_event(void *monitor_,
 
         for (;;) {
             zlink_socket_monitor_event_t event;
-            if (zlink_socket_monitor_recv(monitor_, &event, ZLINK_DONTWAIT)
+            if (zlink_socket_monitor_recv(
+                  monitor_, &event, ZLINK_RECV_FLAGS_DONTWAIT)
                 != 0) {
                 if (errno == EAGAIN || errno == EINTR)
                     break;

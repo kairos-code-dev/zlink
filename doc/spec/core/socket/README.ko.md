@@ -105,16 +105,21 @@ NULL입니다. 성공 시 `result_`는 `ZLINK_REQUEST_OK`이고 모든 메시지
 
 ```c
 typedef void (*zlink_router_handler_fn) (
-  const zlink_routing_id_t *peer_rid_,
+  const zlink_routing_id_t *source_node_rid_,
+  const zlink_routing_id_t *source_spot_rid_,
   uint64_t request_seq_,
   zlink_msg_t *parts_,
   size_t part_count_,
   void *userdata_);
 ```
 
-ROUTER 소켓의 수신 요청 콜백. `peer_rid_`는 요청하는 피어를 식별하고,
-`request_seq_`는 `zlink_router_reply()`에 전달할 시퀀스 번호입니다.
-모든 메시지 파트의 소유권이 콜백으로 이전됩니다.
+ROUTER 소켓의 routed 수신 콜백입니다. `source_node_rid_`는 모든 routed
+delivery의 source node를 가리킵니다. 일반 ROUTER peer에서 온 트래픽이면
+`source_spot_rid_`는 `NULL`입니다. spot에서 시작한 routed 트래픽이면
+`source_spot_rid_`가 source spot을 가리킵니다.
+`request_seq_ == 0`이면 fire-and-forget routed message이고,
+`request_seq_ != 0`이면 응답이 필요한 request입니다. 모든 메시지 파트의
+소유권이 콜백으로 이전됩니다.
 
 ## 상수
 

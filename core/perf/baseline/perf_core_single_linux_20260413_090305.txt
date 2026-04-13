@@ -1,0 +1,436 @@
+
+## Effective Options (start)
+- lang: core
+- suite: single
+- runs: 1
+- duration_seconds: 5
+- timeout_seconds: 45
+- io_threads: 1
+- hwm: 1000
+- sndhwm: 1000
+- rcvhwm: 1000
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT
+- transports: inproc,ipc,tcp,tls,ws,wss
+- msg_sizes: 64
+## PATTERN: PAIR (one-way)
+  > Benchmarking current for PAIR...
+    Testing tcp:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   3346.26 Kmsg/s |   214.16 MB/s |     0.037 ms |     0.078 ms |     0.160 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   3290.12 Kmsg/s |   210.57 MB/s |     2.540 ms |     5.258 ms |     6.009 ms |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing ws:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   2601.75 Kmsg/s |   166.51 MB/s |    49.994 ms |    55.205 ms |    56.468 ms |
+    Testing ws: Done
+    [transport cooldown 3000ms]
+    Testing wss:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   2717.68 Kmsg/s |   173.93 MB/s |    69.661 ms |    77.949 ms |    80.513 ms |
+    Testing wss: Done
+    [transport cooldown 30000ms]
+    Testing inproc:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   3098.12 Kmsg/s |   198.28 MB/s |     0.020 ms |     0.084 ms |     0.193 ms |
+    Testing inproc: Done
+    [transport cooldown 3000ms]
+    Testing ipc:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   3263.55 Kmsg/s |   208.87 MB/s |     0.032 ms |     0.078 ms |     0.166 ms |
+    Testing ipc: Done
+
+===============================================================================
+
+## PATTERN: PUBSUB (one-way)
+  > Benchmarking current for PUBSUB...
+    Testing tcp:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   2302.24 Kmsg/s |   147.34 MB/s |     0.074 ms |     0.163 ms |     0.241 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   2405.73 Kmsg/s |   153.97 MB/s |     1.570 ms |     3.042 ms |     3.483 ms |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing ws:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   1787.52 Kmsg/s |   114.40 MB/s |    94.790 ms |   104.409 ms |   106.197 ms |
+    Testing ws: Done
+    [transport cooldown 3000ms]
+    Testing wss:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   1950.53 Kmsg/s |   124.83 MB/s |    57.949 ms |    62.885 ms |    65.016 ms |
+    Testing wss: Done
+    [transport cooldown 30000ms]
+    Testing inproc:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   2275.51 Kmsg/s |   145.63 MB/s |     0.015 ms |     0.071 ms |     0.225 ms |
+    Testing inproc: Done
+    [transport cooldown 3000ms]
+    Testing ipc:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   2360.40 Kmsg/s |   151.07 MB/s |     0.043 ms |     0.116 ms |     0.197 ms |
+    Testing ipc: Done
+
+===============================================================================
+
+## PATTERN: DEALER_DEALER (one-way)
+  > Benchmarking current for DEALER_DEALER...
+    Testing tcp:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   3338.57 Kmsg/s |   213.67 MB/s |     0.034 ms |     0.062 ms |     0.152 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   3280.82 Kmsg/s |   209.97 MB/s |    13.398 ms |    20.593 ms |    21.133 ms |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing ws:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   2621.43 Kmsg/s |   167.77 MB/s |    69.626 ms |    77.739 ms |    79.219 ms |
+    Testing ws: Done
+    [transport cooldown 3000ms]
+    Testing wss:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   2716.36 Kmsg/s |   173.85 MB/s |    94.860 ms |   109.195 ms |   112.762 ms |
+    Testing wss: Done
+    [transport cooldown 30000ms]
+    Testing inproc:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   2922.87 Kmsg/s |   187.06 MB/s |     0.024 ms |     0.112 ms |     0.234 ms |
+    Testing inproc: Done
+    [transport cooldown 3000ms]
+    Testing ipc:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   3025.42 Kmsg/s |   193.63 MB/s |     0.032 ms |     0.079 ms |     0.161 ms |
+    Testing ipc: Done
+
+===============================================================================
+
+## PATTERN: DEALER_ROUTER (one-way)
+  > Benchmarking current for DEALER_ROUTER...
+    Testing tcp:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   1128.57 Kmsg/s |    72.23 MB/s |     1.974 ms |     2.159 ms |     2.223 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   1091.22 Kmsg/s |    69.84 MB/s |     1.315 ms |     1.456 ms |     1.846 ms |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing ws:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   1067.17 Kmsg/s |    68.30 MB/s |    70.121 ms |    77.255 ms |    78.725 ms |
+    Testing ws: Done
+    [transport cooldown 3000ms]
+    Testing wss:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   1247.59 Kmsg/s |    79.85 MB/s |   122.739 ms |   141.601 ms |   143.595 ms |
+    Testing wss: Done
+    [transport cooldown 30000ms]
+    Testing inproc:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   2035.01 Kmsg/s |   130.24 MB/s |     0.485 ms |     0.564 ms |     0.590 ms |
+    Testing inproc: Done
+    [transport cooldown 3000ms]
+    Testing ipc:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   1146.94 Kmsg/s |    73.40 MB/s |     2.036 ms |     2.047 ms |     2.132 ms |
+    Testing ipc: Done
+
+===============================================================================
+
+## PATTERN: ROUTER_ROUTER (one-way)
+  > Benchmarking current for ROUTER_ROUTER...
+    Testing tcp:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |    896.90 Kmsg/s |    57.40 MB/s |     0.847 ms |     1.564 ms |     1.759 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   1148.26 Kmsg/s |    73.49 MB/s |     0.937 ms |     1.579 ms |     1.693 ms |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing ws:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   1174.84 Kmsg/s |    75.19 MB/s |     0.992 ms |     1.570 ms |     1.672 ms |
+    Testing ws: Done
+    [transport cooldown 3000ms]
+    Testing wss:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   1139.90 Kmsg/s |    72.95 MB/s |     0.988 ms |     1.614 ms |     1.780 ms |
+    Testing wss: Done
+    [transport cooldown 30000ms]
+    Testing inproc:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |      0.60 Kmsg/s |     0.04 MB/s |     0.324 ms |     0.493 ms |     0.509 ms |
+    Testing inproc: Done
+    [transport cooldown 3000ms]
+    Testing ipc:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |   1169.64 Kmsg/s |    74.86 MB/s |     0.933 ms |     1.519 ms |     1.614 ms |
+    Testing ipc: Done
+
+===============================================================================
+
+## PATTERN: SPOT (one-way)
+  > Benchmarking current for SPOT...
+    Testing tcp:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |    816.90 Kmsg/s |    52.28 MB/s |     1.594 ms |     1.700 ms |     1.813 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |    848.80 Kmsg/s |    54.32 MB/s |     1.531 ms |     1.643 ms |     1.724 ms |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing ws:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |    824.30 Kmsg/s |    52.76 MB/s |     1.576 ms |     1.697 ms |     1.823 ms |
+    Testing ws: Done
+    [transport cooldown 3000ms]
+    Testing wss:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|------------------|--------------|--------------|--------------|--------------|
+      | 64B      |    823.20 Kmsg/s |    52.68 MB/s |     1.588 ms |     1.731 ms |     1.877 ms |
+    Testing wss: Done
+
+## Effective Options (result)
+- lang: core
+- suite: single
+- runs: 1
+- duration_seconds: 5
+- timeout_seconds: 45
+- io_threads: 1
+- hwm: 1000
+- sndhwm: 1000
+- rcvhwm: 1000
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT
+- transports: inproc,ipc,tcp,tls,ws,wss
+- msg_sizes: 64
+
+## Result Data
+RESULT,current,DEALER_DEALER,inproc,64,throughput,2922868.800
+RESULT,current,DEALER_DEALER,inproc,64,bandwidth,187.060
+RESULT,current,DEALER_DEALER,inproc,64,latency,0.024
+RESULT,current,DEALER_DEALER,inproc,64,latency_p95,0.112
+RESULT,current,DEALER_DEALER,inproc,64,latency_p99,0.234
+RESULT,current,DEALER_DEALER,ipc,64,throughput,3025422.200
+RESULT,current,DEALER_DEALER,ipc,64,bandwidth,193.630
+RESULT,current,DEALER_DEALER,ipc,64,latency,0.032
+RESULT,current,DEALER_DEALER,ipc,64,latency_p95,0.079
+RESULT,current,DEALER_DEALER,ipc,64,latency_p99,0.161
+RESULT,current,DEALER_DEALER,tcp,64,throughput,3338574.400
+RESULT,current,DEALER_DEALER,tcp,64,bandwidth,213.670
+RESULT,current,DEALER_DEALER,tcp,64,latency,0.034
+RESULT,current,DEALER_DEALER,tcp,64,latency_p95,0.062
+RESULT,current,DEALER_DEALER,tcp,64,latency_p99,0.152
+RESULT,current,DEALER_DEALER,tls,64,throughput,3280823.000
+RESULT,current,DEALER_DEALER,tls,64,bandwidth,209.970
+RESULT,current,DEALER_DEALER,tls,64,latency,13.398
+RESULT,current,DEALER_DEALER,tls,64,latency_p95,20.593
+RESULT,current,DEALER_DEALER,tls,64,latency_p99,21.133
+RESULT,current,DEALER_DEALER,ws,64,throughput,2621428.800
+RESULT,current,DEALER_DEALER,ws,64,bandwidth,167.770
+RESULT,current,DEALER_DEALER,ws,64,latency,69.626
+RESULT,current,DEALER_DEALER,ws,64,latency_p95,77.739
+RESULT,current,DEALER_DEALER,ws,64,latency_p99,79.219
+RESULT,current,DEALER_DEALER,wss,64,throughput,2716360.200
+RESULT,current,DEALER_DEALER,wss,64,bandwidth,173.850
+RESULT,current,DEALER_DEALER,wss,64,latency,94.860
+RESULT,current,DEALER_DEALER,wss,64,latency_p95,109.195
+RESULT,current,DEALER_DEALER,wss,64,latency_p99,112.762
+RESULT,current,DEALER_ROUTER,inproc,64,throughput,2035014.800
+RESULT,current,DEALER_ROUTER,inproc,64,bandwidth,130.240
+RESULT,current,DEALER_ROUTER,inproc,64,latency,0.485
+RESULT,current,DEALER_ROUTER,inproc,64,latency_p95,0.564
+RESULT,current,DEALER_ROUTER,inproc,64,latency_p99,0.590
+RESULT,current,DEALER_ROUTER,ipc,64,throughput,1146941.800
+RESULT,current,DEALER_ROUTER,ipc,64,bandwidth,73.400
+RESULT,current,DEALER_ROUTER,ipc,64,latency,2.036
+RESULT,current,DEALER_ROUTER,ipc,64,latency_p95,2.047
+RESULT,current,DEALER_ROUTER,ipc,64,latency_p99,2.132
+RESULT,current,DEALER_ROUTER,tcp,64,throughput,1128568.200
+RESULT,current,DEALER_ROUTER,tcp,64,bandwidth,72.230
+RESULT,current,DEALER_ROUTER,tcp,64,latency,1.974
+RESULT,current,DEALER_ROUTER,tcp,64,latency_p95,2.159
+RESULT,current,DEALER_ROUTER,tcp,64,latency_p99,2.223
+RESULT,current,DEALER_ROUTER,tls,64,throughput,1091219.000
+RESULT,current,DEALER_ROUTER,tls,64,bandwidth,69.840
+RESULT,current,DEALER_ROUTER,tls,64,latency,1.315
+RESULT,current,DEALER_ROUTER,tls,64,latency_p95,1.456
+RESULT,current,DEALER_ROUTER,tls,64,latency_p99,1.846
+RESULT,current,DEALER_ROUTER,ws,64,throughput,1067170.000
+RESULT,current,DEALER_ROUTER,ws,64,bandwidth,68.300
+RESULT,current,DEALER_ROUTER,ws,64,latency,70.121
+RESULT,current,DEALER_ROUTER,ws,64,latency_p95,77.255
+RESULT,current,DEALER_ROUTER,ws,64,latency_p99,78.725
+RESULT,current,DEALER_ROUTER,wss,64,throughput,1247587.400
+RESULT,current,DEALER_ROUTER,wss,64,bandwidth,79.850
+RESULT,current,DEALER_ROUTER,wss,64,latency,122.739
+RESULT,current,DEALER_ROUTER,wss,64,latency_p95,141.601
+RESULT,current,DEALER_ROUTER,wss,64,latency_p99,143.595
+RESULT,current,PAIR,inproc,64,throughput,3098119.200
+RESULT,current,PAIR,inproc,64,bandwidth,198.280
+RESULT,current,PAIR,inproc,64,latency,0.020
+RESULT,current,PAIR,inproc,64,latency_p95,0.084
+RESULT,current,PAIR,inproc,64,latency_p99,0.193
+RESULT,current,PAIR,ipc,64,throughput,3263550.000
+RESULT,current,PAIR,ipc,64,bandwidth,208.870
+RESULT,current,PAIR,ipc,64,latency,0.032
+RESULT,current,PAIR,ipc,64,latency_p95,0.078
+RESULT,current,PAIR,ipc,64,latency_p99,0.166
+RESULT,current,PAIR,tcp,64,throughput,3346256.200
+RESULT,current,PAIR,tcp,64,bandwidth,214.160
+RESULT,current,PAIR,tcp,64,latency,0.037
+RESULT,current,PAIR,tcp,64,latency_p95,0.078
+RESULT,current,PAIR,tcp,64,latency_p99,0.160
+RESULT,current,PAIR,tls,64,throughput,3290117.400
+RESULT,current,PAIR,tls,64,bandwidth,210.570
+RESULT,current,PAIR,tls,64,latency,2.540
+RESULT,current,PAIR,tls,64,latency_p95,5.258
+RESULT,current,PAIR,tls,64,latency_p99,6.009
+RESULT,current,PAIR,ws,64,throughput,2601750.600
+RESULT,current,PAIR,ws,64,bandwidth,166.510
+RESULT,current,PAIR,ws,64,latency,49.994
+RESULT,current,PAIR,ws,64,latency_p95,55.205
+RESULT,current,PAIR,ws,64,latency_p99,56.468
+RESULT,current,PAIR,wss,64,throughput,2717684.200
+RESULT,current,PAIR,wss,64,bandwidth,173.930
+RESULT,current,PAIR,wss,64,latency,69.661
+RESULT,current,PAIR,wss,64,latency_p95,77.949
+RESULT,current,PAIR,wss,64,latency_p99,80.513
+RESULT,current,PUBSUB,inproc,64,throughput,2275510.800
+RESULT,current,PUBSUB,inproc,64,bandwidth,145.630
+RESULT,current,PUBSUB,inproc,64,latency,0.015
+RESULT,current,PUBSUB,inproc,64,latency_p95,0.071
+RESULT,current,PUBSUB,inproc,64,latency_p99,0.225
+RESULT,current,PUBSUB,ipc,64,throughput,2360400.000
+RESULT,current,PUBSUB,ipc,64,bandwidth,151.070
+RESULT,current,PUBSUB,ipc,64,latency,0.043
+RESULT,current,PUBSUB,ipc,64,latency_p95,0.116
+RESULT,current,PUBSUB,ipc,64,latency_p99,0.197
+RESULT,current,PUBSUB,tcp,64,throughput,2302236.000
+RESULT,current,PUBSUB,tcp,64,bandwidth,147.340
+RESULT,current,PUBSUB,tcp,64,latency,0.074
+RESULT,current,PUBSUB,tcp,64,latency_p95,0.163
+RESULT,current,PUBSUB,tcp,64,latency_p99,0.241
+RESULT,current,PUBSUB,tls,64,throughput,2405734.600
+RESULT,current,PUBSUB,tls,64,bandwidth,153.970
+RESULT,current,PUBSUB,tls,64,latency,1.570
+RESULT,current,PUBSUB,tls,64,latency_p95,3.042
+RESULT,current,PUBSUB,tls,64,latency_p99,3.483
+RESULT,current,PUBSUB,ws,64,throughput,1787520.800
+RESULT,current,PUBSUB,ws,64,bandwidth,114.400
+RESULT,current,PUBSUB,ws,64,latency,94.790
+RESULT,current,PUBSUB,ws,64,latency_p95,104.409
+RESULT,current,PUBSUB,ws,64,latency_p99,106.197
+RESULT,current,PUBSUB,wss,64,throughput,1950530.200
+RESULT,current,PUBSUB,wss,64,bandwidth,124.830
+RESULT,current,PUBSUB,wss,64,latency,57.949
+RESULT,current,PUBSUB,wss,64,latency_p95,62.885
+RESULT,current,PUBSUB,wss,64,latency_p99,65.016
+RESULT,current,ROUTER_ROUTER,inproc,64,throughput,600.200
+RESULT,current,ROUTER_ROUTER,inproc,64,bandwidth,0.040
+RESULT,current,ROUTER_ROUTER,inproc,64,latency,0.324
+RESULT,current,ROUTER_ROUTER,inproc,64,latency_p95,0.493
+RESULT,current,ROUTER_ROUTER,inproc,64,latency_p99,0.509
+RESULT,current,ROUTER_ROUTER,ipc,64,throughput,1169639.200
+RESULT,current,ROUTER_ROUTER,ipc,64,bandwidth,74.860
+RESULT,current,ROUTER_ROUTER,ipc,64,latency,0.933
+RESULT,current,ROUTER_ROUTER,ipc,64,latency_p95,1.519
+RESULT,current,ROUTER_ROUTER,ipc,64,latency_p99,1.614
+RESULT,current,ROUTER_ROUTER,tcp,64,throughput,896900.600
+RESULT,current,ROUTER_ROUTER,tcp,64,bandwidth,57.400
+RESULT,current,ROUTER_ROUTER,tcp,64,latency,0.847
+RESULT,current,ROUTER_ROUTER,tcp,64,latency_p95,1.564
+RESULT,current,ROUTER_ROUTER,tcp,64,latency_p99,1.759
+RESULT,current,ROUTER_ROUTER,tls,64,throughput,1148258.800
+RESULT,current,ROUTER_ROUTER,tls,64,bandwidth,73.490
+RESULT,current,ROUTER_ROUTER,tls,64,latency,0.937
+RESULT,current,ROUTER_ROUTER,tls,64,latency_p95,1.579
+RESULT,current,ROUTER_ROUTER,tls,64,latency_p99,1.693
+RESULT,current,ROUTER_ROUTER,ws,64,throughput,1174836.200
+RESULT,current,ROUTER_ROUTER,ws,64,bandwidth,75.190
+RESULT,current,ROUTER_ROUTER,ws,64,latency,0.992
+RESULT,current,ROUTER_ROUTER,ws,64,latency_p95,1.570
+RESULT,current,ROUTER_ROUTER,ws,64,latency_p99,1.672
+RESULT,current,ROUTER_ROUTER,wss,64,throughput,1139898.400
+RESULT,current,ROUTER_ROUTER,wss,64,bandwidth,72.950
+RESULT,current,ROUTER_ROUTER,wss,64,latency,0.988
+RESULT,current,ROUTER_ROUTER,wss,64,latency_p95,1.614
+RESULT,current,ROUTER_ROUTER,wss,64,latency_p99,1.780
+RESULT,current,SPOT,tcp,64,throughput,816899.800
+RESULT,current,SPOT,tcp,64,bandwidth,52.280
+RESULT,current,SPOT,tcp,64,latency,1.594
+RESULT,current,SPOT,tcp,64,latency_p95,1.700
+RESULT,current,SPOT,tcp,64,latency_p99,1.813
+RESULT,current,SPOT,tls,64,throughput,848799.800
+RESULT,current,SPOT,tls,64,bandwidth,54.320
+RESULT,current,SPOT,tls,64,latency,1.531
+RESULT,current,SPOT,tls,64,latency_p95,1.643
+RESULT,current,SPOT,tls,64,latency_p99,1.724
+RESULT,current,SPOT,ws,64,throughput,824301.000
+RESULT,current,SPOT,ws,64,bandwidth,52.760
+RESULT,current,SPOT,ws,64,latency,1.576
+RESULT,current,SPOT,ws,64,latency_p95,1.697
+RESULT,current,SPOT,ws,64,latency_p99,1.823
+RESULT,current,SPOT,wss,64,throughput,823199.800
+RESULT,current,SPOT,wss,64,bandwidth,52.680
+RESULT,current,SPOT,wss,64,latency,1.588
+RESULT,current,SPOT,wss,64,latency_p95,1.731
+RESULT,current,SPOT,wss,64,latency_p99,1.877
+
+## Completion
+- status: complete
+- expected_result_lines: 170
+- actual_result_lines: 170
+
+Saved result file: /home/hep7/project/kairos/zlink/core/perf/results/single/report/perf_core_single_linux_20260413_090305.txt (status=complete)

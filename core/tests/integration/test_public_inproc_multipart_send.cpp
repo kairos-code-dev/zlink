@@ -75,13 +75,15 @@ void wait_and_send_messages (sender_probe_t *probe_)
 void prime_router_recv_plane (void *router_)
 {
     const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = zlink_router_recv (
-      router_, &source_rid, &request_seq, &parts, &part_count, ZLINK_DONTWAIT);
-    TEST_ASSERT_EQUAL_INT (-1, rc);
-    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+    const zlink_recv_result_t rc = zlink_router_recv (
+      router_, &source_rid, &source_spot_rid, &request_seq, &parts,
+      &part_count, ZLINK_DONTWAIT);
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA, rc);
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 }
 
 void recv_router_until_message (void *router_,
@@ -92,14 +94,19 @@ void recv_router_until_message (void *router_,
 {
     const auto deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (5);
+    const zlink_routing_id_t *source_spot_rid = NULL;
 
     while (std::chrono::steady_clock::now () < deadline) {
-        const int rc = zlink_router_recv (
-          router_, source_rid_out_, request_seq_out_, parts_out_,
-          part_count_out_, ZLINK_DONTWAIT);
-        if (rc == 0)
+        const zlink_recv_result_t rc = zlink_router_recv (
+          router_, source_rid_out_, &source_spot_rid, request_seq_out_,
+          parts_out_, part_count_out_, ZLINK_DONTWAIT);
+        if (rc == ZLINK_RECV_OK) {
+            TEST_ASSERT_NOT_NULL (source_spot_rid);
+            TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
             return;
-        TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+        }
+        TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA, rc);
+        TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
         msleep (10);
     }
 
@@ -690,8 +697,10 @@ void test_public_inproc_pair_send_failure_consumes_all_parts ()
     memcpy (zlink_msg_data (&parts[0]), header, sizeof (header) - 1);
     memcpy (zlink_msg_data (&parts[1]), body, sizeof (body) - 1);
 
-    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_send (right, parts, 2,
-                                                   ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_BACKPRESSURED,
+      zlink_send (right, parts, 2, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
     TEST_ASSERT_EQUAL_UINT64 (0, zlink_msg_size (&parts[0]));
     TEST_ASSERT_EQUAL_UINT64 (0, zlink_msg_size (&parts[1]));
 }

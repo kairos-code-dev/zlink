@@ -138,7 +138,7 @@ inline bool publish_once (void *server,
 
     if (::zlink_publish (
           server, k_pubsub_topic, &payload_part, 1, ZLINK_DONTWAIT)
-        >= 0) {
+        == ZLINK_SUBMIT_OK) {
         if (bench_debug_enabled ()
             && g_debug_pub_logs.fetch_add (1, std::memory_order_acq_rel) < 8) {
             std::cerr << "[multi-pubsub-server] publish ok phase="

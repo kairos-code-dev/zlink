@@ -67,28 +67,28 @@ void test_zlink_socket_monitor_open_null_socket ()
 void test_zlink_bind_null_socket ()
 {
     zlink_bind_result_t rc = zlink_bind (NULL, "inproc://socket");
-    TEST_ASSERT_EQUAL_INT (ZLINK_BIND_INVALID_ARGUMENT, rc);
+    TEST_ASSERT_EQUAL_INT (ZLINK_BIND_INVALID_HANDLE, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_connect_null_socket ()
 {
     zlink_connect_result_t rc = zlink_connect (NULL, "inproc://socket");
-    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_INVALID_ARGUMENT, rc);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_INVALID_HANDLE, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_unbind_null_socket ()
 {
     zlink_connect_result_t rc = zlink_unbind (NULL, "inproc://socket");
-    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_INVALID_ARGUMENT, rc);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_INVALID_HANDLE, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_disconnect_null_socket ()
 {
     zlink_connect_result_t rc = zlink_disconnect (NULL, "inproc://socket");
-    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_INVALID_ARGUMENT, rc);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_INVALID_HANDLE, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 

@@ -54,18 +54,28 @@ struct socket_request_reply_state_t
 };
 
 extern thread_local zlink_routing_id_t g_router_recv_source_rid;
+extern thread_local zlink_routing_id_t g_router_recv_source_spot_rid;
 
 bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_);
 std::string routing_id_key (const zlink_routing_id_t *peer_rid_);
 int validate_request_parts (zlink_msg_t *parts_, size_t part_count_);
+int dispatch_router_message (socket_request_reply_state_t *state_,
+                             const zlink_routing_id_t *source_node_rid_,
+                             const zlink_routing_id_t *source_spot_rid_,
+                             uint64_t request_seq_,
+                             zlink_msg_t *parts_,
+                             size_t part_count_);
 int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
-                                const zlink_routing_id_t **peer_rid_out_,
+                                const zlink_routing_id_t **source_node_rid_out_,
+                                const zlink_routing_id_t **source_spot_rid_out_,
                                 uint64_t *request_seq_out_,
                                 zlink_msg_t **parts_out_,
                                 size_t *part_count_out_,
-                                int flags_);
+                                int flags_,
+                                int timeout_ms_);
 int recv_router_message_direct (socket_handle_t handle_,
-                                const zlink_routing_id_t **peer_rid_out_,
+                                const zlink_routing_id_t **source_node_rid_out_,
+                                const zlink_routing_id_t **source_spot_rid_out_,
                                 uint64_t *request_seq_out_,
                                 zlink_msg_t **parts_out_,
                                 size_t *part_count_out_,
@@ -81,6 +91,8 @@ std::shared_ptr<socket_request_reply_state_t>
 find_or_create_request_reply_state (socket_handle_t handle_);
 std::shared_ptr<socket_request_reply_state_t>
 find_request_reply_state (socket_handle_t handle_);
+int ensure_recv_queue_ready (
+  const std::shared_ptr<socket_request_reply_state_t> &state_);
 int ensure_internal_dispatch_installed (
   const std::shared_ptr<socket_request_reply_state_t> &state_);
 int start_request (socket_handle_t handle_,

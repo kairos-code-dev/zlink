@@ -185,7 +185,10 @@ inline int zlink_stream_send_msg(void *socket_,
                                  int flags_)
 {
     const size_t size = zlink_msg_size(msg_);
-    return ::zlink_send_rid(socket_, rid_, msg_, 1, flags_) == 0
+    return ::zlink_send_rid(
+             socket_, rid_, msg_, 1,
+             static_cast<zlink_send_flags_t>(flags_))
+             == 0
              ? static_cast<int>(size)
              : -1;
 }
@@ -197,8 +200,14 @@ inline int zlink_subscribe(void *sub_,
                            char *topic_id_out_,
                            size_t *topic_id_len_)
 {
-    return ::zlink_subscribe(sub_, NULL, parts_, part_count_, topic_id_out_,
-                             topic_id_len_, flags_);
+    return ::zlink_subscribe(
+      sub_,
+      NULL,
+      parts_,
+      part_count_,
+      topic_id_out_,
+      topic_id_len_,
+      static_cast<zlink_recv_flags_t>(flags_));
 }
 
 inline bool bench_transition_debug_enabled()
@@ -391,8 +400,9 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
     if (transport != "inproc") {
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof(last_endpoint);
-        if (!zlink_get_option(socket_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
-                              &size)) {
+        if (zlink_get_option(socket_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
+                             &size)
+            != ZLINK_CONFIG_OK) {
             std::cerr << "getsockopt(ZLINK_LAST_ENDPOINT) failed: "
                       << zlink_strerror(zlink_errno()) << std::endl;
             return std::string();

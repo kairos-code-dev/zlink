@@ -192,23 +192,11 @@ typedef void (*zlink_spot_handler_fn) (
   zlink_msg_t *parts_,
   size_t part_count_,
   void *userdata_);
-
-typedef void (*zlink_router_spot_handler_fn) (
-  const zlink_routing_id_t *source_node_rid_,
-  const zlink_routing_id_t *source_spot_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  void *userdata_);
 ```
 
 `zlink_spot_handler_fn` 은 ordinary routed message 와 request-reply message 를
 같이 받습니다. `request_seq = 0` 이면 ordinary message 이고,
 `request_seq != 0` 이면 request-reply message 입니다.
-
-`zlink_router_spot_handler_fn` 은 `spot -> router` ordinary direct message 와
-request-reply message 를 같이 받습니다. 이때 `source_node_rid_` 와
-`source_spot_rid_` 를 reply 주소로 사용합니다.
 
 ### Spot 에서 시작하는 request
 
@@ -293,15 +281,36 @@ zlink_submit_result_t zlink_router_reply_spot (void *router_,
                              zlink_msg_t *parts_,
                              size_t part_count_);
 
-int zlink_router_spot_handler (
+zlink_handler_result_t zlink_router_handler (
   void *router_,
-  zlink_router_spot_handler_fn handler_,
+  zlink_router_handler_fn handler_,
   void *userdata_);
+
+zlink_recv_result_t zlink_router_recv (
+  void *router_,
+  const zlink_routing_id_t **source_node_rid_out_,
+  const zlink_routing_id_t **source_spot_rid_out_,
+  uint64_t *request_seq_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  zlink_recv_flags_t flags_);
 ```
 
 이 표면으로 `router -> spot`, `spot -> router` 조합을 같은 계약으로 맞춥니다.
 `ROUTER` 쪽 reply 주소는 transport `peer_rid` 가 아니라
 `dest_node_rid + dest_spot_rid + request_seq` 조합입니다.
+
+`ROUTER` 수신 표면은 하나만 둡니다.
+
+- ordinary `ROUTER` 메시지는 `source_node_rid_` 에 peer routing id 를 담고,
+  `source_spot_rid_` 는 빈 routing id 로 돌려줍니다.
+- SPOT에서 온 메시지는 `source_node_rid_` 와 `source_spot_rid_` 를 함께
+  reply 주소로 사용합니다.
+- `request_seq_ == 0` 이면 ordinary direct send 입니다.
+- `request_seq_ != 0` 이면 request-reply 트래픽입니다.
+
+별도의 `zlink_router_spot_handler()` / `zlink_router_spot_recv()` 계약은 두지
+않습니다.
 
 `zlink_router_request_spot()`은 request submit이 수락되면
 `ZLINK_SUBMIT_OK`를 반환합니다. 실패 시에는 `zlink_submit_result_t` 값을

@@ -122,6 +122,12 @@ typedef struct zlink_routing_id_t
 #define zlink_errno zmq_errno
 #define zlink_strerror zmq_strerror
 #define zlink_has zmq_has
+#ifndef ZLINK_BIND_OK
+#define ZLINK_BIND_OK 0
+#endif
+#ifndef ZLINK_CONNECT_OK
+#define ZLINK_CONNECT_OK 0
+#endif
 
 struct zlink_peer_info_t {
     uint64_t connected_time;

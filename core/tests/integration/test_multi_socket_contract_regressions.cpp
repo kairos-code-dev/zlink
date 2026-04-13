@@ -112,23 +112,21 @@ void recv_parts_expect_payload (void *socket_,
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     const zlink_routing_id_t *peer_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     memset (&source_rid, 0, sizeof (source_rid));
-    if (zlink_router_recv (socket_, &peer_rid, &request_seq, &parts, &part_count, 0)
-        == 0) {
+    if (expected_source_rid_) {
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_router_recv (socket_, &peer_rid, &source_spot_rid,
+                             &request_seq, &parts, &part_count, 0));
         TEST_ASSERT_EQUAL_UINT64 (0, request_seq);
+        TEST_ASSERT_NOT_NULL (source_spot_rid);
+        TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
         if (peer_rid)
             source_rid = *peer_rid;
-    }
-    else {
-        if (expected_source_rid_) {
-            TEST_ASSERT_SUCCESS_ERRNO (
-              zlink_recv (socket_, &source_rid, &parts, &part_count, 0));
-        }
-        else {
-            TEST_ASSERT_SUCCESS_ERRNO (
-              zlink_recv (socket_, NULL, &parts, &part_count, 0));
-        }
+    } else {
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_recv (socket_, NULL, &parts, &part_count, 0));
     }
     TEST_ASSERT_EQUAL_UINT64 (1, part_count);
 
@@ -238,7 +236,8 @@ bool open_delivery_ready_monitor (void *socket_,
     }
 
     const int zero = 0;
-    if (!zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero))) {
+    if (zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero))
+        != ZLINK_CONFIG_OK) {
         (void) zlink_monitor_close (&monitor);
         delete state;
         return false;
@@ -593,19 +592,29 @@ void test_router_recv_with_source_rid_strips_routing_envelope_from_dealer ()
 {
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    delivery_ready_monitor_t router_monitor;
+    delivery_ready_monitor_t dealer_monitor;
 
     set_timeout_opts (router);
     set_timeout_opts (dealer);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "D1", 2));
+    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
+      router, ZLINK_EVENT_CONNECTION_READY, &router_monitor));
+    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
+      dealer, ZLINK_EVENT_CONNECTION_READY, &dealer_monitor));
 
     char endpoint[MAX_SOCKET_STRING];
     test_bind (router, "tcp://127.0.0.1:*", endpoint, sizeof (endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
+    TEST_ASSERT_TRUE (wait_delivery_ready (&router_monitor, 5000));
+    TEST_ASSERT_TRUE (wait_delivery_ready (&dealer_monitor, 5000));
 
     send_single_payload (dealer, "hello");
     recv_parts_expect_payload (router, "D1", "hello");
 
+    close_delivery_ready_monitor (&dealer_monitor);
+    close_delivery_ready_monitor (&router_monitor);
     test_context_socket_close_zero_linger (dealer);
     test_context_socket_close_zero_linger (router);
 }
@@ -614,15 +623,23 @@ void test_dealer_recv_with_source_rid_hides_peer_routing_id ()
 {
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    delivery_ready_monitor_t router_monitor;
+    delivery_ready_monitor_t dealer_monitor;
 
     set_timeout_opts (router);
     set_timeout_opts (dealer);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "D1", 2));
+    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
+      router, ZLINK_EVENT_CONNECTION_READY, &router_monitor));
+    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
+      dealer, ZLINK_EVENT_CONNECTION_READY, &dealer_monitor));
 
     char endpoint[MAX_SOCKET_STRING];
     test_bind (router, "tcp://127.0.0.1:*", endpoint, sizeof (endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
+    TEST_ASSERT_TRUE (wait_delivery_ready (&router_monitor, 5000));
+    TEST_ASSERT_TRUE (wait_delivery_ready (&dealer_monitor, 5000));
 
     send_single_payload (dealer, "ping");
     recv_parts_expect_payload (router, "D1", "ping");
@@ -630,6 +647,8 @@ void test_dealer_recv_with_source_rid_hides_peer_routing_id ()
     send_router_envelope_payload (router, "D1", "pong");
     recv_parts_expect_payload (dealer, NULL, "pong");
 
+    close_delivery_ready_monitor (&dealer_monitor);
+    close_delivery_ready_monitor (&router_monitor);
     test_context_socket_close_zero_linger (dealer);
     test_context_socket_close_zero_linger (router);
 }
@@ -857,9 +876,9 @@ void test_pubsub_repeated_topic_stops_delivery_after_unsubscribe ()
         size_t topic_len = sizeof (topic);
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
-        const int rc = zlink_subscribe (
+        const zlink_recv_result_t rc = zlink_subscribe (
           sub_b, NULL, &parts, &part_count, topic, &topic_len, ZLINK_DONTWAIT);
-        TEST_ASSERT_EQUAL_INT (-1, rc);
+        TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA, rc);
         TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
     }
 
@@ -1105,10 +1124,11 @@ void test_pubsub_publish_rollback_preserves_next_topic_boundary ()
     size_t topic_len = sizeof (topic);
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    TEST_ASSERT_FAILURE_ERRNO (
-      EAGAIN,
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_NO_DATA,
       zlink_subscribe (sub, NULL, &parts, &part_count, topic, &topic_len,
                        ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 
     const std::string recovered_payload = make_fixed_size_payload ('W', 1, 64);
     publish_payload (pub, recovered_payload);

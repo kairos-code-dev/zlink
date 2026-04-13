@@ -148,7 +148,8 @@ void test_typed_raw_socket_options ()
       stream, ZLINK_STREAM_OPT_NOTIFY, &value, &size));
     TEST_ASSERT_EQUAL_INT (1, value);
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_set_routing_id (stream, "s1", 2));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_set_routing_id (stream, "s1", 2));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     value = 1;
@@ -267,7 +268,8 @@ void test_typed_service_handle_dispatch_domains ()
       zlink_set_tls_client (registry, "ca.pem", "registry-host", 0));
 
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_set_routing_id (registry, "rid", 3));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_set_routing_id (registry, "rid", 3));
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 
     zlink_service_monitor_open_options_t opts;
@@ -328,7 +330,8 @@ void test_discovery_routing_id_locks_after_registry_connect ()
       zlink_discovery_connect_registry (discovery, ENDPOINT_1));
 
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_set_routing_id (discovery, "next", 4));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_set_routing_id (discovery, "next", 4));
     TEST_ASSERT_EQUAL_INT (EFSM, errno);
 
     zlink_routing_id_t rid;

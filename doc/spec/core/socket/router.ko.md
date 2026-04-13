@@ -175,61 +175,84 @@ zlink_submit_result_t zlink_router_reply (void *router_,
 
 ### zlink_router_handler
 
-ROUTER 소켓에 요청 핸들러를 부착합니다.
+ROUTER 소켓의 routed 수신 핸들러를 부착합니다.
 
 ```c
-bool zlink_router_handler (void *router_,
-                           zlink_router_handler_fn handler_,
-                           void *userdata_);
+zlink_handler_result_t zlink_router_handler (void *router_,
+                                             zlink_router_handler_fn handler_,
+                                             void *userdata_);
 ```
 
-ROUTER 소켓에서 수신 요청을 받을 `handler_`를 부착합니다. 요청이 도착하면
-피어의 routing id, 요청 시퀀스 번호, 메시지 파트와 함께 핸들러가
-호출됩니다.
+ROUTER 소켓의 단일 direct 수신 콜백을 부착합니다. 이 콜백은 일반
+ROUTER 트래픽과 spot에서 시작한 routed 트래픽을 함께 받습니다. 일반
+ROUTER 트래픽이면 `source_spot_rid_`는 `NULL`입니다. spot에서 온
+routed 트래픽이면 `source_node_rid_`와 `source_spot_rid_`가 모두
+채워집니다.
 
-**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
+ROUTER 핸들 하나에는 routed 수신 콜백을 하나만 붙일 수 있습니다.
+콜백이 붙어 있는 동안 같은 ROUTER 핸들의 direct routed recv는
+`ZLINK_RECV_BUSY`로 실패합니다.
 
-**참고:** `zlink_router_reply`, `zlink_router_handler_fn`
+**반환값:** 성공 시 `ZLINK_HANDLER_OK`. 실패 시에는
+`zlink_handler_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
+
+**참고:** `zlink_router_reply`, `zlink_router_reply_spot`,
+`zlink_router_handler_fn`, `zlink_router_recv`
 
 ---
 
 ### zlink_router_recv
 
-ROUTER 소켓에서 recv 모드로 요청을 수신합니다.
+ROUTER 소켓에서 routed 트래픽을 recv 모드로 수신합니다.
 
 ```c
-int zlink_router_recv (void *router_,
-                       const zlink_routing_id_t **peer_rid_out_,
-                       uint64_t *request_seq_out_,
-                       zlink_msg_t **parts_out_,
-                       size_t *part_count_out_,
-                       int flags_);
+zlink_recv_result_t zlink_router_recv (
+  void *router_,
+  const zlink_routing_id_t **source_node_rid_out_,
+  const zlink_routing_id_t **source_spot_rid_out_,
+  uint64_t *request_seq_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  zlink_recv_flags_t flags_);
 ```
 
-recv 모드에서 다음 수신 요청을 받습니다. 성공 시 `*peer_rid_out_`는
-요청하는 피어의 routing id를 가리키고, `*request_seq_out_`는
-`zlink_router_reply()`에 사용할 시퀀스 번호를 받으며, `*parts_out_` /
-`*part_count_out_`는 페이로드 프레임을 받습니다. 파트 배열은 라이브러리가
-소유하는 thread-local 뷰이며, 각 파트는 호출자가 close해야 합니다.
+ROUTER 소켓의 다음 routed delivery를 받습니다. 이 함수가 ROUTER의 유일한
+direct recv 표면입니다. 일반 ROUTER 트래픽과 spot에서 시작한 routed
+트래픽을 모두 이 함수 하나로 받습니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+성공 시 `*source_node_rid_out_`는 source node routing id를 가리킵니다.
+일반 ROUTER 트래픽이면 `*source_spot_rid_out_`는 `NULL`입니다.
+spot에서 온 routed 트래픽이면 `*source_spot_rid_out_`가 source spot
+routing id를 가리킵니다.
 
-**에러:** `ZLINK_DONTWAIT`가 설정되고 요청이 없으면 `EAGAIN`.
+`*request_seq_out_ == 0`이면 fire-and-forget routed message입니다.
+`*request_seq_out_ != 0`이면 request입니다. 일반 ROUTER request는
+`zlink_router_reply()`로 응답하고, spot에서 온 request는
+`zlink_router_reply_spot()`으로 응답합니다.
 
-**참고:** `zlink_router_reply`, `zlink_router_handler`
+반환되는 payload view의 소유권 규칙은 일반 recv와 같습니다. 배열 view는
+라이브러리가 소유하고, 호출자는 각 part를 close해야 합니다.
+
+**반환값:** 성공 시 `ZLINK_RECV_OK`. 실패 시에는
+`zlink_recv_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
+
+**참고:** `zlink_router_reply`, `zlink_router_reply_spot`,
+`zlink_router_handler`
 
 ---
 
 ### zlink_recv
 
-소켓에서 멀티파트 메시지를 수신합니다.
+ROUTER가 아닌 소켓에서 멀티파트 메시지를 수신합니다.
 
 ```c
-bool zlink_recv (void *s_,
-                 zlink_routing_id_t *source_rid_out_,
-                 zlink_msg_t **parts_out_,
-                 size_t *part_count_out_,
-                 zlink_send_flags_t flags_);
+zlink_recv_result_t zlink_recv (void *s_,
+                                zlink_routing_id_t *source_rid_out_,
+                                zlink_msg_t **parts_out_,
+                                size_t *part_count_out_,
+                                zlink_recv_flags_t flags_);
 ```
 
 소켓 `s_`에서 완전한 멀티파트 메시지를 수신합니다. 성공 시 `*parts_out_`는
@@ -237,15 +260,13 @@ bool zlink_recv (void *s_,
 `*source_rid_out_`는 송신자의 routing id로 설정됩니다 (해당하는 경우). 파트
 배열과 각 파트의 소유권이 호출자에게 이전되며, 호출자는 모든 파트를 close하거나
 `zlink_multipart_close()`를 호출하고 배열을 해제해야 합니다. 소켓이 recv
-모드여야 합니다 (핸들러 미부착). `zlink_recv_handler()`로 수신 핸들러가
-부착된 경우 `errno=EBUSY`로 실패합니다. 메시지가 없을 때 즉시 반환하려면
-`ZLINK_DONTWAIT`를 전달하세요.
+모드여야 합니다 (핸들러 미부착). ROUTER 소켓은 이 표면에서 제외됩니다.
+`s_`가 ROUTER 소켓이면 이 호출은 `ZLINK_RECV_NOT_SUPPORTED`로 실패하고,
+대신 `zlink_router_recv()`를 사용해야 합니다.
 
-**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
-
-**에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우, 또는
-`ZLINK_OPT_RCVTIMEO`가 만료된 경우 `EAGAIN`. 수신 핸들러가 부착된 경우 `EBUSY`.
-Context가 종료된 경우 `ETERM`.
+**반환값:** 성공 시 `ZLINK_RECV_OK`. 실패 시에는
+`zlink_recv_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
+`zlink_errno()`로 유지됩니다.
 
 **참고:** `zlink_send`, `zlink_recv_handler`, `zlink_multipart_close`
 

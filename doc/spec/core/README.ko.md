@@ -44,7 +44,7 @@
 | [`zlink_socket_msg_handler_fn`](socket/README.ko.md) | socket/ | 소켓 멀티파트 메시지 dispatch 콜백 |
 | [`zlink_subscribe_handler_fn`](socket/README.ko.md) | socket/ | 토픽 기반 메시지 dispatch 콜백 |
 | [`zlink_reply_handler_fn`](socket/README.ko.md) | socket/ | 비동기 request-reply 완료 콜백 |
-| [`zlink_router_handler_fn`](socket/README.ko.md) | socket/ | ROUTER 요청 dispatch 콜백 |
+| [`zlink_router_handler_fn`](socket/README.ko.md) | socket/ | ROUTER routed 메시지 dispatch 콜백 |
 | [`zlink_spot_handler_fn`](spot.ko.md) | spot.ko.md | SPOT routed 메시지 dispatch 콜백 |
 | [`zlink_spot_dispatch_event_handler_fn`](spot.ko.md) | spot.ko.md | SPOT dispatch 이벤트 콜백 |
 | [`zlink_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 소켓 모니터 이벤트 콜백 |

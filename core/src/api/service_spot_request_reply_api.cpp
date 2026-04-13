@@ -14,6 +14,7 @@
 #include "api/service_api_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/socket_api_internal.hpp"
+#include "api/socket_request_reply_internal.hpp"
 #include "api/status_internal.hpp"
 #include "api/submit_result_internal.hpp"
 #include "api/handler_result_internal.hpp"
@@ -29,6 +30,8 @@
 
 namespace
 {
+namespace reqrep = zlink::socket_reqrep_internal;
+
 using zlink::spot_reqrep_internal::g_spot_recv_source_rid;
 using zlink::spot_reqrep_internal::g_spot_recv_spot_rid;
 using zlink::spot_reqrep_internal::g_spot_request_reply_index_mutex;
@@ -370,61 +373,29 @@ int dispatch_router_spot_message (router_spot_request_reply_state_t *state_,
                                   zlink_msg_t *parts_,
                                   size_t part_count_)
 {
-    zlink_router_spot_handler_fn handler = NULL;
-    void *handler_userdata = NULL;
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        handler = state_->handler;
-        handler_userdata = state_->handler_userdata;
+    if (!state_ || !state_->owner) {
+        zlink::request_reply::close_request_reply_parts (parts_, part_count_);
+        errno = EFAULT;
+        return -1;
     }
 
-    if (handler) {
-        handler (source_node_rid_, source_spot_rid_, request_seq_, parts_,
-                 part_count_, handler_userdata);
-        return 0;
+    socket_handle_t handle = as_socket_handle (state_->owner);
+    if (!handle.socket) {
+        zlink::request_reply::close_request_reply_parts (parts_, part_count_);
+        errno = EFAULT;
+        return -1;
     }
 
-    if (zlink::internal_pair_queue::ensure (
-          state_->owner ? as_socket_handle (state_->owner).socket->get_ctx ()
-                        : NULL,
-          "zlink.router.spot.recv", &state_->recv_queue)
+    std::shared_ptr<reqrep::socket_request_reply_state_t> router_state =
+      reqrep::find_or_create_request_reply_state (handle);
+    if (reqrep::dispatch_router_message (
+          router_state.get (), source_node_rid_, source_spot_rid_,
+          request_seq_, parts_, part_count_)
         != 0) {
         zlink::request_reply::close_request_reply_parts (parts_, part_count_);
         return -1;
     }
 
-    unsigned char seq_buf[8];
-    zlink::request_reply::encode_u64_be (request_seq_, seq_buf);
-    const void *source_data =
-      has_valid_routing_id (source_node_rid_) ? source_node_rid_->data : NULL;
-    const size_t source_size =
-      has_valid_routing_id (source_node_rid_) ? source_node_rid_->size : 0;
-    const void *spot_data =
-      has_valid_routing_id (source_spot_rid_) ? source_spot_rid_->data : NULL;
-    const size_t spot_size =
-      has_valid_routing_id (source_spot_rid_) ? source_spot_rid_->size : 0;
-    if (zlink::internal_pair_queue::send_buffer_frame (
-          state_->recv_queue.tx, source_data, source_size, ZLINK_SNDMORE)
-        != 0
-        || zlink::internal_pair_queue::send_buffer_frame (
-             state_->recv_queue.tx, spot_data, spot_size, ZLINK_SNDMORE)
-             != 0
-        || zlink::internal_pair_queue::send_buffer_frame (
-             state_->recv_queue.tx, seq_buf, sizeof (seq_buf), ZLINK_SNDMORE)
-             != 0) {
-        zlink::request_reply::close_request_reply_parts (parts_, part_count_);
-        return -1;
-    }
-    for (size_t i = 0; i < part_count_; ++i) {
-        const int flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
-        if (state_->recv_queue.tx->send (
-              reinterpret_cast<zlink::msg_t *> (&parts_[i]), flags)
-            != 0) {
-            zlink::request_reply::consume_send_frames_from (parts_, i,
-                                                            part_count_);
-            return -1;
-        }
-    }
     return 0;
 }
 
@@ -1276,26 +1247,11 @@ int dispatch_spot_request_to_router (
                                              ENOENT);
     }
 
-    zlink_router_spot_handler_fn handler = NULL;
-    void *handler_userdata = NULL;
-    {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        handler = state->handler;
-        handler_userdata = state->handler_userdata;
-    }
-
     zlink_routing_id_t source_node_rid;
     zlink_routing_id_t source_spot_rid;
     routing_id_from_string (spot_envelope_.source_node_rid, &source_node_rid);
     routing_id_from_string (spot_envelope_.source_endpoint_rid,
                             &source_spot_rid);
-    if (handler) {
-        handler (&source_node_rid, &source_spot_rid, rr_envelope_.request_seq,
-                 rr_envelope_.payload_parts, rr_envelope_.payload_part_count,
-                 handler_userdata);
-        return 0;
-    }
-
     return dispatch_router_spot_message (
       state.get (), &source_node_rid, &source_spot_rid,
       rr_envelope_.request_seq, rr_envelope_.payload_parts,
@@ -2250,86 +2206,26 @@ zlink_submit_result_t zlink_router_send_spot (
     return zlink::submit_result_internal::from_rc (rc);
 }
 
-zlink_handler_result_t zlink_router_spot_handler (void *router_,
-                                                   zlink_router_spot_handler_fn handler_,
-                                                   void *userdata_)
+extern "C" int zlink_router_enable_spot_receive (void *router_)
 {
-    if (!handler_) {
-        errno = EINVAL;
-        return ZLINK_HANDLER_INVALID_ARGUMENT;
-    }
-
     socket_handle_t handle = as_socket_handle (router_);
     if (!handle.socket || handle.socket->socket_type () != ZLINK_CORE_SOCKET_ROUTER) {
         errno = EINVAL;
-        return ZLINK_HANDLER_INVALID_ARGUMENT;
+        return -1;
     }
 
     zlink_routing_id_t router_rid;
     memset (&router_rid, 0, sizeof (router_rid));
-    if (zlink_get_routing_id (router_, &router_rid) != 0 || router_rid.size == 0)
-        return zlink::handler_result_internal::from_rc (-1);
+    if (zlink_get_routing_id (router_, &router_rid) != 0 || router_rid.size == 0) {
+        errno = 0;
+        return 0;
+    }
 
     std::shared_ptr<router_spot_request_reply_state_t> state =
       find_or_create_router_state (router_);
     bind_router_state_rid (router_, routing_id_key (&router_rid), state);
-    std::lock_guard<std::mutex> lock (state->mutex);
-    if (state->handler) {
-        errno = EBUSY;
-        return ZLINK_HANDLER_BUSY;
-    }
-    state->handler = handler_;
-    state->handler_userdata = userdata_;
-    return ZLINK_HANDLER_OK;
-}
-
-zlink_recv_result_t zlink_router_spot_recv (void *router_,
-                                            const zlink_routing_id_t **source_node_rid_out_,
-                                            const zlink_routing_id_t **source_spot_rid_out_,
-                                            uint64_t *request_seq_out_,
-                                            zlink_msg_t **parts_out_,
-                                            size_t *part_count_out_,
-                                            zlink_recv_flags_t flags_)
-{
-    if (!source_node_rid_out_ || !source_spot_rid_out_ || !request_seq_out_
-        || !parts_out_ || !part_count_out_) {
-        errno = EFAULT;
-        return ZLINK_RECV_INVALID_HANDLE;
-    }
-    if (validate_recv_flags (flags_) != 0)
-        return ZLINK_RECV_NOT_SUPPORTED;
-
-    socket_handle_t handle = as_socket_handle (router_);
-    if (!handle.socket || handle.socket->socket_type () != ZLINK_CORE_SOCKET_ROUTER) {
-        errno = EINVAL;
-        return ZLINK_RECV_INVALID_HANDLE;
-    }
-
-    zlink_routing_id_t router_rid;
-    memset (&router_rid, 0, sizeof (router_rid));
-    if (zlink_get_routing_id (router_, &router_rid) != 0 || router_rid.size == 0)
-        return zlink::recv_result_internal::from_rc (-1);
-
-    std::shared_ptr<router_spot_request_reply_state_t> state =
-      find_or_create_router_state (router_);
-    bind_router_state_rid (router_, routing_id_key (&router_rid), state);
-
-    std::unique_lock<std::mutex> lock (state->mutex);
-    if (state->handler) {
-        errno = EBUSY;
-        return ZLINK_RECV_BUSY;
-    }
-
-    if (zlink::internal_pair_queue::ensure (handle.socket->get_ctx (),
-                                            "zlink.router.spot.recv",
-                                            &state->recv_queue)
-        != 0)
-        return ZLINK_RECV_TERMINATED;
-    lock.unlock ();
-    return zlink::recv_result_internal::from_rc (
-      recv_internal_spot_queue (&state->recv_queue, source_node_rid_out_,
-                                source_spot_rid_out_, request_seq_out_,
-                                parts_out_, part_count_out_, flags_));
+    errno = 0;
+    return 0;
 }
 
 extern "C" int zlink_spot_request_reply_set_default_timeout (
@@ -2421,10 +2317,6 @@ extern "C" void zlink_spot_request_reply_cleanup_router (void *router_)
     std::shared_ptr<router_spot_request_reply_state_t> state =
       std::static_pointer_cast<router_spot_request_reply_state_t> (
         handle.socket->router_spot_request_reply_state ());
-    if (state) {
-        std::lock_guard<std::mutex> state_lock (state->mutex);
-        zlink::internal_pair_queue::close (&state->recv_queue);
-    }
     handle.socket->clear_router_spot_request_reply_state ();
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
     for (router_state_identity_index_t::iterator it =

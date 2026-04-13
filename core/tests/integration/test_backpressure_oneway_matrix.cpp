@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -372,6 +373,10 @@ static int try_publish_part (void *subject_, zlink_submit_result_t *result_out_)
     return classify_nonblocking_send_errno (result_out_);
 }
 
+static int recv_one_raw_message (void *socket_,
+                                 bool wants_routing_id_,
+                                 zlink_routing_id_t *source_rid_out_);
+
 static void set_send_timeout (void *socket_, int timeout_ms_)
 {
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -389,6 +394,22 @@ static void send_raw_part_blocking (void *sender_,
         return;
     }
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (sender_, &part, 1, 0));
+}
+
+static void prime_raw_case (raw_case_t *raw_, raw_pattern_t pattern_)
+{
+    TEST_ASSERT_NOT_NULL (raw_);
+
+    set_send_timeout (raw_->sender, kTimeoutMs);
+    send_raw_part_blocking (
+      raw_->sender, raw_->has_target_rid ? &raw_->target_rid : NULL);
+    set_send_timeout (raw_->sender, 0);
+
+    const bool wants_routing_id =
+      pattern_ == raw_pattern_dealer_router || pattern_ == raw_pattern_router_router;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      recv_one_raw_message (raw_->receiver, wants_routing_id, NULL));
+    msleep (50);
 }
 
 static void publish_part_blocking (void *subject_)
@@ -489,11 +510,18 @@ static int recv_one_raw_message (void *socket_,
     int rc = -1;
     if (wants_routing_id_) {
         const zlink_routing_id_t *peer_rid = NULL;
+        const zlink_routing_id_t *source_spot_rid = NULL;
         uint64_t request_seq = 0;
-        rc = zlink_router_recv (socket_, &peer_rid, &request_seq, &parts,
-                                &part_count, 0);
+        rc = zlink_router_recv (socket_, &peer_rid, &source_spot_rid,
+                                &request_seq, &parts, &part_count, 0);
         if (rc == 0) {
             if (request_seq != 0) {
+                if (parts)
+                    zlink_multipart_close (parts, part_count);
+                errno = EPROTO;
+                return -1;
+            }
+            if (source_spot_rid && source_spot_rid->size != 0) {
                 if (parts)
                     zlink_multipart_close (parts, part_count);
                 errno = EPROTO;
@@ -731,6 +759,9 @@ static void setup_raw_case (raw_pattern_t pattern_,
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (out_->sender, endpoint));
     TEST_ASSERT_TRUE (wait_ready_count (&out_->sender_monitor, 1, kTimeoutMs));
     TEST_ASSERT_TRUE (wait_ready_count (&out_->receiver_monitor, 1, kTimeoutMs));
+    if (pattern_ == raw_pattern_dealer_router
+        || pattern_ == raw_pattern_router_router)
+        prime_raw_case (out_, pattern_);
 }
 
 static void setup_pubsub_case (const char *transport_,
@@ -1149,5 +1180,7 @@ int main (int, char **)
     RUN_TEST (test_single_socket_backpressure_oneway_matrix);
     RUN_TEST (test_multi_pubsub_backpressure_oneway_matrix);
     RUN_TEST (test_multi_spot_backpressure_oneway_matrix);
-    return UNITY_END ();
+    const int status = UNITY_END ();
+    fflush (NULL);
+    std::quick_exit (status);
 }

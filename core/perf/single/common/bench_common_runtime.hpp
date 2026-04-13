@@ -63,7 +63,8 @@ public:
         _socket(zlink_socket(ctx_, static_cast<zlink_socket_type_t>(type_)))
     {
         if (_socket && handler_
-            && !zlink_recv_handler(_socket, handler_, userdata_)) {
+            && zlink_recv_handler(_socket, handler_, userdata_)
+                 != ZLINK_HANDLER_OK) {
             zlink_close(_socket);
             _socket = NULL;
         }

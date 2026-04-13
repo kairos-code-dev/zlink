@@ -134,7 +134,10 @@ bool publish_metric_payload (void *publisher_,
     if (zlink_msg_init_size (&part, payload_->size ()) != 0)
         return false;
     std::memcpy (zlink_msg_data (&part), payload_->data (), payload_->size ());
-    if (zlink_publish (publisher_, k_topic, &part, 1, flags_) != 0) {
+    if (zlink_publish (
+          publisher_, k_topic, &part, 1,
+          static_cast<zlink_send_flags_t> (flags_))
+        != 0) {
         const int err = zlink_errno ();
         if (err == EINTR || (flags_ & ZLINK_DONTWAIT) != 0 && err == EAGAIN)
             return true;
@@ -444,8 +447,9 @@ int run_case (const std::string &lib_name_,
     const int base_port = 35000 + (current_process_id () % 1000) * 8;
     const std::string endpoint = bind_node (publisher_node, transport_, base_port);
     if (endpoint.empty ()
-        || zlink_spot_node_connect_peer (subscriber_node, endpoint.c_str ()) != 0
-        || !zlink_set_subscription (subscriber, k_topic)) {
+        || zlink_spot_node_connect_peer (subscriber_node, endpoint.c_str ())
+             != ZLINK_CONNECT_OK
+        || zlink_set_subscription (subscriber, k_topic) != ZLINK_CONFIG_OK) {
         cleanup_spot_case (&subscriber, &publisher, &subscriber_node,
                            &publisher_node);
         print_fail ();

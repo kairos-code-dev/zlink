@@ -36,20 +36,53 @@ struct relay_server_config_t
     const char *server_routing_id;
 };
 
+inline bool clone_multipart (zlink_msg_t *parts,
+                             size_t part_count,
+                             std::vector<zlink_msg_t> *out)
+{
+    if (!out)
+        return false;
+
+    out->clear ();
+    if (!parts || part_count == 0)
+        return true;
+
+    out->resize (part_count);
+    for (size_t i = 0; i < part_count; ++i)
+        zlink_msg_init (&(*out)[i]);
+
+    for (size_t i = 0; i < part_count; ++i) {
+        if (zlink_msg_copy (&(*out)[i], &parts[i]) == 0)
+            continue;
+
+        for (size_t j = 0; j < part_count; ++j)
+            zlink_msg_close (&(*out)[j]);
+        out->clear ();
+        return false;
+    }
+
+    return true;
+}
+
 inline bool relay_router_once (void *server)
 {
     const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc =
-      ::zlink_router_recv (server, &source_rid, &request_seq, &parts, &part_count, 0);
-    if (rc < 0) {
+    const zlink_recv_result_t rc = ::zlink_router_recv (
+      server, &source_rid, &source_spot_rid, &request_seq, &parts,
+      &part_count,
+      static_cast<zlink_recv_flags_t> (0));
+    if (rc != ZLINK_RECV_OK) {
         const int err = zlink_errno ();
         return err == EAGAIN || err == EINTR;
     }
 
-    if (!source_rid || source_rid->size == 0 || request_seq != 0) {
+    if (!source_rid || source_rid->size == 0
+        || (source_spot_rid && source_spot_rid->size != 0)
+        || request_seq != 0) {
         if (parts)
             zlink_multipart_close (parts, part_count);
         errno = EPROTO;
@@ -57,13 +90,17 @@ inline bool relay_router_once (void *server)
     }
 
     if (part_count == 0 || !parts) {
+        if (parts)
+            zlink_multipart_close (parts, part_count);
+
         zlink_msg_t empty_part;
         if (zlink_msg_init_size (&empty_part, 0) != 0)
             return false;
 
-        const int send_rc =
-          ::zlink_send_rid (server, source_rid, &empty_part, 1, 0);
-        if (send_rc >= 0)
+        const zlink_submit_result_t send_rc = ::zlink_send_rid (
+          server, source_rid, &empty_part, 1,
+          static_cast<zlink_send_flags_t> (0));
+        if (send_rc == ZLINK_SUBMIT_OK)
             return true;
 
         const int err = zlink_errno ();
@@ -71,13 +108,21 @@ inline bool relay_router_once (void *server)
         return err == EAGAIN || err == EINTR;
     }
 
-    const int send_rc = ::zlink_send_rid (server, source_rid, parts, part_count, 0);
-    if (send_rc >= 0) {
-        return true;
+    std::vector<zlink_msg_t> reply_parts;
+    if (!clone_multipart (parts, part_count, &reply_parts)) {
+        zlink_multipart_close (parts, part_count);
+        return false;
     }
+    zlink_multipart_close (parts, part_count);
+
+    const zlink_submit_result_t send_rc = ::zlink_send_rid (
+      server, source_rid, &reply_parts[0], reply_parts.size (),
+      static_cast<zlink_send_flags_t> (0));
+    if (send_rc == ZLINK_SUBMIT_OK)
+        return true;
 
     const int err = zlink_errno ();
-    zlink_multipart_close (parts, part_count);
+    zlink_multipart_close (&reply_parts[0], reply_parts.size ());
     return err == EAGAIN || err == EINTR;
 }
 
@@ -158,7 +203,6 @@ inline int run_server_benchmark (const relay_server_config_t &config,
         zlink_close (server);
         return 1;
     }
-
     perf_stop_requested ().store (false, std::memory_order_release);
     install_perf_signal_handlers ();
 

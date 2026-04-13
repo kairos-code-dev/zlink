@@ -1085,7 +1085,8 @@ void test_stream_callback_lifecycle ()
 
     errno = 0;
     TEST_ASSERT_EQUAL_INT (
-      -1, attach_stream_msg_handler (sub, stream_echo_msg_handler));
+      ZLINK_HANDLER_NOT_SUPPORTED,
+      attach_stream_msg_handler (sub, stream_echo_msg_handler));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
     test_context_socket_close_zero_linger (sub);
 
@@ -1100,7 +1101,8 @@ void test_stream_callback_lifecycle ()
       attach_stream_msg_handler (stream, stream_echo_msg_handler));
     errno = 0;
     TEST_ASSERT_EQUAL_INT (
-      -1, attach_stream_msg_handler (stream, stream_echo_msg_handler));
+      ZLINK_HANDLER_BUSY,
+      attach_stream_msg_handler (stream, stream_echo_msg_handler));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
     g_stream_callback_probe = NULL;
     test_context_socket_close_zero_linger (stream);
@@ -1955,7 +1957,9 @@ void test_stream_connect_rejected ()
       zlink_set_option (stream, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_connect (stream, "tcp://127.0.0.1:5555"));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONNECT_NOT_SUPPORTED,
+      zlink_connect (stream, "tcp://127.0.0.1:5555"));
     TEST_ASSERT_EQUAL_INT (EOPNOTSUPP, errno);
 
     test_context_socket_close_zero_linger (stream);

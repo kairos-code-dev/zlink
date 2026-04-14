@@ -69,7 +69,8 @@ class service_monitor_handle_t
         zlink_service_event_t event;
         detail::throw_if_failed<recv_error_t> (
           static_cast<recv_result_t> (
-            zlink_service_monitor_recv (_monitor, &event, 0)));
+            zlink_service_monitor_recv (
+              _monitor, &event, ZLINK_RECV_FLAGS_NONE)));
         return service_event_t (event);
     }
 
@@ -77,7 +78,8 @@ class service_monitor_handle_t
     {
         zlink_service_event_t event;
         const recv_result_t result = static_cast<recv_result_t> (
-          zlink_service_monitor_recv (_monitor, &event, ZLINK_DONTWAIT));
+          zlink_service_monitor_recv (
+            _monitor, &event, ZLINK_RECV_FLAGS_DONTWAIT));
         if (result == recv_result_t::ok)
             return maybe_t<service_event_t> (service_event_t (event));
         if (result == recv_result_t::no_data || result == recv_result_t::busy)

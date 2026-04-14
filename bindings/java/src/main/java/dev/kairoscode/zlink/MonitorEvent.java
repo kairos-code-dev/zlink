@@ -2,14 +2,12 @@
 
 package dev.kairoscode.zlink;
 
-public record MonitorEvent(long event, long value, byte[] routingId,
-                           String localAddress, String remoteAddress) {
-    public MonitorEvent {
-        routingId = routingId == null ? new byte[0] : routingId.clone();
-    }
+import java.util.Optional;
 
-    @Override
-    public byte[] routingId() {
-        return routingId.clone();
+public record MonitorEvent(MonitorEventType event, long value,
+                           Optional<RoutingId> routingId, String localAddr,
+                           String remoteAddr) {
+    public MonitorEvent {
+        routingId = routingId == null ? Optional.empty() : routingId;
     }
 }

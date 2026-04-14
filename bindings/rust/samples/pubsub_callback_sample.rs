@@ -75,7 +75,7 @@ fn main() {
     drop(pub_mon);
     drop(sub_mon);
 
-    let msg = Message::from_bytes(b"101.25").unwrap();
+    let msg = Message::copy_from(b"101.25").unwrap();
     pub_sock.publish("prices", msg).expect("publish failed");
 
     let (topic, payload) = rx

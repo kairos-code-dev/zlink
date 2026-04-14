@@ -775,7 +775,6 @@ bool parse_spot_routed_envelope (zlink_msg_t *parts_,
     zlink::msg_t *protocol_id =
       reinterpret_cast<zlink::msg_t *> (&parts_[0]);
     if (!protocol_id->check ()
-        || (protocol_id->flags () & zlink::msg_t::command) == 0
         || !zlink::request_reply::frame_is_single_byte_value (
           &parts_[0], zmp_spot_routed_protocol_id)
         || !zlink::request_reply::frame_is_single_byte_value (

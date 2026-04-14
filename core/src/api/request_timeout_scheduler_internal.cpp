@@ -17,6 +17,8 @@ namespace request_timeout
 namespace
 {
 typedef std::multimap<uint64_t, std::shared_ptr<struct task_t> > schedule_map_t;
+const uint64_t idle_exit_wait_ns =
+  static_cast<uint64_t> (100) * static_cast<uint64_t> (1000000);
 }
 
 struct task_t
@@ -75,8 +77,15 @@ void run_timeout_loop ()
         std::shared_ptr<task_t> task;
         {
             std::unique_lock<std::mutex> lock (g_timeout_mutex);
-            while (g_timeout_schedule.empty ())
-                g_timeout_cv.wait (lock);
+            while (g_timeout_schedule.empty ()) {
+                if (g_timeout_cv.wait_for (
+                      lock, std::chrono::nanoseconds (idle_exit_wait_ns))
+                    == std::cv_status::timeout
+                    && g_timeout_schedule.empty ()) {
+                    g_timeout_started = false;
+                    return;
+                }
+            }
 
             for (;;) {
                 if (g_timeout_schedule.empty ())
@@ -170,6 +179,7 @@ void cancel (const std::shared_ptr<task_t> &task_)
     if (!task_)
         return;
 
+    bool removed_from_schedule = false;
     {
         std::lock_guard<std::mutex> schedule_lock (g_timeout_mutex);
         if (task_->registered) {
@@ -177,8 +187,11 @@ void cancel (const std::shared_ptr<task_t> &task_)
                 g_timeout_schedule.erase (task_->schedule_it);
             task_->registered = false;
             task_->schedule_it = schedule_map_t::iterator ();
+            removed_from_schedule = true;
         }
     }
+    if (removed_from_schedule)
+        g_timeout_cv.notify_all ();
 
     std::unique_lock<std::mutex> lock (task_->mutex);
     task_->canceled = true;

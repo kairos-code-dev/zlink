@@ -740,8 +740,9 @@ public sealed class test_stream_socket
         Received received = stream.Recv();
         using (Message payloadMessage = received.Parts[0])
         {
-            string routingId = received.RoutingId;
-            Assert.False(string.IsNullOrEmpty(routingId));
+            RoutingId routingId = received.RoutingId
+                ?? throw new InvalidOperationException("missing routing id");
+            Assert.False(routingId.IsEmpty);
             Assert.Equal("hello", CoreTestSupport.Utf8(payloadMessage));
             using var reply = Message.FromBytes("world"u8);
             stream.Send(routingId, reply);
@@ -781,8 +782,9 @@ public sealed class test_stream_socket
         Received received = stream.Recv();
         using (Message message = received.Parts[0])
         {
-            string routingId = received.RoutingId;
-            Assert.False(string.IsNullOrEmpty(routingId));
+            RoutingId routingId = received.RoutingId
+                ?? throw new InvalidOperationException("missing routing id");
+            Assert.False(routingId.IsEmpty);
             Assert.Equal("routing-id-check", CoreTestSupport.Utf8(message));
         }
     }
@@ -814,8 +816,9 @@ public sealed class test_stream_socket
             Received received = stream.Recv();
             using (Message payload = received.Parts[0])
             {
-                string routingId = received.RoutingId;
-                Assert.False(string.IsNullOrEmpty(routingId));
+                RoutingId routingId = received.RoutingId
+                    ?? throw new InvalidOperationException("missing routing id");
+                Assert.False(routingId.IsEmpty);
                 Assert.Equal("probe", CoreTestSupport.Utf8(payload));
             }
             Assert.True(TryReadMonitorEvent(monitorEvents,
@@ -956,12 +959,13 @@ public sealed class test_stream_socket
         SendAll(ns, "ok"u8);
 
         Received received = stream.Recv();
-        string serverRoutingId = received.RoutingId;
+        RoutingId serverRoutingId = received.RoutingId
+            ?? throw new InvalidOperationException("missing routing id");
         using (Message payload = received.Parts[0])
         {
             Assert.Equal("ok", CoreTestSupport.Utf8(payload));
         }
-        Assert.False(string.IsNullOrEmpty(serverRoutingId));
+        Assert.False(serverRoutingId.IsEmpty);
 
         Assert.True(TryReadMonitorEvent(monitorEvents, SocketEvent.ConnectionReady,
             3000, out uint connectRid));
@@ -1044,10 +1048,12 @@ public sealed class test_stream_socket
             if (!events.TryDequeue(remainingMs, out SocketMonitorEvent evt))
                 break;
 
-            if (evt.Event != expectedEvent || !evt.StreamRoutingId.HasValue)
+            if (evt.Event != (MonitorEventType)expectedEvent
+                || evt.RoutingId == null)
                 continue;
 
-            routingId = evt.StreamRoutingId.Value;
+            routingId = BinaryPrimitives.ReadUInt32BigEndian(
+                evt.RoutingId.Value.ToBytes());
             return true;
         }
 

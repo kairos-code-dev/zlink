@@ -16,7 +16,7 @@ test('router can send reply in a synchronous request-reply exchange', () => {
 
   dealer.send('request');
   const request = router.recv();
-  assert.ok(Buffer.isBuffer(request.routingId));
+  assert.ok(request.routingId instanceof zlink.RoutingId);
   assert.equal(request.parts[0].data().toString(), 'request');
   router.send(request.routingId, 'reply');
 
@@ -42,7 +42,7 @@ test('router can send multiple replies in a synchronous request-reply loop', () 
   for (let i = 0; i < ROUND_COUNT; i += 1) {
     dealer.send(`request-${i}`);
     const request = router.recv();
-    assert.ok(Buffer.isBuffer(request.routingId));
+    assert.ok(request.routingId instanceof zlink.RoutingId);
     assert.equal(request.parts[0].data().toString(), `request-${i}`);
     router.send(request.routingId, `reply-${i}`);
     const reply = dealer.recv();
@@ -68,7 +68,7 @@ test('router recv + send works as synchronous request-reply', () => {
   dealer.send('sync-request');
 
   const request = router.recv();
-  assert.ok(Buffer.isBuffer(request.routingId));
+  assert.ok(request.routingId instanceof zlink.RoutingId);
   assert.equal(request.parts[0].data().toString(), 'sync-request');
 
   router.send(request.routingId, 'sync-reply');

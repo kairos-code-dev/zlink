@@ -337,14 +337,7 @@ sequenceDiagram
     Ingress->>DP: poll readable → receive message
     DP->>Fanout: local fanout (immediate)
     Fanout->>Sub: deliver to matching subscribers
-    DP->>DP: check batch config
-    alt Batching enabled
-        DP->>DP: accumulate in topic bucket
-        Note over DP: flush on: delay timeout,<br/>max messages, max bytes
-        DP->>MeshPub: send batch frame
-    else Batching disabled
-        DP->>MeshPub: send immediately
-    end
+    DP->>MeshPub: send immediately
     Note over MeshPub: → remote peers via tcp mesh
 ```
 
@@ -432,7 +425,7 @@ struct pending_spot_key_t {     // SPOT level
 | API | Pending Key | Reason |
 |-----|------------|--------|
 | DEALER | `request_seq` only | Single peer, seq is unique |
-| ROUTER | `peer_rid + request_seq` | Multiple peers may reuse seq |
+| ROUTER | `source_node_rid + request_seq` | Multiple peers may reuse seq. For SPOT-originated routed traffic, `source_spot_rid` is also carried through the dispatch path so the unified router handler can distinguish plain vs. SPOT-routed callers |
 | spot → spot | `source_class + source_address + request_seq` | Multiple sources |
 | router → spot | `request_seq` | Local router state |
 
@@ -515,10 +508,12 @@ sequenceDiagram
     Net->>Socket: incoming message
     Socket->>Dispatch: msg_handler callback
     Dispatch->>Dispatch: parse_envelope()
-    alt message_type = request
-        Dispatch->>Handler: handler(peer_rid, request_seq, parts, userdata)
+    alt message_type = request (plain ROUTER)
+        Dispatch->>Handler: handler(source_node_rid, NULL, request_seq, parts, userdata)
+    else message_type = request (SPOT-originated)
+        Dispatch->>Handler: handler(source_node_rid, source_spot_rid, request_seq, parts, userdata)
     else message_type = reply
-        Dispatch->>Dispatch: lookup pending[peer_rid + seq]
+        Dispatch->>Dispatch: lookup pending[source_node_rid + seq]
         Dispatch->>Dispatch: cancel timeout task
         Dispatch->>Dispatch: invoke reply_handler(errno, parts, userdata)
     else message_type = error_reply
@@ -537,14 +532,14 @@ sequenceDiagram
     participant Queue as Internal Pair Queue
     participant App as zlink_router_recv()
 
-    Net->>Socket: incoming request message
+    Net->>Socket: incoming routed message
     Socket->>Dispatch: msg_handler callback
-    Dispatch->>Dispatch: parse_envelope() → request
-    Dispatch->>Queue: enqueue [peer_rid, request_seq, payload]
+    Dispatch->>Dispatch: parse_envelope() → request (or plain routed)
+    Dispatch->>Queue: enqueue [source_node_rid, source_spot_rid, request_seq, payload]
     Note over Queue: via internal PAIR socket (inproc)
 
     App->>Queue: recv from internal PAIR
-    Queue->>App: [peer_rid, request_seq, payload]
+    Queue->>App: [source_node_rid, source_spot_rid, request_seq, payload]
     App->>App: return to caller
 ```
 
@@ -699,7 +694,10 @@ Queue creation (`ensure()`):
 3. Bidirectional handshake (0x11 → 0x22 → back)
 4. Set linger = 0 for clean shutdown
 
-Frame encoding for ROUTER recv queue:
-- Frame 1: `peer_rid` bytes
-- Frame 2: `request_seq` (8 bytes Big Endian)
-- Frame 3+: Payload parts
+Frame encoding for ROUTER recv queue (unified routed surface — the
+queue carries both plain ROUTER traffic and SPOT-originated routed
+traffic through the same framing):
+- Frame 1: `source_node_rid` bytes
+- Frame 2: `source_spot_rid` bytes (zero length for plain ROUTER traffic)
+- Frame 3: `request_seq` (8 bytes Big Endian; `0` for fire-and-forget)
+- Frame 4+: Payload parts

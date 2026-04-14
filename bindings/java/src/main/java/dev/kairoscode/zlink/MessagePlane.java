@@ -87,7 +87,7 @@ final class MessagePlane {
                 RoutingId rid = Socket.toRoutingId(received.routingId());
                 Message[] parts = Message.fromOwnedMsgVector(received.parts(),
                     received.partCount());
-                return new Received(rid, parts, true);
+                return new Received(rid, null, parts, true, 0L, false, null);
             }
 
             int errno = Native.errno();
@@ -105,7 +105,8 @@ final class MessagePlane {
                 RoutingId rid = Socket.toRoutingId(received.routingId());
                 Message[] parts = Message.fromOwnedMsgVector(received.parts(),
                     received.partCount());
-                return Optional.of(new Received(rid, parts, true));
+                return Optional.of(new Received(rid, null, parts, true, 0L,
+                    false, null));
             }
 
             int errno = Native.errno();

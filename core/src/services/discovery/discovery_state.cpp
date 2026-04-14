@@ -28,13 +28,6 @@ static int init_msg_from_blob_local (const std::vector<unsigned char> &blob_,
     return 0;
 }
 
-static std::string topology_routing_key_local (const zlink_routing_id_t &rid_)
-{
-    if (rid_.size == 0)
-        return std::string ();
-    return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
-}
-
 static zlink_service_type_t public_service_type_local (uint16_t service_type_)
 {
     return service_type_ == discovery_protocol::service_type_spot_node
@@ -364,18 +357,15 @@ void discovery_t::upsert_service_summary (
     if (entry_.routing_id.size == 0 || entry_.service_name[0] == '\0')
         return;
 
-    topology_key_t key;
-    key.service_kind = entry_.service_kind;
-    key.service_role = entry_.service_role;
-    key.routing_id_key = topology_routing_key_local (entry_.routing_id);
-    key.service_name = entry_.service_name;
+    const topology_key_t key = make_summary_key (
+      entry_.service_kind, entry_.service_role, entry_.routing_id,
+      entry_.service_name);
 
     {
         scoped_lock_t lock (_sync);
-        topology_summary_t &summary = _summary_store[key];
-        summary.entry = entry_;
-        summary.dirty = true;
-        summary.tombstone = entry_.state == ZLINK_TOPOLOGY_STATE_STOPPED;
+        store_summary_entry_locked (
+          key, entry_, true, entry_.state == ZLINK_TOPOLOGY_STATE_STOPPED,
+          _service_state.service_update_seq ());
     }
 
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
@@ -383,43 +373,35 @@ void discovery_t::upsert_service_summary (
         runtime->wakeup_task (_task_id);
 }
 
-void discovery_t::erase_service_summary (uint16_t service_kind_,
-                                         const zlink_routing_id_t &routing_id_,
-                                         const std::string &service_name_,
-                                         bool stopped_)
+discovery_t::topology_key_t discovery_t::make_summary_key (
+  uint16_t service_kind_,
+  uint16_t service_role_,
+  const zlink_routing_id_t &routing_id_,
+  const std::string &service_name_) const
 {
-    if (routing_id_.size == 0 || service_name_.empty ())
-        return;
-
     topology_key_t key;
     key.service_kind = service_kind_;
-    key.service_role = ZLINK_SERVICE_ROLE_INVALID;
-    key.routing_id_key = topology_routing_key_local (routing_id_);
-    key.service_name = service_name_;
-
-    {
-        scoped_lock_t lock (_sync);
-        if (!stopped_) {
-            _summary_store.erase (key);
-        } else {
-            topology_summary_t &summary = _summary_store[key];
-            memset (&summary.entry, 0, sizeof (summary.entry));
-            summary.entry.service_kind =
-              static_cast<zlink_service_kind_t> (service_kind_);
-            summary.entry.service_role = ZLINK_SERVICE_ROLE_INVALID;
-            summary.entry.routing_id = routing_id_;
-            summary.entry.state = ZLINK_TOPOLOGY_STATE_STOPPED;
-            summary.entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
-            strncpy (summary.entry.service_name, service_name_.c_str (),
-                     sizeof (summary.entry.service_name) - 1);
-            summary.dirty = true;
-            summary.tombstone = true;
-        }
+    key.service_role = service_role_;
+    if (routing_id_.size > 0) {
+        key.routing_id_key.assign (
+          reinterpret_cast<const char *> (routing_id_.data), routing_id_.size);
     }
+    key.service_name = service_name_;
+    return key;
+}
 
-    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
-    if (runtime && _task_id != 0)
-        runtime->wakeup_task (_task_id);
+void discovery_t::store_summary_entry_locked (
+  const topology_key_t &key_,
+  const zlink_registry_topology_entry_t &entry_,
+  bool dirty_,
+  bool tombstone_,
+  uint64_t validated_service_seq_)
+{
+    topology_summary_t &summary = _summary_store[key_];
+    summary.entry = entry_;
+    summary.dirty = dirty_;
+    summary.tombstone = tombstone_;
+    summary.validated_service_seq = validated_service_seq_;
 }
 
 int discovery_t::destroy ()

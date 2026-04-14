@@ -28,8 +28,8 @@ final class PerfSpot {
         try (Context ctx = PerfUtil.newContext(config);
              SpotNode pubNode = new SpotNode(ctx);
              SpotNode subNode = new SpotNode(ctx);
-             Spot publisher = new Spot(pubNode);
-             Spot subscriber = new Spot(subNode)) {
+             Spot publisher = pubNode.createSpot();
+             Spot subscriber = subNode.createSpot()) {
             PerfUtil.applySpotOptions(pubNode, config);
             PerfUtil.applySpotOptions(subNode, config);
             PerfUtil.configureServerTls(pubNode, config.transport());

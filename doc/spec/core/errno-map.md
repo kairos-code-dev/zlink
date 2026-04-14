@@ -19,9 +19,8 @@ boundaries normalize those values into the public result enums defined here.
 
 `zlink_errno()` returns the raw internal `errno` value from the calling
 thread. It is most useful when a result enum is a coarse public bucket. That
-includes `INTERNAL_ERROR`, but also cases where the API has no finer public
-result and collapses the failure into buckets such as `TERMINATED` or
-`INVALID_ARGUMENT`.
+includes `INTERNAL_ERROR`, where multiple internal `errno` values
+intentionally share the same public result bucket.
 
 ```c
 zlink_submit_result_t rc = zlink_send(s, parts, count, 0);
@@ -136,7 +135,8 @@ typedef enum zlink_request_result_t
     ZLINK_REQUEST_TIMED_OUT       = 101,
     ZLINK_REQUEST_NOT_FOUND       = 102,
     ZLINK_REQUEST_TERMINATED      = 103,
-    ZLINK_REQUEST_PROTOCOL_ERROR  = 104
+    ZLINK_REQUEST_PROTOCOL_ERROR  = 104,
+    ZLINK_REQUEST_INTERNAL_ERROR  = 105
 } zlink_request_result_t;
 ```
 
@@ -149,6 +149,7 @@ typedef enum zlink_request_result_t
 | `NOT_FOUND` | `ENOENT` | Target was not found and the request completed with an error reply |
 | `TERMINATED` | `ETERM` | Reserved until the request path emits explicit termination completion |
 | `PROTOCOL_ERROR` | `EPROTO` | Reply envelope or error reply payload was malformed |
+| `INTERNAL_ERROR` | other internal completion failures | Request completion failed without a finer public bucket |
 
 ### Applicable functions
 
@@ -172,7 +173,8 @@ typedef enum zlink_recv_result_t
     ZLINK_RECV_BUSY               = 202,  /* EBUSY     */
     ZLINK_RECV_TERMINATED         = 203,  /* ETERM     */
     ZLINK_RECV_INVALID_HANDLE     = 204,  /* EFAULT    */
-    ZLINK_RECV_NOT_SUPPORTED      = 205   /* ENOTSUP   */
+    ZLINK_RECV_NOT_SUPPORTED      = 205,  /* ENOTSUP   */
+    ZLINK_RECV_INTERNAL_ERROR     = 206   /* internal errno */
 } zlink_recv_result_t;
 ```
 
@@ -183,9 +185,10 @@ typedef enum zlink_recv_result_t
 | `OK` | -- | Data was received successfully |
 | `NO_DATA` | `EAGAIN` | Non-blocking recv has no data, or the API-specific source has no more data to return (for example a stopped timer with no queued fire count) |
 | `BUSY` | `EBUSY` | Handler already attached |
-| `TERMINATED` | `ETERM`, plus unclassified recv-side internal failures | Context was terminated, or recv normalization had no finer public bucket for the failure |
+| `TERMINATED` | `ETERM` | Context was terminated |
 | `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
 | `NOT_SUPPORTED` | `ENOTSUP` | Unsupported socket type for recv |
+| `INTERNAL_ERROR` | other internal recv failures | Recv failed without a finer public bucket |
 
 ### Applicable functions
 
@@ -216,7 +219,8 @@ typedef enum zlink_handler_result_t
     ZLINK_HANDLER_BUSY            = 302,  /* EBUSY     */
     ZLINK_HANDLER_NOT_SUPPORTED   = 303,  /* ENOTSUP   */
     ZLINK_HANDLER_DEADLOCK        = 304,  /* EDEADLK   */
-    ZLINK_HANDLER_INVALID_HANDLE  = 305   /* EFAULT    */
+    ZLINK_HANDLER_INVALID_HANDLE  = 305,  /* EFAULT    */
+    ZLINK_HANDLER_INTERNAL_ERROR  = 306   /* internal errno */
 } zlink_handler_result_t;
 ```
 
@@ -230,6 +234,7 @@ typedef enum zlink_handler_result_t
 | `NOT_SUPPORTED` | `ENOTSUP` | Unsupported subject |
 | `DEADLOCK` | `EDEADLK` | Reentrant call (send-ready handler only) |
 | `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
+| `INTERNAL_ERROR` | other internal handler failures | Handler registration failed without a finer public bucket |
 
 ### Applicable functions
 
@@ -257,7 +262,8 @@ typedef enum zlink_close_result_t
     ZLINK_CLOSE_OK                = 0,
     ZLINK_CLOSE_BUSY              = 401,  /* EBUSY     */
     ZLINK_CLOSE_SHUTDOWN          = 402,  /* ESHUTDOWN */
-    ZLINK_CLOSE_INVALID_HANDLE    = 403   /* EFAULT    */
+    ZLINK_CLOSE_INVALID_HANDLE    = 403,  /* EFAULT    */
+    ZLINK_CLOSE_INTERNAL_ERROR    = 404   /* internal errno */
 } zlink_close_result_t;
 ```
 
@@ -269,6 +275,7 @@ typedef enum zlink_close_result_t
 | `BUSY` | `EBUSY` | In-flight callback or API call |
 | `SHUTDOWN` | `ESHUTDOWN` | Already closed |
 | `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
+| `INTERNAL_ERROR` | other internal close failures | Close failed without a finer public bucket |
 
 ### Applicable functions
 
@@ -293,7 +300,8 @@ typedef enum zlink_bind_result_t
     ZLINK_BIND_INVALID_ARGUMENT   = 501,  /* EINVAL    */
     ZLINK_BIND_ADDR_IN_USE        = 502,  /* EADDRINUSE */
     ZLINK_BIND_NOT_SUPPORTED      = 503,  /* ENOTSUP   */
-    ZLINK_BIND_INVALID_HANDLE     = 504   /* EFAULT    */
+    ZLINK_BIND_INVALID_HANDLE     = 504,  /* EFAULT    */
+    ZLINK_BIND_INTERNAL_ERROR     = 505   /* internal errno */
 } zlink_bind_result_t;
 ```
 
@@ -306,6 +314,7 @@ typedef enum zlink_bind_result_t
 | `ADDR_IN_USE` | `EADDRINUSE` | Address already bound |
 | `NOT_SUPPORTED` | `ENOTSUP` | Unsupported transport |
 | `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
+| `INTERNAL_ERROR` | other internal bind failures | Bind failed without a finer public bucket |
 
 ### Applicable functions
 
@@ -325,7 +334,8 @@ typedef enum zlink_connect_result_t
     ZLINK_CONNECT_OK              = 0,
     ZLINK_CONNECT_INVALID_ARGUMENT = 601, /* EINVAL    */
     ZLINK_CONNECT_NOT_SUPPORTED   = 602,  /* ENOTSUP   */
-    ZLINK_CONNECT_INVALID_HANDLE  = 603   /* EFAULT    */
+    ZLINK_CONNECT_INVALID_HANDLE  = 603,  /* EFAULT    */
+    ZLINK_CONNECT_INTERNAL_ERROR  = 604   /* internal errno */
 } zlink_connect_result_t;
 ```
 
@@ -337,6 +347,7 @@ typedef enum zlink_connect_result_t
 | `INVALID_ARGUMENT` | `EINVAL` | Invalid endpoint |
 | `NOT_SUPPORTED` | `ENOTSUP` | Unsupported transport |
 | `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
+| `INTERNAL_ERROR` | other internal connect failures | Connect/disconnect/unbind failed without a finer public bucket |
 
 ### Applicable functions
 
@@ -359,7 +370,8 @@ typedef enum zlink_config_result_t
     ZLINK_CONFIG_OK               = 0,
     ZLINK_CONFIG_INVALID_HANDLE   = 701,  /* EFAULT    */
     ZLINK_CONFIG_INVALID_ARGUMENT = 702,  /* EINVAL    */
-    ZLINK_CONFIG_NOT_SUPPORTED    = 703   /* ENOTSUP   */
+    ZLINK_CONFIG_NOT_SUPPORTED    = 703,  /* ENOTSUP   */
+    ZLINK_CONFIG_INTERNAL_ERROR   = 704   /* internal errno */
 } zlink_config_result_t;
 ```
 
@@ -369,8 +381,9 @@ typedef enum zlink_config_result_t
 |---|---|---|
 | `OK` | -- | Configuration succeeded |
 | `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
-| `INVALID_ARGUMENT` | `EINVAL`, plus some `EBUSY`-style config conflicts that have no dedicated public config bucket | Invalid parameter or a config-layer conflict collapsed into the nearest public bucket |
+| `INVALID_ARGUMENT` | `EINVAL` | Invalid option, output pointer, or parameter shape |
 | `NOT_SUPPORTED` | `ENOTSUP` | Unsupported option |
+| `INTERNAL_ERROR` | other internal config failures | Configuration failed without a finer public bucket |
 
 ### Applicable functions
 

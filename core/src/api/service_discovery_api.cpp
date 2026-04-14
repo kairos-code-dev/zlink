@@ -46,6 +46,20 @@ zlink_connect_result_t zlink_discovery_connect_registry (void *discovery_,
                                                     registry_endpoint_));
 }
 
+zlink_config_result_t zlink_discovery_set_dealer_peer_mode (
+  void *discovery_,
+  zlink_discovery_dealer_peer_mode_t mode_)
+{
+    zlink::discovery_t *discovery =
+      zlink::discovery_access_t::from_handle (discovery_);
+    if (!discovery) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    return zlink::config_result_internal::from_rc (
+      zlink::discovery_access_t::set_dealer_peer_mode (discovery, mode_));
+}
+
 zlink_config_result_t zlink_discovery_set_value (void *discovery_, int64_t value_)
 {
     zlink::discovery_t *discovery =
@@ -94,6 +108,22 @@ zlink_config_result_t zlink_discovery_get_metadata (void *discovery_, zlink_msg_
     }
     return zlink::config_result_internal::from_rc (
       zlink::discovery_access_t::get_metadata (discovery, metadata_out_));
+}
+
+zlink_config_result_t zlink_discovery_resolve_spot (
+  void *discovery_,
+  const zlink_routing_id_t *spot_rid_,
+  zlink_routing_id_t *owner_node_rid_out_)
+{
+    zlink::discovery_t *discovery =
+      zlink::discovery_access_t::from_handle (discovery_);
+    if (!discovery) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    return zlink::config_result_internal::from_rc (
+      zlink::discovery_access_t::resolve_spot (
+        discovery, spot_rid_, owner_node_rid_out_));
 }
 
 zlink_config_result_t zlink_discovery_member_peers (void *discovery_,

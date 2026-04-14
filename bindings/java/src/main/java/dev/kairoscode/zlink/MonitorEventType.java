@@ -19,6 +19,15 @@ public enum MonitorEventType {
     MonitorEventType(int v) { this.value = v; }
     public int getValue() { return value; }
 
+    public static MonitorEventType fromValue(long value) {
+        for (MonitorEventType eventType : values()) {
+            if (eventType.value == (int) value) {
+                return eventType;
+            }
+        }
+        throw new IllegalArgumentException("invalid MonitorEventType value: " + value);
+    }
+
     public static int combine(MonitorEventType... flags) {
         int v = 0;
         for (var f : flags) v |= f.value;

@@ -7,6 +7,8 @@ const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('../dist');
 
+const SERVICE_TYPE_SPOT = 0x3002;
+
 async function reservePort() {
   const server = net.createServer();
   server.listen(0, '127.0.0.1');
@@ -32,7 +34,7 @@ async function main() {
   const ctx = new zlink.Context();
   const registry = new zlink.Registry(ctx);
   const query = new zlink.RegistryQueryClient(ctx);
-  const discovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'topology-entry-found');
+  const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'topology-entry-found');
   const node = new zlink.SpotNode(ctx);
   const pubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const routerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;

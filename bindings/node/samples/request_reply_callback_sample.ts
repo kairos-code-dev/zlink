@@ -36,14 +36,13 @@ async function main() {
   const ctx = new zlink.Context();
   const routerSocket = new zlink.RouterSocket(ctx);
   const dealerSocket = new zlink.DealerSocket(ctx);
-  const router = new zlink.RequestRouter(routerSocket);
-  const dealer = new zlink.RequestDealer(dealerSocket);
+  const clientRoutingId = zlink.RoutingId.fromBytes(Buffer.from('request-reply-client'));
 
   try {
     const routerMonitor = routerSocket.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
     const dealerMonitor = dealerSocket.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
     try {
-      dealerSocket.setRoutingId(Buffer.from('request-reply-client'));
+      dealerSocket.setRoutingId(clientRoutingId);
       routerSocket.bind(endpoint);
       dealerSocket.connect(endpoint);
       routerMonitor.recv();
@@ -56,29 +55,28 @@ async function main() {
     const replyHandled = waitFor('reply callback', 2000);
     const requestHandled = waitFor('request callback', 2000);
 
-    router.onReceive((received) => {
-      assert.equal(Buffer.from(received.routingId).toString(), 'request-reply-client');
+    routerSocket.onReceive((received) => {
+      assert.equal(received.routingId.toBytes().toString(), 'request-reply-client');
       assert.ok(typeof received.requestSeq === 'bigint');
-      router.reply(received.routingId, received.requestSeq, zlink.Message.fromBuffer(Buffer.from('pong')));
+      routerSocket.reply(received.routingId, received.requestSeq, zlink.Message.from(Buffer.from('pong')));
       requestHandled.resolve();
     });
 
-    dealer.request(
-      zlink.Message.fromBuffer(Buffer.from('ping')),
-      (error, reply) => {
-        assert.ifError(error);
-        assert.equal(reply.parts[0].data.toString(), 'pong');
+    dealerSocket.request(
+      zlink.Message.from(Buffer.from('ping')),
+      (result, reply) => {
+        assert.equal(result, zlink.RequestResult.Ok);
+        assert.equal(reply[0].data().toString(), 'pong');
         replyHandled.resolve();
       },
-      { timeout: 2000 }
+      0,
+      2000
     );
 
     await requestHandled.promise;
     await replyHandled.promise;
     console.log('[dealer-router/request-reply/callback] send: "ping" -> recv: "pong"');
   } finally {
-    dealer.close();
-    router.close();
     ctx.close();
   }
 }

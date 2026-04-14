@@ -107,6 +107,8 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _out_active (true),
     _hwm (outhwm_),
     _lwm (compute_lwm (inhwm_)),
+    _inhwm (inhwm_),
+    _lwm_hint (0),
     _in_hwm_boost (-1),
     _out_hwm_boost (-1),
     _msgs_read (0),
@@ -214,6 +216,17 @@ uint64_t zlink::pipe_t::get_rcv_pending_msgs_approx () const
 uint64_t zlink::pipe_t::get_connected_time () const
 {
     return _connected_time;
+}
+
+void zlink::pipe_t::refresh_write_credit (uint64_t peer_msgs_read_)
+{
+    scoped_fast_lock_t lock (_out_sync);
+
+    if (peer_msgs_read_ > _peers_msgs_read)
+        _peers_msgs_read = peer_msgs_read_;
+
+    if (!_out_active && _state == active && check_hwm_unlocked ())
+        _out_active = true;
 }
 
 bool zlink::pipe_t::mark_stream_connect_event_emitted ()
@@ -744,6 +757,20 @@ int zlink::pipe_t::compute_lwm (int hwm_)
     return result;
 }
 
+int zlink::pipe_t::apply_lwm_hint (int hwm_, int lwm_, int lwm_hint_)
+{
+    if (hwm_ <= 0 || lwm_hint_ <= 0)
+        return lwm_;
+
+    int hinted = lwm_hint_;
+    if (hinted >= hwm_)
+        hinted = hwm_ - 1;
+    if (hinted <= 0)
+        hinted = 1;
+
+    return std::min (lwm_, hinted);
+}
+
 void zlink::pipe_t::process_delimiter ()
 {
     scoped_fast_lock_t lock (_out_sync);
@@ -795,8 +822,17 @@ void zlink::pipe_t::set_hwms (int inhwm_, int outhwm_)
     if (outhwm_ <= 0 || _out_hwm_boost == 0)
         out = 0;
 
+    _inhwm = in;
     _lwm = compute_lwm (in);
+    _lwm = apply_lwm_hint (_inhwm, _lwm, _lwm_hint);
     _hwm = out;
+}
+
+void zlink::pipe_t::set_lwm_hint (int lwm_hint_)
+{
+    _lwm_hint = lwm_hint_ > 0 ? lwm_hint_ : 0;
+    _lwm = compute_lwm (_inhwm);
+    _lwm = apply_lwm_hint (_inhwm, _lwm, _lwm_hint);
 }
 
 void zlink::pipe_t::set_hwms_boost (int inhwmboost_, int outhwmboost_)

@@ -97,30 +97,45 @@ See the individual documents for detailed usage of each socket type.
 
 ## 7. Common Receive Interface
 
-All socket types use the same interface for `zlink_recv()` and recv callbacks:
+Most socket types use `zlink_recv()` and recv callbacks with a shared
+shape. ROUTER and SPOT have their own typed recv surfaces (with extra
+outputs), and PUB/SUB sockets use dedicated subscribe/publish APIs.
 
 ```c
-int zlink_recv (void *socket,
-                zlink_routing_id_t *source_rid,  /* sender routing_id */
-                zlink_msg_t **parts,              /* multipart data */
-                size_t *part_count,               /* frame count */
-                zlink_send_flags_t flags);
+zlink_recv_result_t zlink_recv (
+    void *socket,
+    zlink_routing_id_t *source_rid,   /* sender routing_id */
+    zlink_msg_t **parts,              /* multipart data */
+    size_t *part_count,               /* frame count */
+    zlink_recv_flags_t flags);
 ```
 
 - **`source_rid`**: Populated with the sender peer's routing_id on all
-  socket types. This is not a message frame — zlink automatically
-  resolves the connected peer's identity as a separate parameter.
+  socket types that use this surface. This is not a message frame — zlink
+  automatically resolves the connected peer's identity as a separate
+  parameter.
 - **`parts` / `part_count`**: Multipart is the default on all sockets.
   `part_count=1` for single frame, `part_count=2+` for multipart.
 
 > **Difference from libzmq:** libzmq ROUTER returned routing_id as the
 > first frame of `zmq_recv()`. In zlink, routing_id is a separate
-> parameter on all socket types.
+> parameter.
 
-PUB/SUB sockets use dedicated APIs instead of `zlink_recv()`:
-- Receive: `zlink_subscribe()` / `zlink_subscribe_handler()`
-- Publish: `zlink_publish()`
-- `zlink_send()` / `zlink_recv()` return `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` on all 4 PUB/SUB sockets
+**Socket-specific receive surfaces:**
+
+- **ROUTER**: `zlink_recv()` on a ROUTER handle fails with
+  `ZLINK_RECV_NOT_SUPPORTED`. ROUTER uses a single unified typed surface —
+  `zlink_router_recv()` / `zlink_router_handler()` — that returns both
+  `source_node_rid` and `source_spot_rid`, plus `request_seq`. This one
+  surface carries plain ROUTER traffic and SPOT-originated routed
+  traffic. See [03-4-router.md](03-4-router.md).
+- **SPOT (routed)**: uses `zlink_spot_recv()` / `zlink_spot_handler()`
+  with `(source_rid, spot_rid, request_seq, …)`.
+- **PUB/SUB**: use dedicated APIs — `zlink_subscribe()` /
+  `zlink_subscribe_handler()` for receive, `zlink_publish()` for send.
+  `zlink_send()` / `zlink_recv()` return
+  `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` on all four
+  PUB/SUB sockets.
 
 ## 8. Terminology
 

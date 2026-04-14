@@ -1,6 +1,5 @@
 using SampleCommon;
 using Zlink;
-using Zlink.Service;
 
 if (!SampleSupport.IsNativeAvailable())
     return;
@@ -8,8 +7,8 @@ if (!SampleSupport.IsNativeAvailable())
 using var ctx = new Context();
 using var pubNode = new SpotNode(ctx);
 using var subNode = new SpotNode(ctx);
-using var publisher = new Spot(pubNode);
-using var subscriber = new Spot(subNode);
+using var publisher = pubNode.CreateSpot();
+using var subscriber = subNode.CreateSpot();
 const string topic = "room:lobby";
 const string payload = "hello-spot";
 pubNode.Bind("tcp://127.0.0.1:0");
@@ -18,17 +17,10 @@ subNode.ConnectPeer(endpoint);
 subscriber.SetSubscription(topic);
 SampleSupport.WaitSpotPeerConnected(subNode);
 
-DateTime deadline = DateTime.UtcNow.AddSeconds(5);
-while (DateTime.UtcNow < deadline)
-{
-    using (Message message = Message.FromString(payload))
-        publisher.Publish(topic, message);
-    if (subscriber.TrySubscribe(out Subscribed? subscribed))
-    {
-        string receivedTopic = subscribed!.Topic;
-        string receivedPayload = subscribed.SinglePartOrThrow().GetString();
-        Console.WriteLine($"[spot/recv] publish: \"{topic}/{payload}\" -> subscribe: \"{receivedTopic}/{receivedPayload}\"");
-        return;
-    }
-}
-throw new InvalidOperationException("spot delivery timed out");
+using (Message message = Message.FromString(payload))
+    publisher.Publish(topic, message);
+
+using TopicMessage subscribed = subscriber.Subscribe();
+string receivedTopic = subscribed.Topic;
+string receivedPayload = subscribed.SinglePartOrThrow().GetString();
+Console.WriteLine($"[spot/recv] publish: \"{topic}/{payload}\" -> subscribe: \"{receivedTopic}/{receivedPayload}\"");

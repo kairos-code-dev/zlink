@@ -1,9 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using Xunit;
-using Zlink.Service;
 
 namespace Zlink.Tests;
 
@@ -42,6 +42,7 @@ public sealed class test_socket_surface
             typeof(string), typeof(Message)));
         Assert.False(HasPublicInstanceMethod(typeof(DealerSocket), "Send",
             typeof(string), typeof(Message)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "CreateSpot"));
         Assert.True(HasPublicInstanceMethod(typeof(PairSocket), "Recv",
             typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
@@ -114,6 +115,10 @@ public sealed class test_socket_surface
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(RegistryQueryClient)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(SpotNode)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Spot)));
+        Assert.NotNull(typeof(SpotNode).GetMethod(nameof(SpotNode.CreateSpot),
+            BindingFlags.Instance | BindingFlags.Public));
+        Assert.Empty(typeof(Spot).GetConstructors(
+            BindingFlags.Instance | BindingFlags.Public));
     }
 
     [Fact]
@@ -188,7 +193,7 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(SocketMonitor), "Recv",
             typeof(bool)));
         Assert.False(HasPublicInstanceMethod(typeof(SocketMonitor), "TryRecv",
-            typeof(SocketMonitorEvent?).MakeByRefType()));
+            typeof(SocketMonitorEvent).MakeByRefType()));
         Assert.True(HasPublicInstanceMethod(typeof(SocketMonitor),
             "OnEvent"));
         Assert.False(HasPublicInstanceMethod(typeof(SocketMonitor), "Receive"));
@@ -196,28 +201,29 @@ public sealed class test_socket_surface
     }
 
     [Fact]
-    public void request_reply_wrappers_expose_canonical_surface()
+    public void request_reply_surface_uses_canonical_socket_methods()
     {
-        Assert.True(HasPublicInstanceMethod(typeof(RequestDealer),
-            nameof(RequestDealer.RequestAsync), typeof(Message),
+        Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
+            nameof(DealerSocket.RequestAsync), typeof(Message),
             typeof(System.Threading.CancellationToken)));
-        Assert.True(HasPublicInstanceMethod(typeof(RequestDealer),
-            nameof(RequestDealer.Request), typeof(Message),
-            typeof(Action<RequestResult, Received?>), typeof(SendFlags),
-            typeof(TimeSpan)));
-        Assert.False(HasPublicInstanceMethod(typeof(RequestDealer),
-            nameof(RequestDealer.TryRequestAsync), typeof(Message),
-            typeof(TimeSpan), typeof(System.Threading.CancellationToken)));
-        Assert.True(HasPublicInstanceMethod(typeof(RequestDealer),
-            nameof(RequestDealer.OnReceive), typeof(Action<Received>)));
-        Assert.True(HasPublicInstanceMethod(typeof(RequestRouter),
-            nameof(RequestRouter.OnReceive), typeof(Action<Received>)));
-        Assert.True(HasPublicInstanceMethod(typeof(RequestRouter),
-            nameof(RequestRouter.Reply), typeof(RoutingId), typeof(ulong),
+        Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
+            nameof(DealerSocket.Request), typeof(Message),
+            typeof(Action<RequestResult, IReadOnlyList<Message>>),
+            typeof(SendFlags), typeof(TimeSpan?)));
+        Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
+            nameof(DealerSocket.OnReceive), typeof(SocketRecvHandler)));
+        Assert.True(HasPublicInstanceMethod(typeof(RouterSocket),
+            nameof(RouterSocket.RequestAsync), typeof(RoutingId),
+            typeof(Message), typeof(System.Threading.CancellationToken)));
+        Assert.True(HasPublicInstanceMethod(typeof(RouterSocket),
+            nameof(RouterSocket.Request), typeof(RoutingId), typeof(Message),
+            typeof(Action<RequestResult, IReadOnlyList<Message>>),
+            typeof(SendFlags), typeof(TimeSpan?)));
+        Assert.True(HasPublicInstanceMethod(typeof(RouterSocket),
+            nameof(RouterSocket.Reply), typeof(RoutingId), typeof(ulong),
             typeof(Message), typeof(SendFlags)));
-        Assert.False(HasPublicInstanceMethod(typeof(RequestRouter),
-            nameof(RequestRouter.TryReply), typeof(RoutingId), typeof(ulong),
-            typeof(Message)));
+        Assert.False(HasPublicInstanceMethod(typeof(RouterSocket), "RecvSpot"));
+        Assert.False(HasPublicInstanceMethod(typeof(RouterSocket), "OnSpotReceive"));
     }
 
     [Fact]
@@ -252,7 +258,7 @@ public sealed class test_socket_surface
         Assert.Equal(typeof(SubSocketOptions),
             typeof(SubSocket).GetProperty(nameof(SubSocket.SubOptions))!
                 .PropertyType);
-        Assert.Equal(typeof(ServiceMonitorEvents),
+        Assert.Equal(typeof(ServiceEventType),
             typeof(ServiceMonitorEvent).GetProperty(nameof(ServiceMonitorEvent.EventType))!
                 .PropertyType);
         Assert.False(HasPublicInstanceMethod(typeof(Spot), "MonitorOpen",
@@ -269,27 +275,36 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "PeersQuery",
             typeof(SpotNodePeerFilter)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "SubjectsSnapshot",
-            typeof(SpotNodeSubjectFilter?)));
+            typeof(SpotNodeSubjectFilter)));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "MonitorOpen",
             typeof(ServiceMonitorEvents)));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "Snapshot"));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "Peers"));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "Subjects"));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
+            nameof(SpotNode.SetRoutingId), typeof(RoutingId)));
+        Assert.Equal(typeof(RoutingId),
+            typeof(SpotNode).GetProperty(nameof(SpotNode.RoutingId))!.PropertyType);
 
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
             "MemberPeerMetadata", typeof(ServiceRole), typeof(string)));
+        Assert.True(HasPublicInstanceMethod(typeof(Discovery),
+            nameof(Discovery.ResolveSpot), typeof(RoutingId)));
+        Assert.True(HasPublicInstanceMethod(typeof(Discovery),
+            nameof(Discovery.SetDealerPeerMode), typeof(DiscoveryDealerPeerMode)));
         Assert.True(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen",
             typeof(ServiceMonitorEventMask[])));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen",
             typeof(ServiceMonitorEvents)));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery),
             "GetMemberPeerMetadata"));
+        Assert.True(typeof(DiscoveryDealerPeerMode).IsEnum);
 
         Assert.True(HasPublicInstanceMethod(typeof(ServiceMonitor), "Recv"));
         Assert.True(HasPublicInstanceMethod(typeof(ServiceMonitor), "Recv",
             typeof(bool)));
         Assert.False(HasPublicInstanceMethod(typeof(ServiceMonitor), "TryRecv",
-            typeof(ServiceMonitorEvent?).MakeByRefType()));
+            typeof(ServiceMonitorEvent).MakeByRefType()));
         Assert.True(HasPublicInstanceMethod(typeof(ServiceMonitor), "OnEvent",
             typeof(Action<ServiceMonitorEvent>)));
         Assert.False(HasPublicInstanceMethod(typeof(ServiceMonitor), "Receive"));
@@ -302,16 +317,21 @@ public sealed class test_socket_surface
             typeof(SocketEvent)));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen",
             typeof(ServiceMonitorEvents)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.SetRoutingId), typeof(RoutingId)));
+        Assert.Equal(typeof(RoutingId),
+            typeof(Spot).GetProperty(nameof(Spot.RoutingId))!.PropertyType);
     }
 
     [Fact]
     public void generic_socket_management_surface_uses_public_interface()
     {
         Assert.Equal(typeof(IZlinkSocket),
-            typeof(Runtime).GetMethod(nameof(Runtime.Proxy))!
+            typeof(global::Zlink.Zlink).GetMethod(nameof(global::Zlink.Zlink.Proxy))!
                 .GetParameters()[0].ParameterType);
         Assert.Equal(typeof(IZlinkSocket),
-            typeof(Runtime).GetMethod(nameof(Runtime.ProxySteerable))!
+            typeof(global::Zlink.Zlink).GetMethod(
+                nameof(global::Zlink.Zlink.ProxySteerable))!
                 .GetParameters()[0].ParameterType);
         Assert.Equal(typeof(IZlinkSocket),
             typeof(Poller).GetMethod(nameof(Poller.Add),
@@ -324,16 +344,19 @@ public sealed class test_socket_surface
             typeof(Poller).GetMethod(nameof(Poller.Remove),
                 new[] { typeof(IZlinkSocket) })!
                 .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(int),
+            typeof(Poller).GetProperty(nameof(Poller.Size))!.PropertyType);
         Assert.Equal(typeof(IZlinkSocket),
             typeof(PollEvent).GetProperty(nameof(PollEvent.Socket))!.PropertyType);
         Assert.NotNull(typeof(ZlinkPoll).GetMethod(nameof(ZlinkPoll.Poll),
             new[]
             {
                 typeof(IReadOnlyList<IZlinkSocket>),
-                typeof(IReadOnlyList<PollEvents>),
-                typeof(Span<PollEvents>),
                 typeof(int)
             }));
+        Assert.Equal(typeof(Action<MonitorEvent>),
+            typeof(SocketMonitor).GetField(nameof(SocketMonitor.IgnoreHandler),
+                BindingFlags.Static | BindingFlags.Public)!.FieldType);
     }
 
     [Fact]

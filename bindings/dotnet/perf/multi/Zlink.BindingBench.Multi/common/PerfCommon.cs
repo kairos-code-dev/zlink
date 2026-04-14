@@ -44,11 +44,11 @@ internal static partial class PerfRunner
             {
                 return socket.Receive(buffer, flags);
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
             {
                 continue;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
             {
                 if ((flags & ReceiveFlags.DontWait) != 0)
                     return 0;
@@ -70,8 +70,8 @@ internal static partial class PerfRunner
         {
             return socket.TryReceive(buffer, flags, out int read) ? read : 0;
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.Errno)
-                                        || IsWouldBlock(ex.Errno))
+        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                        || IsWouldBlock(ex.InternalErrno))
         {
             return 0;
         }
@@ -103,8 +103,8 @@ internal static partial class PerfRunner
         {
             return poller.Wait(events, timeoutMs) > 0;
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.Errno)
-                                        || IsWouldBlock(ex.Errno))
+        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                        || IsWouldBlock(ex.InternalErrno))
         {
             return false;
         }

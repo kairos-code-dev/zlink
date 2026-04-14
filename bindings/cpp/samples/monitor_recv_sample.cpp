@@ -16,9 +16,7 @@ int main ()
     assert (!client_monitor.recv (zlink::non_blocking_t {}));
 
     assert (server.bind ("tcp://127.0.0.1:0") == 0);
-    std::string endpoint;
-    assert (server.get_option (zlink::socket_options::last_endpoint, endpoint)
-            == 0);
+    const std::string endpoint = server.options ().last_endpoint ();
     assert (!endpoint.empty ());
     assert (client.connect (endpoint) == 0);
 

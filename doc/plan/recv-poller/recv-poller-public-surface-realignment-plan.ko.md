@@ -1342,8 +1342,8 @@ C API 함수 수는 늘어난다.
 
 - `doc/spec/core/gateway.md`
 - `doc/spec/core/gateway.ko.md`
-- `doc/spec/core/spot.md`
-- `doc/spec/core/spot.ko.md`
+- `doc/spec/core/service/spot.md`
+- `doc/spec/core/service/spot.ko.md`
 - `doc/spec/core/polling.md`
 - `doc/spec/core/polling.ko.md`
 - `doc/spec/core/socket/README.md`

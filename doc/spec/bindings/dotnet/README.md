@@ -357,11 +357,11 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                      ulong requestSequence, IReadOnlyList<Message> parts,
                      SendFlags flags = SendFlags.None);
 
-    // --- router spot receive ---
-    /// <exception cref="ZlinkRecvException"/>
-    Received RecvSpot(RecvFlags flags = RecvFlags.None);
-    /// <exception cref="ZlinkHandlerException"/>
-    void OnSpotReceive(Action<Received> handler);
+    // NOTE: RouterSocket 의 routed 수신 plane 은 단일 표면이다. 일반
+    // ROUTER 트래픽과 spot-origin routed 트래픽을 모두 Recv / OnReceive 로
+    // 받는다. `Received.RoutingId` 는 source_node_rid, `Received.SpotRid`
+    // 는 spot-origin 트래픽에서만 값이 있다. 별도의 RecvSpot /
+    // OnSpotReceive 는 제공하지 않는다.
 }
 ```
 
@@ -658,7 +658,7 @@ public sealed class ZlinkRecvException : ZlinkException
 ### ZlinkHandlerException
 
 Thrown by handler-registration calls (`OnReceive`, `OnSendReady`,
-`OnSubscribe`, `OnEvent`, `OnFire`, `OnSpotReceive`, `OnRoutedReceive`,
+`OnSubscribe`, `OnEvent`, `OnFire`, `OnRoutedReceive`,
 `OnDispatchEvent`, `AttachStreamRaw`, etc.). Wraps a `HandlerResult`.
 
 ```csharp
@@ -964,6 +964,13 @@ Implements `IDisposable` and `IAsyncDisposable`.
 ```csharp
 public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 {
+    /// <summary>
+    /// No-op handler that ignores every event. Assign to OnEvent() when
+    /// driving the monitor via Snapshot() or direct recv. Maps to
+    /// zlink_monitor_ignore_handler.
+    /// </summary>
+    public static readonly Action<MonitorEvent> IgnoreHandler;
+
     /// <exception cref="ZlinkHandlerException"/>
     void OnEvent(Action<MonitorEvent> handler);
     /// <exception cref="ZlinkRecvException"/>
@@ -1110,6 +1117,8 @@ Fixed-service discovery view. Tracks one service type/name pair.
 Implements `IDisposable` and `IAsyncDisposable`.
 
 ```csharp
+public enum DiscoveryDealerPeerMode { Router = 1, Dealer = 2 }
+
 public sealed class Discovery : IDisposable, IAsyncDisposable
 {
     Discovery(Context context, ServiceType serviceType, string serviceName);
@@ -1129,6 +1138,20 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
     MemberPeerEntry[] MemberPeers();
     /// <exception cref="ZlinkConfigException"/>
     Message MemberPeerMetadata(ServiceRole serviceRole, string endpoint);
+
+    /// <summary>
+    /// Resolve the current owner node routing id for a logical spot routing id.
+    /// Intended for send/request destination lookup. Maps to zlink_discovery_resolve_spot.
+    /// </summary>
+    /// <exception cref="ZlinkConfigException"/>
+    RoutingId ResolveSpot(RoutingId spotRid);
+
+    /// <summary>
+    /// Set the auto-connect target policy used by DEALER sockets in this
+    /// discovery view. Default is Router. Maps to zlink_discovery_set_dealer_peer_mode.
+    /// </summary>
+    /// <exception cref="ZlinkConfigException"/>
+    void SetDealerPeerMode(DiscoveryDealerPeerMode mode);
 
     /// <exception cref="ZlinkConfigException"/>
     ServiceMonitor MonitorOpen(params ServiceMonitorEventMask[] events);
@@ -1151,6 +1174,16 @@ Implements `IDisposable` and `IAsyncDisposable`.
 public sealed class SpotNode : IDisposable, IAsyncDisposable
 {
     SpotNode(Context context);
+
+    // --- identity / routing ---
+    /// <summary>
+    /// Logical address for the SpotNode. Maps to zlink_set_routing_id(node, ...)
+    /// / zlink_get_routing_id(node, ...).
+    /// </summary>
+    /// <exception cref="ZlinkConfigException"/>
+    void SetRoutingId(RoutingId routingId);
+    /// <exception cref="ZlinkConfigException"/>
+    RoutingId RoutingId { get; }
 
     /// <exception cref="ZlinkConfigException"/>
     SpotNodePublisherOptions PublisherOptions { get; }
@@ -1212,6 +1245,16 @@ Implements `IDisposable` and `IAsyncDisposable`. **`SpotNode.CreateSpot()`
 public sealed class Spot : IDisposable, IAsyncDisposable
 {
     // Spot(SpotNode) constructor 는 internal. 사용자는 SpotNode.CreateSpot() 을 사용.
+
+    // --- identity / routing ---
+    /// <summary>
+    /// Logical address / spot-level routed ownership key.
+    /// Maps to zlink_set_routing_id(spot, ...) / zlink_get_routing_id(spot, ...).
+    /// </summary>
+    /// <exception cref="ZlinkConfigException"/>
+    void SetRoutingId(RoutingId routingId);
+    /// <exception cref="ZlinkConfigException"/>
+    RoutingId RoutingId { get; }
 
     // --- publish ---
     /// <exception cref="ZlinkSubmitException"/>
@@ -1526,6 +1569,10 @@ public sealed class Poller : IDisposable, IAsyncDisposable
     Poller();
 
     int Count { get; }
+
+    /// <summary>Number of registered pollable items. Maps to zlink_poller_size.</summary>
+    /// <exception cref="ZlinkConfigException"/>
+    int Size { get; }
 
     // --- socket registration ---
     /// <exception cref="ZlinkConfigException"/>

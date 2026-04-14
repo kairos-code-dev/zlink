@@ -4,7 +4,7 @@ import ctypes
 import queue
 import threading
 
-from ._enums import MonitorEvent, ServiceMonitorMask
+from ._enums import MonitorEventMask, ServiceMonitorMask
 from ._ffi import (
     ZlinkMonitorSnapshot,
     ZlinkMonitorEvent,
@@ -22,6 +22,7 @@ from ._core import (
     HandlerResult,
     RecvError,
     RecvResult,
+    _raise_last_error,
     _report_unhandled_callback_exception,
     _routing_id_bytes,
     _raise_result_error,
@@ -49,14 +50,20 @@ class MonitorSnapshot:
         self.snd_pending_msgs = snd_pending_msgs
         self.rcv_pending_msgs = rcv_pending_msgs
 
+    def is_ready(self):
+        return bool(self.state_flags & (1 << 0))
 
-class SocketMonitorEvent:
+
+class MonitorEvent:
     def __init__(self, *, event, value, routing_id, local_addr, remote_addr):
         self.event = event
         self.value = value
         self.routing_id = routing_id
         self.local_addr = local_addr
         self.remote_addr = remote_addr
+
+
+SocketMonitorEvent = MonitorEvent
 
 
 class ServiceMonitorEvent:
@@ -219,9 +226,11 @@ class _BaseMonitor:
 
 
 class MonitorSocket(_BaseMonitor):
+    ignore_handler = staticmethod(lambda event: None)
+
     @staticmethod
     def _decode_event(native):
-        return SocketMonitorEvent(
+        return MonitorEvent(
             event=int(native.event),
             value=int(native.value),
             routing_id=_routing_id_bytes(native.routing_id),
@@ -268,7 +277,7 @@ class ServiceMonitor(_BaseMonitor):
         self._start_event_dispatch(handler)
 
 
-def open_socket_monitor(socket, events=MonitorEvent.ALL):
+def open_socket_monitor(socket, events=MonitorEventMask.ALL):
     options = ZlinkSocketMonitorOpenOptions()
     options.events = int(events)
     handle = lib().zlink_socket_monitor_open(socket._handle, ctypes.byref(options))

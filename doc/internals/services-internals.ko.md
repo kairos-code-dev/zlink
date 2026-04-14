@@ -347,14 +347,7 @@ sequenceDiagram
     Ingress->>DP: poll readable → 메시지 수신
     DP->>Fanout: 로컬 fanout (즉시)
     Fanout->>Sub: 매칭되는 구독자에게 전달
-    DP->>DP: batch 설정 확인
-    alt Batching 활성
-        DP->>DP: topic bucket에 축적
-        Note over DP: flush 조건: delay timeout,<br/>max messages, max bytes
-        DP->>MeshPub: batch frame 송신
-    else Batching 비활성
-        DP->>MeshPub: 즉시 송신
-    end
+    DP->>MeshPub: 즉시 송신
     Note over MeshPub: → tcp mesh를 통해 원격 peer로
 ```
 
@@ -442,7 +435,9 @@ struct pending_spot_key_t {
 정리:
 
 - `DEALER` 는 `request_seq` 만으로 reply 를 찾는다.
-- `ROUTER` 는 `peer_rid + request_seq` 조합으로 reply 를 찾는다.
+- `ROUTER` 는 `source_node_rid + request_seq` 조합으로 reply 를 찾는다.
+  SPOT 에서 시작된 routed 트래픽에서는 `source_spot_rid` 가 함께 실려서
+  통합된 router handler 가 일반 호출자와 SPOT 발원 호출자를 구분한다.
 - `spot -> spot` 은 source class 와 source 주소까지 함께 본다.
 - `router -> spot` 은 local router state 에서 `request_seq` 로 관리한다.
 
@@ -532,10 +527,12 @@ sequenceDiagram
     Net->>Socket: 수신 메시지
     Socket->>Dispatch: msg_handler callback
     Dispatch->>Dispatch: parse_envelope()
-    alt message_type = request
-        Dispatch->>Handler: handler(peer_rid, request_seq, parts, userdata)
+    alt message_type = request (plain ROUTER)
+        Dispatch->>Handler: handler(source_node_rid, NULL, request_seq, parts, userdata)
+    else message_type = request (SPOT 발원)
+        Dispatch->>Handler: handler(source_node_rid, source_spot_rid, request_seq, parts, userdata)
     else message_type = reply
-        Dispatch->>Dispatch: pending[peer_rid + seq] 조회
+        Dispatch->>Dispatch: pending[source_node_rid + seq] 조회
         Dispatch->>Dispatch: timeout task 취소
         Dispatch->>Dispatch: reply_handler(errno, parts, userdata) 호출
     else message_type = error_reply
@@ -554,14 +551,14 @@ sequenceDiagram
     participant Queue as Internal Pair Queue
     participant App as zlink_router_recv()
 
-    Net->>Socket: 수신 request 메시지
+    Net->>Socket: 수신 routed 메시지
     Socket->>Dispatch: msg_handler callback
-    Dispatch->>Dispatch: parse_envelope() → request
-    Dispatch->>Queue: enqueue [peer_rid, request_seq, payload]
+    Dispatch->>Dispatch: parse_envelope() → request 또는 plain routed
+    Dispatch->>Queue: enqueue [source_node_rid, source_spot_rid, request_seq, payload]
     Note over Queue: internal PAIR socket (inproc) 경유
 
     App->>Queue: internal PAIR에서 recv
-    Queue->>App: [peer_rid, request_seq, payload]
+    Queue->>App: [source_node_rid, source_spot_rid, request_seq, payload]
     App->>App: caller에게 반환
 ```
 
@@ -716,7 +713,9 @@ Queue 생성 (`ensure()`):
 3. 양방향 handshake (0x11 → 0x22 → back)
 4. linger = 0 설정 (clean shutdown)
 
-ROUTER recv queue frame 인코딩:
-- Frame 1: `peer_rid` 바이트
-- Frame 2: `request_seq` (8바이트 Big Endian)
-- Frame 3+: Payload parts
+ROUTER recv queue frame 인코딩 (routed 표면 통합 — 이 큐는 일반 ROUTER
+트래픽과 SPOT 에서 시작된 routed 트래픽을 같은 framing 으로 전달한다):
+- Frame 1: `source_node_rid` 바이트
+- Frame 2: `source_spot_rid` 바이트 (일반 ROUTER 트래픽이면 길이 0)
+- Frame 3: `request_seq` (8바이트 Big Endian; fire-and-forget 이면 `0`)
+- Frame 4+: Payload parts

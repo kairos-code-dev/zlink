@@ -5,13 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Zlink.Native;
 
-namespace Zlink.Service;
+namespace Zlink;
 
 public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
 {
     private IntPtr _handle;
     private NativeMethods.ZlinkServiceMonitorHandlerDelegate? _handlerDelegate;
-    private Action<ServiceMonitorEvent>? _handler;
+    private Action<ServiceEvent>? _handler;
     private SynchronizationContext? _handlerContext;
 
     internal ServiceMonitor(IntPtr handle)
@@ -21,7 +21,7 @@ public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
         _handle = handle;
     }
 
-    public void OnEvent(Action<ServiceMonitorEvent> handler)
+    public void OnEvent(Action<ServiceEvent> handler)
     {
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
@@ -33,36 +33,38 @@ public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
         _handlerDelegate = OnNativeEvent;
         int rc = NativeMethods.zlink_service_monitor_handler(_handle,
             _handlerDelegate, IntPtr.Zero);
-        ZlinkException.ThrowIfError(rc);
+        if (rc != 0)
+            throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
     }
 
-    public ServiceMonitorEvent Recv()
+    public ServiceEvent Recv()
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_service_monitor_recv(_handle,
             out var native, 0);
-        ZlinkException.ThrowIfError(rc);
-        return ServiceMonitorEvent.FromNative(ref native);
+        if (rc != 0)
+            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
+        return ServiceEvent.FromNative(ref native);
     }
 
-    public ServiceMonitorEvent? Recv(bool nonBlocking)
+    public ServiceEvent? Recv(bool nonBlocking)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_service_monitor_recv(_handle, out var native,
             nonBlocking ? 1 : 0);
         if (rc == 0)
         {
-            return ServiceMonitorEvent.FromNative(ref native);
+            return ServiceEvent.FromNative(ref native);
         }
         if (nonBlocking && ZlinkException.MapErrorCode(NativeMethods.zlink_errno())
             == ErrorCode.EAgain)
         {
             return null;
         }
-        throw ZlinkException.FromLastError();
+        throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
     }
 
-    internal bool TryRecv(out ServiceMonitorEvent? monitorEvent)
+    internal bool TryRecv(out ServiceEvent? monitorEvent)
     {
         monitorEvent = Recv(true);
         return monitorEvent != null;
@@ -72,7 +74,8 @@ public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_monitor_snapshot(_handle, out var native);
-        ZlinkException.ThrowIfError(rc);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         return MonitorSnapshot.FromNative(ref native);
     }
 
@@ -81,7 +84,8 @@ public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
         if (_handle == IntPtr.Zero)
             return;
         int rc = NativeMethods.zlink_monitor_close(ref _handle);
-        ZlinkException.ThrowIfError(rc);
+        if (rc != 0)
+            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
         _handler = null;
         _handlerContext = null;
         _handlerDelegate = null;
@@ -126,15 +130,14 @@ public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
 
     private void OnNativeEvent(ref ZlinkServiceEvent native, IntPtr userData)
     {
-        Action<ServiceMonitorEvent>? handler = _handler;
+        Action<ServiceEvent>? handler = _handler;
         SynchronizationContext? context = _handlerContext;
         if (handler == null)
             return;
 
         try
         {
-            ServiceMonitorEvent monitorEvent =
-                ServiceMonitorEvent.FromNative(ref native);
+            ServiceEvent monitorEvent = ServiceEvent.FromNative(ref native);
             CallbackDelivery.Post(context, () => handler(monitorEvent));
         }
         catch (Exception ex)

@@ -93,12 +93,17 @@ pub const SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED: ServiceMonitorEvent
 pub const SERVICE_MONITOR_EVENT_DISCOVERY_CLOSED: ServiceMonitorEventMask =
     ServiceMonitorEventMask::CLOSED;
 
-use crate::error::{ZlinkError, check_rc};
+use crate::error::{
+    CloseError, ConfigError, HandlerError, RecvError, check_close_rc, check_config_rc,
+    check_handler_rc, check_recv_rc,
+};
 use crate::ffi;
 use crate::message::RoutingId;
 use crate::service::Discovery;
 use crate::service::ServiceKind;
 use crate::socket::*;
+
+fn ignore_monitor_event(_: &MonitorEvent) {}
 
 /// Typed monitor target for socket monitor observation.
 pub struct MonitorTarget<'a> {
@@ -162,46 +167,56 @@ impl<'a> From<&'a Discovery> for ServiceMonitorTarget<'a> {
 /// A typed socket monitor event.
 #[derive(Debug, Clone)]
 pub struct MonitorEvent {
-    pub event: u64,
-    pub value: u64,
-    pub routing_id: RoutingId,
+    pub event: MonitorEventType,
+    pub value: u32,
+    pub routing_id: Option<RoutingId>,
     pub local_addr: String,
     pub remote_addr: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MonitorEventType(pub u64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MonitorSourceKind {
+    Socket,
+    SpotPub,
+    SpotSub,
 }
 
 impl MonitorEvent {
     fn from_raw(raw: &ffi::zlink_monitor_event_t) -> Self {
         Self {
-            event: raw.event,
-            value: raw.value,
-            routing_id: RoutingId::from_raw(raw.routing_id),
+            event: MonitorEventType(raw.event),
+            value: raw.value as u32,
+            routing_id: RoutingId::from_raw_optional(raw.routing_id),
             local_addr: cstr_array_to_string(&raw.local_addr),
             remote_addr: cstr_array_to_string(&raw.remote_addr),
         }
     }
 
     pub fn is_connected(&self) -> bool {
-        self.event & ffi::ZLINK_SOCKET_MONITOR_EVENT_CONNECTED as u64 != 0
+        self.event.0 & ffi::ZLINK_SOCKET_MONITOR_EVENT_CONNECTED as u64 != 0
     }
 
     pub fn is_disconnected(&self) -> bool {
-        self.event & ffi::ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED as u64 != 0
+        self.event.0 & ffi::ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED as u64 != 0
     }
 
     pub fn is_listening(&self) -> bool {
-        self.event & ffi::ZLINK_SOCKET_MONITOR_EVENT_LISTENING as u64 != 0
+        self.event.0 & ffi::ZLINK_SOCKET_MONITOR_EVENT_LISTENING as u64 != 0
     }
 
     pub fn is_accepted(&self) -> bool {
-        self.event & ffi::ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED as u64 != 0
+        self.event.0 & ffi::ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED as u64 != 0
     }
 
     pub fn is_closed(&self) -> bool {
-        self.event & ffi::ZLINK_SOCKET_MONITOR_EVENT_CLOSED as u64 != 0
+        self.event.0 & ffi::ZLINK_SOCKET_MONITOR_EVENT_CLOSED as u64 != 0
     }
 
     pub fn is_connection_ready(&self) -> bool {
-        self.event & ffi::ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY as u64 != 0
+        self.event.0 & ffi::ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY as u64 != 0
     }
 }
 
@@ -212,6 +227,7 @@ impl MonitorEvent {
 /// A point-in-time snapshot of a monitored entity's state.
 #[derive(Debug, Clone)]
 pub struct MonitorSnapshot {
+    pub source_kind: MonitorSourceKind,
     pub state_flags: u32,
     pub detail_flags: u32,
     pub snd_pending_msgs: u64,
@@ -221,6 +237,17 @@ pub struct MonitorSnapshot {
 impl MonitorSnapshot {
     fn from_raw(raw: &ffi::zlink_monitor_snapshot_t) -> Self {
         Self {
+            source_kind: match raw.source_kind {
+                ffi::zlink_monitor_source_kind_t::ZLINK_MONITOR_SOURCE_SOCKET => {
+                    MonitorSourceKind::Socket
+                }
+                ffi::zlink_monitor_source_kind_t::ZLINK_MONITOR_SOURCE_SPOT_PUB => {
+                    MonitorSourceKind::SpotPub
+                }
+                ffi::zlink_monitor_source_kind_t::ZLINK_MONITOR_SOURCE_SPOT_SUB => {
+                    MonitorSourceKind::SpotSub
+                }
+            },
             state_flags: raw.state_flags,
             detail_flags: raw.detail_flags,
             snd_pending_msgs: raw.snd_pending_msgs,
@@ -244,8 +271,8 @@ impl MonitorSnapshot {
 /// Monitor handle for observing socket lifecycle and connection events.
 ///
 /// The monitor is an independent observation plane that does not interfere
-/// with the data plane. It supports both blocking `recv` and non-blocking
-/// `try_recv` following the canonical naming policy.
+/// with the data plane. It uses `recv_with_flags(RecvFlags::DONT_WAIT)` for
+/// non-blocking polling.
 pub struct SocketMonitor {
     handle: *mut c_void,
     _cb: Option<super::socket::CallbackBox>,
@@ -255,7 +282,7 @@ unsafe impl Send for SocketMonitor {}
 
 impl SocketMonitor {
     /// Open a socket monitor for all events.
-    pub fn open<'a>(socket: impl Into<MonitorTarget<'a>>) -> Result<Self, ZlinkError> {
+    pub fn open<'a>(socket: impl Into<MonitorTarget<'a>>) -> Result<Self, ConfigError> {
         Self::open_with_events(socket, SocketMonitorEventMask::ALL)
     }
 
@@ -263,78 +290,65 @@ impl SocketMonitor {
     pub(crate) fn open_with_events<'a>(
         socket: impl Into<MonitorTarget<'a>>,
         events: SocketMonitorEventMask,
-    ) -> Result<Self, ZlinkError> {
+    ) -> Result<Self, ConfigError> {
         let target = socket.into();
         let opts = ffi::zlink_socket_monitor_open_options_t {
             events: events.bits(),
         };
         let handle = unsafe { ffi::zlink_socket_monitor_open(target.raw(), &opts) };
         if handle.is_null() {
-            return Err(ZlinkError::last());
+            return Err(crate::error::ConfigError::new(
+                crate::error::ConfigResult::InvalidArgument,
+                crate::error::last_errno(),
+            ));
         }
         Ok(Self { handle, _cb: None })
     }
 
     /// Blocking receive of a monitor event.
-    pub fn recv(&self) -> Result<MonitorEvent, ZlinkError> {
+    pub fn recv(&self) -> Result<MonitorEvent, RecvError> {
         let mut raw = MaybeUninit::<ffi::zlink_socket_monitor_event_t>::uninit();
-        check_rc(unsafe { ffi::zlink_socket_monitor_recv(self.handle, raw.as_mut_ptr(), 0) })?;
+        check_recv_rc(unsafe { ffi::zlink_socket_monitor_recv(self.handle, raw.as_mut_ptr(), 0) })?;
         let val = unsafe { raw.assume_init() };
         Ok(MonitorEvent::from_raw(&val))
     }
 
-    /// Non-blocking receive. Returns `None` if no event is pending.
-    pub fn try_recv(&self) -> Result<Option<MonitorEvent>, ZlinkError> {
-        let mut raw = MaybeUninit::<ffi::zlink_socket_monitor_event_t>::uninit();
-        let rc = unsafe {
-            ffi::zlink_socket_monitor_recv(self.handle, raw.as_mut_ptr(), ffi::ZLINK_DONTWAIT)
-        };
-        if rc == crate::error::RecvResult::NoData as i32 {
-            return Ok(None);
-        }
-        if rc != 0 {
-            let errno = unsafe { ffi::zlink_errno() };
-            if errno == libc::EAGAIN {
-                return Ok(None);
-            }
-            return Err(ZlinkError::last());
-        }
-        let val = unsafe { raw.assume_init() };
-        Ok(Some(MonitorEvent::from_raw(&val)))
-    }
-
     /// Read the current state snapshot.
-    pub fn snapshot(&self) -> Result<MonitorSnapshot, ZlinkError> {
+    pub fn snapshot(&self) -> Result<MonitorSnapshot, ConfigError> {
         let mut raw = MaybeUninit::<ffi::zlink_monitor_snapshot_t>::uninit();
-        check_rc(unsafe { ffi::zlink_monitor_snapshot(self.handle, raw.as_mut_ptr()) })?;
+        check_config_rc(unsafe { ffi::zlink_monitor_snapshot(self.handle, raw.as_mut_ptr()) })?;
         let val = unsafe { raw.assume_init() };
         Ok(MonitorSnapshot::from_raw(&val))
     }
 
     /// Install a callback handler for monitor events.
-    pub fn on_event<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    pub fn on_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
-        F: Fn(MonitorEvent) + Send + 'static,
+        F: Fn(&MonitorEvent) + Send + 'static,
     {
         let (cb, userdata) = super::socket::CallbackBox::new(handler);
 
-        unsafe extern "C" fn trampoline<F: Fn(MonitorEvent) + Send + 'static>(
+        unsafe extern "C" fn trampoline<F: Fn(&MonitorEvent) + Send + 'static>(
             event: *const ffi::zlink_monitor_event_t,
             userdata: *mut c_void,
         ) {
             let handler = unsafe { &*(userdata as *const F) };
             let ev = MonitorEvent::from_raw(unsafe { &*event });
-            handler(ev);
+            handler(&ev);
         }
 
         let rc =
             unsafe { ffi::zlink_socket_monitor_handler(self.handle, trampoline::<F>, userdata) };
         if rc != 0 {
             drop(cb);
-            return Err(ZlinkError::last());
+            return Err(check_handler_rc(rc).unwrap_err());
         }
         self._cb = Some(cb);
         Ok(())
+    }
+
+    pub fn ignore_handler() -> fn(&MonitorEvent) {
+        ignore_monitor_event
     }
 
     #[allow(dead_code)]
@@ -342,12 +356,12 @@ impl SocketMonitor {
         self.handle
     }
 
-    pub fn close(&mut self) -> Result<(), ZlinkError> {
+    pub fn close(&mut self) -> Result<(), CloseError> {
         if self.handle.is_null() {
             return Ok(());
         }
         let mut h = self.handle;
-        check_rc(unsafe { ffi::zlink_monitor_close(&mut h) })?;
+        check_close_rc(unsafe { ffi::zlink_monitor_close(&mut h) })?;
         self.handle = std::ptr::null_mut();
         self._cb = None;
         Ok(())
@@ -374,20 +388,27 @@ impl Drop for SocketMonitor {
 pub struct ServiceEvent {
     pub service_kind: ServiceKind,
     pub event_type: ServiceEventType,
-    pub status: i32,
-    pub error_code: i32,
-    pub value: u32,
+    pub status: u32,
+    pub error_code: u32,
+    pub value: u64,
     pub detail_flags: u32,
     pub service_name: String,
     pub endpoint: String,
-    pub routing_id: RoutingId,
+    pub routing_id: Option<RoutingId>,
     pub subject: String,
-    pub subject_kind: u32,
+    pub subject_kind: SubjectKind,
 }
 
 /// Typed discovery service monitor event kind set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServiceEventType(u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubjectKind {
+    None,
+    Topic,
+    Pattern,
+}
 
 impl ServiceEventType {
     pub fn bits(self) -> u32 {
@@ -424,15 +445,19 @@ impl ServiceEvent {
         Self {
             service_kind: ServiceKind::from_raw(raw.service_kind),
             event_type: ServiceEventType(raw.event_type),
-            status: raw.status,
-            error_code: raw.error_code,
-            value: raw.value,
+            status: raw.status as u32,
+            error_code: raw.error_code as u32,
+            value: raw.value as u64,
             detail_flags: raw.detail_flags,
             service_name: cstr_array_to_string(&raw.service_name),
             endpoint: cstr_array_to_string(&raw.endpoint),
-            routing_id: RoutingId::from_raw(raw.routing_id),
+            routing_id: RoutingId::from_raw_optional(raw.routing_id),
             subject: cstr_array_to_string(&raw.subject),
-            subject_kind: raw.subject_kind,
+            subject_kind: match raw.subject_kind {
+                1 => SubjectKind::Topic,
+                2 => SubjectKind::Pattern,
+                _ => SubjectKind::None,
+            },
         }
     }
 }
@@ -451,7 +476,7 @@ unsafe impl Send for ServiceMonitor {}
 
 impl ServiceMonitor {
     /// Open a service monitor on a discovery handle for all events.
-    pub fn open<'a>(target: impl Into<ServiceMonitorTarget<'a>>) -> Result<Self, ZlinkError> {
+    pub fn open<'a>(target: impl Into<ServiceMonitorTarget<'a>>) -> Result<Self, ConfigError> {
         Self::open_with_events(target, ServiceMonitorEventMask::ALL)
     }
 
@@ -459,86 +484,71 @@ impl ServiceMonitor {
     pub(crate) fn open_with_events<'a>(
         target: impl Into<ServiceMonitorTarget<'a>>,
         events: ServiceMonitorEventMask,
-    ) -> Result<Self, ZlinkError> {
+    ) -> Result<Self, ConfigError> {
         let target = target.into();
         let opts = ffi::zlink_service_monitor_open_options_t {
             events: events.bits(),
         };
         let handle = unsafe { ffi::zlink_service_monitor_open(target.raw(), &opts) };
         if handle.is_null() {
-            return Err(ZlinkError::last());
+            return Err(crate::error::ConfigError::new(
+                crate::error::ConfigResult::InvalidArgument,
+                crate::error::last_errno(),
+            ));
         }
         Ok(Self { handle, _cb: None })
     }
 
     /// Blocking receive of a service event.
-    pub fn recv(&self) -> Result<ServiceEvent, ZlinkError> {
+    pub fn recv(&self) -> Result<ServiceEvent, RecvError> {
         let mut raw = MaybeUninit::<ffi::zlink_service_monitor_event_t>::uninit();
-        check_rc(unsafe { ffi::zlink_service_monitor_recv(self.handle, raw.as_mut_ptr(), 0) })?;
+        check_recv_rc(unsafe {
+            ffi::zlink_service_monitor_recv(self.handle, raw.as_mut_ptr(), 0)
+        })?;
         let val = unsafe { raw.assume_init() };
         Ok(ServiceEvent::from_raw(&val))
     }
 
-    /// Non-blocking receive. Returns `None` if no event is pending.
-    pub fn try_recv(&self) -> Result<Option<ServiceEvent>, ZlinkError> {
-        let mut raw = MaybeUninit::<ffi::zlink_service_monitor_event_t>::uninit();
-        let rc = unsafe {
-            ffi::zlink_service_monitor_recv(self.handle, raw.as_mut_ptr(), ffi::ZLINK_DONTWAIT)
-        };
-        if rc == crate::error::RecvResult::NoData as i32 {
-            return Ok(None);
-        }
-        if rc != 0 {
-            let errno = unsafe { ffi::zlink_errno() };
-            if errno == libc::EAGAIN {
-                return Ok(None);
-            }
-            return Err(ZlinkError::last());
-        }
-        let val = unsafe { raw.assume_init() };
-        Ok(Some(ServiceEvent::from_raw(&val)))
-    }
-
     /// Read the current state snapshot.
-    pub fn snapshot(&self) -> Result<MonitorSnapshot, ZlinkError> {
+    pub fn snapshot(&self) -> Result<MonitorSnapshot, ConfigError> {
         let mut raw = MaybeUninit::<ffi::zlink_monitor_snapshot_t>::uninit();
-        check_rc(unsafe { ffi::zlink_monitor_snapshot(self.handle, raw.as_mut_ptr()) })?;
+        check_config_rc(unsafe { ffi::zlink_monitor_snapshot(self.handle, raw.as_mut_ptr()) })?;
         let val = unsafe { raw.assume_init() };
         Ok(MonitorSnapshot::from_raw(&val))
     }
 
     /// Install a callback handler for service events.
-    pub fn on_event<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    pub fn on_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
-        F: Fn(ServiceEvent) + Send + 'static,
+        F: Fn(&ServiceEvent) + Send + 'static,
     {
         let (cb, userdata) = super::socket::CallbackBox::new(handler);
 
-        unsafe extern "C" fn trampoline<F: Fn(ServiceEvent) + Send + 'static>(
+        unsafe extern "C" fn trampoline<F: Fn(&ServiceEvent) + Send + 'static>(
             event: *const ffi::zlink_service_event_t,
             userdata: *mut c_void,
         ) {
             let handler = unsafe { &*(userdata as *const F) };
             let ev = ServiceEvent::from_raw(unsafe { &*event });
-            handler(ev);
+            handler(&ev);
         }
 
         let rc =
             unsafe { ffi::zlink_service_monitor_handler(self.handle, trampoline::<F>, userdata) };
         if rc != 0 {
             drop(cb);
-            return Err(ZlinkError::last());
+            return Err(check_handler_rc(rc).unwrap_err());
         }
         self._cb = Some(cb);
         Ok(())
     }
 
-    pub fn close(&mut self) -> Result<(), ZlinkError> {
+    pub fn close(&mut self) -> Result<(), CloseError> {
         if self.handle.is_null() {
             return Ok(());
         }
         let mut h = self.handle;
-        check_rc(unsafe { ffi::zlink_monitor_close(&mut h) })?;
+        check_close_rc(unsafe { ffi::zlink_monitor_close(&mut h) })?;
         self.handle = std::ptr::null_mut();
         self._cb = None;
         Ok(())

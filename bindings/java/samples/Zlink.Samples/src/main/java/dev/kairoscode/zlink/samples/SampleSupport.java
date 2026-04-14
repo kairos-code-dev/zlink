@@ -5,7 +5,7 @@ package dev.kairoscode.zlink.samples;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.Received;
-import dev.kairoscode.zlink.ZlinkVersion;
+import dev.kairoscode.zlink.Zlink;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.io.IOException;
 import java.io.InputStream;
@@ -39,7 +39,7 @@ final class SampleSupport {
     }
 
     static void ensureNative() {
-        ZlinkVersion.get();
+        Zlink.version();
     }
 
     static void await(CountDownLatch latch, String label) {
@@ -85,8 +85,8 @@ final class SampleSupport {
     static void waitStreamConnected(MonitorSocket monitor) {
         while (true) {
             var event = monitor.recv();
-            if (event.event() == MonitorEventType.ACCEPTED.getValue()
-                || event.event() == MonitorEventType.CONNECTION_READY.getValue()) {
+            if (event.event() == MonitorEventType.ACCEPTED
+                || event.event() == MonitorEventType.CONNECTION_READY) {
                 return;
             }
         }
@@ -168,7 +168,7 @@ final class SampleSupport {
     private static void waitMonitorEvent(MonitorSocket monitor, int eventType) {
         while (true) {
             var event = monitor.recv();
-            if (event.event() == eventType) {
+            if (event.event().getValue() == eventType) {
                 return;
             }
         }

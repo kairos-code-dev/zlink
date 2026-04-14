@@ -1,7 +1,7 @@
 package dev.kairoscode.zlink;
 
-import dev.kairoscode.zlink.options.SocketOptionKey;
-import dev.kairoscode.zlink.options.SocketOptions;
+import dev.kairoscode.zlink.SocketOptionKey;
+import dev.kairoscode.zlink.SocketOptions;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;

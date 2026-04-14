@@ -18,12 +18,12 @@ fn send_consumes_message_ownership() {
 
     // After send, the message is consumed (moved into native).
     // Rust's move semantics prevent reuse at compile time.
-    let msg = Message::from_bytes(b"owned-data").unwrap();
+    let msg = Message::copy_from(b"owned-data").unwrap();
     a.send(msg).unwrap();
     // `msg` cannot be used here – Rust ownership enforced
 
     let received = b.recv().unwrap();
-    assert_eq!(received.parts()[0].data(), b"owned-data");
+    assert_eq!(received.parts()[0].as_bytes(), b"owned-data");
 }
 
 #[test]
@@ -37,8 +37,8 @@ fn send_multipart_consumes_all_parts() {
     thread::sleep(Duration::from_millis(50));
 
     let parts = vec![
-        Message::from_bytes(b"part-a").unwrap(),
-        Message::from_bytes(b"part-b").unwrap(),
+        Message::copy_from(b"part-a").unwrap(),
+        Message::copy_from(b"part-b").unwrap(),
     ];
     // Vec is consumed by send
     a.send(parts).unwrap();
@@ -54,14 +54,14 @@ fn recv_ownership_transfers_to_caller() {
     b.connect("inproc://own-recv-transfer").unwrap();
     thread::sleep(Duration::from_millis(50));
 
-    let msg = Message::from_bytes(b"recv-test").unwrap();
+    let msg = Message::copy_from(b"recv-test").unwrap();
     b.send(msg).unwrap();
 
     let received = a.recv().unwrap();
     // Caller owns the parts; dropping them calls zlink_msg_close
     let parts = received.into_parts();
     assert_eq!(parts.len(), 1);
-    assert_eq!(parts[0].data(), b"recv-test");
+    assert_eq!(parts[0].as_bytes(), b"recv-test");
     // Parts dropped here – native memory freed
 }
 
@@ -70,7 +70,7 @@ fn unsent_message_must_be_closed() {
     // Creating a message and dropping it without send must properly close
     // the native message (RAII Drop).
     for _ in 0..1000 {
-        let msg = Message::from_bytes(b"never-sent").unwrap();
+        let msg = Message::copy_from(b"never-sent").unwrap();
         drop(msg); // Must call zlink_msg_close
     }
 }
@@ -88,8 +88,8 @@ fn send_failure_does_not_leak() {
         .set_send_timeout(Duration::from_millis(50))
         .unwrap();
 
-    let rid = RoutingId::new(b"ghost").unwrap();
-    let msg = Message::from_bytes(b"will-fail").unwrap();
+    let rid = RoutingId::from_bytes(b"ghost");
+    let msg = Message::copy_from(b"will-fail").unwrap();
     let _ = router.send(&rid, msg);
     // msg is consumed regardless of success/failure – no native leak
 }
@@ -108,13 +108,13 @@ fn multipart_recv_shape_matches_callback_shape() {
     thread::sleep(Duration::from_millis(50));
 
     let parts = vec![
-        Message::from_bytes(b"frame-x").unwrap(),
-        Message::from_bytes(b"frame-y").unwrap(),
+        Message::copy_from(b"frame-x").unwrap(),
+        Message::copy_from(b"frame-y").unwrap(),
     ];
     b1.send(parts).unwrap();
     let direct = a1.recv().unwrap();
     let direct_count = direct.parts().len();
-    let direct_data: Vec<Vec<u8>> = direct.parts().iter().map(|p| p.data().to_vec()).collect();
+    let direct_data: Vec<Vec<u8>> = direct.parts().iter().map(|p| p.as_bytes().to_vec()).collect();
 
     // Callback recv path
     let mut a2 = ctx.pair_socket().unwrap();
@@ -126,7 +126,7 @@ fn multipart_recv_shape_matches_callback_shape() {
     a2.on_receive(move |received| {
         let mut guard = cb_clone.lock().unwrap();
         for part in received.parts() {
-            guard.push(part.data().to_vec());
+            guard.push(part.as_bytes().to_vec());
         }
     })
     .unwrap();
@@ -136,8 +136,8 @@ fn multipart_recv_shape_matches_callback_shape() {
     thread::sleep(Duration::from_millis(50));
 
     let parts = vec![
-        Message::from_bytes(b"frame-x").unwrap(),
-        Message::from_bytes(b"frame-y").unwrap(),
+        Message::copy_from(b"frame-x").unwrap(),
+        Message::copy_from(b"frame-y").unwrap(),
     ];
     b2.send(parts).unwrap();
     thread::sleep(Duration::from_millis(100));
@@ -164,7 +164,7 @@ fn callback_receives_owned_parts() {
             // Callback owns the parts
             let part = &received.parts()[0];
             let mut guard = data_clone.lock().unwrap();
-            guard.extend_from_slice(part.data());
+            guard.extend_from_slice(part.as_bytes());
             // Parts dropped when `received` goes out of scope
         })
         .unwrap();
@@ -173,7 +173,7 @@ fn callback_receives_owned_parts() {
     client.connect("inproc://own-callback").unwrap();
     thread::sleep(Duration::from_millis(50));
 
-    let msg = Message::from_bytes(b"cb-payload").unwrap();
+    let msg = Message::copy_from(b"cb-payload").unwrap();
     client.send(msg).unwrap();
     thread::sleep(Duration::from_millis(100));
 

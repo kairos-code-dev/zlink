@@ -12,8 +12,10 @@ fn main() {
 
     let publisher_node = SpotNode::new(&ctx).expect("publisher node failed");
     let subscriber_node = SpotNode::new(&ctx).expect("subscriber node failed");
-    let publisher = Spot::new(&publisher_node).expect("publisher spot failed");
-    let mut subscriber = Spot::new(&subscriber_node).expect("subscriber spot failed");
+    let publisher = publisher_node.create_spot().expect("publisher spot failed");
+    let mut subscriber = subscriber_node
+        .create_spot()
+        .expect("subscriber spot failed");
     let endpoint = sample_support::tcp_endpoint();
 
     let (tx, rx) = mpsc::channel();
@@ -41,7 +43,7 @@ fn main() {
         publisher
             .publish(
                 "room:lobby",
-                vec![Message::from_bytes(b"hello-spot").unwrap()],
+                vec![Message::copy_from(b"hello-spot").unwrap()],
             )
             .expect("publish failed");
         if let Ok((topic, payload)) = rx.recv_timeout(Duration::from_millis(50)) {

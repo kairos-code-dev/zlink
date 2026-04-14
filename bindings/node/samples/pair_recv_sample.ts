@@ -40,7 +40,7 @@ async function main() {
     client.send(Buffer.from(sent));
 
     const received = server.recv();
-    const recv = received.parts[0].data.toString();
+    const recv = received.parts[0].data().toString();
     assert.equal(recv, sent);
     console.log(`[pair/recv] send: "${sent}" \u2192 recv: "${recv}"`);
   } finally {

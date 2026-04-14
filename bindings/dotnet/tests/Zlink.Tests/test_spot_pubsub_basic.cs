@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using Xunit;
-using Zlink.Service;
 
 namespace Zlink.Tests;
 
@@ -15,7 +14,7 @@ public sealed class test_spot_pubsub_basic
 
         using var ctx = new Context();
         using var node = new SpotNode(ctx);
-        using var spot = new Spot(node);
+        using var spot = node.CreateSpot();
 
         spot.SetSubscription("zone:12:*");
         spot.UnsetSubscription("zone:12:*");
@@ -29,7 +28,7 @@ public sealed class test_spot_pubsub_basic
 
         using var ctx = new Context();
         using var node = new SpotNode(ctx);
-        using var spot = new Spot(node);
+        using var spot = node.CreateSpot();
         spot.SetSubscription("own:topic");
 
         using var msg = Message.FromString("owned-spot");
@@ -46,7 +45,7 @@ public sealed class test_spot_pubsub_basic
 
         using var ctx = new Context();
         using var node = new SpotNode(ctx);
-        using var spot = new Spot(node);
+        using var spot = node.CreateSpot();
         spot.SetSubscription("cb:topic");
         spot.OnSubscribe((topic, parts) =>
         {
@@ -66,7 +65,7 @@ public sealed class test_spot_pubsub_basic
 
         using var ctx = new Context();
         using var node = new SpotNode(ctx);
-        using var spot = new Spot(node);
+        using var spot = node.CreateSpot();
 
         string tooLongTopic = new string('a', 256);
 
@@ -93,8 +92,8 @@ public sealed class test_spot_pubsub_basic
         using var ctx = new Context();
         using var pubNode = new SpotNode(ctx);
         using var subNode = new SpotNode(ctx);
-        using var publisher = new Spot(pubNode);
-        using var subscriber = new Spot(subNode);
+        using var publisher = pubNode.CreateSpot();
+        using var subscriber = subNode.CreateSpot();
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "spot-node-manual");
         pubNode.Bind(endpoint);
@@ -123,7 +122,7 @@ public sealed class test_spot_pubsub_basic
 
         using var ctx = new Context();
         using var node = new SpotNode(ctx);
-        using var spot = new Spot(node);
+        using var spot = node.CreateSpot();
         spot.SetSubscription("node:cb");
         spot.OnSubscribe((topic, parts) =>
         {
@@ -146,8 +145,8 @@ public sealed class test_spot_pubsub_basic
         using var ctx = new Context();
         using var pubNode = new SpotNode(ctx);
         using var subNode = new SpotNode(ctx);
-        using var publisher = new Spot(pubNode);
-        using var subscriber = new Spot(subNode);
+        using var publisher = pubNode.CreateSpot();
+        using var subscriber = subNode.CreateSpot();
         using var receivedSignal = new ManualResetEventSlim(false);
 
         string? receivedPayload = null;
@@ -194,8 +193,8 @@ public sealed class test_spot_pubsub_basic
         using var ctx = new Context();
         using var pubNode = new SpotNode(ctx);
         using var subNode = new SpotNode(ctx);
-        using var publisher = new Spot(pubNode);
-        using var subscriber = new Spot(subNode);
+        using var publisher = pubNode.CreateSpot();
+        using var subscriber = subNode.CreateSpot();
         using var receivedSignal = new ManualResetEventSlim(false);
         using var callbackContext = new SingleThreadSynchronizationContext();
 

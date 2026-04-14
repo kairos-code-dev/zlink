@@ -6,6 +6,14 @@ package zlink
 #include <stdint.h>
 #include <stdlib.h>
 #include "zlink.h"
+
+static inline int zlink_discovery_resolve_spot_go(void *discovery, const zlink_routing_id_t *spot_rid, zlink_routing_id_t *owner_node_rid_out) {
+    return zlink_discovery_resolve_spot(discovery, spot_rid, owner_node_rid_out);
+}
+
+static inline int zlink_discovery_set_dealer_peer_mode_go(void *discovery, unsigned int mode) {
+    return zlink_discovery_set_dealer_peer_mode(discovery, (zlink_discovery_dealer_peer_mode_t)mode);
+}
 */
 import "C"
 
@@ -112,6 +120,13 @@ const (
 	TopologyStateStopped    TopologyState = TopologyState(C.ZLINK_TOPOLOGY_STATE_STOPPED)
 )
 
+type DiscoveryDealerPeerMode int
+
+const (
+	DiscoveryDealerPeerModeRouter DiscoveryDealerPeerMode = 1
+	DiscoveryDealerPeerModeDealer DiscoveryDealerPeerMode = 2
+)
+
 type Discovery struct {
 	handle unsafe.Pointer
 	closed bool
@@ -140,7 +155,7 @@ type SpotNodeStatus struct {
 	SubjectCount        uint32
 	ReadySubjectCount   uint32
 	LastError           int32
-	LastChangedMS       uint64
+	LastChangedMs       uint64
 }
 
 type SpotNodePeerEntry struct {
@@ -149,14 +164,14 @@ type SpotNodePeerEntry struct {
 	PeerEndpoint     string
 	Source           SpotPeerSource
 	State            SpotPeerState
-	ConnectedSinceMS uint64
-	LastChangedMS    uint64
+	ConnectedSinceMs uint64
+	LastChangedMs    uint64
 }
 
 type SpotNodePeerFilter struct {
-	PeerEndpoint string
-	Source       SpotPeerSource
-	State        SpotPeerState
+	PeerEndpoint *string
+	Source       *SpotPeerSource
+	State        *SpotPeerState
 }
 
 type SpotNodeSubjectEntry struct {
@@ -165,13 +180,13 @@ type SpotNodeSubjectEntry struct {
 	SubjectKind     SubjectKind
 	ReadyPeerCount  uint32
 	ActivePeerCount uint32
-	LastChangedMS   uint64
+	LastChangedMs   uint64
 }
 
 type SpotNodeSubjectFilter struct {
-	Role        SpotRole
-	Subject     string
-	SubjectKind SubjectKind
+	Role        *SpotRole
+	Subject     *string
+	SubjectKind *SubjectKind
 }
 
 type RegistryStatus struct {
@@ -183,7 +198,7 @@ type RegistryStatus struct {
 	ConnectedPeerRegistryCount uint32
 	ListSeq                    uint64
 	LastError                  int32
-	LastChangedMS              uint64
+	LastChangedMs              uint64
 }
 
 type RegistryServiceSummaryEntry struct {
@@ -195,13 +210,13 @@ type RegistryServiceSummaryEntry struct {
 	ReadyCount      uint32
 	ErrorCount      uint32
 	StoppedCount    uint32
-	LastReportedMS  uint64
+	LastReportedMs  uint64
 }
 
 type RegistryServiceSummaryFilter struct {
-	ServiceKind ServiceKind
-	ServiceRole ServiceRole
-	ServiceName string
+	ServiceKind *ServiceKind
+	ServiceRole *ServiceRole
+	ServiceName *string
 }
 
 type MemberPeerEntry struct {
@@ -224,16 +239,28 @@ type RegistryTopologyEntry struct {
 	DesiredCount   uint32
 	ReadyCount     uint32
 	ErrorCode      uint32
-	LastReportedMS uint64
+	LastReportedMs uint64
 }
 
 type RegistryTopologyFilter struct {
-	ServiceKind ServiceKind
-	ServiceRole ServiceRole
-	ServiceName string
-	RoutingID   RoutingID
-	State       TopologyState
-	Source      TopologySource
+	ServiceKind *ServiceKind
+	ServiceRole *ServiceRole
+	ServiceName *string
+	RoutingID   *RoutingID
+	State       *TopologyState
+	Source      *TopologySource
+}
+
+func (e *MemberPeerEntry) HasRoutingID() bool {
+	return e != nil && serviceEntryHasRoutingID(e.RoutingID)
+}
+
+func (e *RegistryTopologyEntry) HasRoutingID() bool {
+	return e != nil && serviceEntryHasRoutingID(e.RoutingID)
+}
+
+func (s *SpotNodeStatus) HasNodeRoutingID() bool {
+	return s != nil && spotNodeHasRoutingID(s.NodeRoutingID)
 }
 
 func newRegistry(ctx *Context) (*Registry, error) {
@@ -345,6 +372,25 @@ func (d *Discovery) SetValue(value int64) error {
 		return stateError("discovery is closed")
 	}
 	return checkRC(C.zlink_discovery_set_value(d.raw(), C.int64_t(value)))
+}
+
+func (d *Discovery) ResolveSpot(spotRid RoutingID) (RoutingID, error) {
+	if d == nil || d.closed {
+		return RoutingID{}, stateError("discovery is closed")
+	}
+	nativeSpotRID := spotRid.toC()
+	var ownerNodeRID C.zlink_routing_id_t
+	if err := checkRC(C.zlink_discovery_resolve_spot_go(d.raw(), &nativeSpotRID, &ownerNodeRID)); err != nil {
+		return RoutingID{}, err
+	}
+	return routingIDFromC(ownerNodeRID), nil
+}
+
+func (d *Discovery) SetDealerPeerMode(mode DiscoveryDealerPeerMode) error {
+	if d == nil || d.closed {
+		return stateError("discovery is closed")
+	}
+	return checkRC(C.zlink_discovery_set_dealer_peer_mode_go(d.raw(), C.uint(mode)))
 }
 
 func (d *Discovery) GetValue() (int64, error) {
@@ -492,6 +538,9 @@ func (r *Registry) ServiceSummarySnapshot(filter *RegistryServiceSummaryFilter) 
 	var rawFilter *C.zlink_registry_service_summary_filter_t
 	var cfilter C.zlink_registry_service_summary_filter_t
 	if filter != nil {
+		if err := validateRegistryServiceSummaryFilter(*filter); err != nil {
+			return nil, err
+		}
 		cfilter = filter.toC()
 		rawFilter = &cfilter
 	}
@@ -558,6 +607,9 @@ func (r *Registry) TopologyQuery(filter *RegistryTopologyFilter) ([]RegistryTopo
 	var rawFilter *C.zlink_registry_topology_filter_t
 	var cfilter C.zlink_registry_topology_filter_t
 	if filter != nil {
+		if err := validateRegistryTopologyFilter(*filter); err != nil {
+			return nil, err
+		}
 		cfilter = filter.toC()
 		rawFilter = &cfilter
 	}
@@ -579,6 +631,9 @@ func (c *RegistryQueryClient) Snapshot(filter *RegistryTopologyFilter) ([]Regist
 	var rawFilter *C.zlink_registry_topology_filter_t
 	var cfilter C.zlink_registry_topology_filter_t
 	if filter != nil {
+		if err := validateRegistryTopologyFilter(*filter); err != nil {
+			return nil, err
+		}
 		cfilter = filter.toC()
 		rawFilter = &cfilter
 	}
@@ -614,6 +669,9 @@ func (n *SpotNode) PeersQuery(filter *SpotNodePeerFilter) ([]SpotNodePeerEntry, 
 	var rawFilter *C.zlink_spot_node_peer_filter_t
 	var cfilter C.zlink_spot_node_peer_filter_t
 	if filter != nil {
+		if err := validateSpotNodePeerFilter(*filter); err != nil {
+			return nil, err
+		}
 		cfilter = filter.toC()
 		rawFilter = &cfilter
 	}
@@ -777,36 +835,66 @@ func queryCountedSnapshot[CEntry any, T any](probe func() (int, error), fill fun
 
 func (f RegistryServiceSummaryFilter) toC() C.zlink_registry_service_summary_filter_t {
 	var out C.zlink_registry_service_summary_filter_t
-	out.service_kind = C.zlink_service_kind_t(f.ServiceKind)
-	out.service_role = C.zlink_service_role_t(f.ServiceRole)
-	mustCopyFixedCString(unsafe.Pointer(&out.service_name[0]), 256, f.ServiceName)
+	if f.ServiceKind != nil {
+		out.service_kind = C.zlink_service_kind_t(*f.ServiceKind)
+	}
+	if f.ServiceRole != nil {
+		out.service_role = C.zlink_service_role_t(*f.ServiceRole)
+	}
+	if f.ServiceName != nil {
+		mustCopyFixedCString(unsafe.Pointer(&out.service_name[0]), 256, *f.ServiceName)
+	}
 	return out
 }
 
 func (f RegistryTopologyFilter) toC() C.zlink_registry_topology_filter_t {
 	var out C.zlink_registry_topology_filter_t
-	out.service_kind = C.zlink_service_kind_t(f.ServiceKind)
-	out.service_role = C.zlink_service_role_t(f.ServiceRole)
-	mustCopyFixedCString(unsafe.Pointer(&out.service_name[0]), 256, f.ServiceName)
-	out.routing_id = f.RoutingID.toC()
-	out.state = C.zlink_topology_state_t(f.State)
-	out.source = C.zlink_topology_source_t(f.Source)
+	if f.ServiceKind != nil {
+		out.service_kind = C.zlink_service_kind_t(*f.ServiceKind)
+	}
+	if f.ServiceRole != nil {
+		out.service_role = C.zlink_service_role_t(*f.ServiceRole)
+	}
+	if f.ServiceName != nil {
+		mustCopyFixedCString(unsafe.Pointer(&out.service_name[0]), 256, *f.ServiceName)
+	}
+	if f.RoutingID != nil {
+		out.routing_id = f.RoutingID.toC()
+	}
+	if f.State != nil {
+		out.state = C.zlink_topology_state_t(*f.State)
+	}
+	if f.Source != nil {
+		out.source = C.zlink_topology_source_t(*f.Source)
+	}
 	return out
 }
 
 func (f SpotNodePeerFilter) toC() C.zlink_spot_node_peer_filter_t {
 	var out C.zlink_spot_node_peer_filter_t
-	mustCopyFixedCString(unsafe.Pointer(&out.peer_endpoint[0]), 256, f.PeerEndpoint)
-	out.source = C.zlink_spot_peer_source_t(f.Source)
-	out.state = C.zlink_spot_peer_state_t(f.State)
+	if f.PeerEndpoint != nil {
+		mustCopyFixedCString(unsafe.Pointer(&out.peer_endpoint[0]), 256, *f.PeerEndpoint)
+	}
+	if f.Source != nil {
+		out.source = C.zlink_spot_peer_source_t(*f.Source)
+	}
+	if f.State != nil {
+		out.state = C.zlink_spot_peer_state_t(*f.State)
+	}
 	return out
 }
 
 func (f SpotNodeSubjectFilter) toC() C.zlink_spot_node_subject_filter_t {
 	var out C.zlink_spot_node_subject_filter_t
-	out.role = C.zlink_spot_role_t(f.Role)
-	mustCopyFixedCString(unsafe.Pointer(&out.subject[0]), 256, f.Subject)
-	out.subject_kind = C.uint32_t(f.SubjectKind)
+	if f.Role != nil {
+		out.role = C.zlink_spot_role_t(*f.Role)
+	}
+	if f.Subject != nil {
+		mustCopyFixedCString(unsafe.Pointer(&out.subject[0]), 256, *f.Subject)
+	}
+	if f.SubjectKind != nil {
+		out.subject_kind = C.uint32_t(*f.SubjectKind)
+	}
 	return out
 }
 
@@ -836,7 +924,7 @@ func spotNodeStatusFromC(raw C.zlink_spot_node_status_t) *SpotNodeStatus {
 		SubjectCount:        uint32(raw.subject_count),
 		ReadySubjectCount:   uint32(raw.ready_subject_count),
 		LastError:           int32(raw.last_error),
-		LastChangedMS:       uint64(raw.last_changed_ms),
+		LastChangedMs:       uint64(raw.last_changed_ms),
 	}
 }
 
@@ -847,8 +935,8 @@ func spotNodePeerEntryFromC(raw C.zlink_spot_node_peer_entry_t) SpotNodePeerEntr
 		PeerEndpoint:     C.GoString(&raw.peer_endpoint[0]),
 		Source:           SpotPeerSource(raw.source),
 		State:            SpotPeerState(raw.state),
-		ConnectedSinceMS: uint64(raw.connected_since_ms),
-		LastChangedMS:    uint64(raw.last_changed_ms),
+		ConnectedSinceMs: uint64(raw.connected_since_ms),
+		LastChangedMs:    uint64(raw.last_changed_ms),
 	}
 }
 
@@ -859,7 +947,7 @@ func spotNodeSubjectEntryFromC(raw C.zlink_spot_node_subject_entry_t) SpotNodeSu
 		SubjectKind:     SubjectKind(raw.subject_kind),
 		ReadyPeerCount:  uint32(raw.ready_peer_count),
 		ActivePeerCount: uint32(raw.active_peer_count),
-		LastChangedMS:   uint64(raw.last_changed_ms),
+		LastChangedMs:   uint64(raw.last_changed_ms),
 	}
 }
 
@@ -873,7 +961,7 @@ func registryStatusFromC(raw C.zlink_registry_status_t) *RegistryStatus {
 		ConnectedPeerRegistryCount: uint32(raw.connected_peer_registry_count),
 		ListSeq:                    uint64(raw.list_seq),
 		LastError:                  int32(raw.last_error),
-		LastChangedMS:              uint64(raw.last_changed_ms),
+		LastChangedMs:              uint64(raw.last_changed_ms),
 	}
 }
 
@@ -887,7 +975,7 @@ func registryServiceSummaryEntryFromC(raw C.zlink_registry_service_summary_entry
 		ReadyCount:      uint32(raw.ready_count),
 		ErrorCount:      uint32(raw.error_count),
 		StoppedCount:    uint32(raw.stopped_count),
-		LastReportedMS:  uint64(raw.last_reported_ms),
+		LastReportedMs:  uint64(raw.last_reported_ms),
 	}
 }
 
@@ -914,7 +1002,7 @@ func registryTopologyEntryFromC(raw C.zlink_registry_topology_entry_t) RegistryT
 		DesiredCount:   uint32(raw.desired_count),
 		ReadyCount:     uint32(raw.ready_count),
 		ErrorCode:      uint32(raw.error_code),
-		LastReportedMS: uint64(raw.last_reported_ms),
+		LastReportedMs: uint64(raw.last_reported_ms),
 	}
 }
 
@@ -1006,5 +1094,34 @@ func validateServiceName(value string) error {
 }
 
 func validateSpotNodeSubjectFilter(filter SpotNodeSubjectFilter) error {
-	return validateFixedCString("subject", filter.Subject)
+	if filter.Subject == nil {
+		return nil
+	}
+	return validateFixedCString("subject", *filter.Subject)
+}
+
+func validateSpotNodePeerFilter(filter SpotNodePeerFilter) error {
+	if filter.PeerEndpoint == nil {
+		return nil
+	}
+	return validateFixedCString("peer_endpoint", *filter.PeerEndpoint)
+}
+
+func validateRegistryServiceSummaryFilter(filter RegistryServiceSummaryFilter) error {
+	if filter.ServiceName == nil {
+		return nil
+	}
+	return validateFixedCString("service_name", *filter.ServiceName)
+}
+
+func validateRegistryTopologyFilter(filter RegistryTopologyFilter) error {
+	if filter.ServiceName != nil {
+		if err := validateFixedCString("service_name", *filter.ServiceName); err != nil {
+			return err
+		}
+	}
+	if filter.RoutingID != nil && filter.RoutingID.Size() == 0 {
+		return validationError("routing_id is empty")
+	}
+	return nil
 }

@@ -143,7 +143,7 @@ inline int assign_parts_from_native (zlink_msg_t *parts_native_,
 
 inline int recv_parts (void *socket_,
                        zlink_routing_id_t *source_rid_out_,
-                       recv_flag flags_,
+                       recv_flags_t flags_,
                        std::vector<message_t> &parts_)
 {
     zlink_msg_t *native_parts = NULL;
@@ -159,7 +159,7 @@ inline int recv_parts (void *socket_,
 
 inline int recv_single_part (void *socket_,
                              zlink_routing_id_t *source_rid_out_,
-                             recv_flag flags_,
+                             recv_flags_t flags_,
                              message_t &part_)
 {
     zlink_msg_t *native_parts = NULL;
@@ -250,33 +250,7 @@ class base_socket_t : public socket_handle_t
           *this, events_);
     }
 
-    ZLINK_CPP_NODISCARD int
-    set_option (socket_option_key_t<std::string> key_,
-                const std::string &value_)
-    {
-        return set_option (key_.option, value_);
-    }
-
-    template<typename T>
-    ZLINK_CPP_NODISCARD int set_option (socket_option_key_t<T> key_,
-                                        const T &value_)
-    {
-        return set_option (key_.option, value_);
-    }
-
-    ZLINK_CPP_NODISCARD int
-    get_option (socket_option_key_t<std::string> key_,
-                std::string &value_) const
-    {
-        return get_option (key_.option, value_);
-    }
-
-    template<typename T>
-    ZLINK_CPP_NODISCARD int get_option (socket_option_key_t<T> key_,
-                                        T *value_) const
-    {
-        return get_option (key_.option, value_);
-    }
+    common_socket_options_t options () { return common_socket_options_t (handle ()); }
 
     ZLINK_CPP_NODISCARD int set_tls_server (const std::string &cert_,
                                             const std::string &key_,
@@ -316,7 +290,7 @@ class base_socket_t : public socket_handle_t
     }
 
     ZLINK_CPP_NODISCARD int send (message_t &part_,
-                                  send_flag flags_ = send_flag::none)
+                                  send_flags_t flags_ = send_flags_t::none)
     {
         if (!part_.valid ()) {
             errno = EINVAL;
@@ -340,7 +314,7 @@ class base_socket_t : public socket_handle_t
     }
 
     ZLINK_CPP_NODISCARD int send (std::vector<message_t> &parts_,
-                                  send_flag flags_ = send_flag::none)
+                                  send_flags_t flags_ = send_flags_t::none)
     {
         std::vector<zlink_msg_t> native_parts;
         if (detail::move_parts_to_native (parts_, native_parts) != 0)
@@ -356,7 +330,7 @@ class base_socket_t : public socket_handle_t
 
     ZLINK_CPP_NODISCARD int send (const routing_id_t &target_rid_,
                                   message_t &part_,
-                                  send_flag flags_ = send_flag::none)
+                                  send_flags_t flags_ = send_flags_t::none)
     {
         if (!part_.valid ()) {
             errno = EINVAL;
@@ -386,7 +360,7 @@ class base_socket_t : public socket_handle_t
     ZLINK_CPP_NODISCARD int
     send (const routing_id_t &target_rid_,
           std::vector<message_t> &parts_,
-          send_flag flags_ = send_flag::none)
+          send_flags_t flags_ = send_flags_t::none)
     {
         std::vector<zlink_msg_t> native_parts;
         if (detail::move_parts_to_native (parts_, native_parts) != 0)
@@ -401,6 +375,7 @@ class base_socket_t : public socket_handle_t
         return rc;
     }
 
+  protected:
     ZLINK_CPP_NODISCARD int try_send (send_result_t &result_,
                                       message_t &part_)
     {
@@ -540,17 +515,25 @@ class base_socket_t : public socket_handle_t
     }
 
     ZLINK_CPP_NODISCARD int
-    receive (received_t &received_, recv_flag flags_ = recv_flag::none)
+    receive (received_t &received_, recv_flags_t flags_ = recv_flags_t::none)
     {
-        received_.routing_id = routing_id_t ();
-        return detail::recv_parts (
-          handle (), routing_id_native (received_.routing_id), flags_,
-          received_.parts);
+        routing_id_t source_rid;
+        std::vector<message_t> parts;
+        const int rc = detail::recv_parts (
+          handle (), routing_id_native (source_rid), flags_, parts);
+        if (rc != 0)
+            return rc;
+
+        received_ = received_t (
+          source_rid.empty () ? std::nullopt
+                              : std::optional<routing_id_t> (source_rid),
+          std::nullopt, std::nullopt, std::move (parts));
+        return 0;
     }
 
     ZLINK_CPP_NODISCARD int publish (const std::string &topic_id_,
                                      message_t &part_,
-                                     send_flag flags_ = send_flag::none)
+                                     send_flags_t flags_ = send_flags_t::none)
     {
         validate_no_embedded_null (topic_id_, "topic");
         std::vector<message_t> parts (1);
@@ -563,7 +546,7 @@ class base_socket_t : public socket_handle_t
 
     ZLINK_CPP_NODISCARD int publish (const std::string &topic_id_,
                                      std::vector<message_t> &parts_,
-                                     send_flag flags_ = send_flag::none)
+                                     send_flags_t flags_ = send_flags_t::none)
     {
         validate_no_embedded_null (topic_id_, "topic");
         std::vector<zlink_msg_t> native_parts;
@@ -622,6 +605,7 @@ class base_socket_t : public socket_handle_t
         return -1;
     }
 
+  public:
     ZLINK_CPP_NODISCARD int set_subscription (const std::string &filter_)
     {
         validate_no_embedded_null (filter_, "filter");
@@ -666,19 +650,26 @@ class base_socket_t : public socket_handle_t
     }
 
     ZLINK_CPP_NODISCARD int
-    subscribe (subscribed_t &subscribed_, recv_flag flags_ = recv_flag::none)
+    subscribe (topic_message_t &message_, recv_flags_t flags_ = recv_flags_t::none)
     {
-        subscribed_.routing_id = routing_id_t ();
-        subscribed_.topic.clear ();
-        return subscribe (
-          subscribed_.routing_id, subscribed_.topic, subscribed_.parts, flags_);
+        routing_id_t source_rid;
+        std::string topic;
+        std::vector<message_t> parts;
+        const int rc = subscribe (source_rid, topic, parts, flags_);
+        if (rc != 0)
+            return rc;
+        message_ = topic_message_t (
+          source_rid.empty () ? std::nullopt
+                              : std::optional<routing_id_t> (source_rid),
+          std::move (topic), std::move (parts));
+        return 0;
     }
 
     ZLINK_CPP_NODISCARD int
     subscribe (routing_id_t &source_rid_out_,
                std::string &topic_id_out_,
                std::vector<message_t> &parts_out_,
-               recv_flag flags_ = recv_flag::none)
+               recv_flags_t flags_ = recv_flags_t::none)
     {
         std::vector<char> topic_buffer (256);
         zlink_msg_t *parts_native = NULL;
@@ -700,20 +691,26 @@ class base_socket_t : public socket_handle_t
 
     ZLINK_CPP_NODISCARD int
     subscription_event (subscription_event_t &event_,
-                        recv_flag flags_ = recv_flag::none)
+                        recv_flags_t flags_ = recv_flags_t::none)
     {
-        event_.routing_id = routing_id_t ();
+        event_.routing_id = std::nullopt;
         event_.topic.clear ();
         event_.subscribed = false;
-        return subscription_event (
-          event_.routing_id, event_.subscribed, event_.topic, flags_);
+        routing_id_t source_rid;
+        const int rc = subscription_event (
+          source_rid, event_.subscribed, event_.topic, flags_);
+        if (rc != 0)
+            return rc;
+        if (!source_rid.empty ())
+            event_.routing_id = source_rid;
+        return 0;
     }
 
     ZLINK_CPP_NODISCARD int
     subscription_event (routing_id_t &source_rid_out_,
                         bool &subscribed_out_,
                         std::string &topic_id_out_,
-                        recv_flag flags_ = recv_flag::none)
+                        recv_flags_t flags_ = recv_flags_t::none)
     {
         std::vector<char> topic_buffer (256);
         size_t topic_size = topic_buffer.size ();

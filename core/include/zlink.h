@@ -909,6 +909,39 @@ ZLINK_EXPORT void *zlink_discovery_new (void *ctx,
 ZLINK_EXPORT zlink_connect_result_t zlink_discovery_connect_registry (
   void *discovery, const char *registry_endpoint);
 
+/**
+ * @brief Set the auto-connect target policy used by DEALER sockets.
+ *
+ * This policy applies to the current Discovery service view. The default
+ * policy is `ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER`.
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_set_dealer_peer_mode (
+  void *discovery_, zlink_discovery_dealer_peer_mode_t mode_);
+
+/**
+ * @brief Resolve the current owner node for a logical SPOT routing id.
+ *
+ * This lookup is scoped to the current Discovery service view. Discovery may
+ * answer from its local cache or refresh against Registry as needed. On
+ * success, the returned node routing id should be paired with the original
+ * `spot_rid_` when calling `zlink_spot_send_spot()`,
+ * `zlink_spot_request_spot()`, or the corresponding router-side APIs.
+ *
+ * This helper is intended for send/request destination lookup. Reply paths
+ * must continue to use the concrete source addresses that were delivered with
+ * the incoming request.
+ *
+ * @param discovery_          Discovery handle.
+ * @param spot_rid_           Logical SPOT routing id to resolve.
+ * @param owner_node_rid_out_ Output buffer for the current owner node id.
+ * @return `ZLINK_CONFIG_OK` on success, or another
+ *         `zlink_config_result_t` value on failure (`zlink_errno()` is set).
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_spot (
+  void *discovery_,
+  const zlink_routing_id_t *spot_rid_,
+  zlink_routing_id_t *owner_node_rid_out_);
+
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_set_value (void *discovery_, int64_t value_);
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_get_value (void *discovery_,
                                             int64_t *value_out_);

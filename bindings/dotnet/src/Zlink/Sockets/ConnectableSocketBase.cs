@@ -26,8 +26,7 @@ public abstract class ConnectableSocketBase : SocketBase
         }
         catch (ZlinkException ex)
         {
-            throw new ZlinkConnectException(ConnectResult.InvalidArgument,
-                ex.InternalErrno);
+            throw ZlinkException.CreateConnectException(ex.InternalErrno);
         }
     }
 
@@ -39,8 +38,7 @@ public abstract class ConnectableSocketBase : SocketBase
         }
         catch (ZlinkException ex)
         {
-            throw new ZlinkConnectException(ConnectResult.InvalidArgument,
-                ex.InternalErrno);
+            throw ZlinkException.CreateConnectException(ex.InternalErrno);
         }
     }
 }

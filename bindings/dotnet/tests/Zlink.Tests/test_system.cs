@@ -12,7 +12,7 @@ public sealed class test_system
             return;
 
         var expected = CoreTestSupport.ReadCoreHeaderVersion();
-        var actual = ZlinkVersion.Get();
+        var actual = global::Zlink.Zlink.Version();
 
         Assert.Equal(expected.major, actual.Major);
         Assert.Equal(expected.minor, actual.Minor);

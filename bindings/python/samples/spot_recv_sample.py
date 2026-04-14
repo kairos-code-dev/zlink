@@ -5,8 +5,8 @@ def main():
     with zlink.Context() as ctx:
         with zlink.SpotNode(ctx) as pub_node:
             with zlink.SpotNode(ctx) as sub_node:
-                with zlink.Spot(pub_node) as pub_spot:
-                    with zlink.Spot(sub_node) as sub_spot:
+                with pub_node.create_spot() as pub_spot:
+                    with sub_node.create_spot() as sub_spot:
                         pub_node.bind("tcp://127.0.0.1:0")
                         endpoint = pub_node.last_endpoint()
                         sub_node.connect_peer(endpoint)
@@ -17,11 +17,16 @@ def main():
 
                         def attempt_receive():
                             pub_spot.publish(b"room:lobby", [b"hello-spot"])
-                            received = sub_spot.try_subscribe()
-                            if received is None:
+                            try:
+                                received = sub_spot.subscribe(
+                                    flags=zlink.RecvFlags.DONT_WAIT
+                                )
+                            except zlink.RecvError as exc:
+                                if exc.result != zlink.RecvResult.NO_DATA:
+                                    raise
                                 return False
                             with received:
-                                if received.topic != b"room:lobby":
+                                if received.topic != "room:lobby":
                                     raise AssertionError(f"unexpected spot topic: {received.topic!r}")
                                 if received.to_bytes_list() != [b"hello-spot"]:
                                     raise AssertionError("unexpected spot payload")

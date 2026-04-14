@@ -1,8 +1,16 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
+from dataclasses import dataclass
 
-from ._enums import RegistryState, ServiceMonitorMask, ServiceRole, TopologySource, TopologyState
+from ._enums import (
+    DiscoveryDealerPeerMode,
+    RegistryState,
+    ServiceMonitorMask,
+    ServiceRole,
+    TopologySource,
+    TopologyState,
+)
 from ._ffi import (
     ZlinkMemberPeerEntry,
     ZlinkMsg,
@@ -14,9 +22,19 @@ from ._ffi import (
     lib,
 )
 from ._core import (
+    BindError,
+    BindResult,
+    CloseError,
+    CloseResult,
+    ConfigError,
+    ConfigResult,
+    ConnectError,
+    ConnectResult,
+    RoutingId,
     _copy_routing_id,
     _msg_to_bytes,
-    _raise_last_error,
+    _raise_config_error_from_errno,
+    _raise_result_error,
     _routing_id_bytes,
     _validated_c_string_text,
     _validated_uint32,
@@ -27,128 +45,72 @@ def _decode_fixed(buf):
     return bytes(buf).split(b"\0", 1)[0].decode("utf-8", errors="replace")
 
 
+@dataclass(frozen=True)
 class MemberPeerEntry:
-    def __init__(
-        self,
-        *,
-        service_type,
-        service_role,
-        service_name,
-        endpoint,
-        routing_id,
-        value,
-    ):
-        self.service_type = service_type
-        self.service_role = service_role
-        self.service_name = service_name
-        self.endpoint = endpoint
-        self.routing_id = routing_id
-        self.value = value
+    service_type: int
+    service_role: int
+    service_name: str
+    endpoint: str
+    routing_id: bytes
+    value: int
 
 
+@dataclass(frozen=True)
 class RegistryStatus:
-    def __init__(
-        self,
-        *,
-        registry_id,
-        bind_endpoint,
-        state,
-        topology_entry_count,
-        peer_registry_count,
-        connected_peer_registry_count,
-        list_seq,
-        last_error,
-        last_changed_ms,
-    ):
-        self.registry_id = registry_id
-        self.bind_endpoint = bind_endpoint
-        self.state = state
-        self.topology_entry_count = topology_entry_count
-        self.peer_registry_count = peer_registry_count
-        self.connected_peer_registry_count = connected_peer_registry_count
-        self.list_seq = list_seq
-        self.last_error = last_error
-        self.last_changed_ms = last_changed_ms
+    registry_id: int
+    bind_endpoint: str
+    state: int
+    topology_entry_count: int
+    peer_registry_count: int
+    connected_peer_registry_count: int
+    list_seq: int
+    last_error: int
+    last_changed_ms: int
 
 
+@dataclass(frozen=True)
 class RegistryServiceSummaryEntry:
-    def __init__(
-        self,
-        *,
-        service_kind,
-        service_role,
-        service_name,
-        total_count,
-        connecting_count,
-        ready_count,
-        error_count,
-        stopped_count,
-        last_reported_ms,
-    ):
-        self.service_kind = service_kind
-        self.service_role = service_role
-        self.service_name = service_name
-        self.total_count = total_count
-        self.connecting_count = connecting_count
-        self.ready_count = ready_count
-        self.error_count = error_count
-        self.stopped_count = stopped_count
-        self.last_reported_ms = last_reported_ms
+    service_kind: int
+    service_role: int
+    service_name: str
+    total_count: int
+    connecting_count: int
+    ready_count: int
+    error_count: int
+    stopped_count: int
+    last_reported_ms: int
 
 
+@dataclass(frozen=True)
 class RegistryServiceSummaryFilter:
-    def __init__(self, *, service_kind=0, service_role=0, service_name=None):
-        self.service_kind = service_kind
-        self.service_role = service_role
-        self.service_name = service_name
+    service_kind: int | None = None
+    service_role: int | None = None
+    service_name: str | None = None
 
 
+@dataclass(frozen=True)
 class RegistryTopologyEntry:
-    def __init__(
-        self,
-        *,
-        routing_id,
-        service_kind,
-        service_role,
-        service_name,
-        endpoint,
-        source,
-        state,
-        desired_count,
-        ready_count,
-        error_code,
-        last_reported_ms,
-    ):
-        self.routing_id = routing_id
-        self.service_kind = service_kind
-        self.service_role = service_role
-        self.service_name = service_name
-        self.endpoint = endpoint
-        self.source = source
-        self.state = state
-        self.desired_count = desired_count
-        self.ready_count = ready_count
-        self.error_code = error_code
-        self.last_reported_ms = last_reported_ms
+    routing_id: bytes
+    service_kind: int
+    service_role: int
+    service_name: str
+    endpoint: str
+    source: int
+    state: int
+    desired_count: int
+    ready_count: int
+    error_code: int
+    last_reported_ms: int
 
 
+@dataclass(frozen=True)
 class RegistryTopologyFilter:
-    def __init__(
-        self,
-        *,
-        service_kind=0,
-        service_role=0,
-        service_name=None,
-        routing_id=None,
-        state=0,
-        source=0,
-    ):
-        self.service_kind = service_kind
-        self.service_role = service_role
-        self.service_name = service_name
-        self.routing_id = routing_id
-        self.state = state
-        self.source = source
+    service_kind: int | None = None
+    service_role: int | None = None
+    service_name: str | None = None
+    routing_id: bytes | None = None
+    state: int | None = None
+    source: int | None = None
 
 
 def _member_peer_from_native(entry):
@@ -166,14 +128,14 @@ def _query_member_peers(handle, fn, *args):
     count = ctypes.c_size_t(0)
     rc = fn(handle, *args, None, ctypes.byref(count))
     if rc != 0:
-        _raise_last_error()
+        _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
     if count.value == 0:
         return []
 
     entries = (ZlinkMemberPeerEntry * count.value)()
     rc = fn(handle, *args, entries, ctypes.byref(count))
     if rc != 0:
-        _raise_last_error()
+        _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
     return [_member_peer_from_native(entries[index]) for index in range(count.value)]
 
 
@@ -197,21 +159,21 @@ def _query_topology(handle, fn, filter_ptr=None):
     count = ctypes.c_size_t(0)
     rc = fn(handle, filter_ptr, None, ctypes.byref(count))
     if rc != 0:
-        _raise_last_error()
+        _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
     if count.value == 0:
         return []
 
     entries = (ZlinkRegistryTopologyEntry * count.value)()
     rc = fn(handle, filter_ptr, entries, ctypes.byref(count))
     if rc != 0:
-        _raise_last_error()
+        _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
     return [_topology_entry_from_native(entry) for entry in entries[: count.value]]
 
 
 def _build_topology_filter(filter_):
     native = ZlinkRegistryTopologyFilter()
-    native.service_kind = int(filter_.service_kind)
-    native.service_role = int(filter_.service_role)
+    native.service_kind = 0 if filter_.service_kind is None else int(filter_.service_kind)
+    native.service_role = 0 if filter_.service_role is None else int(filter_.service_role)
     native.service_name = _validated_c_string_text(
         filter_.service_name or "",
         field="service_name",
@@ -221,8 +183,8 @@ def _build_topology_filter(filter_):
         native.routing_id = _copy_routing_id(filter_.routing_id)
     else:
         native.routing_id.size = 0
-    native.state = int(filter_.state)
-    native.source = int(filter_.source)
+    native.state = 0 if filter_.state is None else int(filter_.state)
+    native.source = 0 if filter_.source is None else int(filter_.source)
     return native
 
 
@@ -230,7 +192,7 @@ class Registry:
     def __init__(self, ctx):
         self._handle = lib().zlink_registry_new(ctx._handle)
         if not self._handle:
-            _raise_last_error()
+            _raise_config_error_from_errno()
 
     def bind(self, pub_endpoint: str, router_endpoint: str):
         rc = lib().zlink_registry_bind(
@@ -243,14 +205,14 @@ class Registry:
             ),
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(BindError, BindResult, rc, lib().zlink_errno())
 
     def set_id(self, registry_id: int):
         rc = lib().zlink_registry_set_id(
             self._handle, _validated_uint32(registry_id, field="registry_id")
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def add_peer(self, peer_pub_endpoint: str):
         rc = lib().zlink_registry_add_peer(
@@ -260,7 +222,7 @@ class Registry:
             ),
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def set_tls_server(self, cert: str, key: str, require_client_cert: bool = False):
         rc = lib().zlink_set_tls_server(
@@ -270,7 +232,7 @@ class Registry:
             int(require_client_cert),
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def set_tls_client(
         self, ca_cert: str | None, hostname: str | None, trust_system: bool = False
@@ -287,7 +249,7 @@ class Registry:
             self._handle, ca_value, host_value, int(trust_system)
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def set_heartbeat(self, interval_ms: int, timeout_ms: int):
         rc = lib().zlink_registry_set_heartbeat(
@@ -303,13 +265,13 @@ class Registry:
             self._handle, _validated_uint32(interval_ms, field="interval_ms")
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def status_snapshot(self):
         native = ZlinkRegistryStatus()
         rc = lib().zlink_registry_status_snapshot(self._handle, ctypes.byref(native))
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return RegistryStatus(
             registry_id=int(native.registry_id),
             bind_endpoint=_decode_fixed(native.bind_endpoint),
@@ -328,8 +290,8 @@ class Registry:
         filter_native = None
         if filter_ is not None:
             filter_native = ZlinkRegistryServiceSummaryFilter()
-            filter_native.service_kind = int(filter_.service_kind)
-            filter_native.service_role = int(filter_.service_role)
+            filter_native.service_kind = 0 if filter_.service_kind is None else int(filter_.service_kind)
+            filter_native.service_role = 0 if filter_.service_role is None else int(filter_.service_role)
             filter_native.service_name = _validated_c_string_text(
                 filter_.service_name or "",
                 field="service_name",
@@ -341,7 +303,7 @@ class Registry:
             self._handle, filter_ptr, None, ctypes.byref(count)
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         if count.value == 0:
             return []
 
@@ -350,7 +312,7 @@ class Registry:
             self._handle, filter_ptr, entries, ctypes.byref(count)
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return [
             RegistryServiceSummaryEntry(
                 service_kind=int(entry.service_kind),
@@ -382,7 +344,7 @@ class Registry:
         msg = ZlinkMsg()
         rc = lib().zlink_msg_init(ctypes.byref(msg))
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         try:
             rc = lib().zlink_registry_member_peer_metadata(
                 self._handle,
@@ -395,7 +357,7 @@ class Registry:
                 ctypes.byref(msg),
             )
             if rc != 0:
-                _raise_last_error()
+                _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
             return _msg_to_bytes(msg)
         finally:
             lib().zlink_msg_close(ctypes.byref(msg))
@@ -417,7 +379,7 @@ class Registry:
         rc = lib().zlink_registry_destroy(ctypes.byref(handle))
         self._handle = None
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
 
     def __enter__(self):
         return self
@@ -442,7 +404,7 @@ class Discovery:
             ),
         )
         if not self._handle:
-            _raise_last_error()
+            _raise_config_error_from_errno()
 
     def connect_registry(self, registry_endpoint: str):
         rc = lib().zlink_discovery_connect_registry(
@@ -452,18 +414,18 @@ class Discovery:
             ),
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
 
     def set_value(self, value: int):
         rc = lib().zlink_discovery_set_value(self._handle, int(value))
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def get_value(self) -> int:
         value = ctypes.c_int64()
         rc = lib().zlink_discovery_get_value(self._handle, ctypes.byref(value))
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return int(value.value)
 
     def set_metadata(self, data):
@@ -475,17 +437,17 @@ class Discovery:
                 self._handle, ctypes.c_char_p(raw), len(raw)
             )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def get_metadata(self) -> bytes:
         msg = ZlinkMsg()
         rc = lib().zlink_msg_init(ctypes.byref(msg))
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         try:
             rc = lib().zlink_discovery_get_metadata(self._handle, ctypes.byref(msg))
             if rc != 0:
-                _raise_last_error()
+                _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
             return _msg_to_bytes(msg)
         finally:
             lib().zlink_msg_close(ctypes.byref(msg))
@@ -497,7 +459,7 @@ class Discovery:
         msg = ZlinkMsg()
         rc = lib().zlink_msg_init(ctypes.byref(msg))
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         try:
             rc = lib().zlink_discovery_member_peer_metadata(
                 self._handle,
@@ -506,10 +468,27 @@ class Discovery:
                 ctypes.byref(msg),
             )
             if rc != 0:
-                _raise_last_error()
+                _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
             return _msg_to_bytes(msg)
         finally:
             lib().zlink_msg_close(ctypes.byref(msg))
+
+    def resolve_spot(self, spot_rid):
+        native_spot_rid = _copy_routing_id(spot_rid)
+        owner_node_rid = type(native_spot_rid)()
+        rc = lib().zlink_discovery_resolve_spot(
+            self._handle,
+            ctypes.byref(native_spot_rid),
+            ctypes.byref(owner_node_rid),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return RoutingId(_routing_id_bytes(owner_node_rid))
+
+    def set_dealer_peer_mode(self, mode: DiscoveryDealerPeerMode):
+        rc = lib().zlink_discovery_set_dealer_peer_mode(self._handle, int(mode))
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def set_tls_client(
         self, ca_cert: str | None, hostname: str | None, trust_system: bool = False
@@ -526,7 +505,7 @@ class Discovery:
             self._handle, ca_value, host_value, int(trust_system)
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def monitor_open(self, events=ServiceMonitorMask.ALL):
         from ._monitor import open_service_monitor
@@ -540,7 +519,7 @@ class Discovery:
         rc = lib().zlink_discovery_destroy(ctypes.byref(handle))
         self._handle = None
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
 
     def __enter__(self):
         return self
@@ -559,7 +538,7 @@ class RegistryQueryClient:
     def __init__(self, ctx):
         self._handle = lib().zlink_registry_query_client_new(ctx._handle)
         if not self._handle:
-            _raise_last_error()
+            _raise_config_error_from_errno()
 
     def connect(self, endpoint: str):
         rc = lib().zlink_registry_query_client_connect(
@@ -567,7 +546,7 @@ class RegistryQueryClient:
             _validated_c_string_text(endpoint, field="endpoint", max_length=255),
         )
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
 
     def snapshot(self, filter_=None):
         filter_ptr = None
@@ -584,7 +563,7 @@ class RegistryQueryClient:
         rc = lib().zlink_registry_query_destroy(ctypes.byref(handle))
         self._handle = None
         if rc != 0:
-            _raise_last_error()
+            _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
 
     def __enter__(self):
         return self

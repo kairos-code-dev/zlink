@@ -38,8 +38,8 @@ async function main() {
 
     const received = await new Promise((resolve, reject) => {
       try {
-        server.onReceive((routingId, parts) => {
-          resolve({ routingId, parts });
+        server.onReceive((message) => {
+          resolve(message);
         });
       } catch (error) {
         reject(error);
@@ -49,8 +49,8 @@ async function main() {
       client.send(Buffer.from(sent));
     });
 
-    assert.ok(received.routingId === null || Buffer.isBuffer(received.routingId));
-    const recv = received.parts[0].data.toString();
+    assert.equal(received.routingId, null);
+    const recv = received.parts[0].data().toString();
     assert.equal(recv, 'hello-pair');
     console.log(`[pair/callback] send: "hello-pair" \u2192 recv: "${recv}"`);
   } finally {

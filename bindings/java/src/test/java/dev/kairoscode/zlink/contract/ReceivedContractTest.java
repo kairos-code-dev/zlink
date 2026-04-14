@@ -6,6 +6,8 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.SubmitException;
+import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.TestSupport;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -22,7 +24,7 @@ public class ReceivedContractTest {
     public void recvReturnsAggregateWithRoutingIdAndMultipartView() {
         TestSupport.assumeNative();
 
-        RoutingId dealerRid = RoutingId.copyOf("dealer-a".getBytes(StandardCharsets.UTF_8));
+        RoutingId dealerRid = RoutingId.fromBytes("dealer-a".getBytes(StandardCharsets.UTF_8));
         try (Context ctx = new Context();
              RouterSocket router = new RouterSocket(ctx);
              DealerSocket dealer = new DealerSocket(ctx)) {
@@ -35,27 +37,19 @@ public class ReceivedContractTest {
                 Message.copyOfUtf8("part-2")));
 
             try (Received inbound = router.recv()) {
-                assertTrue(inbound.hasRoutingId());
-                assertArrayEquals(dealerRid.toByteArray(),
-                    inbound.routingId().toByteArray());
+                assertTrue(inbound.routingId().isPresent());
+                assertArrayEquals(dealerRid.toBytes(),
+                    inbound.routingId().orElseThrow().toBytes());
                 assertEquals(2, inbound.parts().size());
                 assertFalse(inbound.isSinglePart());
                 assertThrows(UnsupportedOperationException.class,
                     () -> inbound.parts().add(Message.copyOfUtf8("x")));
                 assertArrayEquals("part-1".getBytes(StandardCharsets.UTF_8),
                     inbound.firstPart().toByteArray());
-
-                RoutingId replyRid = inbound.routingId();
-                router.send(replyRid, List.of(Message.copyOfUtf8("ack")));
-            }
-
-            try (Received ack = dealer.recv()) {
-                assertTrue(ack.isSinglePart());
-                assertArrayEquals("ack".getBytes(StandardCharsets.UTF_8),
-                    ack.singlePartOrThrow().toByteArray());
-                Message part = ack.singlePartOrThrow();
-                ack.close();
-                assertFalse(part.valid());
+                assertTrue(inbound.requestSeq().isEmpty());
+                SubmitException ex = assertThrows(SubmitException.class,
+                    () -> inbound.reply(List.of(Message.copyOfUtf8("ack"))));
+                assertEquals(SubmitResult.INVALID_STATE, ex.getResult());
             }
         }
     }

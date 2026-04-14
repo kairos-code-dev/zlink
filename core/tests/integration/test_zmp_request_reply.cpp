@@ -7,10 +7,17 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <mutex>
-#include <thread>
 #include <string>
 #include <vector>
 #include <string.h>
+#include <thread>
+
+#if !defined _WIN32
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 SETUP_TEARDOWN_TESTCONTEXT
 
@@ -116,6 +123,11 @@ struct spot_case_t
     zlink_routing_id_t spot_b_rid;
 };
 
+void capture_reply (zlink_request_result_t result_,
+                    zlink_msg_t *parts_,
+                    size_t part_count_,
+                    void *userdata_);
+
 void init_string_part (zlink_msg_t *part_, const char *text_)
 {
     const size_t size = strlen (text_);
@@ -196,6 +208,101 @@ bool wait_for_router_spot_request_handler (
     return probe_->cv.wait_for (
       lock, std::chrono::milliseconds (SETTLE_TIME * 20),
       [probe_]() { return probe_->invoked; });
+}
+
+int run_request_reply_exit_child ()
+{
+    void *ctx = zlink_ctx_new ();
+    if (!ctx)
+        return 10;
+
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    if (!router || !dealer)
+        return 11;
+
+    set_routing_id_text (dealer, "rr-exit-dealer");
+    if (zlink_bind (router, "inproc://rr-exit-regression") != 0
+        || zlink_connect (dealer, "inproc://rr-exit-regression") != 0)
+        return 12;
+
+    msleep (SETTLE_TIME);
+
+    zlink_msg_t request_part;
+    zlink_msg_init (&request_part);
+    init_string_part (&request_part, "ping");
+
+    reply_probe_t reply_probe;
+    if (zlink_dealer_request (dealer, &request_part, 1, &capture_reply,
+                              &reply_probe, 0, 3000)
+        != ZLINK_SUBMIT_OK)
+        return 13;
+
+    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    if (zlink_router_recv (router, &source_rid, &source_spot_rid, &request_seq,
+                           &parts, &part_count, ZLINK_RECV_FLAGS_NONE)
+        != ZLINK_RECV_OK)
+        return 14;
+
+    zlink_msg_t reply_part;
+    zlink_msg_init (&reply_part);
+    init_string_part (&reply_part, "pong");
+    if (zlink_router_reply (router, source_rid, request_seq, &reply_part, 1)
+        != ZLINK_SUBMIT_OK)
+        return 15;
+    zlink_multipart_close (parts, part_count);
+
+    if (!wait_for_reply (&reply_probe))
+        return 16;
+
+    if (zlink_close (dealer) != 0 || zlink_close (router) != 0
+        || zlink_ctx_term (ctx) != 0)
+        return 17;
+
+    return 0;
+}
+
+void test_request_reply_process_exits_cleanly_after_round_trip ()
+{
+#if defined _WIN32
+    TEST_IGNORE_MESSAGE ("POSIX-only subprocess regression test");
+#else
+    pid_t child = fork ();
+    TEST_ASSERT_TRUE (child >= 0);
+
+    if (child == 0) {
+        setup_test_environment (5);
+        const int rc = run_request_reply_exit_child ();
+        fflush (NULL);
+        std::_Exit (rc);
+    }
+
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::seconds (3);
+    int status = 0;
+    pid_t wait_rc = 0;
+    while (std::chrono::steady_clock::now () < deadline) {
+        wait_rc = waitpid (child, &status, WNOHANG);
+        TEST_ASSERT_TRUE (wait_rc >= 0);
+        if (wait_rc == child)
+            break;
+        msleep (10);
+    }
+
+    if (wait_rc != child) {
+        kill (child, SIGKILL);
+        (void) waitpid (child, &status, 0);
+        TEST_FAIL_MESSAGE (
+          "request/reply child process did not exit after round trip");
+    }
+
+    TEST_ASSERT_TRUE (WIFEXITED (status));
+    TEST_ASSERT_EQUAL_INT (0, WEXITSTATUS (status));
+#endif
 }
 
 void capture_reply (zlink_request_result_t result_,
@@ -511,6 +618,73 @@ void test_dealer_to_router_request_reply_basic ()
         TEST_ASSERT_EQUAL_UINT64 (1, reply_probe.part_count);
         TEST_ASSERT_EQUAL_STRING_LEN (
           "router-reply", reply_probe.payload.c_str (),
+          reply_probe.payload.size ());
+    }
+
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router);
+}
+
+void test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (router, endpoint, sizeof (endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (dealer, "dealer-tcp", 10));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
+    // TCP routing-id publication completes asynchronously. Give the ROUTER
+    // pipe enough time to publish the peer route before switching the socket
+    // onto callback dispatch mode.
+    msleep (SETTLE_TIME * 50);
+
+    request_handler_probe_t handler_probe;
+    // Raw callback dispatch is installed after the TCP routing-id handshake
+    // settles. Installing it earlier switches the handshake itself onto the
+    // callback path and changes the route-activation timing that routed reply
+    // tests are trying to exercise here.
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_handler (router, &reply_from_router_handler,
+                            &handler_probe));
+
+    zlink_msg_t request_part;
+    zlink_msg_init (&request_part);
+    init_string_part (&request_part, "dealer-request-tcp");
+
+    reply_probe_t reply_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request (
+      dealer, &request_part, 1, &capture_reply, &reply_probe,
+      ZLINK_SEND_FLAGS_NONE, 5000));
+
+    TEST_ASSERT_TRUE (wait_for_request_handler (&handler_probe));
+    msleep (SETTLE_TIME);
+    send_captured_reply (router, &handler_probe, "router-reply-tcp");
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
+
+    {
+        std::lock_guard<std::mutex> lock (handler_probe.mutex);
+        TEST_ASSERT_TRUE (handler_probe.invoked);
+        TEST_ASSERT_TRUE (handler_probe.request_seq != 0);
+        TEST_ASSERT_EQUAL_STRING_LEN (
+          "dealer-tcp", handler_probe.peer_rid.c_str (),
+          handler_probe.peer_rid.size ());
+        TEST_ASSERT_EQUAL_STRING_LEN (
+          "dealer-request-tcp", handler_probe.request_payload.c_str (),
+          handler_probe.request_payload.size ());
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (reply_probe.mutex);
+        TEST_ASSERT_TRUE (reply_probe.done);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, reply_probe.result);
+        TEST_ASSERT_EQUAL_UINT64 (1, reply_probe.part_count);
+        TEST_ASSERT_EQUAL_STRING_LEN (
+          "router-reply-tcp", reply_probe.payload.c_str (),
           reply_probe.payload.size ());
     }
 
@@ -1363,6 +1537,7 @@ int main ()
 
     UNITY_BEGIN ();
     RUN_TEST (test_dealer_to_router_request_reply_basic);
+    RUN_TEST (test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id);
     RUN_TEST (test_router_to_router_request_reply_basic);
     RUN_TEST (test_multiple_in_flight_requests_complete_independently);
     RUN_TEST (test_out_of_order_replies_match_original_request);
@@ -1378,6 +1553,7 @@ int main ()
     RUN_TEST (test_spot_to_router_direct_send_recv_basic);
     RUN_TEST (test_spot_to_missing_spot_completes_with_enoent);
     RUN_TEST (test_router_to_missing_spot_completes_with_enoent);
+    RUN_TEST (test_request_reply_process_exits_cleanly_after_round_trip);
     const int rc = UNITY_END ();
     fflush (NULL);
     std::_Exit (rc);

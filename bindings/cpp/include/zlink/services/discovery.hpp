@@ -32,7 +32,13 @@ class discovery_t
             _last_error = errno != 0 ? errno : EFAULT;
     }
 
-    ~discovery_t () { (void) close (); }
+    ~discovery_t ()
+    {
+        try {
+            close ();
+        } catch (...) {
+        }
+    }
 
     discovery_t (discovery_t &&other) noexcept
         : _discovery (other._discovery), _last_error (other._last_error)
@@ -46,7 +52,10 @@ class discovery_t
         if (this == &other)
             return *this;
 
-        (void) close ();
+        try {
+            close ();
+        } catch (...) {
+        }
         _discovery = other._discovery;
         _last_error = other._last_error;
         other._discovery = NULL;
@@ -61,87 +70,123 @@ class discovery_t
 
     int last_error () const noexcept { return _last_error; }
 
-    ZLINK_CPP_NODISCARD int connect_registry (const std::string &endpoint_)
+    void connect_registry (const std::string &endpoint_)
     {
         validate_bounded_c_string (endpoint_, 255u, "endpoint");
-        return zlink_discovery_connect_registry (_discovery, endpoint_.c_str ());
+        detail::throw_if_failed<connect_error_t> (
+          static_cast<connect_result_t> (
+            zlink_discovery_connect_registry (_discovery, endpoint_.c_str ())));
     }
 
-    ZLINK_CPP_NODISCARD int set_value (int64_t value_)
+    void set_value (int64_t value_)
     {
-        return zlink_discovery_set_value (_discovery, value_);
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_set_value (_discovery, value_)));
     }
 
-    ZLINK_CPP_NODISCARD int get_value (int64_t *value_out_) const
+    void get_value (int64_t *value_out_) const
     {
-        return zlink_discovery_get_value (_discovery, value_out_);
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_get_value (_discovery, value_out_)));
     }
 
-    ZLINK_CPP_NODISCARD int
-    set_metadata (const void *data_, size_t size_)
+    void set_metadata (const void *data_, size_t size_)
     {
-        return zlink_discovery_set_metadata (_discovery, data_, size_);
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_set_metadata (_discovery, data_, size_)));
     }
 
-    ZLINK_CPP_NODISCARD int
-    set_metadata (const std::vector<uint8_t> &bytes_)
+    void set_metadata (const std::vector<uint8_t> &bytes_)
     {
-        return set_metadata (
+        set_metadata (
           bytes_.empty () ? NULL : &bytes_[0], bytes_.size ());
     }
 
-    ZLINK_CPP_NODISCARD int set_metadata (const std::string &text_)
+    void set_metadata (const std::string &text_)
     {
-        return set_metadata (text_.data (), text_.size ());
+        set_metadata (text_.data (), text_.size ());
     }
 
-    ZLINK_CPP_NODISCARD int get_metadata (message_t &metadata_out_) const
+    void get_metadata (message_t &metadata_out_) const
     {
         zlink_msg_t native;
-        const int rc = zlink_discovery_get_metadata (_discovery, &native);
-        if (rc != 0)
-            return rc;
-
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_get_metadata (_discovery, &native)));
         metadata_out_.adopt (&native);
-        return 0;
     }
 
-    ZLINK_CPP_NODISCARD int
-    member_peers (zlink_member_peer_entry_t *entries_, size_t *count_) const
+    std::vector<member_peer_entry_t> member_peers () const
     {
-        return zlink_discovery_member_peers (_discovery, entries_, count_);
+        size_t count = 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_member_peers (_discovery, NULL, &count)));
+        std::vector<zlink_member_peer_entry_t> native (count);
+        if (count > 0) {
+            detail::throw_if_failed<config_error_t> (
+              static_cast<config_result_t> (
+                zlink_discovery_member_peers (
+                  _discovery, native.data (), &count)));
+            native.resize (count);
+        }
+
+        std::vector<member_peer_entry_t> entries;
+        entries.reserve (native.size ());
+        for (size_t i = 0; i < native.size (); ++i)
+            entries.push_back (member_peer_entry_t (native[i]));
+        return entries;
     }
 
-    ZLINK_CPP_NODISCARD int
-    member_peer_metadata (service_role service_role_,
-                          const std::string &endpoint_,
-                          message_t &metadata_out_) const
+    void member_peer_metadata (service_role service_role_,
+                               const std::string &endpoint_,
+                               message_t &metadata_out_) const
     {
         validate_bounded_c_string (endpoint_, 255u, "endpoint");
         zlink_msg_t native;
-        const int rc = zlink_discovery_member_peer_metadata (
-          _discovery, static_cast<uint16_t> (service_role_),
-          endpoint_.c_str (), &native);
-        if (rc != 0)
-            return rc;
-
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_member_peer_metadata (
+              _discovery, static_cast<uint16_t> (service_role_),
+              endpoint_.c_str (), &native)));
         metadata_out_.adopt (&native);
-        return 0;
     }
 
     ZLINK_CPP_NODISCARD service_monitor_handle_t
     monitor_open (service_monitor_event events_ = service_monitor_event::all);
 
-    ZLINK_CPP_NODISCARD int close ()
+    routing_id_t resolve_spot (const routing_id_t &spot_rid_)
+    {
+        routing_id_t owner_node_rid;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_resolve_spot (
+              _discovery, routing_id_native (spot_rid_),
+              routing_id_native (owner_node_rid))));
+        return owner_node_rid;
+    }
+
+    void set_dealer_peer_mode (discovery_dealer_peer_mode_t mode_)
+    {
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_set_dealer_peer_mode (
+              _discovery,
+              static_cast<zlink_discovery_dealer_peer_mode_t> (mode_))));
+    }
+
+    void close ()
     {
         if (!_discovery)
-            return 0;
+            return;
 
         void *tmp = _discovery;
-        const int rc = zlink_discovery_destroy (&tmp);
-        if (rc == 0)
-            _discovery = NULL;
-        return rc;
+        detail::throw_if_failed<close_error_t> (
+          static_cast<close_result_t> (zlink_discovery_destroy (&tmp)));
+        _discovery = NULL;
     }
 
     void *handle () const { return _discovery; }

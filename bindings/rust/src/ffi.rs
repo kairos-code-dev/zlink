@@ -3,7 +3,7 @@
 
 #![allow(non_camel_case_types, non_upper_case_globals, dead_code)]
 
-use std::ffi::{c_char, c_int, c_long, c_void};
+use std::ffi::{c_char, c_int, c_long, c_ulong, c_void};
 
 // ---------------------------------------------------------------------------
 // Message
@@ -19,7 +19,7 @@ pub struct zlink_msg_t {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct zlink_routing_id_t {
     pub size: u8,
     pub data: [u8; 255],
@@ -63,6 +63,25 @@ pub enum zlink_send_result_t {
     ZLINK_SEND_RESULT_SENT = 0,
     ZLINK_SEND_RESULT_BACKPRESSURED = 1,
     ZLINK_SEND_RESULT_NOT_READY = 2,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum zlink_request_result_t {
+    ZLINK_REQUEST_RESULT_OK = 0,
+    ZLINK_REQUEST_RESULT_TIMED_OUT = 101,
+    ZLINK_REQUEST_RESULT_NOT_FOUND = 102,
+    ZLINK_REQUEST_RESULT_TERMINATED = 103,
+    ZLINK_REQUEST_RESULT_PROTOCOL_ERROR = 104,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum zlink_config_result_t {
+    ZLINK_CONFIG_OK = 0,
+    ZLINK_CONFIG_INVALID_HANDLE = 701,
+    ZLINK_CONFIG_INVALID_ARGUMENT = 702,
+    ZLINK_CONFIG_NOT_SUPPORTED = 703,
 }
 
 // ---------------------------------------------------------------------------
@@ -292,17 +311,41 @@ pub type zlink_send_ready_handler_fn =
     unsafe extern "C" fn(subject: *mut c_void, userdata: *mut c_void);
 
 pub type zlink_reply_handler_fn = unsafe extern "C" fn(
-    errno_: c_int,
+    result: zlink_request_result_t,
     parts: *mut zlink_msg_t,
     part_count: usize,
     userdata: *mut c_void,
 );
 
 pub type zlink_router_handler_fn = unsafe extern "C" fn(
-    peer_rid: *const zlink_routing_id_t,
+    source_node_rid: *const zlink_routing_id_t,
+    source_spot_rid: *const zlink_routing_id_t,
     request_seq: u64,
     parts: *mut zlink_msg_t,
     part_count: usize,
+    userdata: *mut c_void,
+);
+
+pub type zlink_spot_handler_fn = unsafe extern "C" fn(
+    source_rid: *const zlink_routing_id_t,
+    spot_rid: *const zlink_routing_id_t,
+    request_seq: u64,
+    parts: *mut zlink_msg_t,
+    part_count: usize,
+    userdata: *mut c_void,
+);
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum zlink_spot_dispatch_event_t {
+    ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,
+    ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE = 2,
+    ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE = 3,
+}
+
+pub type zlink_spot_dispatch_event_handler_fn = unsafe extern "C" fn(
+    spot: *mut c_void,
+    event: zlink_spot_dispatch_event_t,
     userdata: *mut c_void,
 );
 
@@ -814,10 +857,38 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_router_recv(
         router: *mut c_void,
-        peer_rid_out: *mut *const zlink_routing_id_t,
+        source_node_rid_out: *mut *const zlink_routing_id_t,
+        source_spot_rid_out: *mut *const zlink_routing_id_t,
         request_seq_out: *mut u64,
         parts_out: *mut *mut zlink_msg_t,
         part_count_out: *mut usize,
+        flags: zlink_send_flags_t,
+    ) -> c_int;
+    pub fn zlink_router_request_spot(
+        router: *mut c_void,
+        dest_node_rid: *const zlink_routing_id_t,
+        dest_spot_rid: *const zlink_routing_id_t,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
+        handler: zlink_reply_handler_fn,
+        userdata: *mut c_void,
+        flags: zlink_send_flags_t,
+        timeout_ms: u32,
+    ) -> c_int;
+    pub fn zlink_router_reply_spot(
+        router: *mut c_void,
+        dest_node_rid: *const zlink_routing_id_t,
+        dest_spot_rid: *const zlink_routing_id_t,
+        request_seq: u64,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
+    ) -> c_int;
+    pub fn zlink_router_send_spot(
+        router: *mut c_void,
+        dest_node_rid: *const zlink_routing_id_t,
+        dest_spot_rid: *const zlink_routing_id_t,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
         flags: zlink_send_flags_t,
     ) -> c_int;
     pub fn zlink_recv(
@@ -945,6 +1016,12 @@ unsafe extern "C" {
         discovery: *mut c_void,
         metadata_out: *mut zlink_msg_t,
     ) -> c_int;
+    pub fn zlink_discovery_resolve_spot(
+        discovery: *mut c_void,
+        spot_rid: *const zlink_routing_id_t,
+        owner_node_rid_out: *mut zlink_routing_id_t,
+    ) -> c_int;
+    pub fn zlink_discovery_set_dealer_peer_mode(discovery: *mut c_void, mode: u32) -> c_int;
     pub fn zlink_discovery_destroy(discovery_p: *mut *mut c_void) -> c_int;
 
     // -- Spot --------------------------------------------------------------
@@ -959,6 +1036,76 @@ unsafe extern "C" {
         peer_endpoint: *const c_char,
     ) -> c_int;
     pub fn zlink_spot_node_attach_discovery(node: *mut c_void, discovery: *mut c_void) -> c_int;
+    pub fn zlink_spot_send_spot(
+        spot: *mut c_void,
+        dest_node_rid: *const zlink_routing_id_t,
+        dest_spot_rid: *const zlink_routing_id_t,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
+        flags: zlink_send_flags_t,
+    ) -> c_int;
+    pub fn zlink_spot_request_spot(
+        spot: *mut c_void,
+        dest_node_rid: *const zlink_routing_id_t,
+        dest_spot_rid: *const zlink_routing_id_t,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
+        handler: zlink_reply_handler_fn,
+        userdata: *mut c_void,
+        flags: zlink_send_flags_t,
+        timeout_ms: u32,
+    ) -> c_int;
+    pub fn zlink_spot_reply_spot(
+        spot: *mut c_void,
+        dest_node_rid: *const zlink_routing_id_t,
+        dest_spot_rid: *const zlink_routing_id_t,
+        request_seq: u64,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
+    ) -> c_int;
+    pub fn zlink_spot_send_router(
+        spot: *mut c_void,
+        peer_rid: *const zlink_routing_id_t,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
+        flags: zlink_send_flags_t,
+    ) -> c_int;
+    pub fn zlink_spot_request_router(
+        spot: *mut c_void,
+        peer_rid: *const zlink_routing_id_t,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
+        handler: zlink_reply_handler_fn,
+        userdata: *mut c_void,
+        flags: zlink_send_flags_t,
+        timeout_ms: u32,
+    ) -> c_int;
+    pub fn zlink_spot_reply_router(
+        spot: *mut c_void,
+        peer_rid: *const zlink_routing_id_t,
+        request_seq: u64,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
+    ) -> c_int;
+    pub fn zlink_spot_handler(
+        spot: *mut c_void,
+        handler: zlink_spot_handler_fn,
+        userdata: *mut c_void,
+    ) -> c_int;
+    pub fn zlink_spot_dispatch_event_handler(
+        spot: *mut c_void,
+        handler: zlink_spot_dispatch_event_handler_fn,
+        userdata: *mut c_void,
+    ) -> c_int;
+    pub fn zlink_spot_recv(
+        spot: *mut c_void,
+        source_rid_out: *mut *const zlink_routing_id_t,
+        spot_rid_out: *mut *const zlink_routing_id_t,
+        request_seq_out: *mut u64,
+        parts_out: *mut *mut zlink_msg_t,
+        part_count_out: *mut usize,
+        flags: zlink_send_flags_t,
+    ) -> c_int;
 
     // -- Spot / registry snapshot -------------------------------------------
     pub fn zlink_spot_node_status_snapshot(
@@ -1046,7 +1193,7 @@ unsafe extern "C" {
     pub fn zlink_poll(items: *mut zlink_pollitem_t, nitems: c_int, timeout: c_long) -> c_int;
     pub fn zlink_poller_new() -> *mut c_void;
     pub fn zlink_poller_destroy(poller_p: *mut *mut c_void) -> c_int;
-    pub fn zlink_poller_size(poller: *mut c_void) -> c_int;
+    pub fn zlink_poller_size(poller: *mut c_void, error_out: *mut c_int) -> c_int;
     pub fn zlink_poller_add(
         poller: *mut c_void,
         socket: *mut c_void,
@@ -1074,6 +1221,19 @@ unsafe extern "C" {
         n_events: c_int,
         timeout: c_long,
     ) -> c_int;
+    pub fn zlink_timer_new() -> *mut c_void;
+    pub fn zlink_timer_destroy(timer_p: *mut *mut c_void) -> c_int;
+    pub fn zlink_timer_start(timer: *mut c_void, interval_ns: u64, repeat_count: u64) -> c_int;
+    pub fn zlink_timer_stop(timer: *mut c_void) -> c_int;
+    pub fn zlink_timer_recv(timer: *mut c_void, out: *mut u64, flags: c_int) -> c_int;
+    pub fn zlink_timer_handler(
+        timer: *mut c_void,
+        handler: unsafe extern "C" fn(timer: *mut c_void, count: u64, userdata: *mut c_void),
+        userdata: *mut c_void,
+    ) -> c_int;
+    pub fn zlink_stopwatch_start() -> *mut c_void;
+    pub fn zlink_stopwatch_intermediate(watch: *mut c_void) -> c_ulong;
+    pub fn zlink_stopwatch_stop(watch: *mut c_void) -> c_ulong;
 
     // -- Proxy -------------------------------------------------------------
     pub fn zlink_proxy(frontend: *mut c_void, backend: *mut c_void, capture: *mut c_void) -> c_int;

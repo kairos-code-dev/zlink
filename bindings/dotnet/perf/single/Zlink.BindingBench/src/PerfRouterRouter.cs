@@ -279,11 +279,11 @@ internal static class PerfRouterRouter
         {
             ridLen = socket.Receive(routingId.AsSpan(), flags);
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
+        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
         {
             return 0;
         }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
+        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
         {
             return 0;
         }
@@ -299,11 +299,11 @@ internal static class PerfRouterRouter
             DrainRemainingFramesNonBlocking(socket);
             return payloadLen;
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
+        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
         {
             return 0;
         }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
+        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
         {
             return 0;
         }

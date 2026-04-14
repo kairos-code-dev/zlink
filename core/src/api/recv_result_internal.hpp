@@ -28,7 +28,7 @@ inline zlink_recv_result_t from_errno (int err_)
 #endif
             return ZLINK_RECV_NOT_SUPPORTED;
         default:
-            return ZLINK_RECV_TERMINATED;
+            return ZLINK_RECV_INTERNAL_ERROR;
     }
 }
 

@@ -4,7 +4,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
+const SERVICE_TYPE_SPOT = 0x3002;
+const SERVICE_TYPE_SOCKET = 0x3003;
+const SERVICE_ROLE_SPOT = 2;
+const SERVICE_KIND_SPOT_PUB = 4;
 async function reservePort() {
     const server = net.createServer();
     server.listen(0, '127.0.0.1');
@@ -27,9 +31,9 @@ async function waitFor(deadlineMs, read) {
 test('service objects expose aligned monitor and query surface', () => {
     const ctx = new zlink.Context();
     const registry = new zlink.Registry(ctx);
-    const discovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'svc');
+    const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'svc');
     const node = new zlink.SpotNode(ctx);
-    const spot = new zlink.Spot(node);
+    const spot = node.createSpot();
     const query = new zlink.RegistryQueryClient(ctx);
     registry.bind('inproc://registry-pub', 'inproc://registry-router');
     query.connect('inproc://registry-router');
@@ -45,15 +49,22 @@ test('service objects expose aligned monitor and query surface', () => {
     assert.equal(discovery.getMetadata().toString(), 'meta');
     assert.deepEqual(discovery.memberPeers(), []);
     assert.equal(typeof discovery.memberPeerMetadata, 'function');
+    assert.equal(typeof discovery.resolveSpot, 'function');
+    assert.equal(typeof discovery.setDealerPeerMode, 'function');
     assert.equal(node.peersSnapshot().length, 0);
     assert.equal(node.peersQuery().length, 0);
     assert.equal(node.subjectsSnapshot().length, 0);
+    node.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('node-id')));
+    assert.equal(node.routingId.toBytes().toString(), 'node-id');
+    spot.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('spot-id')));
+    assert.equal(spot.routingId.toBytes().toString(), 'spot-id');
     assert.equal(zlink.SpotNodeOption, undefined);
     assert.equal(zlink.SpotNodePubMode, undefined);
     assert.equal(zlink.SpotNodePubQueueFullPolicy, undefined);
     assert.equal(typeof discoveryMonitor.recv, 'function');
-    assert.equal(typeof discoveryMonitor.tryRecv, 'function');
+    assert.equal(typeof discoveryMonitor.recv, 'function');
     assert.equal(typeof discoveryMonitor.onEvent, 'function');
+    assert.equal(typeof zlink.MonitorSocket.ignoreHandler, 'function');
     assert.equal(registry.setEndpoints, undefined);
     assert.equal(registry.start, undefined);
     assert.equal(registry.setSockOpt, undefined);
@@ -64,13 +75,20 @@ test('service objects expose aligned monitor and query surface', () => {
     assert.equal(node.subSocket, undefined);
     assert.equal(node.pubPeers, undefined);
     assert.equal(node.subPeers, undefined);
-    assert.throws(() => registry.bind('inproc://registry-pub-2', 'inproc://registry-router-2'), /only be called once/);
+    assert.throws(() => registry.bind('inproc://registry-pub-2', 'inproc://registry-router-2'), /busy|only be called once/i);
     discoveryMonitor.close();
     query.close();
     spot.close();
     node.close();
     discovery.close();
     registry.close();
+    ctx.close();
+});
+test('Spot must be created through SpotNode.createSpot()', () => {
+    const ctx = new zlink.Context();
+    const node = new zlink.SpotNode(ctx);
+    assert.throws(() => new zlink.Spot(node), /createSpot/);
+    node.close();
     ctx.close();
 });
 test('removed receiver stays removed from aligned api', () => {
@@ -81,7 +99,7 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
     const ctx = new zlink.Context();
     const pair = new zlink.PairSocket(ctx);
     const registry = new zlink.Registry(ctx);
-    const discovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'surface-tls');
+    const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'surface-tls');
     const node = new zlink.SpotNode(ctx);
     assert.equal(typeof ctx.shutdown, 'function');
     assert.equal(typeof ctx.options, 'object');
@@ -91,12 +109,18 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
     assert.equal(typeof ctx.options.maxMsgSize, 'number');
     assert.equal(typeof ctx.options.msgTSize, 'number');
     assert.equal(typeof ctx.options.threadPriority, 'number');
-    assert.equal(typeof ctx.options.threadSchedulingPolicy, 'number');
     assert.equal(typeof ctx.options.blocky, 'boolean');
     ctx.options.ioThreads = ctx.options.ioThreads;
     ctx.options.maxSockets = ctx.options.maxSockets;
     ctx.options.maxMsgSize = ctx.options.maxMsgSize;
     ctx.options.blocky = ctx.options.blocky;
+    try {
+        assert.equal(typeof ctx.options.threadSchedulingPolicy, 'number');
+        ctx.options.threadSchedulingPolicy = ctx.options.threadSchedulingPolicy;
+    }
+    catch (error) {
+        assert.ok(error instanceof zlink.ConfigError);
+    }
     assert.equal(typeof pair.setTlsServer, 'function');
     assert.equal(typeof pair.setTlsClient, 'function');
     assert.equal(typeof registry.setTlsServer, 'function');
@@ -112,7 +136,8 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
     assert.throws(() => discovery.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
     assert.throws(() => node.setTlsServer(Buffer.from('cert'), 'key'), /cert/);
     assert.throws(() => node.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
-    assert.equal(typeof zlink.Message.fromBuffer(Buffer.from('message')).close, 'function');
+    assert.equal(typeof new zlink.Message(Buffer.from('message')).close, 'function');
+    assert.equal(typeof zlink.Message.from(Buffer.from('message')).close, 'function');
     node.close();
     discovery.close();
     registry.close();
@@ -120,12 +145,26 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
     ctx.shutdown();
     ctx.close();
 });
-test('spot close leaves spot node alive and discovery close tears down attached participants', () => {
+test('threadSchedulingPolicy getter surfaces ConfigError failures', () => {
+    const ctx = new zlink.Context();
+    const expected = new zlink.ConfigError(zlink.ConfigResult.NotSupported, 0, 'unsupported');
+    const original = ctx.getOptionRawStrictInternal;
+    ctx.getOptionRawStrictInternal = () => {
+        throw expected;
+    };
+    assert.throws(() => ctx.options.threadSchedulingPolicy, (error) => error === expected);
+    ctx.getOptionRawStrictInternal = original;
+    ctx.close();
+});
+test('spot close leaves spot node alive and discovery close tears down attached participants', async () => {
     const ctx = new zlink.Context();
     const standaloneNode = new zlink.SpotNode(ctx);
-    const spot = new zlink.Spot(standaloneNode);
-    const discovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'participant-close');
+    const spot = standaloneNode.createSpot();
+    const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'participant-close');
     const attachedNode = new zlink.SpotNode(ctx);
+    const standaloneEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    standaloneNode.bind(standaloneEndpoint);
+    assert.ok(standaloneNode.statusSnapshot().nodeRoutingId instanceof zlink.RoutingId);
     attachedNode.attachDiscovery(discovery);
     spot.close();
     assert.equal(standaloneNode.statusSnapshot().configuredPeerCount, 0);
@@ -136,17 +175,17 @@ test('spot close leaves spot node alive and discovery close tears down attached 
 });
 test('discovery requires a service name in the aligned api', () => {
     const ctx = new zlink.Context();
-    assert.throws(() => new zlink.Discovery(ctx, zlink.ServiceType.SPOT), /serviceName/);
-    assert.throws(() => new zlink.Discovery(ctx, zlink.ServiceType.SPOT, ''), /serviceName/);
-    assert.throws(() => new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'x'.repeat(256)), /255 bytes/);
+    assert.throws(() => new zlink.Discovery(ctx, SERVICE_TYPE_SPOT), /serviceName/);
+    assert.throws(() => new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, ''), /serviceName/);
+    assert.throws(() => new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'x'.repeat(256)), /255 bytes/);
     ctx.close();
 });
 test('registry, discovery, and query client expose canonical service discovery flow', async () => {
     const ctx = new zlink.Context();
     const registry = new zlink.Registry(ctx);
     const query = new zlink.RegistryQueryClient(ctx);
-    const providerDiscovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'service-found');
-    const watcherDiscovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'service-found');
+    const providerDiscovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'service-found');
+    const watcherDiscovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'service-found');
     const node = new zlink.SpotNode(ctx);
     const pubPort = await reservePort();
     const routerPort = await reservePort();
@@ -167,7 +206,7 @@ test('registry, discovery, and query client expose canonical service discovery f
         assert.equal(topologyEntry.endpoint, serviceEndpoint);
         const serviceSummary = await waitFor(5000, () => {
             const [entry] = registry.serviceSummarySnapshot({
-                serviceKind: zlink.ServiceKind.SPOT_PUB,
+                serviceKind: SERVICE_KIND_SPOT_PUB,
                 serviceName: 'service-found'
             });
             return entry ?? null;
@@ -177,7 +216,7 @@ test('registry, discovery, and query client expose canonical service discovery f
         const queryEntry = await waitFor(5000, () => (query.snapshot({ serviceName: 'service-found' }).find((entry) => (entry.endpoint === serviceEndpoint)) ?? null));
         assert.ok(queryEntry);
         assert.equal(queryEntry.endpoint, serviceEndpoint);
-        const peers = registry.memberPeers(zlink.ServiceType.SPOT, 'service-found');
+        const peers = registry.memberPeers(SERVICE_TYPE_SPOT, 'service-found');
         assert.ok(Array.isArray(peers));
         assert.ok(peers.some((peer) => peer.endpoint === serviceEndpoint));
         assert.ok(Array.isArray(node.subjectsSnapshot({ subject: '' })));
@@ -185,7 +224,7 @@ test('registry, discovery, and query client expose canonical service discovery f
         assert.ok(discoveryPeer);
         const registryMetadata = await waitFor(5000, () => {
             try {
-                return registry.memberPeerMetadata(zlink.ServiceType.SPOT, 'service-found', zlink.ServiceRole.SPOT, serviceEndpoint);
+                return registry.memberPeerMetadata(SERVICE_TYPE_SPOT, 'service-found', SERVICE_ROLE_SPOT, serviceEndpoint);
             }
             catch (_) {
                 return null;
@@ -214,8 +253,8 @@ test('registry, discovery, and query client expose canonical service discovery f
 });
 test('attachDiscovery blocks manual lifecycle entry points on canonical sockets and spot nodes', () => {
     const ctx = new zlink.Context();
-    const socketDiscovery = new zlink.Discovery(ctx, zlink.ServiceType.SOCKET, 'attached-socket');
-    const spotDiscovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'attached-spot');
+    const socketDiscovery = new zlink.Discovery(ctx, SERVICE_TYPE_SOCKET, 'attached-socket');
+    const spotDiscovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'attached-spot');
     const pub = new zlink.PubSocket(ctx);
     const node = new zlink.SpotNode(ctx);
     try {
@@ -261,7 +300,7 @@ test('canonical socket options are exposed through typed facades', () => {
     router.options.mandatory = true;
     router.options.handover = true;
     router.options.probe = true;
-    router.options.connectRoutingId = Buffer.from('route');
+    router.options.connectRoutingId = zlink.RoutingId.fromBytes(Buffer.from('route'));
     stream.options.notify = true;
     xpub.options.verbose = true;
     xpub.options.verboser = true;

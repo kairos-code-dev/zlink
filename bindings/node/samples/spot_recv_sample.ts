@@ -21,8 +21,8 @@ async function main() {
   const ctx = new zlink.Context();
   const pubNode = new zlink.SpotNode(ctx);
   const subNode = new zlink.SpotNode(ctx);
-  const pub = new zlink.Spot(pubNode);
-  const sub = new zlink.Spot(subNode);
+  const pub = pubNode.createSpot();
+  const sub = subNode.createSpot();
   const topic = 'room:lobby';
   const sent = 'hello-spot';
 
@@ -34,15 +34,19 @@ async function main() {
     let received = null;
     while (Date.now() < deadline) {
       pub.publish(topic, Buffer.from(sent));
-      received = sub.trySubscribe();
-      if (received !== null) {
+      try {
+        received = sub.subscribe(zlink.RecvFlags.DontWait);
         break;
+      } catch (error) {
+        if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
+          throw error;
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     assert.notEqual(received, null);
     assert.equal(received.topic, topic);
-    const recv = received.parts[0].data.toString();
+    const recv = received.parts[0].data().toString();
     assert.equal(recv, sent);
     console.log(`[spot/recv] publish: "${topic}/${sent}" \u2192 subscribe: "${topic}/${recv}"`);
   } finally {

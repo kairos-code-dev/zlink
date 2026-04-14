@@ -2,15 +2,18 @@ package dev.kairoscode.zlink.contract;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.PollEvent;
 import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.Poller;
-import dev.kairoscode.zlink.SocketPollSet;
 import dev.kairoscode.zlink.TestSupport;
+import java.util.List;
+import java.lang.reflect.Modifier;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SocketPollingContractTest {
@@ -32,32 +35,20 @@ public class SocketPollingContractTest {
             }
 
             assertTrue(poller.pollAny(TestSupport.DEFAULT_TIMEOUT_MS));
+            assertEquals(1, poller.size());
             assertSame(server, poller.readySocket(0));
             assertEquals(PollEventType.POLLIN.getValue(),
                 poller.readyEvents(0));
+            List<PollEvent> events = poller.poll(0);
+            assertEquals(1, events.size());
+            assertSame(server, events.get(0).socket());
         }
     }
 
     @Test
-    public void socketPollSetTracksTypedSocketsThroughAbstractBase() {
-        TestSupport.assumeNative();
-
-        try (Context ctx = new Context();
-             PairSocket server = new PairSocket(ctx);
-             PairSocket client = new PairSocket(ctx);
-             SocketPollSet pollSet = SocketPollSet.fromSockets(
-                 java.util.List.of(server), PollEventType.POLLIN.getValue())) {
-            String endpoint = TestSupport.inprocEndpoint("pollset-contract");
-            server.bind(endpoint);
-            client.connect(endpoint);
-
-            try (Message outbound = Message.copyOfUtf8("pollset")) {
-                client.send(outbound);
-            }
-
-            assertEquals(1, pollSet.poll(TestSupport.DEFAULT_TIMEOUT_MS));
-            assertSame(server, pollSet.socket(0));
-            assertTrue(pollSet.isReady(0, PollEventType.POLLIN.getValue()));
-        }
+    public void legacySocketPollSetTypeIsHidden() throws Exception {
+        assertFalse(Modifier.isPublic(
+            Class.forName("dev.kairoscode.zlink.SocketPollSet")
+              .getModifiers()));
     }
 }

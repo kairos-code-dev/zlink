@@ -2,7 +2,7 @@
 
 namespace Zlink;
 
-public readonly struct PeerRecord
+internal readonly struct PeerRecord
 {
     public PeerRecord(string routingId, uint? streamRoutingId,
         string remoteAddress,

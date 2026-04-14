@@ -42,7 +42,7 @@ def main():
 
     with zlink.Context() as ctx:
         with zlink.StreamSocket(ctx) as server:
-            with server.monitor_open(zlink.MonitorEvent.ACCEPTED) as server_monitor:
+            with server.monitor_open(zlink.MonitorEventMask.ACCEPTED) as server_monitor:
                 done = threading.Event()
                 observed = {}
 
@@ -54,7 +54,7 @@ def main():
                 server.bind(endpoint)
                 server.on_receive(on_message)
                 with socket.create_connection(("127.0.0.1", port), timeout=3.0) as client:
-                    _wait_socket_monitor_event(server_monitor, zlink.MonitorEvent.ACCEPTED)
+                    _wait_socket_monitor_event(server_monitor, zlink.MonitorEventMask.ACCEPTED)
                     client.sendall(b"hello-stream")
                     if not done.wait(3.0):
                         raise TimeoutError("stream callback did not receive a message")

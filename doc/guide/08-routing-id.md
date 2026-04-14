@@ -112,25 +112,27 @@ When replying, pass the same routing_id to `zlink_send_rid()`.
 ### Basic Request-Reply
 
 ```c
-/* ROUTER server (with handler) */
-void on_request(const zlink_routing_id_t *source_rid,
+/* ROUTER server (with unified routed handler) */
+void on_request(const zlink_routing_id_t *source_node_rid,
+                const zlink_routing_id_t *source_spot_rid,
+                uint64_t request_seq,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* source_rid = "D1" (2 bytes), parts[0] = "Hello" (5 bytes) */
+    /* Plain DEALER → ROUTER: source_spot_rid == NULL, request_seq == 0.
+       source_node_rid = "D1" (2 bytes), parts[0] = "Hello" (5 bytes). */
 
     /* Reply: use zlink_send_rid for directed send */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "World", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
+    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-/* Receive with zlink_recv() */
+zlink_router_handler(router, on_request, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];

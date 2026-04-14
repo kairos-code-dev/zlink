@@ -10,7 +10,7 @@ import java.lang.foreign.ValueLayout;
 import java.util.List;
 import java.util.Objects;
 
-public final class SocketPollSet implements AutoCloseable {
+final class SocketPollSet implements AutoCloseable {
     private static final ValueLayout FD_LAYOUT =
         isWindows64() ? ValueLayout.JAVA_LONG : ValueLayout.JAVA_INT;
     private static final MemoryLayout ITEM_LAYOUT = MemoryLayout.structLayout(
@@ -33,7 +33,7 @@ public final class SocketPollSet implements AutoCloseable {
     private final Socket[] sockets;
     private final int count;
 
-    public SocketPollSet(int count) {
+    SocketPollSet(int count) {
         if (count < 0) {
             throw new IllegalArgumentException("count must be non-negative");
         }
@@ -43,8 +43,8 @@ public final class SocketPollSet implements AutoCloseable {
         this.sockets = new Socket[count];
     }
 
-    public static SocketPollSet fromSockets(List<Socket> sockets,
-                                            int initialEvents) {
+    static SocketPollSet fromSockets(List<Socket> sockets,
+                                     int initialEvents) {
         Objects.requireNonNull(sockets, "sockets");
         SocketPollSet pollSet = new SocketPollSet(sockets.size());
         for (int i = 0; i < sockets.size(); i++) {
@@ -53,11 +53,11 @@ public final class SocketPollSet implements AutoCloseable {
         return pollSet;
     }
 
-    public int size() {
+    int size() {
         return count;
     }
 
-    public void setSocket(int index, Socket socket, int events) {
+    void setSocket(int index, Socket socket, int events) {
         Objects.requireNonNull(socket, "socket");
         checkIndex(index);
         sockets[index] = socket;
@@ -68,34 +68,34 @@ public final class SocketPollSet implements AutoCloseable {
         items.set(ValueLayout.JAVA_SHORT, base + REVENTS_OFFSET, (short) 0);
     }
 
-    public Socket socket(int index) {
+    Socket socket(int index) {
         checkIndex(index);
         return sockets[index];
     }
 
-    public void setEvents(int index, int events) {
+    void setEvents(int index, int events) {
         checkIndex(index);
         items.set(ValueLayout.JAVA_SHORT, itemBase(index) + EVENTS_OFFSET,
             (short) events);
     }
 
-    public int events(int index) {
+    int events(int index) {
         checkIndex(index);
         return items.get(ValueLayout.JAVA_SHORT, itemBase(index) + EVENTS_OFFSET)
             & 0xFFFF;
     }
 
-    public int revents(int index) {
+    int revents(int index) {
         checkIndex(index);
         return items.get(ValueLayout.JAVA_SHORT, itemBase(index) + REVENTS_OFFSET)
             & 0xFFFF;
     }
 
-    public boolean isReady(int index, int eventMask) {
+    boolean isReady(int index, int eventMask) {
         return (revents(index) & eventMask) != 0;
     }
 
-    public int poll(int timeoutMs) {
+    int poll(int timeoutMs) {
         if (count == 0) {
             return 0;
         }

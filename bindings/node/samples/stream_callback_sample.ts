@@ -30,8 +30,8 @@ async function main() {
 
     const received = await new Promise((resolve, reject) => {
       try {
-        stream.onReceive((routingId, parts) => {
-          resolve({ routingId, parts });
+        stream.onReceive((message) => {
+          resolve(message);
         });
       } catch (error) {
         reject(error);
@@ -41,8 +41,8 @@ async function main() {
       client.write(Buffer.from(sent));
     });
 
-    assert.ok(Buffer.isBuffer(received.routingId));
-    const recv = received.parts[0].data.toString();
+    assert.ok(received.routingId instanceof zlink.RoutingId);
+    const recv = received.parts[0].data().toString();
     assert.equal(recv, 'hello-stream');
 
     stream.send(received.routingId, Buffer.from('hello-stream'));

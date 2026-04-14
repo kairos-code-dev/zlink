@@ -8,7 +8,8 @@ public enum RecvResult {
     BUSY(202),
     TERMINATED(203),
     INVALID_HANDLE(204),
-    NOT_SUPPORTED(205);
+    NOT_SUPPORTED(205),
+    INTERNAL_ERROR(206);
 
     private final int value;
 

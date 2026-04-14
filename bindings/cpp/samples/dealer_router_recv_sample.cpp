@@ -11,9 +11,7 @@ int main ()
     zlink::monitor_handle_t dealer_monitor = dealer.monitor_handle ();
 
     assert (router.bind ("tcp://127.0.0.1:0") == 0);
-    std::string endpoint;
-    assert (router.get_option (zlink::socket_options::last_endpoint, endpoint)
-            == 0);
+    const std::string endpoint = router.options ().last_endpoint ();
     assert (!endpoint.empty ());
     assert (dealer.connect (endpoint) == 0);
     assert (detail::wait_connected (router_monitor, dealer_monitor));
@@ -23,17 +21,17 @@ int main ()
     dealer.send (outbound);
 
     const zlink::received_t inbound = router.recv ();
-    assert (!inbound.routing_id.empty ());
-    assert (inbound.parts.size () == 1);
-    assert (inbound.parts[0].to_string () == detail::k_dealer_router_request);
+    assert (inbound.routing_id ().has_value ());
+    assert (inbound.parts ().size () == 1);
+    assert (inbound.parts ()[0].to_string () == detail::k_dealer_router_request);
 
     const std::string reply_payload = detail::k_dealer_router_reply;
     zlink::message_t reply = detail::make_message (reply_payload);
-    router.send (inbound.routing_id, reply);
+    router.send (*inbound.routing_id (), reply);
 
     const zlink::received_t echoed = dealer.recv ();
-    assert (echoed.parts.size () == 1);
-    const std::string received = echoed.parts[0].to_string ();
+    assert (echoed.parts ().size () == 1);
+    const std::string received = echoed.parts ()[0].to_string ();
     assert (received == detail::k_dealer_router_reply);
     std::printf ("[dealer-router/recv] send: \"%s\" → recv: \"%s\"\n",
                  sent.c_str (), received.c_str ());

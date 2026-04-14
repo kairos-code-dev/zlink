@@ -3,6 +3,6 @@
 package dev.kairoscode.zlink;
 
 @FunctionalInterface
-public interface RequestReplyCallback {
+interface RequestReplyCallback {
     void onComplete(Throwable error, Received reply);
 }

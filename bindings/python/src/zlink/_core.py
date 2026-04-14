@@ -35,10 +35,6 @@ class ZlinkError(RuntimeError):
     def internal_errno(self):
         return self._internal_errno
 
-    @property
-    def errno(self):
-        return self._internal_errno
-
 
 class _TypedZlinkError(ZlinkError):
     _result_type = None
@@ -118,6 +114,22 @@ def _request_result_from_errno(err):
     if err in (getattr(_errno, "ETERM", 0),):
         return RequestResult.TERMINATED
     return RequestResult.PROTOCOL_ERROR
+
+
+def _request_result_from_code(code):
+    try:
+        return RequestResult(int(code))
+    except ValueError:
+        return RequestResult.PROTOCOL_ERROR
+
+
+def _request_result_internal_errno(result):
+    typed = _request_result_from_code(result)
+    if typed == RequestResult.TIMED_OUT:
+        return _errno.ETIMEDOUT
+    if typed == RequestResult.TERMINATED:
+        return getattr(_errno, "ETERM", 0)
+    return 0
 
 
 def _recv_result_from_errno(err):
@@ -221,6 +233,44 @@ def _raise_last_error():
     raise ZlinkError(err, err)
 
 
+def _raise_mapped_error(error_type, mapper, internal_errno=None):
+    if internal_errno is None:
+        internal_errno = lib().zlink_errno()
+    _raise_zlink_error(error_type, mapper(int(internal_errno)), int(internal_errno))
+
+
+def _raise_submit_error_from_errno(internal_errno=None):
+    _raise_mapped_error(SubmitError, _submit_result_from_errno, internal_errno)
+
+
+def _raise_request_error_from_errno(internal_errno=None):
+    _raise_mapped_error(RequestError, _request_result_from_errno, internal_errno)
+
+
+def _raise_recv_error_from_errno(internal_errno=None):
+    _raise_mapped_error(RecvError, _recv_result_from_errno, internal_errno)
+
+
+def _raise_handler_error_from_errno(internal_errno=None):
+    _raise_mapped_error(HandlerError, _handler_result_from_errno, internal_errno)
+
+
+def _raise_close_error_from_errno(internal_errno=None):
+    _raise_mapped_error(CloseError, _close_result_from_errno, internal_errno)
+
+
+def _raise_bind_error_from_errno(internal_errno=None):
+    _raise_mapped_error(BindError, _bind_result_from_errno, internal_errno)
+
+
+def _raise_connect_error_from_errno(internal_errno=None):
+    _raise_mapped_error(ConnectError, _connect_result_from_errno, internal_errno)
+
+
+def _raise_config_error_from_errno(internal_errno=None):
+    _raise_mapped_error(ConfigError, _config_result_from_errno, internal_errno)
+
+
 def _as_bytes_view(data):
     if isinstance(data, bytes):
         return memoryview(data)
@@ -289,6 +339,10 @@ def _validated_c_string_text(text, *, field="value", max_length=None):
     return raw
 
 
+def _decode_topic_text(raw):
+    return bytes(raw).decode("utf-8", errors="replace")
+
+
 _ZlinkRoutingId = ZlinkRoutingId
 _SOCKET_RECV_HANDLER = ctypes.CFUNCTYPE(
     None,
@@ -320,6 +374,7 @@ _REPLY_HANDLER = ctypes.CFUNCTYPE(
 )
 _ROUTER_HANDLER = ctypes.CFUNCTYPE(
     None,
+    ctypes.POINTER(ZlinkRoutingId),
     ctypes.POINTER(ZlinkRoutingId),
     ctypes.c_uint64,
     ctypes.POINTER(ZlinkMsg),
@@ -427,7 +482,7 @@ def _routing_id_bytes(routing_id):
 
 
 def _is_eagain(exc):
-    return isinstance(exc, ZlinkError) and exc.errno == _errno.EAGAIN
+    return isinstance(exc, ZlinkError) and exc.internal_errno == _errno.EAGAIN
 
 
 def _report_unhandled_callback_exception(handler):
@@ -620,8 +675,16 @@ class RoutingId:
     def __init__(self, data):
         self._raw = _validated_routing_id_bytes(data)
 
+    @classmethod
+    def from_bytes(cls, data):
+        return cls(data)
+
     def to_bytes(self):
         return self._raw
+
+    @property
+    def size(self):
+        return len(self._raw)
 
     def __bytes__(self):
         return self._raw
@@ -642,6 +705,12 @@ class RoutingId:
 
     def __repr__(self):
         return f"RoutingId({self._raw!r})"
+
+    def to_hex(self):
+        return self._raw.hex()
+
+    def __str__(self):
+        return self.to_hex()
 
 
 class ReceivedMessage:
@@ -694,14 +763,24 @@ class ReceivedMessage:
 
 
 class ReceivedMultipart:
-    def __init__(self, owner, routing_id=None, request_seq=None):
+    def __init__(
+        self,
+        owner,
+        routing_id=None,
+        request_seq=None,
+        *,
+        spot_rid=None,
+        reply_sender=None,
+    ):
         self._owner = owner
         self.parts = tuple(
             ReceivedMessage._from_owner(owner, index)
             for index in range(owner._part_count)
         )
         self.routing_id = routing_id
+        self.spot_rid = spot_rid
         self.request_seq = request_seq
+        self._reply_sender = reply_sender
 
     def __iter__(self):
         return iter(self.parts)
@@ -711,6 +790,19 @@ class ReceivedMultipart:
 
     def to_bytes_list(self):
         return [message.to_bytes() for message in self.parts]
+
+    def is_single_part(self):
+        return len(self.parts) == 1
+
+    def first_part(self):
+        if not self.parts:
+            raise RecvError(RecvResult.NO_DATA, 0)
+        return self.parts[0]
+
+    def single_part_or_throw(self):
+        if len(self.parts) != 1:
+            raise RecvError(RecvResult.NO_DATA, 0)
+        return self.parts[0]
 
     def close(self):
         self._owner.close()
@@ -748,6 +840,19 @@ class TopicMessage:
     def to_bytes_list(self):
         return [message.to_bytes() for message in self.parts]
 
+    def is_single_part(self):
+        return len(self.parts) == 1
+
+    def first_part(self):
+        if not self.parts:
+            raise RecvError(RecvResult.NO_DATA, 0)
+        return self.parts[0]
+
+    def single_part_or_throw(self):
+        if len(self.parts) != 1:
+            raise RecvError(RecvResult.NO_DATA, 0)
+        return self.parts[0]
+
     def close(self):
         self._owner.close()
 
@@ -765,7 +870,10 @@ class TopicMessage:
 
 
 class Received(ReceivedMultipart):
-    pass
+    def reply(self, parts, *, flags=0):
+        if self.request_seq is None or self._reply_sender is None:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._reply_sender(parts, flags=int(flags))
 
 
 class Subscribed(TopicMessage):
@@ -807,7 +915,7 @@ class Message:
         return msg
 
     @classmethod
-    def wrap_buffer(cls, data):
+    def _wrap_buffer(cls, data):
         msg = cls.__new__(cls)
         msg._msg = ZlinkMsg()
         msg._valid = False
@@ -835,11 +943,17 @@ class Message:
     def to_bytes(self):
         return _msg_to_bytes(self._msg) if self._valid else b""
 
-    def getProperty(self, name):
+    def get_property(self, name):
         return _msg_gets(self._msg, name) if self._valid else None
 
-    def refCount(self):
+    def getProperty(self, name):
+        return self.get_property(name)
+
+    def ref_count(self):
         return _msg_refcnt(self._msg) if self._valid else -1
+
+    def refCount(self):
+        return self.ref_count()
 
     def send(self, socket):
         socket.send(self)

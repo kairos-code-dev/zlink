@@ -257,8 +257,8 @@ public sealed class test_pair_tcp
         Thread.Sleep(50);
 
         MonitorSnapshot snapshot = monitor.Snapshot();
-        Assert.Equal(MonitorSourceKind.Socket, snapshot.SourceKind);
-        Assert.True(snapshot.SendPendingMessages >= 0);
+        Assert.Equal<SourceKind>(SourceKind.Socket, snapshot.SourceKind);
+        Assert.True(snapshot.SndPendingMsgs >= 0);
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
             Volatile.Read(ref callbackCount) >= 1, 3000, 10));

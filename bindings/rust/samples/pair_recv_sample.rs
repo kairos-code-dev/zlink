@@ -58,7 +58,7 @@ fn main() {
     drop(server_mon);
     drop(client_mon);
 
-    let msg = Message::from_bytes(b"hello-pair").expect("message creation failed");
+    let msg = Message::copy_from(b"hello-pair").expect("message creation failed");
     client.send(msg).expect("send failed");
 
     let received = server.recv().expect("recv failed");

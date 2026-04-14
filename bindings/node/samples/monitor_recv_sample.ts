@@ -26,9 +26,6 @@ async function main() {
   const clientMonitor = client.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
 
   try {
-    assert.equal(serverMonitor.tryRecv(), null);
-    assert.equal(clientMonitor.tryRecv(), null);
-
     server.bind(endpoint);
     client.connect(endpoint);
 

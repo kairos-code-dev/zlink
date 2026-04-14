@@ -246,11 +246,19 @@ inline error_t last_error ()
     return error_t (zlink_errno (), zlink_errno ());
 }
 
+inline void throw_if_reply_flags_unsupported (send_flags_t flags_)
+{
+    if (flags_ != send_flags_t::none)
+        throw submit_error_t (submit_result_t::not_supported, ENOTSUP);
+}
+
 } // namespace detail
 
 using detail::last_error;
 using detail::throw_on_error;
 
 } // namespace zlink
+
+#include "types_impl.hpp"
 
 #endif

@@ -28,12 +28,12 @@ class subscriber_socket_t : public base_socket_t
         return base_socket_t::subscription_at (index_, filter_, is_pattern_);
     }
 
-    ZLINK_CPP_NODISCARD subscribed_t subscribe ()
+    ZLINK_CPP_NODISCARD topic_message_t subscribe ()
     {
-        subscribed_t subscribed;
-        const int rc = base_socket_t::subscribe (subscribed);
+        topic_message_t message;
+        const int rc = base_socket_t::subscribe (message);
         throw_on_error (rc);
-        return subscribed;
+        return message;
     }
 
     ZLINK_CPP_NODISCARD int

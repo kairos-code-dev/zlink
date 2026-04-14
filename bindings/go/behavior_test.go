@@ -115,10 +115,7 @@ func TestDealerRouterRoundTrip(t *testing.T) {
 	defer router.Close()
 	defer dealer.Close()
 
-	rid, err := zlink.NewRoutingID([]byte("dealer-42"))
-	if err != nil {
-		t.Fatalf("NewRoutingID() error = %v", err)
-	}
+	rid := zlink.NewRoutingID([]byte("dealer-42"))
 
 	_ = router.Bind(endpoint)
 	_ = dealer.SetRoutingID(rid)

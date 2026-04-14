@@ -20,8 +20,8 @@ public final class SpotCallbackSample {
         try (Context ctx = new Context();
              SpotNode publisherNode = new SpotNode(ctx);
              SpotNode subscriberNode = new SpotNode(ctx);
-             Spot publisher = new Spot(publisherNode);
-             Spot subscriber = new Spot(subscriberNode)) {
+             Spot publisher = publisherNode.createSpot();
+             Spot subscriber = subscriberNode.createSpot()) {
             publisherNode.bind("tcp://127.0.0.1:0");
             String endpoint = publisherNode.statusSnapshot().localEndpoint();
             subscriberNode.connectPeer(endpoint);

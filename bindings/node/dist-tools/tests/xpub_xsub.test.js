@@ -2,7 +2,18 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
+function recvSubscriptionEventMaybe(socket) {
+    try {
+        return socket.receiveSubscriptionEvent(zlink.RecvFlags.DontWait);
+    }
+    catch (error) {
+        if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
+            return null;
+        }
+        throw error;
+    }
+}
 test('xpub exposes subscription events and dedicated option helpers', () => {
     const ctx = new zlink.Context();
     const xpub = new zlink.XPubSocket(ctx);
@@ -13,12 +24,11 @@ test('xpub exposes subscription events and dedicated option helpers', () => {
     xpub.options.verboser = true;
     xpub.options.noDrop = true;
     xsub.setSubscription('topic');
-    assert.equal(zlink.SocketOption.XPUB_VERBOSE, 0x3301);
     assert.equal(typeof xsub.options.topicsCount, 'number');
     const event = xpub.receiveSubscriptionEvent();
     assert.equal(event.topic, 'topic');
     assert.equal(event.subscribed, true);
-    assert.equal(xpub.tryReceiveSubscriptionEvent(), null);
+    assert.equal(recvSubscriptionEventMaybe(xpub), null);
     xsub.close();
     xpub.close();
     ctx.close();

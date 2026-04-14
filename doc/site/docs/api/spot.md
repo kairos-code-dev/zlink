@@ -404,53 +404,28 @@ Set fields to non-zero values to filter. Zero-valued fields are wildcards.
 2. `zlink_spot_node_peers_snapshot()` -- inspect peer connectivity.
 3. `zlink_spot_node_subjects_snapshot()` -- verify subject readiness.
 
-## SpotNode Peer Publish Batching Options
+## SpotNode Options
 
-SpotNode provides optional internal batching for the peer publish path.
-These options are set via `zlink_set_spot_node_option()` on the SpotNode handle.
+SpotNode node-level options are set via `zlink_set_spot_node_option()` on the
+SpotNode handle.
 
 ### zlink_spot_node_option_t
 
 ```c
 typedef enum zlink_spot_node_option_t {
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE                  = 0x3601,
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS                = 0x3602,
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_MESSAGES            = 0x3603,
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_BYTES               = 0x3604,
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_BYPASS_BYTES            = 0x3605,
-    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_MESSAGES_PER_TURN = 0x3606,
-    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN    = 0x3607,
+    ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM                   = 0x3608,
+    ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM                   = 0x3609,
+    ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM                  = 0x360A,
+    ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM                  = 0x360B
 } zlink_spot_node_option_t;
 ```
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `PEER_BATCH_ENABLE` | `int` (bool) | 0 (disabled) | Enable peer publish batching. Operator opt-in for homogeneous deployments. |
-| `PEER_BATCH_DELAY_MS` | `int` | 20 | Maximum delay before flushing a topic bucket (ms). |
-| `PEER_BATCH_MAX_MESSAGES` | `int` | 32 | Maximum messages per topic bucket before flush. |
-| `PEER_BATCH_MAX_BYTES` | `int` | 65536 | Maximum bytes per topic bucket before flush. |
-| `PEER_BATCH_BYPASS_BYTES` | `int` | 65536 | Messages at or above this encoded size bypass batching and are sent immediately. |
-| `PEER_UNBATCH_MAX_MESSAGES_PER_TURN` | `int` | 32 | Maximum messages to unbatch per I/O turn on the receiver side. |
-| `PEER_UNBATCH_MAX_BYTES_PER_TURN` | `int` | 65536 | Maximum bytes to unbatch per I/O turn on the receiver side. |
-
-Usage:
-
-```c
-void *node = zlink_spot_node_new(ctx);
-
-int enabled = 1;
-zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
-                 &enabled, sizeof(enabled));
-
-int delay_ms = 10;
-zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS,
-                 &delay_ms, sizeof(delay_ms));
-
-zlink_spot_node_bind(node, "tcp://*:9000");
-```
-
-**v1 constraint:** All SpotNodes in the mesh must run the same binary
-generation (homogeneous deployment). No runtime capability negotiation.
+| `TOPIC_SEND_HWM` | `int` | 0 (unlimited) | Send high water mark for topic (pub/sub) messages. |
+| `TOPIC_RECV_HWM` | `int` | 0 (unlimited) | Receive high water mark for topic (pub/sub) messages. |
+| `ROUTED_SEND_HWM` | `int` | 0 (unlimited) | Send high water mark for routed (request-reply) messages. |
+| `ROUTED_RECV_HWM` | `int` | 0 (unlimited) | Receive high water mark for routed (request-reply) messages. |
 
 **Returns:** `zlink_set_spot_node_option` / `zlink_get_spot_node_option`
 return 0 on success, -1 on failure (errno is set).

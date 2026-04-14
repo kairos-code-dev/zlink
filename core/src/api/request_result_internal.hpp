@@ -24,7 +24,7 @@ inline zlink_request_result_t from_errno (int err_)
             return ZLINK_REQUEST_PROTOCOL_ERROR;
         case zlink::internal_errno::request_completion_class::unknown:
         default:
-            return ZLINK_REQUEST_PROTOCOL_ERROR;
+            return ZLINK_REQUEST_INTERNAL_ERROR;
     }
 }
 }

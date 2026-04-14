@@ -55,6 +55,12 @@ int discovery_access_t::connect_registry (discovery_t *discovery_,
     return discovery_ ? discovery_->connect_registry (registry_endpoint_) : -1;
 }
 
+int discovery_access_t::set_dealer_peer_mode (
+  discovery_t *discovery_, zlink_discovery_dealer_peer_mode_t mode_)
+{
+    return discovery_ ? discovery_->set_dealer_peer_mode (mode_) : -1;
+}
+
 int discovery_access_t::set_tls_client (discovery_t *discovery_,
                                         const char *ca_cert_,
                                         const char *hostname_,
@@ -119,6 +125,15 @@ int discovery_access_t::get_metadata (discovery_t *discovery_,
     return discovery_ ? discovery_->get_metadata (metadata_out_) : -1;
 }
 
+int discovery_access_t::resolve_spot (discovery_t *discovery_,
+                                      const zlink_routing_id_t *spot_rid_,
+                                      zlink_routing_id_t *owner_node_rid_out_)
+{
+    return discovery_
+             ? discovery_->resolve_spot (spot_rid_, owner_node_rid_out_)
+             : -1;
+}
+
 int discovery_access_t::member_peers (discovery_t *discovery_,
                                       zlink_member_peer_entry_t *entries_,
                                       size_t *count_)
@@ -177,18 +192,5 @@ void discovery_access_t::flush_topology_reports (discovery_t *discovery_)
 {
     if (discovery_)
         discovery_->flush_topology_reports ();
-}
-
-void discovery_access_t::erase_service_summary (
-  discovery_t *discovery_,
-  uint16_t service_kind_,
-  const zlink_routing_id_t &routing_id_,
-  const std::string &service_name_,
-  bool stopped_)
-{
-    if (discovery_) {
-        discovery_->erase_service_summary (
-          service_kind_, routing_id_, service_name_, stopped_);
-    }
 }
 }

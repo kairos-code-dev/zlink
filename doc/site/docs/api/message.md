@@ -328,7 +328,7 @@ surfaces and ZMP control parts.
 For the current interfaces, see:
 
 - `doc/spec/core/socket/README.md`
-- `doc/spec/core/spot.md`
+- `doc/spec/core/service/spot.md`
 - `doc/internals/protocol-zmp.md`
 
 ```c

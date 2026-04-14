@@ -233,7 +233,18 @@ int zlink::signaler_t::wait (int timeout_) const
     }
 #endif
     zlink_assert (rc == 1);
-    zlink_assert (pfd.revents & POLLIN);
+    if (unlikely ((pfd.revents & POLLIN) == 0)) {
+        if (pfd.revents & (POLLERR | POLLHUP
+#if defined POLLNVAL
+                           | POLLNVAL
+#endif
+            )) {
+            errno = EINTR;
+            return -1;
+        }
+        errno = EINTR;
+        return -1;
+    }
     return 0;
 
 #elif defined ZLINK_POLL_BASED_ON_SELECT
@@ -313,6 +324,11 @@ int zlink::signaler_t::recv_failable ()
     uint64_t dummy;
     ssize_t sz = read (_r, &dummy, sizeof (dummy));
     if (sz == -1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR
+            || errno == EBADF) {
+            errno = EAGAIN;
+            return -1;
+        }
         errno_assert (errno == EAGAIN);
         return -1;
     }

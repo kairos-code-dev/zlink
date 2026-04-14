@@ -59,8 +59,8 @@ internal static class SocketOptions
 
     public static SocketOptionKey<ulong> Affinity { get; } =
         UInt64(SocketOption.Affinity);
-    public static SocketOptionKey<string> RoutingId { get; } =
-        String(SocketOption.RoutingId);
+    public static SocketOptionKey<byte[]> RoutingId { get; } =
+        Bytes(SocketOption.RoutingId);
     public static SocketOptionKey<string> Subscribe { get; } =
         String(SocketOption.Subscribe);
     public static SocketOptionKey<string> Unsubscribe { get; } =
@@ -117,8 +117,8 @@ internal static class SocketOptions
     public static SocketOptionKey<int> RouterHandover { get; } =
         Int(SocketOption.RouterHandover);
     public static SocketOptionKey<int> Tos { get; } = Int(SocketOption.Tos);
-    public static SocketOptionKey<string> ConnectRoutingId { get; } =
-        String(SocketOption.ConnectRoutingId);
+    public static SocketOptionKey<byte[]> ConnectRoutingId { get; } =
+        Bytes(SocketOption.ConnectRoutingId);
     public static SocketOptionKey<int> HandshakeIvl { get; } =
         Int(SocketOption.HandshakeIvl);
     public static SocketOptionKey<int> XPubNoDrop { get; } =

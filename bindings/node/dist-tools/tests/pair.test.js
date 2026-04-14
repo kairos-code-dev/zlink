@@ -2,7 +2,18 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
+function recvMaybe(socket) {
+    try {
+        return socket.recv(zlink.RecvFlags.DontWait);
+    }
+    catch (error) {
+        if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
+            return null;
+        }
+        throw error;
+    }
+}
 test('pair messaging uses Message and Received by default', () => {
     const ctx = new zlink.Context();
     const sender = new zlink.PairSocket(ctx);
@@ -14,16 +25,16 @@ test('pair messaging uses Message and Received by default', () => {
     assert.equal(received.parts.length, 1);
     assert.ok(Object.isFrozen(received.parts));
     assert.ok(received.parts[0] instanceof zlink.Message);
-    assert.equal(received.parts[0].data.toString(), 'ping');
+    assert.equal(received.parts[0].data().toString(), 'ping');
     assert.equal(received.routingId, null);
     receiver.close();
     sender.close();
     ctx.close();
 });
-test('tryReceive returns null when no message is available', () => {
+test('recv returns null when no message is available with DontWait', () => {
     const ctx = new zlink.Context();
     const pair = new zlink.PairSocket(ctx);
-    assert.equal(pair.tryRecv(), null);
+    assert.equal(recvMaybe(pair), null);
     pair.close();
     ctx.close();
 });
@@ -36,7 +47,7 @@ test('recvHandler delivers multipart Message instances', () => {
     sender.send(['left', 'right']);
     const received = receiver.recv();
     assert.equal(received.routingId, null);
-    assert.deepEqual(received.parts.map((part) => part.data.toString()), ['left', 'right']);
+    assert.deepEqual(received.parts.map((part) => part.data().toString()), ['left', 'right']);
     receiver.close();
     sender.close();
     ctx.close();

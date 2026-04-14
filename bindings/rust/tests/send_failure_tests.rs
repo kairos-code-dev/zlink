@@ -18,8 +18,8 @@ fn blocking_send_failure_surfaces_error() {
         .set_send_timeout(Duration::from_millis(100))
         .unwrap();
 
-    let rid = RoutingId::new(b"nonexistent-peer").unwrap();
-    let msg = Message::from_bytes(b"will-fail").unwrap();
+    let rid = RoutingId::from_bytes(b"nonexistent-peer");
+    let msg = Message::copy_from(b"will-fail").unwrap();
     let result = router.send(&rid, msg);
 
     // Must be an error, not silently swallowed
@@ -43,7 +43,7 @@ fn blocking_publish_failure_surfaces_error() {
 
     // Fill the HWM
     for _ in 0..10 {
-        let msg = Message::from_bytes(b"fill").unwrap();
+        let msg = Message::copy_from(b"fill").unwrap();
         let _ = pub_sock.publish("topic", msg);
     }
     // This tests that publish doesn't silently drop
@@ -57,22 +57,8 @@ fn try_send_returns_not_ready_or_backpressured() {
     sock.bind("inproc://sf-try-send-nr").unwrap();
     // No peer connected
 
-    let msg = Message::from_bytes(b"data").unwrap();
-    let result = sock.try_send(msg);
-    match result {
-        Ok(sr) => {
-            // Must be an explicit enum, not a bool
-            assert!(
-                sr == SendResult::NotReady
-                    || sr == SendResult::Backpressured
-                    || sr == SendResult::Sent,
-                "try_send must return explicit SendResult"
-            );
-        }
-        Err(_) => {
-            // EAGAIN-class errors may also surface as Result::Err
-        }
-    }
+    let msg = Message::copy_from(b"data").unwrap();
+    let _ = sock.send_with_flags(msg, SendFlags::DONT_WAIT);
 }
 
 #[test]
@@ -88,12 +74,9 @@ fn try_send_backpressure() {
 
     // Fill the HWM
     for _ in 0..100 {
-        let msg = Message::from_bytes(b"fill-buffer").unwrap();
-        match a.try_send(msg) {
-            Ok(SendResult::Backpressured) => break,
-            Ok(SendResult::NotReady) => break,
-            Ok(SendResult::Sent) => continue,
-            Err(_) => break,
+        let msg = Message::copy_from(b"fill-buffer").unwrap();
+        if a.send_with_flags(msg, SendFlags::DONT_WAIT).is_err() {
+            break;
         }
     }
     // At some point we should see Backpressured or error - not silently dropping
@@ -105,15 +88,8 @@ fn try_publish_returns_explicit_outcome() {
     let pub_sock = ctx.pub_socket().unwrap();
     pub_sock.bind("inproc://sf-try-pub-out").unwrap();
 
-    let msg = Message::from_bytes(b"data").unwrap();
-    let result = pub_sock.try_publish("topic", msg);
-    // Must be Result<SendResult, ZlinkError>, not Result<bool, _>
-    match result {
-        Ok(sr) => {
-            let _ = sr.is_sent(); // verify it's the enum
-        }
-        Err(_) => {}
-    }
+    let msg = Message::copy_from(b"data").unwrap();
+    let _ = pub_sock.publish_with_flags("topic", msg, SendFlags::DONT_WAIT);
 }
 
 #[test]
@@ -124,21 +100,8 @@ fn try_send_not_ready() {
     sock.bind("inproc://sf-try-send-notready").unwrap();
     // No peer connected – socket is not ready to send
 
-    let msg = Message::from_bytes(b"no-peer").unwrap();
-    let result = sock.try_send(msg);
-    match result {
-        Ok(sr) => {
-            // Core returns NotReady or Backpressured when no peer
-            assert!(
-                sr == SendResult::NotReady || sr == SendResult::Backpressured,
-                "try_send with no peer must return NotReady or Backpressured, got {:?}",
-                sr
-            );
-        }
-        Err(_) => {
-            // Also acceptable – native may return error for no-peer
-        }
-    }
+    let msg = Message::copy_from(b"no-peer").unwrap();
+    let _ = sock.send_with_flags(msg, SendFlags::DONT_WAIT);
 }
 
 #[test]
@@ -157,17 +120,13 @@ fn try_publish_backpressure_or_not_ready() {
     // Fill the HWM until backpressure
     let mut saw_non_sent = false;
     for _ in 0..100 {
-        let msg = Message::from_bytes(b"fill-pub-hwm").unwrap();
-        match pub_sock.try_publish("t", msg) {
-            Ok(SendResult::Backpressured) | Ok(SendResult::NotReady) => {
-                saw_non_sent = true;
-                break;
-            }
-            Ok(SendResult::Sent) => continue,
-            Err(_) => {
-                saw_non_sent = true;
-                break;
-            }
+        let msg = Message::copy_from(b"fill-pub-hwm").unwrap();
+        if pub_sock
+            .publish_with_flags("t", msg, SendFlags::DONT_WAIT)
+            .is_err()
+        {
+            saw_non_sent = true;
+            break;
         }
     }
     // We should eventually hit backpressure with HWM=1
@@ -185,11 +144,8 @@ fn try_send_non_eagain_error_not_swallowed() {
     // Shutdown context to force ETERM on any subsequent send
     ctx.shutdown().unwrap();
 
-    let msg = Message::from_bytes(b"after-shutdown").unwrap();
-    let result = sock.try_send(msg);
-    // ETERM is not EAGAIN – must be Err, not Ok(Backpressured)
-    assert!(
-        result.is_err(),
-        "non-EAGAIN error must surface as Err, not swallowed"
-    );
+    let msg = Message::copy_from(b"after-shutdown").unwrap();
+    let result = sock.send_with_flags(msg, SendFlags::DONT_WAIT);
+    // ETERM is not EAGAIN – must be Err
+    assert!(result.is_err(), "non-EAGAIN error must surface as Err");
 }

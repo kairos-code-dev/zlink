@@ -44,6 +44,8 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
   ${INTEGRATION_TEST_ROOT}/test_xpub_nodrop
   ${INTEGRATION_TEST_ROOT}/test_spot_dispatch_event
+  ${INTEGRATION_TEST_ROOT}/test_discovery_resolve_spot
+  ${INTEGRATION_TEST_ROOT}/test_discovery_socket_auto_connect_policy
   ${INTEGRATION_TEST_ROOT}/test_timer_poller
   ${INTEGRATION_TEST_ROOT}/test_router_handover
   ${INTEGRATION_TEST_ROOT}/test_router_multiple_dealers
@@ -414,6 +416,13 @@ if(TARGET test_monitor_socket_contract)
 endif()
 if(TARGET test_monitor_perf_contract)
   set_tests_properties(test_monitor_perf_contract PROPERTIES TIMEOUT 30)
+endif()
+if(TARGET test_discovery_socket_auto_connect_policy)
+  set_tests_properties(
+    test_discovery_socket_auto_connect_policy
+    PROPERTIES
+      TIMEOUT 30
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_multi_pubsub_benchmark_process)
   if(TARGET comp_src_pubsub_server)

@@ -41,7 +41,7 @@ def wait_connected(*monitors, timeout_ms=5000):
             if event is None:
                 next_pending.append(monitor)
                 continue
-            if not (int(event.event) & int(zlink.MonitorEvent.CONNECTION_READY)):
+            if not (int(event.event) & int(zlink.MonitorEventMask.CONNECTION_READY)):
                 next_pending.append(monitor)
         pending = next_pending
 

@@ -273,8 +273,8 @@
 - `doc/spec/core/README.ko.md`
 - `doc/spec/core/gateway.md`
 - `doc/spec/core/gateway.ko.md`
-- `doc/spec/core/spot.md`
-- `doc/spec/core/spot.ko.md`
+- `doc/spec/core/service/spot.md`
+- `doc/spec/core/service/spot.ko.md`
 - `doc/spec/core/monitoring.md`
 - `doc/spec/core/monitoring.ko.md`
 - `doc/guide/02-core-api.md`

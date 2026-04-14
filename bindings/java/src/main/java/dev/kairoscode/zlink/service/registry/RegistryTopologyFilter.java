@@ -3,8 +3,8 @@
 package dev.kairoscode.zlink.service.registry;
 
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.ServiceKind;
-import dev.kairoscode.zlink.ServiceRole;
+import dev.kairoscode.zlink.service.registry.ServiceKind;
+import dev.kairoscode.zlink.service.registry.ServiceRole;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import java.lang.foreign.Arena;
@@ -29,7 +29,7 @@ public record RegistryTopologyFilter(ServiceKind serviceKind,
               Math.min(name.byteSize(), 256));
         }
         if (routingId != null) {
-            byte[] bytes = routingId.toByteArray();
+            byte[] bytes = routingId.toBytes();
             segment.set(ValueLayout.JAVA_BYTE, 264, (byte) bytes.length);
             if (bytes.length > 0) {
                 MemorySegment.copy(MemorySegment.ofArray(bytes), 0, segment,

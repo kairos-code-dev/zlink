@@ -19,9 +19,10 @@
 | [socket/](socket/README.ko.md) | 소켓 스펙 (공통 + 타입별) |
 | [monitoring.ko.md](monitoring.ko.md) | 소켓 모니터, 서비스 모니터, 피어 검사 |
 | [events.ko.md](events.ko.md) | canonical 이벤트 카탈로그와 readiness 의미 |
-| [registry.ko.md](registry.ko.md) | 서비스 레지스트리 생성, 구성, 클러스터링 |
-| [discovery.ko.md](discovery.ko.md) | 서비스 디스커버리, 구독, 피어 조회 |
-| [spot.ko.md](spot.ko.md) | SPOT 토픽 기반 PUB/SUB, routed 메시징 |
+| [service/README.ko.md](service/README.ko.md) | 서비스 계층 공통 개념과 문서 책임 분리 |
+| [service/registry.ko.md](service/registry.ko.md) | 서비스 레지스트리 생성, 구성, 클러스터링 |
+| [service/discovery.ko.md](service/discovery.ko.md) | 서비스 디스커버리, 구독, 피어 조회 |
+| [service/spot.ko.md](service/spot.ko.md) | SPOT 토픽 기반 PUB/SUB, routed 메시징 |
 | [polling.ko.md](polling.ko.md) | 프록시 헬퍼 및 기능 조회 |
 | [utilities.ko.md](utilities.ko.md) | 타이머, 스레드, 스톱워치, 아토믹 |
 
@@ -45,8 +46,8 @@
 | [`zlink_subscribe_handler_fn`](socket/README.ko.md) | socket/ | 토픽 기반 메시지 dispatch 콜백 |
 | [`zlink_reply_handler_fn`](socket/README.ko.md) | socket/ | 비동기 request-reply 완료 콜백 |
 | [`zlink_router_handler_fn`](socket/README.ko.md) | socket/ | ROUTER routed 메시지 dispatch 콜백 |
-| [`zlink_spot_handler_fn`](spot.ko.md) | spot.ko.md | SPOT routed 메시지 dispatch 콜백 |
-| [`zlink_spot_dispatch_event_handler_fn`](spot.ko.md) | spot.ko.md | SPOT dispatch 이벤트 콜백 |
+| [`zlink_spot_handler_fn`](service/spot.ko.md) | service/spot.ko.md | SPOT routed 메시지 dispatch 콜백 |
+| [`zlink_spot_dispatch_event_handler_fn`](service/spot.ko.md) | service/spot.ko.md | SPOT dispatch 이벤트 콜백 |
 | [`zlink_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 소켓 모니터 이벤트 콜백 |
 | [`zlink_service_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 서비스 모니터 이벤트 콜백 |
 | [`zlink_send_ready_handler_fn`](socket/README.ko.md) | socket/ | send-ready 전환 콜백 |

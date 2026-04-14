@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink.service.spot;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SocketOption;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
@@ -14,11 +15,17 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /** Lifecycle and topology facade for the current unified spot node model. */
 public final class SpotNode implements AutoCloseable {
+    private final Object lifecycleLock = new Object();
+    private final Set<Spot> liveSpots =
+      Collections.newSetFromMap(new IdentityHashMap<>());
     private MemorySegment handle;
     private final SpotNodeSocketOptions socketOptions = new SpotNodeSocketOptions();
 
@@ -108,6 +115,58 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
+    /** Sets the logical routing id for this spot node. */
+    public void setRoutingId(RoutingId rid) {
+        Objects.requireNonNull(rid, "rid");
+        ensureOpen();
+        byte[] value = rid.toBytes();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeValue = arena.allocate(value.length);
+            if (value.length > 0) {
+                MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeValue,
+                  0, value.length);
+            }
+            int rc = Native.setRoutingId(handle, nativeValue, value.length);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError("zlink_set_routing_id");
+            }
+        }
+    }
+
+    /** Returns the current logical routing id for this spot node. */
+    public RoutingId routingId() {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment outRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+            int rc = Native.getRoutingId(handle, outRid);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError("zlink_get_routing_id");
+            }
+            int size = outRid.get(ValueLayout.JAVA_BYTE,
+              NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
+            byte[] value = new byte[size];
+            if (size > 0) {
+                MemorySegment.copy(outRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
+                  MemorySegment.ofArray(value), 0, size);
+            }
+            return RoutingId.fromBytes(value);
+        }
+    }
+
+    /** Creates one spot handle owned by this node. */
+    public Spot createSpot() {
+        Spot spot = new Spot(this);
+        synchronized (lifecycleLock) {
+            if (isClosed()) {
+                spot.close();
+                throw new dev.kairoscode.zlink.ConfigException(
+                  dev.kairoscode.zlink.ConfigResult.INVALID_HANDLE);
+            }
+            liveSpots.add(spot);
+        }
+        return spot;
+    }
+
     void sendHwm(int value) {
         socketOptions.setPubIntOption(SocketOption.SNDHWM, value);
     }
@@ -185,10 +244,46 @@ public final class SpotNode implements AutoCloseable {
 
     @Override
     public void close() {
-        if (handle == null || handle.address() == 0)
-            return;
-        Native.spotNodeDestroy(handle);
-        handle = MemorySegment.NULL;
+        List<Spot> ownedSpots;
+        MemorySegment nodeHandle;
+        synchronized (lifecycleLock) {
+            if (isClosed())
+                return;
+            ownedSpots = List.copyOf(liveSpots);
+            liveSpots.clear();
+            nodeHandle = handle;
+            handle = MemorySegment.NULL;
+        }
+        RuntimeException closeFailure = null;
+        for (Spot spot : ownedSpots) {
+            try {
+                spot.close();
+            } catch (RuntimeException ex) {
+                if (closeFailure == null) {
+                    closeFailure = ex;
+                }
+            }
+        }
+        Native.spotNodeDestroy(nodeHandle);
+        if (closeFailure != null) {
+            throw closeFailure;
+        }
+    }
+
+    void releaseSpot(Spot spot) {
+        synchronized (lifecycleLock) {
+            liveSpots.remove(spot);
+        }
+    }
+
+    private boolean isClosed() {
+        return handle == null || handle.address() == 0;
+    }
+
+    private void ensureOpen() {
+        if (isClosed()) {
+            throw new IllegalStateException("spot node is closed");
+        }
     }
 
     private List<SpotNodePeerEntry> readPeerEntries(SpotNodePeerFilter filter) {

@@ -1,6 +1,5 @@
 using SampleCommon;
 using Zlink;
-using Zlink.Service;
 using System.Threading;
 
 if (!SampleSupport.IsNativeAvailable())
@@ -9,8 +8,8 @@ if (!SampleSupport.IsNativeAvailable())
 using var ctx = new Context();
 using var pubNode = new SpotNode(ctx);
 using var subNode = new SpotNode(ctx);
-using var publisher = new Spot(pubNode);
-using var subscriber = new Spot(subNode);
+using var publisher = pubNode.CreateSpot();
+using var subscriber = subNode.CreateSpot();
 const string topic = "room:lobby";
 const string payload = "hello-spot";
 pubNode.Bind("tcp://127.0.0.1:0");

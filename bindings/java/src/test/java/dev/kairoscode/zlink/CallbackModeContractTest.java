@@ -105,7 +105,7 @@ public class CallbackModeContractTest {
 
             SubscriptionEvent event = pub.receiveSubscriptionEvent();
             assertTrue(event.subscribed());
-            assertEquals("alpha", event.filter());
+            assertEquals("alpha", event.topic());
             publish(pub, "alpha", List.of(Message.copyOfUtf8("payload")));
 
             assertTrue(delivered.await(TestSupport.DEFAULT_TIMEOUT_MS,

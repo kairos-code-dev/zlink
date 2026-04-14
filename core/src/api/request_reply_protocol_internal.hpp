@@ -100,7 +100,6 @@ inline bool parse_envelope (zlink_msg_t *parts_,
 
     zlink::msg_t *protocol_msg = reinterpret_cast<zlink::msg_t *> (&parts_[0]);
     if (!protocol_msg->check ()
-        || (protocol_msg->flags () & zlink::msg_t::command) == 0
         || !frame_is_single_byte_value (&parts_[0], protocol_id)
         || !frame_is_single_byte_value (&parts_[1], version)) {
         return false;
@@ -192,7 +191,6 @@ inline int init_control_part (zlink_msg_t *part_,
         return -1;
     if (size_ > 0)
         memcpy (msg->data (), data_, size_);
-    msg->set_flags (zlink::msg_t::command);
     return 0;
 }
 

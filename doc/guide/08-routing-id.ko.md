@@ -117,25 +117,27 @@ ROUTER 소켓에서 `zlink_recv()`와 recv callback은 송신자의 routing_id�
 ### 기본 요청-응답
 
 ```c
-/* ROUTER server (with handler) */
-void on_request(const zlink_routing_id_t *source_rid,
+/* ROUTER server (통합 routed handler 사용) */
+void on_request(const zlink_routing_id_t *source_node_rid,
+                const zlink_routing_id_t *source_spot_rid,
+                uint64_t request_seq,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* source_rid = "D1" (2 bytes), parts[0] = "Hello" (5 bytes) */
+    /* 일반 DEALER → ROUTER: source_spot_rid == NULL, request_seq == 0.
+       source_node_rid = "D1" (2 bytes), parts[0] = "Hello" (5 bytes). */
 
-    /* Reply: use zlink_send_rid for directed send */
+    /* Reply: zlink_send_rid 로 대상 지정 송신 */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "World", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
+    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-/* Receive with zlink_recv() */
+zlink_router_handler(router, on_request, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];

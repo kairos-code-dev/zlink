@@ -2,9 +2,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace Zlink;
 
 internal static class RequestReplySupport
@@ -40,41 +37,14 @@ internal static class RequestReplySupport
         Message[] parts = new Message[source.Parts.Count];
         for (int i = 0; i < source.Parts.Count; i++)
             parts[i] = CloneMessage(source.Parts[i]);
-        return new Received(source.RoutingId, parts, source.RequestSequence,
-            source.HasRequestSequence);
+        return new Received(source.RoutingId, parts, source.RequestSeq,
+            source.SpotRid);
     }
 
     internal static void DisposeParts(IEnumerable<Message> parts)
     {
         foreach (Message part in parts)
             part.Dispose();
-    }
-
-    internal static void AttachCallback(Func<Task<Received>> invoke,
-        RequestReplyCallback onReply, RequestErrorCallback onError)
-    {
-        if (onReply == null)
-            throw new ArgumentNullException(nameof(onReply));
-        if (onError == null)
-            throw new ArgumentNullException(nameof(onError));
-        SynchronizationContext? context = SynchronizationContext.Current;
-        _ = invoke().ContinueWith(task =>
-        {
-            if (task.IsFaulted)
-            {
-                ZlinkException error = task.Exception?.GetBaseException() as ZlinkException
-                    ?? new ZlinkRequestException(RequestResult.ProtocolError);
-                CallbackDelivery.Post(context, () => onError(error));
-                return;
-            }
-            if (task.IsCanceled)
-            {
-                CallbackDelivery.Post(context, () => onError(
-                    new ZlinkRequestException(RequestResult.TimedOut)));
-                return;
-            }
-            CallbackDelivery.Post(context, () => onReply(task.Result));
-        }, TaskScheduler.Default);
     }
 
     internal static void AttachResultCallback(Func<Task<Received>> invoke,
@@ -156,12 +126,13 @@ internal static class RequestReplySupport
 
     internal static SendResult MapTrySendResult(ZlinkException error)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(error.Errno);
+        ErrorCode code = ZlinkException.MapErrorCode(error.InternalErrno);
         return code switch
         {
             ErrorCode.EAgain => SendResult.Backpressured,
-            _ when error.Errno == ErrnoEAgainWin ||
-                error.Errno == ErrnoEWouldBlockWin => SendResult.Backpressured,
+            _ when error.InternalErrno == ErrnoEAgainWin ||
+                error.InternalErrno == ErrnoEWouldBlockWin =>
+                SendResult.Backpressured,
             _ => throw error
         };
     }

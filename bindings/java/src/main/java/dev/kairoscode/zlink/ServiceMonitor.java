@@ -4,6 +4,7 @@ package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeLayouts;
+import dev.kairoscode.zlink.service.registry.ServiceEvent;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -12,11 +13,11 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.Objects;
-import java.util.Optional;
 
 /** Receives service-layer monitor events from discovery, registry, or spot APIs. */
 public final class ServiceMonitor implements AutoCloseable {
@@ -75,16 +76,11 @@ public final class ServiceMonitor implements AutoCloseable {
 
     /** Blocks until the next service event is available. */
     public ServiceEvent recv() {
-        return recv(RecvFlags.NONE);
-    }
-
-    /** Returns the next service event when one is ready. */
-    public ServiceEvent recv(RecvFlags flags) {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment event = arena.allocate(NativeLayouts.SERVICE_EVENT_LAYOUT);
             int rc = Native.serviceMonitorRecv(handle, event,
-              flags == null ? 0 : flags.value());
+              RecvFlags.NONE.value());
             if (rc != 0) {
                 throw ZlinkException.fromLastError("zlink_service_monitor_recv");
             }
@@ -92,21 +88,20 @@ public final class ServiceMonitor implements AutoCloseable {
         }
     }
 
-    /** Returns the next service event when one is ready. */
     Optional<ServiceEvent> tryRecv() {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment event = arena.allocate(NativeLayouts.SERVICE_EVENT_LAYOUT);
             int rc = Native.serviceMonitorRecv(handle, event,
-              ReceiveFlag.DONTWAIT.getValue());
-            if (rc == 0) {
+              RecvFlags.DONT_WAIT.value());
+            if (rc == 0)
                 return Optional.of(ServiceEvent.fromNative(event));
-            }
+            throw ZlinkException.fromLastError("zlink_service_monitor_recv");
+        } catch (RecvException ex) {
+            if (ex.getResult() == RecvResult.NO_DATA)
+                return Optional.empty();
+            throw ex;
         }
-        int errno = Native.errno();
-        if (errno == Socket.ERRNO_EAGAIN || errno == Socket.ERRNO_EWOULDBLOCK_WIN)
-            return Optional.empty();
-        throw ZlinkException.fromLastError("zlink_service_monitor_recv");
     }
 
     /** Returns the current service monitor snapshot. */

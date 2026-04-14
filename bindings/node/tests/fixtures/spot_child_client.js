@@ -18,7 +18,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   const node = new zlink.SpotNode(ctx);
-  const spot = new zlink.Spot(node);
+  const spot = node.createSpot();
 
   try {
     node.connectPeer(options.endpoint);

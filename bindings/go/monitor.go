@@ -38,40 +38,54 @@ const (
 
 type MonitorEventMask uint32
 type ServiceMonitorEventMask uint32
+type MonitorSourceKind uint32
+type MonitorEventType uint64
+type ServiceMonitorEventType uint32
+
+const (
+	MonitorSourceSocket  MonitorSourceKind = MonitorSourceKind(C.ZLINK_MONITOR_SOURCE_SOCKET)
+	MonitorSourceSpotPub MonitorSourceKind = MonitorSourceKind(C.ZLINK_MONITOR_SOURCE_SPOT_PUB)
+	MonitorSourceSpotSub MonitorSourceKind = MonitorSourceKind(C.ZLINK_MONITOR_SOURCE_SPOT_SUB)
+)
 
 type MonitorEvent struct {
-	Event      uint64
-	Value      uint64
+	Event      MonitorEventType
+	Value      uint32
 	RoutingID  RoutingID
 	LocalAddr  string
 	RemoteAddr string
 }
 
+func (e *MonitorEvent) HasRoutingID() bool {
+	return e != nil && monitorHasRoutingID(e.RoutingID)
+}
+
 func (e *MonitorEvent) IsConnected() bool {
-	return e != nil && e.Event&uint64(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTED) != 0
+	return e != nil && e.Event&MonitorEventType(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTED) != 0
 }
 
 func (e *MonitorEvent) IsDisconnected() bool {
-	return e != nil && e.Event&uint64(C.ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED) != 0
+	return e != nil && e.Event&MonitorEventType(C.ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED) != 0
 }
 
 func (e *MonitorEvent) IsListening() bool {
-	return e != nil && e.Event&uint64(C.ZLINK_SOCKET_MONITOR_EVENT_LISTENING) != 0
+	return e != nil && e.Event&MonitorEventType(C.ZLINK_SOCKET_MONITOR_EVENT_LISTENING) != 0
 }
 
 func (e *MonitorEvent) IsAccepted() bool {
-	return e != nil && e.Event&uint64(C.ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED) != 0
+	return e != nil && e.Event&MonitorEventType(C.ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED) != 0
 }
 
 func (e *MonitorEvent) IsConnectionReady() bool {
-	return e != nil && e.Event&uint64(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY) != 0
+	return e != nil && e.Event&MonitorEventType(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY) != 0
 }
 
 type MonitorSnapshot struct {
+	SourceKind     MonitorSourceKind
 	StateFlags     uint32
 	DetailFlags    uint32
-	SendPendingMsg uint64
-	RecvPendingMsg uint64
+	SndPendingMsgs uint64
+	RcvPendingMsgs uint64
 }
 
 func (s *MonitorSnapshot) IsReady() bool {
@@ -79,17 +93,21 @@ func (s *MonitorSnapshot) IsReady() bool {
 }
 
 type ServiceMonitorEvent struct {
-	ServiceKind uint32
-	EventType   uint32
-	Status      int32
-	ErrorCode   int32
-	Value       uint32
+	ServiceKind ServiceKind
+	EventType   ServiceMonitorEventType
+	Status      uint32
+	ErrorCode   uint32
+	Value       uint64
 	DetailFlags uint32
 	ServiceName string
 	Endpoint    string
 	RoutingID   RoutingID
 	Subject     string
-	SubjectKind uint32
+	SubjectKind SubjectKind
+}
+
+func (e *ServiceMonitorEvent) HasRoutingID() bool {
+	return e != nil && monitorHasRoutingID(e.RoutingID)
 }
 
 type SocketMonitor struct {
@@ -101,6 +119,8 @@ type ServiceMonitor struct {
 	handle   unsafe.Pointer
 	callback cgo.Handle
 }
+
+var IgnoreMonitorHandler = func(MonitorEvent) {}
 
 func resolveMonitorEvents(events []MonitorEventMask) MonitorEventMask {
 	if len(events) == 0 {
@@ -152,10 +172,11 @@ func (m *SocketMonitor) Snapshot() (*MonitorSnapshot, error) {
 		return nil, err
 	}
 	return &MonitorSnapshot{
+		SourceKind:     MonitorSourceKind(raw.source_kind),
 		StateFlags:     uint32(raw.state_flags),
 		DetailFlags:    uint32(raw.detail_flags),
-		SendPendingMsg: uint64(raw.snd_pending_msgs),
-		RecvPendingMsg: uint64(raw.rcv_pending_msgs),
+		SndPendingMsgs: uint64(raw.snd_pending_msgs),
+		RcvPendingMsgs: uint64(raw.rcv_pending_msgs),
 	}, nil
 }
 
@@ -207,10 +228,11 @@ func (m *ServiceMonitor) Snapshot() (*MonitorSnapshot, error) {
 		return nil, err
 	}
 	return &MonitorSnapshot{
+		SourceKind:     MonitorSourceKind(raw.source_kind),
 		StateFlags:     uint32(raw.state_flags),
 		DetailFlags:    uint32(raw.detail_flags),
-		SendPendingMsg: uint64(raw.snd_pending_msgs),
-		RecvPendingMsg: uint64(raw.rcv_pending_msgs),
+		SndPendingMsgs: uint64(raw.snd_pending_msgs),
+		RcvPendingMsgs: uint64(raw.rcv_pending_msgs),
 	}, nil
 }
 
@@ -250,8 +272,8 @@ func (m *ServiceMonitor) Close() error {
 
 func monitorEventFromC(raw C.zlink_socket_monitor_event_t) *MonitorEvent {
 	return &MonitorEvent{
-		Event:      uint64(raw.event),
-		Value:      uint64(raw.value),
+		Event:      MonitorEventType(raw.event),
+		Value:      uint32(raw.value),
 		RoutingID:  routingIDFromC(raw.routing_id),
 		LocalAddr:  C.GoString(&raw.local_addr[0]),
 		RemoteAddr: C.GoString(&raw.remote_addr[0]),
@@ -260,23 +282,27 @@ func monitorEventFromC(raw C.zlink_socket_monitor_event_t) *MonitorEvent {
 
 func serviceMonitorEventFromC(raw C.zlink_service_monitor_event_t) *ServiceMonitorEvent {
 	return &ServiceMonitorEvent{
-		ServiceKind: uint32(raw.service_kind),
-		EventType:   uint32(raw.event_type),
-		Status:      int32(raw.status),
-		ErrorCode:   int32(raw.error_code),
-		Value:       uint32(raw.value),
+		ServiceKind: ServiceKind(raw.service_kind),
+		EventType:   ServiceMonitorEventType(raw.event_type),
+		Status:      uint32(raw.status),
+		ErrorCode:   uint32(raw.error_code),
+		Value:       uint64(raw.value),
 		DetailFlags: uint32(raw.detail_flags),
 		ServiceName: C.GoString(&raw.service_name[0]),
 		Endpoint:    C.GoString(&raw.endpoint[0]),
 		RoutingID:   routingIDFromC(raw.routing_id),
 		Subject:     C.GoString(&raw.subject[0]),
-		SubjectKind: uint32(raw.subject_kind),
+		SubjectKind: SubjectKind(raw.subject_kind),
 	}
 }
 
 //export goZlinkMonitorTrampoline
 func goZlinkMonitorTrampoline(event *C.zlink_monitor_event_t, userdata C.uintptr_t) {
-	state := cgo.Handle(userdata).Value().(*monitorCallbackState)
+	value, ok := safeHandleValue(userdata)
+	if !ok {
+		return
+	}
+	state := value.(*monitorCallbackState)
 	payload := monitorEventFromC(*event)
 	state.dispatcher.enqueue(&callbackTask{
 		label: "socket-monitor",
@@ -288,7 +314,11 @@ func goZlinkMonitorTrampoline(event *C.zlink_monitor_event_t, userdata C.uintptr
 
 //export goZlinkServiceMonitorTrampoline
 func goZlinkServiceMonitorTrampoline(event *C.zlink_service_event_t, userdata C.uintptr_t) {
-	state := cgo.Handle(userdata).Value().(*serviceMonitorCallbackState)
+	value, ok := safeHandleValue(userdata)
+	if !ok {
+		return
+	}
+	state := value.(*serviceMonitorCallbackState)
 	payload := serviceMonitorEventFromC(*event)
 	state.dispatcher.enqueue(&callbackTask{
 		label: "service-monitor",

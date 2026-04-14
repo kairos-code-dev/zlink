@@ -343,7 +343,7 @@ Reason:
 Use these documents instead:
 
 - request-reply public API: [socket/README.md](socket/README.md)
-- SPOT direct and request-reply public API: [spot.md](spot.md)
+- SPOT direct and request-reply public API: [service/spot.md](service/spot.md)
 - wire format and control-part rules: `doc/internals/protocol-zmp.md`
 
 `zlink_msg_t` is still the payload-part container, but it no longer carries

@@ -38,17 +38,17 @@ def main(argv=None):
         with zlink.RouterSocket(ctx) as router:
             with zlink.DealerSocket(ctx) as dealer:
                 endpoint = unique_endpoint("dealer-router")
-                with router.monitor_open(zlink.MonitorEvent.CONNECTION_READY) as router_monitor:
+                with router.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as router_monitor:
                     with dealer.monitor_open(
-                        zlink.MonitorEvent.CONNECTION_READY
+                        zlink.MonitorEventMask.CONNECTION_READY
                     ) as dealer_monitor:
                         router.bind(endpoint)
                         dealer.connect(endpoint)
                         wait_monitor_event(
-                            router_monitor, zlink.MonitorEvent.CONNECTION_READY
+                            router_monitor, zlink.MonitorEventMask.CONNECTION_READY
                         )
                         wait_monitor_event(
-                            dealer_monitor, zlink.MonitorEvent.CONNECTION_READY
+                            dealer_monitor, zlink.MonitorEventMask.CONNECTION_READY
                         )
 
                         sender = threading.Thread(

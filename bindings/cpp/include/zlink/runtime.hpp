@@ -3,6 +3,7 @@
 #define ZLINK_CPP_RUNTIME_HPP_INCLUDED
 
 #include "common.hpp"
+#include "error.hpp"
 
 namespace zlink
 {
@@ -12,18 +13,24 @@ inline void zlink_version (int &major_, int &minor_, int &patch_)
     ::zlink_version (&major_, &minor_, &patch_);
 }
 
-inline int proxy (void *frontend_, void *backend_, void *capture_ = NULL)
+inline const char *zlink_strerror (int errnum_)
 {
-    return static_cast<int> (zlink_proxy (frontend_, backend_, capture_));
+    return ::zlink_strerror (errnum_);
 }
 
-inline int proxy_steerable (void *frontend_,
-                            void *backend_,
-                            void *capture_,
-                            void *control_)
+inline void proxy (void *frontend_, void *backend_, void *capture_ = NULL)
 {
-    return static_cast<int> (
-      zlink_proxy_steerable (frontend_, backend_, capture_, control_));
+    if (zlink_proxy (frontend_, backend_, capture_) != 0)
+        throw last_error ();
+}
+
+inline void proxy_steerable (void *frontend_,
+                             void *backend_,
+                             void *capture_,
+                             void *control_)
+{
+    if (zlink_proxy_steerable (frontend_, backend_, capture_, control_) != 0)
+        throw last_error ();
 }
 
 inline bool has (const std::string &capability_)

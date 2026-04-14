@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 test('pair sockets send and receive multipart through canonical api', () => {
     const ctx = new zlink.Context();
     const left = new zlink.PairSocket(ctx);
@@ -14,7 +14,7 @@ test('pair sockets send and receive multipart through canonical api', () => {
         Buffer.from('b')
     ]);
     const received = left.recv();
-    assert.deepEqual(received.parts.map((part) => part.data.toString()), ['a', 'b']);
+    assert.deepEqual(received.parts.map((part) => part.data().toString()), ['a', 'b']);
     right.close();
     left.close();
     ctx.close();

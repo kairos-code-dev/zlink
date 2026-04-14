@@ -6,11 +6,11 @@ import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.RecvException;
 import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.RecvResult;
-import dev.kairoscode.zlink.ServiceEvent;
-import dev.kairoscode.zlink.ServiceEventType;
+import dev.kairoscode.zlink.service.registry.ServiceEvent;
+import dev.kairoscode.zlink.service.registry.ServiceEventType;
 import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.SendFlags;
-import dev.kairoscode.zlink.ServiceType;
+import dev.kairoscode.zlink.service.registry.ServiceType;
 import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.service.discovery.Discovery;
@@ -96,7 +96,7 @@ class ServiceContractsIntegrationTest {
 
         try (Context ctx = new Context();
              SpotNode node = new SpotNode(ctx);
-             Spot spot = new Spot(node)) {
+             Spot spot = node.createSpot()) {
             spot.setSubscription("svc-topic");
             assertEquals(0, node.statusSnapshot().connectedPeerCount());
             assertTrue(node.subjectsSnapshot().stream()
@@ -189,8 +189,8 @@ class ServiceContractsIntegrationTest {
         try (Context ctx = new Context();
              SpotNode serverNode = new SpotNode(ctx);
              SpotNode clientNode = new SpotNode(ctx);
-             Spot publisher = new Spot(serverNode);
-             Spot subscriber = new Spot(clientNode)) {
+             Spot publisher = serverNode.createSpot();
+             Spot subscriber = clientNode.createSpot()) {
             serverNode.bind(endpoint);
             clientNode.connectPeer(endpoint);
             subscriber.setSubscription("perf-topic");
@@ -202,7 +202,7 @@ class ServiceContractsIntegrationTest {
                     publisher.publish("perf-topic", payload, SendFlags.DONT_WAIT);
                 }
                 try (var topicMessage = subscriber.subscribe(RecvFlags.DONT_WAIT)) {
-                    assertEquals("perf-topic", topicMessage.topicId());
+                    assertEquals("perf-topic", topicMessage.topic());
                     assertArrayEquals("perf-body".getBytes(),
                         topicMessage.singlePartOrThrow().toByteArray());
                     return;
@@ -233,8 +233,8 @@ class ServiceContractsIntegrationTest {
         try (Context ctx = new Context();
              SpotNode serverNode = new SpotNode(ctx);
              SpotNode clientNode = new SpotNode(ctx);
-             Spot publisher = new Spot(serverNode);
-             Spot subscriber = new Spot(clientNode)) {
+             Spot publisher = serverNode.createSpot();
+             Spot subscriber = clientNode.createSpot()) {
             serverNode.bind(endpoint);
             clientNode.connectPeer(endpoint);
             subscriber.setSubscription("spot-callback-topic");

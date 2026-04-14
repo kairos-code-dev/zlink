@@ -45,13 +45,15 @@ bool wait_for_spot_ready (zlink::service::spot_node_t &node_,
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
 
     while (std::chrono::steady_clock::now () < deadline) {
-        zlink_spot_node_status_t status;
-        if (node_.status_snapshot (status) != 0) {
+        zlink::spot_node_status_t status;
+        try {
+            status = node_.status_snapshot ();
+        } catch (...) {
             std::this_thread::yield ();
             continue;
         }
 
-        const bool pub_ready = status.local_endpoint[0] != '\0';
+        const bool pub_ready = !status.local_endpoint.empty ();
         const bool sub_ready = status.active_peer_count >= min_active_peer_count_
                                && (!require_subject_ || status.subject_count > 0);
         if (require_subject_ ? sub_ready : pub_ready)
@@ -72,20 +74,20 @@ int main ()
     assert (pub_node.valid ());
     assert (sub_node.valid ());
 
-    zlink::service::spot_t pub_spot (pub_node);
-    zlink::service::spot_t sub_spot (sub_node);
+    zlink::service::spot_t pub_spot = pub_node.create_spot ();
+    zlink::service::spot_t sub_spot = sub_node.create_spot ();
     assert (pub_spot.valid ());
     assert (sub_spot.valid ());
 
     std::promise<callback_result_t> result_promise;
     std::future<callback_result_t> result_future = result_promise.get_future ();
-    assert (sub_spot.on_subscribe (&subscribe_callback, &result_promise) == 0);
-    assert (sub_spot.set_subscription ("topic:alpha") == 0);
+    sub_spot.on_subscribe (&subscribe_callback, &result_promise);
+    sub_spot.set_subscription ("topic:alpha");
 
-    assert (pub_node.bind ("tcp://127.0.0.1:0") == 0);
+    pub_node.bind ("tcp://127.0.0.1:0");
     const std::string endpoint = pub_node.last_endpoint ();
     assert (!endpoint.empty ());
-    assert (sub_node.connect_peer (endpoint) == 0);
+    sub_node.connect_peer (endpoint);
     assert (wait_for_spot_ready (pub_node, false, 1u, 10000));
     assert (wait_for_spot_ready (sub_node, true, 1u, 10000));
 
@@ -96,9 +98,9 @@ int main ()
     const callback_result_t result = detail::wait_future (result_future, 10000);
     assert (result.topic == "topic:alpha");
     assert (result.payload == "spot-callback");
-    assert (sub_spot.close () == 0);
-    assert (pub_spot.close () == 0);
-    assert (sub_node.close () == 0);
-    assert (pub_node.close () == 0);
+    sub_spot.close ();
+    pub_spot.close ();
+    sub_node.close ();
+    pub_node.close ();
     return 0;
 }

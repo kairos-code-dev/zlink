@@ -21,6 +21,8 @@ struct discovery_access_t
     static discovery_t *from_handle (void *discovery_);
     static int connect_registry (discovery_t *discovery_,
                                  const char *registry_endpoint_);
+    static int set_dealer_peer_mode (
+      discovery_t *discovery_, zlink_discovery_dealer_peer_mode_t mode_);
     static int set_tls_client (discovery_t *discovery_,
                                const char *ca_cert_,
                                const char *hostname_,
@@ -44,6 +46,9 @@ struct discovery_access_t
                              size_t size_);
     static int get_metadata (discovery_t *discovery_,
                              zlink_msg_t *metadata_out_);
+    static int resolve_spot (discovery_t *discovery_,
+                             const zlink_routing_id_t *spot_rid_,
+                             zlink_routing_id_t *owner_node_rid_out_);
     static int member_peers (discovery_t *discovery_,
                              zlink_member_peer_entry_t *entries_,
                              size_t *count_);
@@ -61,11 +66,6 @@ struct discovery_access_t
     static void upsert_service_summary (
       discovery_t *discovery_, const zlink_registry_topology_entry_t &entry_);
     static void flush_topology_reports (discovery_t *discovery_);
-    static void erase_service_summary (discovery_t *discovery_,
-                                       uint16_t service_kind_,
-                                       const zlink_routing_id_t &routing_id_,
-                                       const std::string &service_name_,
-                                       bool stopped_);
 };
 }
 

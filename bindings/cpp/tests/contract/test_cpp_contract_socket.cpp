@@ -82,6 +82,51 @@ template<typename SocketT> class has_attach_discovery_t
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
+template<typename SocketT> class has_router_on_receive_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().on_receive (
+                      static_cast<zlink_router_handler_fn> (NULL),
+                      static_cast<void *> (NULL)),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+template<typename SocketT> class has_recv_spot_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().recv_spot (), std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+template<typename SocketT> class has_on_spot_receive_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().on_spot_receive (
+                      static_cast<zlink_router_handler_fn> (NULL),
+                      static_cast<void *> (NULL)),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
 static_assert (!has_routed_send_t<zlink::pair_socket_t>::value,
                "pair_socket_t must not expose routed send");
 static_assert (has_receive_t<zlink::pair_socket_t>::value,
@@ -102,6 +147,12 @@ static_assert (has_routed_send_t<zlink::router_socket_t>::value,
                "router_socket_t must expose routed send");
 static_assert (has_receive_t<zlink::router_socket_t>::value,
                "router_socket_t must expose recv");
+static_assert (has_router_on_receive_t<zlink::router_socket_t>::value,
+               "router_socket_t must expose router on_receive");
+static_assert (!has_recv_spot_t<zlink::router_socket_t>::value,
+               "router_socket_t must not expose recv_spot");
+static_assert (!has_on_spot_receive_t<zlink::router_socket_t>::value,
+               "router_socket_t must not expose on_spot_receive");
 static_assert (has_attach_discovery_t<zlink::router_socket_t>::value,
                "router_socket_t must expose attach_discovery");
 static_assert (has_attach_discovery_t<zlink::pub_socket_t>::value,
@@ -141,8 +192,8 @@ void test_pair_send_recv_single_part ()
     right.send (outbound);
 
     const zlink::received_t inbound = left.recv ();
-    assert (inbound.parts.size () == 1);
-    assert (inbound.parts[0].to_string () == "ping");
+    assert (inbound.parts ().size () == 1);
+    assert (inbound.parts ()[0].to_string () == "ping");
 }
 
 void test_pair_send_recv_multipart ()
@@ -170,9 +221,9 @@ void test_pair_send_recv_multipart ()
     right.send (outbound);
 
     const zlink::received_t inbound = left.recv ();
-    assert (inbound.parts.size () == 2);
-    assert (inbound.parts[0].to_string () == "one");
-    assert (inbound.parts[1].to_string () == "two");
+    assert (inbound.parts ().size () == 2);
+    assert (inbound.parts ()[0].to_string () == "one");
+    assert (inbound.parts ()[1].to_string () == "two");
 }
 
 } // namespace

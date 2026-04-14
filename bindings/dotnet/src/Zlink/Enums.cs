@@ -266,6 +266,25 @@ public enum SocketEvent
     All = 0xFFFF
 }
 
+public enum MonitorEventType
+{
+    Connected = 0x0001,
+    ConnectDelayed = 0x0002,
+    ConnectRetried = 0x0004,
+    Listening = 0x0008,
+    BindFailed = 0x0010,
+    Accepted = 0x0020,
+    AcceptFailed = 0x0040,
+    Closed = 0x0080,
+    CloseFailed = 0x0100,
+    Disconnected = 0x0200,
+    MonitorStopped = 0x0400,
+    HandshakeFailedNoDetail = 0x0800,
+    ConnectionReady = 0x1000,
+    HandshakeFailedProtocol = 0x2000,
+    HandshakeFailedAuth = 0x4000
+}
+
 public enum DisconnectReason
 {
     Unknown = 0,
@@ -275,6 +294,13 @@ public enum DisconnectReason
 }
 
 public enum MonitorSourceKind
+{
+    Socket = 1,
+    SpotPub = 3,
+    SpotSub = 4
+}
+
+public enum SourceKind
 {
     Socket = 1,
     SpotPub = 3,
@@ -371,13 +397,10 @@ public enum SpotNodeOption
     PubMode = 1,
     PubQueueHwm = 2,
     PubQueueFullPolicy = 3,
-    PeerBatchEnable = 0x3601,
-    PeerBatchDelayMs = 0x3602,
-    PeerBatchMaxMessages = 0x3603,
-    PeerBatchMaxBytes = 0x3604,
-    PeerBatchBypassBytes = 0x3605,
-    PeerUnbatchMaxMessagesPerTurn = 0x3606,
-    PeerUnbatchMaxBytesPerTurn = 0x3607
+    TopicSendHwm = 0x3608,
+    TopicRecvHwm = 0x3609,
+    RoutedSendHwm = 0x360A,
+    RoutedRecvHwm = 0x360B
 }
 
 public enum MessageType : byte
@@ -385,12 +408,6 @@ public enum MessageType : byte
     Data = 0,
     Request = 1,
     Reply = 2
-}
-
-public static class MessageMetadata
-{
-    public const ushort KeyUserMin = 0x0100;
-    public const ushort ValueMax = 65535;
 }
 
 public enum SpotNodePubMode
@@ -409,4 +426,11 @@ public enum SpotSocketRole
 {
     Pub = 1,
     Sub = 2
+}
+
+public enum SpotDispatchEvent
+{
+    SubscribeReadable = 1,
+    RoutedReadable = 2,
+    TimerReadable = 3
 }

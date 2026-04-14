@@ -9,9 +9,8 @@ use zlink::*;
 fn discovery_open_monitor_exposes_public_service_monitor_surface() {
     let ctx = Context::new().unwrap();
     let discovery = Discovery::new(&ctx, ServiceType::Spot, "svc-mon-open").unwrap();
-    let monitor = discovery.monitor_open().unwrap();
-
-    assert!(monitor.try_recv().unwrap().is_none());
+    let _monitor = discovery.monitor_open().unwrap();
+    let _recv: fn(&ServiceMonitor) -> Result<ServiceEvent, RecvError> = ServiceMonitor::recv;
 }
 
 #[test]

@@ -198,13 +198,7 @@ sequenceDiagram
     Note over DP: poller → ingress readable
     DP->>DP: recv_and_forward_ingress()
 
-    alt Batching 활성
-        DP->>DP: topic bucket에 축적
-        Note over DP: flush 조건:<br/>delay_ms (20ms),<br/>max_messages (32),<br/>max_bytes (64KB)
-        DP->>MeshPub: batch frame 전송 [header+metadata+body]
-    else Batching 비활성 또는 bypass (msg >= 64KB)
-        DP->>MeshPub: [topic] + [payload] 즉시 전송
-    end
+    DP->>MeshPub: [topic] + [payload] 전송
 
     MeshPub->>Remote: tcp/tls mesh 경유
 ```
@@ -222,9 +216,6 @@ sequenceDiagram
     Remote->>MeshXSub: tcp mesh 경유 토픽 메시지
     Note over DP: poller → mesh_xsub readable
     DP->>DP: recv_and_dispatch_mesh_xsub()
-    alt Batch frame 감지 (magic=0x31544253)
-        DP->>DP: unbatch → 개별 logical message
-    end
     DP->>Fanout: 로컬 fanout으로 포워딩
     Fanout->>Sub: 매칭되는 sub에 전달
     Note over DP: mesh_pub으로 재발행 금지<br/>(루프 방지)
@@ -388,3 +379,187 @@ Unified handle은 SpotNode를 빌린다. 여러 handle이 하나의 node를 공�
 Topic과 routed HWM은 `zlink_set_spot_node_option()`으로 독립 설정 가능:
 - `ZLINK_SPOT_NODE_OPT_TOPIC_SNDHWM` / `ZLINK_SPOT_NODE_OPT_TOPIC_RCVHWM`
 - `ZLINK_SPOT_NODE_OPT_ROUTED_SNDHWM` / `ZLINK_SPOT_NODE_OPT_ROUTED_RCVHWM`
+
+## 10. Dispatch Event 스레딩 모델
+
+공개 API 의 `zlink_spot_dispatch_event_handler()` 표면은 **세 개의
+독립된 내부 이벤트 producer** 를 단일 핸들러로 fan-in 하는 알림 전용
+콜백이다. 이 절에서는 각 이벤트를 어떤 내부 스레드가 발생시키는지,
+등록이 어떻게 강제되는지, 그리고 콜백이 지켜야 하는 스레드 안전성
+경계를 정리한다.
+
+### 10.1 이벤트 producer 와 스레드
+
+```mermaid
+flowchart LR
+    subgraph DataPlane["SpotNode data-plane thread"]
+        ingress["sub plane<br/>spot_sub readable"]
+        routed["routed dispatch<br/>(node_router -> queue)"]
+    end
+
+    subgraph Scheduler["SpotNode-local timer scheduler thread"]
+        tick["scheduler_fire_timer()"]
+    end
+
+    subgraph UserHandler["zlink_spot_dispatch_event_handler (Spot 당 1개)"]
+        handler["zlink_spot_dispatch_event_handler_fn"]
+    end
+
+    ingress -->|"SUBSCRIBE_READABLE"| handler
+    routed  -->|"ROUTED_READABLE"| handler
+    tick    -->|"TIMER_READABLE"| handler
+```
+
+| 이벤트 | 발원 producer | 콜백을 호출하는 스레드 |
+|-------|---------------|----------------------|
+| `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE` | `service_handler_spot_api.cpp` 의 `spot_sub_handler_adapter` — `spot_sub_t` 의 direct handler 로 설치됨 | SpotNode data-plane polling 스레드 (§7 *Data Plane Polling Loop* 참고) |
+| `ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE` | `service_spot_request_reply_api.cpp` 의 `queue_spot_message()` — routed 전달을 내부 PAIR 큐에 enqueue 한 뒤 호출 | SpotNode data-plane polling 스레드 (`node_router` / mesh ingress 에서 routed envelope 를 parse 한 동일 스레드) |
+| `ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE` | `timer_scheduler_backend.cpp` 의 `scheduler_fire_timer()` — fire count 를 deque 에 넣고 signaler 를 raise 한 뒤, direct timer handler 가 없을 때만 호출 | SpotNode-local 타이머 스케줄러 스레드 (data-plane 스레드와는 별도) |
+
+세 producer 는 모두 하나의 공통 진입점,
+`zlink_spot_notify_dispatch_event()` → `maybe_dispatch_spot_event()`,
+를 통해 콜백에 닿는다. 이 함수는 per-Spot mutex 아래에서 handler
+포인터를 스냅샷으로 읽은 다음, 내부 락을 해제한 상태에서 콜백을
+호출한다:
+
+```cpp
+void maybe_dispatch_spot_event (spot_request_reply_state_t *state_,
+                                zlink_spot_dispatch_event_t event_)
+{
+    zlink_spot_dispatch_event_handler_fn handler = NULL;
+    void *userdata = NULL;
+    void *owner = NULL;
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        handler = state_->dispatch_event_handler;
+        userdata = state_->dispatch_event_handler_userdata;
+        owner = state_->owner;
+    }
+    if (handler)
+        handler (owner, event_, userdata);
+}
+```
+
+이 "snapshot 후 invoke" 패턴은 의도적인 것이다. handler 는 zlink 내부
+락이 걸려있지 않은 상태에서 실행되므로, 애플리케이션이 콜백 안에서
+`zlink_timer_recv()`, `zlink_spot_recv()`, `zlink_subscribe()` 같은 zlink
+API 를 자유롭게 호출할 수 있다. 다만 §10.4 에서 설명하듯, 애플리케이션
+워커로 작업을 넘기는 쪽이 여전히 권장된다.
+
+### 10.2 등록 규칙과 상호 배제
+
+per-Spot `spot_request_reply_state_t` 는 routed/dispatch 축 위에 두 개의
+handler 슬롯을 가진다:
+
+```cpp
+struct spot_request_reply_state_t {
+    // ...
+    zlink_spot_handler_fn                  request_handler;            // direct routed
+    void                                  *request_handler_userdata;
+    zlink_spot_dispatch_event_handler_fn   dispatch_event_handler;     // 통합 알림
+    void                                  *dispatch_event_handler_userdata;
+};
+```
+
+`zlink_spot_handler()` 와 `zlink_spot_dispatch_event_handler()` 는 값을
+쓰기 전에 `state->mutex` 를 잡고
+`state->request_handler || state->dispatch_event_handler` 를 검사한다.
+둘 중 하나라도 NULL 이 아니면 `ZLINK_HANDLER_BUSY` 를 반환한다. 이것이
+사용자 가이드에서 이야기하는 "상호 배타" 규칙의 출처다.
+
+`zlink_subscribe_handler()` 는 다른 축이다. 내부 `spot_sub_t` 에 direct
+subscribe callback 을 설치하는 것이며 `dispatch_event_handler` 와
+충돌하지 않는다. 기술적으로는 함께 쓸 수 있으나, 그 경우 통합 워커
+패턴의 이점이 사라진다.
+
+### 10.3 이벤트별 발생 조건
+
+**`SUBSCRIBE_READABLE`** — data-plane 스레드에서 `spot_sub_t` 의 direct
+handler (즉 `spot_sub_handler_adapter`) 가 호출될 때마다 발행된다.
+adapter 는 user subscribe 콜백을 실행하기 *전에*
+`zlink_spot_notify_dispatch_event()` 를 호출한다. user subscribe handler
+가 설치되지 않은 경우에도 subscribe 메시지는 `spot_sub_t` recv buffer 에
+쌓이고, notifier 는 `zlink_subscribe()` pull 소비자에게 wake-up 신호
+역할을 한다.
+
+**`ROUTED_READABLE`** — `queue_spot_message()` 에서 routed payload (node
+rid, spot rid, request_seq, parts) 를 per-Spot 내부 PAIR 큐
+(`inproc://zlink.spot.routed.recv.*`) 에 enqueue 한 뒤 발행된다. 큐 write
+가 성공한 다음 발행되므로, 알림을 관측한 워커는 다음 `zlink_spot_recv()`
+호출에서 최소 한 건의 payload 를 얻는 것이 보장된다. `request_handler`
+가 설치되어 있을 때는 queue write 대신 routed direct callback 이 호출되며
+알림은 발행되지 않는다.
+
+**`TIMER_READABLE`** — `scheduler_fire_timer()` 에서, 타이머가 소유하는
+Spot (`zlink_spot_timer_new(spot)` 로 만든 경우) 이고 **direct timer
+handler 가 없을 때만** 발행된다. 이 분기에서 scheduler 는 먼저 fire
+count 를 `timer->fired_counts` 에 push, 이어서 `timer->signaler`
+(eventfd) 를 raise, 마지막으로
+`zlink_spot_notify_dispatch_event(owner_spot, TIMER_READABLE)` 을
+호출한다. 같은 타이머에 `zlink_timer_handler()` 가 붙어 있으면 scheduler
+가 그 handler 를 inline 으로 실행하며 dispatch event 는 발행되지 않는다
+— 이것이 사용자 가이드의 per-timer 우선순위 규칙이다.
+
+### 10.4 애플리케이션 워커와의 전체 흐름
+
+```mermaid
+sequenceDiagram
+    participant DP as Data-plane thread
+    participant Sched as Timer scheduler thread
+    participant Notify as notify_dispatch_event
+    participant UH as User event handler
+    participant App as App worker thread
+    participant Q as 내부 큐<br/>(sub buffer / routed PAIR / timer deque)
+
+    alt topic 메시지 도착
+        DP->>Q: sub buffer 에 push
+        DP->>Notify: SUBSCRIBE_READABLE
+    else routed 메시지 도착
+        DP->>Q: routed PAIR 에 push
+        DP->>Notify: ROUTED_READABLE
+    else spot 소유 timer fire
+        Sched->>Q: fire_count push + eventfd signal
+        Sched->>Notify: TIMER_READABLE
+    end
+    Notify->>UH: handler(spot, event, userdata)
+    UH->>App: 워커 wake (cv / eventfd / channel)
+    App->>Q: zlink_subscribe / zlink_spot_recv / zlink_timer_recv
+    Q-->>App: payload / fire_count
+```
+
+producer 들은 `notify_dispatch_event` 이후 애플리케이션 로직에 더 이상
+들어가지 않는다. 메시지 디코딩, 토픽 매칭, 타이머 재스케줄링은 모두
+내부 스레드에서 처리되고, 워커 스레드는 이미 drain 되었거나 원자적으로
+append 된 큐 (`internal_pair_queue_t` for routed, `spot_sub_t` recv
+buffer for topic, `timer->mutex` 로 보호되는 `fired_counts` deque for
+timer) 만 접근한다.
+
+### 10.5 스레드 안전성 불변식
+
+| 불변식 | 강제 수단 |
+|---|---|
+| Handler 포인터 읽기는 race-free | `maybe_dispatch_spot_event` 에서 `state->mutex` 아래 스냅샷 |
+| Handler 는 내부 락을 들지 않은 상태에서 실행 | snapshot 후 락 해제 후 호출 |
+| 알림 전에 payload 가 반드시 큐에 존재 | producer 가 큐 push (sub buffer / PAIR queue / fired_counts + signaler) *뒤에* notifier 호출 |
+| wake-up 누락 없음 | Level-triggered — 워커가 각 큐를 pull API 가 `ZLINK_RECV_NO_DATA` 를 반환할 때까지 drain 한다. drain 도중 발생한 중복 알림은 무해 |
+| Direct handler vs dispatch event | 컴파일 시점에 경로가 분리 — subscribe 는 `spot_sub_handler_adapter`, routed 는 `request_handler` 슬롯, timer 는 각 타이머의 자체 handler 슬롯. routed 축에서는 등록 시점 mutex 로 이중 설치를 거부하고, 타이머는 `scheduler_fire_timer` 내부에서 per-timer 우선순위를 판정 |
+| 콜백에서 zlink API 호출 가능 | producer 가 notifier 호출 전에 내부 락을 해제 |
+
+### 10.6 애플리케이션 관점에서 단일 writer 설계인 이유
+
+내부 producer 는 셋이지만 handler 는 하나이므로, 애플리케이션은
+알림을 condition variable wake 로 받아 세 큐 모두를 하나의 애플리케이션
+스레드에서 소비할 수 있다.
+
+- sub / routed / timer 소비자 사이에 사용자 락이 필요 없다. 세 소비자는
+  서로 다른 내부 큐를 읽으며, 공유되는 것은 결국 애플리케이션 bookkeeping
+  뿐이고 그 bookkeeping 은 단일 워커 스레드가 배타적으로 소유한다.
+- handler 자체는 `lock_guard + cv.notify + bitmask |=` 수준으로 충분하며
+  zlink API 를 건드릴 필요가 없다.
+- producer 스레드는 raw 함수 호출 이상의 대기를 하지 않고 즉시 자기
+  polling loop 로 돌아간다. 따라서 느린 소비자 스레드가 SpotNode mesh
+  나 타이머 스케줄러에 설정된 HWM 를 넘는 back-pressure 를 주지 못한다.
+
+이것이 사용자 가이드에서 timer, routed recv, subscribe 가 하나의 Spot
+handle 위에 공존할 때 `zlink_spot_dispatch_event_handler` 를 통합
+소비 패턴으로 권장하는 근본 이유다.

@@ -2,8 +2,8 @@ use std::ffi::c_void;
 use std::time::Duration;
 
 use crate::ctx::Context;
-use crate::domain::{Received, SendResult};
-use crate::error::{ZlinkError, check_rc};
+use crate::domain::Received;
+use crate::error::{ConfigError, HandlerError, RecvError, SubmitError, check_config_rc};
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, RoutingId};
@@ -26,13 +26,13 @@ pub struct StreamSocket {
 }
 
 impl StreamSocket {
-    pub(crate) fn new(ctx: &Context) -> Result<Self, ZlinkError> {
+    pub(crate) fn new(ctx: &Context) -> Result<Self, ConfigError> {
         Ok(Self {
             inner: SocketInner::create(ctx, ffi::zlink_socket_type_t::ZLINK_SOCKET_STREAM)?,
         })
     }
 
-    pub fn send(&self, target: &RoutingId, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
+    pub fn send(&self, target: &RoutingId, parts: impl IntoMultipart) -> Result<(), SubmitError> {
         self.inner.send_to(target, parts)
     }
 
@@ -41,38 +41,26 @@ impl StreamSocket {
         target: &RoutingId,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), ZlinkError> {
+    ) -> Result<(), SubmitError> {
         self.inner.send_to_with_flags(target, parts, flags)
     }
 
-    pub fn try_send(
-        &self,
-        target: &RoutingId,
-        parts: impl IntoMultipart,
-    ) -> Result<SendResult, ZlinkError> {
-        self.inner.try_send_to(target, parts)
-    }
-
-    pub fn recv(&self) -> Result<Received, ZlinkError> {
+    pub fn recv(&self) -> Result<Received, RecvError> {
         self.inner.recv()
     }
 
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError> {
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {
         self.inner.recv_with_flags(flags)
     }
 
-    pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError> {
-        self.inner.try_recv()
-    }
-
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
         F: Fn(Received) + Send + 'static,
     {
         self.inner.on_receive(handler)
     }
 
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
         F: Fn() + Send + 'static,
     {
@@ -96,7 +84,7 @@ impl StreamSocket {
 
     // -- STREAM-specific typed options -------------------------------------
 
-    pub(crate) fn set_notify(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub(crate) fn set_notify(&self, enabled: bool) -> Result<(), ConfigError> {
         set_stream_bool_option(
             self.inner.handle,
             ffi::zlink_stream_option_t::ZLINK_STREAM_OPT_NOTIFY,
@@ -104,7 +92,7 @@ impl StreamSocket {
         )
     }
 
-    pub(crate) fn notify(&self) -> Result<bool, ZlinkError> {
+    pub(crate) fn notify(&self) -> Result<bool, ConfigError> {
         get_stream_bool_option(
             self.inner.handle,
             ffi::zlink_stream_option_t::ZLINK_STREAM_OPT_NOTIFY,
@@ -116,9 +104,9 @@ fn set_stream_bool_option(
     handle: *mut c_void,
     option: ffi::zlink_stream_option_t,
     enabled: bool,
-) -> Result<(), ZlinkError> {
+) -> Result<(), ConfigError> {
     let value: i32 = if enabled { 1 } else { 0 };
-    check_rc(unsafe {
+    check_config_rc(unsafe {
         ffi::zlink_set_stream_option(
             handle,
             option,
@@ -131,10 +119,10 @@ fn set_stream_bool_option(
 fn get_stream_bool_option(
     handle: *mut c_void,
     option: ffi::zlink_stream_option_t,
-) -> Result<bool, ZlinkError> {
+) -> Result<bool, ConfigError> {
     let mut value: i32 = 0;
     let mut len = std::mem::size_of::<i32>();
-    check_rc(unsafe {
+    check_config_rc(unsafe {
         ffi::zlink_get_stream_option(
             handle,
             option,

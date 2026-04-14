@@ -134,12 +134,14 @@ func (t *callbackTask) run() {
 type recvCallbackState struct {
 	dispatcher *callbackDispatcher
 	handler    recvCallback
+	reply      func(RoutingID, RoutingID, uint64) func(SendFlags, []*Message) error
 }
 
-func newRecvCallbackState(handler recvCallback) *recvCallbackState {
+func newRecvCallbackState(handler recvCallback, reply func(RoutingID, RoutingID, uint64) func(SendFlags, []*Message) error) *recvCallbackState {
 	return &recvCallbackState{
 		dispatcher: newCallbackDispatcher(),
 		handler:    handler,
+		reply:      reply,
 	}
 }
 
@@ -274,11 +276,25 @@ func releaseCallbackHandle(handle cgo.Handle) {
 	handle.Delete()
 }
 
+func safeHandleValue(userdata C.uintptr_t) (value any, ok bool) {
+	defer func() {
+		if recover() != nil {
+			value = nil
+			ok = false
+		}
+	}()
+	return cgo.Handle(userdata).Value(), true
+}
+
 //export goZlinkRecvTrampoline
 func goZlinkRecvTrampoline(sourceRID *C.zlink_routing_id_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	state := cgo.Handle(userdata).Value().(*recvCallbackState)
+	value, ok := safeHandleValue(userdata)
+	if !ok {
+		return
+	}
+	state := value.(*recvCallbackState)
 	received := &Received{
-		routingID: routingIDFromC(*sourceRID),
+		routingID: routingIDFromCPtr(sourceRID),
 		parts:     mustTakeParts(parts, partCount),
 	}
 	if state.dispatcher.enqueue(&callbackTask{
@@ -296,13 +312,21 @@ func goZlinkRecvTrampoline(sourceRID *C.zlink_routing_id_t, parts *C.zlink_msg_t
 }
 
 //export goZlinkRouterRecvTrampoline
-func goZlinkRouterRecvTrampoline(sourceRID *C.zlink_routing_id_t, requestSeq C.uint64_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	state := cgo.Handle(userdata).Value().(*recvCallbackState)
+func goZlinkRouterRecvTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpotRID *C.zlink_routing_id_t, requestSeq C.uint64_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
+	value, ok := safeHandleValue(userdata)
+	if !ok {
+		return
+	}
+	state := value.(*recvCallbackState)
 	received := &Received{
-		routingID:     routingIDFromC(*sourceRID),
+		routingID:     routingIDFromCPtr(sourceNodeRID),
+		spotRID:       routingIDFromCPtr(sourceSpotRID),
 		parts:         mustTakeParts(parts, partCount),
 		requestSeq:    uint64(requestSeq),
 		hasRequestSeq: requestSeq != 0,
+	}
+	if state.reply != nil && requestSeq != 0 {
+		received.reply = state.reply(received.routingID, received.spotRID, received.requestSeq)
 	}
 	if state.dispatcher.enqueue(&callbackTask{
 		label: "router receive",
@@ -320,9 +344,13 @@ func goZlinkRouterRecvTrampoline(sourceRID *C.zlink_routing_id_t, requestSeq C.u
 
 //export goZlinkSubscribeTrampoline
 func goZlinkSubscribeTrampoline(sourceRID *C.zlink_routing_id_t, topic *C.char, topicLen C.size_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	state := cgo.Handle(userdata).Value().(*subscribeCallbackState)
+	value, ok := safeHandleValue(userdata)
+	if !ok {
+		return
+	}
+	state := value.(*subscribeCallbackState)
 	message := &TopicMessage{
-		routingID: routingIDFromC(*sourceRID),
+		routingID: routingIDFromCPtr(sourceRID),
 		topic:     C.GoStringN(topic, C.int(topicLen)),
 		parts:     mustTakeParts(parts, partCount),
 	}
@@ -342,7 +370,11 @@ func goZlinkSubscribeTrampoline(sourceRID *C.zlink_routing_id_t, topic *C.char, 
 
 //export goZlinkSendReadyTrampoline
 func goZlinkSendReadyTrampoline(_ unsafe.Pointer, userdata C.uintptr_t) {
-	state := cgo.Handle(userdata).Value().(*sendReadyCallbackState)
+	value, ok := safeHandleValue(userdata)
+	if !ok {
+		return
+	}
+	state := value.(*sendReadyCallbackState)
 	state.dispatcher.enqueue(&callbackTask{
 		label: "send-ready",
 		invoke: func() {
@@ -353,14 +385,18 @@ func goZlinkSendReadyTrampoline(_ unsafe.Pointer, userdata C.uintptr_t) {
 
 //export goZlinkSpotRoutedTrampoline
 func goZlinkSpotRoutedTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpotRID *C.zlink_routing_id_t, requestSeq C.uint64_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	state := cgo.Handle(userdata).Value().(*spotRoutedCallbackState)
+	value, ok := safeHandleValue(userdata)
+	if !ok {
+		return
+	}
+	state := value.(*spotRoutedCallbackState)
 	clonedParts, err := takeParts(parts, partCount)
 	if err != nil {
 		_ = err
 		return
 	}
-	sourceNode := routingIDFromC(*sourceNodeRID)
-	sourceSpot := routingIDFromC(*sourceSpotRID)
+	sourceNode := routingIDFromCPtr(sourceNodeRID)
+	sourceSpot := routingIDFromCPtr(sourceSpotRID)
 	if state.dispatcher.enqueue(&callbackTask{
 		label: "spot-routed",
 		invoke: func() {
@@ -375,7 +411,11 @@ func goZlinkSpotRoutedTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpot
 
 //export goZlinkSpotDispatchEventTrampoline
 func goZlinkSpotDispatchEventTrampoline(event C.zlink_spot_dispatch_event_t, userdata C.uintptr_t) {
-	state := cgo.Handle(userdata).Value().(*spotDispatchCallbackState)
+	value, ok := safeHandleValue(userdata)
+	if !ok {
+		return
+	}
+	state := value.(*spotDispatchCallbackState)
 	state.dispatcher.enqueue(&callbackTask{
 		label: "spot-dispatch",
 		invoke: func() {
@@ -386,7 +426,11 @@ func goZlinkSpotDispatchEventTrampoline(event C.zlink_spot_dispatch_event_t, use
 
 //export goZlinkTimerTrampoline
 func goZlinkTimerTrampoline(timer unsafe.Pointer, fireCount C.uint64_t, userdata C.uintptr_t) {
-	state := cgo.Handle(userdata).Value().(*timerCallbackState)
+	value, ok := safeHandleValue(userdata)
+	if !ok {
+		return
+	}
+	state := value.(*timerCallbackState)
 	state.dispatcher.enqueue(&callbackTask{
 		label: "timer-fire",
 		invoke: func() {

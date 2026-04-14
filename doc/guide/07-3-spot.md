@@ -402,23 +402,40 @@ zlink_spot_handler(spot, on_routed, NULL);
 
 ### 5.3 Router Receiving from SPOT
 
-A ROUTER socket can receive routed messages from SPOT using a dedicated
-handler and recv surface.
+A ROUTER socket receives routed messages from SPOT through the same
+single direct receive surface it uses for plain ROUTER traffic. There
+is no separate `zlink_router_spot_handler()` / `zlink_router_spot_recv()`
+contract. Distinguish SPOT-originated traffic by checking whether
+`source_spot_rid` is populated.
 
 ```c
-void on_from_spot(const zlink_routing_id_t *source_node_rid,
-                  const zlink_routing_id_t *source_spot_rid,
-                  uint64_t request_seq,
-                  zlink_msg_t *parts, size_t part_count,
-                  void *userdata)
+void on_router_routed(const zlink_routing_id_t *source_node_rid,
+                      const zlink_routing_id_t *source_spot_rid,
+                      uint64_t request_seq,
+                      zlink_msg_t *parts, size_t part_count,
+                      void *userdata)
 {
+    if (source_spot_rid && source_spot_rid->size > 0) {
+        /* SPOT-originated traffic. Reply (if request) uses
+           zlink_router_reply_spot(router, source_node_rid,
+                                   source_spot_rid, request_seq, ...). */
+    } else {
+        /* Plain ROUTER traffic (source_spot_rid empty). */
+    }
     zlink_multipart_close(parts, part_count);
 }
 
-zlink_router_spot_handler(router, on_from_spot, NULL);
+zlink_router_handler(router, on_router_routed, NULL);
 ```
 
-Pull mode: `zlink_router_spot_recv(router, &source_node_rid, &source_spot_rid, &request_seq, &parts, &part_count, 0)`.
+Pull mode uses the same unified surface:
+
+```c
+zlink_router_recv(router, &source_node_rid, &source_spot_rid,
+                  &request_seq, &parts, &part_count, 0);
+```
+
+See [ROUTER guide](03-4-router.md) for the full surface description.
 
 ## 6. SPOT Request-Reply
 
@@ -528,10 +545,14 @@ pending request.
 
 ### 6.3 spot ↔ router Combinations
 
-SPOT request-reply can also cross directly with plain ROUTER sockets:
+SPOT request-reply can also cross directly with plain ROUTER sockets.
+The ROUTER side uses the unified `zlink_router_handler()` /
+`zlink_router_recv()` surface; SPOT-originated traffic is identified by a
+populated `source_spot_rid`.
 
 - **spot → router**: `zlink_spot_request_router()` →
-  `zlink_router_spot_handler()` → `zlink_router_reply_spot()`
+  `zlink_router_handler()` (`source_spot_rid` populated) →
+  `zlink_router_reply_spot()`
 - **router → spot**: `zlink_router_request_spot()` →
   `zlink_spot_handler()` → `zlink_spot_reply_router()`
 
@@ -567,7 +588,215 @@ zlink_timer_handler(spot_timer, on_fire, NULL);
 | recv vs callback conflict | Returns `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY` |
 | Topic vs routed | Separate receive surfaces; both can be active simultaneously |
 
-## 7. Topic Rules
+## 7. Unified Dispatch Model — `zlink_spot_dispatch_event_handler`
+
+A single `Spot` handle carries three independent event streams:
+
+1. **Topic subscribe** — messages matched by `zlink_subscribe()`
+2. **Routed (direct)** — messages delivered via `zlink_spot_recv()`
+3. **SPOT-scoped timers** — timers created through
+   `zlink_spot_timer_new(spot)`
+
+If you attach a direct callback for each of these (subscribe handler,
+routed handler, and a per-timer handler), each callback fires from its
+own internal driver — the subscribe plane's I/O thread, the routed
+plane's dispatch thread, and the SpotNode-local timer scheduler thread.
+Your application code then has to synchronize across those threads
+yourself.
+
+`zlink_spot_dispatch_event_handler()` gives you a single **notification
+point** instead. You then consume the actual data on **your own
+application thread** using the pull APIs. This is the recommended way to
+drive a `Spot` when you want timer, routed recv, and subscribe to flow
+through the same worker without cross-thread contention in user code.
+
+### 7.1 The event handler contract
+
+```c
+typedef enum zlink_spot_dispatch_event_t
+{
+    ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,
+    ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE    = 2,
+    ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE     = 3
+} zlink_spot_dispatch_event_t;
+
+typedef void (*zlink_spot_dispatch_event_handler_fn) (
+    void *spot,
+    zlink_spot_dispatch_event_t event,
+    void *userdata);
+
+zlink_handler_result_t zlink_spot_dispatch_event_handler (
+    void *spot,
+    zlink_spot_dispatch_event_handler_fn handler,
+    void *userdata);
+```
+
+Key properties:
+
+- **Notification only.** The callback carries no message, topic, or
+  fire-count — just the event kind. The app then pulls the data with
+  `zlink_subscribe()` / `zlink_spot_recv()` / `zlink_timer_recv()`.
+- **One handler per `Spot`.** `zlink_spot_dispatch_event_handler()` and
+  `zlink_spot_handler()` (routed direct callback) are mutually exclusive:
+  attempting to install both returns `ZLINK_HANDLER_BUSY`.
+- **Fires from internal threads.** The event handler runs on whichever
+  internal thread produced the readable signal (I/O thread for
+  subscribe/routed; SpotNode-local scheduler thread for timers). Keep
+  the handler short — a condition-variable notify, an eventfd write, or
+  a channel push is appropriate. **Do not call `zlink_subscribe()` /
+  `zlink_spot_recv()` / `zlink_timer_recv()` from inside the event
+  handler** — consume from the application thread instead.
+- **Level-triggered semantics.** The handler signals *that* something is
+  readable. Your application thread should drain the matching queue
+  until it reports `ZLINK_RECV_NO_DATA`, because multiple messages may
+  have arrived before the handler ran.
+- **Transition is one-way.** Installing the dispatch event handler
+  transitions the `Spot` into callback model for the dispatch axis.
+  It cannot be uninstalled; replacing it is not supported.
+
+### 7.2 Recommended pattern: notify + single worker loop
+
+```c
+#include <zlink.h>
+#include <pthread.h>
+#include <stdatomic.h>
+
+typedef struct {
+    pthread_mutex_t mtx;
+    pthread_cond_t  cv;
+    atomic_int      pending;   /* bitmask of ready events */
+    atomic_int      stopping;
+} dispatch_wakeup_t;
+
+enum { READY_SUBSCRIBE = 1 << 0,
+       READY_ROUTED    = 1 << 1,
+       READY_TIMER     = 1 << 2 };
+
+static int event_to_bit (zlink_spot_dispatch_event_t event)
+{
+    switch (event) {
+        case ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE:
+            return READY_SUBSCRIBE;
+        case ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE:
+            return READY_ROUTED;
+        case ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE:
+            return READY_TIMER;
+    }
+    return 0;
+}
+
+/* Fires on an internal thread. Keep it minimal. */
+static void on_spot_event(void *spot,
+                          zlink_spot_dispatch_event_t event,
+                          void *userdata)
+{
+    dispatch_wakeup_t *w = userdata;
+    atomic_fetch_or(&w->pending, event_to_bit(event));
+    pthread_mutex_lock(&w->mtx);
+    pthread_cond_signal(&w->cv);
+    pthread_mutex_unlock(&w->mtx);
+}
+
+/* Runs on ONE application-owned worker thread. Owns all data reads. */
+static void *spot_worker(void *arg)
+{
+    struct {
+        void              *spot;
+        void              *timer;
+        dispatch_wakeup_t *w;
+    } *ctx = arg;
+
+    while (!atomic_load(&ctx->w->stopping)) {
+        pthread_mutex_lock(&ctx->w->mtx);
+        while (atomic_load(&ctx->w->pending) == 0
+               && !atomic_load(&ctx->w->stopping)) {
+            pthread_cond_wait(&ctx->w->cv, &ctx->w->mtx);
+        }
+        int ready = atomic_exchange(&ctx->w->pending, 0);
+        pthread_mutex_unlock(&ctx->w->mtx);
+
+        if (ready & READY_TIMER) {
+            uint64_t fire_count;
+            while (zlink_timer_recv(ctx->timer, &fire_count)
+                   == ZLINK_RECV_OK) {
+                /* handle each tick */
+            }
+        }
+        if (ready & READY_ROUTED) {
+            for (;;) {
+                const zlink_routing_id_t *src_node;
+                const zlink_routing_id_t *src_spot;
+                uint64_t seq;
+                zlink_msg_t *parts;
+                size_t count;
+                zlink_recv_result_t rc = zlink_spot_recv(
+                    ctx->spot, &src_node, &src_spot, &seq,
+                    &parts, &count, ZLINK_DONTWAIT);
+                if (rc != ZLINK_RECV_OK) break;
+                /* process routed message, reply if seq != 0 */
+                zlink_multipart_close(parts, count);
+            }
+        }
+        if (ready & READY_SUBSCRIBE) {
+            for (;;) {
+                zlink_routing_id_t src;
+                zlink_msg_t *parts;
+                size_t count;
+                char topic[256];
+                size_t topic_len = sizeof(topic);
+                zlink_recv_result_t rc = zlink_subscribe(
+                    ctx->spot, &src, &parts, &count,
+                    topic, &topic_len, ZLINK_DONTWAIT);
+                if (rc != ZLINK_RECV_OK) break;
+                /* process topic message */
+                zlink_multipart_close(parts, count);
+            }
+        }
+    }
+    return NULL;
+}
+
+/* Setup */
+dispatch_wakeup_t wakeup = { /* init ... */ };
+void *spot  = zlink_spot_new(node);
+void *timer = zlink_spot_timer_new(spot);
+
+zlink_set_subscription(spot, "chat:*");
+zlink_spot_dispatch_event_handler(spot, on_spot_event, &wakeup);
+zlink_timer_start(timer, 100 * 1000 * 1000ULL, 0);  /* 100 ms repeat */
+
+pthread_t worker;
+/* ...pack ctx with spot, timer, &wakeup and start worker... */
+pthread_create(&worker, NULL, spot_worker, /* ctx */);
+```
+
+### 7.3 Why this avoids thread contention
+
+| Without dispatch event handler | With dispatch event handler |
+|---|---|
+| Subscribe callback runs on I/O thread | Notification from I/O thread → pull on worker thread |
+| Routed handler runs on routed dispatch thread | Notification from routed thread → pull on worker thread |
+| Timer handler runs on scheduler thread | Notification from scheduler thread → pull on worker thread |
+| User must protect shared state with locks between 3 producer threads | All data consumption and processing runs on 1 application thread |
+
+The three internal threads never invoke application logic beyond the
+tiny notifier. Actual subscribe/recv/timer data is read on a single
+application thread, so shared state between those three streams needs
+no additional synchronization in user code.
+
+### 7.4 Coexistence rules
+
+| Combination | Result |
+|---|---|
+| `zlink_spot_dispatch_event_handler` + `zlink_spot_handler` | Mutually exclusive — second install returns `ZLINK_HANDLER_BUSY` |
+| `zlink_spot_dispatch_event_handler` + `zlink_subscribe_handler` | Allowed; they feed independent subsystems. Mix only when you really want the subscribe data to bypass the unified worker |
+| `zlink_spot_dispatch_event_handler` + per-timer `zlink_timer_handler` | The timer's own handler wins for that specific timer; `TIMER_READABLE` is not fired while a direct timer handler is attached to the same timer. Leave timers in recv mode to route them through the dispatch event |
+| `zlink_spot_dispatch_event_handler` + `zlink_send_ready_handler` | Independent axis — send-ready has its own handler |
+
+> For the internal threading details of how these events are produced,
+> see [SPOT Internals — Dispatch Event Threading Model](../internals/spot-internals.md).
+
+## 8. Topic Rules
 
 ### Naming Convention
 
@@ -584,7 +813,7 @@ Examples:
 - Case-sensitive
 - Example: `chat:*` matches both `chat:room1:message` and `chat:room2:join`
 
-## 8. Choosing Topic vs Routed
+## 9. Choosing Topic vs Routed
 
 | Criterion | Topic (pub/sub) | Routed (direct) |
 |-----------|----------------|-----------------|
@@ -600,7 +829,7 @@ SPOT handle or ROUTER and optionally expect a reply.
 
 Both paths can be active simultaneously on the same SPOT handle.
 
-## 9. Peer Publish Batching
+## 10. Peer Publish Batching
 
 SpotNode supports optional batching of small topic messages on the
 cross-node path. When enabled, the sender accumulates small messages
@@ -610,38 +839,7 @@ contracts are unchanged.
 
 ### Enabling
 
-Batching is disabled by default. Enable it on SpotNode before bind:
-
-```c
-int enabled = 1;
-zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
-                 &enabled, sizeof(enabled));
-```
-
-**v1 constraint:** All SpotNodes in the mesh must be the same binary
-generation (homogeneous deployment). There is no runtime capability
-negotiation.
-
-### Configuration
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `PEER_BATCH_ENABLE` | false | Enable peer batching (operator opt-in) |
-| `PEER_BATCH_DELAY_MS` | 20 | Max delay before flush (ms) |
-| `PEER_BATCH_MAX_MESSAGES` | 32 | Max messages per bucket before flush |
-| `PEER_BATCH_MAX_BYTES` | 65536 | Max bytes per bucket before flush |
-| `PEER_BATCH_BYPASS_BYTES` | 65536 | Messages at or above this size bypass batching |
-
-### Behavior
-
-- **Local fanout** is always immediate — batching applies only to cross-node delivery
-- **Same-topic ordering** is preserved
-- **Oversized messages** (>= `BYPASS_BYTES`) are sent immediately
-- **Flush triggers:** delay timeout, max messages, max bytes, or shutdown
-
-> For internal wire format details, see [SPOT Internals](../internals/spot-internals.md).
-
-## 10. Delivery Guarantees
+## 11. Delivery Guarantees
 
 ### Topic delivery
 
@@ -668,7 +866,7 @@ SPOT is a live messaging system. It does not provide:
 - Ack/retry or exactly-once semantics
 - Past message replay for late joiners
 
-## 11. Cleanup
+## 12. Cleanup
 
 ```c
 zlink_spot_destroy(&spot);

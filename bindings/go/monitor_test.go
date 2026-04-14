@@ -152,7 +152,7 @@ func TestServiceMonitorOnEventReceivesRegistryStateChange(t *testing.T) {
 	if event == nil {
 		t.Fatalf("service monitor callback returned nil event")
 	}
-	mask := uint32(zlink.ServiceMonitorEventDiscoveryServiceUp | zlink.ServiceMonitorEventDiscoveryProvidersChanged)
+	mask := zlink.ServiceMonitorEventType(zlink.ServiceMonitorEventDiscoveryServiceUp | zlink.ServiceMonitorEventDiscoveryProvidersChanged)
 	if event.EventType&mask == 0 {
 		t.Fatalf("unexpected service monitor callback event: %+v", event)
 	}

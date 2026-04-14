@@ -28,14 +28,13 @@ async function main() {
   const ctx = new zlink.Context();
   const routerSocket = new zlink.RouterSocket(ctx);
   const dealerSocket = new zlink.DealerSocket(ctx);
-  const router = new zlink.RequestRouter(routerSocket);
-  const dealer = new zlink.RequestDealer(dealerSocket);
+  const clientRoutingId = zlink.RoutingId.fromBytes(Buffer.from('request-reply-client'));
 
   try {
     const routerMonitor = routerSocket.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
     const dealerMonitor = dealerSocket.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
     try {
-      dealerSocket.setRoutingId(Buffer.from('request-reply-client'));
+      dealerSocket.setRoutingId(clientRoutingId);
       routerSocket.bind(endpoint);
       dealerSocket.connect(endpoint);
       routerMonitor.recv();
@@ -45,20 +44,18 @@ async function main() {
       dealerMonitor.close();
     }
 
-    const pendingReply = dealer.request(
-      zlink.Message.fromBuffer(Buffer.from('ping')),
-      { timeout: 2000 }
+    const pendingReply = dealerSocket.request(
+      zlink.Message.from(Buffer.from('ping')),
+      2000
     );
-    const request = router.recv();
-    assert.equal(Buffer.from(request.routingId).toString(), 'request-reply-client');
+    const request = routerSocket.recv();
+    assert.equal(request.routingId.toBytes().toString(), 'request-reply-client');
     assert.ok(typeof request.requestSeq === 'bigint');
-    router.reply(request.routingId, request.requestSeq, zlink.Message.fromBuffer(Buffer.from('pong')));
+    routerSocket.reply(request.routingId, request.requestSeq, zlink.Message.from(Buffer.from('pong')));
     const reply = await pendingReply;
-    assert.equal(reply.parts[0].data.toString(), 'pong');
+    assert.equal(reply[0].data().toString(), 'pong');
     console.log('[dealer-router/request-reply/async] send: "ping" -> recv: "pong"');
   } finally {
-    dealer.close();
-    router.close();
     ctx.close();
   }
 }

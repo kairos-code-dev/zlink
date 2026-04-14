@@ -76,6 +76,7 @@ class SocketOption(IntEnum):
     TLS_PASSWORD = 0x302F
     ZMP_METADATA = 0x3030
     DISCOVERY_METADATA_MAX_SIZE = 0x3032
+    TCP_NODELAY = 0x3031
 
     ROUTING_ID = 5
     SUBSCRIBE = 6
@@ -187,7 +188,7 @@ class ProtocolError(IntEnum):
     ZMP_MALFORMED_COMMAND_HELLO = 0x10000013
 
 
-class MonitorEvent(IntFlag):
+class MonitorEventMask(IntFlag):
     CONNECTED = 0x0001
     CONNECT_DELAYED = 0x0002
     CONNECT_RETRIED = 0x0004
@@ -204,6 +205,11 @@ class MonitorEvent(IntFlag):
     HANDSHAKE_FAILED_PROTOCOL = 0x2000
     HANDSHAKE_FAILED_AUTH = 0x4000
     ALL = 0x7FFF
+
+
+# Legacy alias. Public surface should prefer MonitorEventMask for masks and
+# zlink.MonitorEvent for the decoded monitor event object.
+MonitorEvent = MonitorEventMask
 
 
 class DisconnectReason(IntEnum):
@@ -257,6 +263,11 @@ class RegistrySocketRole(IntEnum):
 
 class DiscoverySocketRole(IntEnum):
     SUB = 1
+
+
+class DiscoveryDealerPeerMode(IntEnum):
+    ROUTER = 1
+    DEALER = 2
 
 
 class SpotNodeSocketRole(IntEnum):

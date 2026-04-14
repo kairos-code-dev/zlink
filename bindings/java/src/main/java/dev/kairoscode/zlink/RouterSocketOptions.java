@@ -2,7 +2,7 @@
 
 package dev.kairoscode.zlink;
 
-import dev.kairoscode.zlink.options.SocketOptions;
+import dev.kairoscode.zlink.SocketOptions;
 
 public final class RouterSocketOptions extends CommonSocketOptions {
     RouterSocketOptions(Socket socket) {
@@ -35,11 +35,11 @@ public final class RouterSocketOptions extends CommonSocketOptions {
 
     public RoutingId connectRoutingId() {
         byte[] value = socket.getOption(SocketOptions.CONNECT_ROUTING_ID_BYTES);
-        return value.length == 0 ? null : RoutingId.copyOf(value);
+        return value.length == 0 ? null : RoutingId.fromBytes(value);
     }
 
     public void connectRoutingId(RoutingId routingId) {
         socket.setOption(SocketOptions.CONNECT_ROUTING_ID_BYTES,
-            routingId == null ? new byte[0] : routingId.toByteArray());
+            routingId == null ? new byte[0] : routingId.toBytes());
     }
 }

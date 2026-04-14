@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Buffers;
 using System.Text;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -39,6 +40,10 @@ public sealed class Message : IDisposable, IAsyncDisposable
                 throw new InvalidOperationException("Message data is null.");
             data.CopyTo(new Span<byte>((void*)dest, data.Length));
         }
+    }
+
+    public Message(ReadOnlyMemory<byte> data) : this(data.Span)
+    {
     }
 
     private Message(bool init)
@@ -82,12 +87,29 @@ public sealed class Message : IDisposable, IAsyncDisposable
         return new ReadOnlySpan<byte>((void*)data, (int)size);
     }
 
+    public ReadOnlyMemory<byte> AsReadOnlyMemory()
+    {
+        return ToArray();
+    }
+
     public int CopyTo(Span<byte> destination)
     {
         if (!TryCopyTo(destination, out int bytesWritten))
             throw new ArgumentException("Destination buffer is too small.",
                 nameof(destination));
         return bytesWritten;
+    }
+
+    public int CopyTo(IBufferWriter<byte> destination)
+    {
+        if (destination == null)
+            throw new ArgumentNullException(nameof(destination));
+
+        int size = Size;
+        Span<byte> span = destination.GetSpan(size).Slice(0, size);
+        int written = CopyTo(span);
+        destination.Advance(written);
+        return written;
     }
 
     public unsafe bool TryCopyTo(Span<byte> destination, out int bytesWritten)
@@ -127,6 +149,18 @@ public sealed class Message : IDisposable, IAsyncDisposable
         return new Message(data);
     }
 
+    public static Message FromBytes(ReadOnlyMemory<byte> data)
+    {
+        return new Message(data);
+    }
+
+    public static Message FromSequence(ReadOnlySequence<byte> data)
+    {
+        if (data.IsSingleSegment)
+            return new Message(data.First);
+        return new Message((ReadOnlySpan<byte>)data.ToArray());
+    }
+
     public static Message FromString(string value)
     {
         return FromString(value, Encoding.UTF8);
@@ -138,7 +172,7 @@ public sealed class Message : IDisposable, IAsyncDisposable
             throw new ArgumentNullException(nameof(value));
         if (encoding == null)
             throw new ArgumentNullException(nameof(encoding));
-        return new Message(encoding.GetBytes(value));
+        return new Message((ReadOnlySpan<byte>)encoding.GetBytes(value));
     }
 
     public string GetString()

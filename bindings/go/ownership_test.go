@@ -2,6 +2,7 @@ package zlink_test
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 	"time"
 
@@ -133,6 +134,57 @@ func TestMultipartRecvShapeMatchesCallbackShape(t *testing.T) {
 	for i, part := range directParts {
 		if !bytes.Equal(part.Data(), callbackParts[i]) {
 			t.Fatalf("part %d mismatch: direct=%q callback=%q", i, string(part.Data()), string(callbackParts[i]))
+		}
+	}
+}
+
+func TestSpotNodeCloseCascadesLiveSpots(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	node, err := ctx.SpotNode()
+	if err != nil {
+		t.Fatalf("SpotNode() error = %v", err)
+	}
+
+	spotA, err := node.Spot()
+	if err != nil {
+		t.Fatalf("Spot() spotA error = %v", err)
+	}
+	spotB, err := node.Spot()
+	if err != nil {
+		t.Fatalf("Spot() spotB error = %v", err)
+	}
+
+	if err := node.Close(); err != nil {
+		t.Fatalf("SpotNode.Close() error = %v", err)
+	}
+
+	if err := spotA.Close(); err != nil {
+		t.Fatalf("Spot.Close() after node cascade error = %v", err)
+	}
+	if err := spotB.Close(); err != nil {
+		t.Fatalf("Spot.Close() after node cascade error = %v", err)
+	}
+
+	if _, err := node.Spot(); err == nil {
+		t.Fatalf("SpotNode.Spot() should fail after node close")
+	} else {
+		var configErr *zlink.ConfigError
+		if !errors.As(err, &configErr) {
+			t.Fatalf("SpotNode.Spot() error type = %T, want *ConfigError", err)
+		}
+	}
+
+	if err := spotA.SetSubscription("topic.alpha"); err == nil {
+		t.Fatalf("Spot.SetSubscription() should fail after node cascade close")
+	} else {
+		var configErr *zlink.ConfigError
+		if !errors.As(err, &configErr) {
+			t.Fatalf("Spot.SetSubscription() error type = %T, want *ConfigError", err)
+		}
+		if configErr.Result != zlink.ConfigInvalidHandle {
+			t.Fatalf("Spot.SetSubscription() result = %v, want %v", configErr.Result, zlink.ConfigInvalidHandle)
 		}
 	}
 }

@@ -9,8 +9,8 @@ def main():
     with zlink.Context() as ctx:
         with zlink.SpotNode(ctx) as pub_node:
             with zlink.SpotNode(ctx) as sub_node:
-                with zlink.Spot(pub_node) as pub_spot:
-                    with zlink.Spot(sub_node) as sub_spot:
+                with pub_node.create_spot() as pub_spot:
+                    with sub_node.create_spot() as sub_spot:
                         pub_node.bind("tcp://127.0.0.1:0")
                         endpoint = pub_node.last_endpoint()
                         sub_node.connect_peer(endpoint)
@@ -18,12 +18,17 @@ def main():
                         deadline = time.monotonic() + 5.0
                         while time.monotonic() < deadline:
                             pub_spot.publish(b"room:lobby", [b"hello-spot"])
-                            received = sub_spot.try_subscribe()
-                            if received is None:
+                            try:
+                                received = sub_spot.subscribe(
+                                    flags=zlink.RecvFlags.DONT_WAIT
+                                )
+                            except zlink.RecvError as exc:
+                                if exc.result != zlink.RecvResult.NO_DATA:
+                                    raise
                                 time.sleep(0.01)
                                 continue
                             with received:
-                                topic = received.topic.decode("utf-8")
+                                topic = received.topic
                                 data = received.to_bytes_list()[0].decode("utf-8")
                                 print(f'[spot/recv] publish: "{topic}/{data}" \u2192 subscribe: "{topic}/{data}"')
                             return

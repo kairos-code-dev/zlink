@@ -4,8 +4,13 @@ package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
 import java.lang.foreign.MemorySegment;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 public final class Context implements AutoCloseable {
+    private static final boolean DEBUG_REQREP =
+      Boolean.getBoolean("zlink.reqrep.debug");
     private final ContextOptions options;
     private MemorySegment handle;
 
@@ -35,7 +40,9 @@ public final class Context implements AutoCloseable {
     public void close() {
         if (handle == null || handle.address() == 0)
             return;
+        debug("ctxTerm begin");
         Native.ctxTerm(handle);
+        debug("ctxTerm end");
         handle = MemorySegment.NULL;
     }
 
@@ -58,5 +65,16 @@ public final class Context implements AutoCloseable {
     private void ensureOpen() {
         if (handle == null || handle.address() == 0)
             throw new IllegalStateException("context is closed");
+    }
+
+    private static void debug(String message) {
+        if (DEBUG_REQREP) {
+            try {
+                Files.writeString(Path.of("/tmp/zlink-reqrep.log"),
+                    "[context] " + message + System.lineSeparator(),
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } catch (Exception ignored) {
+            }
+        }
     }
 }

@@ -30,12 +30,12 @@ def main(argv=None):
                 for index, sock in enumerate(sockets):
                     sock.set_routing_id(f"CLIENT-{index}".encode("ascii"))
                     monitor = stack.enter_context(
-                        sock.monitor_open(zlink.MonitorEvent.CONNECTION_READY)
+                        sock.monitor_open(zlink.MonitorEventMask.CONNECTION_READY)
                     )
                     sock.connect(args.endpoint)
                     monitors.append(monitor)
                 for monitor in monitors:
-                    wait_monitor_event(monitor, zlink.MonitorEvent.CONNECTION_READY)
+                    wait_monitor_event(monitor, zlink.MonitorEventMask.CONNECTION_READY)
 
                 def worker(sock, slot):
                     local_latencies = []

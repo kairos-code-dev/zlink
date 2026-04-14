@@ -61,6 +61,16 @@ internal static class RoutingIdCodec
         return publicValue;
     }
 
+    internal static RoutingId? ToRoutingId(ReadOnlySpan<byte> routingId)
+    {
+        return RoutingId.FromOptionalBytes(routingId);
+    }
+
+    internal static byte[] FromRoutingId(RoutingId routingId)
+    {
+        return routingId.ToByteArray();
+    }
+
     internal static byte[] FromPublicString(string routingId, string paramName)
     {
         if (routingId == null)

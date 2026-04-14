@@ -44,9 +44,7 @@ int main ()
     zlink::monitor_handle_t sub_monitor = subscriber.monitor_handle ();
 
     assert (publisher.bind ("tcp://127.0.0.1:0") == 0);
-    std::string endpoint;
-    assert (publisher.get_option (zlink::socket_options::last_endpoint, endpoint)
-            == 0);
+    const std::string endpoint = publisher.options ().last_endpoint ();
     assert (!endpoint.empty ());
     assert (subscriber.connect (endpoint) == 0);
     assert (detail::wait_connected (pub_monitor, sub_monitor));
@@ -54,9 +52,8 @@ int main ()
     const std::string topic = detail::k_pubsub_topic;
     std::promise<callback_result_t> result_promise;
     std::future<callback_result_t> result_future = result_promise.get_future ();
-    assert (subscriber.set_subscription (topic) == 0);
-    assert (subscriber.on_subscribe (&subscribe_callback, &result_promise)
-            == 0);
+    subscriber.set_subscription (topic);
+    subscriber.on_subscribe (&subscribe_callback, &result_promise);
 
     const zlink::subscription_event_t event =
       publisher.receive_subscription_event ();

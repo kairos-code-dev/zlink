@@ -8,21 +8,19 @@ test('request-reply helpers expose canonical socket accessors', () => {
   const ctx = new zlink.Context();
   const routerSocket = new zlink.RouterSocket(ctx);
   const dealerSocket = new zlink.DealerSocket(ctx);
-  const router = new zlink.RequestRouter(routerSocket);
-  const dealer = new zlink.RequestDealer(dealerSocket);
 
-  assert.equal(router.socket(), routerSocket);
-  assert.equal(dealer.socket(), dealerSocket);
-  assert.equal(typeof router.request, 'function');
-  assert.equal(typeof router.reply, 'function');
-  assert.equal(typeof router.recv, 'function');
-  assert.equal(typeof router.onReceive, 'function');
-  assert.equal(typeof dealer.request, 'function');
-  assert.equal(typeof dealer.recv, 'function');
-  assert.equal(typeof dealer.onReceive, 'function');
+  assert.equal(typeof routerSocket.request, 'function');
+  assert.equal(typeof routerSocket.reply, 'function');
+  assert.equal(typeof routerSocket.requestToSpot, 'function');
+  assert.equal(typeof routerSocket.replyToSpot, 'function');
+  assert.equal(typeof routerSocket.recv, 'function');
+  assert.equal(typeof routerSocket.onReceive, 'function');
+  assert.equal(typeof dealerSocket.request, 'function');
+  assert.equal(typeof dealerSocket.recv, 'function');
+  assert.equal(typeof dealerSocket.onReceive, 'function');
 
-  dealer.close();
-  router.close();
+  dealerSocket.close();
+  routerSocket.close();
   ctx.close();
 });
 
@@ -30,13 +28,16 @@ test('router recv and reply still work through the canonical socket surface', ()
   const ctx = new zlink.Context();
   const routerSocket = new zlink.RouterSocket(ctx);
   const dealerSocket = new zlink.DealerSocket(ctx);
+  const clientRoutingId = zlink.RoutingId.fromBytes(Buffer.from('request-reply-client'));
 
   routerSocket.bind('inproc://request-reply-contract');
+  dealerSocket.setRoutingId(clientRoutingId);
   dealerSocket.connect('inproc://request-reply-contract');
 
   dealerSocket.send('ping');
   const request = routerSocket.recv();
-  assert.ok(Buffer.isBuffer(request.routingId));
+  assert.ok(request.routingId instanceof zlink.RoutingId);
+  assert.equal(request.routingId.toBytes().toString(), 'request-reply-client');
   assert.equal(request.requestSeq, null);
   assert.equal(request.parts[0].data().toString(), 'ping');
   routerSocket.send(request.routingId, 'pong');
@@ -46,6 +47,37 @@ test('router recv and reply still work through the canonical socket surface', ()
   assert.equal(reply.requestSeq, null);
 
   dealerSocket.close();
+  routerSocket.close();
+  ctx.close();
+});
+
+test('reply helpers reject non-none flags when the core lacks reply flag support', () => {
+  const ctx = new zlink.Context();
+  const routerSocket = new zlink.RouterSocket(ctx);
+  const spotNode = new zlink.SpotNode(ctx);
+  const spot = spotNode.createSpot();
+  const routingId = zlink.RoutingId.fromBytes(Buffer.from('peer'));
+  const spotRoutingId = zlink.RoutingId.fromBytes(Buffer.from('spot'));
+
+  assert.throws(
+    () => routerSocket.reply(routingId, 1n, 'pong', zlink.SendFlags.DontWait),
+    (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported
+  );
+  assert.throws(
+    () => routerSocket.replyToSpot(routingId, spotRoutingId, 1n, 'pong', zlink.SendFlags.DontWait),
+    (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported
+  );
+  assert.throws(
+    () => spot.replyToSpot(routingId, spotRoutingId, 1n, 'pong', zlink.SendFlags.DontWait),
+    (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported
+  );
+  assert.throws(
+    () => spot.replyToRouter(routingId, 1n, 'pong', zlink.SendFlags.DontWait),
+    (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported
+  );
+
+  spot.close();
+  spotNode.close();
   routerSocket.close();
   ctx.close();
 });

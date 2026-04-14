@@ -3,8 +3,7 @@
 //! These tests confirm that:
 //! - Socket types expose only their specific capabilities
 //! - Typed option surfaces exist (no raw option bags)
-//! - Monitor canonical surface exists (recv / try_recv)
-//! - Blocking/non-blocking naming follows try_* convention
+//! - Monitor canonical surface exists (recv)
 
 use zlink::*;
 
@@ -18,10 +17,10 @@ fn pair_socket_has_send_recv() {
     let sock = ctx.pair_socket().unwrap();
     sock.bind("inproc://surface-pair").unwrap();
 
-    // PairSocket exposes: send, try_send, recv, try_recv
-    let msg = Message::from_bytes(b"test").unwrap();
-    let _ = sock.try_send(msg);
-    let _ = sock.try_recv();
+    // PairSocket exposes: send, recv
+    let msg = Message::copy_from(b"test").unwrap();
+    let _ = sock.send_with_flags(msg, SendFlags::DONT_WAIT);
+    let _ = sock.recv_with_flags(RecvFlags::DONT_WAIT);
 }
 
 #[test]
@@ -30,10 +29,10 @@ fn pub_socket_has_publish_no_recv() {
     let sock = ctx.pub_socket().unwrap();
     sock.bind("inproc://surface-pub").unwrap();
 
-    // PubSocket exposes: publish, try_publish
-    let msg = Message::from_bytes(b"payload").unwrap();
-    let _ = sock.try_publish("market.price", msg);
-    // No recv / try_recv on PubSocket – compile-time enforced
+    // PubSocket exposes: publish
+    let msg = Message::copy_from(b"payload").unwrap();
+    let _ = sock.publish_with_flags("market.price", msg, SendFlags::DONT_WAIT);
+    // No recv on PubSocket – compile-time enforced
 }
 
 #[test]
@@ -43,8 +42,8 @@ fn sub_socket_has_subscribe_no_send() {
     sock.connect("inproc://surface-sub-target").unwrap();
     sock.set_subscription("").unwrap();
 
-    // SubSocket exposes: subscribe, try_subscribe, set_subscription, unset_subscription
-    let _ = sock.try_subscribe();
+    // SubSocket exposes: subscribe, set_subscription, unset_subscription
+    let _ = sock.subscribe_with_flags(RecvFlags::DONT_WAIT);
     // No send on SubSocket – compile-time enforced
 }
 
@@ -70,9 +69,9 @@ fn router_socket_send_requires_routing_id() {
     sock.bind("inproc://surface-router").unwrap();
 
     // RouterSocket::send takes (RoutingId, parts)
-    let rid = RoutingId::new(b"peer-001").unwrap();
-    let msg = Message::from_bytes(b"response").unwrap();
-    let _ = sock.try_send(&rid, msg);
+    let rid = RoutingId::from_bytes(b"peer-001");
+    let msg = Message::copy_from(b"response").unwrap();
+    let _ = sock.send(&rid, msg);
 }
 
 #[test]
@@ -81,9 +80,9 @@ fn stream_socket_send_requires_routing_id() {
     let sock = ctx.stream_socket().unwrap();
     sock.bind("tcp://127.0.0.1:*").unwrap();
 
-    let rid = RoutingId::new(b"client-001").unwrap();
-    let msg = Message::from_bytes(b"data").unwrap();
-    let _ = sock.try_send(&rid, msg);
+    let rid = RoutingId::from_bytes(b"client-001");
+    let msg = Message::copy_from(b"data").unwrap();
+    let _ = sock.send(&rid, msg);
 }
 
 #[test]
@@ -92,9 +91,8 @@ fn xpub_socket_has_subscription_event() {
     let sock = ctx.xpub_socket().unwrap();
     sock.bind("inproc://surface-xpub").unwrap();
 
-    // XPubSocket: publish, try_publish, receive_subscription_event,
-    // try_receive_subscription_event, on_send_ready
-    let _ = sock.try_receive_subscription_event();
+    // XPubSocket: publish, receive_subscription_event, on_send_ready
+    let _ = sock.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT);
     let _method = XPubSocket::on_send_ready::<fn()>;
 }
 
@@ -105,7 +103,7 @@ fn xsub_socket_has_subscribe_no_send() {
     sock.connect("inproc://surface-xsub-target").unwrap();
     sock.set_subscription("").unwrap();
 
-    let _ = sock.try_subscribe();
+    let _ = sock.subscribe_with_flags(RecvFlags::DONT_WAIT);
     let _ = sock.sub_options().topics_count();
     sock.on_subscribe(|_topic_message| {}).unwrap();
 }
@@ -142,7 +140,7 @@ fn router_typed_options() {
     router.set_mandatory(true).unwrap();
     router.set_handover(false).unwrap();
     router.set_probe(false).unwrap();
-    sock.set_routing_id(&RoutingId::new(b"router-surface").unwrap())
+    sock.set_routing_id(&RoutingId::from_bytes(b"router-surface"))
         .unwrap();
     common
         .set_linger(std::time::Duration::from_millis(1))
@@ -179,20 +177,22 @@ fn stream_typed_options() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn socket_monitor_has_recv_try_recv() {
+fn socket_monitor_has_recv() {
     let ctx = Context::new().unwrap();
     let sock = ctx.pair_socket().unwrap();
     sock.bind("inproc://surface-monitor").unwrap();
 
     let mon = SocketMonitor::open(&sock).unwrap();
 
-    // Monitor exposes recv() and try_recv()
-    let _ = mon.try_recv();
+    // Monitor exposes recv()
+    let _recv: fn(&SocketMonitor) -> Result<MonitorEvent, RecvError> = SocketMonitor::recv;
+    let _ignore: fn() -> fn(&MonitorEvent) = SocketMonitor::ignore_handler;
+    let _ = mon;
 }
 
 #[test]
 fn message_diagnostic_surface_exists() {
-    let msg = Message::from_bytes(b"surface").unwrap();
+    let msg = Message::copy_from(b"surface").unwrap();
     let _ = msg.ref_count();
     let _ = msg.get_property("missing");
 }

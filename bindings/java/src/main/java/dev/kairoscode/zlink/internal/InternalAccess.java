@@ -5,12 +5,16 @@ package dev.kairoscode.zlink.internal;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.Received;
+import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.ServiceMonitor;
 import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.spot.Spot;
+import java.util.List;
+import java.util.function.BiConsumer;
 
 /**
  * Reflection bridge for package-private binding internals used by subpackages.
@@ -36,6 +40,8 @@ public final class InternalAccess {
         method(Message.class, "copyTo", MemorySegment.class);
     private static final Method MESSAGE_MOVE_TO =
         method(Message.class, "moveTo", MemorySegment.class);
+    private static final Method MESSAGE_SHARED_COPY_OF =
+        method(Message.class, "sharedCopyOf", Message.class);
     private static final Method MESSAGE_FROM_MSG_VECTOR =
         method(Message.class, "fromMsgVector", MemorySegment.class, long.class);
     private static final Method MESSAGE_FROM_OWNED_MSG_VECTOR =
@@ -46,13 +52,18 @@ public final class InternalAccess {
             long.class);
     private static final Constructor<Received> RECEIVED_TRUSTED_CTOR =
         constructor(Received.class, dev.kairoscode.zlink.RoutingId.class,
-            Message[].class, boolean.class);
+            dev.kairoscode.zlink.RoutingId.class, Message[].class,
+            boolean.class, long.class, boolean.class, BiConsumer.class);
     private static final Method SOCKET_CORE_IN_CALLBACK =
         method(classForName("dev.kairoscode.zlink.SocketCore"), "inCallback");
     private static final Method SOCKET_CORE_ENTER_CALLBACK =
         method(classForName("dev.kairoscode.zlink.SocketCore"), "enterCallback");
     private static final Method SOCKET_CORE_LEAVE_CALLBACK =
         method(classForName("dev.kairoscode.zlink.SocketCore"), "leaveCallback");
+    private static final Method ROUTING_ID_FROM_TRUSTED =
+        method(RoutingId.class, "fromTrusted", byte[].class);
+    private static final Method ROUTING_ID_TRUSTED_BYTES =
+        method(RoutingId.class, "trustedBytes");
 
     private InternalAccess() {}
 
@@ -96,6 +107,10 @@ public final class InternalAccess {
         invoke(MESSAGE_MOVE_TO, message, destination);
     }
 
+    public static Message messageSharedCopyOf(Message message) {
+        return (Message) invoke(MESSAGE_SHARED_COPY_OF, null, message);
+    }
+
     public static Message[] messageFromMsgVector(MemorySegment partsAddr,
                                                  long count) {
         return (Message[]) invoke(MESSAGE_FROM_MSG_VECTOR, null, partsAddr,
@@ -117,8 +132,18 @@ public final class InternalAccess {
 
     public static Received received(dev.kairoscode.zlink.RoutingId routingId,
                                     Message[] parts) {
+        return received(routingId, null, parts, 0L, false, null);
+    }
+
+    public static Received received(dev.kairoscode.zlink.RoutingId routingId,
+                                    dev.kairoscode.zlink.RoutingId spotRid,
+                                    Message[] parts,
+                                    long requestSeq,
+                                    boolean hasRequestSeq,
+                                    BiConsumer<List<Message>, SendFlags> replySender) {
         try {
-            return RECEIVED_TRUSTED_CTOR.newInstance(routingId, parts, true);
+            return RECEIVED_TRUSTED_CTOR.newInstance(routingId, spotRid, parts,
+              true, requestSeq, hasRequestSeq, replySender);
         } catch (ReflectiveOperationException ex) {
             throw new IllegalStateException(
                 "failed to create trusted Received", ex);
@@ -135,6 +160,14 @@ public final class InternalAccess {
 
     public static void leaveCallback() {
         invoke(SOCKET_CORE_LEAVE_CALLBACK, null);
+    }
+
+    public static RoutingId routingIdFromTrusted(byte[] value) {
+        return (RoutingId) invoke(ROUTING_ID_FROM_TRUSTED, null, value);
+    }
+
+    public static byte[] routingIdTrustedBytes(RoutingId routingId) {
+        return (byte[]) invoke(ROUTING_ID_TRUSTED_BYTES, routingId);
     }
 
     private static Class<?> classForName(String name) {

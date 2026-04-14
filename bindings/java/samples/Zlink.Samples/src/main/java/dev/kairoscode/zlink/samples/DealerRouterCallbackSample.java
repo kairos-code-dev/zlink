@@ -29,7 +29,7 @@ public final class DealerRouterCallbackSample {
 
             router.onReceive(received -> {
                 String request = SampleSupport.singleUtf8(received);
-                RoutingId rid = received.routingId();
+                RoutingId rid = received.routingId().orElse(null);
                 if (!SampleSupport.DEALER_REQUEST.equals(request) || rid == null) {
                     throw new IllegalStateException("unexpected routed request");
                 }

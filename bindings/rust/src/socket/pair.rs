@@ -2,8 +2,8 @@ use std::ffi::c_void;
 use std::time::Duration;
 
 use crate::ctx::Context;
-use crate::domain::{Received, SendResult};
-use crate::error::ZlinkError;
+use crate::domain::Received;
+use crate::error::{ConfigError, HandlerError, RecvError, SubmitError};
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
 use crate::message::IntoMultipart;
@@ -21,13 +21,13 @@ pub struct PairSocket {
 }
 
 impl PairSocket {
-    pub(crate) fn new(ctx: &Context) -> Result<Self, ZlinkError> {
+    pub(crate) fn new(ctx: &Context) -> Result<Self, ConfigError> {
         Ok(Self {
             inner: SocketInner::create(ctx, ffi::zlink_socket_type_t::ZLINK_SOCKET_PAIR)?,
         })
     }
 
-    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
+    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError> {
         self.inner.send(parts)
     }
 
@@ -35,34 +35,26 @@ impl PairSocket {
         &self,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), ZlinkError> {
+    ) -> Result<(), SubmitError> {
         self.inner.send_with_flags(parts, flags)
     }
 
-    pub fn try_send(&self, parts: impl IntoMultipart) -> Result<SendResult, ZlinkError> {
-        self.inner.try_send(parts)
-    }
-
-    pub fn recv(&self) -> Result<Received, ZlinkError> {
+    pub fn recv(&self) -> Result<Received, RecvError> {
         self.inner.recv()
     }
 
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError> {
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {
         self.inner.recv_with_flags(flags)
     }
 
-    pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError> {
-        self.inner.try_recv()
-    }
-
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
         F: Fn(Received) + Send + 'static,
     {
         self.inner.on_receive(handler)
     }
 
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
         F: Fn() + Send + 'static,
     {

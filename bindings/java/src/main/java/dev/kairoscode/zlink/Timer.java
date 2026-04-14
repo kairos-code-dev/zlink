@@ -75,6 +75,9 @@ public final class Timer implements AutoCloseable {
 
     public long recv(int flags) {
         ensureOpen();
+        if (flags != 0) {
+            throw new RecvException(RecvResult.NOT_SUPPORTED);
+        }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment fireCount = arena.allocate(ValueLayout.JAVA_LONG);
             int rc = Native.timerRecv(handle, fireCount);

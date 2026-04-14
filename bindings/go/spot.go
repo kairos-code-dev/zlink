@@ -40,27 +40,23 @@ static inline int zlink_spot_request_router_go_local(void *spot, const zlink_rou
 static inline int zlink_spot_recv_go_local(void *spot, const zlink_routing_id_t **source_rid, const zlink_routing_id_t **spot_rid, uint64_t *request_seq, zlink_msg_t **parts, size_t *part_count, zlink_recv_flags_t flags) {
     return zlink_spot_recv(spot, source_rid, spot_rid, request_seq, parts, part_count, flags);
 }
-
-static inline int zlink_spot_reply_spot_go_local(void *spot, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t part_count) {
-    return zlink_spot_reply_spot(spot, dest_node_rid, dest_spot_rid, request_seq, parts, part_count);
-}
-
-static inline int zlink_spot_reply_router_go_local(void *spot, const zlink_routing_id_t *peer_rid, uint64_t request_seq, zlink_msg_t *parts, size_t part_count) {
-    return zlink_spot_reply_router(spot, peer_rid, request_seq, parts, part_count);
-}
 */
 import "C"
 
 import (
 	"runtime/cgo"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 )
 
 type SpotNode struct {
-	handle unsafe.Pointer
-	closed bool
+	handle  unsafe.Pointer
+	closed  bool
+	closing bool
+	mu      sync.Mutex
+	spots   map[*spotCore]struct{}
 }
 
 func newSpotNode(ctx *Context) (*SpotNode, error) {
@@ -71,7 +67,7 @@ func newSpotNode(ctx *Context) (*SpotNode, error) {
 	if handle == nil {
 		return nil, configErrorFromErrno(currentErrno())
 	}
-	return &SpotNode{handle: handle}, nil
+	return &SpotNode{handle: handle, spots: make(map[*spotCore]struct{})}, nil
 }
 
 func (n *SpotNode) raw() unsafe.Pointer {
@@ -83,80 +79,170 @@ func (n *SpotNode) raw() unsafe.Pointer {
 
 func (n *SpotNode) Bind(endpoint string) error {
 	return n.withCString(endpoint, func(cstr *C.char) error {
-		return bindErrorFromResult(C.zlink_spot_node_bind(n.handle, cstr))
+		handle, err := n.handleOrError()
+		if err != nil {
+			return err
+		}
+		return bindErrorFromResult(C.zlink_spot_node_bind(handle, cstr))
 	})
 }
 
 func (n *SpotNode) ConnectPeer(endpoint string) error {
 	return n.withCString(endpoint, func(cstr *C.char) error {
-		return connectErrorFromResult(C.zlink_spot_node_connect_peer(n.handle, cstr))
+		handle, err := n.handleOrError()
+		if err != nil {
+			return err
+		}
+		return connectErrorFromResult(C.zlink_spot_node_connect_peer(handle, cstr))
 	})
 }
 
 func (n *SpotNode) AttachDiscovery(discovery *Discovery) error {
-	if n == nil || n.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
 	if discovery == nil || discovery.closed {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	return configErrorFromResult(C.zlink_spot_node_attach_discovery(n.handle, discovery.raw()))
+	handle, err := n.handleOrError()
+	if err != nil {
+		return err
+	}
+	return configErrorFromResult(C.zlink_spot_node_attach_discovery(handle, discovery.raw()))
+}
+
+func (n *SpotNode) SetRoutingID(id RoutingID) error {
+	handle, err := n.handleOrError()
+	if err != nil {
+		return err
+	}
+	raw := id.toC()
+	return configErrorFromResult(C.zlink_set_routing_id(handle, routingIDPointer(&raw), C.size_t(raw.size)))
+}
+
+func (n *SpotNode) RoutingID() (RoutingID, error) {
+	handle, err := n.handleOrError()
+	if err != nil {
+		return RoutingID{}, err
+	}
+	return getHandleRoutingID(handle)
 }
 
 func (n *SpotNode) DisconnectPeer(endpoint string) error {
 	return n.withCString(endpoint, func(cstr *C.char) error {
-		return connectErrorFromResult(C.zlink_spot_node_disconnect_peer(n.handle, cstr))
+		handle, err := n.handleOrError()
+		if err != nil {
+			return err
+		}
+		return connectErrorFromResult(C.zlink_spot_node_disconnect_peer(handle, cstr))
 	})
 }
 
 func (n *SpotNode) SetTLSServer(certPath string, keyPath string, requireClientCert bool) error {
-	if n == nil || n.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	handle, err := n.handleOrError()
+	if err != nil {
+		return err
 	}
-	return setTLSServer(n.raw(), certPath, keyPath, requireClientCert)
+	return setTLSServer(handle, certPath, keyPath, requireClientCert)
 }
 
 func (n *SpotNode) SetTLSClient(caCertPath string, hostname string, trustSystem bool) error {
-	if n == nil || n.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	handle, err := n.handleOrError()
+	if err != nil {
+		return err
 	}
-	return setTLSClient(n.raw(), caCertPath, hostname, trustSystem)
+	return setTLSClient(handle, caCertPath, hostname, trustSystem)
 }
 
 func (n *SpotNode) Spot() (*Spot, error) {
-	if n == nil || n.closed {
+	if n == nil {
+		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.closed || n.closing || n.handle == nil {
 		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	handle := C.zlink_spot_new(n.handle)
 	if handle == nil {
 		return nil, configErrorFromErrno(currentErrno())
 	}
-	return &Spot{core: &spotCore{handle: handle}}, nil
+	core := &spotCore{handle: handle, owner: n}
+	n.spots[core] = struct{}{}
+	return &Spot{core: core}, nil
 }
 
 func (n *SpotNode) Close() error {
-	if n == nil || n.closed {
+	if n == nil {
+		return nil
+	}
+	n.mu.Lock()
+	if n.closed || n.closing {
+		n.mu.Unlock()
+		return nil
+	}
+	n.closing = true
+	spots := make([]*spotCore, 0, len(n.spots))
+	for spot := range n.spots {
+		spots = append(spots, spot)
+	}
+	n.mu.Unlock()
+
+	for _, spot := range spots {
+		if err := spot.Close(); err != nil {
+			n.mu.Lock()
+			n.closing = false
+			n.mu.Unlock()
+			return err
+		}
+	}
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.closed {
+		n.closing = false
 		return nil
 	}
 	handle := n.handle
 	if err := closeErrorFromResult(C.zlink_spot_node_destroy(&handle)); err != nil {
+		n.closing = false
 		return err
 	}
 	n.closed = true
+	n.closing = false
 	n.handle = nil
+	n.spots = nil
 	return nil
 }
 
 func (n *SpotNode) withCString(value string, fn func(*C.char) error) error {
-	if n == nil || n.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
 	if err := validateEndpointString(value); err != nil {
 		return err
 	}
 	cstr := C.CString(value)
 	defer C.free(unsafe.Pointer(cstr))
 	return fn(cstr)
+}
+
+func (n *SpotNode) handleOrError() (unsafe.Pointer, error) {
+	if n == nil {
+		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.closed || n.closing || n.handle == nil {
+		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	return n.handle, nil
+}
+
+func (n *SpotNode) unregisterSpot(spot *spotCore) {
+	if n == nil {
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.spots == nil {
+		return
+	}
+	delete(n.spots, spot)
 }
 
 type spotCore struct {
@@ -166,6 +252,8 @@ type spotCore struct {
 	routedHandle    cgo.Handle
 	sendReadyHandle cgo.Handle
 	dispatchHandle  cgo.Handle
+	owner           *SpotNode
+	mu              sync.Mutex
 }
 
 func (s *spotCore) raw() unsafe.Pointer {
@@ -176,31 +264,47 @@ func (s *spotCore) raw() unsafe.Pointer {
 }
 
 func (s *spotCore) Close() error {
-	if s == nil || s.closed {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
 		return nil
 	}
 	handle := s.handle
 	if err := closeErrorFromResult(C.zlink_spot_destroy(&handle)); err != nil {
+		s.mu.Unlock()
 		return err
 	}
-	if s.subscribeHandle != 0 {
-		s.subscribeHandle.Delete()
-		s.subscribeHandle = 0
-	}
-	if s.routedHandle != 0 {
-		s.routedHandle.Delete()
-		s.routedHandle = 0
-	}
-	if s.sendReadyHandle != 0 {
-		s.sendReadyHandle.Delete()
-		s.sendReadyHandle = 0
-	}
-	if s.dispatchHandle != 0 {
-		s.dispatchHandle.Delete()
-		s.dispatchHandle = 0
-	}
+	subscribeHandle := s.subscribeHandle
+	routedHandle := s.routedHandle
+	sendReadyHandle := s.sendReadyHandle
+	dispatchHandle := s.dispatchHandle
+	owner := s.owner
+	s.subscribeHandle = 0
+	s.routedHandle = 0
+	s.sendReadyHandle = 0
+	s.dispatchHandle = 0
 	s.closed = true
 	s.handle = nil
+	s.owner = nil
+	s.mu.Unlock()
+	if subscribeHandle != 0 {
+		subscribeHandle.Delete()
+	}
+	if routedHandle != 0 {
+		routedHandle.Delete()
+	}
+	if sendReadyHandle != 0 {
+		sendReadyHandle.Delete()
+	}
+	if dispatchHandle != 0 {
+		dispatchHandle.Delete()
+	}
+	if owner != nil {
+		owner.unregisterSpot(s)
+	}
 	return nil
 }
 
@@ -253,6 +357,21 @@ func (s *Spot) Close() error {
 		return nil
 	}
 	return s.core.Close()
+}
+
+func (s *Spot) SetRoutingID(rid RoutingID) error {
+	if s == nil || s.core == nil || s.core.closed {
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	raw := rid.toC()
+	return configErrorFromResult(C.zlink_set_routing_id(s.raw(), routingIDPointer(&raw), C.size_t(raw.size)))
+}
+
+func (s *Spot) RoutingID() (RoutingID, error) {
+	if s == nil || s.core == nil || s.core.closed {
+		return RoutingID{}, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	return getHandleRoutingID(s.raw())
 }
 
 func (s *Spot) SetSendHWM(value int) error {
@@ -322,7 +441,9 @@ func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID, callback Reques
 }
 
 func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error {
-	_ = flags
+	if err := validateReplyFlags(flags); err != nil {
+		return err
+	}
 	cloned, err := cloneParts(parts)
 	if err != nil {
 		return err
@@ -334,7 +455,7 @@ func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64
 	}
 	node := destNodeRid.toC()
 	spot := destSpotRid.toC()
-	if err := submitErrorFromResult(C.zlink_spot_reply_spot_go_local(s.raw(), &node, &spot, C.uint64_t(requestSeq), prepared.ptr(), prepared.count())); err != nil {
+	if err := submitErrorFromResult(C.zlink_spot_reply_spot(s.raw(), &node, &spot, C.uint64_t(requestSeq), prepared.ptr(), prepared.count())); err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
 			return restoreErr
 		}
@@ -365,7 +486,9 @@ func (s *Spot) RequestToRouter(peerRid RoutingID, callback RequestReplyCallback,
 }
 
 func (s *Spot) ReplyToRouter(peerRid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error {
-	_ = flags
+	if err := validateReplyFlags(flags); err != nil {
+		return err
+	}
 	cloned, err := cloneParts(parts)
 	if err != nil {
 		return err
@@ -376,7 +499,7 @@ func (s *Spot) ReplyToRouter(peerRid RoutingID, requestSeq uint64, flags SendFla
 		return err
 	}
 	peer := peerRid.toC()
-	if err := submitErrorFromResult(C.zlink_spot_reply_router_go_local(s.raw(), &peer, C.uint64_t(requestSeq), prepared.ptr(), prepared.count())); err != nil {
+	if err := submitErrorFromResult(C.zlink_spot_reply_router(s.raw(), &peer, C.uint64_t(requestSeq), prepared.ptr(), prepared.count())); err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
 			return restoreErr
 		}
@@ -457,10 +580,12 @@ func (s *Spot) RecvRouted(flags RecvFlags) (*Received, error) {
 		return nil, err
 	}
 	return &Received{
-		routingID:     routingIDFromC(*sourceRID),
+		routingID:     routingIDFromCPtr(sourceRID),
+		spotRID:       routingIDFromCPtr(spotRID),
 		parts:         clonedParts,
 		requestSeq:    uint64(requestSeq),
 		hasRequestSeq: requestSeq != 0,
+		reply:         receivedReplyToSpot(s, routingIDFromCPtr(sourceRID), routingIDFromCPtr(spotRID), uint64(requestSeq)),
 	}, nil
 }
 
@@ -510,7 +635,7 @@ func (s *Spot) requestToSpot(destNodeRid, destSpotRid RoutingID, callback Reques
 	}
 	go func() {
 		result := <-resultCh
-		callback(result.result, result.received)
+		callback(result.result, result.parts)
 	}()
 	return nil
 }
@@ -525,7 +650,7 @@ func (s *Spot) requestToRouter(peerRid RoutingID, callback RequestReplyCallback,
 	}
 	go func() {
 		result := <-resultCh
-		callback(result.result, result.received)
+		callback(result.result, result.parts)
 	}()
 	return nil
 }

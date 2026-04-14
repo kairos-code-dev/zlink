@@ -8,7 +8,7 @@ namespace Zlink;
 
 public static class Zlink
 {
-    public static int Errno()
+    internal static int Errno()
     {
         return NativeMethods.zlink_errno();
     }

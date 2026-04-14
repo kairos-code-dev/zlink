@@ -2,7 +2,7 @@
 
 package dev.kairoscode.zlink.service.spot;
 
-import dev.kairoscode.zlink.ServiceEventSubjectKind;
+import dev.kairoscode.zlink.service.registry.ServiceEventSubjectKind;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;

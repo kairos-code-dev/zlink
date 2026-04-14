@@ -23,21 +23,15 @@ func main() {
 	dealerMon := samplecommon.OpenMonitor(dealerSocket)
 	defer dealerMon.Close()
 
-	router := zlink.NewRequestRouter(routerSocket)
-	defer router.Close()
-	dealer := zlink.NewRequestDealer(dealerSocket)
-	defer dealer.Close()
-
 	endpoint := samplecommon.UniqueTCP("request-reply-async")
-	rid, err := zlink.NewRoutingID([]byte("request-reply-client"))
-	samplecommon.Must(err)
+	rid := zlink.NewRoutingID([]byte("request-reply-client"))
 	samplecommon.Must(routerSocket.Bind(endpoint))
 	samplecommon.Must(dealerSocket.SetRoutingID(rid))
 	samplecommon.Must(dealerSocket.Connect(endpoint))
 	samplecommon.WaitConnected(routerMon, dealerMon)
 
 	requestDone := make(chan error, 1)
-	samplecommon.Must(router.OnReceive(func(received *zlink.Received) {
+	samplecommon.Must(routerSocket.OnReceive(func(received *zlink.Received) {
 		defer received.Close()
 		part, err := received.SinglePartOrError()
 		if err != nil {
@@ -52,38 +46,39 @@ func main() {
 			requestDone <- fmt.Errorf("unexpected request %q", string(part.Data()))
 			return
 		}
-		requestSeq, ok := received.RequestSeq()
-		if !ok {
+		requestSeq := received.RequestSeq()
+		if !received.HasRequestSeq() {
 			requestDone <- fmt.Errorf("missing request sequence")
 			return
 		}
-		requestDone <- router.Reply(received.RoutingID(), requestSeq, zlink.SendFlagsNone, samplecommon.Message("pong"))
+		requestDone <- routerSocket.Reply(received.RoutingID(), requestSeq, zlink.SendFlagsNone, samplecommon.Message("pong"))
 	}))
 
-	replyCh := make(chan *zlink.Received, 1)
+	replyCh := make(chan []*zlink.Message, 1)
 	errCh := make(chan error, 1)
-	samplecommon.Must(dealer.RequestCallback(func(result zlink.RequestResult, reply *zlink.Received) {
+	samplecommon.Must(dealerSocket.RequestCallback([][]byte{[]byte("ping")}, func(result zlink.RequestResult, reply []*zlink.Message) {
 		if result != zlink.RequestOK {
 			errCh <- fmt.Errorf("request failed: %d", result)
 			return
 		}
 		replyCh <- reply
-	}, zlink.SendFlagsNone, 2*time.Second, samplecommon.Message("ping")))
+	}, zlink.SendFlagsNone, 2*time.Second))
 
-	var reply *zlink.Received
+	var reply []*zlink.Message
 	select {
 	case err := <-errCh:
 		samplecommon.Must(err)
 	case reply = <-replyCh:
 	}
-	defer reply.Close()
+	defer reply[0].Close()
 
-	part, err := reply.SinglePartOrError()
-	samplecommon.Must(err)
-	if !bytes.Equal(part.Data(), []byte("pong")) {
-		samplecommon.Must(fmt.Errorf("unexpected reply %q", string(part.Data())))
+	if len(reply) != 1 {
+		samplecommon.Must(fmt.Errorf("unexpected reply part count %d", len(reply)))
+	}
+	if !bytes.Equal(reply[0].Data(), []byte("pong")) {
+		samplecommon.Must(fmt.Errorf("unexpected reply %q", string(reply[0].Data())))
 	}
 	samplecommon.Must(<-requestDone)
 
-	fmt.Printf("[dealer-router/request-reply/async] send: %q -> recv: %q\n", "ping", string(part.Data()))
+	fmt.Printf("[dealer-router/request-reply/async] send: %q -> recv: %q\n", "ping", string(reply[0].Data()))
 }

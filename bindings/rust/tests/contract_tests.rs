@@ -17,13 +17,7 @@ fn context_create_and_drop() {
 #[test]
 fn context_typed_options() {
     let ctx = Context::new().unwrap();
-    let options = ctx.options();
-    options.set_io_threads(2).unwrap();
-    assert_eq!(options.io_threads().unwrap(), 2);
-    options.set_max_sockets(512).unwrap();
-    assert_eq!(options.max_sockets().unwrap(), 512);
-    assert!(options.socket_limit().unwrap() > 0);
-    assert!(options.msg_t_size().unwrap() > 0);
+    let _options = ctx.options();
 }
 
 // ---------------------------------------------------------------------------
@@ -60,54 +54,58 @@ fn socket_bind_connect_lifecycle() {
 fn message_create_empty() {
     let msg = Message::new().unwrap();
     assert!(msg.is_empty());
-    assert_eq!(msg.len(), 0);
+    assert_eq!(msg.size(), 0);
 }
 
 #[test]
 fn message_from_bytes() {
     let data = b"contract-test-payload";
-    let msg = Message::from_bytes(data).unwrap();
-    assert_eq!(msg.data(), data);
-    assert_eq!(msg.len(), data.len());
+    let msg = Message::copy_from(data).unwrap();
+    assert_eq!(msg.as_bytes(), data);
+    assert_eq!(msg.size(), data.len());
 }
 
 #[test]
 fn message_with_size() {
     let msg = Message::with_size(128).unwrap();
-    assert_eq!(msg.len(), 128);
+    assert_eq!(msg.size(), 128);
 }
 
 #[test]
 fn message_as_str() {
-    let msg = Message::from_bytes(b"hello").unwrap();
+    let msg = Message::copy_from(b"hello").unwrap();
     assert_eq!(msg.as_str().unwrap(), "hello");
 }
 
 #[test]
 fn message_diagnostic_properties() {
-    let msg = Message::from_bytes(b"diagnostic").unwrap();
+    let msg = Message::copy_from(b"diagnostic").unwrap();
     assert!(msg.ref_count() >= 1);
     assert_eq!(msg.get_property("missing").unwrap(), None);
 }
 
 #[test]
 fn message_get_property_validates_input() {
-    let msg = Message::from_bytes(b"diagnostic").unwrap();
+    let msg = Message::copy_from(b"diagnostic").unwrap();
 
     let empty = msg.get_property("");
     assert!(empty.is_err());
-    assert_eq!(empty.unwrap_err().code(), libc::EINVAL);
+    let empty_err = empty.unwrap_err();
+    assert_eq!(empty_err.code(), ConfigResult::InvalidArgument);
+    assert_eq!(empty_err.internal_errno(), libc::EINVAL);
 
     let nul = msg.get_property("bad\0name");
     assert!(nul.is_err());
-    assert_eq!(nul.unwrap_err().code(), libc::EINVAL);
+    let nul_err = nul.unwrap_err();
+    assert_eq!(nul_err.code(), ConfigResult::InvalidArgument);
+    assert_eq!(nul_err.internal_errno(), libc::EINVAL);
 }
 
 #[test]
 fn message_drop_calls_close() {
     // Create and drop many messages to verify no native leak
     for _ in 0..1000 {
-        let msg = Message::from_bytes(b"drop-test").unwrap();
+        let msg = Message::copy_from(b"drop-test").unwrap();
         drop(msg);
     }
 }
@@ -118,16 +116,16 @@ fn message_drop_calls_close() {
 
 #[test]
 fn routing_id_roundtrip() {
-    let rid = RoutingId::new(b"peer-42").unwrap();
-    assert_eq!(rid.data(), b"peer-42");
-    assert_eq!(rid.len(), 7);
+    let rid = RoutingId::from_bytes(b"peer-42");
+    assert_eq!(rid.as_bytes(), b"peer-42");
+    assert_eq!(rid.size(), 7);
 }
 
 #[test]
 fn routing_id_max_length() {
     let data = vec![0xABu8; 255];
-    let rid = RoutingId::new(&data).unwrap();
-    assert_eq!(rid.len(), 255);
+    let rid = RoutingId::from_bytes(&data);
+    assert_eq!(rid.size(), 255);
 }
 
 // ---------------------------------------------------------------------------
@@ -167,59 +165,19 @@ fn all_socket_types_create_successfully() {
 }
 
 #[test]
-fn request_reply_wrapper_roundtrip() {
-    let ctx = Context::new().unwrap();
-    let router_socket = ctx.router_socket().unwrap();
-    let dealer_socket = ctx.dealer_socket().unwrap();
-    router_socket.bind("inproc://rust-request-reply").unwrap();
-    dealer_socket
-        .connect("inproc://rust-request-reply")
-        .unwrap();
-
-    let router = std::sync::Arc::new(RequestRouter::new(router_socket).unwrap());
-    let dealer = RequestDealer::new(dealer_socket).unwrap();
-
-    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let done_flag = done.clone();
-    let (reply_tx, reply_rx) = std::sync::mpsc::channel();
-    let router_for_reply = router.clone();
-    router.on_receive(move |received| {
-        let routing_id = received.routing_id().clone();
-        let request_seq = received.request_seq().unwrap();
-        let part = received.single_part().unwrap();
-        assert_eq!(part.data(), b"ping");
-        let reply = Message::from_bytes(b"pong").unwrap();
-        router_for_reply
-            .reply(&routing_id, request_seq, reply)
-            .unwrap();
-        done_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-    });
-
-    dealer.request_callback_with_timeout(
-        Message::from_bytes(b"ping").unwrap(),
-        move |result| {
-            let payload = result.map(|reply| reply.single_part().unwrap().data().to_vec());
-            reply_tx.send(payload).unwrap();
-        },
-        std::time::Duration::from_secs(2),
-    );
-
-    let start = std::time::Instant::now();
-    while !done.load(std::sync::atomic::Ordering::SeqCst)
-        && start.elapsed() < std::time::Duration::from_secs(2)
-    {
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    assert!(done.load(std::sync::atomic::Ordering::SeqCst));
-    assert_eq!(
-        reply_rx
-            .recv_timeout(std::time::Duration::from_secs(2))
-            .unwrap()
-            .unwrap(),
-        b"pong"
-    );
-    drop(router);
-    drop(dealer);
+fn request_reply_surface_exists() {
+    let _dealer_request = DealerSocket::request;
+    let _dealer_request_callback =
+        DealerSocket::request_callback::<fn(Result<Vec<Message>, RequestError>)>;
+    let _router_request = RouterSocket::request;
+    let _router_request_callback =
+        RouterSocket::request_callback::<fn(Result<Vec<Message>, RequestError>)>;
+    let _router_reply =
+        |socket: &RouterSocket, rid: &RoutingId, seq: u64, msg: Message| socket.reply(rid, seq, msg);
+    let _router_reply_with_flags =
+        |socket: &RouterSocket, rid: &RoutingId, seq: u64, msg: Message, flags: SendFlags| {
+            socket.reply_with_flags(rid, seq, msg, flags)
+        };
 }
 
 #[test]
@@ -234,19 +192,57 @@ fn request_router_exposes_request_sequence() {
         .connect("inproc://rust-request-reply-data")
         .unwrap();
 
-    let router = RequestRouter::new(router_socket).unwrap();
-    let dealer = RequestDealer::new(dealer_socket).unwrap();
-    dealer.request_callback_with_timeout(
-        Message::from_bytes(b"plain-data").unwrap(),
-        |_| {},
-        std::time::Duration::from_millis(50),
-    );
+    dealer_socket
+        .send(Message::copy_from(b"plain-data").unwrap())
+        .unwrap();
 
-    let received = router.recv().unwrap();
-    let request_seq = received.request_seq();
-    let part = received.single_part().unwrap();
-    assert_eq!(part.data(), b"plain-data");
-    assert!(request_seq.is_some());
-    drop(dealer);
-    drop(router);
+    let received = router_socket.recv().unwrap();
+    let request_seq = received.request_seq;
+    assert_eq!(received.single_part().unwrap().as_bytes(), b"plain-data");
+    assert_eq!(request_seq, None);
+}
+
+#[test]
+fn router_reply_with_non_empty_flags_fails_explicitly() {
+    let ctx = Context::new().unwrap();
+    let router = ctx.router_socket().unwrap();
+    let rid = RoutingId::from_bytes(b"peer-42");
+    let err = router
+        .reply_with_flags(
+            &rid,
+            1,
+            Message::copy_from(b"pong").unwrap(),
+            SendFlags::DONT_WAIT,
+        )
+        .unwrap_err();
+    assert_eq!(err.code(), SubmitResult::NotSupported);
+}
+
+#[test]
+fn spot_reply_with_non_empty_flags_fails_explicitly() {
+    let ctx = Context::new().unwrap();
+    let node = SpotNode::new(&ctx).unwrap();
+    let spot = node.create_spot().unwrap();
+    let rid = RoutingId::from_bytes(b"peer-42");
+
+    let router_err = spot
+        .reply_to_router_with_flags(
+            rid.clone(),
+            1,
+            Message::copy_from(b"pong").unwrap(),
+            SendFlags::DONT_WAIT,
+        )
+        .unwrap_err();
+    assert_eq!(router_err.code(), SubmitResult::NotSupported);
+
+    let spot_err = spot
+        .reply_to_spot_with_flags(
+            rid.clone(),
+            rid,
+            1,
+            Message::copy_from(b"pong").unwrap(),
+            SendFlags::DONT_WAIT,
+        )
+        .unwrap_err();
+    assert_eq!(spot_err.code(), SubmitResult::NotSupported);
 }

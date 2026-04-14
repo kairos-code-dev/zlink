@@ -14,6 +14,8 @@ class monitor_handle_t
 {
   public:
     monitor_handle_t () : _monitor (NULL) {}
+    inline static zlink_socket_monitor_handler_fn ignore_handler =
+      &zlink_monitor_ignore_handler;
 
     template<typename SocketLike>
     static monitor_handle_t open (const SocketLike &socket_,
@@ -72,12 +74,22 @@ class monitor_handle_t
         _event_userdata = userdata_;
     }
 
+    void on_event (zlink_socket_monitor_handler_fn handler_,
+                   void *userdata_ = NULL)
+    {
+        detail::throw_if_failed<handler_error_t> (
+          static_cast<handler_result_t> (
+            zlink_socket_monitor_handler (_monitor, handler_, userdata_)));
+        _event_handler = NULL;
+        _event_userdata = NULL;
+    }
+
     monitor_event_t recv ()
     {
         zlink_monitor_event_t event;
         detail::throw_if_failed<recv_error_t> (
           static_cast<recv_result_t> (
-            zlink_socket_monitor_recv (_monitor, &event, 0)));
+            zlink_socket_monitor_recv (_monitor, &event, ZLINK_RECV_FLAGS_NONE)));
         return monitor_event_t (event);
     }
 
@@ -85,7 +97,8 @@ class monitor_handle_t
     {
         zlink_monitor_event_t event;
         const recv_result_t result = static_cast<recv_result_t> (
-          zlink_socket_monitor_recv (_monitor, &event, ZLINK_DONTWAIT));
+          zlink_socket_monitor_recv (
+            _monitor, &event, ZLINK_RECV_FLAGS_DONTWAIT));
         if (result == recv_result_t::ok)
             return maybe_t<monitor_event_t> (monitor_event_t (event));
         if (result == recv_result_t::no_data || result == recv_result_t::busy)

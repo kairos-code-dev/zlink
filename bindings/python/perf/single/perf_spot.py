@@ -42,8 +42,8 @@ def main(argv=None):
     with zlink.Context() as ctx:
         with zlink.SpotNode(ctx) as pub_node:
             with zlink.SpotNode(ctx) as sub_node:
-                with zlink.Spot(pub_node) as pub_spot:
-                    with zlink.Spot(sub_node) as sub_spot:
+                with pub_node.create_spot() as pub_spot:
+                    with sub_node.create_spot() as sub_spot:
                         endpoint = "inproc://py-perf-spot"
                         pub_node.bind(endpoint)
                         sub_node.connect_peer(endpoint)

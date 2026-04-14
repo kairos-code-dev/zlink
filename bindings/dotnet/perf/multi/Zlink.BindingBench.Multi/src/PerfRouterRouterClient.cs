@@ -439,9 +439,9 @@ internal static class PerfRouterRouterClient
                 _ = activeClients[i].TrySend(MultiStopToken.AsSpan(),
                     SendFlags.DontWait, out _);
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                            || IsInterrupted(ex.Errno)
-                                            || IsTransientNetworkError(ex.Errno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno)
+                                            || IsTransientNetworkError(ex.InternalErrno))
             {
             }
             catch (ObjectDisposedException)

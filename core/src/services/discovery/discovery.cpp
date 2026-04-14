@@ -30,6 +30,7 @@ discovery_t::discovery_t (ctx_t *ctx_,
     _monitor_ready_count (0),
     _service_type (service_type_),
     _service_name (service_name_),
+    _dealer_peer_mode (ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER),
     _discovery_summary_enabled (true),
     _monitor (ctx_)
 {
@@ -53,6 +54,44 @@ discovery_t::~discovery_t ()
 bool discovery_t::check_tag () const
 {
     return _tag == discovery_tag_value;
+}
+
+int discovery_t::set_dealer_peer_mode (zlink_discovery_dealer_peer_mode_t mode_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (_service_type != discovery_protocol::service_type_socket) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    if (mode_ != ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER
+        && mode_ != ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    bool changed = false;
+    {
+        scoped_lock_t lock (_sync);
+        if (_dealer_peer_mode != mode_) {
+            _dealer_peer_mode = mode_;
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        std::set<std::string> services;
+        services.insert (_service_name);
+        notify_observers (services);
+    }
+    return 0;
+}
+
+zlink_discovery_dealer_peer_mode_t discovery_t::dealer_peer_mode () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return _dealer_peer_mode;
 }
 
 void discovery_t::emit_ready_changed (uint32_t ready_count_)

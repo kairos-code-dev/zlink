@@ -7,7 +7,7 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.PubSocket;
-import dev.kairoscode.zlink.SocketPollSet;
+import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
@@ -60,7 +60,7 @@ final class PerfPubSub {
             }
 
             Thread receiverThread = new Thread(() -> {
-                try (SocketPollSet pollSet = SocketPollSet.fromSockets(
+                try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(sub), PollEventType.POLLIN.getValue())) {
                     while (finished.getCount() > 0L) {
                         pollSet.poll(-1);

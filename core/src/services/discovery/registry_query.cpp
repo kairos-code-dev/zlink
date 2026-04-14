@@ -65,6 +65,14 @@ bool topology_entry_less (const zlink_registry_topology_entry_t &lhs_,
            < 0;
 }
 
+bool topology_filter_requests_spot_owner_local (
+  const zlink_registry_topology_filter_t *filter_)
+{
+    return filter_ && filter_->service_kind == ZLINK_SERVICE_KIND_SPOT_PUB
+           && filter_->service_role == ZLINK_SERVICE_ROLE_SPOT
+           && filter_->routing_id.size > 0 && filter_->service_name[0] != '\0';
+}
+
 bool registry_service_summary_filter_match (
   const zlink_registry_service_summary_entry_t &entry_,
   const zlink_registry_service_summary_filter_t *filter_)
@@ -140,12 +148,7 @@ int zlink::registry_t::topology_query (
     std::vector<zlink_registry_topology_entry_t> matched;
     {
         scoped_lock_t lock (_sync);
-        for (std::map<topology_key_t, topology_entry_t>::const_iterator it =
-               _topology.begin ();
-             it != _topology.end (); ++it) {
-            if (topology_filter_match (it->second.entry, filter_))
-                matched.push_back (it->second.entry);
-        }
+        collect_topology_entries_locked (filter_, &matched);
     }
     std::sort (matched.begin (), matched.end (), topology_entry_less);
 
@@ -162,6 +165,93 @@ int zlink::registry_t::topology_query (
         entries_[i] = matched[i];
     *count_ = matched.size ();
     return 0;
+}
+
+void zlink::registry_t::collect_topology_entries_locked (
+  const zlink_registry_topology_filter_t *filter_,
+  std::vector<zlink_registry_topology_entry_t> *out_) const
+{
+    if (!out_)
+        return;
+    out_->clear ();
+
+    std::vector<zlink_registry_topology_entry_t> matched;
+    collect_matching_topology_entries_locked (filter_, &matched);
+
+    if (!topology_filter_requests_spot_owner_local (filter_)) {
+        *out_ = matched;
+        return;
+    }
+
+    zlink_registry_topology_entry_t best_entry;
+    if (select_spot_owner_entry_locked (matched, filter_->service_name,
+                                        &best_entry)) {
+        out_->push_back (best_entry);
+    }
+}
+
+void zlink::registry_t::collect_matching_topology_entries_locked (
+  const zlink_registry_topology_filter_t *filter_,
+  std::vector<zlink_registry_topology_entry_t> *out_) const
+{
+    if (!out_)
+        return;
+    out_->clear ();
+
+    for (std::map<topology_key_t, topology_entry_t>::const_iterator it =
+           _topology.begin ();
+         it != _topology.end (); ++it) {
+        if (topology_filter_match (it->second.entry, filter_))
+            out_->push_back (it->second.entry);
+    }
+}
+
+bool zlink::registry_t::select_spot_owner_entry_locked (
+  const std::vector<zlink_registry_topology_entry_t> &matched_,
+  const char *service_name_,
+  zlink_registry_topology_entry_t *entry_out_) const
+{
+    if (!service_name_ || service_name_[0] == '\0' || !entry_out_)
+        return false;
+
+    service_key_t provider_service_key;
+    provider_service_key.service_type = discovery_protocol::service_type_spot_node;
+    provider_service_key.service_name = service_name_;
+    service_map_t::const_iterator sit = _services.find (provider_service_key);
+    if (sit == _services.end ())
+        return false;
+
+    bool found = false;
+    uint64_t best_registered_at = 0;
+    uint64_t best_reported_at = 0;
+    std::string best_endpoint;
+    for (size_t i = 0; i < matched_.size (); ++i) {
+        const zlink_registry_topology_entry_t &entry = matched_[i];
+        provider_key_t provider_key;
+        provider_key.service_role = discovery_protocol::service_role_spot;
+        provider_key.endpoint = entry.endpoint;
+        provider_map_t::const_iterator pit =
+          sit->second.providers.find (provider_key);
+        if (pit == sit->second.providers.end ())
+            continue;
+
+        const uint64_t registered_at = pit->second.registered_at;
+        const uint64_t reported_at = entry.last_reported_ms;
+        if (!found || registered_at > best_registered_at
+            || (registered_at == best_registered_at
+                && reported_at > best_reported_at)
+            || (registered_at == best_registered_at
+                && reported_at == best_reported_at
+                && entry.endpoint > best_endpoint)) {
+            *entry_out_ = entry;
+            best_registered_at = registered_at;
+            best_reported_at = reported_at;
+            best_endpoint = entry.endpoint;
+            found = true;
+        }
+    }
+
+    return found;
 }
 
 int zlink::registry_t::service_summary_snapshot (
@@ -361,12 +451,7 @@ void zlink::registry_t::handle_topology_query (
     std::vector<zlink_registry_topology_entry_t> entries;
     {
         scoped_lock_t lock (_sync);
-        for (std::map<topology_key_t, topology_entry_t>::const_iterator it =
-               _topology.begin ();
-             it != _topology.end (); ++it) {
-            if (topology_filter_match (it->second.entry, filter_ptr))
-                entries.push_back (it->second.entry);
-        }
+        collect_topology_entries_locked (filter_ptr, &entries);
     }
     std::sort (entries.begin (), entries.end (), topology_entry_less);
     send_topology_reply (router_, sender_id_, entries);

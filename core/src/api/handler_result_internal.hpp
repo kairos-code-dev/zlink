@@ -28,7 +28,7 @@ inline zlink_handler_result_t from_errno (int err_)
         case EFAULT:
             return ZLINK_HANDLER_INVALID_HANDLE;
         default:
-            return ZLINK_HANDLER_INVALID_HANDLE;
+            return ZLINK_HANDLER_INTERNAL_ERROR;
     }
 }
 

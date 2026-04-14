@@ -117,6 +117,14 @@ internal static partial class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string registryEndpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_discovery_set_dealer_peer_mode(
+        IntPtr discovery, int mode);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_discovery_resolve_spot(IntPtr discovery,
+        ref ZlinkRoutingId spotRoutingId, out ZlinkRoutingId ownerNodeRoutingId);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_set_value(IntPtr discovery,
         long value);
 

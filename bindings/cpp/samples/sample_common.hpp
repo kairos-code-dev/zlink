@@ -32,6 +32,15 @@ inline const char *const k_pubsub_payload = "101.25";
 inline const char *const k_spot_topic = "room:lobby";
 inline const char *const k_spot_payload = "hello-spot";
 
+inline std::string unique_inproc (const char *base_)
+{
+    static unsigned counter = 0;
+    std::ostringstream stream;
+    stream << "inproc://" << (base_ ? base_ : "cpp-sample") << "-"
+           << ++counter;
+    return stream.str ();
+}
+
 inline std::string unique_tcp (const char *base_)
 {
     boost::asio::io_context io;

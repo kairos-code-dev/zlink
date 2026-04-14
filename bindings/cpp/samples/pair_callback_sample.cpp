@@ -39,16 +39,14 @@ int main ()
     zlink::monitor_handle_t client_monitor = client.monitor_handle ();
 
     assert (server.bind ("tcp://127.0.0.1:0") == 0);
-    std::string endpoint;
-    assert (server.get_option (zlink::socket_options::last_endpoint, endpoint)
-            == 0);
+    const std::string endpoint = server.options ().last_endpoint ();
     assert (!endpoint.empty ());
     assert (client.connect (endpoint) == 0);
     assert (detail::wait_connected (server_monitor, client_monitor));
 
     std::promise<callback_result_t> result_promise;
     std::future<callback_result_t> result_future = result_promise.get_future ();
-    assert (server.on_receive (&pair_callback, &result_promise) == 0);
+    server.on_receive (&pair_callback, &result_promise);
 
     const std::string sent = detail::k_pair_payload;
     zlink::message_t outbound = detail::make_message (sent);

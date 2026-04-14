@@ -199,13 +199,7 @@ sequenceDiagram
     Note over DP: poller → ingress readable
     DP->>DP: recv_and_forward_ingress()
 
-    alt Batching enabled
-        DP->>DP: accumulate in topic bucket
-        Note over DP: flush when:<br/>delay_ms (20ms),<br/>max_messages (32),<br/>max_bytes (64KB)
-        DP->>MeshPub: send batch frame [header+metadata+body]
-    else Batching disabled or bypass (msg >= 64KB)
-        DP->>MeshPub: send [topic] + [payload] immediately
-    end
+    DP->>MeshPub: send [topic] + [payload]
 
     MeshPub->>Remote: via tcp/tls mesh
 ```
@@ -223,9 +217,6 @@ sequenceDiagram
     Remote->>MeshXSub: topic message via tcp mesh
     Note over DP: poller → mesh_xsub readable
     DP->>DP: recv_and_dispatch_mesh_xsub()
-    alt Batch frame detected (magic=0x31544253)
-        DP->>DP: unbatch → individual logical messages
-    end
     DP->>Fanout: forward to local fanout
     Fanout->>Sub: deliver to matching subs
     Note over DP: NEVER re-publish to mesh_pub<br/>(loop prevention)
@@ -390,3 +381,188 @@ Topic and routed HWM can be configured independently via
 `zlink_set_spot_node_option()`:
 - `ZLINK_SPOT_NODE_OPT_TOPIC_SNDHWM` / `ZLINK_SPOT_NODE_OPT_TOPIC_RCVHWM`
 - `ZLINK_SPOT_NODE_OPT_ROUTED_SNDHWM` / `ZLINK_SPOT_NODE_OPT_ROUTED_RCVHWM`
+
+## 10. Dispatch Event Threading Model
+
+The public-facing `zlink_spot_dispatch_event_handler()` surface is a
+notification-only callback that fans in **three independent internal
+event producers** onto one handler. This section documents which
+internal thread fires each event, how the registration is enforced, and
+the thread-safety boundaries the callback has to respect.
+
+### 10.1 Event producers and their threads
+
+```mermaid
+flowchart LR
+    subgraph DataPlane["SpotNode data-plane thread"]
+        ingress["sub plane<br/>spot_sub readable"]
+        routed["routed dispatch<br/>(node_router → queue)"]
+    end
+
+    subgraph Scheduler["SpotNode-local timer scheduler thread"]
+        tick["scheduler_fire_timer()"]
+    end
+
+    subgraph UserHandler["zlink_spot_dispatch_event_handler (one per Spot)"]
+        handler["zlink_spot_dispatch_event_handler_fn"]
+    end
+
+    ingress -->|"SUBSCRIBE_READABLE"| handler
+    routed  -->|"ROUTED_READABLE"| handler
+    tick    -->|"TIMER_READABLE"| handler
+```
+
+| Event | Source producer | Thread that fires the callback |
+|-------|----------------|-------------------------------|
+| `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE` | `spot_sub_handler_adapter` in `service_handler_spot_api.cpp` — installed as the direct handler of the `spot_sub_t` | SpotNode data-plane polling thread (see §7 *Data Plane Polling Loop*) |
+| `ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE` | `queue_spot_message()` in `service_spot_request_reply_api.cpp` — invoked after enqueuing a routed delivery into the internal PAIR queue | SpotNode data-plane polling thread (the same thread that parsed the routed envelope from `node_router` / mesh ingress) |
+| `ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE` | `scheduler_fire_timer()` in `timer_scheduler_backend.cpp` — invoked *after* pushing the fire-count into the timer's deque and raising its signaler, and *only* when no direct timer handler is attached | SpotNode-local timer scheduler thread (separate from the data-plane thread) |
+
+All three producers reach the callback through one shared entry point,
+`zlink_spot_notify_dispatch_event()` → `maybe_dispatch_spot_event()`, which
+reads the handler pointer under the per-Spot mutex and then invokes it
+without holding any internal lock:
+
+```cpp
+void maybe_dispatch_spot_event (spot_request_reply_state_t *state_,
+                                zlink_spot_dispatch_event_t event_)
+{
+    zlink_spot_dispatch_event_handler_fn handler = NULL;
+    void *userdata = NULL;
+    void *owner = NULL;
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        handler = state_->dispatch_event_handler;
+        userdata = state_->dispatch_event_handler_userdata;
+        owner = state_->owner;
+    }
+    if (handler)
+        handler (owner, event_, userdata);
+}
+```
+
+The snapshot-then-invoke pattern is deliberate. The handler runs while
+no zlink-internal locks are held, so the application is free to call
+back into the zlink API (e.g. `zlink_timer_recv()`, `zlink_spot_recv()`,
+`zlink_subscribe()`) from inside the callback — but see §10.4 for why it
+is still recommended to hand off to an application worker.
+
+### 10.2 Registration and mutual exclusion
+
+The per-Spot `spot_request_reply_state_t` owns two handler slots on the
+routed/dispatch axis:
+
+```cpp
+struct spot_request_reply_state_t {
+    // ...
+    zlink_spot_handler_fn                  request_handler;            // direct routed
+    void                                  *request_handler_userdata;
+    zlink_spot_dispatch_event_handler_fn   dispatch_event_handler;     // unified notify
+    void                                  *dispatch_event_handler_userdata;
+};
+```
+
+`zlink_spot_handler()` and `zlink_spot_dispatch_event_handler()` both
+check `state->request_handler || state->dispatch_event_handler` under
+`state->mutex` before writing, and return `ZLINK_HANDLER_BUSY` if either
+slot is non-NULL. This is the source of the "mutually exclusive" rule
+documented in the user guide.
+
+`zlink_subscribe_handler()` is on a different axis — it installs a
+direct subscribe callback on the underlying `spot_sub_t` and is not
+blocked by `dispatch_event_handler`. Mixing the two is technically
+allowed but defeats the unified-worker benefit.
+
+### 10.3 Per-event fire conditions
+
+**`SUBSCRIBE_READABLE`** — fired from `spot_sub_handler_adapter` on the
+data-plane thread whenever the `spot_sub_t` direct handler is invoked.
+The adapter calls `zlink_spot_notify_dispatch_event()` *before* the
+composite user subscribe handler runs; if no user subscribe handler is
+installed, the subscribe messages are queued inside the `spot_sub_t`
+recv buffer and the notifier is still the wake-up signal for
+`zlink_subscribe()` pull consumers.
+
+**`ROUTED_READABLE`** — fired from `queue_spot_message()` once the
+routed payload (node rid, spot rid, request_seq, parts) has been
+enqueued onto the per-Spot internal PAIR queue (`inproc://zlink.spot.
+routed.recv.*`). The event is fired *after* the queue write succeeds,
+so a worker observing the notification is guaranteed to see at least
+one payload on the next `zlink_spot_recv()`. When `request_handler` is
+installed instead, the routed direct callback is invoked in place of
+the queue write and the notification is not fired.
+
+**`TIMER_READABLE`** — fired from `scheduler_fire_timer()` only when the
+timer has an owning Spot (created via `zlink_spot_timer_new(spot)`) and
+**no direct timer handler** is attached. In that branch, the scheduler
+first pushes the fire count into `timer->fired_counts`, then raises
+`timer->signaler` (eventfd), then calls
+`zlink_spot_notify_dispatch_event(owner_spot, TIMER_READABLE)`. If a
+direct `zlink_timer_handler()` is attached to the same timer, the
+scheduler runs that handler inline and the dispatch event is not fired
+— this is the per-timer precedence rule noted in the user guide.
+
+### 10.4 End-to-end flow with an application worker
+
+```mermaid
+sequenceDiagram
+    participant DP as Data-plane thread
+    participant Sched as Timer scheduler thread
+    participant Notify as notify_dispatch_event
+    participant UH as User event handler
+    participant App as App worker thread
+    participant Q as Internal queues<br/>(sub buffer / routed PAIR / timer deque)
+
+    alt topic message arrives
+        DP->>Q: push to sub buffer
+        DP->>Notify: SUBSCRIBE_READABLE
+    else routed message arrives
+        DP->>Q: push to routed PAIR
+        DP->>Notify: ROUTED_READABLE
+    else spot-owned timer fires
+        Sched->>Q: push fire_count + signal eventfd
+        Sched->>Notify: TIMER_READABLE
+    end
+    Notify->>UH: handler(spot, event, userdata)
+    UH->>App: wake worker (cv / eventfd / channel)
+    App->>Q: zlink_subscribe / zlink_spot_recv / zlink_timer_recv
+    Q-->>App: payload / fire_count
+```
+
+The producers never execute application-domain logic past
+`notify_dispatch_event`. All message decoding, topic matching, and
+timer rescheduling happen on the internal threads; the worker thread
+only touches queues that are already drained or appended atomically
+(via `internal_pair_queue_t` for routed, `spot_sub_t` recv buffer for
+topic, and the timer's `fired_counts` deque guarded by `timer->mutex`).
+
+### 10.5 Thread-safety invariants
+
+| Invariant | Enforced by |
+|---|---|
+| Handler pointer read is race-free | Snapshot under `state->mutex` in `maybe_dispatch_spot_event` |
+| Handler is invoked without internal locks held | Snapshot-then-release before invocation |
+| Payload is in the queue before notification | Producers call the notifier *after* the queue push (sub buffer / PAIR queue / fired_counts + signaler) |
+| No missed wake-up | Level-triggered — the worker drains each queue until the matching pull API returns `ZLINK_RECV_NO_DATA`; a redundant notification during drain is harmless |
+| Direct handler vs dispatch event | Compile-time separation: `spot_sub_handler_adapter` for subscribe, `request_handler` slot for routed, timer's own handler slot for timers. Registration-time mutex in the routed axis rejects double-install. Per-timer precedence for timers is decided inside `scheduler_fire_timer` |
+| Callback may call zlink API | Producers release their internal locks before invoking the notifier |
+
+### 10.6 Why this is a single-writer design from the app's perspective
+
+With three internal producers but a single handler, the application can
+treat the notification as a condition-variable wake and then drive all
+three queues from one application thread:
+
+- No user-owned lock is needed between sub / routed / timer consumers;
+  they read *different* underlying queues, so the only shared state is
+  application bookkeeping that the single worker thread owns outright.
+- The handler itself can be `lock_guard + cv.notify + bitmask |=`; it
+  does not need to touch any zlink API.
+- The producer threads never wait for the handler to finish beyond the
+  raw function call — they immediately return to their polling loops,
+  so slow consumer threads cannot back-pressure the SpotNode mesh or
+  the timer scheduler past the configured HWMs.
+
+This is the core reason the user-facing guide recommends
+`zlink_spot_dispatch_event_handler` as the unified consumption pattern
+when timer, routed recv, and subscribe all live on one Spot handle.

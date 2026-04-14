@@ -630,7 +630,7 @@ ZMP control part 를 사용한다.
 현재 기준 문서는 아래를 따른다.
 
 - `doc/spec/core/socket/README.ko.md`
-- `doc/spec/core/spot.ko.md`
+- `doc/spec/core/service/spot.ko.md`
 - `doc/internals/protocol-zmp.ko.md`
 
 ## 12. Per-Message Metadata

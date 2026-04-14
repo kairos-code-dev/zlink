@@ -25,7 +25,12 @@ use std::time::Duration;
 
 use crate::ctx::duration_to_millis;
 use crate::domain::{Received, SendResult, SubscriptionEvent, TopicMessage};
-use crate::error::{RecvResult, ZlinkError, check_rc};
+use crate::error::{
+    BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RecvResult,
+    SubmitError, check_bind_rc, check_close_rc, check_config_rc, check_connect_rc,
+    check_handler_rc, check_recv_rc, check_submit_rc, config_validation_error, last_errno,
+    submit_validation_error,
+};
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, Message, RoutingId};
@@ -84,10 +89,13 @@ impl SocketInner {
     pub fn create(
         ctx: &crate::ctx::Context,
         typ: ffi::zlink_socket_type_t,
-    ) -> Result<Self, ZlinkError> {
+    ) -> Result<Self, ConfigError> {
         let handle = unsafe { ffi::zlink_socket(ctx.raw(), typ) };
         if handle.is_null() {
-            return Err(ZlinkError::last());
+            return Err(ConfigError::new(
+                crate::error::ConfigResult::InvalidHandle,
+                last_errno(),
+            ));
         }
         Ok(Self {
             handle,
@@ -99,37 +107,40 @@ impl SocketInner {
 
     // -- Connection --------------------------------------------------------
 
-    pub fn bind(&self, addr: &str) -> Result<(), ZlinkError> {
-        let c =
-            CString::new(addr).map_err(|_| ZlinkError::validation("address contains null byte"))?;
-        check_rc(unsafe { ffi::zlink_bind(self.handle, c.as_ptr()) })
+    pub fn bind(&self, addr: &str) -> Result<(), BindError> {
+        let c = CString::new(addr)
+            .map_err(|_| BindError::new(crate::error::BindResult::InvalidArgument, libc::EINVAL))?;
+        check_bind_rc(unsafe { ffi::zlink_bind(self.handle, c.as_ptr()) })
     }
 
-    pub fn connect(&self, addr: &str) -> Result<(), ZlinkError> {
-        let c =
-            CString::new(addr).map_err(|_| ZlinkError::validation("address contains null byte"))?;
-        check_rc(unsafe { ffi::zlink_connect(self.handle, c.as_ptr()) })
+    pub fn connect(&self, addr: &str) -> Result<(), ConnectError> {
+        let c = CString::new(addr).map_err(|_| {
+            ConnectError::new(crate::error::ConnectResult::InvalidArgument, libc::EINVAL)
+        })?;
+        check_connect_rc(unsafe { ffi::zlink_connect(self.handle, c.as_ptr()) })
     }
 
-    pub fn unbind(&self, addr: &str) -> Result<(), ZlinkError> {
-        let c =
-            CString::new(addr).map_err(|_| ZlinkError::validation("address contains null byte"))?;
-        check_rc(unsafe { ffi::zlink_unbind(self.handle, c.as_ptr()) })
+    pub fn unbind(&self, addr: &str) -> Result<(), ConnectError> {
+        let c = CString::new(addr).map_err(|_| {
+            ConnectError::new(crate::error::ConnectResult::InvalidArgument, libc::EINVAL)
+        })?;
+        check_connect_rc(unsafe { ffi::zlink_unbind(self.handle, c.as_ptr()) })
     }
 
-    pub fn disconnect(&self, addr: &str) -> Result<(), ZlinkError> {
-        let c =
-            CString::new(addr).map_err(|_| ZlinkError::validation("address contains null byte"))?;
-        check_rc(unsafe { ffi::zlink_disconnect(self.handle, c.as_ptr()) })
+    pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError> {
+        let c = CString::new(addr).map_err(|_| {
+            ConnectError::new(crate::error::ConnectResult::InvalidArgument, libc::EINVAL)
+        })?;
+        check_connect_rc(unsafe { ffi::zlink_disconnect(self.handle, c.as_ptr()) })
     }
 
-    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ZlinkError> {
-        check_rc(unsafe { ffi::zlink_socket_attach_discovery(self.handle, discovery.raw()) })
+    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
+        check_config_rc(unsafe { ffi::zlink_socket_attach_discovery(self.handle, discovery.raw()) })
     }
 
     // -- Send (non-routed) -------------------------------------------------
 
-    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
+    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError> {
         self.send_with_flags(parts, SendFlags::NONE)
     }
 
@@ -137,7 +148,7 @@ impl SocketInner {
         &self,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), ZlinkError> {
+    ) -> Result<(), SubmitError> {
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
         let rc = unsafe {
@@ -145,10 +156,10 @@ impl SocketInner {
         };
         // Native took ownership, close the empty source messages
         drop(parts);
-        check_rc(rc)
+        check_submit_rc(rc)
     }
 
-    pub fn try_send(&self, parts: impl IntoMultipart) -> Result<SendResult, ZlinkError> {
+    pub(crate) fn try_send(&self, parts: impl IntoMultipart) -> Result<SendResult, SubmitError> {
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
         let rc = unsafe {
@@ -165,7 +176,11 @@ impl SocketInner {
 
     // -- Send (routed) -----------------------------------------------------
 
-    pub fn send_to(&self, target: &RoutingId, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
+    pub fn send_to(
+        &self,
+        target: &RoutingId,
+        parts: impl IntoMultipart,
+    ) -> Result<(), SubmitError> {
         self.send_to_with_flags(target, parts, SendFlags::NONE)
     }
 
@@ -174,7 +189,7 @@ impl SocketInner {
         target: &RoutingId,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), ZlinkError> {
+    ) -> Result<(), SubmitError> {
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
         let rc = unsafe {
@@ -187,14 +202,14 @@ impl SocketInner {
             )
         };
         drop(parts);
-        check_rc(rc)
+        check_submit_rc(rc)
     }
 
-    pub fn try_send_to(
+    pub(crate) fn try_send_to(
         &self,
         target: &RoutingId,
         parts: impl IntoMultipart,
-    ) -> Result<SendResult, ZlinkError> {
+    ) -> Result<SendResult, SubmitError> {
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
         let rc = unsafe {
@@ -212,11 +227,11 @@ impl SocketInner {
 
     // -- Recv (direct) -----------------------------------------------------
 
-    pub fn recv(&self) -> Result<Received, ZlinkError> {
+    pub fn recv(&self) -> Result<Received, RecvError> {
         self.recv_with_flags(RecvFlags::NONE)
     }
 
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, ZlinkError> {
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {
         let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
         let mut part_count: usize = 0;
@@ -230,14 +245,14 @@ impl SocketInner {
                 flags.bits(),
             )
         };
-        check_rc(rc)?;
+        check_recv_rc(rc)?;
 
         let rid = unsafe { rid.assume_init() };
         let parts = take_parts(parts_ptr, part_count);
-        Ok(Received::new(RoutingId::from_raw(rid), parts))
+        Ok(Received::new(RoutingId::from_raw_optional(rid), parts))
     }
 
-    pub fn try_recv(&self) -> Result<Option<Received>, ZlinkError> {
+    pub(crate) fn try_recv(&self) -> Result<Option<Received>, RecvError> {
         let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
         let mut part_count: usize = 0;
@@ -259,17 +274,20 @@ impl SocketInner {
             if errno == libc::EAGAIN {
                 return Ok(None);
             }
-            return Err(ZlinkError::last());
+            return Err(RecvError::new(crate::error::RecvResult::Terminated, errno));
         }
 
         let rid = unsafe { rid.assume_init() };
         let parts = take_parts(parts_ptr, part_count);
-        Ok(Some(Received::new(RoutingId::from_raw(rid), parts)))
+        Ok(Some(Received::new(
+            RoutingId::from_raw_optional(rid),
+            parts,
+        )))
     }
 
     // -- Publish -----------------------------------------------------------
 
-    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
+    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError> {
         self.publish_with_flags(topic, parts, SendFlags::NONE)
     }
 
@@ -278,9 +296,8 @@ impl SocketInner {
         topic: &str,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), ZlinkError> {
-        let c_topic =
-            CString::new(topic).map_err(|_| ZlinkError::validation("topic contains null byte"))?;
+    ) -> Result<(), SubmitError> {
+        let c_topic = CString::new(topic).map_err(|_| submit_validation_error())?;
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
         let rc = unsafe {
@@ -293,16 +310,15 @@ impl SocketInner {
             )
         };
         drop(parts);
-        check_rc(rc)
+        check_submit_rc(rc)
     }
 
-    pub fn try_publish(
+    pub(crate) fn try_publish(
         &self,
         topic: &str,
         parts: impl IntoMultipart,
-    ) -> Result<SendResult, ZlinkError> {
-        let c_topic =
-            CString::new(topic).map_err(|_| ZlinkError::validation("topic contains null byte"))?;
+    ) -> Result<SendResult, SubmitError> {
+        let c_topic = CString::new(topic).map_err(|_| submit_validation_error())?;
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
         let rc = unsafe {
@@ -320,11 +336,11 @@ impl SocketInner {
 
     // -- Subscribe (blocking recv) -----------------------------------------
 
-    pub fn subscribe_recv(&self) -> Result<TopicMessage, ZlinkError> {
+    pub fn subscribe_recv(&self) -> Result<TopicMessage, RecvError> {
         self.subscribe_recv_with_flags(RecvFlags::NONE)
     }
 
-    pub fn subscribe_recv_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, ZlinkError> {
+    pub fn subscribe_recv_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, RecvError> {
         let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
         let mut part_count: usize = 0;
@@ -342,15 +358,19 @@ impl SocketInner {
                 flags.bits(),
             )
         };
-        check_rc(rc)?;
+        check_recv_rc(rc)?;
 
         let rid = unsafe { rid.assume_init() };
         let topic = cstr_buf_to_string(&topic_buf, topic_len);
         let parts = take_parts(parts_ptr, part_count);
-        Ok(TopicMessage::new(RoutingId::from_raw(rid), topic, parts))
+        Ok(TopicMessage::new(
+            RoutingId::from_raw_optional(rid),
+            topic,
+            parts,
+        ))
     }
 
-    pub fn try_subscribe_recv(&self) -> Result<Option<TopicMessage>, ZlinkError> {
+    pub(crate) fn try_subscribe_recv(&self) -> Result<Option<TopicMessage>, RecvError> {
         let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
         let mut part_count: usize = 0;
@@ -376,14 +396,14 @@ impl SocketInner {
             if errno == libc::EAGAIN {
                 return Ok(None);
             }
-            return Err(ZlinkError::last());
+            return Err(RecvError::new(crate::error::RecvResult::Terminated, errno));
         }
 
         let rid = unsafe { rid.assume_init() };
         let topic = cstr_buf_to_string(&topic_buf, topic_len);
         let parts = take_parts(parts_ptr, part_count);
         Ok(Some(TopicMessage::new(
-            RoutingId::from_raw(rid),
+            RoutingId::from_raw_optional(rid),
             topic,
             parts,
         )))
@@ -391,28 +411,26 @@ impl SocketInner {
 
     // -- Subscription management -------------------------------------------
 
-    pub fn set_subscription(&self, filter: &str) -> Result<(), ZlinkError> {
-        let c = CString::new(filter)
-            .map_err(|_| ZlinkError::validation("filter contains null byte"))?;
-        check_rc(unsafe { ffi::zlink_set_subscription(self.handle, c.as_ptr()) })
+    pub fn set_subscription(&self, filter: &str) -> Result<(), ConfigError> {
+        let c = CString::new(filter).map_err(|_| config_validation_error())?;
+        check_config_rc(unsafe { ffi::zlink_set_subscription(self.handle, c.as_ptr()) })
     }
 
-    pub fn unset_subscription(&self, filter: &str) -> Result<(), ZlinkError> {
-        let c = CString::new(filter)
-            .map_err(|_| ZlinkError::validation("filter contains null byte"))?;
-        check_rc(unsafe { ffi::zlink_unset_subscription(self.handle, c.as_ptr()) })
+    pub fn unset_subscription(&self, filter: &str) -> Result<(), ConfigError> {
+        let c = CString::new(filter).map_err(|_| config_validation_error())?;
+        check_config_rc(unsafe { ffi::zlink_unset_subscription(self.handle, c.as_ptr()) })
     }
 
     // -- Subscription event (XPUB) -----------------------------------------
 
-    pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, ZlinkError> {
+    pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError> {
         self.receive_subscription_event_with_flags(RecvFlags::NONE)
     }
 
     pub fn receive_subscription_event_with_flags(
         &self,
         flags: RecvFlags,
-    ) -> Result<SubscriptionEvent, ZlinkError> {
+    ) -> Result<SubscriptionEvent, RecvError> {
         let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         let mut subscribed: i32 = 0;
         let mut topic_buf = [0i8; 256];
@@ -428,18 +446,20 @@ impl SocketInner {
                 flags.bits(),
             )
         };
-        check_rc(rc)?;
+        check_recv_rc(rc)?;
 
         let rid = unsafe { rid.assume_init() };
         let topic = cstr_buf_to_string(&topic_buf, topic_len);
         Ok(SubscriptionEvent::new(
-            RoutingId::from_raw(rid),
+            RoutingId::from_raw_optional(rid),
             subscribed != 0,
             topic,
         ))
     }
 
-    pub fn try_receive_subscription_event(&self) -> Result<Option<SubscriptionEvent>, ZlinkError> {
+    pub(crate) fn try_receive_subscription_event(
+        &self,
+    ) -> Result<Option<SubscriptionEvent>, RecvError> {
         let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         let mut subscribed: i32 = 0;
         let mut topic_buf = [0i8; 256];
@@ -463,13 +483,13 @@ impl SocketInner {
             if errno == libc::EAGAIN {
                 return Ok(None);
             }
-            return Err(ZlinkError::last());
+            return Err(RecvError::new(crate::error::RecvResult::Terminated, errno));
         }
 
         let rid = unsafe { rid.assume_init() };
         let topic = cstr_buf_to_string(&topic_buf, topic_len);
         Ok(Some(SubscriptionEvent::new(
-            RoutingId::from_raw(rid),
+            RoutingId::from_raw_optional(rid),
             subscribed != 0,
             topic,
         )))
@@ -477,7 +497,7 @@ impl SocketInner {
 
     // -- Callback installation ---------------------------------------------
 
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
         F: Fn(Received) + Send + 'static,
     {
@@ -485,13 +505,13 @@ impl SocketInner {
         let rc = unsafe { ffi::zlink_recv_handler(self.handle, recv_trampoline::<F>, userdata) };
         if rc != 0 {
             drop(cb); // free on failure
-            return Err(ZlinkError::last());
+            return check_handler_rc(rc);
         }
         self.recv_cb = Some(cb);
         Ok(())
     }
 
-    pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
         F: Fn(TopicMessage) + Send + 'static,
     {
@@ -501,13 +521,13 @@ impl SocketInner {
         };
         if rc != 0 {
             drop(cb);
-            return Err(ZlinkError::last());
+            return check_handler_rc(rc);
         }
         self.sub_cb = Some(cb);
         Ok(())
     }
 
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
         F: Fn() + Send + 'static,
     {
@@ -517,7 +537,7 @@ impl SocketInner {
         };
         if rc != 0 {
             drop(cb);
-            return Err(ZlinkError::last());
+            return check_handler_rc(rc);
         }
         self.send_ready_cb = Some(cb);
         Ok(())
@@ -525,39 +545,39 @@ impl SocketInner {
 
     // -- Common typed options (per Option Policy) --------------------------
 
-    pub fn set_send_hwm(&self, value: i32) -> Result<(), ZlinkError> {
+    pub fn set_send_hwm(&self, value: i32) -> Result<(), ConfigError> {
         set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDHWM, value)
     }
 
-    pub fn send_hwm(&self) -> Result<i32, ZlinkError> {
+    pub fn send_hwm(&self) -> Result<i32, ConfigError> {
         get_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDHWM)
     }
 
-    pub fn set_recv_hwm(&self, value: i32) -> Result<(), ZlinkError> {
+    pub fn set_recv_hwm(&self, value: i32) -> Result<(), ConfigError> {
         set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVHWM, value)
     }
 
-    pub fn recv_hwm(&self) -> Result<i32, ZlinkError> {
+    pub fn recv_hwm(&self) -> Result<i32, ConfigError> {
         get_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVHWM)
     }
 
-    pub fn set_linger(&self, d: Duration) -> Result<(), ZlinkError> {
+    pub fn set_linger(&self, d: Duration) -> Result<(), ConfigError> {
         set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_LINGER, d)
     }
 
-    pub fn set_send_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
+    pub fn set_send_timeout(&self, d: Duration) -> Result<(), ConfigError> {
         set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDTIMEO, d)
     }
 
-    pub fn set_recv_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
+    pub fn set_recv_timeout(&self, d: Duration) -> Result<(), ConfigError> {
         set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVTIMEO, d)
     }
 
-    pub fn set_reconnect_interval(&self, d: Duration) -> Result<(), ZlinkError> {
+    pub fn set_reconnect_interval(&self, d: Duration) -> Result<(), ConfigError> {
         set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RECONNECT_IVL, d)
     }
 
-    pub fn set_reconnect_interval_max(&self, d: Duration) -> Result<(), ZlinkError> {
+    pub fn set_reconnect_interval_max(&self, d: Duration) -> Result<(), ConfigError> {
         set_duration_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_RECONNECT_IVL_MAX,
@@ -565,17 +585,17 @@ impl SocketInner {
         )
     }
 
-    pub fn set_send_buffer_size(&self, bytes: i32) -> Result<(), ZlinkError> {
+    pub fn set_send_buffer_size(&self, bytes: i32) -> Result<(), ConfigError> {
         set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDBUF, bytes)
     }
 
-    pub fn set_recv_buffer_size(&self, bytes: i32) -> Result<(), ZlinkError> {
+    pub fn set_recv_buffer_size(&self, bytes: i32) -> Result<(), ConfigError> {
         set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVBUF, bytes)
     }
 
-    pub fn set_max_msg_size(&self, bytes: i64) -> Result<(), ZlinkError> {
+    pub fn set_max_msg_size(&self, bytes: i64) -> Result<(), ConfigError> {
         let v = bytes;
-        check_rc(unsafe {
+        check_config_rc(unsafe {
             ffi::zlink_set_option(
                 self.handle,
                 ffi::zlink_option_t::ZLINK_OPT_MAXMSGSIZE,
@@ -585,11 +605,11 @@ impl SocketInner {
         })
     }
 
-    pub fn set_backlog(&self, value: i32) -> Result<(), ZlinkError> {
+    pub fn set_backlog(&self, value: i32) -> Result<(), ConfigError> {
         set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_BACKLOG, value)
     }
 
-    pub fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ConfigError> {
         set_bool_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_TCP_KEEPALIVE,
@@ -597,7 +617,7 @@ impl SocketInner {
         )
     }
 
-    pub fn set_tcp_keepalive_idle(&self, seconds: i32) -> Result<(), ZlinkError> {
+    pub fn set_tcp_keepalive_idle(&self, seconds: i32) -> Result<(), ConfigError> {
         set_int_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_TCP_KEEPALIVE_IDLE,
@@ -605,7 +625,7 @@ impl SocketInner {
         )
     }
 
-    pub fn set_tcp_keepalive_interval(&self, seconds: i32) -> Result<(), ZlinkError> {
+    pub fn set_tcp_keepalive_interval(&self, seconds: i32) -> Result<(), ConfigError> {
         set_int_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_TCP_KEEPALIVE_INTVL,
@@ -613,7 +633,7 @@ impl SocketInner {
         )
     }
 
-    pub fn set_tcp_keepalive_count(&self, count: i32) -> Result<(), ZlinkError> {
+    pub fn set_tcp_keepalive_count(&self, count: i32) -> Result<(), ConfigError> {
         set_int_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_TCP_KEEPALIVE_CNT,
@@ -621,7 +641,7 @@ impl SocketInner {
         )
     }
 
-    pub fn set_tcp_nodelay(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub fn set_tcp_nodelay(&self, enabled: bool) -> Result<(), ConfigError> {
         set_bool_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_TCP_NODELAY,
@@ -629,11 +649,11 @@ impl SocketInner {
         )
     }
 
-    pub fn set_ipv6(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub fn set_ipv6(&self, enabled: bool) -> Result<(), ConfigError> {
         set_bool_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_IPV6, enabled)
     }
 
-    pub fn set_immediate(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub fn set_immediate(&self, enabled: bool) -> Result<(), ConfigError> {
         set_bool_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_IMMEDIATE,
@@ -641,7 +661,7 @@ impl SocketInner {
         )
     }
 
-    pub fn set_conflate(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub fn set_conflate(&self, enabled: bool) -> Result<(), ConfigError> {
         set_bool_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_CONFLATE,
@@ -649,7 +669,7 @@ impl SocketInner {
         )
     }
 
-    pub fn set_connect_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
+    pub fn set_connect_timeout(&self, d: Duration) -> Result<(), ConfigError> {
         set_duration_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_CONNECT_TIMEOUT,
@@ -657,19 +677,19 @@ impl SocketInner {
         )
     }
 
-    pub fn set_handshake_interval(&self, d: Duration) -> Result<(), ZlinkError> {
+    pub fn set_handshake_interval(&self, d: Duration) -> Result<(), ConfigError> {
         set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_HANDSHAKE_IVL, d)
     }
 
-    pub fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ZlinkError> {
+    pub fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ConfigError> {
         set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_IVL, d)
     }
 
-    pub fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ZlinkError> {
+    pub fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ConfigError> {
         set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_TTL, d)
     }
 
-    pub fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
+    pub fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ConfigError> {
         set_duration_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_HEARTBEAT_TIMEOUT,
@@ -677,22 +697,22 @@ impl SocketInner {
         )
     }
 
-    pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ZlinkError> {
-        check_rc(unsafe {
+    pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
             ffi::zlink_set_routing_id(self.handle, id.data().as_ptr() as *const c_void, id.len())
         })
     }
 
-    pub fn routing_id(&self) -> Result<RoutingId, ZlinkError> {
+    pub fn routing_id(&self) -> Result<RoutingId, ConfigError> {
         let mut raw = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
-        check_rc(unsafe { ffi::zlink_get_routing_id(self.handle, raw.as_mut_ptr()) })?;
+        check_config_rc(unsafe { ffi::zlink_get_routing_id(self.handle, raw.as_mut_ptr()) })?;
         Ok(RoutingId::from_raw(unsafe { raw.assume_init() }))
     }
 
-    pub fn last_endpoint(&self) -> Result<String, ZlinkError> {
+    pub fn last_endpoint(&self) -> Result<String, ConfigError> {
         let mut buf = [0u8; 256];
         let mut len = buf.len();
-        check_rc(unsafe {
+        check_config_rc(unsafe {
             ffi::zlink_get_option(
                 self.handle,
                 ffi::zlink_option_t::ZLINK_OPT_LAST_ENDPOINT,
@@ -709,12 +729,10 @@ impl SocketInner {
         cert: &str,
         key: &str,
         require_client_cert: bool,
-    ) -> Result<(), ZlinkError> {
-        let c_cert =
-            CString::new(cert).map_err(|_| ZlinkError::validation("cert contains null byte"))?;
-        let c_key =
-            CString::new(key).map_err(|_| ZlinkError::validation("key contains null byte"))?;
-        match check_rc(unsafe {
+    ) -> Result<(), ConfigError> {
+        let c_cert = CString::new(cert).map_err(|_| config_validation_error())?;
+        let c_key = CString::new(key).map_err(|_| config_validation_error())?;
+        match check_config_rc(unsafe {
             ffi::zlink_set_tls_server(
                 self.handle,
                 c_cert.as_ptr(),
@@ -723,7 +741,7 @@ impl SocketInner {
             )
         }) {
             Ok(()) => Ok(()),
-            Err(err) if err.code() == libc::EFAULT => {
+            Err(err) if err.code() == crate::error::ConfigResult::InvalidHandle => {
                 self.set_tls_cert(cert)?;
                 self.set_tls_key(key)?;
                 set_bool_opt(
@@ -736,19 +754,19 @@ impl SocketInner {
         }
     }
 
-    pub fn set_tls_cert(&self, cert: &str) -> Result<(), ZlinkError> {
+    pub fn set_tls_cert(&self, cert: &str) -> Result<(), ConfigError> {
         set_string_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_TLS_CERT, cert)
     }
 
-    pub fn set_tls_key(&self, key: &str) -> Result<(), ZlinkError> {
+    pub fn set_tls_key(&self, key: &str) -> Result<(), ConfigError> {
         set_string_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_TLS_KEY, key)
     }
 
-    pub fn set_tls_ca(&self, ca_cert: &str) -> Result<(), ZlinkError> {
+    pub fn set_tls_ca(&self, ca_cert: &str) -> Result<(), ConfigError> {
         set_string_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_TLS_CA, ca_cert)
     }
 
-    pub fn set_tls_hostname(&self, hostname: &str) -> Result<(), ZlinkError> {
+    pub fn set_tls_hostname(&self, hostname: &str) -> Result<(), ConfigError> {
         set_string_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_TLS_HOSTNAME,
@@ -756,7 +774,7 @@ impl SocketInner {
         )
     }
 
-    pub fn set_tls_trust_system(&self, trust_system: bool) -> Result<(), ZlinkError> {
+    pub fn set_tls_trust_system(&self, trust_system: bool) -> Result<(), ConfigError> {
         set_bool_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_TLS_TRUST_SYSTEM,
@@ -769,12 +787,10 @@ impl SocketInner {
         ca_cert: &str,
         hostname: &str,
         trust_system: bool,
-    ) -> Result<(), ZlinkError> {
-        let c_ca = CString::new(ca_cert)
-            .map_err(|_| ZlinkError::validation("ca_cert contains null byte"))?;
-        let c_host = CString::new(hostname)
-            .map_err(|_| ZlinkError::validation("hostname contains null byte"))?;
-        match check_rc(unsafe {
+    ) -> Result<(), ConfigError> {
+        let c_ca = CString::new(ca_cert).map_err(|_| config_validation_error())?;
+        let c_host = CString::new(hostname).map_err(|_| config_validation_error())?;
+        match check_config_rc(unsafe {
             ffi::zlink_set_tls_client(
                 self.handle,
                 c_ca.as_ptr(),
@@ -783,7 +799,7 @@ impl SocketInner {
             )
         }) {
             Ok(()) => Ok(()),
-            Err(err) if err.code() == libc::EFAULT => {
+            Err(err) if err.code() == crate::error::ConfigResult::InvalidHandle => {
                 self.set_tls_ca(ca_cert)?;
                 self.set_tls_hostname(hostname)?;
                 self.set_tls_trust_system(trust_system)
@@ -792,11 +808,11 @@ impl SocketInner {
         }
     }
 
-    pub fn close(&mut self) -> Result<(), ZlinkError> {
+    pub fn close(&mut self) -> Result<(), CloseError> {
         if self.handle.is_null() {
             return Ok(());
         }
-        check_rc(unsafe { ffi::zlink_close(self.handle) })?;
+        check_close_rc(unsafe { ffi::zlink_close(self.handle) })?;
         self.handle = ptr::null_mut();
         self.recv_cb = None;
         self.sub_cb = None;
@@ -830,7 +846,7 @@ unsafe extern "C" fn recv_trampoline<F: Fn(Received) + Send + 'static>(
     let handler = unsafe { &*(userdata as *const F) };
     let rid = unsafe { *source_rid };
     let parts_vec = take_parts(parts, part_count);
-    handler(Received::new(RoutingId::from_raw(rid), parts_vec));
+    handler(Received::new(RoutingId::from_raw_optional(rid), parts_vec));
 }
 
 pub(crate) unsafe extern "C" fn subscribe_trampoline<F: Fn(TopicMessage) + Send + 'static>(
@@ -851,7 +867,7 @@ pub(crate) unsafe extern "C" fn subscribe_trampoline<F: Fn(TopicMessage) + Send 
     };
     let parts_vec = take_parts(parts, part_count);
     handler(TopicMessage::new(
-        RoutingId::from_raw(rid),
+        RoutingId::from_raw_optional(rid),
         topic_str,
         parts_vec,
     ));
@@ -878,7 +894,7 @@ pub(crate) unsafe extern "C" fn send_ready_trampoline<F: Fn() + Send + 'static>(
 /// Vec owns the content ready for `zlink_send`.
 pub(crate) fn prepare_send_parts(
     parts: &mut Vec<Message>,
-) -> Result<Vec<ffi::zlink_msg_t>, ZlinkError> {
+) -> Result<Vec<ffi::zlink_msg_t>, SubmitError> {
     let count = parts.len();
     let mut native: Vec<ffi::zlink_msg_t> = Vec::with_capacity(count);
     unsafe {
@@ -921,12 +937,15 @@ pub(crate) fn cstr_buf_to_string(buf: &[i8], len: usize) -> String {
 /// `ZLINK_DONTWAIT`, the return value is the public `zlink_submit_result_t`
 /// enum (0 = Sent, 1 = Backpressured, 2 = NotReady, other non-zero values are
 /// submit failures).
-pub(crate) fn check_send_result(rc: i32) -> Result<SendResult, ZlinkError> {
+pub(crate) fn check_send_result(rc: i32) -> Result<SendResult, SubmitError> {
     match rc {
         0 => Ok(SendResult::Sent),
         1 => Ok(SendResult::Backpressured),
         2 => Ok(SendResult::NotReady),
-        _ => Err(ZlinkError::last()),
+        _ => Err(SubmitError::new(
+            crate::error::SubmitResult::InternalError,
+            last_errno(),
+        )),
     }
 }
 
@@ -934,8 +953,8 @@ fn set_int_opt(
     handle: *mut c_void,
     opt: ffi::zlink_option_t,
     value: i32,
-) -> Result<(), ZlinkError> {
-    check_rc(unsafe {
+) -> Result<(), ConfigError> {
+    check_config_rc(unsafe {
         ffi::zlink_set_option(
             handle,
             opt,
@@ -949,7 +968,7 @@ fn set_bool_opt(
     handle: *mut c_void,
     opt: ffi::zlink_option_t,
     enabled: bool,
-) -> Result<(), ZlinkError> {
+) -> Result<(), ConfigError> {
     set_int_opt(handle, opt, if enabled { 1 } else { 0 })
 }
 
@@ -957,7 +976,7 @@ fn set_duration_opt(
     handle: *mut c_void,
     opt: ffi::zlink_option_t,
     duration: Duration,
-) -> Result<(), ZlinkError> {
+) -> Result<(), ConfigError> {
     set_int_opt(handle, opt, duration_to_millis(duration)?)
 }
 
@@ -965,10 +984,9 @@ fn set_string_opt(
     handle: *mut c_void,
     opt: ffi::zlink_option_t,
     value: &str,
-) -> Result<(), ZlinkError> {
-    let c_value =
-        CString::new(value).map_err(|_| ZlinkError::validation("value contains null byte"))?;
-    check_rc(unsafe {
+) -> Result<(), ConfigError> {
+    let c_value = CString::new(value).map_err(|_| config_validation_error())?;
+    check_config_rc(unsafe {
         ffi::zlink_set_option(
             handle,
             opt,
@@ -978,10 +996,10 @@ fn set_string_opt(
     })
 }
 
-fn get_int_opt(handle: *mut c_void, opt: ffi::zlink_option_t) -> Result<i32, ZlinkError> {
+fn get_int_opt(handle: *mut c_void, opt: ffi::zlink_option_t) -> Result<i32, ConfigError> {
     let mut value: i32 = 0;
     let mut len = std::mem::size_of::<i32>();
-    check_rc(unsafe {
+    check_config_rc(unsafe {
         ffi::zlink_get_option(handle, opt, &mut value as *mut i32 as *mut c_void, &mut len)
     })?;
     Ok(value)
@@ -997,70 +1015,106 @@ macro_rules! impl_base_socket {
     ($ty:ident) => {
         #[allow(dead_code)]
         impl $ty {
-            pub fn close(&mut self) -> Result<(), ZlinkError> {
+            pub fn close(&mut self) -> Result<(), crate::error::CloseError> {
                 self.inner.close()
             }
-            pub fn bind(&self, addr: &str) -> Result<(), ZlinkError> {
+            pub fn bind(&self, addr: &str) -> Result<(), crate::error::BindError> {
                 self.inner.bind(addr)
             }
-            pub fn unbind(&self, addr: &str) -> Result<(), ZlinkError> {
+            pub fn unbind(&self, addr: &str) -> Result<(), crate::error::ConnectError> {
                 self.inner.unbind(addr)
             }
-            pub fn last_endpoint(&self) -> Result<String, ZlinkError> {
+            pub fn last_endpoint(&self) -> Result<String, crate::error::ConfigError> {
                 self.inner.last_endpoint()
             }
-            pub(crate) fn set_linger(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_linger(&self, d: Duration) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_linger(d)
             }
-            pub(crate) fn set_max_msg_size(&self, bytes: i64) -> Result<(), ZlinkError> {
+            pub(crate) fn set_max_msg_size(
+                &self,
+                bytes: i64,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_max_msg_size(bytes)
             }
-            pub(crate) fn set_backlog(&self, value: i32) -> Result<(), ZlinkError> {
+            pub(crate) fn set_backlog(&self, value: i32) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_backlog(value)
             }
-            pub(crate) fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ZlinkError> {
+            pub(crate) fn set_tcp_keepalive(
+                &self,
+                enabled: bool,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_tcp_keepalive(enabled)
             }
-            pub(crate) fn set_tcp_nodelay(&self, enabled: bool) -> Result<(), ZlinkError> {
+            pub(crate) fn set_tcp_nodelay(
+                &self,
+                enabled: bool,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_tcp_nodelay(enabled)
             }
-            pub(crate) fn set_ipv6(&self, enabled: bool) -> Result<(), ZlinkError> {
+            pub(crate) fn set_ipv6(&self, enabled: bool) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_ipv6(enabled)
             }
-            pub(crate) fn set_immediate(&self, enabled: bool) -> Result<(), ZlinkError> {
+            pub(crate) fn set_immediate(
+                &self,
+                enabled: bool,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_immediate(enabled)
             }
-            pub(crate) fn set_reconnect_interval(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_reconnect_interval(
+                &self,
+                d: Duration,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_reconnect_interval(d)
             }
-            pub(crate) fn set_reconnect_interval_max(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_reconnect_interval_max(
+                &self,
+                d: Duration,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_reconnect_interval_max(d)
             }
-            pub(crate) fn set_connect_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_connect_timeout(
+                &self,
+                d: Duration,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_connect_timeout(d)
             }
-            pub(crate) fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_heartbeat_interval(
+                &self,
+                d: Duration,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_heartbeat_interval(d)
             }
-            pub(crate) fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_heartbeat_ttl(
+                &self,
+                d: Duration,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_heartbeat_ttl(d)
             }
-            pub(crate) fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_heartbeat_timeout(
+                &self,
+                d: Duration,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_heartbeat_timeout(d)
             }
-            pub fn set_tls_cert(&self, cert: &str) -> Result<(), ZlinkError> {
+            pub fn set_tls_cert(&self, cert: &str) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_tls_cert(cert)
             }
-            pub fn set_tls_key(&self, key: &str) -> Result<(), ZlinkError> {
+            pub fn set_tls_key(&self, key: &str) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_tls_key(key)
             }
-            pub fn set_tls_ca(&self, ca_cert: &str) -> Result<(), ZlinkError> {
+            pub fn set_tls_ca(&self, ca_cert: &str) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_tls_ca(ca_cert)
             }
-            pub fn set_tls_hostname(&self, hostname: &str) -> Result<(), ZlinkError> {
+            pub fn set_tls_hostname(
+                &self,
+                hostname: &str,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_tls_hostname(hostname)
             }
-            pub fn set_tls_trust_system(&self, trust_system: bool) -> Result<(), ZlinkError> {
+            pub fn set_tls_trust_system(
+                &self,
+                trust_system: bool,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_tls_trust_system(trust_system)
             }
             pub fn set_tls_server(
@@ -1068,7 +1122,7 @@ macro_rules! impl_base_socket {
                 cert: &str,
                 key: &str,
                 require_client_cert: bool,
-            ) -> Result<(), ZlinkError> {
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_tls_server(cert, key, require_client_cert)
             }
             pub fn set_tls_client(
@@ -1076,7 +1130,7 @@ macro_rules! impl_base_socket {
                 ca_cert: &str,
                 hostname: &str,
                 trust_system: bool,
-            ) -> Result<(), ZlinkError> {
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_tls_client(ca_cert, hostname, trust_system)
             }
             pub(crate) fn handle(&self) -> *mut c_void {
@@ -1091,10 +1145,10 @@ macro_rules! impl_routing_id_options {
     ($ty:ident) => {
         #[allow(dead_code)]
         impl $ty {
-            pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ZlinkError> {
+            pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_routing_id(id)
             }
-            pub fn routing_id(&self) -> Result<RoutingId, ZlinkError> {
+            pub fn routing_id(&self) -> Result<RoutingId, crate::error::ConfigError> {
                 self.inner.routing_id()
             }
         }
@@ -1106,10 +1160,10 @@ macro_rules! impl_connect {
     ($ty:ident) => {
         #[allow(dead_code)]
         impl $ty {
-            pub fn connect(&self, addr: &str) -> Result<(), ZlinkError> {
+            pub fn connect(&self, addr: &str) -> Result<(), crate::error::ConnectError> {
                 self.inner.connect(addr)
             }
-            pub fn disconnect(&self, addr: &str) -> Result<(), ZlinkError> {
+            pub fn disconnect(&self, addr: &str) -> Result<(), crate::error::ConnectError> {
                 self.inner.disconnect(addr)
             }
         }
@@ -1124,7 +1178,7 @@ macro_rules! impl_attach_discovery {
             pub fn attach_discovery(
                 &self,
                 discovery: &crate::service::Discovery,
-            ) -> Result<(), ZlinkError> {
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.attach_discovery(discovery)
             }
         }
@@ -1136,16 +1190,22 @@ macro_rules! impl_send_options {
     ($ty:ident) => {
         #[allow(dead_code)]
         impl $ty {
-            pub(crate) fn set_send_hwm(&self, value: i32) -> Result<(), ZlinkError> {
+            pub(crate) fn set_send_hwm(&self, value: i32) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_send_hwm(value)
             }
-            pub(crate) fn send_hwm(&self) -> Result<i32, ZlinkError> {
+            pub(crate) fn send_hwm(&self) -> Result<i32, crate::error::ConfigError> {
                 self.inner.send_hwm()
             }
-            pub(crate) fn set_send_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_send_timeout(
+                &self,
+                d: Duration,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_send_timeout(d)
             }
-            pub(crate) fn set_send_buffer_size(&self, bytes: i32) -> Result<(), ZlinkError> {
+            pub(crate) fn set_send_buffer_size(
+                &self,
+                bytes: i32,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_send_buffer_size(bytes)
             }
         }
@@ -1157,16 +1217,22 @@ macro_rules! impl_recv_options {
     ($ty:ident) => {
         #[allow(dead_code)]
         impl $ty {
-            pub(crate) fn set_recv_hwm(&self, value: i32) -> Result<(), ZlinkError> {
+            pub(crate) fn set_recv_hwm(&self, value: i32) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_recv_hwm(value)
             }
-            pub(crate) fn recv_hwm(&self) -> Result<i32, ZlinkError> {
+            pub(crate) fn recv_hwm(&self) -> Result<i32, crate::error::ConfigError> {
                 self.inner.recv_hwm()
             }
-            pub(crate) fn set_recv_timeout(&self, d: Duration) -> Result<(), ZlinkError> {
+            pub(crate) fn set_recv_timeout(
+                &self,
+                d: Duration,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_recv_timeout(d)
             }
-            pub(crate) fn set_recv_buffer_size(&self, bytes: i32) -> Result<(), ZlinkError> {
+            pub(crate) fn set_recv_buffer_size(
+                &self,
+                bytes: i32,
+            ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_recv_buffer_size(bytes)
             }
         }

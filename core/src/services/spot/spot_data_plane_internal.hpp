@@ -8,7 +8,6 @@
 #include "utils/mutex.hpp"
 
 #include <atomic>
-#include <deque>
 #include <map>
 #include <set>
 #include <string>
@@ -27,88 +26,6 @@ struct spot_data_plane_protocol_state_t
     std::map<std::string, std::set<std::string> > peer_ready_filters;
     std::map<std::string, std::map<std::string, std::set<std::string> > >
       outbound_ready_filters;
-    struct pending_unbatch_t
-    {
-        pending_unbatch_t () :
-            active (false),
-            total_message_count (0),
-            decoded_message_index (0),
-            decode_offset (0)
-        {
-        }
-
-        void clear ()
-        {
-            active = false;
-            topic.clear ();
-            body.clear ();
-            total_message_count = 0;
-            decoded_message_index = 0;
-            decode_offset = 0;
-        }
-
-        bool active;
-        std::string topic;
-        std::string body;
-        uint32_t total_message_count;
-        uint32_t decoded_message_index;
-        size_t decode_offset;
-    } pending_unbatch;
-};
-
-struct spot_node_batch_config_t
-{
-    spot_node_batch_config_t () :
-        enabled (false),
-        delay_ms (20),
-        max_messages (32),
-        max_bytes (64 * 1024),
-        bypass_bytes (64 * 1024),
-        unbatch_max_messages_per_turn (32),
-        unbatch_max_bytes_per_turn (64 * 1024)
-    {
-    }
-
-    bool enabled;
-    int delay_ms;
-    int max_messages;
-    int max_bytes;
-    int bypass_bytes;
-    int unbatch_max_messages_per_turn;
-    int unbatch_max_bytes_per_turn;
-};
-
-struct spot_topic_batch_message_t
-{
-    spot_topic_batch_message_t () :
-        payload_bytes (0),
-        encoded_bytes (0)
-    {
-    }
-
-    size_t payload_bytes;
-    uint32_t encoded_bytes;
-    std::vector<std::string> parts;
-};
-
-struct spot_topic_batch_bucket_t
-{
-    spot_topic_batch_bucket_t () :
-        first_enqueue_ms (0),
-        last_enqueue_ms (0),
-        pending_message_count (0),
-        pending_payload_bytes (0),
-        pending_encoded_bytes (0)
-    {
-    }
-
-    std::string topic;
-    uint64_t first_enqueue_ms;
-    uint64_t last_enqueue_ms;
-    size_t pending_message_count;
-    size_t pending_payload_bytes;
-    size_t pending_encoded_bytes;
-    std::deque<spot_topic_batch_message_t> messages;
 };
 
 struct spot_mesh_peer_state_t
@@ -329,7 +246,6 @@ struct spot_data_plane_runtime_state_t
     int current_mesh_pub_sndhwm;
     uint64_t last_mesh_pub_budget_version;
     std::string last_mesh_pub_bound_endpoint;
-    std::map<std::string, spot_topic_batch_bucket_t> pending_peer_batches;
     socket_poller_t *poller;
 };
 
@@ -353,13 +269,6 @@ struct spot_data_plane_protocol_t
       spot_runtime_t *runtime_,
       spot_node_t *node_,
       spot_data_plane_protocol_state_t *state_);
-    static int resume_pending_unbatch (socket_base_t *fanout_,
-                                       const spot_runtime_t *runtime_,
-                                       spot_data_plane_protocol_state_t *state_);
-    static int decode_batch_frame (const std::string &topic_,
-                                   const std::vector<std::string> &frames_,
-                                   spot_data_plane_protocol_state_t *state_,
-                                   bool *is_batch_out_);
     static int handle_ctrl_command (
       socket_base_t *ctrl_,
       spot_node_t *node_,
@@ -393,23 +302,6 @@ struct spot_data_plane_forwarder_t
     static void pump_socket_commands (socket_base_t *socket_);
     static int resolve_internal_hwm_override (const char *env_name_,
                                               int default_value_);
-    static size_t logical_message_payload_bytes (
-      const std::vector<std::string> &parts_);
-    static uint32_t logical_message_encoded_bytes (
-      const std::vector<std::string> &parts_);
-    static bool is_immediate_peer_topic (const std::string &topic_);
-    static uint64_t next_flush_deadline_ms (
-      const spot_data_plane_runtime_state_t *state_,
-      const spot_node_batch_config_t &config_);
-    static int flush_due_buckets (spot_runtime_t *runtime_,
-                                  spot_data_plane_runtime_state_t *state_,
-                                  socket_base_t *mesh_pub_,
-                                  uint64_t now_ms_);
-    static int flush_all_buckets (spot_runtime_t *runtime_,
-                                  spot_data_plane_runtime_state_t *state_,
-                                  socket_base_t *mesh_pub_);
-    static int encode_batch_frames (const spot_topic_batch_bucket_t &bucket_,
-                                    std::vector<std::string> *parts_out_);
     static int recv_and_forward_ingress (socket_base_t *src_,
                                          socket_base_t *mesh_pub_,
                                          socket_base_t *fanout_,

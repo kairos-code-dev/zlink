@@ -22,7 +22,8 @@ void stream_callback (const zlink_routing_id_t *source_rid_,
     assert (part_count_ == 1);
 
     callback_result_t result;
-    result.routing_id = zlink::routing_id_t (source_rid_->data, source_rid_->size);
+    result.routing_id = zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> (source_rid_->data), source_rid_->size);
     result.payload.assign (
       static_cast<const char *> (zlink_msg_data (&parts_[0])),
       zlink_msg_size (&parts_[0]));
@@ -38,17 +39,15 @@ int main ()
     zlink::context_t ctx;
     zlink::stream_socket_t server (ctx);
     zlink::monitor_handle_t server_monitor = server.monitor_handle ();
-    assert (server.set_option (zlink::stream_options::notify, 0) == 0);
+    server.stream_options ().notify (false);
 
     assert (server.bind ("tcp://127.0.0.1:0") == 0);
-    std::string endpoint;
-    assert (server.get_option (zlink::socket_options::last_endpoint, endpoint)
-            == 0);
+    const std::string endpoint = server.options ().last_endpoint ();
     assert (!endpoint.empty ());
 
     std::promise<callback_result_t> result_promise;
     std::future<callback_result_t> result_future = result_promise.get_future ();
-    assert (server.on_receive (&stream_callback, &result_promise) == 0);
+    server.on_receive (&stream_callback, &result_promise);
 
     detail::raw_tcp_client_t client (endpoint);
     assert (detail::wait_stream_connected (server_monitor));

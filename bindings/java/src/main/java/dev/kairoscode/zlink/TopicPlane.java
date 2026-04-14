@@ -145,8 +145,18 @@ final class TopicPlane {
 
             int rc = Native.subscriptionEvent(socket.handle(), rid, subscribedOut,
                 topicOut, topicLenOut, flags.getValue());
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_subscription_event");
+            if (rc != 0) {
+                int errno = Native.errno();
+                if (errno == Socket.ERRNO_EINTR) {
+                    return subscriptionEvent(flags);
+                }
+                if (flags == ReceiveFlag.DONTWAIT
+                    && (errno == Socket.ERRNO_EAGAIN
+                        || errno == Socket.ERRNO_EWOULDBLOCK_WIN)) {
+                    throw new RecvException(RecvResult.NO_DATA, errno);
+                }
+                throw ZlinkException.fromErrno("zlink_subscription_event", errno);
+            }
 
             int topicLength = Socket.normalizeTopicLength(topicOut, Socket.TOPIC_CAPACITY,
                 topicLenOut.get(ValueLayout.JAVA_LONG, 0));
@@ -154,8 +164,9 @@ final class TopicPlane {
                 ? ""
                 : new String(topicOut.asSlice(0, topicLength).toArray(
                     ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
-            return new SubscriptionEvent(Socket.toRoutingId(Socket.decodeRoutingId(rid)),
-                subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0, filter);
+            return new SubscriptionEvent(java.util.Optional.ofNullable(
+                Socket.toRoutingId(Socket.decodeRoutingId(rid))), filter,
+                subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0);
         }
     }
 
@@ -181,8 +192,9 @@ final class TopicPlane {
                         : new String(topicOut.asSlice(0, topicLength).toArray(
                             ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
                     return Optional.of(new SubscriptionEvent(
-                        Socket.toRoutingId(Socket.decodeRoutingId(rid)),
-                        subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0, filter));
+                        java.util.Optional.ofNullable(
+                          Socket.toRoutingId(Socket.decodeRoutingId(rid))),
+                        filter, subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
                 }
             }
 
@@ -199,12 +211,12 @@ final class TopicPlane {
 
     void setRoutingId(RoutingId rid) {
         Objects.requireNonNull(rid, "rid");
-        byte[] value = rid.toByteArray();
+        byte[] value = rid.toBytes();
         socket.setRoutingIdBytes(value, 0, value.length);
     }
 
     RoutingId routingId() {
-        return RoutingId.copyOf(socket.getRoutingIdBytes());
+        return RoutingId.fromBytes(socket.getRoutingIdBytes());
     }
 
     void setSubscription(String filter) {

@@ -120,7 +120,7 @@ func TestAttachDiscoveryBlocksManualSocketLifecycleControls(t *testing.T) {
 	}
 }
 
-func TestRequestReplyWrapperSupportsDealerRouterRoundTrip(t *testing.T) {
+func TestRequestReplyCanonicalDealerRouterRoundTrip(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
@@ -136,11 +136,6 @@ func TestRequestReplyWrapperSupportsDealerRouterRoundTrip(t *testing.T) {
 	}
 	defer dealerSocket.Close()
 
-	router := zlink.NewRequestRouter(routerSocket)
-	defer router.Close()
-	dealer := zlink.NewRequestDealer(dealerSocket)
-	defer dealer.Close()
-
 	endpoint := inprocEndpoint("request-reply")
 	if err := routerSocket.Bind(endpoint); err != nil {
 		t.Fatalf("Bind() error = %v", err)
@@ -150,49 +145,51 @@ func TestRequestReplyWrapperSupportsDealerRouterRoundTrip(t *testing.T) {
 	}
 
 	done := make(chan struct{})
-	if err := router.OnReceive(func(received *zlink.Received) {
+	if err := routerSocket.OnReceive(func(received *zlink.Received) {
 		defer close(done)
 		defer received.Close()
-		part, err := received.SinglePartOrError()
+		if !received.HasRoutingID() {
+			t.Errorf("HasRoutingID() = false")
+			return
+		}
+		if !received.HasRequestSeq() {
+			t.Errorf("HasRequestSeq() = false")
+			return
+		}
+		if !received.IsSinglePart() {
+			t.Errorf("IsSinglePart() = false")
+			return
+		}
+		part, err := received.FirstPart()
 		if err != nil {
-			t.Errorf("SinglePartOrError() error = %v", err)
+			t.Errorf("FirstPart() error = %v", err)
 			return
 		}
 		if got := string(part.Data()); got != "ping" {
 			t.Errorf("request payload = %q, want %q", got, "ping")
 			return
 		}
-		requestSeq, ok := received.RequestSeq()
-		if !ok {
-			t.Errorf("RequestSeq() = missing")
-			return
-		}
-		routingID := received.RoutingID()
 		reply, err := zlink.NewMessage([]byte("pong"))
 		if err != nil {
 			t.Errorf("NewMessage() error = %v", err)
 			return
 		}
-		if err := router.Reply(routingID, requestSeq, zlink.SendFlagsNone, reply); err != nil {
-			t.Errorf("Reply() error = %v", err)
+		if err := received.Reply([]*zlink.Message{reply}); err != nil {
+			t.Errorf("Received.Reply() error = %v", err)
 		}
 	}); err != nil {
 		t.Fatalf("OnReceive() error = %v", err)
 	}
 
-	request, err := zlink.NewMessage([]byte("ping"))
-	if err != nil {
-		t.Fatalf("NewMessage() error = %v", err)
-	}
-	reply, err := dealer.Request(2*time.Second, request)
+	reply, err := dealerSocket.Request([][]byte{[]byte("ping")}, 2*time.Second)
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
-	defer reply.Close()
-	part, err := reply.SinglePartOrError()
-	if err != nil {
-		t.Fatalf("SinglePartOrError() error = %v", err)
+	if len(reply) != 1 {
+		t.Fatalf("Request() reply parts = %d, want 1", len(reply))
 	}
+	defer reply[0].Close()
+	part := reply[0]
 	if got := string(part.Data()); got != "pong" {
 		t.Fatalf("reply payload = %q, want %q", got, "pong")
 	}
@@ -203,7 +200,7 @@ func TestRequestReplyWrapperSupportsDealerRouterRoundTrip(t *testing.T) {
 	}
 }
 
-func TestRequestRouterPreservesDataReceiveSurface(t *testing.T) {
+func TestRouterRequestSupportPreservesDataReceiveSurface(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 

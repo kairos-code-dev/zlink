@@ -109,6 +109,12 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "AttachDiscovery") {
 		t.Fatalf("SpotNode should expose AttachDiscovery")
 	}
+	if !hasMethod((*zlink.SpotNode)(nil), "SetRoutingID") {
+		t.Fatalf("SpotNode should expose SetRoutingID")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "RoutingID") {
+		t.Fatalf("SpotNode should expose RoutingID")
+	}
 	if !hasMethod((*zlink.Spot)(nil), "Publish") {
 		t.Fatalf("Spot should expose Publish")
 	}
@@ -123,6 +129,12 @@ func TestSurfaceCapabilities(t *testing.T) {
 	}
 	if !hasMethod((*zlink.Spot)(nil), "OnSendReady") {
 		t.Fatalf("Spot should expose OnSendReady")
+	}
+	if !hasMethod((*zlink.Spot)(nil), "SetRoutingID") {
+		t.Fatalf("Spot should expose SetRoutingID")
+	}
+	if !hasMethod((*zlink.Spot)(nil), "RoutingID") {
+		t.Fatalf("Spot should expose RoutingID")
 	}
 	if hasMethod((*zlink.Spot)(nil), "SetTLSServer") {
 		t.Fatalf("Spot should not expose SetTLSServer")
@@ -174,6 +186,12 @@ func TestSurfaceCapabilities(t *testing.T) {
 	}
 	if !hasMethod((*zlink.Discovery)(nil), "MonitorOpen") {
 		t.Fatalf("Discovery should expose MonitorOpen")
+	}
+	if !hasMethod((*zlink.Discovery)(nil), "ResolveSpot") {
+		t.Fatalf("Discovery should expose ResolveSpot")
+	}
+	if !hasMethod((*zlink.Discovery)(nil), "SetDealerPeerMode") {
+		t.Fatalf("Discovery should expose SetDealerPeerMode")
 	}
 	if !hasMethod((*zlink.Registry)(nil), "SetTLSServer") {
 		t.Fatalf("Registry should expose SetTLSServer")
@@ -227,6 +245,9 @@ func TestSurfaceRemovesRawFlagsAndOptionBags(t *testing.T) {
 	}
 	if hasMethod((*zlink.SocketMonitor)(nil), "RecvWithFlags") {
 		t.Fatalf("SocketMonitor should not expose raw flag receive")
+	}
+	if zlink.IgnoreMonitorHandler == nil {
+		t.Fatalf("IgnoreMonitorHandler should be defined")
 	}
 }
 
@@ -316,6 +337,12 @@ func TestSurfaceCallbackCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.DealerSocket)(nil), "OnSendReady") {
 		t.Fatalf("DealerSocket should expose OnSendReady")
 	}
+	if !hasMethod((*zlink.DealerSocket)(nil), "Request") {
+		t.Fatalf("DealerSocket should expose Request")
+	}
+	if !hasMethod((*zlink.DealerSocket)(nil), "RequestCallback") {
+		t.Fatalf("DealerSocket should expose RequestCallback")
+	}
 	if hasMethod((*zlink.DealerSocket)(nil), "OnSubscribe") {
 		t.Fatalf("DealerSocket should not expose OnSubscribe")
 	}
@@ -326,14 +353,23 @@ func TestSurfaceCallbackCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.RouterSocket)(nil), "OnSendReady") {
 		t.Fatalf("RouterSocket should expose OnSendReady")
 	}
-	if !hasMethod((*zlink.RouterSocket)(nil), "RecvSpot") {
-		t.Fatalf("RouterSocket should expose RecvSpot")
+	if hasMethod((*zlink.RouterSocket)(nil), "RecvSpot") {
+		t.Fatalf("RouterSocket should not expose RecvSpot")
 	}
-	if !hasMethod((*zlink.RouterSocket)(nil), "OnSpotReceive") {
-		t.Fatalf("RouterSocket should expose OnSpotReceive")
+	if hasMethod((*zlink.RouterSocket)(nil), "OnSpotReceive") {
+		t.Fatalf("RouterSocket should not expose OnSpotReceive")
 	}
 	if !hasMethod((*zlink.RouterSocket)(nil), "SendToSpot") {
 		t.Fatalf("RouterSocket should expose SendToSpot")
+	}
+	if !hasMethod((*zlink.RouterSocket)(nil), "Request") {
+		t.Fatalf("RouterSocket should expose Request")
+	}
+	if !hasMethod((*zlink.RouterSocket)(nil), "RequestCallback") {
+		t.Fatalf("RouterSocket should expose RequestCallback")
+	}
+	if !hasMethod((*zlink.RouterSocket)(nil), "Reply") {
+		t.Fatalf("RouterSocket should expose Reply")
 	}
 	if !hasMethod((*zlink.RouterSocket)(nil), "RequestToSpot") {
 		t.Fatalf("RouterSocket should expose RequestToSpot")

@@ -337,7 +337,7 @@ ZMP control part 를 사용합니다.
 현재 기준 인터페이스는 아래 문서를 따릅니다.
 
 - `doc/spec/core/socket/README.ko.md`
-- `doc/spec/core/spot.ko.md`
+- `doc/spec/core/service/spot.ko.md`
 - `doc/internals/protocol-zmp.ko.md`
 
 ```c

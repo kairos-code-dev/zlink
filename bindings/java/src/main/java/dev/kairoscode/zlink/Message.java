@@ -126,6 +126,31 @@ public final class Message implements AutoCloseable {
         return msg;
     }
 
+    static Message sharedCopyOf(Message source) {
+        Objects.requireNonNull(source, "source");
+        Message msg = new Message(Arena.ofShared(), true);
+        int rc = NativeMsg.msgInit(msg.msg);
+        if (rc != 0) {
+            msg.arena.close();
+            msg.closed = true;
+            throw ZlinkException.fromLastError("zlink_msg_init");
+        }
+        rc = NativeMsg.msgCopy(msg.msg, source.msg);
+        if (rc != 0) {
+            try {
+                NativeMsg.msgClose(msg.msg);
+            } catch (RuntimeException ignored) {
+            }
+            msg.arena.close();
+            msg.closed = true;
+            throw ZlinkException.fromLastError("zlink_msg_copy");
+        }
+        msg.valid = true;
+        msg.recvArmed = false;
+        msg.more = source.more;
+        return msg;
+    }
+
     /** Copies the remaining bytes from the buffer without mutating its cursor. */
     public static Message copyOf(ByteBuffer data) {
         Objects.requireNonNull(data, "data");
@@ -195,7 +220,7 @@ public final class Message implements AutoCloseable {
     }
 
     /** Borrows the remaining bytes from a direct {@link ByteBuffer}. */
-    public static Message wrapDirect(ByteBuffer data) {
+    static Message wrapDirect(ByteBuffer data) {
         Objects.requireNonNull(data, "data");
         if (!data.isDirect())
             throw new IllegalArgumentException("wrapDirect requires a direct ByteBuffer");
@@ -218,13 +243,13 @@ public final class Message implements AutoCloseable {
     }
 
     /** Borrows the full native memory segment without copying. */
-    public static Message wrapNative(MemorySegment data) {
+    static Message wrapNative(MemorySegment data) {
         Objects.requireNonNull(data, "data");
         return wrapNative(data, 0, data.byteSize());
     }
 
     /** Borrows the selected native memory segment range without copying. */
-    public static Message wrapNative(MemorySegment data, long offset, long length) {
+    static Message wrapNative(MemorySegment data, long offset, long length) {
         Objects.requireNonNull(data, "data");
         validateRange(data.byteSize(), offset, length, "data");
         if (length > 0 && !data.isNative())
@@ -246,7 +271,7 @@ public final class Message implements AutoCloseable {
     }
 
     /** Borrows the readable bytes from a direct {@code ByteBuf}. */
-    public static Message wrapDirect(ByteBuf buf) {
+    static Message wrapDirect(ByteBuf buf) {
         Objects.requireNonNull(buf, "buf");
         int length = buf.readableBytes();
         if (length == 0)
@@ -289,7 +314,7 @@ public final class Message implements AutoCloseable {
         return msg;
     }
 
-    public static Message wrap(ByteSpan span) {
+    static Message wrap(ByteSpan span) {
         Objects.requireNonNull(span, "span");
         MemorySegment segment = span.segment();
         if (span.length() > 0 && !segment.isNative())

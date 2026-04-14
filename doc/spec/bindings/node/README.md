@@ -338,11 +338,11 @@ class RouterSocket {
     replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                 requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
 
-    // --- router spot receive ---
-    /** @throws {RecvError} */
-    recvSpot(flags?: RecvFlags): Received;
-    /** @throws {HandlerError} */
-    onSpotReceive(handler: RouterSpotHandler): void;
+    // NOTE: RouterSocket 의 routed 수신 plane 은 단일 표면이다. 일반
+    // ROUTER 트래픽과 spot-origin routed 트래픽을 모두 recv / onReceive 로
+    // 받는다. `Received.routingId` 는 source_node_rid, `Received.spotRid`
+    // 는 spot-origin 트래픽에서만 값이 있다. 별도의 recvSpot /
+    // onSpotReceive 는 제공하지 않는다.
 
     /** @throws {CloseError} */
     close(): void;
@@ -836,8 +836,8 @@ class RecvError extends ZlinkError {
 ### HandlerError
 
 Thrown by handler registration methods (`onReceive`, `onSubscribe`,
-`onSendReady`, `onSpotReceive`, `onFire`, `onEvent`, etc.). Wraps a
-`HandlerResult`.
+`onSendReady`, `onRoutedReceive`, `onDispatchEvent`, `onFire`, `onEvent`,
+etc.). Wraps a `HandlerResult`.
 
 ```typescript
 class HandlerError extends ZlinkError {
@@ -904,6 +904,13 @@ class ConfigError extends ZlinkError {
 
 ```typescript
 class MonitorSocket {
+    /**
+     * No-op handler. Pass to onEvent() when driving the monitor via
+     * snapshot() or direct recv() without callback dispatch.
+     * Maps to zlink_monitor_ignore_handler.
+     */
+    static readonly ignoreHandler: SocketMonitorHandler;
+
     /** @throws {RecvError} */
     recv(): MonitorEvent;
     /** @throws {HandlerError} */
@@ -1023,6 +1030,11 @@ class Registry {
 ### Discovery
 
 ```typescript
+export enum DiscoveryDealerPeerMode {
+    Router = 1,
+    Dealer = 2,
+}
+
 class Discovery {
     constructor(ctx: Context, serviceType: number, serviceName: string);
     readonly serviceType: number;
@@ -1045,6 +1057,16 @@ class Discovery {
     monitorOpen(events?: ServiceMonitorEventMask): ServiceMonitor;
     /** @throws {ConfigError} */
     setTlsClient(ca: string, host: string, trust?: number): void;
+    /**
+     * Resolve the current owner node routing id for a logical spot routing id.
+     * Maps to zlink_discovery_resolve_spot.
+     */
+    resolveSpot(spotRid: RoutingId): RoutingId;
+    /**
+     * Set the auto-connect target policy used by DEALER sockets in this
+     * discovery view. Default is Router. Maps to zlink_discovery_set_dealer_peer_mode.
+     */
+    setDealerPeerMode(mode: DiscoveryDealerPeerMode): void;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -1077,6 +1099,15 @@ class SpotNode {
     peersQuery(filter?: SpotNodePeerFilter): SpotNodePeerEntry[];
     /** @throws {ConfigError} */
     subjectsSnapshot(filter?: SpotNodeSubjectFilter): SpotNodeSubjectEntry[];
+
+    // --- identity / routing ---
+    /**
+     * SpotNode's logical address. Maps to zlink_set_routing_id(node, ...) /
+     * zlink_get_routing_id(node, ...).
+     */
+    setRoutingId(rid: RoutingId): void;
+    readonly routingId: RoutingId;
+
     // close() cascades: closes all live Spot handles before the node becomes invalid.
     /** @throws {CloseError} */
     close(): void;
@@ -1206,6 +1237,14 @@ class Spot {
     onRoutedReceive(handler: SpotRoutedHandler): void;
     /** @throws {HandlerError} */
     onDispatchEvent(handler: SpotDispatchEventHandler): void;
+
+    // --- identity / routing ---
+    /**
+     * Spot's logical address / routed ownership key.
+     * Maps to zlink_set_routing_id(spot, ...) / zlink_get_routing_id(spot, ...).
+     */
+    setRoutingId(rid: RoutingId): void;
+    readonly routingId: RoutingId;
 
     /** @throws {CloseError} */
     close(): void;
@@ -1390,8 +1429,8 @@ class Poller {
     removeTimer(timer: Timer): void;
 
     // --- poll ---
-    /** @throws {ConfigError} */
-    size(): number;
+    /** Number of registered pollable items. Maps to zlink_poller_size. */
+    readonly size: number;
     /** @throws {RecvError} */
     wait(timeoutMs: number): PollerEvent | null;
     /** @throws {RecvError} */
@@ -1454,8 +1493,6 @@ type SpotSendReadyHandler = () => void;
 type SpotRoutedHandler = (sourceRid: RoutingId | null, spotRid: RoutingId | null,
                           requestSeq: bigint, parts: Message[]) => void;
 type SpotDispatchEventHandler = (event: number) => void;
-type RouterSpotHandler = (sourceNodeRid: RoutingId | null, sourceSpotRid: RoutingId | null,
-                          requestSeq: bigint, parts: Message[]) => void;
 type RequestResultCallback = (result: RequestResult, parts: Message[]) => void;
 type TimerHandler = (timer: Timer, fireCount: bigint) => void;
 type ServiceMonitorHandler = (event: ServiceEvent) => void;

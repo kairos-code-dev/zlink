@@ -340,7 +340,7 @@ public enum에서 제거하고, `zlink_set_subscribe` / `zlink_unset_subscribe`�
 ### 8.7 Documentation
 
 - [`socket.md`](doc/spec/core/socket/README.md) / [`socket.ko.md`](doc/spec/core/socket/README.ko.md)
-- [`spot.md`](doc/spec/core/spot.md) / [`spot.ko.md`](doc/spec/core/spot.ko.md)
+- [`spot.md`](doc/spec/core/service/spot.md) / [`spot.ko.md`](doc/spec/core/service/spot.ko.md)
 - [`README.md`](doc/spec/core/README.md) / [`README.ko.md`](doc/spec/core/README.ko.md)
 - [`03-2-pubsub.md`](doc/guide/03-2-pubsub.md) / [`03-2-pubsub.ko.md`](doc/guide/03-2-pubsub.ko.md)
 - [`02-core-api.md`](doc/guide/02-core-api.md) / [`02-core-api.ko.md`](doc/guide/02-core-api.ko.md)
@@ -811,8 +811,8 @@ bench compat shim:
 | --- |
 | `doc/spec/core/socket/README.md` |
 | `doc/spec/core/socket/README.ko.md` |
-| `doc/spec/core/spot.md` |
-| `doc/spec/core/spot.ko.md` |
+| `doc/spec/core/service/spot.md` |
+| `doc/spec/core/service/spot.ko.md` |
 | `doc/guide/03-2-pubsub.md` |
 | `doc/guide/03-2-pubsub.ko.md` |
 | `doc/guide/07-3-spot.md` |

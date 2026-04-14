@@ -19,16 +19,18 @@ API directly. The public contract is:
 - blocking APIs use direct names like `send`, `recv`, `publish`, `subscribe`
 - non-blocking behavior is expressed through `SendFlags` and `RecvFlags`
 - `Context` exposes typed `ContextOptions` instead of raw `set/get`
-- `Message` exposes zero-copy `data` plus diagnostic `getProperty` and
-  `refCount`
+- `Message` exposes zero-copy `data` plus diagnostic `get_property` and
+  `ref_count`
 - receive and subscribe return domain objects such as `Received`,
-  `Subscribed`, `TopicMessage`, `RoutingId`, and `SubscriptionEvent`
+  `TopicMessage`, `RoutingId`, and `SubscriptionEvent`
 - request/reply surfaces use `request`, `reply`, `request_to_router`,
   `request_to_spot`, `recv_routed`, and `reply_to_router`
 - raw public option bags like `setsockopt` and `getsockopt` are not exposed
 - typed option families are exposed through properties and capability objects
 - monitor sockets use canonical `monitor_open()`, `recv()`, and `snapshot()`
 - service monitors use canonical `monitor_open()`, `recv()`, and `on_event()`
+- monitor masks use `MonitorEventMask`; decoded monitor payload uses
+  `MonitorEvent`
 - resource-owning types support sync and async context manager cleanup
 - `*_READY_CHANGED` monitor events do not expose aggregate ready counts
 - monitor snapshots are state/queue inspection surfaces, not ready-count gates
@@ -76,7 +78,6 @@ Common hot-path helpers are value-typed:
 - `Message`
 - `Received`
 - `TopicMessage`
-- `Subscribed`
 - `RoutingId`
 - `SubscriptionEvent`
 - `SendFlags`

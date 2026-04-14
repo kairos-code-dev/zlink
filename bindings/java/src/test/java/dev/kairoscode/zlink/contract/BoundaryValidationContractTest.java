@@ -21,10 +21,10 @@ public class BoundaryValidationContractTest {
         byte[] max = new byte[RoutingId.MAX_LENGTH];
         byte[] overflow = new byte[RoutingId.MAX_LENGTH + 1];
 
-        RoutingId routingId = assertDoesNotThrow(() -> RoutingId.copyOf(max));
+        RoutingId routingId = assertDoesNotThrow(() -> RoutingId.fromBytes(max));
         assertEquals(RoutingId.MAX_LENGTH, routingId.size());
         assertThrows(IllegalArgumentException.class,
-            () -> RoutingId.copyOf(overflow));
+            () -> RoutingId.fromBytes(overflow));
     }
 
     @Test

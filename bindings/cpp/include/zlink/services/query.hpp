@@ -6,6 +6,7 @@
 #include "../types.hpp"
 
 #include <cerrno>
+#include <cstdio>
 
 namespace zlink
 {
@@ -23,7 +24,13 @@ class registry_query_client_t
             _last_error = errno != 0 ? errno : EFAULT;
     }
 
-    ~registry_query_client_t () { (void) close (); }
+    ~registry_query_client_t ()
+    {
+        try {
+            close ();
+        } catch (...) {
+        }
+    }
 
     registry_query_client_t (registry_query_client_t &&other) noexcept
         : _client (other._client), _last_error (other._last_error)
@@ -37,7 +44,10 @@ class registry_query_client_t
         if (this == &other)
             return *this;
 
-        (void) close ();
+        try {
+            close ();
+        } catch (...) {
+        }
         _client = other._client;
         _last_error = other._last_error;
         other._client = NULL;
@@ -53,30 +63,65 @@ class registry_query_client_t
 
     int last_error () const noexcept { return _last_error; }
 
-    ZLINK_CPP_NODISCARD int connect (const std::string &endpoint_)
+    void connect (const std::string &endpoint_)
     {
         validate_bounded_c_string (endpoint_, 255u, "endpoint");
-        return zlink_registry_query_client_connect (_client, endpoint_.c_str ());
+        detail::throw_if_failed<connect_error_t> (
+          static_cast<connect_result_t> (
+            zlink_registry_query_client_connect (_client, endpoint_.c_str ())));
     }
 
-    ZLINK_CPP_NODISCARD int
-    snapshot (zlink_registry_topology_entry_t *entries_,
-              size_t *count_,
-              const zlink_registry_topology_filter_t *filter_ = NULL) const
+    std::vector<registry_topology_entry_t>
+    snapshot (const registry_topology_filter_t *filter_ = NULL) const
     {
-        return zlink_registry_query_snapshot (_client, filter_, entries_, count_);
+        zlink_registry_topology_filter_t native_filter;
+        const zlink_registry_topology_filter_t *filter_ptr = NULL;
+        if (filter_) {
+            std::memset (&native_filter, 0, sizeof (native_filter));
+            native_filter.service_kind =
+              static_cast<zlink_service_kind_t> (filter_->service_kind);
+            native_filter.service_role =
+              static_cast<zlink_service_role_t> (filter_->service_role);
+            std::snprintf (
+              native_filter.service_name, sizeof (native_filter.service_name),
+              "%s", filter_->service_name.c_str ());
+            native_filter.state =
+              static_cast<zlink_topology_state_t> (filter_->state);
+            native_filter.source =
+              static_cast<zlink_topology_source_t> (filter_->source);
+            if (filter_->routing_id)
+                native_filter.routing_id = filter_->routing_id->native ();
+            filter_ptr = &native_filter;
+        }
+
+        size_t count = 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_registry_query_snapshot (_client, filter_ptr, NULL, &count)));
+        std::vector<zlink_registry_topology_entry_t> native (count);
+        if (count > 0) {
+            detail::throw_if_failed<config_error_t> (
+              static_cast<config_result_t> (
+                zlink_registry_query_snapshot (
+                  _client, filter_ptr, native.data (), &count)));
+            native.resize (count);
+        }
+        std::vector<registry_topology_entry_t> entries;
+        entries.reserve (native.size ());
+        for (size_t i = 0; i < native.size (); ++i)
+            entries.push_back (registry_topology_entry_t (native[i]));
+        return entries;
     }
 
-    ZLINK_CPP_NODISCARD int close ()
+    void close ()
     {
         if (!_client)
-            return 0;
+            return;
 
         void *tmp = _client;
-        const int rc = zlink_registry_query_destroy (&tmp);
-        if (rc == 0)
-            _client = NULL;
-        return rc;
+        detail::throw_if_failed<close_error_t> (
+          static_cast<close_result_t> (zlink_registry_query_destroy (&tmp)));
+        _client = NULL;
     }
 
     void *handle () const { return _client; }

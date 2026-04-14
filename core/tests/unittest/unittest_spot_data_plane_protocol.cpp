@@ -72,32 +72,6 @@ void close_socket (zlink::ctx_t *ctx_, zlink::socket_base_t *&socket_)
     socket_ = NULL;
 }
 
-zlink::spot_topic_batch_bucket_t make_bucket (
-  const char *topic_, const char *m1_, const char *m2_ = NULL,
-  const char *m3_ = NULL, const char *m4_ = NULL, const char *m5_ = NULL)
-{
-    zlink::spot_topic_batch_bucket_t bucket;
-    bucket.topic = topic_;
-    const char *payloads[] = {m1_, m2_, m3_, m4_, m5_};
-    for (size_t i = 0; i < sizeof (payloads) / sizeof (payloads[0]); ++i) {
-        if (!payloads[i])
-            continue;
-        zlink::spot_topic_batch_message_t message;
-        message.parts.push_back (payloads[i]);
-        message.payload_bytes =
-          zlink::spot_data_plane_forwarder_t::logical_message_payload_bytes (
-            message.parts);
-        message.encoded_bytes =
-          zlink::spot_data_plane_forwarder_t::logical_message_encoded_bytes (
-            message.parts);
-        bucket.pending_message_count += 1;
-        bucket.pending_payload_bytes += message.payload_bytes;
-        bucket.pending_encoded_bytes += message.encoded_bytes + 4;
-        bucket.messages.push_back (message);
-    }
-    return bucket;
-}
-
 void test_mesh_xsub_monitor_ready_zero_clears_connected_peer ()
 {
     zlink::spot_runtime_t runtime (NULL);
@@ -360,113 +334,6 @@ void test_bootstrap_descriptor_republish_resumes_after_topology_change ()
         &runtime, true, 3));
 }
 
-void test_batch_decoder_strict_header_detection_and_false_positive_fallback ()
-{
-    zlink::spot_data_plane_protocol_state_t state;
-    bool is_batch = true;
-    std::vector<std::string> frames;
-    frames.push_back ("not-a-batch");
-    frames.push_back ("metadata");
-    frames.push_back ("body");
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink::spot_data_plane_protocol_t::decode_batch_frame (
-      "A", frames, &state, &is_batch));
-    TEST_ASSERT_FALSE (is_batch);
-    TEST_ASSERT_FALSE (state.pending_unbatch.active);
-
-    zlink::spot_topic_batch_bucket_t bucket = make_bucket ("A", "m1");
-    std::vector<std::string> batch_frames;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink::spot_data_plane_forwarder_t::encode_batch_frames (
-        bucket, &batch_frames));
-    batch_frames.push_back ("extra");
-    is_batch = true;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink::spot_data_plane_protocol_t::decode_batch_frame (
-      "A", batch_frames, &state, &is_batch));
-    TEST_ASSERT_FALSE (is_batch);
-}
-
-void test_batch_decoder_rejects_malformed_encoded_bytes ()
-{
-    zlink::spot_topic_batch_bucket_t bucket = make_bucket ("A", "m1");
-    std::vector<std::string> frames;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink::spot_data_plane_forwarder_t::encode_batch_frames (
-        bucket, &frames));
-    reinterpret_cast<unsigned char &> (frames[1][8]) ^= 0x01;
-
-    zlink::spot_data_plane_protocol_state_t state;
-    bool is_batch = false;
-    TEST_ASSERT_FAILURE_ERRNO (
-      EBADMSG, zlink::spot_data_plane_protocol_t::decode_batch_frame (
-                  "A", frames, &state, &is_batch));
-    TEST_ASSERT_TRUE (is_batch);
-    TEST_ASSERT_FALSE (state.pending_unbatch.active);
-}
-
-void test_batch_resume_unbatches_across_multiple_turns ()
-{
-    zlink::ctx_t *ctx = new zlink::ctx_t;
-    zlink::socket_base_t *fanout = ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
-    zlink::socket_base_t *sink = ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
-    TEST_ASSERT_NOT_NULL (fanout);
-    TEST_ASSERT_NOT_NULL (sink);
-    set_zero_linger (fanout);
-    set_zero_linger (sink);
-    set_recv_timeout (sink, 50);
-    TEST_ASSERT_SUCCESS_ERRNO (fanout->bind ("inproc://spot-unbatch-out"));
-    TEST_ASSERT_SUCCESS_ERRNO (sink->connect ("inproc://spot-unbatch-out"));
-    std::this_thread::sleep_for (std::chrono::milliseconds (10));
-
-    zlink::spot_runtime_t runtime (NULL);
-    runtime.peer_batch_config.unbatch_max_messages_per_turn = 2;
-    runtime.peer_batch_config.unbatch_max_bytes_per_turn = 1024;
-    zlink::spot_topic_batch_bucket_t bucket =
-      make_bucket ("A", "m1", "m2", "m3", "m4", "m5");
-    std::vector<std::string> frames;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink::spot_data_plane_forwarder_t::encode_batch_frames (
-        bucket, &frames));
-
-    zlink::spot_data_plane_protocol_state_t state;
-    bool is_batch = false;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink::spot_data_plane_protocol_t::decode_batch_frame (
-      "A", frames, &state, &is_batch));
-    TEST_ASSERT_TRUE (is_batch);
-    TEST_ASSERT_TRUE (state.pending_unbatch.active);
-
-    std::vector<std::string> delivered;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink::spot_data_plane_protocol_t::resume_pending_unbatch (
-        fanout, &runtime, &state));
-    TEST_ASSERT_TRUE (recv_message (sink, &delivered));
-    TEST_ASSERT_EQUAL_STRING ("m1", delivered[1].c_str ());
-    TEST_ASSERT_TRUE (recv_message (sink, &delivered));
-    TEST_ASSERT_EQUAL_STRING ("m2", delivered[1].c_str ());
-    TEST_ASSERT_TRUE (state.pending_unbatch.active);
-    TEST_ASSERT_EQUAL_UINT32 (2, state.pending_unbatch.decoded_message_index);
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink::spot_data_plane_protocol_t::resume_pending_unbatch (
-        fanout, &runtime, &state));
-    TEST_ASSERT_TRUE (recv_message (sink, &delivered));
-    TEST_ASSERT_EQUAL_STRING ("m3", delivered[1].c_str ());
-    TEST_ASSERT_TRUE (recv_message (sink, &delivered));
-    TEST_ASSERT_EQUAL_STRING ("m4", delivered[1].c_str ());
-    TEST_ASSERT_TRUE (state.pending_unbatch.active);
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink::spot_data_plane_protocol_t::resume_pending_unbatch (
-        fanout, &runtime, &state));
-    TEST_ASSERT_TRUE (recv_message (sink, &delivered));
-    TEST_ASSERT_EQUAL_STRING ("m5", delivered[1].c_str ());
-    TEST_ASSERT_FALSE (state.pending_unbatch.active);
-
-    close_socket (ctx, sink);
-    close_socket (ctx, fanout);
-    TEST_ASSERT_SUCCESS_ERRNO (ctx->terminate ());
-}
-
 }
 
 int main (int argc, char **argv)
@@ -486,9 +353,5 @@ int main (int argc, char **argv)
     RUN_TEST (
       test_bootstrap_descriptor_republish_stops_after_ready_topology_stabilizes);
     RUN_TEST (test_bootstrap_descriptor_republish_resumes_after_topology_change);
-    RUN_TEST (
-      test_batch_decoder_strict_header_detection_and_false_positive_fallback);
-    RUN_TEST (test_batch_decoder_rejects_malformed_encoded_bytes);
-    RUN_TEST (test_batch_resume_unbatches_across_multiple_turns);
     return UNITY_END ();
 }

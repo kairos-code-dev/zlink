@@ -13,21 +13,9 @@ fn main() {
     let server_mon = SocketMonitor::open(&server).expect("server monitor open failed");
     let client = ctx.pair_socket().expect("client socket failed");
     let client_mon = SocketMonitor::open(&client).expect("client monitor open failed");
-    assert!(
-        server_mon
-            .try_recv()
-            .expect("server monitor try_recv failed")
-            .is_none()
-    );
-    assert!(
-        client_mon
-            .try_recv()
-            .expect("client monitor try_recv failed")
-            .is_none()
-    );
 
     server.bind(&endpoint).expect("bind failed");
     client.connect(&endpoint).expect("connect failed");
     wait_connected(&[&server_mon, &client_mon]);
-    println!("[monitor/recv] recv: \"connection-ready\" → tryRecv: empty");
+    println!("[monitor/recv] recv: \"connection-ready\"");
 }

@@ -206,6 +206,45 @@ sequenceDiagram
 
 Results are sorted by: `service_kind → service_name → service_role → endpoint → routing_id`
 
+### 7.1 Spot-ownership Resolution Query
+
+`zlink_discovery_resolve_spot()` is a specialized consumer of
+`TOPOLOGY_QUERY`. When a Discovery client needs to locate the current
+owner SpotNode for a logical spot routing id, it scopes the filter to
+just the spot identity and issues a single-shot query over a transient
+DEALER socket. Registry has no dedicated message id for this use case —
+it is the same TOPOLOGY_QUERY surface with a narrower filter.
+
+```mermaid
+sequenceDiagram
+    participant Disc as Discovery client<br/>(resolve_spot)
+    participant Dealer as transient DEALER
+    participant Router as Registry ROUTER
+    participant Map as service_map
+    participant Peers as peer registries<br/>(background, §6)
+
+    Note over Disc: cache miss for spot_rid
+    Note over Map,Peers: service_map is kept in sync out-of-band<br/>via SERVICE_LIST flooding + TOPOLOGY_REPORT;<br/>no per-query fan-out to peers.
+    Peers-->>Map: SERVICE_LIST / TOPOLOGY_REPORT<br/>(asynchronous, §6)
+    Disc->>Dealer: prepare_transient_dealer_local(uplink)
+    Disc->>Router: TOPOLOGY_QUERY (0x000B)<br/>filter = { kind=SPOT_PUB (4),<br/>role=SPOT (2), routing_id=spot_rid,<br/>service_name=<disc.service_name> }
+    Router->>Router: scoped_lock(_sync)
+    Router->>Map: collect_topology_entries_locked(filter)
+    Note over Map: matches only entries where<br/>kind == SPOT_PUB &&<br/>role == SPOT &&<br/>routing_id == spot_rid &&<br/>service_name matches
+    Map-->>Router: 0..N matching entries
+    Router->>Router: sort by (kind, name, role, endpoint, rid)
+    Router-->>Disc: TOPOLOGY_REPLY (0x000C)<br/>[entry_count, entries...]
+    Disc->>Disc: close transient DEALER
+    Note over Disc: refresh local summary store,<br/>retry cache lookup
+```
+
+Notes on the registry side:
+
+- The query is **not** fanned out to peer registries on demand. Registry answers from its local `service_map`, which is kept in sync by the flooding / heartbeat cycle described in §6. A spot ownership record propagates into the local `service_map` through SERVICE_LIST broadcast and `TOPOLOGY_REPORT` uplinks.
+- When the owner SpotNode has moved but the new registration has not yet flooded to this registry, the query may return **stale or empty** results. The Discovery client absorbs this by treating `ENOENT` as a caller-visible "not resolvable right now" signal rather than a hard error; applications typically retry after a short backoff.
+- The registry returns every matching entry, not just the freshest one. The Discovery client does the final owner-node selection during `refresh_spot_owner_cache_locked`, pairing each entry with its stamped `validated_service_seq` so subsequent cache hits can be validated against the current provider view.
+- A **reply must not be used as an owner record for incoming-request reply paths**. The resolver is a destination lookup only; reply paths must continue to use the concrete source addresses that came with the original request. See [Discovery Internals §10](discovery-internals.md#10-spot-ownership-resolution-zlink_discovery_resolve_spot) for the client-side contract.
+
 ## 8. Control Task Cycle
 
 ```mermaid

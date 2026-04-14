@@ -2,7 +2,7 @@
 
 package dev.kairoscode.zlink;
 
-import dev.kairoscode.zlink.options.SocketOptions;
+import dev.kairoscode.zlink.SocketOptions;
 import java.time.Duration;
 import java.util.Objects;
 

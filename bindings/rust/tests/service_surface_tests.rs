@@ -12,9 +12,10 @@ fn reserve_tcp_port() -> u16 {
 #[test]
 fn discovery_service_monitor_and_member_surfaces_exist() {
     let ctx = Context::new().unwrap();
-    let discovery = Discovery::new(&ctx, ServiceType::Spot, "svc").unwrap();
+    let discovery = Discovery::new(&ctx, ServiceType::Socket, "svc").unwrap();
     let _ = discovery.monitor_open().unwrap();
     let _ = discovery.member_peers().unwrap();
+    let _ = discovery.set_dealer_peer_mode(DiscoveryDealerPeerMode::Router);
 }
 
 #[test]
@@ -25,18 +26,26 @@ fn spot_node_snapshot_surfaces_exist() {
     node.bind(&endpoint).unwrap();
     let _ = node.status_snapshot().unwrap();
     let _ = node.peers_snapshot().unwrap();
-    let _ = node.subjects_snapshot().unwrap();
+    let _ = node.subjects_snapshot(None).unwrap();
     let _ = node.set_tls_server("cert", "key", false);
     let _ = node.set_tls_client("ca", "localhost", true);
+    node.set_routing_id(&RoutingId::from_bytes(b"node-surface"))
+        .unwrap();
+    let _ = node.routing_id().unwrap();
 }
 
 #[test]
 fn spot_callback_surfaces_exist() {
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
-    let mut spot = Spot::new(&node).unwrap();
-    spot.on_subscribe(|_topic_message| {}).unwrap();
-    spot.on_send_ready(|| {}).unwrap();
+    let spot = node.create_spot().unwrap();
+    spot.set_routing_id(&RoutingId::from_bytes(b"spot-surface"))
+        .unwrap();
+    let _ = spot.routing_id().unwrap();
+    let _on_subscribe = Spot::on_subscribe::<fn(TopicMessage)>;
+    let _on_send_ready = Spot::on_send_ready::<fn()>;
+    let _on_routed_receive = Spot::on_routed_receive::<fn(RoutingId, RoutingId, u64, Vec<Message>)>;
+    let _on_dispatch_event = Spot::on_dispatch_event::<fn(SpotDispatchEvent)>;
 }
 
 #[test]
@@ -44,7 +53,7 @@ fn service_close_surfaces_exist() {
     let ctx = Context::new().unwrap();
     let mut discovery = Discovery::new(&ctx, ServiceType::Spot, "svc-close").unwrap();
     let mut node = SpotNode::new(&ctx).unwrap();
-    let mut spot = Spot::new(&node).unwrap();
+    let mut spot = node.create_spot().unwrap();
     let mut registry = Registry::new(&ctx).unwrap();
     let mut query = RegistryQueryClient::new(&ctx).unwrap();
 
@@ -104,12 +113,20 @@ fn discovery_tls_client_surface_exists() {
 }
 
 #[test]
+fn discovery_resolve_spot_surface_exists() {
+    let ctx = Context::new().unwrap();
+    let discovery = Discovery::new(&ctx, ServiceType::Spot, "svc-resolve").unwrap();
+    let _ = discovery.resolve_spot(&RoutingId::from_bytes(b"spot-rid"));
+}
+
+#[test]
 fn typed_poller_surface_exists() {
     let ctx = Context::new().unwrap();
     let socket = ctx.pair_socket().unwrap();
     socket.bind("inproc://typed-poller-surface").unwrap();
     let poller = Poller::new().unwrap();
-    poller.add_socket(&socket, 0, POLLIN).unwrap();
+    poller.add_socket(&socket, POLLIN).unwrap();
+    let _ = poller.size();
     poller.modify_socket(&socket, POLLOUT).unwrap();
     poller.remove_socket(&socket).unwrap();
 }

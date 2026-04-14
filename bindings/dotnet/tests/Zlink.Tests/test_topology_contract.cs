@@ -1,5 +1,4 @@
 using Xunit;
-using Zlink.Service;
 
 namespace Zlink.Tests;
 
@@ -35,5 +34,25 @@ public sealed class test_topology_contract
         Assert.True(snapshot.SubjectCount >= 0);
         Assert.Empty(node.PeersSnapshot());
         Assert.Empty(node.SubjectsSnapshot());
+    }
+
+    [Fact]
+    public void spot_and_spot_node_expose_routing_identity_surface()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        using var spot = node.CreateSpot();
+
+        RoutingId nodeRid = CoreTestSupport.RoutingIdUtf8("spot-node-id");
+        RoutingId spotRid = CoreTestSupport.RoutingIdUtf8("spot-id");
+
+        node.SetRoutingId(nodeRid);
+        spot.SetRoutingId(spotRid);
+
+        Assert.Equal(nodeRid, node.RoutingId);
+        Assert.Equal(spotRid, spot.RoutingId);
     }
 }

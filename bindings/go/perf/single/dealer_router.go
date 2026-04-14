@@ -25,8 +25,7 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 	dealerMon := perfcommon.OpenMonitor(dealer)
 	defer dealerMon.Close()
 
-	rid, err := zlink.NewRoutingID([]byte("perf-dealer"))
-	perfcommon.Must(err)
+	rid := zlink.NewRoutingID([]byte("perf-dealer"))
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(router, cfg.transport))
 	perfcommon.Must(perfcommon.ConfigureTLSClient(dealer, cfg.transport))
@@ -122,15 +121,15 @@ func startRouterEchoServer(router *zlink.RouterSocket) func() {
 			default:
 			}
 			received, err := router.Recv(zlink.RecvFlagsDontWait)
-				if err != nil {
-					if perfcommon.IsTransient(err) {
-						continue
-					}
-					return
-				}
-				if received == nil {
+			if err != nil {
+				if perfcommon.IsTransient(err) {
 					continue
 				}
+				return
+			}
+			if received == nil {
+				continue
+			}
 			err = router.SendTo(received.RoutingID(), zlink.SendFlagsNone,
 				perfcommon.CloneMessages(received.Parts())...)
 			if err != nil && !perfcommon.IsTransient(err) {

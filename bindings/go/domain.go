@@ -118,9 +118,11 @@ const (
 
 type Received struct {
 	routingID     RoutingID
+	spotRID       RoutingID
 	parts         []*Message
 	requestSeq    uint64
 	hasRequestSeq bool
+	reply         func(SendFlags, []*Message) error
 }
 
 func (r *Received) RoutingID() RoutingID {
@@ -130,6 +132,21 @@ func (r *Received) RoutingID() RoutingID {
 	return r.routingID
 }
 
+func (r *Received) HasRoutingID() bool {
+	return r != nil && r.routingID.Size() > 0
+}
+
+func (r *Received) SpotRID() RoutingID {
+	if r == nil {
+		return RoutingID{}
+	}
+	return r.spotRID
+}
+
+func (r *Received) HasSpotRID() bool {
+	return r != nil && r.spotRID.Size() > 0
+}
+
 func (r *Received) Parts() []*Message {
 	if r == nil {
 		return nil
@@ -137,21 +154,63 @@ func (r *Received) Parts() []*Message {
 	return r.parts
 }
 
-func (r *Received) RequestSeq() (uint64, bool) {
+func (r *Received) RequestSeq() uint64 {
 	if r == nil {
-		return 0, false
+		return 0
 	}
-	return r.requestSeq, r.hasRequestSeq
+	return r.requestSeq
+}
+
+func (r *Received) HasRequestSeq() bool {
+	return r != nil && r.hasRequestSeq
+}
+
+func (r *Received) IsSinglePart() bool {
+	return r != nil && len(r.parts) == 1
+}
+
+func (r *Received) FirstPart() (*Message, error) {
+	if r == nil {
+		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	if len(r.parts) == 0 {
+		return nil, &RecvError{Result: RecvNotSupported, internalErrno: int(C.EINVAL)}
+	}
+	return r.parts[0], nil
 }
 
 func (r *Received) SinglePartOrError() (*Message, error) {
 	if r == nil {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	if len(r.parts) != 1 {
-		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return nil, &RecvError{Result: RecvNotSupported, internalErrno: int(C.EINVAL)}
 	}
 	return r.parts[0], nil
+}
+
+func (r *Received) Reply(parts []*Message) error {
+	return r.ReplyWithFlags(parts, SendFlagsNone)
+}
+
+func (r *Received) ReplyWithFlags(parts []*Message, flags SendFlags) error {
+	if r == nil {
+		return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	if !r.hasRequestSeq || r.reply == nil {
+		return &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	if err := validateReplyFlags(flags); err != nil {
+		return err
+	}
+	return r.reply(flags, parts)
+}
+
+func validateReplyFlags(flags SendFlags) error {
+	if flags == SendFlagsNone {
+		return nil
+	}
+	return &SubmitError{Result: SubmitNotSupported, internalErrno: int(C.ENOTSUP)}
 }
 
 func (r *Received) Close() error {
@@ -180,6 +239,10 @@ func (t *TopicMessage) RoutingID() RoutingID {
 	return t.routingID
 }
 
+func (t *TopicMessage) HasRoutingID() bool {
+	return t != nil && t.routingID.Size() > 0
+}
+
 func (t *TopicMessage) Topic() string {
 	if t == nil {
 		return ""
@@ -194,12 +257,26 @@ func (t *TopicMessage) Parts() []*Message {
 	return t.parts
 }
 
+func (t *TopicMessage) IsSinglePart() bool {
+	return t != nil && len(t.parts) == 1
+}
+
+func (t *TopicMessage) FirstPart() (*Message, error) {
+	if t == nil {
+		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	if len(t.parts) == 0 {
+		return nil, &RecvError{Result: RecvNotSupported, internalErrno: int(C.EINVAL)}
+	}
+	return t.parts[0], nil
+}
+
 func (t *TopicMessage) SinglePartOrError() (*Message, error) {
 	if t == nil {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	if len(t.parts) != 1 {
-		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return nil, &RecvError{Result: RecvNotSupported, internalErrno: int(C.EINVAL)}
 	}
 	return t.parts[0], nil
 }
@@ -223,20 +300,63 @@ type SubscriptionEvent struct {
 	topic      string
 }
 
-func (s *SubscriptionEvent) RoutingID() RoutingID {
-	if s == nil {
-		return RoutingID{}
-	}
+func (s SubscriptionEvent) RoutingID() RoutingID {
 	return s.routingID
 }
 
-func (s *SubscriptionEvent) Subscribed() bool {
-	return s != nil && s.subscribed
+func (s SubscriptionEvent) HasRoutingID() bool {
+	return s.routingID.Size() > 0
 }
 
-func (s *SubscriptionEvent) Topic() string {
-	if s == nil {
-		return ""
-	}
+func (s SubscriptionEvent) Subscribed() bool {
+	return s.subscribed
+}
+
+func (s SubscriptionEvent) Topic() string {
 	return s.topic
+}
+
+func receivedReplyToRouter(reply func(RoutingID, uint64, SendFlags, ...*Message) error, routingID RoutingID, requestSeq uint64) func(SendFlags, []*Message) error {
+	return func(flags SendFlags, parts []*Message) error {
+		return reply(routingID, requestSeq, flags, parts...)
+	}
+}
+
+func receivedReplyToSpotPeer(socket interface {
+	ReplyToSpot(RoutingID, RoutingID, uint64, SendFlags, ...*Message) error
+}, nodeRID RoutingID, spotRID RoutingID, requestSeq uint64) func(SendFlags, []*Message) error {
+	return func(flags SendFlags, parts []*Message) error {
+		return socket.ReplyToSpot(nodeRID, spotRID, requestSeq, flags, parts...)
+	}
+}
+
+func receivedReplyToSpotRouter(socket interface {
+	ReplyToRouter(RoutingID, uint64, SendFlags, ...*Message) error
+}, peerRID RoutingID, requestSeq uint64) func(SendFlags, []*Message) error {
+	return func(flags SendFlags, parts []*Message) error {
+		return socket.ReplyToRouter(peerRID, requestSeq, flags, parts...)
+	}
+}
+
+func receivedReplyToSpot(socket *Spot, routingID RoutingID, spotRID RoutingID, requestSeq uint64) func(SendFlags, []*Message) error {
+	if spotRID.Size() == 0 {
+		return receivedReplyToSpotRouter(socket, routingID, requestSeq)
+	}
+	return receivedReplyToSpotPeer(socket, routingID, spotRID, requestSeq)
+}
+
+func monitorHasRoutingID(routingID RoutingID) bool {
+	return routingID.Size() > 0
+}
+
+func serviceEntryHasRoutingID(routingID RoutingID) bool {
+	return routingID.Size() > 0
+}
+
+func spotNodeHasRoutingID(routingID RoutingID) bool {
+	return routingID.Size() > 0
+}
+
+func emptyRoutingID() RoutingID {
+	return RoutingID{}
 }

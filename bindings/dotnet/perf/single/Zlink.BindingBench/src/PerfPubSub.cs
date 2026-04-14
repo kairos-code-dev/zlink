@@ -88,8 +88,8 @@ internal static class PerfPubSub
                 if (message.Size == payload.Length)
                     return true;
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.Errno)
-                                            || IsWouldBlock(ex.Errno))
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno))
             {
             }
         }
@@ -157,11 +157,11 @@ internal static class PerfPubSub
                             AccountMessage(bytesRead);
                         }
                     }
-                    catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
+                    catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
                     {
                         continue;
                     }
-                    catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
+                    catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
                     {
                         if (done && Stopwatch.GetTimestamp() - lastRecvTicks
                             >= recvFlushTicks)

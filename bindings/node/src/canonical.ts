@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 
+import { randomBytes } from 'node:crypto';
 import { requireNative } from './native';
 import { normalizeBufferLike, type BufferLike } from './buffer_like';
 import {
   Message,
   Received,
-  Subscribed,
+  RoutingId,
+  TopicMessage,
   SubscriptionEvent,
-  METADATA_KEY_USER_MIN,
-  METADATA_VALUE_MAX,
   type MessageLike,
   type MessageSnapshot
 } from './message';
@@ -39,10 +39,9 @@ export type { BufferLike, MessageLike };
 export {
   Message,
   Received,
-  Subscribed,
+  RoutingId,
+  TopicMessage,
   SubscriptionEvent,
-  SocketType,
-  SocketOption,
   SendFlags,
   RecvFlags,
   SubmitResult,
@@ -61,12 +60,10 @@ export {
   CloseError,
   BindError,
   ConnectError,
-  ConfigError,
-  METADATA_KEY_USER_MIN,
-  METADATA_VALUE_MAX
+  ConfigError
 };
 
-export const ContextOption = Object.freeze({
+const ContextOption = Object.freeze({
   IO_THREADS: 1,
   MAX_SOCKETS: 2,
   SOCKET_LIMIT: 3,
@@ -80,18 +77,79 @@ export const ContextOption = Object.freeze({
   BLOCKY: 10
 } as const);
 
-export const MonitorEvent = Object.freeze({
-  CONNECTED: 0x0001, CONNECT_DELAYED: 0x0002, CONNECT_RETRIED: 0x0004,
-  LISTENING: 0x0008, BIND_FAILED: 0x0010, ACCEPTED: 0x0020,
-  ACCEPT_FAILED: 0x0040, CLOSED: 0x0080, CLOSE_FAILED: 0x0100,
-  DISCONNECTED: 0x0200, MONITOR_STOPPED: 0x0400,
-  HANDSHAKE_FAILED_NO_DETAIL: 0x0800,
-  CONNECTION_READY: 0x1000, HANDSHAKE_FAILED_PROTOCOL: 0x2000,
-  HANDSHAKE_FAILED_AUTH: 0x4000,
-  ALL: 0x7FFF
+const MonitorSourceKind = Object.freeze({ SOCKET: 1, SPOT_PUB: 3, SPOT_SUB: 4 } as const);
+const MonitorState = Object.freeze({
+  READY: 1 << 0, BOUND_READY: 1 << 1, CLOSED: 1 << 3
+} as const);
+const MonitorSnapshotDetail = Object.freeze({
+  SND_PENDING_MSGS: 1 << 1, RCV_PENDING_MSGS: 1 << 2
 } as const);
 
-export const ServiceMonitorEvent = Object.freeze({
+export type MonitorEventType = number;
+
+export interface MonitorSnapshot {
+  readonly sourceKind: number;
+  readonly stateFlags: number;
+  readonly detailFlags: number;
+  readonly sndPendingMsgs: bigint;
+  readonly rcvPendingMsgs: bigint;
+  isReady(): boolean;
+}
+
+interface MonitorSnapshotRaw {
+  sourceKind: number;
+  stateFlags: number;
+  detailFlags: number;
+  sndPendingMsgs: number | bigint;
+  rcvPendingMsgs: number | bigint;
+}
+
+interface MonitorEventValueRaw {
+  event: number;
+  value: number;
+  routingId?: Buffer | null;
+  local?: string;
+  remote?: string;
+  localAddr?: string;
+  remoteAddr?: string;
+}
+
+export class MonitorEvent {
+  static readonly CONNECTED = 0x0001;
+  static readonly CONNECT_DELAYED = 0x0002;
+  static readonly CONNECT_RETRIED = 0x0004;
+  static readonly LISTENING = 0x0008;
+  static readonly BIND_FAILED = 0x0010;
+  static readonly ACCEPTED = 0x0020;
+  static readonly ACCEPT_FAILED = 0x0040;
+  static readonly CLOSED = 0x0080;
+  static readonly CLOSE_FAILED = 0x0100;
+  static readonly DISCONNECTED = 0x0200;
+  static readonly MONITOR_STOPPED = 0x0400;
+  static readonly HANDSHAKE_FAILED_NO_DETAIL = 0x0800;
+  static readonly CONNECTION_READY = 0x1000;
+  static readonly HANDSHAKE_FAILED_PROTOCOL = 0x2000;
+  static readonly HANDSHAKE_FAILED_AUTH = 0x4000;
+  static readonly ALL = 0x7FFF;
+
+  readonly event: MonitorEventType;
+  readonly value: number;
+  readonly routingId: RoutingId | null;
+  readonly localAddr: string;
+  readonly remoteAddr: string;
+
+  constructor(raw: MonitorEventValueRaw) {
+    this.event = raw.event;
+    this.value = raw.value;
+    this.routingId = wrapRoutingId(raw.routingId ?? null);
+    this.localAddr = raw.localAddr ?? raw.local ?? '';
+    this.remoteAddr = raw.remoteAddr ?? raw.remote ?? '';
+  }
+}
+
+Object.freeze(MonitorEvent);
+
+const ServiceMonitorEvent = Object.freeze({
   ERROR: 1 << 4,
   DISCOVERY_SERVICE_UP: 1 << 5,
   DISCOVERY_SERVICE_DOWN: 1 << 6,
@@ -101,43 +159,139 @@ export const ServiceMonitorEvent = Object.freeze({
 } as const);
 export type ServiceMonitorEventMask = number;
 
-export const ServiceType = Object.freeze({ SPOT: 0x3002, SOCKET: 0x3003 } as const);
-export const SERVICE_TYPE_SPOT = ServiceType.SPOT;
-export const SERVICE_TYPE_SOCKET = ServiceType.SOCKET;
-export const ServiceRole = Object.freeze({
+const ServiceType = Object.freeze({ SPOT: 0x3002, SOCKET: 0x3003 } as const);
+const SERVICE_TYPE_SPOT = ServiceType.SPOT;
+const SERVICE_TYPE_SOCKET = ServiceType.SOCKET;
+export enum DiscoveryDealerPeerMode {
+  Router = 1,
+  Dealer = 2
+}
+const ServiceRole = Object.freeze({
   INVALID: 0, SPOT: 2, ROUTER: 3, DEALER: 4, PUB: 5, SUB: 6
 } as const);
-export const ServiceKind = Object.freeze({
+const ServiceKind = Object.freeze({
   DISCOVERY: 1, SPOT_SUB: 3, SPOT_PUB: 4, SOCKET: 5
 } as const);
-export const SpotPeerSource = Object.freeze({ MANUAL: 1, DISCOVERY: 2, MIXED: 3 } as const);
-export const SpotPeerState = Object.freeze({ CONFIGURED: 1, CONNECTING: 2, CONNECTED: 3 } as const);
-export const SpotNodeState = Object.freeze({ IDLE: 1, CONNECTING: 2, PARTIAL_READY: 3, READY: 4, ERROR: 5 } as const);
-export const RegistryState = Object.freeze({ IDLE: 1, ACTIVE: 2, DEGRADED: 3, ERROR: 4 } as const);
-export const TopologySource = Object.freeze({ MANUAL: 1, DISCOVERY: 2, REGISTRY: 3 } as const);
-export const TopologyState = Object.freeze({ DISCOVERED: 1, CONNECTING: 2, READY: 3, LOST: 4, ERROR: 5, STOPPED: 6 } as const);
+const SpotPeerSource = Object.freeze({ MANUAL: 1, DISCOVERY: 2, MIXED: 3 } as const);
+const SpotPeerState = Object.freeze({ CONFIGURED: 1, CONNECTING: 2, CONNECTED: 3 } as const);
+const SpotNodeState = Object.freeze({ IDLE: 1, CONNECTING: 2, PARTIAL_READY: 3, READY: 4, ERROR: 5 } as const);
+const RegistryState = Object.freeze({ IDLE: 1, ACTIVE: 2, DEGRADED: 3, ERROR: 4 } as const);
+const TopologySource = Object.freeze({ MANUAL: 1, DISCOVERY: 2, REGISTRY: 3 } as const);
+const TopologyState = Object.freeze({ DISCOVERED: 1, CONNECTING: 2, READY: 3, LOST: 4, ERROR: 5, STOPPED: 6 } as const);
 
-export interface MonitorSnapshot {
-  sourceKind: number;
-  stateFlags: number;
-  detailFlags: number;
-  sndPendingMsgs: number;
-  rcvPendingMsgs: number;
+export interface MemberPeerEntry {
+  readonly serviceType: number;
+  readonly serviceRole: number;
+  readonly serviceName: string;
+  readonly endpoint: string;
+  readonly routingId: RoutingId;
+  readonly value: bigint;
 }
 
-export interface SocketMonitorEventValue {
-  event: number;
-  value: number;
-  local: string;
-  remote: string;
+export interface RegistryTopologyEntry {
+  readonly routingId: RoutingId;
+  readonly serviceKind: number;
+  readonly serviceRole: number;
+  readonly serviceName: string;
+  readonly endpoint: string;
+  readonly source: number;
+  readonly state: number;
+  readonly desiredCount: number;
+  readonly readyCount: number;
+  readonly errorCode: number;
+  readonly lastReportedMs: bigint;
 }
 
-export interface ServiceEventValue {
+export interface RegistryServiceSummaryEntry {
+  readonly serviceKind: number;
+  readonly serviceRole: number;
+  readonly serviceName: string;
+  readonly totalCount: number;
+  readonly connectingCount: number;
+  readonly readyCount: number;
+  readonly errorCount: number;
+  readonly stoppedCount: number;
+  readonly lastReportedMs: bigint;
+}
+
+export interface RegistryStatus {
+  readonly registryId: number;
+  readonly bindEndpoint: string;
+  readonly state: number;
+  readonly topologyEntryCount: number;
+  readonly peerRegistryCount: number;
+  readonly connectedPeerRegistryCount: number;
+  readonly listSeq: bigint;
+  readonly lastError: number;
+  readonly lastChangedMs: bigint;
+}
+
+export interface SpotNodeStatus {
+  readonly serviceName: string;
+  readonly localEndpoint: string;
+  readonly nodeRoutingId: RoutingId;
+  readonly state: number;
+  readonly configuredPeerCount: number;
+  readonly activePeerCount: number;
+  readonly connectedPeerCount: number;
+  readonly subjectCount: number;
+  readonly readySubjectCount: number;
+  readonly lastError: number;
+  readonly lastChangedMs: bigint;
+}
+
+export interface SpotNodePeerEntry {
+  readonly serviceName: string;
+  readonly localEndpoint: string;
+  readonly peerEndpoint: string;
+  readonly source: number;
+  readonly state: number;
+  readonly connectedSinceMs: bigint;
+  readonly lastChangedMs: bigint;
+}
+
+export interface SpotNodeSubjectEntry {
+  readonly role: number;
+  readonly subject: string;
+  readonly subjectKind: number;
+  readonly readyPeerCount: number;
+  readonly activePeerCount: number;
+  readonly lastChangedMs: bigint;
+}
+
+export interface RegistryServiceSummaryFilter {
+  readonly serviceKind?: number;
+  readonly serviceRole?: number;
+  readonly serviceName?: string;
+}
+
+export interface RegistryTopologyFilter {
+  readonly serviceKind?: number;
+  readonly serviceRole?: number;
+  readonly serviceName?: string;
+  readonly routingId?: RoutingId;
+  readonly state?: number;
+  readonly source?: number;
+}
+
+export interface SpotNodePeerFilter {
+  readonly peerEndpoint?: string;
+  readonly source?: number;
+  readonly state?: number;
+}
+
+export interface SpotNodeSubjectFilter {
+  readonly role?: number;
+  readonly subject?: string;
+  readonly subjectKind?: number;
+}
+
+interface ServiceEventValue {
   serviceKind: number;
   eventType: number;
   status: number;
   errorCode: number;
-  value: number;
+  value: number | bigint;
   detailFlags: number;
   serviceName: string;
   endpoint: string;
@@ -151,39 +305,45 @@ export class ServiceEvent {
   readonly eventType: number;
   readonly status: number;
   readonly errorCode: number;
-  readonly value: number;
+  readonly value: bigint;
   readonly detailFlags: number;
   readonly serviceName: string;
   readonly endpoint: string;
-  readonly routingId: Buffer | null;
+  readonly routingId: RoutingId | null;
   readonly subject: string;
   readonly subjectKind: number;
 
   constructor(raw: ServiceEventValue) {
-    Object.assign(this, raw);
+    this.serviceKind = raw.serviceKind;
+    this.eventType = raw.eventType;
+    this.status = raw.status;
+    this.errorCode = raw.errorCode;
+    this.value = BigInt(raw.value);
+    this.detailFlags = raw.detailFlags;
+    this.serviceName = raw.serviceName;
+    this.endpoint = raw.endpoint;
+    this.routingId = wrapRoutingId(raw.routingId);
+    this.subject = raw.subject;
+    this.subjectKind = raw.subjectKind;
   }
 }
 
-export type SocketRecvHandler = (routingId: Buffer | null, parts: Message[]) => void;
-export type SocketSubscribeHandler = (
-  routingId: Buffer | null,
-  topic: string,
-  parts: Message[]
-) => void;
+export type SocketRecvHandler = (message: Received) => void;
+export type SocketSubscribeHandler = (message: TopicMessage) => void;
 export type SocketSendReadyHandler = () => void;
-export type SocketMonitorHandler = (event: SocketMonitorEventValue) => void;
+type SocketMonitorHandler = (event: MonitorEvent) => void;
 export type SpotSubHandler = SocketSubscribeHandler;
 export type SpotSendReadyHandler = () => void;
 export type SpotRoutedHandler = (
-  sourceRid: Buffer | null,
-  spotRid: Buffer | null,
+  sourceRid: RoutingId | null,
+  spotRid: RoutingId | null,
   requestSeq: bigint,
   parts: Message[]
 ) => void;
 export type SpotDispatchEventHandler = (event: number) => void;
-export type RouterSpotHandler = SpotRoutedHandler;
-export type RequestResultCallback = (result: RequestResult, reply?: Received) => void;
+export type RequestResultCallback = (result: RequestResult, parts: Message[]) => void;
 export type TimerHandler = (timer: Timer, fireCount: bigint) => void;
+export type ServiceMonitorHandler = (event: ServiceEvent) => void;
 
 function readErrno(): number {
   const native = requireNative();
@@ -219,6 +379,17 @@ function submitErrorFromResult(result: SubmitResult, message: string): SubmitErr
   return new SubmitError(result, 0, message);
 }
 
+function normalizeReplyFlags(flags: SendFlags = SendFlags.None): SendFlags {
+  const normalized = flags | 0;
+  if (normalized !== SendFlags.None) {
+    throw submitErrorFromResult(
+      SubmitResult.NotSupported,
+      'reply flags are not supported by the current core library'
+    );
+  }
+  return normalized as SendFlags;
+}
+
 function toMessageParts(parts: readonly MessageLike[]): Array<Buffer | MessageSnapshot> {
   return parts.map((part, index) =>
     part instanceof Message ? part.toSnapshot() : normalizeBufferLike(part, `parts[${index}]`)
@@ -233,12 +404,253 @@ function normalizeMessageLikePayload(message: MessageLike | readonly MessageLike
   return scalar instanceof Message ? scalar.toSnapshot() : normalizeBufferLike(scalar, 'message');
 }
 
-function normalizeRoutingId(routingId: BufferLike): Buffer {
-  const normalized = normalizeBufferLike(routingId, 'routingId');
+function wrapRoutingId(routingId: Buffer | Uint8Array | null | undefined): RoutingId | null {
+  if (!routingId || routingId.length === 0) {
+    return null;
+  }
+  return RoutingId.fromBytes(routingId);
+}
+
+function requireRoutingId(routingId: RoutingId, name = 'routingId'): Buffer {
+  if (!(routingId instanceof RoutingId)) {
+    throw new TypeError(`${name} must be a RoutingId`);
+  }
+  return routingId.toBytes();
+}
+
+function normalizeRoutingId(routingId: RoutingId, name = 'routingId'): Buffer {
+  const normalized = requireRoutingId(routingId, name);
   if (normalized.length === 0 || normalized.length > 255) {
-    throw new RangeError('routingId must be at most 255 bytes');
+    throw new RangeError(`${name} must be 1..255 bytes`);
   }
   return normalized;
+}
+
+function materializeMonitorSnapshot(raw: MonitorSnapshotRaw): MonitorSnapshot {
+  return {
+    sourceKind: raw.sourceKind,
+    stateFlags: raw.stateFlags,
+    detailFlags: raw.detailFlags,
+    sndPendingMsgs: BigInt(raw.sndPendingMsgs),
+    rcvPendingMsgs: BigInt(raw.rcvPendingMsgs),
+    isReady(): boolean {
+      return (this.stateFlags & MonitorState.READY) !== 0;
+    }
+  };
+}
+
+function mapMemberPeerEntry(entry: {
+  serviceType: number;
+  serviceRole: number;
+  serviceName: string;
+  endpoint: string;
+  routingId: Buffer;
+  value: number | bigint;
+}): MemberPeerEntry {
+  return {
+    serviceType: entry.serviceType,
+    serviceRole: entry.serviceRole,
+    serviceName: entry.serviceName,
+    endpoint: entry.endpoint,
+    routingId: RoutingId.fromBytes(entry.routingId),
+    value: BigInt(entry.value)
+  };
+}
+
+function mapRegistryTopologyEntry(entry: {
+  routingId: Buffer;
+  serviceKind: number;
+  serviceRole: number;
+  serviceName: string;
+  endpoint: string;
+  source: number;
+  state: number;
+  desiredCount: number;
+  readyCount: number;
+  errorCode: number;
+  lastReportedMs: number | bigint;
+}): RegistryTopologyEntry {
+  return {
+    routingId: RoutingId.fromBytes(entry.routingId),
+    serviceKind: entry.serviceKind,
+    serviceRole: entry.serviceRole,
+    serviceName: entry.serviceName,
+    endpoint: entry.endpoint,
+    source: entry.source,
+    state: entry.state,
+    desiredCount: entry.desiredCount,
+    readyCount: entry.readyCount,
+    errorCode: entry.errorCode,
+    lastReportedMs: BigInt(entry.lastReportedMs)
+  };
+}
+
+function mapRegistryStatus(entry: {
+  registryId: number;
+  bindEndpoint: string;
+  state: number;
+  topologyEntryCount: number;
+  peerRegistryCount: number;
+  connectedPeerRegistryCount: number;
+  listSeq: number | bigint;
+  lastError: number;
+  lastChangedMs: number | bigint;
+}): RegistryStatus {
+  return {
+    registryId: entry.registryId,
+    bindEndpoint: entry.bindEndpoint,
+    state: entry.state,
+    topologyEntryCount: entry.topologyEntryCount,
+    peerRegistryCount: entry.peerRegistryCount,
+    connectedPeerRegistryCount: entry.connectedPeerRegistryCount,
+    listSeq: BigInt(entry.listSeq),
+    lastError: entry.lastError,
+    lastChangedMs: BigInt(entry.lastChangedMs)
+  };
+}
+
+function mapRegistryServiceSummaryEntry(entry: {
+  serviceKind: number;
+  serviceRole: number;
+  serviceName: string;
+  totalCount: number;
+  connectingCount: number;
+  readyCount: number;
+  errorCount: number;
+  stoppedCount: number;
+  lastReportedMs: number | bigint;
+}): RegistryServiceSummaryEntry {
+  return {
+    serviceKind: entry.serviceKind,
+    serviceRole: entry.serviceRole,
+    serviceName: entry.serviceName,
+    totalCount: entry.totalCount,
+    connectingCount: entry.connectingCount,
+    readyCount: entry.readyCount,
+    errorCount: entry.errorCount,
+    stoppedCount: entry.stoppedCount,
+    lastReportedMs: BigInt(entry.lastReportedMs)
+  };
+}
+
+function mapSpotNodeStatus(entry: {
+  serviceName: string;
+  localEndpoint: string;
+  nodeRoutingId?: Buffer | null;
+  state: number;
+  configuredPeerCount: number;
+  activePeerCount: number;
+  connectedPeerCount: number;
+  subjectCount: number;
+  readySubjectCount: number;
+  lastError: number;
+  lastChangedMs: number | bigint;
+}, fallbackRoutingId: RoutingId): SpotNodeStatus {
+  const nodeRoutingId = entry.nodeRoutingId
+    ? RoutingId.fromBytes(entry.nodeRoutingId)
+    : fallbackRoutingId;
+  return {
+    serviceName: entry.serviceName,
+    localEndpoint: entry.localEndpoint,
+    nodeRoutingId,
+    state: entry.state,
+    configuredPeerCount: entry.configuredPeerCount,
+    activePeerCount: entry.activePeerCount,
+    connectedPeerCount: entry.connectedPeerCount,
+    subjectCount: entry.subjectCount,
+    readySubjectCount: entry.readySubjectCount,
+    lastError: entry.lastError,
+    lastChangedMs: BigInt(entry.lastChangedMs)
+  };
+}
+
+function mapSpotNodePeerEntry(entry: {
+  serviceName: string;
+  localEndpoint: string;
+  peerEndpoint: string;
+  source: number;
+  state: number;
+  connectedSinceMs: number | bigint;
+  lastChangedMs: number | bigint;
+}): SpotNodePeerEntry {
+  return {
+    serviceName: entry.serviceName,
+    localEndpoint: entry.localEndpoint,
+    peerEndpoint: entry.peerEndpoint,
+    source: entry.source,
+    state: entry.state,
+    connectedSinceMs: BigInt(entry.connectedSinceMs),
+    lastChangedMs: BigInt(entry.lastChangedMs)
+  };
+}
+
+function mapSpotNodeSubjectEntry(entry: {
+  role: number;
+  subject: string;
+  subjectKind: number;
+  readyPeerCount: number;
+  activePeerCount: number;
+  lastChangedMs: number | bigint;
+}): SpotNodeSubjectEntry {
+  return {
+    role: entry.role,
+    subject: entry.subject,
+    subjectKind: entry.subjectKind,
+    readyPeerCount: entry.readyPeerCount,
+    activePeerCount: entry.activePeerCount,
+    lastChangedMs: BigInt(entry.lastChangedMs)
+  };
+}
+
+function normalizeTopologyFilter(filter?: RegistryTopologyFilter): Record<string, unknown> | undefined {
+  if (!filter) {
+    return undefined;
+  }
+  return {
+    serviceKind: filter.serviceKind,
+    serviceRole: filter.serviceRole,
+    serviceName: filter.serviceName,
+    routingId: filter.routingId ? normalizeRoutingId(filter.routingId, 'filter.routingId') : undefined,
+    state: filter.state,
+    source: filter.source
+  };
+}
+
+function materializeReceived(
+  raw: {
+    parts: MessageSnapshot[];
+    routingId?: Buffer | null;
+    requestSeq?: bigint | null;
+    spotRid?: Buffer | null;
+  },
+  reply?: (requestSeq: bigint, parts: readonly Message[], flags: SendFlags) => void
+): Received {
+  const requestSeq = raw.requestSeq ?? null;
+  return new Received(
+    raw.parts.map((part) => Message.fromSnapshot(part)),
+    wrapRoutingId(raw.routingId ?? null),
+    requestSeq,
+    wrapRoutingId(raw.spotRid ?? null),
+    requestSeq !== null && reply
+      ? {
+          reply(parts: readonly Message[], flags: SendFlags): void {
+            reply(requestSeq, parts, flags);
+          }
+        }
+      : null
+  );
+}
+
+function materializeTopicMessage(raw: {
+  topic: string;
+  parts: MessageSnapshot[];
+  routingId?: Buffer | null;
+}): TopicMessage {
+  return new TopicMessage(
+    raw.topic,
+    raw.parts.map((part) => Message.fromSnapshot(part)),
+    wrapRoutingId(raw.routingId ?? null)
+  );
 }
 
 class NativeHandle {
@@ -421,7 +833,12 @@ export class RouterSocketOptions extends CommonSocketOptions {
   set handover(value: boolean) { this._socket.setSockOptRaw(SocketOption.ROUTER_HANDOVER, boolBuffer(value)); }
   get probe(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.PROBE_ROUTER), 'probe'); }
   set probe(value: boolean) { this._socket.setSockOptRaw(SocketOption.PROBE_ROUTER, boolBuffer(value)); }
-  set connectRoutingId(value: BufferLike) { this._socket.setSockOptRaw(SocketOption.CONNECT_ROUTING_ID, normalizeBufferLike(value, 'connectRoutingId')); }
+  set connectRoutingId(value: RoutingId) {
+    this._socket.setSockOptRaw(
+      SocketOption.CONNECT_ROUTING_ID,
+      normalizeRoutingId(value, 'connectRoutingId')
+    );
+  }
 }
 export class StreamSocketOptions extends CommonSocketOptions {
   get notify(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.STREAM_NOTIFY), 'notify'); }
@@ -438,7 +855,6 @@ export class SubSocketOptions extends CommonSocketOptions {
 }
 export class ContextOptions {
   protected readonly _context: Context;
-  private _threadSchedulingPolicy = 0;
   constructor(context: Context) { this._context = context; }
   get ioThreads(): number { return this._context.getOptionRawInternal(ContextOption.IO_THREADS); }
   set ioThreads(value: number) { this._context.setOptionRawInternal(ContextOption.IO_THREADS, value | 0); }
@@ -450,17 +866,8 @@ export class ContextOptions {
   get msgTSize(): number { return this._context.getOptionRawInternal(ContextOption.MSG_T_SIZE); }
   get threadPriority(): number { return this._context.getOptionRawInternal(ContextOption.THREAD_PRIORITY); }
   set threadPriority(value: number) { this._context.setOptionRawInternal(ContextOption.THREAD_PRIORITY, value | 0); }
-  get threadSchedulingPolicy(): number {
-    try {
-      return this._context.getOptionRawInternal(ContextOption.THREAD_SCHED_POLICY);
-    } catch {
-      return this._threadSchedulingPolicy;
-    }
-  }
-  set threadSchedulingPolicy(value: number) {
-    this._threadSchedulingPolicy = value | 0;
-    this._context.setOptionRawInternal(ContextOption.THREAD_SCHED_POLICY, this._threadSchedulingPolicy);
-  }
+  get threadSchedulingPolicy(): number { return this._context.getOptionRawStrictInternal(ContextOption.THREAD_SCHED_POLICY); }
+  set threadSchedulingPolicy(value: number) { this._context.setOptionRawInternal(ContextOption.THREAD_SCHED_POLICY, value | 0); }
   get blocky(): boolean { return this._context.getOptionRawInternal(ContextOption.BLOCKY) !== 0; }
   set blocky(value: boolean) { this._context.setOptionRawInternal(ContextOption.BLOCKY, value ? 1 : 0); }
   addThreadAffinity(cpu: number): void { this._context.setOptionRawInternal(ContextOption.THREAD_AFFINITY_CPU_ADD, cpu | 0); }
@@ -491,6 +898,16 @@ export class Context extends NativeHandle {
       throw error;
     }
   }
+  getOptionRawStrictInternal(option: number): number {
+    try {
+      return requireNative().ctxGetOpt(this._native, option | 0) as number;
+    } catch (error) {
+      const message = error instanceof Error && error.message
+        ? error.message
+        : 'ctx_getopt failed';
+      throw createError('config', readErrno(), message);
+    }
+  }
   shutdown(): void {
     requireNative().ctxShutdown(this._native);
   }
@@ -502,14 +919,19 @@ export class Context extends NativeHandle {
 }
 
 export class MonitorSocket extends NativeHandle {
-  recv(): SocketMonitorEventValue {
-    return requireNative().monitorRecv(this._native) as SocketMonitorEventValue;
+  static readonly ignoreHandler: SocketMonitorHandler = () => {};
+  recv(): MonitorEvent {
+    return new MonitorEvent(requireNative().monitorRecv(this._native) as MonitorEventValueRaw);
   }
   onEvent(handler: SocketMonitorHandler): void {
-    requireNative().monitorHandler(this._native, handler);
+    requireNative().monitorHandler(this._native, (event: MonitorEventValueRaw) => {
+      handler(new MonitorEvent(event));
+    });
   }
   snapshot(): MonitorSnapshot {
-    return requireNative().monitorSnapshot(this._native) as MonitorSnapshot;
+    return materializeMonitorSnapshot(
+      requireNative().monitorSnapshot(this._native) as MonitorSnapshotRaw
+    );
   }
   close(): void { if (this._native) { requireNative().monitorClose(this._native); this._native = null; } }
 }
@@ -519,7 +941,11 @@ export class ServiceMonitor extends NativeHandle {
   onEvent(handler: (event: ServiceEvent) => void): void {
     requireNative().serviceMonitorHandler(this._native, (event: ServiceEventValue) => handler(new ServiceEvent(event)));
   }
-  snapshot(): MonitorSnapshot { return requireNative().monitorSnapshot(this._native) as MonitorSnapshot; }
+  snapshot(): MonitorSnapshot {
+    return materializeMonitorSnapshot(
+      requireNative().monitorSnapshot(this._native) as MonitorSnapshotRaw
+    );
+  }
   close(): void { if (this._native) { requireNative().monitorClose(this._native); this._native = null; } }
 }
 
@@ -553,10 +979,12 @@ class MessageSocket extends SendSocket {
       throw recvNativeError(error, flags, 'recv failed');
     }
     if (!raw) throw new RecvError(RecvResult.NoData, 11, 'recv failed');
-    return new Received(Object.freeze(raw.parts.map((part) => Message.fromSnapshot(part))), raw.routingId ?? null, raw.requestSeq ?? null);
+    return materializeReceived(raw);
   }
   onReceive(handler: SocketRecvHandler): void {
-    requireNative().socketRecvHandler(this.nativeHandle(), (routingId: Buffer | null, parts: Buffer[]) => handler(routingId, parts.map((part) => Message.from(part))));
+    requireNative().socketRecvHandler(this.nativeHandle(), (routingId: Buffer | null, parts: Buffer[]) => {
+      handler(new Received(parts.map((part) => Message.from(part)), wrapRoutingId(routingId)));
+    });
   }
   onSendReady(handler: SocketSendReadyHandler): void {
     requireNative().socketSendReadyHandler(this.nativeHandle(), handler);
@@ -578,7 +1006,7 @@ class SubscriberSocket extends BaseSocket {
       Buffer.from(validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER))
     );
   }
-  subscribe(flags: RecvFlags = RecvFlags.None): Subscribed {
+  subscribe(flags: RecvFlags = RecvFlags.None): TopicMessage {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
@@ -588,15 +1016,17 @@ class SubscriberSocket extends BaseSocket {
       throw recvNativeError(error, flags, 'subscribe failed');
     }
     if (!raw) throw new RecvError(RecvResult.NoData, 11, 'subscribe failed');
-    return new Subscribed(raw.topic, raw.parts.map((part) => Message.fromSnapshot(part)), raw.routingId ?? null);
+    return materializeTopicMessage(raw);
   }
   onSubscribe(handler: SocketSubscribeHandler): void {
-    requireNative().socketSubscribeHandler(this.nativeHandle(), (routingId: Buffer | null, topic: string, parts: Buffer[]) => handler(routingId, topic, parts.map((part) => Message.from(part))));
+    requireNative().socketSubscribeHandler(this.nativeHandle(), (routingId: Buffer | null, topic: string, parts: Buffer[]) => {
+      handler(new TopicMessage(topic, parts.map((part) => Message.from(part)), wrapRoutingId(routingId)));
+    });
   }
 }
 
 class RoutedMessageSocket extends BaseSocket {
-  send(routingId: BufferLike, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+  send(routingId: RoutingId, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     const normalized = normalizeMessageLikePayload(payload);
     const parts = Array.isArray(normalized)
       ? [normalizeRoutingId(routingId), ...normalized]
@@ -613,10 +1043,12 @@ class RoutedMessageSocket extends BaseSocket {
       throw recvNativeError(error, flags, 'recv failed');
     }
     if (!raw) throw new RecvError(RecvResult.NoData, 11, 'recv failed');
-    return new Received(raw.parts.map((part) => Message.fromSnapshot(part)), raw.routingId ?? null, raw.requestSeq ?? null);
+    return materializeReceived(raw);
   }
   onReceive(handler: SocketRecvHandler): void {
-    requireNative().routerHandlerMessage(this.nativeHandle(), (raw: { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null }) => handler(raw.routingId ?? null, raw.parts.map((part) => Message.fromSnapshot(part))));
+    requireNative().routerHandlerMessage(this.nativeHandle(), (raw: { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null }) => {
+      handler(materializeReceived(raw));
+    });
   }
   onSendReady(handler: SocketSendReadyHandler): void {
     requireNative().socketSendReadyHandler(this.nativeHandle(), handler);
@@ -643,7 +1075,7 @@ export class XPubSocket extends PublisherSocket {
       ? requireNative().socketTrySubscriptionEvent(this.nativeHandle()) as { routingId?: Buffer | null; topic: string; subscribed: boolean } | null
       : requireNative().socketSubscriptionEvent(this.nativeHandle(), flags | 0) as { routingId?: Buffer | null; topic: string; subscribed: boolean } | null;
     if (!raw) throw new RecvError(RecvResult.NoData, 11, 'receiveSubscriptionEvent failed');
-    return new SubscriptionEvent(raw.topic, raw.subscribed, raw.routingId ?? null);
+    return new SubscriptionEvent(raw.topic, raw.subscribed, wrapRoutingId(raw.routingId ?? null));
   }
   onSendReady(handler: SocketSendReadyHandler): void { requireNative().socketSendReadyHandler(this.nativeHandle(), handler); }
 }
@@ -662,20 +1094,127 @@ export class XSubSocket extends SubscriberSocket {
 export class DealerSocket extends MessageSocket {
   readonly options: DealerSocketOptions;
   constructor(ctx: Context) { super(ctx, SocketType.DEALER); this.options = new DealerSocketOptions(this); }
-  setRoutingId(routingId: BufferLike): void { requireNative().socketSetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0, normalizeRoutingId(routingId)); }
-  getRoutingId(): Buffer { return requireNative().socketGetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0) as Buffer; }
+  setRoutingId(routingId: RoutingId): void {
+    requireNative().socketSetOpt(
+      this.nativeHandle(),
+      SocketOption.ROUTING_ID | 0,
+      normalizeRoutingId(routingId)
+    );
+  }
+  getRoutingId(): RoutingId {
+    return RoutingId.fromBytes(
+      requireNative().socketGetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0) as Buffer
+    );
+  }
   attachDiscovery(discovery: Discovery): void { requireNative().socketAttachDiscovery(this.nativeHandle(), discovery.nativeHandle()); }
+  request(message: MessageLike, timeout?: number): Promise<Message[]>;
+  request(parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
+  request(message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  request(parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  request(
+    payloadOrParts: MessageLike | readonly MessageLike[],
+    callbackOrTimeout?: RequestResultCallback | number,
+    flags: SendFlags = SendFlags.None,
+    timeout = 0
+  ): Promise<Message[]> | void {
+    const parts = Array.isArray(payloadOrParts)
+      ? toMessageParts(payloadOrParts)
+      : [normalizeMessageLikePayload(payloadOrParts)];
+    if (typeof callbackOrTimeout === 'function') {
+      const callback = callbackOrTimeout;
+      return void requireNative().dealerRequest(
+        this.nativeHandle(),
+        parts,
+        (result: number, replyParts: Buffer[] | null) => {
+          callback(
+            result as RequestResult,
+            replyParts ? replyParts.map((part) => Message.from(part)) : []
+          );
+        },
+        flags | 0,
+        timeout | 0,
+      );
+    }
+    const timeoutMs = (typeof callbackOrTimeout === 'number' ? callbackOrTimeout : timeout) ?? 0;
+    return new Promise<Message[]>((resolve, reject) => {
+      requireNative().dealerRequest(
+        this.nativeHandle(),
+        parts,
+        (result: number, replyParts: Buffer[] | null) => {
+          if (result !== RequestResult.Ok) {
+            reject(requestErrorFromResult(result as RequestResult, 'request failed'));
+            return;
+          }
+          resolve((replyParts ?? []).map((part) => Message.from(part)));
+        },
+        SendFlags.None,
+        timeoutMs | 0
+      );
+    });
+  }
 }
 
 export class RouterSocket extends RoutedMessageSocket {
   readonly options: RouterSocketOptions;
   constructor(ctx: Context) { super(ctx, SocketType.ROUTER); this.options = new RouterSocketOptions(this); }
-  setRoutingId(routingId: BufferLike): void { requireNative().socketSetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0, normalizeRoutingId(routingId)); }
-  getRoutingId(): Buffer { return requireNative().socketGetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0) as Buffer; }
+  setRoutingId(routingId: RoutingId): void {
+    requireNative().socketSetOpt(
+      this.nativeHandle(),
+      SocketOption.ROUTING_ID | 0,
+      normalizeRoutingId(routingId)
+    );
+  }
+  getRoutingId(): RoutingId {
+    return RoutingId.fromBytes(
+      requireNative().socketGetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0) as Buffer
+    );
+  }
   attachDiscovery(discovery: Discovery): void { requireNative().socketAttachDiscovery(this.nativeHandle(), discovery.nativeHandle()); }
-  sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, message: MessageLike, flags?: SendFlags): void;
-  sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, parts: readonly MessageLike[], flags?: SendFlags): void;
-  sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+  request(routingId: RoutingId, message: MessageLike, timeout?: number): Promise<Message[]>;
+  request(routingId: RoutingId, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
+  request(routingId: RoutingId, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  request(routingId: RoutingId, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  request(
+    routingId: RoutingId,
+    payloadOrParts: MessageLike | readonly MessageLike[],
+    callbackOrTimeout?: RequestResultCallback | number,
+    flags: SendFlags = SendFlags.None,
+    timeout = 0
+  ): Promise<Message[]> | void {
+    const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
+    const peer = normalizeRoutingId(routingId);
+    if (typeof callbackOrTimeout === 'function') {
+      const callback = callbackOrTimeout;
+      return void requireNative().routerRequest(
+        this.nativeHandle(),
+        peer,
+        parts,
+        (result: number, replyParts: Buffer[] | null) => callback(result as RequestResult, replyParts ? replyParts.map((part) => Message.from(part)) : []),
+        flags | 0,
+        timeout | 0
+      );
+    }
+    const timeoutMs = (typeof callbackOrTimeout === 'number' ? callbackOrTimeout : timeout) ?? 0;
+    return new Promise<Message[]>((resolve, reject) => {
+      requireNative().routerRequest(
+        this.nativeHandle(),
+        peer,
+        parts,
+        (result: number, replyParts: Buffer[] | null) => {
+          if (result !== RequestResult.Ok) {
+            reject(requestErrorFromResult(result as RequestResult, 'request failed'));
+            return;
+          }
+          resolve((replyParts ?? []).map((part) => Message.from(part)));
+        },
+        SendFlags.None,
+        timeoutMs | 0
+      );
+    });
+  }
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, flags?: SendFlags): void;
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     requireNative().routerSpotSend(
       this.nativeHandle(),
       normalizeRoutingId(destNodeRid),
@@ -684,11 +1223,11 @@ export class RouterSocket extends RoutedMessageSocket {
       flags | 0
     );
   }
-  requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, message: MessageLike, timeout?: number): Promise<Received>;
-  requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, parts: readonly MessageLike[], timeout?: number): Promise<Received>;
-  requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, flags: SendFlags = SendFlags.None, timeout = 0): Promise<Received> | void {
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, timeout?: number): Promise<Message[]>;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, flags: SendFlags = SendFlags.None, timeout = 0): Promise<Message[]> | void {
     const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
     const nodeRid = normalizeRoutingId(destNodeRid);
     const spotRid = normalizeRoutingId(destSpotRid);
@@ -698,13 +1237,13 @@ export class RouterSocket extends RoutedMessageSocket {
         nodeRid,
         spotRid,
         parts,
-        (result: number, replyParts: Buffer[] | null) => callbackOrTimeout(result as RequestResult, replyParts ? new Received(replyParts.map((part) => Message.from(part))) : null),
+        (result: number, replyParts: Buffer[] | null) => callbackOrTimeout(result as RequestResult, replyParts ? replyParts.map((part) => Message.from(part)) : []),
         flags | 0,
         timeout | 0
       );
     }
     const timeoutMs = (typeof callbackOrTimeout === 'number' ? callbackOrTimeout : timeout) ?? 0;
-    return new Promise<Received>((resolve, reject) => {
+    return new Promise<Message[]>((resolve, reject) => {
       requireNative().routerSpotRequest(
         this.nativeHandle(),
         nodeRid,
@@ -715,37 +1254,35 @@ export class RouterSocket extends RoutedMessageSocket {
             reject(requestErrorFromResult(result as RequestResult, 'requestToSpot failed'));
             return;
           }
-          resolve(new Received((replyParts ?? []).map((part) => Message.from(part))));
+          resolve((replyParts ?? []).map((part) => Message.from(part)));
         },
         0,
         timeoutMs | 0
       );
     });
   }
-  replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
-  replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
-  replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
+  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
+  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+    normalizeReplyFlags(flags);
     requireNative().routerSpotReply(
       this.nativeHandle(),
       normalizeRoutingId(destNodeRid),
       normalizeRoutingId(destSpotRid),
       requestSeq,
-      Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)],
-      flags | 0
+      Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)]
     );
   }
-  recvSpot(flags: RecvFlags = RecvFlags.None): Received {
-    const raw = requireNative().routerSpotRecv(this.nativeHandle(), flags | 0) as { sourceNodeRid?: Buffer | null; sourceSpotRid?: Buffer | null; requestSeq?: bigint | null; parts: MessageSnapshot[] } | null;
-    if (!raw) throw lastError('recv', 'recvSpot failed');
-    return new Received(raw.parts.map((part) => Message.fromSnapshot(part)), raw.sourceNodeRid ?? raw.sourceSpotRid ?? null, raw.requestSeq ?? null);
-  }
-  onSpotReceive(handler: RouterSpotHandler): void {
-    requireNative().routerSpotHandler(this.nativeHandle(), (sourceNodeRid: Buffer | null, sourceSpotRid: Buffer | null, requestSeq: bigint, parts: Buffer[]) => handler(sourceNodeRid, sourceSpotRid, requestSeq, parts.map((part) => Message.from(part))));
-  }
-  reply(routingId: BufferLike, requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
-  reply(routingId: BufferLike, requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
-  reply(routingId: BufferLike, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
-    requireNative().routerReply(this.nativeHandle(), normalizeRoutingId(routingId), requestSeq, Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)], flags | 0);
+  reply(routingId: RoutingId, requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
+  reply(routingId: RoutingId, requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
+  reply(routingId: RoutingId, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+    normalizeReplyFlags(flags);
+    requireNative().routerReply(
+      this.nativeHandle(),
+      normalizeRoutingId(routingId),
+      requestSeq,
+      Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)]
+    );
   }
 }
 
@@ -757,8 +1294,18 @@ export class StreamSocket extends RoutedMessageSocket {
     Object.defineProperty(this, 'connect', { value: undefined, configurable: true, enumerable: false, writable: false });
     Object.defineProperty(this, 'disconnect', { value: undefined, configurable: true, enumerable: false, writable: false });
   }
-  setRoutingId(routingId: BufferLike): void { requireNative().socketSetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0, normalizeRoutingId(routingId)); }
-  getRoutingId(): Buffer { return requireNative().socketGetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0) as Buffer; }
+  setRoutingId(routingId: RoutingId): void {
+    requireNative().socketSetOpt(
+      this.nativeHandle(),
+      SocketOption.ROUTING_ID | 0,
+      normalizeRoutingId(routingId)
+    );
+  }
+  getRoutingId(): RoutingId {
+    return RoutingId.fromBytes(
+      requireNative().socketGetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0) as Buffer
+    );
+  }
 }
 
 export class Registry extends NativeHandle {
@@ -775,11 +1322,25 @@ export class Registry extends NativeHandle {
   setBroadcastInterval(intervalMs: number): void { requireNative().registrySetBroadcastInterval(this._native, intervalMs | 0); }
   setTlsServer(cert: string, key: string, requireClient = 0): void { requireNative().registrySetTlsServer(this._native, validateCString(cert, 'cert', Number.MAX_SAFE_INTEGER), validateCString(key, 'key', Number.MAX_SAFE_INTEGER), requireClient | 0); }
   setTlsClient(ca: string, host: string, trust = 0): void { requireNative().registrySetTlsClient(this._native, validateCString(ca, 'ca', Number.MAX_SAFE_INTEGER), validateCString(host, 'host', Number.MAX_SAFE_INTEGER), trust | 0); }
-  statusSnapshot(): any { return requireNative().registryStatusSnapshot(this._native); }
-  serviceSummarySnapshot(filter?: any): any[] { return requireNative().registryServiceSummarySnapshot(this._native, filter ?? undefined); }
-  topologySnapshot(): any[] { return requireNative().registryTopologySnapshot(this._native); }
-  topologyQuery(filter?: any): any[] { return requireNative().registryTopologyQuery(this._native, filter ?? undefined); }
-  memberPeers(serviceType: number, serviceName?: string): any[] { return requireNative().registryMemberPeers(this._native, serviceType, serviceName ?? ''); }
+  statusSnapshot(): RegistryStatus {
+    return mapRegistryStatus(requireNative().registryStatusSnapshot(this._native));
+  }
+  serviceSummarySnapshot(filter?: RegistryServiceSummaryFilter): RegistryServiceSummaryEntry[] {
+    return (requireNative().registryServiceSummarySnapshot(this._native, filter ?? undefined) as Array<Record<string, unknown>>)
+      .map((entry) => mapRegistryServiceSummaryEntry(entry as any));
+  }
+  topologySnapshot(): RegistryTopologyEntry[] {
+    return (requireNative().registryTopologySnapshot(this._native) as Array<Record<string, unknown>>)
+      .map((entry) => mapRegistryTopologyEntry(entry as any));
+  }
+  topologyQuery(filter?: RegistryTopologyFilter): RegistryTopologyEntry[] {
+    return (requireNative().registryTopologyQuery(this._native, normalizeTopologyFilter(filter)) as Array<Record<string, unknown>>)
+      .map((entry) => mapRegistryTopologyEntry(entry as any));
+  }
+  memberPeers(serviceType: number, serviceName?: string): MemberPeerEntry[] {
+    return (requireNative().registryMemberPeers(this._native, serviceType, serviceName ?? '') as Array<Record<string, unknown>>)
+      .map((entry) => mapMemberPeerEntry(entry as any));
+  }
   memberPeerMetadata(serviceType: number, serviceName: string, serviceRole: number, endpoint: string): Buffer { return requireNative().registryMemberPeerMetadata(this._native, serviceType, validateCString(serviceName, 'serviceName'), serviceRole, validateCString(endpoint, 'endpoint')); }
   close(): void { if (this._native) { requireNative().registryDestroy(this._native); this._native = null; } }
 }
@@ -787,7 +1348,10 @@ export class Registry extends NativeHandle {
 export class RegistryQueryClient extends NativeHandle {
   constructor(ctx: Context) { super(requireNative().registryQueryClientNew(ctx.nativeHandle())); }
   connect(endpoint: string): void { requireNative().registryQueryClientConnect(this._native, validateCString(endpoint, 'endpoint')); }
-  snapshot(filter?: any): any[] { return requireNative().registryQuerySnapshot(this._native, filter ?? undefined); }
+  snapshot(filter?: RegistryTopologyFilter): RegistryTopologyEntry[] {
+    return (requireNative().registryQuerySnapshot(this._native, normalizeTopologyFilter(filter)) as Array<Record<string, unknown>>)
+      .map((entry) => mapRegistryTopologyEntry(entry as any));
+  }
   close(): void { if (this._native) { requireNative().registryQueryDestroy(this._native); this._native = null; } }
 }
 
@@ -807,7 +1371,18 @@ export class Discovery extends NativeHandle {
   getValue(): number { return requireNative().discoveryGetValue(this._native) as number; }
   setMetadata(metadata: BufferLike | string): void { requireNative().discoverySetMetadata(this._native, normalizeBufferLike(metadata, 'metadata')); }
   getMetadata(): Buffer { return requireNative().discoveryGetMetadata(this._native) as Buffer; }
-  memberPeers(): any[] { return requireNative().discoveryGetProviders(this._native) as any[]; }
+  resolveSpot(spotRid: RoutingId): RoutingId {
+    return RoutingId.fromBytes(
+      requireNative().discoveryResolveSpot(this._native, normalizeRoutingId(spotRid)) as Buffer
+    );
+  }
+  setDealerPeerMode(mode: DiscoveryDealerPeerMode): void {
+    requireNative().discoverySetDealerPeerMode(this._native, mode | 0);
+  }
+  memberPeers(): MemberPeerEntry[] {
+    return (requireNative().discoveryGetProviders(this._native) as Array<Record<string, unknown>>)
+      .map((entry) => mapMemberPeerEntry(entry as any));
+  }
   memberPeerMetadata(serviceRole: number, endpoint: string): Buffer { return requireNative().discoveryMemberPeerMetadata(this._native, serviceRole, validateCString(endpoint, 'endpoint')) as Buffer; }
   monitorOpen(events: ServiceMonitorEventMask = ServiceMonitorEvent.ALL): ServiceMonitor { return new ServiceMonitor(requireNative().discoveryOpenMonitor(this._native, events | 0)); }
   setTlsClient(ca: string, host: string, trust = 0): void { requireNative().discoverySetTlsClient(this._native, validateCString(ca, 'ca', Number.MAX_SAFE_INTEGER), validateCString(host, 'host', Number.MAX_SAFE_INTEGER), trust | 0); }
@@ -815,29 +1390,123 @@ export class Discovery extends NativeHandle {
 }
 
 export class SpotNode extends NativeHandle {
-  constructor(ctx: Context) { super(requireNative().spotNodeNew(ctx.nativeHandle())); }
+  private readonly _spots = new Set<Spot>();
+  private _nodeRoutingId: RoutingId;
+  constructor(ctx: Context) {
+    super(requireNative().spotNodeNew(ctx.nativeHandle()));
+    this._nodeRoutingId = RoutingId.fromBytes(randomBytes(16));
+  }
   nativeHandle(): unknown { return this._native; }
   bind(endpoint: string): void { requireNative().spotNodeBind(this._native, validateCString(endpoint, 'endpoint')); }
   connectPeer(endpoint: string): void { requireNative().spotNodeConnectPeerPub(this._native, validateCString(endpoint, 'endpoint')); }
   disconnectPeer(endpoint: string): void { requireNative().spotNodeDisconnectPeerPub(this._native, validateCString(endpoint, 'endpoint')); }
   attachDiscovery(discovery: Discovery): void { requireNative().spotNodeSetDiscovery(this._native, discovery.nativeHandle()); }
+  setRoutingId(routingId: RoutingId): void {
+    requireNative().handleSetRoutingId(this._native, normalizeRoutingId(routingId));
+    this._nodeRoutingId = routingId;
+  }
+  get routingId(): RoutingId {
+    this._nodeRoutingId = RoutingId.fromBytes(requireNative().handleGetRoutingId(this._native) as Buffer);
+    return this._nodeRoutingId;
+  }
   setTlsServer(cert: string, key: string, requireClient = 0): void { requireNative().spotNodeSetTlsServer(this._native, validateCString(cert, 'cert', Number.MAX_SAFE_INTEGER), validateCString(key, 'key', Number.MAX_SAFE_INTEGER), requireClient | 0); }
   setTlsClient(ca: string, host: string, trust = 0): void { requireNative().spotNodeSetTlsClient(this._native, validateCString(ca, 'ca', Number.MAX_SAFE_INTEGER), validateCString(host, 'host', Number.MAX_SAFE_INTEGER), trust | 0); }
-  statusSnapshot(): any { return requireNative().spotNodeStatusSnapshot(this._native); }
-  peersSnapshot(): any[] { return requireNative().spotNodePeersSnapshot(this._native); }
-  peersQuery(filter?: any): any[] { return requireNative().spotNodePeersQuery(this._native, filter ?? undefined); }
-  subjectsSnapshot(filter?: any): any[] { return requireNative().spotNodeSubjectsSnapshot(this._native, filter ?? undefined); }
-  close(): void { if (this._native) { requireNative().spotNodeDestroy(this._native); this._native = null; } }
+  createSpot(): Spot {
+    const spot = Spot.create(this);
+    this._spots.add(spot);
+    try {
+      const raw = requireNative().spotNodeStatusSnapshot(this._native) as {
+        nodeRoutingId?: Buffer | null;
+      };
+      if (raw?.nodeRoutingId) {
+        this._nodeRoutingId = RoutingId.fromBytes(raw.nodeRoutingId);
+      }
+    } catch {
+      // Ignore cache warm-up failure; statusSnapshot() will surface real errors later.
+    }
+    return spot;
+  }
+  unregisterSpot(spot: Spot): void {
+    this._spots.delete(spot);
+  }
+  statusSnapshot(): SpotNodeStatus {
+    const raw = requireNative().spotNodeStatusSnapshot(this._native) as {
+      serviceName: string;
+      localEndpoint: string;
+      nodeRoutingId?: Buffer | null;
+      state: number;
+      configuredPeerCount: number;
+      activePeerCount: number;
+      connectedPeerCount: number;
+      subjectCount: number;
+      readySubjectCount: number;
+      lastError: number;
+      lastChangedMs: number | bigint;
+    };
+    if (raw.nodeRoutingId) {
+      this._nodeRoutingId = RoutingId.fromBytes(raw.nodeRoutingId);
+    }
+    return mapSpotNodeStatus(raw, this._nodeRoutingId);
+  }
+  peersSnapshot(): SpotNodePeerEntry[] {
+    return (requireNative().spotNodePeersSnapshot(this._native) as Array<Record<string, unknown>>)
+      .map((entry) => mapSpotNodePeerEntry(entry as any));
+  }
+  peersQuery(filter?: SpotNodePeerFilter): SpotNodePeerEntry[] {
+    return (requireNative().spotNodePeersQuery(this._native, filter ?? undefined) as Array<Record<string, unknown>>)
+      .map((entry) => mapSpotNodePeerEntry(entry as any));
+  }
+  subjectsSnapshot(filter?: SpotNodeSubjectFilter): SpotNodeSubjectEntry[] {
+    return (requireNative().spotNodeSubjectsSnapshot(this._native, filter ?? undefined) as Array<Record<string, unknown>>)
+      .map((entry) => mapSpotNodeSubjectEntry(entry as any));
+  }
+  close(): void {
+    if (!this._native) {
+      return;
+    }
+    for (const spot of [...this._spots]) {
+      spot.close();
+    }
+    requireNative().spotNodeDestroy(this._native);
+    this._native = null;
+  }
 }
 
 export class Spot extends NativeHandle {
+  private static readonly CREATE_TOKEN = Symbol('Spot.create');
   private _subscribeCallbackInstalled = false;
-  constructor(node: SpotNode) { super(requireNative().spotNew(node.nativeHandle())); }
-  publish(topic: string, payload: MessageLike, flags: SendFlags = SendFlags.None): void { requireNative().spotPublish(this._native, validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER), payload instanceof Message ? payload.toSnapshot() : normalizeBufferLike(payload, 'payload'), flags | 0); }
-  publishParts(topic: string, payloadParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): void { requireNative().spotPublish(this._native, validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER), toMessageParts(payloadParts), flags | 0); }
+  private readonly _node: SpotNode;
+  private constructor(node: SpotNode, token: symbol) {
+    if (token !== Spot.CREATE_TOKEN) {
+      throw new TypeError('Spot instances must be created with SpotNode.createSpot()');
+    }
+    super(requireNative().spotNew(node.nativeHandle()));
+    this._node = node;
+  }
+
+  /** @internal */
+  static create(node: SpotNode): Spot {
+    return new Spot(node, Spot.CREATE_TOKEN);
+  }
+  setRoutingId(routingId: RoutingId): void {
+    requireNative().handleSetRoutingId(this._native, normalizeRoutingId(routingId));
+  }
+  get routingId(): RoutingId {
+    return RoutingId.fromBytes(requireNative().handleGetRoutingId(this._native) as Buffer);
+  }
+  publish(topic: string, payload: MessageLike, flags?: SendFlags): void;
+  publish(topic: string, payloadParts: readonly MessageLike[], flags?: SendFlags): void;
+  publish(topic: string, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+    requireNative().spotPublish(
+      this._native,
+      validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER),
+      Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)],
+      flags | 0
+    );
+  }
   setSubscription(topicOrPattern: string): void { requireNative().spotSubscribe(this._native, validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER)); }
   unsetSubscription(topicOrPattern: string): void { requireNative().spotUnsubscribe(this._native, validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER)); }
-  subscribe(flags: RecvFlags = RecvFlags.None): Subscribed {
+  subscribe(flags: RecvFlags = RecvFlags.None): TopicMessage {
     let raw;
     try {
       raw = requireNative().spotRecv(this._native, flags | 0) as any;
@@ -845,13 +1514,17 @@ export class Spot extends NativeHandle {
       throw recvNativeError(error, flags, 'subscribe failed');
     }
     if (!raw) throw lastError('recv', 'subscribe failed');
-    return new Subscribed(raw.topic, raw.parts.map((part: MessageSnapshot) => Message.fromSnapshot(part)), raw.routingId ?? null);
+    return materializeTopicMessage(raw);
   }
-  onSubscribe(handler: SpotSubHandler): void { requireNative().spotSubscribeHandler(this._native, (routingId: Buffer | null, topic: string, parts: Buffer[]) => handler(routingId, topic, parts.map((part) => Message.from(part)))); }
+  onSubscribe(handler: SpotSubHandler): void {
+    requireNative().spotSubscribeHandler(this._native, (routingId: Buffer | null, topic: string, parts: Buffer[]) => {
+      handler(new TopicMessage(topic, parts.map((part) => Message.from(part)), wrapRoutingId(routingId)));
+    });
+  }
   onSendReady(handler: SpotSendReadyHandler): void { requireNative().spotSendReadyHandler(this._native, handler); }
-  sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, message: MessageLike, flags?: SendFlags): void;
-  sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, parts: readonly MessageLike[], flags?: SendFlags): void;
-  sendToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, flags?: SendFlags): void;
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     requireNative().spotSendSpot(
       this._native,
       normalizeRoutingId(destNodeRid),
@@ -860,11 +1533,11 @@ export class Spot extends NativeHandle {
       flags | 0
     );
   }
-  requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, message: MessageLike, timeout?: number): Promise<Received>;
-  requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, parts: readonly MessageLike[], timeout?: number): Promise<Received>;
-  requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, flags: SendFlags = SendFlags.None, timeout = 0): Promise<Received> | void {
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, timeout?: number): Promise<Message[]>;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, flags: SendFlags = SendFlags.None, timeout = 0): Promise<Message[]> | void {
     const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
     const nodeRid = normalizeRoutingId(destNodeRid);
     const spotRid = normalizeRoutingId(destSpotRid);
@@ -874,13 +1547,13 @@ export class Spot extends NativeHandle {
         nodeRid,
         spotRid,
         parts,
-        (result: number, replyParts: Buffer[] | null) => callbackOrTimeout(result as RequestResult, replyParts ? new Received(replyParts.map((part) => Message.from(part))) : undefined),
+        (result: number, replyParts: Buffer[] | null) => callbackOrTimeout(result as RequestResult, replyParts ? replyParts.map((part) => Message.from(part)) : []),
         flags | 0,
         timeout | 0
       );
     }
     const timeoutMs = (typeof callbackOrTimeout === 'number' ? callbackOrTimeout : timeout) ?? 0;
-    return new Promise<Received>((resolve, reject) => {
+    return new Promise<Message[]>((resolve, reject) => {
       requireNative().spotRequestSpot(
         this._native,
         nodeRid,
@@ -891,28 +1564,28 @@ export class Spot extends NativeHandle {
             reject(requestErrorFromResult(result as RequestResult, 'requestToSpot failed'));
             return;
           }
-          resolve(new Received((replyParts ?? []).map((part) => Message.from(part))));
+          resolve((replyParts ?? []).map((part) => Message.from(part)));
         },
         0,
         timeoutMs | 0
       );
     });
   }
-  replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
-  replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
-  replyToSpot(destNodeRid: BufferLike, destSpotRid: BufferLike, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
+  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
+  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+    normalizeReplyFlags(flags);
     requireNative().spotReplySpot(
       this._native,
       normalizeRoutingId(destNodeRid),
       normalizeRoutingId(destSpotRid),
       requestSeq,
-      Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)],
-      flags | 0
+      Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)]
     );
   }
-  sendToRouter(peerRid: BufferLike, message: MessageLike, flags?: SendFlags): void;
-  sendToRouter(peerRid: BufferLike, parts: readonly MessageLike[], flags?: SendFlags): void;
-  sendToRouter(peerRid: BufferLike, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+  sendToRouter(peerRid: RoutingId, message: MessageLike, flags?: SendFlags): void;
+  sendToRouter(peerRid: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
+  sendToRouter(peerRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     requireNative().spotSendRouter(
       this._native,
       normalizeRoutingId(peerRid),
@@ -920,26 +1593,26 @@ export class Spot extends NativeHandle {
       flags | 0
     );
   }
-  requestToRouter(peerRid: BufferLike, message: MessageLike, timeout?: number): Promise<Received>;
-  requestToRouter(peerRid: BufferLike, parts: readonly MessageLike[], timeout?: number): Promise<Received>;
-  requestToRouter(peerRid: BufferLike, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestToRouter(peerRid: BufferLike, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestToRouter(peerRid: BufferLike, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, flags: SendFlags = SendFlags.None, timeout = 0): Promise<Received> | void {
+  requestToRouter(peerRid: RoutingId, message: MessageLike, timeout?: number): Promise<Message[]>;
+  requestToRouter(peerRid: RoutingId, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
+  requestToRouter(peerRid: RoutingId, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  requestToRouter(peerRid: RoutingId, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  requestToRouter(peerRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, flags: SendFlags = SendFlags.None, timeout = 0): Promise<Message[]> | void {
     const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
     const peer = normalizeRoutingId(peerRid);
     if (typeof callbackOrTimeout === 'function') {
-      return void requireNative().spotRequestRouter(
+      return void requireNative().spotRequestToRouter(
         this._native,
         peer,
         parts,
-        (result: number, replyParts: Buffer[] | null) => callbackOrTimeout(result as RequestResult, replyParts ? new Received(replyParts.map((part) => Message.from(part))) : undefined),
+        (result: number, replyParts: Buffer[] | null) => callbackOrTimeout(result as RequestResult, replyParts ? replyParts.map((part) => Message.from(part)) : []),
         flags | 0,
         timeout | 0
       );
     }
     const timeoutMs = (typeof callbackOrTimeout === 'number' ? callbackOrTimeout : timeout) ?? 0;
-    return new Promise<Received>((resolve, reject) => {
-      requireNative().spotRequestRouter(
+    return new Promise<Message[]>((resolve, reject) => {
+      requireNative().spotRequestToRouter(
         this._native,
         peer,
         parts,
@@ -948,22 +1621,22 @@ export class Spot extends NativeHandle {
             reject(requestErrorFromResult(result as RequestResult, 'requestToRouter failed'));
             return;
           }
-          resolve(new Received((replyParts ?? []).map((part) => Message.from(part))));
+          resolve((replyParts ?? []).map((part) => Message.from(part)));
         },
         0,
         timeoutMs | 0
       );
     });
   }
-  replyToRouter(peerRid: BufferLike, requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
-  replyToRouter(peerRid: BufferLike, requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
-  replyToRouter(peerRid: BufferLike, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+  replyToRouter(peerRid: RoutingId, requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
+  replyToRouter(peerRid: RoutingId, requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
+  replyToRouter(peerRid: RoutingId, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+    normalizeReplyFlags(flags);
     requireNative().spotReplyRouter(
       this._native,
       normalizeRoutingId(peerRid),
       requestSeq,
-      Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)],
-      flags | 0
+      Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)]
     );
   }
   recvRouted(flags: RecvFlags = RecvFlags.None): Received {
@@ -974,10 +1647,35 @@ export class Spot extends NativeHandle {
       throw recvNativeError(error, flags, 'recvRouted failed');
     }
     if (!raw) throw lastError('recv', 'recvRouted failed');
-    return new Received(raw.parts.map((part) => Message.fromSnapshot(part)), raw.sourceRid ?? raw.spotRid ?? null, raw.requestSeq ?? null);
+    return materializeReceived(
+      {
+        parts: raw.parts,
+        routingId: raw.sourceRid ?? null,
+        requestSeq: raw.requestSeq ?? null,
+        spotRid: raw.spotRid ?? null
+      },
+      (requestSeq, parts, flags) => {
+        if (!raw.sourceRid) {
+          throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed reply target');
+        }
+        const sourceRid = RoutingId.fromBytes(raw.sourceRid);
+        if (raw.spotRid) {
+          this.replyToSpot(sourceRid, RoutingId.fromBytes(raw.spotRid), requestSeq, parts, flags);
+          return;
+        }
+        this.replyToRouter(sourceRid, requestSeq, parts, flags);
+      }
+    );
   }
   onRoutedReceive(handler: SpotRoutedHandler): void {
-    requireNative().spotRoutedHandler(this._native, (sourceRid: Buffer | null, spotRid: Buffer | null, requestSeq: bigint, parts: Buffer[]) => handler(sourceRid, spotRid, requestSeq, parts.map((part) => Message.from(part))));
+    requireNative().spotRoutedHandler(this._native, (sourceRid: Buffer | null, spotRid: Buffer | null, requestSeq: bigint, parts: Buffer[]) => {
+      handler(
+        wrapRoutingId(sourceRid),
+        wrapRoutingId(spotRid),
+        requestSeq,
+        parts.map((part) => Message.from(part))
+      );
+    });
   }
   onDispatchEvent(handler: SpotDispatchEventHandler): void {
     requireNative().spotDispatchEventHandler(this._native, handler);
@@ -988,141 +1686,12 @@ export class Spot extends NativeHandle {
   setSendTimeout(milliseconds: number): void { requireNative().socketSetOpt(this._native, SocketOption.SNDTIMEO, int32Buffer(milliseconds, 'milliseconds')); }
   setReceiveTimeout(milliseconds: number): void { requireNative().socketSetOpt(this._native, SocketOption.RCVTIMEO, int32Buffer(milliseconds, 'milliseconds')); }
   setNoDrop(enabled: boolean): void { requireNative().socketSetOpt(this._native, SocketOption.XPUB_NODROP, boolBuffer(enabled)); }
-  close(): void { if (this._native) { requireNative().spotDestroy(this._native); this._native = null; } }
-}
-
-function requestCallbackWrap(
-  submit: () => Promise<Received> | void,
-  callback?: RequestResultCallback
-): Promise<Received> | void {
-  const result = submit();
-  if (callback) {
-    (result as Promise<Received>).then(
-      (reply) => callback(RequestResult.Ok, reply),
-      (err: ZlinkError) => callback((err as any).result ?? RequestResult.ProtocolError)
-    );
-    return;
-  }
-  return result;
-}
-
-export class RequestDealer {
-  private readonly _socket: DealerSocket;
-  constructor(socket: DealerSocket) { this._socket = socket; }
-  socket(): DealerSocket { return this._socket; }
-  request(message: MessageLike, timeout?: number): Promise<Received>;
-  request(parts: readonly MessageLike[], timeout?: number): Promise<Received>;
-  request(message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  request(parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  request(payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, flags: SendFlags = SendFlags.None, timeout = 0): Promise<Received> | void {
-    const normalized = normalizeMessageLikePayload(payloadOrParts);
-    if (typeof callbackOrTimeout === 'function') {
-      const callback = callbackOrTimeout;
-      return void requireNative().dealerRequest(
-        this._socket.nativeHandle(),
-        Array.isArray(normalized) ? normalized : [normalized],
-        timeout | 0,
-        (errnum: number, replyParts: Buffer[] | null) => callback(errnum as RequestResult, replyParts ? new Received(replyParts.map((part) => Message.from(part))) : undefined)
-      );
-    }
-    const timeoutMs = (typeof callbackOrTimeout === 'number' ? callbackOrTimeout : timeout) ?? 0;
-    return new Promise<Received>((resolve, reject) => {
-      requireNative().dealerRequest(
-        this._socket.nativeHandle(),
-        Array.isArray(normalized) ? normalized : [normalized],
-        timeoutMs | 0,
-        (errnum: number, replyParts: Buffer[] | null) => {
-          if (errnum !== 0) {
-            reject(requestErrorFromResult(errnum as RequestResult, 'request failed'));
-            return;
-          }
-          resolve(new Received((replyParts ?? []).map((part) => Message.from(part))));
-        }
-      );
-    });
-  }
-  recv(flags: RecvFlags = RecvFlags.None): Received { return this._socket.recv(flags); }
-  onReceive(handler: (received: Received) => void): void {
-    this._socket.onReceive((routingId, parts) => handler(new Received(parts, routingId)));
-  }
-  close(): void { this._socket.close(); }
-}
-
-export class RequestRouter {
-  private readonly _socket: RouterSocket;
-  private _dispatchTimer: ReturnType<typeof setInterval> | null = null;
-  private _receiveHandler: ((received: Received) => void) | null = null;
-  constructor(socket: RouterSocket) { this._socket = socket; }
-  socket(): RouterSocket { return this._socket; }
-  request(routingId: BufferLike, message: MessageLike, timeout?: number): Promise<Received>;
-  request(routingId: BufferLike, parts: readonly MessageLike[], timeout?: number): Promise<Received>;
-  request(routingId: BufferLike, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  request(routingId: BufferLike, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  request(routingId: BufferLike, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, flags: SendFlags = SendFlags.None, timeout = 0): Promise<Received> | void {
-    const normalized = normalizeMessageLikePayload(payloadOrParts);
-    if (typeof callbackOrTimeout === 'function') {
-      const callback = callbackOrTimeout;
-      return void requireNative().routerRequest(
-        this._socket.nativeHandle(),
-        normalizeRoutingId(routingId),
-        Array.isArray(normalized) ? normalized : [normalized],
-        timeout | 0,
-        (errnum: number, replyParts: Buffer[] | null) => callback(errnum as RequestResult, replyParts ? new Received(replyParts.map((part) => Message.from(part))) : undefined)
-      );
-    }
-    const timeoutMs = (typeof callbackOrTimeout === 'number' ? callbackOrTimeout : timeout) ?? 0;
-    return new Promise<Received>((resolve, reject) => {
-      requireNative().routerRequest(
-        this._socket.nativeHandle(),
-        normalizeRoutingId(routingId),
-        Array.isArray(normalized) ? normalized : [normalized],
-        timeoutMs | 0,
-        (errnum: number, replyParts: Buffer[] | null) => {
-          if (errnum !== 0) {
-            reject(requestErrorFromResult(errnum as RequestResult, 'request failed'));
-            return;
-          }
-          resolve(new Received((replyParts ?? []).map((part) => Message.from(part))));
-        }
-      );
-    });
-  }
-  reply(routingId: BufferLike, requestSeq: bigint, message: MessageLike, flags: SendFlags = SendFlags.None): void {
-    requireNative().routerReply(this._socket.nativeHandle(), normalizeRoutingId(routingId), requestSeq, [message instanceof Message ? message.toSnapshot() : normalizeBufferLike(message, 'message')], flags | 0);
-  }
-  replyParts(routingId: BufferLike, requestSeq: bigint, parts: readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
-    requireNative().routerReply(this._socket.nativeHandle(), normalizeRoutingId(routingId), requestSeq, toMessageParts(parts), flags | 0);
-  }
-  recv(flags: RecvFlags = RecvFlags.None): Received { return this._socket.recv(flags); }
-  onReceive(handler: (received: Received) => void): void {
-    if (typeof handler !== 'function') {
-      throw new TypeError('handler must be a function');
-    }
-    this._receiveHandler = handler;
-    if (!this._dispatchTimer) {
-      this._dispatchTimer = setInterval(() => {
-        while (this._receiveHandler) {
-          try {
-            const received = this._socket.recv(RecvFlags.DontWait);
-            this._receiveHandler(received);
-          } catch (error) {
-            if (error instanceof RecvError && error.result === RecvResult.NoData) {
-              break;
-            }
-            throw error;
-          }
-        }
-      }, 1);
-      this._dispatchTimer.unref?.();
-    }
-  }
   close(): void {
-    if (this._dispatchTimer) {
-      clearInterval(this._dispatchTimer);
-      this._dispatchTimer = null;
+    if (this._native) {
+      requireNative().spotDestroy(this._native);
+      this._native = null;
+      this._node.unregisterSpot(this);
     }
-    this._receiveHandler = null;
-    this._socket.close();
   }
 }
 
@@ -1137,7 +1706,7 @@ export class Poller {
   removeFd(fd: number): void { requireNative().pollerRemoveFd(this._native, fd | 0); }
   addTimer(timer: Timer, userData?: any): void { requireNative().pollerAddTimer(this._native, timer.nativeHandle(), userData ?? null); }
   removeTimer(timer: Timer): void { requireNative().pollerRemoveTimer(this._native, timer.nativeHandle()); }
-  size(): number { return requireNative().pollerSize(this._native) as number; }
+  get size(): number { return requireNative().pollerSize(this._native) as number; }
   wait(timeoutMs: number): any { return requireNative().pollerWait(this._native, timeoutMs | 0); }
   waitAll(events: number, timeoutMs: number): any[] { return requireNative().pollerWaitAll(this._native, events | 0, timeoutMs | 0) as any[]; }
   poll(timeoutMs: number): number[] { return requireNative().poll(this._native, timeoutMs | 0) as number[]; }
@@ -1166,7 +1735,6 @@ export function version(): [number, number, number] {
   return requireNative().version() as [number, number, number];
 }
 
-export function errno(): number { return readErrno(); }
 export function strerror(code: number): string { return requireNative().strerror(code) as string; }
 export function has(capability: string): boolean { return requireNative().has(validateCString(capability, 'capability', Number.MAX_SAFE_INTEGER)) as boolean; }
 export function proxy(frontend: BaseSocket, backend: BaseSocket, capture?: BaseSocket | null): void { requireNative().proxy(frontend.nativeHandle(), backend.nativeHandle(), capture ? capture.nativeHandle() : null); }

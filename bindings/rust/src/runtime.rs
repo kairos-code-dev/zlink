@@ -1,4 +1,4 @@
-use crate::error::{ConfigError, check_rc};
+use crate::error::{ConfigError, check_config_rc};
 use crate::ffi;
 use crate::message::Message;
 use crate::poller::PollTarget;
@@ -11,7 +11,7 @@ pub fn proxy<'a>(
     let frontend = frontend.into();
     let backend = backend.into();
     let capture = capture.map(Into::into);
-    check_rc(unsafe {
+    check_config_rc(unsafe {
         ffi::zlink_proxy(
             frontend.raw(),
             backend.raw(),
@@ -32,7 +32,7 @@ pub fn proxy_steerable<'a>(
     let backend = backend.into();
     let capture = capture.map(Into::into);
     let control = control.into();
-    check_rc(unsafe {
+    check_config_rc(unsafe {
         ffi::zlink_proxy_steerable(
             frontend.raw(),
             backend.raw(),

@@ -5,72 +5,65 @@ package dev.kairoscode.zlink.perf.multi;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.PollEventType;
-import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.SendFlags;
-import dev.kairoscode.zlink.SocketPollSet;
 import dev.kairoscode.zlink.StreamSocket;
+import dev.kairoscode.zlink.SubmitException;
+import dev.kairoscode.zlink.SubmitResult;
+import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.ArrayDeque;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 
 final class PerfMultiStream {
+    private static final long IDLE_PARK_NS = 1_000_000L;
+
     private PerfMultiStream() {
     }
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         AtomicBoolean stopRequested = new AtomicBoolean(false);
-        ArrayDeque<PendingReply> pending = new ArrayDeque<>();
-        Object pendingLock = new Object();
-        Thread controlWatcher = startControlWatcher(stopRequested, pendingLock);
+        ConcurrentLinkedQueue<PendingReply> pending = new ConcurrentLinkedQueue<>();
+        AtomicInteger pendingCount = new AtomicInteger();
+        Thread controlWatcher = startControlWatcher(stopRequested);
 
         try (Context ctx = PerfUtil.newContext(config);
              StreamSocket server = new StreamSocket(ctx);
-             SocketPollSet pollSet = SocketPollSet.fromSockets(
-                 List.of(server), PollEventType.POLLIN.getValue())) {
+             PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
+                 List.of(server), PollEventType.POLLOUT.getValue())) {
             PerfUtil.applySocketOptions(server, config);
             PerfUtil.configureServerTls(server, config.transport());
             server.options().sendTimeout(java.time.Duration.ZERO);
             server.options().recvTimeout(java.time.Duration.ZERO);
             server.bind(config.endpoint());
+            server.attachStreamRaw((routingId, payload) ->
+                onPacket(server, routingId, payload, pending, pendingCount));
 
             while (!stopRequested.get()) {
-                synchronized (pendingLock) {
-                    pollSet.setEvents(0, pending.isEmpty()
-                        ? PollEventType.POLLIN.getValue()
-                        : PollEventType.POLLIN.getValue()
-                        | PollEventType.POLLOUT.getValue());
-                }
-                if (!pollReady(pollSet, 100)) {
+                if (pendingCount.get() == 0) {
+                    LockSupport.parkNanos(IDLE_PARK_NS);
                     continue;
                 }
-                if (pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
-                    while (true) {
-                        var maybe = PerfUtil.tryRecv(server);
-                        if (maybe.isEmpty()) {
-                            break;
-                        }
-                        try (var received = maybe.orElseThrow()) {
-                            synchronized (pendingLock) {
-                                enqueueReply(received, pending);
-                            }
-                        }
-                    }
+                pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
+                if (pollSet.poll(100) <= 0
+                    || !pollSet.isReady(0, PollEventType.POLLOUT.getValue())) {
+                    continue;
                 }
-                if (pollSet.isReady(0, PollEventType.POLLOUT.getValue())) {
-                    synchronized (pendingLock) {
-                        flushPending(server, pending);
-                    }
-                }
+                flushPending(server, pending, pendingCount);
             }
-            return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
-                config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
+
+            return new PerfUtil.Result("ok", "-", config.pattern(),
+                config.transport(), config.size(), 0.0d, 0.0d, 0.0d, 0.0d,
+                0.0d);
         } finally {
             controlWatcher.interrupt();
+            closePending(pending, pendingCount);
         }
     }
 
@@ -78,8 +71,7 @@ final class PerfMultiStream {
         return PerfUtil.Result.unsupported("shared_core_stream_client", config);
     }
 
-    private static Thread startControlWatcher(AtomicBoolean stopRequested,
-                                              Object pendingLock) {
+    private static Thread startControlWatcher(AtomicBoolean stopRequested) {
         Thread watcher = new Thread(() -> {
             try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
@@ -87,14 +79,12 @@ final class PerfMultiStream {
                 while ((line = reader.readLine()) != null) {
                     if ("STOP".equals(line) || "QUIT".equals(line)) {
                         stopRequested.set(true);
-                        synchronized (pendingLock) {
-                            pendingLock.notifyAll();
-                        }
                         return;
                     }
                 }
             } catch (Exception ex) {
-                throw new IllegalStateException("stream control watcher failed", ex);
+                throw new IllegalStateException("stream control watcher failed",
+                    ex);
             }
         }, "stream-control");
         watcher.setDaemon(true);
@@ -102,72 +92,97 @@ final class PerfMultiStream {
         return watcher;
     }
 
-    private static void enqueueReply(dev.kairoscode.zlink.Received received,
-                                     ArrayDeque<PendingReply> pending) {
-        if (!received.hasRoutingId()) {
-            return;
+    private static int onPacket(StreamSocket server,
+                                dev.kairoscode.zlink.RoutingId routingId,
+                                Message payload,
+                                ConcurrentLinkedQueue<PendingReply> pending,
+                                AtomicInteger pendingCount) {
+        if (routingId == null || isIgnorablePayload(payload)) {
+            return 0;
         }
-        byte[] payload = received.firstPart().toByteArray();
-        if (payload.length == 0 || isStopTokenPayload(payload)) {
-            return;
+        try {
+            server.send(routingId, payload, SendFlags.DONT_WAIT);
+            return 0;
+        } catch (SubmitException ex) {
+            if (ex.getResult() != SubmitResult.BACKPRESSURED) {
+                throw ex;
+            }
+            pending.add(new PendingReply(routingId,
+                Message.copyOf(payload.dataBuffer())));
+            pendingCount.incrementAndGet();
+            return 0;
         }
-        pending.addLast(new PendingReply(received.routingId(), payload));
     }
 
     private static void flushPending(StreamSocket server,
-                                     ArrayDeque<PendingReply> pending) {
-        while (!pending.isEmpty()) {
-            PendingReply reply = pending.peekFirst();
-            try (Message payload = Message.copyOf(reply.payload())) {
-                server.send(reply.routingId(), List.of(payload), SendFlags.DONT_WAIT);
-                    pending.removeFirst();
-                    continue;
-            } catch (dev.kairoscode.zlink.ZlinkException ex) {
-                if (ex.errno() != 11 && ex.errno() != 4) {
-                    throw ex;
-                }
+                                     ConcurrentLinkedQueue<PendingReply> pending,
+                                     AtomicInteger pendingCount) {
+        while (true) {
+            PendingReply reply = pending.peek();
+            if (reply == null) {
                 return;
             }
+            try {
+                server.send(reply.routingId(), reply.payload(),
+                    SendFlags.DONT_WAIT);
+                pending.poll();
+                pendingCount.decrementAndGet();
+            } catch (SubmitException ex) {
+                if (ex.getResult() == SubmitResult.BACKPRESSURED) {
+                    return;
+                }
+                throw ex;
+            }
         }
+    }
+
+    private static void closePending(ConcurrentLinkedQueue<PendingReply> pending,
+                                     AtomicInteger pendingCount) {
+        while (true) {
+            PendingReply reply = pending.poll();
+            if (reply == null) {
+                pendingCount.set(0);
+                return;
+            }
+            try {
+                reply.payload().close();
+            } catch (RuntimeException ignored) {
+            } finally {
+                pendingCount.decrementAndGet();
+            }
+        }
+    }
+
+    private static boolean isIgnorablePayload(Message payload) {
+        int size = payload.size();
+        if (size == 0) {
+            return true;
+        }
+        if (size == 1) {
+            int value = payload.dataBuffer().get(0) & 0xFF;
+            return value == 0x00 || value == 0x01;
+        }
+        if (size != 4) {
+            return false;
+        }
+        ByteBuffer bytes = payload.dataBuffer();
+        return matchesToken(bytes, 'S', 'T', 'O', 'P')
+            || matchesToken(bytes, 'Q', 'U', 'I', 'T');
+    }
+
+    private static boolean matchesToken(ByteBuffer payload,
+                                        int a,
+                                        int b,
+                                        int c,
+                                        int d) {
+        return payload.remaining() == 4
+            && (payload.get(0) & 0xFF) == a
+            && (payload.get(1) & 0xFF) == b
+            && (payload.get(2) & 0xFF) == c
+            && (payload.get(3) & 0xFF) == d;
     }
 
     private record PendingReply(dev.kairoscode.zlink.RoutingId routingId,
-                                byte[] payload) {
-    }
-
-    private static boolean isStopTokenPayload(byte[] payload) {
-        byte[] stop = "STOP".getBytes(StandardCharsets.UTF_8);
-        byte[] quit = "QUIT".getBytes(StandardCharsets.UTF_8);
-        return matchesToken(payload, stop) || matchesToken(payload, quit);
-    }
-
-    private static boolean pollReady(SocketPollSet pollSet, int timeoutMs) {
-        long deadlineNs = System.nanoTime() + Duration.ofMillis(timeoutMs).toNanos();
-        while (System.nanoTime() < deadlineNs) {
-            try {
-                pollSet.setEvents(0, PollEventType.POLLIN.getValue()
-                    | PollEventType.POLLOUT.getValue());
-                if (pollSet.poll(5) > 0) {
-                    return true;
-                }
-            } catch (dev.kairoscode.zlink.ZlinkException ex) {
-                if (ex.errno() != 11 && ex.errno() != 4) {
-                    throw ex;
-                }
-            }
-        }
-        return false;
-    }
-
-    private static boolean matchesToken(byte[] payload, byte[] token) {
-        if (payload.length != token.length) {
-            return false;
-        }
-        for (int i = 0; i < token.length; i++) {
-            if (payload[i] != token[i]) {
-                return false;
-            }
-        }
-        return true;
+                                Message payload) {
     }
 }

@@ -56,6 +56,8 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         }
     }
 
+    public int Size => Count;
+
     public void Add(IZlinkSocket socket, PollEvents events, object? tag = null)
     {
         EnsureNotDisposed();

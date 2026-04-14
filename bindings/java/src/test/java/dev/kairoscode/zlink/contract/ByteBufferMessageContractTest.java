@@ -2,12 +2,14 @@ package dev.kairoscode.zlink.contract;
 
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.TestSupport;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 public class ByteBufferMessageContractTest {
     @Test
@@ -25,19 +27,17 @@ public class ByteBufferMessageContractTest {
     }
 
     @Test
-    public void wrapDirectByteBufferPreservesBorrowedView() {
-        TestSupport.assumeNative();
+    public void borrowedWrapApisAreNotPublic() {
+        assertFalse(hasPublicMethod(Message.class, "wrapDirect", ByteBuffer.class));
+    }
 
-        ByteBuffer source = ByteBuffer.allocateDirect(5);
-        source.put("alpha".getBytes(StandardCharsets.UTF_8));
-        source.flip();
-        source.position(1);
-
-        try (Message msg = Message.wrapDirect(source)) {
-            assertEquals(1, source.position());
-            source.put(1, (byte) 'Z');
-            assertArrayEquals("Zpha".getBytes(StandardCharsets.UTF_8),
-                msg.toByteArray());
+    private static boolean hasPublicMethod(Class<?> type, String name,
+                                           Class<?>... parameterTypes) {
+        try {
+            Method method = type.getMethod(name, parameterTypes);
+            return method != null;
+        } catch (NoSuchMethodException ex) {
+            return false;
         }
     }
 }

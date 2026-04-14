@@ -230,9 +230,8 @@ Each socket type uses a dedicated registration function:
 | Socket Type | Registration Call | Callback Signature |
 |---|---|---|
 | STREAM | `zlink_recv_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
-| ROUTER (request-reply) | `zlink_router_handler(router, fn, userdata)` | `void fn(const zlink_routing_id_t *peer_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
+| ROUTER (routed, unified) | `zlink_router_handler(router, fn, userdata)` | `void fn(const zlink_routing_id_t *source_node_rid, const zlink_routing_id_t *source_spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` — single surface for plain ROUTER traffic (`source_spot_rid == NULL`, `request_seq == 0` for one-way or `> 0` for requests) and SPOT-originated routed traffic (`source_spot_rid` populated) |
 | SPOT (routed) | `zlink_spot_handler(spot, fn, userdata)` | `void fn(const zlink_routing_id_t *source_rid, const zlink_routing_id_t *spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
-| ROUTER (from SPOT) | `zlink_router_spot_handler(router, fn, userdata)` | `void fn(const zlink_routing_id_t *source_node_rid, const zlink_routing_id_t *source_spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
 | spot, spot_node (topic) | `zlink_subscribe_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)` |
 | DEALER (reply) | `zlink_reply_handler_fn` passed to `zlink_dealer_request()` | `void fn(zlink_request_result_t result, zlink_msg_t *parts, size_t count, void *userdata)` |
 | Timer | `zlink_timer_handler(timer, fn, userdata)` | `void fn(void *timer, uint64_t fire_count, void *userdata)` |
@@ -355,16 +354,18 @@ zlink_poller_remove_timer(poller, timer);
 #include <string.h>
 #include <stdio.h>
 
-void on_router_message(const zlink_routing_id_t *source_rid,
+void on_router_message(const zlink_routing_id_t *source_node_rid,
+                       const zlink_routing_id_t *source_spot_rid,
+                       uint64_t request_seq,
                        zlink_msg_t *parts, size_t part_count,
                        void *userdata)
 {
+    /* Plain DEALER → ROUTER: source_spot_rid == NULL, request_seq == 0 */
     printf("Received from [%.*s]: %.*s\n",
-           (int)source_rid->size, source_rid->data,
+           (int)source_node_rid->size, source_node_rid->data,
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
 }
 
 void on_dealer_message(const zlink_routing_id_t *source_rid,
@@ -374,8 +375,7 @@ void on_dealer_message(const zlink_routing_id_t *source_rid,
     printf("Reply: %.*s\n",
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
 }
 
 int main(void) {
@@ -383,12 +383,12 @@ int main(void) {
 
     /* ROUTER (server) */
     void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    /* Receive with zlink_recv() */
+    zlink_router_handler(router, on_router_message, NULL);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (client) */
     void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-    /* Receive with zlink_recv() */
+    zlink_recv_handler(dealer, on_dealer_message, NULL);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */

@@ -8,7 +8,7 @@ import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.SocketPollSet;
+import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfRouterRouter {
     private static final int READY_EVENTS = MonitorEventType.CONNECTION_READY.getValue();
-    private static final RoutingId ROUTER1 = RoutingId.copyOf(
+    private static final RoutingId ROUTER1 = RoutingId.fromBytes(
         "ROUTER1".getBytes(StandardCharsets.UTF_8));
 
     private PerfRouterRouter() {
@@ -57,7 +57,7 @@ final class PerfRouterRouter {
                 readyTimeout, "router/router receiver ready");
 
             Thread receiverThread = new Thread(() -> {
-                try (SocketPollSet pollSet = SocketPollSet.fromSockets(
+                try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(receiver), PollEventType.POLLIN.getValue())) {
                     while (finished.getCount() > 0L) {
                         pollSet.poll(-1);

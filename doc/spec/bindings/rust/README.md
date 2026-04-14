@@ -389,14 +389,11 @@ impl RouterSocket {
     pub fn reply_to_spot_with_flags(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
         request_seq: u64, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
 
-    // --- router spot receive ---
-    /// # Errors: RecvError
-    pub fn recv_spot(&self) -> Result<Received, RecvError>;
-    /// # Errors: RecvError
-    pub fn recv_spot_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
-    /// # Errors: HandlerError
-    pub fn on_spot_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(RoutingId, RoutingId, u64, Vec<Message>) + Send + 'static;
+    // NOTE: RouterSocket 의 routed 수신 plane 은 단일 표면이다. 일반
+    // ROUTER 트래픽과 spot-origin routed 트래픽을 모두 recv / on_receive 로
+    // 받는다. `Received::routing_id()` 는 source_node_rid,
+    // `Received::spot_rid()` 는 spot-origin 트래픽에서만 값이 있다. 별도의
+    // recv_spot / on_spot_receive 는 제공하지 않는다.
 
     /// # Errors: CloseError
     pub fn close(&mut self) -> Result<(), CloseError>;
@@ -1048,6 +1045,10 @@ impl SocketMonitor {
     /// # Errors: HandlerError
     pub fn on_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(&MonitorEvent) + Send + 'static;
+    /// No-op handler. Pass to `on_event` when driving the monitor via
+    /// `snapshot()` or direct `recv()` without callback dispatch.
+    /// Maps to `zlink_monitor_ignore_handler`.
+    pub fn ignore_handler() -> fn(&MonitorEvent);
     /// # Errors: CloseError
     pub fn close(&mut self) -> Result<(), CloseError>;
 }
@@ -1177,6 +1178,13 @@ impl Registry {
 ### Discovery
 
 ```rust
+/// Auto-connect target policy used by DEALER sockets in a Discovery view.
+#[repr(i32)]
+pub enum DiscoveryDealerPeerMode {
+    Router = 1,
+    Dealer = 2,
+}
+
 impl Discovery {
     /// # Errors: ConfigError
     pub fn new(ctx: &Context, service_type: ServiceType, service_name: &str)
@@ -1201,6 +1209,15 @@ impl Discovery {
     /// # Errors: ConfigError
     pub fn set_tls_client(&self, ca_cert_path: &str, hostname: &str,
         trust_system: bool) -> Result<(), ConfigError>;
+    /// Resolve the current owner node routing id for a logical spot routing id.
+    /// Intended for send/request destination lookup. Maps to
+    /// `zlink_discovery_resolve_spot`.
+    pub fn resolve_spot(&self, spot_rid: &RoutingId) -> Result<RoutingId, ConfigError>;
+    /// Set the auto-connect target policy used by DEALER sockets in this
+    /// discovery view. Default is Router. Maps to
+    /// `zlink_discovery_set_dealer_peer_mode`.
+    pub fn set_dealer_peer_mode(&self, mode: DiscoveryDealerPeerMode)
+        -> Result<(), ConfigError>;
     /// # Errors: CloseError
     pub fn close(&mut self) -> Result<(), CloseError>;
 }
@@ -1240,6 +1257,15 @@ impl SpotNode {
     /// # Errors: ConfigError
     pub fn subjects_snapshot(&self, filter: Option<&SpotNodeSubjectFilter>)
         -> Result<Vec<SpotNodeSubjectEntry>, ConfigError>;
+
+    // --- identity / routing ---
+    /// SpotNode's logical address.
+    /// Maps to `zlink_set_routing_id(node, ...)`.
+    pub fn set_routing_id(&self, rid: &RoutingId) -> Result<(), ConfigError>;
+
+    /// Maps to `zlink_get_routing_id(node, ...)`.
+    pub fn routing_id(&self) -> Result<RoutingId, ConfigError>;
+
     // close() cascades: closes all live Spot handles before the node becomes invalid.
     /// # Errors: CloseError
     pub fn close(&mut self) -> Result<(), CloseError>;
@@ -1354,6 +1380,14 @@ impl Spot {
     /// # Errors: HandlerError
     pub fn on_dispatch_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(SpotDispatchEvent) + Send + 'static;
+
+    // --- identity / routing ---
+    /// Spot's logical address / routed ownership key.
+    /// Maps to `zlink_set_routing_id(spot, ...)`.
+    pub fn set_routing_id(&self, rid: &RoutingId) -> Result<(), ConfigError>;
+
+    /// Maps to `zlink_get_routing_id(spot, ...)`.
+    pub fn routing_id(&self) -> Result<RoutingId, ConfigError>;
 
     /// # Errors: CloseError
     pub fn close(&mut self) -> Result<(), CloseError>;
@@ -1556,7 +1590,9 @@ impl Poller {
     pub fn wait(&self, timeout_ms: i64) -> Result<Option<PollEvent>, RecvError>;
     /// # Errors: RecvError
     pub fn wait_all(&self, timeout_ms: i64) -> Result<Vec<PollEvent>, RecvError>;
-    pub fn size(&self) -> i32;
+    /// Number of registered pollable items.
+    /// Maps to `zlink_poller_size`.
+    pub fn size(&self) -> Result<usize, ConfigError>;
 }
 // Drop calls zlink_poller_destroy
 

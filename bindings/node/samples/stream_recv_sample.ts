@@ -31,8 +31,8 @@ async function main() {
     client.write(Buffer.from(sent));
 
     const received = stream.recv();
-    assert.ok(Buffer.isBuffer(received.routingId));
-    const recv = received.parts[0].data.toString();
+    assert.ok(received.routingId instanceof zlink.RoutingId);
+    const recv = received.parts[0].data().toString();
     assert.equal(recv, sent);
 
     stream.send(received.routingId, Buffer.from(sent));

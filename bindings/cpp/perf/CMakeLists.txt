@@ -20,8 +20,8 @@ function(configure_perf_target target_name out_subdir)
   target_compile_features(${target_name} PRIVATE cxx_std_17)
   target_link_libraries(${target_name} PRIVATE libzlink zlink-cpp Threads::Threads)
   target_include_directories(${target_name} PRIVATE
-    "${PERF_CPP_INCLUDE_DIR}"
     "${PERF_CORE_INCLUDE_DIR}"
+    "${PERF_CPP_INCLUDE_DIR}"
     "${PERF_ROOT_DIR}/single/common"
     "${PERF_ROOT_DIR}/multi/common"
   )

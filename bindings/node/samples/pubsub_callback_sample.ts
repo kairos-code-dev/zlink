@@ -42,8 +42,8 @@ async function main() {
 
     const receivedPromise = new Promise((resolve, reject) => {
       try {
-        sub.onSubscribe((routingId, recvTopic, parts) => {
-          resolve({ routingId, topic: recvTopic, parts });
+        sub.onSubscribe((message) => {
+          resolve(message);
         });
       } catch (error) {
         reject(error);
@@ -60,9 +60,9 @@ async function main() {
       clearInterval(publishTimer);
     });
 
-    assert.ok(received.routingId === null || Buffer.isBuffer(received.routingId));
+    assert.equal(received.routingId, null);
     assert.equal(received.topic, topic);
-    const recv = received.parts[0].data.toString();
+    const recv = received.parts[0].data().toString();
     assert.equal(recv, sent);
     console.log(`[pubsub/callback] publish: "${topic}/${sent}" \u2192 subscribe: "${topic}/${recv}"`);
   } finally {

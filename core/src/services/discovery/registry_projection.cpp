@@ -26,6 +26,7 @@ void registry_t::upsert_topology_entry (
     key.service_role = entry_.service_role;
     key.routing_id_key = routing_id_key_of (entry_.routing_id);
     key.service_name = entry_.service_name;
+    key.endpoint = entry_.endpoint;
 
     topology_entry_t &stored = _topology[key];
     stored.entry = entry_;

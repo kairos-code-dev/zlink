@@ -83,6 +83,7 @@ class pipe_t ZLINK_FINAL : public object_t,
     uint64_t get_snd_pending_msgs () const;
     uint64_t get_rcv_pending_msgs_approx () const;
     uint64_t get_connected_time () const;
+    void refresh_write_credit (uint64_t peer_msgs_read_);
     bool mark_stream_connect_event_emitted ();
     void reset_stream_connect_event_emitted ();
     bool mark_connection_ready_event_emitted ();
@@ -151,6 +152,7 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     //  Set the high water marks.
     void set_hwms (int inhwm_, int outhwm_);
+    void set_lwm_hint (int lwm_hint_);
 
     //  Set the boost to high water marks, used by inproc sockets so total hwm are sum of connect and bind sockets watermarks
     void set_hwms_boost (int inhwmboost_, int outhwmboost_);
@@ -223,6 +225,8 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     //  Low watermark for the inbound pipe.
     int _lwm;
+    int _inhwm;
+    int _lwm_hint;
 
     // boosts for high and low watermarks, used with inproc sockets so hwm are sum of send and recv hmws on each side of pipe
     int _in_hwm_boost;
@@ -282,6 +286,7 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     //  Computes appropriate low watermark from the given high watermark.
     static int compute_lwm (int hwm_);
+    static int apply_lwm_hint (int hwm_, int lwm_, int lwm_hint_);
     bool check_hwm_unlocked () const;
 
     const bool _conflate;

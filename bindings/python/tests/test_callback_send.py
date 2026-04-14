@@ -35,7 +35,6 @@ class CallbackSendTests(unittest.TestCase):
     def test_router_send_inside_on_receive_raises_explicit_error(self):
         endpoint = _inproc_endpoint("router")
         router = zlink.RouterSocket(self.ctx)
-        request_router = zlink.RequestRouter(router)
         dealer = zlink.DealerSocket(self.ctx)
 
         done = threading.Event()
@@ -54,7 +53,7 @@ class CallbackSendTests(unittest.TestCase):
         router.bind(endpoint)
         dealer.connect(endpoint)
         time.sleep(0.05)
-        request_router.on_receive(on_request)
+        router.on_receive(on_request)
         dealer.send(b"ping")
 
         self.assertTrue(done.wait(3.0), "callback timed out")
@@ -62,14 +61,12 @@ class CallbackSendTests(unittest.TestCase):
         self.assertIsInstance(callback_error[0], zlink.ZlinkError)
         self.assertEqual(callback_error[0].errno, errno.EDEADLK)
 
-        request_router.close()
         dealer.close()
         router.close()
 
     def test_dealer_send_inside_on_receive_raises_explicit_error(self):
         endpoint = _inproc_endpoint("dealer")
         router = zlink.RouterSocket(self.ctx)
-        request_router = zlink.RequestRouter(router)
         dealer = zlink.DealerSocket(self.ctx)
 
         done = threading.Event()
@@ -85,25 +82,17 @@ class CallbackSendTests(unittest.TestCase):
                 done.set()
 
         router.bind(endpoint)
+        dealer.set_routing_id(b"dealer-callback")
         dealer.connect(endpoint)
         time.sleep(0.05)
-
         dealer.on_receive(on_reply)
-        dealer.send(b"ping")
-
-        # Router receives the ping and sends pong
-        request = request_router.recv()
-        rid = request.routing_id
-        self.assertIsNotNone(rid)
-        router.send(rid, b"pong")
-        request.close()
+        router.send(b"dealer-callback", b"pong")
 
         self.assertTrue(done.wait(3.0), "callback timed out")
         self.assertEqual(len(callback_error), 1, f"callback raised: {callback_error}")
         self.assertIsInstance(callback_error[0], zlink.ZlinkError)
         self.assertEqual(callback_error[0].errno, errno.EDEADLK)
 
-        request_router.close()
         dealer.close()
         router.close()
 
@@ -142,8 +131,8 @@ class CallbackSendTests(unittest.TestCase):
         endpoint = _inproc_endpoint("spot")
         server_node = zlink.SpotNode(self.ctx)
         client_node = zlink.SpotNode(self.ctx)
-        server_spot = zlink.Spot(server_node)
-        client_spot = zlink.Spot(client_node)
+        server_spot = server_node.create_spot()
+        client_spot = client_node.create_spot()
         done = threading.Event()
         callback_error = []
 

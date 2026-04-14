@@ -23,7 +23,7 @@ inline zlink_close_result_t from_errno (int err_)
         case EFAULT:
             return ZLINK_CLOSE_INVALID_HANDLE;
         default:
-            return ZLINK_CLOSE_INVALID_HANDLE;
+            return ZLINK_CLOSE_INTERNAL_ERROR;
     }
 }
 

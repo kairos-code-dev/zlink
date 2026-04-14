@@ -2,8 +2,8 @@
 
 package dev.kairoscode.zlink;
 
-import dev.kairoscode.zlink.options.SocketOptionKey;
-import dev.kairoscode.zlink.options.SocketOptions;
+import dev.kairoscode.zlink.SocketOptionKey;
+import dev.kairoscode.zlink.SocketOptions;
 import java.util.Objects;
 
 public class PubSocketOptions extends CommonSocketOptions {
@@ -80,6 +80,6 @@ public class PubSocketOptions extends CommonSocketOptions {
     private void setSubscribeDecision(SocketOptionKey<byte[]> option,
                                       RoutingId routingId) {
         Objects.requireNonNull(routingId, "routingId");
-        socket.setOption(option, routingId.toByteArray());
+        socket.setOption(option, routingId.toBytes());
     }
 }

@@ -47,7 +47,7 @@ fn main() {
 
     let router = ctx.router_socket().expect("router socket failed");
     let dealer = ctx.dealer_socket().expect("dealer socket failed");
-    let rid = RoutingId::new(b"dealer-node-7").expect("routing id failed");
+    let rid = RoutingId::from_bytes(b"dealer-node-7");
     dealer.set_routing_id(&rid).expect("set routing id failed");
 
     let router_mon = SocketMonitor::open(&router).expect("router monitor open failed");
@@ -60,14 +60,14 @@ fn main() {
     drop(router_mon);
     drop(dealer_mon);
 
-    let req = Message::from_bytes(b"ping").expect("message failed");
+    let req = Message::copy_from(b"ping").expect("message failed");
     dealer.send(req).expect("send failed");
 
     let received = router.recv().expect("router recv failed");
-    let sender_rid = received.routing_id().clone();
+    let sender_rid = received.routing_id().expect("missing routing id").clone();
     assert_eq!(received.parts()[0].as_str().unwrap(), "ping");
 
-    let resp = Message::from_bytes(b"pong").expect("message failed");
+    let resp = Message::copy_from(b"pong").expect("message failed");
     router.send(&sender_rid, resp).expect("routed send failed");
 
     let response = dealer.recv().expect("dealer recv failed");

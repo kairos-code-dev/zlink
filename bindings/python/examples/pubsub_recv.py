@@ -10,8 +10,8 @@ def main():
     with zlink.Context() as ctx:
         with zlink.PubSocket(ctx) as pub:
             with zlink.SubSocket(ctx) as sub:
-                with pub.monitor_open(zlink.MonitorEvent.CONNECTION_READY) as pub_mon:
-                    with sub.monitor_open(zlink.MonitorEvent.CONNECTION_READY) as sub_mon:
+                with pub.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as pub_mon:
+                    with sub.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as sub_mon:
                         pub.bind(endpoint)
                         sub.connect(endpoint)
                         sub.set_subscription(b"prices")
@@ -19,7 +19,7 @@ def main():
 
                 pub.publish(b"prices", b"101.25")
                 with sub.subscribe() as received:
-                    topic = received.topic.decode("utf-8")
+                    topic = received.topic
                     data = received.to_bytes_list()[0].decode("utf-8")
                     print(f'[pubsub/recv] publish: "{topic}/{data}" \u2192 subscribe: "{topic}/{data}"')
 

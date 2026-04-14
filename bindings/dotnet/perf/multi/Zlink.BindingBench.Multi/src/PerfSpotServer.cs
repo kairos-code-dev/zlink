@@ -227,7 +227,7 @@ internal static class PerfSpotServer
         {
             node.SetOption(role, option, value);
         }
-        catch (ZlinkException ex) when (ShouldIgnoreSpotOptionError(ex.Errno))
+        catch (ZlinkException ex) when (ShouldIgnoreSpotOptionError(ex.InternalErrno))
         {
         }
     }

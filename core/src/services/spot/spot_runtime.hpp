@@ -117,15 +117,12 @@ struct spot_runtime_t
     int abortive_stop ();
     size_t live_socket_slot_count () const;
     size_t attachment_count () const;
-    spot_node_batch_config_t peer_batch_config_snapshot () const;
-    void set_peer_batch_config (const spot_node_batch_config_t &config_);
     spot_node_hwm_config_t hwm_config_snapshot () const;
     void set_hwm_config (const spot_node_hwm_config_t &config_);
 
     spot_node_t *owner;
     mutable mutex_t ctrl_sync;
     mutable mutex_t execution_sync;
-    mutable mutex_t peer_batch_config_sync;
     mutable mutex_t hwm_config_sync;
     mutable mutex_t routed_send_sync;
     mutable mutex_t shutdown_sync;
@@ -157,7 +154,6 @@ struct spot_runtime_t
     int fault_errno;
     bool abortive_shutdown;
     spot_shutdown_phase_t shutdown_phase_value;
-    spot_node_batch_config_t peer_batch_config;
     spot_node_hwm_config_t hwm_config;
     mutable mutex_t attachment_sync;
     spot_runtime_execution_state_t execution;

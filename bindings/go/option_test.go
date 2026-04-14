@@ -68,10 +68,7 @@ func TestSocketSpecificOptions(t *testing.T) {
 	if err := router.SetProbe(true); err != nil {
 		t.Fatalf("SetProbe() error = %v", err)
 	}
-	rid, err := zlink.NewRoutingID([]byte("router-typed-options"))
-	if err != nil {
-		t.Fatalf("NewRoutingID() error = %v", err)
-	}
+	rid := zlink.NewRoutingID([]byte("router-typed-options"))
 	if err := router.SetRoutingID(rid); err != nil {
 		t.Fatalf("SetRoutingID() error = %v", err)
 	}

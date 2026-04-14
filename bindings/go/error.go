@@ -19,125 +19,217 @@ type ZlinkError interface {
 	InternalErrno() int
 }
 
+type errorDetails struct {
+	InternalErrno int
+}
+
 type SubmitError struct {
-	Result        SubmitResult
+	Result SubmitResult
+	errorDetails
 	internalErrno int
 }
 
 type RequestError struct {
-	Result        RequestResult
+	Result RequestResult
+	errorDetails
 	internalErrno int
 }
 
 type RecvError struct {
-	Result        RecvResult
+	Result RecvResult
+	errorDetails
 	internalErrno int
 }
 
 type HandlerError struct {
-	Result        HandlerResult
+	Result HandlerResult
+	errorDetails
 	internalErrno int
 }
 
 type CloseError struct {
-	Result        CloseResult
+	Result CloseResult
+	errorDetails
 	internalErrno int
 }
 
 type BindError struct {
-	Result        BindResult
+	Result BindResult
+	errorDetails
 	internalErrno int
 }
 
 type ConnectError struct {
-	Result        ConnectResult
+	Result ConnectResult
+	errorDetails
 	internalErrno int
 }
 
 type ConfigError struct {
-	Result        ConfigResult
+	Result ConfigResult
+	errorDetails
 	internalErrno int
 }
 
 func (e *SubmitError) Error() string {
-	return formatError("submit", int(e.Result), e.internalErrno)
+	return formatError("submit", int(e.Result), e.ensureInternalErrno())
 }
 
 func (e *SubmitError) Code() int { return int(e.Result) }
 
-func (e *SubmitError) InternalErrno() int { return e.internalErrno }
+func (e *SubmitError) InternalErrno() int { return e.ensureInternalErrno() }
 
-func (e *SubmitError) Unwrap() error { return errnoToError(e.internalErrno) }
+func (e *SubmitError) Unwrap() error { return errnoToError(e.ensureInternalErrno()) }
 
 func (e *RequestError) Error() string {
-	return formatError("request", int(e.Result), e.internalErrno)
+	return formatError("request", int(e.Result), e.ensureInternalErrno())
 }
 
 func (e *RequestError) Code() int { return int(e.Result) }
 
-func (e *RequestError) InternalErrno() int { return e.internalErrno }
+func (e *RequestError) InternalErrno() int { return e.ensureInternalErrno() }
 
-func (e *RequestError) Unwrap() error { return errnoToError(e.internalErrno) }
+func (e *RequestError) Unwrap() error { return errnoToError(e.ensureInternalErrno()) }
 
 func (e *RecvError) Error() string {
-	return formatError("recv", int(e.Result), e.internalErrno)
+	return formatError("recv", int(e.Result), e.ensureInternalErrno())
 }
 
 func (e *RecvError) Code() int { return int(e.Result) }
 
-func (e *RecvError) InternalErrno() int { return e.internalErrno }
+func (e *RecvError) InternalErrno() int { return e.ensureInternalErrno() }
 
-func (e *RecvError) Unwrap() error { return errnoToError(e.internalErrno) }
+func (e *RecvError) Unwrap() error { return errnoToError(e.ensureInternalErrno()) }
 
 func (e *HandlerError) Error() string {
-	return formatError("handler", int(e.Result), e.internalErrno)
+	return formatError("handler", int(e.Result), e.ensureInternalErrno())
 }
 
 func (e *HandlerError) Code() int { return int(e.Result) }
 
-func (e *HandlerError) InternalErrno() int { return e.internalErrno }
+func (e *HandlerError) InternalErrno() int { return e.ensureInternalErrno() }
 
-func (e *HandlerError) Unwrap() error { return errnoToError(e.internalErrno) }
+func (e *HandlerError) Unwrap() error { return errnoToError(e.ensureInternalErrno()) }
 
 func (e *CloseError) Error() string {
-	return formatError("close", int(e.Result), e.internalErrno)
+	return formatError("close", int(e.Result), e.ensureInternalErrno())
 }
 
 func (e *CloseError) Code() int { return int(e.Result) }
 
-func (e *CloseError) InternalErrno() int { return e.internalErrno }
+func (e *CloseError) InternalErrno() int { return e.ensureInternalErrno() }
 
-func (e *CloseError) Unwrap() error { return errnoToError(e.internalErrno) }
+func (e *CloseError) Unwrap() error { return errnoToError(e.ensureInternalErrno()) }
 
 func (e *BindError) Error() string {
-	return formatError("bind", int(e.Result), e.internalErrno)
+	return formatError("bind", int(e.Result), e.ensureInternalErrno())
 }
 
 func (e *BindError) Code() int { return int(e.Result) }
 
-func (e *BindError) InternalErrno() int { return e.internalErrno }
+func (e *BindError) InternalErrno() int { return e.ensureInternalErrno() }
 
-func (e *BindError) Unwrap() error { return errnoToError(e.internalErrno) }
+func (e *BindError) Unwrap() error { return errnoToError(e.ensureInternalErrno()) }
 
 func (e *ConnectError) Error() string {
-	return formatError("connect", int(e.Result), e.internalErrno)
+	return formatError("connect", int(e.Result), e.ensureInternalErrno())
 }
 
 func (e *ConnectError) Code() int { return int(e.Result) }
 
-func (e *ConnectError) InternalErrno() int { return e.internalErrno }
+func (e *ConnectError) InternalErrno() int { return e.ensureInternalErrno() }
 
-func (e *ConnectError) Unwrap() error { return errnoToError(e.internalErrno) }
+func (e *ConnectError) Unwrap() error { return errnoToError(e.ensureInternalErrno()) }
 
 func (e *ConfigError) Error() string {
-	return formatError("config", int(e.Result), e.internalErrno)
+	return formatError("config", int(e.Result), e.ensureInternalErrno())
 }
 
 func (e *ConfigError) Code() int { return int(e.Result) }
 
-func (e *ConfigError) InternalErrno() int { return e.internalErrno }
+func (e *ConfigError) InternalErrno() int { return e.ensureInternalErrno() }
 
-func (e *ConfigError) Unwrap() error { return errnoToError(e.internalErrno) }
+func (e *ConfigError) Unwrap() error { return errnoToError(e.ensureInternalErrno()) }
+
+func (e *SubmitError) ensureInternalErrno() int {
+	if e == nil {
+		return 0
+	}
+	if e.errorDetails.InternalErrno == 0 && e.internalErrno != 0 {
+		e.errorDetails.InternalErrno = e.internalErrno
+	}
+	return e.errorDetails.InternalErrno
+}
+
+func (e *RequestError) ensureInternalErrno() int {
+	if e == nil {
+		return 0
+	}
+	if e.errorDetails.InternalErrno == 0 && e.internalErrno != 0 {
+		e.errorDetails.InternalErrno = e.internalErrno
+	}
+	return e.errorDetails.InternalErrno
+}
+
+func (e *RecvError) ensureInternalErrno() int {
+	if e == nil {
+		return 0
+	}
+	if e.errorDetails.InternalErrno == 0 && e.internalErrno != 0 {
+		e.errorDetails.InternalErrno = e.internalErrno
+	}
+	return e.errorDetails.InternalErrno
+}
+
+func (e *HandlerError) ensureInternalErrno() int {
+	if e == nil {
+		return 0
+	}
+	if e.errorDetails.InternalErrno == 0 && e.internalErrno != 0 {
+		e.errorDetails.InternalErrno = e.internalErrno
+	}
+	return e.errorDetails.InternalErrno
+}
+
+func (e *CloseError) ensureInternalErrno() int {
+	if e == nil {
+		return 0
+	}
+	if e.errorDetails.InternalErrno == 0 && e.internalErrno != 0 {
+		e.errorDetails.InternalErrno = e.internalErrno
+	}
+	return e.errorDetails.InternalErrno
+}
+
+func (e *BindError) ensureInternalErrno() int {
+	if e == nil {
+		return 0
+	}
+	if e.errorDetails.InternalErrno == 0 && e.internalErrno != 0 {
+		e.errorDetails.InternalErrno = e.internalErrno
+	}
+	return e.errorDetails.InternalErrno
+}
+
+func (e *ConnectError) ensureInternalErrno() int {
+	if e == nil {
+		return 0
+	}
+	if e.errorDetails.InternalErrno == 0 && e.internalErrno != 0 {
+		e.errorDetails.InternalErrno = e.internalErrno
+	}
+	return e.errorDetails.InternalErrno
+}
+
+func (e *ConfigError) ensureInternalErrno() int {
+	if e == nil {
+		return 0
+	}
+	if e.errorDetails.InternalErrno == 0 && e.internalErrno != 0 {
+		e.errorDetails.InternalErrno = e.internalErrno
+	}
+	return e.errorDetails.InternalErrno
+}
 
 func formatError(kind string, code int, internalErrno int) string {
 	if internalErrno != 0 {
@@ -168,56 +260,64 @@ func submitErrorFromResult(result any) error {
 	if resultCodeInt(result) == int(SubmitOK) {
 		return nil
 	}
-	return &SubmitError{Result: SubmitResult(resultCodeInt(result)), internalErrno: errnoOrIO()}
+	errno := errnoOrIO()
+	return &SubmitError{Result: SubmitResult(resultCodeInt(result)), errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
 }
 
 func requestErrorFromResult(result any) error {
 	if resultCodeInt(result) == int(RequestOK) {
 		return nil
 	}
-	return &RequestError{Result: RequestResult(resultCodeInt(result)), internalErrno: errnoOrIO()}
+	errno := errnoOrIO()
+	return &RequestError{Result: RequestResult(resultCodeInt(result)), errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
 }
 
 func recvErrorFromResult(result any) error {
 	if resultCodeInt(result) == int(RecvOK) {
 		return nil
 	}
-	return &RecvError{Result: RecvResult(resultCodeInt(result)), internalErrno: errnoOrIO()}
+	errno := errnoOrIO()
+	return &RecvError{Result: RecvResult(resultCodeInt(result)), errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
 }
 
 func handlerErrorFromResult(result any) error {
 	if resultCodeInt(result) == int(HandlerOK) {
 		return nil
 	}
-	return &HandlerError{Result: HandlerResult(resultCodeInt(result)), internalErrno: errnoOrIO()}
+	errno := errnoOrIO()
+	return &HandlerError{Result: HandlerResult(resultCodeInt(result)), errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
 }
 
 func closeErrorFromResult(result any) error {
 	if resultCodeInt(result) == int(CloseOK) {
 		return nil
 	}
-	return &CloseError{Result: CloseResult(resultCodeInt(result)), internalErrno: errnoOrIO()}
+	errno := errnoOrIO()
+	return &CloseError{Result: CloseResult(resultCodeInt(result)), errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
 }
 
 func bindErrorFromResult(result any) error {
 	if resultCodeInt(result) == int(BindOK) {
 		return nil
 	}
-	return &BindError{Result: BindResult(resultCodeInt(result)), internalErrno: errnoOrIO()}
+	errno := errnoOrIO()
+	return &BindError{Result: BindResult(resultCodeInt(result)), errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
 }
 
 func connectErrorFromResult(result any) error {
 	if resultCodeInt(result) == int(ConnectOK) {
 		return nil
 	}
-	return &ConnectError{Result: ConnectResult(resultCodeInt(result)), internalErrno: errnoOrIO()}
+	errno := errnoOrIO()
+	return &ConnectError{Result: ConnectResult(resultCodeInt(result)), errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
 }
 
 func configErrorFromResult(result any) error {
 	if resultCodeInt(result) == int(ConfigOK) {
 		return nil
 	}
-	return &ConfigError{Result: ConfigResult(resultCodeInt(result)), internalErrno: errnoOrIO()}
+	errno := errnoOrIO()
+	return &ConfigError{Result: ConfigResult(resultCodeInt(result)), errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
 }
 
 func validationError(format string, args ...any) error {

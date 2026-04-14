@@ -229,9 +229,8 @@ zlink_recv_handler(socket, on_message, NULL);
 | Socket Type | 등록 호출 | Callback Signature |
 |---|---|---|
 | STREAM | `zlink_recv_handler()` | `fn(rid, parts, count, userdata)` |
-| ROUTER (request-reply) | `zlink_router_handler()` | `fn(peer_rid, request_seq, parts, count, userdata)` |
+| ROUTER (routed, 통합) | `zlink_router_handler()` | `fn(source_node_rid, source_spot_rid, request_seq, parts, count, userdata)` — 일반 ROUTER 트래픽(`source_spot_rid == NULL`, one-way 는 `request_seq == 0`, request 는 `> 0`)과 SPOT 에서 시작된 routed 트래픽(`source_spot_rid` 채워짐)을 한 표면에서 받는다 |
 | SPOT (routed) | `zlink_spot_handler()` | `fn(source_rid, spot_rid, request_seq, parts, count, userdata)` |
-| ROUTER (from SPOT) | `zlink_router_spot_handler()` | `fn(source_node_rid, source_spot_rid, request_seq, parts, count, userdata)` |
 | spot, spot_node (topic) | `zlink_subscribe_handler()` | `fn(rid, topic, topic_len, parts, count, userdata)` |
 | DEALER (reply) | `zlink_dealer_request()` 에 전달 | `fn(zlink_request_result_t result, parts, count, userdata)` |
 | Timer | `zlink_timer_handler()` | `fn(timer, fire_count, userdata)` |
@@ -351,16 +350,18 @@ zlink_poller_remove_timer(poller, timer);
 #include <string.h>
 #include <stdio.h>
 
-void on_router_message(const zlink_routing_id_t *source_rid,
+void on_router_message(const zlink_routing_id_t *source_node_rid,
+                       const zlink_routing_id_t *source_spot_rid,
+                       uint64_t request_seq,
                        zlink_msg_t *parts, size_t part_count,
                        void *userdata)
 {
+    /* 일반 DEALER → ROUTER: source_spot_rid == NULL, request_seq == 0 */
     printf("Received from [%.*s]: %.*s\n",
-           (int)source_rid->size, source_rid->data,
+           (int)source_node_rid->size, source_node_rid->data,
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
 }
 
 void on_dealer_message(const zlink_routing_id_t *source_rid,
@@ -370,8 +371,7 @@ void on_dealer_message(const zlink_routing_id_t *source_rid,
     printf("Reply: %.*s\n",
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
 }
 
 int main(void) {
@@ -379,12 +379,12 @@ int main(void) {
 
     /* ROUTER (server) */
     void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    /* Receive with zlink_recv() */
+    zlink_router_handler(router, on_router_message, NULL);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (client) */
     void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-    /* Receive with zlink_recv() */
+    zlink_recv_handler(dealer, on_dealer_message, NULL);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */

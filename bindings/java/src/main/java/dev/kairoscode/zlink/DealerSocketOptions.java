@@ -2,7 +2,7 @@
 
 package dev.kairoscode.zlink;
 
-import dev.kairoscode.zlink.options.SocketOptions;
+import dev.kairoscode.zlink.SocketOptions;
 
 public final class DealerSocketOptions extends CommonSocketOptions {
     DealerSocketOptions(Socket socket) {

@@ -119,6 +119,7 @@ class registry_t
         uint16_t service_role;
         std::string routing_id_key;
         std::string service_name;
+        std::string endpoint;
 
         bool operator< (const topology_key_t &other_) const
         {
@@ -128,7 +129,9 @@ class registry_t
                 return service_role < other_.service_role;
             if (routing_id_key != other_.routing_id_key)
                 return routing_id_key < other_.routing_id_key;
-            return service_name < other_.service_name;
+            if (service_name != other_.service_name)
+                return service_name < other_.service_name;
+            return endpoint < other_.endpoint;
         }
     };
 
@@ -175,6 +178,16 @@ class registry_t
                               const zlink_routing_id_t &sender_id_,
                               const std::vector<zlink_registry_topology_entry_t>
                                 &entries_);
+    void collect_topology_entries_locked (
+      const zlink_registry_topology_filter_t *filter_,
+      std::vector<zlink_registry_topology_entry_t> *out_) const;
+    void collect_matching_topology_entries_locked (
+      const zlink_registry_topology_filter_t *filter_,
+      std::vector<zlink_registry_topology_entry_t> *out_) const;
+    bool select_spot_owner_entry_locked (
+      const std::vector<zlink_registry_topology_entry_t> &matched_,
+      const char *service_name_,
+      zlink_registry_topology_entry_t *entry_out_) const;
     void send_bootstrap_reply (void *router_,
                                const zlink_routing_id_t &sender_id_);
     void upsert_topology_entry (const zlink_registry_topology_entry_t &entry_,

@@ -22,7 +22,7 @@ public sealed class test_monitor_contract
         client.Connect(endpoint);
 
         SocketMonitorEvent evt = monitor.Recv();
-        Assert.Equal(SocketEvent.Accepted, evt.Event);
+        Assert.Equal(MonitorEventType.Accepted, evt.Event);
     }
 
     [Fact]
@@ -45,11 +45,11 @@ public sealed class test_monitor_contract
         client.Connect(endpoint);
 
         Assert.True(events.TryDequeue(3000, out SocketMonitorEvent evt));
-        Assert.Equal(SocketEvent.ConnectionReady, evt.Event);
+        Assert.Equal(MonitorEventType.ConnectionReady, evt.Event);
 
         MonitorSnapshot snapshot = monitor.Snapshot();
-        Assert.Equal(MonitorSourceKind.Socket, snapshot.SourceKind);
-        Assert.True(snapshot.SendPendingMessages >= 0);
+        Assert.Equal<SourceKind>(SourceKind.Socket, snapshot.SourceKind);
+        Assert.True(snapshot.SndPendingMsgs >= 0);
 
         monitor.Close();
         Assert.Throws<ObjectDisposedException>(() => monitor.Snapshot());

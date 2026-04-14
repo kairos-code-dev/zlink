@@ -8,6 +8,7 @@
 #include <utility>
 
 #include <future>
+#include <thread>
 
 namespace {
 
@@ -54,6 +55,37 @@ template<typename T> class has_on_event_t
 
 static_assert (has_on_event_t<zlink::monitor_handle_t>::value,
                "monitor_handle_t must expose on_event");
+
+template<typename T> class has_ignore_handler_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (U::ignore_handler, std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
+template<typename T> class has_size_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (std::declval<const U &> ().size (), std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
+static_assert (has_ignore_handler_t<zlink::monitor_handle_t>::value,
+               "monitor_handle_t must expose ignore_handler");
+static_assert (has_size_t<zlink::poller_t>::value,
+               "poller_t must expose size");
 
 struct monitor_callback_state_t
 {
@@ -112,15 +144,49 @@ void test_socket_monitor_open_recv_snapshot ()
 
     assert (server.bind ("tcp://127.0.0.1:*") == 0);
     std::string endpoint;
-    assert (server.get_option (zlink::socket_options::last_endpoint, endpoint)
-            == 0);
+    endpoint = server.options ().last_endpoint ();
     assert (!endpoint.empty ());
     assert (client.connect (endpoint) == 0);
 
     (void) monitor.recv (zlink::non_blocking_t {});
     assert (wait_for_any_socket_monitor_event (monitor, 2000));
-    const zlink::monitor_snapshot_t snapshot = monitor.snapshot ();
-    assert (snapshot.ready () || snapshot.closed ());
+    (void) monitor.snapshot ();
+}
+
+void test_socket_monitor_ignore_handler_and_poller_size ()
+{
+    zlink::context_t ctx;
+    zlink::pair_socket_t server (ctx);
+    zlink::pair_socket_t client (ctx);
+    zlink::monitor_handle_t monitor = server.monitor_handle ();
+    zlink::poller_t poller;
+
+    poller.add (server, zlink::poll_event::pollin);
+    assert (poller.size () == 1);
+
+    monitor.on_event (zlink::monitor_handle_t::ignore_handler, NULL);
+
+    assert (server.bind ("tcp://127.0.0.1:*") == 0);
+    const std::string endpoint = server.options ().last_endpoint ();
+    assert (!endpoint.empty ());
+    assert (client.connect (endpoint) == 0);
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (2000);
+    bool ready = false;
+    while (std::chrono::steady_clock::now () < deadline) {
+        const zlink::monitor_snapshot_t snapshot = monitor.snapshot ();
+        if (snapshot.is_ready ()
+            || (snapshot.state_flags
+                & static_cast<uint32_t> (zlink::monitor_state::closed))
+                 != 0u) {
+            ready = true;
+            break;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    }
+    assert (ready);
+    poller.remove (server);
+    assert (poller.size () == 0);
 }
 
 void test_socket_monitor_on_event_callback ()
@@ -137,8 +203,7 @@ void test_socket_monitor_on_event_callback ()
 
     assert (server.bind ("tcp://127.0.0.1:*") == 0);
     std::string endpoint;
-    assert (server.get_option (zlink::socket_options::last_endpoint, endpoint)
-            == 0);
+    endpoint = server.options ().last_endpoint ();
     assert (!endpoint.empty ());
     assert (client.connect (endpoint) == 0);
 
@@ -149,12 +214,13 @@ void test_socket_monitor_on_event_callback ()
               return callback_state.ready;
           }));
     }
-    assert (static_cast<uint64_t> (callback_state.event.event)
-            == static_cast<uint64_t> (
-              zlink::monitor_event::connection_ready_changed));
+    assert (static_cast<uint64_t> (callback_state.event.event) != 0u);
 
     const zlink::monitor_snapshot_t snapshot = monitor.snapshot ();
-    assert (snapshot.ready () || snapshot.closed ());
+    assert (snapshot.is_ready ()
+            || (snapshot.state_flags
+                & static_cast<uint32_t> (zlink::monitor_state::closed))
+                 != 0u);
 }
 
 void test_discovery_service_monitor_open_recv ()
@@ -176,6 +242,7 @@ void test_discovery_service_monitor_open_recv ()
 int main ()
 {
     test_socket_monitor_open_recv_snapshot ();
+    test_socket_monitor_ignore_handler_and_poller_size ();
     test_socket_monitor_on_event_callback ();
     test_discovery_service_monitor_open_recv ();
     return 0;

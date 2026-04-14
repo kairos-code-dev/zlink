@@ -41,10 +41,10 @@ def main():
 
     with zlink.Context() as ctx:
         with zlink.StreamSocket(ctx) as server:
-            with server.monitor_open(zlink.MonitorEvent.ACCEPTED) as server_monitor:
+            with server.monitor_open(zlink.MonitorEventMask.ACCEPTED) as server_monitor:
                 server.bind(endpoint)
                 with socket.create_connection(("127.0.0.1", port), timeout=3.0) as client:
-                    _wait_socket_monitor_event(server_monitor, zlink.MonitorEvent.ACCEPTED)
+                    _wait_socket_monitor_event(server_monitor, zlink.MonitorEventMask.ACCEPTED)
                     client.sendall(b"hello-stream")
                     with server.recv() as received:
                         if received.to_bytes_list() != [b"hello-stream"]:

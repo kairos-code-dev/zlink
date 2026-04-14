@@ -3,9 +3,9 @@
 package dev.kairoscode.zlink.service.registry;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.MemberPeerEntry;
-import dev.kairoscode.zlink.ServiceRole;
-import dev.kairoscode.zlink.ServiceType;
+import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
+import dev.kairoscode.zlink.service.registry.ServiceRole;
+import dev.kairoscode.zlink.service.registry.ServiceType;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;

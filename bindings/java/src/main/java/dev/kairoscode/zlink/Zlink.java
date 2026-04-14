@@ -12,7 +12,7 @@ import java.util.Objects;
 public final class Zlink {
     private Zlink() {}
 
-    public static int errno() {
+    static int errno() {
         return Native.errno();
     }
 

@@ -1,6 +1,7 @@
 package zlink_test
 
 import (
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -34,6 +35,58 @@ func TestPublishDontWaitReturnsErrorWhenUnroutable(t *testing.T) {
 	}
 }
 
+func TestReplyAPIsRejectUnsupportedFlags(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	router, err := ctx.RouterSocket()
+	if err != nil {
+		t.Fatalf("RouterSocket() error = %v", err)
+	}
+	defer router.Close()
+
+	node, err := ctx.SpotNode()
+	if err != nil {
+		t.Fatalf("SpotNode() error = %v", err)
+	}
+	defer node.Close()
+
+	spot, err := node.Spot()
+	if err != nil {
+		t.Fatalf("Spot() error = %v", err)
+	}
+	defer spot.Close()
+
+	nodeRID := zlink.NewRoutingID([]byte("node"))
+	spotRID := zlink.NewRoutingID([]byte("spot"))
+	peerRID := zlink.NewRoutingID([]byte("peer"))
+
+	assertUnsupported := func(name string, call func() error) {
+		t.Helper()
+		err := call()
+		if err == nil {
+			t.Fatalf("%s should fail for unsupported flags", name)
+		}
+		var submitErr *zlink.SubmitError
+		if !errors.As(err, &submitErr) {
+			t.Fatalf("%s error type = %T, want *SubmitError", name, err)
+		}
+		if submitErr.Result != zlink.SubmitNotSupported {
+			t.Fatalf("%s result = %v, want %v", name, submitErr.Result, zlink.SubmitNotSupported)
+		}
+	}
+
+	assertUnsupported("Spot.ReplyToSpot", func() error {
+		return spot.ReplyToSpot(nodeRID, spotRID, 1, zlink.SendFlags(2), newMessage(t, "reply"))
+	})
+	assertUnsupported("Spot.ReplyToRouter", func() error {
+		return spot.ReplyToRouter(peerRID, 1, zlink.SendFlags(2), newMessage(t, "reply"))
+	})
+	assertUnsupported("RouterSocket.ReplyToSpot", func() error {
+		return router.ReplyToSpot(nodeRID, spotRID, 1, zlink.SendFlags(2), newMessage(t, "reply"))
+	})
+}
+
 func TestBlockingSendFailureSurfacesError(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
@@ -48,10 +101,7 @@ func TestBlockingSendFailureSurfacesError(t *testing.T) {
 		t.Fatalf("Bind() error = %v", err)
 	}
 
-	rid, err := zlink.NewRoutingID([]byte("missing-peer"))
-	if err != nil {
-		t.Fatalf("NewRoutingID() error = %v", err)
-	}
+	rid := zlink.NewRoutingID([]byte("missing-peer"))
 	if err := router.SendTo(rid, zlink.SendFlagsNone, newMessage(t, "data")); err == nil {
 		t.Fatalf("SendTo() should surface an error when no peer exists")
 	}
@@ -71,10 +121,7 @@ func TestBlockingSendFailurePreservesMessagePayload(t *testing.T) {
 		t.Fatalf("Bind() error = %v", err)
 	}
 
-	rid, err := zlink.NewRoutingID([]byte("missing-peer"))
-	if err != nil {
-		t.Fatalf("NewRoutingID() error = %v", err)
-	}
+	rid := zlink.NewRoutingID([]byte("missing-peer"))
 
 	msg := newMessage(t, "preserve-me")
 	defer msg.Close()

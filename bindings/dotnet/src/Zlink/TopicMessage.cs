@@ -2,37 +2,56 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Zlink;
 
-public class TopicMessage
+public sealed class TopicMessage : IDisposable
 {
-    internal TopicMessage(string routingId, string topic, Message[] parts)
+    private int _closed;
+
+    internal TopicMessage(RoutingId? routingId, string topic, Message[] parts)
     {
-        RoutingId = routingId ?? string.Empty;
+        RoutingId = routingId;
         Topic = topic ?? string.Empty;
         Parts = parts ?? Array.Empty<Message>();
     }
 
-    public string RoutingId { get; }
-
-    public RoutingId? RoutingIdValue =>
-        string.IsNullOrEmpty(RoutingId) ? null : new RoutingId(RoutingId);
+    public RoutingId? RoutingId { get; }
 
     public string Topic { get; }
 
     public IReadOnlyList<Message> Parts { get; }
 
-    public bool HasSinglePart => Parts.Count == 1;
+    public bool IsSinglePart => Parts.Count == 1;
+
+    public Message FirstPart()
+    {
+        if (Parts.Count == 0)
+        {
+            throw new ZlinkRecvException(RecvResult.NoData,
+                (int)ErrorCode.EAgain);
+        }
+
+        return Parts[0];
+    }
 
     public Message SinglePartOrThrow()
     {
         if (Parts.Count != 1)
         {
-            throw new InvalidOperationException(
-                $"Expected exactly one message part but found {Parts.Count}.");
+            throw new ZlinkRecvException(RecvResult.NotSupported,
+                (int)ErrorCode.ENotSup);
         }
 
         return Parts[0];
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _closed, 1) != 0)
+            return;
+        foreach (Message part in Parts)
+            part.Dispose();
     }
 }

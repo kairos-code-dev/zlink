@@ -206,6 +206,44 @@ sequenceDiagram
 
 결과 정렬 순서: `service_kind → service_name → service_role → endpoint → routing_id`
 
+### 7.1 Spot 소유 노드 조회 (resolve_spot 전용 쿼리)
+
+`zlink_discovery_resolve_spot()` 은 `TOPOLOGY_QUERY` 의 특수 사용 사례다.
+Discovery 클라이언트가 어떤 논리 spot routing id 의 현재 owner SpotNode 를
+찾아야 할 때, 필터를 해당 spot identity 로만 좁힌 뒤 transient DEALER 로
+단발성 조회를 던진다. Registry 는 이 용도를 위한 전용 message id 를 따로
+두지 않는다 — 동일한 `TOPOLOGY_QUERY` 표면을 더 좁은 필터로 사용한다.
+
+```mermaid
+sequenceDiagram
+    participant Disc as Discovery client<br/>(resolve_spot)
+    participant Dealer as transient DEALER
+    participant Router as Registry ROUTER
+    participant Map as service_map
+    participant Peers as 다른 Registry 인스턴스<br/>(백그라운드, §6)
+
+    Note over Disc: spot_rid 에 대한 캐시 미스
+    Note over Map,Peers: service_map 은 SERVICE_LIST flooding 과<br/>TOPOLOGY_REPORT 로 out-of-band 동기화된다.<br/>쿼리마다 peer 로 fan-out 하지 않는다.
+    Peers-->>Map: SERVICE_LIST / TOPOLOGY_REPORT<br/>(비동기, §6)
+    Disc->>Dealer: prepare_transient_dealer_local(uplink)
+    Disc->>Router: TOPOLOGY_QUERY (0x000B)<br/>filter = { kind=SPOT_PUB (4),<br/>role=SPOT (2), routing_id=spot_rid,<br/>service_name=<disc.service_name> }
+    Router->>Router: scoped_lock(_sync)
+    Router->>Map: collect_topology_entries_locked(filter)
+    Note over Map: 매칭 조건:<br/>kind == SPOT_PUB &&<br/>role == SPOT &&<br/>routing_id == spot_rid &&<br/>service_name 일치
+    Map-->>Router: 0..N 매칭 엔트리
+    Router->>Router: (kind, name, role, endpoint, rid) 순 정렬
+    Router-->>Disc: TOPOLOGY_REPLY (0x000C)<br/>[entry_count, entries...]
+    Disc->>Disc: transient DEALER 종료
+    Note over Disc: 로컬 summary store 갱신 후<br/>캐시 재조회
+```
+
+Registry 측 주의사항:
+
+- 이 쿼리는 **요청마다 peer Registry 로 fan-out 하지 않는다**. Registry 는 §6 의 flooding / heartbeat 주기로 동기화된 로컬 `service_map` 에서 답한다. spot 소유 기록은 SERVICE_LIST 브로드캐스트와 `TOPOLOGY_REPORT` uplink 경로를 통해 로컬 `service_map` 에 반영된다.
+- owner SpotNode 가 이동했지만 그 새 등록이 아직 이 Registry 까지 전파되지 않았다면 쿼리는 **stale 이거나 비어 있는** 결과를 돌려줄 수 있다. Discovery 클라이언트는 이를 `ENOENT` 로 호출자에게 "지금은 확정 불가" 신호로 돌려주며, 애플리케이션은 짧은 backoff 후 재시도하는 것이 일반적이다.
+- Registry 는 매칭되는 모든 엔트리를 반환하지, 가장 신선한 한 건만 고르지 않는다. Discovery 클라이언트가 `refresh_spot_owner_cache_locked` 단계에서 각 엔트리에 현재의 `validated_service_seq` 도장을 찍어 저장하므로, 이후 캐시 hit 단계에서 membership 변화를 기준으로 검증할 수 있다.
+- 이 응답을 **들어오는 request 에 대한 reply 용 owner 주소로 재사용하면 안 된다**. 이 resolver 는 destination lookup 전용이고, reply 경로는 원래 request 와 함께 전달된 구체적인 source 주소를 그대로 써야 한다. 클라이언트 측 계약은 [Discovery Internals §10](discovery-internals.ko.md#10-spot-소유-노드-조회-zlink_discovery_resolve_spot) 참고.
+
 ## 8. Control Task 주기
 
 ```mermaid

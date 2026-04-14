@@ -32,7 +32,7 @@ public final class DealerRouterRecvSample {
                 if (!SampleSupport.DEALER_REQUEST.equals(value)) {
                     throw new IllegalStateException("unexpected request: " + value);
                 }
-                rid = received.routingId();
+                rid = received.routingId().orElse(null);
                 if (rid == null) {
                     throw new IllegalStateException("router delivery missing routing id");
                 }

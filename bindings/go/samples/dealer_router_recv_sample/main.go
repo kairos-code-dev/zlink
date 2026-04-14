@@ -25,8 +25,7 @@ func main() {
 	defer dealerMon.Close()
 
 	endpoint := samplecommon.UniqueTCP("dealer-router-recv")
-	rid, err := zlink.NewRoutingID([]byte("dealer-sample"))
-	samplecommon.Must(err)
+	rid := zlink.NewRoutingID([]byte("dealer-sample"))
 	samplecommon.Must(router.Bind(endpoint))
 	samplecommon.Must(dealer.SetRoutingID(rid))
 	samplecommon.Must(dealer.Connect(endpoint))

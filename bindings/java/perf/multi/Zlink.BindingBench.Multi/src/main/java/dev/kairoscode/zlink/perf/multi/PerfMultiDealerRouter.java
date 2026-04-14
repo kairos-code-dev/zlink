@@ -9,8 +9,8 @@ import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.SendFlags;
-import dev.kairoscode.zlink.SocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
+import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -35,7 +35,7 @@ final class PerfMultiDealerRouter {
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "dealer/router server ready");
             int stops = 0;
-            try (SocketPollSet pollSet = SocketPollSet.fromSockets(
+            try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 List.of(server), PollEventType.POLLIN.getValue())) {
                 while (stops < config.clients()) {
                     pollSet.poll(-1);
@@ -56,7 +56,7 @@ final class PerfMultiDealerRouter {
                             }
                             try (Message reply = Message.copyOf(
                                 received.firstPart().toByteArray())) {
-                                server.send(received.routingId(), List.of(reply));
+                                server.send(received.routingId().orElseThrow(), List.of(reply));
                             }
                         }
                     }
@@ -89,7 +89,7 @@ final class PerfMultiDealerRouter {
                     go.countDown();
                 }
                 PerfUtil.await(go, "dealer/router start", Duration.ofSeconds(10));
-                try (SocketPollSet pollSet = SocketPollSet.fromSockets(
+                try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(client), PollEventType.POLLIN.getValue())) {
                     long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
@@ -124,14 +124,14 @@ final class PerfMultiDealerRouter {
         return metrics.finishMulti(config);
     }
 
-    private static void sendUntilSent(DealerSocket client, SocketPollSet pollSet,
+    private static void sendUntilSent(DealerSocket client, PerfSocketPollSet pollSet,
                                       List<Message> parts) {
         while (true) {
             try {
                 client.send(parts, SendFlags.DONT_WAIT);
                 return;
             } catch (dev.kairoscode.zlink.ZlinkException ex) {
-                if (ex.errno() != 11 && ex.errno() != 4) {
+                if (ex.getInternalErrno() != 11 && ex.getInternalErrno() != 4) {
                     throw ex;
                 }
             }
@@ -140,7 +140,7 @@ final class PerfMultiDealerRouter {
         }
     }
 
-    private static boolean awaitReadable(SocketPollSet pollSet, long deadlineNs) {
+    private static boolean awaitReadable(PerfSocketPollSet pollSet, long deadlineNs) {
         while (System.nanoTime() < deadlineNs) {
             try {
                 pollSet.setEvents(0, PollEventType.POLLIN.getValue());
@@ -148,7 +148,7 @@ final class PerfMultiDealerRouter {
                     return true;
                 }
             } catch (dev.kairoscode.zlink.ZlinkException ex) {
-                if (ex.errno() != 11 && ex.errno() != 4) {
+                if (ex.getInternalErrno() != 11 && ex.getInternalErrno() != 4) {
                     throw ex;
                 }
             }

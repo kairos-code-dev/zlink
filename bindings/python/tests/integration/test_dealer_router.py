@@ -19,20 +19,18 @@ class DealerRouterScenarioTest(unittest.TestCase):
 
             def run():
                 router = zlink.RouterSocket(ctx)
-                request_router = zlink.RequestRouter(router)
                 dealer = zlink.DealerSocket(ctx)
                 ep = endpoint_for(name, endpoint, "-dr")
                 router.bind(ep)
                 dealer.connect(ep)
                 time.sleep(0.05)
                 dealer.send(b"hello")
-                with request_router.recv() as received:
+                with router.recv() as received:
                     self.assertEqual(received.to_bytes_list(), [b"hello"])
                     self.assertIsNotNone(received.routing_id)
                     router.send(received.routing_id, b"world")
                 with dealer.recv() as response:
                     self.assertEqual(response.to_bytes_list(), [b"world"])
-                request_router.close()
                 dealer.close()
             try_transport(name, run)
         ctx.close()

@@ -1,1 +1,2 @@
-`RequestReplyAsync` shows request/reply with `RequestDealer.RequestAsync` and `RequestRouter`.
+`RequestReplyAsync` shows dealer/router request-reply using
+`DealerSocket.RequestAsync(...)` and `RouterSocket.OnReceive(...)`.

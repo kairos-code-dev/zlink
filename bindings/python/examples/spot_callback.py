@@ -10,13 +10,13 @@ def main():
     with zlink.Context() as ctx:
         with zlink.SpotNode(ctx) as pub_node:
             with zlink.SpotNode(ctx) as sub_node:
-                with zlink.Spot(pub_node) as pub_spot:
-                    with zlink.Spot(sub_node) as sub_spot:
+                with pub_node.create_spot() as pub_spot:
+                    with sub_node.create_spot() as sub_spot:
                         done = threading.Event()
                         result = {}
 
                         def on_message(message):
-                            result["topic"] = message.topic.decode("utf-8")
+                            result["topic"] = message.topic
                             result["data"] = message.to_bytes_list()[0].decode("utf-8")
                             done.set()
 

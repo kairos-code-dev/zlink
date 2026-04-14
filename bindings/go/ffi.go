@@ -3,7 +3,7 @@
 package zlink
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/include
+#cgo CFLAGS: -I${SRCDIR}/../../core/include -I${SRCDIR}/include
 #cgo linux,amd64 LDFLAGS: -L${SRCDIR}/native/linux-x86_64 -lzlink -Wl,-rpath,${SRCDIR}/native/linux-x86_64
 #cgo linux,arm64 LDFLAGS: -L${SRCDIR}/native/linux-aarch64 -lzlink -Wl,-rpath,${SRCDIR}/native/linux-aarch64
 #cgo darwin,amd64 LDFLAGS: -L${SRCDIR}/native/darwin-x86_64 -lzlink -Wl,-rpath,${SRCDIR}/native/darwin-x86_64
@@ -18,8 +18,8 @@ extern void goZlinkRecvTrampoline(zlink_routing_id_t *source_rid_, zlink_msg_t *
 extern void goZlinkSubscribeTrampoline(zlink_routing_id_t *source_rid_, char *topic_, size_t topic_len_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 extern void goZlinkSendReadyTrampoline(void *subject_, uintptr_t userdata_);
 extern void goZlinkMonitorTrampoline(zlink_monitor_event_t *event_, uintptr_t userdata_);
-extern void goZlinkReplyTrampoline(int errno_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
-extern void goZlinkRouterRequestTrampoline(const zlink_routing_id_t *peer_rid_, uint64_t request_seq_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
+extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
+extern void goZlinkRouterRequestTrampoline(const zlink_routing_id_t *source_node_rid_, const zlink_routing_id_t *source_spot_rid_, uint64_t request_seq_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 
 static inline int zlink_bind_go(void *s, const char *addr) {
     return zlink_bind(s, addr);
@@ -63,6 +63,14 @@ static inline int zlink_router_request_go(void *router, const zlink_routing_id_t
 
 static inline int zlink_router_handler_go(void *router, uintptr_t userdata) {
     return zlink_router_handler(router, (zlink_router_handler_fn)goZlinkRouterRequestTrampoline, (void *)userdata);
+}
+
+static inline int zlink_discovery_resolve_spot_go(void *discovery, const zlink_routing_id_t *spot_rid, zlink_routing_id_t *owner_node_rid_out) {
+    return zlink_discovery_resolve_spot(discovery, spot_rid, owner_node_rid_out);
+}
+
+static inline int zlink_discovery_set_dealer_peer_mode_go(void *discovery, unsigned int mode) {
+    return zlink_discovery_set_dealer_peer_mode(discovery, (zlink_discovery_dealer_peer_mode_t)mode);
 }
 */
 import "C"

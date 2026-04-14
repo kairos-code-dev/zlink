@@ -35,7 +35,7 @@ def _wait_connected(*monitors, timeout_ms=5000):
             if event is None:
                 next_pending.append(monitor)
                 continue
-            if not (int(event.event) & int(zlink.MonitorEvent.CONNECTION_READY)):
+            if not (int(event.event) & int(zlink.MonitorEventMask.CONNECTION_READY)):
                 next_pending.append(monitor)
         pending = next_pending
 
@@ -47,8 +47,8 @@ def main():
     with zlink.Context() as ctx:
         with zlink.PairSocket(ctx) as server:
             with zlink.PairSocket(ctx) as client:
-                with server.monitor_open(zlink.MonitorEvent.CONNECTION_READY) as server_monitor:
-                    with client.monitor_open(zlink.MonitorEvent.CONNECTION_READY) as client_monitor:
+                with server.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as server_monitor:
+                    with client.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as client_monitor:
                         server.bind(endpoint)
                         client.connect(endpoint)
                         _wait_connected(server_monitor, client_monitor)

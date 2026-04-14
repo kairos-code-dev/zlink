@@ -56,7 +56,7 @@ final class SingleSendLoops {
     }
 
     private static boolean isRetriable(ZlinkException ex) {
-        int errno = ex.errno();
+        int errno = ex.getInternalErrno();
         return errno == 11 || errno == 4;
     }
 

@@ -121,8 +121,8 @@ sequenceDiagram
     D->>D: request_seq=N 할당
     D->>D: envelope 생성 [0x01, 0x01, 0x01, seq=N]
     D->>R: [envelope 4 parts] + [payload]
-    R->>R: envelope 파싱 → (peer_rid, request_seq=N, payload)
-    R->>R: router_handler 로 dispatch
+    R->>R: envelope 파싱 → (source_node_rid, request_seq=N, payload)
+    R->>R: router_handler 로 dispatch (일반 ROUTER 이면 source_spot_rid = NULL)
     R->>R: reply envelope 생성 [0x01, 0x01, 0x02, seq=N]
     R->>D: [routing_id] + [envelope 4 parts] + [reply payload]
     D->>D: pending[seq=N] 매칭 → reply_handler 호출
@@ -265,7 +265,7 @@ sequenceDiagram
 1. 첫 4개 part 가 request-reply envelope 인지 검사한다.
 2. `message_type`, `request_seq` 를 읽는다.
 3. request 면 request handler 로 넘긴다.
-4. reply 면 pending map 에서 `request_seq` 또는 `peer_rid + request_seq` 로 찾는다.
+4. reply 면 pending map 에서 `request_seq` 또는 `source_node_rid + request_seq` 로 찾는다.
 
 ### 6.2 SPOT request-reply
 
@@ -288,7 +288,7 @@ sequenceDiagram
 pending ownership 은 상위 API 레이어에 있다. 현재 구현은 다음처럼 동작한다.
 
 - `DEALER` pending key: `request_seq`
-- `ROUTER` pending key: `peer_rid + request_seq`
+- `ROUTER` pending key: `source_node_rid + request_seq` (일반 ROUTER 또는 SPOT 에서 시작된 routed)
 - `spot -> spot` pending key:
   `source_class + source address + request_seq`
 - `router -> spot` pending key: `request_seq`

@@ -8,29 +8,27 @@ use zlink::*;
 #[test]
 fn routing_id_max_length_accepted() {
     let data = vec![0x42u8; 255];
-    let rid = RoutingId::new(&data);
-    assert!(rid.is_ok(), "255-byte routing id must succeed");
-    assert_eq!(rid.unwrap().len(), 255);
+    let rid = RoutingId::from_bytes(&data);
+    assert_eq!(rid.size(), 255, "255-byte routing id must succeed");
 }
 
 #[test]
 fn routing_id_exceeds_max_fails() {
     let data = vec![0x42u8; 256];
-    let rid = RoutingId::new(&data);
-    assert!(rid.is_err(), "256-byte routing id must fail immediately");
+    let result = std::panic::catch_unwind(|| RoutingId::from_bytes(&data));
+    assert!(result.is_err(), "256-byte routing id must fail immediately");
 }
 
 #[test]
 fn routing_id_empty_fails() {
-    let rid = RoutingId::new(&[]);
-    assert!(rid.is_err(), "empty routing id must fail");
+    let result = std::panic::catch_unwind(|| RoutingId::from_bytes(&[]));
+    assert!(result.is_err(), "empty routing id must fail");
 }
 
 #[test]
 fn routing_id_one_byte_accepted() {
-    let rid = RoutingId::new(&[0x01]);
-    assert!(rid.is_ok());
-    assert_eq!(rid.unwrap().len(), 1);
+    let rid = RoutingId::from_bytes(&[0x01]);
+    assert_eq!(rid.size(), 1);
 }
 
 #[test]
@@ -66,7 +64,7 @@ fn null_byte_in_topic_rejected() {
     let pub_sock = ctx.pub_socket().unwrap();
     pub_sock.bind("inproc://bnd-topic-null").unwrap();
 
-    let msg = Message::from_bytes(b"data").unwrap();
+    let msg = Message::copy_from(b"data").unwrap();
     let result = pub_sock.publish("bad\0topic", msg);
     assert!(result.is_err(), "topic with null byte must be rejected");
 }
@@ -85,12 +83,12 @@ fn null_byte_in_subscription_filter_rejected() {
 fn message_try_from_bytes() {
     let msg = Message::try_from(&b"hello"[..]);
     assert!(msg.is_ok());
-    assert_eq!(msg.unwrap().data(), b"hello");
+    assert_eq!(msg.unwrap().as_bytes(), b"hello");
 }
 
 #[test]
 fn message_try_from_str() {
-    let msg = Message::try_from("world");
+    let msg = Message::copy_from(b"world");
     assert!(msg.is_ok());
     assert_eq!(msg.unwrap().as_str().unwrap(), "world");
 }

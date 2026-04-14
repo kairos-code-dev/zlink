@@ -6,6 +6,8 @@ import errno
 import queue
 
 from ._core import (
+    HandlerError,
+    HandlerResult,
     Message,
     RecvError,
     RecvResult,
@@ -15,15 +17,15 @@ from ._core import (
     RoutingId,
     SubmitError,
     SubmitResult,
-    ZlinkError,
     ZlinkMsg,
     _REPLY_HANDLER,
     _ROUTER_HANDLER,
     _clone_native_msg,
     _copy_routing_id,
-    _raise_last_error,
     _report_unhandled_callback_exception,
-    _request_result_from_errno,
+    _request_result_from_code,
+    _request_result_internal_errno,
+    _raise_result_error,
     _routing_id_bytes,
 )
 from ._socket_base import _enter_callback, _leave_callback
@@ -31,7 +33,13 @@ from ._ffi import lib
 
 
 _ERRNO_ETERM = getattr(errno, "ETERM", 156)
+_ERRNO_ENOTSUP = getattr(errno, "ENOTSUP", getattr(errno, "EOPNOTSUPP", 95))
 _CALLBACK_SENTINEL = object()
+
+
+def _ensure_reply_flags_supported(flags):
+    if int(flags) != 0:
+        raise SubmitError(SubmitResult.NOT_SUPPORTED, _ERRNO_ENOTSUP)
 
 
 def _timeout_to_ms(timeout):
@@ -76,12 +84,33 @@ def _clone_received_owner(parts_ptr, part_count):
     return _ReceivedPartsOwner(parts_array, part_count)
 
 
-def _request_received(parts_ptr, part_count, routing_id=None, request_seq=None):
+def _request_received(
+    parts_ptr,
+    part_count,
+    routing_id=None,
+    spot_rid=None,
+    request_seq=None,
+    *,
+    reply_sender=None,
+):
     return Received(
         _clone_received_owner(parts_ptr, int(part_count)),
         routing_id=routing_id,
+        spot_rid=spot_rid,
         request_seq=request_seq,
+        reply_sender=reply_sender,
     )
+
+
+def _message_list_from_parts(parts_ptr, part_count):
+    messages = []
+    for index in range(int(part_count)):
+        msg = Message.__new__(Message)
+        msg._msg = _clone_native_msg(parts_ptr[index])
+        msg._valid = True
+        msg._keepalive = None
+        messages.append(msg)
+    return messages
 
 
 class _PendingRequest:
@@ -107,257 +136,11 @@ class _PendingRequest:
         try:
             _enter_callback()
             try:
-                self.callback(result, received if result == RequestResult.OK else None)
+                self.callback(result, received if result == RequestResult.OK else [])
             finally:
                 _leave_callback()
         except Exception:
             _report_unhandled_callback_exception(self.callback)
-
-
-class RequestDealer:
-    def __init__(self, socket):
-        self._socket = socket
-        self._reply_handler = _REPLY_HANDLER(self._on_reply)
-        self._pending = {}
-
-    def request(self, payload, callback=None, *, flags=0, timeout=0):
-        if callback is None:
-            return self._request_async(payload, flags=flags, timeout=timeout)
-        self._request_callback(payload, callback, flags=flags, timeout=timeout)
-        return None
-
-    def recv(self, *, flags=0):
-        return self._socket.recv(flags=flags)
-
-    def on_receive(self, handler):
-        self._socket.on_receive(handler)
-
-    def close(self):
-        self._cancel_pending(RequestResult.TERMINATED)
-        self._socket.close()
-
-    def _request_async(self, payload, *, flags=0, timeout=0):
-        async def _run():
-            loop = asyncio.get_running_loop()
-            pending = _PendingRequest(loop=loop)
-            handle = id(pending)
-            self._pending[handle] = pending
-            try:
-                self._start_request(payload, flags, timeout, handle)
-            except Exception:
-                self._pending.pop(handle, None)
-                raise
-            return await pending.future
-
-        return _run()
-
-    def _request_callback(self, payload, callback, *, flags=0, timeout=0):
-        pending = _PendingRequest(callback=callback)
-        handle = id(pending)
-        self._pending[handle] = pending
-        try:
-            self._start_request(payload, flags, timeout, handle)
-        except Exception:
-            self._pending.pop(handle, None)
-            raise
-
-    def _start_request(self, payload, flags, timeout, handle):
-        native_parts = _clone_payload(payload)
-        parts_array = _prepare_native_parts(native_parts)
-        rc = lib().zlink_dealer_request(
-            self._socket._handle,
-            parts_array,
-            len(native_parts),
-            self._reply_handler,
-            ctypes.c_void_p(handle),
-            int(flags),
-            _timeout_to_ms(timeout),
-        )
-        if rc != 0:
-            self._pending.pop(handle, None)
-            _raise_last_error()
-
-    def _on_reply(self, errnum, parts, part_count, userdata):
-        handle = ctypes.cast(userdata, ctypes.c_void_p).value
-        pending = self._pending.pop(handle, None)
-        if pending is None:
-            return
-        result = _request_result_from_errno(int(errnum))
-        received = None
-        if result == RequestResult.OK:
-            received = _request_received(parts, part_count)
-        pending.resolve(result, received, int(errnum))
-
-    def _cancel_pending(self, result):
-        for handle, pending in list(self._pending.items()):
-            self._pending.pop(handle, None)
-            if pending.future is not None and not pending.future.done():
-                pending.loop.call_soon_threadsafe(
-                    pending.future.set_exception,
-                    RequestError(result, _ERRNO_ETERM),
-                )
-            elif pending.callback is not None:
-                try:
-                    pending.callback(result, None)
-                except Exception:
-                    _report_unhandled_callback_exception(pending.callback)
-
-
-class RequestRouter:
-    def __init__(self, socket):
-        self._socket = socket
-        self._data_queue = queue.Queue()
-        self._data_handler = None
-        self._data_handler_loop = None
-        self._reply_handler = _REPLY_HANDLER(self._on_reply)
-        self._request_handler = _ROUTER_HANDLER(self._on_request)
-        self._pending = {}
-        rc = lib().zlink_router_handler(
-            self._socket._handle,
-            self._request_handler,
-            None,
-        )
-        if rc != 0:
-            _raise_last_error()
-
-    def request(self, routing_id, payload, callback=None, *, flags=0, timeout=0):
-        if callback is None:
-            return self._request_async(routing_id, payload, flags=flags, timeout=timeout)
-        self._request_callback(routing_id, payload, callback, flags=flags, timeout=timeout)
-        return None
-
-    def reply(self, routing_id, request_seq, payload, *, flags=0):
-        native_parts = _clone_payload(payload)
-        parts_array = _prepare_native_parts(native_parts)
-        native_rid = _copy_routing_id(routing_id)
-        rc = lib().zlink_router_reply(
-            self._socket._handle,
-            ctypes.byref(native_rid),
-            ctypes.c_uint64(request_seq),
-            parts_array,
-            len(native_parts),
-        )
-        if rc != 0:
-            _raise_last_error()
-
-    def recv(self, *, flags=0):
-        if int(flags) != 0:
-            try:
-                item = self._data_queue.get_nowait()
-            except queue.Empty as exc:
-                raise RecvError(RecvResult.NO_DATA, _ERRNO_ETERM) from exc
-        else:
-            item = self._data_queue.get()
-        if item is None:
-            raise ZlinkError(_ERRNO_ETERM, "socket is closed")
-        return item
-
-    def on_receive(self, handler):
-        self._data_handler = handler
-        try:
-            self._data_handler_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._data_handler_loop = None
-
-    def close(self):
-        self._cancel_pending(RequestResult.TERMINATED)
-        self._data_queue.put(None)
-        self._socket.close()
-
-    def _request_async(self, routing_id, payload, *, flags=0, timeout=0):
-        async def _run():
-            loop = asyncio.get_running_loop()
-            pending = _PendingRequest(loop=loop)
-            handle = id(pending)
-            self._pending[handle] = pending
-            try:
-                self._start_request(routing_id, payload, flags, timeout, handle)
-            except Exception:
-                self._pending.pop(handle, None)
-                raise
-            return await pending.future
-
-        return _run()
-
-    def _request_callback(self, routing_id, payload, callback, *, flags=0, timeout=0):
-        pending = _PendingRequest(callback=callback)
-        handle = id(pending)
-        self._pending[handle] = pending
-        try:
-            self._start_request(routing_id, payload, flags, timeout, handle)
-        except Exception:
-            self._pending.pop(handle, None)
-            raise
-
-    def _start_request(self, routing_id, payload, flags, timeout, handle):
-        native_parts = _clone_payload(payload)
-        parts_array = _prepare_native_parts(native_parts)
-        native_rid = _copy_routing_id(routing_id)
-        rc = lib().zlink_router_request(
-            self._socket._handle,
-            ctypes.byref(native_rid),
-            parts_array,
-            len(native_parts),
-            self._reply_handler,
-            ctypes.c_void_p(handle),
-            int(flags),
-            _timeout_to_ms(timeout),
-        )
-        if rc != 0:
-            self._pending.pop(handle, None)
-            _raise_last_error()
-
-    def _on_reply(self, errnum, parts, part_count, userdata):
-        handle = ctypes.cast(userdata, ctypes.c_void_p).value
-        pending = self._pending.pop(handle, None)
-        if pending is None:
-            return
-        result = _request_result_from_errno(int(errnum))
-        received = None
-        if result == RequestResult.OK:
-            received = _request_received(parts, part_count)
-        pending.resolve(result, received, int(errnum))
-
-    def _on_request(self, peer_rid, request_seq, parts, part_count, userdata):
-        routing_id = RoutingId(bytes(peer_rid.contents.data[: peer_rid.contents.size]))
-        received = _request_received(
-            parts,
-            part_count,
-            routing_id=routing_id,
-            request_seq=int(request_seq),
-        )
-        if self._data_handler is None:
-            self._data_queue.put(received)
-            return
-
-        def _deliver():
-            try:
-                _enter_callback()
-                try:
-                    self._data_handler(received)
-                finally:
-                    _leave_callback()
-            finally:
-                received.close()
-
-        if self._data_handler_loop is None:
-            _deliver()
-        else:
-            self._data_handler_loop.call_soon_threadsafe(_deliver)
-
-    def _cancel_pending(self, result):
-        for handle, pending in list(self._pending.items()):
-            self._pending.pop(handle, None)
-            if pending.future is not None and not pending.future.done():
-                pending.loop.call_soon_threadsafe(
-                    pending.future.set_exception,
-                    RequestError(result, _ERRNO_ETERM),
-                )
-            elif pending.callback is not None:
-                try:
-                    pending.callback(result, None)
-                except Exception:
-                    _report_unhandled_callback_exception(pending.callback)
 
 
 class _ReceivedPartsOwner:

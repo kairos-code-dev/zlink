@@ -24,7 +24,7 @@ final class PerfMultiSpot {
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         try (Context ctx = PerfUtil.newContext(config);
              SpotNode node = new SpotNode(ctx);
-             Spot publisher = new Spot(node)) {
+             Spot publisher = node.createSpot()) {
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             node.bind(config.endpoint());
@@ -70,7 +70,7 @@ final class PerfMultiSpot {
                                       AtomicReference<Throwable> failure) {
         try (Context ctx = PerfUtil.newContext(config);
              SpotNode node = new SpotNode(ctx);
-             Spot subscriber = new Spot(node)) {
+             Spot subscriber = node.createSpot()) {
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureClientTls(node, config.transport());
             node.connectPeer(config.endpoint());

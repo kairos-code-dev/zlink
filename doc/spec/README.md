@@ -27,9 +27,10 @@ zlink C library.
 | [socket/](core/socket/README.md) | Socket specifications (common + per-type) |
 | [monitoring.md](core/monitoring.md) | Socket monitors, service monitors, and peer inspection |
 | [events.md](core/events.md) | Canonical event catalog and readiness semantics |
-| [registry.md](core/registry.md) | Service registry creation, configuration, and clustering |
-| [discovery.md](core/discovery.md) | Service discovery, subscription, and peer lookup |
-| [spot.md](core/spot.md) | SPOT topic-based PUB/SUB and routed messaging |
+| [service/README.md](core/service/README.md) | Shared service-layer concepts and document split |
+| [registry.md](core/service/registry.md) | Service registry creation, configuration, and clustering |
+| [discovery.md](core/service/discovery.md) | Service discovery, subscription, and peer lookup |
+| [spot.md](core/service/spot.md) | SPOT topic-based PUB/SUB and routed messaging |
 | [polling.md](core/polling.md) | Proxy helpers and capability query |
 | [utilities.md](core/utilities.md) | Timers, threads, stopwatch, and atomics |
 

@@ -207,11 +207,11 @@ internal static class PerfDealerRouter
                 payloadBuffer, flags, out _);
             return payloadLen ?? 0;
         }
-        catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
+        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
         {
             return 0;
         }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
+        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
         {
             return 0;
         }

@@ -2,6 +2,8 @@
 
 import { normalizeBufferLike } from './buffer_like';
 import type { BufferLike } from './buffer_like';
+import { ConfigError, ConfigResult, RecvError, RecvResult, SubmitError, SubmitResult } from './errors';
+import { SendFlags } from './socket/constants';
 
 /** Minimum user-defined metadata key. */
 export const METADATA_KEY_USER_MIN = 0x0100;
@@ -27,38 +29,86 @@ function normalizeMessageProperties(
 
 const EMPTY_PROPERTIES: Readonly<Record<string, string>> = Object.freeze({});
 const EMPTY_METADATA: Readonly<Map<number, Buffer>> = Object.freeze(new Map<number, Buffer>());
+const ROUTING_ID_MAX_LENGTH = 255;
+
+interface ReplyContext {
+  reply(parts: readonly Message[], flags: SendFlags): void;
+}
+
+function invalidMultipartError(partsLength: number): RecvError {
+  return new RecvError(
+    RecvResult.NotSupported,
+    0,
+    `expected exactly 1 part but received ${partsLength}`
+  );
+}
+
+function missingPartError(): RecvError {
+  return new RecvError(RecvResult.NotSupported, 0, 'message has no parts');
+}
+
+function invalidReplyContextError(): SubmitError {
+  return new SubmitError(
+    SubmitResult.InvalidState,
+    0,
+    'reply is only valid for request-reply receive contexts'
+  );
+}
+
+function normalizeRoutingIdBytes(bytes: Buffer | Uint8Array, name: string): Buffer {
+  if (!Buffer.isBuffer(bytes) && !(bytes instanceof Uint8Array)) {
+    throw new TypeError(`${name} must be a Buffer or Uint8Array`);
+  }
+  const normalized = Buffer.from(bytes);
+  if (normalized.length === 0 || normalized.length > ROUTING_ID_MAX_LENGTH) {
+    throw new ConfigError(
+      ConfigResult.InvalidArgument,
+      0,
+      `${name} must be 1..${ROUTING_ID_MAX_LENGTH} bytes`
+    );
+  }
+  return normalized;
+}
 
 export class Message {
-  private readonly _buffer: Buffer;
-  private readonly _refCount: number;
-  private readonly _properties: Readonly<Record<string, string>>;
-  private readonly _metadata: Readonly<Map<number, Buffer>>;
+  private _buffer!: Buffer;
+  private _refCount!: number;
+  private _properties!: Readonly<Record<string, string>>;
+  private _metadata!: Readonly<Map<number, Buffer>>;
 
-  private constructor(
+  /** @throws {ConfigError} */
+  constructor(data: BufferLike) {
+    this.initialize(Buffer.from(normalizeBufferLike(data, 'data')));
+    Object.freeze(this);
+  }
+
+  private initialize(
     buffer: Buffer,
     refCount = 1,
     properties?: Readonly<Record<string, string>>,
     metadata?: Readonly<Map<number, Buffer>>
-  ) {
+  ): void {
     this._buffer = buffer;
     this._refCount = refCount | 0;
     this._properties = normalizeMessageProperties(properties);
     this._metadata = metadata ?? EMPTY_METADATA;
-    Object.freeze(this);
   }
 
   static from(buffer: BufferLike): Message {
-    return new Message(normalizeBufferLike(buffer, 'buffer'));
+    return new Message(buffer);
   }
 
   /** @internal */
   static fromSnapshot(snapshot: MessageSnapshot): Message {
-    return new Message(
+    const message = Object.create(Message.prototype) as Message;
+    message.initialize(
       snapshot.data,
       snapshot.refCount ?? 1,
       snapshot.properties,
       snapshot.metadata
     );
+    Object.freeze(message);
+    return message;
   }
 
   /** @internal */
@@ -113,24 +163,110 @@ export class Message {
   }
 }
 
+export class RoutingId {
+  private readonly _bytes: Buffer;
+
+  private constructor(bytes: Buffer) {
+    this._bytes = bytes;
+    Object.freeze(this);
+  }
+
+  static fromBytes(bytes: Buffer | Uint8Array): RoutingId {
+    return new RoutingId(normalizeRoutingIdBytes(bytes, 'bytes'));
+  }
+
+  toBytes(): Buffer {
+    return Buffer.from(this._bytes);
+  }
+
+  get size(): number {
+    return this._bytes.length;
+  }
+
+  equals(other: RoutingId): boolean {
+    return other instanceof RoutingId && this._bytes.equals(other._bytes);
+  }
+
+  toHex(): string {
+    return this._bytes.toString('hex');
+  }
+
+  toString(): string {
+    return this.toHex();
+  }
+}
+
+class MultipartEnvelope {
+  readonly parts: Message[];
+
+  constructor(parts: readonly Message[]) {
+    this.parts = Object.freeze(parts.slice()) as Message[];
+  }
+
+  isSinglePart(): boolean {
+    return this.parts.length === 1;
+  }
+
+  firstPart(): Message {
+    if (this.parts.length === 0) {
+      throw missingPartError();
+    }
+    return this.parts[0];
+  }
+
+  singlePartOrThrow(): Message {
+    if (!this.isSinglePart()) {
+      throw invalidMultipartError(this.parts.length);
+    }
+    return this.parts[0];
+  }
+
+  toBytesList(): Buffer[] {
+    return this.parts.map((part) => part.data());
+  }
+
+  close(): void {
+    for (const part of this.parts) {
+      part.close();
+    }
+  }
+}
+
 export class Received {
-  readonly parts: readonly Message[];
-  readonly routingId: Buffer | null;
+  readonly parts: Message[];
+  readonly routingId: RoutingId | null;
+  readonly spotRid: RoutingId | null;
   readonly requestSeq: bigint | null;
+  private readonly _replyContext: ReplyContext | null;
 
   constructor(
     parts: readonly Message[],
-    routingId: Buffer | null = null,
-    requestSeq: bigint | null = null
+    routingId: RoutingId | null = null,
+    requestSeq: bigint | null = null,
+    spotRid: RoutingId | null = null,
+    replyContext: ReplyContext | null = null
   ) {
-    this.parts = Object.isFrozen(parts) ? parts : Object.freeze(parts.slice());
+    this.parts = Object.freeze(parts.slice()) as Message[];
     this.routingId = routingId;
+    this.spotRid = spotRid;
     this.requestSeq = requestSeq;
+    this._replyContext = replyContext;
+  }
+
+  isSinglePart(): boolean {
+    return this.parts.length === 1;
+  }
+
+  firstPart(): Message {
+    if (this.parts.length === 0) {
+      throw missingPartError();
+    }
+    return this.parts[0];
   }
 
   singlePartOrThrow(): Message {
-    if (this.parts.length !== 1) {
-      throw new Error(`expected exactly 1 part but received ${this.parts.length}`);
+    if (!this.isSinglePart()) {
+      throw invalidMultipartError(this.parts.length);
     }
     return this.parts[0];
   }
@@ -139,44 +275,44 @@ export class Received {
     return this.parts.map((part) => part.data());
   }
 
-  close(): void {}
+  reply(partOrParts: Message | readonly Message[], flags: SendFlags = SendFlags.None): void {
+    if (!this.requestSeq || !this._replyContext) {
+      throw invalidReplyContextError();
+    }
+    const parts = Array.isArray(partOrParts) ? partOrParts : [partOrParts];
+    this._replyContext.reply(parts, flags);
+  }
+
+  close(): void {
+    for (const part of this.parts) {
+      part.close();
+    }
+  }
 }
 
-export class Subscribed {
-  readonly routingId: Buffer | null;
+export class TopicMessage extends MultipartEnvelope {
+  readonly routingId: RoutingId | null;
   readonly topic: string;
-  readonly parts: readonly Message[];
 
-  constructor(topic: string, parts: readonly Message[], routingId: Buffer | null = null) {
+  constructor(topic: string, parts: readonly Message[], routingId: RoutingId | null = null) {
+    super(parts);
     this.routingId = routingId;
     this.topic = topic;
-    this.parts = Object.isFrozen(parts) ? parts : Object.freeze(parts.slice());
   }
-
-  singlePartOrThrow(): Message {
-    if (this.parts.length !== 1) {
-      throw new Error(`expected exactly 1 part but received ${this.parts.length}`);
-    }
-    return this.parts[0];
-  }
-
-  toBytesList(): Buffer[] {
-    return this.parts.map((part) => part.data());
-  }
-
-  close(): void {}
 }
 
 export class SubscriptionEvent {
-  readonly routingId: Buffer | null;
+  readonly routingId: RoutingId | null;
   readonly topic: string;
   readonly subscribed: boolean;
 
-  constructor(topic: string, subscribed: boolean, routingId: Buffer | null = null) {
+  constructor(topic: string, subscribed: boolean, routingId: RoutingId | null = null) {
     this.routingId = routingId;
     this.topic = topic;
     this.subscribed = subscribed === true;
   }
 }
+
+export { TopicMessage as Subscribed };
 
 export type MessageLike = Message | BufferLike;

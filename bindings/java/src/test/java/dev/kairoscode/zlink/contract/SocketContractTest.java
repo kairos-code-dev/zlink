@@ -2,7 +2,6 @@ package dev.kairoscode.zlink.contract;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.DealerSocket;
-import dev.kairoscode.zlink.ErrorCode;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.PairSocket;
@@ -11,8 +10,7 @@ import dev.kairoscode.zlink.PubSocketOptions;
 import dev.kairoscode.zlink.RecvException;
 import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.Received;
-import dev.kairoscode.zlink.RequestDealer;
-import dev.kairoscode.zlink.RequestRouter;
+import dev.kairoscode.zlink.RequestResult;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendResult;
@@ -21,7 +19,8 @@ import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.ServiceMonitorEventMask;
-import dev.kairoscode.zlink.ServiceType;
+import dev.kairoscode.zlink.service.discovery.DiscoveryDealerPeerMode;
+import dev.kairoscode.zlink.service.registry.ServiceType;
 import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.SubSocketOptions;
@@ -29,32 +28,39 @@ import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.XPubSocket;
 import dev.kairoscode.zlink.XSubSocket;
+import dev.kairoscode.zlink.Zlink;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.service.discovery.Discovery;
+import dev.kairoscode.zlink.service.spot.SpotNode;
 import dev.kairoscode.zlink.service.registry.Registry;
 import dev.kairoscode.zlink.service.spot.Spot;
 import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SocketContractTest {
-    private static final Class<?> RECEIVE_FLAG_CLASS =
-        loadClass("dev.kairoscode.zlink.ReceiveFlag");
-    private static final Class<?> SEND_FLAG_CLASS =
-        loadClass("dev.kairoscode.zlink.SendFlag");
+    private static final int ERRNO_EFSM = 156384763;
 
     @Test
     public void sendAndRecvUseCanonicalMultipartSurface() {
@@ -85,28 +91,33 @@ public class SocketContractTest {
         try (Context ctx = new Context();
              RouterSocket routerSocket = new RouterSocket(ctx);
              DealerSocket dealerSocket = new DealerSocket(ctx);
-             RequestRouter router = new RequestRouter(routerSocket);
-             RequestDealer dealer = new RequestDealer(dealerSocket)) {
+             ExecutorService serverExecutor = daemonExecutor("zlink-socket-contract")) {
             String endpoint = TestSupport.inprocEndpoint("request-reply");
             routerSocket.bind(endpoint);
             dealerSocket.connect(endpoint);
 
-            router.onReceive(received -> {
-                try (received) {
+            CompletableFuture<Void> server = CompletableFuture.runAsync(() -> {
+                try (Received received = routerSocket.recv()) {
                     assertArrayEquals("ping".getBytes(StandardCharsets.UTF_8),
                         received.singlePartOrThrow().toByteArray());
-                    assertTrue(received.hasRequestSequence());
-                    assertTrue(received.requestSequence() != 0L);
-                    router.reply(received.routingId(), received.requestSequence(),
-                        List.of(Message.copyOfUtf8("pong")));
+                    assertTrue(received.routingId().isPresent());
+                    assertTrue(received.requestSeq().isPresent());
+                    assertTrue(received.requestSeq().orElseThrow() != 0L);
+                    received.reply(List.of(Message.copyOfUtf8("pong")));
                 }
-            });
+            }, serverExecutor);
 
-            try (Received reply = dealer.request(List.of(Message.copyOfUtf8("ping")),
-                Duration.ofSeconds(2)).get(2, TimeUnit.SECONDS)) {
-                assertArrayEquals("pong".getBytes(StandardCharsets.UTF_8),
-                    reply.singlePartOrThrow().toByteArray());
+            try (Message request = Message.copyOfUtf8("ping")) {
+                List<Message> reply = dealerSocket.request(request,
+                    Duration.ofSeconds(2)).get(2, TimeUnit.SECONDS);
+                try {
+                    assertArrayEquals("pong".getBytes(StandardCharsets.UTF_8),
+                        reply.get(0).toByteArray());
+                } finally {
+                    Message.closeAll(reply);
+                }
             }
+            server.get(2, TimeUnit.SECONDS);
         }
     }
 
@@ -116,17 +127,65 @@ public class SocketContractTest {
 
         try (Context ctx = new Context();
              RouterSocket routerSocket = new RouterSocket(ctx);
-             DealerSocket dealerSocket = new DealerSocket(ctx);
-             RequestRouter router = new RequestRouter(routerSocket)) {
+             DealerSocket dealerSocket = new DealerSocket(ctx)) {
             String endpoint = TestSupport.inprocEndpoint("request-reply-data");
             routerSocket.bind(endpoint);
             dealerSocket.connect(endpoint);
 
             dealerSocket.send(List.of(Message.copyOfUtf8("plain-data")));
 
-            try (Received received = router.recv()) {
+            try (Received received = routerSocket.recv()) {
                 assertArrayEquals("plain-data".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
+            }
+        }
+    }
+
+    @Test
+    public void requestReplyCallbackCompletesBeforeSocketClose() throws Exception {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             RouterSocket routerSocket = new RouterSocket(ctx);
+             DealerSocket dealerSocket = new DealerSocket(ctx);
+             ExecutorService serverExecutor =
+                 daemonExecutor("zlink-socket-contract-callback")) {
+            String endpoint = TestSupport.inprocEndpoint("request-reply-callback");
+            routerSocket.bind(endpoint);
+            dealerSocket.connect(endpoint);
+
+            CompletableFuture<Void> server = CompletableFuture.runAsync(() -> {
+                try (Received received = routerSocket.recv()) {
+                    received.reply(List.of(Message.copyOfUtf8("pong-callback")));
+                }
+            }, serverExecutor);
+
+            CountDownLatch done = new CountDownLatch(1);
+            AtomicReference<List<Message>> replyRef = new AtomicReference<>();
+            AtomicReference<RequestResult> resultRef = new AtomicReference<>();
+            AtomicReference<Throwable> errorRef = new AtomicReference<>();
+            try (Message request = Message.copyOfUtf8("ping-callback")) {
+                dealerSocket.request(request, (result, reply) -> {
+                    resultRef.set(result);
+                    replyRef.set(reply);
+                    done.countDown();
+                });
+                assertTrue(done.await(2, TimeUnit.SECONDS));
+                assertEquals(RequestResult.OK, resultRef.get());
+                List<Message> reply = replyRef.get();
+                assertNotNull(reply);
+                try {
+                    assertArrayEquals("pong-callback".getBytes(StandardCharsets.UTF_8),
+                        reply.get(0).toByteArray());
+                } catch (Throwable error) {
+                    errorRef.set(error);
+                } finally {
+                    Message.closeAll(reply);
+                }
+            }
+            server.get(2, TimeUnit.SECONDS);
+            if (errorRef.get() != null) {
+                throw new AssertionError(errorRef.get());
             }
         }
     }
@@ -156,7 +215,7 @@ public class SocketContractTest {
             }
 
             try (TopicMessage received = sub.subscribe()) {
-                assertEquals("socket-topic", received.topicId());
+                assertEquals("socket-topic", received.topic());
                 assertArrayEquals("socket-payload".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
             }
@@ -169,9 +228,9 @@ public class SocketContractTest {
 
         try (Context ctx = new Context();
              RouterSocket router = new RouterSocket(ctx)) {
-            RoutingId routerRid = RoutingId.copyOf("router-self".getBytes(StandardCharsets.UTF_8));
+            RoutingId routerRid = RoutingId.fromBytes("router-self".getBytes(StandardCharsets.UTF_8));
             router.setRoutingId(routerRid);
-            assertArrayEquals(routerRid.toByteArray(), router.routingId().toByteArray());
+            assertArrayEquals(routerRid.toBytes(), router.routingId().toBytes());
 
             String cert = Path.of("tests/certs/server.crt").toAbsolutePath().toString();
             String key = Path.of("tests/certs/server.key").toAbsolutePath().toString();
@@ -225,6 +284,99 @@ public class SocketContractTest {
     }
 
     @Test
+    public void routedAndLegacySurfaceMatchesJavaSpec() {
+        assertTrue(hasPublicMethod(RouterSocket.class, "sendToSpot",
+            RoutingId.class, RoutingId.class, Message.class));
+        assertTrue(hasPublicMethod(RouterSocket.class, "requestToSpot",
+            RoutingId.class, RoutingId.class, Message.class));
+        assertTrue(hasPublicMethod(RouterSocket.class, "replyToSpot",
+            RoutingId.class, RoutingId.class, long.class, Message.class));
+        assertFalse(hasPublicMethod(RouterSocket.class, "recvSpot"));
+        assertFalse(hasPublicMethod(RouterSocket.class, "recvSpot",
+            RecvFlags.class));
+        assertFalse(hasPublicMethod(RouterSocket.class, "onSpotReceive"));
+
+        assertTrue(hasPublicMethod(Spot.class, "sendToSpot",
+            RoutingId.class, RoutingId.class, Message.class));
+        assertTrue(hasPublicMethod(Spot.class, "requestToSpot",
+            RoutingId.class, RoutingId.class, Message.class));
+        assertTrue(hasPublicMethod(Spot.class, "replyToSpot",
+            RoutingId.class, RoutingId.class, long.class, Message.class));
+        assertTrue(hasPublicMethod(Spot.class, "sendToRouter",
+            RoutingId.class, Message.class));
+        assertTrue(hasPublicMethod(Spot.class, "requestToRouter",
+            RoutingId.class, Message.class));
+        assertTrue(hasPublicMethod(Spot.class, "replyToRouter",
+            RoutingId.class, long.class, Message.class));
+        assertTrue(hasPublicMethod(Spot.class, "recvRouted"));
+        assertTrue(hasPublicMethod(Spot.class, "onRoutedReceive",
+            dev.kairoscode.zlink.SpotRoutedHandler.class));
+        assertTrue(hasPublicMethod(Spot.class, "onDispatchEvent",
+            dev.kairoscode.zlink.SpotDispatchEventHandler.class));
+        assertTrue(hasPublicMethod(Spot.class, "setRoutingId",
+            RoutingId.class));
+        assertTrue(hasPublicMethod(Spot.class, "routingId"));
+        assertTrue(hasPublicMethod(SpotNode.class, "setRoutingId",
+            RoutingId.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "routingId"));
+        assertTrue(hasPublicMethod(Discovery.class, "resolveSpot",
+            RoutingId.class));
+        assertTrue(hasPublicMethod(Discovery.class, "setDealerPeerMode",
+            DiscoveryDealerPeerMode.class));
+
+        assertFalse(hasPublicMethod(XPubSocket.class, "onSubscribe",
+            dev.kairoscode.zlink.SubscribeHandler.class));
+        assertFalse(hasPublicMethod(Zlink.class, "errno"));
+        assertFalse(hasPublicMethod(ZlinkException.class, "errno"));
+        assertFalse(hasPublicMethod(ZlinkException.class, "errorCode"));
+        assertFalse(isPublicClass("dev.kairoscode.zlink.ErrorCode"));
+        assertFalse(isPublicClass("dev.kairoscode.zlink.RequestReplyCallback"));
+        assertFalse(isPublicClass("dev.kairoscode.zlink.SocketPollSet"));
+        assertFalse(isPublicClass("dev.kairoscode.zlink.DisconnectReason"));
+        assertFalse(isPublicClass("dev.kairoscode.zlink.ProtocolError"));
+        assertFalse(isPublicClass("dev.kairoscode.zlink.StreamDispatchMode"));
+        assertFalse(isPublicClass("dev.kairoscode.zlink.SubscriptionEntry"));
+        assertFalse(isPublicClass("dev.kairoscode.zlink.ZlinkVersion"));
+        assertFalse(isPublicClass("dev.kairoscode.zlink.SocketType"));
+        assertFalse(hasPublicMethod(dev.kairoscode.zlink.MonitorSocket.class,
+            "recv", RecvFlags.class));
+        assertFalse(hasPublicMethod(dev.kairoscode.zlink.ServiceMonitor.class,
+            "recv", RecvFlags.class));
+    }
+
+    @Test
+    public void routerReplyWithFlagsFailsExplicitlyWhenCoreLacksSupport()
+      throws Exception {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             RouterSocket routerSocket = new RouterSocket(ctx);
+             DealerSocket dealerSocket = new DealerSocket(ctx)) {
+            String endpoint = TestSupport.inprocEndpoint("request-reply-flags");
+            routerSocket.bind(endpoint);
+            dealerSocket.connect(endpoint);
+
+            CompletableFuture<List<Message>> future;
+            try (Message request = Message.copyOfUtf8("ping")) {
+                future = dealerSocket.request(request, Duration.ofMillis(50));
+            }
+
+            try (Received received = routerSocket.recv()) {
+                SubmitException submitException = assertThrows(
+                    SubmitException.class,
+                    () -> received.reply(List.of(Message.copyOfUtf8("pong")),
+                        SendFlags.DONT_WAIT));
+                assertEquals(SubmitResult.NOT_SUPPORTED,
+                    submitException.getResult());
+            }
+
+            ExecutionException completion = assertThrows(ExecutionException.class,
+                () -> future.get(1, TimeUnit.SECONDS));
+            assertTrue(completion.getCause() instanceof dev.kairoscode.zlink.RequestException);
+        }
+    }
+
+    @Test
     public void pairSocketDoesNotExposeLegacyStreamOrTopicSurface() {
         assertFalse(hasPublicMethod(PairSocket.class, "attachStream"));
         assertFalse(hasPublicMethod(PairSocket.class, "streamSend"));
@@ -258,6 +410,32 @@ public class SocketContractTest {
     }
 
     @Test
+    public void discoveryAndSpotIdentitySurfaceWorksWithTypedContracts() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             Discovery discovery = new Discovery(ctx, ServiceType.SOCKET, "svc");
+             SpotNode node = new SpotNode(ctx)) {
+            assertDoesNotThrow(() ->
+              discovery.setDealerPeerMode(DiscoveryDealerPeerMode.ROUTER));
+            assertDoesNotThrow(() ->
+              discovery.setDealerPeerMode(DiscoveryDealerPeerMode.DEALER));
+
+            RoutingId nodeRid = RoutingId.fromBytes(
+              "spot-node".getBytes(StandardCharsets.UTF_8));
+            node.setRoutingId(nodeRid);
+            assertArrayEquals(nodeRid.toBytes(), node.routingId().toBytes());
+
+            try (Spot spot = node.createSpot()) {
+                RoutingId spotRid = RoutingId.fromBytes(
+                  "spot-self".getBytes(StandardCharsets.UTF_8));
+                spot.setRoutingId(spotRid);
+                assertArrayEquals(spotRid.toBytes(), spot.routingId().toBytes());
+            }
+        }
+    }
+
+    @Test
     public void rawOptionSurfaceIsHiddenAndTypedOptionsRemain() {
         TestSupport.assumeNative();
 
@@ -283,16 +461,16 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(Spot.class, "monitorOpen", int.class));
             assertFalse(hasPublicMethod(dev.kairoscode.zlink.service.spot.SpotNode.class,
                 "monitorOpen", int.class));
-            assertTrue(hasPublicMethod(MonitorSocket.class, "recv",
-                RECEIVE_FLAG_CLASS));
+            assertFalse(hasPublicMethod(MonitorSocket.class, "recv",
+                RecvFlags.class));
             assertTrue(hasPublicMethod(PairSocket.class, "send", Message.class,
-                SEND_FLAG_CLASS));
+                SendFlags.class));
             assertTrue(hasPublicMethod(PairSocket.class, "recv",
-                RECEIVE_FLAG_CLASS));
+                RecvFlags.class));
             assertTrue(hasPublicMethod(PubSocket.class, "publish", String.class,
-                Message.class, SEND_FLAG_CLASS));
+                Message.class, SendFlags.class));
             assertTrue(hasPublicMethod(SubSocket.class, "subscribe",
-                RECEIVE_FLAG_CLASS));
+                RecvFlags.class));
             assertFalse(hasPublicMethod(Message.class, "dataSegment"));
             assertFalse(hasPublicMethod(Message.class, "dataSegment", int.class));
             assertFalse(hasPublicMethod(Message.class, "copyTo",
@@ -388,19 +566,19 @@ public class SocketContractTest {
 
             ZlinkException connectError = assertThrows(ZlinkException.class,
                 () -> dealer.connect("tcp://127.0.0.1:39001"));
-            assertEquals(ErrorCode.EFSM, connectError.errorCode());
+            assertEquals(ERRNO_EFSM, connectError.getInternalErrno());
 
             ZlinkException disconnectError = assertThrows(ZlinkException.class,
                 () -> dealer.disconnect("tcp://127.0.0.1:39001"));
-            assertEquals(ErrorCode.EFSM, disconnectError.errorCode());
+            assertEquals(ERRNO_EFSM, disconnectError.getInternalErrno());
 
             ZlinkException unbindError = assertThrows(ZlinkException.class,
                 () -> dealer.unbind("tcp://127.0.0.1:39001"));
-            assertEquals(ErrorCode.EFSM, unbindError.errorCode());
+            assertEquals(ERRNO_EFSM, unbindError.getInternalErrno());
 
             ZlinkException closeError = assertThrows(ZlinkException.class,
                 dealer::close);
-            assertEquals(ErrorCode.EFSM, closeError.errorCode());
+            assertEquals(ERRNO_EFSM, closeError.getInternalErrno());
         }
     }
 
@@ -433,12 +611,20 @@ public class SocketContractTest {
         }
     }
 
-    private static Class<?> loadClass(String name) {
+    private static boolean isPublicClass(String className) {
         try {
-            return Class.forName(name);
+            return Modifier.isPublic(Class.forName(className).getModifiers());
         } catch (ClassNotFoundException ex) {
-            throw new IllegalStateException("missing contract class " + name,
-                ex);
+            return false;
         }
     }
+
+    private static ExecutorService daemonExecutor(String name) {
+        return Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, name);
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
 }

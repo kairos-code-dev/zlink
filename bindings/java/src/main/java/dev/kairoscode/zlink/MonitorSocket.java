@@ -7,6 +7,9 @@ import java.lang.foreign.MemorySegment;
 import java.util.Optional;
 
 public final class MonitorSocket implements AutoCloseable {
+    public static final SocketMonitorHandler IGNORE_HANDLER = event -> {
+    };
+
     private MemorySegment handle;
     private final boolean own;
 
@@ -16,29 +19,17 @@ public final class MonitorSocket implements AutoCloseable {
     }
 
     public MonitorEvent recv() {
-        return recv(RecvFlags.NONE);
-    }
-
-    public MonitorEvent recv(RecvFlags flags) {
         ensureOpen();
-        if (flags == RecvFlags.DONT_WAIT) {
-            Optional<MonitorEvent> maybe = tryRecv();
-            if (maybe.isPresent()) {
-                return maybe.get();
-            }
-            throw new RecvException(RecvResult.NO_DATA);
-        }
-        return Native.monitorRecv(handle, flags.value());
+        return Native.monitorRecv(handle, RecvFlags.NONE.value());
     }
 
     Optional<MonitorEvent> tryRecv() {
         ensureOpen();
         try {
             return Optional.of(Native.monitorRecv(handle,
-                ReceiveFlag.DONTWAIT.getValue()));
-        } catch (ZlinkException ex) {
-            int errno = ex.errno();
-            if (errno == Socket.ERRNO_EAGAIN || errno == Socket.ERRNO_EWOULDBLOCK_WIN)
+              RecvFlags.DONT_WAIT.value()));
+        } catch (RecvException ex) {
+            if (ex.getResult() == RecvResult.NO_DATA)
                 return Optional.empty();
             throw ex;
         }

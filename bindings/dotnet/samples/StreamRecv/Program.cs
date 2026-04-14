@@ -19,7 +19,8 @@ byte[] request = "hello-stream"u8.ToArray();
 SampleSupport.SendAll(network, request);
 
 Received received = stream.Recv();
-string routingId = received.RoutingId;
+RoutingId routingId = received.RoutingId
+    ?? throw new InvalidOperationException("missing routing id");
 using (Message payload = received.Parts[0])
 {
     SampleSupport.EnsureEqual("hello-stream", payload.GetString(), "payload");

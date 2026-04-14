@@ -25,10 +25,8 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 	clientMon := perfcommon.OpenMonitor(client)
 	defer clientMon.Close()
 
-	serverID, err := zlink.NewRoutingID([]byte("ROUTER1"))
-	perfcommon.Must(err)
-	clientID, err := zlink.NewRoutingID([]byte("ROUTER2"))
-	perfcommon.Must(err)
+	serverID := zlink.NewRoutingID([]byte("ROUTER1"))
+	clientID := zlink.NewRoutingID([]byte("ROUTER2"))
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
 	perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
@@ -125,16 +123,16 @@ func startRouterRouterEchoServer(server *zlink.RouterSocket) func() {
 				return
 			default:
 			}
-				received, err := server.Recv(zlink.RecvFlagsDontWait)
-				if err != nil {
-					if perfcommon.IsTransient(err) {
-						continue
-					}
-					return
-				}
-				if received == nil {
+			received, err := server.Recv(zlink.RecvFlagsDontWait)
+			if err != nil {
+				if perfcommon.IsTransient(err) {
 					continue
 				}
+				return
+			}
+			if received == nil {
+				continue
+			}
 			err = server.SendTo(received.RoutingID(), zlink.SendFlagsNone,
 				perfcommon.CloneMessages(received.Parts())...)
 			if err != nil && !perfcommon.IsTransient(err) {

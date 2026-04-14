@@ -43,22 +43,21 @@ int main ()
     assert (pub_node.valid ());
     assert (sub_node.valid ());
 
-    zlink::service::spot_t pub_spot (pub_node);
-    zlink::service::spot_t sub_spot (sub_node);
+    zlink::service::spot_t pub_spot = pub_node.create_spot ();
+    zlink::service::spot_t sub_spot = sub_node.create_spot ();
     assert (pub_spot.valid ());
     assert (sub_spot.valid ());
 
-    assert (pub_node.bind ("tcp://127.0.0.1:0") == 0);
+    pub_node.bind ("tcp://127.0.0.1:0");
     const std::string endpoint = pub_node.last_endpoint ();
     assert (!endpoint.empty ());
-    assert (sub_node.connect_peer (endpoint) == 0);
+    sub_node.connect_peer (endpoint);
 
     const std::string topic = detail::k_spot_topic;
     std::promise<callback_result_t> result_promise;
     std::future<callback_result_t> result_future = result_promise.get_future ();
-    assert (sub_spot.on_subscribe (&subscribe_callback, &result_promise)
-            == 0);
-    assert (sub_spot.set_subscription (topic) == 0);
+    sub_spot.on_subscribe (&subscribe_callback, &result_promise);
+    sub_spot.set_subscription (topic);
 
     const std::string sent = detail::k_spot_payload;
     zlink::message_t outbound = detail::make_message (sent);
@@ -70,9 +69,9 @@ int main ()
     std::printf (
       "[spot/callback] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
       topic.c_str (), sent.c_str (), result.topic.c_str (), result.payload.c_str ());
-    assert (sub_spot.close () == 0);
-    assert (pub_spot.close () == 0);
-    assert (sub_node.close () == 0);
-    assert (pub_node.close () == 0);
+    sub_spot.close ();
+    pub_spot.close ();
+    sub_node.close ();
+    pub_node.close ();
     return 0;
 }

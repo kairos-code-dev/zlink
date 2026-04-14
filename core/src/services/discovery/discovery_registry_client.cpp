@@ -221,6 +221,238 @@ static uint16_t resolve_registered_service_role_local (uint16_t service_type_,
              ? service_role_
              : discovery_protocol::fixed_service_role_for_type (service_type_);
 }
+
+static bool topology_state_is_resolvable_local (zlink_topology_state_t state_)
+{
+    return state_ == ZLINK_TOPOLOGY_STATE_READY;
+}
+
+static const uint64_t resolve_spot_cache_ttl_ms = 250;
+
+static int recv_topology_reply_entries_local (
+  socket_base_t *socket_,
+  std::vector<zlink_registry_topology_entry_t> *entries_out_)
+{
+    if (!socket_ || !entries_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    entries_out_->clear ();
+    std::vector<zlink_msg_t> frames;
+    if (!recv_dealer_frames_local (socket_, &frames))
+        return -1;
+
+    uint16_t msg_id = 0;
+    if (frames.size () < 2
+        || !discovery_protocol::read_u16 (frames[0], &msg_id)
+        || msg_id != discovery_protocol::msg_topology_reply) {
+        close_frames_local (&frames);
+        errno = EPROTO;
+        return -1;
+    }
+
+    uint32_t count = 0;
+    if (!discovery_protocol::read_u32 (frames[1], &count)) {
+        close_frames_local (&frames);
+        errno = EPROTO;
+        return -1;
+    }
+
+    if (frames.size () != static_cast<size_t> (count) + 2) {
+        close_frames_local (&frames);
+        errno = EPROTO;
+        return -1;
+    }
+
+    entries_out_->reserve (count);
+    for (uint32_t i = 0; i < count; ++i) {
+        zlink_registry_topology_entry_t entry;
+        memset (&entry, 0, sizeof (entry));
+        if (zlink_msg_size (&frames[i + 2]) != sizeof (entry)) {
+            close_frames_local (&frames);
+            errno = EPROTO;
+            return -1;
+        }
+        memcpy (&entry, zlink_msg_data (&frames[i + 2]), sizeof (entry));
+        entries_out_->push_back (entry);
+    }
+
+    close_frames_local (&frames);
+    return 0;
+}
+}
+
+int discovery_t::resolve_spot (const zlink_routing_id_t *spot_rid_,
+                               zlink_routing_id_t *owner_node_rid_out_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!spot_rid_ || spot_rid_->size == 0 || !owner_node_rid_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (_service_type != discovery_protocol::service_type_spot_node) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    memset (owner_node_rid_out_, 0, sizeof (*owner_node_rid_out_));
+
+    const topology_key_t key = make_spot_topology_key (*spot_rid_);
+
+    const uint64_t now_ms = zlink::clock_t ().now_ms ();
+    {
+        scoped_lock_t lock (_sync);
+        if (try_resolve_spot_from_cache_locked (key, now_ms,
+                                                owner_node_rid_out_)) {
+            return 0;
+        }
+    }
+
+    std::vector<zlink_registry_topology_entry_t> entries;
+    if (query_spot_owner_entries_from_registry (spot_rid_, &entries) != 0)
+        return -1;
+
+    {
+        scoped_lock_t lock (_sync);
+        refresh_spot_owner_cache_locked (key, entries);
+        if (try_resolve_spot_from_cache_locked (key, now_ms,
+                                                owner_node_rid_out_)) {
+            return 0;
+        }
+    }
+
+    errno = ENOENT;
+    return -1;
+}
+
+discovery_t::topology_key_t discovery_t::make_spot_topology_key (
+  const zlink_routing_id_t &spot_rid_) const
+{
+    return make_summary_key (ZLINK_SERVICE_KIND_SPOT_PUB, ZLINK_SERVICE_ROLE_SPOT,
+                             spot_rid_, _service_name);
+}
+
+bool discovery_t::resolve_owner_node_from_endpoint_locked (
+  const char *endpoint_, zlink_routing_id_t *owner_node_rid_out_) const
+{
+    if (!endpoint_ || endpoint_[0] == '\0' || !owner_node_rid_out_)
+        return false;
+
+    std::vector<provider_info_t> providers;
+    _service_state.snapshot_providers (&providers);
+    for (size_t i = 0; i < providers.size (); ++i) {
+        if (providers[i].service_role != discovery_protocol::service_role_spot
+            || providers[i].endpoint != endpoint_
+            || providers[i].routing_id.size == 0) {
+            continue;
+        }
+        *owner_node_rid_out_ = providers[i].routing_id;
+        return true;
+    }
+    return false;
+}
+
+bool discovery_t::try_resolve_spot_from_cache_locked (
+  const topology_key_t &key_,
+  uint64_t now_ms_,
+  zlink_routing_id_t *owner_node_rid_out_) const
+{
+    std::map<topology_key_t, topology_summary_t>::const_iterator it =
+      _summary_store.find (key_);
+    if (it == _summary_store.end ()
+        || !topology_state_is_resolvable_local (it->second.entry.state)
+        || it->second.entry.endpoint[0] == '\0') {
+        return false;
+    }
+
+    const uint64_t current_service_seq = _service_state.service_update_seq ();
+    const bool cache_is_fresh =
+      it->second.validated_service_seq == current_service_seq
+      || (it->second.entry.last_reported_ms > 0
+          && now_ms_ - it->second.entry.last_reported_ms
+               <= resolve_spot_cache_ttl_ms);
+    if (!cache_is_fresh) {
+        // Provider membership changed or the cache aged out, so the owner may
+        // have moved even if the old endpoint still exists.
+        return false;
+    }
+
+    return resolve_owner_node_from_endpoint_locked (it->second.entry.endpoint,
+                                                    owner_node_rid_out_);
+}
+
+int discovery_t::query_spot_owner_entries_from_registry (
+  const zlink_routing_id_t *spot_rid_,
+  std::vector<zlink_registry_topology_entry_t> *entries_out_)
+{
+    if (!spot_rid_ || !entries_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::string uplink;
+    if (!_uplink_runtime->latest_registry_uplink (this, &uplink)) {
+        errno = EAGAIN;
+        return -1;
+    }
+
+    socket_base_t *dealer = NULL;
+    if (prepare_transient_dealer_local (_ctx, _bootstrap_runtime, uplink, NULL,
+                                        &dealer)
+        != 0) {
+        return -1;
+    }
+
+    zlink_registry_topology_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    filter.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
+    filter.service_role = ZLINK_SERVICE_ROLE_SPOT;
+    filter.routing_id = *spot_rid_;
+    strncpy (filter.service_name, _service_name.c_str (),
+             sizeof (filter.service_name) - 1);
+
+    int rc = 0;
+    if (discovery_protocol::send_u16 (static_cast<void *> (dealer),
+                                      discovery_protocol::msg_topology_query,
+                                      ZLINK_SNDMORE)
+          < 0
+        || discovery_protocol::send_frame (static_cast<void *> (dealer), &filter,
+                                           sizeof (filter), 0)
+             < 0
+        || recv_topology_reply_entries_local (dealer, entries_out_) != 0) {
+        rc = -1;
+    }
+
+    const int saved_errno = errno;
+    (void) close_transient_dealer_local (_ctx, dealer);
+    if (rc != 0) {
+        errno = saved_errno;
+        return -1;
+    }
+    return 0;
+}
+
+void discovery_t::refresh_spot_owner_cache_locked (
+  const topology_key_t &key_,
+  const std::vector<zlink_registry_topology_entry_t> &entries_)
+{
+    _summary_store.erase (key_);
+    const uint64_t validated_service_seq = _service_state.service_update_seq ();
+    for (size_t i = 0; i < entries_.size (); ++i) {
+        const zlink_registry_topology_entry_t &entry = entries_[i];
+        if (entry.routing_id.size == 0)
+            continue;
+
+        const topology_key_t entry_key = make_summary_key (
+          entry.service_kind, entry.service_role, entry.routing_id,
+          entry.service_name);
+        store_summary_entry_locked (
+          entry_key, entry, false, entry.state == ZLINK_TOPOLOGY_STATE_STOPPED,
+          validated_service_seq);
+    }
 }
 
 int discovery_t::register_service (uint16_t service_type_,

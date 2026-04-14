@@ -156,8 +156,8 @@ internal static partial class PerfRunner
                 if (IsMonitorReady(evt.Event, acceptFallback))
                     readyCount++;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                            || IsInterrupted(ex.Errno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno))
             {
                 return readyCount;
             }
@@ -180,8 +180,8 @@ internal static partial class PerfRunner
                 _ = SendBlocking(activeClients[i], MultiStopToken.AsSpan(),
                     SendFlags.None);
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                            || IsInterrupted(ex.Errno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno))
             {
             }
             catch (ObjectDisposedException)

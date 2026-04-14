@@ -11,7 +11,7 @@ from ._enums import (
     ConfigResult,
     ConnectResult,
     HandlerResult,
-    MonitorEvent,
+    MonitorEventMask,
     SocketOption,
     SocketType,
     SubmitResult,
@@ -27,7 +27,7 @@ from ._core import (
     Message,
     RecvError,
     Received,
-    Subscribed,
+    TopicMessage,
     SubmitError,
     ZlinkRoutingId,
     _SOCKET_RECV_HANDLER,
@@ -38,6 +38,7 @@ from ._core import (
     _as_bytes_view,
     _clone_native_msg,
     _copy_routing_id,
+    _decode_topic_text,
     _init_msg_from_buffer,
     _is_eagain,
     _recv_native_parts,
@@ -209,6 +210,94 @@ class CommonSocketOptions:
     def immediate(self, value):
         self._socket._set_common_bool_option(SocketOption.IMMEDIATE, value)
 
+    @property
+    def connect_timeout_ms(self):
+        return self._socket._get_common_int_option(SocketOption.CONNECT_TIMEOUT)
+
+    @connect_timeout_ms.setter
+    def connect_timeout_ms(self, value):
+        self._socket._set_common_int_option(SocketOption.CONNECT_TIMEOUT, value)
+
+    @property
+    def ipv6(self):
+        return self._socket._get_common_bool_option(SocketOption.IPV6)
+
+    @ipv6.setter
+    def ipv6(self, value):
+        self._socket._set_common_bool_option(SocketOption.IPV6, value)
+
+    @property
+    def tcp_no_delay(self):
+        return self._socket._get_common_bool_option(SocketOption.TCP_NODELAY)
+
+    @tcp_no_delay.setter
+    def tcp_no_delay(self, value):
+        self._socket._set_common_bool_option(SocketOption.TCP_NODELAY, value)
+
+    @property
+    def tcp_keepalive(self):
+        return self._socket._get_common_int_option(SocketOption.TCP_KEEPALIVE)
+
+    @tcp_keepalive.setter
+    def tcp_keepalive(self, value):
+        self._socket._set_common_int_option(SocketOption.TCP_KEEPALIVE, value)
+
+    @property
+    def heartbeat_interval_ms(self):
+        return self._socket._get_common_int_option(SocketOption.HEARTBEAT_IVL)
+
+    @heartbeat_interval_ms.setter
+    def heartbeat_interval_ms(self, value):
+        self._socket._set_common_int_option(SocketOption.HEARTBEAT_IVL, value)
+
+    @property
+    def heartbeat_ttl_ms(self):
+        return self._socket._get_common_int_option(SocketOption.HEARTBEAT_TTL)
+
+    @heartbeat_ttl_ms.setter
+    def heartbeat_ttl_ms(self, value):
+        self._socket._set_common_int_option(SocketOption.HEARTBEAT_TTL, value)
+
+    @property
+    def heartbeat_timeout_ms(self):
+        return self._socket._get_common_int_option(SocketOption.HEARTBEAT_TIMEOUT)
+
+    @heartbeat_timeout_ms.setter
+    def heartbeat_timeout_ms(self, value):
+        self._socket._set_common_int_option(SocketOption.HEARTBEAT_TIMEOUT, value)
+
+    @property
+    def max_msg_size(self):
+        return self._socket._get_common_int_option(SocketOption.MAXMSGSIZE)
+
+    @max_msg_size.setter
+    def max_msg_size(self, value):
+        self._socket._set_common_int_option(SocketOption.MAXMSGSIZE, value)
+
+    @property
+    def backlog(self):
+        return self._socket._get_common_int_option(SocketOption.BACKLOG)
+
+    @backlog.setter
+    def backlog(self, value):
+        self._socket._set_common_int_option(SocketOption.BACKLOG, value)
+
+    @property
+    def reconnect_interval_ms(self):
+        return self._socket._get_common_int_option(SocketOption.RECONNECT_IVL)
+
+    @reconnect_interval_ms.setter
+    def reconnect_interval_ms(self, value):
+        self._socket._set_common_int_option(SocketOption.RECONNECT_IVL, value)
+
+    @property
+    def reconnect_interval_max_ms(self):
+        return self._socket._get_common_int_option(SocketOption.RECONNECT_IVL_MAX)
+
+    @reconnect_interval_max_ms.setter
+    def reconnect_interval_max_ms(self, value):
+        self._socket._set_common_int_option(SocketOption.RECONNECT_IVL_MAX, value)
+
 
 class DealerSocketOptions:
     def __init__(self, socket):
@@ -354,11 +443,6 @@ class _BaseSocket:
         )
         return obj
 
-    def attach_discovery(self, discovery):
-        rc = lib().zlink_socket_attach_discovery(self._handle, discovery._handle)
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
     def _send_native_parts(self, native_parts, flags):
         _ensure_not_in_callback("blocking send")
         part_count = len(native_parts)
@@ -496,47 +580,7 @@ class _BaseSocket:
     def _get_pub_bool_option(self, option: int):
         return bool(_read_int32(self._get_pub_option(option, 4)))
 
-    def on_send_ready(self, handler):
-        if handler is None:
-            raise ValueError("handler must not be None")
-        if self._send_ready_handler_thread is not None:
-            raise RuntimeError("handler is already attached")
-
-        stop = threading.Event()
-        events = queue.SimpleQueue()
-        self._send_ready_handler = handler
-        self._send_ready_handler_stop = stop
-        self._send_ready_handler_queue = events
-
-        def _callback(_, __):
-            if stop.is_set():
-                return
-            events.put(None)
-
-        callback = _SOCKET_SEND_READY_HANDLER(_callback)
-        rc = lib().zlink_send_ready_handler(self._handle, callback, None)
-        if rc != 0:
-            _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
-        self._send_ready_handler_cb = callback
-        def _dispatch():
-            while True:
-                item = events.get()
-                if item is _CALLBACK_SENTINEL:
-                    return
-                _enter_callback()
-                try:
-                    handler(self)
-                except Exception:
-                    _report_unhandled_callback_exception(handler)
-                finally:
-                    _leave_callback()
-
-        thread = threading.Thread(target=_dispatch, name="zlink-socket-send-ready")
-        thread.daemon = True
-        self._send_ready_handler_thread = thread
-        thread.start()
-
-    def monitor_open(self, events=MonitorEvent.ALL):
+    def monitor_open(self, events=MonitorEventMask.ALL):
         from ._monitor import open_socket_monitor
 
         return open_socket_monitor(self, events)
@@ -617,8 +661,58 @@ class _Socket(_BaseSocket):
         return super().__new__(cls)
 
     @classmethod
-    def register_socket_type(cls, sock_type, socket_cls):
+    def _register_socket_type(cls, sock_type, socket_cls):
         cls._dispatch[_native_socket_type(sock_type)] = socket_cls
+
+
+class _DiscoveryAttachSocket:
+    def attach_discovery(self, discovery):
+        rc = lib().zlink_socket_attach_discovery(self._handle, discovery._handle)
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
+
+class _SendReadySocket:
+    def on_send_ready(self, handler):
+        if handler is None:
+            raise ValueError("handler must not be None")
+        if self._send_ready_handler_thread is not None:
+            raise RuntimeError("handler is already attached")
+
+        stop = threading.Event()
+        events = queue.SimpleQueue()
+        self._send_ready_handler = handler
+        self._send_ready_handler_stop = stop
+        self._send_ready_handler_queue = events
+
+        def _callback(_, __):
+            if stop.is_set():
+                return
+            events.put(None)
+
+        callback = _SOCKET_SEND_READY_HANDLER(_callback)
+        rc = lib().zlink_send_ready_handler(self._handle, callback, None)
+        if rc != 0:
+            _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
+        self._send_ready_handler_cb = callback
+
+        def _dispatch():
+            while True:
+                item = events.get()
+                if item is _CALLBACK_SENTINEL:
+                    return
+                _enter_callback()
+                try:
+                    handler(self)
+                except Exception:
+                    _report_unhandled_callback_exception(handler)
+                finally:
+                    _leave_callback()
+
+        thread = threading.Thread(target=_dispatch, name="zlink-socket-send-ready")
+        thread.daemon = True
+        self._send_ready_handler_thread = thread
+        thread.start()
 
 
 class _BindSocket(_Socket):
@@ -837,9 +931,9 @@ class _SubscriberSocket(_Socket):
             _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
 
         owner = _ReceivedPartsOwner(parts, int(part_count.value))
-        topic = topic_buf.raw[: topic_len.value]
+        topic = _decode_topic_text(topic_buf.raw[: topic_len.value])
         routing = _routing_id_bytes(routing_id)
-        return Subscribed(topic, owner, routing)
+        return TopicMessage(topic, owner, routing)
 
     def subscribe(self, *, flags=0):
         return self._subscribe_once(flags)
@@ -875,10 +969,10 @@ class _SubscriberSocket(_Socket):
                 routing_id = None
                 if routing_id_ptr:
                     routing_id = _routing_id_bytes(routing_id_ptr.contents)
-                topic = b""
+                topic = ""
                 if topic_ptr and topic_len:
-                    topic = ctypes.string_at(topic_ptr, topic_len)
-                received = Subscribed(
+                    topic = _decode_topic_text(ctypes.string_at(topic_ptr, topic_len))
+                received = TopicMessage(
                     topic,
                     _clone_received_owner(parts_ptr, int(part_count)),
                     routing_id,

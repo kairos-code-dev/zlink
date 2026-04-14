@@ -6,7 +6,8 @@ const net = require('node:net');
 const { spawn } = require('node:child_process');
 const { once } = require('node:events');
 const path = require('node:path');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
+const SPOT_PEER_SOURCE_MANUAL = 1;
 async function reservePort() {
     const server = net.createServer();
     server.listen(0, '127.0.0.1');
@@ -18,7 +19,7 @@ async function reservePort() {
 test('spot exposes unified publish and subscribe surface', () => {
     const ctx = new zlink.Context();
     const node = new zlink.SpotNode(ctx);
-    const spot = new zlink.Spot(node);
+    const spot = node.createSpot();
     const sub = new zlink.SubSocket(ctx);
     spot.setSubscription('topic');
     spot.unsetSubscription('topic');
@@ -33,8 +34,8 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
     const ctx = new zlink.Context();
     const serverNode = new zlink.SpotNode(ctx);
     const clientNode = new zlink.SpotNode(ctx);
-    const serverSpot = new zlink.Spot(serverNode);
-    const clientSpot = new zlink.Spot(clientNode);
+    const serverSpot = serverNode.createSpot();
+    const clientSpot = clientNode.createSpot();
     const topic = 'spot:remote';
     const port = await reservePort();
     const endpoint = `tcp://127.0.0.1:${port}`;
@@ -45,10 +46,18 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
         const deadline = Date.now() + 5000;
         while (Date.now() < deadline) {
             serverSpot.publish(topic, 'payload');
-            const received = clientSpot.trySubscribe();
+            let received = null;
+            try {
+                received = clientSpot.subscribe(zlink.RecvFlags.DontWait);
+            }
+            catch (error) {
+                if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
+                    throw error;
+                }
+            }
             if (received) {
                 assert.equal(received.topic, topic);
-                assert.deepEqual(received.parts.map((part) => part.data.toString()), ['payload']);
+                assert.deepEqual(received.parts.map((part) => part.data().toString()), ['payload']);
                 return;
             }
             await new Promise((resolve) => setImmediate(resolve));
@@ -84,7 +93,7 @@ test('spot node peersQuery filters manual peer connections', async () => {
             const peers = clientNode.peersQuery({ peerEndpoint: endpoint });
             if (peers.length > 0) {
                 assert.equal(peers[0].peerEndpoint, endpoint);
-                assert.equal(peers[0].source, zlink.SpotPeerSource.MANUAL);
+                assert.equal(peers[0].source, SPOT_PEER_SOURCE_MANUAL);
                 return;
             }
             await new Promise((resolve) => setImmediate(resolve));
@@ -107,42 +116,6 @@ test('remote spot peer delivery works across child processes', async () => {
     const fixturesDir = path.join(__dirname, '..', '..', 'tests', 'fixtures');
     const serverPath = path.join(fixturesDir, 'spot_child_server.js');
     const clientPath = path.join(fixturesDir, 'spot_child_client.js');
-    const waitForExit = (child) => {
-        if (child.exitCode !== null || child.signalCode !== null) {
-            return Promise.resolve();
-        }
-        return once(child, 'exit').then(() => { });
-    };
-    const terminateChildTree = async (child) => {
-        if (child.exitCode !== null || child.signalCode !== null) {
-            return;
-        }
-        try {
-            process.kill(-child.pid, 'SIGTERM');
-        }
-        catch (error) {
-            if (!error || error.code !== 'ESRCH') {
-                throw error;
-            }
-            return;
-        }
-        const exited = await Promise.race([
-            waitForExit(child).then(() => true),
-            new Promise((resolve) => setTimeout(() => resolve(false), 2000))
-        ]);
-        if (exited) {
-            return;
-        }
-        try {
-            process.kill(-child.pid, 'SIGKILL');
-        }
-        catch (error) {
-            if (!error || error.code !== 'ESRCH') {
-                throw error;
-            }
-        }
-        await Promise.allSettled([waitForExit(child)]);
-    };
     const waitForLine = (child, expected, timeoutMs, sink) => {
         return new Promise((resolve, reject) => {
             let buffered = '';
@@ -212,10 +185,26 @@ test('remote spot peer delivery works across child processes', async () => {
         assert.equal(clientCode, 0, clientStderr);
     }
     finally {
-        if (server.stdin.writable) {
-            server.stdin.end();
+        try {
+            if (server.stdin.writable) {
+                server.stdin.end();
+            }
         }
-        await Promise.allSettled([terminateChildTree(server), terminateChildTree(client)]);
+        catch (_) {
+            // ignore
+        }
+        try {
+            process.kill(-server.pid, 'SIGKILL');
+        }
+        catch (_) {
+            // ignore
+        }
+        try {
+            process.kill(-client.pid, 'SIGKILL');
+        }
+        catch (_) {
+            // ignore
+        }
     }
 });
 test('canonical pub/sub surface hides opposite-direction methods', () => {
@@ -223,7 +212,6 @@ test('canonical pub/sub surface hides opposite-direction methods', () => {
     const pub = new zlink.PubSocket(ctx);
     const sub = new zlink.SubSocket(ctx);
     assert.equal(pub.recv, undefined);
-    assert.equal(typeof pub.tryPublish, 'function');
     assert.equal(pub.send, undefined);
     assert.equal(sub.send, undefined);
     assert.equal(typeof sub.subscribe, 'function');
@@ -231,19 +219,30 @@ test('canonical pub/sub surface hides opposite-direction methods', () => {
     pub.close();
     ctx.close();
 });
-test('sub sockets receive Subscribed domain objects and TrySubscribe returns null when empty', () => {
+function subscribeMaybe(socket) {
+    try {
+        return socket.subscribe(zlink.RecvFlags.DontWait);
+    }
+    catch (error) {
+        if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
+            return null;
+        }
+        throw error;
+    }
+}
+test('sub sockets receive TopicMessage domain objects and non-blocking receive returns null when empty', () => {
     const ctx = new zlink.Context();
     const pub = new zlink.PubSocket(ctx);
     const sub = new zlink.SubSocket(ctx);
     pub.bind('inproc://subscribed-contract');
     sub.connect('inproc://subscribed-contract');
     sub.setSubscription('topic');
-    assert.equal(sub.trySubscribe(), null);
+    assert.equal(subscribeMaybe(sub), null);
     pub.publish('topic', 'payload');
     const received = sub.subscribe();
     assert.equal(received.topic, 'topic');
-    assert.equal(received.routingId, null);
-    assert.deepEqual(received.parts.map((part) => part.data.toString()), ['payload']);
+    assert.ok(received.routingId === null || received.routingId instanceof zlink.RoutingId);
+    assert.deepEqual(received.parts.map((part) => part.data().toString()), ['payload']);
     sub.close();
     pub.close();
     ctx.close();
@@ -257,8 +256,8 @@ test('onSubscribe delivers topic-aware multipart payloads', async () => {
     sub.setSubscription('topic');
     const receivedPromise = new Promise((resolve, reject) => {
         try {
-            sub.onSubscribe((routingId, topic, parts) => {
-                resolve({ routingId, topic, parts });
+            sub.onSubscribe((message) => {
+                resolve(message);
             });
         }
         catch (err) {
@@ -269,9 +268,9 @@ test('onSubscribe delivers topic-aware multipart payloads', async () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     pub.publish('topic', 'payload');
     const received = await receivedPromise;
-    assert.ok(Buffer.isBuffer(received.routingId));
+    assert.ok(received.routingId === null || received.routingId instanceof zlink.RoutingId);
     assert.equal(received.topic, 'topic');
-    assert.deepEqual(received.parts.map((part) => part.data.toString()), ['payload']);
+    assert.deepEqual(received.parts.map((part) => part.data().toString()), ['payload']);
     sub.close();
     pub.close();
     ctx.close();

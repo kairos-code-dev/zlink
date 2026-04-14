@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Zlink.Native;
 
-namespace Zlink.Service;
+namespace Zlink;
 
 public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
 {
@@ -36,9 +36,9 @@ public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
         {
             ZlinkRegistryTopologyFilter nativeFilter = default;
             IntPtr filterPtr = IntPtr.Zero;
-            if (filter.HasValue)
+            if (filter != null)
             {
-                RegistryTopologyFilter value = filter.Value;
+                RegistryTopologyFilter value = filter;
                 if (value.ServiceKind.HasValue || value.ServiceRole.HasValue
                     || !string.IsNullOrEmpty(value.ServiceName)
                     || value.RoutingId.HasValue || value.State.HasValue
@@ -60,9 +60,8 @@ public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
                     if (value.RoutingId.HasValue)
                     {
                         nativeFilter.RoutingId = NativeHelpers.WriteRoutingId(
-                            RoutingIdCodec.FromPublicString(
-                                value.RoutingId.Value.Value,
-                                nameof(RegistryTopologyFilter.RoutingId)));
+                            RoutingIdCodec.FromRoutingId(
+                                value.RoutingId.Value));
                     }
 
                     filterPtr = (IntPtr)(&nativeFilter);

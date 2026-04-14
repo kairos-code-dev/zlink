@@ -28,7 +28,7 @@ public final class PubSubRecvSample {
             }
 
             try (var received = sub.subscribe()) {
-                String value = received.topicId() + "/"
+                String value = received.topic() + "/"
                     + received.singlePartOrThrow().toUtf8String();
                 if (!published.equals(value)) {
                     throw new IllegalStateException("unexpected delivery: " + value);

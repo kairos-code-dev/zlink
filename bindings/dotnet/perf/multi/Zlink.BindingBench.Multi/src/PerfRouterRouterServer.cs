@@ -88,8 +88,8 @@ internal static class PerfRouterRouterServer
                     if (sendResult != SendResult.Sent)
                         return 2;
                 }
-                catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                                || IsInterrupted(ex.Errno))
+                catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                                || IsInterrupted(ex.InternalErrno))
                 {
                     break;
                 }

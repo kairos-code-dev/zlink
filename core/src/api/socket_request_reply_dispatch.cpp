@@ -8,6 +8,7 @@
 
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
+#include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
 #include "sockets/socket_base.hpp"
@@ -21,6 +22,61 @@ thread_local zlink_routing_id_t g_router_recv_source_spot_rid;
 
 namespace
 {
+struct router_mandatory_scope_t
+{
+    router_mandatory_scope_t () :
+        socket (NULL),
+        restore_required (false),
+        original_value (0)
+    {
+    }
+
+    ~router_mandatory_scope_t ()
+    {
+        restore ();
+    }
+
+    int arm (socket_handle_t handle_)
+    {
+        if (!handle_.socket || socket_type (handle_) != ZLINK_CORE_SOCKET_ROUTER)
+            return 0;
+
+        size_t size = sizeof (original_value);
+        if (handle_.socket->getsockopt (ZLINK_INTERNAL_OPT_ROUTER_MANDATORY,
+                                        &original_value, &size)
+            != 0)
+            return -1;
+
+        if (original_value != 0)
+            return 0;
+
+        const int mandatory = 1;
+        if (handle_.socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTER_MANDATORY,
+                                        &mandatory, sizeof (mandatory))
+            != 0)
+            return -1;
+
+        socket = handle_.socket;
+        restore_required = true;
+        return 0;
+    }
+
+    void restore ()
+    {
+        if (!restore_required || !socket)
+            return;
+
+        (void) socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTER_MANDATORY,
+                                   &original_value, sizeof (original_value));
+        restore_required = false;
+        socket = NULL;
+    }
+
+    zlink::socket_base_t *socket;
+    bool restore_required;
+    int original_value;
+};
+
 int recv_internal_queue_frame (zlink::socket_base_t *socket_,
                                zlink_msg_t *msg_,
                                int flags_,
@@ -66,6 +122,20 @@ int recv_internal_queue_frame (zlink::socket_base_t *socket_,
             return -1;
         }
     }
+
+    return 0;
+}
+
+int recv_router_followup_frame (zlink::socket_base_t *socket_,
+                                zlink_msg_t *msg_)
+{
+    if (!socket_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (socket_->recv (reinterpret_cast<zlink::msg_t *> (msg_), 0) != 0)
+        return -1;
 
     return 0;
 }
@@ -502,7 +572,7 @@ int recv_router_message_direct (socket_handle_t handle_,
 
         zlink_msg_t next;
         zlink_msg_init (&next);
-        if (zlink::recv_followup_msg_socket (handle_.socket, &next) != 0) {
+        if (recv_router_followup_frame (handle_.socket, &next) != 0) {
             zlink_msg_close (&next);
             close_router_raw_parts (&raw_parts);
             return -1;
@@ -565,6 +635,12 @@ int send_request_reply_message (void *socket_handle_,
         return -1;
     }
 
+    const socket_handle_t handle = as_socket_handle (socket_handle_);
+    if (!handle.socket) {
+        errno = EFAULT;
+        return -1;
+    }
+
     const bool routed = has_valid_routing_id (peer_rid_);
     const size_t total_part_count =
       zlink::request_reply::control_part_count + part_count_;
@@ -608,10 +684,26 @@ int send_request_reply_message (void *socket_handle_,
         }
     }
 
-    const int rc =
-      routed ? zlink_send_rid (socket_handle_, peer_rid_, &combined[0],
-                               total_part_count, flags_)
-             : zlink_send (socket_handle_, &combined[0], total_part_count, flags_);
+    router_mandatory_scope_t mandatory_scope;
+    if (routed && mandatory_scope.arm (handle) != 0) {
+        const int saved_errno = errno;
+        zlink::request_reply::close_built_parts (&combined);
+        errno = saved_errno;
+        return -1;
+    }
+
+    const zlink_send_flags_t effective_flags =
+      (routed && socket_type (handle) == ZLINK_CORE_SOCKET_ROUTER)
+        ? static_cast<zlink_send_flags_t> (flags_ | ZLINK_DONTWAIT)
+        : flags_;
+
+    const int rc = routed
+                     ? zlink::logical_multipart_send_routed (
+                         handle.socket, peer_rid_, &combined[0],
+                         total_part_count, effective_flags)
+                     : zlink::logical_multipart_send (
+                         handle.socket, &combined[0], total_part_count,
+                         effective_flags);
     if (rc != 0)
         return -1;
 
@@ -664,19 +756,40 @@ void cleanup_request_reply_socket (socket_handle_t handle_)
     if (!handle_.socket)
         return;
 
-    bool stop_dispatch = false;
+    zlink::socket_base_t *queue_rx = NULL;
+    zlink::socket_base_t *queue_tx = NULL;
+    std::vector<std::shared_ptr<zlink::request_timeout::task_t> > timeout_tasks;
     std::shared_ptr<socket_request_reply_state_t> state =
       std::static_pointer_cast<socket_request_reply_state_t> (
         handle_.socket->request_reply_state ());
+    if (state && state->internal_dispatch_installed
+        && handle_.socket->socket_msg_dispatch_active ()) {
+        (void) handle_.socket->socket_msg_dispatch_stop ();
+    }
     if (state) {
         std::lock_guard<std::mutex> state_lock (state->mutex);
-        stop_dispatch = state->internal_dispatch_installed;
+        state->internal_dispatch_installed = false;
+        queue_rx = state->recv_queue.rx;
+        queue_tx = state->recv_queue.tx;
+        for (std::map<pending_key_t, pending_request_t>::iterator it =
+               state->pending_requests.begin ();
+             it != state->pending_requests.end (); ++it) {
+            timeout_tasks.push_back (it->second.timeout_task);
+        }
+        state->pending_requests.clear ();
+        state->pending_sequences.clear ();
+        state->router_handler = NULL;
+        state->router_handler_userdata = NULL;
         zlink::internal_pair_queue::close (&state->recv_queue);
     }
+    for (size_t i = 0; i < timeout_tasks.size (); ++i)
+        zlink::request_timeout::cancel (timeout_tasks[i]);
+    zlink::ctx_t *ctx = handle_.socket->get_ctx ();
+    if (ctx && queue_tx)
+        (void) ctx->wait_for_socket_removal (queue_tx, 1000);
+    if (ctx && queue_rx)
+        (void) ctx->wait_for_socket_removal (queue_rx, 1000);
     handle_.socket->clear_request_reply_state ();
-
-    if (stop_dispatch && handle_.socket->socket_msg_dispatch_active ())
-        (void) handle_.socket->socket_msg_dispatch_stop ();
 }
 }
 }

@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink.service.spot;
 
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.RequestResult;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.RecvException;
@@ -14,6 +15,8 @@ import dev.kairoscode.zlink.SendReadyHandler;
 import dev.kairoscode.zlink.SubscribeHandler;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.ZlinkException;
+import dev.kairoscode.zlink.SpotDispatchEventHandler;
+import dev.kairoscode.zlink.SpotRoutedHandler;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.NativeHelpers;
@@ -28,13 +31,16 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.function.BiConsumer;
 
 /**
  * Unified spot service handle aligned to the current core publish/subscribe
@@ -83,25 +89,62 @@ public final class Spot implements AutoCloseable {
     private MemorySegment sendReadyCallbackStub = MemorySegment.NULL;
     private volatile ExecutorService callbackExecutor;
     private volatile RuntimeException callbackFailure;
+    private final SpotRoutedSupport routedSupport;
+    private final SpotNode ownerNode;
 
     /** Creates a unified spot facade bound to the supplied node. */
-    public Spot(SpotNode node) {
+    Spot(SpotNode node) {
         Objects.requireNonNull(node, "node");
+        this.ownerNode = node;
         this.handle = Native.spotNew(node.handle());
         if (handle == null || handle.address() == 0)
             throw ZlinkException.fromLastError("zlink_spot_new");
+        this.routedSupport = new SpotRoutedSupport(this);
     }
 
     Spot(MemorySegment handle) {
         Objects.requireNonNull(handle, "handle");
         if (handle.address() == 0)
             throw new IllegalArgumentException("spot handle must not be null");
+        this.ownerNode = null;
         this.handle = handle;
+        this.routedSupport = new SpotRoutedSupport(this);
     }
 
     /** Returns the native spot handle. */
     MemorySegment handle() {
         return handle;
+    }
+
+    /** Sets the logical routing id for this spot. */
+    public void setRoutingId(RoutingId rid) {
+        Objects.requireNonNull(rid, "rid");
+        ensureOpen();
+        byte[] value = rid.toBytes();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeValue = arena.allocate(value.length);
+            if (value.length > 0) {
+                MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeValue,
+                  0, value.length);
+            }
+            int rc = Native.setRoutingId(handle, nativeValue, value.length);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError("zlink_set_routing_id");
+            }
+        }
+    }
+
+    /** Returns the current logical routing id for this spot. */
+    public RoutingId routingId() {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment outRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+            int rc = Native.getRoutingId(handle, outRid);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError("zlink_get_routing_id");
+            }
+            return readRoutingId(outRid);
+        }
     }
 
     /** Publishes one payload part on the topic. */
@@ -347,8 +390,238 @@ public final class Spot implements AutoCloseable {
         return receiveTopicMessage(true);
     }
 
+    public void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                           Message part) {
+        sendToSpot(destNodeRid, destSpotRid, List.of(part), SendFlags.NONE);
+    }
+
+    public void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                           Message part, SendFlags flags) {
+        sendToSpot(destNodeRid, destSpotRid, List.of(part), flags);
+    }
+
+    public void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                           List<Message> parts) {
+        sendToSpot(destNodeRid, destSpotRid, parts, SendFlags.NONE);
+    }
+
+    public void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                           List<Message> parts, SendFlags flags) {
+        routedSupport.sendToSpot(destNodeRid, destSpotRid, parts, flags);
+    }
+
+    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                          RoutingId destSpotRid,
+                                                          Message part) {
+        return requestToSpot(destNodeRid, destSpotRid, List.of(part));
+    }
+
+    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                          RoutingId destSpotRid,
+                                                          Message part,
+                                                          Duration timeout) {
+        return requestToSpot(destNodeRid, destSpotRid, List.of(part), timeout);
+    }
+
+    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                          RoutingId destSpotRid,
+                                                          List<Message> parts) {
+        return requestToSpot(destNodeRid, destSpotRid, parts,
+          Duration.ofMillis(5_000L));
+    }
+
+    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                          RoutingId destSpotRid,
+                                                          List<Message> parts,
+                                                          Duration timeout) {
+        return routedSupport.requestToSpot(destNodeRid, destSpotRid, parts,
+          timeout);
+    }
+
+    public void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                              Message part,
+                              BiConsumer<RequestResult, List<Message>> callback) {
+        requestToSpot(destNodeRid, destSpotRid, List.of(part), callback);
+    }
+
+    public void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                              Message part,
+                              BiConsumer<RequestResult, List<Message>> callback,
+                              SendFlags flags) {
+        requestToSpot(destNodeRid, destSpotRid, List.of(part), callback, flags);
+    }
+
+    public void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                              Message part,
+                              BiConsumer<RequestResult, List<Message>> callback,
+                              SendFlags flags, Duration timeout) {
+        requestToSpot(destNodeRid, destSpotRid, List.of(part), callback, flags,
+          timeout);
+    }
+
+    public void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                              List<Message> parts,
+                              BiConsumer<RequestResult, List<Message>> callback) {
+        requestToSpot(destNodeRid, destSpotRid, parts, callback, SendFlags.NONE,
+          Duration.ofMillis(5_000L));
+    }
+
+    public void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                              List<Message> parts,
+                              BiConsumer<RequestResult, List<Message>> callback,
+                              SendFlags flags) {
+        requestToSpot(destNodeRid, destSpotRid, parts, callback, flags,
+          Duration.ofMillis(5_000L));
+    }
+
+    public void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                              List<Message> parts,
+                              BiConsumer<RequestResult, List<Message>> callback,
+                              SendFlags flags, Duration timeout) {
+        routedSupport.requestToSpot(destNodeRid, destSpotRid, parts, callback,
+          flags, timeout);
+    }
+
+    public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                            long requestSeq, Message message) {
+        replyToSpot(destNodeRid, destSpotRid, requestSeq, List.of(message),
+          SendFlags.NONE);
+    }
+
+    public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                            long requestSeq, Message message, SendFlags flags) {
+        replyToSpot(destNodeRid, destSpotRid, requestSeq, List.of(message),
+          flags);
+    }
+
+    public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                            long requestSeq, List<Message> parts) {
+        replyToSpot(destNodeRid, destSpotRid, requestSeq, parts, SendFlags.NONE);
+    }
+
+    public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                            long requestSeq, List<Message> parts,
+                            SendFlags flags) {
+        routedSupport.replyToSpot(destNodeRid, destSpotRid, requestSeq, parts,
+          flags);
+    }
+
+    public void sendToRouter(RoutingId peerRid, Message part) {
+        sendToRouter(peerRid, List.of(part), SendFlags.NONE);
+    }
+
+    public void sendToRouter(RoutingId peerRid, Message part, SendFlags flags) {
+        sendToRouter(peerRid, List.of(part), flags);
+    }
+
+    public void sendToRouter(RoutingId peerRid, List<Message> parts) {
+        sendToRouter(peerRid, parts, SendFlags.NONE);
+    }
+
+    public void sendToRouter(RoutingId peerRid, List<Message> parts,
+                             SendFlags flags) {
+        routedSupport.sendToRouter(peerRid, parts, flags);
+    }
+
+    public CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
+                                                            Message part) {
+        return requestToRouter(peerRid, List.of(part));
+    }
+
+    public CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
+                                                            Message part,
+                                                            Duration timeout) {
+        return requestToRouter(peerRid, List.of(part), timeout);
+    }
+
+    public CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
+                                                            List<Message> parts) {
+        return requestToRouter(peerRid, parts, Duration.ofMillis(5_000L));
+    }
+
+    public CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
+                                                            List<Message> parts,
+                                                            Duration timeout) {
+        return routedSupport.requestToRouter(peerRid, parts, timeout);
+    }
+
+    public void requestToRouter(RoutingId peerRid, Message part,
+                                BiConsumer<RequestResult, List<Message>> callback) {
+        requestToRouter(peerRid, List.of(part), callback);
+    }
+
+    public void requestToRouter(RoutingId peerRid, Message part,
+                                BiConsumer<RequestResult, List<Message>> callback,
+                                SendFlags flags) {
+        requestToRouter(peerRid, List.of(part), callback, flags);
+    }
+
+    public void requestToRouter(RoutingId peerRid, Message part,
+                                BiConsumer<RequestResult, List<Message>> callback,
+                                SendFlags flags, Duration timeout) {
+        requestToRouter(peerRid, List.of(part), callback, flags, timeout);
+    }
+
+    public void requestToRouter(RoutingId peerRid, List<Message> parts,
+                                BiConsumer<RequestResult, List<Message>> callback) {
+        requestToRouter(peerRid, parts, callback, SendFlags.NONE,
+          Duration.ofMillis(5_000L));
+    }
+
+    public void requestToRouter(RoutingId peerRid, List<Message> parts,
+                                BiConsumer<RequestResult, List<Message>> callback,
+                                SendFlags flags) {
+        requestToRouter(peerRid, parts, callback, flags, Duration.ofMillis(5_000L));
+    }
+
+    public void requestToRouter(RoutingId peerRid, List<Message> parts,
+                                BiConsumer<RequestResult, List<Message>> callback,
+                                SendFlags flags, Duration timeout) {
+        routedSupport.requestToRouter(peerRid, parts, callback, flags, timeout);
+    }
+
+    public void replyToRouter(RoutingId peerRid, long requestSeq, Message message) {
+        replyToRouter(peerRid, requestSeq, List.of(message), SendFlags.NONE);
+    }
+
+    public void replyToRouter(RoutingId peerRid, long requestSeq, Message message,
+                              SendFlags flags) {
+        replyToRouter(peerRid, requestSeq, List.of(message), flags);
+    }
+
+    public void replyToRouter(RoutingId peerRid, long requestSeq,
+                              List<Message> parts) {
+        replyToRouter(peerRid, requestSeq, parts, SendFlags.NONE);
+    }
+
+    public void replyToRouter(RoutingId peerRid, long requestSeq,
+                              List<Message> parts, SendFlags flags) {
+        routedSupport.replyToRouter(peerRid, requestSeq, parts, flags);
+    }
+
+    public Received recvRouted() {
+        return routedSupport.recvRouted(RecvFlags.NONE);
+    }
+
+    public Received recvRouted(RecvFlags flags) {
+        return routedSupport.recvRouted(flags);
+    }
+
+    public void onRoutedReceive(SpotRoutedHandler handler) {
+        routedSupport.onRoutedReceive(handler);
+    }
+
+    public void onDispatchEvent(SpotDispatchEventHandler handler) {
+        routedSupport.onDispatchEvent(handler);
+    }
+
     @Override
     public void close() {
+        MemorySegment currentHandle = handle;
+        if (currentHandle == null || currentHandle.address() == 0) {
+            return;
+        }
+        routedSupport.close();
         ExecutorService executor = callbackExecutor;
         Arena subscribeArena = subscribeCallbackArena;
         Arena readyArena = sendReadyCallbackArena;
@@ -362,9 +635,10 @@ public final class Spot implements AutoCloseable {
         MemorySegment readyStub = sendReadyCallbackStub;
         subscribeCallbackStub = MemorySegment.NULL;
         sendReadyCallbackStub = MemorySegment.NULL;
-        if (handle != null && handle.address() != 0) {
-            Native.spotDestroy(handle);
-            handle = MemorySegment.NULL;
+        handle = MemorySegment.NULL;
+        Native.spotDestroy(currentHandle);
+        if (ownerNode != null) {
+            ownerNode.releaseSpot(this);
         }
         shutdownExecutor(executor);
         closeArena(subscribeArena);
@@ -523,7 +797,8 @@ public final class Spot implements AutoCloseable {
         Message[] frames = new Message[snapshot.parts().length];
         for (int i = 0; i < snapshot.parts().length; i++)
             frames[i] = Message.copyOf(snapshot.parts()[i]);
-        return new Received(snapshot.routingId(), frames);
+        return InternalAccess.received(snapshot.routingId(), null, frames, 0L,
+          false, null);
     }
 
     private static RoutingId readRoutingId(MemorySegment sourceRid) {
@@ -538,7 +813,7 @@ public final class Spot implements AutoCloseable {
         byte[] value = new byte[size];
         MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
           MemorySegment.ofArray(value), 0, size);
-        return RoutingId.copyOf(value);
+        return InternalAccess.routingIdFromTrusted(value);
     }
 
     private static String decodeTopic(MemorySegment topic, long topicLen) {

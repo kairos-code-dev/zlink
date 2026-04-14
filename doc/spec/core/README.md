@@ -20,9 +20,10 @@ is defined in `core/include/zlink.h`.
 | [socket/](socket/README.md) | Socket specifications (common + per-type) |
 | [monitoring.md](monitoring.md) | Socket monitors, service monitors, and peer inspection |
 | [events.md](events.md) | Canonical event catalog and readiness semantics |
-| [registry.md](registry.md) | Service registry creation, configuration, and clustering |
-| [discovery.md](discovery.md) | Service discovery, subscription, and peer lookup |
-| [spot.md](spot.md) | SPOT topic-based PUB/SUB and routed messaging |
+| [service/README.md](service/README.md) | Shared service-layer concepts and document split |
+| [service/registry.md](service/registry.md) | Service registry creation, configuration, and clustering |
+| [service/discovery.md](service/discovery.md) | Service discovery, subscription, and peer lookup |
+| [service/spot.md](service/spot.md) | SPOT topic-based PUB/SUB and routed messaging |
 | [polling.md](polling.md) | Proxy helpers and capability query |
 | [utilities.md](utilities.md) | Timers, threads, stopwatch, and atomics |
 
@@ -46,8 +47,8 @@ is defined in `core/include/zlink.h`.
 | [`zlink_subscribe_handler_fn`](socket/README.md) | socket/ | Topic-based message dispatch callback |
 | [`zlink_reply_handler_fn`](socket/README.md) | socket/ | Asynchronous request-reply completion callback |
 | [`zlink_router_handler_fn`](socket/README.md) | socket/ | ROUTER routed message dispatch callback |
-| [`zlink_spot_handler_fn`](spot.md) | spot.md | SPOT routed message dispatch callback |
-| [`zlink_spot_dispatch_event_handler_fn`](spot.md) | spot.md | SPOT dispatch event callback |
+| [`zlink_spot_handler_fn`](service/spot.md) | service/spot.md | SPOT routed message dispatch callback |
+| [`zlink_spot_dispatch_event_handler_fn`](service/spot.md) | service/spot.md | SPOT dispatch event callback |
 | [`zlink_monitor_handler_fn`](monitoring.md) | monitoring.md | Socket monitor event callback |
 | [`zlink_service_monitor_handler_fn`](monitoring.md) | monitoring.md | Service monitor event callback |
 | [`zlink_send_ready_handler_fn`](socket/README.md) | socket/ | Send-ready transition callback |

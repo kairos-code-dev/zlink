@@ -24,7 +24,7 @@ inline zlink_connect_result_t from_errno (int err_)
         case EFAULT:
             return ZLINK_CONNECT_INVALID_HANDLE;
         default:
-            return ZLINK_CONNECT_INVALID_HANDLE;
+            return ZLINK_CONNECT_INTERNAL_ERROR;
     }
 }
 

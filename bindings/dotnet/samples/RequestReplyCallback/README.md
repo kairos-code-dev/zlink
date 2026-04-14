@@ -1,1 +1,2 @@
-`RequestReplyCallback` shows request/reply with callback completion and `RequestRouter`.
+`RequestReplyCallback` shows dealer/router request-reply using
+`DealerSocket.Request(...)` callback completion and `RouterSocket.OnReceive(...)`.

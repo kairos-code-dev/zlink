@@ -1,7 +1,8 @@
 use std::ffi::c_void;
 
-use crate::error::{ZlinkError, check_rc};
+use crate::error::{SubmitError, check_submit_rc};
 use crate::ffi;
+use crate::flags::SendFlags;
 use crate::message::{IntoMultipart, RoutingId};
 
 use super::prepare_send_parts;
@@ -28,7 +29,9 @@ use super::prepare_send_parts;
 ///
 /// router.on_receive(move |received| {
 ///     let reply = Message::from_bytes(b"pong").unwrap();
-///     handle.send_to(received.routing_id(), reply).unwrap();
+///     handle
+///         .send_to(received.routing_id().expect("missing routing id"), reply)
+///         .unwrap();
 /// }).unwrap();
 /// ```
 #[derive(Clone)]
@@ -47,28 +50,53 @@ impl SendHandle {
     }
 
     /// Send a non-routed message (PAIR, DEALER, etc.).
-    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
+    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError> {
+        self.send_with_flags(parts, SendFlags::NONE)
+    }
+
+    pub fn send_with_flags(
+        &self,
+        parts: impl IntoMultipart,
+        flags: SendFlags,
+    ) -> Result<(), SubmitError> {
         let mut parts = parts.into_parts();
-        let mut native = prepare_send_parts(&mut parts)?;
-        let rc = unsafe { ffi::zlink_send(self.handle, native.as_mut_ptr(), native.len(), 0) };
+        let mut native =
+            prepare_send_parts(&mut parts).map_err(|_| crate::error::submit_state_error())?;
+        let rc = unsafe {
+            ffi::zlink_send(self.handle, native.as_mut_ptr(), native.len(), flags.bits())
+        };
         drop(parts);
-        check_rc(rc)
+        check_submit_rc(rc)
     }
 
     /// Send a routed message to a specific peer (ROUTER).
-    pub fn send_to(&self, target: &RoutingId, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
+    pub fn send_to(
+        &self,
+        target: &RoutingId,
+        parts: impl IntoMultipart,
+    ) -> Result<(), SubmitError> {
+        self.send_to_with_flags(target, parts, SendFlags::NONE)
+    }
+
+    pub fn send_to_with_flags(
+        &self,
+        target: &RoutingId,
+        parts: impl IntoMultipart,
+        flags: SendFlags,
+    ) -> Result<(), SubmitError> {
         let mut parts = parts.into_parts();
-        let mut native = prepare_send_parts(&mut parts)?;
+        let mut native =
+            prepare_send_parts(&mut parts).map_err(|_| crate::error::submit_state_error())?;
         let rc = unsafe {
             ffi::zlink_send_rid(
                 self.handle,
                 target.as_raw(),
                 native.as_mut_ptr(),
                 native.len(),
-                0,
+                flags.bits(),
             )
         };
         drop(parts);
-        check_rc(rc)
+        check_submit_rc(rc)
     }
 }

@@ -25,9 +25,6 @@ public abstract class ZlinkException : Exception
 
     public int InternalErrno { get; }
 
-    [Obsolete("Use InternalErrno.")]
-    public int Errno => InternalErrno;
-
     public override string Message => base.Message;
 
     internal static ZlinkException FromLastError()

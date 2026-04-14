@@ -95,7 +95,7 @@ public class SocketSubscriptionContractTest {
             }
 
             try (TopicMessage received = sub.subscribe()) {
-                assertEquals("topic-b", received.topicId());
+                assertEquals("topic-b", received.topic());
                 assertArrayEquals("payload-b".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
             }
@@ -117,7 +117,7 @@ public class SocketSubscriptionContractTest {
 
             SubscriptionEvent event = pub.receiveSubscriptionEvent();
             assertTrue(event.subscribed());
-            assertEquals("manual-topic", event.filter());
+            assertEquals("manual-topic", event.topic());
         }
     }
 }

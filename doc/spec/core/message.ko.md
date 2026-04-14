@@ -344,7 +344,7 @@ void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 대신 다음 문서를 기준으로 봅니다.
 
 - socket request-reply 공개 표면: [socket/README.ko.md](socket/README.ko.md)
-- SPOT routed request-reply 공개 표면: [spot.ko.md](spot.ko.md)
+- SPOT routed request-reply 공개 표면: [service/spot.ko.md](service/spot.ko.md)
 - wire 형식과 control part 구조: `doc/internals/protocol-zmp.ko.md`
 
 즉 `zlink_msg_t` 는 지금도 payload part 컨테이너로 그대로 사용하지만,

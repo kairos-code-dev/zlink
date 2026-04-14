@@ -22,6 +22,7 @@ async function main() {
   const ctx = new zlink.Context();
   const router = new zlink.RouterSocket(ctx);
   const dealer = new zlink.DealerSocket(ctx);
+  const dealerRoutingId = zlink.RoutingId.fromBytes(Buffer.from('dealer-router-sample'));
 
   try {
     const routerMonitor = router.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
@@ -35,22 +36,23 @@ async function main() {
       routerMonitor.close();
       dealerMonitor.close();
     }
+    dealer.setRoutingId(dealerRoutingId);
 
     const replyPromise = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('dealer-router callback sample timed out'));
       }, 5000);
 
-      router.onReceive((routingId, parts) => {
-        const payload = parts[0].data.toString();
-        assert.ok(Buffer.isBuffer(routingId));
+      router.onReceive((message) => {
+        const payload = message.parts[0].data().toString();
+        assert.ok(message.routingId instanceof zlink.RoutingId);
         assert.equal(payload, 'ping');
-        router.send(routingId, Buffer.from('pong'));
+        router.send(message.routingId, Buffer.from('pong'));
       });
 
-      dealer.onReceive((routingId, parts) => {
+      dealer.onReceive((message) => {
         clearTimeout(timeout);
-        resolve({ routingId, parts });
+        resolve(message);
       });
     });
 
@@ -58,7 +60,7 @@ async function main() {
     dealer.send(Buffer.from(sent));
 
     const response = await replyPromise;
-    const recv = response.parts[0].data.toString();
+    const recv = response.parts[0].data().toString();
     assert.equal(recv, 'pong');
     console.log(`[dealer-router/callback] send: "${sent}" \u2192 recv: "${recv}"`);
   } finally {

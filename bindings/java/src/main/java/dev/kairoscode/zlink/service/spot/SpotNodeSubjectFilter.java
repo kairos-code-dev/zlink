@@ -2,7 +2,7 @@
 
 package dev.kairoscode.zlink.service.spot;
 
-import dev.kairoscode.zlink.ServiceEventSubjectKind;
+import dev.kairoscode.zlink.service.registry.ServiceEventSubjectKind;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import java.lang.foreign.Arena;

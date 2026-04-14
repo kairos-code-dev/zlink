@@ -27,12 +27,26 @@ int parse_non_negative_int_env (const char *name_, int default_value_)
     return static_cast<int> (value);
 }
 
+int parse_positive_int_env (const char *name_, int default_value_)
+{
+    const char *env = std::getenv (name_);
+    if (!env || !*env)
+        return default_value_;
+
+    char *end = NULL;
+    const long value = std::strtol (env, &end, 10);
+    if (!end || end == env || value <= 0 || value > INT_MAX)
+        return default_value_;
+    return static_cast<int> (value);
+}
+
 // STREAM echo and proxy traffic is often dominated by small payloads. A large
 // mandatory batch floor improves large-frame throughput, but it also adds copy
 // and queuing cost on 64B-class traffic. Keep the initial batch modest and let
 // the ASIO stream encoder grow dynamically when the socket sustains larger
 // bursts.
-const int stream_batch_size_min = 12288;
+const int stream_batch_size_min =
+  parse_positive_int_env ("ZLINK_ASIO_STREAM_BATCH_SIZE", 4096);
 
 // Keep a small read headroom so framed application protocols are less likely
 // to split at the exact payload boundary.
@@ -711,6 +725,16 @@ int zlink::stream_t::stream_dispatch_send_current_msg_from_io (msg_t *msg_,
         const int init_rc = msg_->init ();
         errno_assert (init_rc == 0);
         return 1;
+    }
+
+    if (dispatch_pipe) {
+        direct_out->refresh_write_credit (dispatch_pipe->get_msgs_read ());
+        if (direct_out->write_single_message_and_flush_no_recursive_hwm_check (
+              msg_)) {
+            const int init_rc = msg_->init ();
+            errno_assert (init_rc == 0);
+            return 1;
+        }
     }
 
     LIBZLINK_UNUSED (flags_);

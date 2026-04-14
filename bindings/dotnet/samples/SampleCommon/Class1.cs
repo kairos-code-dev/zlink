@@ -5,7 +5,6 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using Zlink;
-using Zlink.Service;
 
 namespace SampleCommon;
 
@@ -15,7 +14,7 @@ public static class SampleSupport
     {
         try
         {
-            _ = ZlinkVersion.Get();
+            _ = global::Zlink.Zlink.Version();
             return true;
         }
         catch (DllNotFoundException)
@@ -54,7 +53,7 @@ public static class SampleSupport
             WaitMonitorEvent(monitor, 5000, SocketEvent.ConnectionReady);
     }
 
-    public static SocketMonitorEvent WaitMonitorEvent(SocketMonitor monitor,
+    public static MonitorEvent WaitMonitorEvent(SocketMonitor monitor,
         int timeoutMs, params SocketEvent[] expectedEvents)
     {
         if (expectedEvents == null || expectedEvents.Length == 0)
@@ -64,10 +63,10 @@ public static class SampleSupport
         }
 
         _ = timeoutMs;
-        SocketMonitorEvent evt = monitor.Recv();
+        MonitorEvent evt = monitor.Recv();
         for (int i = 0; i < expectedEvents.Length; i++)
         {
-            if (evt.Event == expectedEvents[i])
+            if ((SocketEvent)evt.Event == expectedEvents[i])
                 return evt;
         }
 
@@ -112,7 +111,7 @@ public static class SampleSupport
         int timeoutMs)
     {
         _ = timeoutMs;
-        Subscribed subscribed = socket.Subscribe();
+        TopicMessage subscribed = socket.Subscribe();
         topic = subscribed.Topic;
         if (subscribed.Parts.Count == 0)
             throw new InvalidOperationException(

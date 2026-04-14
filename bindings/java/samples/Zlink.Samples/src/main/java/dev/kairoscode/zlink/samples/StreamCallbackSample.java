@@ -25,7 +25,7 @@ public final class StreamCallbackSample {
 
                 server.onReceive(received -> {
                     String value = SampleSupport.singleUtf8(received);
-                    RoutingId rid = received.routingId();
+                    RoutingId rid = received.routingId().orElse(null);
                     if (!SampleSupport.STREAM_PAYLOAD.equals(value) || rid == null) {
                         throw new IllegalStateException("unexpected stream delivery");
                     }

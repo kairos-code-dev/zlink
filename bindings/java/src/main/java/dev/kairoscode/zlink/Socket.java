@@ -6,9 +6,9 @@ import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
-import dev.kairoscode.zlink.options.SocketOptionKey;
-import dev.kairoscode.zlink.options.SocketOptions;
-import dev.kairoscode.zlink.options.SocketOptionValueType;
+import dev.kairoscode.zlink.SocketOptionKey;
+import dev.kairoscode.zlink.SocketOptions;
+import dev.kairoscode.zlink.SocketOptionValueType;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import io.netty.buffer.ByteBuf;
 import java.lang.foreign.Arena;
@@ -1030,6 +1030,8 @@ public abstract class Socket implements AutoCloseable {
             int rc = Native.sendMultipart(handle, nativeMsg, 1, effectiveFlags);
             if (rc < 0)
                 throw ZlinkException.fromLastError("zlink_send");
+            if (rc != SendResult.SENT.nativeValue())
+                throw submitExceptionFromSendResult(rc);
             return null;
         });
     }
@@ -1042,7 +1044,7 @@ public abstract class Socket implements AutoCloseable {
               (nativeMsg, nativeRoutingId) -> Native.sendMultipart(handle,
                 nativeMsg, 1, flag.getValue()));
             if (rc >= 0) {
-                return true;
+                return rc == SendResult.SENT.nativeValue();
             }
 
             int errno = Native.errno();
@@ -1084,11 +1086,10 @@ public abstract class Socket implements AutoCloseable {
                         SendFlag.DONTWAIT.getValue())
                     : Native.sendMultipart(handle, nativeRoutingId, nativeMsg, 1,
                         SendFlag.DONTWAIT.getValue());
-                if (rc == 0) {
+                if (rc == SendResult.SENT.nativeValue()) {
                     success = true;
-                    return SendResult.SENT.nativeValue();
                 }
-                return -1;
+                return rc;
             } finally {
                 if (!success) {
                     message.restoreFromNative(nativeMsg, false, anchor);
@@ -1107,11 +1108,10 @@ public abstract class Socket implements AutoCloseable {
             try {
                 int rc = Native.publish(handle, nativeTopic, nativeMsg, 1,
                     SendFlag.DONTWAIT.getValue());
-                if (rc == 0) {
+                if (rc == SendResult.SENT.nativeValue()) {
                     success = true;
-                    return SendResult.SENT.nativeValue();
                 }
-                return -1;
+                return rc;
             } finally {
                 if (!success) {
                     message.restoreFromNative(nativeMsg, false, anchor);
@@ -1223,8 +1223,11 @@ public abstract class Socket implements AutoCloseable {
         boolean explicitNonBlocking =
             (flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0;
         while (true) {
-            if (trySendPartsOnce(routingId, parts, flags))
+            int rc = trySendPartsOnce(routingId, parts, flags);
+            if (rc == SendResult.SENT.nativeValue())
                 return;
+            if (rc >= 0)
+                throw submitExceptionFromSendResult(rc);
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
@@ -1252,8 +1255,8 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    private boolean trySendPartsOnce(RoutingId routingId, List<Message> parts,
-                                     SendFlag flags) {
+    private int trySendPartsOnce(RoutingId routingId, List<Message> parts,
+                                 SendFlag flags) {
         try (Arena arena = Arena.ofConfined()) {
             int count = parts.size();
             long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
@@ -1273,11 +1276,10 @@ public abstract class Socket implements AutoCloseable {
                         effectiveFlags)
                     : Native.sendMultipart(handle, nativeRoutingId(arena, routingId),
                         nativeParts, count, effectiveFlags);
-                if (rc >= 0) {
+                if (rc == SendResult.SENT.nativeValue()) {
                     success = true;
-                    return true;
                 }
-                return false;
+                return rc;
             } finally {
                 if (!success) {
                     restoreParts(parts, nativeParts, anchors);
@@ -1305,11 +1307,9 @@ public abstract class Socket implements AutoCloseable {
                         SendFlag.DONTWAIT.getValue())
                     : Native.sendMultipart(handle, nativeRoutingId(arena, routingId),
                         nativeParts, count, SendFlag.DONTWAIT.getValue());
-                if (rc == 0)
+                if (rc == SendResult.SENT.nativeValue())
                     success = true;
-                if (rc == 0)
-                    return SendResult.SENT.nativeValue();
-                return -1;
+                return rc;
             } finally {
                 if (!success) {
                     restoreParts(parts, nativeParts, anchors);
@@ -1326,8 +1326,11 @@ public abstract class Socket implements AutoCloseable {
         boolean explicitNonBlocking =
             (flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0;
         while (true) {
-            if (tryPublishPartsOnce(topicId, parts, flags))
+            int rc = tryPublishPartsOnce(topicId, parts, flags);
+            if (rc == SendResult.SENT.nativeValue())
                 return;
+            if (rc >= 0)
+                throw submitExceptionFromSendResult(rc);
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
@@ -1353,8 +1356,8 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    private boolean tryPublishPartsOnce(String topicId, List<Message> parts,
-                                        SendFlag flags) {
+    private int tryPublishPartsOnce(String topicId, List<Message> parts,
+                                    SendFlag flags) {
         try (Arena arena = Arena.ofConfined()) {
             int count = parts.size();
             long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
@@ -1373,11 +1376,10 @@ public abstract class Socket implements AutoCloseable {
                 int effectiveFlags = flags.getValue();
                 int rc = Native.publish(handle, nativeTopic, nativeParts, count,
                     effectiveFlags);
-                if (rc >= 0) {
+                if (rc == SendResult.SENT.nativeValue()) {
                     success = true;
-                    return true;
                 }
-                return false;
+                return rc;
             } finally {
                 if (!success) {
                     restoreParts(parts, nativeParts, anchors);
@@ -1404,11 +1406,9 @@ public abstract class Socket implements AutoCloseable {
                 }
                 int rc = Native.publish(handle, nativeTopic, nativeParts, count,
                     SendFlag.DONTWAIT.getValue());
-                if (rc == 0)
+                if (rc == SendResult.SENT.nativeValue())
                     success = true;
-                if (rc == 0)
-                    return SendResult.SENT.nativeValue();
-                return -1;
+                return rc;
             } finally {
                 if (!success) {
                     restoreParts(parts, nativeParts, anchors);
@@ -1428,6 +1428,14 @@ public abstract class Socket implements AutoCloseable {
             return SendResult.NOT_READY;
         }
         throw ZlinkException.fromLastError(apiName);
+    }
+
+    private static SubmitException submitExceptionFromSendResult(int rc) {
+        return switch (SendResult.fromNativeValue(rc)) {
+            case BACKPRESSURED -> new SubmitException(SubmitResult.BACKPRESSURED, 0);
+            case NOT_READY -> new SubmitException(SubmitResult.NOT_CONNECTED, 0);
+            case SENT -> throw new IllegalArgumentException("send result indicates success");
+        };
     }
 
     private static void restoreParts(List<Message> parts,
@@ -1474,7 +1482,7 @@ public abstract class Socket implements AutoCloseable {
     static RoutingId toRoutingId(byte[] value) {
         if (value == null || value.length == 0)
             return null;
-        return RoutingId.copyOf(value);
+        return RoutingId.fromTrusted(value);
     }
 
     static byte[] decodeRoutingId(MemorySegment nativeRid) {
@@ -1502,7 +1510,7 @@ public abstract class Socket implements AutoCloseable {
     }
 
     private static MemorySegment nativeRoutingId(Arena arena, RoutingId routingId) {
-        byte[] value = routingId.toByteArray();
+        byte[] value = routingId.trustedBytes();
         MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
         nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
             (byte) value.length);

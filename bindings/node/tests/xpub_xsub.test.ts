@@ -27,7 +27,6 @@ test('xpub exposes subscription events and dedicated option helpers', () => {
   xpub.options.noDrop = true;
   xsub.setSubscription('topic');
 
-  assert.equal(zlink.SocketOption.XPUB_VERBOSE, 0x3301);
   assert.equal(typeof xsub.options.topicsCount, 'number');
 
   const event = xpub.receiveSubscriptionEvent();

@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Zlink;
 using Zlink.Native;
 
-namespace Zlink.Service;
+namespace Zlink;
 
 public sealed class Registry : IDisposable, IAsyncDisposable
 {
@@ -86,9 +86,9 @@ public sealed class Registry : IDisposable, IAsyncDisposable
             ZlinkRegistryServiceSummaryFilter nativeFilter = default;
             IntPtr filterPtr = IntPtr.Zero;
             RegistryServiceSummaryFilter? requestedFilter = filter;
-            if (requestedFilter.HasValue)
+            if (requestedFilter != null)
             {
-                RegistryServiceSummaryFilter value = requestedFilter.Value;
+                RegistryServiceSummaryFilter value = requestedFilter;
                 if (value.ServiceKind.HasValue || value.ServiceRole.HasValue
                     || !string.IsNullOrEmpty(value.ServiceName))
                 {
@@ -127,9 +127,9 @@ public sealed class Registry : IDisposable, IAsyncDisposable
             ZlinkRegistryTopologyFilter nativeFilter = default;
             IntPtr filterPtr = IntPtr.Zero;
             RegistryTopologyFilter? requestedFilter = filter;
-            if (requestedFilter.HasValue)
+            if (requestedFilter != null)
             {
-                RegistryTopologyFilter value = requestedFilter.Value;
+                RegistryTopologyFilter value = requestedFilter;
                 if (value.ServiceKind.HasValue || value.ServiceRole.HasValue
                     || !string.IsNullOrEmpty(value.ServiceName)
                     || value.RoutingId.HasValue || value.State.HasValue
@@ -152,9 +152,8 @@ public sealed class Registry : IDisposable, IAsyncDisposable
                     if (value.RoutingId.HasValue)
                     {
                         nativeFilter.RoutingId = NativeHelpers.WriteRoutingId(
-                            RoutingIdCodec.FromPublicString(
-                                value.RoutingId.Value.Value,
-                                nameof(RegistryTopologyFilter.RoutingId)));
+                            RoutingIdCodec.FromRoutingId(
+                                value.RoutingId.Value));
                     }
                     filterPtr = (IntPtr)(&nativeFilter);
                 }

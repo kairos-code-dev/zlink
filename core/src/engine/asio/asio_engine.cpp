@@ -120,10 +120,13 @@ const size_t asio_gather_threshold =
 const bool asio_stream_gather_on =
   !env_flag_enabled ("ZLINK_ASIO_STREAM_DISABLE_GATHER");
 
-// Keep gather enabled for STREAM, but only above a practical payload size.
-// 1KB-ish workloads are faster through the encoder batch path on current stack.
-const size_t asio_stream_gather_threshold = 8192;
-const size_t asio_stream_tiny_gather_threshold = 0;
+// Keep gather enabled for STREAM once payloads are large enough that copying
+// them into the encoder batch is more expensive than emitting header+body
+// directly in one transport write.
+const size_t asio_stream_gather_threshold =
+  parse_size_env ("ZLINK_ASIO_STREAM_GATHER_THRESHOLD", 1024);
+const size_t asio_stream_tiny_gather_threshold =
+  parse_size_env ("ZLINK_ASIO_STREAM_TINY_GATHER_THRESHOLD", 0);
 
 const bool asio_trace_on =
   env_flag_enabled ("ZLINK_ASIO_TRACE");
@@ -148,7 +151,8 @@ const size_t asio_stream_read_drain_max_loops = 64;
 const size_t asio_stream_read_drain_max_bytes = 1048576;
 
 const size_t stream_target_default_size = 4096;
-const size_t stream_target_initial_cap = 12288;
+const size_t stream_target_initial_cap =
+  parse_size_env ("ZLINK_ASIO_STREAM_INITIAL_TARGET_CAP", 4096);
 
 size_t clamp_stream_target_limit (size_t target_,
                                   const zlink::options_t &options_,

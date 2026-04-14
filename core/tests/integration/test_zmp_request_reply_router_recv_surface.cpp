@@ -74,7 +74,7 @@ void capture_reply (zlink_request_result_t result_,
     probe->cv.notify_all ();
 }
 
-void test_dealer_request_is_visible_through_router_recv ()
+void assert_dealer_request_visible_through_router_recv (bool prime_recv_plane_)
 {
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
@@ -89,7 +89,7 @@ void test_dealer_request_is_visible_through_router_recv ()
       zlink_connect (dealer, "inproc://zmp-router-recv-surface"));
     msleep (SETTLE_TIME);
 
-    {
+    if (prime_recv_plane_) {
         const zlink_routing_id_t *source_rid = NULL;
         const zlink_routing_id_t *source_spot_rid = NULL;
         uint64_t request_seq = 0;
@@ -160,6 +160,229 @@ void test_dealer_request_is_visible_through_router_recv ()
     test_context_socket_close_zero_linger (dealer);
     test_context_socket_close_zero_linger (router);
 }
+
+void test_dealer_request_is_visible_through_router_recv ()
+{
+    assert_dealer_request_visible_through_router_recv (true);
+}
+
+void test_dealer_request_is_visible_through_router_recv_without_priming ()
+{
+    assert_dealer_request_visible_through_router_recv (false);
+}
+
+void test_dealer_request_is_visible_through_nonblocking_router_recv_polling ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (dealer, "dealer-poll", 11));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (router, "inproc://zmp-router-recv-surface-polling"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (dealer, "inproc://zmp-router-recv-surface-polling"));
+    msleep (SETTLE_TIME);
+
+    zlink_msg_t request_part;
+    zlink_msg_init (&request_part);
+    init_string_part (&request_part, "dealer-request-poll");
+
+    reply_probe_t reply_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request (
+      dealer, &request_part, 1, &capture_reply, &reply_probe, 0, 3000));
+
+    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (SETTLE_TIME * 20);
+    while (true) {
+        const zlink_recv_result_t recv_rc =
+          zlink_router_recv (router, &source_rid, &source_spot_rid,
+                             &request_seq, &parts, &part_count,
+                             ZLINK_DONTWAIT);
+        if (recv_rc == ZLINK_RECV_OK)
+            break;
+
+        TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA, recv_rc);
+        TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+        TEST_ASSERT_TRUE (std::chrono::steady_clock::now () < deadline);
+        msleep (SETTLE_TIME);
+    }
+
+    TEST_ASSERT_NOT_NULL (source_rid);
+    TEST_ASSERT_NOT_NULL (source_spot_rid);
+    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
+    TEST_ASSERT_TRUE (request_seq != 0);
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_STRING_LEN (
+      "dealer-poll", reinterpret_cast<const char *> (source_rid->data),
+      source_rid->size);
+    const std::string request_payload = msg_to_string (&parts[0]);
+    TEST_ASSERT_EQUAL_STRING_LEN (
+      "dealer-request-poll", request_payload.c_str (), request_payload.size ());
+    zlink_multipart_close (parts, part_count);
+
+    zlink_msg_t reply_part;
+    zlink_msg_init (&reply_part);
+    init_string_part (&reply_part, "router-reply-poll");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_reply (router, source_rid, request_seq, &reply_part, 1));
+
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
+    {
+        std::lock_guard<std::mutex> lock (reply_probe.mutex);
+        TEST_ASSERT_TRUE (reply_probe.done);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, reply_probe.result);
+        TEST_ASSERT_EQUAL_UINT64 (1, reply_probe.part_count);
+        TEST_ASSERT_EQUAL_STRING_LEN (
+          "router-reply-poll", reply_probe.payload.c_str (),
+          reply_probe.payload.size ());
+    }
+
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router);
+}
+
+void test_dealer_request_is_visible_through_first_blocking_router_recv ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (dealer, "dealer-block", 12));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (router, "inproc://zmp-router-recv-surface-blocking"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (dealer, "inproc://zmp-router-recv-surface-blocking"));
+    msleep (SETTLE_TIME);
+
+    zlink_msg_t request_part;
+    zlink_msg_init (&request_part);
+    init_string_part (&request_part, "dealer-request-block");
+
+    reply_probe_t reply_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request (
+      dealer, &request_part, 1, &capture_reply, &reply_probe, 0, 3000));
+
+    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_recv (router, &source_rid, &source_spot_rid, &request_seq,
+                         &parts, &part_count, 0));
+
+    TEST_ASSERT_NOT_NULL (source_rid);
+    TEST_ASSERT_NOT_NULL (source_spot_rid);
+    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
+    TEST_ASSERT_TRUE (request_seq != 0);
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_STRING_LEN (
+      "dealer-block", reinterpret_cast<const char *> (source_rid->data),
+      source_rid->size);
+    const std::string request_payload = msg_to_string (&parts[0]);
+    TEST_ASSERT_EQUAL_STRING_LEN (
+      "dealer-request-block", request_payload.c_str (),
+      request_payload.size ());
+    zlink_multipart_close (parts, part_count);
+
+    zlink_msg_t reply_part;
+    zlink_msg_init (&reply_part);
+    init_string_part (&reply_part, "router-reply-block");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_reply (router, source_rid, request_seq, &reply_part, 1));
+
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
+    {
+        std::lock_guard<std::mutex> lock (reply_probe.mutex);
+        TEST_ASSERT_TRUE (reply_probe.done);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, reply_probe.result);
+        TEST_ASSERT_EQUAL_UINT64 (1, reply_probe.part_count);
+        TEST_ASSERT_EQUAL_STRING_LEN (
+          "router-reply-block", reply_probe.payload.c_str (),
+          reply_probe.payload.size ());
+    }
+
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router);
+}
+
+void test_dealer_request_is_visible_through_router_recv_over_tcp ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (router, endpoint, sizeof (endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (dealer, "dealer-recv-tcp", 15));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
+    msleep (SETTLE_TIME * 5);
+
+    zlink_msg_t request_part;
+    zlink_msg_init (&request_part);
+    init_string_part (&request_part, "dealer-request-recv-tcp");
+
+    reply_probe_t reply_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request (
+      dealer, &request_part, 1, &capture_reply, &reply_probe,
+      ZLINK_SEND_FLAGS_NONE, 5000));
+
+    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_recv (router, &source_rid, &source_spot_rid, &request_seq,
+                         &parts, &part_count, 0));
+
+    TEST_ASSERT_NOT_NULL (source_rid);
+    TEST_ASSERT_NOT_NULL (source_spot_rid);
+    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
+    TEST_ASSERT_TRUE (request_seq != 0);
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_STRING_LEN (
+      "dealer-recv-tcp",
+      reinterpret_cast<const char *> (source_rid->data), source_rid->size);
+    const std::string request_payload = msg_to_string (&parts[0]);
+    TEST_ASSERT_EQUAL_STRING_LEN ("dealer-request-recv-tcp",
+                                  request_payload.c_str (),
+                                  request_payload.size ());
+    zlink_multipart_close (parts, part_count);
+
+    zlink_msg_t reply_part;
+    zlink_msg_init (&reply_part);
+    init_string_part (&reply_part, "router-reply-recv-tcp");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_reply (router, source_rid, request_seq, &reply_part, 1));
+
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
+    {
+        std::lock_guard<std::mutex> lock (reply_probe.mutex);
+        TEST_ASSERT_TRUE (reply_probe.done);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, reply_probe.result);
+        TEST_ASSERT_EQUAL_UINT64 (1, reply_probe.part_count);
+        TEST_ASSERT_EQUAL_STRING_LEN (
+          "router-reply-recv-tcp", reply_probe.payload.c_str (),
+          reply_probe.payload.size ());
+    }
+
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router);
+}
 }
 
 int main ()
@@ -169,6 +392,12 @@ int main ()
     setup_test_environment ();
 
     RUN_TEST (test_dealer_request_is_visible_through_router_recv);
+    RUN_TEST (test_dealer_request_is_visible_through_router_recv_without_priming);
+    RUN_TEST (
+      test_dealer_request_is_visible_through_nonblocking_router_recv_polling);
+    RUN_TEST (
+      test_dealer_request_is_visible_through_first_blocking_router_recv);
+    RUN_TEST (test_dealer_request_is_visible_through_router_recv_over_tcp);
 
     const int rc = UNITY_END ();
     fflush (NULL);

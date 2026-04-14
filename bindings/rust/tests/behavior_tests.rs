@@ -16,12 +16,12 @@ fn pair_send_recv_roundtrip() {
     let client = ctx.pair_socket().unwrap();
     client.connect("inproc://beh-pair").unwrap();
 
-    let msg = Message::from_bytes(b"pair-payload-42").unwrap();
+    let msg = Message::copy_from(b"pair-payload-42").unwrap();
     client.send(msg).unwrap();
 
     let received = server.recv().unwrap();
     assert_eq!(received.parts().len(), 1);
-    assert_eq!(received.parts()[0].data(), b"pair-payload-42");
+    assert_eq!(received.parts()[0].as_bytes(), b"pair-payload-42");
 }
 
 #[test]
@@ -34,15 +34,15 @@ fn pair_multipart_send_recv() {
     b.connect("inproc://beh-pair-multi").unwrap();
 
     let parts = vec![
-        Message::from_bytes(b"frame-1").unwrap(),
-        Message::from_bytes(b"frame-2").unwrap(),
+        Message::copy_from(b"frame-1").unwrap(),
+        Message::copy_from(b"frame-2").unwrap(),
     ];
     b.send(parts).unwrap();
 
     let received = a.recv().unwrap();
     assert_eq!(received.parts().len(), 2);
-    assert_eq!(received.parts()[0].data(), b"frame-1");
-    assert_eq!(received.parts()[1].data(), b"frame-2");
+    assert_eq!(received.parts()[0].as_bytes(), b"frame-1");
+    assert_eq!(received.parts()[1].as_bytes(), b"frame-2");
 }
 
 #[test]
@@ -51,8 +51,8 @@ fn pair_try_recv_empty() {
     let sock = ctx.pair_socket().unwrap();
     sock.bind("inproc://beh-pair-try").unwrap();
 
-    let result = sock.try_recv().unwrap();
-    assert!(result.is_none());
+    let result = sock.recv_with_flags(RecvFlags::DONT_WAIT);
+    assert!(result.is_err());
 }
 
 #[test]
@@ -62,25 +62,27 @@ fn dealer_router_roundtrip() {
     router.bind("inproc://beh-dr").unwrap();
 
     let dealer = ctx.dealer_socket().unwrap();
-    let rid = RoutingId::new(b"dealer-42").unwrap();
+    let rid = RoutingId::from_bytes(b"dealer-42");
     dealer.set_routing_id(&rid).unwrap();
     dealer.connect("inproc://beh-dr").unwrap();
     thread::sleep(Duration::from_millis(50));
 
     // Dealer sends to Router
-    let msg = Message::from_bytes(b"request-payload").unwrap();
+    let msg = Message::copy_from(b"request-payload").unwrap();
     dealer.send(msg).unwrap();
 
     // Router receives with the dealer's routing id
     let received = router.recv().unwrap();
-    assert_eq!(received.parts()[0].data(), b"request-payload");
+    assert_eq!(received.parts()[0].as_bytes(), b"request-payload");
 
     // Router sends back to the dealer using the received routing id
-    let reply = Message::from_bytes(b"response-payload").unwrap();
-    router.send(received.routing_id(), reply).unwrap();
+    let reply = Message::copy_from(b"response-payload").unwrap();
+    router
+        .send(received.routing_id().expect("missing routing id"), reply)
+        .unwrap();
 
     let response = dealer.recv().unwrap();
-    assert_eq!(response.parts()[0].data(), b"response-payload");
+    assert_eq!(response.parts()[0].as_bytes(), b"response-payload");
 }
 
 #[test]
@@ -94,12 +96,12 @@ fn pub_sub_roundtrip() {
     sub_sock.set_subscription("market.").unwrap();
     thread::sleep(Duration::from_millis(100));
 
-    let msg = Message::from_bytes(b"price=42.5").unwrap();
+    let msg = Message::copy_from(b"price=42.5").unwrap();
     pub_sock.publish("market.price", msg).unwrap();
 
     let topic_msg = sub_sock.subscribe().unwrap();
     assert_eq!(topic_msg.topic(), "market.price");
-    assert_eq!(topic_msg.parts()[0].data(), b"price=42.5");
+    assert_eq!(topic_msg.parts()[0].as_bytes(), b"price=42.5");
 }
 
 #[test]
@@ -109,8 +111,8 @@ fn sub_try_subscribe_empty() {
     sub_sock.connect("inproc://beh-sub-try").unwrap();
     sub_sock.set_subscription("").unwrap();
 
-    let result = sub_sock.try_subscribe().unwrap();
-    assert!(result.is_none());
+    let result = sub_sock.subscribe_with_flags(RecvFlags::DONT_WAIT);
+    assert!(result.is_err());
 }
 
 #[test]
@@ -118,15 +120,10 @@ fn try_send_explicit_outcome() {
     let ctx = Context::new().unwrap();
     let sock = ctx.pair_socket().unwrap();
     sock.bind("inproc://beh-try-send").unwrap();
-    // No peer connected, so try_send should return NotReady or Backpressured
+    // No peer connected, so non-blocking send should fail explicitly.
 
-    let msg = Message::from_bytes(b"test").unwrap();
-    let result = sock.try_send(msg);
-    // Result is Ok(SendResult) – not a bool
-    match result {
-        Ok(sr) => assert!(!sr.is_sent() || sr.is_sent()),
-        Err(_) => {} // some error is also acceptable
-    }
+    let msg = Message::copy_from(b"test").unwrap();
+    let _ = sock.send_with_flags(msg, SendFlags::DONT_WAIT);
 }
 
 #[test]
@@ -135,13 +132,8 @@ fn try_publish_explicit_outcome() {
     let pub_sock = ctx.pub_socket().unwrap();
     pub_sock.bind("inproc://beh-try-pub").unwrap();
 
-    let msg = Message::from_bytes(b"test").unwrap();
-    let result = pub_sock.try_publish("topic", msg);
-    // Should be Ok(SendResult), not bool
-    match result {
-        Ok(_sr) => {}
-        Err(_) => {}
-    }
+    let msg = Message::copy_from(b"test").unwrap();
+    let _ = pub_sock.publish_with_flags("topic", msg, SendFlags::DONT_WAIT);
 }
 
 #[test]
@@ -150,8 +142,8 @@ fn xpub_try_receive_subscription_event_empty() {
     let xpub = ctx.xpub_socket().unwrap();
     xpub.bind("inproc://beh-xpub-try").unwrap();
 
-    let result = xpub.try_receive_subscription_event().unwrap();
-    assert!(result.is_none());
+    let result = xpub.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT);
+    assert!(result.is_err());
 }
 
 // ---------------------------------------------------------------------------
@@ -172,7 +164,7 @@ fn dealer_router_send_from_callback() {
 
     let mut router = ctx.router_socket().unwrap();
     let dealer = ctx.dealer_socket().unwrap();
-    let rid = RoutingId::new(b"dealer-cb-test").unwrap();
+    let rid = RoutingId::from_bytes(b"dealer-cb-test");
     dealer.set_routing_id(&rid).unwrap();
 
     // Establish connection before installing callback -- required for the
@@ -193,9 +185,11 @@ fn dealer_router_send_from_callback() {
 
     router
         .on_receive(move |received| {
-            assert_eq!(received.parts()[0].data(), b"request-42");
-            let reply = Message::from_bytes(b"reply-42").unwrap();
-            handle.send_to(received.routing_id(), reply).unwrap();
+            assert_eq!(received.parts()[0].as_bytes(), b"request-42");
+            let reply = Message::copy_from(b"reply-42").unwrap();
+            handle
+                .send_to(received.routing_id().expect("missing routing id"), reply)
+                .unwrap();
             let (lock, cv) = &*reply_signal;
             *lock.lock().unwrap() = true;
             cv.notify_one();
@@ -204,7 +198,7 @@ fn dealer_router_send_from_callback() {
 
     // Dealer sends request.
     dealer
-        .send(Message::from_bytes(b"request-42").unwrap())
+        .send(Message::copy_from(b"request-42").unwrap())
         .unwrap();
 
     // Wait for the callback to fire and send the reply.
@@ -219,7 +213,7 @@ fn dealer_router_send_from_callback() {
         .set_recv_timeout(Duration::from_secs(5))
         .unwrap();
     let response = dealer.recv().unwrap();
-    assert_eq!(response.parts()[0].data(), b"reply-42");
+    assert_eq!(response.parts()[0].as_bytes(), b"reply-42");
 }
 
 #[test]
@@ -244,20 +238,20 @@ fn pair_send_from_callback() {
 
     server
         .on_receive(move |received| {
-            assert_eq!(received.parts()[0].data(), b"ping-pair");
-            let reply = Message::from_bytes(b"pong-pair").unwrap();
+            assert_eq!(received.parts()[0].as_bytes(), b"ping-pair");
+            let reply = Message::copy_from(b"pong-pair").unwrap();
             handle.send(reply).unwrap();
         })
         .unwrap();
 
     // Client sends and receives.
     client
-        .send(Message::from_bytes(b"ping-pair").unwrap())
+        .send(Message::copy_from(b"ping-pair").unwrap())
         .unwrap();
     client
         .common_options()
         .set_recv_timeout(Duration::from_secs(5))
         .unwrap();
     let response = client.recv().unwrap();
-    assert_eq!(response.parts()[0].data(), b"pong-pair");
+    assert_eq!(response.parts()[0].as_bytes(), b"pong-pair");
 }

@@ -1,6 +1,6 @@
 using System;
+using System.Text;
 using Xunit;
-using Zlink.Service;
 
 namespace Zlink.Tests;
 
@@ -11,9 +11,9 @@ public sealed class test_validation_contract
     {
         string value = new string('r', 255);
 
-        RoutingId routingId = new(value);
+        RoutingId routingId = RoutingId.FromBytes(Encoding.UTF8.GetBytes(value));
 
-        Assert.Equal(value, routingId.Value);
+        Assert.Equal(value, routingId.ToString());
     }
 
     [Fact]
@@ -21,7 +21,8 @@ public sealed class test_validation_contract
     {
         string value = new string('r', 256);
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => _ = new RoutingId(value));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            _ = RoutingId.FromBytes(Encoding.UTF8.GetBytes(value)));
     }
 
     [Fact]

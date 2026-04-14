@@ -239,9 +239,11 @@ class RouterSocket:
                       request_seq: int,
                       payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
 
-    # --- router spot receive ---
-    def recv_spot(self, *, flags: int = 0) -> Received: ...                      # Raises: RecvError
-    def on_spot_receive(self, handler: Callable) -> None: ...                    # Raises: HandlerError
+    # NOTE: RouterSocket 의 routed 수신 plane 은 단일 표면이다. 일반 ROUTER
+    # 트래픽과 spot-origin routed 트래픽을 모두 recv / on_receive 로 받는다.
+    # `Received.routing_id` 는 source_node_rid, `Received.spot_rid` 는
+    # spot-origin 트래픽에서만 값이 있다. 별도의 recv_spot /
+    # on_spot_receive 는 제공하지 않는다.
 
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -782,6 +784,11 @@ class ConfigError(ZlinkError):
 
 ```python
 class MonitorSocket:
+    # No-op handler. Pass to on_event() when driving the monitor via
+    # snapshot() or direct recv() without callback dispatch.
+    # Maps to zlink_monitor_ignore_handler.
+    ignore_handler: ClassVar[Callable[[MonitorEvent], None]]
+
     def recv(self) -> MonitorEvent: ...                                          # Raises: RecvError
     def on_event(self, handler: Callable[[MonitorEvent], None]) -> None: ...     # Raises: HandlerError
     def snapshot(self) -> MonitorSnapshot: ...                                   # Raises: ConfigError
@@ -897,6 +904,14 @@ class Registry:
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
+### DiscoveryDealerPeerMode
+
+```python
+class DiscoveryDealerPeerMode(IntEnum):
+    ROUTER = 1
+    DEALER = 2
+```
+
 ### Discovery
 
 ```python
@@ -909,6 +924,8 @@ class Discovery:
     def get_metadata(self) -> bytes: ...                                         # Raises: ConfigError
     def member_peers(self) -> list[MemberPeerEntry]: ...                         # Raises: ConfigError
     def member_peer_metadata(self, service_role: int, endpoint: str) -> bytes: ...  # Raises: ConfigError
+    def resolve_spot(self, spot_rid: RoutingId) -> RoutingId: ...                # Raises: ConfigError — maps to zlink_discovery_resolve_spot
+    def set_dealer_peer_mode(self, mode: DiscoveryDealerPeerMode) -> None: ...   # Raises: ConfigError — maps to zlink_discovery_set_dealer_peer_mode
     def set_tls_client(self, ca_cert: str | None, hostname: str | None,
                        trust_system: bool = False) -> None: ...                  # Raises: ConfigError
     def monitor_open(self, events: ServiceMonitorMask = ServiceMonitorMask.ALL
@@ -926,8 +943,14 @@ class SpotNode:
     def connect_peer(self, endpoint: str) -> None: ...                           # Raises: ConnectError
     def disconnect_peer(self, endpoint: str) -> None: ...                        # Raises: ConnectError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
-    def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
-    def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
+
+    # --- identity / routing ---
+    # SpotNode's logical address. Maps to zlink_set_routing_id(node, ...) /
+    # zlink_get_routing_id(node, ...).
+    def set_routing_id(self, rid: RoutingId) -> None: ...                        # Raises: ConfigError
+    @property
+    def routing_id(self) -> RoutingId: ...                                       # Raises: ConfigError
+
     def set_tls_server(self, cert: str, key: str,
                        require_client_cert: bool = False) -> None: ...           # Raises: ConfigError
     def set_tls_client(self, ca_cert: str | None, hostname: str | None,
@@ -952,6 +975,14 @@ and is not part of the public API contract.
 ```python
 class Spot:
     # __init__(node) is internal. Public code must use SpotNode.create_spot().
+
+    # --- identity / routing ---
+    # Spot's logical address / routed ownership key.
+    # Maps to zlink_set_routing_id(spot, ...) / zlink_get_routing_id(spot, ...).
+    def set_routing_id(self, rid: RoutingId) -> None: ...                        # Raises: ConfigError
+    @property
+    def routing_id(self) -> RoutingId: ...                                       # Raises: ConfigError
+
     def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
     def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
     def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
@@ -1168,7 +1199,7 @@ class Poller:
     def remove_socket(self, socket) -> None: ...                                 # Raises: ConfigError
     def remove_fd(self, fd: int) -> None: ...                                    # Raises: ConfigError
     def remove_timer(self, timer: Timer) -> None: ...                            # Raises: ConfigError
-    def size(self) -> int: ...                                                   # Raises: ConfigError
+    def size(self) -> int: ...                                                   # Raises: ConfigError — number of registered items; maps to zlink_poller_size
     def poll(self, timeout_ms: int) -> list[dict]: ...                           # Raises: RecvError
     def close(self) -> None: ...                                                 # Raises: CloseError
     # supports `with` and `async with` — __exit__ raises CloseError

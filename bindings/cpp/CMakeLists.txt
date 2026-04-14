@@ -9,8 +9,8 @@ endif()
 
 add_library(zlink-cpp INTERFACE)
 target_include_directories(zlink-cpp INTERFACE
-  ${CMAKE_CURRENT_LIST_DIR}/include
   ${ZLINK_CORE_DIR}/include
+  ${CMAKE_CURRENT_LIST_DIR}/include
 )
 
 target_compile_features(zlink-cpp INTERFACE cxx_std_17)
@@ -31,6 +31,14 @@ endif()
 
 if(NOT DEFINED ZLINK_CPP_BUILD_SAMPLES)
   option(ZLINK_CPP_BUILD_SAMPLES "Build C++ binding samples" OFF)
+endif()
+
+if(NOT DEFINED ZLINK_CPP_REGISTER_CTEST)
+  option(
+    ZLINK_CPP_REGISTER_CTEST
+    "Register C++ binding tests and samples in the active CTest project"
+    ${ZLINK_CPP_STANDALONE}
+  )
 endif()
 
 if(ZLINK_CPP_BUILD_TESTS OR ZLINK_CPP_BUILD_SAMPLES)
@@ -61,17 +69,19 @@ endif()
 if(ZLINK_CPP_BUILD_SAMPLES)
   function(add_cpp_sample target_name source_file)
     add_cpp_binding_executable(${target_name} ${source_file})
-    if(UNIX AND NOT WIN32)
-      add_test(NAME sample_smoke_${target_name}
-        COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
-    else()
-      add_test(NAME sample_smoke_${target_name} COMMAND ${target_name})
+    if(ZLINK_CPP_REGISTER_CTEST)
+      if(UNIX AND NOT WIN32)
+        add_test(NAME sample_smoke_${target_name}
+          COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
+      else()
+        add_test(NAME sample_smoke_${target_name} COMMAND ${target_name})
+      endif()
+      set_tests_properties(sample_smoke_${target_name} PROPERTIES
+        LABELS "sample-smoke"
+        TIMEOUT 120
+      )
+      configure_cpp_binding_runtime(sample_smoke_${target_name})
     endif()
-    set_tests_properties(sample_smoke_${target_name} PROPERTIES
-      LABELS "sample-smoke"
-      TIMEOUT 120
-    )
-    configure_cpp_binding_runtime(sample_smoke_${target_name})
   endfunction()
 
   add_cpp_sample(
@@ -132,17 +142,19 @@ endif()
 if(ZLINK_CPP_BUILD_TESTS)
   function(add_cpp_contract_test target_name source_file)
     add_cpp_binding_executable(${target_name} ${source_file})
-    if(UNIX AND NOT WIN32)
-      add_test(NAME ${target_name}
-        COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
-    else()
-      add_test(NAME ${target_name} COMMAND ${target_name})
+    if(ZLINK_CPP_REGISTER_CTEST)
+      if(UNIX AND NOT WIN32)
+        add_test(NAME ${target_name}
+          COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
+      else()
+        add_test(NAME ${target_name} COMMAND ${target_name})
+      endif()
+      set_tests_properties(${target_name} PROPERTIES
+        LABELS "contract"
+        TIMEOUT 120
+      )
+      configure_cpp_binding_runtime(${target_name})
     endif()
-    set_tests_properties(${target_name} PROPERTIES
-      LABELS "contract"
-      TIMEOUT 120
-    )
-    configure_cpp_binding_runtime(${target_name})
   endfunction()
 
   add_cpp_contract_test(

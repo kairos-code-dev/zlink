@@ -215,10 +215,11 @@ typedef enum zlink_request_result_t
     ZLINK_REQUEST_OK = 0,
 
     /* Completion failure visible to the requester. */
-    ZLINK_REQUEST_TIMED_OUT = 1,
-    ZLINK_REQUEST_NOT_FOUND = 2,
-    ZLINK_REQUEST_TERMINATED = 3,
-    ZLINK_REQUEST_PROTOCOL_ERROR = 4
+    ZLINK_REQUEST_TIMED_OUT = 101,
+    ZLINK_REQUEST_NOT_FOUND = 102,
+    ZLINK_REQUEST_TERMINATED = 103,
+    ZLINK_REQUEST_PROTOCOL_ERROR = 104,
+    ZLINK_REQUEST_INTERNAL_ERROR = 105
 } zlink_request_result_t;
 ```
 
@@ -229,10 +230,11 @@ enum입니다. callback은 `result_`를 `zlink_request_result_t` 값으로
 | 상수 | 값 | 설명 |
 |---|---|---|
 | `ZLINK_REQUEST_OK` | 0 | reply payload를 정상 수신함 |
-| `ZLINK_REQUEST_TIMED_OUT` | 1 | 설정된 시간 안에 reply가 도착하지 않음 |
-| `ZLINK_REQUEST_NOT_FOUND` | 2 | 대상이 없어 error reply로 완료됨 |
-| `ZLINK_REQUEST_TERMINATED` | 3 | request 경로가 명시적인 종료 completion을 방출하기 전까지는 예약값 |
-| `ZLINK_REQUEST_PROTOCOL_ERROR` | 4 | reply envelope 또는 error reply payload가 잘못됨 |
+| `ZLINK_REQUEST_TIMED_OUT` | 101 | 설정된 시간 안에 reply가 도착하지 않음 |
+| `ZLINK_REQUEST_NOT_FOUND` | 102 | 대상이 없어 error reply로 완료됨 |
+| `ZLINK_REQUEST_TERMINATED` | 103 | request 경로가 명시적인 종료 completion을 방출하기 전까지는 예약값 |
+| `ZLINK_REQUEST_PROTOCOL_ERROR` | 104 | reply envelope 또는 error reply payload가 잘못됨 |
+| `ZLINK_REQUEST_INTERNAL_ERROR` | 105 | 더 세분화된 public bucket 없이 request completion이 실패함 |
 
 ### 보안 메커니즘
 

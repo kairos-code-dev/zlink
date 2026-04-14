@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 test('version matches core', () => {
     const versionFile = fs.readFileSync(path.join(process.cwd(), '..', '..', 'VERSION'), 'utf8');
     const major = Number(versionFile.match(/^LIBZLINK_VERSION_MAJOR=(\d+)$/m)[1]);
@@ -19,9 +19,9 @@ test('legacy compatibility socket stays out of the aligned public api', () => {
 test('dedicated option helpers cover routing id and generic option access', () => {
     const ctx = new zlink.Context();
     const dealer = new zlink.DealerSocket(ctx);
-    const routingId = Buffer.from('dealer-1');
+    const routingId = zlink.RoutingId.fromBytes(Buffer.from('dealer-1'));
     dealer.setRoutingId(routingId);
-    assert.equal(dealer.getRoutingId().subarray(0, routingId.length).toString(), 'dealer-1');
+    assert.equal(dealer.getRoutingId().toBytes().toString(), 'dealer-1');
     dealer.close();
     ctx.close();
 });

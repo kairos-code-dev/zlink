@@ -3,8 +3,6 @@ package dev.kairoscode.zlink.samples;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.RequestDealer;
-import dev.kairoscode.zlink.RequestRouter;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
 import java.time.Duration;
@@ -23,32 +21,29 @@ public final class RequestReplyCallbackSample {
         try (Context ctx = new Context();
              RouterSocket routerSocket = new RouterSocket(ctx);
              DealerSocket dealerSocket = new DealerSocket(ctx);
-             RequestRouter router = new RequestRouter(routerSocket);
-             RequestDealer dealer = new RequestDealer(dealerSocket);
              var routerMonitor = routerSocket.monitorOpen(
                  dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY);
              var dealerMonitor = dealerSocket.monitorOpen(
                  dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY)) {
-            dealerSocket.setRoutingId(RoutingId.copyOf("request-reply-client".getBytes()));
+            dealerSocket.setRoutingId(RoutingId.fromBytes("request-reply-client".getBytes()));
             routerSocket.bind(endpoint);
             dealerSocket.connect(endpoint);
             SampleSupport.waitConnected(routerMonitor, dealerMonitor);
 
-            router.onReceive(received -> {
+            routerSocket.onReceive(received -> {
                 try (received) {
                     String request = SampleSupport.singleUtf8(received);
                     if (!SampleSupport.DEALER_REQUEST.equals(request)) {
                         failure.compareAndSet(null,
                             new IllegalStateException("unexpected request: " + request));
                     } else {
-                        if (!received.hasRequestSequence()) {
+                        if (received.requestSeq().isEmpty()) {
                             failure.compareAndSet(null,
                                 new IllegalStateException("missing request sequence"));
                             return;
                         }
                         try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
-                            router.reply(received.routingId(),
-                                received.requestSequence(), reply);
+                            received.reply(reply);
                         }
                     }
                 } finally {
@@ -57,23 +52,22 @@ public final class RequestReplyCallbackSample {
             });
 
             try (Message request = Message.copyOfUtf8(SampleSupport.DEALER_REQUEST)) {
-                dealer.request(
-                    List.of(request),
-                (result, reply) -> {
-                    try {
-                        if (result != dev.kairoscode.zlink.RequestResult.OK) {
-                            failure.compareAndSet(null,
-                                new IllegalStateException("request failed: " + result));
-                            return;
-                        }
-                        try (reply) {
-                            String value = SampleSupport.singleUtf8(reply);
+                dealerSocket.request(
+                    request,
+                    (result, reply) -> {
+                        try {
+                            if (result != dev.kairoscode.zlink.RequestResult.OK) {
+                                failure.compareAndSet(null,
+                                    new IllegalStateException("request failed: " + result));
+                                return;
+                            }
+                            String value = reply.get(0).toUtf8String();
                             if (!SampleSupport.DEALER_REPLY.equals(value)) {
-                                    failure.compareAndSet(null,
-                                        new IllegalStateException("unexpected reply: " + value));
-                                }
+                                failure.compareAndSet(null,
+                                    new IllegalStateException("unexpected reply: " + value));
                             }
                         } finally {
+                            Message.closeAll(reply);
                             replyHandled.countDown();
                         }
                     },

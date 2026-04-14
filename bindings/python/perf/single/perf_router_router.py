@@ -41,17 +41,17 @@ def main(argv=None):
                 client.set_routing_id(b"CLIENT")
                 client.router_options.connect_routing_id = b"SERVER"
                 endpoint = unique_endpoint("router-router")
-                with server.monitor_open(zlink.MonitorEvent.CONNECTION_READY) as server_monitor:
+                with server.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as server_monitor:
                     with client.monitor_open(
-                        zlink.MonitorEvent.CONNECTION_READY
+                        zlink.MonitorEventMask.CONNECTION_READY
                     ) as client_monitor:
                         server.bind(endpoint)
                         client.connect(endpoint)
                         wait_monitor_event(
-                            server_monitor, zlink.MonitorEvent.CONNECTION_READY
+                            server_monitor, zlink.MonitorEventMask.CONNECTION_READY
                         )
                         wait_monitor_event(
-                            client_monitor, zlink.MonitorEvent.CONNECTION_READY
+                            client_monitor, zlink.MonitorEventMask.CONNECTION_READY
                         )
 
                         sender = threading.Thread(

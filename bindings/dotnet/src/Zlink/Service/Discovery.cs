@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Zlink;
 using Zlink.Native;
 
-namespace Zlink.Service;
+namespace Zlink;
 
 public sealed class Discovery : IDisposable, IAsyncDisposable
 {
@@ -115,6 +115,38 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
             (ushort)serviceRole, endpoint, ref metadata.Handle);
         ZlinkException.ThrowIfError(rc);
         return metadata.Move();
+    }
+
+    public RoutingId ResolveSpot(RoutingId spotRid)
+    {
+        EnsureNotDisposed();
+        byte[] spotRidBytes = spotRid.ToByteArray();
+        unsafe
+        {
+            fixed (byte* spotRidPtr = spotRidBytes)
+            {
+                ZlinkRoutingId nativeSpotRid = default;
+                if (spotRidBytes.Length != 0)
+                {
+                    nativeSpotRid = NativeHelpers.WriteRoutingId(
+                        new ReadOnlySpan<byte>(spotRidPtr, spotRidBytes.Length));
+                }
+
+                int rc = NativeMethods.zlink_discovery_resolve_spot(_handle,
+                    ref nativeSpotRid, out ZlinkRoutingId ownerNodeRoutingId);
+                ZlinkException.ThrowIfError(rc);
+                return RoutingId.FromBytes(
+                    NativeHelpers.ReadRoutingId(ref ownerNodeRoutingId));
+            }
+        }
+    }
+
+    public void SetDealerPeerMode(DiscoveryDealerPeerMode mode)
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_discovery_set_dealer_peer_mode(_handle,
+            (int)mode);
+        ZlinkException.ThrowIfError(rc);
     }
 
     public ServiceMonitor MonitorOpen(params ServiceMonitorEventMask[] events)

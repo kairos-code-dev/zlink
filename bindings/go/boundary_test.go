@@ -10,13 +10,13 @@ import (
 
 func TestRoutingIDBoundary(t *testing.T) {
 	valid := strings.Repeat("a", 255)
-	if _, err := zlink.NewRoutingID([]byte(valid)); err != nil {
-		t.Fatalf("NewRoutingID(255 bytes) error = %v", err)
+	if got := zlink.NewRoutingID([]byte(valid)); got.Size() != 255 {
+		t.Fatalf("NewRoutingID(255 bytes).Size() = %d, want 255", got.Size())
 	}
 
 	invalid := strings.Repeat("b", 256)
-	if _, err := zlink.NewRoutingID([]byte(invalid)); err == nil {
-		t.Fatalf("NewRoutingID(256 bytes) should fail")
+	if got := zlink.NewRoutingID([]byte(invalid)); got.Size() != 0 {
+		t.Fatalf("NewRoutingID(256 bytes).Size() = %d, want 0", got.Size())
 	}
 }
 
@@ -79,8 +79,8 @@ func TestNullByteValidation(t *testing.T) {
 }
 
 func TestNilInputValidation(t *testing.T) {
-	if _, err := zlink.NewRoutingID(nil); err == nil {
-		t.Fatalf("NewRoutingID(nil) should fail")
+	if got := zlink.NewRoutingID(nil); got.Size() != 0 {
+		t.Fatalf("NewRoutingID(nil).Size() = %d, want 0", got.Size())
 	}
 
 	ctx := newContext(t)

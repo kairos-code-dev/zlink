@@ -2,8 +2,8 @@
 
 package dev.kairoscode.zlink.service.registry;
 
-import dev.kairoscode.zlink.ServiceKind;
-import dev.kairoscode.zlink.ServiceRole;
+import dev.kairoscode.zlink.service.registry.ServiceKind;
+import dev.kairoscode.zlink.service.registry.ServiceRole;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import java.lang.foreign.Arena;

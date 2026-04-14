@@ -98,30 +98,42 @@ Is the communication peer an external client (browser, game)?
 
 ## 7. 공통 수신 인터페이스
 
-모든 소켓 타입에서 `zlink_recv()`와 recv callback은 동일한 인터페이스를 사용한다:
+대부분의 소켓 타입은 `zlink_recv()` 와 recv callback 이 같은 모양을
+공유한다. ROUTER 와 SPOT 은 추가 출력이 있는 전용 typed recv 표면을
+사용하고, PUB/SUB 은 subscribe/publish 전용 API 를 쓴다.
 
 ```c
-int zlink_recv (void *socket,
-                zlink_routing_id_t *source_rid,  /* sender routing_id */
-                zlink_msg_t **parts,              /* multipart data */
-                size_t *part_count,               /* frame count */
-                zlink_send_flags_t flags);
+zlink_recv_result_t zlink_recv (
+    void *socket,
+    zlink_routing_id_t *source_rid,   /* sender routing_id */
+    zlink_msg_t **parts,              /* multipart data */
+    size_t *part_count,               /* frame count */
+    zlink_recv_flags_t flags);
 ```
 
-- **`source_rid`**: 모든 소켓에서 송신자 피어의 routing_id가 채워진다.
-  이것은 메시지 프레임이 아니라 zlink가 연결된 피어의 identity를
-  자동으로 resolve하는 별도 파라미터다.
+- **`source_rid`**: 이 표면을 쓰는 모든 소켓에서 송신자 피어의
+  routing_id 가 채워진다. 메시지 프레임이 아니라 zlink 가 연결된 피어의
+  identity 를 자동으로 resolve 하는 별도 파라미터다.
 - **`parts` / `part_count`**: 모든 소켓에서 멀티파트가 기본이다.
-  `part_count=1`이면 단일 프레임, `part_count=2+`이면 멀티파트.
+  `part_count=1` 이면 단일 프레임, `part_count=2+` 이면 멀티파트.
 
-> **libzmq와의 차이:** libzmq ROUTER는 `zmq_recv()`의 첫 프레임이
-> routing_id였지만, zlink에서는 모든 소켓 타입에서 routing_id가
-> 별도 파라미터로 분리되어 있다.
+> **libzmq 와의 차이:** libzmq ROUTER 는 `zmq_recv()` 첫 프레임이
+> routing_id 였지만, zlink 는 routing_id 를 별도 파라미터로 분리했다.
 
-PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
-- 수신: `zlink_subscribe()` / `zlink_subscribe_handler()`
-- 발행: `zlink_publish()`
-- `zlink_send()` / `zlink_recv()`는 PUB/SUB 4 소켓 모두 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED`
+**소켓별 전용 수신 표면:**
+
+- **ROUTER**: ROUTER 핸들에 `zlink_recv()` 를 호출하면
+  `ZLINK_RECV_NOT_SUPPORTED` 로 실패한다. ROUTER 는 통합된 단일 typed
+  표면 — `zlink_router_recv()` / `zlink_router_handler()` — 를 사용하며,
+  `source_node_rid`, `source_spot_rid`, `request_seq` 를 함께 반환한다.
+  이 하나의 표면이 일반 ROUTER 트래픽과 SPOT 에서 시작된 routed
+  트래픽을 모두 전달한다. 자세한 내용은 [03-4-router.ko.md](03-4-router.ko.md).
+- **SPOT (routed)**: `zlink_spot_recv()` / `zlink_spot_handler()` 를
+  사용하며 `(source_rid, spot_rid, request_seq, …)` 를 반환한다.
+- **PUB/SUB**: 전용 API 를 사용한다 — 수신은 `zlink_subscribe()` /
+  `zlink_subscribe_handler()`, 발행은 `zlink_publish()`. 4 개 PUB/SUB
+  소켓 모두 `zlink_send()` / `zlink_recv()` 는
+  `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 를 반환한다.
 
 ## 8. 용어 정리
 

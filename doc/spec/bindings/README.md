@@ -1247,8 +1247,8 @@ int zlink_router_reply_spot(void *router, ...);
 int zlink_router_send_spot(void *router, ...);
 int zlink_spot_handler(void *spot, ...);
 int zlink_spot_recv(void *spot, ...);
-int zlink_router_spot_recv(void *router, ...);
-int zlink_router_spot_handler(void *router, ...);
+int zlink_router_handler(void *router, ...);
+int zlink_router_recv(void *router, ...);
 ```
 
 전체 시그니처는 `core/include/zlink.h` 를 참조한다.
@@ -1259,11 +1259,14 @@ core 가 request-reply dispatch 를 처리한다. 바인딩은 dispatch owner �
 
 - `request_seq = 0` 이면 ordinary message.
 - `request_seq != 0` 이면 request-reply message.
-- core 가 pending map 에서 `peer_rid + request_seq` 로 매칭한다.
+- core 가 pending map 에서 `source_node_rid + request_seq` 로 매칭한다.
 - 매칭 실패한 reply (stray/late reply) 는 drop 한다.
 - ROUTER 는 generic `zlink_recv()` 대신 `zlink_router_recv()` / `zlink_router_handler()`
   typed surface 를 사용한다. generic `zlink_recv()` 호출 시 `EOPNOTSUPP`.
-- peer-directed ROUTER 수신 plane 과 spot-origin 수신 plane 은 서로 다른 표면이다.
+- ROUTER 의 routed 수신 plane 은 **단일 표면**이다. 일반 ROUTER 트래픽과
+  spot-origin routed 트래픽 모두 `zlink_router_recv()` / `zlink_router_handler()`
+  하나로 받는다. `source_spot_rid` 가 `NULL` 이면 일반 ROUTER 트래픽,
+  채워져 있으면 spot-origin 트래픽이다.
 
 #### Request API 변형
 
@@ -1466,12 +1469,9 @@ int zlink_send_ready_handler(void *s, zlink_send_ready_handler_fn handler, void 
 /* SPOT typed recv callback */
 int zlink_spot_handler(void *spot, zlink_spot_handler_fn handler, void *userdata);
 
-/* ROUTER typed recv callback */
+/* ROUTER typed recv callback — 일반 ROUTER 트래픽과 spot-origin routed
+   트래픽을 모두 받는 단일 표면 */
 int zlink_router_handler(void *router, zlink_router_handler_fn handler, void *userdata);
-
-/* ROUTER 의 SPOT-origin recv callback */
-int zlink_router_spot_handler(void *router, zlink_router_spot_handler_fn handler,
-    void *userdata);
 ```
 
 규칙:
@@ -1595,22 +1595,32 @@ zlink_recv_result_t zlink_spot_recv(void *spot, ...);
 - `zlink_spot_handler()` 와 `zlink_spot_recv()` 는 같은 수신 plane 을 공유한다.
   동시에 허용하지 않는다. 충돌 시 `EBUSY`.
 
-#### Router 의 SPOT 수신
+#### Router 수신 (routed 통합 표면)
 
 ```c
-typedef void (*zlink_router_spot_handler_fn)(
+typedef void (*zlink_router_handler_fn)(
     const zlink_routing_id_t *source_node_rid,
     const zlink_routing_id_t *source_spot_rid,
     uint64_t request_seq,
     zlink_msg_t *parts, size_t part_count, void *userdata);
 
-int zlink_router_spot_handler(void *router,
-    zlink_router_spot_handler_fn handler, void *userdata);
-int zlink_router_spot_recv(void *router, ...);
+zlink_handler_result_t zlink_router_handler(void *router,
+    zlink_router_handler_fn handler, void *userdata);
+zlink_recv_result_t zlink_router_recv(void *router,
+    const zlink_routing_id_t **source_node_rid_out,
+    const zlink_routing_id_t **source_spot_rid_out,
+    uint64_t *request_seq_out,
+    zlink_msg_t **parts_out, size_t *part_count_out,
+    zlink_recv_flags_t flags);
 ```
 
-- peer-directed ROUTER 수신 plane 과 spot-origin 수신 plane 은 서로 다른 표면이다.
-- `zlink_router_spot_recv()` 와 `zlink_router_spot_handler()` 도 같은 plane 을
+- ROUTER 의 routed 수신은 단일 plane 이다. 일반 ROUTER 트래픽과
+  spot-origin routed 트래픽을 하나의 handler / recv 로 받는다.
+- `source_spot_rid == NULL` 이면 일반 ROUTER 트래픽 (reply 는
+  `zlink_router_reply` 사용). `source_spot_rid` 가 채워져 있으면 spot-origin
+  트래픽 (reply 는 `zlink_router_reply_spot` 사용).
+- `request_seq == 0` 이면 fire-and-forget. `request_seq != 0` 이면 request.
+- `zlink_router_handler()` 와 `zlink_router_recv()` 는 같은 plane 을
   공유하므로 동시에 허용하지 않는다. 충돌 시 `EBUSY`.
 
 #### Pub/Sub 수신
@@ -1673,45 +1683,9 @@ int zlink_spot_node_subjects_snapshot(void *node,
 - filter query 는 typed filter builder 또는 struct 로 노출한다.
 - 반환된 배열의 메모리는 바인딩이 적절히 해제해야 한다.
 
-### SpotNode Peer Publish Batching Options
+### SpotNode Node-Level Options
 
-SpotNode 내부 peer publish 경로의 batching 최적화 옵션.
-기본값 disabled. public contract(publish/subscribe/callback)은 변경 없다.
-
-#### 옵션 enum
-
-```c
-typedef enum zlink_spot_node_option_t {
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE                  = 0x3601,
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS                = 0x3602,
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_MESSAGES            = 0x3603,
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_BYTES               = 0x3604,
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_BYPASS_BYTES            = 0x3605,
-    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_MESSAGES_PER_TURN = 0x3606,
-    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN    = 0x3607,
-} zlink_spot_node_option_t;
-```
-
-#### 기본값
-
-| 옵션 | 기본값 | 설명 |
-|------|--------|------|
-| `PEER_BATCH_ENABLE` | `false` | batching 활성화 (운영자 opt-in) |
-| `PEER_BATCH_DELAY_MS` | `20` | topic bucket flush 최대 지연 (ms) |
-| `PEER_BATCH_MAX_MESSAGES` | `32` | bucket당 최대 메시지 수 |
-| `PEER_BATCH_MAX_BYTES` | `65536` | bucket당 최대 바이트 |
-| `PEER_BATCH_BYPASS_BYTES` | `65536` | 이 크기 이상 메시지는 즉시 전송 |
-| `PEER_UNBATCH_MAX_MESSAGES_PER_TURN` | `32` | turn당 unbatch 최대 메시지 수 |
-| `PEER_UNBATCH_MAX_BYTES_PER_TURN` | `65536` | turn당 unbatch 최대 바이트 |
-
-#### 바인딩 규칙
-
-- SpotNode의 typed option facade로 노출한다.
-- raw `setOption/getOption` bag으로 노출하지 않는다.
-- `PEER_BATCH_ENABLE`은 boolean으로 노출한다.
-- 나머지는 정수(int)로 노출한다.
-- v1은 homogeneous deployment만 지원한다. capability negotiation은 없다.
-- application-visible batch API가 아니다. 내부 최적화 옵션이다.
+SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬다.
 
 ## Option Policy
 

@@ -8,6 +8,8 @@ const { once } = require('node:events');
 const path = require('node:path');
 const zlink = require('../dist/canonical');
 
+const SPOT_PEER_SOURCE_MANUAL = 1;
+
 async function reservePort() {
   const server = net.createServer();
   server.listen(0, '127.0.0.1');
@@ -20,7 +22,7 @@ async function reservePort() {
 test('spot exposes unified publish and subscribe surface', () => {
   const ctx = new zlink.Context();
   const node = new zlink.SpotNode(ctx);
-  const spot = new zlink.Spot(node);
+  const spot = node.createSpot();
   const sub = new zlink.SubSocket(ctx);
 
   spot.setSubscription('topic');
@@ -38,8 +40,8 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
   const ctx = new zlink.Context();
   const serverNode = new zlink.SpotNode(ctx);
   const clientNode = new zlink.SpotNode(ctx);
-  const serverSpot = new zlink.Spot(serverNode);
-  const clientSpot = new zlink.Spot(clientNode);
+  const serverSpot = serverNode.createSpot();
+  const clientSpot = clientNode.createSpot();
   const topic = 'spot:remote';
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
@@ -104,7 +106,7 @@ test('spot node peersQuery filters manual peer connections', async () => {
       const peers = clientNode.peersQuery({ peerEndpoint: endpoint });
       if (peers.length > 0) {
         assert.equal(peers[0].peerEndpoint, endpoint);
-        assert.equal(peers[0].source, zlink.SpotPeerSource.MANUAL);
+        assert.equal(peers[0].source, SPOT_PEER_SOURCE_MANUAL);
         return;
       }
       await new Promise((resolve) => setImmediate(resolve));
@@ -247,7 +249,7 @@ function subscribeMaybe(socket) {
   }
 }
 
-test('sub sockets receive Subscribed domain objects and non-blocking receive returns null when empty', () => {
+test('sub sockets receive TopicMessage domain objects and non-blocking receive returns null when empty', () => {
   const ctx = new zlink.Context();
   const pub = new zlink.PubSocket(ctx);
   const sub = new zlink.SubSocket(ctx);
@@ -262,7 +264,7 @@ test('sub sockets receive Subscribed domain objects and non-blocking receive ret
 
   const received = sub.subscribe();
   assert.equal(received.topic, 'topic');
-  assert.equal(received.routingId, null);
+  assert.ok(received.routingId === null || received.routingId instanceof zlink.RoutingId);
   assert.deepEqual(received.parts.map((part) => part.data().toString()), ['payload']);
 
   sub.close();
@@ -281,8 +283,8 @@ test('onSubscribe delivers topic-aware multipart payloads', async () => {
 
   const receivedPromise = new Promise((resolve, reject) => {
     try {
-      sub.onSubscribe((routingId, topic, parts) => {
-        resolve({ routingId, topic, parts });
+      sub.onSubscribe((message) => {
+        resolve(message);
       });
     } catch (err) {
       reject(err);
@@ -294,7 +296,7 @@ test('onSubscribe delivers topic-aware multipart payloads', async () => {
   pub.publish('topic', 'payload');
   const received = await receivedPromise;
 
-  assert.ok(Buffer.isBuffer(received.routingId));
+  assert.ok(received.routingId === null || received.routingId instanceof zlink.RoutingId);
   assert.equal(received.topic, 'topic');
   assert.deepEqual(
     received.parts.map((part) => part.data().toString()),

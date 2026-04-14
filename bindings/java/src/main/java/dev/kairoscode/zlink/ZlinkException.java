@@ -31,11 +31,11 @@ public abstract class ZlinkException extends RuntimeException {
         return internalErrno;
     }
 
-    public int errno() {
+    int errno() {
         return internalErrno;
     }
 
-    public ErrorCode errorCode() {
+    ErrorCode errorCode() {
         for (ErrorCode code : ErrorCode.values()) {
             if (code.getValue() == internalErrno) {
                 return code;
@@ -54,8 +54,8 @@ public abstract class ZlinkException extends RuntimeException {
         if (containsAny(op, "handler")) {
             return new HandlerException(mapHandlerResult(errno), errno);
         }
-        if (containsAny(op, "subscription_event", "socket_monitor_recv",
-                "service_monitor_recv", "monitor_recv")
+        if (containsAny(op, "recv", "receive", "subscription_event",
+                "socket_monitor_recv", "service_monitor_recv", "monitor_recv")
             || (op.contains("subscribe")
                 && !containsAny(op, "set_subscription", "unset_subscription",
                     "subscribe_handler"))) {
@@ -128,7 +128,7 @@ public abstract class ZlinkException extends RuntimeException {
             case 107, 10057 -> RecvResult.TERMINATED;
             case 9 -> RecvResult.INVALID_HANDLE;
             case 95 -> RecvResult.NOT_SUPPORTED;
-            default -> RecvResult.BUSY;
+            default -> RecvResult.INTERNAL_ERROR;
         };
     }
 

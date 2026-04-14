@@ -235,7 +235,121 @@ flowchart TD
     topology --> notify["notify observers<br/>if changed"]
 ```
 
-## 10. Message Protocol
+## 10. Spot Ownership Resolution (`zlink_discovery_resolve_spot`)
+
+`zlink_discovery_resolve_spot(discovery, spot_rid, &owner_node_rid_out)`
+maps a **logical SPOT routing id** to the **current owner SpotNode
+routing id**, so that the caller can pair `(owner_node_rid, spot_rid)`
+for `zlink_spot_send_spot()` / `zlink_spot_request_spot()` or the
+router-side equivalents. The lookup is scoped to the Discovery's current
+service view.
+
+The helper is for **send/request destination lookup only**. Reply paths
+must continue to use the concrete source addresses delivered with the
+incoming request — a spot may move between nodes and the cached owner
+may no longer match the sender of the request being replied to.
+
+### 10.1 Contract summary
+
+`from_errno()` maps `EINVAL`/`EFAULT`/`ENOTSUP`/`EOPNOTSUPP` to named
+`zlink_config_result_t` values; every other `errno` (including `ENOENT`
+and `EAGAIN` below) falls through to `ZLINK_CONFIG_INTERNAL_ERROR` and is
+recoverable via `zlink_errno()`.
+
+| Aspect | Value |
+|---|---|
+| Precondition | `discovery->_service_type == SPOT_NODE`; otherwise `ENOTSUP` → `ZLINK_CONFIG_NOT_SUPPORTED` |
+| Output | `owner_node_rid_out` populated with the owner SpotNode's rid |
+| Cache TTL | `resolve_spot_cache_ttl_ms = 250` ms |
+| Cache validity rule | `validated_service_seq == current_service_seq` OR `now − last_reported_ms ≤ 250 ms` |
+| Miss outcome | Registry query over a transient DEALER, then retry cache |
+| Final miss (cache + registry empty) | `errno = ENOENT`, result = `ZLINK_CONFIG_INTERNAL_ERROR` (inspect via `zlink_errno()`) |
+| Bad input | `EINVAL` → `ZLINK_CONFIG_INVALID_ARGUMENT` (null or zero-size `spot_rid`, null `owner_node_rid_out`) |
+| Null handle | `EFAULT` → `ZLINK_CONFIG_INVALID_HANDLE` |
+| No uplink yet | `errno = EAGAIN` from the registry query step, result = `ZLINK_CONFIG_INTERNAL_ERROR` |
+
+### 10.2 Cache-hit path (fast path)
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant API as zlink_discovery_resolve_spot
+    participant Disc as discovery_t
+    participant Store as _summary_store
+    participant Prov as _service_state providers
+
+    App->>API: resolve_spot(spot_rid)
+    API->>Disc: resolve_spot(spot_rid, out)
+    Disc->>Disc: make_spot_topology_key(spot_rid)<br/>(service_kind=SPOT_PUB, role=SPOT)
+    Disc->>Disc: scoped_lock(_sync)
+    Disc->>Store: lookup key
+    Store-->>Disc: topology_summary_t entry
+    Note over Disc: entry.state == READY?<br/>endpoint non-empty?<br/>validated_service_seq == current_service_seq<br/>or age ≤ 250ms?
+    Disc->>Prov: scan providers by (role=SPOT, endpoint)
+    Prov-->>Disc: provider.routing_id
+    Disc-->>API: 0, owner_node_rid_out filled
+    API-->>App: ZLINK_CONFIG_OK
+```
+
+### 10.3 Cache-miss path (registry refresh)
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant API as zlink_discovery_resolve_spot
+    participant Disc as discovery_t
+    participant Store as _summary_store
+    participant Uplink as _uplink_runtime
+    participant Dealer as transient DEALER
+    participant Reg as Registry ROUTER
+
+    App->>API: resolve_spot(spot_rid)
+    API->>Disc: resolve_spot(spot_rid, out)
+    Disc->>Disc: scoped_lock(_sync)
+    Disc->>Store: lookup key
+    Note over Disc: miss — no entry, stale,<br/>or not READY
+    Disc->>Disc: release _sync before I/O
+    Disc->>Uplink: latest_registry_uplink(this)
+    Uplink-->>Disc: endpoint (or !ok → EAGAIN)
+    Disc->>Dealer: prepare_transient_dealer_local(ctx, uplink)
+    Dealer->>Reg: TOPOLOGY_QUERY (0x000B)<br/>filter = {kind=SPOT_PUB, role=SPOT,<br/>routing_id=spot_rid, service_name}
+    Reg-->>Dealer: TOPOLOGY_REPLY (0x000C)<br/>entries[]
+    Disc->>Disc: close_transient_dealer_local
+
+    Disc->>Disc: scoped_lock(_sync)
+    Disc->>Store: refresh_spot_owner_cache_locked(key, entries)
+    Note over Store: erase(key), then store each entry<br/>stamped with current validated_service_seq
+    Disc->>Store: lookup key (retry)
+    alt cache now resolvable
+        Store-->>Disc: fresh entry
+        Disc-->>API: 0, owner_node_rid_out filled
+        API-->>App: ZLINK_CONFIG_OK
+    else still unresolvable
+        Disc-->>API: -1, errno=ENOENT
+        API-->>App: ZLINK_CONFIG_INTERNAL_ERROR<br/>(zlink_errno() → ENOENT)
+    end
+```
+
+### 10.4 Cache freshness rules
+
+Two independent conditions keep a cache entry usable:
+
+1. **Membership-seq match** — `validated_service_seq == _service_state.service_update_seq()`. This seq bumps whenever Discovery's provider view changes (new peer, peer left, role change). If the seq matches, the cache entry was produced against the current membership and is trusted regardless of wall-clock age.
+2. **Wall-clock TTL** — `last_reported_ms > 0 && now − last_reported_ms ≤ 250 ms`. Acts as a fallback when the membership-seq moved but the entry itself was refreshed very recently.
+
+If neither holds, the entry is treated as potentially stale and a registry round-trip is forced. The TTL is deliberately small (250 ms) because a stale lookup can misroute to a former owner node; a short window limits that exposure while still absorbing bursty lookups.
+
+### 10.5 Endpoint → owner rid resolution
+
+The topology summary stores `endpoint` (transport URI), not the owner SpotNode's routing id directly. After a cache hit, Discovery calls `resolve_owner_node_from_endpoint_locked(endpoint, ...)` which:
+
+1. Snapshots the current provider list from `_service_state`.
+2. Picks the provider whose `service_role == SPOT` and `endpoint` matches and has a non-empty `routing_id`.
+3. Copies that `routing_id` into the output parameter.
+
+This two-step design means resolve_spot can answer consistently even when a spot's owner node changes endpoint, as long as the mesh's provider roster has caught up through the SERVICE_LIST broadcast path.
+
+## 11. Message Protocol
 
 | msg_id | Name | Direction | Purpose |
 |--------|------|-----------|---------|
@@ -249,5 +363,5 @@ flowchart TD
 | 0x0008 | BOOTSTRAP_REQ | DEALER→ROUTER | Initial config request |
 | 0x0009 | BOOTSTRAP_REP | ROUTER→DEALER | Config response |
 | 0x000A | TOPOLOGY_REPORT | DEALER→ROUTER | Topology state report |
-| 0x000B | TOPOLOGY_QUERY | DEALER→ROUTER | Query service topology |
+| 0x000B | TOPOLOGY_QUERY | DEALER→ROUTER | Query service topology (also used by `resolve_spot`) |
 | 0x000C | TOPOLOGY_REPLY | ROUTER→DEALER | Topology query response |

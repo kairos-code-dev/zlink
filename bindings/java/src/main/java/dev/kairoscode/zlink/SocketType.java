@@ -2,7 +2,7 @@
 
 package dev.kairoscode.zlink;
 
-public enum SocketType {
+enum SocketType {
     PAIR(0x1001), PUB(0x1002), SUB(0x1003), DEALER(0x1004),
     ROUTER(0x1005), XPUB(0x1006), XSUB(0x1007), STREAM(0x1008);
 

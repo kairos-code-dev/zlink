@@ -9,6 +9,9 @@
 #include "utils/likely.hpp"
 #include "core/address.hpp"
 
+#include <climits>
+#include <cstdlib>
+
 // ASIO-only build: Transport connecters are always included
 #include "transports/tcp/asio_tcp_connecter.hpp"
 #if defined ZLINK_HAVE_IPC
@@ -26,6 +29,29 @@
 #endif
 
 #include "core/ctx.hpp"
+
+namespace
+{
+int parse_positive_int_env (const char *name_, int default_value_)
+{
+    const char *env = std::getenv (name_);
+    if (!env || !*env)
+        return default_value_;
+
+    char *end = NULL;
+    const long value = std::strtol (env, &end, 10);
+    if (!end || end == env || value <= 0 || value > INT_MAX)
+        return default_value_;
+    return static_cast<int> (value);
+}
+
+// STREAM request/response style traffic can oscillate on stale message-credit
+// updates because generic pipes only publish read progress every HWM/2 reads.
+// Keep STREAM credit updates more frequent so the writer sees peer progress
+// sooner, especially on same-connection echo/proxy flows.
+const int stream_pipe_lwm_hint =
+  parse_positive_int_env ("ZLINK_STREAM_PIPE_LWM_HINT", 4);
+}
 
 zlink::session_base_t *zlink::session_base_t::create (class io_thread_t *io_thread_,
                                                   bool active_,
@@ -328,6 +354,12 @@ void zlink::session_base_t::engine_ready ()
 
         //  Plug the local end of the pipe.
         pipes[0]->set_event_sink (this);
+
+        if (options.type == ZLINK_CORE_SOCKET_STREAM
+            && stream_pipe_lwm_hint > 0) {
+            pipes[0]->set_lwm_hint (stream_pipe_lwm_hint);
+            pipes[1]->set_lwm_hint (stream_pipe_lwm_hint);
+        }
 
         //  Remember the local end of the pipe.
         zlink_assert (!_pipe);

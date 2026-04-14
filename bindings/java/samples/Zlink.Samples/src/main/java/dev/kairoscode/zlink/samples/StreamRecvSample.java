@@ -27,7 +27,7 @@ public final class StreamRecvSample {
                 RoutingId rid;
                 try (var received = server.recv()) {
                     String value = SampleSupport.singleUtf8(received);
-                    rid = received.routingId();
+                    rid = received.routingId().orElse(null);
                     if (!SampleSupport.STREAM_PAYLOAD.equals(value) || rid == null) {
                         throw new IllegalStateException("unexpected stream delivery");
                     }

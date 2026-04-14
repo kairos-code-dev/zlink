@@ -18,8 +18,8 @@ public final class SpotRecvSample {
         try (Context ctx = new Context();
              SpotNode publisherNode = new SpotNode(ctx);
              SpotNode subscriberNode = new SpotNode(ctx);
-             Spot publisher = new Spot(publisherNode);
-             Spot subscriber = new Spot(subscriberNode)) {
+             Spot publisher = publisherNode.createSpot();
+             Spot subscriber = subscriberNode.createSpot()) {
             publisherNode.bind("tcp://127.0.0.1:0");
             String endpoint = publisherNode.statusSnapshot().localEndpoint();
             subscriberNode.connectPeer(endpoint);
@@ -32,7 +32,7 @@ public final class SpotRecvSample {
                     publisher.publish(SampleSupport.SPOT_TOPIC, payload);
                 }
                 try (var topicMessage = subscriber.subscribe(RecvFlags.DONT_WAIT)) {
-                    String value = topicMessage.topicId() + "/"
+                    String value = topicMessage.topic() + "/"
                         + topicMessage.singlePartOrThrow().toUtf8String();
                     if (!published.equals(value)) {
                         throw new IllegalStateException(

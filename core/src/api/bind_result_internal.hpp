@@ -26,7 +26,7 @@ inline zlink_bind_result_t from_errno (int err_)
         case EFAULT:
             return ZLINK_BIND_INVALID_HANDLE;
         default:
-            return ZLINK_BIND_INVALID_HANDLE;
+            return ZLINK_BIND_INTERNAL_ERROR;
     }
 }
 

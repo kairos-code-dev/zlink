@@ -7,7 +7,6 @@ using System.IO;
 using System.Net;
 using System.Threading;
 using Zlink;
-using Zlink.Service;
 using TcpListener = System.Net.Sockets.TcpListener;
 
 public static class PerfShared

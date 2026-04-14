@@ -11,14 +11,12 @@ async def main():
     with zlink.Context() as ctx:
         with zlink.RouterSocket(ctx) as router_socket:
             with zlink.DealerSocket(ctx) as dealer_socket:
-                router = zlink.RequestRouter(router_socket)
-                dealer = zlink.RequestDealer(dealer_socket)
                 try:
                     with router_socket.monitor_open(
-                        zlink.MonitorEvent.CONNECTION_READY
+                        zlink.MonitorEventMask.CONNECTION_READY
                     ) as router_monitor:
                         with dealer_socket.monitor_open(
-                            zlink.MonitorEvent.CONNECTION_READY
+                            zlink.MonitorEventMask.CONNECTION_READY
                         ) as dealer_monitor:
                             dealer_socket.set_routing_id(b"REQ-CLIENT")
                             router_socket.bind(endpoint)
@@ -26,22 +24,25 @@ async def main():
                             wait_connected(router_monitor, dealer_monitor)
 
                     pending_reply = asyncio.create_task(
-                        dealer.request([b"ping"], timeout=2.0)
+                        dealer_socket.request([b"ping"], timeout=2.0)
                     )
-                    with await asyncio.to_thread(router.recv) as received:
+                    with await asyncio.to_thread(router_socket.recv) as received:
                         if received.routing_id != zlink.RoutingId(b"REQ-CLIENT"):
                             raise AssertionError("unexpected request routing id")
                         if received.request_seq is None:
                             raise AssertionError("missing request sequence")
-                        await router.reply(received.routing_id, received.request_seq, [b"pong"])
+                        router_socket.reply(received.routing_id, received.request_seq, [b"pong"])
 
-                    with await pending_reply as reply:
-                        if reply.to_bytes_list() != [b"pong"]:
+                    reply = await pending_reply
+                    try:
+                        if [part.to_bytes() for part in reply] != [b"pong"]:
                             raise AssertionError("unexpected reply payload")
+                    finally:
+                        for part in reply:
+                            part.close()
                     print('[dealer-router/request-reply/async] send: "ping" -> recv: "pong"')
                 finally:
-                    dealer.close()
-                    router.close()
+                    pass
 
 
 if __name__ == "__main__":

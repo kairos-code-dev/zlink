@@ -7,13 +7,12 @@ import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PairSocket;
-import dev.kairoscode.zlink.RequestDealer;
-import dev.kairoscode.zlink.RequestRouter;
 import dev.kairoscode.zlink.RequestResult;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.SendFlags;
+import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.TestSupport;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -47,51 +46,51 @@ public class CallbackSendContractTest {
 
         try (Context ctx = new Context();
              RouterSocket router = new RouterSocket(ctx);
-             RequestRouter requestRouter = new RequestRouter(router);
-             DealerSocket dealer = new DealerSocket(ctx);
-             RequestDealer requestDealer = new RequestDealer(dealer)) {
+             DealerSocket dealer = new DealerSocket(ctx)) {
 
             String endpoint = TestSupport.tcpEndpoint();
             try (var routerMon = router.monitorOpen(MonitorEventType.CONNECTION_READY);
                  var dealerMon = dealer.monitorOpen(MonitorEventType.CONNECTION_READY)) {
-                dealer.setRoutingId(RoutingId.copyOf(
+                dealer.setRoutingId(RoutingId.fromBytes(
                     "request-reply-client".getBytes(StandardCharsets.UTF_8)));
                 router.bind(endpoint);
                 dealer.connect(endpoint);
                 routerMon.recv();
                 dealerMon.recv();
             }
+            TestSupport.allowTcpRequestReplyCallbackHandshakeToSettle();
 
             // Install callback AFTER bind+connect+waitConnected so the
             // peer routing-id handshake completes through the normal
             // code path (xattach_pipe without dispatch mode active).
-            requestRouter.onReceive(received -> {
+            router.onReceive(received -> {
                 try {
-                    RoutingId rid = received.routingId();
+                    RoutingId rid = received.routingId().orElseThrow();
                     assertNotNull(rid,
                         "router must receive routing id from dealer");
                     try (Message reply = Message.copyOfUtf8("pong")) {
-                        requestRouter.reply(rid, received.requestSequence(),
-                            reply, SendFlags.DONT_WAIT);
+                        received.reply(reply);
                     }
                 } catch (Throwable t) {
                     callbackError.set(t);
                 }
             });
 
-            requestDealer.request(Message.copyOfUtf8("ping"),
-                (result, received) -> {
-                    try {
-                        assertEquals(RequestResult.OK, result);
-                        replyPayload.set(
-                            received.singlePartOrThrow().toByteArray());
-                    } catch (Throwable t) {
-                        callbackError.set(t);
-                    } finally {
-                        replyReceived.countDown();
-                    }
-                }, SendFlags.NONE,
-                Duration.ofMillis(TestSupport.DEFAULT_TIMEOUT_MS));
+            try (Message request = Message.copyOfUtf8("ping")) {
+                dealer.request(request,
+                    (result, received) -> {
+                        try {
+                            assertEquals(RequestResult.OK, result);
+                            replyPayload.set(received.get(0).toByteArray());
+                        } catch (Throwable t) {
+                            callbackError.set(t);
+                        } finally {
+                            Message.closeAll(received);
+                            replyReceived.countDown();
+                        }
+                    }, SendFlags.NONE,
+                    Duration.ofMillis(TestSupport.DEFAULT_TIMEOUT_MS));
+            }
 
             assertTrue(replyReceived.await(
                     TestSupport.DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS),
@@ -175,33 +174,31 @@ public class CallbackSendContractTest {
 
         try (Context ctx = new Context();
              RouterSocket router = new RouterSocket(ctx);
-             RequestRouter requestRouter = new RequestRouter(router);
-             DealerSocket dealer = new DealerSocket(ctx);
-             RequestDealer requestDealer = new RequestDealer(dealer)) {
+             DealerSocket dealer = new DealerSocket(ctx)) {
 
             String endpoint = TestSupport.tcpEndpoint();
             try (var routerMon = router.monitorOpen(MonitorEventType.CONNECTION_READY);
                  var dealerMon = dealer.monitorOpen(MonitorEventType.CONNECTION_READY)) {
-                dealer.setRoutingId(RoutingId.copyOf(
+                dealer.setRoutingId(RoutingId.fromBytes(
                     "request-reply-client".getBytes(StandardCharsets.UTF_8)));
                 router.bind(endpoint);
                 dealer.connect(endpoint);
                 routerMon.recv();
                 dealerMon.recv();
             }
+            TestSupport.allowTcpRequestReplyCallbackHandshakeToSettle();
 
             // Install callback AFTER connection readiness confirmed.
-            requestRouter.onReceive(received -> {
+            router.onReceive(received -> {
                 try {
-                    RoutingId rid = received.routingId();
+                    RoutingId rid = received.routingId().orElseThrow();
                     byte[] data = received.singlePartOrThrow().toByteArray();
                     String payload = new String(data, StandardCharsets.UTF_8);
                     assertTrue(payload.startsWith("request-"));
                     String index = payload.substring("request-".length());
                     try (Message reply =
                              Message.copyOfUtf8("reply-" + index)) {
-                        requestRouter.reply(rid, received.requestSequence(),
-                            reply, SendFlags.DONT_WAIT);
+                        received.reply(reply);
                     }
                 } catch (Throwable t) {
                     if (callbackError.get() == null)
@@ -211,28 +208,85 @@ public class CallbackSendContractTest {
 
             for (int i = 0; i < roundCount; i++) {
                 int index = i;
-                requestDealer.request(Message.copyOfUtf8("request-" + i),
-                    (result, received) -> {
-                        try {
-                            assertEquals(RequestResult.OK, result);
-                            byte[] data = received.singlePartOrThrow().toByteArray();
-                            String payload = new String(data, StandardCharsets.UTF_8);
-                            assertTrue(payload.startsWith("reply-"));
-                            assertEquals("reply-" + index,
-                                payload);
-                        } catch (Throwable t) {
-                            if (callbackError.get() == null)
-                                callbackError.set(t);
-                        } finally {
-                            allReplies.countDown();
-                        }
-                    }, SendFlags.NONE,
-                    Duration.ofMillis(TestSupport.DEFAULT_TIMEOUT_MS));
+                try (Message request = Message.copyOfUtf8("request-" + i)) {
+                    dealer.request(request,
+                        (result, received) -> {
+                            try {
+                                assertEquals(RequestResult.OK, result);
+                                byte[] data = received.get(0).toByteArray();
+                                String payload = new String(data, StandardCharsets.UTF_8);
+                                assertTrue(payload.startsWith("reply-"));
+                                assertEquals("reply-" + index,
+                                    payload);
+                            } catch (Throwable t) {
+                                if (callbackError.get() == null)
+                                    callbackError.set(t);
+                            } finally {
+                                Message.closeAll(received);
+                                allReplies.countDown();
+                            }
+                        }, SendFlags.NONE,
+                        Duration.ofMillis(TestSupport.DEFAULT_TIMEOUT_MS));
+                }
             }
 
             assertTrue(allReplies.await(
                     TestSupport.DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS),
                 "multi-round callback+send timed out");
+            assertNull(callbackError.get(),
+                "callback raised: " + callbackError.get());
+        }
+    }
+
+    @Test
+    public void streamRawCallbackSendDoesNotCopyThroughReceivedSurface()
+        throws Exception {
+        TestSupport.assumeNative();
+
+        CountDownLatch echoed = new CountDownLatch(1);
+        AtomicReference<Throwable> callbackError = new AtomicReference<>();
+        byte[] outbound = "ping".getBytes(StandardCharsets.UTF_8);
+        String endpoint = TestSupport.tcpEndpoint();
+        int port = Integer.parseInt(endpoint.substring(endpoint.lastIndexOf(':')
+            + 1));
+
+        try (Context ctx = new Context();
+             StreamSocket server = new StreamSocket(ctx)) {
+            server.options().notify(true);
+            server.bind(endpoint);
+            server.attachStreamRaw((routingId, payload) -> {
+                try {
+                    if (routingId == null)
+                        return 0;
+                    int size = payload.size();
+                    if (size == 0)
+                        return 0;
+                    if (size == 1) {
+                        int marker = payload.dataBuffer().get(0) & 0xFF;
+                        if (marker == 0x00 || marker == 0x01)
+                            return 0;
+                    }
+                    server.send(routingId, payload, SendFlags.DONT_WAIT);
+                    echoed.countDown();
+                    return 0;
+                } catch (Throwable t) {
+                    callbackError.compareAndSet(null, t);
+                    return 1;
+                }
+            });
+
+            try (java.net.Socket client = new java.net.Socket("127.0.0.1", port)) {
+                client.setSoTimeout(TestSupport.DEFAULT_TIMEOUT_MS);
+                client.getOutputStream().write(outbound);
+                client.getOutputStream().flush();
+                byte[] echoedPayload = client.getInputStream().readNBytes(
+                    outbound.length);
+                assertArrayEquals(outbound, echoedPayload);
+            }
+
+            assertTrue(echoed.await(TestSupport.DEFAULT_TIMEOUT_MS,
+                    TimeUnit.MILLISECONDS),
+                "stream raw callback echo timed out");
             assertNull(callbackError.get(),
                 "callback raised: " + callbackError.get());
         }

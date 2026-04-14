@@ -1,4 +1,4 @@
-//! Monitor Tests – verify socket monitor recv/try_recv and
+//! Monitor Tests – verify socket monitor recv and
 //! monitor event observation.
 
 use std::thread;
@@ -7,14 +7,13 @@ use std::time::Duration;
 use zlink::*;
 
 #[test]
-fn socket_monitor_try_recv_empty() {
+fn socket_monitor_recv_surface() {
     let ctx = Context::new().unwrap();
     let sock = ctx.pair_socket().unwrap();
     sock.bind("inproc://mon-empty").unwrap();
 
-    let mon = SocketMonitor::open(&sock).unwrap();
-    let result = mon.try_recv().unwrap();
-    let _ = result;
+    let _mon = SocketMonitor::open(&sock).unwrap();
+    let _recv: fn(&SocketMonitor) -> Result<MonitorEvent, RecvError> = SocketMonitor::recv;
 }
 
 #[test]
@@ -33,15 +32,11 @@ fn socket_monitor_observes_connection() {
 
     let mut found_event = false;
     for _ in 0..20 {
-        match mon.try_recv() {
-            Ok(Some(ev)) => {
-                found_event = true;
-                let _ = ev.event;
-                let _ = ev.local_addr;
-                break;
-            }
-            Ok(None) => break,
-            Err(_) => break,
+        if let Ok(ev) = mon.recv() {
+            found_event = true;
+            let _ = ev.event;
+            let _ = ev.local_addr;
+            break;
         }
     }
     let _ = found_event;
@@ -67,7 +62,7 @@ fn socket_monitor_blocking_recv_success() {
     // Blocking recv – must return an event (not hang forever)
     let event = mon.recv().unwrap();
     assert!(
-        event.event != 0,
+        event.event != MonitorEventType(0),
         "blocking monitor recv must return a valid event"
     );
 }

@@ -28,7 +28,8 @@ public abstract class RoutedMessageSocketBase : SocketBase
     public void Send(RoutingId routingId, Message message,
         SendFlags flags = SendFlags.None)
     {
-        Kernel.Send(routingId.Value, message, flags);
+        Kernel.Send(RoutingIdCodec.ToPublicString(routingId.ToBytes()), message,
+            flags);
     }
 
     public void Send(string routingId, IReadOnlyList<Message> parts,
@@ -40,7 +41,8 @@ public abstract class RoutedMessageSocketBase : SocketBase
     public void Send(RoutingId routingId, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
-        Kernel.Send(routingId.Value, parts, flags);
+        Kernel.Send(RoutingIdCodec.ToPublicString(routingId.ToBytes()), parts,
+            flags);
     }
 
     internal SendResult TrySend(string routingId, Message message)
@@ -50,7 +52,8 @@ public abstract class RoutedMessageSocketBase : SocketBase
 
     internal SendResult TrySend(RoutingId routingId, Message message)
     {
-        return Kernel.TrySend(routingId.Value, message);
+        return Kernel.TrySend(RoutingIdCodec.ToPublicString(routingId.ToBytes()),
+            message);
     }
 
     internal SendResult TrySend(string routingId, IReadOnlyList<Message> parts)
@@ -60,7 +63,8 @@ public abstract class RoutedMessageSocketBase : SocketBase
 
     internal SendResult TrySend(RoutingId routingId, IReadOnlyList<Message> parts)
     {
-        return Kernel.TrySend(routingId.Value, parts);
+        return Kernel.TrySend(RoutingIdCodec.ToPublicString(routingId.ToBytes()),
+            parts);
     }
 
     public void OnReceive(SocketRecvHandler handler)

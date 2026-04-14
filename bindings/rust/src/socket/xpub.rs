@@ -2,8 +2,8 @@ use std::ffi::c_void;
 use std::time::Duration;
 
 use crate::ctx::Context;
-use crate::domain::{SendResult, SubscriptionEvent};
-use crate::error::{ZlinkError, check_rc};
+use crate::domain::SubscriptionEvent;
+use crate::error::{ConfigError, HandlerError, RecvError, SubmitError, check_config_rc};
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
 use crate::message::IntoMultipart;
@@ -20,13 +20,13 @@ pub struct XPubSocket {
 }
 
 impl XPubSocket {
-    pub(crate) fn new(ctx: &Context) -> Result<Self, ZlinkError> {
+    pub(crate) fn new(ctx: &Context) -> Result<Self, ConfigError> {
         Ok(Self {
             inner: SocketInner::create(ctx, ffi::zlink_socket_type_t::ZLINK_SOCKET_XPUB)?,
         })
     }
 
-    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
+    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError> {
         self.inner.publish(topic, parts)
     }
 
@@ -35,34 +35,22 @@ impl XPubSocket {
         topic: &str,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), ZlinkError> {
+    ) -> Result<(), SubmitError> {
         self.inner.publish_with_flags(topic, parts, flags)
     }
 
-    pub fn try_publish(
-        &self,
-        topic: &str,
-        parts: impl IntoMultipart,
-    ) -> Result<SendResult, ZlinkError> {
-        self.inner.try_publish(topic, parts)
-    }
-
-    pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, ZlinkError> {
+    pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError> {
         self.inner.receive_subscription_event()
     }
 
     pub fn receive_subscription_event_with_flags(
         &self,
         flags: RecvFlags,
-    ) -> Result<SubscriptionEvent, ZlinkError> {
+    ) -> Result<SubscriptionEvent, RecvError> {
         self.inner.receive_subscription_event_with_flags(flags)
     }
 
-    pub fn try_receive_subscription_event(&self) -> Result<Option<SubscriptionEvent>, ZlinkError> {
-        self.inner.try_receive_subscription_event()
-    }
-
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), ZlinkError>
+    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
         F: Fn() + Send + 'static,
     {
@@ -79,7 +67,7 @@ impl XPubSocket {
 
     // -- XPUB-specific typed options ---------------------------------------
 
-    pub(crate) fn set_verbose(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub(crate) fn set_verbose(&self, enabled: bool) -> Result<(), ConfigError> {
         set_pub_bool(
             self.inner.handle,
             ffi::zlink_pub_option_t::ZLINK_PUB_OPT_VERBOSE,
@@ -87,7 +75,7 @@ impl XPubSocket {
         )
     }
 
-    pub(crate) fn set_verboser(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub(crate) fn set_verboser(&self, enabled: bool) -> Result<(), ConfigError> {
         set_pub_bool(
             self.inner.handle,
             ffi::zlink_pub_option_t::ZLINK_PUB_OPT_VERBOSER,
@@ -95,7 +83,7 @@ impl XPubSocket {
         )
     }
 
-    pub(crate) fn set_nodrop(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub(crate) fn set_nodrop(&self, enabled: bool) -> Result<(), ConfigError> {
         set_pub_bool(
             self.inner.handle,
             ffi::zlink_pub_option_t::ZLINK_PUB_OPT_NODROP,
@@ -103,7 +91,7 @@ impl XPubSocket {
         )
     }
 
-    pub(crate) fn set_manual(&self, enabled: bool) -> Result<(), ZlinkError> {
+    pub(crate) fn set_manual(&self, enabled: bool) -> Result<(), ConfigError> {
         set_pub_bool(
             self.inner.handle,
             ffi::zlink_pub_option_t::ZLINK_PUB_OPT_MANUAL,
@@ -121,9 +109,9 @@ fn set_pub_bool(
     handle: *mut c_void,
     opt: ffi::zlink_pub_option_t,
     value: bool,
-) -> Result<(), ZlinkError> {
+) -> Result<(), ConfigError> {
     let v: i32 = if value { 1 } else { 0 };
-    check_rc(unsafe {
+    check_config_rc(unsafe {
         ffi::zlink_set_pub_option(
             handle,
             opt,

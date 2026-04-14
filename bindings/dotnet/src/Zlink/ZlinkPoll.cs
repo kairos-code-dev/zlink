@@ -15,23 +15,29 @@ public static class ZlinkPoll
     [ThreadStatic]
     private static ZlinkPollItemWindows[]? _windowsItems;
 
-    public static int Poll(IReadOnlyList<IZlinkSocket> sockets,
-        IReadOnlyList<PollEvents> events, Span<PollEvents> revents,
-        int timeoutMs)
+    public static int Poll(IReadOnlyList<IZlinkSocket> sockets, int timeoutMs)
     {
         if (sockets == null)
             throw new ArgumentNullException(nameof(sockets));
+        PollEvents[] events = new PollEvents[sockets.Count];
+        Span<PollEvents> revents = sockets.Count <= 64
+            ? stackalloc PollEvents[sockets.Count]
+            : new PollEvents[sockets.Count];
+        Array.Fill(events, PollEvents.PollIn);
         return PollSocketsCore(sockets.Count,
             i => SocketInterop.RequireSocket(sockets[i], nameof(sockets)).Handle,
             events, revents, timeoutMs);
     }
 
-    public static int Poll(IReadOnlyList<SocketMonitor> monitors,
-        IReadOnlyList<PollEvents> events, Span<PollEvents> revents,
-        int timeoutMs)
+    public static int Poll(IReadOnlyList<SocketMonitor> monitors, int timeoutMs)
     {
         if (monitors == null)
             throw new ArgumentNullException(nameof(monitors));
+        PollEvents[] events = new PollEvents[monitors.Count];
+        Span<PollEvents> revents = monitors.Count <= 64
+            ? stackalloc PollEvents[monitors.Count]
+            : new PollEvents[monitors.Count];
+        Array.Fill(events, PollEvents.PollIn);
         return PollSocketsCore(monitors.Count, i => monitors[i].Handle, events,
             revents, timeoutMs);
     }

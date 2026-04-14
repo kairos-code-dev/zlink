@@ -949,10 +949,10 @@ napi_value spot_send_router(napi_env env, napi_callback_info info)
     return NULL;
 }
 
-napi_value spot_request_router(napi_env env, napi_callback_info info)
+napi_value spot_request_to_router(napi_env env, napi_callback_info info)
 {
     (void) info;
-    napi_throw_error(env, NULL, "spotRequestRouter not implemented");
+    napi_throw_error(env, NULL, "spotRequestToRouter not implemented");
     return NULL;
 }
 
@@ -1407,8 +1407,12 @@ napi_value spot_publish(napi_env env, napi_callback_info info)
             return NULL;
     }
 
-    int rc = zlink_publish(spot, topic.c_str(), parts.data(), parts.size(),
-                           flags);
+    int rc = zlink_publish(
+      spot,
+      topic.c_str(),
+      parts.data(),
+      parts.size(),
+      static_cast<zlink_send_flags_t>(flags));
     if (rc != 0) {
         close_msg_vector(parts);
         return throw_last_error(env, "spot_publish failed");
@@ -1448,8 +1452,12 @@ napi_value spot_try_publish(napi_env env, napi_callback_info info)
             return NULL;
     }
 
-    int rc = zlink_publish(spot, topic.c_str(), parts.data(), parts.size(),
-                           ZLINK_DONTWAIT);
+    int rc = zlink_publish(
+      spot,
+      topic.c_str(),
+      parts.data(),
+      parts.size(),
+      ZLINK_SEND_FLAGS_DONTWAIT);
     if (rc == 0) {
         rc = ZLINK_SUBMIT_OK;
     } else {
@@ -1562,7 +1570,13 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
     for (;;) {
         memset(&routing_id, 0, sizeof(routing_id));
         int rc = zlink_subscribe(
-          spot, &routing_id, &parts, &count, topic.data(), &topic_len, 0);
+          spot,
+          &routing_id,
+          &parts,
+          &count,
+          topic.data(),
+          &topic_len,
+          ZLINK_RECV_FLAGS_NONE);
         if (rc == 0) {
             napi_value arr;
             napi_create_array_with_length(env, count, &arr);
@@ -1606,7 +1620,13 @@ napi_value spot_try_recv(napi_env env, napi_callback_info info)
     for (;;) {
         memset(&routing_id, 0, sizeof(routing_id));
         int rc = zlink_subscribe(
-          spot, &routing_id, &parts, &count, topic.data(), &topic_len, ZLINK_DONTWAIT);
+          spot,
+          &routing_id,
+          &parts,
+          &count,
+          topic.data(),
+          &topic_len,
+          ZLINK_RECV_FLAGS_DONTWAIT);
         if (rc == 0) {
             napi_value arr;
             napi_create_array_with_length(env, count, &arr);

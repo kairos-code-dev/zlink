@@ -23,7 +23,7 @@ public record SpotNodeStatus(String serviceName, String localEndpoint,
         return new SpotNodeStatus(
           NativeHelpers.fromCString(segment.asSlice(0, 256), 256),
           NativeHelpers.fromCString(segment.asSlice(256, 256), 256),
-          RoutingId.copyOf(routing),
+          RoutingId.fromBytes(routing),
           SpotNodeState.fromValue(segment.get(ValueLayout.JAVA_INT, 768)),
           segment.get(ValueLayout.JAVA_INT, 772),
           segment.get(ValueLayout.JAVA_INT, 776),

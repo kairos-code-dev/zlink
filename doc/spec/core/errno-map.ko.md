@@ -18,9 +18,8 @@
 
 `zlink_errno()`는 호출 스레드의 raw 내부 `errno` 값을 반환한다.
 주로 result enum이 coarse bucket으로 정규화될 때 유용하다. 예를 들어
-`INTERNAL_ERROR`처럼 내부 실패를 한데 묶는 경우나, 별도 public bucket이
-없는 세부 실패가 `TERMINATED` 또는 `INVALID_ARGUMENT` 같은 결과로 접힐 때
-원래 내부 사유를 확인할 수 있다.
+`INTERNAL_ERROR`처럼 여러 internal `errno`가 같은 public bucket으로
+정규화될 때 원래 내부 사유를 확인할 수 있다.
 
 ```c
 zlink_submit_result_t rc = zlink_send(s, parts, count, 0);
@@ -134,7 +133,8 @@ typedef enum zlink_request_result_t
     ZLINK_REQUEST_TIMED_OUT       = 101,
     ZLINK_REQUEST_NOT_FOUND       = 102,
     ZLINK_REQUEST_TERMINATED      = 103,
-    ZLINK_REQUEST_PROTOCOL_ERROR  = 104
+    ZLINK_REQUEST_PROTOCOL_ERROR  = 104,
+    ZLINK_REQUEST_INTERNAL_ERROR  = 105
 } zlink_request_result_t;
 ```
 
@@ -147,6 +147,7 @@ typedef enum zlink_request_result_t
 | `NOT_FOUND` | `ENOENT` | 대상이 없어 error reply로 요청이 완료됨 |
 | `TERMINATED` | `ETERM` | request 경로가 명시적인 종료 completion을 방출하기 전까지는 예약값 |
 | `PROTOCOL_ERROR` | `EPROTO` | reply envelope 또는 error reply payload가 잘못됨 |
+| `INTERNAL_ERROR` | 그 외 내부 completion 실패 | 더 세분화된 public bucket 없이 request completion이 실패함 |
 
 ### 적용 대상 함수
 
@@ -170,7 +171,8 @@ typedef enum zlink_recv_result_t
     ZLINK_RECV_BUSY               = 202,  /* EBUSY     */
     ZLINK_RECV_TERMINATED         = 203,  /* ETERM     */
     ZLINK_RECV_INVALID_HANDLE     = 204,  /* EFAULT    */
-    ZLINK_RECV_NOT_SUPPORTED      = 205   /* ENOTSUP   */
+    ZLINK_RECV_NOT_SUPPORTED      = 205,  /* ENOTSUP   */
+    ZLINK_RECV_INTERNAL_ERROR     = 206   /* internal errno */
 } zlink_recv_result_t;
 ```
 
@@ -181,9 +183,10 @@ typedef enum zlink_recv_result_t
 | `OK` | -- | 데이터를 정상 수신함 |
 | `NO_DATA` | `EAGAIN` | 비차단 수신에 데이터가 없거나, API별로 더 이상 반환할 데이터가 없음 (예: 정지된 timer에 남은 fire event가 없음) |
 | `BUSY` | `EBUSY` | 핸들러가 이미 등록되어 있음 |
-| `TERMINATED` | `ETERM`, 그 외 미분류 recv 내부 실패 | context가 종료되었거나, recv enum에 별도 내부 오류 코드가 없어 종료 계열로 접힌 실패 |
+| `TERMINATED` | `ETERM` | context가 종료됨 |
 | `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
 | `NOT_SUPPORTED` | `ENOTSUP` | recv를 지원하지 않는 소켓 타입 |
+| `INTERNAL_ERROR` | 그 외 내부 recv 실패 | 더 세분화된 public bucket 없이 recv가 실패함 |
 
 ### 적용 대상 함수
 
@@ -214,7 +217,8 @@ typedef enum zlink_handler_result_t
     ZLINK_HANDLER_BUSY            = 302,  /* EBUSY     */
     ZLINK_HANDLER_NOT_SUPPORTED   = 303,  /* ENOTSUP   */
     ZLINK_HANDLER_DEADLOCK        = 304,  /* EDEADLK   */
-    ZLINK_HANDLER_INVALID_HANDLE  = 305   /* EFAULT    */
+    ZLINK_HANDLER_INVALID_HANDLE  = 305,  /* EFAULT    */
+    ZLINK_HANDLER_INTERNAL_ERROR  = 306   /* internal errno */
 } zlink_handler_result_t;
 ```
 
@@ -228,6 +232,7 @@ typedef enum zlink_handler_result_t
 | `NOT_SUPPORTED` | `ENOTSUP` | 지원하지 않는 subject |
 | `DEADLOCK` | `EDEADLK` | 재진입 호출 (send-ready handler 전용) |
 | `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
+| `INTERNAL_ERROR` | 그 외 내부 handler 실패 | 더 세분화된 public bucket 없이 handler 등록이 실패함 |
 
 ### 적용 대상 함수
 
@@ -255,7 +260,8 @@ typedef enum zlink_close_result_t
     ZLINK_CLOSE_OK                = 0,
     ZLINK_CLOSE_BUSY              = 401,  /* EBUSY     */
     ZLINK_CLOSE_SHUTDOWN          = 402,  /* ESHUTDOWN */
-    ZLINK_CLOSE_INVALID_HANDLE    = 403   /* EFAULT    */
+    ZLINK_CLOSE_INVALID_HANDLE    = 403,  /* EFAULT    */
+    ZLINK_CLOSE_INTERNAL_ERROR    = 404   /* internal errno */
 } zlink_close_result_t;
 ```
 
@@ -267,6 +273,7 @@ typedef enum zlink_close_result_t
 | `BUSY` | `EBUSY` | 진행 중인 콜백 또는 API 호출이 있음 |
 | `SHUTDOWN` | `ESHUTDOWN` | 이미 닫혀 있음 |
 | `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
+| `INTERNAL_ERROR` | 그 외 내부 close 실패 | 더 세분화된 public bucket 없이 close가 실패함 |
 
 ### 적용 대상 함수
 
@@ -291,7 +298,8 @@ typedef enum zlink_bind_result_t
     ZLINK_BIND_INVALID_ARGUMENT   = 501,  /* EINVAL    */
     ZLINK_BIND_ADDR_IN_USE        = 502,  /* EADDRINUSE */
     ZLINK_BIND_NOT_SUPPORTED      = 503,  /* ENOTSUP   */
-    ZLINK_BIND_INVALID_HANDLE     = 504   /* EFAULT    */
+    ZLINK_BIND_INVALID_HANDLE     = 504,  /* EFAULT    */
+    ZLINK_BIND_INTERNAL_ERROR     = 505   /* internal errno */
 } zlink_bind_result_t;
 ```
 
@@ -304,6 +312,7 @@ typedef enum zlink_bind_result_t
 | `ADDR_IN_USE` | `EADDRINUSE` | 주소가 이미 바인딩되어 있음 |
 | `NOT_SUPPORTED` | `ENOTSUP` | 지원하지 않는 transport |
 | `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
+| `INTERNAL_ERROR` | 그 외 내부 bind 실패 | 더 세분화된 public bucket 없이 bind가 실패함 |
 
 ### 적용 대상 함수
 
@@ -323,7 +332,8 @@ typedef enum zlink_connect_result_t
     ZLINK_CONNECT_OK              = 0,
     ZLINK_CONNECT_INVALID_ARGUMENT = 601, /* EINVAL    */
     ZLINK_CONNECT_NOT_SUPPORTED   = 602,  /* ENOTSUP   */
-    ZLINK_CONNECT_INVALID_HANDLE  = 603   /* EFAULT    */
+    ZLINK_CONNECT_INVALID_HANDLE  = 603,  /* EFAULT    */
+    ZLINK_CONNECT_INTERNAL_ERROR  = 604   /* internal errno */
 } zlink_connect_result_t;
 ```
 
@@ -335,6 +345,7 @@ typedef enum zlink_connect_result_t
 | `INVALID_ARGUMENT` | `EINVAL` | 잘못된 endpoint |
 | `NOT_SUPPORTED` | `ENOTSUP` | 지원하지 않는 transport |
 | `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
+| `INTERNAL_ERROR` | 그 외 내부 connect 실패 | 더 세분화된 public bucket 없이 connect/disconnect/unbind가 실패함 |
 
 ### 적용 대상 함수
 
@@ -356,7 +367,8 @@ typedef enum zlink_config_result_t
     ZLINK_CONFIG_OK               = 0,
     ZLINK_CONFIG_INVALID_HANDLE   = 701,  /* EFAULT    */
     ZLINK_CONFIG_INVALID_ARGUMENT = 702,  /* EINVAL    */
-    ZLINK_CONFIG_NOT_SUPPORTED    = 703   /* ENOTSUP   */
+    ZLINK_CONFIG_NOT_SUPPORTED    = 703,  /* ENOTSUP   */
+    ZLINK_CONFIG_INTERNAL_ERROR   = 704   /* internal errno */
 } zlink_config_result_t;
 ```
 
@@ -366,8 +378,9 @@ typedef enum zlink_config_result_t
 |---|---|---|
 | `OK` | -- | 설정 성공 |
 | `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
-| `INVALID_ARGUMENT` | `EINVAL`, 별도 config bucket이 없는 일부 `EBUSY`류 충돌 | 잘못된 파라미터 또는 config 계층의 비지원/충돌 상태 |
+| `INVALID_ARGUMENT` | `EINVAL` | 잘못된 option, output pointer, parameter shape |
 | `NOT_SUPPORTED` | `ENOTSUP` | 지원하지 않는 옵션 |
+| `INTERNAL_ERROR` | 그 외 내부 config 실패 | 더 세분화된 public bucket 없이 설정이 실패함 |
 
 ### 적용 대상 함수
 

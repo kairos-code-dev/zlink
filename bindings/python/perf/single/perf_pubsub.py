@@ -43,19 +43,19 @@ def main(argv=None):
                 publisher.publisher_options.verbose = True
                 endpoint = tcp_endpoint("pubsub")
                 with publisher.monitor_open(
-                    zlink.MonitorEvent.CONNECTION_READY
+                    zlink.MonitorEventMask.CONNECTION_READY
                 ) as publisher_monitor:
                     with subscriber.monitor_open(
-                        zlink.MonitorEvent.CONNECTION_READY
+                        zlink.MonitorEventMask.CONNECTION_READY
                     ) as subscriber_monitor:
                         publisher.bind(endpoint)
                         subscriber.connect(endpoint)
                         subscriber.set_subscription(TOPIC)
                         wait_monitor_event(
-                            publisher_monitor, zlink.MonitorEvent.CONNECTION_READY
+                            publisher_monitor, zlink.MonitorEventMask.CONNECTION_READY
                         )
                         wait_monitor_event(
-                            subscriber_monitor, zlink.MonitorEvent.CONNECTION_READY
+                            subscriber_monitor, zlink.MonitorEventMask.CONNECTION_READY
                         )
 
                         event = publisher.receive_subscription_event()

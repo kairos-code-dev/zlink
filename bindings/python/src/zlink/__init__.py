@@ -39,9 +39,9 @@ from ._socket_types import (
     XPubSocket,
     XSubSocket,
 )
-from ._request_reply import RequestDealer, RequestRouter
 from ._poller import Poller
 from ._monitor import (
+    MonitorEvent,
     MonitorSnapshot,
     MonitorSocket,
     ServiceEvent,
@@ -74,7 +74,6 @@ from ._utils import (
     Stopwatch,
     Thread,
     Timer,
-    errno,
     has,
     multipart_close,
     proxy,
@@ -100,7 +99,7 @@ from ._enums import (
     ConfigResult,
     ErrorCode,
     ProtocolError,
-    MonitorEvent,
+    MonitorEventMask,
     DisconnectReason,
     PollEvent,
     RegistryState,
@@ -111,6 +110,7 @@ from ._enums import (
     TopologyState,
     RegistrySocketRole,
     DiscoverySocketRole,
+    DiscoveryDealerPeerMode,
     SpotNodeSocketRole,
     SpotNodeOption,
     SpotNodePubMode,
@@ -126,7 +126,6 @@ SERVICE_TYPE_SPOT = ServiceType.SPOT
 
 __all__ = [
     "version",
-    "errno",
     "strerror",
     "has",
     "proxy",
@@ -149,8 +148,6 @@ __all__ = [
     "SubSocket",
     "XPubSocket",
     "XSubSocket",
-    "RequestDealer",
-    "RequestRouter",
     "Message",
     "Received",
     "Subscribed",
@@ -163,6 +160,7 @@ __all__ = [
     "Timer",
     "Poller",
     "MonitorSnapshot",
+    "MonitorEvent",
     "MonitorSocket",
     "ServiceMonitor",
     "ServiceEvent",
@@ -210,7 +208,7 @@ __all__ = [
     "ConfigResult",
     "ErrorCode",
     "ProtocolError",
-    "MonitorEvent",
+    "MonitorEventMask",
     "DisconnectReason",
     "PollEvent",
     "RegistryState",
@@ -221,6 +219,7 @@ __all__ = [
     "TopologyState",
     "RegistrySocketRole",
     "DiscoverySocketRole",
+    "DiscoveryDealerPeerMode",
     "SpotNodeSocketRole",
     "SpotNodeOption",
     "SpotNodePubMode",

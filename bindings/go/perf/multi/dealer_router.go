@@ -39,8 +39,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 		dealerMon := perfcommon.OpenMonitor(dealer)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(dealer, cfg.transport))
 
-		rid, err := zlink.NewRoutingID([]byte(fmt.Sprintf("dealer-%06d", i)))
-		perfcommon.Must(err)
+		rid := zlink.NewRoutingID([]byte(fmt.Sprintf("dealer-%06d", i)))
 
 		perfcommon.Must(dealer.SetRoutingID(rid))
 		if err := dealer.Connect(endpoint); err != nil {

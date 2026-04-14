@@ -2,14 +2,13 @@
 
 package dev.kairoscode.zlink;
 
-/** Canonical XPUB subscription event snapshot. */
-public record SubscriptionEvent(RoutingId routingId, boolean subscribed,
-                                String topic) {
-    public SubscriptionEvent {
-        topic = topic == null ? "" : topic;
-    }
+import java.util.Optional;
 
-    public String filter() {
-        return topic;
+/** Canonical XPUB subscription event snapshot. */
+public record SubscriptionEvent(Optional<RoutingId> routingId, String topic,
+                                boolean subscribed) {
+    public SubscriptionEvent {
+        routingId = routingId == null ? Optional.empty() : routingId;
+        topic = topic == null ? "" : topic;
     }
 }

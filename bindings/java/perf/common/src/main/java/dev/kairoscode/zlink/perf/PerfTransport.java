@@ -110,7 +110,7 @@ final class PerfTransport {
             int seen = 0;
             while (seen < expectedCount) {
                 MonitorEvent event = monitor.recv();
-                if ((event.event() & expectedMask) == 0L) {
+                if ((event.event().getValue() & expectedMask) == 0L) {
                     failure[0] = new IllegalStateException(label
                         + " unexpected event: " + event.event());
                     return;

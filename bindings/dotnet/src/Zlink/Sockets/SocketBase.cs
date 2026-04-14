@@ -36,7 +36,7 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         }
         catch (ZlinkException ex)
         {
-            throw new ZlinkBindException(BindResult.InvalidArgument, ex.InternalErrno);
+            throw ZlinkException.CreateBindException(ex.InternalErrno);
         }
     }
 
@@ -48,7 +48,7 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         }
         catch (ZlinkException ex)
         {
-            throw new ZlinkConnectException(ConnectResult.InvalidArgument, ex.InternalErrno);
+            throw ZlinkException.CreateConnectException(ex.InternalErrno);
         }
     }
 
@@ -61,8 +61,7 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         }
         catch (ZlinkException ex)
         {
-            throw new ZlinkConfigException(ConfigResult.InvalidArgument,
-                ex.InternalErrno);
+            throw ZlinkException.CreateConfigException(ex.InternalErrno);
         }
     }
 
@@ -156,7 +155,7 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         }
         catch (ZlinkException ex)
         {
-            throw new ZlinkCloseException(CloseResult.InvalidHandle, ex.InternalErrno);
+            throw ZlinkException.CreateCloseException(ex.InternalErrno);
         }
         GC.SuppressFinalize(this);
     }

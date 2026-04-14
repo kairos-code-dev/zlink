@@ -6,9 +6,9 @@ import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
-import dev.kairoscode.zlink.options.SocketOptionKey;
-import dev.kairoscode.zlink.options.SocketOptions;
-import dev.kairoscode.zlink.options.SocketOptionValueType;
+import dev.kairoscode.zlink.SocketOptionKey;
+import dev.kairoscode.zlink.SocketOptions;
+import dev.kairoscode.zlink.SocketOptionValueType;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -634,14 +634,16 @@ final class SocketCore {
         Message[] frames = new Message[snapshot.parts().length];
         for (int i = 0; i < snapshot.parts().length; i++)
             frames[i] = Message.copyOf(snapshot.parts()[i]);
-        return new Received(snapshot.routingId(), frames, true);
+        return new Received(snapshot.routingId(), null, frames, true, 0L, false,
+          null);
     }
 
     private static Received materializeReceived(CallbackSubscribeData snapshot) {
         Message[] frames = new Message[snapshot.parts().length];
         for (int i = 0; i < snapshot.parts().length; i++)
             frames[i] = Message.copyOf(snapshot.parts()[i]);
-        return new Received(snapshot.routingId(), frames, true);
+        return new Received(snapshot.routingId(), null, frames, true, 0L, false,
+          null);
     }
 
     private static RoutingId readRoutingId(MemorySegment sourceRid) {
@@ -656,7 +658,7 @@ final class SocketCore {
         byte[] value = new byte[size];
         MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
             MemorySegment.ofArray(value), 0, size);
-        return RoutingId.copyOf(value);
+        return RoutingId.fromTrusted(value);
     }
 
     private static String decodeTopic(MemorySegment topic, long topicLen) {

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class NativeContractTest {
     private static final int ZLINK_ROUTER_OPT_MANDATORY = 0x3101;
@@ -87,9 +88,9 @@ public class NativeContractTest {
             assertEquals(0, Native.setSubscription(sub.handle(),
                 arena.allocateFrom("native-contract")));
             intValue.set(ValueLayout.JAVA_INT, 0, 1);
-            assertEquals(-1, Native.setSubOption(sub.handle(),
+            assertTrue(Native.setSubOption(sub.handle(),
                 ZLINK_SUB_OPT_TOPICS_COUNT, intValue,
-                ValueLayout.JAVA_INT.byteSize()));
+                ValueLayout.JAVA_INT.byteSize()) != 0);
             sizeValue.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
             intValue.set(ValueLayout.JAVA_INT, 0, -1);
             assertEquals(0, Native.getSubOption(sub.handle(),

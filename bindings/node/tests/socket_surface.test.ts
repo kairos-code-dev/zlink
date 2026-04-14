@@ -73,9 +73,6 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(typeof dealer.setRoutingId, 'function');
   assert.equal(typeof dealer.getRoutingId, 'function');
   assert.equal(typeof dealer.attachDiscovery, 'function');
-  assert.equal(typeof zlink.RequestDealer, 'function');
-  assert.equal(typeof zlink.RequestRouter, 'function');
-
   assert.equal(typeof stream.send, 'function');
   assert.equal(typeof stream.recv, 'function');
   assert.equal(typeof stream.onReceive, 'function');
@@ -99,15 +96,29 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(typeof router.setRoutingId, 'function');
   assert.equal(typeof router.getRoutingId, 'function');
   assert.equal(typeof router.attachDiscovery, 'function');
+  assert.equal(typeof router.request, 'function');
+  assert.equal(typeof router.reply, 'function');
+  assert.equal(typeof router.requestToSpot, 'function');
+  assert.equal(typeof router.replyToSpot, 'function');
+  assert.equal(router.recvSpot, undefined);
+  assert.equal(router.onSpotReceive, undefined);
 
   const spotNode = new zlink.SpotNode(ctx);
   assert.equal(spotNode.lastEndpoint, undefined);
+  assert.equal(typeof spotNode.setRoutingId, 'function');
+  spotNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('node-surface')));
+  assert.ok(spotNode.routingId instanceof zlink.RoutingId);
   spotNode.close();
 
   const monitor = stream.monitorOpen(zlink.MonitorEvent.ALL);
   assert.equal(typeof monitor.recv, 'function');
   assert.equal(typeof monitor.onEvent, 'function');
+  assert.equal(typeof zlink.MonitorSocket.ignoreHandler, 'function');
   monitor.close();
+
+  const poller = new zlink.Poller();
+  assert.equal(typeof poller.size, 'number');
+  poller.close();
 
   stream.close();
   router.close();

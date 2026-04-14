@@ -15,11 +15,11 @@ internal static partial class PerfRunner
             {
                 return socket.Receive(buffer, flags);
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
             {
                 continue;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             && (flags & ReceiveFlags.DontWait) != 0)
             {
                 return 0;
@@ -43,11 +43,11 @@ internal static partial class PerfRunner
             {
                 return socket.Receive(buffer, ReceiveFlags.DontWait);
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
             {
                 continue;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
             {
                 return 0;
             }

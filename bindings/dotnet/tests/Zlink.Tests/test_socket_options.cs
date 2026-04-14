@@ -17,13 +17,17 @@ public sealed class test_socket_options
         nameof(SocketOptions.Affinity)
     };
 
-    private static readonly HashSet<string> StringOptions = new()
+    private static readonly HashSet<string> ByteOptions = new()
     {
         nameof(SocketOptions.RoutingId),
+        nameof(SocketOptions.ConnectRoutingId)
+    };
+
+    private static readonly HashSet<string> StringOptions = new()
+    {
         nameof(SocketOptions.Subscribe),
         nameof(SocketOptions.Unsubscribe),
         nameof(SocketOptions.LastEndpoint),
-        nameof(SocketOptions.ConnectRoutingId),
         nameof(SocketOptions.XPubWelcomeMsg),
         nameof(SocketOptions.BindToDevice),
         nameof(SocketOptions.TlsCert),
@@ -60,6 +64,8 @@ public sealed class test_socket_options
                 expectedType = typeof(SocketOptionKey<long>);
             else if (UInt64Options.Contains(optionName))
                 expectedType = typeof(SocketOptionKey<ulong>);
+            else if (ByteOptions.Contains(optionName))
+                expectedType = typeof(SocketOptionKey<byte[]>);
             else if (StringOptions.Contains(optionName))
                 expectedType = typeof(SocketOptionKey<string>);
 
@@ -83,8 +89,8 @@ public sealed class test_socket_options
         stream.Options.MaxMessageSize = 1024L;
         Assert.Equal(1024L, stream.Options.MaxMessageSize);
 
-        dealer.DealerOptions.RoutingId = new RoutingId("RID-OPT");
-        Assert.Equal("RID-OPT", dealer.DealerOptions.RoutingId.Value);
+        dealer.DealerOptions.RoutingId = CoreTestSupport.RoutingIdUtf8("RID-OPT");
+        Assert.Equal("RID-OPT", dealer.DealerOptions.RoutingId.ToString());
     }
 
     [Fact]
@@ -116,11 +122,13 @@ public sealed class test_socket_options
         using var stream = new StreamSocket(ctx);
         using var xpub = new XPubSocket(ctx);
 
-        dealer.DealerOptions.RoutingId = new RoutingId("DEALER-RID");
-        Assert.Equal("DEALER-RID", dealer.DealerOptions.RoutingId.Value);
+        dealer.DealerOptions.RoutingId =
+            CoreTestSupport.RoutingIdUtf8("DEALER-RID");
+        Assert.Equal("DEALER-RID", dealer.DealerOptions.RoutingId.ToString());
 
-        router.RouterOptions.RoutingId = new RoutingId("ROUTER-RID");
-        Assert.Equal("ROUTER-RID", router.RouterOptions.RoutingId.Value);
+        router.RouterOptions.RoutingId =
+            CoreTestSupport.RoutingIdUtf8("ROUTER-RID");
+        Assert.Equal("ROUTER-RID", router.RouterOptions.RoutingId.ToString());
         router.RouterOptions.Mandatory = true;
         Assert.True(router.RouterOptions.Mandatory);
 

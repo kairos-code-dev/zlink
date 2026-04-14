@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -16,8 +17,6 @@ public sealed class test_request_reply
         using var ctx = new Context();
         using var routerSocket = new RouterSocket(ctx);
         using var dealerSocket = new DealerSocket(ctx);
-        using var router = new RequestRouter(routerSocket);
-        using var dealer = new RequestDealer(dealerSocket);
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc", "request-reply");
         routerSocket.Bind(endpoint);
@@ -25,38 +24,33 @@ public sealed class test_request_reply
         Thread.Sleep(50);
 
         using var handled = new ManualResetEventSlim(false);
-        router.OnReceive(received =>
+        Task serverTask = Task.Run(() =>
         {
-            try
-            {
-                Assert.True(received.HasRequestSequence);
-                Assert.NotEqual(0UL, received.RequestSequence);
-                Assert.Equal("ping", received.Parts[0].GetString());
-                using Message reply = Message.FromString("pong");
-                router.Reply(received.RoutingIdValue ?? throw new InvalidOperationException(
-                    "missing routing id"), received.RequestSequence, reply);
-            }
-            finally
-            {
-                foreach (Message part in received.Parts)
-                    part.Dispose();
-                handled.Set();
-            }
+            using Received received = routerSocket.Recv();
+            Assert.True(received.RequestSeq.HasValue);
+            Assert.NotEqual(0UL, received.RequestSeq.Value);
+            Assert.Equal("ping", received.Parts[0].GetString());
+            using Message reply = Message.FromString("pong");
+            routerSocket.Reply(received.RoutingId ?? throw new InvalidOperationException(
+                "missing routing id"), received.RequestSeq.Value, reply);
+            handled.Set();
         });
 
         using Message request = Message.FromString("ping");
-        Received reply = await dealer.RequestAsync(request, TimeSpan.FromSeconds(2));
+        IReadOnlyList<Message> reply = await dealerSocket.RequestAsync(request,
+            TimeSpan.FromSeconds(2));
         try
         {
-            Assert.Equal("pong", reply.SinglePartOrThrow().GetString());
+            Assert.Equal("pong", reply[0].GetString());
         }
         finally
         {
-            foreach (Message part in reply.Parts)
+            foreach (Message part in reply)
                 part.Dispose();
         }
 
         Assert.True(handled.Wait(2000));
+        await serverTask;
     }
 
     [Fact]
@@ -68,7 +62,6 @@ public sealed class test_request_reply
         using var ctx = new Context();
         using var routerSocket = new RouterSocket(ctx);
         using var dealerSocket = new DealerSocket(ctx);
-        using var router = new RequestRouter(routerSocket);
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "request-reply-data");
@@ -79,7 +72,7 @@ public sealed class test_request_reply
         using Message payload = Message.FromString("plain-data");
         dealerSocket.Send(payload);
 
-        Received received = router.Recv();
+        Received received = routerSocket.Recv();
         try
         {
             string routedPayload = received.Parts.Count == 0

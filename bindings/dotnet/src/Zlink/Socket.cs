@@ -172,12 +172,12 @@ internal sealed class Socket : ConnectableSocketBase
         Kernel.RecvHandler(handler);
     }
 
-    public Subscribed Subscribe()
+    public TopicMessage Subscribe()
     {
         return Kernel.Subscribe();
     }
 
-    public Subscribed? TrySubscribe()
+    public TopicMessage? TrySubscribe()
     {
         return Kernel.TrySubscribe();
     }

@@ -54,6 +54,7 @@ class discovery_t
     bool check_tag () const;
 
     int connect_registry (const char *registry_endpoint_);
+    int set_dealer_peer_mode (zlink_discovery_dealer_peer_mode_t mode_);
     int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_) const;
     int set_option (int option_, const void *optval_, size_t optvallen_);
@@ -65,6 +66,8 @@ class discovery_t
     int get_value (int64_t *value_out_) const;
     int set_metadata (const void *data_, size_t size_);
     int get_metadata (zlink_msg_t *metadata_out_) const;
+    int resolve_spot (const zlink_routing_id_t *spot_rid_,
+                      zlink_routing_id_t *owner_node_rid_out_);
     void snapshot_member_peers (
       std::vector<zlink_member_peer_entry_t> *out_) const;
     int member_peers (zlink_member_peer_entry_t *entries_, size_t *count_) const;
@@ -95,6 +98,7 @@ class discovery_t
 
     uint16_t service_type () const { return _service_type; }
     const std::string &service_name () const { return _service_name; }
+    zlink_discovery_dealer_peer_mode_t dealer_peer_mode () const;
 
     void snapshot_providers (const std::string &service_name_,
                              std::vector<provider_info_t> *out_);
@@ -123,10 +127,6 @@ class discovery_t
     int add_observer (discovery_observer_t *observer_);
     int remove_observer (discovery_observer_t *observer_);
     void upsert_service_summary (const zlink_registry_topology_entry_t &entry_);
-    void erase_service_summary (uint16_t service_kind_,
-                                const zlink_routing_id_t &routing_id_,
-                                const std::string &service_name_,
-                                bool stopped_);
     int ensure_sub_socket ();
     void close_sub_socket ();
     int bootstrap_registry (const char *registry_endpoint_);
@@ -166,7 +166,32 @@ class discovery_t
         zlink_registry_topology_entry_t entry;
         bool dirty;
         bool tombstone;
+        uint64_t validated_service_seq;
     };
+
+    topology_key_t make_summary_key (uint16_t service_kind_,
+                                     uint16_t service_role_,
+                                     const zlink_routing_id_t &routing_id_,
+                                     const std::string &service_name_) const;
+    void store_summary_entry_locked (const topology_key_t &key_,
+                                     const zlink_registry_topology_entry_t &entry_,
+                                     bool dirty_,
+                                     bool tombstone_,
+                                     uint64_t validated_service_seq_);
+    topology_key_t make_spot_topology_key (
+      const zlink_routing_id_t &spot_rid_) const;
+    bool resolve_owner_node_from_endpoint_locked (
+      const char *endpoint_, zlink_routing_id_t *owner_node_rid_out_) const;
+    bool try_resolve_spot_from_cache_locked (
+      const topology_key_t &key_,
+      uint64_t now_ms_,
+      zlink_routing_id_t *owner_node_rid_out_) const;
+    int query_spot_owner_entries_from_registry (
+      const zlink_routing_id_t *spot_rid_,
+      std::vector<zlink_registry_topology_entry_t> *entries_out_);
+    void refresh_spot_owner_cache_locked (
+      const topology_key_t &key_,
+      const std::vector<zlink_registry_topology_entry_t> &entries_);
 
     struct registered_service_key_t
     {
@@ -234,6 +259,7 @@ class discovery_t
     uint32_t _monitor_ready_count;
     uint16_t _service_type;
     std::string _service_name;
+    zlink_discovery_dealer_peer_mode_t _dealer_peer_mode;
     bool _discovery_summary_enabled;
     std::map<registered_service_key_t, registered_service_t> _registered_services;
     discovery_local_state_t _local_state;

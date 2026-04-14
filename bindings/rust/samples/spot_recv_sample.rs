@@ -11,8 +11,10 @@ fn main() {
 
     let publisher_node = SpotNode::new(&ctx).expect("publisher node failed");
     let subscriber_node = SpotNode::new(&ctx).expect("subscriber node failed");
-    let publisher = Spot::new(&publisher_node).expect("publisher spot failed");
-    let subscriber = Spot::new(&subscriber_node).expect("subscriber spot failed");
+    let publisher = publisher_node.create_spot().expect("publisher spot failed");
+    let subscriber = subscriber_node
+        .create_spot()
+        .expect("subscriber spot failed");
     let endpoint = sample_support::tcp_endpoint();
 
     publisher_node.bind(&endpoint).expect("bind failed");
@@ -30,14 +32,11 @@ fn main() {
         publisher
             .publish(
                 "room:lobby",
-                vec![Message::from_bytes(b"hello-spot").unwrap()],
+                vec![Message::copy_from(b"hello-spot").unwrap()],
             )
             .expect("publish failed");
-        if let Some(received) = subscriber.try_subscribe().expect("try_subscribe failed") {
-            message = Some(received);
-            break;
-        }
-        std::thread::yield_now();
+        message = Some(subscriber.subscribe().expect("subscribe failed"));
+        break;
     }
     let message = message.expect("spot delivery did not arrive within 5s");
     let payload = message.parts()[0].as_str().unwrap_or("(binary)");

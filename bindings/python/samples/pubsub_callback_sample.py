@@ -35,7 +35,7 @@ def _wait_connected(*monitors, timeout_ms=5000):
             if event is None:
                 next_pending.append(monitor)
                 continue
-            if not (int(event.event) & int(zlink.MonitorEvent.CONNECTION_READY)):
+            if not (int(event.event) & int(zlink.MonitorEventMask.CONNECTION_READY)):
                 next_pending.append(monitor)
         pending = next_pending
 
@@ -47,8 +47,8 @@ def main():
     with zlink.Context() as ctx:
         with zlink.XPubSocket(ctx) as publisher:
             with zlink.SubSocket(ctx) as subscriber:
-                with publisher.monitor_open(zlink.MonitorEvent.CONNECTION_READY) as publisher_monitor:
-                    with subscriber.monitor_open(zlink.MonitorEvent.CONNECTION_READY) as subscriber_monitor:
+                with publisher.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as publisher_monitor:
+                    with subscriber.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as subscriber_monitor:
                         publisher.bind(endpoint)
                         subscriber.connect(endpoint)
                         subscriber.set_subscription(b"prices")
@@ -64,12 +64,12 @@ def main():
 
                 subscriber.on_subscribe(on_message)
                 event = publisher.receive_subscription_event()
-                if not event.subscribed or event.topic != b"prices":
+                if not event.subscribed or event.topic != "prices":
                     raise AssertionError("unexpected subscription event")
                 publisher.publish(b"prices", b"101.25")
                 if not done.wait(3.0):
                     raise TimeoutError("pubsub callback did not receive a message")
-                if observed["topic"] != b"prices":
+                if observed["topic"] != "prices":
                     raise AssertionError("unexpected pubsub callback topic")
                 if observed["payload"] != [b"101.25"]:
                     raise AssertionError("unexpected pubsub callback payload")

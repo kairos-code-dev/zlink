@@ -7,6 +7,7 @@
 #include "../types.hpp"
 
 #include <cerrno>
+#include <cstdio>
 
 namespace zlink
 {
@@ -23,7 +24,13 @@ class registry_t
             _last_error = errno != 0 ? errno : EFAULT;
     }
 
-    ~registry_t () { (void) close (); }
+    ~registry_t ()
+    {
+        try {
+            close ();
+        } catch (...) {
+        }
+    }
 
     registry_t (registry_t &&other) noexcept
         : _registry (other._registry), _last_error (other._last_error)
@@ -37,7 +44,10 @@ class registry_t
         if (this == &other)
             return *this;
 
-        (void) close ();
+        try {
+            close ();
+        } catch (...) {
+        }
         _registry = other._registry;
         _last_error = other._last_error;
         other._registry = NULL;
@@ -52,113 +62,205 @@ class registry_t
 
     int last_error () const noexcept { return _last_error; }
 
-    ZLINK_CPP_NODISCARD int
-    bind (const std::string &pub_endpoint_, const std::string &router_endpoint_)
+    void bind (const std::string &pub_endpoint_, const std::string &router_endpoint_)
     {
         validate_bounded_c_string (pub_endpoint_, 255u, "endpoint");
         validate_bounded_c_string (router_endpoint_, 255u, "endpoint");
-        return zlink_registry_bind (
-          _registry, pub_endpoint_.c_str (), router_endpoint_.c_str ());
+        detail::throw_if_failed<bind_error_t> (
+          static_cast<bind_result_t> (zlink_registry_bind (
+            _registry, pub_endpoint_.c_str (), router_endpoint_.c_str ())));
     }
 
-    ZLINK_CPP_NODISCARD int set_id (uint32_t registry_id_)
+    void set_id (uint32_t registry_id_)
     {
-        return zlink_registry_set_id (_registry, registry_id_);
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_registry_set_id (_registry, registry_id_)));
     }
 
-    ZLINK_CPP_NODISCARD int add_peer (const std::string &peer_pub_endpoint_)
+    void add_peer (const std::string &peer_pub_endpoint_)
     {
         validate_bounded_c_string (peer_pub_endpoint_, 255u, "endpoint");
-        return zlink_registry_add_peer (_registry, peer_pub_endpoint_.c_str ());
+        detail::throw_if_failed<connect_error_t> (
+          static_cast<connect_result_t> (
+            zlink_registry_add_peer (_registry, peer_pub_endpoint_.c_str ())));
     }
 
-    ZLINK_CPP_NODISCARD int
-    set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_)
+    void set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_)
     {
-        return zlink_registry_set_heartbeat (
-          _registry, interval_ms_, timeout_ms_);
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_registry_set_heartbeat (
+              _registry, interval_ms_, timeout_ms_)));
     }
 
-    ZLINK_CPP_NODISCARD int set_broadcast_interval (uint32_t interval_ms_)
+    void set_broadcast_interval (uint32_t interval_ms_)
     {
-        return zlink_registry_set_broadcast_interval (_registry, interval_ms_);
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_registry_set_broadcast_interval (_registry, interval_ms_)));
     }
 
-    ZLINK_CPP_NODISCARD int
-    status_snapshot (zlink_registry_status_t &out_) const
+    registry_status_t status_snapshot () const
     {
-        return zlink_registry_status_snapshot (_registry, &out_);
+        zlink_registry_status_t native;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_registry_status_snapshot (_registry, &native)));
+        return registry_status_t (native);
     }
 
-    ZLINK_CPP_NODISCARD int
-    service_summary_snapshot (zlink_registry_service_summary_entry_t *entries_,
-                              size_t *count_,
-                              const zlink_registry_service_summary_filter_t
-                                *filter_ = NULL) const
+    std::vector<registry_service_summary_entry_t>
+    service_summary_snapshot (
+      const registry_service_summary_filter_t *filter_ = NULL) const
     {
-        return zlink_registry_service_summary_snapshot (
-          _registry, filter_, entries_, count_);
+        zlink_registry_service_summary_filter_t native_filter;
+        const zlink_registry_service_summary_filter_t *filter_ptr = NULL;
+        if (filter_) {
+            std::memset (&native_filter, 0, sizeof (native_filter));
+            native_filter.service_kind =
+              static_cast<zlink_service_kind_t> (filter_->service_kind);
+            native_filter.service_role =
+              static_cast<zlink_service_role_t> (filter_->service_role);
+            std::snprintf (
+              native_filter.service_name, sizeof (native_filter.service_name),
+              "%s", filter_->service_name.c_str ());
+            filter_ptr = &native_filter;
+        }
+
+        size_t count = 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_registry_service_summary_snapshot (
+              _registry, filter_ptr, NULL, &count)));
+        std::vector<zlink_registry_service_summary_entry_t> native (count);
+        if (count > 0) {
+            detail::throw_if_failed<config_error_t> (
+              static_cast<config_result_t> (
+                zlink_registry_service_summary_snapshot (
+                  _registry, filter_ptr, native.data (), &count)));
+            native.resize (count);
+        }
+        std::vector<registry_service_summary_entry_t> entries;
+        entries.reserve (native.size ());
+        for (size_t i = 0; i < native.size (); ++i)
+            entries.push_back (registry_service_summary_entry_t (native[i]));
+        return entries;
     }
 
-    ZLINK_CPP_NODISCARD int
-    topology_snapshot (zlink_registry_topology_entry_t *entries_,
-                       size_t *count_) const
+    std::vector<registry_topology_entry_t> topology_snapshot () const
     {
-        return zlink_registry_topology_snapshot (_registry, entries_, count_);
+        size_t count = 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_registry_topology_snapshot (_registry, NULL, &count)));
+        std::vector<zlink_registry_topology_entry_t> native (count);
+        if (count > 0) {
+            detail::throw_if_failed<config_error_t> (
+              static_cast<config_result_t> (
+                zlink_registry_topology_snapshot (
+                  _registry, native.data (), &count)));
+            native.resize (count);
+        }
+        std::vector<registry_topology_entry_t> entries;
+        entries.reserve (native.size ());
+        for (size_t i = 0; i < native.size (); ++i)
+            entries.push_back (registry_topology_entry_t (native[i]));
+        return entries;
     }
 
-    ZLINK_CPP_NODISCARD int
-    topology_query (zlink_registry_topology_entry_t *entries_,
-                    size_t *count_,
-                    const zlink_registry_topology_filter_t *filter_) const
+    std::vector<registry_topology_entry_t>
+    topology_query (const registry_topology_filter_t &filter_) const
     {
-        return zlink_registry_topology_query (
-          _registry, filter_, entries_, count_);
+        zlink_registry_topology_filter_t native_filter;
+        std::memset (&native_filter, 0, sizeof (native_filter));
+        native_filter.service_kind =
+          static_cast<zlink_service_kind_t> (filter_.service_kind);
+        native_filter.service_role =
+          static_cast<zlink_service_role_t> (filter_.service_role);
+        std::snprintf (
+          native_filter.service_name, sizeof (native_filter.service_name),
+          "%s", filter_.service_name.c_str ());
+        native_filter.state = static_cast<zlink_topology_state_t> (filter_.state);
+        native_filter.source =
+          static_cast<zlink_topology_source_t> (filter_.source);
+        if (filter_.routing_id)
+            native_filter.routing_id = filter_.routing_id->native ();
+
+        size_t count = 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_registry_topology_query (
+              _registry, &native_filter, NULL, &count)));
+        std::vector<zlink_registry_topology_entry_t> native (count);
+        if (count > 0) {
+            detail::throw_if_failed<config_error_t> (
+              static_cast<config_result_t> (
+                zlink_registry_topology_query (
+                  _registry, &native_filter, native.data (), &count)));
+            native.resize (count);
+        }
+        std::vector<registry_topology_entry_t> entries;
+        entries.reserve (native.size ());
+        for (size_t i = 0; i < native.size (); ++i)
+            entries.push_back (registry_topology_entry_t (native[i]));
+        return entries;
     }
 
-    ZLINK_CPP_NODISCARD int
+    std::vector<member_peer_entry_t>
     member_peers (service_type service_type_,
-                  const std::string &service_name_,
-                  zlink_member_peer_entry_t *entries_,
-                  size_t *count_) const
+                  const std::string &service_name_) const
     {
         validate_bounded_c_string (service_name_, 255u, "service_name");
-        return zlink_registry_member_peers (
-          _registry, static_cast<zlink_service_type_t> (service_type_),
-          service_name_.c_str (), entries_, count_);
+        size_t count = 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_registry_member_peers (
+              _registry, static_cast<zlink_service_type_t> (service_type_),
+              service_name_.c_str (), NULL, &count)));
+        std::vector<zlink_member_peer_entry_t> native (count);
+        if (count > 0) {
+            detail::throw_if_failed<config_error_t> (
+              static_cast<config_result_t> (
+                zlink_registry_member_peers (
+                  _registry, static_cast<zlink_service_type_t> (service_type_),
+                  service_name_.c_str (), native.data (), &count)));
+            native.resize (count);
+        }
+        std::vector<member_peer_entry_t> entries;
+        entries.reserve (native.size ());
+        for (size_t i = 0; i < native.size (); ++i)
+            entries.push_back (member_peer_entry_t (native[i]));
+        return entries;
     }
 
-    ZLINK_CPP_NODISCARD int
-    member_peer_metadata (service_type service_type_,
-                          const std::string &service_name_,
-                          service_role service_role_,
-                          const std::string &endpoint_,
-                          message_t &metadata_out_) const
+    void member_peer_metadata (service_type service_type_,
+                               const std::string &service_name_,
+                               service_role service_role_,
+                               const std::string &endpoint_,
+                               message_t &metadata_out_) const
     {
         validate_bounded_c_string (service_name_, 255u, "service_name");
         validate_bounded_c_string (endpoint_, 255u, "endpoint");
         zlink_msg_t native;
-        const int rc = zlink_registry_member_peer_metadata (
-          _registry, static_cast<zlink_service_type_t> (service_type_),
-          service_name_.c_str (), static_cast<uint16_t> (service_role_),
-          endpoint_.c_str (), &native);
-        if (rc != 0)
-            return rc;
-
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_registry_member_peer_metadata (
+              _registry, static_cast<zlink_service_type_t> (service_type_),
+              service_name_.c_str (), static_cast<uint16_t> (service_role_),
+              endpoint_.c_str (), &native)));
         metadata_out_.adopt (&native);
-        return 0;
     }
 
-    ZLINK_CPP_NODISCARD int close ()
+    void close ()
     {
         if (!_registry)
-            return 0;
+            return;
 
         void *tmp = _registry;
-        const int rc = zlink_registry_destroy (&tmp);
-        if (rc == 0)
-            _registry = NULL;
-        return rc;
+        detail::throw_if_failed<close_error_t> (
+          static_cast<close_result_t> (zlink_registry_destroy (&tmp)));
+        _registry = NULL;
     }
 
     void *handle () const { return _registry; }

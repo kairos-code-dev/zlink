@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Zlink;
-using Zlink.Service;
 using static PerfRunner;
 
 internal static class PerfSpot
@@ -250,7 +249,7 @@ internal static class PerfSpot
             read = received.Value;
             return read > 0;
         }
-        catch (ZlinkException ex) when (nonBlocking && IsWouldBlock(ex.Errno))
+        catch (ZlinkException ex) when (nonBlocking && IsWouldBlock(ex.InternalErrno))
         {
             return false;
         }

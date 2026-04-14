@@ -1,6 +1,5 @@
 using System;
 using Xunit;
-using Zlink.Service;
 
 namespace Zlink.Tests;
 

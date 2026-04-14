@@ -6,8 +6,7 @@
 //! surface following the bindings API policy:
 //!
 //! - **Multipart-only** public send/receive surface.
-//! - **Blocking** vs **non-blocking** distinguished by name (`send` / `try_send`).
-//! - **Explicit send outcome** via [`SendResult`] (not a plain `bool`).
+//! - **Blocking** vs **non-blocking** distinguished by flags (`send` / `send_with_flags`).
 //! - **Typed options** per socket type – no raw option bags.
 //! - **Ownership** via RAII: [`Message`] drop calls `zlink_msg_close`;
 //!   `send` consumes messages and suppresses drop.
@@ -28,7 +27,6 @@ mod message;
 pub mod monitor;
 mod options;
 pub mod poller;
-mod request_reply;
 mod runtime;
 pub mod service;
 pub mod socket;
@@ -39,8 +37,8 @@ pub use ctx::{Context, ContextOptions, has, version};
 pub use domain::{Received, SendResult, SubscriptionEvent, TopicMessage};
 pub use error::{
     BindError, BindResult, CloseError, CloseResult, ConfigError, ConfigResult, ConnectError,
-    ConnectResult, HandlerError, HandlerResult, RecvError, RecvResult, RequestError,
-    RequestResult, SubmitError, SubmitResult, ZlinkError,
+    ConnectResult, HandlerError, HandlerResult, RecvError, RecvResult, RequestError, RequestResult,
+    SubmitError, SubmitResult, ZlinkError,
 };
 pub use flags::{RecvFlags, SendFlags};
 pub use message::{IntoMultipart, Message, RoutingId};
@@ -51,22 +49,25 @@ pub use monitor::{
     ServiceMonitorEventMask, SocketMonitorEventMask,
 };
 pub use monitor::{
-    MonitorEvent, MonitorSnapshot, MonitorTarget, ServiceEvent, ServiceEventType, ServiceMonitor,
-    ServiceMonitorTarget, SocketMonitor,
+    MonitorEvent, MonitorEventType, MonitorSnapshot, MonitorSourceKind, MonitorTarget,
+    ServiceEvent, ServiceEventType, ServiceMonitor, ServiceMonitorTarget, SocketMonitor,
+    SubjectKind,
 };
 pub use options::{
     CommonSocketOptions, DealerSocketOptions, PubSocketOptions, RouterSocketOptions,
     StreamSocketOptions, SubSocketOptions,
 };
-pub use poller::{POLLIN, POLLOUT, PollEvent, PollTarget, Poller};
-pub use request_reply::{RequestDealer, RequestRouter};
+pub use poller::{
+    POLLIN, POLLOUT, PollEvent, PollItem, PollTarget, Poller, Stopwatch, Timer, poll,
+};
 pub use runtime::{multipart_close, proxy, proxy_steerable, sleep};
 pub use service::{
-    Discovery, MemberPeerEntry, Registry, RegistryQueryClient, RegistryServiceSummaryEntry,
-    RegistryServiceSummaryFilter, RegistryState, RegistryStatus, RegistryTopologyEntry,
-    RegistryTopologyFilter, ServiceKind, ServiceRole, ServiceType, Spot, SpotNode,
-    SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeState, SpotNodeStatus, SpotNodeSubjectEntry,
-    SpotNodeSubjectFilter, SpotPeerSource, SpotPeerState, SpotRole, TopologySource, TopologyState,
+    Discovery, DiscoveryDealerPeerMode, MemberPeerEntry, Registry, RegistryQueryClient,
+    RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryState, RegistryStatus,
+    RegistryTopologyEntry, RegistryTopologyFilter, ServiceKind, ServiceRole, ServiceType, Spot,
+    SpotDispatchEvent, SpotNode, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeState,
+    SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter, SpotPeerSource, SpotPeerState,
+    SpotRole, TopologySource, TopologyState,
 };
 pub use socket::{
     DealerSocket, PairSocket, PubSocket, RouterSocket, SendHandle, StreamSocket, SubSocket,

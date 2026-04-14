@@ -8,6 +8,19 @@ const net = require('node:net');
 const path = require('node:path');
 const zlink = require('../dist/canonical');
 
+const SERVICE_TYPE_SPOT = 0x3002;
+const SERVICE_MONITOR_ERROR = 1 << 4;
+const SERVICE_MONITOR_DISCOVERY_SERVICE_UP = 1 << 5;
+const SERVICE_MONITOR_DISCOVERY_SERVICE_DOWN = 1 << 6;
+const SERVICE_MONITOR_PROVIDERS_CHANGED = 1 << 7;
+const SERVICE_MONITOR_CLOSED = 1 << 17;
+const SERVICE_MONITOR_ALL =
+  SERVICE_MONITOR_ERROR |
+  SERVICE_MONITOR_DISCOVERY_SERVICE_UP |
+  SERVICE_MONITOR_DISCOVERY_SERVICE_DOWN |
+  SERVICE_MONITOR_PROVIDERS_CHANGED |
+  SERVICE_MONITOR_CLOSED;
+
 async function reservePort() {
   const server = net.createServer();
   server.listen(0, '127.0.0.1');
@@ -103,14 +116,18 @@ test('socket monitor onEvent receives bind state events', async () => {
   }
 });
 
-test('spot node status snapshot starts empty', () => {
+test('spot node status snapshot starts empty', async () => {
   const ctx = new zlink.Context();
   const node = new zlink.SpotNode(ctx);
-  const spot = new zlink.Spot(node);
+  const spot = node.createSpot();
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+
+  node.bind(endpoint);
 
   assert.equal(node.statusSnapshot().connectedPeerCount, 0);
   assert.equal(node.peersSnapshot().length, 0);
   assert.equal(node.subjectsSnapshot().length, 0);
+  assert.ok(node.statusSnapshot().nodeRoutingId instanceof zlink.RoutingId);
 
   spot.close();
   node.close();
@@ -120,12 +137,12 @@ test('spot node status snapshot starts empty', () => {
 test('discovery service monitor reports service-up events', async () => {
   const ctx = new zlink.Context();
   const registry = new zlink.Registry(ctx);
-  const discovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'monitor-service-up');
+  const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'monitor-service-up');
   const node = new zlink.SpotNode(ctx);
   const pubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const routerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const serviceEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const monitor = discovery.monitorOpen(zlink.ServiceMonitorEvent.ALL);
+  const monitor = discovery.monitorOpen(SERVICE_MONITOR_ALL);
 
   try {
     const eventPromise = new Promise((resolve, reject) => {
@@ -145,7 +162,7 @@ test('discovery service monitor reports service-up events', async () => {
     node.bind(serviceEndpoint);
     const event = await eventPromise;
     assert.ok(event);
-    assert.equal(event.eventType, zlink.ServiceMonitorEvent.DISCOVERY_SERVICE_UP);
+    assert.equal(event.eventType, SERVICE_MONITOR_DISCOVERY_SERVICE_UP);
     assert.equal(event.serviceName, 'monitor-service-up');
   } finally {
     monitor.close();
@@ -157,8 +174,8 @@ test('discovery service monitor reports service-up events', async () => {
 
 test('discovery service monitor onEvent surface is exposed', async () => {
   const ctx = new zlink.Context();
-  const discovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'monitor-service-up');
-  const monitor = discovery.monitorOpen(zlink.ServiceMonitorEvent.ALL);
+  const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'monitor-service-up');
+  const monitor = discovery.monitorOpen(SERVICE_MONITOR_ALL);
 
   assert.equal(typeof monitor.onEvent, 'function');
   monitor.close();
@@ -168,14 +185,17 @@ test('discovery service monitor onEvent surface is exposed', async () => {
 
 test('spot node subject status reflects remote sub readiness after direct peer connect', async () => {
   const port = await reservePort();
+  const clientPort = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
+  const clientEndpoint = `tcp://127.0.0.1:${clientPort}`;
   const ctx = new zlink.Context();
   const serverNode = new zlink.SpotNode(ctx);
   const clientNode = new zlink.SpotNode(ctx);
-  const serverSpot = new zlink.Spot(serverNode);
-  const clientSpot = new zlink.Spot(clientNode);
+  const serverSpot = serverNode.createSpot();
+  const clientSpot = clientNode.createSpot();
   try {
     serverNode.bind(endpoint);
+    clientNode.bind(clientEndpoint);
     clientNode.connectPeer(endpoint);
     clientSpot.setSubscription('topic.monitor.remote');
 
@@ -208,9 +228,11 @@ test('spot node subject status reflects remote sub readiness after direct peer c
 test('spot node subject status stays unready before peer connect', async () => {
   const ctx = new zlink.Context();
   const node = new zlink.SpotNode(ctx);
-  const spot = new zlink.Spot(node);
+  const spot = node.createSpot();
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
 
   try {
+    node.bind(endpoint);
     spot.setSubscription('topic.monitor.local-only');
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(node.statusSnapshot().connectedPeerCount, 0);

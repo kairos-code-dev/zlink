@@ -1,7 +1,10 @@
 use std::ffi::c_void;
 use std::marker::PhantomData;
+use std::os::fd::RawFd;
 
-use crate::error::{ZlinkError, check_rc};
+use crate::error::{
+    ConfigError, HandlerError, RecvError, check_config_rc, check_handler_rc, check_recv_rc,
+};
 use crate::ffi;
 
 /// Poll event flags.
@@ -11,7 +14,8 @@ pub const POLLOUT: i16 = ffi::ZLINK_POLLOUT;
 /// A single poll result event.
 #[derive(Debug, Clone)]
 pub struct PollEvent {
-    pub token: usize,
+    pub fd: RawFd,
+    pub user_data: Option<*mut c_void>,
     pub events: i16,
 }
 
@@ -45,24 +49,25 @@ pub struct Poller {
 unsafe impl Send for Poller {}
 
 impl Poller {
-    pub fn new() -> Result<Self, ZlinkError> {
+    pub fn new() -> Result<Self, ConfigError> {
         let handle = unsafe { ffi::zlink_poller_new() };
         if handle.is_null() {
-            return Err(ZlinkError::last());
+            return Err(crate::error::ConfigError::new(
+                crate::error::ConfigResult::InvalidArgument,
+                crate::error::last_errno(),
+            ));
         }
         Ok(Self { handle })
     }
 
-    /// Add a socket to the poller with the given event mask and user data.
     pub fn add_socket<'a>(
         &self,
         socket: impl Into<PollTarget<'a>>,
-        token: usize,
         events: i16,
-    ) -> Result<(), ZlinkError> {
+    ) -> Result<(), ConfigError> {
         let target = socket.into();
-        check_rc(unsafe {
-            ffi::zlink_poller_add(self.handle, target.raw(), token as *mut c_void, events)
+        check_config_rc(unsafe {
+            ffi::zlink_poller_add(self.handle, target.raw(), std::ptr::null_mut(), events)
         })
     }
 
@@ -71,15 +76,53 @@ impl Poller {
         &self,
         socket: impl Into<PollTarget<'a>>,
         events: i16,
-    ) -> Result<(), ZlinkError> {
+    ) -> Result<(), ConfigError> {
         let target = socket.into();
-        check_rc(unsafe { ffi::zlink_poller_modify(self.handle, target.raw(), events) })
+        check_config_rc(unsafe { ffi::zlink_poller_modify(self.handle, target.raw(), events) })
     }
 
     /// Remove a socket from the poller.
-    pub fn remove_socket<'a>(&self, socket: impl Into<PollTarget<'a>>) -> Result<(), ZlinkError> {
+    pub fn remove_socket<'a>(&self, socket: impl Into<PollTarget<'a>>) -> Result<(), ConfigError> {
         let target = socket.into();
-        check_rc(unsafe { ffi::zlink_poller_remove(self.handle, target.raw()) })
+        check_config_rc(unsafe { ffi::zlink_poller_remove(self.handle, target.raw()) })
+    }
+
+    pub fn add_fd(
+        &self,
+        fd: RawFd,
+        events: i16,
+        user_data: Option<*mut c_void>,
+    ) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
+            ffi::zlink_poller_add_fd(
+                self.handle,
+                fd as ffi::zlink_fd_t,
+                user_data.unwrap_or(std::ptr::null_mut()),
+                events,
+            )
+        })
+    }
+
+    pub fn modify_fd(&self, fd: RawFd, events: i16) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
+            ffi::zlink_poller_modify_fd(self.handle, fd as ffi::zlink_fd_t, events)
+        })
+    }
+
+    pub fn remove_fd(&self, fd: RawFd) -> Result<(), ConfigError> {
+        check_config_rc(unsafe { ffi::zlink_poller_remove_fd(self.handle, fd as ffi::zlink_fd_t) })
+    }
+
+    pub fn add_timer(
+        &self,
+        timer: &Timer,
+        user_data: Option<*mut c_void>,
+    ) -> Result<(), ConfigError> {
+        self.add_fd(timer.raw_fd(), POLLIN, user_data)
+    }
+
+    pub fn remove_timer(&self, timer: &Timer) -> Result<(), ConfigError> {
+        self.remove_fd(timer.raw_fd())
     }
 
     /// Wait for events on any registered socket.
@@ -88,7 +131,7 @@ impl Poller {
     /// positive = timeout in milliseconds.
     ///
     /// Returns `Ok(None)` on timeout, `Ok(Some(event))` when an event occurs.
-    pub fn wait(&self, timeout_ms: i64) -> Result<Option<PollEvent>, ZlinkError> {
+    pub fn wait(&self, timeout_ms: i64) -> Result<Option<PollEvent>, RecvError> {
         let mut raw = ffi::zlink_poller_event_t {
             socket: std::ptr::null_mut(),
             fd: 0 as ffi::zlink_fd_t,
@@ -99,17 +142,21 @@ impl Poller {
             ffi::zlink_poller_wait(self.handle, &mut raw, timeout_ms as std::ffi::c_long)
         };
         if rc != 0 {
-            let errno = unsafe { ffi::zlink_errno() };
+            let errno = crate::error::last_errno();
             if errno == libc::EAGAIN || errno == libc::ETIMEDOUT {
                 return Ok(None);
             }
-            return Err(ZlinkError::last());
+            return Err(crate::error::RecvError::new(
+                crate::error::RecvResult::Terminated,
+                errno,
+            ));
         }
         if rc == 0 {
             return Ok(None);
         }
         Ok(Some(PollEvent {
-            token: raw.user_data as usize,
+            fd: raw.fd as RawFd,
+            user_data: (!raw.user_data.is_null()).then_some(raw.user_data),
             events: raw.events,
         }))
     }
@@ -117,11 +164,8 @@ impl Poller {
     /// Wait for multiple events at once.
     ///
     /// Returns the events that fired. Empty vec on timeout.
-    pub fn wait_all(
-        &self,
-        max_events: usize,
-        timeout_ms: i64,
-    ) -> Result<Vec<PollEvent>, ZlinkError> {
+    pub fn wait_all(&self, timeout_ms: i64) -> Result<Vec<PollEvent>, RecvError> {
+        let max_events = self.size().max(1) as usize;
         let mut raw = vec![
             ffi::zlink_poller_event_t {
                 socket: std::ptr::null_mut(),
@@ -140,11 +184,14 @@ impl Poller {
             )
         };
         if rc != 0 {
-            let errno = unsafe { ffi::zlink_errno() };
+            let errno = crate::error::last_errno();
             if errno == libc::EAGAIN || errno == libc::ETIMEDOUT {
                 return Ok(Vec::new());
             }
-            return Err(ZlinkError::last());
+            return Err(crate::error::RecvError::new(
+                crate::error::RecvResult::Terminated,
+                errno,
+            ));
         }
         if rc == 0 {
             return Ok(Vec::new());
@@ -153,7 +200,8 @@ impl Poller {
         let mut out = Vec::with_capacity(n);
         for i in 0..n {
             out.push(PollEvent {
-                token: raw[i].user_data as usize,
+                fd: raw[i].fd as RawFd,
+                user_data: (!raw[i].user_data.is_null()).then_some(raw[i].user_data),
                 events: raw[i].events,
             });
         }
@@ -161,7 +209,8 @@ impl Poller {
     }
 
     pub fn size(&self) -> i32 {
-        unsafe { ffi::zlink_poller_size(self.handle) }
+        let mut error_out = 0;
+        unsafe { ffi::zlink_poller_size(self.handle, &mut error_out) }
     }
 }
 
@@ -171,6 +220,136 @@ impl Drop for Poller {
             let mut h = self.handle;
             ffi::zlink_poller_destroy(&mut h);
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct PollItem {
+    pub socket: *mut c_void,
+    pub fd: RawFd,
+    pub events: i16,
+    pub revents: i16,
+}
+
+pub fn poll(items: &mut [PollItem], timeout_ms: i64) -> Result<i32, RecvError> {
+    let mut raw: Vec<ffi::zlink_pollitem_t> = items
+        .iter()
+        .map(|item| ffi::zlink_pollitem_t {
+            socket: item.socket,
+            fd: item.fd as ffi::zlink_fd_t,
+            events: item.events,
+            revents: item.revents,
+        })
+        .collect();
+    let rc = unsafe {
+        ffi::zlink_poll(
+            raw.as_mut_ptr(),
+            raw.len() as i32,
+            timeout_ms as std::ffi::c_long,
+        )
+    };
+    if rc < 0 {
+        return Err(crate::error::RecvError::new(
+            crate::error::RecvResult::Terminated,
+            crate::error::last_errno(),
+        ));
+    }
+    for (idx, item) in items.iter_mut().enumerate() {
+        item.revents = raw[idx].revents;
+    }
+    Ok(rc)
+}
+
+pub struct Timer {
+    handle: *mut c_void,
+    callback: Option<crate::socket::CallbackBox>,
+}
+
+unsafe impl Send for Timer {}
+
+impl Timer {
+    pub fn new() -> Result<Self, ConfigError> {
+        let handle = unsafe { ffi::zlink_timer_new() };
+        if handle.is_null() {
+            return Err(crate::error::ConfigError::new(
+                crate::error::ConfigResult::InvalidArgument,
+                crate::error::last_errno(),
+            ));
+        }
+        Ok(Self {
+            handle,
+            callback: None,
+        })
+    }
+
+    pub fn start(&self, interval_ns: u64, repeat_count: u64) -> Result<(), ConfigError> {
+        check_config_rc(unsafe { ffi::zlink_timer_start(self.handle, interval_ns, repeat_count) })
+    }
+
+    pub fn stop(&self) -> Result<(), ConfigError> {
+        check_config_rc(unsafe { ffi::zlink_timer_stop(self.handle) })
+    }
+
+    pub fn recv(&self, flags: i32) -> Result<u64, RecvError> {
+        let mut count = 0u64;
+        check_recv_rc(unsafe { ffi::zlink_timer_recv(self.handle, &mut count, flags) })?;
+        Ok(count)
+    }
+
+    pub fn on_fire<F>(&mut self, handler: F) -> Result<(), HandlerError>
+    where
+        F: Fn(&Timer, u64) + Send + 'static,
+    {
+        let timer_ptr = self as *const Timer as usize;
+        let wrapped: Box<dyn Fn(u64) + Send> = Box::new(move |count: u64| {
+            let timer = unsafe { &*(timer_ptr as *const Timer) };
+            handler(timer, count);
+        });
+        let (cb, userdata) = crate::socket::CallbackBox::new(wrapped);
+        unsafe extern "C" fn trampoline(_timer: *mut c_void, count: u64, userdata: *mut c_void) {
+            let handler = unsafe { &*(userdata as *const Box<dyn Fn(u64) + Send>) };
+            handler(count);
+        }
+        let rc = unsafe { ffi::zlink_timer_handler(self.handle, trampoline, userdata) };
+        if rc != 0 {
+            drop(cb);
+            return Err(check_handler_rc(rc).unwrap_err());
+        }
+        self.callback = Some(cb);
+        Ok(())
+    }
+
+    fn raw_fd(&self) -> RawFd {
+        self.handle as RawFd
+    }
+}
+
+impl Drop for Timer {
+    fn drop(&mut self) {
+        unsafe {
+            let mut handle = self.handle;
+            let _ = ffi::zlink_timer_destroy(&mut handle);
+        }
+    }
+}
+
+pub struct Stopwatch {
+    handle: *mut c_void,
+}
+
+impl Stopwatch {
+    pub fn start() -> Self {
+        Self {
+            handle: unsafe { ffi::zlink_stopwatch_start() },
+        }
+    }
+
+    pub fn intermediate(&self) -> u64 {
+        unsafe { ffi::zlink_stopwatch_intermediate(self.handle) as u64 }
+    }
+
+    pub fn stop(self) -> u64 {
+        unsafe { ffi::zlink_stopwatch_stop(self.handle) as u64 }
     }
 }
 

@@ -4,20 +4,22 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const zlink = require('../dist/canonical');
 
+const SERVICE_TYPE_SPOT = 0x3002;
+
 test('routing id accepts 255-byte maximum and rejects overflow', () => {
   const ctx = new zlink.Context();
   const dealer = new zlink.DealerSocket(ctx);
   const router = new zlink.RouterSocket(ctx);
   const stream = new zlink.StreamSocket(ctx);
-  const maxRoutingId = Buffer.alloc(255, 0x61);
+  const maxRoutingId = zlink.RoutingId.fromBytes(Buffer.alloc(255, 0x61));
   const overflowRoutingId = Buffer.alloc(256, 0x62);
 
   assert.doesNotThrow(() => dealer.setRoutingId(maxRoutingId));
 
-  assert.throws(() => dealer.setRoutingId(overflowRoutingId), /at most 255 bytes|1\.\.255 bytes/);
-  assert.throws(() => router.send(overflowRoutingId, Buffer.alloc(0)), /at most 255 bytes/);
-  assert.throws(() => router.send(overflowRoutingId, Buffer.alloc(0)), /at most 255 bytes/);
-  assert.throws(() => stream.send(overflowRoutingId, Buffer.alloc(0)), /at most 255 bytes/);
+  assert.throws(() => zlink.RoutingId.fromBytes(overflowRoutingId), /1\.\.255 bytes/);
+  assert.doesNotThrow(() => zlink.RoutingId.fromBytes(Buffer.alloc(1, 0x63)));
+  assert.throws(() => router.send(overflowRoutingId, Buffer.alloc(0)), /RoutingId/);
+  assert.throws(() => stream.send(overflowRoutingId, Buffer.alloc(0)), /RoutingId/);
 
   stream.close();
   router.close();
@@ -30,9 +32,9 @@ test('fixed-size c-string inputs reject embedded nulls and overflow', () => {
   const pair = new zlink.PairSocket(ctx);
   const registry = new zlink.Registry(ctx);
   const query = new zlink.RegistryQueryClient(ctx);
-  const discovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'svc');
+  const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'svc');
   const node = new zlink.SpotNode(ctx);
-  const spot = new zlink.Spot(node);
+  const spot = node.createSpot();
   const maxServiceName = 's'.repeat(255);
 
   assert.throws(() => pair.bind('tcp://127.0.0.1:5555\0bad'), /embedded null/);
@@ -42,7 +44,7 @@ test('fixed-size c-string inputs reject embedded nulls and overflow', () => {
   assert.throws(() => discovery.connectRegistry('x'.repeat(256)), /255 bytes/);
   assert.throws(() => node.bind('tcp://127.0.0.1:5557\0bad'), /embedded null/);
   assert.throws(() => spot.setSubscription('topic\0bad'), /embedded null/);
-  assert.doesNotThrow(() => new zlink.Discovery(ctx, zlink.ServiceType.SPOT, maxServiceName).close());
+  assert.doesNotThrow(() => new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, maxServiceName).close());
 
   spot.close();
   node.close();

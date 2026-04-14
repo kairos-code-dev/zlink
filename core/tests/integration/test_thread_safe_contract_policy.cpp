@@ -154,10 +154,10 @@ void test_docs_reflect_tiered_thread_safe_contract ()
       read_text_file ((std::string (TEST_REPO_ROOT) + "/doc/spec/core/socket/README.ko.md")
                         .c_str ());
     const std::string discovery_doc =
-      read_text_file ((std::string (TEST_REPO_ROOT) + "/doc/spec/core/discovery.md")
+      read_text_file ((std::string (TEST_REPO_ROOT) + "/doc/spec/core/service/discovery.md")
                         .c_str ());
     const std::string discovery_doc_ko = read_text_file (
-      (std::string (TEST_REPO_ROOT) + "/doc/spec/core/discovery.ko.md").c_str ());
+      (std::string (TEST_REPO_ROOT) + "/doc/spec/core/service/discovery.ko.md").c_str ());
     const std::string threading_doc = read_text_file (
       (std::string (TEST_REPO_ROOT) + "/doc/internals/threading-model.md")
         .c_str ());

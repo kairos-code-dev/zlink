@@ -4,17 +4,17 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEvent;
 import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.PairSocket;
-import dev.kairoscode.zlink.RecvException;
-import dev.kairoscode.zlink.RecvFlags;
-import dev.kairoscode.zlink.RecvResult;
 import dev.kairoscode.zlink.TestSupport;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.Method;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class MonitorBehaviorContractTest {
@@ -40,29 +40,28 @@ public class MonitorBehaviorContractTest {
 
             MonitorEvent event = eventFuture.get(TestSupport.DEFAULT_TIMEOUT_MS,
                 TimeUnit.MILLISECONDS);
-            assertTrue(event.event() == MonitorEventType.LISTENING.getValue()
-                || event.event() == MonitorEventType.ACCEPTED.getValue()
-                || event.event() == MonitorEventType.CONNECTED.getValue());
+            assertTrue(event.event() == MonitorEventType.LISTENING
+                || event.event() == MonitorEventType.ACCEPTED
+                || event.event() == MonitorEventType.CONNECTED);
         }
     }
 
     @Test
-    public void tryRecvReturnsEmptyWhenNoMonitorEventExists() {
-        TestSupport.assumeNative();
+    public void monitorSocketExposesBlockingRecvOnly() {
+        assertTrue(hasPublicMethod(dev.kairoscode.zlink.MonitorSocket.class, "recv"));
+        assertTrue(!hasPublicMethod(dev.kairoscode.zlink.MonitorSocket.class, "recv",
+            dev.kairoscode.zlink.RecvFlags.class));
+        assertTrue(Modifier.isPublic(MonitorSocket.class.getModifiers()));
+        assertNotNull(MonitorSocket.IGNORE_HANDLER);
+    }
 
-        try (Context ctx = new Context();
-             PairSocket server = new PairSocket(ctx);
-             PairSocket client = new PairSocket(ctx);
-             var monitor = server.monitorOpen(MonitorEventType.LISTENING)) {
-            String endpoint = TestSupport.tcpEndpoint();
-            server.bind(endpoint);
-            client.connect(endpoint);
-
-            MonitorEvent event = monitor.recv();
-            assertEquals(MonitorEventType.LISTENING.getValue(), event.event());
-            RecvException ex = assertThrows(RecvException.class,
-                () -> monitor.recv(RecvFlags.DONT_WAIT));
-            assertEquals(RecvResult.NO_DATA, ex.getResult());
+    private static boolean hasPublicMethod(Class<?> type, String name,
+                                           Class<?>... parameterTypes) {
+        try {
+            Method method = type.getMethod(name, parameterTypes);
+            return method != null;
+        } catch (NoSuchMethodException ex) {
+            return false;
         }
     }
 }

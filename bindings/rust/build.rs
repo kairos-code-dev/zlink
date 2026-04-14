@@ -20,11 +20,30 @@ fn main() {
     let native_dir = manifest_dir
         .join("native")
         .join(format!("{os_dir}-{arch_dir}"));
+    let repo_root = manifest_dir
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("bindings/rust should live under the repo root");
+    let core_build_lib_dir = repo_root.join("core").join("build").join("lib");
+    let link_dir = if core_build_lib_dir
+        .join(if target_os == "windows" {
+            "zlink.dll"
+        } else if target_os == "macos" {
+            "libzlink.dylib"
+        } else {
+            "libzlink.so"
+        })
+        .exists()
+    {
+        core_build_lib_dir
+    } else {
+        native_dir
+    };
 
-    println!("cargo:rustc-link-search=native={}", native_dir.display());
+    println!("cargo:rustc-link-search=native={}", link_dir.display());
     println!("cargo:rustc-link-lib=dylib=zlink");
 
     if target_os != "windows" {
-        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", native_dir.display());
+        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", link_dir.display());
     }
 }

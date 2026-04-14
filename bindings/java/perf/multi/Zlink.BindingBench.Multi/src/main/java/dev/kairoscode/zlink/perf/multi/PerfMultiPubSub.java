@@ -7,7 +7,7 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.PubSocket;
-import dev.kairoscode.zlink.SocketPollSet;
+import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
@@ -79,7 +79,7 @@ final class PerfMultiPubSub {
                 PerfUtil.await(go, "pubsub start", Duration.ofSeconds(10));
                 long finishDeadline = System.nanoTime()
                     + Duration.ofSeconds(config.durationSeconds() + 20L).toNanos();
-                try (SocketPollSet pollSet = SocketPollSet.fromSockets(
+                try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(sub), PollEventType.POLLIN.getValue())) {
                     while (System.nanoTime() < finishDeadline) {
                         if (!awaitReadable(pollSet, finishDeadline)) {
@@ -116,7 +116,7 @@ final class PerfMultiPubSub {
         return metrics.finishMulti(config);
     }
 
-    private static boolean awaitReadable(SocketPollSet pollSet, long deadlineNs) {
+    private static boolean awaitReadable(PerfSocketPollSet pollSet, long deadlineNs) {
         while (System.nanoTime() < deadlineNs) {
             try {
                 pollSet.setEvents(0, PollEventType.POLLIN.getValue());
@@ -124,7 +124,7 @@ final class PerfMultiPubSub {
                     return true;
                 }
             } catch (dev.kairoscode.zlink.ZlinkException ex) {
-                if (ex.errno() != 11 && ex.errno() != 4) {
+                if (ex.getInternalErrno() != 11 && ex.getInternalErrno() != 4) {
                     throw ex;
                 }
             }

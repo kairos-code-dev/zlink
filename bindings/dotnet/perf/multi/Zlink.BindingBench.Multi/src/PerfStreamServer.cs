@@ -207,8 +207,8 @@ internal static class PerfStreamServer
         {
             return socket.ReceiveMessage(ReceiveFlags.DontWait);
         }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                        || IsInterrupted(ex.Errno))
+        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                        || IsInterrupted(ex.InternalErrno))
         {
             return null;
         }
@@ -283,8 +283,8 @@ internal static class PerfStreamServer
                 message.Clear();
                 return SendStatus.Done;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                            || IsInterrupted(ex.Errno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno))
             {
                 return SendStatus.Blocked;
             }

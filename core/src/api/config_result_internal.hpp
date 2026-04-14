@@ -17,6 +17,7 @@ inline zlink_config_result_t from_errno (int err_)
         case EFAULT:
             return ZLINK_CONFIG_INVALID_HANDLE;
         case EINVAL:
+        case EMSGSIZE:
             return ZLINK_CONFIG_INVALID_ARGUMENT;
         case ENOTSUP:
 #if !defined(EOPNOTSUPP) || EOPNOTSUPP != ENOTSUP
@@ -24,7 +25,7 @@ inline zlink_config_result_t from_errno (int err_)
 #endif
             return ZLINK_CONFIG_NOT_SUPPORTED;
         default:
-            return ZLINK_CONFIG_INVALID_ARGUMENT;
+            return ZLINK_CONFIG_INTERNAL_ERROR;
     }
 }
 

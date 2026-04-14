@@ -7,8 +7,8 @@ def main():
     with zlink.Context() as ctx:
         with zlink.SpotNode(ctx) as pub_node:
             with zlink.SpotNode(ctx) as sub_node:
-                with zlink.Spot(pub_node) as pub_spot:
-                    with zlink.Spot(sub_node) as sub_spot:
+                with pub_node.create_spot() as pub_spot:
+                    with sub_node.create_spot() as sub_spot:
                         done = threading.Event()
                         observed = {}
 
@@ -30,7 +30,7 @@ def main():
                             return done.is_set()
 
                         wait_until(attempt_delivery, description="spot callback delivery")
-                        if observed["topic"] != b"room:lobby":
+                        if observed["topic"] != "room:lobby":
                             raise AssertionError("unexpected spot callback topic")
                         if observed["payload"] != [b"hello-spot"]:
                             raise AssertionError("unexpected spot callback payload")

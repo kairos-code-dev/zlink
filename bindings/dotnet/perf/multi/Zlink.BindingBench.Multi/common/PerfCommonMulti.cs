@@ -108,8 +108,8 @@ internal static partial class PerfRunner
                 if (DrainReadyEvents(monitor, acceptFallback) > 0)
                     return true;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                            || IsInterrupted(ex.Errno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno))
             {
             }
             catch
@@ -151,8 +151,8 @@ internal static partial class PerfRunner
                 if (readyCount >= expectedReady)
                     return true;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                            || IsInterrupted(ex.Errno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno))
             {
             }
             catch

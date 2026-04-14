@@ -3,8 +3,8 @@
 package dev.kairoscode.zlink.service.registry;
 
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.ServiceKind;
-import dev.kairoscode.zlink.ServiceRole;
+import dev.kairoscode.zlink.service.registry.ServiceKind;
+import dev.kairoscode.zlink.service.registry.ServiceRole;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -25,7 +25,7 @@ public record RegistryTopologyEntry(RoutingId routingId,
               routingSize);
         }
         return new RegistryTopologyEntry(
-          RoutingId.copyOf(routing),
+          RoutingId.fromBytes(routing),
           ServiceKind.fromValue(segment.get(ValueLayout.JAVA_INT, 256)),
           ServiceRole.fromValue(segment.get(ValueLayout.JAVA_INT, 260)),
           NativeHelpers.fromCString(segment.asSlice(264, 256), 256),

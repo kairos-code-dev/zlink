@@ -130,19 +130,6 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     data_ctrl_endpoint = buf;
 }
 
-spot_node_batch_config_t spot_runtime_t::peer_batch_config_snapshot () const
-{
-    scoped_lock_t lock (const_cast<mutex_t &> (peer_batch_config_sync));
-    return peer_batch_config;
-}
-
-void spot_runtime_t::set_peer_batch_config (
-  const spot_node_batch_config_t &config_)
-{
-    scoped_lock_t lock (peer_batch_config_sync);
-    peer_batch_config = config_;
-}
-
 spot_node_hwm_config_t spot_runtime_t::hwm_config_snapshot () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (hwm_config_sync));

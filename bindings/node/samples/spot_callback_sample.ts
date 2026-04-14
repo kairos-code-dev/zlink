@@ -24,14 +24,14 @@ async function main() {
   const ctx = new zlink.Context();
   const pubNode = new zlink.SpotNode(ctx);
   const subNode = new zlink.SpotNode(ctx);
-  const pub = new zlink.Spot(pubNode);
-  const sub = new zlink.Spot(subNode);
+  const pub = pubNode.createSpot();
+  const sub = subNode.createSpot();
 
   try {
     const receivedPromise = new Promise((resolve, reject) => {
       try {
-        sub.onSubscribe((routingId, receivedTopic, parts) => {
-          resolve({ routingId, receivedTopic, parts });
+        sub.onSubscribe((message) => {
+          resolve(message);
         });
       } catch (error) {
         reject(error);
@@ -50,9 +50,9 @@ async function main() {
     const received = await Promise.race([receivedPromise, timeoutPromise]).finally(() => {
       clearInterval(publishTimer);
     });
-    assert.ok(received.routingId === null || Buffer.isBuffer(received.routingId));
-    assert.equal(received.receivedTopic, topic);
-    const recv = received.parts[0].data.toString();
+    assert.equal(received.routingId, null);
+    assert.equal(received.topic, topic);
+    const recv = received.parts[0].data().toString();
     assert.equal(recv, sent);
     console.log(`[spot/callback] publish: "${topic}/${sent}" \u2192 subscribe: "${topic}/${recv}"`);
   } finally {

@@ -3,11 +3,10 @@ package dev.kairoscode.zlink.samples;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.RequestDealer;
-import dev.kairoscode.zlink.RequestRouter;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -21,31 +20,28 @@ public final class RequestReplyAsyncSample {
         try (Context ctx = new Context();
              RouterSocket routerSocket = new RouterSocket(ctx);
              DealerSocket dealerSocket = new DealerSocket(ctx);
-             RequestRouter router = new RequestRouter(routerSocket);
-             RequestDealer dealer = new RequestDealer(dealerSocket);
              var routerMonitor = routerSocket.monitorOpen(
                  dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY);
              var dealerMonitor = dealerSocket.monitorOpen(
                  dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY)) {
-            dealerSocket.setRoutingId(RoutingId.copyOf("request-reply-client".getBytes()));
+            dealerSocket.setRoutingId(RoutingId.fromBytes("request-reply-client".getBytes()));
             routerSocket.bind(endpoint);
             dealerSocket.connect(endpoint);
             SampleSupport.waitConnected(routerMonitor, dealerMonitor);
 
             CompletableFuture<Void> replyHandled = new CompletableFuture<>();
 
-            router.onReceive(received -> {
+            routerSocket.onReceive(received -> {
                 try (received) {
                     String request = SampleSupport.singleUtf8(received);
                     if (!SampleSupport.DEALER_REQUEST.equals(request)) {
                         throw new IllegalStateException("unexpected request: " + request);
                     }
-                    if (!received.hasRequestSequence()) {
+                    if (received.requestSeq().isEmpty()) {
                         throw new IllegalStateException("missing request sequence");
                     }
                     try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
-                        router.reply(received.routingId(),
-                            received.requestSequence(), reply);
+                        received.reply(reply);
                     }
                     requestHandled.countDown();
                     replyHandled.complete(null);
@@ -60,13 +56,15 @@ public final class RequestReplyAsyncSample {
 
             CompletableFuture<Void> roundTrip;
             try (Message request = Message.copyOfUtf8(SampleSupport.DEALER_REQUEST)) {
-                roundTrip = dealer.request(request, Duration.ofSeconds(2))
+                roundTrip = dealerSocket.request(request, Duration.ofSeconds(2))
                     .thenAccept(reply -> {
-                        try (reply) {
-                            String value = SampleSupport.singleUtf8(reply);
+                        try {
+                            String value = reply.get(0).toUtf8String();
                             if (!SampleSupport.DEALER_REPLY.equals(value)) {
                                 throw new IllegalStateException("unexpected reply: " + value);
                             }
+                        } finally {
+                            Message.closeAll(reply);
                         }
                     });
             }

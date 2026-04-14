@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using System.Buffers.Binary;
 using System.Threading;
 using System.Threading.Tasks;
 using Zlink.Native;
@@ -10,9 +9,11 @@ namespace Zlink;
 
 public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 {
+    public static readonly Action<MonitorEvent> IgnoreHandler = static _ => { };
+
     private IntPtr _handle;
     private NativeMethods.ZlinkMonitorHandlerDelegate? _handlerDelegate;
-    private Action<SocketMonitorEvent>? _handler;
+    private Action<MonitorEvent>? _handler;
     private SynchronizationContext? _handlerContext;
 
     internal SocketMonitor(IntPtr handle)
@@ -24,48 +25,47 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 
     internal IntPtr Handle => _handle;
 
-    public void OnEvent(Action<SocketMonitorEvent> handler)
+    public void OnEvent(Action<MonitorEvent> handler)
     {
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
         EnsureNotDisposed();
 
-        SynchronizationContext? context = SynchronizationContext.Current;
         _handler = handler;
-        _handlerContext = context;
+        _handlerContext = SynchronizationContext.Current;
         _handlerDelegate = OnNativeEvent;
         int rc = NativeMethods.zlink_socket_monitor_handler(_handle,
             _handlerDelegate, IntPtr.Zero);
-        ZlinkException.ThrowIfError(rc);
+        if (rc != 0)
+            throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
     }
 
-    public SocketMonitorEvent Recv()
+    public MonitorEvent Recv()
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_socket_monitor_recv(_handle, out var native,
             0);
-        ZlinkException.ThrowIfError(rc);
-        return SocketMonitorEvent.FromNative(ref native);
+        if (rc != 0)
+            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
+        return MonitorEvent.FromNative(ref native);
     }
 
-    public SocketMonitorEvent? Recv(bool nonBlocking)
+    public MonitorEvent? Recv(bool nonBlocking)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_socket_monitor_recv(_handle, out var native,
             nonBlocking ? 1 : 0);
         if (rc == 0)
-        {
-            return SocketMonitorEvent.FromNative(ref native);
-        }
+            return MonitorEvent.FromNative(ref native);
         if (nonBlocking && ZlinkException.MapErrorCode(NativeMethods.zlink_errno())
             == ErrorCode.EAgain)
         {
             return null;
         }
-        throw ZlinkException.FromLastError();
+        throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
     }
 
-    internal bool TryRecv(out SocketMonitorEvent? monitorEvent)
+    internal bool TryRecv(out MonitorEvent? monitorEvent)
     {
         monitorEvent = Recv(true);
         return monitorEvent != null;
@@ -75,7 +75,8 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_monitor_snapshot(_handle, out var native);
-        ZlinkException.ThrowIfError(rc);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         return MonitorSnapshot.FromNative(ref native);
     }
 
@@ -84,7 +85,8 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
         if (_handle == IntPtr.Zero)
             return;
         int rc = NativeMethods.zlink_monitor_close(ref _handle);
-        ZlinkException.ThrowIfError(rc);
+        if (rc != 0)
+            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
         _handler = null;
         _handlerContext = null;
         _handlerDelegate = null;
@@ -129,15 +131,14 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 
     private void OnNativeEvent(ref ZlinkMonitorEvent native, IntPtr userData)
     {
-        Action<SocketMonitorEvent>? handler = _handler;
-        SynchronizationContext? context = _handlerContext;
+        Action<MonitorEvent>? handler = _handler;
         if (handler == null)
             return;
 
         try
         {
-            SocketMonitorEvent monitorEvent = SocketMonitorEvent.FromNative(ref native);
-            CallbackDelivery.Post(context, () => handler(monitorEvent));
+            MonitorEvent monitorEvent = MonitorEvent.FromNative(ref native);
+            CallbackDelivery.Post(_handlerContext, () => handler(monitorEvent));
         }
         catch (Exception ex)
         {
@@ -146,37 +147,15 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
     }
 }
 
-public readonly struct SocketMonitorEvent
+public sealed record MonitorEvent(
+    MonitorEventType Event,
+    uint Value,
+    RoutingId? RoutingId,
+    string LocalAddr,
+    string RemoteAddr)
 {
-    public SocketMonitorEvent(SocketEvent @event, ulong value,
-        string routingId,
-        uint? streamRoutingId,
-        string localAddress, string remoteAddress, ulong rawEvent)
+    internal static MonitorEvent FromNative(ref ZlinkMonitorEvent evt)
     {
-        Event = @event;
-        Value = value;
-        RoutingId = routingId;
-        StreamRoutingId = streamRoutingId;
-        LocalAddress = localAddress;
-        RemoteAddress = remoteAddress;
-        RawEvent = rawEvent;
-    }
-
-    public SocketEvent Event { get; }
-    public ulong Value { get; }
-    public string RoutingId { get; }
-    public uint? StreamRoutingId { get; }
-    public string LocalAddress { get; }
-    public string RemoteAddress { get; }
-    public ulong RawEvent { get; }
-
-    internal static SocketMonitorEvent FromNative(ref ZlinkMonitorEvent evt)
-    {
-        byte[] routing = NativeHelpers.ReadRoutingId(ref evt.RoutingId);
-        string routingId = RoutingIdCodec.ToPublicString(routing);
-        uint? streamRoutingId = routing.Length == sizeof(uint)
-            ? BinaryPrimitives.ReadUInt32BigEndian(routing)
-            : null;
         string local;
         string remote;
         unsafe
@@ -188,36 +167,37 @@ public readonly struct SocketMonitorEvent
                 remote = NativeHelpers.ReadString(remotePtr, 256);
             }
         }
-        SocketEvent @event = (SocketEvent)(evt.Event & 0xFFFFFFFFuL);
-        return new SocketMonitorEvent(@event, evt.Value, routingId,
-            streamRoutingId, local, remote, evt.Event);
+
+        return new MonitorEvent((MonitorEventType)(evt.Event & 0xFFFFFFFFuL),
+            (uint)evt.Value, RoutingIdCodec.ToRoutingId(
+                NativeHelpers.ReadRoutingId(ref evt.RoutingId)),
+            local, remote);
     }
 }
 
-public readonly struct MonitorSnapshot
+public sealed class MonitorSnapshot
 {
-    public MonitorSnapshot(MonitorSourceKind sourceKind, MonitorState stateFlags,
-        MonitorSnapshotDetail detailFlags,
-        ulong sendPendingMessages, ulong receivePendingMessages)
+    public MonitorSnapshot(SourceKind sourceKind, uint stateFlags,
+        uint detailFlags, ulong sndPendingMsgs, ulong rcvPendingMsgs)
     {
         SourceKind = sourceKind;
         StateFlags = stateFlags;
         DetailFlags = detailFlags;
-        SendPendingMessages = sendPendingMessages;
-        ReceivePendingMessages = receivePendingMessages;
+        SndPendingMsgs = sndPendingMsgs;
+        RcvPendingMsgs = rcvPendingMsgs;
     }
 
-    public MonitorSourceKind SourceKind { get; }
-    public MonitorState StateFlags { get; }
-    public MonitorSnapshotDetail DetailFlags { get; }
-    public ulong SendPendingMessages { get; }
-    public ulong ReceivePendingMessages { get; }
+    public SourceKind SourceKind { get; }
+    public uint StateFlags { get; }
+    public uint DetailFlags { get; }
+    public ulong SndPendingMsgs { get; }
+    public ulong RcvPendingMsgs { get; }
+    public bool IsReady => (StateFlags & 0x1u) != 0;
 
     internal static MonitorSnapshot FromNative(ref ZlinkMonitorSnapshot native)
     {
-        return new MonitorSnapshot((MonitorSourceKind)native.SourceKind,
-            (MonitorState)native.StateFlags,
-            (MonitorSnapshotDetail)native.DetailFlags,
-            native.SndPendingMsgs, native.RcvPendingMsgs);
+        return new MonitorSnapshot((SourceKind)native.SourceKind,
+            native.StateFlags, native.DetailFlags, native.SndPendingMsgs,
+            native.RcvPendingMsgs);
     }
 }

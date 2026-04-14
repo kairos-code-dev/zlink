@@ -40,6 +40,11 @@ struct socket_timeout_callback_ctx_t
     pending_key_t key;
 };
 
+void destroy_socket_timeout_callback_ctx (void *userdata_)
+{
+    delete static_cast<socket_timeout_callback_ctx_t *> (userdata_);
+}
+
 uint64_t allocate_request_seq (socket_request_reply_state_t *state_)
 {
     if (!state_) {
@@ -169,7 +174,8 @@ int start_request (socket_handle_t handle_,
         pending.timeout_task =
           zlink::request_timeout::schedule (resolved_timeout_ms,
                                             &on_socket_request_timeout,
-                                            timeout_ctx.release ());
+                                            timeout_ctx.release (),
+                                            &destroy_socket_timeout_callback_ctx);
         if (!pending.timeout_task) {
             errno = ENOMEM;
             return -1;

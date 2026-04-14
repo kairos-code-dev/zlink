@@ -2,7 +2,7 @@
 
 package dev.kairoscode.zlink;
 
-public enum ErrorCode {
+enum ErrorCode {
     EFSM(156384763),
     ENOCOMPATPROTO(156384764),
     ETERM(156384765),

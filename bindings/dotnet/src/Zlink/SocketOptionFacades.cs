@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using Zlink.Service;
 
 namespace Zlink;
 
@@ -133,8 +132,8 @@ public sealed class DealerSocketOptions
 
     public RoutingId RoutingId
     {
-        get => new(_socket.GetOption(SocketOptions.RoutingId));
-        set => _socket.SetOption(SocketOptions.RoutingId, value.Value);
+        get => RoutingId.FromBytes(_socket.GetOption(SocketOptions.RoutingId));
+        set => _socket.SetOption(SocketOptions.RoutingId, value.ToBytes());
     }
 
     public bool ProbeRouter
@@ -155,8 +154,8 @@ public sealed class RouterSocketOptions
 
     public RoutingId RoutingId
     {
-        get => new(_socket.GetOption(SocketOptions.RoutingId));
-        set => _socket.SetOption(SocketOptions.RoutingId, value.Value);
+        get => RoutingId.FromBytes(_socket.GetOption(SocketOptions.RoutingId));
+        set => _socket.SetOption(SocketOptions.RoutingId, value.ToBytes());
     }
 
     public bool Mandatory
@@ -179,8 +178,8 @@ public sealed class RouterSocketOptions
 
     public RoutingId ConnectRoutingId
     {
-        get => new(_socket.GetOption(SocketOptions.ConnectRoutingId));
-        set => _socket.SetOption(SocketOptions.ConnectRoutingId, value.Value);
+        get => RoutingId.FromBytes(_socket.GetOption(SocketOptions.ConnectRoutingId));
+        set => _socket.SetOption(SocketOptions.ConnectRoutingId, value.ToBytes());
     }
 }
 
@@ -201,8 +200,8 @@ public sealed class StreamSocketOptions
 
     public RoutingId ConnectRoutingId
     {
-        get => new(_socket.GetOption(SocketOptions.ConnectRoutingId));
-        set => _socket.SetOption(SocketOptions.ConnectRoutingId, value.Value);
+        get => RoutingId.FromBytes(_socket.GetOption(SocketOptions.ConnectRoutingId));
+        set => _socket.SetOption(SocketOptions.ConnectRoutingId, value.ToBytes());
     }
 }
 

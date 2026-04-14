@@ -1,31 +1,60 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Text;
 
 namespace Zlink;
 
 public readonly struct RoutingId : IEquatable<RoutingId>
 {
-    private readonly string _value;
+    private readonly byte[]? _bytes;
 
-    public RoutingId(string value)
+    private RoutingId(byte[] bytes, bool takeOwnership)
     {
-        _value = value ?? throw new ArgumentNullException(nameof(value));
-        _ = RoutingIdCodec.FromPublicString(_value, nameof(value));
+        _bytes = takeOwnership ? bytes : bytes.ToArray();
     }
 
-    public string Value => _value ?? string.Empty;
+    public static RoutingId FromBytes(ReadOnlySpan<byte> bytes)
+    {
+        Validate(bytes, nameof(bytes));
+        return new RoutingId(bytes.ToArray(), takeOwnership: true);
+    }
 
-    public bool IsEmpty => string.IsNullOrEmpty(_value);
+    public static RoutingId FromBytes(byte[] bytes)
+    {
+        if (bytes == null)
+            throw new ArgumentNullException(nameof(bytes));
+        Validate(bytes, nameof(bytes));
+        return new RoutingId(bytes, takeOwnership: false);
+    }
+
+    public int Size => _bytes?.Length ?? 0;
+
+    public bool IsEmpty => Size == 0;
+
+    public ReadOnlySpan<byte> ToBytes()
+    {
+        return _bytes ?? ReadOnlySpan<byte>.Empty;
+    }
+
+    public byte[] ToByteArray()
+    {
+        return _bytes?.ToArray() ?? Array.Empty<byte>();
+    }
+
+    public string ToHex()
+    {
+        return Convert.ToHexString(ToBytes()).ToLowerInvariant();
+    }
 
     public override string ToString()
     {
-        return Value;
+        return Encoding.UTF8.GetString(ToBytes());
     }
 
     public bool Equals(RoutingId other)
     {
-        return string.Equals(Value, other.Value, StringComparison.Ordinal);
+        return ToBytes().SequenceEqual(other.ToBytes());
     }
 
     public override bool Equals(object? obj)
@@ -35,7 +64,10 @@ public readonly struct RoutingId : IEquatable<RoutingId>
 
     public override int GetHashCode()
     {
-        return StringComparer.Ordinal.GetHashCode(Value);
+        HashCode hash = new();
+        foreach (byte value in ToBytes())
+            hash.Add(value);
+        return hash.ToHashCode();
     }
 
     public static bool operator ==(RoutingId left, RoutingId right)
@@ -48,8 +80,17 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         return !left.Equals(right);
     }
 
-    public static explicit operator string(RoutingId routingId)
+    internal static RoutingId? FromOptionalBytes(ReadOnlySpan<byte> bytes)
     {
-        return routingId.Value;
+        return bytes.Length == 0 ? null : FromBytes(bytes);
+    }
+
+    private static void Validate(ReadOnlySpan<byte> bytes, string paramName)
+    {
+        if (bytes.Length <= 0 || bytes.Length > 255)
+        {
+            throw new ArgumentOutOfRangeException(paramName,
+                "routingId length must be between 1 and 255 bytes.");
+        }
     }
 }

@@ -1,5 +1,8 @@
 package dev.kairoscode.zlink.internal;
 
+import dev.kairoscode.zlink.ConfigException;
+import dev.kairoscode.zlink.ConfigResult;
+import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
 import java.lang.foreign.MemorySegment;
@@ -57,6 +60,20 @@ public final class NativeMsg {
           methodType.parameterArray());
     }
 
+    private static MethodHandle unsupportedLegacyDowncall(String name,
+                                                          FunctionDescriptor fd) {
+        MethodType methodType = fd.toMethodType();
+        UnsupportedOperationException failure =
+          new UnsupportedOperationException(
+            "Legacy Java binding API '" + name
+              + "' is not part of the canonical core header surface.");
+        MethodHandle throwing = MethodHandles.throwException(
+          methodType.returnType(), UnsupportedOperationException.class);
+        throwing = MethodHandles.insertArguments(throwing, 0, failure);
+        return MethodHandles.dropArguments(throwing, 0,
+          methodType.parameterArray());
+    }
+
     private static final MethodHandle MH_MSG_INIT = downcall("zlink_msg_init",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSG_INIT_SIZE = downcall("zlink_msg_init_size",
@@ -74,7 +91,8 @@ public final class NativeMsg {
     private static final MethodHandle MH_MSG_SIZE = downcall("zlink_msg_size",
             FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSG_REFCNT = downcall("zlink_msg_refcnt",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSG_GETS = downcall("zlink_msg_gets",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSGV_CLOSE = downcallAny(
@@ -104,6 +122,7 @@ public final class NativeMsg {
     private static final MethodHandle MH_ROUTER_RECV = downcall(
             "zlink_router_recv",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT));
@@ -176,8 +195,16 @@ public final class NativeMsg {
     }
 
     public static int msgRefCnt(MemorySegment msg) {
-        try {
-            return (int) MH_MSG_REFCNT.invokeExact(msg);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
+            int refCount = (int) MH_MSG_REFCNT.invokeExact(msg, errorOut);
+            int configResult = errorOut.get(ValueLayout.JAVA_INT, 0);
+            if (refCount < 0 || configResult != 0) {
+                throw new ConfigException(ConfigResult.fromValue(configResult));
+            }
+            return refCount;
+        } catch (ConfigException ex) {
+            throw ex;
         } catch (Throwable t) {
             throw new RuntimeException("zlink_msg_refcnt failed", t);
         }
@@ -257,13 +284,15 @@ public final class NativeMsg {
     }
 
     public static int routerRecv(MemorySegment router,
-                                 MemorySegment peerRidOut,
+                                 MemorySegment sourceNodeRidOut,
+                                 MemorySegment sourceSpotRidOut,
                                  MemorySegment requestSeqOut,
                                  MemorySegment partsOut,
                                  MemorySegment partCountOut,
                                  int flags) {
         try {
-            return (int) MH_ROUTER_RECV.invokeExact(router, peerRidOut,
+            return (int) MH_ROUTER_RECV.invokeExact(router, sourceNodeRidOut,
+                sourceSpotRidOut,
                 requestSeqOut, partsOut, partCountOut, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_router_recv failed", t);

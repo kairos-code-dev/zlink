@@ -11,7 +11,6 @@
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
 
-#include "core/multipart_send_txn.hpp"
 #include "services/common/monitor_decode.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
@@ -33,10 +32,6 @@ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
 // Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
 // data-plane thread long enough to inflate delivery tail latency.
 static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
-static const uint32_t spot_batch_magic_v1 = 0x31544253u;
-static const uint16_t spot_batch_version_v1 = 1;
-static const uint32_t spot_batch_header_size_v1 = 12;
-static const uint32_t spot_batch_metadata_size_v1 = 16;
 
 static void spot_ctrl_debugf (const char *fmt_, ...)
 {
@@ -96,64 +91,6 @@ static int send_ascii_frame (socket_base_t *socket_,
     const int rc = socket_->send (&msg, flags_);
     msg.close ();
     return rc;
-}
-
-static uint16_t read_u16_le (const unsigned char *data_)
-{
-    return static_cast<uint16_t> (data_[0])
-           | (static_cast<uint16_t> (data_[1]) << 8);
-}
-
-static uint32_t read_u32_le (const unsigned char *data_)
-{
-    return static_cast<uint32_t> (data_[0])
-           | (static_cast<uint32_t> (data_[1]) << 8)
-           | (static_cast<uint32_t> (data_[2]) << 16)
-           | (static_cast<uint32_t> (data_[3]) << 24);
-}
-
-static void warn_malformed_batch (const std::string &topic_,
-                                  const char *reason_)
-{
-    std::fprintf (stderr, "[spot-batch] warning: drop malformed batch topic=%s reason=%s\n",
-                  topic_.c_str (), reason_ ? reason_ : "unknown");
-    std::fflush (stderr);
-}
-
-static int publish_owned_parts (socket_base_t *socket_,
-                                const std::string &topic_,
-                                const std::vector<std::string> &parts_)
-{
-    if (!socket_ || topic_.empty ()) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    std::vector<zlink_msg_t> frames (parts_.size ());
-    if (!frames.empty ())
-        memset (&frames[0], 0, frames.size () * sizeof (zlink_msg_t));
-    for (size_t i = 0; i < parts_.size (); ++i) {
-        if (zlink_msg_init_size (&frames[i], parts_[i].size ()) != 0) {
-            for (size_t j = 0; j < i; ++j)
-                (void) zlink_msg_close (&frames[j]);
-            return -1;
-        }
-        if (!parts_[i].empty ())
-            memcpy (zlink_msg_data (&frames[i]), parts_[i].data (),
-                    parts_[i].size ());
-    }
-
-    const int rc = logical_multipart_publish (
-      socket_, topic_.c_str (), frames.empty () ? NULL : &frames[0],
-      frames.size (), 0, true);
-    const int saved_errno = rc == 0 ? 0 : errno;
-    for (size_t i = 0; i < frames.size (); ++i)
-        (void) zlink_msg_close (&frames[i]);
-    if (saved_errno != 0) {
-        errno = saved_errno;
-        return -1;
-    }
-    return 0;
 }
 
 static int send_control_snapshot (socket_base_t *socket_,
@@ -558,168 +495,6 @@ void spot_data_plane_protocol_t::clear_snapshot_sources (
     state_->peer_ready_filters.clear ();
 }
 
-int spot_data_plane_protocol_t::decode_batch_frame (
-  const std::string &topic_,
-  const std::vector<std::string> &frames_,
-  spot_data_plane_protocol_state_t *state_,
-  bool *is_batch_out_)
-{
-    if (is_batch_out_)
-        *is_batch_out_ = false;
-    if (!state_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (frames_.size () != 3)
-        return 0;
-    if (frames_[0].size () != spot_batch_header_size_v1)
-        return 0;
-
-    const unsigned char *header =
-      reinterpret_cast<const unsigned char *> (frames_[0].data ());
-    const uint32_t magic = read_u32_le (header);
-    const uint16_t version = read_u16_le (header + 4);
-    const uint32_t header_size = read_u32_le (header + 8);
-    if (magic != spot_batch_magic_v1 || version != spot_batch_version_v1
-        || header_size != spot_batch_header_size_v1) {
-        return 0;
-    }
-
-    if (is_batch_out_)
-        *is_batch_out_ = true;
-    if (frames_[1].size () != spot_batch_metadata_size_v1) {
-        warn_malformed_batch (topic_, "metadata-size");
-        errno = EBADMSG;
-        return -1;
-    }
-
-    const unsigned char *metadata =
-      reinterpret_cast<const unsigned char *> (frames_[1].data ());
-    const uint32_t message_count = read_u32_le (metadata);
-    const uint32_t encoded_bytes = read_u32_le (metadata + 8);
-    if (message_count == 0) {
-        warn_malformed_batch (topic_, "message-count-zero");
-        errno = EBADMSG;
-        return -1;
-    }
-    if (encoded_bytes != frames_[2].size ()) {
-        warn_malformed_batch (topic_, "encoded-bytes-mismatch");
-        errno = EBADMSG;
-        return -1;
-    }
-
-    state_->pending_unbatch.active = true;
-    state_->pending_unbatch.topic = topic_;
-    state_->pending_unbatch.body = frames_[2];
-    state_->pending_unbatch.total_message_count = message_count;
-    state_->pending_unbatch.decoded_message_index = 0;
-    state_->pending_unbatch.decode_offset = 0;
-    return 0;
-}
-
-int spot_data_plane_protocol_t::resume_pending_unbatch (
-  socket_base_t *fanout_,
-  const spot_runtime_t *runtime_,
-  spot_data_plane_protocol_state_t *state_)
-{
-    if (!fanout_ || !runtime_ || !state_) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (!state_->pending_unbatch.active)
-        return 0;
-
-    const spot_node_batch_config_t config = runtime_->peer_batch_config_snapshot ();
-    const size_t max_messages =
-      static_cast<size_t> (config.unbatch_max_messages_per_turn);
-    const size_t max_bytes =
-      static_cast<size_t> (config.unbatch_max_bytes_per_turn);
-    size_t processed_messages = 0;
-    size_t processed_bytes = 0;
-
-    while (state_->pending_unbatch.active && processed_messages < max_messages
-           && processed_bytes < max_bytes) {
-        const std::string &body = state_->pending_unbatch.body;
-        const size_t offset = state_->pending_unbatch.decode_offset;
-        if (offset + 4 > body.size ()) {
-            warn_malformed_batch (state_->pending_unbatch.topic,
-                                  "message-length-overflow");
-            state_->pending_unbatch.clear ();
-            return 0;
-        }
-
-        const unsigned char *cursor =
-          reinterpret_cast<const unsigned char *> (body.data ()) + offset;
-        const uint32_t message_encoded_bytes = read_u32_le (cursor);
-        const size_t message_begin = offset + 4;
-        const size_t message_end = message_begin + message_encoded_bytes;
-        if (message_end > body.size () || message_encoded_bytes < 2) {
-            warn_malformed_batch (state_->pending_unbatch.topic,
-                                  "message-body-overflow");
-            state_->pending_unbatch.clear ();
-            return 0;
-        }
-
-        size_t message_offset = message_begin;
-        const uint16_t part_count = read_u16_le (
-          reinterpret_cast<const unsigned char *> (body.data ()) + message_offset);
-        message_offset += 2;
-        std::vector<std::string> parts;
-        parts.reserve (part_count);
-
-        for (uint16_t i = 0; i < part_count; ++i) {
-            if (message_offset + 4 > message_end) {
-                warn_malformed_batch (state_->pending_unbatch.topic,
-                                      "part-size-overflow");
-                state_->pending_unbatch.clear ();
-                return 0;
-            }
-            const uint32_t part_size = read_u32_le (
-              reinterpret_cast<const unsigned char *> (body.data ())
-              + message_offset);
-            message_offset += 4;
-            if (message_offset + part_size > message_end) {
-                warn_malformed_batch (state_->pending_unbatch.topic,
-                                      "part-payload-overflow");
-                state_->pending_unbatch.clear ();
-                return 0;
-            }
-            parts.push_back (body.substr (message_offset, part_size));
-            message_offset += part_size;
-        }
-
-        if (message_offset != message_end) {
-            warn_malformed_batch (state_->pending_unbatch.topic,
-                                  "message-size-mismatch");
-            state_->pending_unbatch.clear ();
-            return 0;
-        }
-
-        if (publish_owned_parts (fanout_, state_->pending_unbatch.topic, parts)
-            != 0) {
-            return -1;
-        }
-
-        processed_messages += 1;
-        processed_bytes += 4 + message_encoded_bytes;
-        state_->pending_unbatch.decoded_message_index += 1;
-        state_->pending_unbatch.decode_offset = message_end;
-
-        if (state_->pending_unbatch.decoded_message_index
-            == state_->pending_unbatch.total_message_count) {
-            if (state_->pending_unbatch.decode_offset != body.size ()) {
-                warn_malformed_batch (state_->pending_unbatch.topic,
-                                      "tail-bytes-mismatch");
-            }
-            state_->pending_unbatch.clear ();
-            break;
-        }
-    }
-
-    return 0;
-}
-
 int spot_data_plane_protocol_t::recv_and_process_ctrl_messages (
   socket_base_t *ctrl_sub_,
   spot_node_t *node_,
@@ -823,8 +598,6 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
         errno = EFAULT;
         return -1;
     }
-    if (state_->pending_unbatch.active)
-        return 0;
 
     unsigned int processed = 0;
     size_t processed_bytes = 0;
@@ -844,26 +617,8 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
 
         if (!spot_control_protocol::is_bootstrap_ctrl_descriptor_topic (
               topic_data, topic_size)) {
-            std::vector<std::string> frame_strings;
-            spot_copy_msg_parts_to_strings (frames, &frame_strings);
-            bool is_batch = false;
-            const int decode_rc =
-              decode_batch_frame (topic, frame_strings, state_, &is_batch);
-            if (decode_rc != 0) {
-                spot_clear_msg_parts (&frames);
-                if (errno == EBADMSG)
-                    errno = 0;
-                else
-                    return -1;
-            } else if (!is_batch) {
-                if (spot_publish_msg_parts_consume (fanout_, topic, &frames)
-                    != 0) {
-                    return -1;
-                }
-            } else if (resume_pending_unbatch (fanout_, runtime_, state_) != 0) {
-                spot_clear_msg_parts (&frames);
+            if (spot_publish_msg_parts_consume (fanout_, topic, &frames) != 0)
                 return -1;
-            }
             spot_clear_msg_parts (&frames);
 
             ++processed;

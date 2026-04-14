@@ -20,7 +20,7 @@ internal static class CoreTestSupport
     {
         try
         {
-            _ = ZlinkVersion.Get();
+            _ = global::Zlink.Zlink.Version();
             return true;
         }
         catch (DllNotFoundException)
@@ -73,6 +73,11 @@ internal static class CoreTestSupport
             throw new InvalidOperationException("Failed to parse zlink version macros.");
 
         return (major, minor, patch);
+    }
+
+    internal static RoutingId RoutingIdUtf8(string value)
+    {
+        return RoutingId.FromBytes(Encoding.UTF8.GetBytes(value));
     }
 
     internal static string NewEndpoint(string transport, string prefix)
@@ -428,7 +433,7 @@ internal static class CoreTestSupport
                     : Encoding.UTF8.GetString(
                         received.Parts[received.Parts.Count - 1].AsReadOnlySpan())
                         .Trim('\0');
-                return (received.RoutingId, payload);
+                return (received.RoutingId?.ToString() ?? string.Empty, payload);
             }
             finally
             {
@@ -465,7 +470,7 @@ internal static class CoreTestSupport
 
     private static bool IsRetryable(ZlinkException ex)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(ex.Errno);
+        ErrorCode code = ZlinkException.MapErrorCode(ex.InternalErrno);
         return code == ErrorCode.EAgain || code == ErrorCode.EIntr;
     }
 

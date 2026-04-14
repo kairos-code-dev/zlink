@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 test('dealer/router uses routing id through Received and routed send', () => {
     const ctx = new zlink.Context();
     const router = new zlink.RouterSocket(ctx);
@@ -13,8 +13,8 @@ test('dealer/router uses routing id through Received and routed send', () => {
     const request = router.recv();
     assert.equal(request.parts.length, 1);
     assert.ok(Object.isFrozen(request.parts));
-    assert.equal(request.parts[0].data.toString(), 'hello');
-    assert.ok(Buffer.isBuffer(request.routingId));
+    assert.equal(request.parts[0].data().toString(), 'hello');
+    assert.ok(request.routingId instanceof zlink.RoutingId);
     assert.equal(request.parts[0].refCount(), 1);
     assert.notEqual(request.parts[0].getProperty('Routing-Id'), null);
     assert.equal(request.parts[0].getProperty('Routing-Id'), request.parts[0].getProperty('Identity'));
@@ -22,8 +22,8 @@ test('dealer/router uses routing id through Received and routed send', () => {
     const response = dealer.recv();
     assert.equal(response.parts.length, 1);
     assert.ok(Object.isFrozen(response.parts));
-    assert.equal(response.parts[0].data.toString(), 'world');
-    assert.equal(typeof router.trySend, 'function');
+    assert.equal(response.parts[0].data().toString(), 'world');
+    assert.equal(typeof router.reply, 'function');
     dealer.close();
     router.close();
     ctx.close();

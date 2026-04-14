@@ -1,6 +1,8 @@
 package dev.kairoscode.zlink.internal;
 
 import dev.kairoscode.zlink.MonitorEvent;
+import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.ZlinkException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -213,7 +215,8 @@ public final class Native {
     private static final MethodHandle MH_POLLER_DESTROY = downcall("zlink_poller_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_POLLER_SIZE = downcall("zlink_poller_size",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_POLLER_ADD = downcall("zlink_poller_add",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
@@ -268,9 +271,14 @@ public final class Native {
     private static final MethodHandle MH_POLLER_REMOVE_FD = downcall("zlink_poller_remove_fd",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_POLLER_WAIT = downcall("zlink_poller_wait",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_POLLER_WAIT_ALL = downcall("zlink_poller_wait_all",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG));
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG,
+                    ValueLayout.ADDRESS));
 
     private static final MethodHandle MH_MONITOR_OPEN = downcall("zlink_socket_monitor_open",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -396,11 +404,11 @@ public final class Native {
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
         ValueLayout.JAVA_INT));
     private static final MethodHandle MH_ROUTER_SPOT_HANDLER = downcall(
-      "zlink_router_spot_handler",
+      "zlink_router_handler",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_ROUTER_SPOT_RECV = downcall(
-      "zlink_router_spot_recv",
+      "zlink_router_recv",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
@@ -515,6 +523,14 @@ public final class Native {
                     ValueLayout.JAVA_SHORT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_CONNECT = downcall("zlink_discovery_connect_registry",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_DISC_SET_DEALER_PEER_MODE = downcall(
+            "zlink_discovery_set_dealer_peer_mode",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_DISC_RESOLVE_SPOT = downcall(
+            "zlink_discovery_resolve_spot",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_SET_VALUE = downcall(
             "zlink_discovery_set_value",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -1189,7 +1205,10 @@ public final class Native {
             }
             String local = NativeHelpers.fromCString(evt.asSlice(NativeLayouts.MONITOR_LOCAL_OFFSET, 256), 256);
             String remote = NativeHelpers.fromCString(evt.asSlice(NativeLayouts.MONITOR_REMOTE_OFFSET, 256), 256);
-            return new MonitorEvent(event, value, routing, local, remote);
+            return new MonitorEvent(MonitorEventType.fromValue(event), value,
+              routingSize == 0 ? java.util.Optional.empty()
+                : java.util.Optional.of(RoutingId.fromBytes(routing)),
+              local, remote);
         } catch (ZlinkException ex) {
             throw ex;
         } catch (Throwable t) {
@@ -1523,29 +1542,29 @@ public final class Native {
         }
     }
 
-    public static int routerSpotHandler(MemorySegment router,
-                                        MemorySegment handler,
-                                        MemorySegment userdata) {
+    public static int routerHandler(MemorySegment router,
+                                    MemorySegment handler,
+                                    MemorySegment userdata) {
         try {
             return (int) MH_ROUTER_SPOT_HANDLER.invokeExact(router, handler,
                 userdata);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_router_spot_handler failed", t);
+            throw new RuntimeException("zlink_router_handler failed", t);
         }
     }
 
-    public static int routerSpotRecv(MemorySegment router,
-                                     MemorySegment sourceNodeRidOut,
-                                     MemorySegment sourceSpotRidOut,
-                                     MemorySegment requestSeqOut,
-                                     MemorySegment partsOut,
-                                     MemorySegment partCountOut, int flags) {
+    public static int routerRecv(MemorySegment router,
+                                 MemorySegment sourceNodeRidOut,
+                                 MemorySegment sourceSpotRidOut,
+                                 MemorySegment requestSeqOut,
+                                 MemorySegment partsOut,
+                                 MemorySegment partCountOut, int flags) {
         try {
             return (int) MH_ROUTER_SPOT_RECV.invokeExact(router,
                 sourceNodeRidOut, sourceSpotRidOut, requestSeqOut, partsOut,
                 partCountOut, flags);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_router_spot_recv failed", t);
+            throw new RuntimeException("zlink_router_recv failed", t);
         }
     }
 
@@ -1591,7 +1610,7 @@ public final class Native {
         }
     }
 
-    public static int spotRequestRouter(MemorySegment spot,
+    public static int spotRequestToRouter(MemorySegment spot,
                                         MemorySegment peerRid,
                                         MemorySegment parts,
                                         long partCount,
@@ -1697,7 +1716,7 @@ public final class Native {
 
     public static int pollerSize(MemorySegment poller) {
         try {
-            return (int) MH_POLLER_SIZE.invokeExact(poller);
+            return (int) MH_POLLER_SIZE.invokeExact(poller, MemorySegment.NULL);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_poller_size failed", t);
         }
@@ -1865,11 +1884,27 @@ public final class Native {
                                     int count, int timeoutMs) {
         if (events == null || events.address() == 0 || count <= 0)
             return 0;
-        try {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
+            errorOut.set(ValueLayout.JAVA_INT, 0, 0);
             return (int) MH_POLLER_WAIT_ALL.invokeExact(poller, events, count,
-                (long) timeoutMs);
+                (long) timeoutMs, errorOut);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_poller_wait_all failed", t);
+        }
+    }
+
+    public static int pollerWait(MemorySegment poller, MemorySegment event,
+                                 int timeoutMs) {
+        if (event == null || event.address() == 0)
+            return 0;
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
+            errorOut.set(ValueLayout.JAVA_INT, 0, 0);
+            return (int) MH_POLLER_WAIT.invokeExact(poller, event,
+                (long) timeoutMs, errorOut);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_wait failed", t);
         }
     }
 
@@ -2068,6 +2103,29 @@ public final class Native {
             return (int) MH_DISC_CONNECT.invokeExact(disc, pub);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_discovery_connect_registry failed", t);
+        }
+    }
+
+    public static int discoverySetDealerPeerMode(MemorySegment discovery,
+                                                 int mode) {
+        try {
+            return (int) MH_DISC_SET_DEALER_PEER_MODE.invokeExact(discovery,
+              mode);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_discovery_set_dealer_peer_mode failed", t);
+        }
+    }
+
+    public static int discoveryResolveSpot(MemorySegment discovery,
+                                           MemorySegment spotRid,
+                                           MemorySegment ownerNodeRidOut) {
+        try {
+            return (int) MH_DISC_RESOLVE_SPOT.invokeExact(discovery, spotRid,
+              ownerNodeRidOut);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_discovery_resolve_spot failed",
+              t);
         }
     }
 

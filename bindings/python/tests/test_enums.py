@@ -35,8 +35,8 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.ConfigResult.NOT_SUPPORTED), 703)
 
     def test_monitor_event_values(self):
-        self.assertEqual(int(zlink.MonitorEvent.CONNECTED), 0x0001)
-        self.assertEqual(int(zlink.MonitorEvent.ALL), 0x7FFF)
+        self.assertEqual(int(zlink.MonitorEventMask.CONNECTED), 0x0001)
+        self.assertEqual(int(zlink.MonitorEventMask.ALL), 0x7FFF)
 
     def test_error_code_values(self):
         self.assertEqual(int(zlink.ErrorCode.EFSM), 156384763)
@@ -58,11 +58,11 @@ class EnumTypeTests(unittest.TestCase):
         self.assertIsInstance(zlink.SubmitResult.OK, int)
 
     def test_int_flag_is_int(self):
-        self.assertIsInstance(zlink.MonitorEvent.CONNECTED, int)
+        self.assertIsInstance(zlink.MonitorEventMask.CONNECTED, int)
         self.assertIsInstance(zlink.PollEvent.POLLIN, int)
 
     def test_flag_or_operation(self):
-        combined = zlink.MonitorEvent.CONNECTED | zlink.MonitorEvent.DISCONNECTED
+        combined = zlink.MonitorEventMask.CONNECTED | zlink.MonitorEventMask.DISCONNECTED
         self.assertEqual(int(combined), 0x0201)
 
 

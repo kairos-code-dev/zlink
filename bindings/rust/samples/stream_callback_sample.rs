@@ -58,7 +58,7 @@ fn main() {
 
     stream
         .on_receive(move |received| {
-            let payload = received.parts()[0].data().to_vec();
+            let payload = received.parts()[0].as_bytes().to_vec();
             let _ = tx.send(payload);
         })
         .expect("on_receive failed");

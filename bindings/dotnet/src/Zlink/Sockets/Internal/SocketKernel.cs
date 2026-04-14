@@ -7,7 +7,6 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using Zlink.Native;
-using Zlink.Service;
 
 namespace Zlink.Sockets.Internal;
 
@@ -42,6 +41,7 @@ internal sealed class SocketKernel : IDisposable
     private SynchronizationContext? _subscribeHandlerContext;
     private SynchronizationContext? _sendReadyHandlerContext;
     private NativeMethods.ZlinkSocketMsgHandlerDelegate? _recvHandlerNative;
+    private NativeMethods.ZlinkRouterRequestHandlerDelegate? _routerRecvHandlerNative;
     private NativeMethods.ZlinkSubscribeHandlerDelegate? _subscribeHandlerNative;
     private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
     private bool _streamAttached;
@@ -466,7 +466,7 @@ internal sealed class SocketKernel : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public void RecvHandler(SocketRecvHandler handler)
+    public unsafe void RecvHandler(SocketRecvHandler handler)
     {
         EnsureSupports(nameof(RecvHandler),
             SocketTypePolicy.SocketCapability.ReceiveHandler);
@@ -474,19 +474,42 @@ internal sealed class SocketKernel : IDisposable
             throw new ArgumentNullException(nameof(handler));
 
         SynchronizationContext? context = SynchronizationContext.Current;
-        var native = new NativeMethods.ZlinkSocketMsgHandlerDelegate(
+        int rc;
+        if (Type == SocketType.Router)
+        {
+            var native = new NativeMethods.ZlinkRouterRequestHandlerDelegate(
+                OnNativeRouterReceive);
+            rc = NativeMethods.zlink_router_handler(Handle, native, IntPtr.Zero);
+            if (rc != 0)
+            {
+                _recvHandler = null;
+                _recvHandlerContext = null;
+                _routerRecvHandlerNative = null;
+                ZlinkException.ThrowIfError(rc);
+            }
+
+            _recvHandler = handler;
+            _recvHandlerContext = context;
+            _recvHandlerNative = null;
+            _routerRecvHandlerNative = native;
+            return;
+        }
+
+        var socketNative = new NativeMethods.ZlinkSocketMsgHandlerDelegate(
             OnNativeReceive);
-        int rc = NativeMethods.zlink_recv_handler(Handle, native, IntPtr.Zero);
+        rc = NativeMethods.zlink_recv_handler(Handle, socketNative, IntPtr.Zero);
         if (rc != 0)
         {
             _recvHandler = null;
             _recvHandlerContext = null;
             _recvHandlerNative = null;
+            _routerRecvHandlerNative = null;
             ZlinkException.ThrowIfError(rc);
         }
         _recvHandler = handler;
         _recvHandlerContext = context;
-        _recvHandlerNative = native;
+        _recvHandlerNative = socketNative;
+        _routerRecvHandlerNative = null;
     }
 
     public void SendReadyHandler(Action handler)
@@ -511,14 +534,14 @@ internal sealed class SocketKernel : IDisposable
         _sendReadyHandlerNative = native;
     }
 
-    public Subscribed Subscribe(RecvFlags flags = RecvFlags.None)
+    public TopicMessage Subscribe(RecvFlags flags = RecvFlags.None)
     {
         EnsureSupports(nameof(Subscribe),
             SocketTypePolicy.SocketCapability.SubscribeReceive);
         return SubscribeCore((int)flags);
     }
 
-    public Subscribed? TrySubscribe()
+    public TopicMessage? TrySubscribe()
     {
         EnsureSupports(nameof(Subscribe),
             SocketTypePolicy.SocketCapability.SubscribeReceive);
@@ -803,9 +826,50 @@ internal sealed class SocketKernel : IDisposable
         _sendReadyHandler = null;
         _sendReadyHandlerContext = null;
         _recvHandlerNative = null;
+        _routerRecvHandlerNative = null;
         _subscribeHandlerNative = null;
         _sendReadyHandlerNative = null;
         GC.SuppressFinalize(this);
+    }
+
+    private unsafe void SendReplyCore(RoutingId routingId,
+        RoutingId? spotRid, ulong requestSequence, IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        _ = flags;
+        byte[] ridBytes = RoutingIdCodec.FromRoutingId(routingId);
+        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(ridBytes);
+        byte[]? spotRidBytes = null;
+        ZlinkRoutingId nativeSpotRid = default;
+        if (spotRid.HasValue)
+        {
+            spotRidBytes = RoutingIdCodec.FromRoutingId(spotRid.Value);
+            nativeSpotRid = NativeHelpers.WriteRoutingId(spotRidBytes);
+        }
+        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        RequestReplySupport.MovePartsToNative(cloned, out ZlinkMsg[] nativeParts);
+        try
+        {
+            fixed (ZlinkMsg* nativePtr = nativeParts)
+            {
+                int rc = spotRidBytes == null
+                    ? NativeMethods.zlink_router_reply(Handle,
+                        ref nativeRoutingId, requestSequence, (IntPtr)nativePtr,
+                        (nuint)nativeParts.Length)
+                    : NativeMethods.zlink_router_reply_spot(Handle,
+                        ref nativeRoutingId, ref nativeSpotRid, requestSequence,
+                        (IntPtr)nativePtr, (nuint)nativeParts.Length);
+                if (rc != 0)
+                    throw ZlinkException.CreateSubmitException(
+                        NativeMethods.zlink_errno());
+            }
+        }
+        catch
+        {
+            RequestReplySupport.RestoreManagedParts(cloned, nativeParts,
+                nativeParts.Length);
+            throw;
+        }
     }
 
     private void SendPartsWithFlags(IReadOnlyList<Message> parts, int flags)
@@ -946,7 +1010,7 @@ internal sealed class SocketKernel : IDisposable
         return TryPublishCore(topic, copied.AsSpan(), nameof(parts));
     }
 
-    private unsafe Subscribed SubscribeCore(int flags)
+    private unsafe TopicMessage SubscribeCore(int flags)
     {
         IntPtr nativeParts = IntPtr.Zero;
         nuint partCount = 0;
@@ -962,7 +1026,7 @@ internal sealed class SocketKernel : IDisposable
                 throw ZlinkException.CreateRecvException(
                     NativeMethods.zlink_errno());
 
-            string routingId = RoutingIdCodec.ToPublicString(
+            RoutingId? routingId = RoutingIdCodec.ToRoutingId(
                 NativeHelpers.ReadRoutingId(ref nativeRoutingId));
             string topic = DecodeTopic(topicBuffer, topicLength);
             Message[] parts = Message.FromNativeVector(nativeParts, partCount);
@@ -970,7 +1034,7 @@ internal sealed class SocketKernel : IDisposable
             partCount = 0;
             if (parts.Length == 0)
                 throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-            return new Subscribed(routingId, topic, parts);
+            return new TopicMessage(routingId, topic, parts);
         }
         catch
         {
@@ -1072,7 +1136,7 @@ internal sealed class SocketKernel : IDisposable
                 throw ZlinkException.CreateRecvException(
                     NativeMethods.zlink_errno());
 
-            string routingId = RoutingIdCodec.ToPublicString(
+            RoutingId? routingId = RoutingIdCodec.ToRoutingId(
                 NativeHelpers.ReadRoutingId(ref nativeRoutingId));
             string topic = DecodeTopic(topicBuffer, topicLength);
             return new SubscriptionEvent(routingId, topic, subscribedInt != 0);
@@ -1099,7 +1163,7 @@ internal sealed class SocketKernel : IDisposable
             partCount = 0;
             if (parts.Length == 0)
                 throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-            return new Received(string.Empty, parts);
+            return new Received(null, parts);
         }
         catch
         {
@@ -1114,7 +1178,9 @@ internal sealed class SocketKernel : IDisposable
         IntPtr nativeParts = IntPtr.Zero;
         nuint partCount = 0;
         ZlinkRoutingId nativeRoutingId = default;
-        IntPtr nativePeerRoutingId = IntPtr.Zero;
+        ZlinkRoutingId nativeSpotRoutingId = default;
+        IntPtr nativeSourceNodeRoutingId = IntPtr.Zero;
+        IntPtr nativeSourceSpotRoutingId = IntPtr.Zero;
         ulong requestSequence = 0;
         try
         {
@@ -1122,10 +1188,13 @@ internal sealed class SocketKernel : IDisposable
             if (Type == SocketType.Router)
             {
                 rc = NativeMethods.zlink_router_recv(Handle,
-                    out nativePeerRoutingId, out requestSequence,
+                    out nativeSourceNodeRoutingId, out nativeSourceSpotRoutingId,
+                    out requestSequence,
                     out nativeParts, out partCount, flags);
-                if (rc == 0 && nativePeerRoutingId != IntPtr.Zero)
-                    nativeRoutingId = *(ZlinkRoutingId*)nativePeerRoutingId;
+                if (rc == 0 && nativeSourceNodeRoutingId != IntPtr.Zero)
+                    nativeRoutingId = *(ZlinkRoutingId*)nativeSourceNodeRoutingId;
+                if (rc == 0 && nativeSourceSpotRoutingId != IntPtr.Zero)
+                    nativeSpotRoutingId = *(ZlinkRoutingId*)nativeSourceSpotRoutingId;
             }
             else
             {
@@ -1140,11 +1209,31 @@ internal sealed class SocketKernel : IDisposable
             partCount = 0;
             if (parts.Length == 0)
                 throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-            string routingId = RoutingIdCodec.ToPublicString(
+            RoutingId? routingId = RoutingIdCodec.ToRoutingId(
                 NativeHelpers.ReadRoutingId(ref nativeRoutingId));
-            return requestSequence == 0
-                ? new Received(routingId, parts)
-                : new Received(routingId, parts, requestSequence, true);
+            RoutingId? spotRid = nativeSpotRoutingId.Size == 0
+                ? null
+                : RoutingIdCodec.ToRoutingId(
+                    NativeHelpers.ReadRoutingId(ref nativeSpotRoutingId));
+            if (requestSequence == 0)
+                return new Received(routingId, parts, spotRid: spotRid);
+
+            return new Received(routingId, parts, requestSequence, spotRid,
+                replyHandler: (replyParts, sendFlags) =>
+                {
+                    if (routingId is null)
+                    {
+                        throw new ZlinkSubmitException(
+                            SubmitResult.InvalidArgument,
+                            (int)ErrorCode.EInval);
+                    }
+
+                    Message[] copied = new Message[replyParts.Count];
+                    for (int i = 0; i < copied.Length; i++)
+                        copied[i] = replyParts[i];
+                    SendReplyCore(routingId.Value, spotRid, requestSequence, copied,
+                        sendFlags);
+                });
         }
         catch
         {
@@ -1159,7 +1248,9 @@ internal sealed class SocketKernel : IDisposable
         IntPtr nativeParts = IntPtr.Zero;
         nuint partCount = 0;
         ZlinkRoutingId nativeRoutingId = default;
-        IntPtr nativePeerRoutingId = IntPtr.Zero;
+        ZlinkRoutingId nativeSpotRoutingId = default;
+        IntPtr nativeSourceNodeRoutingId = IntPtr.Zero;
+        IntPtr nativeSourceSpotRoutingId = IntPtr.Zero;
         ulong requestSequence = 0;
         try
         {
@@ -1167,10 +1258,13 @@ internal sealed class SocketKernel : IDisposable
             if (Type == SocketType.Router)
             {
                 rc = NativeMethods.zlink_router_recv(Handle,
-                    out nativePeerRoutingId, out requestSequence,
+                    out nativeSourceNodeRoutingId, out nativeSourceSpotRoutingId,
+                    out requestSequence,
                     out nativeParts, out partCount, flags);
-                if (rc == 0 && nativePeerRoutingId != IntPtr.Zero)
-                    nativeRoutingId = *(ZlinkRoutingId*)nativePeerRoutingId;
+                if (rc == 0 && nativeSourceNodeRoutingId != IntPtr.Zero)
+                    nativeRoutingId = *(ZlinkRoutingId*)nativeSourceNodeRoutingId;
+                if (rc == 0 && nativeSourceSpotRoutingId != IntPtr.Zero)
+                    nativeSpotRoutingId = *(ZlinkRoutingId*)nativeSourceSpotRoutingId;
             }
             else
             {
@@ -1179,12 +1273,18 @@ internal sealed class SocketKernel : IDisposable
             }
             ZlinkException.ThrowIfError(rc);
 
-            int routingCount = nativeRoutingId.Size > 0 ? 1 : 0;
+            int routingCount = 0;
+            if (nativeRoutingId.Size > 0)
+                routingCount++;
+            if (nativeSpotRoutingId.Size > 0)
+                routingCount++;
             int total = checked((int)partCount) + routingCount;
             var frames = new byte[total][];
             int index = 0;
-            if (routingCount != 0)
+            if (nativeRoutingId.Size > 0)
                 frames[index++] = NativeHelpers.ReadRoutingId(ref nativeRoutingId);
+            if (nativeSpotRoutingId.Size > 0)
+                frames[index++] = NativeHelpers.ReadRoutingId(ref nativeSpotRoutingId);
 
             ZlinkMsg* src = (ZlinkMsg*)nativeParts;
             for (int i = 0; i < (int)partCount; i++)
@@ -1246,7 +1346,7 @@ internal sealed class SocketKernel : IDisposable
         IntPtr nativeParts = IntPtr.Zero;
         nuint partCount = 0;
         ZlinkRoutingId nativeRoutingId = default;
-        IntPtr nativePeerRoutingId = IntPtr.Zero;
+        IntPtr nativeSourceNodeRoutingId = IntPtr.Zero;
         ulong requestSequence = 0;
         try
         {
@@ -1254,10 +1354,11 @@ internal sealed class SocketKernel : IDisposable
             if (Type == SocketType.Router)
             {
                 rc = NativeMethods.zlink_router_recv(Handle,
-                    out nativePeerRoutingId, out requestSequence,
+                    out nativeSourceNodeRoutingId, out _,
+                    out requestSequence,
                     out nativeParts, out partCount, flags);
-                if (rc == 0 && nativePeerRoutingId != IntPtr.Zero)
-                    nativeRoutingId = *(ZlinkRoutingId*)nativePeerRoutingId;
+                if (rc == 0 && nativeSourceNodeRoutingId != IntPtr.Zero)
+                    nativeRoutingId = *(ZlinkRoutingId*)nativeSourceNodeRoutingId;
             }
             else
             {
@@ -1267,6 +1368,7 @@ internal sealed class SocketKernel : IDisposable
             ZlinkException.ThrowIfError(rc);
             if (partCount == 0)
                 throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
+            _ = requestSequence;
             CopyRoutingId(ref nativeRoutingId, routingDestination);
             return CopyFirstFrameAndCollectPending(nativeParts, partCount,
                 payloadDestination, out pendingFrames);
@@ -1364,7 +1466,7 @@ internal sealed class SocketKernel : IDisposable
 
     private static bool MapTryReceiveableError(ZlinkException ex)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(ex.Errno);
+        ErrorCode code = ZlinkException.MapErrorCode(ex.InternalErrno);
         return code == ErrorCode.EAgain;
     }
 
@@ -1564,6 +1666,55 @@ internal sealed class SocketKernel : IDisposable
                 ZlinkRoutingId* nativeRoutingId = (ZlinkRoutingId*)sourceRoutingId;
                 routingId = RoutingIdCodec.ToPublicString(
                     NativeHelpers.ReadRoutingId(ref *nativeRoutingId));
+            }
+
+            managedParts = Message.FromNativeVector(parts, partCount);
+            parts = IntPtr.Zero;
+            partCount = 0;
+            delivered = true;
+            CallbackDelivery.Post(context,
+                () => handler(routingId, managedParts));
+        }
+        catch (Exception ex)
+        {
+            Runtime.ReportUnhandledCallbackException(ex);
+            if (!delivered && managedParts != null)
+            {
+                foreach (Message part in managedParts)
+                    part.Dispose();
+            }
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(parts, partCount);
+        }
+    }
+
+    private unsafe void OnNativeRouterReceive(ZlinkRoutingId* sourceNodeRoutingId,
+        ZlinkRoutingId* sourceSpotRoutingId, ulong requestSequence, IntPtr parts,
+        nuint partCount, IntPtr userData)
+    {
+        _ = sourceSpotRoutingId;
+        _ = requestSequence;
+        SocketRecvHandler? handler = _recvHandler;
+        SynchronizationContext? context = _recvHandlerContext;
+        if (handler == null)
+        {
+            if (parts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(parts, partCount);
+            return;
+        }
+
+        Message[]? managedParts = null;
+        bool delivered = false;
+        try
+        {
+            string routingId = string.Empty;
+            if (sourceNodeRoutingId != null)
+            {
+                routingId = RoutingIdCodec.ToPublicString(
+                    NativeHelpers.ReadRoutingId(ref *sourceNodeRoutingId));
             }
 
             managedParts = Message.FromNativeVector(parts, partCount);

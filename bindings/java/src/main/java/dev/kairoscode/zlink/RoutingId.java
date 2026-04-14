@@ -16,15 +16,21 @@ public final class RoutingId {
         this.value = value;
     }
 
+    static RoutingId fromTrusted(byte[] value) {
+        Objects.requireNonNull(value, "value");
+        validateLength(value.length);
+        return new RoutingId(value);
+    }
+
     /** Copies the full routing id byte array. */
-    public static RoutingId copyOf(byte[] value) {
+    public static RoutingId fromBytes(byte[] value) {
         Objects.requireNonNull(value, "value");
         validateLength(value.length);
         return new RoutingId(Arrays.copyOf(value, value.length));
     }
 
     /** Copies the selected routing id byte range. */
-    public static RoutingId copyOf(byte[] value, int offset, int length) {
+    public static RoutingId fromBytes(byte[] value, int offset, int length) {
         Objects.requireNonNull(value, "value");
         if (offset < 0 || length < 0 || offset > value.length - length)
             throw new IndexOutOfBoundsException("value range out of bounds");
@@ -40,8 +46,12 @@ public final class RoutingId {
     }
 
     /** Returns a defensive copy of the routing id bytes. */
-    public byte[] toByteArray() {
+    public byte[] toBytes() {
         return Arrays.copyOf(value, value.length);
+    }
+
+    byte[] trustedBytes() {
+        return value;
     }
 
     /** Returns a read-only buffer view over the routing id bytes. */
@@ -57,6 +67,15 @@ public final class RoutingId {
     /** Returns whether the routing id is empty. */
     public boolean empty() {
         return value.length == 0;
+    }
+
+    public String toHex() {
+        StringBuilder out = new StringBuilder(value.length * 2);
+        for (byte b : value) {
+            out.append(Character.forDigit((b >>> 4) & 0xF, 16));
+            out.append(Character.forDigit(b & 0xF, 16));
+        }
+        return out.toString();
     }
 
     @Override

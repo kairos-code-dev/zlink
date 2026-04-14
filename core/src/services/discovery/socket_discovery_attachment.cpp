@@ -177,6 +177,8 @@ void socket_discovery_attachment_t::refresh_peers (
         return;
 
     std::vector<provider_info_t> providers;
+    const zlink_discovery_dealer_peer_mode_t dealer_peer_mode =
+      discovery_->dealer_peer_mode ();
     discovery_->snapshot_providers (discovery_->service_name (), &providers);
 
     std::set<std::string> target_endpoints;
@@ -184,8 +186,8 @@ void socket_discovery_attachment_t::refresh_peers (
         const provider_info_t &provider = providers[i];
         if (provider.endpoint.empty ()
             || advertise_endpoint_ == provider.endpoint
-            || !discovery_protocol::service_roles_match (
-              local_role_, provider.service_role)) {
+            || !discovery_protocol::socket_auto_connect_target_matches (
+              local_role_, provider.service_role, dealer_peer_mode)) {
             continue;
         }
         target_endpoints.insert (provider.endpoint);

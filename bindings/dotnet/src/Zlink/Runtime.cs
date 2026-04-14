@@ -5,7 +5,7 @@ using Zlink.Native;
 
 namespace Zlink;
 
-public static class Runtime
+internal static class Runtime
 {
     public static event Action<Exception>? UnhandledCallbackException;
 

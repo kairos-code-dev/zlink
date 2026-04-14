@@ -3,10 +3,11 @@
 package dev.kairoscode.zlink.service.discovery;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.MemberPeerEntry;
-import dev.kairoscode.zlink.ServiceRole;
+import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
+import dev.kairoscode.zlink.service.registry.ServiceRole;
 import dev.kairoscode.zlink.ServiceMonitorEventMask;
-import dev.kairoscode.zlink.ServiceType;
+import dev.kairoscode.zlink.service.registry.ServiceType;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
@@ -59,6 +60,33 @@ public final class Discovery implements AutoCloseable {
                 throw ZlinkException.fromLastError(
                   "zlink_discovery_connect_registry");
             }
+        }
+    }
+
+    /** Configures the DEALER auto-connect target policy for this view. */
+    public void setDealerPeerMode(DiscoveryDealerPeerMode mode) {
+        Objects.requireNonNull(mode, "mode");
+        int rc = Native.discoverySetDealerPeerMode(handle, mode.getValue());
+        if (rc != 0) {
+            throw ZlinkException.fromLastError(
+              "zlink_discovery_set_dealer_peer_mode");
+        }
+    }
+
+    /** Resolves the current owner node routing id for one logical spot id. */
+    public RoutingId resolveSpot(RoutingId spotRid) {
+        Objects.requireNonNull(spotRid, "spotRid");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeSpotRid = nativeRoutingId(arena, spotRid);
+            MemorySegment ownerNodeRidOut = arena.allocate(
+              NativeLayouts.ROUTING_ID_LAYOUT);
+            int rc = Native.discoveryResolveSpot(handle, nativeSpotRid,
+              ownerNodeRidOut);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_discovery_resolve_spot");
+            }
+            return readRoutingId(ownerNodeRidOut);
         }
     }
 
@@ -237,6 +265,29 @@ public final class Discovery implements AutoCloseable {
               MemorySegment.ofArray(bytes), 0, size);
         }
         return bytes;
+    }
+
+    private static MemorySegment nativeRoutingId(Arena arena, RoutingId rid) {
+        byte[] value = rid.toBytes();
+        MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+        nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+          (byte) value.length);
+        if (value.length > 0) {
+            MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeRid,
+              NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
+        }
+        return nativeRid;
+    }
+
+    private static RoutingId readRoutingId(MemorySegment nativeRid) {
+        int size = nativeRid.get(ValueLayout.JAVA_BYTE,
+          NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
+        byte[] value = new byte[size];
+        if (size > 0) {
+            MemorySegment.copy(nativeRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
+              MemorySegment.ofArray(value), 0, size);
+        }
+        return InternalAccess.routingIdFromTrusted(value);
     }
 
     private static int resolveMonitorEvents(ServiceMonitorEventMask... events) {

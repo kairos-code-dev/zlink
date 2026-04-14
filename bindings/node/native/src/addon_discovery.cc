@@ -75,6 +75,26 @@ napi_value create_routing_id_value(napi_env env, const zlink_routing_id_t &rid)
     return out;
 }
 
+bool parse_routing_id(napi_env env,
+                      napi_value value,
+                      zlink_routing_id_t *routing_id)
+{
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, value, &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "routingId must be Buffer");
+        return false;
+    }
+    if (len == 0 || len > 255) {
+        napi_throw_range_error(env, NULL, "routingId length must be 1..255 bytes");
+        return false;
+    }
+    memset(routing_id, 0, sizeof(*routing_id));
+    routing_id->size = static_cast<uint8_t>(len);
+    memcpy(routing_id->data, data, len);
+    return true;
+}
+
 napi_value create_member_peer_array(napi_env env,
                                     zlink_member_peer_entry_t *entries,
                                     size_t count)
@@ -906,6 +926,42 @@ napi_value discovery_get_metadata(napi_env env, napi_callback_info info)
     return out;
 }
 
+napi_value discovery_resolve_spot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *discovery = NULL;
+    napi_get_value_external(env, argv[0], &discovery);
+    zlink_routing_id_t spot_rid;
+    if (!parse_routing_id(env, argv[1], &spot_rid))
+        return NULL;
+    zlink_routing_id_t owner_node_rid;
+    memset(&owner_node_rid, 0, sizeof(owner_node_rid));
+    int rc = zlink_discovery_resolve_spot(discovery, &spot_rid, &owner_node_rid);
+    if (rc != 0)
+        return throw_last_error(env, "discovery_resolve_spot failed");
+    return create_routing_id_value(env, owner_node_rid);
+}
+
+napi_value discovery_set_dealer_peer_mode(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *discovery = NULL;
+    napi_get_value_external(env, argv[0], &discovery);
+    uint32_t mode = 0;
+    napi_get_value_uint32(env, argv[1], &mode);
+    int rc = zlink_discovery_set_dealer_peer_mode(
+      discovery, static_cast<zlink_discovery_dealer_peer_mode_t>(mode));
+    if (rc != 0)
+        return throw_last_error(env, "discovery_set_dealer_peer_mode failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
 napi_value service_monitor_recv(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
@@ -916,7 +972,8 @@ napi_value service_monitor_recv(napi_env env, napi_callback_info info)
 
     zlink_service_monitor_event_t event;
     memset(&event, 0, sizeof(event));
-    int rc = zlink_service_monitor_recv(monitor, &event, 0);
+    int rc = zlink_service_monitor_recv(
+      monitor, &event, ZLINK_RECV_FLAGS_NONE);
     if (rc != 0)
         return throw_last_error(env, "service_monitor_recv failed");
 
@@ -948,7 +1005,8 @@ napi_value service_monitor_try_recv(napi_env env, napi_callback_info info)
 
     zlink_service_monitor_event_t event;
     memset(&event, 0, sizeof(event));
-    int rc = zlink_service_monitor_recv(monitor, &event, ZLINK_DONTWAIT);
+    int rc = zlink_service_monitor_recv(
+      monitor, &event, ZLINK_RECV_FLAGS_DONTWAIT);
     if (rc != 0) {
         if (zlink_errno() == EAGAIN) {
             napi_value none;

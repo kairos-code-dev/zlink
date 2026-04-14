@@ -13,6 +13,21 @@ java {
     }
 }
 
+def nativeOs = System.getProperty('os.name').toLowerCase()
+def nativeArch = System.getProperty('os.arch').toLowerCase()
+def nativeBridgeSupported = nativeOs.contains('linux')
+    && ['amd64', 'x86_64'].contains(nativeArch)
+def generatedNativeResourcesDir = layout.buildDirectory.dir(
+    'generated/zlink-native-resources/main')
+def bridgeOutputDir = layout.buildDirectory.dir(
+    'generated/zlink-native-resources/main/native/linux-x86_64')
+
+sourceSets {
+    main {
+        resources.srcDir(generatedNativeResourcesDir)
+    }
+}
+
 repositories {
     mavenCentral()
 }
@@ -24,6 +39,37 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
 }
+
+tasks.register('buildZlinkJavaBridge', Exec) {
+    onlyIf { nativeBridgeSupported }
+    def repoRoot = projectDir.parentFile.parentFile
+    def source = new File(projectDir, 'native/src/zlink_java_reqrep_bridge.c')
+    def outputDir = bridgeOutputDir.get().asFile
+    def output = new File(outputDir, 'libzlink_java_bridge.so')
+    def linkDir = new File(projectDir, 'src/main/resources/native/linux-x86_64')
+    inputs.file(source)
+    inputs.dir(new File(repoRoot, 'core/include'))
+    inputs.dir(linkDir)
+    outputs.file(output)
+    doFirst {
+        outputDir.mkdirs()
+    }
+    commandLine 'cc',
+        '-shared',
+        '-fPIC',
+        '-std=c11',
+        '-O2',
+        '-pthread',
+        '-I', new File(repoRoot, 'core/include').absolutePath,
+        '-L', linkDir.absolutePath,
+        '-Wl,-rpath,$ORIGIN',
+        '-Wl,--no-as-needed',
+        '-o', output.absolutePath,
+        source.absolutePath,
+        '-lzlink'
+}
+
+processResources.dependsOn tasks.named('buildZlinkJavaBridge')
 
 test {
     useJUnitPlatform()

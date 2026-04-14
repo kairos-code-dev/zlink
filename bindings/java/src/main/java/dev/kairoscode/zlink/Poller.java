@@ -13,11 +13,11 @@ import java.util.Map;
 import java.util.Objects;
 
 public final class Poller implements AutoCloseable {
-    private static final long POLLER_EVENT_SIZE = 32;
-    private static final long EVENT_SOCKET_OFFSET = 0;
-    private static final long EVENT_FD_OFFSET = 8;
-    private static final long EVENT_USER_DATA_OFFSET = 16;
-    private static final long EVENT_EVENTS_OFFSET = 24;
+    private static final long POLLER_EVENT_SIZE = 48;
+    private static final long EVENT_SOCKET_OFFSET = 8;
+    private static final long EVENT_FD_OFFSET = 16;
+    private static final long EVENT_USER_DATA_OFFSET = 32;
+    private static final long EVENT_EVENTS_OFFSET = 40;
 
     private final List<PollItem> items = new ArrayList<>();
     private final Arena eventArena = Arena.ofAuto();
@@ -172,21 +172,27 @@ public final class Poller implements AutoCloseable {
             lastReadyCount = 0;
             return 0;
         }
-        MemorySegment arr = ensureNativeEvents(items.size());
-        int rc = Native.pollerWaitAll(handle, arr, items.size(), timeoutMs);
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_poller_wait_all");
-        lastReadyCount = rc;
-        ensureReadyCacheCapacity(rc);
-        for (int i = 0; i < rc; i++) {
-            long base = (long) i * POLLER_EVENT_SIZE;
-            readyReventsCache[i] = nativeEvents.get(ValueLayout.JAVA_SHORT,
+        MemorySegment event = ensureNativeEvents(1);
+        int readyCount = 0;
+        int timeout = timeoutMs;
+        while (readyCount < items.size()) {
+            int rc = Native.pollerWait(handle, event, timeout);
+            if (rc < 0)
+                throw ZlinkException.fromLastError("zlink_poller_wait");
+            if (rc == 0)
+                break;
+            ensureReadyCacheCapacity(readyCount + 1);
+            long base = 0L;
+            readyReventsCache[readyCount] = event.get(ValueLayout.JAVA_SHORT,
               base + EVENT_EVENTS_OFFSET);
-            readyFdCache[i] = nativeEvents.get(ValueLayout.JAVA_INT,
+            readyFdCache[readyCount] = event.get(ValueLayout.JAVA_INT,
               base + EVENT_FD_OFFSET);
-            readyItemsCache[i] = resolveReadyItem(base);
+            readyItemsCache[readyCount] = resolveReadyItem(event, base);
+            readyCount++;
+            timeout = 0;
         }
-        return rc;
+        lastReadyCount = readyCount;
+        return readyCount;
     }
 
     public boolean pollAny(int timeoutMs) {
@@ -277,17 +283,17 @@ public final class Poller implements AutoCloseable {
         return readyItemsCache[index];
     }
 
-    private PollItem resolveReadyItem(long base) {
-        MemorySegment userData = nativeEvents.get(ValueLayout.ADDRESS,
+    private PollItem resolveReadyItem(MemorySegment events, long base) {
+        MemorySegment userData = events.get(ValueLayout.ADDRESS,
           base + EVENT_USER_DATA_OFFSET);
         if (userData.address() != 0) {
             PollItem item = itemForUserData(userData);
             if (item != null)
                 return item;
         }
-        MemorySegment socketHandle = nativeEvents.get(ValueLayout.ADDRESS,
+        MemorySegment socketHandle = events.get(ValueLayout.ADDRESS,
           base + EVENT_SOCKET_OFFSET);
-        int fd = nativeEvents.get(ValueLayout.JAVA_INT, base + EVENT_FD_OFFSET);
+        int fd = events.get(ValueLayout.JAVA_INT, base + EVENT_FD_OFFSET);
         return socketHandle.address() != 0
           ? findSocketItem(socketHandle)
           : findFdItem(fd);
@@ -368,7 +374,7 @@ public final class Poller implements AutoCloseable {
             arena.close();
     }
 
-    public static final class PollItem {
+    private static final class PollItem {
         public final Socket socket;
         public final MemorySegment socketHandle;
         public final int fd;
@@ -392,10 +398,4 @@ public final class Poller implements AutoCloseable {
         }
     }
 
-    public record PollEvent(Socket socket, int revents, int fd, Object tag,
-                            int events) {
-        public PollEvent(Socket socket, int revents) {
-            this(socket, revents, 0, null, 0);
-        }
-    }
 }

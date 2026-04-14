@@ -18,7 +18,7 @@ test('dealer/router uses routing id through Received and routed send', () => {
   assert.equal(request.parts.length, 1);
   assert.ok(Object.isFrozen(request.parts));
   assert.equal(request.parts[0].data().toString(), 'hello');
-  assert.ok(Buffer.isBuffer(request.routingId));
+  assert.ok(request.routingId instanceof zlink.RoutingId);
   assert.equal(request.parts[0].refCount(), 1);
   assert.notEqual(request.parts[0].getProperty('Routing-Id'), null);
   assert.equal(request.parts[0].getProperty('Routing-Id'), request.parts[0].getProperty('Identity'));

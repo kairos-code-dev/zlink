@@ -7,7 +7,7 @@ package zlink
 #include "zlink.h"
 
 extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
-extern void goZlinkRouterRequestTrampoline(zlink_routing_id_t *peer_rid_, uint64_t request_seq_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
+extern void goZlinkRouterRequestTrampoline(zlink_routing_id_t *source_node_rid_, zlink_routing_id_t *source_spot_rid_, uint64_t request_seq_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 
 static inline int zlink_dealer_request_go_local(void *dealer, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
 	return zlink_dealer_request(dealer, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
@@ -31,22 +31,22 @@ import (
 
 const defaultRequestTimeout = 5 * time.Second
 
-type RequestReplyCallback func(RequestResult, *Received)
+type RequestReplyCallback func(RequestResult, []*Message)
 
 type requestResult struct {
-	result   RequestResult
-	received *Received
+	result RequestResult
+	parts  []*Message
 }
 
 type replyCallbackState struct {
 	result chan requestResult
 }
 
-type RequestDealer struct {
+type dealerRequestSupport struct {
 	socket *DealerSocket
 }
 
-type RequestRouter struct {
+type routerRequestSupport struct {
 	socket        *RouterSocket
 	dataQueue     chan *Received
 	closeOnce     sync.Once
@@ -55,14 +55,14 @@ type RequestRouter struct {
 	requestHandle cgo.Handle
 }
 
-func NewRequestDealer(socket *DealerSocket) *RequestDealer {
-	return &RequestDealer{socket: socket}
+func newDealerRequestSupport(socket *DealerSocket) *dealerRequestSupport {
+	return &dealerRequestSupport{socket: socket}
 }
 
-func (r *RequestDealer) Socket() *DealerSocket { return r.socket }
+func (r *dealerRequestSupport) Socket() *DealerSocket { return r.socket }
 
-func (r *RequestDealer) Request(timeout time.Duration, parts ...*Message) (*Received, error) {
-	resultCh, err := r.startRequest(SendFlagsNone, timeout, parts...)
+func (r *dealerRequestSupport) Request(timeout time.Duration, parts ...*Message) ([]*Message, error) {
+	resultCh, err := startDealerRequest(r.socket, SendFlagsNone, timeout, parts...)
 	if err != nil {
 		return nil, err
 	}
@@ -70,31 +70,35 @@ func (r *RequestDealer) Request(timeout time.Duration, parts ...*Message) (*Rece
 	if result.result != RequestOK {
 		return nil, requestErrorFromResult(result.result)
 	}
-	return result.received, nil
+	return result.parts, nil
 }
 
-func (r *RequestDealer) RequestCallback(callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) error {
+func (r *dealerRequestSupport) RequestCallback(callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) error {
 	if callback == nil {
 		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
-	resultCh, err := r.startRequest(flags, timeout, parts...)
+	resultCh, err := startDealerRequest(r.socket, flags, timeout, parts...)
 	if err != nil {
 		return err
 	}
 	go func() {
 		result := <-resultCh
-		callback(result.result, result.received)
+		callback(result.result, result.parts)
 	}()
 	return nil
 }
 
-func (r *RequestDealer) Recv(flags RecvFlags) (*Received, error) { return r.socket.Recv(flags) }
+func (r *dealerRequestSupport) Recv(flags RecvFlags) (*Received, error) { return r.socket.Recv(flags) }
 
-func (r *RequestDealer) OnReceive(handler func(*Received)) error { return r.socket.OnReceive(handler) }
+func (r *dealerRequestSupport) OnReceive(handler func(*Received)) error { return r.socket.OnReceive(handler) }
 
-func (r *RequestDealer) Close() error { return r.socket.Close() }
+func (r *dealerRequestSupport) Close() error { return r.socket.Close() }
 
-func (r *RequestDealer) startRequest(flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
+func (r *dealerRequestSupport) startRequest(flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
+	return startDealerRequest(r.socket, flags, timeout, parts...)
+}
+
+func startDealerRequest(socket *DealerSocket, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
 	}
@@ -110,7 +114,7 @@ func (r *RequestDealer) startRequest(flags SendFlags, timeout time.Duration, par
 	resultCh := make(chan requestResult, 1)
 	handle := cgo.NewHandle(&replyCallbackState{result: resultCh})
 	if err := submitErrorFromResult(C.zlink_dealer_request_go_local(
-		r.socket.raw(),
+		socket.raw(),
 		prepared.ptr(),
 		prepared.count(),
 		C.zlink_send_flags_t(flags),
@@ -127,8 +131,8 @@ func (r *RequestDealer) startRequest(flags SendFlags, timeout time.Duration, par
 	return resultCh, nil
 }
 
-func NewRequestRouter(socket *RouterSocket) *RequestRouter {
-	rr := &RequestRouter{
+func newRouterRequestSupport(socket *RouterSocket) *routerRequestSupport {
+	rr := &routerRequestSupport{
 		socket:    socket,
 		dataQueue: make(chan *Received, 64),
 	}
@@ -140,10 +144,10 @@ func NewRequestRouter(socket *RouterSocket) *RequestRouter {
 	return rr
 }
 
-func (r *RequestRouter) Socket() *RouterSocket { return r.socket }
+func (r *routerRequestSupport) Socket() *RouterSocket { return r.socket }
 
-func (r *RequestRouter) Request(routingID RoutingID, timeout time.Duration, parts ...*Message) (*Received, error) {
-	resultCh, err := r.startRequest(routingID, SendFlagsNone, timeout, parts...)
+func (r *routerRequestSupport) Request(routingID RoutingID, timeout time.Duration, parts ...*Message) ([]*Message, error) {
+	resultCh, err := startRouterRequest(r.socket, routingID, SendFlagsNone, timeout, parts...)
 	if err != nil {
 		return nil, err
 	}
@@ -151,25 +155,28 @@ func (r *RequestRouter) Request(routingID RoutingID, timeout time.Duration, part
 	if result.result != RequestOK {
 		return nil, requestErrorFromResult(result.result)
 	}
-	return result.received, nil
+	return result.parts, nil
 }
 
-func (r *RequestRouter) RequestCallback(routingID RoutingID, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) error {
+func (r *routerRequestSupport) RequestCallback(routingID RoutingID, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) error {
 	if callback == nil {
 		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
-	resultCh, err := r.startRequest(routingID, flags, timeout, parts...)
+	resultCh, err := startRouterRequest(r.socket, routingID, flags, timeout, parts...)
 	if err != nil {
 		return err
 	}
 	go func() {
 		result := <-resultCh
-		callback(result.result, result.received)
+		callback(result.result, result.parts)
 	}()
 	return nil
 }
 
-func (r *RequestRouter) Reply(routingID RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error {
+func (r *routerRequestSupport) Reply(routingID RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error {
+	if err := validateReplyFlags(flags); err != nil {
+		return err
+	}
 	cloned, err := cloneParts(parts)
 	if err != nil {
 		return err
@@ -190,7 +197,7 @@ func (r *RequestRouter) Reply(routingID RoutingID, requestSeq uint64, flags Send
 	return nil
 }
 
-func (r *RequestRouter) Recv(flags RecvFlags) (*Received, error) {
+func (r *routerRequestSupport) Recv(flags RecvFlags) (*Received, error) {
 	r.handlerMu.RLock()
 	handler := r.dataHandler
 	r.handlerMu.RUnlock()
@@ -215,7 +222,7 @@ func (r *RequestRouter) Recv(flags RecvFlags) (*Received, error) {
 	return received, nil
 }
 
-func (r *RequestRouter) OnReceive(handler func(*Received)) error {
+func (r *routerRequestSupport) OnReceive(handler func(*Received)) error {
 	if handler == nil {
 		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
@@ -225,7 +232,7 @@ func (r *RequestRouter) OnReceive(handler func(*Received)) error {
 	return nil
 }
 
-func (r *RequestRouter) Close() error {
+func (r *routerRequestSupport) Close() error {
 	var err error
 	r.closeOnce.Do(func() {
 		if r.requestHandle != 0 {
@@ -238,7 +245,11 @@ func (r *RequestRouter) Close() error {
 	return err
 }
 
-func (r *RequestRouter) startRequest(routingID RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
+func (r *routerRequestSupport) startRequest(routingID RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
+	return startRouterRequest(r.socket, routingID, flags, timeout, parts...)
+}
+
+func startRouterRequest(socket *RouterSocket, routingID RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
 	}
@@ -255,7 +266,7 @@ func (r *RequestRouter) startRequest(routingID RoutingID, flags SendFlags, timeo
 	handle := cgo.NewHandle(&replyCallbackState{result: resultCh})
 	rid := routingID.toC()
 	if err := submitErrorFromResult(C.zlink_router_request_go_local(
-		r.socket.raw(),
+		socket.raw(),
 		&rid,
 		prepared.ptr(),
 		prepared.count(),
@@ -273,7 +284,7 @@ func (r *RequestRouter) startRequest(routingID RoutingID, flags SendFlags, timeo
 	return resultCh, nil
 }
 
-func (r *RequestRouter) deliverRequest(received *Received) {
+func (r *routerRequestSupport) deliverRequest(received *Received) {
 	r.handlerMu.RLock()
 	handler := r.dataHandler
 	r.handlerMu.RUnlock()
@@ -321,33 +332,47 @@ func cloneParts(parts []*Message) ([]*Message, error) {
 
 //export goZlinkReplyTrampoline
 func goZlinkReplyTrampoline(result C.zlink_request_result_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	state := cgo.Handle(userdata).Value().(*replyCallbackState)
-	received := &Received{}
+	value, ok := safeHandleValue(userdata)
+	if !ok {
+		return
+	}
+	state := value.(*replyCallbackState)
 	if result == C.ZLINK_REQUEST_OK {
 		clonedParts, err := takeParts(parts, partCount)
 		if err != nil {
 			state.result <- requestResult{result: RequestProtocolError}
 			return
 		}
-		received.parts = clonedParts
-		state.result <- requestResult{result: RequestOK, received: received}
+		state.result <- requestResult{result: RequestOK, parts: clonedParts}
 		return
 	}
-	state.result <- requestResult{result: RequestResult(result)}
+	state.result <- requestResult{result: RequestResult(result), parts: nil}
 }
 
 //export goZlinkRouterRequestTrampoline
-func goZlinkRouterRequestTrampoline(peerRID *C.zlink_routing_id_t, requestSeq C.uint64_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	router := cgo.Handle(userdata).Value().(*RequestRouter)
+func goZlinkRouterRequestTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpotRID *C.zlink_routing_id_t, requestSeq C.uint64_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
+	value, ok := safeHandleValue(userdata)
+	if !ok {
+		return
+	}
+	router := value.(*routerRequestSupport)
 	clonedParts, err := takeParts(parts, partCount)
 	if err != nil {
 		return
 	}
+	nodeRID := routingIDFromCPtr(sourceNodeRID)
+	spotRID := routingIDFromCPtr(sourceSpotRID)
 	received := &Received{
-		routingID:     routingIDFromC(*peerRID),
+		routingID:     nodeRID,
+		spotRID:       spotRID,
 		parts:         clonedParts,
 		requestSeq:    uint64(requestSeq),
 		hasRequestSeq: true,
+	}
+	if spotRID.Size() == 0 {
+		received.reply = receivedReplyToRouter(router.socket.Reply, nodeRID, uint64(requestSeq))
+	} else {
+		received.reply = receivedReplyToSpotPeer(router.socket, nodeRID, spotRID, uint64(requestSeq))
 	}
 	router.deliverRequest(received)
 }

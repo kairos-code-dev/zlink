@@ -43,14 +43,18 @@ async function main() {
     let received = null;
     while (Date.now() < deadline) {
       pub.publish(topic, Buffer.from(sent));
-      received = sub.trySubscribe();
-      if (received !== null) {
+      try {
+        received = sub.subscribe(zlink.RecvFlags.DontWait);
         break;
+      } catch (error) {
+        if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
+          throw error;
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     assert.notEqual(received, null);
-    const recv = received.parts[0].data.toString();
+    const recv = received.parts[0].data().toString();
     assert.equal(received.topic, topic);
     assert.equal(recv, sent);
     console.log(`[pubsub/recv] publish: "${topic}/${sent}" \u2192 subscribe: "${topic}/${recv}"`);

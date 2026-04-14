@@ -117,8 +117,8 @@ sequenceDiagram
     D->>D: allocate request_seq=N
     D->>D: build envelope [0x01, 0x01, 0x01, seq=N]
     D->>R: [envelope 4 parts] + [payload]
-    R->>R: parse envelope → (peer_rid, request_seq=N, payload)
-    R->>R: dispatch to router_handler
+    R->>R: parse envelope → (source_node_rid, request_seq=N, payload)
+    R->>R: dispatch to router_handler (source_spot_rid = NULL for plain ROUTER)
     R->>R: build reply envelope [0x01, 0x01, 0x02, seq=N]
     R->>D: [routing_id] + [envelope 4 parts] + [reply payload]
     D->>D: match pending[seq=N] → invoke reply_handler
@@ -239,7 +239,7 @@ Pending ownership resides in the upper API layer:
 | API | Pending Key |
 |-----|------------|
 | DEALER | `request_seq` |
-| ROUTER | `peer_rid + request_seq` |
+| ROUTER | `source_node_rid + request_seq` (plain ROUTER or SPOT-originated routed) |
 | spot → spot | `source_class + source_address + request_seq` |
 | router → spot | `request_seq` |
 

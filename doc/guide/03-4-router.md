@@ -31,51 +31,72 @@ zlink_bind(router, "tcp://*:5558");
 
 ### Receiving Messages
 
-ROUTER receives messages via a handler callback attached after socket creation.
+ROUTER has a single direct receive surface. Install it by attaching a
+routed handler with `zlink_router_handler()`, or pull synchronously with
+`zlink_router_recv()`. Both surfaces deliver plain ROUTER traffic (from a
+DEALER or another ROUTER) and SPOT-originated routed traffic through the
+same callback shape. Plain ROUTER traffic sets `source_spot_rid = NULL`
+and `request_seq = 0`.
 
 ```c
-/* DEALER sends "Hello" → handler receives source_rid + parts */
-void on_message(const zlink_routing_id_t *source_rid,
+/* DEALER sends "Hello" → handler receives source_node_rid + parts */
+void on_message(const zlink_routing_id_t *source_node_rid,
+                const zlink_routing_id_t *source_spot_rid,
+                uint64_t request_seq,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
+    /* plain ROUTER traffic: source_spot_rid == NULL, request_seq == 0 */
     printf("From [%.*s]: %.*s\n",
-           (int)source_rid->size, source_rid->data,
+           (int)source_node_rid->size, source_node_rid->data,
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-/* Receive with zlink_recv() */
+zlink_router_handler(router, on_message, NULL);
 ```
+
+> `zlink_recv()` on a ROUTER handle fails with `ZLINK_RECV_NOT_SUPPORTED`.
+> Use `zlink_router_recv()` for pull mode.
 
 ### Sending Messages
 
-When replying, use `zlink_send_rid` with the `source_rid` to specify the target.
+When replying to a plain ROUTER message, use `zlink_send_rid` with the
+`source_node_rid` to specify the target. For request-reply, use
+`zlink_router_reply()` with `source_node_rid` and `request_seq`.
 
 ```c
-/* Reply using source_rid from the callback */
+/* Reply using source_node_rid from the callback */
 zlink_msg_t reply;
 zlink_msg_init_size(&reply, 5);
 memcpy(zlink_msg_data(&reply), "World", 5);
-zlink_send_rid(router, source_rid, &reply, 1, 0);
+zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 ```
 
 ### Receive Modes
 
-**Pull mode**: without attaching a handler, call `zlink_recv()` to
-receive synchronously.
+**Pull mode**: without attaching a handler, call `zlink_router_recv()`
+to receive synchronously. The surface returns both the node and spot
+routing id outputs; for plain ROUTER traffic, `source_spot_rid` comes
+back as an empty routing id and `request_seq == 0`.
 
 ```c
-zlink_routing_id_t source_rid;
+const zlink_routing_id_t *source_node_rid;
+const zlink_routing_id_t *source_spot_rid;
+uint64_t request_seq;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-zlink_recv_result_t rc = zlink_recv(
-    router, &source_rid, &parts, &part_count, 0 /* flags */);
+zlink_recv_result_t rc = zlink_router_recv(
+    router,
+    &source_node_rid, &source_spot_rid,
+    &request_seq,
+    &parts, &part_count,
+    0 /* flags */);
 if (rc == ZLINK_RECV_OK) {
-    /* source_rid identifies the sender */
+    /* source_node_rid identifies the sender */
+    /* plain ROUTER: source_spot_rid->size == 0, request_seq == 0 */
     /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
 }
@@ -102,24 +123,27 @@ if (rc == ZLINK_RECV_OK) {
 ## 3. Usage Examples
 
 ROUTER uses `zlink_send_rid()` to send to a specific peer, and
-identifies the sender via `source_rid` in `zlink_recv()`.
+identifies the sender via `source_node_rid` delivered through
+`zlink_router_handler()` or `zlink_router_recv()`.
 
 ### Receive/Reply Using Handler Callback
 
 ```c
 /* Receive: handler callback provides routing_id and data */
-void on_message(const zlink_routing_id_t *source_rid,
+void on_message(const zlink_routing_id_t *source_node_rid,
+                const zlink_routing_id_t *source_spot_rid,
+                uint64_t request_seq,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* Reply: send to the source peer using zlink_send_rid */
+    /* Plain ROUTER traffic: source_spot_rid == NULL, request_seq == 0.
+       Reply with zlink_send_rid to the source peer. */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "reply", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
+    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
 }
 ```
 
@@ -164,9 +188,11 @@ ROUTER can play both roles in request-reply:
 - **Active client role**: initiate requests with `zlink_router_request()`
   to a specific peer
 
-The key identifier is the `peer_rid + request_seq` combination. A reply
-must match both values -- the same `request_seq` from a different
-`peer_rid` is not the same request.
+The key identifier is the `source_node_rid + request_seq` combination.
+A reply must match both values -- the same `request_seq` from a different
+source is not the same request. For plain ROUTER request-reply,
+`source_spot_rid` is `NULL` (spot routing id is only populated for
+SPOT-originated traffic).
 
 > For the ZMP request-reply envelope wire format, see
 > [ZMP Protocol](../internals/protocol-zmp.md).
@@ -176,18 +202,22 @@ must match both values -- the same `request_seq` from a different
 #### Server: Receive Requests and Reply
 
 ```c
-static void on_request(const zlink_routing_id_t *peer_rid,
+static void on_request(const zlink_routing_id_t *source_node_rid,
+                       const zlink_routing_id_t *source_spot_rid,
                        uint64_t request_seq,
                        zlink_msg_t *parts,
                        size_t part_count,
                        void *userdata)
 {
+    /* Plain ROUTER request: source_spot_rid == NULL, request_seq > 0.
+       For SPOT-originated requests the spot rid is also populated;
+       reply via zlink_router_reply_spot() in that case. */
     zlink_multipart_close(parts, part_count);
 
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 4);
     memcpy(zlink_msg_data(&reply), "pong", 4);
-    zlink_router_reply(router, peer_rid, request_seq, &reply, 1);
+    zlink_router_reply(router, source_node_rid, request_seq, &reply, 1);
 }
 
 zlink_router_handler(router, on_request, NULL);
@@ -220,30 +250,39 @@ if (rc != ZLINK_SUBMIT_OK) { /* handle submit failure */ }
 #### Typed Recv (Pull Mode)
 
 Instead of the callback model, ROUTER can pull request-reply messages
-using `zlink_router_recv()`. This returns `peer_rid`, `request_seq`,
-and payload parts.
+using `zlink_router_recv()`. This returns `source_node_rid`,
+`source_spot_rid`, `request_seq`, and payload parts. For plain ROUTER
+request-reply, `source_spot_rid->size == 0` and `request_seq > 0`.
 
 ```c
-const zlink_routing_id_t *peer_rid;
+const zlink_routing_id_t *source_node_rid;
+const zlink_routing_id_t *source_spot_rid;
 uint64_t request_seq;
 zlink_msg_t *parts;
 size_t part_count;
 zlink_recv_result_t rc = zlink_router_recv(
-    router, &peer_rid, &request_seq, &parts, &part_count, 0 /* flags */);
+    router,
+    &source_node_rid, &source_spot_rid,
+    &request_seq,
+    &parts, &part_count,
+    0 /* flags */);
 if (rc == ZLINK_RECV_OK) {
     /* process request payload */
     zlink_multipart_close(parts, part_count);
 
-    /* build and send reply */
+    /* build and send reply (plain ROUTER request) */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 4);
     memcpy(zlink_msg_data(&reply), "pong", 4);
-    zlink_router_reply(router, peer_rid, request_seq, &reply, 1);
+    zlink_router_reply(router, source_node_rid, request_seq, &reply, 1);
 }
 ```
 
 **Note:** `zlink_router_recv()` and `zlink_router_handler()` are mutually
 exclusive. Using both returns `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY`.
+Both surfaces also carry SPOT-originated routed traffic; when
+`source_spot_rid` is populated, reply with `zlink_router_reply_spot()`.
+See [SPOT Guide](07-3-spot.md).
 
 ## 5. Usage Patterns
 
@@ -253,21 +292,22 @@ The most basic ROUTER pattern. Distinguishes multiple DEALER clients by routing_
 
 ```c
 /* Server: ROUTER with handler */
-void on_request(const zlink_routing_id_t *source_rid,
+void on_request(const zlink_routing_id_t *source_node_rid,
+                const zlink_routing_id_t *source_spot_rid,
+                uint64_t request_seq,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* Reply to the sender */
+    /* Reply to the sender (plain DEALER → ROUTER: request_seq == 0) */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "reply", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
+    zlink_multipart_close(parts, part_count);
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-/* Receive with zlink_recv() */
+zlink_router_handler(router, on_request, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -276,17 +316,16 @@ zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* Client 1 */
 void *d1 = zlink_socket(ctx, ZLINK_DEALER);
-/* Receive replies with zlink_recv() */
+/* DEALER receives replies via zlink_recv() */
 zlink_set_routing_id(d1, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* Client 2 */
 void *d2 = zlink_socket(ctx, ZLINK_DEALER);
-/* Receive replies with zlink_recv() */
 zlink_set_routing_id(d2, "D2", 2);
 zlink_connect(d2, endpoint);
 
-/* Each client sends a message -- on_request receives with source_rid */
+/* Each client sends a message -- on_request receives source_node_rid */
 zlink_msg_t m1;
 zlink_msg_init_size(&m1, 7);
 memcpy(zlink_msg_data(&m1), "from_d1", 7);
@@ -338,17 +377,18 @@ DEALER sends a message first to notify ROUTER of its connection, then ROUTER rep
 
 ```c
 /* ROUTER handler: DEALER's initial message confirms connection */
-void on_connect(const zlink_routing_id_t *source_rid,
+void on_connect(const zlink_routing_id_t *source_node_rid,
+                const zlink_routing_id_t *source_spot_rid,
+                uint64_t request_seq,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* source_rid->data = "X" -- now it is safe to send to "X" */
+    /* source_node_rid->data = "X" -- now it is safe to send to "X" */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 7);
     memcpy(zlink_msg_data(&reply), "Welcome", 7);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
+    zlink_multipart_close(parts, part_count);
 }
 
 /* DEALER connects and sends initial message */
@@ -360,7 +400,7 @@ zlink_msg_init_size(&hello, 5);
 memcpy(zlink_msg_data(&hello), "Hello", 5);
 zlink_send(dealer, &hello, 1, 0);
 
-/* on_connect receives: source_rid = "X", parts[0] = "Hello"
+/* on_connect receives: source_node_rid = "X", parts[0] = "Hello"
    and replies with "Welcome" */
 ```
 

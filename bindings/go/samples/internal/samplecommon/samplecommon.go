@@ -112,7 +112,7 @@ func WaitServiceEvent(monitor *zlink.ServiceMonitor, eventMask uint32) *zlink.Se
 			continue
 		}
 		Must(err)
-		if event != nil && (event.EventType&eventMask) != 0 {
+		if event != nil && (event.EventType&zlink.ServiceMonitorEventType(eventMask)) != 0 {
 			return event
 		}
 	}

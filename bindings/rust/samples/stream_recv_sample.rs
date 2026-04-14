@@ -64,7 +64,7 @@ fn main() {
     tcp_client.flush().expect("tcp flush failed");
 
     let received = stream.recv().expect("server recv failed");
-    assert_eq!(received.parts()[0].data(), b"hello-stream");
+    assert_eq!(received.parts()[0].as_bytes(), b"hello-stream");
     println!(
         "[stream/recv] send: \"hello-stream\" → recv: \"{}\"",
         received.parts()[0].as_str().unwrap()

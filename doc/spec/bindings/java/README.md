@@ -296,11 +296,6 @@ public final class RouterSocket extends Socket {
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                      long requestSeq, List<Message> parts, SendFlags flags);             // @throws SubmitException
 
-    // --- router spot receive ---
-    Received recvSpot();                                             // @throws RecvException
-    Received recvSpot(RecvFlags flags);                              // @throws RecvException
-    void onSpotReceive(RouterSpotHandler handler);                   // @throws HandlerException
-
     RouterSocketOptions options();
 }
 ```
@@ -565,7 +560,8 @@ public final class RecvException extends ZlinkException {
 ### HandlerException
 
 Thrown by handler registration methods (`onReceive`, `onSubscribe`,
-`onSendReady`, `onSpotReceive`, etc.). Wraps a `HandlerResult`.
+`onSendReady`, `onRoutedReceive`, `onDispatchEvent`, etc.). Wraps a
+`HandlerResult`.
 
 ```java
 public final class HandlerException extends ZlinkException {
@@ -850,6 +846,11 @@ Implements `AutoCloseable`.
 
 ```java
 public final class MonitorSocket implements AutoCloseable {
+    /** No-op handler. Assign to {@link #onEvent(SocketMonitorHandler)} when
+     *  driving the monitor via {@link #snapshot()} or direct {@link #recv()}
+     *  without callback dispatch. Maps to zlink_monitor_ignore_handler. */
+    public static final SocketMonitorHandler IGNORE_HANDLER = event -> {};
+
     MonitorEvent recv();                                             // @throws RecvException
     MonitorSnapshot snapshot();                                      // @throws ConfigException
 
@@ -958,6 +959,11 @@ Fixed-service discovery view. Tracks one service type/name pair.
 Implements `AutoCloseable`.
 
 ```java
+public enum DiscoveryDealerPeerMode {
+    ROUTER,
+    DEALER
+}
+
 public final class Discovery implements AutoCloseable {
     Discovery(Context ctx, ServiceType serviceType, String serviceName);
 
@@ -970,6 +976,9 @@ public final class Discovery implements AutoCloseable {
 
     List<MemberPeerEntry> memberPeers();                             // @throws ConfigException
     byte[] memberPeerMetadata(ServiceRole serviceRole, String endpoint); // @throws ConfigException
+
+    RoutingId resolveSpot(RoutingId spotRid);                        // @throws ConfigException
+    void setDealerPeerMode(DiscoveryDealerPeerMode mode);            // @throws ConfigException
 
     ServiceMonitor monitorOpen();                                    // @throws ConfigException
     ServiceMonitor monitorOpen(ServiceMonitorEventMask... events);   // @throws ConfigException
@@ -993,6 +1002,12 @@ public final class SpotNode implements AutoCloseable {
     void attachDiscovery(Discovery discovery);                       // @throws ConfigException
     void setTlsServer(String certPem, String keyPem, boolean requireClientCert); // @throws ConfigException
     void setTlsClient(String caCertPem, String hostname, boolean trustSystem);   // @throws ConfigException
+
+    // --- identity / routing ---
+    // SpotNode 의 logical address. zlink_set_routing_id(node, ...) /
+    // zlink_get_routing_id(node, ...) 매핑.
+    void setRoutingId(RoutingId rid);                                // @throws ConfigException
+    RoutingId routingId();                                           // @throws ConfigException
 
     // --- factory: Spot 생성은 반드시 SpotNode 에서만 ---
     Spot createSpot();                                               // @throws ConfigException
@@ -1020,6 +1035,12 @@ Implements `AutoCloseable`. **`SpotNode.createSpot()` 로만 생성**.
 ```java
 public final class Spot implements AutoCloseable {
     // Spot(SpotNode node) 는 internal. public 생성은 SpotNode.createSpot() 사용.
+
+    // --- identity / routing ---
+    // Spot 의 logical address / routed ownership key.
+    // zlink_set_routing_id(spot, ...) / zlink_get_routing_id(spot, ...) 매핑.
+    void setRoutingId(RoutingId rid);                                // @throws ConfigException
+    RoutingId routingId();                                           // @throws ConfigException
 
     // --- publish ---
     void publish(String topicId, Message part);                      // @throws SubmitException
@@ -1349,7 +1370,7 @@ public final class Poller implements AutoCloseable {
     boolean removeFd(int fd);                                        // @throws ConfigException
 
     // --- poll ---
-    int size();
+    int size();                                                      // @throws ConfigException
     int pollCount(int timeoutMs);                                    // @throws ConfigException
     boolean pollAny(int timeoutMs);                                  // @throws ConfigException
     List<PollEvent> poll(int timeoutMs);                             // @throws ConfigException

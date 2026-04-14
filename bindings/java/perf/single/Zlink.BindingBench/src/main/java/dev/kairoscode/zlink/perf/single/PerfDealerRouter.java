@@ -7,7 +7,7 @@ import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.RouterSocket;
-import dev.kairoscode.zlink.SocketPollSet;
+import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.List;
@@ -46,7 +46,7 @@ final class PerfDealerRouter {
                 readyTimeout, "dealer/router receiver ready");
 
             Thread receiverThread = new Thread(() -> {
-                try (SocketPollSet pollSet = SocketPollSet.fromSockets(
+                try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(receiver), PollEventType.POLLIN.getValue())) {
                     while (finished.getCount() > 0L) {
                         pollSet.poll(-1);

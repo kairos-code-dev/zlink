@@ -137,13 +137,6 @@ typedef enum zlink_stream_option_t
 
 typedef enum zlink_spot_node_option_t
 {
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE = 0x3601,
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_DELAY_MS = 0x3602,
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_MESSAGES = 0x3603,
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_MAX_BYTES = 0x3604,
-    ZLINK_SPOT_NODE_OPT_PEER_BATCH_BYPASS_BYTES = 0x3605,
-    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_MESSAGES_PER_TURN = 0x3606,
-    ZLINK_SPOT_NODE_OPT_PEER_UNBATCH_MAX_BYTES_PER_TURN = 0x3607,
     ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM = 0x3608,
     ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM = 0x3609,
     ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM = 0x360A,
@@ -255,6 +248,12 @@ typedef enum zlink_service_role_t
     ZLINK_SERVICE_ROLE_PUB = 5,
     ZLINK_SERVICE_ROLE_SUB = 6
 } zlink_service_role_t;
+
+typedef enum zlink_discovery_dealer_peer_mode_t
+{
+    ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER = 1,
+    ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER = 2
+} zlink_discovery_dealer_peer_mode_t;
 
 typedef enum zlink_spot_role_t
 {

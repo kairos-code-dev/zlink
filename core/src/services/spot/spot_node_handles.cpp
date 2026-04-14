@@ -2,7 +2,6 @@
 
 #include "precompiled.hpp"
 
-#include "services/spot/spot_node_batch_option_policy.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -541,15 +540,6 @@ int spot_node_t::set_node_option (int option_,
         return -1;
     }
 
-    spot_node_batch_config_t config = _runtime->peer_batch_config_snapshot ();
-    const spot_node_batch_option_binding_t *binding =
-      resolve_spot_node_batch_option_binding (option_);
-    if (binding && apply_spot_node_batch_option_value (&config, binding, optval_,
-                                                       optvallen_)) {
-        _runtime->set_peer_batch_config (config);
-        return 0;
-    }
-
     spot_node_hwm_config_t hwm_config = _runtime->hwm_config_snapshot ();
     if (!apply_runtime_hwm_option (&hwm_config, option_, optval_, optvallen_)) {
         errno = EINVAL;
@@ -600,16 +590,11 @@ int spot_node_t::get_node_option (int option_,
         return -1;
     }
 
-    const spot_node_batch_config_t config = _runtime->peer_batch_config_snapshot ();
     int value = 0;
-    const spot_node_batch_option_binding_t *binding =
-      resolve_spot_node_batch_option_binding (option_);
-    if (!binding || !read_spot_node_batch_option_value (config, binding, &value)) {
-        const spot_node_hwm_config_t hwm_config = _runtime->hwm_config_snapshot ();
-        if (!read_runtime_hwm_option (hwm_config, option_, &value)) {
-            errno = EINVAL;
-            return -1;
-        }
+    const spot_node_hwm_config_t hwm_config = _runtime->hwm_config_snapshot ();
+    if (!read_runtime_hwm_option (hwm_config, option_, &value)) {
+        errno = EINVAL;
+        return -1;
     }
 
     memcpy (optval_, &value, sizeof (value));

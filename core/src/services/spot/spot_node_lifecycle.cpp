@@ -214,7 +214,8 @@ int spot_node_t::ensure_registered ()
 
     discovery_t *discovery = NULL;
     std::string advertise;
-    bool need_default_pub = false;
+    zlink_routing_id_t node_rid;
+    memset (&node_rid, 0, sizeof (node_rid));
     {
         scoped_lock_t lock (_sync);
         discovery = _discovery;
@@ -236,10 +237,16 @@ int spot_node_t::ensure_registered ()
         return -1;
     }
 
+    spot_pub_t *node_pub = ensure_default_pub ();
+    if (!node_pub || node_pub->routing_id (&node_rid) != 0
+        || node_rid.size == 0) {
+        return -1;
+    }
+
     std::string resolved;
     if (discovery_owned_service::register_endpoint (
           discovery, discovery_protocol::service_type_spot_node,
-          advertise.c_str (), &resolved)
+          advertise.c_str (), &resolved, &node_rid)
         != 0) {
         return -1;
     }
@@ -251,11 +258,7 @@ int spot_node_t::ensure_registered ()
         if (!discovery->latest_registry_uplink (&_registration_uplink_endpoint))
             _registration_uplink_endpoint.clear ();
         _registration_tls_locked = true;
-        need_default_pub = _pubs.empty () && !_handle_defaults.default_pub ();
     }
-
-    if (need_default_pub && !ensure_default_pub ())
-        return -1;
 
     return 0;
 }

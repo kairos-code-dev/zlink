@@ -18,6 +18,8 @@ import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import dev.kairoscode.zlink.service.spot.Spot;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
@@ -211,11 +213,11 @@ public final class PerfUtil {
     }
 
     public static Optional<dev.kairoscode.zlink.MonitorEvent> tryRecv(MonitorSocket monitor) {
-        return tryOptional(() -> monitor.recv(RecvFlags.DONT_WAIT));
+        return invokeOptionalNoArg(monitor, "tryRecv");
     }
 
-    public static Optional<dev.kairoscode.zlink.ServiceEvent> tryRecv(ServiceMonitor monitor) {
-        return tryOptional(() -> monitor.recv(RecvFlags.DONT_WAIT));
+    public static Optional<dev.kairoscode.zlink.service.registry.ServiceEvent> tryRecv(ServiceMonitor monitor) {
+        return invokeOptionalNoArg(monitor, "tryRecv");
     }
 
     public static Optional<dev.kairoscode.zlink.Received> tryRecv(PairSocket socket) {
@@ -283,6 +285,23 @@ public final class PerfUtil {
                 return Optional.empty();
             }
             throw ex;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> Optional<T> invokeOptionalNoArg(Object target, String methodName) {
+        try {
+            Method method = target.getClass().getDeclaredMethod(methodName);
+            method.setAccessible(true);
+            return (Optional<T>) method.invoke(target);
+        } catch (InvocationTargetException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException("failed to invoke " + methodName, cause);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("failed to invoke " + methodName, ex);
         }
     }
 

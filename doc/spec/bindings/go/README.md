@@ -271,12 +271,11 @@ func (s *RouterSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID,
 func (s *RouterSocket) ReplyToSpot(destNodeRid, destSpotRid RoutingID,
     requestSeq uint64, flags SendFlags, parts ...*Message) error
 
-// --- router spot receive ---
-// RecvSpot receives a routed spot message. Returns *RecvError on failure.
-func (s *RouterSocket) RecvSpot(flags RecvFlags) (*Received, error)
-// OnSpotReceive registers a spot receive handler. Returns *HandlerError on failure.
-func (s *RouterSocket) OnSpotReceive(handler func(sourceNodeRid,
-    sourceSpotRid RoutingID, requestSeq uint64, parts []*Message)) error
+// NOTE: RouterSocket 의 routed 수신 plane 은 단일 표면이다. 일반 ROUTER
+// 트래픽과 spot-origin routed 트래픽을 모두 Recv / OnReceive 로 받는다.
+// Received 에는 RoutingID (source_node_rid) 와 SpotRoutingID
+// (source_spot_rid; spot-origin 일 때만 값 있음), RequestSeq 가 함께 실려
+// 온다. 별도의 RecvSpot / OnSpotReceive 는 제공하지 않는다.
 
 // Close closes the socket. Returns *CloseError on failure.
 func (s *RouterSocket) Close() error
@@ -779,6 +778,10 @@ func (m *SocketMonitor) Recv() (*MonitorEvent, error)
 func (m *SocketMonitor) Snapshot() (*MonitorSnapshot, error)
 // OnEvent registers an event handler. Returns *HandlerError on failure.
 func (m *SocketMonitor) OnEvent(handler func(*MonitorEvent)) error
+// IgnoreMonitorHandler is a no-op handler. Pass it to (*SocketMonitor).OnEvent
+// when driving the monitor via Snapshot() or direct Recv() without callback
+// dispatch. Maps to zlink_monitor_ignore_handler.
+var IgnoreMonitorHandler func(MonitorEvent)
 // Close closes the monitor. Returns *CloseError on failure.
 func (m *SocketMonitor) Close() error
 ```
@@ -894,6 +897,14 @@ func (r *Registry) Close() error
 ### Discovery
 
 ```go
+// DiscoveryDealerPeerMode controls the auto-connect target policy used by
+// DEALER sockets in a discovery view.
+type DiscoveryDealerPeerMode int
+const (
+    DiscoveryDealerPeerModeRouter DiscoveryDealerPeerMode = 1
+    DiscoveryDealerPeerModeDealer DiscoveryDealerPeerMode = 2
+)
+
 // ConnectRegistry connects discovery to a registry. Returns *ConnectError on failure.
 func (d *Discovery) ConnectRegistry(endpoint string) error
 // Discovery option getters/setters and snapshot queries return *ConfigError on failure.
@@ -905,6 +916,14 @@ func (d *Discovery) MemberPeers() ([]MemberPeerEntry, error)
 func (d *Discovery) MemberPeerMetadata(serviceRole ServiceRole, endpoint string) (*Message, error)
 func (d *Discovery) MonitorOpen(events ...ServiceMonitorEventMask) (*ServiceMonitor, error)
 func (d *Discovery) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
+// ResolveSpot resolves the current owner node routing id for a logical spot
+// routing id. Intended for send/request destination lookup. Maps to
+// zlink_discovery_resolve_spot.
+func (d *Discovery) ResolveSpot(spotRid RoutingID) (RoutingID, error)
+// SetDealerPeerMode sets the auto-connect target policy used by DEALER
+// sockets in this discovery view. Default is Router. Maps to
+// zlink_discovery_set_dealer_peer_mode.
+func (d *Discovery) SetDealerPeerMode(mode DiscoveryDealerPeerMode) error
 // Close closes the discovery handle. Returns *CloseError on failure.
 func (d *Discovery) Close() error
 ```
@@ -921,6 +940,12 @@ func (n *SpotNode) DisconnectPeer(endpoint string) error
 func (n *SpotNode) AttachDiscovery(discovery *Discovery) error
 func (n *SpotNode) SetTLSServer(certPath, keyPath string, requireClientCert bool) error
 func (n *SpotNode) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
+// SetRoutingID sets the spot node's logical address. Maps to
+// zlink_set_routing_id(node, ...).
+func (n *SpotNode) SetRoutingID(rid RoutingID) error
+// RoutingID returns the spot node's current logical address. Maps to
+// zlink_get_routing_id(node, ...).
+func (n *SpotNode) RoutingID() (RoutingID, error)
 // Spot factory and snapshot queries return *ConfigError on failure.
 // Spot must be created only through this SpotNode factory.
 func (n *SpotNode) Spot() (*Spot, error)
@@ -959,6 +984,12 @@ func (s *Spot) SetLinger(value time.Duration) error
 func (s *Spot) SetRecvTimeout(value time.Duration) error
 func (s *Spot) SetSendTimeout(value time.Duration) error
 func (s *Spot) SetNoDrop(value bool) error
+// SetRoutingID sets the spot's logical address. Maps to
+// zlink_set_routing_id(spot, ...).
+func (s *Spot) SetRoutingID(rid RoutingID) error
+// RoutingID returns the spot's current logical address. Maps to
+// zlink_get_routing_id(spot, ...).
+func (s *Spot) RoutingID() (RoutingID, error)
 
 // --- routed send (spot → spot) ---
 // SendToSpot submits parts routed to a spot. Returns *SubmitError on failure.

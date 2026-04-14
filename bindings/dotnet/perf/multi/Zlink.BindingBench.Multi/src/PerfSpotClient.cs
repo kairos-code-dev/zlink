@@ -224,7 +224,7 @@ internal static class PerfSpotClient
                 return 0;
             return CopySubscribedPayload(subscribed, payloadBuffer);
         }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
+        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
         {
             return 0;
         }
@@ -302,7 +302,7 @@ internal static class PerfSpotClient
         {
             node.SetOption(role, option, value);
         }
-        catch (ZlinkException ex) when (ShouldIgnoreSpotOptionError(ex.Errno))
+        catch (ZlinkException ex) when (ShouldIgnoreSpotOptionError(ex.InternalErrno))
         {
         }
     }

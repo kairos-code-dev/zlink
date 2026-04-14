@@ -55,51 +55,72 @@ zlink_bind(router, "tcp://*:5558");
 
 ### 메시지 수신
 
-ROUTER는 소켓 생성 후 부착한 핸들러 콜백으로 메시지를 수신한다.
+ROUTER 의 direct 수신 표면은 하나다. `zlink_router_handler()` 로 routed
+콜백을 부착하거나 `zlink_router_recv()` 로 동기 수신한다. 두 표면 모두
+일반 ROUTER 트래픽(DEALER 또는 다른 ROUTER) 과 SPOT 에서 시작된 routed
+트래픽을 같은 콜백 모양으로 전달한다. 일반 ROUTER 트래픽에서는
+`source_spot_rid == NULL`, `request_seq == 0` 이다.
 
 ```c
-/* DEALER sends "Hello" → handler receives source_rid + parts */
-void on_message(const zlink_routing_id_t *source_rid,
+/* DEALER sends "Hello" → handler receives source_node_rid + parts */
+void on_message(const zlink_routing_id_t *source_node_rid,
+                const zlink_routing_id_t *source_spot_rid,
+                uint64_t request_seq,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
+    /* 일반 ROUTER 트래픽: source_spot_rid == NULL, request_seq == 0 */
     printf("From [%.*s]: %.*s\n",
-           (int)source_rid->size, source_rid->data,
+           (int)source_node_rid->size, source_node_rid->data,
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-/* Receive with zlink_recv() */
+zlink_router_handler(router, on_message, NULL);
 ```
+
+> ROUTER 핸들에 `zlink_recv()` 를 호출하면 `ZLINK_RECV_NOT_SUPPORTED` 로
+> 실패한다. Pull 모드에서는 `zlink_router_recv()` 를 사용한다.
 
 ### 메시지 송신
 
-응답 시 `zlink_send_rid`에 콜백의 `source_rid`를 전달하여 대상을 지정한다.
+일반 ROUTER 메시지에 응답할 때는 `zlink_send_rid` 에 콜백의
+`source_node_rid` 를 전달한다. request-reply 응답은 `source_node_rid` 와
+`request_seq` 를 전달해 `zlink_router_reply()` 로 보낸다.
 
 ```c
-/* Reply using source_rid from the callback */
+/* Reply using source_node_rid from the callback */
 zlink_msg_t reply;
 zlink_msg_init_size(&reply, 5);
 memcpy(zlink_msg_data(&reply), "World", 5);
-zlink_send_rid(router, source_rid, &reply, 1, 0);
+zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 ```
 
 ### 수신 모드
 
-**Pull 모드**: 핸들러를 부착하지 않으면 `zlink_recv()`로 동기 수신한다.
+**Pull 모드**: 핸들러를 부착하지 않으면 `zlink_router_recv()` 로 동기
+수신한다. 이 표면은 node rid 와 spot rid 를 모두 반환하며, 일반 ROUTER
+트래픽에서는 `source_spot_rid` 가 빈 routing id 로, `request_seq` 는 0
+으로 돌아온다.
 
 ```c
-zlink_routing_id_t source_rid;
+const zlink_routing_id_t *source_node_rid;
+const zlink_routing_id_t *source_spot_rid;
+uint64_t request_seq;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-zlink_recv_result_t rc = zlink_recv(
-    router, &source_rid, &parts, &part_count, 0 /* flags */);
+zlink_recv_result_t rc = zlink_router_recv(
+    router,
+    &source_node_rid, &source_spot_rid,
+    &request_seq,
+    &parts, &part_count,
+    0 /* flags */);
 if (rc == ZLINK_RECV_OK) {
-    /* source_rid identifies the sender */
-    /* process parts[0..part_count-1] */
+    /* source_node_rid 가 송신자 식별 */
+    /* 일반 ROUTER: source_spot_rid->size == 0, request_seq == 0 */
+    /* parts[0..part_count-1] 처리 */
     zlink_multipart_close(parts, part_count);
 }
 ```
@@ -124,25 +145,28 @@ if (rc == ZLINK_RECV_OK) {
 
 ## 3. 사용 예제
 
-ROUTER는 `zlink_send_rid()`로 특정 피어에 전송하고,
-`zlink_recv()`의 `source_rid`로 송신자를 식별한다.
+ROUTER 는 `zlink_send_rid()` 로 특정 peer 에 전송하고,
+`zlink_router_handler()` 또는 `zlink_router_recv()` 가 전달하는
+`source_node_rid` 로 송신자를 식별한다.
 
 ### 콜백을 사용한 수신/응답
 
 ```c
 /* Receive: handler callback provides routing_id and data */
-void on_message(const zlink_routing_id_t *source_rid,
+void on_message(const zlink_routing_id_t *source_node_rid,
+                const zlink_routing_id_t *source_spot_rid,
+                uint64_t request_seq,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* Reply: send to the source peer using zlink_send_rid */
+    /* 일반 ROUTER: source_spot_rid == NULL, request_seq == 0.
+       zlink_send_rid 로 송신자에게 응답 */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "reply", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
+    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
 }
 ```
 
@@ -186,8 +210,10 @@ zlink_submit_result_t rc = zlink_send_rid(
   `zlink_router_reply()` 로 응답
 - 능동 client 역할: `zlink_router_request()` 로 특정 peer 에 요청
 
-가장 중요한 값은 `peer_rid + request_seq` 조합이다. `request_seq` 만 맞고
-`peer_rid` 가 다르면 같은 요청 reply 로 보면 안 된다.
+가장 중요한 값은 `source_node_rid + request_seq` 조합이다. `request_seq`
+만 맞고 source 가 다르면 같은 요청의 reply 로 보면 안 된다. 일반 ROUTER
+request-reply 에서는 `source_spot_rid` 가 `NULL` 이고, SPOT 에서 시작된
+요청일 때만 spot rid 가 채워진다.
 
 > ZMP request-reply envelope wire 형식은
 > [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
@@ -195,18 +221,22 @@ zlink_submit_result_t rc = zlink_send_rid(
 > [서비스 내부 설계](../internals/services-internals.ko.md)를 참고.
 
 ```c
-static void on_request(const zlink_routing_id_t *peer_rid,
+static void on_request(const zlink_routing_id_t *source_node_rid,
+                       const zlink_routing_id_t *source_spot_rid,
                        uint64_t request_seq,
                        zlink_msg_t *parts,
                        size_t part_count,
                        void *userdata)
 {
+    /* 일반 ROUTER request: source_spot_rid == NULL, request_seq > 0.
+       SPOT 에서 시작된 request 라면 spot rid 가 채워지며, 이때는
+       zlink_router_reply_spot() 로 응답한다. */
     zlink_multipart_close(parts, part_count);
 
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 4);
     memcpy(zlink_msg_data(&reply), "pong", 4);
-    zlink_router_reply(router, peer_rid, request_seq, &reply, 1);
+    zlink_router_reply(router, source_node_rid, request_seq, &reply, 1);
 }
 
 zlink_router_handler(router, on_request, NULL);
@@ -236,31 +266,40 @@ if (rc != ZLINK_SUBMIT_OK) { /* submit 실패 처리 */ }
 
 #### Typed Recv (Pull 모드)
 
-Callback 대신 `zlink_router_recv()`로 request-reply 메시지를 직접 수신할 수 있다.
-`peer_rid`, `request_seq`, payload parts를 반환한다.
+Callback 대신 `zlink_router_recv()` 로 routed 메시지를 직접 수신할 수
+있다. `source_node_rid`, `source_spot_rid`, `request_seq`, payload parts
+를 반환한다. 일반 ROUTER request-reply 에서는
+`source_spot_rid->size == 0`, `request_seq > 0` 이다.
 
 ```c
-const zlink_routing_id_t *peer_rid;
+const zlink_routing_id_t *source_node_rid;
+const zlink_routing_id_t *source_spot_rid;
 uint64_t request_seq;
 zlink_msg_t *parts;
 size_t part_count;
 zlink_recv_result_t rc = zlink_router_recv(
-    router, &peer_rid, &request_seq,
-    &parts, &part_count, 0 /* flags */);
+    router,
+    &source_node_rid, &source_spot_rid,
+    &request_seq,
+    &parts, &part_count,
+    0 /* flags */);
 if (rc == ZLINK_RECV_OK) {
     /* request payload 처리 */
     zlink_multipart_close(parts, part_count);
 
-    /* reply 생성 및 전송 */
+    /* 일반 ROUTER request 의 reply 생성 및 전송 */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 4);
     memcpy(zlink_msg_data(&reply), "pong", 4);
-    zlink_router_reply(router, peer_rid, request_seq, &reply, 1);
+    zlink_router_reply(router, source_node_rid, request_seq, &reply, 1);
 }
 ```
 
-**주의:** `zlink_router_recv()`와 `zlink_router_handler()`는 상호 배타적이다.
-둘 다 사용하면 `EBUSY`를 반환한다.
+**주의:** `zlink_router_recv()` 와 `zlink_router_handler()` 는 상호
+배타적이다. 둘 다 사용하면 `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY` 를
+반환한다. 두 표면은 SPOT 에서 시작된 routed 트래픽도 함께 전달한다.
+`source_spot_rid` 가 채워져 있으면 `zlink_router_reply_spot()` 으로
+응답한다. [SPOT 가이드](07-3-spot.ko.md) 참고.
 
 ## 5. 사용 패턴
 
@@ -271,17 +310,18 @@ ROUTER의 핵심 패턴. N개 노드가 각각 상대의 routing_id를 지정하
 
 ```c
 /* ROUTER handler: DEALER's initial message confirms connection */
-void on_connect(const zlink_routing_id_t *source_rid,
+void on_connect(const zlink_routing_id_t *source_node_rid,
+                const zlink_routing_id_t *source_spot_rid,
+                uint64_t request_seq,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* source_rid->data = "X" -- now it is safe to send to "X" */
+    /* source_node_rid->data = "X" — 이제 "X" 로 안전하게 전송 가능 */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 7);
     memcpy(zlink_msg_data(&reply), "Welcome", 7);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
+    zlink_multipart_close(parts, part_count);
 }
 
 /* DEALER connects and sends initial message */
@@ -293,27 +333,28 @@ zlink_msg_init_size(&hello, 5);
 memcpy(zlink_msg_data(&hello), "Hello", 5);
 zlink_send(dealer, &hello, 1, 0);
 
-/* on_connect receives: source_rid = "X", parts[0] = "Hello"
+/* on_connect receives: source_node_rid = "X", parts[0] = "Hello"
    and replies with "Welcome" */
 ```
 
 ```c
 /* Server: ROUTER with handler */
-void on_request(const zlink_routing_id_t *source_rid,
+void on_request(const zlink_routing_id_t *source_node_rid,
+                const zlink_routing_id_t *source_spot_rid,
+                uint64_t request_seq,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* Reply to the sender */
+    /* 일반 DEALER → ROUTER: source_spot_rid == NULL, request_seq == 0 */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "reply", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
+    zlink_multipart_close(parts, part_count);
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-/* Receive with zlink_recv() */
+zlink_router_handler(router, on_request, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -332,7 +373,7 @@ void *d2 = zlink_socket(ctx, ZLINK_DEALER);
 zlink_set_routing_id(d2, "D2", 2);
 zlink_connect(d2, endpoint);
 
-/* Each client sends a message -- on_request receives with source_rid */
+/* Each client sends a message -- on_request receives source_node_rid */
 zlink_msg_t m1;
 zlink_msg_init_size(&m1, 7);
 memcpy(zlink_msg_data(&m1), "from_d1", 7);
@@ -628,17 +669,18 @@ DEALER가 먼저 메시지를 전송하여 ROUTER에 연결을 알린 후, ROUTE
 
 ```c
 /* ROUTER 핸들러: DEALER의 초기 메시지로 연결 확인 */
-void on_connect(const zlink_routing_id_t *source_rid,
+void on_connect(const zlink_routing_id_t *source_node_rid,
+                const zlink_routing_id_t *source_spot_rid,
+                uint64_t request_seq,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* source_rid->data = "X" — 이제 "X"로 안전하게 전송 가능 */
+    /* source_node_rid->data = "X" — 이제 "X" 로 안전하게 전송 가능 */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 7);
     memcpy(zlink_msg_data(&reply), "Welcome", 7);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
+    zlink_multipart_close(parts, part_count);
 }
 
 /* DEALER 연결 및 초기 메시지 전송 */
@@ -650,8 +692,8 @@ zlink_msg_init_size(&hello, 5);
 memcpy(zlink_msg_data(&hello), "Hello", 5);
 zlink_send(dealer, &hello, 1, 0);
 
-/* on_connect 수신: source_rid = "X", parts[0] = "Hello"
-   "Welcome"으로 응답 */
+/* on_connect 수신: source_node_rid = "X", parts[0] = "Hello"
+   "Welcome" 으로 응답 */
 ```
 
 > 참고: `core/tests/test_router_mandatory.cpp` — DEALER 연결 → 메시지 → ROUTER 응답

@@ -403,13 +403,13 @@ internal static class PerfCompatExtensions
             (int)ErrorCode.EAgain);
     }
 
-    internal static SocketMonitorEvent Receive(this SocketMonitor monitor,
+    internal static MonitorEvent Receive(this SocketMonitor monitor,
         ReceiveFlags flags)
     {
         if ((flags & ReceiveFlags.DontWait) != 0)
         {
-            if (monitor.TryRecv(out SocketMonitorEvent? evt))
-                return evt!.Value;
+            if (monitor.TryRecv(out MonitorEvent? evt))
+                return evt!;
             throw new ZlinkRecvException(RecvResult.NoData,
                 (int)ErrorCode.EAgain);
         }

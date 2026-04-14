@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using Xunit;
-using Zlink.Service;
 
 namespace Zlink.Tests;
 
@@ -103,7 +102,7 @@ public sealed class test_callback_delivery
             Assert.True(callbackSignal.Wait(3000));
             Assert.Equal(callbackContext.ThreadId, callbackThreadId);
             Assert.NotNull(observed);
-            Assert.Equal(SocketEvent.ConnectionReady, observed!.Value.Event);
+            Assert.Equal(MonitorEventType.ConnectionReady, observed!.Event);
         }
         finally
         {
@@ -160,9 +159,9 @@ public sealed class test_callback_delivery
             Assert.True(callbackSignal.Wait(5000));
             Assert.Equal(callbackContext.ThreadId, callbackThreadId);
             Assert.NotNull(observed);
-            Assert.Equal(ServiceMonitorEvents.DiscoveryServiceUp,
-                observed!.Value.EventType);
-            Assert.Equal("callback-delivery-service", observed.Value.ServiceName);
+            Assert.Equal<ServiceEventType>(ServiceEventType.DiscoveryServiceUp,
+                observed!.EventType);
+            Assert.Equal("callback-delivery-service", observed.ServiceName);
         }
         finally
         {

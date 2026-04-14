@@ -448,23 +448,41 @@ zlink_spot_handler(spot, on_routed, NULL);
 
 ### 5.3 ROUTER가 SPOT으로부터 수신
 
-ROUTER 소켓은 전용 handler와 recv surface로 SPOT에서 오는 routed 메시지를
-수신할 수 있다.
+ROUTER 소켓은 일반 ROUTER 트래픽과 동일한 단일 direct 수신 표면으로
+SPOT 에서 오는 routed 메시지를 받는다. 별도의
+`zlink_router_spot_handler()` / `zlink_router_spot_recv()` 계약은 없다.
+`source_spot_rid` 가 비어 있지 않은지 확인해 SPOT 에서 온 트래픽을
+구분한다.
 
 ```c
-void on_from_spot(const zlink_routing_id_t *source_node_rid,
-                  const zlink_routing_id_t *source_spot_rid,
-                  uint64_t request_seq,
-                  zlink_msg_t *parts, size_t part_count,
-                  void *userdata)
+void on_router_routed(const zlink_routing_id_t *source_node_rid,
+                      const zlink_routing_id_t *source_spot_rid,
+                      uint64_t request_seq,
+                      zlink_msg_t *parts, size_t part_count,
+                      void *userdata)
 {
+    if (source_spot_rid && source_spot_rid->size > 0) {
+        /* SPOT 에서 온 routed 트래픽. request 에 대한 reply 는
+           zlink_router_reply_spot(router, source_node_rid,
+                                   source_spot_rid, request_seq, ...)
+           으로 보낸다. */
+    } else {
+        /* 일반 ROUTER 트래픽 (source_spot_rid 가 빈 id). */
+    }
     zlink_multipart_close(parts, part_count);
 }
 
-zlink_router_spot_handler(router, on_from_spot, NULL);
+zlink_router_handler(router, on_router_routed, NULL);
 ```
 
-Pull 모드: `zlink_router_spot_recv(router, &source_node_rid, &source_spot_rid, &request_seq, &parts, &part_count, 0)`.
+Pull 모드도 같은 통합 표면을 사용한다:
+
+```c
+zlink_router_recv(router, &source_node_rid, &source_spot_rid,
+                  &request_seq, &parts, &part_count, 0);
+```
+
+자세한 표면 설명은 [ROUTER 가이드](03-4-router.ko.md)를 참고.
 
 ## 6. SPOT Request-Reply
 
@@ -616,10 +634,13 @@ reply 주소는 handler 인자로 받은 source 주소와 `request_seq` 를 그�
 
 ### 6.3 spot <-> router 조합
 
-SPOT request-reply 는 일반 `ROUTER` 와도 직접 연결할 수 있다.
+SPOT request-reply 는 일반 `ROUTER` 와도 직접 연결할 수 있다. ROUTER
+측은 통합된 `zlink_router_handler()` / `zlink_router_recv()` 표면을
+사용하며, SPOT 에서 시작된 트래픽은 `source_spot_rid` 가 채워진 것으로
+구분한다.
 
 - `spot -> router`: `zlink_spot_request_router()`,
-  `zlink_router_spot_handler()`,
+  `zlink_router_handler()` (`source_spot_rid` 채워짐),
   `zlink_router_reply_spot()`
 - `router -> spot`: `zlink_router_request_spot()`,
   `zlink_spot_handler()`,
@@ -673,7 +694,213 @@ zlink_timer_handler(spot_timer, on_fire, NULL);
 
 > 전체 three-tier 계약과 추가 패턴은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
 
-## 7. 토픽 규칙
+## 7. 통합 Dispatch 모델 — `zlink_spot_dispatch_event_handler`
+
+하나의 `Spot` 핸들은 세 개의 독립된 이벤트 흐름을 다룬다.
+
+1. **Topic 구독** — `zlink_subscribe()` 로 매칭되는 메시지
+2. **Routed (직접 전달)** — `zlink_spot_recv()` 로 전달되는 메시지
+3. **SPOT 범위의 타이머** — `zlink_spot_timer_new(spot)` 로 생성한 타이머
+
+세 경로 각각에 direct callback (subscribe handler, routed handler, 그리고
+타이머별 handler) 을 붙이면, 각 콜백이 서로 다른 내부 드라이버 — subscribe
+plane 의 I/O 스레드, routed plane 의 dispatch 스레드, SpotNode-local 타이머
+스케줄러 스레드 — 에서 호출된다. 결과적으로 애플리케이션 코드가 이
+스레드들 사이의 동기화를 직접 책임져야 한다.
+
+`zlink_spot_dispatch_event_handler()` 는 이 대신 단일 **알림 지점** 을
+제공한다. 실제 데이터는 **애플리케이션 소유의 단일 스레드** 에서 pull
+API 로 읽어간다. 타이머, routed recv, subscribe 를 한 워커에서 함께
+처리하면서 사용자 코드에서의 스레드 경합을 없애고 싶을 때 권장되는
+방식이다.
+
+### 7.1 Event handler 계약
+
+```c
+typedef enum zlink_spot_dispatch_event_t
+{
+    ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,
+    ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE    = 2,
+    ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE     = 3
+} zlink_spot_dispatch_event_t;
+
+typedef void (*zlink_spot_dispatch_event_handler_fn) (
+    void *spot,
+    zlink_spot_dispatch_event_t event,
+    void *userdata);
+
+zlink_handler_result_t zlink_spot_dispatch_event_handler (
+    void *spot,
+    zlink_spot_dispatch_event_handler_fn handler,
+    void *userdata);
+```
+
+핵심 특성:
+
+- **알림 전용.** 콜백은 메시지, 토픽, fire count 를 전달하지 않고 이벤트
+  종류만 알린다. 이후 애플리케이션이 `zlink_subscribe()` /
+  `zlink_spot_recv()` / `zlink_timer_recv()` 로 실제 데이터를 pull 한다.
+- **`Spot` 당 한 개.** `zlink_spot_dispatch_event_handler()` 와
+  `zlink_spot_handler()` (routed direct callback) 은 상호 배타이다. 둘 다
+  설치하려 하면 `ZLINK_HANDLER_BUSY` 를 반환한다.
+- **내부 스레드에서 발생.** event handler 는 readable 신호를 만든 내부
+  스레드에서 호출된다 (subscribe/routed 는 I/O 스레드, 타이머는
+  SpotNode-local 스케줄러 스레드). handler 는 짧게 유지한다 — condition
+  variable notify, eventfd write, 채널 push 정도가 적절하다. **event
+  handler 안에서 `zlink_subscribe()` / `zlink_spot_recv()` /
+  `zlink_timer_recv()` 를 호출하지 말고**, 애플리케이션 스레드에서 pull
+  한다.
+- **Level-triggered 의미.** handler 는 "무언가 readable 이다" 만 알리는
+  수준이다. handler 가 도는 사이에 여러 메시지가 쌓였을 수 있으므로,
+  애플리케이션 스레드는 해당 큐를 `ZLINK_RECV_NO_DATA` 가 될 때까지
+  비워야 한다.
+- **전환은 일방향.** dispatch event handler 를 설치하면 dispatch axis
+  가 callback 모델로 전환된다. 해제나 교체는 지원하지 않는다.
+
+### 7.2 권장 패턴: 알림 + 단일 워커 루프
+
+```c
+#include <zlink.h>
+#include <pthread.h>
+#include <stdatomic.h>
+
+typedef struct {
+    pthread_mutex_t mtx;
+    pthread_cond_t  cv;
+    atomic_int      pending;   /* 준비된 이벤트 비트마스크 */
+    atomic_int      stopping;
+} dispatch_wakeup_t;
+
+enum { READY_SUBSCRIBE = 1 << 0,
+       READY_ROUTED    = 1 << 1,
+       READY_TIMER     = 1 << 2 };
+
+static int event_to_bit (zlink_spot_dispatch_event_t event)
+{
+    switch (event) {
+        case ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE:
+            return READY_SUBSCRIBE;
+        case ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE:
+            return READY_ROUTED;
+        case ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE:
+            return READY_TIMER;
+    }
+    return 0;
+}
+
+/* 내부 스레드에서 호출되는 알림 핸들러. 최소한의 작업만 한다. */
+static void on_spot_event(void *spot,
+                          zlink_spot_dispatch_event_t event,
+                          void *userdata)
+{
+    dispatch_wakeup_t *w = userdata;
+    atomic_fetch_or(&w->pending, event_to_bit(event));
+    pthread_mutex_lock(&w->mtx);
+    pthread_cond_signal(&w->cv);
+    pthread_mutex_unlock(&w->mtx);
+}
+
+/* 애플리케이션이 소유하는 단일 워커 스레드. 모든 데이터 읽기를 담당. */
+static void *spot_worker(void *arg)
+{
+    struct {
+        void              *spot;
+        void              *timer;
+        dispatch_wakeup_t *w;
+    } *ctx = arg;
+
+    while (!atomic_load(&ctx->w->stopping)) {
+        pthread_mutex_lock(&ctx->w->mtx);
+        while (atomic_load(&ctx->w->pending) == 0
+               && !atomic_load(&ctx->w->stopping)) {
+            pthread_cond_wait(&ctx->w->cv, &ctx->w->mtx);
+        }
+        int ready = atomic_exchange(&ctx->w->pending, 0);
+        pthread_mutex_unlock(&ctx->w->mtx);
+
+        if (ready & READY_TIMER) {
+            uint64_t fire_count;
+            while (zlink_timer_recv(ctx->timer, &fire_count)
+                   == ZLINK_RECV_OK) {
+                /* 각 tick 처리 */
+            }
+        }
+        if (ready & READY_ROUTED) {
+            for (;;) {
+                const zlink_routing_id_t *src_node;
+                const zlink_routing_id_t *src_spot;
+                uint64_t seq;
+                zlink_msg_t *parts;
+                size_t count;
+                zlink_recv_result_t rc = zlink_spot_recv(
+                    ctx->spot, &src_node, &src_spot, &seq,
+                    &parts, &count, ZLINK_DONTWAIT);
+                if (rc != ZLINK_RECV_OK) break;
+                /* routed 메시지 처리, seq != 0 이면 reply */
+                zlink_multipart_close(parts, count);
+            }
+        }
+        if (ready & READY_SUBSCRIBE) {
+            for (;;) {
+                zlink_routing_id_t src;
+                zlink_msg_t *parts;
+                size_t count;
+                char topic[256];
+                size_t topic_len = sizeof(topic);
+                zlink_recv_result_t rc = zlink_subscribe(
+                    ctx->spot, &src, &parts, &count,
+                    topic, &topic_len, ZLINK_DONTWAIT);
+                if (rc != ZLINK_RECV_OK) break;
+                /* 토픽 메시지 처리 */
+                zlink_multipart_close(parts, count);
+            }
+        }
+    }
+    return NULL;
+}
+
+/* 설정 */
+dispatch_wakeup_t wakeup = { /* init ... */ };
+void *spot  = zlink_spot_new(node);
+void *timer = zlink_spot_timer_new(spot);
+
+zlink_set_subscription(spot, "chat:*");
+zlink_spot_dispatch_event_handler(spot, on_spot_event, &wakeup);
+zlink_timer_start(timer, 100 * 1000 * 1000ULL, 0);  /* 100ms 반복 */
+
+pthread_t worker;
+/* ...ctx 에 spot, timer, &wakeup 을 담아 워커 시작... */
+pthread_create(&worker, NULL, spot_worker, /* ctx */);
+```
+
+### 7.3 스레드 경합이 사라지는 이유
+
+| dispatch event handler 미사용 | dispatch event handler 사용 |
+|---|---|
+| Subscribe callback 이 I/O 스레드에서 실행 | I/O 스레드가 알림만 → 워커 스레드에서 pull |
+| Routed handler 가 routed dispatch 스레드에서 실행 | Routed 스레드가 알림만 → 워커 스레드에서 pull |
+| Timer handler 가 스케줄러 스레드에서 실행 | 스케줄러 스레드가 알림만 → 워커 스레드에서 pull |
+| 세 개의 producer 스레드 사이 공유 상태를 사용자 코드가 직접 lock 으로 보호 | 모든 데이터 소비/처리가 애플리케이션 소유의 단일 스레드에서 이루어짐 |
+
+세 내부 스레드는 작은 알림 함수 외에는 애플리케이션 로직에 들어오지
+않는다. subscribe/recv/timer 데이터는 전부 단일 애플리케이션 스레드에서
+읽히므로, 세 스트림 사이의 공유 상태에 대해 사용자 코드가 별도 동기화를
+둘 필요가 없다.
+
+### 7.4 병행 사용 규칙
+
+| 조합 | 결과 |
+|---|---|
+| `zlink_spot_dispatch_event_handler` + `zlink_spot_handler` | 상호 배타 — 두 번째 설치 시 `ZLINK_HANDLER_BUSY` |
+| `zlink_spot_dispatch_event_handler` + `zlink_subscribe_handler` | 허용되지만 두 subsystem 이 독립적으로 동작한다. 통합 워커를 우회해 subscribe 데이터를 직접 받고 싶을 때만 혼용 |
+| `zlink_spot_dispatch_event_handler` + timer 의 `zlink_timer_handler` | 해당 타이머에는 자신의 handler 가 우선한다. direct timer handler 가 붙은 타이머는 `TIMER_READABLE` 을 발행하지 않는다. 타이머를 통합 dispatch 로 묶으려면 recv 모드로 둔다 |
+| `zlink_spot_dispatch_event_handler` + `zlink_send_ready_handler` | 독립된 축. send-ready 는 자신의 handler 를 쓴다 |
+
+> 이 이벤트가 내부에서 어떻게 생성되는지 스레딩 관점 상세는
+> [SPOT Internals — Dispatch Event Threading Model](../internals/spot-internals.ko.md)
+> 를 참고.
+
+## 8. 토픽 규칙
 
 ### 명명 규칙
 
@@ -690,7 +917,7 @@ zlink_timer_handler(spot_timer, on_fire, NULL);
 - 대소문자 구분
 - 예: `chat:*` → `chat:room1:message`, `chat:room2:join` 모두 매칭
 
-## 8. 토픽 vs Routed 선택 기준
+## 9. 토픽 vs Routed 선택 기준
 
 | 기준 | 토픽 (pub/sub) | Routed (직접) |
 |------|---------------|--------------|
@@ -705,7 +932,7 @@ publisher가 누가 또는 몇 명이 수신하는지 상관없으면 **토픽**
 
 두 경로는 같은 SPOT handle에서 동시에 사용할 수 있다.
 
-## 9. Peer Publish Batching
+## 10. Peer Publish Batching
 
 SpotNode는 노드 간 토픽 메시지 전달 경로에서 작은 메시지를 topic별로
 모아 하나의 batch로 보내는 선택적 최적화를 지원한다.
@@ -714,37 +941,7 @@ publish/subscribe 계약은 변경되지 않는다.
 
 ### 활성화
 
-batching은 기본값 disabled이다. SpotNode의 bind 전에 활성화한다:
-
-```c
-int enabled = 1;
-zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_PEER_BATCH_ENABLE,
-                 &enabled, sizeof(enabled));
-```
-
-**v1 제약:** mesh에 참여하는 모든 SpotNode가 동일 세대 binary여야 한다
-(homogeneous deployment). runtime capability negotiation은 없다.
-
-### 설정
-
-| 옵션 | 기본값 | 설명 |
-|------|--------|------|
-| `PEER_BATCH_ENABLE` | false | peer batching 활성화 (운영자 opt-in) |
-| `PEER_BATCH_DELAY_MS` | 20 | flush 최대 지연 (ms) |
-| `PEER_BATCH_MAX_MESSAGES` | 32 | bucket당 최대 메시지 수 |
-| `PEER_BATCH_MAX_BYTES` | 65536 | bucket당 최대 바이트 |
-| `PEER_BATCH_BYPASS_BYTES` | 65536 | 이 크기 이상 메시지는 즉시 전송 |
-
-### 동작
-
-- **로컬 fanout**은 항상 즉시 전달 — batching은 노드 간 전달에만 적용
-- **같은 topic 내 순서**는 보존
-- **대형 메시지** (>= `BYPASS_BYTES`)는 즉시 전송
-- **Flush 조건:** delay timeout, max messages, max bytes, shutdown
-
-> 내부 wire 형식 상세는 [SPOT 내부 구조](../internals/spot-internals.ko.md)를 참고.
-
-## 10. 전달 보장
+## 11. 전달 보장
 
 ### 토픽 전달
 
@@ -770,7 +967,7 @@ SPOT은 live 메시징 시스템이며, 다음은 제공하지 않는다:
 - Ack/retry 또는 exactly-once
 - Late joiner에 대한 과거 메시지 재전송
 
-## 11. 정리
+## 12. 정리
 
 ```c
 zlink_spot_destroy(&spot);

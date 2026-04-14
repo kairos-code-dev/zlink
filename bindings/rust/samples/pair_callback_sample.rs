@@ -73,7 +73,7 @@ fn main() {
     drop(server_mon);
     drop(client_mon);
 
-    let msg = Message::from_bytes(b"hello-pair").unwrap();
+    let msg = Message::copy_from(b"hello-pair").unwrap();
     client.send(msg).expect("send failed");
 
     let payload = rx

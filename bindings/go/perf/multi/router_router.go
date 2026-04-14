@@ -18,8 +18,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(err)
 	defer server.Close()
 
-	serverID, err := zlink.NewRoutingID([]byte("SERVER"))
-	perfcommon.Must(err)
+	serverID := zlink.NewRoutingID([]byte("SERVER"))
 	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
 	perfcommon.Must(server.SetRoutingID(serverID))
 	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-multi-router-router")
@@ -43,8 +42,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 		clientMon := perfcommon.OpenMonitor(client)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
 
-		clientID, err := zlink.NewRoutingID([]byte(fmt.Sprintf("router-%06d", i)))
-		perfcommon.Must(err)
+		clientID := zlink.NewRoutingID([]byte(fmt.Sprintf("router-%06d", i)))
 		perfcommon.Must(client.SetRoutingID(clientID))
 		perfcommon.Must(client.SetConnectRoutingID(serverID))
 		if err := client.Connect(endpoint); err != nil {
@@ -89,16 +87,16 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 					}
 					perfcommon.Must(fmt.Errorf("multi router/router send: %w", err))
 				}
-					reply, err := socket.Recv(zlink.RecvFlagsDontWait)
-					if err != nil {
-						if perfcommon.IsTransient(err) {
-							continue
-						}
-						perfcommon.Must(fmt.Errorf("multi router/router recv: %w", err))
-					}
-					if reply == nil {
+				reply, err := socket.Recv(zlink.RecvFlagsDontWait)
+				if err != nil {
+					if perfcommon.IsTransient(err) {
 						continue
 					}
+					perfcommon.Must(fmt.Errorf("multi router/router recv: %w", err))
+				}
+				if reply == nil {
+					continue
+				}
 				part, err := reply.SinglePartOrError()
 				if err == nil {
 					if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
@@ -119,23 +117,23 @@ func waitForRouterClientReady(client *zlink.RouterSocket, serverID zlink.Routing
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		perfcommon.StampPayload(payload)
-			err := client.SendTo(serverID, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
+		err := client.SendTo(serverID, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
 			}
 			perfcommon.Must(fmt.Errorf("multi router/router ready send: %w", err))
 		}
-			reply, err := client.Recv(zlink.RecvFlagsDontWait)
-			if err != nil {
-				if perfcommon.IsTransient(err) {
-					continue
-				}
-				perfcommon.Must(fmt.Errorf("multi router/router ready recv: %w", err))
-			}
-			if reply == nil {
+		reply, err := client.Recv(zlink.RecvFlagsDontWait)
+		if err != nil {
+			if perfcommon.IsTransient(err) {
 				continue
 			}
+			perfcommon.Must(fmt.Errorf("multi router/router ready recv: %w", err))
+		}
+		if reply == nil {
+			continue
+		}
 		perfcommon.Must(reply.Close())
 		return
 	}
@@ -152,16 +150,16 @@ func startMultiRouterEchoServer(server *zlink.RouterSocket) {
 	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
 	go func() {
 		for {
-				received, err := server.Recv(zlink.RecvFlagsDontWait)
-				if err != nil {
-					if perfcommon.IsTransient(err) {
-						continue
-					}
-					perfcommon.Must(fmt.Errorf("multi router/router server recv: %w", err))
-				}
-				if received == nil {
+			received, err := server.Recv(zlink.RecvFlagsDontWait)
+			if err != nil {
+				if perfcommon.IsTransient(err) {
 					continue
 				}
+				perfcommon.Must(fmt.Errorf("multi router/router server recv: %w", err))
+			}
+			if received == nil {
+				continue
+			}
 			err = server.SendTo(received.RoutingID(), zlink.SendFlagsNone,
 				perfcommon.CloneMessages(received.Parts())...)
 			if err != nil && !perfcommon.IsTransient(err) {

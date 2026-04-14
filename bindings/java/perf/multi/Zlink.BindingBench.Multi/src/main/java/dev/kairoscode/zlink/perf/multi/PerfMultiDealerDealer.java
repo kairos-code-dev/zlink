@@ -8,8 +8,8 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.SendFlags;
-import dev.kairoscode.zlink.SocketPollSet;
 import dev.kairoscode.zlink.ZlinkException;
+import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.List;
@@ -45,7 +45,7 @@ final class PerfMultiDealerDealer {
                         metrics.recordNanos(header.latencyNanos());
                     }
                 } catch (ZlinkException ex) {
-                    if (ex.errno() == 11 || ex.errno() == 4) {
+                    if (ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4) {
                         continue;
                     }
                     throw ex;
@@ -76,7 +76,7 @@ final class PerfMultiDealerDealer {
                     go.countDown();
                 }
                 PerfUtil.await(go, "dealer/dealer start", java.time.Duration.ofSeconds(10));
-                try (SocketPollSet pollSet = SocketPollSet.fromSockets(
+                try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(client), PollEventType.POLLOUT.getValue())) {
                     long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
@@ -105,14 +105,14 @@ final class PerfMultiDealerDealer {
             config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
     }
 
-    private static void sendUntilDeadline(DealerSocket client, SocketPollSet pollSet,
+    private static void sendUntilDeadline(DealerSocket client, PerfSocketPollSet pollSet,
                                           Message part, long deadlineNs) {
         while (true) {
             try {
                 client.send(part, SendFlags.DONT_WAIT);
                     return;
             } catch (ZlinkException ex) {
-                if (ex.errno() == 11 || ex.errno() == 4) {
+                if (ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4) {
                     // Treat transient backpressure and interrupts the same as an
                     // unsent trySend result. This keeps one-way perf clients from
                     // blocking indefinitely when the server is already draining or
@@ -133,7 +133,7 @@ final class PerfMultiDealerDealer {
                     return;
                 }
             } catch (ZlinkException ex) {
-                if (ex.errno() != 11 && ex.errno() != 4) {
+                if (ex.getInternalErrno() != 11 && ex.getInternalErrno() != 4) {
                     throw ex;
                 }
             }

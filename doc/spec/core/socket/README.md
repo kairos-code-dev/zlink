@@ -216,10 +216,11 @@ typedef enum zlink_request_result_t
     ZLINK_REQUEST_OK = 0,
 
     /* Completion failure visible to the requester. */
-    ZLINK_REQUEST_TIMED_OUT = 1,
-    ZLINK_REQUEST_NOT_FOUND = 2,
-    ZLINK_REQUEST_TERMINATED = 3,
-    ZLINK_REQUEST_PROTOCOL_ERROR = 4
+    ZLINK_REQUEST_TIMED_OUT = 101,
+    ZLINK_REQUEST_NOT_FOUND = 102,
+    ZLINK_REQUEST_TERMINATED = 103,
+    ZLINK_REQUEST_PROTOCOL_ERROR = 104,
+    ZLINK_REQUEST_INTERNAL_ERROR = 105
 } zlink_request_result_t;
 ```
 
@@ -230,10 +231,11 @@ Used as the canonical normalized completion outcome for
 | Constant | Value | Description |
 |---|---|---|
 | `ZLINK_REQUEST_OK` | 0 | Reply payload was received successfully |
-| `ZLINK_REQUEST_TIMED_OUT` | 1 | Reply did not arrive within the configured timeout |
-| `ZLINK_REQUEST_NOT_FOUND` | 2 | The target could not be found and an error reply completed the request |
-| `ZLINK_REQUEST_TERMINATED` | 3 | Reserved until the request path emits explicit termination completion |
-| `ZLINK_REQUEST_PROTOCOL_ERROR` | 4 | Reply envelope or error reply payload was malformed |
+| `ZLINK_REQUEST_TIMED_OUT` | 101 | Reply did not arrive within the configured timeout |
+| `ZLINK_REQUEST_NOT_FOUND` | 102 | The target could not be found and an error reply completed the request |
+| `ZLINK_REQUEST_TERMINATED` | 103 | Reserved until the request path emits explicit termination completion |
+| `ZLINK_REQUEST_PROTOCOL_ERROR` | 104 | Reply envelope or error reply payload was malformed |
+| `ZLINK_REQUEST_INTERNAL_ERROR` | 105 | Request completion failed without a finer public bucket |
 
 ### Security Mechanisms
 

@@ -14,7 +14,13 @@ class timer_t
 
     explicit timer_t (void *timer_) : _timer (timer_) {}
 
-    ~timer_t () { destroy (); }
+    ~timer_t ()
+    {
+        try {
+            destroy ();
+        } catch (...) {
+        }
+    }
 
     timer_t (timer_t &&other) noexcept : _timer (other._timer)
     {
@@ -25,7 +31,10 @@ class timer_t
     {
         if (this == &other)
             return *this;
-        destroy ();
+        try {
+            destroy ();
+        } catch (...) {
+        }
         _timer = other._timer;
         other._timer = NULL;
         return *this;
@@ -82,7 +91,8 @@ class timer_t
 
         void *timer = _timer;
         _timer = NULL;
-        (void) zlink_timer_destroy (&timer);
+        detail::throw_if_failed<close_error_t> (
+          static_cast<close_result_t> (zlink_timer_destroy (&timer)));
     }
 
   private:

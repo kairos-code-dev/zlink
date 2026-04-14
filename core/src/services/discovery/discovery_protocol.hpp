@@ -6,6 +6,7 @@
 #include "core/internal_defs.hpp"
 #include "core/send_internal.hpp"
 #include "core/msg.hpp"
+#include "zlink_enum.h"
 #include "utils/err.hpp"
 #include "utils/stdint.hpp"
 
@@ -110,6 +111,27 @@ inline bool service_roles_match (uint16_t local_role_, uint16_t remote_role_)
 
     return remote_role_ == service_role_router
            || remote_role_ == service_role_dealer;
+}
+
+inline bool socket_auto_connect_target_matches (
+  uint16_t local_role_,
+  uint16_t remote_role_,
+  zlink_discovery_dealer_peer_mode_t dealer_peer_mode_)
+{
+    switch (local_role_) {
+        case service_role_router:
+            return remote_role_ == service_role_router;
+        case service_role_sub:
+            return remote_role_ == service_role_pub;
+        case service_role_pub:
+            return false;
+        case service_role_dealer:
+            if (dealer_peer_mode_ == ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER)
+                return remote_role_ == service_role_dealer;
+            return remote_role_ == service_role_router;
+        default:
+            return false;
+    }
 }
 
 struct bootstrap_req_t

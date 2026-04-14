@@ -274,11 +274,15 @@ class router_socket_t : public routed_message_socket_t {
     /// @throws submit_error_t
     void send(const routing_id_t& target_rid, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
 
-    // --- receive ---
+    // --- receive (unified routed surface) ---
+    // 단일 recv 표면이다. 일반 ROUTER 트래픽과 spot-origin routed 트래픽을
+    // 모두 이 하나로 받는다. `received_t::spot_rid()` 가 비어 있으면 일반
+    // ROUTER 트래픽 (reply 는 reply_to peer), 값이 있으면 spot-origin
+    // 트래픽 (reply 는 reply_to_spot 사용).
     /// @throws recv_error_t
     received_t recv(recv_flags_t flags = recv_flags_t::none);
     /// @throws handler_error_t
-    void on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
+    void on_receive(zlink_router_handler_fn handler, void* userdata = NULL);
     /// @throws handler_error_t
     void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
@@ -353,12 +357,6 @@ class router_socket_t : public routed_message_socket_t {
     /// @throws submit_error_t
     void reply_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
                        uint64_t request_seq, message_t message, send_flags_t flags = send_flags_t::none);
-
-    // --- router spot receive ---
-    /// @throws recv_error_t
-    received_t recv_spot(recv_flags_t flags = recv_flags_t::none);
-    /// @throws handler_error_t
-    void on_spot_receive(zlink_router_spot_handler_fn handler, void* userdata = NULL);
 
     // --- router-specific options ---
     /// @throws config_error_t
@@ -1067,8 +1065,7 @@ public:
 
 Wraps `handler_result_t`. Thrown by handler registration methods
 (`on_receive`, `on_send_ready`, `on_subscribe`, `on_event`,
-`on_spot_receive`, `on_routed_receive`, `on_dispatch_event`,
-`set_handler`).
+`on_routed_receive`, `on_dispatch_event`, `set_handler`).
 
 ```cpp
 class handler_error_t : public zlink_error_t {
@@ -1244,6 +1241,11 @@ class monitor_handle_t {
     /// @throws config_error_t
     monitor_snapshot_t snapshot() const;
     void close() noexcept;
+
+    // Sentinel handler that ignores every event. Pass this to on_event()
+    // when the caller wants snapshot / direct recv on the monitor without
+    // automatic callback dispatch. Maps to zlink_monitor_ignore_handler.
+    static zlink_monitor_handler_fn ignore_handler;
 };
 ```
 
@@ -1505,6 +1507,8 @@ provides metadata, member peer snapshots, and service monitor access.
 ```cpp
 namespace service {
 
+enum class discovery_dealer_peer_mode_t { router = 1, dealer = 2 };
+
 class discovery_t {
     discovery_t(context_t& ctx, service_type service_type, const std::string& service_name);
     ~discovery_t();
@@ -1537,6 +1541,16 @@ class discovery_t {
 
     /// @throws config_error_t
     service_monitor_handle_t monitor_open(service_monitor_event events = service_monitor_event::all);
+
+    /// Resolve current owner node rid for a logical spot rid. Intended for
+    /// send/request destination lookup. Maps to zlink_discovery_resolve_spot.
+    /// @throws config_error_t
+    routing_id_t resolve_spot(const routing_id_t& spot_rid);
+
+    /// Set the auto-connect target policy for DEALER sockets in this
+    /// discovery view. Default is router. Maps to zlink_discovery_set_dealer_peer_mode.
+    /// @throws config_error_t
+    void set_dealer_peer_mode(discovery_dealer_peer_mode_t mode);
 
     /// @throws close_error_t
     void close();
@@ -1573,10 +1587,13 @@ class spot_node_t {
     /// @throws config_error_t
     void attach_discovery(discovery_t& discovery);
 
+    // --- identity / routing ---
+    /// Logical address / spot-level routed ownership key.
+    /// Maps to zlink_set_routing_id(node, ...) / zlink_get_routing_id(node, ...).
     /// @throws config_error_t
     void set_routing_id(const routing_id_t& routing_id);
     /// @throws config_error_t
-    void get_routing_id(routing_id_t& out) const;
+    void get_routing_id(routing_id_t& routing_id) const;
 
     /// @throws config_error_t
     void set_tls_server(const std::string& cert, const std::string& key,
@@ -1661,11 +1678,13 @@ class spot_t {
     /// @throws handler_error_t
     void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
-    // --- identity ---
+    // --- identity / routing ---
+    /// Logical address / spot-level routed ownership key.
+    /// Maps to zlink_set_routing_id(spot, ...) / zlink_get_routing_id(spot, ...).
     /// @throws config_error_t
     void set_routing_id(const routing_id_t& routing_id);
     /// @throws config_error_t
-    void get_routing_id(routing_id_t& out) const;
+    void get_routing_id(routing_id_t& routing_id) const;
 
     // --- routed send (spot → spot) ---
     /// @throws submit_error_t
@@ -1794,7 +1813,8 @@ class poller_t {
     bool valid() const noexcept;
     void* handle() noexcept;
     const void* handle() const noexcept;
-    int size() const;
+    /// @throws config_error_t
+    int size() const noexcept;  // returns number of registered pollable items
 
     // --- socket registration ---
     /// @throws config_error_t

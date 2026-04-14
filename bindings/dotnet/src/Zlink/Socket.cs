@@ -105,7 +105,17 @@ internal sealed class Socket : ConnectableSocketBase
         Kernel.SendBorrowedSingle(routingId, payload, flags);
     }
 
+    internal void SendBorrowedSingle(RoutingId routingId, byte[] payload, int flags)
+    {
+        Kernel.SendBorrowedSingle(routingId, payload, flags);
+    }
+
     internal SendResult TrySendBorrowedSingle(string routingId, byte[] payload)
+    {
+        return Kernel.TrySendBorrowedSingle(routingId, payload);
+    }
+
+    internal SendResult TrySendBorrowedSingle(RoutingId routingId, byte[] payload)
     {
         return Kernel.TrySendBorrowedSingle(routingId, payload);
     }

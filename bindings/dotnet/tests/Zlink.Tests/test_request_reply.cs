@@ -86,4 +86,53 @@ public sealed class test_request_reply
                 part.Dispose();
         }
     }
+
+    [Fact]
+    public void request_callback_transfers_reply_message_ownership_to_application()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var routerSocket = new RouterSocket(ctx);
+        using var dealerSocket = new DealerSocket(ctx);
+
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "request-reply-callback-owned");
+        routerSocket.Bind(endpoint);
+        dealerSocket.Connect(endpoint);
+        Thread.Sleep(50);
+
+        using var handled = new ManualResetEventSlim(false);
+        using var callbackReceived = new ManualResetEventSlim(false);
+        Message? owned = null;
+        RequestResult observedResult = RequestResult.ProtocolError;
+
+        Task serverTask = Task.Run(() =>
+        {
+            using Received received = routerSocket.Recv();
+            using Message reply = Message.FromString("pong-owned");
+            routerSocket.Reply(received.RoutingId ?? throw new InvalidOperationException(
+                "missing routing id"), received.RequestSeq ?? 0UL, reply);
+            handled.Set();
+        });
+
+        using Message request = Message.FromString("ping-owned");
+        dealerSocket.Request(request, (result, reply) =>
+        {
+            observedResult = result;
+            Assert.Single(reply);
+            owned = reply[0];
+            callbackReceived.Set();
+        });
+
+        Assert.True(callbackReceived.Wait(3000));
+        Assert.True(handled.Wait(3000));
+        Assert.Equal(RequestResult.Ok, observedResult);
+        Assert.NotNull(owned);
+        Assert.Equal("pong-owned", owned!.GetString());
+        owned.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => _ = owned.Size);
+        serverTask.GetAwaiter().GetResult();
+    }
 }

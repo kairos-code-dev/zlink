@@ -4,11 +4,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_DIR="$(cd "${ROOT_DIR}/../../.." && pwd)"
+JAVA_BINDINGS_DIR="$(cd "${ROOT_DIR}/.." && pwd)"
 STREAM_CLIENT="${REPO_DIR}/core/build/bin/perf_stream_client"
 CORE_BUILD_DIR="${REPO_DIR}/core/build"
 RESULTS_ROOT="${ROOT_DIR}/results"
 PATTERN="ALL"
-TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
+if [[ -n "${PERF_TRANSPORTS:-}" ]]; then
+  TRANSPORTS="${PERF_TRANSPORTS}"
+elif [[ "$(uname -s)" == "Linux" ]]; then
+  TRANSPORTS="tcp,ipc"
+else
+  TRANSPORTS="tcp"
+fi
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 CLIENTS="${PERF_MULTI_CLIENTS:-100}"
 RUNS=1
@@ -539,7 +546,8 @@ if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
   rm -rf "${PROJECT_BUILD_DIR}"
 fi
 if [[ "${REUSE_BUILD}" -eq 0 ]]; then
-  gradle -PzlinkPerfBuildDir="${PROJECT_BUILD_DIR}" :perf-multi:installDist >/dev/null
+  "${JAVA_BINDINGS_DIR}/gradlew" --no-daemon -p "${JAVA_BINDINGS_DIR}" \
+    -PzlinkPerfBuildDir="${PROJECT_BUILD_DIR}" :perf-multi:installDist >/dev/null
 fi
 RUNNER="${PROJECT_BUILD_DIR}/install/zlink-java-perf-multi/bin/zlink-java-perf-multi"
 if [[ ! -x "${RUNNER}" ]]; then

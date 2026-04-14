@@ -36,7 +36,8 @@ internal static class PerfPubSubClient
                 client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
                 client.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
                 client.SetOption(SocketOptions.Subscribe, string.Empty);
-                var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
+                var monitor = client.MonitorOpen(SocketEvent.ConnectionReady
+                    | SocketEvent.Connected | SocketEvent.Accepted);
                 client.Connect(endpoint);
                 clients.Add(client);
                 monitors.Add(monitor);

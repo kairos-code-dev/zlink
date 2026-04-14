@@ -6,7 +6,8 @@ public enum ConfigResult {
     OK(0),
     INVALID_HANDLE(701),
     INVALID_ARGUMENT(702),
-    NOT_SUPPORTED(703);
+    NOT_SUPPORTED(703),
+    INTERNAL_ERROR(704);
 
     private final int value;
 

@@ -3,7 +3,7 @@
 'use strict';
 
 const readline = require('node:readline');
-const zlink = require('../../dist');
+const zlink = require('../../dist/canonical');
 const {
   createMetricCollector,
   decodeMetricHeader,

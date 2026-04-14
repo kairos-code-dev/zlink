@@ -110,6 +110,7 @@ public abstract class ZlinkException extends RuntimeException {
 
     private static SubmitResult mapSubmitResult(int errno) {
         return switch (errno) {
+            case 14 -> SubmitResult.INVALID_HANDLE;
             case 11, 10035 -> SubmitResult.BACKPRESSURED;
             case 107, 10057 -> SubmitResult.NOT_CONNECTED;
             case 113, 10065 -> SubmitResult.NOT_FOUND;
@@ -123,6 +124,7 @@ public abstract class ZlinkException extends RuntimeException {
 
     private static RecvResult mapRecvResult(int errno) {
         return switch (errno) {
+            case 14 -> RecvResult.INVALID_HANDLE;
             case 11, 10035 -> RecvResult.NO_DATA;
             case 4 -> RecvResult.BUSY;
             case 107, 10057 -> RecvResult.TERMINATED;
@@ -134,6 +136,7 @@ public abstract class ZlinkException extends RuntimeException {
 
     private static BindResult mapBindResult(int errno) {
         return switch (errno) {
+            case 14 -> BindResult.INVALID_HANDLE;
             case 22 -> BindResult.INVALID_ARGUMENT;
             case 98 -> BindResult.ADDR_IN_USE;
             case 95 -> BindResult.NOT_SUPPORTED;
@@ -144,6 +147,7 @@ public abstract class ZlinkException extends RuntimeException {
 
     private static ConnectResult mapConnectResult(int errno) {
         return switch (errno) {
+            case 14 -> ConnectResult.INVALID_HANDLE;
             case 22 -> ConnectResult.INVALID_ARGUMENT;
             case 95 -> ConnectResult.NOT_SUPPORTED;
             case 9 -> ConnectResult.INVALID_HANDLE;
@@ -153,6 +157,7 @@ public abstract class ZlinkException extends RuntimeException {
 
     private static CloseResult mapCloseResult(int errno) {
         return switch (errno) {
+            case 14 -> CloseResult.INVALID_HANDLE;
             case 11, 10035 -> CloseResult.BUSY;
             case 107, 10057 -> CloseResult.SHUTDOWN;
             case 9 -> CloseResult.INVALID_HANDLE;
@@ -162,6 +167,7 @@ public abstract class ZlinkException extends RuntimeException {
 
     private static HandlerResult mapHandlerResult(int errno) {
         return switch (errno) {
+            case 14 -> HandlerResult.INVALID_HANDLE;
             case 22 -> HandlerResult.INVALID_ARGUMENT;
             case 11, 10035 -> HandlerResult.BUSY;
             case 95 -> HandlerResult.NOT_SUPPORTED;
@@ -173,10 +179,11 @@ public abstract class ZlinkException extends RuntimeException {
 
     private static ConfigResult mapConfigResult(int errno) {
         return switch (errno) {
+            case 14 -> ConfigResult.INVALID_HANDLE;
             case 22 -> ConfigResult.INVALID_ARGUMENT;
             case 95 -> ConfigResult.NOT_SUPPORTED;
             case 9 -> ConfigResult.INVALID_HANDLE;
-            default -> ConfigResult.INVALID_HANDLE;
+            default -> ConfigResult.INTERNAL_ERROR;
         };
     }
 

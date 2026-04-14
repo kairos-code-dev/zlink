@@ -87,11 +87,9 @@ public final class DealerSocket extends Socket {
     @Override
     public void close() {
         debug("dealer close begin");
-        dealerRequests.beginClose();
         try {
             super.close();
         } finally {
-            dealerRequests.finishClose();
             debug("dealer close end");
         }
     }

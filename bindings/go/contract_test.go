@@ -1,6 +1,10 @@
 package zlink_test
 
 import (
+	"bytes"
+	"io"
+	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -242,5 +246,133 @@ func TestRouterRequestSupportPreservesDataReceiveSurface(t *testing.T) {
 	}
 	if got := string(part.Data()); got != "plain-data" {
 		t.Fatalf("data payload = %q, want %q", got, "plain-data")
+	}
+}
+
+func TestStreamRecvCanonicalRoundTrip(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	stream, err := ctx.StreamSocket()
+	if err != nil {
+		t.Fatalf("StreamSocket() error = %v", err)
+	}
+	defer stream.Close()
+
+	monitor, err := zlink.OpenSocketMonitor(
+		stream,
+		zlink.MonitorEventAll,
+	)
+	if err != nil {
+		t.Fatalf("OpenSocketMonitor() error = %v", err)
+	}
+	defer monitor.Close()
+
+	endpoint := tcpEndpoint(t)
+	if err := stream.Bind(endpoint); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+
+	conn, err := net.DialTimeout("tcp", strings.TrimPrefix(endpoint, "tcp://"), 5*time.Second)
+	if err != nil {
+		t.Fatalf("net.DialTimeout() error = %v", err)
+	}
+	defer conn.Close()
+
+	waitForMonitorEvent(t, monitor, 5*time.Second)
+
+	payload := []byte("hello-stream")
+	if _, err := conn.Write(payload); err != nil {
+		t.Fatalf("conn.Write() error = %v", err)
+	}
+
+	received, err := stream.Recv(zlink.RecvFlagsNone)
+	if err != nil {
+		t.Fatalf("Recv() error = %v", err)
+	}
+	defer received.Close()
+	part, err := received.SinglePartOrError()
+	if err != nil {
+		t.Fatalf("SinglePartOrError() error = %v", err)
+	}
+	if !bytes.Equal(part.Data(), payload) {
+		t.Fatalf("stream payload = %q, want %q", string(part.Data()), string(payload))
+	}
+
+	reply := newMessage(t, "hello-stream")
+	if err := stream.SendTo(received.RoutingID(), zlink.SendFlagsNone, reply); err != nil {
+		t.Fatalf("SendTo() error = %v", err)
+	}
+
+	buffer := make([]byte, len(payload))
+	if _, err := io.ReadFull(conn, buffer); err != nil {
+		t.Fatalf("io.ReadFull() error = %v", err)
+	}
+	if !bytes.Equal(buffer, payload) {
+		t.Fatalf("stream reply = %q, want %q", string(buffer), string(payload))
+	}
+}
+
+func TestStreamOnReceiveCanonicalRoundTrip(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	stream, err := ctx.StreamSocket()
+	if err != nil {
+		t.Fatalf("StreamSocket() error = %v", err)
+	}
+	defer stream.Close()
+
+	monitor, err := zlink.OpenSocketMonitor(
+		stream,
+		zlink.MonitorEventAll,
+	)
+	if err != nil {
+		t.Fatalf("OpenSocketMonitor() error = %v", err)
+	}
+	defer monitor.Close()
+
+	endpoint := tcpEndpoint(t)
+	if err := stream.Bind(endpoint); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+
+	done := make(chan error, 1)
+	if err := stream.OnReceive(func(received *zlink.Received) {
+		defer received.Close()
+		reply := newMessage(t, "hello-stream")
+		done <- stream.SendTo(received.RoutingID(), zlink.SendFlagsNone, reply)
+	}); err != nil {
+		t.Fatalf("OnReceive() error = %v", err)
+	}
+
+	conn, err := net.DialTimeout("tcp", strings.TrimPrefix(endpoint, "tcp://"), 5*time.Second)
+	if err != nil {
+		t.Fatalf("net.DialTimeout() error = %v", err)
+	}
+	defer conn.Close()
+
+	waitForMonitorEvent(t, monitor, 5*time.Second)
+
+	payload := []byte("hello-stream")
+	if _, err := conn.Write(payload); err != nil {
+		t.Fatalf("conn.Write() error = %v", err)
+	}
+
+	buffer := make([]byte, len(payload))
+	if _, err := io.ReadFull(conn, buffer); err != nil {
+		t.Fatalf("io.ReadFull() error = %v", err)
+	}
+	if !bytes.Equal(buffer, payload) {
+		t.Fatalf("stream callback reply = %q, want %q", string(buffer), string(payload))
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("callback send error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("stream callback did not reply")
 	}
 }

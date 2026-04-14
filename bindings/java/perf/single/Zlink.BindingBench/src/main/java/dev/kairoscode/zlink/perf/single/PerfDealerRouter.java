@@ -12,6 +12,7 @@ import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -24,6 +25,8 @@ final class PerfDealerRouter {
     static PerfUtil.Result run(PerfUtil.Config config) {
         String endpoint = PerfUtil.endpoint(config.transport(), "single-dealer-router");
         CountDownLatch finished = new CountDownLatch(1);
+        CountDownLatch routed = new CountDownLatch(1);
+        AtomicBoolean probePending = new AtomicBoolean(true);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics();
         try (Context ctx = PerfUtil.newContext(config);
@@ -61,6 +64,11 @@ final class PerfDealerRouter {
                                 if (header == null) {
                                     continue;
                                 }
+                                if (header.phase() == PerfUtil.PHASE_WARMUP
+                                    && probePending.compareAndSet(true, false)) {
+                                    routed.countDown();
+                                    continue;
+                                }
                                 if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
                                     finished.countDown();
                                     return;
@@ -77,6 +85,13 @@ final class PerfDealerRouter {
                 }
             }, "single-dealer-router-receiver");
             receiverThread.start();
+
+            try (var primer = PerfUtil.payload(config.size(),
+                     (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
+                sender.send(List.of(primer));
+            }
+            PerfUtil.await(routed, "dealer/router self-check",
+                Duration.ofSeconds(10));
 
             Thread traffic = SingleSendLoops.oneWaySend(
                 () -> sender.send(List.of(PerfUtil.payload(config.size(),

@@ -15,8 +15,10 @@ func main() {
 
 	routerSocket, err := ctx.RouterSocket()
 	samplecommon.Must(err)
+	defer routerSocket.Close()
 	dealerSocket, err := ctx.DealerSocket()
 	samplecommon.Must(err)
+	defer dealerSocket.Close()
 
 	routerMon := samplecommon.OpenMonitor(routerSocket)
 	defer routerMon.Close()
@@ -56,13 +58,14 @@ func main() {
 
 	replyCh := make(chan []*zlink.Message, 1)
 	errCh := make(chan error, 1)
-	samplecommon.Must(dealerSocket.RequestCallback([][]byte{[]byte("ping")}, func(result zlink.RequestResult, reply []*zlink.Message) {
-		if result != zlink.RequestOK {
-			errCh <- fmt.Errorf("request failed: %d", result)
+	go func() {
+		reply, err := dealerSocket.Request([][]byte{[]byte("ping")}, 2*time.Second)
+		if err != nil {
+			errCh <- err
 			return
 		}
 		replyCh <- reply
-	}, zlink.SendFlagsNone, 2*time.Second))
+	}()
 
 	var reply []*zlink.Message
 	select {
@@ -70,7 +73,11 @@ func main() {
 		samplecommon.Must(err)
 	case reply = <-replyCh:
 	}
-	defer reply[0].Close()
+	defer func() {
+		for _, part := range reply {
+			part.Close()
+		}
+	}()
 
 	if len(reply) != 1 {
 		samplecommon.Must(fmt.Errorf("unexpected reply part count %d", len(reply)))

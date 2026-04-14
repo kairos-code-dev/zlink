@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using SampleCommon;
 using Zlink;
 
@@ -23,14 +24,17 @@ using var requestHandled = new ManualResetEventSlim(false);
 using var replyHandled = new ManualResetEventSlim(false);
 Exception? failure = null;
 
-routerSocket.OnReceive((routingId, parts) =>
+Task serverTask = Task.Run(() =>
 {
     try
     {
-        using Message part = parts[0];
+        using Received received = routerSocket.Recv();
+        RoutingId routingId = received.RoutingId
+            ?? throw new InvalidOperationException("missing routing id");
+        using Message part = received.Parts[0];
         SampleSupport.EnsureEqual("ping", part.GetString(), "request");
         using var reply = Message.FromString("pong");
-        routerSocket.Send(routingId, reply);
+        routerSocket.Reply(routingId, received.RequestSeq ?? 0UL, reply);
     }
     catch (Exception ex)
     {
@@ -38,8 +42,6 @@ routerSocket.OnReceive((routingId, parts) =>
     }
     finally
     {
-        for (int i = 1; i < parts.Length; i++)
-            parts[i].Dispose();
         requestHandled.Set();
     }
 });
@@ -72,6 +74,7 @@ dealerSocket.Request(
 
 SampleSupport.WaitOrThrow(() => requestHandled.IsSet, 2000, "request/reply callback request");
 SampleSupport.WaitOrThrow(() => replyHandled.IsSet, 2000, "request/reply callback reply");
+await serverTask;
 if (failure != null)
     throw failure;
 Console.WriteLine("[dealer-router/request-reply/callback] send: \"ping\" -> recv: \"pong\"");

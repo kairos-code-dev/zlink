@@ -251,6 +251,17 @@ internal sealed class SocketKernel : IDisposable
         SendSingleCore(ref nativeRoutingId, message, (int)flags);
     }
 
+    public void Send(RoutingId routingId, Message message,
+        SendFlags flags = SendFlags.None)
+    {
+        EnsureSupports(nameof(Send), SocketTypePolicy.SocketCapability.RoutedSend);
+        if (message == null)
+            throw new ArgumentNullException(nameof(message));
+        byte[] encoded = RoutingIdCodec.FromRoutingId(routingId);
+        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        SendSingleCore(ref nativeRoutingId, message, (int)flags);
+    }
+
     public SendResult TrySend(string routingId, Message message)
     {
         EnsureSupports(nameof(TrySend),
@@ -260,6 +271,17 @@ internal sealed class SocketKernel : IDisposable
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         return TrySendRoutedSingleWithFlags(routingId, message);
+    }
+
+    public SendResult TrySend(RoutingId routingId, Message message)
+    {
+        EnsureSupports(nameof(TrySend),
+            SocketTypePolicy.SocketCapability.RoutedSend);
+        if (message == null)
+            throw new ArgumentNullException(nameof(message));
+        byte[] encoded = RoutingIdCodec.FromRoutingId(routingId);
+        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        return TrySendSingleCore(ref nativeRoutingId, message);
     }
 
     internal void SendBorrowedSingle(string routingId, byte[] payload,
@@ -277,6 +299,18 @@ internal sealed class SocketKernel : IDisposable
         SendBorrowedSingleCore(ref nativeRoutingId, payload, flags);
     }
 
+    internal void SendBorrowedSingle(RoutingId routingId, byte[] payload,
+        int flags)
+    {
+        EnsureSupports(nameof(SendBorrowedSingle),
+            SocketTypePolicy.SocketCapability.RoutedSend);
+        if (payload == null)
+            throw new ArgumentNullException(nameof(payload));
+        byte[] encoded = RoutingIdCodec.FromRoutingId(routingId);
+        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        SendBorrowedSingleCore(ref nativeRoutingId, payload, flags);
+    }
+
     internal SendResult TrySendBorrowedSingle(string routingId, byte[] payload)
     {
         EnsureSupports(nameof(TrySendBorrowedSingle),
@@ -287,6 +321,17 @@ internal sealed class SocketKernel : IDisposable
             throw new ArgumentNullException(nameof(payload));
         byte[] encoded = RoutingIdCodec.FromPublicString(routingId,
             nameof(routingId));
+        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        return TrySendBorrowedSingleCore(ref nativeRoutingId, payload);
+    }
+
+    internal SendResult TrySendBorrowedSingle(RoutingId routingId, byte[] payload)
+    {
+        EnsureSupports(nameof(TrySendBorrowedSingle),
+            SocketTypePolicy.SocketCapability.RoutedSend);
+        if (payload == null)
+            throw new ArgumentNullException(nameof(payload));
+        byte[] encoded = RoutingIdCodec.FromRoutingId(routingId);
         ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
         return TrySendBorrowedSingleCore(ref nativeRoutingId, payload);
     }
@@ -325,6 +370,37 @@ internal sealed class SocketKernel : IDisposable
         SendCore(ref nativeRoutingId, copied.AsSpan(), (int)flags, nameof(parts));
     }
 
+    public void Send(RoutingId routingId, IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
+    {
+        EnsureSupports(nameof(Send), SocketTypePolicy.SocketCapability.RoutedSend);
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
+        if (parts.Count == 0)
+            throw new ArgumentException("Parts must not be empty.", nameof(parts));
+
+        byte[] encoded = RoutingIdCodec.FromRoutingId(routingId);
+        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+
+        if (parts is Message[] array)
+        {
+            SendCore(ref nativeRoutingId, array.AsSpan(), (int)flags, nameof(parts));
+            return;
+        }
+
+        if (parts is List<Message> list)
+        {
+            SendCore(ref nativeRoutingId, CollectionsMarshal.AsSpan(list), (int)flags,
+                nameof(parts));
+            return;
+        }
+
+        Message[] copied = new Message[parts.Count];
+        for (int i = 0; i < copied.Length; i++)
+            copied[i] = parts[i];
+        SendCore(ref nativeRoutingId, copied.AsSpan(), (int)flags, nameof(parts));
+    }
+
     public SendResult TrySend(string routingId, IReadOnlyList<Message> parts)
     {
         EnsureSupports(nameof(TrySend),
@@ -336,6 +412,33 @@ internal sealed class SocketKernel : IDisposable
         if (parts.Count == 0)
             throw new ArgumentException("Parts must not be empty.", nameof(parts));
         return TrySendRoutedPartsWithFlags(routingId, parts);
+    }
+
+    public SendResult TrySend(RoutingId routingId, IReadOnlyList<Message> parts)
+    {
+        EnsureSupports(nameof(TrySend),
+            SocketTypePolicy.SocketCapability.RoutedSend);
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
+        if (parts.Count == 0)
+            throw new ArgumentException("Parts must not be empty.", nameof(parts));
+
+        byte[] encoded = RoutingIdCodec.FromRoutingId(routingId);
+        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+
+        if (parts is Message[] array)
+            return TrySendCore(ref nativeRoutingId, array.AsSpan(), nameof(parts));
+
+        if (parts is List<Message> list)
+        {
+            return TrySendCore(ref nativeRoutingId,
+                CollectionsMarshal.AsSpan(list), nameof(parts));
+        }
+
+        Message[] copied = new Message[parts.Count];
+        for (int i = 0; i < copied.Length; i++)
+            copied[i] = parts[i];
+        return TrySendCore(ref nativeRoutingId, copied.AsSpan(), nameof(parts));
     }
 
     public void Publish(string topic, Message message, SendFlags flags = SendFlags.None)

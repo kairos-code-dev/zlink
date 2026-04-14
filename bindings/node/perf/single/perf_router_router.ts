@@ -2,7 +2,7 @@
 
 'use strict';
 
-const zlink = require('../../dist');
+const zlink = require('../../dist/canonical');
 const {
   createMetricCollector,
   createPayload,
@@ -12,7 +12,12 @@ const {
   sleepImmediate,
   stampPayload
 } = require('../common/perf_metrics');
-const { drainRecvNow, drainRecvSocket, waitForConnectionReady } = require('./perf_single_common');
+const {
+  drainRecvNow,
+  drainRecvSocket,
+  waitForConnectionReady,
+  trySocketSend
+} = require('./perf_single_common');
 
 const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
 const SENDER_ID = Buffer.from('router-perf-sender', 'ascii');
@@ -76,7 +81,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
           msgSize,
           seq
         });
-        if (sender.trySend(RECEIVER_ID, payload) !== zlink.SendResult.Sent) {
+        if (!trySocketSend(sender, RECEIVER_ID, payload)) {
           break;
         }
         seq += 1n;

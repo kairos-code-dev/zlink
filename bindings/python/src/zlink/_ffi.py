@@ -372,8 +372,8 @@ class _Lib:
             "zlink_router_recv",
             [
                 ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRoutingId),
-                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ctypes.POINTER(ZlinkRoutingId)),
+                ctypes.POINTER(ctypes.POINTER(ZlinkRoutingId)),
                 ctypes.POINTER(ctypes.c_uint64),
                 ctypes.POINTER(ctypes.POINTER(ZlinkMsg)),
                 ctypes.POINTER(ctypes.c_size_t),

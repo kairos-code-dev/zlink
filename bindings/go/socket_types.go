@@ -1324,11 +1324,11 @@ func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Messa
 }
 
 func (s *StreamSocket) Recv(flags RecvFlags) (*Received, error) {
-	return s.core.Recv(flags)
+	return (&directSocket{connectionSocket: s.core.connectionSocket}).Recv(flags)
 }
 
 func (s *StreamSocket) OnReceive(handler func(*Received)) error {
-	return s.core.OnReceive(handler)
+	return (&directSocket{connectionSocket: s.core.connectionSocket}).OnReceive(handler)
 }
 
 func (s *StreamSocket) SetNotify(value bool) error {

@@ -436,6 +436,12 @@ internal static class PerfCompatExtensions
         socket.Kernel.SendBorrowedSingle(routingId, payload, flags);
     }
 
+    internal static void SendBorrowedSingle(this SocketBase socket,
+        RoutingId routingId, byte[] payload, int flags)
+    {
+        socket.Kernel.SendBorrowedSingle(routingId, payload, flags);
+    }
+
     internal static PeerRecord[] GetPeers(this SocketBase socket)
     {
         return Array.Empty<PeerRecord>();

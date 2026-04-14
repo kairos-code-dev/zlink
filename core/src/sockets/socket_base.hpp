@@ -318,6 +318,13 @@ class socket_base_t : public own_t,
                                     const zlink_routing_id_t *source_rid_,
                                     zlink_msg_t *parts_,
                                     size_t part_count_);
+    static void store_socket_msg_part (std::vector<zlink_msg_t> *parts_,
+                                       zlink::msg_t *msg_);
+    static int init_peer_admission_command (zlink::msg_t *msg_,
+                                            zlink_admission_state_t state_);
+    static bool decode_peer_admission_command (
+      const zlink::msg_t &msg_,
+      zlink_admission_state_t *state_out_);
 
     //  Delay actual destruction of the socket.
     void process_destroy () ZLINK_FINAL;

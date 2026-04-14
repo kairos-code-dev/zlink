@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 
 const topic = 'room:lobby';
 const sent = 'hello-spot';
@@ -50,7 +50,7 @@ async function main() {
     const received = await Promise.race([receivedPromise, timeoutPromise]).finally(() => {
       clearInterval(publishTimer);
     });
-    assert.equal(received.routingId, null);
+    assert.ok(received.routingId instanceof zlink.RoutingId);
     assert.equal(received.topic, topic);
     const recv = received.parts[0].data().toString();
     assert.equal(recv, sent);

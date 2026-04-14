@@ -15,13 +15,11 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 final class RequestReplySupport {
     static final long DEFAULT_TIMEOUT_MS = 5_000L;
-    private static final long SEND_RETRY_SLEEP_MS = 1L;
     private static final ScheduledExecutorService REQUEST_TIMEOUTS =
       Executors.newSingleThreadScheduledExecutor(
         new NamedDaemonThreadFactory("zlink-request-timeout"));
@@ -33,31 +31,6 @@ final class RequestReplySupport {
         new NamedDaemonThreadFactory("zlink-request-complete"));
 
     private RequestReplySupport() {
-    }
-
-    static CompletableFuture<Void> asyncSend(List<Message> payload,
-                                             long timeoutMs,
-                                             ThrowingTrySend sender) {
-        return CompletableFuture.runAsync(() -> {
-            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
-            while (true) {
-                SendResult result = sender.trySend(payload);
-                if (result == SendResult.SENT) {
-                    return;
-                }
-                if (System.nanoTime() >= deadline) {
-                    closeAll(payload);
-                    throw new CompletionException(new TimeoutException("request timed out"));
-                }
-                try {
-                    Thread.sleep(SEND_RETRY_SLEEP_MS);
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    closeAll(payload);
-                    throw new CompletionException(ex);
-                }
-            }
-        }, REQUEST_EXECUTIONS);
     }
 
     static long timeoutMillis(Duration timeout) {

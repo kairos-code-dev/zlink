@@ -1,0 +1,23 @@
+# ZLink Framework
+
+이 디렉토리는 zlink `core`나 언어 `bindings` 자체가 아니라,
+그 바인딩 위에 한 번 더 올라가는 `ZLink Framework` 작업 공간이다.
+
+`ZLink Framework`는 성격상 framework adapter 계층으로 볼 수 있다.
+
+이 계층의 목표는 아래와 같다.
+
+- `ASP.NET Core`, `Spring`, `NestJS` 같은 기존 애플리케이션 프레임워크에
+  zlink 기반 서버 간 메시징을 자연스럽게 붙인다.
+- 프레임워크 사용자가 raw socket이나 low-level discovery 설정보다
+  handler, client, event, DI 같은 익숙한 개념으로 작업하게 만든다.
+- 기존 웹 서버 환경에서 흔히 두는 별도 gateway나 전용 로드밸런서 없이도
+  `service_name` 기준으로 직접 서비스 호출을 가능하게 만든다.
+- `core` 계약과 `bindings` 계약을 직접 바꾸지 않고, 그 위에서 별도 라이브러리
+  또는 패키지로 발전할 수 있는 구조를 잡는다.
+
+문서 진입점:
+
+- [ZLink Framework Spec](./doc/spec/README.ko.md)
+
+현재 문서는 초안 단계이며, 정식 공개 계약이 아니다.

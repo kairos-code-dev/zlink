@@ -33,8 +33,8 @@ internal static class PerfRouterRouter
         try
         {
             string ep = EndpointFor(transport, "router-router");
-            router1.SetOption(SocketOptions.RoutingId, "ROUTER1");
-            router2.SetOption(SocketOptions.RoutingId, "ROUTER2");
+            router1.RouterOptions.RoutingId = RoutingId.FromBytes("ROUTER1"u8);
+            router2.RouterOptions.RoutingId = RoutingId.FromBytes("ROUTER2"u8);
             router1.SetOption(SocketOptions.RouterMandatory, 1);
             router2.SetOption(SocketOptions.RouterMandatory, 1);
             router1.Bind(ep);
@@ -81,15 +81,15 @@ internal static class PerfRouterRouter
         Span<byte> routing = stackalloc byte[256];
         Span<byte> buffer = stackalloc byte[256];
 
-        SendBlocking(sender, "ROUTER1"u8, SendFlags.SendMore);
-        SendBlocking(sender, "PING"u8, SendFlags.None);
+        SendBlocking(sender, "ROUTER1"u8, PerfSendFlags.SendMore);
+        SendBlocking(sender, "PING"u8, PerfSendFlags.None);
         if (ReceiveBlocking(receiver, routing, ReceiveFlags.None) != 7)
             return false;
         if (ReceiveBlocking(receiver, buffer.Slice(0, 4), ReceiveFlags.None) != 4)
             return false;
 
-        SendBlocking(receiver, "ROUTER2"u8, SendFlags.SendMore);
-        SendBlocking(receiver, "PONG"u8, SendFlags.None);
+        SendBlocking(receiver, "ROUTER2"u8, PerfSendFlags.SendMore);
+        SendBlocking(receiver, "PONG"u8, PerfSendFlags.None);
         if (ReceiveBlocking(sender, routing, ReceiveFlags.None) != 7)
             return false;
         if (ReceiveBlocking(sender, buffer.Slice(0, 4), ReceiveFlags.None) != 4)
@@ -267,8 +267,8 @@ internal static class PerfRouterRouter
             return;
         }
 
-        SendBlocking(sender, "ROUTER1"u8, SendFlags.SendMore);
-        SendBlocking(sender, payload, SendFlags.None);
+        SendBlocking(sender, "ROUTER1"u8, PerfSendFlags.SendMore);
+        SendBlocking(sender, payload, PerfSendFlags.None);
     }
 
     private static int ReceiveRouterPayload(SocketBase socket, byte[] routingId,

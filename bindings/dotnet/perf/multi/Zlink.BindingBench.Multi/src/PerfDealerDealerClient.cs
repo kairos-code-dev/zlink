@@ -34,7 +34,8 @@ internal static class PerfDealerDealerClient
                 ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
                 client.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
-                var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
+                var monitor = client.MonitorOpen(SocketEvent.ConnectionReady
+                    | SocketEvent.Connected | SocketEvent.Accepted);
                 client.Connect(endpoint);
                 clients.Add(client);
                 monitors.Add(monitor);
@@ -211,7 +212,7 @@ internal static class PerfDealerDealerClient
         try
         {
             bool sent = slot.Socket.TrySend(slot.Payload.AsSpan(),
-                SendFlags.DontWait, out int written) && written > 0;
+                PerfSendFlags.DontWait, out int written) && written > 0;
             if (sent)
             {
                 slot.WaitingForWritable = false;

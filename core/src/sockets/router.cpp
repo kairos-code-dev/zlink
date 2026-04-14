@@ -13,64 +13,6 @@
 
 namespace
 {
-const char peer_admission_cmd_name[] = "ADMISSION";
-const size_t peer_admission_cmd_name_size = sizeof (peer_admission_cmd_name) - 1;
-
-int init_peer_admission_command (zlink::msg_t *msg_,
-                                 zlink_admission_state_t state_)
-{
-    if (!msg_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    const int rc = msg_->init_size (peer_admission_cmd_name_size + 1);
-    if (rc != 0)
-        return -1;
-
-    memcpy (msg_->data (), peer_admission_cmd_name, peer_admission_cmd_name_size);
-    static_cast<unsigned char *> (msg_->data ())[peer_admission_cmd_name_size] =
-      static_cast<unsigned char> (state_);
-    msg_->set_flags (zlink::msg_t::command);
-    return 0;
-}
-
-bool decode_peer_admission_command (const zlink::msg_t &msg_,
-                                    zlink_admission_state_t *state_out_)
-{
-    if (!(msg_.flags () & zlink::msg_t::command))
-        return false;
-    if (msg_.size () != peer_admission_cmd_name_size + 1)
-        return false;
-    if (memcmp (const_cast<zlink::msg_t &> (msg_).data (),
-                peer_admission_cmd_name, peer_admission_cmd_name_size)
-        != 0) {
-        return false;
-    }
-
-    const unsigned char state =
-      static_cast<unsigned char *> (const_cast<zlink::msg_t &> (msg_).data ())[
-        peer_admission_cmd_name_size];
-    if (state != ZLINK_ADMISSION_SERVING && state != ZLINK_ADMISSION_DRAINING)
-        return false;
-
-    if (state_out_)
-        *state_out_ = static_cast<zlink_admission_state_t> (state);
-    return true;
-}
-
-void store_dispatch_part (std::vector<zlink_msg_t> *parts_, zlink::msg_t *msg_)
-{
-    zlink_msg_t stored;
-    memset (&stored, 0, sizeof (stored));
-    zlink::msg_t *stored_msg = reinterpret_cast<zlink::msg_t *> (&stored);
-    const int init_rc = stored_msg->init ();
-    errno_assert (init_rc == 0);
-    const int move_rc = stored_msg->move (*msg_);
-    errno_assert (move_rc == 0);
-    parts_->push_back (stored);
-}
-
 void clear_dispatch_source_rid (zlink_routing_id_t *rid_, bool *valid_)
 {
     if (!rid_ || !valid_)
@@ -637,7 +579,7 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
         return 1;
     }
 
-    store_dispatch_part (&_dispatch_parts, msg_);
+    store_socket_msg_part (&_dispatch_parts, msg_);
     if ((reinterpret_cast<msg_t *> (&_dispatch_parts.back ())->flags ()
          & msg_t::more)
         != 0) {

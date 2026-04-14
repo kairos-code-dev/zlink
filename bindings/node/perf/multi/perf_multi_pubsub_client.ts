@@ -2,7 +2,7 @@
 
 'use strict';
 
-const zlink = require('../../dist');
+const zlink = require('../../dist/canonical');
 const {
   createMetricCollector,
   decodeMetricHeader,

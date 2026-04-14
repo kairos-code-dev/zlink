@@ -9,23 +9,12 @@ import java.lang.foreign.MemorySegment;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
 final class DealerRequestSupport implements AutoCloseable {
-    private static final long RECV_POLL_SLEEP_MS = 1L;
-    private static final Object CLOSED = new Object();
-
     private final DealerSocket socket;
     private final boolean closeSocketOnClose;
-    private final LinkedBlockingQueue<Object> dataQueue = new LinkedBlockingQueue<>();
-    private final Thread dispatchThread;
-    private volatile SocketMessageHandler dataHandler;
-    private volatile boolean dispatchStarted;
-    private volatile boolean closed;
 
     DealerRequestSupport(DealerSocket socket) {
         this(socket, true);
@@ -34,9 +23,6 @@ final class DealerRequestSupport implements AutoCloseable {
     DealerRequestSupport(DealerSocket socket, boolean closeSocketOnClose) {
         this.socket = Objects.requireNonNull(socket, "socket");
         this.closeSocketOnClose = closeSocketOnClose;
-        this.dispatchThread = new Thread(this::dispatchLoop,
-            "zlink-request-dealer-dispatch");
-        this.dispatchThread.setDaemon(true);
     }
 
     public DealerSocket socket() {
@@ -109,138 +95,10 @@ final class DealerRequestSupport implements AutoCloseable {
             () -> submitRequest(payload, timeoutMs, flags));
     }
 
-    public Received recv() {
-        return recv(RecvFlags.NONE);
-    }
-
-    public Received recv(RecvFlags flags) {
-        Objects.requireNonNull(flags, "flags");
-        if (dataHandler != null) {
-            throw new IllegalStateException(
-                "socket is in callback mode; direct recv is not allowed");
-        }
-        if (flags == RecvFlags.DONT_WAIT) {
-            return tryRecv().orElseThrow(() -> new RecvException(RecvResult.NO_DATA));
-        }
-        try {
-            Object item = dataQueue.take();
-            if (item == CLOSED) {
-                throw new IllegalStateException("request dealer is closed");
-            }
-            return (Received) item;
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("recv interrupted", ex);
-        }
-    }
-
-    Optional<Received> tryRecv() {
-        if (dataHandler != null) {
-            throw new IllegalStateException(
-                "socket is in callback mode; direct recv is not allowed");
-        }
-        Object item = dataQueue.poll();
-        if (item == null || item == CLOSED) {
-            return Optional.empty();
-        }
-        return Optional.of((Received) item);
-    }
-
-    public void onReceive(SocketMessageHandler handler) {
-        this.dataHandler = Objects.requireNonNull(handler, "handler");
-        startDispatchIfNeeded();
-    }
-
     @Override
     public void close() {
-        beginClose();
-        try {
-            if (closeSocketOnClose) {
-                socket.close();
-            }
-        } finally {
-            finishClose();
-        }
-    }
-
-    void beginClose() {
-        if (closed) {
-            return;
-        }
-        closed = true;
-        dataHandler = null;
-        dataQueue.offer(CLOSED);
-        if (dispatchStarted) {
-            dispatchThread.interrupt();
-            try {
-                dispatchThread.join(TimeUnit.SECONDS.toMillis(1));
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            }
-        }
-    }
-
-    void finishClose() {
-    }
-
-    private void deliverData(Received received) {
-        SocketMessageHandler handler = dataHandler;
-        if (handler == null) {
-            dataQueue.offer(received);
-            return;
-        }
-        try (received) {
-            handler.onMessage(received);
-        }
-    }
-
-    private void dispatchLoop() {
-        while (!closed) {
-            try {
-                if (dataHandler == null) {
-                    Thread.sleep(RECV_POLL_SLEEP_MS);
-                    continue;
-                }
-                Optional<Received> maybeReceived = socket.tryRecv();
-                if (maybeReceived.isPresent()) {
-                    try (Received received = maybeReceived.get()) {
-                        deliverData(RequestReplySupport.cloneReceived(received));
-                    }
-                    continue;
-                }
-                Thread.sleep(RECV_POLL_SLEEP_MS);
-            } catch (IllegalStateException ex) {
-                if (closed || RequestReplySupport.isClosedSignal(ex)) {
-                    return;
-                }
-                throw ex;
-            } catch (InterruptedException ex) {
-                if (closed) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("request dealer dispatch interrupted",
-                    ex);
-            } catch (RuntimeException ex) {
-                if (closed) {
-                    return;
-                }
-                throw ex;
-            }
-        }
-    }
-
-    private void startDispatchIfNeeded() {
-        if (dispatchStarted) {
-            return;
-        }
-        synchronized (this) {
-            if (dispatchStarted) {
-                return;
-            }
-            dispatchStarted = true;
-            dispatchThread.start();
+        if (closeSocketOnClose) {
+            socket.close();
         }
     }
 

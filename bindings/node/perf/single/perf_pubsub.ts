@@ -2,7 +2,7 @@
 
 'use strict';
 
-const zlink = require('../../dist');
+const zlink = require('../../dist/canonical');
 const {
   createMetricCollector,
   createPayload,
@@ -12,7 +12,12 @@ const {
   sleepImmediate,
   stampPayload
 } = require('../common/perf_metrics');
-const { drainRecvNow, drainRecvSocket, waitForConnectionReady } = require('./perf_single_common');
+const {
+  drainRecvNow,
+  drainRecvSocket,
+  waitForConnectionReady,
+  trySocketPublish
+} = require('./perf_single_common');
 
 async function runPubSubBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
@@ -54,7 +59,7 @@ async function runPubSubBenchmark(msgSize, options) {
           msgSize,
           seq
         });
-        if (pub.tryPublish(topic, payload) !== zlink.SendResult.Sent) {
+        if (!trySocketPublish(pub, topic, payload)) {
           break;
         }
         seq += 1n;

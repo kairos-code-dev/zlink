@@ -478,6 +478,8 @@ final class SocketCore {
             recordCallbackFailure(ex);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
+        } finally {
+            closeSnapshot(snapshot);
         }
     }
 
@@ -517,6 +519,8 @@ final class SocketCore {
             recordCallbackFailure(ex);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
+        } finally {
+            closeSnapshot(snapshot);
         }
     }
 
@@ -592,7 +596,8 @@ final class SocketCore {
     private CallbackReceivedData snapshotReceive(MemorySegment sourceRid,
                                                  MemorySegment parts,
                                                  long partCount) {
-        byte[][] snapshotParts = snapshotParts(parts, partCount);
+        Message[] snapshotParts = Message.fromOwnedMsgVectorShared(parts,
+            partCount);
         NativeMsg.multipartClose(parts, partCount);
         return new CallbackReceivedData(readRoutingId(sourceRid), snapshotParts);
     }
@@ -602,47 +607,22 @@ final class SocketCore {
                                                     long topicLen,
                                                     MemorySegment parts,
                                                     long partCount) {
-        byte[][] snapshotParts = snapshotParts(parts, partCount);
+        Message[] snapshotParts = Message.fromOwnedMsgVectorShared(parts,
+            partCount);
         NativeMsg.multipartClose(parts, partCount);
         return new CallbackSubscribeData(readRoutingId(sourceRid),
             decodeTopic(topic, topicLen), snapshotParts);
     }
 
-    private static byte[][] snapshotParts(MemorySegment parts, long partCount) {
-        int count = Math.toIntExact(partCount);
-        if (count == 0)
-            return new byte[0][];
-        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-        MemorySegment vector = MemorySegment.ofAddress(parts.address()).reinterpret(
-            msgSize * count);
-        byte[][] snapshot = new byte[count][];
-        for (int i = 0; i < count; i++) {
-            MemorySegment src = vector.asSlice((long) i * msgSize, msgSize);
-            int size = Math.toIntExact(NativeMsg.msgSize(src));
-            byte[] bytes = new byte[size];
-            if (size > 0) {
-                MemorySegment data = NativeMsg.msgData(src).reinterpret(size);
-                MemorySegment.copy(data, 0, MemorySegment.ofArray(bytes), 0,
-                    size);
-            }
-            snapshot[i] = bytes;
-        }
-        return snapshot;
-    }
-
     private static Received materializeReceived(CallbackReceivedData snapshot) {
-        Message[] frames = new Message[snapshot.parts().length];
-        for (int i = 0; i < snapshot.parts().length; i++)
-            frames[i] = Message.copyOf(snapshot.parts()[i]);
-        return new Received(snapshot.routingId(), null, frames, true, 0L, false,
+        return new Received(snapshot.routingId(), null, snapshot.parts(), true,
+          0L, false,
           null);
     }
 
     private static Received materializeReceived(CallbackSubscribeData snapshot) {
-        Message[] frames = new Message[snapshot.parts().length];
-        for (int i = 0; i < snapshot.parts().length; i++)
-            frames[i] = Message.copyOf(snapshot.parts()[i]);
-        return new Received(snapshot.routingId(), null, frames, true, 0L, false,
+        return new Received(snapshot.routingId(), null, snapshot.parts(), true,
+          0L, false,
           null);
     }
 
@@ -707,14 +687,37 @@ final class SocketCore {
         }
     }
 
+    private static void closeSnapshot(CallbackReceivedData snapshot) {
+        if (snapshot != null)
+            closeMessages(snapshot.parts());
+    }
+
+    private static void closeSnapshot(CallbackSubscribeData snapshot) {
+        if (snapshot != null)
+            closeMessages(snapshot.parts());
+    }
+
+    private static void closeMessages(Message[] parts) {
+        if (parts == null)
+            return;
+        for (Message part : parts) {
+            if (part == null)
+                continue;
+            try {
+                part.close();
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
+
     private static void shutdownExecutor(ExecutorService executor) {
         if (executor != null)
             executor.shutdown();
     }
 
     private record CallbackReceivedData(RoutingId routingId,
-                                        byte[][] parts) {}
+                                        Message[] parts) {}
 
     private record CallbackSubscribeData(RoutingId routingId, String topicId,
-                                         byte[][] parts) {}
+                                         Message[] parts) {}
 }

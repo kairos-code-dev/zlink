@@ -36,8 +36,10 @@ internal static class PerfRouterRouterClient
                 ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
                 client.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
-                client.SetOption(SocketOptions.RoutingId, $"CLIENT-{i}");
-                var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
+                client.RouterOptions.RoutingId = RoutingId.FromBytes(
+                    System.Text.Encoding.ASCII.GetBytes($"CLIENT-{i}"));
+                var monitor = client.MonitorOpen(SocketEvent.ConnectionReady
+                    | SocketEvent.Connected | SocketEvent.Accepted);
                 client.Connect(endpoint);
                 clients.Add(client);
                 monitors.Add(monitor);
@@ -116,7 +118,7 @@ internal static class PerfRouterRouterClient
                 msgSize, runId, readyTimeoutMs, pollTimeoutMs,
                 ref seq))
         {
-            return (0.0, 0.0, 0.0, 0.0);
+            throw new InvalidOperationException("router/router pending reply drain timed out");
         }
 
         long benchStartTicks = Stopwatch.GetTimestamp();
@@ -129,7 +131,12 @@ internal static class PerfRouterRouterClient
 
             if (PollSocketEvents(pollManager, sockets, eventMasks,
                     pollTimeoutMs) <= 0)
+            {
+                for (int i = 0; i < slots.Length; i++)
+                    HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
+                        runId, PerfPhase.Active, ref seq, metrics, allowSend: true);
                 continue;
+            }
 
             for (int i = 0; i < slots.Length; i++)
                 HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
@@ -172,7 +179,16 @@ internal static class PerfRouterRouterClient
 
             if (PollSocketEvents(pollManager, sockets, eventMasks,
                     pollTimeoutMs) <= 0)
+            {
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    var ignoredMetrics = new RouterRouterMetrics(null, 0);
+                    HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
+                        runId, PerfPhase.Warmup, ref seq, ignoredMetrics,
+                        allowSend: true);
+                }
                 continue;
+            }
 
             for (int i = 0; i < slots.Length; i++)
             {
@@ -200,10 +216,19 @@ internal static class PerfRouterRouterClient
             if (pollTimeoutMs > 0)
                 timeoutMs = Math.Min(pollTimeoutMs, timeoutMs);
             if (timeoutMs <= 0)
-                timeoutMs = 1;
+                return false;
             if (PollSocketEvents(pollManager, sockets, eventMasks,
                     timeoutMs) <= 0)
+            {
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    var ignoredMetrics = new RouterRouterMetrics(null, 0);
+                    HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
+                        runId, PerfPhase.Warmup, ref seq, ignoredMetrics,
+                        allowSend: false);
+                }
                 continue;
+            }
 
             for (int i = 0; i < slots.Length; i++)
             {
@@ -274,7 +299,8 @@ internal static class PerfRouterRouterClient
             }
         }
 
-        if (!IsSocketReadReady(pollManager, slotIndex))
+        bool readReady = IsSocketReadReady(pollManager, slotIndex);
+        if (!readReady && !slot.WaitingForReply)
             return;
 
         while (TryReceiveReply(slot, out int received) && received > 0)
@@ -312,17 +338,8 @@ internal static class PerfRouterRouterClient
             if (!allowSend)
                 continue;
 
-            if (slot.PendingStage == RouterSendStage.None)
-                PreparePayload(slot, msgSize, runId, phase, ref seq);
-            if (TrySend(slot))
-            {
-                slot.WaitingForReply = true;
-                UpdatePollMask(slot, eventMasks, slotIndex);
-            }
-            else
-            {
-                UpdatePollMask(slot, eventMasks, slotIndex);
-            }
+            slot.PendingStage = RouterSendStage.None;
+            UpdatePollMask(slot, eventMasks, slotIndex);
         }
     }
 
@@ -364,7 +381,8 @@ internal static class PerfRouterRouterClient
         if (slot.PendingStage == RouterSendStage.RoutingId)
         {
             if (!slot.Socket.TrySend(slot.ServerRoutingId.AsSpan(),
-                    SendFlags.SendMore | SendFlags.DontWait, out int ridWritten)
+                    PerfSendFlags.SendMore | PerfSendFlags.DontWait,
+                    out int ridWritten)
                 || ridWritten <= 0)
             {
                 return false;
@@ -374,7 +392,7 @@ internal static class PerfRouterRouterClient
 
         if (slot.PendingStage == RouterSendStage.Payload)
         {
-            if (!slot.Socket.TrySend(slot.Payload.AsSpan(), SendFlags.DontWait,
+            if (!slot.Socket.TrySend(slot.Payload.AsSpan(), PerfSendFlags.DontWait,
                     out int payloadWritten)
                 || payloadWritten <= 0)
             {
@@ -429,7 +447,7 @@ internal static class PerfRouterRouterClient
             try
             {
                 if (!activeClients[i].TrySend(serverRoutingId,
-                        SendFlags.SendMore | SendFlags.DontWait,
+                        PerfSendFlags.SendMore | PerfSendFlags.DontWait,
                         out int sentRid)
                     || sentRid <= 0)
                 {
@@ -437,7 +455,7 @@ internal static class PerfRouterRouterClient
                 }
 
                 _ = activeClients[i].TrySend(MultiStopToken.AsSpan(),
-                    SendFlags.DontWait, out _);
+                    PerfSendFlags.DontWait, out _);
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno)

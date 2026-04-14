@@ -15,8 +15,10 @@ func main() {
 
 	routerSocket, err := ctx.RouterSocket()
 	samplecommon.Must(err)
+	defer routerSocket.Close()
 	dealerSocket, err := ctx.DealerSocket()
 	samplecommon.Must(err)
+	defer dealerSocket.Close()
 
 	routerMon := samplecommon.OpenMonitor(routerSocket)
 	defer routerMon.Close()
@@ -57,6 +59,11 @@ func main() {
 	}))
 
 	samplecommon.Must(dealerSocket.RequestCallback([][]byte{[]byte("ping")}, func(result zlink.RequestResult, reply []*zlink.Message) {
+		defer func() {
+			for _, part := range reply {
+				part.Close()
+			}
+		}()
 		if result != zlink.RequestOK {
 			replyDone <- fmt.Errorf("request failed: %d", result)
 			return

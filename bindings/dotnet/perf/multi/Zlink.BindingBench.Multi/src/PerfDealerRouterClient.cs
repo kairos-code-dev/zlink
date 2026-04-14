@@ -7,6 +7,10 @@ using static PerfRunner;
 
 internal static class PerfDealerRouterClient
 {
+    private static readonly bool DebugEnabled =
+        string.Equals(Environment.GetEnvironmentVariable("PERF_DEBUG"), "1",
+            StringComparison.Ordinal);
+
     internal static int Run(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
@@ -35,7 +39,10 @@ internal static class PerfDealerRouterClient
                 ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
                 client.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
-                var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
+                client.SetRoutingId(RoutingId.FromBytes(
+                    System.Text.Encoding.ASCII.GetBytes($"CLIENT-{i}")));
+                var monitor = client.MonitorOpen(SocketEvent.ConnectionReady
+                    | SocketEvent.Connected | SocketEvent.Accepted);
                 client.Connect(endpoint);
                 clients.Add(client);
                 monitors.Add(monitor);
@@ -109,7 +116,7 @@ internal static class PerfDealerRouterClient
                 msgSize, runId, readyTimeoutMs, pollTimeoutMs,
                 ref seq))
         {
-            return (0.0, 0.0, 0.0, 0.0);
+            throw new InvalidOperationException("dealer/router pending reply drain timed out");
         }
 
         long benchStartTicks = Stopwatch.GetTimestamp();
@@ -122,7 +129,12 @@ internal static class PerfDealerRouterClient
 
             if (PollSocketEvents(pollManager, sockets, eventMasks,
                     pollTimeoutMs) <= 0)
+            {
+                for (int i = 0; i < slots.Length; i++)
+                    HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
+                        runId, PerfPhase.Active, ref seq, metrics, allowSend: true);
                 continue;
+            }
 
             for (int i = 0; i < slots.Length; i++)
                 HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
@@ -165,7 +177,16 @@ internal static class PerfDealerRouterClient
 
             if (PollSocketEvents(pollManager, sockets, eventMasks,
                     pollTimeoutMs) <= 0)
+            {
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    var ignoredMetrics = new DealerRouterMetrics(null, 0);
+                    HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
+                        runId, PerfPhase.Warmup, ref seq, ignoredMetrics,
+                        allowSend: true);
+                }
                 continue;
+            }
 
             for (int i = 0; i < slots.Length; i++)
             {
@@ -193,10 +214,19 @@ internal static class PerfDealerRouterClient
             if (pollTimeoutMs > 0)
                 timeoutMs = Math.Min(pollTimeoutMs, timeoutMs);
             if (timeoutMs <= 0)
-                timeoutMs = 1;
+                return false;
             if (PollSocketEvents(pollManager, sockets, eventMasks,
                     timeoutMs) <= 0)
+            {
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    var ignoredMetrics = new DealerRouterMetrics(null, 0);
+                    HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
+                        runId, PerfPhase.Warmup, ref seq, ignoredMetrics,
+                        allowSend: false);
+                }
                 continue;
+            }
 
             for (int i = 0; i < slots.Length; i++)
             {
@@ -236,6 +266,8 @@ internal static class PerfDealerRouterClient
             PreparePayload(slot, msgSize, runId, phase, ref seq);
             if (TrySend(slot))
             {
+                if (DebugEnabled)
+                    Console.Error.WriteLine($"dealer-router client sent phase={phase} slot={slotIndex}");
                 slot.WaitingForReply = true;
                 slot.WaitingForWritable = false;
                 UpdatePollMask(slot, eventMasks, slotIndex);
@@ -262,15 +294,20 @@ internal static class PerfDealerRouterClient
             && slot.WaitingForWritable
             && !slot.WaitingForReply)
         {
+            if (DebugEnabled)
+                Console.Error.WriteLine($"dealer-router client pollout slot={slotIndex}");
             if (TrySend(slot))
             {
+                if (DebugEnabled)
+                    Console.Error.WriteLine($"dealer-router client resend slot={slotIndex}");
                 slot.WaitingForWritable = false;
                 slot.WaitingForReply = true;
                 UpdatePollMask(slot, eventMasks, slotIndex);
             }
         }
 
-        if (!IsSocketReadReady(pollManager, slotIndex))
+        bool readReady = IsSocketReadReady(pollManager, slotIndex);
+        if (!readReady && !slot.WaitingForReply)
             return;
 
         while (true)
@@ -283,6 +320,8 @@ internal static class PerfDealerRouterClient
                 continue;
 
             slot.WaitingForReply = false;
+            if (DebugEnabled)
+                Console.Error.WriteLine($"dealer-router client recv phase={phase} slot={slotIndex} bytes={received}");
             if (phase == PerfPhase.Active)
             {
                 ReadOnlySpan<byte> body = slot.Recv.AsSpan(0, received);
@@ -312,20 +351,8 @@ internal static class PerfDealerRouterClient
             if (!allowSend)
                 continue;
 
-            if (!slot.WaitingForWritable)
-                PreparePayload(slot, msgSize, runId, phase, ref seq);
-
-            if (TrySend(slot))
-            {
-                slot.WaitingForReply = true;
-                slot.WaitingForWritable = false;
-                UpdatePollMask(slot, eventMasks, slotIndex);
-            }
-            else if (!slot.WaitingForWritable)
-            {
-                slot.WaitingForWritable = true;
-                UpdatePollMask(slot, eventMasks, slotIndex);
-            }
+            slot.WaitingForWritable = false;
+            UpdatePollMask(slot, eventMasks, slotIndex);
         }
     }
 
@@ -363,7 +390,7 @@ internal static class PerfDealerRouterClient
 
     private static bool TrySend(DealerRouterClientSlot slot)
     {
-        return slot.Socket.TrySend(slot.Payload.AsSpan(), SendFlags.DontWait,
+        return slot.Socket.TrySend(slot.Payload.AsSpan(), PerfSendFlags.DontWait,
             out int written) && written > 0;
     }
 

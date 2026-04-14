@@ -7,35 +7,35 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.PubSocket;
-import dev.kairoscode.zlink.perf.PerfSocketPollSet;
+import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.SubSocket;
+import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfPubSub {
     private static final int READY_EVENTS = MonitorEventType.CONNECTION_READY.getValue();
+    private static final String TOPIC = "perf.topic";
 
     private PerfPubSub() {
     }
 
     static PerfUtil.Result run(PerfUtil.Config config) {
         String endpoint = PerfUtil.endpoint(config.transport(), "single-pubsub");
-        String topic = "perf.topic";
-        CountDownLatch finished = new CountDownLatch(1);
-        CountDownLatch ready = new CountDownLatch(1);
+        AtomicBoolean senderDone = new AtomicBoolean(false);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics();
         boolean sharedContext = "inproc".equals(config.transport());
         Context pubCtx = PerfUtil.newContext(config);
         Context subCtx = sharedContext ? pubCtx : PerfUtil.newContext(config);
         try (PubSocket pub = new PubSocket(pubCtx);
-             SubSocket sub = new SubSocket(subCtx);
-             var pubMonitor = pub.monitorOpen(MonitorEventType.CONNECTION_READY);
-             var subMonitor = sub.monitorOpen(MonitorEventType.CONNECTION_READY)) {
+             SubSocket sub = new SubSocket(subCtx)) {
+            var pubMonitor = pub.monitorOpen(MonitorEventType.CONNECTION_READY);
+            var subMonitor = sub.monitorOpen(MonitorEventType.CONNECTION_READY);
+            try {
             PerfUtil.applyMonitorOptions(pubMonitor, config);
             PerfUtil.applyMonitorOptions(subMonitor, config);
             PerfUtil.applySocketOptions(pub, config);
@@ -44,7 +44,7 @@ final class PerfPubSub {
             PerfUtil.configureServerTls(pub, config.transport());
             PerfUtil.configureClientTls(sub, config.transport());
             pub.bind(endpoint);
-            sub.setSubscription(topic);
+            sub.setSubscription(TOPIC);
             sub.connect(endpoint);
             PerfUtil.waitForMonitorEvent(pubMonitor, READY_EVENTS, 1,
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
@@ -52,89 +52,71 @@ final class PerfPubSub {
             PerfUtil.waitForMonitorEvent(subMonitor, READY_EVENTS, 1,
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "pubsub subscriber ready");
+            } finally {
+                pubMonitor.close();
+                subMonitor.close();
+            }
             try {
-                Thread.sleep(250L);
+                Thread.sleep(1_000L);
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("pubsub settle interrupted", ex);
             }
 
-            Thread receiverThread = new Thread(() -> {
+            Thread recvThread = new Thread(() -> {
+                long lastRecvNs = System.nanoTime();
+                long flushNs = Duration.ofMillis(Math.max(1, config.recvTimeoutMs())).toNanos();
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(sub), PollEventType.POLLIN.getValue())) {
-                    while (finished.getCount() > 0L) {
-                        pollSet.poll(-1);
-                        while (true) {
-                            Optional<dev.kairoscode.zlink.TopicMessage> maybe = PerfUtil.trySubscribe(sub);
-                            if (maybe.isEmpty()) {
-                                break;
+                    while (true) {
+                        int timeoutMs = senderDone.get()
+                            ? Math.max(1, config.recvTimeoutMs())
+                            : -1;
+                        int rc = pollSet.poll(timeoutMs < 0 ? 50 : timeoutMs);
+                        if (rc > 0 && pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
+                            while (true) {
+                                try {
+                                    try (var received = sub.subscribe(RecvFlags.DONT_WAIT)) {
+                                        PerfUtil.Header header = PerfUtil.decodeHeader(
+                                            received.firstPart(), config.size());
+                                        if (header == null) {
+                                            continue;
+                                        }
+                                        if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                                            metrics.recordNanos(header.latencyNanos());
+                                        }
+                                        lastRecvNs = System.nanoTime();
+                                    }
+                                } catch (dev.kairoscode.zlink.ZlinkException ex) {
+                                    if (ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4) {
+                                        break;
+                                    }
+                                    throw ex;
+                                }
                             }
-                            try (var received = maybe.orElseThrow()) {
-                                PerfUtil.Header header = PerfUtil.decodeHeader(
-                                    received.firstPart(), config.size());
-                                if (header == null) {
-                                    continue;
-                                }
-                                if (header.phase() == PerfUtil.PHASE_WARMUP
-                                    && ready.getCount() > 0L) {
-                                    ready.countDown();
-                                    continue;
-                                }
-                                if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                                    finished.countDown();
-                                    return;
-                                }
-                                if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                                    metrics.recordNanos(header.latencyNanos());
-                                }
-                            }
+                            continue;
+                        }
+                        if (senderDone.get() && System.nanoTime() - lastRecvNs >= flushNs) {
+                            return;
                         }
                     }
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
-                    finished.countDown();
                 }
-            }, "single-pubsub-receiver");
-            receiverThread.start();
+            }, "single-pubsub-recv");
+            recvThread.start();
 
-            long readyDeadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-            while (ready.getCount() > 0L && System.nanoTime() < readyDeadline) {
-                try (Message probe = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                    SingleSendLoops.runWithRetry(() -> pub.publish(topic, List.of(probe)));
-                }
-                try {
-                    Thread.sleep(25L);
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("pubsub warmup interrupted", ex);
+            metrics.startActiveWindow();
+            long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
+            while (System.nanoTime() < activeEnd) {
+                try (Message m = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                    SingleSendLoops.runWithRetry(() -> pub.publish(TOPIC, List.of(m)));
                 }
             }
-            PerfUtil.await(ready, "pubsub subscriber ready", Duration.ofSeconds(10));
-
-            Thread traffic = new Thread(() -> {
-                metrics.startActiveWindow();
-                long activeEnd = System.nanoTime()
-                    + config.durationSeconds() * 1_000_000_000L;
-                while (System.nanoTime() < activeEnd) {
-                    try (Message m = PerfUtil.payload(config.size(),
-                             (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                        SingleSendLoops.runWithRetry(() -> pub.publish(topic, List.of(m)));
-                    }
-                }
-                for (int i = 0; i < 16; i++) {
-                    try (Message m = PerfUtil.payload(config.size(),
-                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                        SingleSendLoops.runWithRetry(() -> pub.publish(topic, List.of(m)));
-                    }
-                }
-            }, "single-pubsub-sender");
-            traffic.start();
-            PerfUtil.await(finished, "pubsub receiver",
+            senderDone.set(true);
+            PerfUtil.join(recvThread, "pubsub receiver",
                 Duration.ofSeconds(config.durationSeconds() + 10L));
-            PerfUtil.join(traffic, "pubsub sender", Duration.ofSeconds(10));
-            PerfUtil.join(receiverThread, "pubsub receiver thread",
-                Duration.ofSeconds(10));
             if (failure.get() != null) {
                 throw new IllegalStateException("pubsub receiver failed", failure.get());
             }

@@ -219,7 +219,7 @@ internal static class PerfSpotClient
     {
         try
         {
-            if (!subscriber.TrySubscribe(out Subscribed? subscribed)
+            if (!subscriber.TrySubscribe(out TopicMessage? subscribed)
                 || subscribed == null)
                 return 0;
             return CopySubscribedPayload(subscribed, payloadBuffer);
@@ -230,12 +230,12 @@ internal static class PerfSpotClient
         }
     }
 
-    private static int CopySubscribedPayload(Subscribed subscribed,
+    private static int CopySubscribedPayload(TopicMessage subscribed,
         Span<byte> payloadBuffer)
     {
         try
         {
-            if (!subscribed.HasSinglePart)
+            if (!subscribed.IsSinglePart)
                 return 0;
             return subscribed.SinglePartOrThrow().CopyTo(payloadBuffer);
         }

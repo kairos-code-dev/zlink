@@ -23,6 +23,9 @@
 
 namespace
 {
+const char peer_admission_cmd_name[] = "ADMISSION";
+const size_t peer_admission_cmd_name_size = sizeof (peer_admission_cmd_name) - 1;
+
 static void generate_default_routing_id (unsigned char out_[16])
 {
     zlink::generate_random_bytes (out_, 16);
@@ -161,6 +164,69 @@ void zlink::socket_base_t::set_router_spot_request_reply_state (
   const std::shared_ptr<void> &state_)
 {
     _router_spot_request_reply_state = state_;
+}
+
+void zlink::socket_base_t::store_socket_msg_part (
+  std::vector<zlink_msg_t> *parts_,
+  zlink::msg_t *msg_)
+{
+    if (!parts_ || !msg_)
+        return;
+
+    zlink_msg_t stored;
+    memset (&stored, 0, sizeof (stored));
+    zlink::msg_t *stored_msg = reinterpret_cast<zlink::msg_t *> (&stored);
+    const int init_rc = stored_msg->init ();
+    errno_assert (init_rc == 0);
+    const int move_rc = stored_msg->move (*msg_);
+    errno_assert (move_rc == 0);
+    parts_->push_back (stored);
+}
+
+int zlink::socket_base_t::init_peer_admission_command (
+  zlink::msg_t *msg_,
+  zlink_admission_state_t state_)
+{
+    if (!msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const int rc = msg_->init_size (peer_admission_cmd_name_size + 1);
+    if (rc != 0)
+        return -1;
+
+    memcpy (msg_->data (), peer_admission_cmd_name,
+            peer_admission_cmd_name_size);
+    static_cast<unsigned char *> (msg_->data ())[
+      peer_admission_cmd_name_size] = static_cast<unsigned char> (state_);
+    msg_->set_flags (zlink::msg_t::command);
+    return 0;
+}
+
+bool zlink::socket_base_t::decode_peer_admission_command (
+  const zlink::msg_t &msg_,
+  zlink_admission_state_t *state_out_)
+{
+    if (!(msg_.flags () & zlink::msg_t::command))
+        return false;
+    if (msg_.size () != peer_admission_cmd_name_size + 1)
+        return false;
+    if (memcmp (const_cast<zlink::msg_t &> (msg_).data (),
+                peer_admission_cmd_name, peer_admission_cmd_name_size)
+        != 0) {
+        return false;
+    }
+
+    const unsigned char state =
+      static_cast<unsigned char *> (const_cast<zlink::msg_t &> (msg_).data ())[
+        peer_admission_cmd_name_size];
+    if (state != ZLINK_ADMISSION_SERVING && state != ZLINK_ADMISSION_DRAINING)
+        return false;
+
+    if (state_out_)
+        *state_out_ = static_cast<zlink_admission_state_t> (state);
+    return true;
 }
 
 void zlink::socket_base_t::clear_router_spot_request_reply_state ()

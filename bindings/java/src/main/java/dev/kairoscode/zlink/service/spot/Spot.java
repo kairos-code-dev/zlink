@@ -715,6 +715,8 @@ public final class Spot implements AutoCloseable {
             recordCallbackFailure(ex);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
+        } finally {
+            closeSnapshot(snapshot);
         }
     }
 
@@ -765,39 +767,16 @@ public final class Spot implements AutoCloseable {
                                                            long topicLen,
                                                            MemorySegment parts,
                                                            long partCount) {
-        byte[][] snapshotParts = snapshotParts(parts, partCount);
+        Message[] snapshotParts = InternalAccess.messageFromOwnedMsgVectorShared(
+            parts, partCount);
         NativeMsg.multipartClose(parts, partCount);
         return new CallbackSubscribeData(readRoutingId(sourceRid),
             decodeTopic(topic, topicLen), snapshotParts);
     }
 
-    private static byte[][] snapshotParts(MemorySegment parts, long partCount) {
-        int count = Math.toIntExact(partCount);
-        if (count == 0)
-            return new byte[0][];
-        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-        MemorySegment vector = MemorySegment.ofAddress(parts.address()).reinterpret(
-            msgSize * count);
-        byte[][] snapshot = new byte[count][];
-        for (int i = 0; i < count; i++) {
-            MemorySegment src = vector.asSlice((long) i * msgSize, msgSize);
-            int size = Math.toIntExact(NativeMsg.msgSize(src));
-            byte[] bytes = new byte[size];
-            if (size > 0) {
-                MemorySegment data = NativeMsg.msgData(src).reinterpret(size);
-                MemorySegment.copy(data, 0, MemorySegment.ofArray(bytes), 0,
-                    size);
-            }
-            snapshot[i] = bytes;
-        }
-        return snapshot;
-    }
-
     private static Received materializeReceived(CallbackSubscribeData snapshot) {
-        Message[] frames = new Message[snapshot.parts().length];
-        for (int i = 0; i < snapshot.parts().length; i++)
-            frames[i] = Message.copyOf(snapshot.parts()[i]);
-        return InternalAccess.received(snapshot.routingId(), null, frames, 0L,
+        return InternalAccess.received(snapshot.routingId(), null,
+          snapshot.parts(), 0L,
           false, null);
     }
 
@@ -901,6 +880,19 @@ public final class Spot implements AutoCloseable {
         }
     }
 
+    private static void closeSnapshot(CallbackSubscribeData snapshot) {
+        if (snapshot == null)
+            return;
+        for (Message part : snapshot.parts()) {
+            if (part == null)
+                continue;
+            try {
+                part.close();
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
+
     private static ExecutorService newCallbackExecutor() {
         return Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "zlink-spot-callback");
@@ -915,7 +907,7 @@ public final class Spot implements AutoCloseable {
     }
 
     private record CallbackSubscribeData(RoutingId routingId, String topicId,
-                                         byte[][] parts) {}
+                                         Message[] parts) {}
 
     private MemorySegment topicCString(String topic) {
         Objects.requireNonNull(topic, "topic");

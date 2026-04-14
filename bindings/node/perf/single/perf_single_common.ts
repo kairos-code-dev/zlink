@@ -2,15 +2,63 @@
 
 'use strict';
 
-const zlink = require('../../dist');
+const zlink = require('../../dist/canonical');
 const {
-  PollEvent,
-  MonitorEvent
+  MonitorEvent,
+  RecvFlags,
+  RecvResult
 } = zlink;
 const {
   sleepImmediate
 } = require('../common/perf_metrics');
 const READY_EVENTS = new Set([MonitorEvent.CONNECTION_READY, MonitorEvent.CONNECTED]);
+const POLLIN = 1;
+
+function tryRecv(socket) {
+  try {
+    return socket.recv(RecvFlags.DontWait);
+  } catch (error) {
+    if (error instanceof zlink.RecvError && error.result === RecvResult.NoData) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function trySubscribe(socket) {
+  try {
+    return socket.subscribe(RecvFlags.DontWait);
+  } catch (error) {
+    if (error instanceof zlink.RecvError && error.result === RecvResult.NoData) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function trySocketSend(socket, ...args) {
+  try {
+    socket.send(...args, zlink.SendFlags.DontWait);
+    return true;
+  } catch (error) {
+    if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function trySocketPublish(socket, topic, payload) {
+  try {
+    socket.publish(topic, payload, zlink.SendFlags.DontWait);
+    return true;
+  } catch (error) {
+    if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
+      return false;
+    }
+    throw error;
+  }
+}
 
 async function waitForConnectionReady(socket, connectFn = null, timeoutMs = 5000) {
   const monitor = socket.monitorOpen(MonitorEvent.CONNECTION_READY);
@@ -20,9 +68,11 @@ async function waitForConnectionReady(socket, connectFn = null, timeoutMs = 5000
       await connectFn();
     }
     while (Date.now() < deadline) {
-      const event = monitor.tryRecv();
-      if (event && READY_EVENTS.has(event.event)) {
-        return;
+      if (monitor.snapshot().isReady()) {
+        const event = monitor.recv();
+        if (READY_EVENTS.has(event.event)) {
+          return;
+        }
       }
       await sleepImmediate();
     }
@@ -34,90 +84,72 @@ async function waitForConnectionReady(socket, connectFn = null, timeoutMs = 5000
 
 async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25) {
   const poller = new zlink.Poller();
-  poller.addSocket(socket, PollEvent.POLLIN);
+  poller.addSocket(socket, POLLIN);
 
-  while (!shouldStop()) {
-    let ready = [];
-    try {
-      ready = poller.poll(pollTimeoutMs);
-    } catch (error) {
-      const text = String(error && error.message ? error.message : error);
-      if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
+  try {
+    while (!shouldStop()) {
+      let ready = [];
+      try {
+        ready = poller.poll(pollTimeoutMs);
+      } catch (error) {
+        const text = String(error && error.message ? error.message : error);
+        if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
+          await sleepImmediate();
+          continue;
+        }
+        throw error;
+      }
+      if (ready.length === 0) {
         await sleepImmediate();
         continue;
       }
-      throw error;
-    }
-    if (ready.length === 0) {
-      await sleepImmediate();
-      continue;
-    }
-    const socketKind = socket && socket.constructor ? socket.constructor.name : '';
-    if (socketKind === 'StreamSocket' && typeof socket.recv === 'function') {
-      const received = socket.recv();
-      if (received) {
-        onMessage(received);
-      }
-    } else if (typeof socket.trySubscribe === 'function') {
-      while (true) {
-        const received = socket.trySubscribe();
-        if (!received) {
-          break;
+      if (typeof socket.subscribe === 'function') {
+        while (true) {
+          const received = trySubscribe(socket);
+          if (!received) {
+            break;
+          }
+          onMessage(received);
         }
-        onMessage(received);
-      }
-    } else if (typeof socket.tryRecv === 'function') {
-      while (true) {
-        const received = socket.tryRecv();
-        if (!received) {
-          break;
+      } else {
+        while (true) {
+          const received = tryRecv(socket);
+          if (!received) {
+            break;
+          }
+          onMessage(received);
         }
-        onMessage(received);
-      }
-    } else {
-      const received = socket.recv();
-      if (received) {
-        onMessage(received);
       }
     }
+  } finally {
+    poller.close();
   }
 }
 
 function drainRecvNow(socket, onMessage) {
-  const socketKind = socket && socket.constructor ? socket.constructor.name : '';
-  if (socketKind === 'StreamSocket' && typeof socket.tryRecv === 'function') {
+  if (typeof socket.subscribe === 'function') {
     while (true) {
-      const received = socket.tryRecv();
+      const received = trySubscribe(socket);
       if (!received) {
-        break;
+        return;
       }
       onMessage(received);
     }
     return;
   }
-  if (typeof socket.trySubscribe === 'function') {
-    while (true) {
-      const received = socket.trySubscribe();
-      if (!received) {
-        break;
-      }
-      onMessage(received);
+  while (true) {
+    const received = tryRecv(socket);
+    if (!received) {
+      break;
     }
-    return;
-  }
-  if (typeof socket.tryRecv === 'function') {
-    while (true) {
-      const received = socket.tryRecv();
-      if (!received) {
-        break;
-      }
-      onMessage(received);
-    }
+    onMessage(received);
   }
 }
 
 module.exports = {
   drainRecvSocket,
   drainRecvNow,
-  waitForConnectionReady
+  waitForConnectionReady,
+  trySocketSend,
+  trySocketPublish
 };

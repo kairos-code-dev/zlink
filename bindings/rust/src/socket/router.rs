@@ -30,6 +30,11 @@ struct CallbackRouterRequestState {
     native_parts: Vec<ffi::zlink_msg_t>,
 }
 
+struct RouterReceiveCallback<F> {
+    handle: *mut c_void,
+    handler: F,
+}
+
 /// ROUTER socket – asynchronous request/reply pattern (server side).
 ///
 /// All sends are routed: `send(target, parts)` addresses a specific peer.
@@ -318,7 +323,11 @@ impl RouterSocket {
     where
         F: Fn(Received) + Send + 'static,
     {
-        let (cb, userdata) = super::CallbackBox::new(handler);
+        let state = RouterReceiveCallback {
+            handle: self.inner.handle,
+            handler,
+        };
+        let (cb, userdata) = super::CallbackBox::new(state);
         let rc = unsafe {
             ffi::zlink_router_handler(self.inner.handle, router_recv_trampoline::<F>, userdata)
         };
@@ -627,9 +636,9 @@ unsafe extern "C" fn router_recv_trampoline<F: Fn(Received) + Send + 'static>(
     part_count: usize,
     userdata: *mut c_void,
 ) {
-    let handler = unsafe { &*(userdata as *const F) };
-    handler(router_received_from_raw(
-        ptr::null_mut(),
+    let state = unsafe { &*(userdata as *const RouterReceiveCallback<F>) };
+    (state.handler)(router_received_from_raw(
+        state.handle,
         source_node_rid,
         source_spot_rid,
         request_seq,

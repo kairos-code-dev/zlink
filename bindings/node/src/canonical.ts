@@ -1294,6 +1294,23 @@ export class StreamSocket extends RoutedMessageSocket {
     Object.defineProperty(this, 'connect', { value: undefined, configurable: true, enumerable: false, writable: false });
     Object.defineProperty(this, 'disconnect', { value: undefined, configurable: true, enumerable: false, writable: false });
   }
+  recv(flags: RecvFlags = RecvFlags.None): Received {
+    let raw;
+    try {
+      raw = ((flags | 0) & (RecvFlags.DontWait | 0))
+        ? requireNative().socketTryRecvMessage(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null } | null
+        : requireNative().socketRecvMessage(this.nativeHandle(), flags | 0) as { parts: MessageSnapshot[]; routingId?: Buffer | null } | null;
+    } catch (error) {
+      throw recvNativeError(error, flags, 'recv failed');
+    }
+    if (!raw) throw new RecvError(RecvResult.NoData, 11, 'recv failed');
+    return materializeReceived(raw);
+  }
+  onReceive(handler: SocketRecvHandler): void {
+    requireNative().socketRecvHandler(this.nativeHandle(), (routingId: Buffer | null, parts: Buffer[]) => {
+      handler(new Received(parts.map((part) => Message.from(part)), wrapRoutingId(routingId)));
+    });
+  }
   setRoutingId(routingId: RoutingId): void {
     requireNative().socketSetOpt(
       this.nativeHandle(),

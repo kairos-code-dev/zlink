@@ -26,7 +26,7 @@ internal static class PerfDealerRouter
         try
         {
             string ep = EndpointFor(transport, "dealer-router");
-            dealer.SetOption(SocketOptions.RoutingId, "CLIENT");
+            dealer.SetRoutingId(RoutingId.FromBytes("CLIENT"u8));
             router.Bind(ep);
             dealer.Connect(ep);
             Thread.Sleep(SingleConnectWaitMs);
@@ -158,7 +158,7 @@ internal static class PerfDealerRouter
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
                 try
                 {
-                    SendBlocking(sender, payload, SendFlags.None);
+                    SendBlocking(sender, payload, PerfSendFlags.None);
                 }
                 catch
                 {
@@ -174,7 +174,7 @@ internal static class PerfDealerRouter
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
                 try
                 {
-                    SendBlocking(sender, payload, SendFlags.None);
+                    SendBlocking(sender, payload, PerfSendFlags.None);
                 }
                 catch
                 {

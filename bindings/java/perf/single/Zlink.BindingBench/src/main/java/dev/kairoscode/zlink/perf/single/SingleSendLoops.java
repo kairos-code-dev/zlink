@@ -2,11 +2,18 @@
 
 package dev.kairoscode.zlink.perf.single;
 
+import dev.kairoscode.zlink.SubmitException;
+import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.ZlinkException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class SingleSendLoops {
+    private static final int ERRNO_EAGAIN = 11;
+    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    private static final int ERRNO_ETIMEDOUT = 110;
+    private static final int ERRNO_ETIMEDOUT_WIN = 10060;
+
     @FunctionalInterface
     interface SendAction {
         void run();
@@ -39,14 +46,13 @@ final class SingleSendLoops {
     }
 
     static void runWithRetry(SendAction action) {
-        long deadline = System.nanoTime() + 2_000_000_000L;
         int attempts = 0;
         while (true) {
             try {
                 action.run();
                 return;
             } catch (ZlinkException ex) {
-                if (!isRetriable(ex) || System.nanoTime() >= deadline) {
+                if (!isRetriable(ex)) {
                     throw ex;
                 }
                 attempts++;
@@ -56,8 +62,16 @@ final class SingleSendLoops {
     }
 
     private static boolean isRetriable(ZlinkException ex) {
+        if (ex instanceof SubmitException submit
+            && submit.getResult() == SubmitResult.BACKPRESSURED) {
+            return true;
+        }
         int errno = ex.getInternalErrno();
-        return errno == 11 || errno == 4;
+        return errno == ERRNO_EAGAIN
+            || errno == ERRNO_EWOULDBLOCK_WIN
+            || errno == ERRNO_ETIMEDOUT
+            || errno == ERRNO_ETIMEDOUT_WIN
+            || errno == 4;
     }
 
     private static void backoff(int attempts) {

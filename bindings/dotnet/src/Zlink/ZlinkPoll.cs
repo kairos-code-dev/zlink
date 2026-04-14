@@ -29,6 +29,17 @@ public static class ZlinkPoll
             events, revents, timeoutMs);
     }
 
+    public static int Poll(IReadOnlyList<IZlinkSocket> sockets,
+        IReadOnlyList<PollEvents> events, Span<PollEvents> revents,
+        int timeoutMs)
+    {
+        if (sockets == null)
+            throw new ArgumentNullException(nameof(sockets));
+        return PollSocketsCore(sockets.Count,
+            i => SocketInterop.RequireSocket(sockets[i], nameof(sockets)).Handle,
+            events, revents, timeoutMs);
+    }
+
     public static int Poll(IReadOnlyList<SocketMonitor> monitors, int timeoutMs)
     {
         if (monitors == null)
@@ -38,6 +49,16 @@ public static class ZlinkPoll
             ? stackalloc PollEvents[monitors.Count]
             : new PollEvents[monitors.Count];
         Array.Fill(events, PollEvents.PollIn);
+        return PollSocketsCore(monitors.Count, i => monitors[i].Handle, events,
+            revents, timeoutMs);
+    }
+
+    public static int Poll(IReadOnlyList<SocketMonitor> monitors,
+        IReadOnlyList<PollEvents> events, Span<PollEvents> revents,
+        int timeoutMs)
+    {
+        if (monitors == null)
+            throw new ArgumentNullException(nameof(monitors));
         return PollSocketsCore(monitors.Count, i => monitors[i].Handle, events,
             revents, timeoutMs);
     }

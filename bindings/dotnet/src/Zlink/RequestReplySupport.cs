@@ -9,17 +9,9 @@ internal static class RequestReplySupport
     private const int ErrnoEAgainWin = 35;
     private const int ErrnoEWouldBlockWin = 10035;
 
-    internal static Message[] ToArray(IReadOnlyList<Message> parts)
-    {
-        Message[] array = new Message[parts.Count];
-        for (int i = 0; i < parts.Count; i++)
-            array[i] = parts[i];
-        return array;
-    }
-
     internal static Message CloneMessage(Message source)
     {
-        return Message.FromBytes(source.AsReadOnlySpan());
+        return source.Copy();
     }
 
     internal static Message[] CloneParts(IReadOnlyList<Message> parts)

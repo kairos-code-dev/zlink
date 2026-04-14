@@ -145,7 +145,7 @@ internal static class PerfDealerDealer
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
                 try
                 {
-                    SendBlocking(sender, payload, SendFlags.None);
+                    SendBlocking(sender, payload, PerfSendFlags.None);
                 }
                 catch
                 {
@@ -161,7 +161,7 @@ internal static class PerfDealerDealer
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
                 try
                 {
-                    SendBlocking(sender, payload, SendFlags.None);
+                    SendBlocking(sender, payload, PerfSendFlags.None);
                 }
                 catch
                 {

@@ -6,6 +6,8 @@ using static PerfRunner;
 
 internal static class PerfRouterRouterServer
 {
+    private const int PollTimeoutMs = 50;
+
     internal static int Run(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
@@ -21,9 +23,9 @@ internal static class PerfRouterRouterServer
         using var server = new RouterSocket(ctx);
         ApplyMultiSocketOptions(server, options);
         ConfigureTlsServerIfNeeded(server, options.Transport);
-        server.SetOption(SocketOptions.RoutingId, "SERVER");
-
-        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
+        server.RouterOptions.RoutingId = RoutingId.FromBytes("SERVER"u8);
+        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady
+            | SocketEvent.Connected | SocketEvent.Accepted);
 
         server.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
         server.Bind(endpoint);
@@ -45,7 +47,7 @@ internal static class PerfRouterRouterServer
 
         while (true)
         {
-            if (!WaitForEvents(poller, events, 0))
+            if (!WaitForEvents(poller, events, PollTimeoutMs))
                 continue;
             if ((events[0].Revents & PollEvents.PollIn) == 0)
                 continue;
@@ -82,11 +84,17 @@ internal static class PerfRouterRouterServer
                         }
                     }
 
-                    SendResult sendResult = received.Parts.Count == 1
-                        ? server.TrySend(received.RoutingId, bodyMessage)
-                        : server.TrySend(received.RoutingId, received.Parts);
-                    if (sendResult != SendResult.Sent)
+                    if (received.RoutingId == null)
                         return 2;
+                    Message[] replies = CreateFreshParts(received.Parts);
+                    try
+                    {
+                        server.Send(received.RoutingId.Value, replies);
+                    }
+                    finally
+                    {
+                        DisposeAllQuietly(replies);
+                    }
                 }
                 catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                                 || IsInterrupted(ex.InternalErrno))
@@ -126,5 +134,22 @@ Done:
 
         for (int i = 0; i < received.Parts.Count; i++)
             TryDisposeQuietly(received.Parts[i]);
+    }
+
+    private static Message[] CreateFreshParts(IReadOnlyList<Message> parts)
+    {
+        var fresh = new Message[parts.Count];
+        try
+        {
+            for (int i = 0; i < parts.Count; i++)
+                fresh[i] = Message.FromBytes(parts[i].AsReadOnlySpan());
+            return fresh;
+        }
+        catch
+        {
+            for (int i = 0; i < fresh.Length; i++)
+                TryDisposeQuietly(fresh[i]);
+            throw;
+        }
     }
 }

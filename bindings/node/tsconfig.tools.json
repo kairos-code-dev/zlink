@@ -9,7 +9,9 @@
     "noCheck": true
   },
   "include": [
-    "tests/**/*.ts"
+    "tests/**/*.ts",
+    "samples/**/*.ts",
+    "perf/**/*.ts"
   ],
   "exclude": [
     "dist",

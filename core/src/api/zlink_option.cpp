@@ -37,6 +37,11 @@ int socket_type_of (zlink::socket_base_t *socket_)
     return type;
 }
 
+bool socket_supports_admission_state (zlink::socket_base_t *socket_)
+{
+    return socket_ && socket_type_of (socket_) == ZLINK_CORE_SOCKET_ROUTER;
+}
+
 int map_common_option (zlink_option_t option_)
 {
     switch (option_) {
@@ -378,7 +383,7 @@ zlink_config_result_t zlink_set_admission_state (void *handle_,
     }
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
-        if (socket_type_of (socket) != ZLINK_CORE_SOCKET_ROUTER) {
+        if (!socket_supports_admission_state (socket)) {
             errno = EINVAL;
             return ZLINK_CONFIG_INVALID_ARGUMENT;
         }
@@ -400,7 +405,7 @@ zlink_config_result_t zlink_get_admission_state (
     }
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
-        if (socket_type_of (socket) != ZLINK_CORE_SOCKET_ROUTER) {
+        if (!socket_supports_admission_state (socket)) {
             errno = EINVAL;
             return ZLINK_CONFIG_INVALID_ARGUMENT;
         }

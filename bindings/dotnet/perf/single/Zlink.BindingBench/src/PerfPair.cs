@@ -22,13 +22,34 @@ internal static class PerfPair
         ApplySingleSocketOptions(right);
         ConfigureTlsServerIfNeeded(left, transport);
         ConfigureTlsClientIfNeeded(right, transport);
+        bool useMonitors = !string.Equals(transport, "inproc",
+            StringComparison.OrdinalIgnoreCase);
+        MonitorSocket? leftMonitor = null;
+        MonitorSocket? rightMonitor = null;
 
         try
         {
+            if (useMonitors)
+            {
+                leftMonitor = left.MonitorOpen(SocketEvent.ConnectionReady);
+                rightMonitor = right.MonitorOpen(SocketEvent.ConnectionReady);
+            }
+
             string ep = EndpointFor(transport, "pair");
             left.Bind(ep);
             right.Connect(ep);
-            Thread.Sleep(SingleConnectWaitMs);
+            if (useMonitors)
+            {
+                if (!(WaitForConnectionReady(leftMonitor!, SingleConnectWaitMs)
+                    && WaitForConnectionReady(rightMonitor!, SingleConnectWaitMs)))
+                {
+                    return 2;
+                }
+            }
+            else
+            {
+                Thread.Sleep(SingleConnectWaitMs);
+            }
 
             int payloadSize = Math.Max(size, sizeof(long));
             var payload = new byte[payloadSize];
@@ -38,6 +59,8 @@ internal static class PerfPair
                     recvTimeoutMs, 0, out long warmupReceived, out _)
                 || warmupReceived < warmupCount)
             {
+                Console.Error.WriteLine(
+                    $"single_pair_warmup_failed:received={warmupReceived},expected={warmupCount}");
                 return 2;
             }
 
@@ -45,6 +68,8 @@ internal static class PerfPair
                     recvTimeoutMs, latCount, out long received,
                     out var latencySamples))
             {
+                Console.Error.WriteLine(
+                    $"single_pair_active_failed:received={received},samples={latencySamples.Count}");
                 return 2;
             }
 
@@ -54,9 +79,15 @@ internal static class PerfPair
                 latency.p95, latency.p99);
             return 0;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"single_pair_error:{ex}");
             return 2;
+        }
+        finally
+        {
+            leftMonitor?.Dispose();
+            rightMonitor?.Dispose();
         }
     }
 
@@ -145,7 +176,13 @@ internal static class PerfPair
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
                 try
                 {
-                    SendBlocking(sender, payload, SendFlags.None);
+                    SendBlocking(sender, payload, PerfSendFlags.None);
+                }
+                catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                                || IsWouldBlock(ex.InternalErrno))
+                {
+                    Thread.Yield();
+                    continue;
                 }
                 catch
                 {
@@ -161,7 +198,14 @@ internal static class PerfPair
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
                 try
                 {
-                    SendBlocking(sender, payload, SendFlags.None);
+                    SendBlocking(sender, payload, PerfSendFlags.None);
+                }
+                catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                                || IsWouldBlock(ex.InternalErrno))
+                {
+                    i--;
+                    Thread.Yield();
+                    continue;
                 }
                 catch
                 {
@@ -176,12 +220,10 @@ internal static class PerfPair
 
         latencySamples = samples;
         receivedOut = received;
-        if (sendFailed || recvError != null)
-            return false;
-
         if (!active)
             return received >= warmupCount;
 
         return received > 0 && latencySamples.Count > 0;
     }
+
 }

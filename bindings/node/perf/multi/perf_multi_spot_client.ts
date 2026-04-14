@@ -3,7 +3,7 @@
 'use strict';
 
 const readline = require('node:readline');
-const zlink = require('../../dist');
+const zlink = require('../../dist/canonical');
 const {
   createMetricCollector,
   decodeMetricHeader,
@@ -16,6 +16,27 @@ const { parseMultiArgs } = require('./perf_multi_common');
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
 const DEBUG_SPOT = Boolean(process.env.PERF_DEBUG_TRANSITIONS);
+const trySpotSubscribe = (spot) => {
+  try {
+    return spot.subscribe(zlink.RecvFlags.DontWait);
+  } catch (error) {
+    if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
+      return null;
+    }
+    throw error;
+  }
+};
+const trySpotPublish = (spot, topic, payload) => {
+  try {
+    spot.publish(topic, payload, zlink.SendFlags.DontWait);
+    return true;
+  } catch (error) {
+    if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
+      return false;
+    }
+    throw error;
+  }
+};
 
 function debugSpot(message) {
   if (DEBUG_SPOT) {
@@ -71,8 +92,8 @@ async function main() {
   const publishControl = async (payload) => {
     const buffer = Buffer.from(payload);
     while (true) {
-      const result = controlSpot.tryPublish(CONTROL_TOPIC, buffer);
-      if (result === zlink.SendResult.Sent) {
+      const result = trySpotPublish(controlSpot, CONTROL_TOPIC, buffer);
+      if (result) {
         return;
       }
       await sleepImmediate();
@@ -136,7 +157,7 @@ async function main() {
     console.log(`CLIENT_READY,${options.msgSize}`);
     const recvTasks = slots.map((slot) => (async () => {
       while (!stop) {
-        const received = slot.spot.trySubscribe();
+        const received = trySpotSubscribe(slot.spot);
         if (!received) {
           await new Promise((resolve) => setImmediate(resolve));
           continue;

@@ -5,9 +5,7 @@ package dev.kairoscode.zlink.perf.multi;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
-import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.PubSocket;
-import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
@@ -79,30 +77,23 @@ final class PerfMultiPubSub {
                 PerfUtil.await(go, "pubsub start", Duration.ofSeconds(10));
                 long finishDeadline = System.nanoTime()
                     + Duration.ofSeconds(config.durationSeconds() + 20L).toNanos();
-                try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                    List.of(sub), PollEventType.POLLIN.getValue())) {
-                    while (System.nanoTime() < finishDeadline) {
-                        if (!awaitReadable(pollSet, finishDeadline)) {
-                            break;
+                while (System.nanoTime() < finishDeadline) {
+                    Optional<dev.kairoscode.zlink.TopicMessage> maybe = PerfUtil.trySubscribe(sub);
+                    if (maybe.isEmpty()) {
+                        Thread.onSpinWait();
+                        continue;
+                    }
+                    try (var received = maybe.orElseThrow()) {
+                        PerfUtil.Header header = PerfUtil.decodeHeader(
+                            received.firstPart(), config.size());
+                        if (header == null) {
+                            continue;
                         }
-                        while (true) {
-                            Optional<dev.kairoscode.zlink.TopicMessage> maybe = PerfUtil.trySubscribe(sub);
-                            if (maybe.isEmpty()) {
-                                break;
-                            }
-                            try (var received = maybe.orElseThrow()) {
-                                PerfUtil.Header header = PerfUtil.decodeHeader(
-                                    received.firstPart(), config.size());
-                                if (header == null) {
-                                    continue;
-                                }
-                                if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                                    return;
-                                }
-                                if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                                    metrics.recordNanos(header.latencyNanos());
-                                }
-                            }
+                        if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
+                            return;
+                        }
+                        if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                            metrics.recordNanos(header.latencyNanos());
                         }
                     }
                 }
@@ -114,21 +105,5 @@ final class PerfMultiPubSub {
             throw new IllegalStateException("pubsub client failed", failure.get());
         }
         return metrics.finishMulti(config);
-    }
-
-    private static boolean awaitReadable(PerfSocketPollSet pollSet, long deadlineNs) {
-        while (System.nanoTime() < deadlineNs) {
-            try {
-                pollSet.setEvents(0, PollEventType.POLLIN.getValue());
-                if (pollSet.poll(5) > 0) {
-                    return true;
-                }
-            } catch (dev.kairoscode.zlink.ZlinkException ex) {
-                if (ex.getInternalErrno() != 11 && ex.getInternalErrno() != 4) {
-                    throw ex;
-                }
-            }
-        }
-        return false;
     }
 }

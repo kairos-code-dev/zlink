@@ -2,7 +2,7 @@
 
 'use strict';
 
-const zlink = require('../../dist');
+const zlink = require('../../dist/canonical');
 const {
   createMetricCollector,
   createPayload,
@@ -12,7 +12,12 @@ const {
   sleepImmediate,
   stampPayload
 } = require('../common/perf_metrics');
-const { drainRecvNow, drainRecvSocket, waitForConnectionReady } = require('./perf_single_common');
+const {
+  drainRecvNow,
+  drainRecvSocket,
+  waitForConnectionReady,
+  trySocketSend
+} = require('./perf_single_common');
 
 async function runDealerDealerBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
@@ -52,7 +57,7 @@ async function runDealerDealerBenchmark(msgSize, options) {
           msgSize,
           seq
         });
-        if (client.trySend(payload) !== zlink.SendResult.Sent) {
+        if (!trySocketSend(client, payload)) {
           break;
         }
         seq += 1n;

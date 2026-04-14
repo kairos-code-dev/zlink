@@ -35,20 +35,25 @@ internal static partial class PerfRunner
     {
         while (true)
         {
-            if (socket.TryReceive(buffer, flags, out int read))
-                return read;
-
-            if ((flags & ReceiveFlags.DontWait) != 0)
-                return 0;
             try
             {
+                if (socket.TryReceive(buffer, flags, out int read))
+                    return read;
+
+                if ((flags & ReceiveFlags.DontWait) != 0)
+                    return 0;
+
                 return socket.Receive(buffer, flags);
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || ex.InternalErrno == 0)
             {
+                if ((flags & ReceiveFlags.DontWait) != 0)
+                    return 0;
                 continue;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || ex.InternalErrno == 0)
             {
                 if ((flags & ReceiveFlags.DontWait) != 0)
                     return 0;
@@ -71,7 +76,8 @@ internal static partial class PerfRunner
             return socket.TryReceive(buffer, flags, out int read) ? read : 0;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno))
+                                        || IsWouldBlock(ex.InternalErrno)
+                                        || ex.InternalErrno == 0)
         {
             return 0;
         }
@@ -104,14 +110,15 @@ internal static partial class PerfRunner
             return poller.Wait(events, timeoutMs) > 0;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno))
+                                        || IsWouldBlock(ex.InternalErrno)
+                                        || ex.InternalErrno == 0)
         {
             return false;
         }
     }
 
     internal static int SendBlocking(SocketBase socket, ReadOnlySpan<byte> buffer,
-        SendFlags flags = SendFlags.None)
+        PerfSendFlags flags = PerfSendFlags.None)
     {
         return socket.Send(buffer, flags);
     }

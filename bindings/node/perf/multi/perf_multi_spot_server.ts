@@ -3,7 +3,7 @@
 'use strict';
 
 const readline = require('node:readline');
-const zlink = require('../../dist');
+const zlink = require('../../dist/canonical');
 const {
   createPayload,
   sleepImmediate,
@@ -14,6 +14,27 @@ const { parseMultiArgs } = require('./perf_multi_common');
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
 const DEBUG_SPOT = Boolean(process.env.PERF_DEBUG_TRANSITIONS);
+const trySpotSubscribe = (spot) => {
+  try {
+    return spot.subscribe(zlink.RecvFlags.DontWait);
+  } catch (error) {
+    if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
+      return null;
+    }
+    throw error;
+  }
+};
+const trySpotPublish = (spot, topic, payload) => {
+  try {
+    spot.publish(topic, payload, zlink.SendFlags.DontWait);
+    return true;
+  } catch (error) {
+    if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
+      return false;
+    }
+    throw error;
+  }
+};
 
 function debugSpot(message) {
   if (DEBUG_SPOT) {
@@ -48,7 +69,7 @@ async function main() {
 
   const drainControlMessages = () => {
     while (true) {
-      const received = controlSpot.trySubscribe();
+      const received = trySpotSubscribe(controlSpot);
       if (!received) {
         return;
       }
@@ -74,7 +95,7 @@ async function main() {
     debugSpot(`publish phase begin ${phase}`);
     while (process.hrtime.bigint() < deadlineNs) {
       stampPayload(payload, { phase, runId: 0, msgSize: options.msgSize, seq });
-      spot.tryPublish(TOPIC, payload);
+      trySpotPublish(spot, TOPIC, payload);
       seq += 1n;
       await new Promise((resolve) => setImmediate(resolve));
     }
@@ -87,8 +108,8 @@ async function main() {
     const deadline = Date.now() + 5000;
     while (sent < options.clients && Date.now() < deadline) {
       stampPayload(stopPayload, { phase: 2, runId: 0, msgSize: options.msgSize, seq });
-      const result = spot.tryPublish(TOPIC, stopPayload);
-      if (result === zlink.SendResult.Sent) {
+      const result = trySpotPublish(spot, TOPIC, stopPayload);
+      if (result) {
         sent += 1;
         seq += 1n;
         await new Promise((resolve) => setImmediate(resolve));
@@ -109,8 +130,8 @@ async function main() {
     debugSpot('publish control start begin');
     const startPayload = Buffer.from(`START,${options.msgSize}`);
     while (true) {
-      const result = controlSpot.tryPublish(CONTROL_TOPIC, startPayload);
-      if (result === zlink.SendResult.Sent) {
+      const result = trySpotPublish(controlSpot, CONTROL_TOPIC, startPayload);
+      if (result) {
         debugSpot('publish control start end');
         return;
       }

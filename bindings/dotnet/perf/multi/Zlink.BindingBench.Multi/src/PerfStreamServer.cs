@@ -266,7 +266,7 @@ internal static class PerfStreamServer
                 {
                     int rc = server.Send(message.RoutingId.AsSpan(0,
                             message.RoutingIdLength),
-                        SendFlags.SendMore | SendFlags.DontWait);
+                        PerfSendFlags.SendMore | PerfSendFlags.DontWait);
                     if (rc <= 0)
                         return SendStatus.Fatal;
                     message.Stage = StreamSendStage.Payload;
@@ -277,7 +277,7 @@ internal static class PerfStreamServer
                     return SendStatus.Fatal;
 
                 int sent = server.Send(message.Payload.AsReadOnlySpan(),
-                    SendFlags.DontWait);
+                    PerfSendFlags.DontWait);
                 if (sent < 0)
                     return SendStatus.Fatal;
                 message.Clear();

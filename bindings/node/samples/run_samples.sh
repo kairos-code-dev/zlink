@@ -23,7 +23,9 @@ run_node_job() {
   ) &
   watcher_pid=$!
 
-  if ! wait "$job_pid"; then
+  if wait "$job_pid"; then
+    rc=0
+  else
     rc=$?
   fi
 

@@ -9,18 +9,6 @@
 
 namespace
 {
-void store_dispatch_part (std::vector<zlink_msg_t> *parts_, zlink::msg_t *msg_)
-{
-    zlink_msg_t stored;
-    memset (&stored, 0, sizeof (stored));
-    zlink::msg_t *stored_msg = reinterpret_cast<zlink::msg_t *> (&stored);
-    const int init_rc = stored_msg->init ();
-    errno_assert (init_rc == 0);
-    const int move_rc = stored_msg->move (*msg_);
-    errno_assert (move_rc == 0);
-    parts_->push_back (stored);
-}
-
 void drain_pair_dispatch (zlink::pair_t *self_, zlink::pipe_t *pipe_)
 {
     zlink::msg_t msg;
@@ -145,7 +133,7 @@ int zlink::pair_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
     if (!socket_msg_dispatch_active ())
         return 0;
 
-    store_dispatch_part (&_dispatch_parts, msg_);
+    store_socket_msg_part (&_dispatch_parts, msg_);
     if ((reinterpret_cast<msg_t *> (&_dispatch_parts.back ())->flags ()
          & msg_t::more)
         != 0) {

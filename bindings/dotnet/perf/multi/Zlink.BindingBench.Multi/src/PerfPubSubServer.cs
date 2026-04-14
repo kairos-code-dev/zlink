@@ -27,7 +27,8 @@ internal static class PerfPubSubServer
         server.SetOption(SocketOptions.XPubNoDrop,
             options.PubSubXpubNoDrop > 0 ? 1 : 0);
 
-        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
+        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady
+            | SocketEvent.Connected | SocketEvent.Accepted);
 
         server.Bind(endpoint);
         Console.WriteLine($"READY,{endpoint}");
@@ -69,7 +70,7 @@ internal static class PerfPubSubServer
 
     private static bool TryPublish(SocketBase server, ReadOnlySpan<byte> payload)
     {
-        return server.TrySend(payload, SendFlags.DontWait, out int written)
+        return server.TrySend(payload, PerfSendFlags.DontWait, out int written)
             && written > 0;
     }
 

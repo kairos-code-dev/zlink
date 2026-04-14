@@ -70,15 +70,15 @@ internal static partial class PerfRunner
         return EndpointFor(transport, name);
     }
 
-    internal static bool IsMonitorReady(SocketEvent eventValue,
+    internal static bool IsMonitorReady(MonitorEventType eventValue,
         bool acceptFallback)
     {
-        if (eventValue == SocketEvent.ConnectionReady)
+        if (eventValue == (MonitorEventType)SocketEvent.ConnectionReady)
             return true;
         if (!acceptFallback)
             return false;
-        return eventValue == SocketEvent.Accepted
-            || eventValue == SocketEvent.Connected;
+        return eventValue == (MonitorEventType)SocketEvent.Accepted
+            || eventValue == (MonitorEventType)SocketEvent.Connected;
     }
 
     internal static bool WaitMonitorReady(MonitorSocket monitor, int timeoutMs,
@@ -93,7 +93,7 @@ internal static partial class PerfRunner
         {
             long nowTicks = Stopwatch.GetTimestamp();
             if (nowTicks >= deadlineTicks)
-                return true;
+                return false;
 
             int rc = PollMonitorHandles(pollManager,
                 new System.Collections.Generic.List<MonitorSocket> { monitor },
@@ -135,7 +135,7 @@ internal static partial class PerfRunner
         {
             long nowTicks = Stopwatch.GetTimestamp();
             if (nowTicks >= deadlineTicks)
-                return true;
+                return false;
 
             int rc = PollMonitorHandles(pollManager,
                 new System.Collections.Generic.List<MonitorSocket> { monitor },

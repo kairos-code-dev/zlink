@@ -35,7 +35,8 @@ public sealed class PollManager : IDisposable
                 (int)Math.Max(0, remainingMs));
         }
         catch (ZlinkException ex) when (PerfShared.IsWouldBlock(ex.InternalErrno)
-                                        || PerfShared.IsInterrupted(ex.InternalErrno))
+                                        || PerfShared.IsInterrupted(ex.InternalErrno)
+                                        || ex.InternalErrno == 0)
         {
             return 0;
         }
@@ -55,7 +56,8 @@ public sealed class PollManager : IDisposable
                 _socketRevents.AsSpan(0, count), timeoutMs);
         }
         catch (ZlinkException ex) when (PerfShared.IsWouldBlock(ex.InternalErrno)
-                                        || PerfShared.IsInterrupted(ex.InternalErrno))
+                                        || PerfShared.IsInterrupted(ex.InternalErrno)
+                                        || ex.InternalErrno == 0)
         {
             return 0;
         }
@@ -78,7 +80,8 @@ public sealed class PollManager : IDisposable
                 _socketRevents.AsSpan(0, count), timeoutMs);
         }
         catch (ZlinkException ex) when (PerfShared.IsWouldBlock(ex.InternalErrno)
-                                        || PerfShared.IsInterrupted(ex.InternalErrno))
+                                        || PerfShared.IsInterrupted(ex.InternalErrno)
+                                        || ex.InternalErrno == 0)
         {
             return 0;
         }

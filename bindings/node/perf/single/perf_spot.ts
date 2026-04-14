@@ -2,7 +2,7 @@
 
 'use strict';
 
-const zlink = require('../../dist');
+const zlink = require('../../dist/canonical');
 const {
   createMetricCollector,
   createPayload,
@@ -12,6 +12,27 @@ const {
   sleepImmediate,
   stampPayload
 } = require('../common/perf_metrics');
+const trySpotSubscribe = (spot) => {
+  try {
+    return spot.subscribe(zlink.RecvFlags.DontWait);
+  } catch (error) {
+    if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
+      return null;
+    }
+    throw error;
+  }
+};
+const trySpotPublish = (spot, topic, payload) => {
+  try {
+    spot.publish(topic, payload, zlink.SendFlags.DontWait);
+    return true;
+  } catch (error) {
+    if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
+      return false;
+    }
+    throw error;
+  }
+};
 
 async function runSpotBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
@@ -34,7 +55,7 @@ async function runSpotBenchmark(msgSize, options) {
     spot.setSubscription(topic);
     const recvTask = (async () => {
       while (!stop) {
-        const received = spot.trySubscribe();
+        const received = trySpotSubscribe(spot);
         if (!received) {
           await sleepImmediate();
           continue;
@@ -52,13 +73,13 @@ async function runSpotBenchmark(msgSize, options) {
           msgSize,
           seq
         });
-        if (spot.tryPublish(topic, payload) !== zlink.SendResult.Sent) {
+        if (!trySpotPublish(spot, topic, payload)) {
           break;
         }
         seq += 1n;
       }
       while (true) {
-        const received = spot.trySubscribe();
+        const received = trySpotSubscribe(spot);
         if (!received) {
           break;
         }
@@ -72,7 +93,7 @@ async function runSpotBenchmark(msgSize, options) {
 
     for (let i = 0; i < 4; i += 1) {
       while (true) {
-        const received = spot.trySubscribe();
+        const received = trySpotSubscribe(spot);
         if (!received) {
           break;
         }

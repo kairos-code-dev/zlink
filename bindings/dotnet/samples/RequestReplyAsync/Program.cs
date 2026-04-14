@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using SampleCommon;
 using Zlink;
 
@@ -20,19 +21,20 @@ dealerSocket.Connect(endpoint);
 SampleSupport.WaitConnected(routerMonitor, dealerMonitor);
 
 using var requestHandled = new ManualResetEventSlim(false);
-routerSocket.OnReceive((routingId, parts) =>
+Task serverTask = Task.Run(() =>
 {
     try
     {
-        using Message part = parts[0];
+        using Received received = routerSocket.Recv();
+        RoutingId routingId = received.RoutingId
+            ?? throw new InvalidOperationException("missing routing id");
+        using Message part = received.Parts[0];
         SampleSupport.EnsureEqual("ping", part.GetString(), "request");
         using var reply = Message.FromString("pong");
-        routerSocket.Send(routingId, reply);
+        routerSocket.Reply(routingId, received.RequestSeq ?? 0UL, reply);
     }
     finally
     {
-        for (int i = 1; i < parts.Length; i++)
-            parts[i].Dispose();
         requestHandled.Set();
     }
 });
@@ -45,4 +47,5 @@ SampleSupport.EnsureEqual("pong", replyPart.GetString(), "reply");
 for (int i = 1; i < replyReceived.Count; i++)
     replyReceived[i].Dispose();
 SampleSupport.WaitOrThrow(() => requestHandled.IsSet, 2000, "request/reply async sample");
+await serverTask;
 Console.WriteLine("[dealer-router/request-reply/async] send: \"ping\" -> recv: \"pong\"");

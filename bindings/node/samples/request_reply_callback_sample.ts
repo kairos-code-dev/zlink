@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 
 async function reservePort() {
   const srv = net.createServer();
@@ -56,18 +56,32 @@ async function main() {
     const requestHandled = waitFor('request callback', 2000);
 
     routerSocket.onReceive((received) => {
-      assert.equal(received.routingId.toBytes().toString(), 'request-reply-client');
-      assert.ok(typeof received.requestSeq === 'bigint');
-      routerSocket.reply(received.routingId, received.requestSeq, zlink.Message.from(Buffer.from('pong')));
-      requestHandled.resolve();
+      try {
+        assert.equal(received.routingId.toBytes().toString(), 'request-reply-client');
+        assert.ok(typeof received.requestSeq === 'bigint');
+        routerSocket.reply(
+          received.routingId,
+          received.requestSeq,
+          zlink.Message.from(Buffer.from('pong'))
+        );
+        requestHandled.resolve();
+      } finally {
+        received.close();
+      }
     });
 
     dealerSocket.request(
       zlink.Message.from(Buffer.from('ping')),
       (result, reply) => {
-        assert.equal(result, zlink.RequestResult.Ok);
-        assert.equal(reply[0].data().toString(), 'pong');
-        replyHandled.resolve();
+        try {
+          assert.equal(result, zlink.RequestResult.Ok);
+          assert.equal(reply[0].data().toString(), 'pong');
+          replyHandled.resolve();
+        } finally {
+          for (const part of reply) {
+            part.close();
+          }
+        }
       },
       0,
       2000
@@ -77,6 +91,8 @@ async function main() {
     await replyHandled.promise;
     console.log('[dealer-router/request-reply/callback] send: "ping" -> recv: "pong"');
   } finally {
+    dealerSocket.close();
+    routerSocket.close();
     ctx.close();
   }
 }

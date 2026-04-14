@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 
 async function reservePort() {
   const srv = net.createServer();
@@ -49,7 +49,7 @@ async function main() {
       client.send(Buffer.from(sent));
     });
 
-    assert.equal(received.routingId, null);
+    assert.ok(received.routingId instanceof zlink.RoutingId);
     const recv = received.parts[0].data().toString();
     assert.equal(recv, 'hello-pair');
     console.log(`[pair/callback] send: "hello-pair" \u2192 recv: "${recv}"`);

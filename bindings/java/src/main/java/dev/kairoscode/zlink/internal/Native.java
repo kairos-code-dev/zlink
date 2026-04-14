@@ -209,7 +209,9 @@ public final class Native {
                     ValueLayout.JAVA_INT));
 
     private static final MethodHandle MH_POLL = downcall("zlink_poll",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG));
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_POLLER_NEW = downcall("zlink_poller_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS));
     private static final MethodHandle MH_POLLER_DESTROY = downcall("zlink_poller_destroy",
@@ -1689,8 +1691,22 @@ public final class Native {
     public static int pollRaw(MemorySegment items, int count, int timeoutMs) {
         if (items == null || items.address() == 0 || count <= 0)
             return 0;
-        try {
-            return (int) MH_POLL.invokeExact(items, count, (long) timeoutMs);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
+            errorOut.set(ValueLayout.JAVA_INT, 0, 0);
+            int rc = (int) MH_POLL.invokeExact(items, count, (long) timeoutMs,
+                errorOut);
+            if (rc < 0) {
+                int error = errorOut.get(ValueLayout.JAVA_INT, 0);
+                if (error != 0) {
+                    throw new dev.kairoscode.zlink.ConfigException(
+                        dev.kairoscode.zlink.ConfigResult.fromValue(error),
+                        errno());
+                }
+            }
+            return rc;
+        } catch (RuntimeException ex) {
+            throw ex;
         } catch (Throwable t) {
             throw new RuntimeException("poll failed", t);
         }
@@ -1887,8 +1903,19 @@ public final class Native {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
             errorOut.set(ValueLayout.JAVA_INT, 0, 0);
-            return (int) MH_POLLER_WAIT_ALL.invokeExact(poller, events, count,
+            int rc = (int) MH_POLLER_WAIT_ALL.invokeExact(poller, events, count,
                 (long) timeoutMs, errorOut);
+            if (rc < 0) {
+                int error = errorOut.get(ValueLayout.JAVA_INT, 0);
+                if (error != 0) {
+                    throw new dev.kairoscode.zlink.ConfigException(
+                        dev.kairoscode.zlink.ConfigResult.fromValue(error),
+                        errno());
+                }
+            }
+            return rc;
+        } catch (RuntimeException ex) {
+            throw ex;
         } catch (Throwable t) {
             throw new RuntimeException("zlink_poller_wait_all failed", t);
         }
@@ -1901,8 +1928,19 @@ public final class Native {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
             errorOut.set(ValueLayout.JAVA_INT, 0, 0);
-            return (int) MH_POLLER_WAIT.invokeExact(poller, event,
+            int rc = (int) MH_POLLER_WAIT.invokeExact(poller, event,
                 (long) timeoutMs, errorOut);
+            if (rc < 0) {
+                int error = errorOut.get(ValueLayout.JAVA_INT, 0);
+                if (error != 0) {
+                    throw new dev.kairoscode.zlink.ConfigException(
+                        dev.kairoscode.zlink.ConfigResult.fromValue(error),
+                        errno());
+                }
+            }
+            return rc;
+        } catch (RuntimeException ex) {
+            throw ex;
         } catch (Throwable t) {
             throw new RuntimeException("zlink_poller_wait failed", t);
         }

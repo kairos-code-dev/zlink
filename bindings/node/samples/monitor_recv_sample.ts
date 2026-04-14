@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist');
+const zlink = require('../dist/canonical');
 
 async function reservePort() {
   const srv = net.createServer();
@@ -33,7 +33,7 @@ async function main() {
     const clientEvent = clientMonitor.recv();
     assert.equal(serverEvent.event, zlink.MonitorEvent.CONNECTION_READY);
     assert.equal(clientEvent.event, zlink.MonitorEvent.CONNECTION_READY);
-    console.log('[monitor/recv] recv: "connection-ready" → tryRecv: empty');
+    console.log('[monitor/recv] recv: "connection-ready" → state: ready');
   } finally {
     clientMonitor.close();
     serverMonitor.close();

@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+JAVA_BINDINGS_DIR="$(cd "${ROOT_DIR}/.." && pwd)"
 RESULTS_ROOT="${ROOT_DIR}/results"
 PATTERN="ALL"
 TRANSPORTS=""
@@ -110,12 +111,19 @@ detect_platform() {
 
 default_transports() {
   case "$1" in
-    SPOT) echo "tcp,tls,ws,wss" ;;
+    SPOT) echo "tcp" ;;
+    PAIR)
+      if [[ "$(uname -s)" == "Linux" ]]; then
+        echo "inproc,ipc"
+      else
+        echo "inproc"
+      fi
+      ;;
     *)
       if [[ "$(uname -s)" == "Linux" ]]; then
-        echo "tcp,tls,ws,wss,inproc,ipc"
+        echo "tcp,inproc,ipc"
       else
-        echo "tcp,tls,ws,wss,inproc"
+        echo "tcp,inproc"
       fi
       ;;
   esac
@@ -155,7 +163,8 @@ if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
   rm -rf "${PROJECT_BUILD_DIR}"
 fi
 if [[ "${REUSE_BUILD}" -eq 0 ]]; then
-  gradle -PzlinkPerfBuildDir="${PROJECT_BUILD_DIR}" :perf-single:installDist >/dev/null
+  "${JAVA_BINDINGS_DIR}/gradlew" --no-daemon -p "${JAVA_BINDINGS_DIR}" \
+    -PzlinkPerfBuildDir="${PROJECT_BUILD_DIR}" :perf-single:installDist >/dev/null
 fi
 RUNNER="${PROJECT_BUILD_DIR}/install/zlink-java-perf-single/bin/zlink-java-perf-single"
 if [[ ! -x "${RUNNER}" ]]; then

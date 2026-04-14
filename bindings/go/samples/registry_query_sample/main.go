@@ -17,10 +17,10 @@ func main() {
 
 	discovery, err := ctx.Discovery(zlink.ServiceTypeSocket, "topology-entry-found")
 	samplecommon.MustStep("Discovery", err)
-	defer func() { samplecommon.MustStep("discovery.Close", discovery.Close()) }()
 
 	pub, err := ctx.PubSocket()
 	samplecommon.MustStep("PubSocket", err)
+	defer func() { samplecommon.MustStep("discovery.Close", discovery.Close()) }()
 
 	registryPub := samplecommon.UniqueTCP("registry-pub")
 	registryRouter := samplecommon.UniqueTCP("registry-router")

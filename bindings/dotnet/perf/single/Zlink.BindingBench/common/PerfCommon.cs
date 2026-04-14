@@ -4,7 +4,33 @@ using Zlink;
 
 internal static partial class PerfRunner
 {
-    internal const int SingleConnectWaitMs = 300;
+    internal const int SingleConnectWaitMs = 1000;
+
+    internal static bool WaitForConnectionReady(MonitorSocket monitor,
+        int timeoutMs)
+    {
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            try
+            {
+                MonitorEvent evt = monitor.Receive(ReceiveFlags.DontWait);
+                if (evt.Event == MonitorEventType.ConnectionReady
+                    || evt.Event == MonitorEventType.Accepted
+                    || evt.Event == MonitorEventType.Connected)
+                {
+                    return true;
+                }
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno))
+            {
+                Thread.Sleep(10);
+            }
+        }
+
+        return false;
+    }
 
     internal static int ReceiveBlocking(SocketBase socket, Span<byte> buffer,
         ReceiveFlags flags = ReceiveFlags.None)
@@ -70,13 +96,13 @@ internal static partial class PerfRunner
     }
 
     internal static int SendBlocking(SocketBase socket, ReadOnlySpan<byte> buffer,
-        SendFlags flags = SendFlags.None)
+        PerfSendFlags flags = PerfSendFlags.None)
     {
         return socket.Send(buffer, flags);
     }
 
     internal static int SendBlocking(SocketBase socket, byte[] buffer,
-        SendFlags flags = SendFlags.None)
+        PerfSendFlags flags = PerfSendFlags.None)
     {
         if (buffer == null)
             throw new ArgumentNullException(nameof(buffer));

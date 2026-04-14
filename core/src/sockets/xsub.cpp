@@ -45,19 +45,6 @@ static void close_dispatch_frame (zlink_msg_t *frame_)
     errno_assert (rc == 0);
 }
 
-static void store_dispatch_part (std::vector<zlink_msg_t> *parts_,
-                                 zlink::msg_t *msg_)
-{
-    zlink_msg_t stored;
-    memset (&stored, 0, sizeof (stored));
-    zlink::msg_t *stored_msg = reinterpret_cast<zlink::msg_t *> (&stored);
-    const int init_rc = stored_msg->init ();
-    errno_assert (init_rc == 0);
-    const int move_rc = stored_msg->move (*msg_);
-    errno_assert (move_rc == 0);
-    parts_->push_back (stored);
-}
-
 static void snapshot_subscription (unsigned char *data_,
                                    size_t size_,
                                    void *arg_)
@@ -543,7 +530,7 @@ int zlink::xsub_t::dispatch_message (msg_t *msg_, pipe_t *pipe_)
 
     close_dispatch_frames (&_dispatch_parts);
     while (true) {
-        store_dispatch_part (&_dispatch_parts, msg_);
+        store_socket_msg_part (&_dispatch_parts, msg_);
         msg_t *stored_msg =
           reinterpret_cast<msg_t *> (
             &_dispatch_parts[_dispatch_parts.size () - 1]);
@@ -628,7 +615,7 @@ int zlink::xsub_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
         return 1;
     }
 
-    store_dispatch_part (&_socket_dispatch_parts, msg_);
+    store_socket_msg_part (&_socket_dispatch_parts, msg_);
     if (!final_part)
         return 1;
 

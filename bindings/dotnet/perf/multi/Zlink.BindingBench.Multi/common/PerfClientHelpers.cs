@@ -93,12 +93,6 @@ internal static partial class PerfRunner
                 activeClients.Add(clients[i]);
         }
 
-        if (activeClients.Count < count && count > 0)
-        {
-            activeClients.Clear();
-            activeClients.AddRange(clients);
-        }
-
         return activeClients;
     }
 
@@ -178,7 +172,7 @@ internal static partial class PerfRunner
             try
             {
                 _ = SendBlocking(activeClients[i], MultiStopToken.AsSpan(),
-                    SendFlags.None);
+                    PerfSendFlags.None);
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno))

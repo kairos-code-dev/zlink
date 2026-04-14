@@ -2468,7 +2468,10 @@ napi_value ctx_term(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
     napi_get_value_external(env, argv[0], &ctx);
-    int rc = zlink_ctx_term(ctx);
+    int rc;
+    do {
+        rc = zlink_ctx_term(ctx);
+    } while (rc != 0 && zlink_errno() == EINTR);
     if (rc != 0)
         return throw_last_error(env, "ctx_term failed");
     napi_value ok;

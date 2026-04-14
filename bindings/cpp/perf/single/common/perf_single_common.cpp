@@ -11,18 +11,23 @@ namespace single {
 
 namespace {
 
-inline zlink::maybe_t<zlink::subscribed_t>
+bool perf_debug_enabled_local ()
+{
+    return std::getenv ("PERF_DEBUG") != NULL;
+}
+
+inline zlink::maybe_t<zlink::topic_message_t>
 try_subscribe_nowait (zlink::service::spot_t &spot_)
 {
     try {
-        return zlink::maybe_t<zlink::subscribed_t> (
+        return zlink::maybe_t<zlink::topic_message_t> (
           spot_.subscribe (zlink::recv_flags_t::dontwait));
     }
     catch (const zlink::recv_error_t &err) {
         switch (err.result ()) {
         case zlink::recv_result_t::no_data:
         case zlink::recv_result_t::busy:
-            return zlink::maybe_t<zlink::subscribed_t> ();
+            return zlink::maybe_t<zlink::topic_message_t> ();
         default:
             throw;
         }
@@ -293,6 +298,13 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
     apply_single_hwm (bind_socket_);
     apply_single_hwm (connect_socket_);
 
+    zlink::monitor_handle_t bind_monitor = zlink::monitor_handle_t::open (
+      bind_socket_, zlink::monitor_event::connection_ready_changed);
+    zlink::monitor_handle_t connect_monitor = zlink::monitor_handle_t::open (
+      connect_socket_, zlink::monitor_event::connection_ready_changed);
+    if (!bind_monitor.valid () || !connect_monitor.valid ())
+        return false;
+
     const std::string endpoint =
       bind_and_resolve_endpoint (bind_socket_, transport_, id_);
     if (endpoint.empty ())
@@ -302,6 +314,19 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
 
     apply_single_benchmark_socket_options (bind_socket_, transport_);
     apply_single_benchmark_socket_options (connect_socket_, transport_);
+    if (!wait_socket_monitor_event (
+          bind_monitor,
+          static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed),
+          -1,
+          10000)
+        || !wait_socket_monitor_event (
+          connect_monitor,
+          static_cast<uint64_t> (
+            zlink::monitor_event::connection_ready_changed),
+          -1,
+          10000)) {
+        return false;
+    }
     settle ();
     return true;
 }
@@ -496,6 +521,9 @@ void callback_receiver_t::worker_loop ()
         const int poll_rc = poller.wait_all (events, 5);
         if (poll_rc < 0) {
             const int err = errno;
+            if (perf_debug_enabled_local ())
+                std::cerr << "callback_receiver poll failed errno=" << err
+                          << std::endl;
             if (err == EINTR || err == EAGAIN)
                 continue;
             _failed.store (true, std::memory_order_release);
@@ -511,8 +539,13 @@ void callback_receiver_t::worker_loop ()
 
         for (;;) {
             zlink::received_t received;
-            const int rc = _socket->receive (received, zlink::recv_flag::dontwait);
+            const int rc =
+              _socket->receive (received, zlink::recv_flags_t::dontwait);
             if (rc != 0) {
+                if (perf_debug_enabled_local () && errno != EAGAIN
+                    && errno != EINTR)
+                    std::cerr << "callback_receiver recv failed errno=" << errno
+                              << std::endl;
                 if (errno == EAGAIN || errno == EINTR)
                     break;
                 _failed.store (true, std::memory_order_release);
@@ -520,11 +553,11 @@ void callback_receiver_t::worker_loop ()
             }
 
             const zlink::message_t *payload = NULL;
-            if (received.parts.size () == 1) {
-                payload = &received.parts[0];
-            } else if (received.parts.size () == 2
-                       && received.parts[0].size () == 0) {
-                payload = &received.parts[1];
+            if (received.parts ().size () == 1) {
+                payload = &received.parts ()[0];
+            } else if (received.parts ().size () == 2
+                       && received.parts ()[0].size () == 0) {
+                payload = &received.parts ()[1];
             }
             if (!payload)
                 continue;
@@ -561,15 +594,24 @@ void callback_receiver_t::worker_loop ()
     }
     }
     catch (const zlink::recv_error_t &err) {
+        if (perf_debug_enabled_local ())
+            std::cerr << "callback_receiver catch recv_error result="
+                      << static_cast<int> (err.result ())
+                      << " errno=" << err.internal_errno () << std::endl;
         const zlink::recv_result_t result = err.result ();
         if (result != zlink::recv_result_t::no_data
             && result != zlink::recv_result_t::busy)
             _failed.store (true, std::memory_order_release);
     }
     catch (const zlink::zlink_error_t &) {
+        if (perf_debug_enabled_local ())
+            std::cerr << "callback_receiver catch zlink_error errno=" << errno
+                      << std::endl;
         _failed.store (true, std::memory_order_release);
     }
     catch (...) {
+        if (perf_debug_enabled_local ())
+            std::cerr << "callback_receiver catch unknown" << std::endl;
         _failed.store (true, std::memory_order_release);
     }
 }
@@ -890,12 +932,13 @@ void subscribe_callback_receiver_t::worker_loop ()
         }
 
         for (;;) {
-            zlink::subscribed_t received;
+            zlink::topic_message_t received;
             int rc = -1;
             if (_socket) {
-                rc = _socket->subscribe (received, zlink::recv_flag::dontwait);
+                rc =
+                  _socket->subscribe (received, zlink::recv_flags_t::dontwait);
             } else if (_spot) {
-                const zlink::maybe_t<zlink::subscribed_t> maybe =
+                const zlink::maybe_t<zlink::topic_message_t> maybe =
                   try_subscribe_nowait (*_spot);
                 if (maybe) {
                     received = std::move (*maybe);
@@ -912,11 +955,11 @@ void subscribe_callback_receiver_t::worker_loop ()
             }
 
             perf_single_metric::header_t received_header;
-            if (received.topic != _expected_topic
-                || received.parts.size () != 1
+            if (received.topic () != _expected_topic
+                || received.parts ().size () != 1
                 || !perf_single_metric::decode_payload_header (
-                  received.parts[0].data (),
-                  received.parts[0].size (),
+                  received.parts ()[0].data (),
+                  received.parts ()[0].size (),
                   &received_header)) {
                 continue;
             }

@@ -524,11 +524,11 @@ typedef enum zlink_config_result_t
 
 | Result enum | 함수 |
 |---|---|
-| `zlink_submit_result_t` | `zlink_send`, `zlink_send_rid`, `zlink_publish`, `zlink_dealer_request`, `zlink_router_request`, `zlink_router_reply`, `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_router_request_spot`, `zlink_spot_send_spot`, `zlink_spot_send_router`, `zlink_router_send_spot`, `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
+| `zlink_submit_result_t` | `zlink_send`, `zlink_send_rid`, `zlink_publish`, `zlink_dealer_request`, `zlink_router_request`, `zlink_router_reply`, `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_spot_request_service`, `zlink_router_request_spot`, `zlink_spot_send_spot`, `zlink_spot_send_router`, `zlink_spot_send_service`, `zlink_spot_publish`, `zlink_router_send_spot`, `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
 | `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback) |
-| `zlink_recv_result_t` | `zlink_router_recv`, `zlink_spot_recv`, `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_socket_monitor_recv`, `zlink_service_monitor_recv`, `zlink_timer_recv` |
+| `zlink_recv_result_t` | `zlink_router_recv`, `zlink_spot_recv`, `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_spot_subscribe`, `zlink_spot_subscription_event`, `zlink_socket_monitor_recv`, `zlink_service_monitor_recv`, `zlink_spot_node_monitor_recv`, `zlink_timer_recv` |
 | `zlink_handler_result_t` | `zlink_recv_handler`, `zlink_subscribe_handler`, `zlink_send_ready_handler`, `zlink_router_handler`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_service_monitor_handler`, `zlink_timer_handler` |
 | `zlink_close_result_t` | `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_close`, `zlink_monitor_close`, `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_destroy`, `zlink_poller_destroy`, `zlink_timer_destroy` |
 | `zlink_bind_result_t` | `zlink_bind` |
 | `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_unbind` |
-| `zlink_config_result_t` | `zlink_ctx_set`, 메시지 lifecycle/config 함수, socket/TLS/routing/subscription 설정 함수, `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery`, registry/discovery/snapshot/query 함수, poller 변경 함수, proxy 함수, `zlink_timer_start` / `zlink_timer_stop` |
+| `zlink_config_result_t` | `zlink_ctx_set`, 메시지 lifecycle/config 함수, socket/TLS/routing/subscription 설정 함수, `zlink_socket_attach_discovery`, `zlink_spot_node_attach_router`, `zlink_spot_node_attach_pubsub`, `zlink_spot_node_attach_discovery`, `zlink_spot_node_service_attachment_count`, `zlink_spot_node_service_attachment_at`, registry/discovery/snapshot/query 함수, poller 변경 함수, proxy 함수, `zlink_timer_start` / `zlink_timer_stop` |

@@ -188,12 +188,6 @@ zlink_recv_result_t zlink_router_recv (void *router_,
           request_seq_out_, parts_out_, part_count_out_, flags_);
         if (direct_rc == 0)
             return ZLINK_RECV_OK;
-        if (errno == EAGAIN && (flags_ & ZLINK_DONTWAIT) != 0) {
-            state = reqrep::find_or_create_request_reply_state (handle);
-            if (reqrep::ensure_recv_queue_ready (state) != 0
-                || reqrep::ensure_internal_dispatch_installed (state) != 0)
-                return zlink::recv_result_internal::from_errno (errno);
-        }
         return zlink::recv_result_internal::from_errno (errno);
     }
 
@@ -213,11 +207,6 @@ zlink_recv_result_t zlink_router_recv (void *router_,
           request_seq_out_, parts_out_, part_count_out_, flags_);
         if (direct_rc == 0)
             return ZLINK_RECV_OK;
-        if (errno == EAGAIN && (flags_ & ZLINK_DONTWAIT) != 0) {
-            if (reqrep::ensure_recv_queue_ready (state) != 0
-                || reqrep::ensure_internal_dispatch_installed (state) != 0)
-                return zlink::recv_result_internal::from_errno (errno);
-        }
         return zlink::recv_result_internal::from_errno (errno);
     }
 

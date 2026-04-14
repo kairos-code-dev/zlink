@@ -10,6 +10,7 @@
 #include "api/close_result_internal.hpp"
 #include "api/config_result_internal.hpp"
 #include "api/connect_result_internal.hpp"
+#include "api/recv_result_internal.hpp"
 
 #include <new>
 #include <vector>
@@ -63,8 +64,15 @@ void *zlink_spot_new (void *node_)
     }
 
     spot->node = node;
+    if (zlink::spot_node_access_t::try_register_spot_facade (node, spot) != 0) {
+        const int err = errno;
+        delete spot;
+        errno = err;
+        return NULL;
+    }
     if (!ensure_spot_pub (spot)) {
         const int err = errno;
+        zlink::spot_node_access_t::unregister_spot_facade (node, spot);
         delete spot;
         errno = err;
         return NULL;
@@ -95,6 +103,7 @@ zlink_close_result_t zlink_spot_destroy (void **spot_p_)
 
     zlink_spot_request_reply_cleanup_spot (spot);
     zlink_timer_cleanup_spot (spot);
+    zlink::spot_node_access_t::unregister_spot_facade (node, spot);
     zlink::destroy_spot_handle_for_testing (spot);
     *spot_p_ = NULL;
     return ZLINK_CLOSE_OK;
@@ -245,4 +254,92 @@ zlink_config_result_t zlink_spot_node_attach_discovery (void *node_, void *disco
     }
     return zlink::config_result_internal::from_rc (
       zlink::spot_node_access_t::attach_discovery (node, discovery_));
+}
+
+zlink_config_result_t zlink_spot_node_attach_router (void *node_,
+                                                     const char *service_name_,
+                                                     void *router_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    return zlink::config_result_internal::from_rc (
+      zlink::spot_node_access_t::attach_router (node, service_name_, router_));
+}
+
+zlink_config_result_t zlink_spot_node_attach_pubsub (void *node_,
+                                                     const char *service_name_,
+                                                     void *pub_,
+                                                     void *sub_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    return zlink::config_result_internal::from_rc (
+      zlink::spot_node_access_t::attach_pubsub (node, service_name_, pub_, sub_));
+}
+
+zlink_config_result_t zlink_spot_node_service_attachment_count (
+  void *node_,
+  size_t *count_out_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    std::vector<zlink_spot_service_attachment_stats_t> rows;
+    if (zlink::spot_node_access_t::service_attachment_snapshot (node, &rows) != 0)
+        return zlink::config_result_internal::from_rc (-1);
+    if (!count_out_) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    *count_out_ = rows.size ();
+    return ZLINK_CONFIG_OK;
+}
+
+zlink_config_result_t zlink_spot_node_service_attachment_at (
+  void *node_,
+  size_t index_,
+  zlink_spot_service_attachment_stats_t *out_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    std::vector<zlink_spot_service_attachment_stats_t> rows;
+    if (zlink::spot_node_access_t::service_attachment_snapshot (node, &rows) != 0)
+        return zlink::config_result_internal::from_rc (-1);
+    if (!out_) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    if (index_ >= rows.size ()) {
+        errno = ENOENT;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    *out_ = rows[index_];
+    return ZLINK_CONFIG_OK;
+}
+
+zlink_recv_result_t zlink_spot_node_monitor_recv (
+  void *node_,
+  zlink_spot_service_monitor_event_t *out_,
+  zlink_recv_flags_t flags_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_RECV_INVALID_HANDLE;
+    }
+    if (validate_recv_flags (flags_) != 0)
+        return zlink::recv_result_internal::from_errno (errno);
+    return zlink::recv_result_internal::from_rc (
+      zlink::spot_node_access_t::service_monitor_recv (node, out_, flags_));
 }

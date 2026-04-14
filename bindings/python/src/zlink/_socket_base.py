@@ -26,6 +26,7 @@ from ._core import (
     HandlerResult,
     Message,
     RecvError,
+    RecvResult,
     Received,
     TopicMessage,
     SubmitError,

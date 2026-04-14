@@ -49,9 +49,9 @@ async function main() {
     }
     const ctx = new zlink.Context();
     const node = new zlink.SpotNode(ctx);
-    const spot = new zlink.Spot(node);
+    const spot = node.createSpot();
     const controlNode = new zlink.SpotNode(ctx);
-    const controlSpot = new zlink.Spot(controlNode);
+    const controlSpot = controlNode.createSpot();
     const warmupPayload = createPayload(options.msgSize);
     const activePayload = createPayload(options.msgSize);
     const stopPayload = createPayload(options.msgSize);
@@ -65,8 +65,8 @@ async function main() {
             if (!received) {
                 return;
             }
-            const payload = received.parts[0] && received.parts[0].data
-                ? received.parts[0].data.toString('utf8')
+            const payload = received.parts[0] && received.parts[0].data()
+                ? received.parts[0].data().toString('utf8')
                 : '';
             if (payload === 'CONNECTED') {
                 controlConnected = true;

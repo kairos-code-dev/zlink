@@ -208,7 +208,7 @@ class dealer_router_client_bench_t
         }
 
         const int sent =
-          state.sock->send (request, zlink::send_flag::dontwait);
+          state.sock->send (request, zlink::send_flags_t::dontwait);
         if (sent == 0) {
             state.awaiting_reply = true;
             state.send_pending = false;
@@ -234,7 +234,7 @@ class dealer_router_client_bench_t
         }
 
         zlink::message_t reply;
-        const int rc = state.sock->recv (reply, zlink::recv_flag::dontwait);
+        const int rc = state.sock->recv (reply, zlink::recv_flags_t::dontwait);
         if (rc != 0)
             return -1;
 
@@ -372,7 +372,7 @@ class dealer_router_client_bench_t
         if (!stop_part.valid ())
             return;
         (void) _socket_states[0].sock->send (stop_part,
-                                             zlink::send_flag::dontwait);
+                                             zlink::send_flags_t::dontwait);
     }
 
     void print_result () const

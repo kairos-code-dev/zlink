@@ -5,6 +5,7 @@
 
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
+#include "core/socket_poller.hpp"
 #include "core/thread.hpp"
 #include "services/common/service_public_api.hpp"
 #include "services/common/service_mode_state.hpp"
@@ -17,8 +18,13 @@
 
 #include <atomic>
 #include <map>
+#include <deque>
+#include <stddef.h>
 #include <set>
 #include <string>
+#include <vector>
+
+struct spot_handle_t;
 
 namespace zlink
 {
@@ -50,6 +56,12 @@ class spot_node_t : public discovery_observer_t
     int connect_peer_pub (const char *peer_pub_endpoint_);
     int disconnect_peer_pub (const char *peer_pub_endpoint_);
     int attach_discovery (discovery_t *discovery_);
+    int attach_router (const char *service_name_, socket_base_t *router_);
+    int attach_pubsub (const char *service_name_,
+                       socket_base_t *pub_,
+                       socket_base_t *sub_);
+    int try_register_spot_facade (spot_handle_t *spot_);
+    void unregister_spot_facade (spot_handle_t *spot_);
     int set_tls_server (const char *cert_, const char *key_);
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
@@ -101,6 +113,8 @@ class spot_node_t : public discovery_observer_t
     void snapshot_subscription_subjects (
       std::vector<spot_sub_t::subject_descriptor_t> *out_) const;
     int snapshot_status (zlink_spot_node_status_t *out_) const;
+    int snapshot_service_attachments (
+      std::vector<zlink_spot_service_attachment_stats_t> *out_) const;
     int snapshot_peers (const zlink_spot_node_peer_filter_t *filter_,
                         std::vector<zlink_spot_node_peer_entry_t> *out_) const;
     int snapshot_subjects (
@@ -111,12 +125,36 @@ class spot_node_t : public discovery_observer_t
                                         const std::string &ack_source_id_,
                                         bool subscribe_);
     bool peer_is_admitted (const zlink_routing_id_t *peer_rid_) const;
+    socket_base_t *select_service_router (const std::string &service_name_);
+    socket_base_t *service_pub_socket (const std::string &service_name_) const;
+    int service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
+                                zlink_msg_t **parts_out_,
+                                size_t *part_count_out_,
+                                char *service_name_out_,
+                                size_t *service_name_len_out_,
+                                char *topic_id_out_,
+                                size_t *topic_id_len_out_,
+                                zlink_recv_flags_t flags_);
+    int service_subscription_event_recv (zlink_routing_id_t *source_rid_out_,
+                                         int *subscribed_out_,
+                                         char *service_name_out_,
+                                         size_t *service_name_len_out_,
+                                         char *topic_id_out_,
+                                         size_t *topic_id_len_out_,
+                                         zlink_recv_flags_t flags_);
+    int service_monitor_recv (zlink_spot_service_monitor_event_t *out_,
+                              zlink_recv_flags_t flags_);
 
   private:
     friend class spot_pub_t;
     friend class spot_sub_t;
     friend class spot_data_plane_t;
     friend struct spot_node_access_t;
+
+    struct service_monitor_handle_t;
+    struct service_attachment_t;
+    struct service_discovery_topology_t;
+    struct service_discovery_socket_plan_t;
 
     static void control_task (void *arg_);
 
@@ -189,6 +227,70 @@ class spot_node_t : public discovery_observer_t
                                bool subscribe_);
     int ensure_registered ();
     int unregister_registered ();
+    int apply_service_subscription_filters ();
+    void collect_pending_service_discoveries_locked (
+      std::vector<std::pair<std::string, discovery_t *> > *out_);
+    void refresh_service_discovery_attachments ();
+    void snapshot_service_discovery_topology (
+      discovery_t *discovery_,
+      const std::string &service_name_,
+      std::vector<provider_info_t> *provider_scratch_,
+      service_discovery_topology_t *out_) const;
+    service_discovery_socket_plan_t plan_service_discovery_sockets_locked (
+      const std::string &service_name_,
+      const service_discovery_topology_t &topology_);
+    void install_service_discovery_sockets (
+      const std::string &service_name_,
+      const service_discovery_socket_plan_t &plan_,
+      const std::set<std::string> &current_filters_);
+    void sync_service_discovery_topology (
+      const std::string &service_name_,
+      const service_discovery_topology_t &topology_);
+    void replay_pending_service_discovery_filters (
+      const std::string &service_name_,
+      const std::set<std::string> &current_filters_);
+    void notify_service_subscribe_readable ();
+    int validate_destroyable_handles_locked () const;
+    void begin_destroy_detach_phase (
+      discovery_t **discovery_out_,
+      std::map<std::string, discovery_t *> *service_discoveries_out_,
+      std::vector<std::string> *active_peer_endpoints_out_,
+      std::string *bound_endpoint_out_);
+    void clear_service_attachment_runtime_locked (
+      std::deque<service_monitor_handle_t> *monitors_out_);
+    void close_service_monitors (
+      std::deque<service_monitor_handle_t> *monitors_);
+    int validate_socket_service_discovery_attach_locked (
+      const std::string &service_name_, discovery_t *discovery_) const;
+    int validate_manual_service_attachment_locked (
+      const std::string &service_name_,
+      const socket_base_t *primary_socket_,
+      const socket_base_t *secondary_socket_ = NULL) const;
+    void register_service_monitor_locked (
+      socket_base_t *owner_socket_,
+      void *monitor_handle_,
+      const std::string &service_name_,
+      zlink_spot_service_attachment_role_t role_);
+    void register_manual_router_locked (const std::string &service_name_,
+                                        socket_base_t *router_,
+                                        void *monitor_handle_);
+    void register_manual_pubsub_locked (const std::string &service_name_,
+                                        socket_base_t *pub_,
+                                        socket_base_t *sub_,
+                                        void *pub_monitor_handle_,
+                                        void *sub_monitor_handle_);
+    void rebuild_service_attachment_caches_locked ();
+    void ensure_service_stats_row_locked (const std::string &service_name_);
+    void erase_service_stats_row_if_unused_locked (const std::string &service_name_);
+    void update_service_stats_locked (const std::string &service_name_,
+                                      const service_attachment_t &attachment_);
+    void reset_spot_discovery_state_locked ();
+    void queue_service_discovery_refresh_locked (
+      const std::string &service_name_);
+    void remove_service_monitors_by_owner_locked (
+      const std::vector<socket_base_t *> &sockets_);
+    bool detach_discovered_service_locked (
+      discovery_t *discovery_, std::vector<socket_base_t *> *sockets_to_close_out_);
 
     static bool validate_public_endpoint (const std::string &endpoint_);
     static bool recv_ctrl_reply (socket_base_t *socket_, int *out_errno_);
@@ -289,6 +391,195 @@ class spot_node_t : public discovery_observer_t
         spot_node_default_handles_t handle_defaults;
         std::set<spot_pub_t *> pubs;
         std::set<spot_sub_t *> subs;
+        std::set<spot_handle_t *> facades;
+    };
+
+    struct service_monitor_handle_t
+    {
+        service_monitor_handle_t () : handle (NULL), owner_socket (NULL)
+        {
+        }
+
+        void *handle;
+        socket_base_t *owner_socket;
+        std::string service_name;
+        zlink_spot_service_attachment_role_t role;
+    };
+
+    struct service_discovery_topology_t
+    {
+        std::set<std::string> router_endpoints;
+        std::set<std::string> pub_endpoints;
+        std::set<std::string> sub_endpoints;
+
+        void clear ()
+        {
+            router_endpoints.clear ();
+            pub_endpoints.clear ();
+            sub_endpoints.clear ();
+        }
+
+        bool pubsub_active () const
+        {
+            return !pub_endpoints.empty () && !sub_endpoints.empty ();
+        }
+    };
+
+    struct service_discovery_socket_plan_t
+    {
+        std::vector<std::pair<std::string, socket_base_t *> > new_router_sockets;
+        socket_base_t *pub_socket;
+        socket_base_t *sub_socket;
+
+        service_discovery_socket_plan_t () : pub_socket (NULL), sub_socket (NULL)
+        {
+        }
+    };
+
+    struct service_attachment_t
+    {
+        struct manual_state_t
+        {
+            manual_state_t () : pub (NULL), sub (NULL)
+            {
+            }
+
+            std::vector<socket_base_t *> routers;
+            socket_base_t *pub;
+            socket_base_t *sub;
+        };
+
+        struct discovered_state_t
+        {
+            enum auto_sub_replay_state_t
+            {
+                auto_sub_replay_none = 0,
+                auto_sub_replay_initial,
+                auto_sub_replay_reconnect
+            };
+
+            discovered_state_t () :
+                pub (NULL),
+                sub (NULL),
+                auto_sub_replay_state (auto_sub_replay_none)
+            {
+            }
+
+            bool has_pubsub () const
+            {
+                return pub != NULL && sub != NULL && !pub_endpoints.empty ()
+                       && !sub_endpoints.empty ();
+            }
+            uint32_t router_count () const
+            {
+                return static_cast<uint32_t> (router_endpoints.size ());
+            }
+            uint32_t pub_count () const
+            {
+                return static_cast<uint32_t> (pub_endpoints.size ());
+            }
+            uint32_t sub_count () const
+            {
+                return static_cast<uint32_t> (sub_endpoints.size ());
+            }
+            bool needs_sub_replay () const
+            {
+                return auto_sub_replay_state != auto_sub_replay_none;
+            }
+            void mark_sub_replay_pending (auto_sub_replay_state_t state_)
+            {
+                auto_sub_replay_state = state_;
+            }
+            void clear_sub_replay ()
+            {
+                auto_sub_replay_state = auto_sub_replay_none;
+            }
+
+            std::map<std::string, socket_base_t *> routers;
+            socket_base_t *pub;
+            socket_base_t *sub;
+            auto_sub_replay_state_t auto_sub_replay_state;
+            std::set<std::string> router_endpoints;
+            std::set<std::string> pub_endpoints;
+            std::set<std::string> sub_endpoints;
+        };
+
+        service_attachment_t () : next_router_index (0)
+        {
+        }
+
+        bool has_manual_pubsub () const
+        {
+            return manual.pub != NULL && manual.sub != NULL;
+        }
+        bool has_auto_pubsub () const
+        {
+            return discovered.has_pubsub ();
+        }
+        uint32_t auto_router_count () const
+        {
+            return discovered.router_count ();
+        }
+        uint32_t auto_pub_count () const
+        {
+            return discovered.pub_count ();
+        }
+        uint32_t auto_sub_count () const
+        {
+            return discovered.sub_count ();
+        }
+        bool needs_auto_sub_replay () const
+        {
+            return discovered.needs_sub_replay ();
+        }
+        void mark_auto_sub_replay_pending (
+          discovered_state_t::auto_sub_replay_state_t state_)
+        {
+            discovered.mark_sub_replay_pending (state_);
+        }
+        void clear_auto_sub_replay ()
+        {
+            discovered.clear_sub_replay ();
+        }
+
+        manual_state_t manual;
+        discovered_state_t discovered;
+        size_t next_router_index;
+        std::set<std::string> applied_filters;
+    };
+
+    struct service_attachment_state_t
+    {
+        struct service_sub_cache_entry_t
+        {
+            std::string service_name;
+            socket_base_t *socket;
+        };
+
+        typedef std::vector<service_sub_cache_entry_t> service_sub_cache_t;
+        typedef std::vector<socket_base_t *> readable_sub_cache_t;
+        typedef std::vector<service_monitor_handle_t> service_monitor_cache_t;
+        typedef std::map<std::string, zlink_spot_service_attachment_stats_t>
+          service_stats_cache_t;
+
+        std::map<std::string, service_attachment_t> attachments;
+        std::map<const socket_base_t *, std::string> socket_index;
+        std::deque<service_monitor_handle_t> monitors;
+        std::map<std::string, discovery_t *> discoveries;
+        std::set<std::string> pending_refresh_services;
+        std::shared_ptr<service_sub_cache_t> sub_cache;
+        std::shared_ptr<readable_sub_cache_t> readable_sub_cache;
+        std::shared_ptr<socket_poller_t> readable_sub_poller;
+        std::shared_ptr<service_monitor_cache_t> monitor_cache;
+        service_stats_cache_t stats_cache;
+
+        service_attachment_state_t () :
+            sub_cache (new service_sub_cache_t ()),
+            readable_sub_cache (new readable_sub_cache_t ()),
+            readable_sub_poller (new socket_poller_t ()),
+            monitor_cache (new service_monitor_cache_t ())
+        {
+        }
     };
 
     summary_state_t _summary_state;
@@ -296,6 +587,7 @@ class spot_node_t : public discovery_observer_t
     tls_state_t _tls_state;
     endpoint_state_t _endpoint_state;
     handle_state_t _handle_state;
+    service_attachment_state_t _service_attachment_state;
 
     std::string &_bound_endpoint;
     std::map<std::string, uint64_t> &_subject_last_changed_ms;
@@ -325,6 +617,11 @@ class spot_node_t : public discovery_observer_t
     spot_node_default_handles_t &_handle_defaults;
     std::set<spot_pub_t *> &_pubs;
     std::set<spot_sub_t *> &_subs;
+    std::set<spot_handle_t *> &_facades;
+    std::map<std::string, service_attachment_t> &_service_attachments;
+    std::map<const socket_base_t *, std::string> &_service_attachment_socket_index;
+    std::deque<service_monitor_handle_t> &_service_monitors;
+    std::map<std::string, discovery_t *> &_service_discoveries;
 
     friend struct spot_runtime_t;
     friend class spot_data_plane_t;

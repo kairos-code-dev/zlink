@@ -49,6 +49,9 @@
   `ROUTER_ROUTER`, `SPOT`, `SPOT_REQREP` 전부 수신 경로에 이 recv 모델만
   쓴다. `SPOT_REQREP` 은 echo 패턴이라 requester/replier 양쪽이 send 도
   수행하지만, 수신 경로는 여전히 recv 모델로 고정한다.
+- 단, `SPOT` / `SPOT_REQREP` 은 direct message callback을 쓰지 않고,
+  `dispatch_event` callback 안에서 recv drain 하는 방식으로 수신을 활성화한다.
+  즉 callback은 data delivery가 아니라 recv drain activation signal이다.
 
 #### 프로세스/스레드 모델
 
@@ -74,21 +77,22 @@ echo(request/reply) 측정 surface를 사용한다.
 ```
 ┌─ process ────────────────────────────┐
 │  sender thread      recv thread      │
-│  publish loop ───►  poller POLLIN    │
+│  publish loop ───►  dispatch_event   │
 │                     recv drain       │
 │                     metric 집계      │
 └──────────────────────────────────────┘
 ```
 - sender thread는 ready barrier 통과 후 metric header가 포함된 payload를 연속 publish한다.
-- recv thread는 local probe barrier를 닫은 뒤 active payload만 집계한다.
+- recv thread는 `dispatch_event` callback이 오면 recv drain 하고, local probe
+  barrier를 닫은 뒤 active payload만 집계한다.
 
 **SPOT_REQREP echo 패턴**:
 ```
 ┌─ process ────────────────────────────┐
 │  requester thread   replier thread   │
-│  send request ───►  poller POLLIN    │
+│  send request ───►  dispatch_event   │
 │                     recv request     │
-│  poller POLLIN  ◄── send reply       │
+│  dispatch_event  ◄── send reply      │
 │  recv reply                          │
 │  metric 집계                         │
 └──────────────────────────────────────┘
@@ -97,6 +101,8 @@ echo(request/reply) 측정 surface를 사용한다.
   `spot(requester) -> spot_node -> spot_node -> spot(replier)` 를 경유한다.
 - 동일 프로세스 안에서 requester 와 replier 를 구동한다. replier 는 recv 즉시
   metric header 를 유지한 payload 로 reply 를 돌려보낸다.
+- 이때 spot 계열 수신 활성화는 direct message callback이 아니라
+  `dispatch_event` callback 안의 recv drain 으로 처리한다.
 - throughput/latency 집계 anchor 는 echo 패턴 규칙을 따르며, throughput 은
   requester 측 reply 수신 수로, latency 는 RTT 기반으로 집계한다.
 
@@ -347,6 +353,9 @@ request/reply probe barrier 로 판정한다. perf는 추가 precondition
 - single SPOT_REQREP 은 SpotNode mesh 구성 완료 후 requester 가 metric
   header 가 찍힌 probe request 를 routed 경로로 보내고, replier 의 reply 가
   requester 에 도착하면 ready 를 닫는다.
+- single SPOT / single SPOT_REQREP 은 direct message callback mode를 두지
+  않는다. recv 측 payload 처리는 `dispatch_event` callback 안의 recv drain으로
+  수행해야 한다.
 
 #### 패턴 방향 분류
 

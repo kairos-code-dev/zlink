@@ -75,7 +75,11 @@ static std::string spot_subject_snapshot_key_local (
 std::string spot_node_t::summary_service_name () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    return _discovery_service;
+    if (!_discovery_service.empty ())
+        return _discovery_service;
+    if (_service_discoveries.size () == 1)
+        return _service_discoveries.begin ()->first;
+    return std::string ();
 }
 
 void spot_node_t::submit_pub_summary (spot_pub_t *pub_,

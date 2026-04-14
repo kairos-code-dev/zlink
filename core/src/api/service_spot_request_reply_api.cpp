@@ -2293,6 +2293,34 @@ zlink_submit_result_t zlink_spot_send_router (void *spot_,
     return ZLINK_SUBMIT_OK;
 }
 
+zlink_submit_result_t zlink_spot_send_service (void *spot_,
+                                               const char *service_name_,
+                                               zlink_msg_t *parts_,
+                                               size_t part_count_,
+                                               zlink_send_flags_t flags_)
+{
+    if (validate_request_parts (parts_, part_count_) != 0)
+        return zlink::submit_result_internal::from_errno (errno);
+    if (!service_name_ || service_name_[0] == '\0') {
+        errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if (validate_recv_flags (flags_) != 0)
+        return zlink::submit_result_internal::from_errno (errno);
+
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot || !spot->node) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+
+    zlink::socket_base_t *router =
+      zlink::spot_node_access_t::select_service_router (spot->node, service_name_);
+    if (!router)
+        return zlink::submit_result_internal::from_errno (errno);
+    return zlink_send (router, parts_, part_count_, flags_);
+}
+
 zlink_submit_result_t zlink_spot_request_router (
   void *spot_,
   const zlink_routing_id_t *peer_rid_,
@@ -2310,6 +2338,46 @@ zlink_submit_result_t zlink_spot_request_router (
     return zlink::submit_result_internal::from_request_submit_rc (
       start_spot_request_to_router (spot_, peer_rid_, parts_, part_count_,
                                     flags_, timeout_ms_, handler_, userdata_));
+}
+
+zlink_submit_result_t zlink_spot_request_service (
+  void *spot_,
+  const char *service_name_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_)
+{
+    if (!handler_) {
+        errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if (validate_request_parts (parts_, part_count_) != 0)
+        return zlink::submit_result_internal::from_errno (errno);
+    if (validate_request_send_flags (flags_) != 0)
+        return zlink::submit_result_internal::from_errno (errno);
+    if (!service_name_ || service_name_[0] == '\0') {
+        errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot || !spot->node) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+
+    zlink::socket_base_t *router =
+      zlink::spot_node_access_t::select_service_router (spot->node, service_name_);
+    if (!router)
+        return zlink::submit_result_internal::from_errno (errno);
+
+    return zlink::submit_result_internal::from_request_submit_rc (
+      reqrep::start_request (make_socket_handle (router), NULL, parts_,
+                             part_count_, flags_, timeout_ms_, handler_,
+                             userdata_));
 }
 
 zlink_submit_result_t zlink_spot_reply_spot (void *spot_,

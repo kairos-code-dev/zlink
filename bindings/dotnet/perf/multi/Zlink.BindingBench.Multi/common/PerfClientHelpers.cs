@@ -135,7 +135,7 @@ internal static partial class PerfRunner
 
     private static bool TryConsumeReadyEvent(MonitorSocket monitor)
     {
-        return DrainReadyEvents(monitor, true) > 0;
+        return DrainReadyEvents(monitor, false) > 0;
     }
 
     internal static int DrainReadyEvents(MonitorSocket monitor,

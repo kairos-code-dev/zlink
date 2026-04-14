@@ -82,7 +82,8 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
 
             for (;;) {
                 zlink::message_t inbound;
-                const int rc = sock->recv (inbound, zlink::recv_flag::dontwait);
+                const int rc =
+                  sock->recv (inbound, zlink::recv_flags_t::dontwait);
                 if (rc < 0) {
                     const int err = errno;
                     if (err == EAGAIN)

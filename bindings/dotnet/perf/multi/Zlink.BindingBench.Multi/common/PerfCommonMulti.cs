@@ -125,7 +125,7 @@ internal static partial class PerfRunner
         if (expectedReady <= 0)
             return true;
 
-        int readyCount = DrainReadyEvents(monitor, true);
+        int readyCount = DrainReadyEvents(monitor, false);
         if (readyCount >= expectedReady)
             return true;
 
@@ -147,7 +147,7 @@ internal static partial class PerfRunner
 
             try
             {
-                readyCount += DrainReadyEvents(monitor, true);
+                readyCount += DrainReadyEvents(monitor, false);
                 if (readyCount >= expectedReady)
                     return true;
             }

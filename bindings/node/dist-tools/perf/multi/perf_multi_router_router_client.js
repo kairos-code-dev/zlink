@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const SERVER_ID = Buffer.from('multi-router-router-server', 'ascii');
+const SERVER_ROUTING_ID = zlink.RoutingId.fromBytes(SERVER_ID);
 const { parseMultiArgs } = require('./perf_multi_common');
 const { waitForConnectionReady } = require('./perf_multi_runtime');
 async function main() {
@@ -20,7 +21,7 @@ async function main() {
     try {
         for (let i = 0; i < options.clients; i += 1) {
             const router = new zlink.RouterSocket(ctx);
-            router.setRoutingId(Buffer.from(`multi-router-client-${i}`, 'ascii'));
+            router.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`multi-router-client-${i}`, 'ascii')));
             routers.push(router);
             warmupPayloads.push(createPayload(options.msgSize));
             activePayloads.push(createPayload(options.msgSize));
@@ -35,7 +36,7 @@ async function main() {
         while (process.hrtime.bigint() < warmupUntilNs) {
             for (let i = 0; i < routers.length; i += 1) {
                 stampPayload(warmupPayloads[i], { phase: 0, runId, msgSize: options.msgSize, seq });
-                routers[i].send(SERVER_ID, warmupPayloads[i]);
+                routers[i].send(SERVER_ROUTING_ID, warmupPayloads[i]);
                 routers[i].recv();
                 seq += 1n;
             }
@@ -45,9 +46,9 @@ async function main() {
         while (process.hrtime.bigint() < stopAtNs) {
             for (let i = 0; i < routers.length; i += 1) {
                 stampPayload(activePayloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-                routers[i].send(SERVER_ID, activePayloads[i]);
+                routers[i].send(SERVER_ROUTING_ID, activePayloads[i]);
                 const echoed = routers[i].recv();
-                collector.record(decodeMetricHeader(echoed.parts[0].data), currentEpochNs());
+                collector.record(decodeMetricHeader(echoed.parts[0].data()), currentEpochNs());
                 seq += 1n;
             }
         }

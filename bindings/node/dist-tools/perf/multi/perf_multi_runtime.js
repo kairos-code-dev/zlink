@@ -55,9 +55,9 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
     poller.addSocket(socket, POLLIN);
     try {
         while (!shouldStop()) {
-            let ready = [];
+            let ready = null;
             try {
-                ready = poller.poll(pollTimeoutMs);
+                ready = poller.wait(pollTimeoutMs);
             }
             catch (error) {
                 const text = String(error && error.message ? error.message : error);
@@ -67,7 +67,7 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
                 }
                 throw error;
             }
-            if (ready.length === 0) {
+            if (!ready) {
                 await sleepImmediate();
                 continue;
             }

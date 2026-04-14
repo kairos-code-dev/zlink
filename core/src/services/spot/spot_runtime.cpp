@@ -36,6 +36,20 @@ static void preserve_first_error_local (int rc_, int *first_error_)
     *first_error_ = errno != 0 ? errno : EIO;
 }
 
+static void spot_runtime_diag_logf_local (const char *fmt_, ...)
+{
+    if (!std::getenv ("ZLINK_DEBUG_SPOT_RUNTIME_ATTACH"))
+        return;
+
+    va_list args;
+    va_start (args, fmt_);
+    std::fprintf (stderr, "[spot-runtime] ");
+    std::vfprintf (stderr, fmt_, args);
+    std::fprintf (stderr, "\n");
+    std::fflush (stderr);
+    va_end (args);
+}
+
 static int send_ascii_frame_local (socket_base_t *socket_,
                                    const std::string &value_,
                                    int flags_)
@@ -188,6 +202,13 @@ int spot_runtime_t::close_runtime_socket (socket_base_t *&socket_,
 {
     if (!socket_)
         return 0;
+    if (owner && owner->is_shutting_down ()) {
+        socket_->stop ();
+        socket_->close ();
+        owner->untrack_owned_socket (socket_);
+        socket_ = NULL;
+        return 0;
+    }
     if (owner && owner->_ctx)
         return owner->_lifecycle.close_socket_and_wait (socket_, timeout_ms_);
 
@@ -202,6 +223,13 @@ int spot_runtime_t::close_runtime_socket_async (socket_base_t *&socket_,
 {
     if (!socket_)
         return 0;
+    if (owner && owner->is_shutting_down ()) {
+        socket_->stop ();
+        socket_->close ();
+        owner->untrack_owned_socket (socket_);
+        socket_ = NULL;
+        return 0;
+    }
     if (owner && owner->_ctx)
         return owner->_lifecycle.close_socket (socket_, timeout_ms_);
 
@@ -241,6 +269,9 @@ int spot_runtime_t::destroy_attachment (uint64_t id_)
 
     if (!socket)
         return 0;
+    spot_runtime_diag_logf_local ("destroy_attachment id=%llu socket=%d endpoint=%s",
+                                  static_cast<unsigned long long> (id_),
+                                  socket->socket_id (), endpoint.c_str ());
     if (!endpoint.empty ())
         (void) socket->term_endpoint (endpoint.c_str ());
     socket->set_all_pipes_nodelay ();
@@ -267,6 +298,10 @@ int spot_runtime_t::destroy_attachment_async (uint64_t id_)
 
     if (!socket)
         return 0;
+    spot_runtime_diag_logf_local (
+      "destroy_attachment_async id=%llu socket=%d endpoint=%s",
+      static_cast<unsigned long long> (id_), socket->socket_id (),
+      endpoint.c_str ());
     if (!endpoint.empty ())
         (void) socket->term_endpoint (endpoint.c_str ());
     socket->set_all_pipes_nodelay ();

@@ -6,6 +6,7 @@
 
 #include <new>
 
+#include "api/socket_api_internal.hpp"
 #include "services/discovery/discovery_access.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_pub.hpp"
@@ -120,6 +121,79 @@ int spot_node_access_t::status_snapshot (spot_node_t *node_,
     return node_->snapshot_status (out_);
 }
 
+std::string spot_node_access_t::summary_service_name (spot_node_t *node_)
+{
+    if (!node_)
+        return std::string ();
+    return node_->summary_service_name ();
+}
+
+socket_base_t *spot_node_access_t::select_service_router (
+  spot_node_t *node_,
+  const std::string &service_name_)
+{
+    return node_ ? node_->select_service_router (service_name_) : NULL;
+}
+
+socket_base_t *spot_node_access_t::service_pub_socket (
+  spot_node_t *node_,
+  const std::string &service_name_)
+{
+    return node_ ? node_->service_pub_socket (service_name_) : NULL;
+}
+
+int spot_node_access_t::service_subscribe_recv (
+  spot_node_t *node_,
+  zlink_routing_id_t *source_rid_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  char *service_name_out_,
+  size_t *service_name_len_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  zlink_recv_flags_t flags_)
+{
+    return node_
+             ? node_->service_subscribe_recv (
+                 source_rid_out_, parts_out_, part_count_out_, service_name_out_,
+                 service_name_len_out_, topic_id_out_, topic_id_len_out_,
+                 flags_)
+             : -1;
+}
+
+int spot_node_access_t::service_subscription_event_recv (
+  spot_node_t *node_,
+  zlink_routing_id_t *source_rid_out_,
+  int *subscribed_out_,
+  char *service_name_out_,
+  size_t *service_name_len_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  zlink_recv_flags_t flags_)
+{
+    return node_
+             ? node_->service_subscription_event_recv (
+                 source_rid_out_, subscribed_out_, service_name_out_,
+                 service_name_len_out_, topic_id_out_, topic_id_len_out_,
+                 flags_)
+             : -1;
+}
+
+int spot_node_access_t::service_attachment_snapshot (
+  spot_node_t *node_,
+  std::vector<zlink_spot_service_attachment_stats_t> *out_)
+{
+    return node_ ? node_->snapshot_service_attachments (out_) : -1;
+}
+
+int spot_node_access_t::service_monitor_recv (
+  spot_node_t *node_,
+  zlink_spot_service_monitor_event_t *out_,
+  zlink_recv_flags_t flags_)
+{
+    return node_ ? node_->service_monitor_recv (out_, flags_) : -1;
+}
+
 int spot_node_access_t::peers_snapshot (
   spot_node_t *node_,
   const zlink_spot_node_peer_filter_t *filter_,
@@ -158,6 +232,42 @@ int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
     }
     discovery_t *discovery = discovery_access_t::from_handle (discovery_);
     return discovery ? node_->attach_discovery (discovery) : -1;
+}
+
+int spot_node_access_t::attach_router (spot_node_t *node_,
+                                       const char *service_name_,
+                                       void *router_)
+{
+    socket_base_t *router = try_as_socket (router_);
+    return node_ && router ? node_->attach_router (service_name_, router) : -1;
+}
+
+int spot_node_access_t::attach_pubsub (spot_node_t *node_,
+                                       const char *service_name_,
+                                       void *pub_,
+                                       void *sub_)
+{
+    socket_base_t *pub = try_as_socket (pub_);
+    socket_base_t *sub = try_as_socket (sub_);
+    return node_ && pub && sub ? node_->attach_pubsub (service_name_, pub, sub)
+                               : -1;
+}
+
+int spot_node_access_t::try_register_spot_facade (spot_node_t *node_,
+                                                  spot_handle_t *spot_)
+{
+    if (!node_ || !spot_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node_->try_register_spot_facade (spot_);
+}
+
+void spot_node_access_t::unregister_spot_facade (spot_node_t *node_,
+                                                 spot_handle_t *spot_)
+{
+    if (node_ && spot_)
+        node_->unregister_spot_facade (spot_);
 }
 
 void *spot_node_access_t::monitor_open (spot_node_t *node_,

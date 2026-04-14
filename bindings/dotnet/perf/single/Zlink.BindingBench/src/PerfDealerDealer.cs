@@ -7,44 +7,86 @@ using static PerfRunner;
 
 internal static class PerfDealerDealer
 {
+    private static void TryCleanup(DealerSocket sender, DealerSocket receiver,
+        string endpoint)
+    {
+        try
+        {
+            sender.Disconnect(endpoint);
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            receiver.Unbind(endpoint);
+        }
+        catch
+        {
+        }
+    }
+
     internal static int RunDealerDealer(string transport, int size)
     {
-        int warmupCount = ResolveSingleWarmupCount("DEALER_DEALER");
         int durationSeconds = ResolveSingleDurationSeconds();
         int recvTimeoutMs = ResolveSingleRcvTimeoutMs();
         int latCount = ResolveSingleLatencyCount("DEALER_DEALER");
 
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
-        using var left = new DealerSocket(ctx);
-        using var right = new DealerSocket(ctx);
-        ApplySingleSocketOptions(left);
-        ApplySingleSocketOptions(right);
-        ConfigureTlsServerIfNeeded(left, transport);
-        ConfigureTlsClientIfNeeded(right, transport);
+        using var receiver = new DealerSocket(ctx);
+        using var sender = new DealerSocket(ctx);
+        ApplySingleSocketOptions(receiver);
+        ApplySingleSocketOptions(sender);
+        ConfigureTlsServerIfNeeded(receiver, transport);
+        ConfigureTlsClientIfNeeded(sender, transport);
+
+        bool useMonitors = !string.Equals(transport, "inproc",
+            StringComparison.OrdinalIgnoreCase);
+        MonitorSocket? receiverMonitor = null;
+        MonitorSocket? senderMonitor = null;
+        string ep = EndpointFor(transport, "dealer-dealer");
 
         try
         {
-            string ep = EndpointFor(transport, "dealer-dealer");
-            left.Bind(ep);
-            right.Connect(ep);
-            Thread.Sleep(SingleConnectWaitMs);
+            if (useMonitors)
+            {
+                receiverMonitor = receiver.MonitorOpen(SocketEvent.ConnectionReady);
+                senderMonitor = sender.MonitorOpen(SocketEvent.ConnectionReady);
+            }
+
+            receiver.Bind(ep);
+            sender.Connect(ep);
+            if (useMonitors)
+            {
+                if (!(WaitForConnectionReady(receiverMonitor!, SingleConnectWaitMs)
+                    && WaitForConnectionReady(senderMonitor!, SingleConnectWaitMs)))
+                {
+                    ctx.Shutdown();
+                    TryCleanup(sender, receiver, ep);
+                    return 2;
+                }
+                receiverMonitor.Dispose();
+                receiverMonitor = null;
+                senderMonitor.Dispose();
+                senderMonitor = null;
+            }
+            else
+            {
+                Thread.Sleep(SingleConnectWaitMs);
+            }
 
             int payloadSize = Math.Max(size, sizeof(long));
             var payload = new byte[payloadSize];
             Array.Fill(payload, (byte)'a');
 
-            if (!RunPhase(right, left, payload, payloadSize, warmupCount, 0,
-                    recvTimeoutMs, 0, out long warmupReceived, out _)
-                || warmupReceived < warmupCount)
+            if (!RunActivePhase(sender, receiver, payload, payloadSize,
+                    durationSeconds, recvTimeoutMs, latCount,
+                    out long received, out var latencySamples))
             {
-                return 2;
-            }
-
-            if (!RunPhase(right, left, payload, payloadSize, 0, durationSeconds,
-                    recvTimeoutMs, latCount, out long received,
-                    out var latencySamples))
-            {
+                ctx.Shutdown();
+                TryCleanup(sender, receiver, ep);
                 return 2;
             }
 
@@ -52,80 +94,90 @@ internal static class PerfDealerDealer
             var latency = ComputeLatencyStats(latencySamples);
             PrintResult("DEALER_DEALER", transport, size, throughput,
                 latency.mean, latency.p95, latency.p99);
+            ctx.Shutdown();
+            TryCleanup(sender, receiver, ep);
             return 0;
         }
         catch
         {
+            try
+            {
+                ctx.Shutdown();
+            }
+            catch
+            {
+            }
+            TryCleanup(sender, receiver, ep);
             return 2;
+        }
+        finally
+        {
+            receiverMonitor?.Dispose();
+            senderMonitor?.Dispose();
         }
     }
 
-    private static bool RunPhase(SocketBase sender, SocketBase receiver,
-        byte[] payload, int payloadSize, int warmupCount, int durationSeconds,
-        int recvTimeoutMs, int latencyCap, out long receivedOut,
-        out List<double> latencySamples)
+    private static bool RunActivePhase(DealerSocket sender,
+        DealerSocket receiver, byte[] payload, int payloadSize,
+        int durationSeconds, int recvTimeoutMs, int latCount,
+        out long receivedOut, out List<double> latencySamples)
     {
-        bool active = durationSeconds > 0;
-        long deadlineTicks = active
-            ? DeadlineTicksFromSeconds(durationSeconds)
-            : 0;
+        long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
         long recvFlushTicks = Math.Max(1,
             (long)Math.Ceiling(recvTimeoutMs * Stopwatch.Frequency / 1000.0));
 
         long received = 0;
         int senderDone = 0;
         Exception? recvError = null;
-        var samples = new List<double>(Math.Max(0, latencyCap));
+        var samples = new List<double>(Math.Max(0, latCount));
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
 
         var recvThread = new Thread(() =>
         {
             long lastRecvTicks = Stopwatch.GetTimestamp();
-            var recvBuffer = new byte[payloadSize];
-
-            void AccountMessage(int bytesRead)
-            {
-                if (bytesRead != payloadSize)
-                    return;
-
-                Interlocked.Increment(ref received);
-                if (!active)
-                    return;
-
-                long nowNs = TimestampNs();
-                long sentNs = DecodeHeader(recvBuffer.AsSpan(0, sizeof(long)));
-                double latencyNs = Math.Max(0L, nowNs - sentNs);
-                ReservoirSample(samples, latencyNs, ref sampleSeen, latencyCap,
-                    ref rng);
-            }
+            using var poller = new Poller();
+            var events = new PollEvent[1];
+            poller.Add(receiver, PollEvents.PollIn);
 
             try
             {
                 while (true)
                 {
                     bool done = Volatile.Read(ref senderDone) != 0;
-                    if (!receiver.TryReceive(recvBuffer.AsSpan(),
-                            done ? ReceiveFlags.DontWait : ReceiveFlags.None,
-                            out int bytesRead))
+                    int timeoutMs = done ? Math.Max(1, recvTimeoutMs) : 50;
+                    if (WaitForInput(poller, events, timeoutMs))
                     {
-                        if (done && Stopwatch.GetTimestamp() - lastRecvTicks
-                            >= recvFlushTicks)
+                        while (true)
                         {
-                            break;
+                            if (!receiver.TryRecv(out Received? maybe)
+                                || maybe is null)
+                                break;
+
+                            using (maybe)
+                            {
+                                Message first = maybe.FirstPart();
+                                if (first.Size != payloadSize)
+                                    continue;
+                                byte[] recvBuffer = new byte[payloadSize];
+                                first.CopyTo(recvBuffer);
+                                long sentNs = DecodeHeader(
+                                    recvBuffer.AsSpan(0, sizeof(long)));
+                                long nowNs = TimestampNs();
+                                double latencyNs = Math.Max(0L, nowNs - sentNs);
+                                Interlocked.Increment(ref received);
+                                ReservoirSample(samples, latencyNs,
+                                    ref sampleSeen, latCount, ref rng);
+                                lastRecvTicks = Stopwatch.GetTimestamp();
+                            }
                         }
-                        Thread.Yield();
                         continue;
                     }
 
-                    lastRecvTicks = Stopwatch.GetTimestamp();
-                    AccountMessage(bytesRead);
-
-                    while (receiver.TryReceive(recvBuffer.AsSpan(),
-                        ReceiveFlags.DontWait, out bytesRead))
+                    if (done && Stopwatch.GetTimestamp() - lastRecvTicks
+                        >= recvFlushTicks)
                     {
-                        lastRecvTicks = Stopwatch.GetTimestamp();
-                        AccountMessage(bytesRead);
+                        break;
                     }
                 }
             }
@@ -138,36 +190,24 @@ internal static class PerfDealerDealer
         recvThread.Start();
 
         bool sendFailed = false;
-        if (active)
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            while (Stopwatch.GetTimestamp() < deadlineTicks)
+            StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
+            try
             {
-                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
-                try
-                {
-                    SendBlocking(sender, payload, PerfSendFlags.None);
-                }
-                catch
-                {
-                    sendFailed = true;
-                    break;
-                }
+                using var message = Message.FromBytes(payload);
+                sender.Send(message);
             }
-        }
-        else
-        {
-            for (int i = 0; i < warmupCount; i++)
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno))
             {
-                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
-                try
-                {
-                    SendBlocking(sender, payload, PerfSendFlags.None);
-                }
-                catch
-                {
-                    sendFailed = true;
-                    break;
-                }
+                Thread.Yield();
+                continue;
+            }
+            catch
+            {
+                sendFailed = true;
+                break;
             }
         }
 
@@ -179,9 +219,18 @@ internal static class PerfDealerDealer
         if (sendFailed || recvError != null)
             return false;
 
-        if (!active)
-            return received >= warmupCount;
-
         return received > 0 && latencySamples.Count > 0;
+    }
+
+    private static bool IsInterrupted(int errno)
+    {
+        ErrorCode code = ZlinkException.MapErrorCode(errno);
+        return code == ErrorCode.EIntr || errno == 4;
+    }
+
+    private static bool IsWouldBlock(int errno)
+    {
+        ErrorCode code = ZlinkException.MapErrorCode(errno);
+        return code == ErrorCode.EAgain || errno == 11;
     }
 }

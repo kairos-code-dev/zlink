@@ -7,12 +7,15 @@ using static PerfRunner;
 
 internal static class PerfPubSub
 {
+    private const string Topic = "perf.topic";
+
     internal static int RunPubSub(string transport, int size)
     {
-        int warmupCount = ResolveSingleWarmupCount("PUBSUB");
         int durationSeconds = ResolveSingleDurationSeconds();
         int recvTimeoutMs = ResolveSingleRcvTimeoutMs();
         int latCount = ResolveSingleLatencyCount("PUBSUB");
+        int readySettleMs = PerfEnv.ReadNonNegative(
+            "PERF_SINGLE_PUBSUB_READY_SETTLE_MS", 1000);
 
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
@@ -23,30 +26,45 @@ internal static class PerfPubSub
         ConfigureTlsServerIfNeeded(pub, transport);
         ConfigureTlsClientIfNeeded(sub, transport);
 
+        bool useMonitors = !string.Equals(transport, "inproc",
+            StringComparison.OrdinalIgnoreCase);
+        MonitorSocket? pubMonitor = null;
+        MonitorSocket? subMonitor = null;
+
         try
         {
+            if (useMonitors)
+            {
+                pubMonitor = pub.MonitorOpen(SocketEvent.ConnectionReady);
+                subMonitor = sub.MonitorOpen(SocketEvent.ConnectionReady);
+            }
+
             string ep = EndpointFor(transport, "pubsub");
             pub.SetOption(SocketOptions.XPubNoDrop, 1);
-            sub.SetOption(SocketOptions.Subscribe, string.Empty);
             pub.Bind(ep);
+            sub.SetSubscription(Topic);
             sub.Connect(ep);
-            Thread.Sleep(SingleConnectWaitMs);
+
+            if (useMonitors)
+            {
+                if (!(WaitForConnectionReady(pubMonitor!, SingleConnectWaitMs)
+                    && WaitForConnectionReady(subMonitor!, SingleConnectWaitMs)))
+                {
+                    return 2;
+                }
+            }
+            else
+            {
+                Thread.Sleep(SingleConnectWaitMs);
+            }
+
+            Thread.Sleep(Math.Max(1, readySettleMs));
 
             int payloadSize = Math.Max(size, sizeof(long));
             var payload = new byte[payloadSize];
             Array.Fill(payload, (byte)'a');
 
-            if (!WaitForSubscriber(pub, sub, payload))
-                return 2;
-
-            if (!RunPhase(pub, sub, payload, payloadSize, warmupCount, 0,
-                    recvTimeoutMs, 0, out long warmupReceived, out _)
-                || warmupReceived < warmupCount)
-            {
-                return 2;
-            }
-
-            if (!RunPhase(pub, sub, payload, payloadSize, 0, durationSeconds,
+            if (!RunPhase(pub, sub, payload, payloadSize, durationSeconds,
                     recvTimeoutMs, latCount, out long received,
                     out var latencySamples))
             {
@@ -57,55 +75,26 @@ internal static class PerfPubSub
             var latency = ComputeLatencyStats(latencySamples);
             PrintResult("PUBSUB", transport, size, throughput, latency.mean,
                 latency.p95, latency.p99);
+            ctx.Shutdown();
             return 0;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"single_pubsub_error:{ex.Message}");
+            Console.Error.WriteLine($"single_pubsub_error:{ex}");
             return 2;
         }
-    }
-
-    private static bool WaitForSubscriber(SocketBase publisher,
-        SocketBase subscriber, byte[] payload)
-    {
-        using var poller = new Poller();
-        var events = new PollEvent[1];
-        poller.Add(subscriber, PollEvents.PollIn);
-        using var recv = new Message();
-
-        for (int i = 0; i < 2000; i++)
+        finally
         {
-            StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
-            SendBlocking(publisher, payload, PerfSendFlags.None);
-            if (!WaitForInput(poller, events, 10))
-                continue;
-
-            try
-            {
-                using Message message = subscriber.ReceiveMessage(
-                    ReceiveFlags.DontWait);
-                if (message.Size == payload.Length)
-                    return true;
-            }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno))
-            {
-            }
+            pubMonitor?.Dispose();
+            subMonitor?.Dispose();
         }
-
-        return false;
     }
 
-    private static bool RunPhase(SocketBase sender, SocketBase receiver,
-        byte[] payload, int payloadSize, int warmupCount, int durationSeconds,
-        int recvTimeoutMs, int latencyCap, out long receivedOut,
-        out List<double> latencySamples)
+    private static bool RunPhase(PubSocket sender, SubSocket receiver,
+        byte[] payload, int payloadSize, int durationSeconds, int recvTimeoutMs,
+        int latencyCap, out long receivedOut, out List<double> latencySamples)
     {
-        bool active = durationSeconds > 0;
-        long deadlineTicks = active
-            ? DeadlineTicksFromSeconds(durationSeconds)
-            : 0;
+        long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
         long recvFlushTicks = Math.Max(1,
             (long)Math.Ceiling(recvTimeoutMs * Stopwatch.Frequency / 1000.0));
 
@@ -119,16 +108,19 @@ internal static class PerfPubSub
         var recvThread = new Thread(() =>
         {
             long lastRecvTicks = Stopwatch.GetTimestamp();
-            var recvBuffer = new byte[payloadSize];
+            using var poller = new Poller();
+            var events = new PollEvent[1];
+            poller.Add(receiver, PollEvents.PollIn);
 
-            void AccountMessage(int bytesRead)
+            void AccountMessage(TopicMessage subscribed)
             {
-                if (bytesRead != payloadSize)
+                Message first = subscribed.FirstPart();
+                if (first.Size != payloadSize)
                     return;
 
+                byte[] recvBuffer = new byte[payloadSize];
+                first.CopyTo(recvBuffer);
                 Interlocked.Increment(ref received);
-                if (!active)
-                    return;
 
                 long nowNs = TimestampNs();
                 long sentNs = DecodeHeader(recvBuffer.AsSpan(0, sizeof(long)));
@@ -142,33 +134,32 @@ internal static class PerfPubSub
                 while (true)
                 {
                     bool done = Volatile.Read(ref senderDone) != 0;
-                    try
+                    int timeoutMs = done ? Math.Max(1, recvTimeoutMs) : 50;
+                    if (WaitForInput(poller, events, timeoutMs))
                     {
-                        int bytesRead = receiver.Receive(recvBuffer.AsSpan(),
-                            done ? ReceiveFlags.DontWait : ReceiveFlags.None);
-                        lastRecvTicks = Stopwatch.GetTimestamp();
-                        AccountMessage(bytesRead);
-
                         while (true)
                         {
-                            bytesRead = receiver.Receive(recvBuffer.AsSpan(),
-                                ReceiveFlags.DontWait);
-                            lastRecvTicks = Stopwatch.GetTimestamp();
-                            AccountMessage(bytesRead);
+                            try
+                            {
+                                using TopicMessage subscribed = receiver.Subscribe(
+                                    RecvFlags.DontWait);
+                                lastRecvTicks = Stopwatch.GetTimestamp();
+                                AccountMessage(subscribed);
+                            }
+                            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                                            || IsWouldBlock(ex.InternalErrno))
+                            {
+                                break;
+                            }
                         }
-                    }
-                    catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
-                    {
+
                         continue;
                     }
-                    catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
+
+                    if (done && Stopwatch.GetTimestamp() - lastRecvTicks
+                        >= recvFlushTicks)
                     {
-                        if (done && Stopwatch.GetTimestamp() - lastRecvTicks
-                            >= recvFlushTicks)
-                        {
-                            break;
-                        }
-                        Thread.Yield();
+                        break;
                     }
                 }
             }
@@ -181,36 +172,24 @@ internal static class PerfPubSub
         recvThread.Start();
 
         bool sendFailed = false;
-        if (active)
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            while (Stopwatch.GetTimestamp() < deadlineTicks)
+            StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
+            try
             {
-                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
-                try
-                {
-                    SendBlocking(sender, payload, PerfSendFlags.None);
-                }
-                catch
-                {
-                    sendFailed = true;
-                    break;
-                }
+                using var message = Message.FromBytes(payload);
+                sender.Publish(Topic, message);
             }
-        }
-        else
-        {
-            for (int i = 0; i < warmupCount; i++)
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno))
             {
-                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
-                try
-                {
-                    SendBlocking(sender, payload, PerfSendFlags.None);
-                }
-                catch
-                {
-                    sendFailed = true;
-                    break;
-                }
+                Thread.Yield();
+                continue;
+            }
+            catch
+            {
+                sendFailed = true;
+                break;
             }
         }
 
@@ -221,9 +200,6 @@ internal static class PerfPubSub
         receivedOut = received;
         if (sendFailed || recvError != null)
             return false;
-
-        if (!active)
-            return received >= warmupCount;
 
         return received > 0 && latencySamples.Count > 0;
     }

@@ -41,7 +41,7 @@ async function main() {
     const recvTasks = subs.map((sub) => drainRecvSocket(
       sub,
       (received) => {
-        const header = decodeMetricHeader(received.parts[0].data);
+        const header = decodeMetricHeader(received.parts[0].data());
         if (!header) {
           return;
         }

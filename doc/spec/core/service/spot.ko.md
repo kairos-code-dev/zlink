@@ -8,8 +8,8 @@
 
 | 용어 | 설명 |
 |------|------|
-| SpotNode | SPOT mesh 토폴로지와 lifecycle을 관리하는 소유자 핸들 |
-| Spot (facade) | SpotNode 위에 올라가는 publish/subscribe 통합 인터페이스 |
+| SpotNode | SPOT mesh와 service attachment의 수명, wiring, 운영 상태를 관리하는 소유자 핸들 |
+| Spot (facade) | SpotNode 위에 올라가는 routed + pub/sub 통합 데이터 평면 인터페이스 |
 | mesh | SpotNode 간 자동 구성되는 PUB/SUB 네트워크 |
 | fanout | 수신한 메시지를 로컬 subscriber에게 분배하는 내부 경로 |
 | HWM (High Water Mark) | 송신/수신 큐 최대 용량. 초과 시 backpressure 발생 |
@@ -22,7 +22,9 @@ SPOT public API는 두 계층으로 정리됩니다.
 - `Spot`: `SpotNode`에 attach되는 unified pub/sub facade
 
 현재 public surface에는 standalone `zlink_spot_pub_*` / `zlink_spot_sub_*`
-생성자와 destroy, option, monitor API가 없습니다.
+생성자와 destroy, option API가 없습니다. 대신 `SpotNode`와 unified `Spot` 위에
+service-aware attach, send/request/publish/subscribe, node monitor recv 표면이
+추가되었습니다.
 
 ## I/O 모델
 
@@ -33,7 +35,7 @@ SPOT public API는 두 계층으로 정리됩니다.
 | 동작 | Recv 모드 (기본) | Callback 모드 |
 |------|-----------------|--------------|
 | **SpotNode 수신** | *(미노출 — unified Spot 사용)* | *(미노출 — unified Spot 사용)* |
-| **Spot 수신** | `zlink_subscribe()` | `subscribe_handler()` 콜백 |
+| **Spot 수신** | `zlink_subscribe()` / `zlink_spot_subscribe()` | `subscribe_handler()` 또는 dispatch readable callback |
 | **읽기 poller** | `ZLINK_POLLIN` | `EBUSY` |
 | **Send-ready** | poller 또는 `send_ready_handler()` | poller 또는 `send_ready_handler()` |
 
@@ -81,10 +83,13 @@ zlink_config_result_t zlink_get_routing_id(void *node,
                                            zlink_routing_id_t *out);
 ```
 
-`SpotNode`는 SPOT mesh 연결 구조와 수명 관리를 맡는 기준 핸들입니다.
-`service_name`은 연결된 Discovery 인스턴스에서 결정됩니다. SpotNode는 일반적인
-data-plane 함수를 직접 노출하지 않습니다. publish/subscribe/recv callback API는
-`zlink_spot_new(node)`로 만든 통합 `Spot` 핸들을 통해 사용합니다.
+`SpotNode`는 SPOT mesh 연결 구조와 service attachment 수명 관리를 맡는 기준
+핸들입니다. service-aware 모드에서는 `service_name`이 하나의 node 전체에 고정되지
+않습니다. node는 연결된 Discovery 인스턴스나 수동 attach API를 통해 여러
+`service_name`의 ROUTER/PUB/SUB attachment를 동시에 가질 수 있습니다.
+SpotNode는 일반적인 data-plane 함수를 직접 노출하지 않습니다. publish/subscribe/
+recv callback API는 `zlink_spot_new(node)`로 만든 통합 `Spot` 핸들을 통해
+사용합니다.
 TLS/WSS 설정도 `SpotNode`의 책임이며, `zlink_set_tls_server()` /
 `zlink_set_tls_client()`는 bind/connect 전에 node handle에 적용해야 합니다.
 `zlink_set_routing_id()`로 설정하는 `SpotNode` routing id는 bind endpoint와
@@ -172,8 +177,147 @@ handle에 `zlink_set_tls_server()` 또는 `zlink_set_tls_client()`를 호출하�
 readable subscribe plane을 비우는 경우에는 호출할 수 있습니다.
 
 관찰/운영 상태 확인은 `zlink_spot_node_status_snapshot()`,
-`zlink_spot_node_peers_snapshot()`, `zlink_spot_node_subjects_snapshot()`을
-사용합니다.
+`zlink_spot_node_peers_snapshot()`, `zlink_spot_node_subjects_snapshot()`,
+`zlink_spot_node_service_attachment_count()`,
+`zlink_spot_node_service_attachment_at()`,
+`zlink_spot_node_monitor_recv()`를 사용합니다.
+
+## Multi-Service Attachment Surface
+
+service-aware SPOT은 한 `SpotNode` 아래에 여러 서비스 경로를 붙이고, unified
+`Spot` 하나에서 이 경로들을 함께 다룹니다.
+
+### SpotNode attach API
+
+```c
+zlink_config_result_t zlink_spot_node_attach_router (
+  void *node_,
+  const char *service_name_,
+  void *router_);
+
+zlink_config_result_t zlink_spot_node_attach_pubsub (
+  void *node_,
+  const char *service_name_,
+  void *pub_,
+  void *sub_);
+
+zlink_config_result_t zlink_spot_node_attach_discovery (
+  void *node_,
+  void *discovery_);
+```
+
+- `attach_router`는 지정한 서비스 아래 ROUTER attachment를 등록합니다.
+- `attach_pubsub`는 지정한 서비스 아래 `PUB + SUB` 한 쌍을 함께 등록합니다.
+- 같은 소켓을 둘 이상의 서비스에 중복 attach할 수 없습니다.
+- attach는 외부 소켓의 소유권을 가져오지 않습니다. node destroy가 수동 attach된
+  소켓을 자동으로 destroy하지 않습니다.
+- service-aware attachment 또는 socket-service Discovery가 붙은 node는 공개 facade
+  `Spot` 하나만 허용합니다. 그런 node에서 두 번째 `zlink_spot_new(node)`는
+  `EBUSY`로 실패합니다.
+- 반대로 같은 node에 일반 facade가 둘 이상 먼저 만들어진 상태에서는
+  `zlink_spot_node_attach_router()`, `zlink_spot_node_attach_pubsub()`,
+  `zlink_spot_node_attach_discovery()`가 `EBUSY`로 실패합니다.
+- socket-service Discovery attach는 서로 다른 `service_name` 여러 개를 같은 node에
+  붙일 수 있지만, 같은 `service_name` Discovery 중복 attach는 허용하지 않습니다.
+
+### Spot service-aware data-plane API
+
+```c
+zlink_submit_result_t zlink_spot_send_service (
+  void *spot_,
+  const char *service_name_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_);
+
+zlink_submit_result_t zlink_spot_request_service (
+  void *spot_,
+  const char *service_name_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
+
+zlink_submit_result_t zlink_spot_publish (
+  void *spot_,
+  const char *service_name_,
+  const char *topic_id_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_);
+
+zlink_recv_result_t zlink_spot_subscribe (
+  void *spot_,
+  zlink_routing_id_t *source_rid_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  char *service_name_out_,
+  size_t *service_name_len_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  zlink_recv_flags_t flags_);
+
+zlink_recv_result_t zlink_spot_subscription_event (
+  void *spot_,
+  zlink_routing_id_t *source_rid_out_,
+  int *subscribed_out_,
+  char *service_name_out_,
+  size_t *service_name_len_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  zlink_recv_flags_t flags_);
+```
+
+- `zlink_spot_send_service()`와 `zlink_spot_request_service()`는 같은 서비스의 active
+  ROUTER 집합에서 send-ready 후보 하나를 round-robin으로 고릅니다.
+- 지정한 서비스 자체가 없으면 `NOT_FOUND`, attachment는 있으나 현재 active 경로가
+  없으면 `NOT_CONNECTED`로 정규화합니다.
+- `zlink_spot_publish()`는 지정한 서비스의 active pub/sub pair를 사용합니다.
+  서비스가 없으면 `NOT_FOUND`, pair가 없거나 현재 inactive이면 `NOT_CONNECTED`를
+  반환합니다.
+- `zlink_spot_subscribe()`와 `zlink_spot_subscription_event()`는 payload와 함께
+  `service_name`을 돌려줍니다. pub/sub 경로의 `source_rid_out_`는 비어 있을 수
+  있습니다.
+- service-aware subscribe/readable 알림은 `zlink_spot_dispatch_event_handler()`의
+  `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE` plane으로 올라옵니다.
+
+### Service attachment observation
+
+```c
+typedef struct zlink_spot_service_attachment_stats_t
+{
+    char service_name[256];
+    uint32_t router_count;
+    uint32_t pub_count;
+    uint32_t sub_count;
+    uint32_t auto_router_count;
+    uint32_t auto_pub_count;
+    uint32_t auto_sub_count;
+} zlink_spot_service_attachment_stats_t;
+
+zlink_config_result_t zlink_spot_node_service_attachment_count (
+  void *node_,
+  size_t *count_out_);
+
+zlink_config_result_t zlink_spot_node_service_attachment_at (
+  void *node_,
+  size_t index_,
+  zlink_spot_service_attachment_stats_t *out_);
+
+zlink_recv_result_t zlink_spot_node_monitor_recv (
+  void *node_,
+  zlink_spot_service_monitor_event_t *out_,
+  zlink_recv_flags_t flags_);
+```
+
+- attachment snapshot은 서비스별 수동 attach 개수와 Discovery가 공급한 자동
+  attachment 개수를 함께 보여줍니다.
+- `zlink_spot_node_monitor_recv()`는 서비스별 attachment monitor event를
+  `service_name + role + monitor_event` 형태로 반환합니다.
+- service-aware monitor event는 `Spot` dispatch readable plane에 섞이지 않습니다.
+  monitor event의 소유자는 `spot_`이 아니라 `node_`입니다.
 
 ## SPOT routed request-reply
 

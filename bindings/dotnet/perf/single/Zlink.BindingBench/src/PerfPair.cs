@@ -77,6 +77,7 @@ internal static class PerfPair
             var latency = ComputeLatencyStats(latencySamples);
             PrintResult("PAIR", transport, size, throughput, latency.mean,
                 latency.p95, latency.p99);
+            ctx.Shutdown();
             return 0;
         }
         catch (Exception ex)

@@ -34,8 +34,7 @@ internal static class PerfDealerDealerClient
                 ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
                 client.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
-                var monitor = client.MonitorOpen(SocketEvent.ConnectionReady
-                    | SocketEvent.Connected | SocketEvent.Accepted);
+                var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
                 client.Connect(endpoint);
                 clients.Add(client);
                 monitors.Add(monitor);

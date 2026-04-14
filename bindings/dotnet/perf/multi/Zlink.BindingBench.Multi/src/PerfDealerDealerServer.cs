@@ -24,8 +24,7 @@ internal static class PerfDealerDealerServer
         ApplyMultiSocketOptions(server, options);
         ConfigureTlsServerIfNeeded(server, options.Transport);
 
-        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady
-            | SocketEvent.Connected | SocketEvent.Accepted);
+        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
         server.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
         server.Bind(endpoint);

@@ -28,7 +28,7 @@ async function main() {
     const recvTask = drainRecvSocket(
       server,
       (received) => {
-        const header = decodeMetricHeader(received.parts[0].data);
+        const header = decodeMetricHeader(received.parts[0].data());
         collector.record(header, currentEpochNs());
       },
       () => stop

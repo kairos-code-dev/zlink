@@ -1291,6 +1291,73 @@ service-aware subscribe recv는 submit 계열과 다르게 "대상이 없는 서
 
 현재 문서 기준으로는 단순성을 위해 `EINVAL`을 유지한다.
 
+### 12.13 회귀 테스트 기준
+
+이 기능은 routed, pub/sub, discovery, monitor, dispatch surface를 함께 건드린다.
+따라서 구현이 끝나면 단위 테스트만으로는 부족하고, 아래 회귀 항목을 함께
+확인해야 한다.
+
+#### 12.13.1 facade / attach 계약
+
+- 같은 `SpotNode`에 service-aware attachment가 붙은 뒤 두 번째
+  `zlink_spot_new(node)`가 `EBUSY`로 거부되는지 확인한다.
+- 같은 `SpotNode`에 일반 facade를 둘 이상 먼저 만든 뒤
+  `zlink_spot_node_attach_router()`,
+  `zlink_spot_node_attach_pubsub()`,
+  `zlink_spot_node_attach_discovery()`가 `BUSY`로 거부되는지 확인한다.
+- 같은 `service_name` Discovery를 같은 node에 중복 attach할 때 `BUSY`로
+  실패하는지 확인한다.
+- 서로 다른 `service_name` Discovery는 같은 node에 함께 attach되는지 확인한다.
+
+#### 12.13.2 data-plane 결과 코드
+
+- 존재하지 않는 서비스에 `zlink_spot_send_service()`,
+  `zlink_spot_request_service()`, `zlink_spot_publish()`를 호출했을 때
+  `NOT_FOUND`가 반환되는지 확인한다.
+- 서비스는 있으나 active ROUTER 후보가 없을 때
+  `zlink_spot_send_service()` / `zlink_spot_request_service()`가
+  `NOT_CONNECTED`를 반환하는지 확인한다.
+- selector 단계에서 send-ready 후보가 0개일 때도 `NOT_CONNECTED`로 정규화되는지
+  확인한다.
+- active `PUB` 또는 ROUTER가 HWM에 걸린 상태에서는 `BACKPRESSURED`가 반환되는지
+  확인한다.
+- request submit 이후 completion이 `TIMED_OUT`, `NOT_FOUND`로 올바르게
+  정규화되는지 확인한다.
+
+#### 12.13.3 pub/sub service metadata
+
+- `zlink_spot_publish()`로 보낸 메시지가 `zlink_spot_subscribe()`에서 올바른
+  `service_name`과 `topic`으로 수신되는지 확인한다.
+- pub/sub 경로에서 `source_rid`가 비어 있어도 `service_name`과 `topic`만으로
+  응용이 메시지를 구분할 수 있는지 확인한다.
+- `zlink_spot_subscription_event()`가 service-aware metadata를 유지하는지
+  확인한다.
+
+#### 12.13.4 discovery churn / active set
+
+- discovery view가 `router only` 상태일 때 routed 경로는 유지되고 pub/sub 경로는
+  활성화되지 않는지 확인한다.
+- discovery churn으로 `pub/sub` 짝이 깨지면 해당 서비스의 pub/sub pair가 active
+  집합에서 제외되고, `zlink_spot_publish()`가 `NOT_CONNECTED`로 실패하는지
+  확인한다.
+- pub/sub pair가 다시 복구되면 subscription filter replay 뒤 active 집합에
+  재진입하는지 확인한다.
+- Discovery destroy가 해당 source가 공급하던 automatic attachment만 제거하고,
+  수동 attachment나 다른 Discovery source는 유지하는지 확인한다.
+
+#### 12.13.5 dispatch / monitor surface
+
+- `SUBSCRIBE_READABLE`, `ROUTED_READABLE`, `TIMER_READABLE`가 각각 대응 recv
+  함수 drain으로 이어지는지 확인한다.
+- monitor event가 `zlink_spot_dispatch_event_handler()`로 올라오지 않고
+  `zlink_spot_node_monitor_recv()`로만 수신되는지 확인한다.
+- monitor event에 `service_name`과 attachment role이 함께 실리는지 확인한다.
+- 같은 `Spot`의 dispatch callback은 직렬 실행되고, 느린 callback이 I/O thread를
+  직접 점유하지 않는지 확인한다.
+
+이 절은 구현 후 최소 회귀 범위를 적은 것이다. 실제 테스트 파일 배치와 fixture
+구성은 구현 코드 구조에 맞춰 정하되, 위 계약 항목은 빠지지 않아야 한다.
+
 ## 13. 정식 spec 분해 계획
 
 구현과 공개 헤더가 정리되면 이 초안 내용은 한 문서로 유지하지 않고 아래처럼

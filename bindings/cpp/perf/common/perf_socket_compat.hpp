@@ -55,13 +55,13 @@ class socket_t : public base_socket_t
     template<typename T>
     int set_option (socket_option_key_t<T> key_, const T &value_)
     {
-        return base_socket_t::set_option (key_, value_);
+        return base_socket_t::set_option (key_.option, value_);
     }
 
     int set_option (socket_option_key_t<std::string> key_,
                     const std::string &value_)
     {
-        return base_socket_t::set_option (key_, value_);
+        return base_socket_t::set_option (key_.option, value_);
     }
 
     template<typename T>
@@ -103,13 +103,13 @@ class socket_t : public base_socket_t
     template<typename T>
     int get_option (socket_option_key_t<T> key_, T *value_) const
     {
-        return base_socket_t::get_option (key_, value_);
+        return base_socket_t::get_option (key_.option, value_);
     }
 
     int get_option (socket_option_key_t<std::string> key_,
                     std::string &value_) const
     {
-        return base_socket_t::get_option (key_, value_);
+        return base_socket_t::get_option (key_.option, value_);
     }
 
     template<typename T>
@@ -179,7 +179,7 @@ class socket_t : public base_socket_t
 
     int send (const void *data_,
               size_t size_,
-              send_flag flags_ = send_flag::none)
+              send_flags_t flags_ = send_flags_t::none)
     {
         message_t part = message_t::from_bytes (data_, size_);
         if (!part.valid ())
@@ -190,7 +190,7 @@ class socket_t : public base_socket_t
 
     int send (const char *data_,
               size_t size_,
-              send_flag flags_ = send_flag::none)
+              send_flags_t flags_ = send_flags_t::none)
     {
         return send (static_cast<const void *> (data_), size_, flags_);
     }
@@ -198,7 +198,7 @@ class socket_t : public base_socket_t
     int send (const std::string &routing_id_,
               const void *data_,
               size_t size_,
-              send_flag flags_ = send_flag::none)
+              send_flags_t flags_ = send_flags_t::none)
     {
         routing_id_t rid;
         if (routing_id_from (routing_id_, &rid) != 0)
@@ -210,19 +210,20 @@ class socket_t : public base_socket_t
         return rc == 0 ? static_cast<int> (size_) : -1;
     }
 
-    int recv (message_t &part_, recv_flag flags_ = recv_flag::none)
+    int recv (message_t &part_, recv_flags_t flags_ = recv_flags_t::none)
     {
         return detail::recv_single_part (handle (), NULL, flags_, part_);
     }
 
-    int recv (std::vector<message_t> &parts_, recv_flag flags_ = recv_flag::none)
+    int recv (std::vector<message_t> &parts_,
+              recv_flags_t flags_ = recv_flags_t::none)
     {
         return detail::recv_parts (handle (), NULL, flags_, parts_);
     }
 
     int recv (routing_id_t &source_rid_out_,
               message_t &part_,
-              recv_flag flags_ = recv_flag::none)
+              recv_flags_t flags_ = recv_flags_t::none)
     {
         return detail::recv_single_part (
           handle (), routing_id_native (source_rid_out_), flags_, part_);
@@ -244,14 +245,15 @@ class socket_t : public base_socket_t
 
     int recv (zlink_routing_id_t &source_rid_out_,
               message_t &part_,
-              recv_flag flags_ = recv_flag::none)
+              recv_flags_t flags_ = recv_flags_t::none)
     {
         std::memset (&source_rid_out_, 0, sizeof (source_rid_out_));
         return detail::recv_single_part (
           handle (), &source_rid_out_, flags_, part_);
     }
 
-    int recv (void *data_, size_t size_, recv_flag flags_ = recv_flag::none)
+    int recv (void *data_, size_t size_,
+              recv_flags_t flags_ = recv_flags_t::none)
     {
         if (!data_) {
             errno = EINVAL;

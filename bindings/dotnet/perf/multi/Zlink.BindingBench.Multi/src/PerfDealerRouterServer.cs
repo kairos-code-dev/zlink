@@ -7,9 +7,6 @@ using static PerfRunner;
 internal static class PerfDealerRouterServer
 {
     private const int PollTimeoutMs = 50;
-    private static readonly bool DebugEnabled =
-        string.Equals(Environment.GetEnvironmentVariable("PERF_DEBUG"), "1",
-            StringComparison.Ordinal);
 
     internal static int Run(PerfOptions options)
     {
@@ -26,8 +23,7 @@ internal static class PerfDealerRouterServer
         using var server = new RouterSocket(ctx);
         ApplyMultiSocketOptions(server, options);
         ConfigureTlsServerIfNeeded(server, options.Transport);
-        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady
-            | SocketEvent.Connected | SocketEvent.Accepted);
+        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
         server.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
         server.Bind(endpoint);
@@ -68,9 +64,6 @@ internal static class PerfDealerRouterServer
                     if (IsStopTokenPayload(body))
                         goto Done;
 
-                    if (DebugEnabled)
-                        Console.Error.WriteLine($"dealer-router server recv bytes={body.Length}");
-
                     if (TryDecodeMetricHeader(body, out PerfMetricHeader header)
                         && header.RunId == expectedRunId
                         && header.MsgSize == (uint)size
@@ -98,8 +91,6 @@ internal static class PerfDealerRouterServer
                     try
                     {
                         server.Send(routingId, replies);
-                        if (DebugEnabled)
-                            Console.Error.WriteLine($"dealer-router server reply bytes={body.Length}");
                     }
                     finally
                     {

@@ -371,6 +371,14 @@ function recvNativeError(error: unknown, flags: RecvFlags, fallbackMessage: stri
   return createError('recv', readErrno(), message) as RecvError;
 }
 
+function submitNativeError(error: unknown, flags: SendFlags, fallbackMessage: string): SubmitError {
+  const message = error instanceof Error && error.message ? error.message : fallbackMessage;
+  if ((flags & SendFlags.DontWait) !== 0 && /Resource temporarily unavailable|temporarily unavailable|would block|interrupted system call/i.test(message)) {
+    return new SubmitError(SubmitResult.Backpressured, readErrno(), message);
+  }
+  return createError('submit', readErrno(), message) as SubmitError;
+}
+
 function requestErrorFromResult(result: RequestResult, message: string): RequestError {
   return new RequestError(result, 0, message);
 }
@@ -952,10 +960,14 @@ export class ServiceMonitor extends NativeHandle {
 class SendSocket extends BaseSocket {
   send(message: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     const payload = normalizeMessageLikePayload(message);
-    if (Array.isArray(payload)) {
-      requireNative().socketSendParts(this.nativeHandle(), payload, flags | 0);
-    } else {
-      requireNative().socketSend(this.nativeHandle(), payload, flags | 0);
+    try {
+      if (Array.isArray(payload)) {
+        requireNative().socketSendParts(this.nativeHandle(), payload, flags | 0);
+      } else {
+        requireNative().socketSend(this.nativeHandle(), payload, flags | 0);
+      }
+    } catch (error) {
+      throw submitNativeError(error, flags, 'send failed');
     }
   }
 }
@@ -964,7 +976,11 @@ class PublisherSocket extends BaseSocket {
   publish(topic: string, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     const normalizedTopic = validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER);
     const normalized = normalizeMessageLikePayload(payload);
-    requireNative().socketPublish(this.nativeHandle(), normalizedTopic, normalized, flags | 0);
+    try {
+      requireNative().socketPublish(this.nativeHandle(), normalizedTopic, normalized, flags | 0);
+    } catch (error) {
+      throw submitNativeError(error, flags, 'publish failed');
+    }
   }
 }
 
@@ -1514,23 +1530,29 @@ export class Spot extends NativeHandle {
   publish(topic: string, payload: MessageLike, flags?: SendFlags): void;
   publish(topic: string, payloadParts: readonly MessageLike[], flags?: SendFlags): void;
   publish(topic: string, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
-    requireNative().spotPublish(
-      this._native,
-      validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER),
-      Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)],
-      flags | 0
-    );
+    try {
+      requireNative().spotPublish(
+        this._native,
+        validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER),
+        Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)],
+        flags | 0
+      );
+    } catch (error) {
+      throw submitNativeError(error, flags, 'spot publish failed');
+    }
   }
   setSubscription(topicOrPattern: string): void { requireNative().spotSubscribe(this._native, validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER)); }
   unsetSubscription(topicOrPattern: string): void { requireNative().spotUnsubscribe(this._native, validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER)); }
   subscribe(flags: RecvFlags = RecvFlags.None): TopicMessage {
     let raw;
     try {
-      raw = requireNative().spotRecv(this._native, flags | 0) as any;
+      raw = ((flags | 0) & (RecvFlags.DontWait | 0))
+        ? requireNative().spotTryRecv(this._native) as any
+        : requireNative().spotRecv(this._native, flags | 0) as any;
     } catch (error) {
       throw recvNativeError(error, flags, 'subscribe failed');
     }
-    if (!raw) throw lastError('recv', 'subscribe failed');
+    if (!raw) throw new RecvError(RecvResult.NoData, 11, 'subscribe failed');
     return materializeTopicMessage(raw);
   }
   onSubscribe(handler: SpotSubHandler): void {
@@ -1542,13 +1564,17 @@ export class Spot extends NativeHandle {
   sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, flags?: SendFlags): void;
   sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
   sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
-    requireNative().spotSendSpot(
-      this._native,
-      normalizeRoutingId(destNodeRid),
-      normalizeRoutingId(destSpotRid),
-      Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)],
-      flags | 0
-    );
+    try {
+      requireNative().spotSendSpot(
+        this._native,
+        normalizeRoutingId(destNodeRid),
+        normalizeRoutingId(destSpotRid),
+        Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)],
+        flags | 0
+      );
+    } catch (error) {
+      throw submitNativeError(error, flags, 'spot send failed');
+    }
   }
   requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, timeout?: number): Promise<Message[]>;
   requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
@@ -1724,9 +1750,41 @@ export class Poller {
   addTimer(timer: Timer, userData?: any): void { requireNative().pollerAddTimer(this._native, timer.nativeHandle(), userData ?? null); }
   removeTimer(timer: Timer): void { requireNative().pollerRemoveTimer(this._native, timer.nativeHandle()); }
   get size(): number { return requireNative().pollerSize(this._native) as number; }
-  wait(timeoutMs: number): any { return requireNative().pollerWait(this._native, timeoutMs | 0); }
-  waitAll(events: number, timeoutMs: number): any[] { return requireNative().pollerWaitAll(this._native, events | 0, timeoutMs | 0) as any[]; }
-  poll(timeoutMs: number): number[] { return requireNative().poll(this._native, timeoutMs | 0) as number[]; }
+  wait(timeoutMs: number): any {
+    try {
+      return requireNative().pollerWait(this._native, timeoutMs | 0);
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : String(error);
+      if (/Resource temporarily unavailable|temporarily unavailable|would block|interrupted system call/i.test(message)) {
+        return null;
+      }
+      throw error;
+    }
+  }
+  waitAll(events: number, timeoutMs: number): any[] {
+    try {
+      return requireNative().pollerWaitAll(this._native, events | 0, timeoutMs | 0) as any[];
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : String(error);
+      if (/Resource temporarily unavailable|temporarily unavailable|would block|interrupted system call/i.test(message)) {
+        return [];
+      }
+      throw error;
+    }
+  }
+  poll(timeoutMs: number): number[] {
+    let ready;
+    try {
+      ready = requireNative().pollerWaitAll(this._native, this.size, timeoutMs | 0) as Array<{ events: number }>;
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : String(error);
+      if (/Resource temporarily unavailable|temporarily unavailable|would block|interrupted system call/i.test(message)) {
+        return [];
+      }
+      throw error;
+    }
+    return ready.map((event) => event.events | 0);
+  }
   destroy(): void { if (this._native) { requireNative().pollerDestroy(this._native); this._native = null; } }
   close(): void { this.destroy(); }
 }

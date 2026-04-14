@@ -11,11 +11,11 @@ async function main() {
     const router = new zlink.RouterSocket(ctx);
     let stop = false;
     try {
-        router.setRoutingId(Buffer.from('multi-router-router-server', 'ascii'));
+        router.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('multi-router-router-server', 'ascii')));
         router.bind(options.endpoint);
         const receiveLoop = drainRecvSocket(router, (received) => {
             if (received.routingId) {
-                router.send(received.routingId, received.parts.map((part) => part.data));
+                router.send(received.routingId, received.parts.map((part) => part.data()));
             }
         }, () => stop);
         console.log(`READY,${options.endpoint}`);

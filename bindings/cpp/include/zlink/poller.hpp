@@ -193,12 +193,18 @@ class poller_t
         }
 
         zlink_poller_event_t native_event;
+        zlink_config_result_t error = ZLINK_CONFIG_OK;
         const int rc = zlink_poller_wait (
-          _poller, &native_event, timeout_, nullptr);
+          _poller, &native_event, timeout_, &error);
         if (rc <= 0) {
             if (rc == 0)
                 return 0;
-            throw recv_error_t (recv_result_t::invalid_handle, zlink_errno ());
+            const int err = zlink_errno ();
+            if (err == EINTR || err == EAGAIN) {
+                errno = err;
+                return 0;
+            }
+            throw recv_error_t (recv_result_t::invalid_handle, err);
         }
 
         fill_event (native_event, event_);
@@ -211,7 +217,8 @@ class poller_t
             throw recv_error_t (recv_result_t::invalid_handle, zlink_errno ());
         }
 
-        const int registered = zlink_poller_size (_poller, nullptr);
+        zlink_config_result_t error = ZLINK_CONFIG_OK;
+        const int registered = zlink_poller_size (_poller, &error);
         if (registered < 0)
             throw recv_error_t (recv_result_t::invalid_handle, zlink_errno ());
 
@@ -221,14 +228,21 @@ class poller_t
         }
 
         _native_events.resize (static_cast<size_t> (registered));
+        error = ZLINK_CONFIG_OK;
         const int rc = zlink_poller_wait_all (
-          _poller, &_native_events[0], registered, timeout_, nullptr);
+          _poller, &_native_events[0], registered, timeout_, &error);
         if (rc <= 0) {
             if (rc == 0) {
                 events_.clear ();
                 return 0;
             }
-            throw recv_error_t (recv_result_t::invalid_handle, zlink_errno ());
+            const int err = zlink_errno ();
+            if (err == EINTR || err == EAGAIN) {
+                errno = err;
+                events_.clear ();
+                return 0;
+            }
+            throw recv_error_t (recv_result_t::invalid_handle, err);
         }
 
         events_.resize (static_cast<size_t> (rc));

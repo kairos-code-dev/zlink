@@ -7,108 +7,180 @@ using static PerfRunner;
 
 internal static class PerfRouterRouter
 {
-    private const int BorrowedRoutedSendThreshold = 65536;
-    private const int BorrowedRoutedSendMaxSize = 131072;
+    private static readonly RoutingId ReceiverRoutingId =
+        RoutingId.FromBytes("ROUTER1"u8);
+    private static readonly RoutingId SenderRoutingId =
+        RoutingId.FromBytes("ROUTER2"u8);
 
-    internal static int RunRouterRouter(string transport, int size)
-      => RunRouterRouterInternal(transport, size);
-
-    internal static int RunRouterRouterInternal(string transport, int size)
+    private static void TryCleanup(RouterSocket sender, RouterSocket receiver,
+        string endpoint)
     {
-        string pattern = "ROUTER_ROUTER";
-        int warmupCount = ResolveSingleWarmupCount(pattern);
-        int durationSeconds = ResolveSingleDurationSeconds();
-        int recvTimeoutMs = ResolveSingleRcvTimeoutMs();
-        int latCount = ResolveSingleLatencyCount(pattern);
-
-        using var ctx = new Context();
-        ApplySingleContextOptions(ctx);
-        using var router1 = new RouterSocket(ctx);
-        using var router2 = new RouterSocket(ctx);
-        ApplySingleSocketOptions(router1);
-        ApplySingleSocketOptions(router2);
-        ConfigureTlsServerIfNeeded(router1, transport);
-        ConfigureTlsClientIfNeeded(router2, transport);
+        try
+        {
+            sender.Disconnect(endpoint);
+        }
+        catch
+        {
+        }
 
         try
         {
-            string ep = EndpointFor(transport, "router-router");
-            router1.RouterOptions.RoutingId = RoutingId.FromBytes("ROUTER1"u8);
-            router2.RouterOptions.RoutingId = RoutingId.FromBytes("ROUTER2"u8);
-            router1.SetOption(SocketOptions.RouterMandatory, 1);
-            router2.SetOption(SocketOptions.RouterMandatory, 1);
-            router1.Bind(ep);
-            router2.Connect(ep);
-            Thread.Sleep(SingleConnectWaitMs);
+            receiver.Unbind(endpoint);
+        }
+        catch
+        {
+        }
+    }
 
-            if (!PerformHandshake(router1, router2))
+    internal static int RunRouterRouter(string transport, int size)
+    {
+        int durationSeconds = ResolveSingleDurationSeconds();
+        int recvTimeoutMs = ResolveSingleRcvTimeoutMs();
+        int latCount = ResolveSingleLatencyCount("ROUTER_ROUTER");
+
+        using var ctx = new Context();
+        ApplySingleContextOptions(ctx);
+        using var receiver = new RouterSocket(ctx);
+        using var sender = new RouterSocket(ctx);
+        ApplySingleSocketOptions(receiver);
+        ApplySingleSocketOptions(sender);
+        ConfigureTlsServerIfNeeded(receiver, transport);
+        ConfigureTlsClientIfNeeded(sender, transport);
+
+        bool useMonitors = !string.Equals(transport, "inproc",
+            StringComparison.OrdinalIgnoreCase);
+        MonitorSocket? receiverMonitor = null;
+        MonitorSocket? senderMonitor = null;
+        string ep = EndpointFor(transport, "router-router");
+
+        try
+        {
+            if (useMonitors)
+            {
+                receiverMonitor = receiver.MonitorOpen(SocketEvent.ConnectionReady);
+                senderMonitor = sender.MonitorOpen(SocketEvent.ConnectionReady);
+            }
+
+            receiver.RouterOptions.RoutingId = ReceiverRoutingId;
+            sender.RouterOptions.RoutingId = SenderRoutingId;
+            receiver.SetOption(SocketOptions.RouterMandatory, 1);
+            sender.SetOption(SocketOptions.RouterMandatory, 1);
+            receiver.Bind(ep);
+            sender.Connect(ep);
+            if (useMonitors)
+            {
+                if (!(WaitForConnectionReady(receiverMonitor!, SingleConnectWaitMs)
+                    && WaitForConnectionReady(senderMonitor!, SingleConnectWaitMs)))
+                {
+                    ctx.Shutdown();
+                    TryCleanup(sender, receiver, ep);
+                    return 2;
+                }
+                receiverMonitor.Dispose();
+                receiverMonitor = null;
+                senderMonitor.Dispose();
+                senderMonitor = null;
+            }
+            else
+            {
+                Thread.Sleep(SingleConnectWaitMs);
+            }
+
+            if (!RunPrimer(sender, receiver, Math.Max(size, sizeof(long)),
+                    recvTimeoutMs))
+            {
+                ctx.Shutdown();
+                TryCleanup(sender, receiver, ep);
                 return 2;
+            }
 
             int payloadSize = Math.Max(size, sizeof(long));
             var payload = new byte[payloadSize];
             Array.Fill(payload, (byte)'a');
 
-            if (!RunPhase(router1, router2, payload, payloadSize, warmupCount, 0,
-                    recvTimeoutMs, latCount: 0, false, out long warmupReceived,
-                    out _)
-                || warmupReceived < warmupCount)
-            {
-                return 2;
-            }
-
-            if (!RunPhase(router1, router2, payload, payloadSize, 0,
-                    durationSeconds, recvTimeoutMs, latCount, false,
+            if (!RunActivePhase(sender, receiver, payload, payloadSize,
+                    durationSeconds, recvTimeoutMs, latCount,
                     out long received, out var latencySamples))
             {
+                ctx.Shutdown();
+                TryCleanup(sender, receiver, ep);
                 return 2;
             }
 
             double throughput = received / (double)Math.Max(durationSeconds, 1);
             var latency = ComputeLatencyStats(latencySamples);
-            PrintResult(pattern, transport, size, throughput, latency.mean,
-                latency.p95, latency.p99);
+            PrintResult("ROUTER_ROUTER", transport, size, throughput,
+                latency.mean, latency.p95, latency.p99);
+            ctx.Shutdown();
+            TryCleanup(sender, receiver, ep);
             return 0;
         }
-        catch (Exception ex)
+        catch
         {
-            Console.Error.WriteLine($"single_router_router_error:{ex.Message}");
+            try
+            {
+                ctx.Shutdown();
+            }
+            catch
+            {
+            }
+            TryCleanup(sender, receiver, ep);
             return 2;
+        }
+        finally
+        {
+            receiverMonitor?.Dispose();
+            senderMonitor?.Dispose();
         }
     }
 
-    private static bool PerformHandshake(SocketBase receiver, SocketBase sender)
+    private static bool RunPrimer(RouterSocket sender, RouterSocket receiver,
+        int payloadSize, int recvTimeoutMs)
     {
-        Span<byte> routing = stackalloc byte[256];
-        Span<byte> buffer = stackalloc byte[256];
+        var payload = new byte[payloadSize];
+        Array.Fill(payload, (byte)'r');
+        StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
+        using var poller = new Poller();
+        var events = new PollEvent[1];
+        poller.Add(receiver, PollEvents.PollIn);
 
-        SendBlocking(sender, "ROUTER1"u8, PerfSendFlags.SendMore);
-        SendBlocking(sender, "PING"u8, PerfSendFlags.None);
-        if (ReceiveBlocking(receiver, routing, ReceiveFlags.None) != 7)
+        try
+        {
+            using var message = Message.FromBytes(payload);
+            sender.Send(ReceiverRoutingId, message);
+        }
+        catch
+        {
             return false;
-        if (ReceiveBlocking(receiver, buffer.Slice(0, 4), ReceiveFlags.None) != 4)
-            return false;
+        }
 
-        SendBlocking(receiver, "ROUTER2"u8, PerfSendFlags.SendMore);
-        SendBlocking(receiver, "PONG"u8, PerfSendFlags.None);
-        if (ReceiveBlocking(sender, routing, ReceiveFlags.None) != 7)
-            return false;
-        if (ReceiveBlocking(sender, buffer.Slice(0, 4), ReceiveFlags.None) != 4)
-            return false;
+        long deadline = DeadlineTicksFromMilliseconds(Math.Max(1000, recvTimeoutMs));
+        while (Stopwatch.GetTimestamp() < deadline)
+        {
+            if (!WaitForInput(poller, events, 10))
+                continue;
+            if (!receiver.TryRecv(out Received? received) || received == null)
+                continue;
+            using (received)
+            {
+                if (received.Parts.Count != 1)
+                    continue;
+                return received.Parts[0].Size == payloadSize;
+            }
+        }
 
-        return true;
+        return false;
     }
 
-    private static bool RunPhase(SocketBase receiver, SocketBase sender,
-        byte[] payload, int payloadSize, int warmupCount, int durationSeconds,
-        int recvTimeoutMs, int latCount, bool usePoll, out long receivedOut,
-        out List<double> latencySamples)
+    private static bool RunActivePhase(RouterSocket sender, RouterSocket receiver,
+        byte[] payload, int payloadSize, int durationSeconds, int recvTimeoutMs,
+        int latCount, out long receivedOut, out List<double> latencySamples)
     {
-        bool active = durationSeconds > 0;
-        long deadlineTicks = active ? DeadlineTicksFromSeconds(durationSeconds) : 0;
+        long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
         long recvFlushTicks = Math.Max(1,
             (long)Math.Ceiling(recvTimeoutMs * Stopwatch.Frequency / 1000.0));
 
-        long receivedCount = 0;
+        long received = 0;
         int senderDone = 0;
         Exception? recvError = null;
         var samples = new List<double>(Math.Max(0, latCount));
@@ -118,127 +190,82 @@ internal static class PerfRouterRouter
         var recvThread = new Thread(() =>
         {
             long lastRecvTicks = Stopwatch.GetTimestamp();
-            var routingId = new byte[256];
-            var recvBuffer = new byte[payloadSize];
-            Poller? poller = null;
-            PollEvent[]? events = null;
-
-            if (usePoll)
-            {
-                poller = new Poller();
-                events = new PollEvent[1];
-                poller.Add(receiver, PollEvents.PollIn);
-            }
-
-            void AccountMessage(int bytesRead)
-            {
-                if (bytesRead != payloadSize)
-                    return;
-
-                Interlocked.Increment(ref receivedCount);
-                if (!active)
-                    return;
-
-                long nowNs = TimestampNs();
-                long sentNs = DecodeHeader(recvBuffer.AsSpan(0, sizeof(long)));
-                double latencyNs = Math.Max(0L, nowNs - sentNs);
-                ReservoirSample(samples, latencyNs, ref sampleSeen, latCount,
-                    ref rng);
-            }
+            using var poller = new Poller();
+            var events = new PollEvent[1];
+            poller.Add(receiver, PollEvents.PollIn);
 
             try
             {
                 while (true)
                 {
                     bool done = Volatile.Read(ref senderDone) != 0;
-                    if (usePoll && poller != null && events != null
-                        && !WaitForInput(poller, events, 0))
+                    int timeoutMs = done ? Math.Max(1, recvTimeoutMs) : 50;
+                    if (WaitForInput(poller, events, timeoutMs))
                     {
-                        if (done && Stopwatch.GetTimestamp() - lastRecvTicks >= recvFlushTicks)
-                            break;
-                        Thread.Yield();
-                        continue;
-                    }
-
-                    int recvRc = ReceiveRouterPayload(receiver, routingId, recvBuffer,
-                        done ? ReceiveFlags.DontWait : ReceiveFlags.None);
-                    if (recvRc > 0)
-                    {
-                        lastRecvTicks = Stopwatch.GetTimestamp();
-                        AccountMessage(recvRc);
-
                         while (true)
                         {
-                            recvRc = ReceiveRouterPayload(receiver, routingId, recvBuffer,
-                                ReceiveFlags.DontWait);
-                            if (recvRc > 0)
-                            {
-                                lastRecvTicks = Stopwatch.GetTimestamp();
-                                AccountMessage(recvRc);
-                                continue;
-                            }
-                            if (recvRc == 0)
+                            if (!receiver.TryRecv(out Received? receivedMessage)
+                                || receivedMessage == null)
                                 break;
-                            throw new InvalidOperationException("router_recv_failed");
+                            using (receivedMessage)
+                            {
+                                if (receivedMessage.Parts.Count != 1)
+                                    continue;
+                                Message payloadMessage = receivedMessage.Parts[0];
+                                if (payloadMessage.Size != payloadSize)
+                                    continue;
+                                ReadOnlySpan<byte> payload =
+                                    payloadMessage.AsReadOnlySpan();
+                                if (payload.Length < sizeof(long))
+                                    continue;
+                                long sentNs = DecodeHeader(payload[..sizeof(long)]);
+                                long nowNs = TimestampNs();
+                                double latencyNs = Math.Max(0L, nowNs - sentNs);
+                                Interlocked.Increment(ref received);
+                                ReservoirSample(samples, latencyNs,
+                                    ref sampleSeen, latCount, ref rng);
+                                lastRecvTicks = Stopwatch.GetTimestamp();
+                            }
                         }
-
                         continue;
                     }
 
-                    if (recvRc == 0)
+                    if (done && Stopwatch.GetTimestamp() - lastRecvTicks
+                        >= recvFlushTicks)
                     {
-                        if (done && Stopwatch.GetTimestamp() - lastRecvTicks >= recvFlushTicks)
-                            break;
-                        Thread.Yield();
-                        continue;
+                        break;
                     }
-
-                    throw new InvalidOperationException("router_recv_failed");
                 }
             }
             catch (Exception ex)
             {
                 recvError = ex;
             }
-            finally
-            {
-                poller?.Dispose();
-            }
         });
         recvThread.IsBackground = true;
         recvThread.Start();
 
         bool sendFailed = false;
-        if (active)
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            while (Stopwatch.GetTimestamp() < deadlineTicks)
+            StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
+            try
             {
-                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
-                try
-                {
-                    SendPayload(sender, payload);
-                }
-                catch
-                {
-                    sendFailed = true;
-                    break;
-                }
+                using var message = Message.FromBytes(payload);
+                sender.Send(ReceiverRoutingId, message);
             }
-        }
-        else
-        {
-            for (int i = 0; i < warmupCount; i++)
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno)
+                                            || IsTransientNetworkError(
+                                                ex.InternalErrno))
             {
-                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
-                try
-                {
-                    SendPayload(sender, payload);
-                }
-                catch
-                {
-                    sendFailed = true;
-                    break;
-                }
+                Thread.Yield();
+                continue;
+            }
+            catch
+            {
+                sendFailed = true;
+                break;
             }
         }
 
@@ -246,67 +273,11 @@ internal static class PerfRouterRouter
         recvThread.Join();
 
         latencySamples = samples;
-        receivedOut = receivedCount;
-        if (recvError != null)
-            Console.Error.WriteLine($"single_router_router_recv:{recvError.Message}");
+        receivedOut = received;
         if (sendFailed || recvError != null)
             return false;
 
-        if (!active)
-            return receivedCount >= warmupCount;
-
-        return receivedCount > 0 && latencySamples.Count > 0;
-    }
-
-    private static void SendPayload(SocketBase sender, byte[] payload)
-    {
-        if (payload.Length >= BorrowedRoutedSendThreshold
-            && payload.Length <= BorrowedRoutedSendMaxSize)
-        {
-            sender.SendBorrowedSingle("ROUTER1", payload, 0);
-            return;
-        }
-
-        SendBlocking(sender, "ROUTER1"u8, PerfSendFlags.SendMore);
-        SendBlocking(sender, payload, PerfSendFlags.None);
-    }
-
-    private static int ReceiveRouterPayload(SocketBase socket, byte[] routingId,
-        byte[] payloadBuffer, ReceiveFlags flags)
-    {
-        int ridLen;
-        try
-        {
-            ridLen = socket.Receive(routingId.AsSpan(), flags);
-        }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
-        {
-            return 0;
-        }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
-        {
-            return 0;
-        }
-
-        if (ridLen <= 0 || socket.GetOption(SocketOptions.RcvMore) == 0)
-            return -1;
-
-        try
-        {
-            int payloadLen = socket.Receive(payloadBuffer.AsSpan(), ReceiveFlags.None);
-            if (payloadLen == 0 && socket.GetOption(SocketOptions.RcvMore) != 0)
-                payloadLen = socket.Receive(payloadBuffer.AsSpan(), ReceiveFlags.None);
-            DrainRemainingFramesNonBlocking(socket);
-            return payloadLen;
-        }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
-        {
-            return 0;
-        }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
-        {
-            return 0;
-        }
+        return received > 0 && latencySamples.Count > 0;
     }
 
     private static bool IsInterrupted(int errno)
@@ -319,5 +290,14 @@ internal static class PerfRouterRouter
     {
         ErrorCode code = ZlinkException.MapErrorCode(errno);
         return code == ErrorCode.EAgain || errno == 11;
+    }
+
+    private static bool IsTransientNetworkError(int errno)
+    {
+        ErrorCode code = ZlinkException.MapErrorCode(errno);
+        return code == ErrorCode.EHostUnreach
+            || code == ErrorCode.ENetUnreach
+            || code == ErrorCode.ENotConn
+            || code == ErrorCode.EConnRefused;
     }
 }

@@ -105,6 +105,24 @@ Discovery에 붙은 서비스의 자동 연결 범위는 현재 Discovery의 `se
 입니다. 즉 자동 연결은 같은 서비스 이름 안에서만 일어나며, 다른 서비스 이름으로
 넘어가지 않습니다.
 
+### SpotNode의 socket-service Discovery attach
+
+`zlink_spot_node_attach_discovery()`는 이제 `ZLINK_SERVICE_TYPE_SPOT`뿐 아니라
+`ZLINK_SERVICE_TYPE_SOCKET` Discovery도 받습니다. 이 경로는 "같은 서비스의 다른
+SpotNode endpoint를 자동 연결한다"가 아니라, 해당 `service_name`의 socket provider
+view를 `SpotNode`의 service attachment table에 자동 source로 반영하는 계약입니다.
+
+- Discovery 하나는 여전히 하나의 고정 `service_name` view만 가집니다.
+- 대신 같은 `SpotNode`에는 서로 다른 `service_name`의 socket-service Discovery를
+  여러 개 attach할 수 있습니다.
+- 같은 Discovery handle을 둘 이상의 owner에 attach할 수 없습니다.
+- 같은 node에 같은 `service_name` Discovery를 둘 이상 attach할 수 없습니다.
+- service-aware attachment가 붙은 node는 공개 facade `Spot` 하나만 허용합니다.
+- Discovery destroy는 그 Discovery source가 공급하던 automatic attachment만
+  제거합니다. 수동 attachment나 다른 Discovery source는 유지됩니다.
+- socket-service Discovery가 공급한 provider는 service attachment snapshot과
+  node monitor recv surface에서 관찰할 수 있어야 합니다.
+
 ### SPOT Node
 
 SPOT Node는 같은 `service_name`에 속한 다른 SPOT Node endpoint를 자동으로

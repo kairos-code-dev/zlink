@@ -233,7 +233,18 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             return;
 
         IntPtr handle = _handle;
-        NativeMethods.zlink_poller_destroy(ref handle);
+        while (true)
+        {
+            int rc = NativeMethods.zlink_poller_destroy(ref handle);
+            if (rc == 0)
+                break;
+
+            int errno = NativeMethods.zlink_errno();
+            ErrorCode code = ZlinkException.MapErrorCode(errno);
+            if (code == ErrorCode.EIntr || errno == 4)
+                continue;
+            break;
+        }
         _handle = IntPtr.Zero;
         _items.Clear();
         _itemsByUserData.Clear();

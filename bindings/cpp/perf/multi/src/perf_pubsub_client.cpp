@@ -214,9 +214,9 @@ class pubsub_client_bench_t
                     continue;
 
                 for (;;) {
-                    zlink::subscribed_t subscribed;
+                    zlink::topic_message_t subscribed;
                     const int recv_rc =
-                      sock->subscribe (subscribed, zlink::recv_flag::dontwait);
+                      sock->subscribe (subscribed, zlink::recv_flags_t::dontwait);
                     if (recv_rc != 0) {
                         const int err = errno;
                         if (err == EAGAIN)
@@ -226,17 +226,18 @@ class pubsub_client_bench_t
                         return false;
                     }
 
-                    if (subscribed.topic != k_topic || subscribed.parts.empty ()) {
+                    if (subscribed.topic () != k_topic
+                        || subscribed.parts ().empty ()) {
                         continue;
                     }
 
-                    const size_t recv_size = subscribed.parts[0].size ();
+                    const size_t recv_size = subscribed.parts ()[0].size ();
                     if (recv_size > _recv_buffer.size ()) {
                         continue;
                     }
                     if (recv_size > 0) {
                         std::memcpy (_recv_buffer.data (),
-                                     subscribed.parts[0].data (),
+                                     subscribed.parts ()[0].data (),
                                      recv_size);
                     }
 

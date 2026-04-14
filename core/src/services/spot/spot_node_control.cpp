@@ -11,6 +11,8 @@
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
+#include "api/service_api_internal.hpp"
+#include "core/recv_internal.hpp"
 #include "utils/sleep.hpp"
 
 #include <cstdio>
@@ -83,6 +85,8 @@ void spot_node_t::schedule_subscription_replay ()
 {
     if (is_shutting_down ())
         return;
+
+    (void) apply_service_subscription_filters ();
 
     unsigned int attempts = 0;
     {
@@ -159,6 +163,8 @@ bool spot_node_t::can_suspend_control_task () const
 {
     if (_discovery != NULL)
         return false;
+    if (!_service_discoveries.empty ())
+        return false;
     if (!_pending_service_updates.empty ())
         return false;
     if (_peer_state.subscription_replay_pending || _peer_state.subscription_ready_refresh_pending
@@ -179,6 +185,14 @@ void spot_node_t::control_tick ()
     if (ensure_healthy () != 0)
         return;
 
+    bool has_pending_service_refresh = false;
+    {
+        scoped_lock_t lock (_sync);
+        has_pending_service_refresh =
+          !_service_attachment_state.pending_refresh_services.empty ();
+    }
+    if (has_pending_service_refresh)
+        refresh_service_discovery_attachments ();
     refresh_discovery_peers ();
     bool skip_extra = false;
     {
@@ -198,6 +212,7 @@ void spot_node_t::control_tick ()
         emit_pending_subscription_ready_events ();
         emit_pending_pub_delivery_ready_events ();
     }
+    notify_service_subscribe_readable ();
 
     spot_runtime_t *runtime_state = _runtime;
     const uint64_t task_id =
@@ -209,6 +224,26 @@ void spot_node_t::control_tick ()
         service_control_runtime_t *runtime = _ctx->service_control_runtime ();
         if (runtime)
             (void) runtime->remove_task (task_id);
+    }
+}
+
+void spot_node_t::notify_service_subscribe_readable ()
+{
+    std::shared_ptr<socket_poller_t> poller;
+    std::vector<spot_handle_t *> facades;
+    {
+        scoped_lock_t lock (_sync);
+        poller = _service_attachment_state.readable_sub_poller;
+        facades.assign (_facades.begin (), _facades.end ());
+    }
+
+    socket_poller_t::event_t event;
+    if (!poller || poller->wait (&event, 1, 0) <= 0)
+        return;
+
+    for (size_t i = 0; i < facades.size (); ++i) {
+        zlink_spot_notify_dispatch_event (
+          facades[i], ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE);
     }
 }
 

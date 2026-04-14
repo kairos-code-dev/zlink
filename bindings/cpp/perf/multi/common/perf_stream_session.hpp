@@ -292,10 +292,13 @@ inline bool process_stream_recv_parts (stream_session_t *session,
                                        zlink::received_t &received,
                                        const char *stop_token)
 {
-    for (size_t i = 0; i < received.parts.size (); ++i) {
+    const std::optional<zlink::routing_id_t> &rid = received.routing_id ();
+    if (!rid.has_value ())
+        return false;
+
+    for (size_t i = 0; i < received.parts ().size (); ++i) {
         const bool ok =
-          process_stream_chunk (
-            session, received.routing_id, received.parts[i], stop_token);
+          process_stream_chunk (session, *rid, received.parts ()[i], stop_token);
         if (!ok)
             return false;
     }

@@ -52,7 +52,7 @@ async function main() {
     }
 
     for (const part of received.parts) {
-      const payloads = parseFrames(state, part.data);
+      const payloads = parseFrames(state, part.data());
       for (const payload of payloads) {
         stream.send(routingId, Buffer.from(frame(payload)));
       }

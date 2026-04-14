@@ -49,6 +49,11 @@
     이벤트에 따라 recv drain과 send 재개를 처리한다.
   - `send_ready_handler`는 사용하지 않는다.
 - multi 전체 pattern은 recv only다.
+- 단, `MULTI_SPOT` / `MULTI_SPOT_REQREP` 은 direct message callback을 쓰지
+  않고 `dispatch_event` callback 안에서 recv drain 하는 방식으로 수신을
+  활성화한다.
+- `MULTI_STREAM`은 raw callback을 테스트하지 않고
+  `zlink_stream_packet_handler()`를 기준으로 packet receive surface를 테스트한다.
 - `while (send 실패)` 식의 즉시 재시도는 금지한다.
 
 ### 1.2 Backpressure 전략
@@ -111,6 +116,8 @@ perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
   `READY_COUNT,<msg_size>,<count>` control message 로 보낸다. server 는
   msg_size 별 누적 ready unit 이 `expected_clients` 와 같아지면 `START` 를
   broadcast 해서 판정한다.
+- SPOT data plane 수신은 direct message callback이 아니라 `dispatch_event`
+  callback 안의 recv drain 으로 처리한다.
 - SPOT client 는 `connect_peer()` 직후 즉시 `READY_COUNT` 를 보내지 않는다.
   local benchmark network 정책으로, 각 client spot 이 control link ready 와
   local connect setup 을 모두 끝낸 뒤 고정 stabilization window(기본 1초)와
@@ -717,16 +724,15 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 > **STREAM 소켓은 multi suite에서만 테스트한다.** single suite에서는 STREAM 테스트를 수행하지 않는다.
 
-- MULTI_STREAM server는 poller + recv drain 루프로 수신한다.
-- **Wire protocol**: client는 `[4B length (big-endian)][payload]` (len32be framing)으로 통일한다. server 수신 방식만 패턴별로 다르다. 상세는 [PERF_POLICY.md § 2.0.3 Wire Protocol](PERF_POLICY.md)을 참조한다.
-- **Server per-connection 프레임 재조립**: STREAM 소켓은 raw TCP 데이터를
-  수신하므로, recv 경계가 len32be 프레임 경계와 일치하지 않을 수 있다.
-  server는 routing_id(connection)별 재조립 버퍼를 유지하여 완전한 프레임만
-  반드시 조립한 뒤 echo해야 한다. partial chunk를 그대로 echo하거나 다른
-  connection과 섞어 조립하면 정책 위반이다. 상세는
-  [PERF_POLICY.md § 2.0.3 Server Per-Connection 프레임 재조립](PERF_POLICY.md)을
-  참조한다.
-- 위 계약은 packet semantics를 고정하는 것이며, 내부 자료구조/세부 단계까지 고정하지 않는다. 완전한 단일 frame chunk를 idle connection에서 즉시 echo하는 fast path처럼, packet semantics를 유지하는 최적화는 허용한다.
+- MULTI_STREAM server는 `zlink_stream_packet_handler()`를 기준으로 packet
+  단위 수신한다.
+- **Wire protocol**: client는
+  `[2B header size][4B body size][header][body]` framing으로 통일한다.
+  상세는 [PERF_POLICY.md § 2.0.3 Wire Protocol](PERF_POLICY.md)을 참조한다.
+- server는 raw recv 경계나 raw callback을 테스트하지 않는다.
+  `zlink_stream_packet_handler()`가 전달한 완성 packet만 echo해야 한다.
+- 위 계약은 packet semantics를 고정하는 것이며, 내부 자료구조/세부 단계까지
+  고정하지 않는다.
 - 수신 방식만 다르므로 throughput/latency 차이를 직접 비교할 수 있다.
 - `MULTI_STREAM_LEN32BE`는 삭제되었다. 문서, 스크립트, 빌드 설정, 코드에 잔존 구현이 있으면 모두 삭제해야 하며, 삭제된 패턴을 alias/legacy path로 유지하지 않는다.
 - MULTI_STREAM의 server 프로세스는 반드시 zlink
@@ -736,6 +742,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 - 각 size 측정에서 `connect_ok`는 `target clients`와 동일해야 한다(100%). 하나라도 미달하면 해당 조합은 `fail`이다.
 - 위 모델을 위반한 구현은 정책 위반이므로 해당 코드를 삭제하고 정책 모델로 다시 구현해야 한다.
 - 위반 구현에서 나온 실행 결과는 정책 산출물로 인정하지 않는다.
+- raw `STREAM` callback mode는 perf에서 별도 테스트하지 않는다.
 
 ### 8.2 표준 메시지 크기
 

@@ -296,7 +296,7 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
     if (!node.valid ())
         return false;
 
-    zlink::service::spot_t spot (node);
+    zlink::service::spot_t spot = node.create_spot ();
     if (!spot.valid ())
         return false;
 
@@ -304,7 +304,7 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
     if (!control_node.valid ())
         return false;
 
-    zlink::service::spot_t control_spot (control_node);
+    zlink::service::spot_t control_spot = control_node.create_spot ();
     if (!control_spot.valid ())
         return false;
 
@@ -325,22 +325,15 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
     if (control_endpoint.empty ())
         return false;
 
-    (void) spot.set (zlink::socket_options::sndhwm, settings.sndhwm);
-    (void) spot.set (zlink::socket_options::sndtimeo, settings.sndtimeo_ms);
-    (void) spot.set (zlink::pub_options::nodrop,
-                     perf::multi::parse_positive_env (
-                       "PERF_MULTI_SPOT_XPUB_NODROP", 1)
-                       > 0
-                       ? 1
-                       : 0);
-    (void) control_spot.set (zlink::socket_options::sndhwm, settings.sndhwm);
-    (void) control_spot.set (zlink::socket_options::rcvhwm, settings.rcvhwm);
-    (void) control_spot.set (zlink::socket_options::sndtimeo,
-                             settings.sndtimeo_ms);
-    (void) control_spot.set (zlink::socket_options::rcvtimeo,
-                             settings.rcvtimeo_ms);
-    if (control_spot.set_subscription (k_control_topic) != 0)
-        return false;
+    spot.options ().send_hwm (settings.sndhwm);
+    spot.options ().send_timeout (settings.sndtimeo_ms);
+    spot.publisher_options ().no_drop (
+      perf::multi::parse_positive_env ("PERF_MULTI_SPOT_XPUB_NODROP", 1) > 0);
+    control_spot.options ().send_hwm (settings.sndhwm);
+    control_spot.options ().recv_hwm (settings.rcvhwm);
+    control_spot.options ().send_timeout (settings.sndtimeo_ms);
+    control_spot.options ().recv_timeout (settings.rcvtimeo_ms);
+    control_spot.set_subscription (k_control_topic);
 
     const std::vector<size_t> msg_sizes = resolve_msg_sizes (msg_size_);
 

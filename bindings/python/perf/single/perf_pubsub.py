@@ -12,11 +12,9 @@ from perf_common import (
     parse_single_args,
     print_result_lines,
     result_metrics,
-    safe_poll,
     recv_nonblocking,
     stamp_payload,
     tcp_endpoint,
-    wait_monitor_event,
 )
 
 
@@ -38,61 +36,38 @@ def main(argv=None):
         while time.perf_counter() < active_end:
             publisher.publish(TOPIC, stamp_payload(payload, phase=1))
     with zlink.Context() as ctx:
-        with zlink.XPubSocket(ctx) as publisher:
+        with zlink.PubSocket(ctx) as publisher:
             with zlink.SubSocket(ctx) as subscriber:
-                publisher.publisher_options.verbose = True
                 endpoint = tcp_endpoint("pubsub")
-                with publisher.monitor_open(
-                    zlink.MonitorEventMask.CONNECTION_READY
-                ) as publisher_monitor:
-                    with subscriber.monitor_open(
-                        zlink.MonitorEventMask.CONNECTION_READY
-                    ) as subscriber_monitor:
-                        publisher.bind(endpoint)
-                        subscriber.connect(endpoint)
-                        subscriber.set_subscription(TOPIC)
-                        wait_monitor_event(
-                            publisher_monitor, zlink.MonitorEventMask.CONNECTION_READY
-                        )
-                        wait_monitor_event(
-                            subscriber_monitor, zlink.MonitorEventMask.CONNECTION_READY
-                        )
+                publisher.bind(endpoint)
+                subscriber.set_subscription(TOPIC)
+                subscriber.connect(endpoint)
+                time.sleep(1.0)
 
-                        event = publisher.receive_subscription_event()
-                        if not event.subscribed or event.topic != TOPIC:
-                            raise RuntimeError(
-                                "pubsub benchmark did not receive subscription event"
-                            )
+                sender = threading.Thread(
+                    target=send_loop, args=(publisher,), daemon=True
+                )
+                sender.start()
+                drain_deadline = time.perf_counter() + args.duration + 1.0
 
-                        sender = threading.Thread(
-                            target=send_loop, args=(publisher,), daemon=True
-                        )
-                        sender.start()
-                        drain_deadline = time.perf_counter() + args.duration + 1.0
+                while True:
+                    received = recv_nonblocking(subscriber, method="subscribe")
+                    if received is None:
+                        if time.perf_counter() >= drain_deadline:
+                            break
+                        time.sleep(0.001)
+                        continue
+                    with received:
+                        data = received.to_bytes_list()[0]
+                        if not is_active_message(
+                            data,
+                            expected_msg_size=args.msg_size,
+                            run_id=run_id,
+                        ):
+                            continue
+                        latencies.append(latency_ns_from_message(data))
 
-                        with zlink.Poller() as poller:
-                            poller.add_socket(subscriber, zlink.PollEvent.POLLIN)
-                            while True:
-                                safe_poll(poller, 50)
-                                while True:
-                                    received = recv_nonblocking(
-                                        subscriber, method="subscribe"
-                                    )
-                                    if received is None:
-                                        break
-                                    with received:
-                                        data = received.to_bytes_list()[0]
-                                        if not is_active_message(
-                                            data,
-                                            expected_msg_size=args.msg_size,
-                                            run_id=run_id,
-                                        ):
-                                            continue
-                                        latencies.append(latency_ns_from_message(data))
-                                if time.perf_counter() >= drain_deadline:
-                                    break
-
-                        sender.join()
+                sender.join()
                 if not latencies:
                     raise RuntimeError("pubsub benchmark did not receive any active message")
                 metrics = result_metrics(

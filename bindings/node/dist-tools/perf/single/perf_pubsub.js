@@ -25,7 +25,7 @@ async function runPubSubBenchmark(msgSize, options) {
             + BigInt(Math.floor((options.warmup + options.duration) * 1_000_000_000));
         let stop = false;
         const recvTask = drainRecvSocket(sub, (received) => {
-            const header = decodeMetricHeader(received.parts[0].data);
+            const header = decodeMetricHeader(received.parts[0].data());
             collector.record(header, currentEpochNs());
         }, () => stop);
         while (process.hrtime.bigint() < stopAtNs) {
@@ -42,7 +42,7 @@ async function runPubSubBenchmark(msgSize, options) {
                 seq += 1n;
             }
             drainRecvNow(sub, (received) => {
-                const header = decodeMetricHeader(received.parts[0].data);
+                const header = decodeMetricHeader(received.parts[0].data());
                 collector.record(header, currentEpochNs());
             });
             if ((Number(seq) & 0x03) === 0) {
@@ -51,7 +51,7 @@ async function runPubSubBenchmark(msgSize, options) {
         }
         for (let i = 0; i < 4; i += 1) {
             drainRecvNow(sub, (received) => {
-                const header = decodeMetricHeader(received.parts[0].data);
+                const header = decodeMetricHeader(received.parts[0].data());
                 collector.record(header, currentEpochNs());
             });
             await sleepImmediate();

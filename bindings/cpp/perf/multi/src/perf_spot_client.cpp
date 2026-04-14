@@ -233,13 +233,26 @@ class callback_slot_t
         _spot = &spot_;
         _state = state_;
         _synced.store (false, std::memory_order_release);
-        return _spot->on_subscribe (&callback_slot_t::handle_subscribe, this) == 0;
+        try {
+            _spot->on_subscribe (&callback_slot_t::handle_subscribe, this);
+            return true;
+        }
+        catch (const std::exception &) {
+            _spot = NULL;
+            _state = NULL;
+            return false;
+        }
     }
 
     void stop ()
     {
-        if (_spot)
-            (void) _spot->on_subscribe (NULL, NULL);
+        if (_spot) {
+            try {
+                _spot->on_subscribe (NULL, NULL);
+            }
+            catch (const std::exception &) {
+            }
+        }
         _spot = NULL;
         _state = NULL;
     }
@@ -568,20 +581,21 @@ class spot_client_bench_t
                               + std::chrono::milliseconds (
                                 std::max (1, timeout_ms_));
         while (std::chrono::steady_clock::now () < deadline) {
-            const zlink::maybe_t<zlink::subscribed_t> maybe_received =
+            const zlink::maybe_t<zlink::topic_message_t> maybe_received =
               perf::multi::try_subscribe_nowait (*_control_spot);
             if (!maybe_received) {
                 std::this_thread::yield ();
                 continue;
             }
 
-            const zlink::subscribed_t &received = *maybe_received;
-            if (received.topic != k_control_topic || received.parts.size () != 1)
+            const zlink::topic_message_t &received = *maybe_received;
+            if (received.topic () != k_control_topic
+                || received.parts ().size () != 1)
                 continue;
 
             const std::string payload (
-              static_cast<const char *> (received.parts[0].data ()),
-              received.parts[0].size ());
+              static_cast<const char *> (received.parts ()[0].data ()),
+              received.parts ()[0].size ());
             size_t start_size = 0;
             if (parse_control_start (payload, &start_size)
                 && start_size == _msg_size) {
@@ -729,14 +743,14 @@ class spot_client_bench_t
     bool drain_recv (client_slot_t &slot_, bool sync_only_, bool *progressed_out_)
     {
         for (;;) {
-            const zlink::maybe_t<zlink::subscribed_t> maybe_received =
+            const zlink::maybe_t<zlink::topic_message_t> maybe_received =
               perf::multi::try_subscribe_nowait (*slot_.spot);
             if (!maybe_received)
                 return true;
 
-            const zlink::subscribed_t &received = *maybe_received;
-            const std::vector<zlink::message_t> &parts = received.parts;
-            const std::string &topic = received.topic;
+            const zlink::topic_message_t &received = *maybe_received;
+            const std::vector<zlink::message_t> &parts = received.parts ();
+            const std::string &topic = received.topic ();
 
             if (progressed_out_)
                 *progressed_out_ = true;

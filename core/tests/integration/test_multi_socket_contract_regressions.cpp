@@ -653,6 +653,96 @@ void test_dealer_recv_with_source_rid_hides_peer_routing_id ()
     test_context_socket_close_zero_linger (router);
 }
 
+void test_router_recv_dontwait_no_data_does_not_break_poller_rearm ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    delivery_ready_monitor_t router_monitor;
+    delivery_ready_monitor_t dealer_monitor;
+
+    set_timeout_opts (router);
+    set_timeout_opts (dealer);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "D1", 2));
+    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
+      router, ZLINK_EVENT_CONNECTION_READY, &router_monitor));
+    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
+      dealer, ZLINK_EVENT_CONNECTION_READY, &dealer_monitor));
+
+    char endpoint[MAX_SOCKET_STRING];
+    test_bind (router, "tcp://127.0.0.1:*", endpoint, sizeof (endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
+    TEST_ASSERT_TRUE (wait_delivery_ready (&router_monitor, 5000));
+    TEST_ASSERT_TRUE (wait_delivery_ready (&dealer_monitor, 5000));
+
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, router, router, ZLINK_POLLIN));
+
+    send_single_payload (dealer, "hello");
+
+    zlink_poller_event_t event;
+    memset (&event, 0, sizeof (event));
+    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 5000, NULL));
+    TEST_ASSERT_EQUAL_INT (ZLINK_POLLER_SOURCE_SOCKET, event.source_kind);
+    TEST_ASSERT_EQUAL_PTR (router, event.socket);
+
+    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_router_recv (router, &source_rid, &source_spot_rid, &request_seq,
+                         &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    zlink_multipart_close (parts, part_count);
+
+    parts = NULL;
+    part_count = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_NO_DATA,
+      zlink_router_recv (router, &source_rid, &source_spot_rid, &request_seq,
+                         &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+
+    send_single_payload (dealer, "world");
+
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (5000);
+    int wait_rc = 0;
+    do {
+        memset (&event, 0, sizeof (event));
+        wait_rc = zlink_poller_wait (poller, &event, 50, NULL);
+        if (wait_rc == 1)
+            break;
+    } while (std::chrono::steady_clock::now () < deadline);
+
+    TEST_ASSERT_EQUAL_INT (1, wait_rc);
+    TEST_ASSERT_EQUAL_PTR (router, event.socket);
+
+    parts = NULL;
+    part_count = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_router_recv (router, &source_rid, &source_spot_rid, &request_seq,
+                         &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_STRING_LEN (
+      "world",
+      reinterpret_cast<const char *> (zlink_msg_data (&parts[0])),
+      zlink_msg_size (&parts[0]));
+    zlink_multipart_close (parts, part_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    close_delivery_ready_monitor (&dealer_monitor);
+    close_delivery_ready_monitor (&router_monitor);
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router);
+}
+
 void test_pubsub_callback_is_supported_on_raw_sub_sockets ()
 {
     void *pub = test_context_socket (ZLINK_SOCKET_PUB);
@@ -1144,6 +1234,7 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_router_recv_with_source_rid_strips_routing_envelope_from_dealer);
     RUN_TEST (test_dealer_recv_with_source_rid_hides_peer_routing_id);
+    RUN_TEST (test_router_recv_dontwait_no_data_does_not_break_poller_rearm);
     RUN_TEST (test_pubsub_callback_is_supported_on_raw_sub_sockets);
     RUN_TEST (test_pubsub_subscribe_preserves_topic_and_payload_shape_across_warmup);
     RUN_TEST (test_pubsub_subscribe_dontwait_preserves_perf_contract_during_burst);

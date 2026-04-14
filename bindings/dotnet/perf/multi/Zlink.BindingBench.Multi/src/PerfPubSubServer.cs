@@ -27,8 +27,7 @@ internal static class PerfPubSubServer
         server.SetOption(SocketOptions.XPubNoDrop,
             options.PubSubXpubNoDrop > 0 ? 1 : 0);
 
-        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady
-            | SocketEvent.Connected | SocketEvent.Accepted);
+        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
         server.Bind(endpoint);
         Console.WriteLine($"READY,{endpoint}");

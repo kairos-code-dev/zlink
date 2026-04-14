@@ -24,8 +24,7 @@ internal static class PerfRouterRouterServer
         ApplyMultiSocketOptions(server, options);
         ConfigureTlsServerIfNeeded(server, options.Transport);
         server.RouterOptions.RoutingId = RoutingId.FromBytes("SERVER"u8);
-        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady
-            | SocketEvent.Connected | SocketEvent.Accepted);
+        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
         server.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
         server.Bind(endpoint);

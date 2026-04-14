@@ -38,8 +38,7 @@ internal static class PerfRouterRouterClient
                 client.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
                 client.RouterOptions.RoutingId = RoutingId.FromBytes(
                     System.Text.Encoding.ASCII.GetBytes($"CLIENT-{i}"));
-                var monitor = client.MonitorOpen(SocketEvent.ConnectionReady
-                    | SocketEvent.Connected | SocketEvent.Accepted);
+                var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
                 client.Connect(endpoint);
                 clients.Add(client);
                 monitors.Add(monitor);
@@ -100,6 +99,9 @@ internal static class PerfRouterRouterClient
             int pollTimeoutMs, int warmupSeconds, int durationSeconds,
             bool activeWarmup, int readyTimeoutMs)
     {
+        _ = warmupSeconds;
+        _ = activeWarmup;
+        _ = readyTimeoutMs;
         const uint runId = 1;
         var latSamples = new List<double>(latencySampleCap);
         ulong seq = 1;
@@ -109,17 +111,6 @@ internal static class PerfRouterRouterClient
         var sockets = CollectSockets(slots);
         var eventMasks = new PollEvents[slots.Length];
         ResetPollMasks(slots, eventMasks);
-
-        RunWarmupPhase(pollManager, slots, sockets, eventMasks, msgSize,
-            warmupSeconds, activeWarmup, runId, ref seq, ref rrIndex,
-            pollTimeoutMs);
-
-        if (!DrainPendingReplies(pollManager, slots, sockets, eventMasks,
-                msgSize, runId, readyTimeoutMs, pollTimeoutMs,
-                ref seq))
-        {
-            throw new InvalidOperationException("router/router pending reply drain timed out");
-        }
 
         long benchStartTicks = Stopwatch.GetTimestamp();
         long benchDeadlineTicks = benchStartTicks
@@ -157,100 +148,6 @@ internal static class PerfRouterRouterClient
         double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
 
         return (throughput, latencyNs, latencyP95Ns, latencyP99Ns);
-    }
-
-    private static void RunWarmupPhase(PollManager pollManager,
-        RouterRouterClientSlot[] slots,
-        IReadOnlyList<SocketBase> sockets, PollEvents[] eventMasks, int msgSize,
-        int warmupSeconds, bool activeWarmup, uint runId, ref ulong seq,
-        ref int rrIndex, int pollTimeoutMs)
-    {
-        _ = activeWarmup;
-        if (warmupSeconds <= 0)
-            return;
-
-        long warmupDeadlineTicks = Stopwatch.GetTimestamp()
-            + (long)Math.Max(0, warmupSeconds) * Stopwatch.Frequency;
-        while (Stopwatch.GetTimestamp() < warmupDeadlineTicks)
-        {
-            TryScheduleIdleSends(slots, eventMasks, msgSize, runId,
-                PerfPhase.Warmup,
-                ref seq, ref rrIndex);
-
-            if (PollSocketEvents(pollManager, sockets, eventMasks,
-                    pollTimeoutMs) <= 0)
-            {
-                for (int i = 0; i < slots.Length; i++)
-                {
-                    var ignoredMetrics = new RouterRouterMetrics(null, 0);
-                    HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
-                        runId, PerfPhase.Warmup, ref seq, ignoredMetrics,
-                        allowSend: true);
-                }
-                continue;
-            }
-
-            for (int i = 0; i < slots.Length; i++)
-            {
-                var ignoredMetrics = new RouterRouterMetrics(null, 0);
-                HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
-                    runId, PerfPhase.Warmup, ref seq, ignoredMetrics,
-                    allowSend: true);
-            }
-        }
-    }
-
-    private static bool DrainPendingReplies(PollManager pollManager,
-        RouterRouterClientSlot[] slots,
-        IReadOnlyList<SocketBase> sockets, PollEvents[] eventMasks, int msgSize,
-        uint runId, int readyTimeoutMs, int pollTimeoutMs, ref ulong seq)
-    {
-        if (!HasPendingReplies(slots))
-            return true;
-
-        long deadlineTicks = Stopwatch.GetTimestamp()
-            + (long)Math.Max(readyTimeoutMs, 100) * Stopwatch.Frequency / 1000;
-        while (HasPendingReplies(slots))
-        {
-            int timeoutMs = RemainingMilliseconds(deadlineTicks);
-            if (pollTimeoutMs > 0)
-                timeoutMs = Math.Min(pollTimeoutMs, timeoutMs);
-            if (timeoutMs <= 0)
-                return false;
-            if (PollSocketEvents(pollManager, sockets, eventMasks,
-                    timeoutMs) <= 0)
-            {
-                for (int i = 0; i < slots.Length; i++)
-                {
-                    var ignoredMetrics = new RouterRouterMetrics(null, 0);
-                    HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
-                        runId, PerfPhase.Warmup, ref seq, ignoredMetrics,
-                        allowSend: false);
-                }
-                continue;
-            }
-
-            for (int i = 0; i < slots.Length; i++)
-            {
-                var ignoredMetrics = new RouterRouterMetrics(null, 0);
-                HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
-                    runId, PerfPhase.Warmup, ref seq, ignoredMetrics,
-                    allowSend: false);
-            }
-        }
-
-        return true;
-    }
-
-    private static bool HasPendingReplies(RouterRouterClientSlot[] slots)
-    {
-        for (int i = 0; i < slots.Length; i++)
-        {
-            if (slots[i].WaitingForReply)
-                return true;
-        }
-
-        return false;
     }
 
     private static void TryScheduleIdleSends(RouterRouterClientSlot[] slots,

@@ -55,7 +55,7 @@ async function main() {
     msgSize: options.msgSize
   });
   const controlNode = new zlink.SpotNode(ctx);
-  const controlSpot = new zlink.Spot(controlNode);
+  const controlSpot = controlNode.createSpot();
   const slots = [];
   let rl = null;
   let controlLocalEndpoint = '';
@@ -78,7 +78,7 @@ async function main() {
   });
 
   const handleDelivery = (received) => {
-    const header = decodeMetricHeader(received.parts[0].data);
+    const header = decodeMetricHeader(received.parts[0].data());
     if (!header) {
       return;
     }
@@ -138,7 +138,7 @@ async function main() {
     debugSpot(`create slots begin clients=${options.clients}`);
     for (let i = 0; i < options.clients; i += 1) {
       const node = new zlink.SpotNode(ctx);
-      const spot = new zlink.Spot(node);
+      const spot = node.createSpot();
       spot.setLinger(0);
       spot.setReceiveHighWaterMark(100);
       spot.setReceiveTimeout(200);

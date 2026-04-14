@@ -15,9 +15,7 @@ internal static partial class PerfRunner
             try
             {
                 MonitorEvent evt = monitor.Receive(ReceiveFlags.DontWait);
-                if (evt.Event == MonitorEventType.ConnectionReady
-                    || evt.Event == MonitorEventType.Accepted
-                    || evt.Event == MonitorEventType.Connected)
+                if (evt.Event == MonitorEventType.ConnectionReady)
                 {
                     return true;
                 }
@@ -112,8 +110,16 @@ internal static partial class PerfRunner
     internal static bool WaitForInput(Poller poller, Span<PollEvent> events,
         int timeoutMs)
     {
-        int written = poller.Wait(events, timeoutMs, out int totalReady);
-        return written > 0 || totalReady > 0;
+        try
+        {
+            int written = poller.Wait(events, timeoutMs, out int totalReady);
+            return written > 0 || totalReady > 0;
+        }
+        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                        || IsWouldBlock(ex.InternalErrno))
+        {
+            return false;
+        }
     }
 
     internal static void PrintResult(string pattern, string transport, int size,

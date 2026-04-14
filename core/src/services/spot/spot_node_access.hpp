@@ -5,7 +5,10 @@
 
 #include <zlink.h>
 
+#include <string>
 #include <vector>
+
+struct spot_handle_t;
 
 namespace zlink
 {
@@ -48,6 +51,35 @@ struct spot_node_access_t
     static void delete_handle (spot_node_t *node_);
     static int status_snapshot (spot_node_t *node_,
                                 zlink_spot_node_status_t *out_);
+    static std::string summary_service_name (spot_node_t *node_);
+    static socket_base_t *select_service_router (spot_node_t *node_,
+                                                 const std::string &service_name_);
+    static socket_base_t *service_pub_socket (spot_node_t *node_,
+                                              const std::string &service_name_);
+    static int service_subscribe_recv (spot_node_t *node_,
+                                       zlink_routing_id_t *source_rid_out_,
+                                       zlink_msg_t **parts_out_,
+                                       size_t *part_count_out_,
+                                       char *service_name_out_,
+                                       size_t *service_name_len_out_,
+                                       char *topic_id_out_,
+                                       size_t *topic_id_len_out_,
+                                       zlink_recv_flags_t flags_);
+    static int service_subscription_event_recv (
+      spot_node_t *node_,
+      zlink_routing_id_t *source_rid_out_,
+      int *subscribed_out_,
+      char *service_name_out_,
+      size_t *service_name_len_out_,
+      char *topic_id_out_,
+      size_t *topic_id_len_out_,
+      zlink_recv_flags_t flags_);
+    static int service_attachment_snapshot (
+      spot_node_t *node_,
+      std::vector<zlink_spot_service_attachment_stats_t> *out_);
+    static int service_monitor_recv (spot_node_t *node_,
+                                     zlink_spot_service_monitor_event_t *out_,
+                                     zlink_recv_flags_t flags_);
     static int peers_snapshot (
       spot_node_t *node_,
       const zlink_spot_node_peer_filter_t *filter_,
@@ -57,6 +89,17 @@ struct spot_node_access_t
       const zlink_spot_node_subject_filter_t *filter_,
       std::vector<zlink_spot_node_subject_entry_t> *out_);
     static int attach_discovery (spot_node_t *node_, void *discovery_);
+    static int attach_router (spot_node_t *node_,
+                              const char *service_name_,
+                              void *router_);
+    static int attach_pubsub (spot_node_t *node_,
+                              const char *service_name_,
+                              void *pub_,
+                              void *sub_);
+    static int try_register_spot_facade (spot_node_t *node_,
+                                         spot_handle_t *spot_);
+    static void unregister_spot_facade (spot_node_t *node_,
+                                        spot_handle_t *spot_);
     static void *monitor_open (spot_node_t *node_,
                                zlink_spot_role_t role_,
                                int events_,

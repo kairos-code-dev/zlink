@@ -54,7 +54,29 @@ public sealed class Context : IDisposable, IAsyncDisposable
     {
         if (_handle == IntPtr.Zero)
             return;
-        int rc = NativeMethods.zlink_ctx_term(_handle);
+        while (true)
+        {
+            int shutdownRc = NativeMethods.zlink_ctx_shutdown(_handle);
+            if (shutdownRc == 0)
+                break;
+            int shutdownErrno = NativeMethods.zlink_errno();
+            ErrorCode shutdownCode = ZlinkException.MapErrorCode(shutdownErrno);
+            if (shutdownCode == ErrorCode.EIntr || shutdownErrno == 4)
+                continue;
+            break;
+        }
+        int rc;
+        while (true)
+        {
+            rc = NativeMethods.zlink_ctx_term(_handle);
+            if (rc == 0)
+                break;
+            int errno = NativeMethods.zlink_errno();
+            ErrorCode code = ZlinkException.MapErrorCode(errno);
+            if (code == ErrorCode.EIntr || errno == 4)
+                continue;
+            break;
+        }
         _handle = IntPtr.Zero;
         if (rc < 0)
             throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());

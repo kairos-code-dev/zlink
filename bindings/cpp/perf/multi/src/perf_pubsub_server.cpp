@@ -80,7 +80,7 @@ bool run_phase (zlink::socket_t &publisher,
         }
 
         const int sent = publisher.publish (
-          k_topic, payload_part, zlink::send_flag::dontwait);
+          k_topic, payload_part, zlink::send_flags_t::dontwait);
         if (sent == 0) {
             pending = false;
             try {

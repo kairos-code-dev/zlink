@@ -23,7 +23,7 @@ async function runDealerDealerBenchmark(msgSize, options) {
             + BigInt(Math.floor((options.warmup + options.duration) * 1_000_000_000));
         let stop = false;
         const recvTask = drainRecvSocket(server, (received) => {
-            const header = decodeMetricHeader(received.parts[0].data);
+            const header = decodeMetricHeader(received.parts[0].data());
             collector.record(header, currentEpochNs());
         }, () => stop);
         while (process.hrtime.bigint() < stopAtNs) {
@@ -40,7 +40,7 @@ async function runDealerDealerBenchmark(msgSize, options) {
                 seq += 1n;
             }
             drainRecvNow(server, (received) => {
-                const header = decodeMetricHeader(received.parts[0].data);
+                const header = decodeMetricHeader(received.parts[0].data());
                 collector.record(header, currentEpochNs());
             });
             if ((Number(seq) & 0x03) === 0) {
@@ -49,7 +49,7 @@ async function runDealerDealerBenchmark(msgSize, options) {
         }
         for (let i = 0; i < 4; i += 1) {
             drainRecvNow(server, (received) => {
-                const header = decodeMetricHeader(received.parts[0].data);
+                const header = decodeMetricHeader(received.parts[0].data());
                 collector.record(header, currentEpochNs());
             });
             await sleepImmediate();

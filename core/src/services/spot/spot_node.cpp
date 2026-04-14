@@ -88,7 +88,12 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _active_peer_count (_endpoint_state.active_peer_count),
     _handle_defaults (_handle_state.handle_defaults),
     _pubs (_handle_state.pubs),
-    _subs (_handle_state.subs)
+    _subs (_handle_state.subs),
+    _facades (_handle_state.facades),
+    _service_attachments (_service_attachment_state.attachments),
+    _service_attachment_socket_index (_service_attachment_state.socket_index),
+    _service_monitors (_service_attachment_state.monitors),
+    _service_discoveries (_service_attachment_state.discoveries)
 {
     _lifecycle.transition_to (service_state_starting);
 

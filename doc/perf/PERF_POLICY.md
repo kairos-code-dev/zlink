@@ -12,10 +12,14 @@
 > 수준은 언어별로 점검/정렬 대상이 된다.
 >
 > **언어별 적용 범위**:
-> - **전체 적용 (recv only)**: `core`(C), `bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/rust`, `bindings/go`, `bindings/node`, `bindings/python`
-> - perf는 poller + recv 경로만 측정한다. callback 경로의 동기화 비용(TSFN, GIL, mutex 등)은
->   언어별 런타임 메커니즘이 달라 일관된 비교 기준이 불가능하므로 perf에서 제외한다.
->   callback 정합성 검증은 `core/tests/integration`에서 수행한다.
+> - **기본 적용**: `core`(C), `bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/rust`, `bindings/go`, `bindings/node`, `bindings/python`
+> - perf의 기본 수신 측정 경로는 poller + recv drain 이다.
+> - direct message callback 경로의 동기화 비용(TSFN, GIL, mutex 등)은 언어별
+>   런타임 메커니즘이 달라 일관된 비교 기준이 불가능하므로 기본 perf 비교 surface에서
+>   제외한다. callback 정합성 검증은 `core/tests/integration`에서 수행한다.
+> - 예외:
+>   `SPOT`은 dispatch event callback 안에서 recv drain 하는 모델을 사용하고,
+>   `STREAM`은 raw callback이 아니라 packet handler surface를 기준으로 테스트한다.
 
 ---
 
@@ -86,7 +90,7 @@
   `STREAM`, echo, `PAIR` 은 제외한다.
 - 실제 오류는 즉시 `fail` 처리한다.
 - `EAGAIN`은 오류가 아니라 flow-control 상태로 취급한다.
-- perf 측정용 I/O 경로는 **recv 모델**만 사용한다.
+- perf 측정용 I/O 경로는 기본적으로 **recv 모델**만 사용한다.
   - recv: poller `POLLIN` readiness 감지 → 비동기 `zlink_recv()` /
     `zlink_msg_recv()` drain 루프 (react 방식).
   - send (single): blocking send. HWM 도달 시 자연 backpressure.
@@ -96,9 +100,17 @@
     deque/flag에 저장하고 POLLOUT에서 재개.
   - poller는 recv readiness 감지에 공통 사용하고, send backpressure는
     suite별로 위 방식을 따른다.
-- callback 경로는 perf에서 측정하지 않는다. callback의 동기화 메커니즘(TSFN,
-  GIL, mutex 등)은 언어별 런타임에 의존하므로 일관된 비교 기준이 불가능하다.
-  callback 정합성 검증은 core 통합테스트에서 수행한다.
+- direct message callback 경로는 perf에서 측정하지 않는다. callback의 동기화
+  메커니즘(TSFN, GIL, mutex 등)은 언어별 런타임에 의존하므로 일관된 비교
+  기준이 불가능하다.
+- 다만 아래 두 예외는 perf 정책 surface에 포함한다.
+  - `SPOT`: direct message callback이 아니라 `dispatch_event` callback이 recv
+    drain의 activation signal로 동작한다.
+  - `STREAM`: raw callback은 제외하지만 `packet handler`는 `STREAM`의 canonical
+    packet receive surface로 본다.
+- 즉 perf는 "callback이면 전부 제외"가 아니라, data-plane direct callback을
+  제외하고 `SPOT dispatch_event + recv drain`, `STREAM packet handler`만
+  예외적으로 허용한다.
 
 ### 1.1.1 Metric Header Wire Format
 
@@ -192,6 +204,9 @@ total: 29 bytes (고정)
 - single SPOT 은 service monitor 대신 local pub/sub probe 를 사용한다.
   sender 가 metric header가 찍힌 probe payload 를 publish 하고, recv
   쪽에서 첫 유효 수신을 확인하면 ready 로 판정한다.
+- single SPOT 수신은 direct message callback으로 처리하지 않는다.
+  `dispatch_event` callback이 오면 그 안에서 recv drain 하여 유효 payload를
+  확인해야 한다.
 - single SPOT_REQREP 은 service monitor 대신 routed request/reply probe 를
   사용한다. requester 가 metric header가 찍힌 probe request 를 보내고
   replier 의 reply 를 수신하면 ready 로 판정한다.
@@ -426,52 +441,63 @@ perf/                                       # bindings/<lang>/perf/
 - 모델 위반/불일치 구현은 정책 위반으로 간주하며, 해당 코드 경로를 삭제한 뒤 정책 모델로 재구현해야 한다.
 - 모델 위반 구현에서 나온 결과는 `UNSUPPORTED`/`SKIP`으로 우회할 수 없으며 정책 산출물로 인정하지 않는다.
 - STREAM multi 측정에서는 각 size마다 `connect_ok == target clients`(100%)를 충족해야 하며, 미달 시 반드시 `fail`로 처리한다.
-- `MULTI_STREAM`은 **packet semantics**를 측정한다. server는 routing_id(connection)별로 len32be packet을 완성한 뒤에만 echo해야 하며, partial chunk를 packet처럼 취급하거나 recv chunk 경계를 결과 의미로 노출하면 안 된다.
-- 다만 packet semantics를 보존하는 범위의 fast path는 허용한다. 예를 들어 idle connection에서 단일 recv chunk가 이미 정확히 1개의 완전한 len32be packet이면, append/peek/compact 같은 내부 단계 전체를 반드시 거칠 필요는 없다.
+- `MULTI_STREAM`은 **packet semantics**를 측정한다. server는 `zlink_stream_packet_handler()`
+  를 사용해 packet 단위로 수신해야 하며, raw recv chunk 경계를 결과 의미로
+  노출하면 안 된다.
+- 다만 packet semantics를 보존하는 범위의 fast path는 허용한다. 예를 들어 idle connection에서 단일 transport chunk가 이미 정확히 1개의 완전한 packet framing을 포함하면, 내부 조립 단계를 모두 반복할 필요는 없다.
 
 #### Wire Protocol
 
-STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
+STREAM 계열 벤치마크는 `zlink_stream_packet_handler()`가 해석하는 packet framing
+프로토콜로 통일한다.
 
 ```text
-┌──────────────────────┬──────────────────────────────┐
-│  4 bytes (big-endian) │         payload              │
-│   payload length      │    (length bytes)            │
-└──────────────────────┴──────────────────────────────┘
+┌──────────────┬──────────────┬──────────────┬──────────────┐
+│ 2B hdr size  │ 4B body size │ header bytes │ body bytes   │
+│  (big-endian)│  (big-endian)│              │              │
+└──────────────┴──────────────┴──────────────┴──────────────┘
 ```
 
-- **client**: 모든 STREAM 패턴에서 동일한 공통 raw client를 사용하며, `[4B length (big-endian)][payload]` 형식으로 송신한다. 수신(echo)도 동일한 framing으로 읽는다.
-- **server**: zlink STREAM 소켓으로 bind한 뒤, poller + recv drain 루프로 수신한다.
+- **client**: 모든 STREAM 패턴에서 동일한 공통 raw client를 사용하며,
+  `[2B header size][4B body size][header][body]` 형식으로 송신한다.
+  수신(echo)도 동일한 framing으로 읽는다.
+- **server**: zlink STREAM 소켓으로 bind한 뒤,
+  `zlink_stream_packet_handler()`로 packet 단위 수신을 처리한다.
+- perf는 raw `STREAM` callback mode를 별도 테스트하지 않는다.
+- metric header는 `body`의 선두에 둔다. 즉 perf의 `msg_size`는 `body` 크기를
+  뜻하며, `header`는 STREAM packet framing 검증이나 protocol 보조 정보에만
+  사용할 수 있고 throughput / latency / bandwidth 집계 기준에는 포함하지 않는다.
 
-#### Server Per-Connection 프레임 재조립
+#### Server Packet Delivery
 
-STREAM 소켓은 raw TCP 데이터를 수신하므로, 하나의 `recv` 호출이 len32be
-프레임 경계와 일치하지 않을 수 있다(부분 프레임, 다중 프레임 등). server는
-connection(routing_id) 별로 수신 바이트를 누적하여 완전한 프레임을 재조립해야
+STREAM 소켓은 raw TCP 데이터를 수신하므로, 하나의 transport read가 packet
+경계와 일치하지 않을 수 있다. perf server는 이 내부 조립을 직접 구현하는 대신,
+`zlink_stream_packet_handler()`가 완성한 packet delivery를 기준으로 echo해야
 한다.
 
 ```text
-per-connection reassembly:
-  1. recv → routing_id + raw data chunk
-  2. routing_id별 재조립 버퍼에 append
-  3. 버퍼에서 완전한 len32be 프레임 파싱:
-     ┌─ 4B length header ─┐
-     │ payload_length      │ → payload_length 바이트 대기
-     └────────────────────┘
-  4. 완전한 프레임이면 echo send (동일 routing_id로)
-  5. 남은 partial data는 버퍼에 유지 → 다음 recv에서 이어서 조립
+packet handler delivery:
+  1. transport fragment 수신
+  2. core가 packet framing 해석
+  3. packet handler callback(source_rid, header, body) 호출
+  4. server는 callback에서 동일 source_rid로 echo send
 ```
 
 | 항목 | 규칙 |
 |------|------|
-| 재조립 단위 | routing_id (connection) 별 독립 버퍼 |
-| 프레임 파싱 | `[4B big-endian length][payload]` — length header가 완전히 도착한 뒤 payload length 바이트를 추가 대기 |
-| echo 시점 | 완전한 프레임 1개가 재조립되면 즉시 해당 routing_id로 echo send |
-| partial 처리 | recv 경계와 프레임 경계가 불일치할 수 있으므로 partial data를 connection 버퍼에 보존 |
-| connection 정리 | routing_id에 대한 zero-length recv(연결 종료)시 해당 버퍼 제거 |
-| 재조립 로직 | recv 모드에서 per-connection 재조립 로직을 적용 |
+| packet 전달 단위 | `source_rid`별 완성 packet delivery |
+| framing | `[2B header size][4B body size][header][body]` |
+| echo 시점 | packet handler가 완성 packet 1개를 전달하면 즉시 해당 `source_rid`로 echo send |
+| partial 처리 | transport fragment 경계와 packet 경계 불일치는 core packet handler 구현이 흡수 |
+| connection 정리 | connection 종료 시 해당 `source_rid` state는 core가 정리 |
+| 테스트 대상 | raw callback이 아니라 packet handler delivery |
 
-- client의 wire protocol을 len32be로 통일하는 이유: 서버 수신 방식만 다르고 client는 동일한 공통 바이너리를 사용하므로, 테스트 용이성과 비교 공정성을 위해 client 측 framing을 len32be로 고정한다.
+- client의 wire protocol을 packet framing으로 통일하는 이유:
+  `STREAM` 테스트는 raw fragment가 아니라 packet receive surface를 측정하려는
+  목적이기 때문이다.
+- `STREAM` metric 집계는 `body` 선두의 perf metric header를 기준으로 수행한다.
+  `header` bytes는 active 유효 메시지 판정과 latency 계산의 anchor로 사용하지
+  않는다.
 - 이 프로토콜은 multi suite에 적용된다. single suite에서는 STREAM 테스트를 수행하지 않는다.
 - legacy callback-named / len32be-named STREAM 패턴은 삭제 대상이다. public
   policy surface에서는 `STREAM` / `MULTI_STREAM`만 사용한다.

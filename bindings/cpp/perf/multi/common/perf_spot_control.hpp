@@ -88,18 +88,18 @@ try_publish_nowait (SpotHandle &spot_, const std::string &topic_,
 }
 
 template<typename SpotHandle>
-inline zlink::maybe_t<zlink::subscribed_t>
+inline zlink::maybe_t<zlink::topic_message_t>
 try_subscribe_nowait (SpotHandle &spot_)
 {
     try {
-        return zlink::maybe_t<zlink::subscribed_t> (
+        return zlink::maybe_t<zlink::topic_message_t> (
           spot_.subscribe (zlink::recv_flags_t::dontwait));
     }
     catch (const zlink::recv_error_t &err) {
         switch (err.result ()) {
         case zlink::recv_result_t::no_data:
         case zlink::recv_result_t::busy:
-            return zlink::maybe_t<zlink::subscribed_t> ();
+            return zlink::maybe_t<zlink::topic_message_t> ();
         default:
             throw;
         }
@@ -193,8 +193,12 @@ inline std::string bind_spot_endpoint (SpotNode &node_,
     for (int i = 0; i < 64; ++i) {
         const std::string requested_endpoint =
           make_transport_endpoint (transport_, base_port_ + i);
-        if (node_.bind (requested_endpoint) != 0)
+        try {
+            node_.bind (requested_endpoint);
+        }
+        catch (const std::exception &) {
             continue;
+        }
 
         std::string resolved_endpoint = node_.last_endpoint ();
         if (!resolved_endpoint.empty ())
@@ -217,7 +221,13 @@ inline bool configure_spot_client_tls (SpotNode &node_,
     if (!try_resolve_tls_paths (cert, key, ca))
         return false;
 
-    return node_.set_tls_client (ca, "localhost", false) == 0;
+    try {
+        node_.set_tls_client (ca, "localhost", false);
+        return true;
+    }
+    catch (const std::exception &) {
+        return false;
+    }
 }
 
 template<typename SpotNode>
@@ -233,7 +243,13 @@ inline bool configure_spot_server_tls (SpotNode &node_,
     if (!try_resolve_tls_paths (cert, key, ca))
         return false;
 
-    return node_.set_tls_server (cert, key) == 0;
+    try {
+        node_.set_tls_server (cert, key);
+        return true;
+    }
+    catch (const std::exception &) {
+        return false;
+    }
 }
 
 template<typename SpotNode>
@@ -249,8 +265,14 @@ inline bool configure_spot_control_tls (SpotNode &node_,
     if (!try_resolve_tls_paths (cert, key, ca))
         return false;
 
-    return node_.set_tls_server (cert, key, false) == 0
-           && node_.set_tls_client (ca, "localhost", false) == 0;
+    try {
+        node_.set_tls_server (cert, key, false);
+        node_.set_tls_client (ca, "localhost", false);
+        return true;
+    }
+    catch (const std::exception &) {
+        return false;
+    }
 }
 
 template<typename SpotNode>
@@ -283,8 +305,12 @@ inline bool wait_for_control_connect (control_connect_gate_t *gate_,
         errno = EINVAL;
         return false;
     }
-    if (control_node_.connect_peer (endpoint) != 0)
+    try {
+        control_node_.connect_peer (endpoint);
+    }
+    catch (const std::exception &) {
         return false;
+    }
     if (endpoint_out_)
         *endpoint_out_ = endpoint;
     return true;
@@ -342,7 +368,7 @@ inline bool wait_for_ready_counts (SpotHandle &spot_,
                           + std::chrono::milliseconds (
                             std::max (1, timeout_ms_));
     while (std::chrono::steady_clock::now () < deadline) {
-        const zlink::maybe_t<zlink::subscribed_t> maybe_received =
+        const zlink::maybe_t<zlink::topic_message_t> maybe_received =
           try_subscribe_nowait (spot_);
         if (!maybe_received) {
             if (!idle_fn_ ())
@@ -350,13 +376,13 @@ inline bool wait_for_ready_counts (SpotHandle &spot_,
             continue;
         }
 
-        const zlink::subscribed_t &received = *maybe_received;
-        if (received.topic != topic_ || received.parts.size () != 1)
+        const zlink::topic_message_t &received = *maybe_received;
+        if (received.topic () != topic_ || received.parts ().size () != 1)
             continue;
 
         const std::string payload (
-          static_cast<const char *> (received.parts[0].data ()),
-          received.parts[0].size ());
+          static_cast<const char *> (received.parts ()[0].data ()),
+          received.parts ()[0].size ());
         size_t ready_size = 0;
         size_t increment = 0;
         if (!parse_fn_ (payload, &ready_size, &increment)
@@ -394,7 +420,8 @@ inline bool initialize_client_control_session (
     if (!control_node->valid ())
         return false;
 
-    std::unique_ptr<SpotHandle> control_spot (new SpotHandle (*control_node));
+    std::unique_ptr<SpotHandle> control_spot (
+      new SpotHandle (control_node->create_spot ()));
     if (!control_spot->valid ())
         return false;
 
@@ -407,17 +434,18 @@ inline bool initialize_client_control_session (
       bind_spot_endpoint (*control_node, transport_, base_port);
     if (local_control_endpoint.empty ())
         return false;
-    if (control_node->connect_peer (remote_control_endpoint_) != 0)
+    try {
+        control_node->connect_peer (remote_control_endpoint_);
+    }
+    catch (const std::exception &) {
         return false;
+    }
 
-    (void) control_spot->set (zlink::socket_options::sndhwm, settings_.sndhwm);
-    (void) control_spot->set (zlink::socket_options::rcvhwm, settings_.rcvhwm);
-    (void) control_spot->set (zlink::socket_options::sndtimeo,
-                              settings_.sndtimeo_ms);
-    (void) control_spot->set (zlink::socket_options::rcvtimeo,
-                              settings_.rcvtimeo_ms);
-    if (control_spot->set_subscription (control_topic_.c_str ()) != 0)
-        return false;
+    control_spot->options ().send_hwm (settings_.sndhwm);
+    control_spot->options ().recv_hwm (settings_.rcvhwm);
+    control_spot->options ().send_timeout (settings_.sndtimeo_ms);
+    control_spot->options ().recv_timeout (settings_.rcvtimeo_ms);
+    control_spot->set_subscription (control_topic_.c_str ());
 
     *local_control_endpoint_out_ = local_control_endpoint;
     *control_node_out_ = std::move (control_node);
@@ -443,20 +471,22 @@ inline bool initialize_client_slot (
     if (!slot_->node->valid ())
         return false;
 
-    slot_->spot.reset (new SpotHandle (*slot_->node));
+    slot_->spot.reset (new SpotHandle (slot_->node->create_spot ()));
     if (!slot_->spot->valid ())
         return false;
 
     if (!configure_spot_client_tls (*slot_->node, transport_))
         return false;
-    if (slot_->node->connect_peer (server_endpoint_) != 0)
+    try {
+        slot_->node->connect_peer (server_endpoint_);
+    }
+    catch (const std::exception &) {
         return false;
+    }
 
-    (void) slot_->spot->set (zlink::socket_options::rcvhwm, settings_.rcvhwm);
-    (void) slot_->spot->set (zlink::socket_options::rcvtimeo,
-                             settings_.rcvtimeo_ms);
-    if (slot_->spot->set_subscription (topic_) != 0)
-        return false;
+    slot_->spot->options ().recv_hwm (settings_.rcvhwm);
+    slot_->spot->options ().recv_timeout (settings_.rcvtimeo_ms);
+    slot_->spot->set_subscription (topic_);
 
     return true;
 }

@@ -3,57 +3,96 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
-const trySpotSubscribe = (spot) => {
+const TOPIC = 'perf.topic';
+const DEBUG = process.env.PERF_DEBUG === '1';
+const POLLIN = 1;
+function trySpotSubscribe(spot) {
     try {
         return spot.subscribe(zlink.RecvFlags.DontWait);
     }
     catch (error) {
-        if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
+        if (error instanceof zlink.RecvError
+            && error.result === zlink.RecvResult.NoData) {
             return null;
         }
         throw error;
     }
-};
-const trySpotPublish = (spot, topic, payload) => {
+}
+function trySpotPublish(spot, topic, payload) {
     try {
         spot.publish(topic, payload, zlink.SendFlags.DontWait);
         return true;
     }
     catch (error) {
-        if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
+        if (error instanceof zlink.SubmitError
+            && error.result === zlink.SubmitResult.Backpressured) {
             return false;
         }
         throw error;
     }
-};
+}
 async function runSpotBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
-    const node = new zlink.SpotNode(ctx);
-    const spot = new zlink.Spot(node);
-    const topic = 'perf:spot';
+    const pubNode = new zlink.SpotNode(ctx);
+    const subNode = new zlink.SpotNode(ctx);
+    const pubSpot = pubNode.createSpot();
+    const subSpot = subNode.createSpot();
+    const poller = new zlink.Poller();
+    const endpoint = `inproc://perf-spot-${process.pid}-${msgSize}`;
     try {
+        if (DEBUG) {
+            console.error('spot setup start');
+        }
+        pubNode.bind(endpoint);
+        if (DEBUG) {
+            console.error('spot pub bound');
+        }
+        subNode.connectPeer(endpoint);
+        if (DEBUG) {
+            console.error('spot sub connected');
+        }
+        subSpot.setSubscription(TOPIC);
+        if (DEBUG) {
+            console.error('spot subscription set');
+        }
+        poller.addSocket(subSpot, POLLIN);
+        await new Promise((resolve) => setTimeout(resolve, 100));
         const startedAtNs = process.hrtime.bigint();
         const runId = createRunId();
         const collector = createMetricCollector({ runId, msgSize });
         const payload = createPayload(msgSize);
         let seq = 1n;
-        const warmupUntilNs = startedAtNs
-            + BigInt(Math.floor(options.warmup * 1_000_000_000));
+        let ready = false;
+        const readyDeadline = Date.now() + 10_000;
+        while (!ready && Date.now() < readyDeadline) {
+            stampPayload(payload, {
+                phase: 0,
+                runId,
+                msgSize,
+                seq
+            });
+            if (trySpotPublish(pubSpot, TOPIC, payload)) {
+                seq += 1n;
+            }
+            while (true) {
+                const received = trySpotSubscribe(subSpot);
+                if (!received) {
+                    break;
+                }
+                const header = decodeMetricHeader(received.parts[0].data());
+                if (header) {
+                    ready = true;
+                    collector.record(header, currentEpochNs());
+                }
+            }
+            await sleepImmediate();
+        }
+        if (DEBUG) {
+            console.error(`spot ready=${ready} seq=${seq.toString()}`);
+        }
+        const warmupUntilNs = startedAtNs + BigInt(Math.floor(options.warmup * 1_000_000_000));
         const stopAtNs = startedAtNs
             + BigInt(Math.floor((options.warmup + options.duration) * 1_000_000_000));
-        let stop = false;
-        spot.setSubscription(topic);
-        const recvTask = (async () => {
-            while (!stop) {
-                const received = trySpotSubscribe(spot);
-                if (!received) {
-                    await sleepImmediate();
-                    continue;
-                }
-                const header = decodeMetricHeader(received.parts[0].data);
-                collector.record(header, currentEpochNs());
-            }
-        })();
         while (process.hrtime.bigint() < stopAtNs) {
             for (let i = 0; i < 256 && process.hrtime.bigint() < stopAtNs; i += 1) {
                 stampPayload(payload, {
@@ -62,18 +101,32 @@ async function runSpotBenchmark(msgSize, options) {
                     msgSize,
                     seq
                 });
-                if (!trySpotPublish(spot, topic, payload)) {
+                if (!trySpotPublish(pubSpot, TOPIC, payload)) {
                     break;
                 }
                 seq += 1n;
             }
-            while (true) {
-                const received = trySpotSubscribe(spot);
-                if (!received) {
-                    break;
+            let readySockets = [];
+            try {
+                readySockets = poller.poll(50);
+            }
+            catch (error) {
+                const text = String(error && error.message ? error.message : error);
+                if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
+                    await sleepImmediate();
+                    continue;
                 }
-                const header = decodeMetricHeader(received.parts[0].data);
-                collector.record(header, currentEpochNs());
+                throw error;
+            }
+            if (readySockets.length !== 0) {
+                while (true) {
+                    const received = trySpotSubscribe(subSpot);
+                    if (!received) {
+                        break;
+                    }
+                    const header = decodeMetricHeader(received.parts[0].data());
+                    collector.record(header, currentEpochNs());
+                }
             }
             if ((Number(seq) & 0x03) === 0) {
                 await sleepImmediate();
@@ -81,23 +134,27 @@ async function runSpotBenchmark(msgSize, options) {
         }
         for (let i = 0; i < 4; i += 1) {
             while (true) {
-                const received = trySpotSubscribe(spot);
+                const received = trySpotSubscribe(subSpot);
                 if (!received) {
                     break;
                 }
-                const header = decodeMetricHeader(received.parts[0].data);
+                const header = decodeMetricHeader(received.parts[0].data());
                 collector.record(header, currentEpochNs());
             }
             await sleepImmediate();
         }
-        stop = true;
-        await recvTask;
         const result = await collector.finish();
+        if (DEBUG) {
+            console.error(`spot accepted=${result.accepted} rejected=${result.rejected}`);
+        }
         return result.latenciesNs;
     }
     finally {
-        spot.close();
-        node.close();
+        poller.close();
+        pubSpot.close();
+        subSpot.close();
+        pubNode.close();
+        subNode.close();
         ctx.close();
     }
 }

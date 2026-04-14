@@ -150,11 +150,11 @@ bool perf_stream_server (const std::string &transport, size_t)
         while (!g_stream_session.stop_requested.load (std::memory_order_acquire)) {
             zlink::received_t received;
             int recv_rc =
-              server.sock ().receive (received, zlink::recv_flag::dontwait);
-            while (recv_rc < 0 && errno == EINTR)
+              server.sock ().receive (received, zlink::recv_flags_t::dontwait);
+            while (recv_rc != 0 && errno == EINTR)
                 recv_rc =
-                  server.sock ().receive (received, zlink::recv_flag::dontwait);
-            if (recv_rc < 0) {
+                  server.sock ().receive (received, zlink::recv_flags_t::dontwait);
+            if (recv_rc != 0) {
                 const int err = errno;
                 if (err == EAGAIN || err == EINTR)
                     break;

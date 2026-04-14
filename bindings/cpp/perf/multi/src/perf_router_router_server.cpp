@@ -11,9 +11,26 @@
 
 namespace {
 
+bool perf_debug_enabled ()
+{
+    return std::getenv ("PERF_DEBUG") != NULL;
+}
+
+void debug_log (const std::string &message_)
+{
+    if (!perf_debug_enabled ())
+        return;
+    std::cerr << "router_router server: " << message_ << std::endl;
+}
+
 bool take_router_payload (std::vector<zlink::message_t> &parts,
                           zlink::message_t &payload)
 {
+    if (parts.empty ()) {
+        payload = zlink::message_t (0);
+        return payload.valid ();
+    }
+
     if (parts.size () == 1) {
         payload = std::move (parts[0]);
         return true;
@@ -63,7 +80,7 @@ bool try_send_reply (zlink::socket_t &sock,
         return true;
 
     const int payload_sent =
-      sock.send (reply.client_id, reply.payload, zlink::send_flag::dontwait);
+      sock.send (reply.client_id, reply.payload, zlink::send_flags_t::dontwait);
     if (payload_sent != 0) {
         if (payload_sent < 0 && errno == EAGAIN) {
             try {
@@ -108,6 +125,14 @@ bool perf_router_router_server (const std::string &transport, size_t msg_size)
     perf::multi::socket_guard_t server (ctx, zlink::socket_type::router);
     if (!server.valid ())
         return false;
+
+    if (perf_debug_enabled ()) {
+        int type = 0;
+        if (server.sock ().get_option (zlink::socket_options::type, &type) == 0)
+            debug_log ("socket type=" + std::to_string (type));
+        else
+            debug_log ("socket type read failed errno=" + std::to_string (errno));
+    }
 
     (void) server.sock ().set_routing_id (std::string ("SERVER"));
     perf::multi::apply_benchmark_socket_options (
@@ -177,19 +202,21 @@ bool perf_router_router_server (const std::string &transport, size_t msg_size)
                     break;
 
                 zlink::received_t received;
-                if (sock->receive (received, zlink::recv_flag::dontwait) < 0) {
+                if (sock->receive (received, zlink::recv_flags_t::dontwait)
+                    < 0) {
                     const int err = errno;
                     if (err == EAGAIN)
                         break;
                     if (err == EINTR)
                         continue;
+                    debug_log ("receive failed errno=" + std::to_string (err));
                     stop_requested = true;
                     failed = true;
                     break;
                 }
 
                 zlink::message_t payload;
-                if (!take_router_payload (received.parts, payload)) {
+                if (!take_router_payload (received.parts (), payload)) {
                     const int err = errno;
                     if (err == EPROTO)
                         continue;
@@ -205,10 +232,20 @@ bool perf_router_router_server (const std::string &transport, size_t msg_size)
                 if (payload.size () == 0)
                     continue;
 
+                const std::optional<zlink::routing_id_t> &client_rid =
+                  received.routing_id ();
+                if (!client_rid.has_value ()) {
+                    debug_log ("missing client routing id");
+                    stop_requested = true;
+                    failed = true;
+                    break;
+                }
+
                 reply.pending = true;
-                reply.client_id = received.routing_id;
+                reply.client_id = *zlink::routing_id_native (*client_rid);
                 reply.payload = std::move (payload);
                 if (!try_send_reply (*sock, poller, reply)) {
+                    debug_log ("try_send_reply failed errno=" + std::to_string (errno));
                     stop_requested = true;
                     failed = true;
                     break;

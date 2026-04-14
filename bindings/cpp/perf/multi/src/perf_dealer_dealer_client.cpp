@@ -211,7 +211,8 @@ class dealer_dealer_client_bench_t
         if (!_payload.empty ())
             std::memcpy (request.data (), &_payload[0], _payload.size ());
 
-        const int sent = state.sock->send (request, zlink::send_flag::dontwait);
+        const int sent =
+          state.sock->send (request, zlink::send_flags_t::dontwait);
         if (sent == 0) {
             state.pending = false;
             if (!set_pollout (state, false))
@@ -228,7 +229,7 @@ class dealer_dealer_client_bench_t
             return true;
         }
 
-        if (sent < 0 && errno == EAGAIN) {
+        if (sent != 0 && errno == EAGAIN) {
             state.pending = true;
             return set_pollout (state, true);
         }
@@ -335,7 +336,7 @@ class dealer_dealer_client_bench_t
         if (!stop_part.valid ())
             return;
         (void) _socket_states[0].sock->send (stop_part,
-                                             zlink::send_flag::dontwait);
+                                             zlink::send_flags_t::dontwait);
     }
 
     void print_result () const

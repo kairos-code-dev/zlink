@@ -11,6 +11,11 @@ namespace {
 const char *const k_receiver_id = "ROUTER1";
 const char *const k_sender_id = "ROUTER2";
 
+bool perf_debug_enabled ()
+{
+    return std::getenv ("PERF_DEBUG") != NULL;
+}
+
 struct router_router_recv_state_t
 {
     router_router_recv_state_t ()
@@ -31,26 +36,56 @@ struct router_router_recv_state_t
 
 bool complete_handshake (zlink::socket_t &receiver, zlink::socket_t &sender)
 {
-    zlink::received_t inbound;
-    zlink::message_t outbound = zlink::message_t::from_string ("PING");
     zlink_routing_id_t receiver_rid = zlink::empty_routing_id ();
     zlink_routing_id_t sender_rid = zlink::empty_routing_id ();
+    zlink::message_t outbound = zlink::message_t::from_string ("PING");
 
     if (zlink::routing_id_from (k_receiver_id, &receiver_rid) != 0
         || zlink::routing_id_from (k_sender_id, &sender_rid) != 0
-        || !outbound.valid () || sender.send (receiver_rid, outbound) != 0
-        || receiver.receive (inbound) != 0 || inbound.parts.size () != 1
-        || inbound.parts[0].to_string () != "PING") {
+        || !outbound.valid () || sender.send (receiver_rid, outbound) != 0) {
+        if (perf_debug_enabled ())
+            std::cerr << "router_router: handshake request failed errno="
+                      << errno << std::endl;
+        return false;
+    }
+
+    zlink::received_t inbound;
+    if (receiver.receive (inbound, zlink::recv_flags_t::none) != 0) {
+        if (perf_debug_enabled ())
+            std::cerr << "router_router: handshake receive failed errno="
+                      << errno << std::endl;
+        return false;
+    }
+    if (!inbound.routing_id ().has_value () || inbound.parts ().size () != 1
+        || inbound.parts ()[0].to_string () != "PING") {
+        if (perf_debug_enabled ())
+            std::cerr << "router_router: handshake receive invalid errno="
+                      << errno << std::endl;
         return false;
     }
 
     zlink::message_t reply = zlink::message_t::from_string ("PONG");
-    if (!reply.valid () || receiver.send (sender_rid, reply) != 0)
+    if (!reply.valid () || receiver.send (sender_rid, reply) != 0) {
+        if (perf_debug_enabled ())
+            std::cerr << "router_router: handshake reply send failed errno="
+                      << errno << std::endl;
         return false;
+    }
 
-    inbound.parts.clear ();
-    return sender.receive (inbound) == 0 && inbound.parts.size () == 1
-           && inbound.parts[0].to_string () == "PONG";
+    zlink::received_t response;
+    if (sender.receive (response, zlink::recv_flags_t::none) != 0) {
+        if (perf_debug_enabled ())
+            std::cerr << "router_router: handshake response recv failed errno="
+                      << errno << std::endl;
+        return false;
+    }
+    const bool ok = response.routing_id ().has_value ()
+                    && response.parts ().size () == 1
+                    && response.parts ()[0].to_string () == "PONG";
+    if (!ok && perf_debug_enabled ())
+        std::cerr << "router_router: handshake response failed errno=" << errno
+                  << std::endl;
+    return ok;
 }
 
 bool record_router_router_sample (uint32_t run_id_,
@@ -115,10 +150,14 @@ bool send_router_samples (zlink::socket_t *sender_,
         if (zlink::routing_id_from (k_receiver_id, &target) != 0)
             return false;
 
-        zlink::message_t msg = zlink::message_t::from_bytes (
-          payload_->data (), payload_->size ());
-        if (!msg.valid () || sender_->send (target, msg, zlink::send_flag::none) != 0)
+        zlink::message_t msg =
+          zlink::message_t::from_bytes (payload_->data (), payload_->size ());
+        if (!msg.valid () || sender_->send (target, msg) != 0) {
+            if (perf_debug_enabled ())
+                std::cerr << "router_router: send failed errno=" << errno
+                          << std::endl;
             return false;
+        }
 
         sent_count_->fetch_add (1, std::memory_order_release);
         ++seq;
@@ -198,19 +237,33 @@ void run_pattern_router_router (const std::string &transport,
     unsigned long long received = 0;
     perf::single::latency_stats_t latency;
     while (!sender_done.load (std::memory_order_acquire)) {
-        zlink::routing_id_t source_rid;
-        zlink::message_t part;
-        const int rc = receiver.sock ().recv (source_rid, part);
-        if (rc != 0) {
-            const int err = errno;
-            if (err == EAGAIN || err == EINTR)
-                continue;
-            sender_ok.store (false, std::memory_order_release);
-            break;
+        try {
+            zlink::received_t inbound;
+            if (receiver.sock ().receive (inbound, zlink::recv_flags_t::none)
+                != 0) {
+                sender_ok.store (false, std::memory_order_release);
+                break;
+            }
+            if (!record_router_router_sample (run_id,
+                                              msg_size,
+                                              payload_size,
+                                              const_cast<zlink::message_t &> (
+                                                inbound.parts ()[0]),
+                                              &state.latency,
+                                              &state.active_received)) {
+                sender_ok.store (false, std::memory_order_release);
+                break;
+            }
         }
-
-        if (!record_router_router_sample (
-              run_id, msg_size, payload_size, part, &state.latency, &state.active_received)) {
+        catch (const zlink::recv_error_t &err) {
+            if (err.result () == zlink::recv_result_t::no_data
+                || err.result () == zlink::recv_result_t::busy) {
+                continue;
+            }
+            if (perf_debug_enabled ())
+                std::cerr << "router_router: recv failed result="
+                          << static_cast<int> (err.result ())
+                          << " errno=" << err.internal_errno () << std::endl;
             sender_ok.store (false, std::memory_order_release);
             break;
         }
@@ -230,21 +283,29 @@ void run_pattern_router_router (const std::string &transport,
     while (state.active_received.load (std::memory_order_acquire)
              < sent_count.load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < drain_deadline) {
-        zlink::routing_id_t source_rid;
-        zlink::message_t part;
-        const int rc = receiver.sock ().recv (
-          source_rid, part, zlink::recv_flag::dontwait);
-        if (rc != 0) {
-            const int err = errno;
-            if (err == EAGAIN || err == EINTR)
-                break;
-            perf::single::print_fail_result (
-              lib_name, "ROUTER_ROUTER", transport, msg_size);
-            return;
+        try {
+            zlink::received_t inbound;
+            if (receiver.sock ().receive (inbound, zlink::recv_flags_t::dontwait)
+                != 0) {
+                if (errno == EAGAIN || errno == EINTR)
+                    break;
+                perf::single::print_fail_result (
+                  lib_name, "ROUTER_ROUTER", transport, msg_size);
+                return;
+            }
+            if (!record_router_router_sample (run_id,
+                                              msg_size,
+                                              payload_size,
+                                              const_cast<zlink::message_t &> (
+                                                inbound.parts ()[0]),
+                                              &state.latency,
+                                              &state.active_received)) {
+                perf::single::print_fail_result (
+                  lib_name, "ROUTER_ROUTER", transport, msg_size);
+                return;
+            }
         }
-
-        if (!record_router_router_sample (
-              run_id, msg_size, payload_size, part, &state.latency, &state.active_received)) {
+        catch (const zlink::recv_error_t &err) {
             perf::single::print_fail_result (
               lib_name, "ROUTER_ROUTER", transport, msg_size);
             return;
@@ -253,6 +314,10 @@ void run_pattern_router_router (const std::string &transport,
 
     received = state.active_received.load (std::memory_order_acquire);
     if (received == 0 || state.latency.count () == 0) {
+        if (perf_debug_enabled ())
+            std::cerr << "router_router: no active data sent="
+                      << sent_count.load (std::memory_order_acquire)
+                      << " received=" << received << std::endl;
         perf::single::print_fail_result (
           lib_name, "ROUTER_ROUTER", transport, msg_size);
         return;

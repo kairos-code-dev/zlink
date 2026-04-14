@@ -3,18 +3,43 @@
 #include "../common/perf_single_common.hpp"
 #include "../common/perf_single_runner.hpp"
 
+#include <thread>
 #include <vector>
 
 namespace {
 
-bool send_single_part (void *userdata_, const void *data_, size_t size_)
+bool perf_debug_enabled ()
 {
-    zlink::socket_t *socket = static_cast<zlink::socket_t *> (userdata_);
-    if (!socket)
-        return false;
+    return std::getenv ("PERF_DEBUG") != NULL;
+}
 
-    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
-    return msg.valid () && socket->send (msg, zlink::send_flag::none) == 0;
+bool record_router_payload (const zlink::received_t &received,
+                            uint32_t run_id,
+                            size_t msg_size,
+                            size_t payload_size,
+                            std::atomic<unsigned long long> &received_count,
+                            perf::single::latency_stats_builder_t &latency_builder)
+{
+    if (received.parts ().size () != 1 || received.parts ()[0].size () != payload_size)
+        return true;
+
+    perf_single_metric::header_t header;
+    if (!perf_single_metric::decode_payload_header (
+          received.parts ()[0].data (), received.parts ()[0].size (), &header)) {
+        return true;
+    }
+    if (!perf_single_metric::is_expected (
+          header, run_id, perf_single_metric::phase_active, msg_size)) {
+        return true;
+    }
+
+    received_count.fetch_add (1, std::memory_order_release);
+    const uint64_t now = perf_single_metric::now_ns ();
+    const double latency_ns =
+      now >= header.sent_ts_ns ? static_cast<double> (now - header.sent_ts_ns)
+                               : 0.0;
+    latency_builder.add (latency_ns);
+    return true;
 }
 
 } // namespace
@@ -44,7 +69,6 @@ void run_pattern_dealer_router (const std::string &transport,
     }
 
     (void) dealer.sock ().set_routing_id (std::string ("CLIENT"));
-
     if (!perf::single::setup_connected_pair (router.sock (),
                                              dealer.sock (),
                                              transport,
@@ -54,46 +78,133 @@ void run_pattern_dealer_router (const std::string &transport,
         return;
     }
 
-    const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();
-    (void) router.sock ().set_option (zlink::socket_options::rcvtimeo, recv_timeout);
-    (void) dealer.sock ().set_option (
-      zlink::socket_options::sndtimeo, perf::single::resolve_single_send_timeout_ms ());
-
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
-    perf::single::callback_receiver_t receiver_cb;
-    if (!receiver_cb.attach (router.sock ())) {
-        perf::single::print_fail_result (
-          lib_name, "DEALER_ROUTER", transport, msg_size);
-        return;
-    }
 
     const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_ns ());
-    uint64_t seq = 1;
-
     const int duration_s =
       std::max (1, perf::single::resolve_single_duration_seconds ());
-    unsigned long long received = 0;
-    perf::single::latency_stats_t latency;
-    if (!perf::single::run_callback_phase (receiver_cb,
-                                           &send_single_part,
-                                           &dealer.sock (),
-                                           payload,
-                                           msg_size,
-                                           run_id,
-                                           seq,
-                                           perf_single_metric::phase_active,
-                                           0,
-                                           duration_s,
-                                           recv_timeout,
-                                           &received,
-                                           &latency)) {
+    const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();
+    std::atomic<unsigned long long> sent_count (0);
+    std::atomic<unsigned long long> received_count (0);
+    std::atomic<bool> sender_ok (true);
+    std::atomic<bool> sender_done (false);
+    perf::single::latency_stats_builder_t latency_builder (
+      perf::single::resolve_single_latency_sample_cap ());
+
+    std::thread sender_thread ([&]() {
+        uint64_t seq = 1;
+        const auto deadline =
+          std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
+        while (std::chrono::steady_clock::now () < deadline) {
+            if (!perf_single_metric::stamp_payload (payload.data (),
+                                                    payload.size (),
+                                                    run_id,
+                                                    perf_single_metric::phase_active,
+                                                    msg_size,
+                                                    seq++,
+                                                    perf_single_metric::now_ns ())) {
+                sender_ok.store (false, std::memory_order_release);
+                break;
+            }
+
+            zlink::message_t msg =
+              zlink::message_t::from_bytes (payload.data (), payload.size ());
+            if (!msg.valid ()
+                || dealer.sock ().send (msg, zlink::send_flags_t::none) != 0) {
+                if (perf_debug_enabled ())
+                    std::cerr << "dealer_router: send failed errno=" << errno
+                              << std::endl;
+                sender_ok.store (false, std::memory_order_release);
+                break;
+            }
+            sent_count.fetch_add (1, std::memory_order_release);
+        }
+        sender_done.store (true, std::memory_order_release);
+    });
+
+    while (!sender_done.load (std::memory_order_acquire)) {
+        try {
+            zlink::received_t received;
+            if (router.sock ().receive (received, zlink::recv_flags_t::none) != 0) {
+                sender_ok.store (false, std::memory_order_release);
+                break;
+            }
+            (void) record_router_payload (
+              received,
+              run_id,
+              msg_size,
+              payload_size,
+              received_count,
+              latency_builder);
+        }
+        catch (const zlink::recv_error_t &err) {
+            if (err.result () == zlink::recv_result_t::no_data
+                || err.result () == zlink::recv_result_t::busy) {
+                continue;
+            }
+            if (perf_debug_enabled ())
+                std::cerr << "dealer_router: recv failed result="
+                          << static_cast<int> (err.result ())
+                          << " errno=" << err.internal_errno () << std::endl;
+            sender_ok.store (false, std::memory_order_release);
+            break;
+        }
+    }
+
+    sender_thread.join ();
+    const auto drain_deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (recv_timeout * 2);
+    while (received_count.load (std::memory_order_acquire)
+             < sent_count.load (std::memory_order_acquire)
+           && std::chrono::steady_clock::now () < drain_deadline) {
+        try {
+            zlink::received_t received;
+            if (router.sock ().receive (received, zlink::recv_flags_t::dontwait)
+                != 0) {
+                if (errno == EAGAIN || errno == EINTR)
+                    break;
+                sender_ok.store (false, std::memory_order_release);
+                break;
+            }
+            (void) record_router_payload (
+              received,
+              run_id,
+              msg_size,
+              payload_size,
+              received_count,
+              latency_builder);
+        }
+        catch (const zlink::recv_error_t &err) {
+            if (err.result () == zlink::recv_result_t::no_data
+                || err.result () == zlink::recv_result_t::busy) {
+                break;
+            }
+            if (perf_debug_enabled ())
+                std::cerr << "dealer_router: drain failed result="
+                          << static_cast<int> (err.result ())
+                          << " errno=" << err.internal_errno () << std::endl;
+            sender_ok.store (false, std::memory_order_release);
+            break;
+        }
+    }
+
+    const unsigned long long received =
+      received_count.load (std::memory_order_acquire);
+    if (!sender_ok.load (std::memory_order_acquire) || received == 0
+        || latency_builder.count () == 0) {
+        if (perf_debug_enabled ())
+            std::cerr << "dealer_router: no active data sent="
+                      << sent_count.load (std::memory_order_acquire)
+                      << " received=" << received << std::endl;
         perf::single::print_fail_result (
           lib_name, "DEALER_ROUTER", transport, msg_size);
         return;
     }
 
+    const perf::single::latency_stats_t latency = latency_builder.snapshot ();
     const double throughput =
       static_cast<double> (received) / static_cast<double> (duration_s);
     perf::single::print_result (lib_name,

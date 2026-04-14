@@ -46,11 +46,9 @@ inline void noop_free (void *, void *)
 inline zlink::message_t message_from_external_buffer (std::vector<char> &buffer,
                                                       size_t size)
 {
-    return zlink::message_t::from_external (
-      size > 0 ? static_cast<void *> (&buffer[0]) : NULL,
-      size,
-      &noop_free,
-      NULL);
+    return zlink::message_t::from_bytes (
+      size > 0 ? static_cast<const void *> (&buffer[0]) : NULL,
+      size);
 }
 
 inline int bench_io_threads ()

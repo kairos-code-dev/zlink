@@ -23,6 +23,18 @@ static const char *k_pattern_env = "ROUTER_ROUTER";
 static const char *k_pattern_result = "MULTI_ROUTER_ROUTER";
 static const char k_payload_fill = 'r';
 
+bool perf_debug_enabled ()
+{
+    return std::getenv ("PERF_DEBUG") != NULL;
+}
+
+void debug_log (const std::string &message_)
+{
+    if (!perf_debug_enabled ())
+        return;
+    std::cerr << "router_router client: " << message_ << std::endl;
+}
+
 bool same_routing_id (const zlink_routing_id_t &lhs, const zlink_routing_id_t &rhs)
 {
     return lhs.size == rhs.size
@@ -101,18 +113,30 @@ class router_router_client_bench_t
     bool run ()
     {
         if (!setup_sockets ())
+        {
+            debug_log ("setup_sockets failed errno=" + std::to_string (errno));
             return false;
+        }
         if (!validate_routes_once ())
+        {
+            debug_log ("validate_routes_once failed errno=" + std::to_string (errno));
             return false;
+        }
 
         _resource_probe_start = perf::multi::start_resource_probe ();
         if (!run_phase (perf_metric::phase_active,
                         _phase_cfg.active_seconds,
                         &_result.active_count,
                         &_result.latency))
+        {
+            debug_log ("run_phase(active) failed errno=" + std::to_string (errno));
             return false;
+        }
         if (_result.active_count == 0)
+        {
+            debug_log ("active_count stayed zero");
             return false;
+        }
 
         send_stop_token_once ();
         _resource_metrics =
@@ -131,7 +155,8 @@ class router_router_client_bench_t
 
             const std::string routing_id = std::string ("rr_") + std::to_string (i);
             (void) sock.set_routing_id (routing_id);
-            (void) sock.set (zlink::router_options::probe, 1);
+            (void) sock.set (zlink::router_options::connect_routing_id,
+                             std::string ("SERVER"));
 
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
             if (!perf::multi::setup_tls_client (sock, _transport))
@@ -139,8 +164,11 @@ class router_router_client_bench_t
             _monitors.push_back (perf::multi::connect_monitor_t ());
             if (!perf::multi::open_connect_monitor (sock, _monitors.back ()))
                 return false;
-            if (sock.connect (_endpoint) != 0)
+            if (sock.connect (_endpoint) != 0) {
+                debug_log ("connect failed endpoint=" + _endpoint
+                           + " errno=" + std::to_string (errno));
                 return false;
+            }
 
             socket_state_t state;
             state.sock = &sock;
@@ -157,7 +185,10 @@ class router_router_client_bench_t
         for (size_t i = 0; i < _monitors.size (); ++i)
             perf::multi::close_connect_monitor (_monitors[i]);
         if (!ready)
+        {
+            debug_log ("wait_all_connect_ready failed");
             return false;
+        }
 
         return !_socket_states.empty ();
     }
@@ -229,14 +260,22 @@ class router_router_client_bench_t
                             break;
                         if (err == EINTR)
                             continue;
+                        debug_log ("validate recv failed errno=" + std::to_string (err));
                         return false;
                     }
 
                     state->awaiting_reply = false;
-                    if (recv_rc != 0 || !same_routing_id (source_rid, _server_rid))
+                    if (recv_rc != 0) {
+                        debug_log ("validate recv ignored rc=" + std::to_string (recv_rc));
                         continue;
+                    }
+                    if (!same_routing_id (source_rid, _server_rid)) {
+                        debug_log ("validate source routing id mismatch");
+                        continue;
+                    }
                     if (!perf_metric::is_expected (
                           header, _run_id, perf_metric::phase_warmup, _msg_size)) {
+                        debug_log ("validate header mismatch");
                         continue;
                     }
                     if (validated[slot_index])
@@ -316,8 +355,9 @@ class router_router_client_bench_t
         }
 
         const int payload_sent =
-          state.sock->send (_server_rid, request, zlink::send_flag::dontwait);
+          state.sock->send (_server_rid, request, zlink::send_flags_t::dontwait);
         if (payload_sent == 0) {
+            debug_log ("send request ok");
             state.awaiting_reply = true;
             state.send_pending = false;
             return set_pollout (state, false);
@@ -325,10 +365,12 @@ class router_router_client_bench_t
 
         const int err = errno;
         if (payload_sent < 0 && err == EAGAIN) {
+            debug_log ("send request blocked");
             state.send_pending = true;
             errno = err;
             return set_pollout (state, true);
         }
+        debug_log ("send request failed errno=" + std::to_string (err));
         errno = err;
         return false;
     }
@@ -345,7 +387,7 @@ class router_router_client_bench_t
         zlink::message_t reply;
         zlink_routing_id_t source_rid = zlink::empty_routing_id ();
         const int rc =
-          state.sock->recv (source_rid, reply, zlink::recv_flag::dontwait);
+          state.sock->recv (source_rid, reply, zlink::recv_flags_t::dontwait);
         if (rc != 0)
             return -1;
 
@@ -353,12 +395,10 @@ class router_router_client_bench_t
             errno = EPROTO;
             return -1;
         }
-        if (reply.size () != state.payload_size) {
-            errno = EPROTO;
-            return -1;
-        }
 
         *source_rid_out = source_rid;
+        if (reply.size () != state.payload_size)
+            return 1;
         if (!perf_metric::decode_payload_header (
               reply.data (), reply.size (), header_out)) {
             return 1;
@@ -435,14 +475,17 @@ class router_router_client_bench_t
                             break;
                         if (err == EINTR)
                             continue;
+                        debug_log ("active recv failed errno=" + std::to_string (err));
                         return false;
                     }
                     state->awaiting_reply = false;
 
-                    if (recv_rc == 0
-                        && same_routing_id (source_rid, _server_rid)
-                        && perf_metric::is_expected (
-                          header, _run_id, phase, _msg_size)) {
+                    if (recv_rc != 0) {
+                        debug_log ("active recv ignored rc=" + std::to_string (recv_rc));
+                    } else if (!same_routing_id (source_rid, _server_rid)) {
+                        debug_log ("active source routing id mismatch");
+                    } else if (perf_metric::is_expected (
+                                 header, _run_id, phase, _msg_size)) {
                         ++count;
                         if (lat_out && phase == perf_metric::phase_active) {
                             const uint64_t now_ns = perf_metric::now_ns ();
@@ -453,6 +496,8 @@ class router_router_client_bench_t
                                 : 0.0;
                             latency.add (latency_ns);
                         }
+                    } else {
+                        debug_log ("active header mismatch");
                     }
 
                     if (std::chrono::steady_clock::now () >= deadline)
@@ -492,7 +537,7 @@ class router_router_client_bench_t
         if (!stop_msg.valid ())
             return;
         std::memcpy (stop_msg.data (), stop, stop_len);
-        (void) sock->send (_server_rid, stop_msg, zlink::send_flag::dontwait);
+        (void) sock->send (_server_rid, stop_msg, zlink::send_flags_t::dontwait);
     }
 
     void print_result () const

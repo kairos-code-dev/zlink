@@ -211,6 +211,15 @@ class bench_client_t : public bench_client_iface_t
         }
 
         if (connect_success.load (std::memory_order_relaxed) <= 0) {
+            if (std::getenv ("PERF_DEBUG")) {
+                std::fprintf (
+                  stderr,
+                  "perf_stream_client: connect_success=%ld connect_fail=%ld connect_completed=%ld sessions=%zu\n",
+                  connect_success.load (std::memory_order_relaxed),
+                  connect_fail.load (std::memory_order_relaxed),
+                  connect_completed.load (std::memory_order_relaxed),
+                  sessions.size ());
+            }
             shutdown_all_sessions ();
             join_workers ();
             return 2;
@@ -270,6 +279,13 @@ class bench_client_t : public bench_client_iface_t
       bool success,
       const std::shared_ptr<client_session_t> &session) override
     {
+        if (std::getenv ("PERF_DEBUG")) {
+            std::fprintf (
+              stderr,
+              "perf_stream_client: on_connect_result success=%d session=%p\n",
+              success ? 1 : 0,
+              session.get ());
+        }
         if (success) {
             connect_success.fetch_add (1, std::memory_order_relaxed);
             std::lock_guard<std::mutex> lk (connected_mu);
@@ -681,6 +697,21 @@ class bench_client_t : public bench_client_iface_t
                    && out.send_error == 0 && out.recv_error == 0
                    && out.timeout_error == 0 && out.size_mismatch == 0
                    && out.throughput_bps > 0.0;
+        if (!out.pass && std::getenv ("PERF_DEBUG")) {
+            std::fprintf (
+              stderr,
+              "perf_stream_client: case_failed size=%zu connect_ok=%ld connect_fail=%ld send_error=%ld recv_error=%ld timeout_error=%ld size_mismatch=%ld throughput_bps=%.3f samples=%zu window_ok=%d\n",
+              size,
+              out.connect_ok,
+              out.connect_fail,
+              out.send_error,
+              out.recv_error,
+              out.timeout_error,
+              out.size_mismatch,
+              out.throughput_bps,
+              sample_count,
+              window_ok ? 1 : 0);
+        }
         return out;
     }
 

@@ -82,6 +82,18 @@
 - 따라서 service-aware inbound queue와 dispatch surface의 소유자는 `SpotNode`가
   아니라, 그 node에 attach된 단일 공개 `Spot` facade로 본다.
 
+이 규칙에 맞춰 `zlink_spot_new(node)`의 의미도 아래처럼 고정한다.
+
+- service-aware attachment가 없는 일반 `SpotNode`는 기존과 같은 facade 생성 규칙을
+  따른다.
+- service-aware attachment가 붙은 `SpotNode`는 공개 facade `Spot` 하나만 허용한다.
+- 같은 node에 두 번째 `zlink_spot_new(node)`를 호출하면 `NULL`을 반환하고
+  `errno=EBUSY`로 실패한다.
+- 일반 facade가 둘 이상 먼저 생성된 node는 service-aware 모드로 승격하지 않는다.
+- 이런 node에 `zlink_spot_node_attach_router()`,
+  `zlink_spot_node_attach_pubsub()`, `zlink_spot_node_attach_discovery()`를
+  호출하면 `EBUSY`로 실패한다.
+
 ## 4. 역할 재정의 초안
 
 ### 4.1 SpotNode
@@ -175,14 +187,14 @@ zlink_config_result_t zlink_spot_node_attach_pubsub (
 이 초안은 기존의 `rid` 직접 지정 경로를 없애지 않는다. 대신
 `service_name`만으로 라우팅을 시작하는 경로를 추가한다.
 
-현재 논의 중인 방향은 아래와 같다.
+이 draft의 공개 계약은 아래와 같다.
 
 - 기존 경로:
   특정 `rid`를 직접 지정해 보낸다.
 - 새 경로:
   `service_name`만 주면, 그 서비스에 attach된 ROUTER 집합 중 하나를 골라 보낸다.
 
-공개 API 방향은 아래와 같다.
+공개 API는 아래와 같다.
 
 ```c
 zlink_submit_result_t zlink_spot_send_service (
@@ -253,7 +265,7 @@ generic socket family의 `zlink_publish()` / `zlink_subscribe()` /
 `zlink_subscription_event()`와 충돌하지 않도록, Spot 전용 multi-service pub/sub는
 `zlink_spot_*` 이름으로 분리한다.
 
-공개 API 방향은 아래와 같다.
+공개 API는 아래와 같다.
 
 ```c
 zlink_submit_result_t zlink_spot_publish (
@@ -569,6 +581,22 @@ SPOT은 이 목록을 이용해 service attachment를 갱신한다.
 
 - 자동 연결 결과가 결국 `service_name -> attachment set`으로 관찰돼야 한다.
 
+다중 Discovery attach 계약은 아래처럼 고정한다.
+
+- 하나의 `SpotNode`에는 서로 다른 `service_name`을 보는 Discovery handle 여러 개를
+  attach할 수 있다.
+- 같은 Discovery handle을 둘 이상의 `SpotNode` owner에 attach하는 것은 금지한다.
+- 같은 `SpotNode`에 같은 `service_name` Discovery를 둘 이상 attach하는 것은
+  허용하지 않는다.
+- 같은 `SpotNode`에 공개 facade `Spot`이 둘 이상 이미 생성되어 있으면, 그 node는
+  service-aware Discovery attach를 받을 수 없다.
+- 따라서 자동 attachment 병합 규칙은 "서로 다른 서비스 Discovery의 병렬 attach"만
+  지원하고, "같은 서비스 Discovery 여러 개의 합집합 병합"은 지원하지 않는다.
+- Discovery destroy 또는 detach에 해당하는 수명 변화는 그 Discovery가 공급하던
+  automatic attachment source만 내린다.
+- 이 동작은 수동 attachment나 다른 Discovery source가 공급하던 attachment를
+  건드리지 않는다.
+
 ### 8.2 수동 attach와 자동 attach의 병합
 
 수동 attach와 자동 attach는 서로 다른 코드 경로를 갖더라도, 최종적으로는 같은
@@ -596,8 +624,9 @@ service 기반 라우팅을 추가해도 reply 규칙은 더 엄격해야 한다
 - routed request인 경우 reply에 써야 하는 request sequence
 - 필요하면 ingress attachment 식별자
 
-이 문서 단계에서는 내부 식별자 노출 여부를 확정하지 않는다. 다만 최소한 응용이
-"이 메시지가 어느 서비스에서 왔는가"를 알 수 있어야 한다고 본다.
+이 draft는 ingress attachment 내부 식별자를 공개하지 않는다. 다만 응용이
+"이 메시지가 어느 서비스에서 왔는가"를 알 수 있도록 `service_name`은 반드시
+노출한다.
 
 pub/sub 경로의 `source_rid`는 선택 메타데이터다.
 
@@ -608,7 +637,7 @@ pub/sub 경로의 `source_rid`는 선택 메타데이터다.
 ## 10. 상태 조회와 운영 관찰
 
 새 모델이 들어가면 운영 API도 기존 `peer SpotNode 목록`만으로는 충분하지 않다.
-정식 spec 단계에서는 아래와 같은 뷰가 필요할 수 있다.
+정식 spec 반영 때는 아래 뷰를 함께 다룬다.
 
 - 서비스별 attachment 수
 - 서비스별 active ROUTER 수
@@ -616,8 +645,9 @@ pub/sub 경로의 `source_rid`는 선택 메타데이터다.
 - 수동 attach와 자동 attach의 출처 구분
 - monitor event의 service 구분
 
-이 문서는 구체적인 조회 함수 시그니처를 아직 제안하지 않는다. 다만 정식 반영 때
-운영 surface를 함께 다루지 않으면, 새 모델이 실제로 관찰 불가능해질 수 있다.
+이 문서는 상태 조회를 최소 헤더 초안 수준으로만 담고, 세부 운영 surface는 정식
+spec 반영 때 함께 확정한다. 운영 surface를 빼면 새 모델을 실제로 관찰할 수
+없기 때문이다.
 
 ### 10.1 monitor event의 service 구분
 
@@ -694,6 +724,13 @@ Discovery view의 service 구성을 검증하는 관문 역할도 함께 맡는�
 - Discovery가 보는 서비스에 `pub` xor `sub` 상태가 있으면 attach를 거부한다.
 - 즉 pub/sub는 자동 연결에서도 짝이 맞아야 한다.
 - `router`만 있는 서비스는 attach 허용 대상이다.
+- 같은 node에 같은 `service_name` Discovery가 이미 attach되어 있으면 `BUSY`로
+  거부한다.
+- 서로 다른 `service_name` Discovery는 같은 node에 함께 attach할 수 있다.
+- 같은 node에 공개 facade `Spot`이 둘 이상 이미 생성되어 있으면 Discovery attach는
+  `BUSY`로 거부한다.
+- Discovery destroy는 그 Discovery source가 공급하던 automatic attachment만
+  내리고, 수동 attachment나 다른 Discovery source는 유지한다.
 
 ### 11.2 service attachment shape 고정
 
@@ -706,6 +743,8 @@ Discovery view의 service 구성을 검증하는 관문 역할도 함께 맡는�
 
 - `router`는 routed send/request 경로에 사용한다.
 - `pub`와 `sub`는 pub/sub 경로에 반드시 함께 사용한다.
+- 공개 facade `Spot`이 둘 이상 이미 생성된 node에는 이 수동 attach 함수군을
+  허용하지 않는다.
 
 이 방향을 고른 이유는 아래와 같다.
 
@@ -744,6 +783,8 @@ monitor는 여기 포함하지 않는다. monitor는 node 전용 recv 표면으�
 
 - 같은 서비스의 active ROUTER 집합에서 round-robin으로 고른다.
 - send-ready가 아닌 ROUTER는 선택 후보에서 제외한다.
+- selector 단계에서 후보가 0개가 되면 이 상태를 일시적 backpressure가 아니라
+  "현재 보낼 수 있는 경로가 없음"으로 보고 `NOT_CONNECTED`로 정규화한다.
 - request timeout 뒤 자동 재시도는 기본 계약에 넣지 않는다.
 - reply는 최초 ingress 경로에 고정한다.
 
@@ -777,9 +818,8 @@ attach 이후 운용 중 provider 변화로 짝이 깨지면 아래처럼 처리
 
 ## 12. 공개 헤더 초안
 
-이 절은 `core/include/zlink.h`에 들어갈 수 있는 공개 함수 형태를 구현 순서에
-맞춰 정리한다. 아직 구현 전 초안이므로 세부 이름은 바뀔 수 있지만, 함수군
-구조는 이 순서를 기준으로 본다.
+이 절은 `core/include/zlink.h`에 들어갈 공개 함수 형태를 구현 순서에 맞춰
+정리한다. 이 draft에서는 아래 이름과 함수군 구조를 구현 기준으로 본다.
 
 ### 12.1 설계 원칙
 
@@ -797,11 +837,10 @@ attach 이후 운용 중 provider 변화로 짝이 깨지면 아래처럼 처리
 
 ### 12.2 타입 초안
 
-현재 문서 단계에서는 service 이름을 새 구조체로 감싸지 않고 `const char *`와
-버퍼 길이 방식으로 둔다. 기존 공개 API가 topic/filter에서 같은 방식을 쓰기
-때문이다.
+이 draft는 service 이름을 새 구조체로 감싸지 않고 `const char *`와 버퍼 길이
+방식으로 둔다. 기존 공개 API가 topic/filter에서 같은 방식을 쓰기 때문이다.
 
-추가 메타데이터가 필요하면 아래 같은 구조체를 도입할 수 있다.
+아래 구조체는 채택하지 않는 대안 메모다.
 
 ```c
 typedef struct zlink_service_message_info_t
@@ -812,8 +851,7 @@ typedef struct zlink_service_message_info_t
 } zlink_service_message_info_t;
 ```
 
-다만 이 구조체는 공개 헤더의 선행 항목이 아니다. 먼저 별도 service-aware
-함수군을 구현하고, 그 뒤에도 메타데이터 구조체가 필요한지 본다.
+이 draft의 공개 헤더 목록에는 이 구조체를 넣지 않는다.
 
 ### 12.3 수동 attach API 초안
 
@@ -841,9 +879,8 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_pubsub (
 - 따라서 `SpotNode` destroy가 attach된 `router/pub/sub`를 자동으로 destroy하지
   않는다.
 
-이 초안에서는 비소유 attach를 기본 계약으로 둔다. destroy 위임이 필요하면
-나중에 별도 open option이나 attach flag로 확장한다. 또한 runtime 중 attach를
-다시 바꾸거나 떼는 API는 제공하지 않는다.
+이 draft는 비소유 attach를 기본 계약으로 둔다. destroy 위임, attach flag,
+runtime 재구성 API는 이 문서 범위에 포함하지 않는다.
 
 ### 12.4 service 기반 routed send/request API 초안
 
@@ -1109,7 +1146,16 @@ ZLINK_EXPORT zlink_recv_result_t zlink_spot_node_monitor_recv (
 - Discovery view 안의 서비스 구성을 검사한다.
 - `pub` xor `sub` 상태가 있는 서비스가 하나라도 있으면 실패한다.
 - `router`만 있는 서비스는 허용한다.
+- 서로 다른 `service_name` Discovery는 같은 node에 함께 attach할 수 있다.
+- 같은 `service_name` Discovery를 같은 node에 둘 이상 attach하는 것은 허용하지
+  않는다.
+- 같은 node에 공개 facade `Spot`이 둘 이상 이미 생성되어 있으면 Discovery attach는
+  허용하지 않는다.
 - 성공한 뒤에만 해당 Discovery를 자동 attachment source로 등록한다.
+- Discovery destroy는 그 Discovery source가 공급하던 automatic attachment만
+  제거한다.
+- 이 동작은 수동 attachment나 다른 Discovery source의 attachment를 제거하지
+  않는다.
 
 오류 코드는 현재 draft에서 설정 오류 계열로 정리한다.
 
@@ -1119,7 +1165,98 @@ ZLINK_EXPORT zlink_recv_result_t zlink_spot_node_monitor_recv (
 새 전용 errno를 바로 만들기보다, 우선은 "Discovery view의 service shape가
 attach 계약에 맞지 않는다"는 의미의 잘못된 인자/구성으로 본다.
 
-### 12.10 attach_discovery 실패 케이스 초안
+### 12.10 service data-plane 실패 모델
+
+`service_name` 기반 함수는 attach 시점 오류보다 운용 중 data-plane 오류를 더 자주
+드러낸다. 이 draft에서는 아래 함수군의 public result를 먼저 고정한다.
+
+- `zlink_spot_send_service()`
+- `zlink_spot_request_service()`
+- `zlink_spot_publish()`
+
+기본 분류 원칙은 아래와 같다.
+
+- `NOT_FOUND`:
+  호출한 `service_name`에 해당하는 attachment 자체가 없다.
+- `NOT_CONNECTED`:
+  attachment는 있으나, 지금 실제로 쓸 수 있는 active 경로가 없다.
+- `BACKPRESSURED`:
+  active 경로는 있으나, 지금 바로 submit할 수 없다.
+
+즉 이 모델은 "구성상 대상이 없음"과 "구성은 있으나 현재 경로가 죽어 있음"을
+구분한다.
+
+#### 12.10.1 zlink_spot_send_service / zlink_spot_request_service
+
+`service_name` 기반 routed submit은 아래 표를 따른다.
+
+| 케이스 | public result | 내부 errno | 의미 |
+|------|---------------|------------|------|
+| `spot_ == NULL` 또는 잘못된 `spot_` | `ZLINK_SUBMIT_INVALID_HANDLE` | `EFAULT` | 유효하지 않은 Spot 핸들 |
+| `service_name_ == NULL` 또는 빈 문자열 | `ZLINK_SUBMIT_INVALID_ARGUMENT` | `EINVAL` | 유효하지 않은 서비스 이름 |
+| `parts_ == NULL`인데 `part_count_ > 0` | `ZLINK_SUBMIT_INVALID_ARGUMENT` | `EINVAL` | 잘못된 message parts 인자 |
+| 지정한 `service_name_`에 attachment가 없음 | `ZLINK_SUBMIT_NOT_FOUND` | `ENOENT` | 대상 서비스 자체를 찾지 못함 |
+| 서비스는 있으나 active ROUTER attachment가 없음 | `ZLINK_SUBMIT_NOT_CONNECTED` | `ENOTCONN` 또는 `EHOSTUNREACH` | 경로는 정의되어 있으나 지금 보낼 대상이 없음 |
+| active ROUTER는 있으나 send-ready 후보가 없음 | `ZLINK_SUBMIT_NOT_CONNECTED` | `ENOTCONN` 또는 `EHOSTUNREACH` | selector가 지금 쓸 수 있는 ROUTER를 고르지 못함 |
+| 선택된 ROUTER가 HWM 또는 비차단 쓰기 불가 상태 | `ZLINK_SUBMIT_BACKPRESSURED` | `EAGAIN` | active path는 있으나 지금은 submit 불가 |
+| request sequence 공간 소진 | `ZLINK_SUBMIT_SEQ_EXHAUSTED` | `EBUSY` | 새 pending request를 더 만들 수 없음 |
+| context 종료 | `ZLINK_SUBMIT_TERMINATED` | `ETERM` | submit 경로가 종료됨 |
+| 그 외 내부 submit 실패 | 기존 submit enum 규칙 따름 | 기존 errno-map 규칙 따름 | 일반 submit 함수와 같은 정규화 규칙 적용 |
+
+이때 "active ROUTER attachment가 없음"에는 아래 경우를 포함한다.
+
+- 같은 서비스에 ROUTER가 하나도 attach되지 않음
+- ROUTER는 attach되어 있으나 discovery churn 또는 monitor 상태 때문에 active
+  집합에서 제외됨
+- ROUTER는 있으나 send-ready 후보가 하나도 남지 않음
+
+즉 selector 단계에서 send-ready 후보가 0개면, 이 draft는 이를 일시적 쓰기 지연이
+아니라 "현재 사용할 경로가 없음"으로 보고 `NOT_CONNECTED`로 정규화한다.
+
+request completion은 submit 결과와 별개로 기존 `zlink_request_result_t`를 따른다.
+
+- submit이 성공한 뒤 reply가 오지 않으면 `ZLINK_REQUEST_TIMED_OUT`
+- submit이 성공했지만 remote error reply가 "대상 없음"으로 완료되면
+  `ZLINK_REQUEST_NOT_FOUND`
+- submit 이후 ingress ROUTER 경로가 사라져도, public completion은 request 결과
+  모델 안에서 정규화한다
+
+#### 12.10.2 zlink_spot_publish
+
+`service_name` 기반 publish submit은 아래 표를 따른다.
+
+| 케이스 | public result | 내부 errno | 의미 |
+|------|---------------|------------|------|
+| `spot_ == NULL` 또는 잘못된 `spot_` | `ZLINK_SUBMIT_INVALID_HANDLE` | `EFAULT` | 유효하지 않은 Spot 핸들 |
+| `service_name_ == NULL` 또는 빈 문자열 | `ZLINK_SUBMIT_INVALID_ARGUMENT` | `EINVAL` | 유효하지 않은 서비스 이름 |
+| `topic_id_ == NULL` 또는 잘못된 topic | `ZLINK_SUBMIT_INVALID_ARGUMENT` | `EINVAL` | 잘못된 topic 인자 |
+| 지정한 `service_name_`에 attachment가 없음 | `ZLINK_SUBMIT_NOT_FOUND` | `ENOENT` | 대상 서비스 자체를 찾지 못함 |
+| 서비스는 있으나 active pub/sub pair가 없음 | `ZLINK_SUBMIT_NOT_CONNECTED` | `ENOTCONN` 또는 `EHOSTUNREACH` | pub/sub 경로가 현재 비활성 |
+| 선택된 `PUB`가 HWM 또는 비차단 쓰기 불가 상태 | `ZLINK_SUBMIT_BACKPRESSURED` | `EAGAIN` | active path는 있으나 지금은 publish 불가 |
+| context 종료 | `ZLINK_SUBMIT_TERMINATED` | `ETERM` | submit 경로가 종료됨 |
+| 그 외 내부 submit 실패 | 기존 submit enum 규칙 따름 | 기존 errno-map 규칙 따름 | 일반 publish 함수와 같은 정규화 규칙 적용 |
+
+여기서 "active pub/sub pair가 없음"은 아래를 뜻한다.
+
+- 해당 서비스에 `PUB + SUB`가 애초에 attach되지 않음
+- discovery churn으로 pub/sub 짝이 깨져 active 집합에서 제외됨
+- runtime 복구 전이라 publish 대상 `PUB`가 재활성화되지 않음
+
+#### 12.10.3 zlink_spot_subscribe / zlink_spot_subscription_event
+
+service-aware subscribe recv는 submit 계열과 다르게 "대상이 없는 서비스"를 직접
+인자로 받지 않는다. 따라서 기본 결과는 기존 recv 모델을 따른다.
+
+- 읽을 이벤트가 없으면 `ZLINK_RECV_NO_DATA`
+- `spot_`이 잘못됐으면 `ZLINK_RECV_INVALID_HANDLE`
+- context가 종료됐으면 `ZLINK_RECV_TERMINATED`
+- 그 외 내부 recv 실패는 `ZLINK_RECV_INTERNAL_ERROR`
+
+즉 "지금 active service attachment가 하나도 없음"은 recv 함수의 별도 result로
+올리지 않는다. 그 상태는 monitor 또는 attachment 상태 조회에서 관찰하는 쪽을
+기본으로 본다.
+
+### 12.11 attach_discovery 실패 케이스 초안
 
 `zlink_spot_node_attach_discovery()`의 실패 규칙은 아래 표를 기준으로 둔다.
 
@@ -1129,16 +1266,18 @@ attach 계약에 맞지 않는다"는 의미의 잘못된 인자/구성으로 �
 | `discovery_ == NULL` 또는 잘못된 `discovery_` | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` | 유효하지 않은 Discovery 인자 |
 | Discovery 타입이 SPOT 자동 attach에 맞지 않음 | `ZLINK_CONFIG_NOT_SUPPORTED` | `ENOTSUP` | 지원하지 않는 Discovery service type 또는 role 조합 |
 | 같은 Discovery가 이미 다른 owner에 attach됨 | `ZLINK_CONFIG_BUSY` | `EBUSY` | 중복 attach 또는 기존 소유와 충돌 |
+| 같은 node에 같은 `service_name` Discovery가 이미 attach됨 | `ZLINK_CONFIG_BUSY` | `EBUSY` | 같은 서비스의 자동 source 중복 attach는 지원하지 않음 |
+| 같은 node에 공개 facade `Spot`이 둘 이상 이미 생성되어 있음 | `ZLINK_CONFIG_BUSY` | `EBUSY` | 다중 facade node는 service-aware 모드로 승격하지 않음 |
 | Discovery view 안에 `pub`만 있음 | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` | pub/sub 짝이 맞지 않음 |
 | Discovery view 안에 `sub`만 있음 | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` | pub/sub 짝이 맞지 않음 |
 | Discovery view 안에 `router + pub`만 있음 | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` | pub/sub 짝이 맞지 않음 |
 | Discovery view 안에 `router + sub`만 있음 | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` | pub/sub 짝이 맞지 않음 |
-| Discovery view 안의 모든 서비스가 `router only` 또는 `router + pub + sub` | `ZLINK_CONFIG_OK` | `0` | attach 승인 |
+| Discovery view 안의 모든 서비스가 `router only` 또는 `router + pub + sub`이고, 같은 서비스 Discovery 중복이 없음 | `ZLINK_CONFIG_OK` | `0` | attach 승인 |
 
 이 표는 "attach 시점 검증"을 다룬다. attach 이후 운용 중 provider 변화로 shape가
 깨질 때는 §11.6의 active attachment 제외 규칙을 따른다.
 
-### 12.11 대안 errno 메모
+### 12.12 대안 errno 메모
 
 현재 draft는 새 errno 없이 `EINVAL`로 시작하지만, 구현 단계에서 진단 가독성이
 부족하다고 판단되면 아래 같은 전용 errno를 검토할 수 있다.

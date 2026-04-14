@@ -66,6 +66,9 @@ void test_without_handover ()
     size_t len = MAX_SOCKET_STRING;
     char my_endpoint[MAX_SOCKET_STRING];
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    int handover = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      router, ZLINK_ROUTER_OPT_HANDOVER, &handover, sizeof (handover)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "tcp://127.0.0.1:*"));
 

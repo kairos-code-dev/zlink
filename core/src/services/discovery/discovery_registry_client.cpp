@@ -458,6 +458,7 @@ void discovery_t::refresh_spot_owner_cache_locked (
 int discovery_t::register_service (uint16_t service_type_,
                                    const char *service_name_,
                                    const char *endpoint_,
+                                   zlink_admission_state_t admission_state_,
                                    int64_t value_,
                                    const std::vector<unsigned char> *metadata_,
                                    std::string *resolved_endpoint_out_,
@@ -503,6 +504,9 @@ int discovery_t::register_service (uint16_t service_type_,
                                             ZLINK_SNDMORE)
              < 0
         || discovery_protocol::send_string (dealer, endpoint_, ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_u16 (
+             dealer, static_cast<uint16_t> (admission_state_), ZLINK_SNDMORE)
              < 0
         || discovery_protocol::send_i64 (dealer, value_, ZLINK_SNDMORE) < 0
         || discovery_protocol::send_frame (
@@ -552,6 +556,7 @@ int discovery_t::register_service (uint16_t service_type_,
         service.service_name = service_name_;
         service.endpoint = key.endpoint;
         service.uplink_endpoint = uplink;
+        service.admission_state = admission_state_;
         service.value = value_;
         service.metadata = metadata_ ? *metadata_ : std::vector<unsigned char> ();
         service.last_heartbeat_ms = clock_t ().now_ms ();
@@ -565,6 +570,7 @@ int discovery_t::register_service (uint16_t service_type_,
 int discovery_t::update_service_attributes (uint16_t service_type_,
                                             const char *service_name_,
                                             const char *endpoint_,
+                                            zlink_admission_state_t admission_state_,
                                             int64_t value_,
                                             const std::vector<unsigned char> *metadata_,
                                             uint16_t service_role_)
@@ -624,6 +630,9 @@ int discovery_t::update_service_attributes (uint16_t service_type_,
              < 0
         || discovery_protocol::send_string (dealer, endpoint_, ZLINK_SNDMORE)
              < 0
+        || discovery_protocol::send_u16 (
+             dealer, static_cast<uint16_t> (admission_state_), ZLINK_SNDMORE)
+             < 0
         || discovery_protocol::send_i64 (dealer, value_, ZLINK_SNDMORE) < 0
         || discovery_protocol::send_frame (
              dealer, metadata_ && !metadata_->empty () ? &(*metadata_)[0] : NULL,
@@ -669,6 +678,7 @@ int discovery_t::update_service_attributes (uint16_t service_type_,
     std::map<registered_service_key_t, registered_service_t>::iterator it =
       _registered_services.find (key);
     if (it != _registered_services.end ()) {
+        it->second.admission_state = admission_state_;
         it->second.value = value_;
         it->second.metadata =
           metadata_ ? *metadata_ : std::vector<unsigned char> ();

@@ -88,6 +88,7 @@ typedef enum zlink_submit_result_t
     ZLINK_SUBMIT_BACKPRESSURED    = 1,
     ZLINK_SUBMIT_NOT_CONNECTED    = 2,
     ZLINK_SUBMIT_NOT_FOUND        = 3,
+    ZLINK_SUBMIT_NOT_ADMITTED     = 13,
 
     /* Runtime / lifecycle failure. */
     ZLINK_SUBMIT_TERMINATED       = 4,

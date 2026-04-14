@@ -246,7 +246,8 @@ int spot_node_t::ensure_registered ()
     std::string resolved;
     if (discovery_owned_service::register_endpoint (
           discovery, discovery_protocol::service_type_spot_node,
-          advertise.c_str (), &resolved, &node_rid)
+          advertise.c_str (), &resolved, &node_rid,
+          discovery_protocol::service_role_spot, _admission_state)
         != 0) {
         return -1;
     }
@@ -325,6 +326,8 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
         _discovery_seq = 0;
         _pending_service_updates.insert (_discovery_service);
         _peer_state.discovery_endpoints.clear ();
+        _peer_state.peer_admission_by_endpoint.clear ();
+        _peer_state.peer_admission_by_rid.clear ();
         _summary_last_changed_ms = zlink::clock_t ().now_ms ();
         should_register = !_bound_endpoint.empty ();
     }
@@ -370,6 +373,8 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
     _pending_service_updates.clear ();
     _peer_state.discovery_endpoints.clear ();
     _peer_state.connected_endpoints.clear ();
+    _peer_state.peer_admission_by_endpoint.clear ();
+    _peer_state.peer_admission_by_rid.clear ();
     _registered = false;
     _advertise_endpoint.clear ();
     _registration_uplink_endpoint.clear ();
@@ -532,6 +537,8 @@ int spot_node_t::destroy ()
         _active_peer_count.store (0, std::memory_order_release);
         _peer_state.connected_endpoints.clear ();
         _peer_state.discovery_endpoints.clear ();
+        _peer_state.peer_admission_by_endpoint.clear ();
+        _peer_state.peer_admission_by_rid.clear ();
         _registered = false;
         _advertise_endpoint.clear ();
         _registration_uplink_endpoint.clear ();

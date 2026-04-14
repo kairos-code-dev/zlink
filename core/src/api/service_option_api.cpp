@@ -90,6 +90,32 @@ int zlink_service_get_routing_id (void *handle_, zlink_routing_id_t *out_)
     return -1;
 }
 
+int zlink_service_set_admission_state (void *handle_,
+                                       zlink_admission_state_t state_)
+{
+    if (zlink_service_spot_set_admission_state_internal (handle_, state_) == 0)
+        return 0;
+    if (errno != EFAULT)
+        return -1;
+
+    errno = EFAULT;
+    return -1;
+}
+
+int zlink_service_get_admission_state (void *handle_,
+                                       zlink_admission_state_t *state_out_)
+{
+    if (zlink_service_spot_get_admission_state_internal (handle_, state_out_)
+        == 0) {
+        return 0;
+    }
+    if (errno != EFAULT)
+        return -1;
+
+    errno = EFAULT;
+    return -1;
+}
+
 int zlink_service_set_tls_server (void *handle_,
                                   const char *cert_,
                                   const char *key_,

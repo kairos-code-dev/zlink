@@ -359,6 +359,7 @@ int zlink::registry_t::member_peers (zlink_service_type_t service_type_,
                 strncpy (entry.endpoint, pit->second.endpoint.c_str (),
                          sizeof (entry.endpoint) - 1);
                 entry.routing_id = pit->second.routing_id;
+                entry.admission_state = pit->second.admission_state;
                 entry.value = pit->second.value;
                 matched.push_back (entry);
             }

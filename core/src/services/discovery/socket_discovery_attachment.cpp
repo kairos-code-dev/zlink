@@ -12,6 +12,56 @@
 
 namespace zlink
 {
+namespace
+{
+static int compare_routing_id_bytes (const zlink_routing_id_t &lhs_,
+                                     const zlink_routing_id_t &rhs_)
+{
+    const size_t lhs_size = lhs_.size;
+    const size_t rhs_size = rhs_.size;
+    const size_t common = lhs_size < rhs_size ? lhs_size : rhs_size;
+    if (common > 0) {
+        const int cmp = memcmp (lhs_.data, rhs_.data, common);
+        if (cmp != 0)
+            return cmp;
+    }
+    if (lhs_size < rhs_size)
+        return -1;
+    if (lhs_size > rhs_size)
+        return 1;
+    return 0;
+}
+
+static int compare_connect_keys (const zlink_routing_id_t &local_rid_,
+                                 const zlink_routing_id_t &remote_rid_,
+                                 const std::string &local_endpoint_,
+                                 const std::string &remote_endpoint_)
+{
+    if (local_rid_.size > 0 && remote_rid_.size > 0) {
+        const int rid_cmp = compare_routing_id_bytes (local_rid_, remote_rid_);
+        if (rid_cmp != 0)
+            return rid_cmp;
+    }
+
+    if (local_endpoint_ < remote_endpoint_)
+        return -1;
+    if (local_endpoint_ > remote_endpoint_)
+        return 1;
+    return 0;
+}
+
+static bool should_initiate_router_router (
+  const zlink_routing_id_t &local_rid_,
+  const zlink_routing_id_t &remote_rid_,
+  const std::string &local_endpoint_,
+  const std::string &remote_endpoint_)
+{
+    return compare_connect_keys (local_rid_, remote_rid_, local_endpoint_,
+                                 remote_endpoint_)
+           < 0;
+}
+}
+
 socket_discovery_attachment_t::socket_discovery_attachment_t (
   socket_base_t *socket_) :
     _socket (socket_),
@@ -113,9 +163,19 @@ int socket_discovery_attachment_t::register_bound_endpoint (
         return -1;
     }
 
+    zlink_routing_id_t routing_id;
+    memset (&routing_id, 0, sizeof (routing_id));
+    const zlink_routing_id_t *routing_id_ptr = NULL;
+    if ((local_role_ == discovery_protocol::service_role_router
+         || local_role_ == discovery_protocol::service_role_dealer)
+        && ensure_socket_routing_id (&routing_id)) {
+        routing_id_ptr = &routing_id;
+    }
+
     return discovery_owned_service::register_endpoint (
       discovery_, discovery_protocol::service_type_socket, endpoint_.c_str (),
-      resolved_endpoint_out_, NULL, local_role_);
+      resolved_endpoint_out_, routing_id_ptr, local_role_,
+      _socket->local_admission_state ());
 }
 
 bool socket_discovery_attachment_t::ensure_socket_routing_id (
@@ -176,6 +236,13 @@ void socket_discovery_attachment_t::refresh_peers (
     if (!discovery_ || shutdown_requested_)
         return;
 
+    zlink_routing_id_t local_routing_id;
+    memset (&local_routing_id, 0, sizeof (local_routing_id));
+    if (local_role_ == discovery_protocol::service_role_router
+        && !ensure_socket_routing_id (&local_routing_id)) {
+        return;
+    }
+
     std::vector<provider_info_t> providers;
     const zlink_discovery_dealer_peer_mode_t dealer_peer_mode =
       discovery_->dealer_peer_mode ();
@@ -188,6 +255,15 @@ void socket_discovery_attachment_t::refresh_peers (
             || advertise_endpoint_ == provider.endpoint
             || !discovery_protocol::socket_auto_connect_target_matches (
               local_role_, provider.service_role, dealer_peer_mode)) {
+            continue;
+        }
+        if (local_role_ == discovery_protocol::service_role_router
+            && provider.service_role
+                 == discovery_protocol::service_role_router
+            && !should_initiate_router_router (local_routing_id,
+                                              provider.routing_id,
+                                              advertise_endpoint_,
+                                              provider.endpoint)) {
             continue;
         }
         target_endpoints.insert (provider.endpoint);
@@ -239,6 +315,28 @@ void socket_discovery_attachment_t::refresh_peers (
                          static_cast<uint32_t> (current_active_endpoints.size ()),
                          0, false);
     }
+}
+
+void socket_discovery_attachment_t::on_local_admission_state_changed ()
+{
+    discovery_t *discovery = NULL;
+    uint16_t local_role = discovery_protocol::service_role_invalid;
+    std::string advertise_endpoint;
+    bool registered = false;
+    {
+        scoped_lock_t lock (_sync);
+        discovery = _discovery;
+        local_role = _local_role;
+        advertise_endpoint = _advertise_endpoint;
+        registered = _registered;
+    }
+
+    if (!registered || !discovery || advertise_endpoint.empty ())
+        return;
+
+    (void) discovery_owned_service::update_attributes (
+      discovery, discovery_protocol::service_type_socket,
+      advertise_endpoint.c_str (), local_role, _socket->local_admission_state ());
 }
 
 int socket_discovery_attachment_t::attach (discovery_t *discovery_)

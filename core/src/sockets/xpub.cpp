@@ -17,7 +17,7 @@ zlink::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _more_send (false),
     _more_recv (false),
     _process_subscribe (false),
-    _lossy (true),
+    _lossy (false),
     _send_all_data (false),
     _manual (false),
     _send_last_pipe (false),

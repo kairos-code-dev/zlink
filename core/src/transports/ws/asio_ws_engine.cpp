@@ -1905,9 +1905,10 @@ int zlink::asio_ws_engine_t::decode_and_push (msg_t *msg_)
 
     if (msg_->flags () & msg_t::command) {
         const int rc = process_command_message (msg_);
-        if (rc != 0)
+        if (rc < 0)
             return -1;
-        return 0;
+        if (rc == 0)
+            return 0;
     }
 
     if (!_ready_received) {
@@ -1949,6 +1950,9 @@ int zlink::asio_ws_engine_t::process_command_message (msg_t *msg_)
         return process_ready_message (msg_);
     if (type == zmp_control_error)
         return process_error_message (msg_);
+
+    if (_ready_received)
+        return 1;
 
     set_last_error (zmp_error_internal, "unknown control");
     errno = EPROTO;

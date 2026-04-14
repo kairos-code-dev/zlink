@@ -13,6 +13,52 @@
 
 namespace
 {
+const char peer_admission_cmd_name[] = "ADMISSION";
+const size_t peer_admission_cmd_name_size = sizeof (peer_admission_cmd_name) - 1;
+
+int init_peer_admission_command (zlink::msg_t *msg_,
+                                 zlink_admission_state_t state_)
+{
+    if (!msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const int rc = msg_->init_size (peer_admission_cmd_name_size + 1);
+    if (rc != 0)
+        return -1;
+
+    memcpy (msg_->data (), peer_admission_cmd_name, peer_admission_cmd_name_size);
+    static_cast<unsigned char *> (msg_->data ())[peer_admission_cmd_name_size] =
+      static_cast<unsigned char> (state_);
+    msg_->set_flags (zlink::msg_t::command);
+    return 0;
+}
+
+bool decode_peer_admission_command (const zlink::msg_t &msg_,
+                                    zlink_admission_state_t *state_out_)
+{
+    if (!(msg_.flags () & zlink::msg_t::command))
+        return false;
+    if (msg_.size () != peer_admission_cmd_name_size + 1)
+        return false;
+    if (memcmp (const_cast<zlink::msg_t &> (msg_).data (),
+                peer_admission_cmd_name, peer_admission_cmd_name_size)
+        != 0) {
+        return false;
+    }
+
+    const unsigned char state =
+      static_cast<unsigned char *> (const_cast<zlink::msg_t &> (msg_).data ())[
+        peer_admission_cmd_name_size];
+    if (state != ZLINK_ADMISSION_SERVING && state != ZLINK_ADMISSION_DRAINING)
+        return false;
+
+    if (state_out_)
+        *state_out_ = static_cast<zlink_admission_state_t> (state);
+    return true;
+}
+
 void store_dispatch_part (std::vector<zlink_msg_t> *parts_, zlink::msg_t *msg_)
 {
     zlink_msg_t stored;
@@ -115,9 +161,9 @@ zlink::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _current_out (NULL),
     _more_out (false),
     _next_integral_routing_id (generate_random ()),
-    _mandatory (false),
+    _mandatory (true),
     _probe_router (false),
-    _handover (false),
+    _handover (true),
     _dispatch_source_rid_valid (false)
 {
     options.type = ZLINK_CORE_SOCKET_ROUTER;
@@ -163,6 +209,8 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_,
     const bool routing_id_ok = identify_peer (pipe_, locally_initiated_);
     if (routing_id_ok) {
         _fq.attach (pipe_);
+        if (local_admission_state () != ZLINK_ADMISSION_SERVING)
+            send_local_admission_state (pipe_);
         (void) pipe_->check_read ();
         if (socket_msg_dispatch_active ()) {
             _fq.deactivate (pipe_);
@@ -301,6 +349,11 @@ int zlink::router_t::xsend (msg_t *msg_)
                       msg_->size (), zlink::reference_tag_t ()));
 
             if (out_pipe) {
+                if (out_pipe->admission_state == ZLINK_ADMISSION_DRAINING) {
+                    _more_out = false;
+                    errno = ECONNREFUSED;
+                    return -1;
+                }
                 _current_out = out_pipe->pipe;
 
                 // Check whether pipe is closed or not
@@ -401,6 +454,11 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
       blob_t (const_cast<unsigned char *> (target_rid_->data),
               target_rid_->size, zlink::reference_tag_t ()));
     if (out_pipe) {
+        if (out_pipe->admission_state == ZLINK_ADMISSION_DRAINING) {
+            _more_out = false;
+            errno = ECONNREFUSED;
+            return -1;
+        }
         _current_out = out_pipe->pipe;
 
         const pipe_write_status_t write_status =
@@ -608,6 +666,19 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
     return 1;
 }
 
+int zlink::router_t::xpeer_command (msg_t *msg_, pipe_t *pipe_)
+{
+    zlink_admission_state_t state = ZLINK_ADMISSION_SERVING;
+    if (!decode_peer_admission_command (*msg_, &state))
+        return 0;
+    return apply_peer_admission_state (pipe_, state);
+}
+
+void zlink::router_t::xlocal_admission_state_changed ()
+{
+    broadcast_local_admission_state ();
+}
+
 void zlink::router_t::xarm_socket_msg_dispatch ()
 {
     _fq.arm_dispatch ();
@@ -698,7 +769,10 @@ bool zlink::router_t::xhas_out ()
     if (!_mandatory)
         return true;
 
-    return any_of_out_pipes (check_pipe_hwm);
+    return any_of_out_pipes ([] (const out_pipe_t &out_pipe_) {
+        return out_pipe_.admission_state == ZLINK_ADMISSION_SERVING
+               && check_pipe_hwm (*out_pipe_.pipe);
+    });
 }
 
 int zlink::router_t::get_peer_state (const void *routing_id_,
@@ -715,6 +789,9 @@ int zlink::router_t::get_peer_state (const void *routing_id_,
         errno = EHOSTUNREACH;
         return -1;
     }
+
+    if (out_pipe->admission_state != ZLINK_ADMISSION_SERVING)
+        return 0;
 
     if (out_pipe->pipe->check_hwm ())
         res |= ZLINK_POLLOUT;
@@ -815,6 +892,53 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 
     pipe_->set_router_socket_routing_id (routing_id);
     add_out_pipe (ZLINK_MOVE (routing_id), pipe_);
+    if (local_admission_state () != ZLINK_ADMISSION_SERVING)
+        send_local_admission_state (pipe_);
 
     return true;
+}
+
+void zlink::router_t::broadcast_local_admission_state ()
+{
+    std::vector<pipe_t *> pipes;
+    snapshot_attached_pipes (&pipes);
+    for (size_t i = 0; i < pipes.size (); ++i)
+        send_local_admission_state (pipes[i]);
+}
+
+void zlink::router_t::send_local_admission_state (pipe_t *pipe_)
+{
+    if (!pipe_)
+        return;
+
+    msg_t msg;
+    if (msg.init () != 0)
+        return;
+    if (init_peer_admission_command (&msg, local_admission_state ()) != 0) {
+        const int close_rc = msg.close ();
+        errno_assert (close_rc == 0);
+        return;
+    }
+    const int rc = pipe_->write_and_flush (&msg);
+    LIBZLINK_UNUSED (rc);
+    const int close_rc = msg.close ();
+    errno_assert (close_rc == 0);
+}
+
+int zlink::router_t::apply_peer_admission_state (pipe_t *pipe_,
+                                                 zlink_admission_state_t state_)
+{
+    if (!pipe_)
+        return 1;
+
+    const blob_t &routing_id = pipe_->get_routing_id ();
+    out_pipe_t *out_pipe = lookup_out_pipe (routing_id);
+    if (!out_pipe || out_pipe->pipe != pipe_)
+        return 1;
+    if (out_pipe->admission_state == state_)
+        return 1;
+
+    out_pipe->admission_state = state_;
+    emit_peer_admission_changed (pipe_, state_);
+    return 1;
 }

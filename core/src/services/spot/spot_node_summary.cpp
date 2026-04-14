@@ -340,6 +340,7 @@ int spot_node_t::snapshot_peers (
     std::set<std::string> active;
     std::set<std::string> connected;
     std::map<std::string, spot_peer_observation_t> observations;
+    std::map<std::string, zlink_admission_state_t> admission_by_endpoint;
     {
         scoped_lock_t lock (const_cast<mutex_t &> (_sync));
         service_name = _discovery_service;
@@ -350,6 +351,7 @@ int spot_node_t::snapshot_peers (
         active = _peer_state.active_endpoints;
         connected = _peer_state.connected_endpoints;
         observations = _peer_state.observations;
+        admission_by_endpoint = _peer_state.peer_admission_by_endpoint;
     }
 
     std::set<std::string> universe = manual;
@@ -372,6 +374,11 @@ int spot_node_t::snapshot_peers (
             entry.source = ZLINK_SPOT_PEER_SOURCE_MANUAL;
         else
             entry.source = ZLINK_SPOT_PEER_SOURCE_DISCOVERY;
+        std::map<std::string, zlink_admission_state_t>::const_iterator ait =
+          admission_by_endpoint.find (*it);
+        entry.admission_state =
+          ait != admission_by_endpoint.end () ? ait->second
+                                              : ZLINK_ADMISSION_SERVING;
 
         if (connected.count (*it) != 0)
             entry.state = ZLINK_SPOT_PEER_STATE_CONNECTED;

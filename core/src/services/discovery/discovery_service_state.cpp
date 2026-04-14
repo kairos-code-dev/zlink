@@ -20,6 +20,8 @@ static bool provider_equal_local (const provider_info_t &lhs_,
         return false;
     if (lhs_.service_role != rhs_.service_role)
         return false;
+    if (lhs_.admission_state != rhs_.admission_state)
+        return false;
     if (lhs_.routing_id.size != rhs_.routing_id.size)
         return false;
     if (lhs_.routing_id.size > 0
@@ -170,6 +172,7 @@ void discovery_service_state_t::snapshot_member_peers (
         copy_text_field_local (entry.endpoint, sizeof (entry.endpoint),
                                providers[i].endpoint);
         entry.routing_id = providers[i].routing_id;
+        entry.admission_state = providers[i].admission_state;
         entry.value = providers[i].value;
         out_->push_back (entry);
     }

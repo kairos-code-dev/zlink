@@ -172,10 +172,20 @@ int zlink::session_base_t::pull_msg (msg_t *msg_)
 
 int zlink::session_base_t::push_msg (msg_t *msg_)
 {
-    //  pass subscribe/cancel to the sockets
     if ((msg_->flags () & msg_t::command) && !msg_->is_subscribe ()
-        && !msg_->is_cancel ())
+        && !msg_->is_cancel ()) {
+        if (_socket) {
+            const int control_rc = _socket->peer_command_from_io (msg_, _pipe);
+            if (control_rc < 0)
+                return -1;
+            if (control_rc > 0) {
+                const int rc = msg_->close ();
+                errno_assert (rc == 0);
+                return msg_->init ();
+            }
+        }
         return 0;
+    }
 
     if (_socket) {
         const int dispatch_rc = _socket->socket_msg_dispatch_from_io (msg_, _pipe);

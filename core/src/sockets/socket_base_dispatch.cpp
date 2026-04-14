@@ -64,6 +64,16 @@ int zlink::socket_base_t::socket_msg_dispatch_from_io (msg_t *msg_,
     return xsocket_msg_dispatch (msg_, pipe_);
 }
 
+int zlink::socket_base_t::peer_command_from_io (msg_t *msg_, pipe_t *pipe_)
+{
+    std::lock_guard<std::recursive_mutex> dispatch_lock (
+      dispatch_runtime ().socket_msg_dispatch_sync);
+    pipe_t *socket_pipe = pipe_;
+    if (socket_pipe && socket_pipe->get_peer ())
+        socket_pipe = socket_pipe->get_peer ();
+    return xpeer_command (msg_, socket_pipe);
+}
+
 int zlink::socket_base_t::socket_set_msg_handler (
   zlink_socket_msg_handler_fn handler_)
 {
@@ -578,6 +588,17 @@ int zlink::socket_base_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     LIBZLINK_UNUSED (msg_);
     LIBZLINK_UNUSED (pipe_);
     return 0;
+}
+
+int zlink::socket_base_t::xpeer_command (msg_t *msg_, pipe_t *pipe_)
+{
+    LIBZLINK_UNUSED (msg_);
+    LIBZLINK_UNUSED (pipe_);
+    return 0;
+}
+
+void zlink::socket_base_t::xlocal_admission_state_changed ()
+{
 }
 
 void zlink::socket_base_t::xdispatch_io ()

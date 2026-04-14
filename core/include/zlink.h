@@ -433,6 +433,12 @@ ZLINK_EXPORT zlink_config_result_t zlink_set_routing_id (void *handle_,
                                         size_t size_);
 ZLINK_EXPORT zlink_config_result_t zlink_get_routing_id (void *handle_,
                                         zlink_routing_id_t *out_);
+ZLINK_EXPORT zlink_config_result_t zlink_set_admission_state (
+  void *handle_,
+  zlink_admission_state_t state_);
+ZLINK_EXPORT zlink_config_result_t zlink_get_admission_state (
+  void *handle_,
+  zlink_admission_state_t *state_out_);
 ZLINK_EXPORT zlink_config_result_t zlink_set_tls_server (void *handle_,
                                         const char *cert_,
                                         const char *key_,
@@ -1095,6 +1101,7 @@ typedef struct zlink_spot_node_peer_entry_t
     char peer_endpoint[256];
     zlink_spot_peer_source_t source;
     zlink_spot_peer_state_t state;
+    zlink_admission_state_t admission_state;
     uint64_t connected_since_ms;
     uint64_t last_changed_ms;
 } zlink_spot_node_peer_entry_t;
@@ -1163,6 +1170,7 @@ typedef struct zlink_member_peer_entry_t
     char service_name[256];
     char endpoint[256];
     zlink_routing_id_t routing_id;
+    zlink_admission_state_t admission_state;
     int64_t value;
 } zlink_member_peer_entry_t;
 

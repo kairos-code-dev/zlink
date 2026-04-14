@@ -45,9 +45,11 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_xpub_nodrop
   ${INTEGRATION_TEST_ROOT}/test_spot_dispatch_event
   ${INTEGRATION_TEST_ROOT}/test_discovery_resolve_spot
+  ${INTEGRATION_TEST_ROOT}/test_peer_admission
   ${INTEGRATION_TEST_ROOT}/test_discovery_socket_auto_connect_policy
   ${INTEGRATION_TEST_ROOT}/test_timer_poller
   ${INTEGRATION_TEST_ROOT}/test_router_handover
+  ${INTEGRATION_TEST_ROOT}/test_router_mandatory
   ${INTEGRATION_TEST_ROOT}/test_router_multiple_dealers
   ${INTEGRATION_TEST_ROOT}/test_zmp_request_reply
   ${INTEGRATION_TEST_ROOT}/test_zmp_request_reply_router_recv_surface

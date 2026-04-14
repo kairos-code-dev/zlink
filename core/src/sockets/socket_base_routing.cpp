@@ -69,7 +69,7 @@ bool zlink::routing_socket_base_t::connect_routing_id_is_set () const
 void zlink::routing_socket_base_t::add_out_pipe (blob_t routing_id_,
                                                  pipe_t *pipe_)
 {
-    const out_pipe_t outpipe = {pipe_, true};
+    const out_pipe_t outpipe = {pipe_, true, ZLINK_ADMISSION_SERVING};
     const bool ok =
       _out_pipes.ZLINK_MAP_INSERT_OR_EMPLACE (ZLINK_MOVE (routing_id_), outpipe)
         .second;

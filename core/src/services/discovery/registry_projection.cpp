@@ -94,6 +94,8 @@ void registry_t::send_service_list (void *pub_)
                                              ZLINK_SNDMORE);
             discovery_protocol::send_routing_id (pub_, entry.routing_id,
                                                  ZLINK_SNDMORE);
+            discovery_protocol::send_u16 (
+              pub_, static_cast<uint16_t> (entry.admission_state), ZLINK_SNDMORE);
             discovery_protocol::send_i64 (pub_, entry.value, ZLINK_SNDMORE);
             discovery_protocol::send_frame (
               pub_, entry.metadata.empty () ? NULL : &entry.metadata[0],

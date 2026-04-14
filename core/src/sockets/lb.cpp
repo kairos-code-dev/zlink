@@ -18,6 +18,7 @@ zlink::lb_t::~lb_t ()
 void zlink::lb_t::attach (pipe_t *pipe_)
 {
     _pipes.push_back (pipe_);
+    _admitted[pipe_] = true;
     activated (pipe_);
 }
 
@@ -39,13 +40,74 @@ void zlink::lb_t::pipe_terminated (pipe_t *pipe_)
             _current = 0;
     }
     _pipes.erase (pipe_);
+    _admitted.erase (pipe_);
 }
 
 void zlink::lb_t::activated (pipe_t *pipe_)
 {
+    const std::map<pipe_t *, bool>::const_iterator admitted_it =
+      _admitted.find (pipe_);
+    if (admitted_it != _admitted.end () && !admitted_it->second)
+        return;
+
+    const pipes_t::size_type index = _pipes.index (pipe_);
+    if (index < _active)
+        return;
+
     //  Move the pipe to the list of active pipes.
-    _pipes.swap (_pipes.index (pipe_), _active);
+    _pipes.swap (index, _active);
     _active++;
+}
+
+void zlink::lb_t::set_admitted (pipe_t *pipe_, bool admitted_)
+{
+    if (!pipe_)
+        return;
+
+    std::map<pipe_t *, bool>::iterator it = _admitted.find (pipe_);
+    if (it == _admitted.end ())
+        return;
+    if (it->second == admitted_)
+        return;
+
+    it->second = admitted_;
+
+    const pipes_t::size_type index = _pipes.index (pipe_);
+    if (!admitted_) {
+        if (index == _current && _more)
+            _dropping = true;
+
+        if (index < _active) {
+            _active--;
+            _pipes.swap (index, _active);
+            if (_current == _active)
+                _current = 0;
+            else if (_current > index && _current <= _active)
+                --_current;
+        }
+        return;
+    }
+
+    if (index >= _active && pipe_->check_write ()) {
+        _pipes.swap (index, _active);
+        _active++;
+    }
+}
+
+bool zlink::lb_t::admitted (pipe_t *pipe_) const
+{
+    std::map<pipe_t *, bool>::const_iterator it = _admitted.find (pipe_);
+    return it != _admitted.end () && it->second;
+}
+
+bool zlink::lb_t::has_admitted_pipe () const
+{
+    for (std::map<pipe_t *, bool>::const_iterator it = _admitted.begin ();
+         it != _admitted.end (); ++it) {
+        if (it->second)
+            return true;
+    }
+    return false;
 }
 
 int zlink::lb_t::send (msg_t *msg_)
@@ -134,7 +196,7 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
 
     //  If there are no pipes we cannot send the message.
     if (_active == 0) {
-        errno = EAGAIN;
+        errno = has_admitted_pipe () ? EAGAIN : ECONNREFUSED;
         return -1;
     }
 

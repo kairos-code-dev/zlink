@@ -17,7 +17,9 @@ inline int register_endpoint (discovery_t *discovery_,
                               const char *endpoint_,
                               std::string *resolved_endpoint_out_,
                               const zlink_routing_id_t *routing_id_ = NULL,
-                              uint16_t service_role_ = 0)
+                              uint16_t service_role_ = 0,
+                              zlink_admission_state_t admission_state_ =
+                                ZLINK_ADMISSION_SERVING)
 {
     if (!discovery_ || !endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
@@ -46,7 +48,8 @@ inline int register_endpoint (discovery_t *discovery_,
     zlink_msg_close (&metadata_msg);
 
     return discovery_->register_service (
-      service_type_, service_name.c_str (), endpoint_, value, &metadata,
+      service_type_, service_name.c_str (), endpoint_, admission_state_, value,
+      &metadata,
       resolved_endpoint_out_, routing_id_, service_role_);
 }
 
@@ -73,7 +76,9 @@ inline int unregister_endpoint (discovery_t *discovery_,
 inline int update_attributes (discovery_t *discovery_,
                               uint16_t service_type_,
                               const char *endpoint_,
-                              uint16_t service_role_ = 0)
+                              uint16_t service_role_ = 0,
+                              zlink_admission_state_t admission_state_ =
+                                ZLINK_ADMISSION_SERVING)
 {
     if (!discovery_ || !endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
@@ -102,7 +107,8 @@ inline int update_attributes (discovery_t *discovery_,
     zlink_msg_close (&metadata_msg);
 
     return discovery_->update_service_attributes (
-      service_type_, service_name.c_str (), endpoint_, value, &metadata,
+      service_type_, service_name.c_str (), endpoint_, admission_state_, value,
+      &metadata,
       service_role_);
 }
 }

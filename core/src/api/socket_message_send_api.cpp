@@ -503,7 +503,7 @@ zlink_submit_result_t zlink_send (void *s_,
         if (part_count_ == 1
             && is_singlepart_fast_socket_type (socket->socket_type ())) {
             return zlink::submit_result_internal::from_rc (
-                send_socket_singlepart_fast (handle, &parts_[0], flags_));
+              send_socket_singlepart_fast (handle, &parts_[0], flags_));
         }
         return zlink::submit_result_internal::from_rc (
           send_socket_parts (handle, NULL, parts_, part_count_, flags_));

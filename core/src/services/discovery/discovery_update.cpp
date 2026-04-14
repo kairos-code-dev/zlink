@@ -10,6 +10,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <map>
 
 namespace zlink
 {
@@ -47,6 +48,50 @@ static bool wait_socket_event_local (void *socket_,
                                      long timeout_ms_)
 {
     return zlink::wait_socket_events_internal (socket_, events_, timeout_ms_) > 0;
+}
+
+typedef std::pair<uint16_t, std::string> peer_admission_key_t;
+
+static void append_peer_admission_events_local (
+  const std::vector<provider_info_t> &before_,
+  const std::vector<provider_info_t> &after_,
+  const std::string &service_name_,
+  std::vector<zlink_service_event_t> *events_out_)
+{
+    if (!events_out_)
+        return;
+
+    std::map<peer_admission_key_t, provider_info_t> before_map;
+    for (size_t i = 0; i < before_.size (); ++i)
+        before_map[peer_admission_key_t (before_[i].service_role,
+                                         before_[i].endpoint)] = before_[i];
+
+    for (size_t i = 0; i < after_.size (); ++i) {
+        const provider_info_t &provider = after_[i];
+        const peer_admission_key_t key (provider.service_role, provider.endpoint);
+        std::map<peer_admission_key_t, provider_info_t>::const_iterator it =
+          before_map.find (key);
+        if (it == before_map.end ()
+            || it->second.admission_state == provider.admission_state) {
+            continue;
+        }
+
+        zlink_service_event_t event;
+        memset (&event, 0, sizeof (event));
+        event.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
+        event.event_type = ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED;
+        event.value = static_cast<uint32_t> (provider.admission_state);
+        event.detail_flags = static_cast<zlink_service_event_detail_mask_t> (
+          ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME
+          | ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT
+          | ZLINK_SERVICE_EVENT_DETAIL_PEER_RID);
+        strncpy (event.service_name, service_name_.c_str (),
+                 sizeof (event.service_name) - 1);
+        strncpy (event.endpoint, provider.endpoint.c_str (),
+                 sizeof (event.endpoint) - 1);
+        event.routing_id = provider.routing_id;
+        events_out_->push_back (event);
+    }
 }
 }
 
@@ -169,7 +214,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             break;
 
         std::vector<provider_info_t> service_providers;
-        for (uint32_t p = 0; p < receiver_count && index + 4 < frames_.size ();
+        for (uint32_t p = 0; p < receiver_count && index + 5 < frames_.size ();
              ++p) {
             provider_info_t info;
             info.service_name = service_name;
@@ -179,6 +224,14 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             info.endpoint = discovery_protocol::read_string (frames_[index++]);
             discovery_protocol::read_routing_id (frames_[index++],
                                                  &info.routing_id);
+            uint16_t raw_admission_state = 0;
+            if (!discovery_protocol::read_u16 (frames_[index++],
+                                               &raw_admission_state))
+                break;
+            info.admission_state =
+              raw_admission_state == ZLINK_ADMISSION_DRAINING
+                ? ZLINK_ADMISSION_DRAINING
+                : ZLINK_ADMISSION_SERVING;
             discovery_protocol::read_i64 (frames_[index++], &info.value);
             const size_t metadata_size = zlink_msg_size (&frames_[index]);
             info.metadata.resize (metadata_size);
@@ -204,10 +257,14 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
     std::vector<zlink_service_event_t> events;
     {
         scoped_lock_t lock (_sync);
+        std::vector<provider_info_t> previous;
+        _service_state.snapshot_providers (&previous);
         discovery_service_change_t service_change;
         _service_state.apply_provider_snapshot (
           registry_id, list_seq, updated, _service_name,
           _bootstrap_runtime->routing_id_value (), &service_change);
+        append_peer_admission_events_local (previous, updated, _service_name,
+                                            &events);
         if (service_change.changed) {
             changed.insert (_service_name);
             events.push_back (service_change.event);

@@ -29,6 +29,64 @@ int zlink::socket_base_t::get_peer_state (const void *routing_id_,
     return -1;
 }
 
+int zlink::socket_base_t::set_admission_state (zlink_admission_state_t state_)
+{
+    if (state_ != ZLINK_ADMISSION_SERVING && state_ != ZLINK_ADMISSION_DRAINING) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
+    socket_public_api_scope_t admission (lifecycle);
+    if (!admission.acquired ())
+        return -1;
+
+    if (unlikely (_ctx_terminated)) {
+        errno = ETERM;
+        return -1;
+    }
+
+    {
+        socket_public_api_lock_scope_t guard (lifecycle);
+        if (_local_admission_state == state_)
+            return 0;
+        _local_admission_state = state_;
+        if (_service_attachment)
+            _service_attachment->on_local_admission_state_changed ();
+        xlocal_admission_state_changed ();
+    }
+    return 0;
+}
+
+int zlink::socket_base_t::get_admission_state (
+  zlink_admission_state_t *state_out_) const
+{
+    if (!state_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    socket_lifecycle_coordinator_t &lifecycle =
+      const_cast<socket_base_t *> (this)->lifecycle_coordinator ();
+    socket_public_api_scope_t admission (lifecycle);
+    if (!admission.acquired ())
+        return -1;
+
+    if (unlikely (_ctx_terminated)) {
+        errno = ETERM;
+        return -1;
+    }
+
+    socket_public_api_lock_scope_t guard (lifecycle);
+    *state_out_ = _local_admission_state;
+    return 0;
+}
+
+zlink_admission_state_t zlink::socket_base_t::local_admission_state () const
+{
+    return _local_admission_state;
+}
+
 void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
                                         bool subscribe_to_all_,
                                         bool locally_initiated_)

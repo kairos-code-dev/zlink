@@ -23,6 +23,7 @@ struct provider_info_t
     std::string endpoint;
     zlink_routing_id_t routing_id;
     uint16_t service_role;
+    zlink_admission_state_t admission_state;
     int64_t value;
     std::vector<unsigned char> metadata;
     uint64_t registered_at;

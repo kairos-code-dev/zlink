@@ -161,6 +161,12 @@ int zlink_spot_subject_set_routing_id_internal (void *handle_,
                                                 size_t size_);
 int zlink_spot_subject_get_routing_id_internal (void *handle_,
                                                 zlink_routing_id_t *out_);
+int zlink_spot_subject_set_admission_state_internal (
+  void *handle_,
+  zlink_admission_state_t state_);
+int zlink_spot_subject_get_admission_state_internal (
+  void *handle_,
+  zlink_admission_state_t *state_out_);
 int zlink_spot_subject_set_tls_server_internal (void *handle_,
                                                 const char *cert_,
                                                 const char *key_,
@@ -192,6 +198,10 @@ int zlink_service_set_routing_id (void *handle_,
                                   const void *data_,
                                   size_t size_);
 int zlink_service_get_routing_id (void *handle_, zlink_routing_id_t *out_);
+int zlink_service_set_admission_state (void *handle_,
+                                       zlink_admission_state_t state_);
+int zlink_service_get_admission_state (void *handle_,
+                                       zlink_admission_state_t *state_out_);
 int zlink_service_set_tls_server (void *handle_,
                                   const char *cert_,
                                   const char *key_,
@@ -252,6 +262,12 @@ int zlink_service_spot_set_routing_id_internal (void *handle_,
                                                 size_t size_);
 int zlink_service_spot_get_routing_id_internal (void *handle_,
                                                 zlink_routing_id_t *out_);
+int zlink_service_spot_set_admission_state_internal (
+  void *handle_,
+  zlink_admission_state_t state_);
+int zlink_service_spot_get_admission_state_internal (
+  void *handle_,
+  zlink_admission_state_t *state_out_);
 int zlink_service_spot_set_tls_server_internal (
   void *handle_,
   const char *cert_,

@@ -42,6 +42,9 @@ class dealer_t : public socket_base_t
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
     int xsocket_msg_dispatch (zlink::msg_t *msg_,
                               zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    int xpeer_command (zlink::msg_t *msg_,
+                       zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    void xlocal_admission_state_changed () ZLINK_OVERRIDE;
     void xarm_socket_msg_dispatch () ZLINK_OVERRIDE;
     void xdispatch_io () ZLINK_OVERRIDE;
 
@@ -50,6 +53,9 @@ class dealer_t : public socket_base_t
     int recvpipe (zlink::msg_t *msg_, zlink::pipe_t **pipe_);
 
   private:
+    int apply_peer_admission_state (pipe_t *pipe_,
+                                    zlink_admission_state_t state_);
+
     //  Messages are fair-queued from inbound pipes. And load-balanced to
     //  the outbound pipes.
     fq_t _fq;

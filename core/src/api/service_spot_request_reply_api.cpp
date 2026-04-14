@@ -141,6 +141,13 @@ bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_)
            && peer_rid_->size <= sizeof (peer_rid_->data);
 }
 
+bool spot_destination_is_admitted (void *spot_,
+                                   const zlink_routing_id_t *dest_node_rid_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    return !spot || !spot->node || spot->node->peer_is_admitted (dest_node_rid_);
+}
+
 std::shared_ptr<spot_request_reply_state_t> try_find_spot_state (void *spot_)
 {
     spot_handle_t *spot = as_spot_handle (spot_);
@@ -1788,6 +1795,10 @@ int start_spot_request_to_spot (void *spot_,
         errno = EINVAL;
         return -1;
     }
+    if (!spot_destination_is_admitted (spot_, dest_node_rid_)) {
+        errno = ECONNREFUSED;
+        return -1;
+    }
 
     return start_spot_request_common (
       spot_, zmp_spot_class, routing_id_key (dest_node_rid_),
@@ -2186,6 +2197,10 @@ zlink_submit_result_t zlink_spot_send_spot (void *spot_,
     if (!has_valid_routing_id (dest_node_rid_) || !has_valid_routing_id (dest_spot_rid_)) {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if (!spot_destination_is_admitted (spot_, dest_node_rid_)) {
+        errno = ECONNREFUSED;
+        return ZLINK_SUBMIT_NOT_ADMITTED;
     }
     if (validate_recv_flags (flags_) != 0)
         return zlink::submit_result_internal::from_errno (errno);

@@ -8,6 +8,33 @@
 
 namespace
 {
+const char peer_admission_cmd_name[] = "ADMISSION";
+const size_t peer_admission_cmd_name_size = sizeof (peer_admission_cmd_name) - 1;
+
+bool decode_peer_admission_command (const zlink::msg_t &msg_,
+                                    zlink_admission_state_t *state_out_)
+{
+    if (!(msg_.flags () & zlink::msg_t::command))
+        return false;
+    if (msg_.size () != peer_admission_cmd_name_size + 1)
+        return false;
+    if (memcmp (const_cast<zlink::msg_t &> (msg_).data (),
+                peer_admission_cmd_name, peer_admission_cmd_name_size)
+        != 0) {
+        return false;
+    }
+
+    const unsigned char state =
+      static_cast<unsigned char *> (const_cast<zlink::msg_t &> (msg_).data ())[
+        peer_admission_cmd_name_size];
+    if (state != ZLINK_ADMISSION_SERVING && state != ZLINK_ADMISSION_DRAINING)
+        return false;
+
+    if (state_out_)
+        *state_out_ = static_cast<zlink_admission_state_t> (state);
+    return true;
+}
+
 void store_dispatch_part (std::vector<zlink_msg_t> *parts_, zlink::msg_t *msg_)
 {
     zlink_msg_t stored;
@@ -179,6 +206,18 @@ int zlink::dealer_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
     return 1;
 }
 
+int zlink::dealer_t::xpeer_command (msg_t *msg_, pipe_t *pipe_)
+{
+    zlink_admission_state_t state = ZLINK_ADMISSION_SERVING;
+    if (!decode_peer_admission_command (*msg_, &state))
+        return 0;
+    return apply_peer_admission_state (pipe_, state);
+}
+
+void zlink::dealer_t::xlocal_admission_state_changed ()
+{
+}
+
 void zlink::dealer_t::xarm_socket_msg_dispatch ()
 {
     _fq.arm_dispatch ();
@@ -202,4 +241,19 @@ void zlink::dealer_t::xdispatch_io ()
 
     const int close_rc = msg.close ();
     errno_assert (close_rc == 0);
+}
+
+int zlink::dealer_t::apply_peer_admission_state (pipe_t *pipe_,
+                                                 zlink_admission_state_t state_)
+{
+    if (!pipe_)
+        return 1;
+
+    const bool admitted = state_ == ZLINK_ADMISSION_SERVING;
+    const bool changed = _lb.admitted (pipe_) != admitted;
+    _lb.set_admitted (pipe_, admitted);
+    if (!changed)
+        return 1;
+    emit_peer_admission_changed (pipe_, state_);
+    return 1;
 }

@@ -46,6 +46,9 @@ class router_t : public routing_socket_base_t
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     int xsocket_msg_dispatch (zlink::msg_t *msg_,
                               zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    int xpeer_command (zlink::msg_t *msg_,
+                       zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    void xlocal_admission_state_changed () ZLINK_OVERRIDE;
     void xarm_socket_msg_dispatch () ZLINK_OVERRIDE;
     void xdispatch_io () ZLINK_OVERRIDE;
     int get_peer_state (const void *routing_id_,
@@ -58,6 +61,10 @@ class router_t : public routing_socket_base_t
   private:
     //  Receive peer id and update lookup map
     bool identify_peer (pipe_t *pipe_, bool locally_initiated_);
+    void broadcast_local_admission_state ();
+    void send_local_admission_state (pipe_t *pipe_);
+    int apply_peer_admission_state (pipe_t *pipe_,
+                                    zlink_admission_state_t state_);
 
     //  Fair queueing object for inbound pipes.
     fq_t _fq;

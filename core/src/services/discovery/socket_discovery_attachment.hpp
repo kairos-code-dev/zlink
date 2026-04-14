@@ -24,6 +24,7 @@ class socket_discovery_attachment_t : public discovery_observer_t
     int on_public_connect () const;
     int on_public_term_endpoint () const;
     int on_public_close () const;
+    void on_local_admission_state_changed ();
 
     void on_service_update (const std::string &service_name_) ZLINK_OVERRIDE;
     void on_discovery_shutdown_requested (discovery_t *discovery_)

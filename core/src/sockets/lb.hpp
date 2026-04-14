@@ -3,6 +3,8 @@
 #ifndef __ZLINK_LB_HPP_INCLUDED__
 #define __ZLINK_LB_HPP_INCLUDED__
 
+#include <map>
+
 #include "utils/array.hpp"
 
 namespace zlink
@@ -22,6 +24,9 @@ class lb_t
     void attach (pipe_t *pipe_);
     void activated (pipe_t *pipe_);
     void pipe_terminated (pipe_t *pipe_);
+    void set_admitted (pipe_t *pipe_, bool admitted_);
+    bool admitted (pipe_t *pipe_) const;
+    bool has_admitted_pipe () const;
 
     int send (msg_t *msg_);
 
@@ -50,6 +55,7 @@ class lb_t
 
     //  True if we are dropping current message.
     bool _dropping;
+    std::map<pipe_t *, bool> _admitted;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (lb_t)
 };

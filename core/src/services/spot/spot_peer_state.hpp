@@ -3,6 +3,8 @@
 #ifndef __ZLINK_SPOT_PEER_STATE_HPP_INCLUDED__
 #define __ZLINK_SPOT_PEER_STATE_HPP_INCLUDED__
 
+#include <zlink.h>
+
 #include <map>
 #include <set>
 #include <string>
@@ -27,6 +29,8 @@ struct spot_peer_state_t
     std::map<std::string, std::set<std::string> > pub_delivery_ready_sources;
     std::map<std::string, uint32_t> pending_pub_delivery_ready_counts;
     std::map<std::string, spot_peer_observation_t> observations;
+    std::map<std::string, zlink_admission_state_t> peer_admission_by_endpoint;
+    std::map<std::string, zlink_admission_state_t> peer_admission_by_rid;
 
     bool subscription_ready_refresh_pending;
     unsigned int subscription_ready_refresh_holdoff_ticks;

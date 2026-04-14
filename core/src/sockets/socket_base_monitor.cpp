@@ -63,6 +63,7 @@ void zlink::socket_base_t::socket_peer_remote_endpoints (
 
     process_commands (0, false);
     out_->clear ();
+    scoped_lock_t lock (monitor_runtime ().sync);
     out_->reserve (endpoint_runtime ().attached_pipe_count ());
     for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
          i != size; ++i) {
@@ -71,6 +72,20 @@ void zlink::socket_base_t::socket_peer_remote_endpoints (
         if (!remote.empty ())
             out_->push_back (remote);
     }
+}
+
+void zlink::socket_base_t::snapshot_attached_pipes (std::vector<pipe_t *> *out_)
+{
+    if (!out_)
+        return;
+
+    process_commands (0, false);
+    out_->clear ();
+    scoped_lock_t lock (monitor_runtime ().sync);
+    out_->reserve (endpoint_runtime ().attached_pipe_count ());
+    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
+         i != size; ++i)
+        out_->push_back (endpoint_runtime ().attached_pipe (i));
 }
 
 int zlink::socket_base_t::monitor (const char *endpoint_,
@@ -310,6 +325,21 @@ void zlink::socket_base_t::emit_socket_monitor_value_event (
 {
     uint64_t values[1] = {value_};
     event (endpoint_uri_pair_, NULL, 0, values, 1, event_);
+}
+
+void zlink::socket_base_t::emit_peer_admission_changed (
+  pipe_t *pipe_,
+  zlink_admission_state_t state_)
+{
+    if (!pipe_)
+        return;
+
+    const blob_t &routing_id = pipe_->get_routing_id ();
+    const unsigned char *routing_id_data =
+      routing_id.size () > 0 ? routing_id.data () : NULL;
+    uint64_t values[1] = {static_cast<uint64_t> (state_)};
+    event (pipe_->get_endpoint_pair (), routing_id_data, routing_id.size (),
+           values, 1, ZLINK_EVENT_PEER_ADMISSION_CHANGED);
 }
 
 void zlink::socket_base_t::event (const endpoint_uri_pair_t &endpoint_uri_pair_,

@@ -9,6 +9,7 @@
 #include "services/spot/spot_sub.hpp"
 
 #include "services/control/service_control_runtime.hpp"
+#include "services/discovery/discovery_owned_service.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/discovery/routing_id_utils.hpp"
 #include "sockets/socket_base.hpp"
@@ -56,6 +57,7 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _tag (spot_node_tag_value),
     _lifecycle (ctx_),
     _runtime (NULL),
+    _admission_state (ZLINK_ADMISSION_SERVING),
     _bound_endpoint (_endpoint_state.bound_endpoint),
     _subject_last_changed_ms (_summary_state.subject_last_changed_ms),
     _last_summary_error (_summary_state.last_summary_error),
@@ -128,6 +130,78 @@ spot_node_t::~spot_node_t ()
 bool spot_node_t::check_tag () const
 {
     return _tag == spot_node_tag_value;
+}
+
+int spot_node_t::set_admission_state (zlink_admission_state_t state_)
+{
+    if (state_ != ZLINK_ADMISSION_SERVING && state_ != ZLINK_ADMISSION_DRAINING) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (ensure_healthy () != 0)
+        return -1;
+
+    discovery_t *discovery = NULL;
+    std::string advertise;
+    bool registered = false;
+    {
+        scoped_lock_t lock (_sync);
+        if (_admission_state == state_)
+            return 0;
+        _admission_state = state_;
+        discovery = _discovery;
+        advertise = _advertise_endpoint;
+        registered = _registered;
+    }
+
+    if (registered && discovery && !advertise.empty ()) {
+        if (discovery_owned_service::update_attributes (
+              discovery, discovery_protocol::service_type_spot_node,
+              advertise.c_str (), 0, state_)
+            != 0) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+int spot_node_t::get_admission_state (
+  zlink_admission_state_t *state_out_) const
+{
+    if (!state_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    service_public_api_scope_t admission (
+      const_cast<service_public_api_guard_t &> (_public_api));
+    if (!admission.acquired ())
+        return -1;
+    if (ensure_healthy () != 0)
+        return -1;
+
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    *state_out_ = _admission_state;
+    return 0;
+}
+
+bool spot_node_t::peer_is_admitted (const zlink_routing_id_t *peer_rid_) const
+{
+    if (!peer_rid_ || peer_rid_->size == 0)
+        return true;
+
+    const std::string key (
+      reinterpret_cast<const char *> (peer_rid_->data), peer_rid_->size);
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    std::map<std::string, zlink_admission_state_t>::const_iterator it =
+      _peer_state.peer_admission_by_rid.find (key);
+    return it == _peer_state.peer_admission_by_rid.end ()
+           || it->second == ZLINK_ADMISSION_SERVING;
 }
 
 int spot_node_t::apply_tls_server (socket_base_t *socket_,

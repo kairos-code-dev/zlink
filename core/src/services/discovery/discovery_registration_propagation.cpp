@@ -35,7 +35,8 @@ int discovery_t::propagate_registered_service_updates (
     for (size_t i = 0; i < services_.size (); ++i) {
         if (update_service_attributes (services_[i].service_type,
                                        services_[i].service_name.c_str (),
-                                       services_[i].endpoint.c_str (), value_,
+                                       services_[i].endpoint.c_str (),
+                                       services_[i].admission_state, value_,
                                        &metadata_, services_[i].service_role)
             != 0) {
             return -1;

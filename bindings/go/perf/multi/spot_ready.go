@@ -49,12 +49,13 @@ func waitForMultiSpotReady(
 	subs []multiSpotSubscriber,
 	tracker *multiSpotReadyTracker,
 ) {
+	serviceName := "bench"
 	payload := perfcommon.PreparePayload(64)
 	perfcommon.Must(perfcommon.WaitReady(perfcommon.ReadyConfig{
 		Name: "multi spot perf endpoint",
 		Probe: func() (bool, error) {
 			perfcommon.StampPayload(payload)
-			err := publisher.Publish("bench.topic", zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
+			err := publisher.Publish(serviceName, "bench.topic", zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					return false, nil

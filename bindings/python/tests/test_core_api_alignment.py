@@ -1,6 +1,7 @@
 import asyncio
 import socket
 import threading
+import time
 import unittest
 
 import zlink
@@ -14,6 +15,20 @@ def _tcp_endpoint():
     return f"tcp://127.0.0.1:{port}"
 
 
+SERVICE_NAME = "spot-svc"
+TOPIC = b"room:lobby"
+
+
+def _attach_service_pair(ctx, node, service_name):
+    pub_sock = zlink.PubSocket(ctx)
+    sub_sock = zlink.SubSocket(ctx)
+    endpoint = _tcp_endpoint()
+    pub_sock.bind(endpoint)
+    sub_sock.connect(endpoint)
+    node.attach_pubsub(service_name, pub_sock, sub_sock)
+    return pub_sock, sub_sock
+
+
 class CoreApiAlignmentTests(unittest.TestCase):
     def test_public_surface_uses_canonical_names_only(self):
         self.assertFalse(hasattr(zlink, "SendResult"))
@@ -22,20 +37,42 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertFalse(hasattr(zlink, "errno"))
         self.assertFalse(hasattr(zlink.PairSocket, "try_send"))
         self.assertFalse(hasattr(zlink.PairSocket, "try_recv"))
+        self.assertFalse(hasattr(zlink.PairSocket, "on_receive"))
+        self.assertFalse(hasattr(zlink.DealerSocket, "on_receive"))
+        self.assertFalse(hasattr(zlink.RouterSocket, "on_receive"))
         self.assertFalse(hasattr(zlink.PubSocket, "try_publish"))
         self.assertFalse(hasattr(zlink.SubSocket, "try_subscribe"))
         self.assertFalse(hasattr(zlink.XPubSocket, "try_receive_subscription_event"))
+        self.assertFalse(hasattr(zlink.SubSocket, "on_subscribe"))
+        self.assertFalse(hasattr(zlink.XSubSocket, "on_subscribe"))
         self.assertFalse(hasattr(zlink.MonitorSocket, "try_recv"))
         self.assertFalse(hasattr(zlink.ServiceMonitor, "try_recv"))
         self.assertFalse(hasattr(zlink.Spot, "try_subscribe"))
         self.assertFalse(hasattr(zlink.Spot, "try_publish"))
+        self.assertFalse(hasattr(zlink.Spot, "on_subscribe"))
+        self.assertTrue(hasattr(zlink.StreamSocket, "on_packet"))
+        self.assertTrue(hasattr(zlink.Spot, "send_service"))
+        self.assertTrue(hasattr(zlink.Spot, "request_service"))
+        self.assertTrue(hasattr(zlink.Spot, "receive_subscription_event"))
+        self.assertTrue(hasattr(zlink.SpotNode, "attach_router"))
+        self.assertTrue(hasattr(zlink.SpotNode, "attach_pubsub"))
+        self.assertTrue(hasattr(zlink.SpotNode, "service_attachment_count"))
+        self.assertTrue(hasattr(zlink.SpotNode, "service_attachment_at"))
+        self.assertTrue(hasattr(zlink.SpotNode, "node_monitor_recv"))
         self.assertTrue(hasattr(zlink, "SendFlags"))
         self.assertTrue(hasattr(zlink, "RecvFlags"))
         self.assertTrue(hasattr(zlink, "SubmitResult"))
+        self.assertTrue(hasattr(zlink, "AdmissionState"))
         self.assertTrue(hasattr(zlink, "RequestResult"))
         self.assertTrue(hasattr(zlink, "RecvResult"))
+        self.assertTrue(hasattr(zlink, "SpotDispatchEvent"))
+        self.assertTrue(hasattr(zlink, "SpotServiceAttachmentRole"))
+        self.assertTrue(hasattr(zlink, "SpotServiceAttachmentStats"))
+        self.assertTrue(hasattr(zlink, "SpotServiceMonitorEvent"))
         self.assertTrue(hasattr(zlink, "MonitorEvent"))
         self.assertTrue(hasattr(zlink, "MonitorEventMask"))
+        self.assertEqual(zlink.MonitorEventMask.PEER_ADMISSION_CHANGED.value, 1 << 15)
+        self.assertEqual(zlink.ServiceMonitorMask.PEER_ADMISSION_CHANGED.value, 1 << 8)
         self.assertIs(zlink.SocketMonitorEvent, zlink.MonitorEvent)
 
     def test_context_options_use_snake_case(self):
@@ -61,6 +98,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
 
         with ctx:
             with zlink.PairSocket(ctx) as sock:
+                self.assertTrue(hasattr(sock, "get_admission_state"))
+                self.assertTrue(hasattr(sock, "set_admission_state"))
                 options = sock.options
                 self.assertIn("connect_timeout_ms", dir(options))
                 self.assertIn("ipv6", dir(options))
@@ -159,10 +198,11 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     router_socket.bind(endpoint)
                     dealer_socket.connect(endpoint)
 
-                    def on_receive(received):
-                        received.reply([b"pong"])
+                    def responder():
+                        with router_socket.recv() as received:
+                            received.reply([b"pong"])
 
-                    router_socket.on_receive(on_receive)
+                    threading.Thread(target=responder, daemon=True).start()
                     reply = await dealer_socket.request([b"ping"], timeout=2.0)
                     try:
                         self.assertEqual([part.to_bytes() for part in reply], [b"pong"])
@@ -197,19 +237,56 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     self.assertTrue(hasattr(spot, "recv_routed"))
                     self.assertTrue(hasattr(spot, "on_routed_receive"))
                     self.assertTrue(hasattr(spot, "on_dispatch_event"))
+                    self.assertTrue(hasattr(spot, "send_service"))
+                    self.assertTrue(hasattr(spot, "request_service"))
+                    self.assertTrue(hasattr(spot, "receive_subscription_event"))
+                    self.assertFalse(hasattr(spot, "on_subscribe"))
 
             with zlink.SpotNode(ctx) as server_node:
                 with zlink.SpotNode(ctx) as client_node:
-                    with server_node.create_spot() as server_spot:
-                        with client_node.create_spot() as client_spot:
-                            endpoint = _tcp_endpoint()
-                            server_node.bind(endpoint)
-                            client_node.connect_peer(endpoint)
-                            client_spot.set_subscription(b"room:lobby")
-                            server_spot.publish(b"room:lobby", [b"hello"])
-                            with client_spot.subscribe(flags=zlink.RecvFlags.NONE) as received:
-                                self.assertEqual(received.topic, "room:lobby")
-                                self.assertEqual(received.single_part_or_throw().to_bytes(), b"hello")
+                    _server_service = _attach_service_pair(ctx, server_node, SERVICE_NAME)
+                    _client_service = _attach_service_pair(ctx, client_node, SERVICE_NAME)
+                    try:
+                        with server_node.create_spot() as server_spot:
+                            with client_node.create_spot() as client_spot:
+                                endpoint = _tcp_endpoint()
+                                service_endpoint = _tcp_endpoint()
+                                server_node.bind(endpoint)
+                                client_node.connect_peer(endpoint)
+                                _server_service[0].bind(service_endpoint)
+                                _client_service[1].connect(service_endpoint)
+                                client_spot.set_subscription(TOPIC)
+                                data_deadline = time.monotonic() + 5.0
+                                while True:
+                                    if time.monotonic() >= data_deadline:
+                                        raise TimeoutError("spot publish did not deliver within 5s")
+                                    server_spot.publish(
+                                        SERVICE_NAME,
+                                        TOPIC,
+                                        [b"hello"],
+                                    )
+                                    try:
+                                        received = client_spot.subscribe(
+                                            flags=zlink.RecvFlags.DONT_WAIT
+                                        )
+                                    except zlink.RecvError as exc:
+                                        if exc.result != zlink.RecvResult.NO_DATA:
+                                            raise
+                                        time.sleep(0.01)
+                                        continue
+                                    with received:
+                                        self.assertEqual(received.topic, TOPIC.decode("utf-8"))
+                                        self.assertEqual(received.service_name, SERVICE_NAME)
+                                        self.assertEqual(
+                                            received.single_part_or_throw().to_bytes(),
+                                            b"hello",
+                                        )
+                                    break
+                    finally:
+                        _client_service[1].close()
+                        _client_service[0].close()
+                        _server_service[1].close()
+                        _server_service[0].close()
 
     def test_discovery_surface_exposes_resolution_and_peer_mode(self):
         try:
@@ -301,7 +378,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
             with zlink.SpotNode(ctx) as node:
                 with node.create_spot() as spot:
                     with self.assertRaises(ValueError):
-                        spot.publish(b"bad\0topic", b"payload")
+                        spot.publish("svc", b"bad\0topic", b"payload")
 
             with zlink.PairSocket(ctx) as pair:
                 with self.assertRaises(ValueError):

@@ -94,3 +94,14 @@ def recv_nonblocking(sock, *, method="recv"):
         if exc.result == zlink_mod.RecvResult.NO_DATA:
             return None
         raise
+
+
+def attach_spot_service_pair(ctx, node, service_name):
+    zlink_mod = _require_zlink()
+    pub_sock = zlink_mod.PubSocket(ctx)
+    sub_sock = zlink_mod.SubSocket(ctx)
+    endpoint = tcp_endpoint()
+    pub_sock.bind(endpoint)
+    sub_sock.connect(endpoint)
+    node.attach_pubsub(service_name, pub_sock, sub_sock)
+    return pub_sock, sub_sock

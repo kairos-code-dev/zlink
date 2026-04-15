@@ -379,7 +379,7 @@ void *mon = zlink_service_monitor_open(discovery, &opts);
 ```
 
 Pass a service handle that supports public service monitoring.
-SPOT and SpotNode no longer expose a public service-monitor surface.
+SPOT and SpotNode do not expose a public service-monitor surface.
 
 ### Callback mode
 
@@ -593,7 +593,7 @@ zlink_monitor_close(&sub_mon);
 
 ### 11.4 Services — SPOT
 
-SPOT no longer exposes a public service-monitor surface. For internal
+SPOT does not expose a public service-monitor surface. For internal
 perf on SPOT, use an explicit benchmark control barrier instead of
 monitor events.
 

@@ -326,6 +326,10 @@ public class SocketContractTest {
 
         assertFalse(hasPublicMethod(XPubSocket.class, "onSubscribe",
             dev.kairoscode.zlink.SubscribeHandler.class));
+        assertFalse(hasPublicMethod(SubSocket.class, "onSubscribe",
+            dev.kairoscode.zlink.SubscribeHandler.class));
+        assertFalse(hasPublicMethod(XSubSocket.class, "onSubscribe",
+            dev.kairoscode.zlink.SubscribeHandler.class));
         assertFalse(hasPublicMethod(Zlink.class, "errno"));
         assertFalse(hasPublicMethod(ZlinkException.class, "errno"));
         assertFalse(hasPublicMethod(ZlinkException.class, "errorCode"));
@@ -389,6 +393,10 @@ public class SocketContractTest {
     public void streamSocketDoesNotExposeLegacyStreamOrConnectSurface() {
         assertFalse(hasPublicMethod(StreamSocket.class, "attachStream"));
         assertFalse(hasPublicMethod(StreamSocket.class, "streamSend"));
+        assertFalse(hasPublicMethod(StreamSocket.class, "onReceive"));
+        assertTrue(hasPublicMethod(StreamSocket.class, "onPacket",
+            dev.kairoscode.zlink.StreamPacketHandler.class));
+        assertFalse(hasPublicMethod(StreamSocket.class, "attachStreamRaw"));
         assertFalse(hasPublicMethod(StreamSocket.class, "connect"));
         assertFalse(hasPublicMethod(StreamSocket.class, "attachDiscovery"));
     }
@@ -495,6 +503,10 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(PubSocket.class, "tryPublish",
                 String.class, Message.class));
             assertFalse(hasPublicMethod(SubSocket.class, "trySubscribe"));
+            assertFalse(hasPublicMethod(SubSocket.class, "onSubscribe",
+                dev.kairoscode.zlink.SubscribeHandler.class));
+            assertFalse(hasPublicMethod(XSubSocket.class, "onSubscribe",
+                dev.kairoscode.zlink.SubscribeHandler.class));
             assertFalse(hasPublicMethod(XPubSocket.class,
                 "tryReceiveSubscriptionEvent"));
             assertEquals(PubSocketOptions.class, pub.options().getClass());

@@ -62,6 +62,7 @@ struct spot_client_slot_t
     std::atomic<uint64_t> first_active_ns;
 };
 
+struct spot_recv_worker_t;
 struct spot_thread_metrics_t;
 
 struct spot_client_state_t
@@ -85,6 +86,7 @@ struct spot_client_state_t
         seen_msg_size(0),
         seen_phase(static_cast<int>(perf_multi_metric::phase_unknown)),
         start_gate(),
+        recv_workers_stop(false),
         metrics_epoch(1)
     {
     }
@@ -95,6 +97,7 @@ struct spot_client_state_t
     std::string control_endpoint;
     std::string server_control_endpoint;
     std::vector<spot_client_slot_t *> slots;
+    std::vector<spot_recv_worker_t *> recv_workers;
     std::mutex mutex;
     std::condition_variable cv;
     std::mutex metrics_mutex;
@@ -114,10 +117,22 @@ struct spot_client_state_t
     std::atomic<size_t> seen_msg_size;
     std::atomic<int> seen_phase;
     perf_multi_handshake::start_signal_state_t start_gate;
+    std::atomic<bool> recv_workers_stop;
     std::atomic<uint64_t> metrics_epoch;
 };
 
 spot_client_state_t *g_client_state = NULL;
+
+struct spot_recv_worker_t
+{
+    spot_recv_worker_t() : state(NULL), poller(NULL) {}
+
+    spot_client_state_t *state;
+    void *poller;
+    std::vector<spot_client_slot_t *> slots;
+    std::vector<zlink_poller_event_t> events;
+    std::thread thread;
+};
 
 struct spot_thread_metrics_t
 {
@@ -246,11 +261,56 @@ int resolve_spot_control_settle_ms()
     return resolve_multi_int_env("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25, 0);
 }
 
+uint64_t resolve_spot_drain_grace_ns(uint64_t active_duration_ns,
+                                     size_t msg_size)
+{
+    if (active_duration_ns == 0)
+        return 0;
+
+    unsigned int multiplier = 1;
+    if (msg_size >= 262144) {
+        multiplier = 4;
+    } else if (msg_size >= 131072) {
+        multiplier = 2;
+    }
+
+    return active_duration_ns * static_cast<uint64_t>(multiplier);
+}
+
+int resolve_spot_post_phase_settle_ms(size_t msg_size)
+{
+    int settle_ms = 0;
+    if (msg_size >= 262144) {
+        settle_ms = 2000;
+    } else if (msg_size >= 131072) {
+        settle_ms = 1500;
+    }
+
+    return resolve_multi_int_env("PERF_MULTI_SPOT_POST_PHASE_SETTLE_MS",
+                                 settle_ms,
+                                 0);
+}
+
 bool should_sample_spot_latency(unsigned long long sample_index)
 {
     static const unsigned int stride = resolve_spot_latency_sample_stride();
     return stride <= 1 || sample_index == 1
            || (sample_index % static_cast<unsigned long long>(stride)) == 0;
+}
+
+size_t resolve_spot_recv_worker_count(size_t slot_count)
+{
+    if (slot_count == 0)
+        return 0;
+
+    const size_t configured = static_cast<size_t>(
+      resolve_multi_int_env("PERF_MULTI_SPOT_RECV_WORKERS", 0, 0));
+    if (configured > 0)
+        return std::min(slot_count, configured);
+
+    const size_t scaled =
+      std::max<size_t>(4, std::min<size_t>(128, (slot_count + 15) / 16));
+    return std::min(slot_count, scaled);
 }
 
 long remaining_wait_ms(const std::chrono::steady_clock::time_point &deadline)
@@ -415,6 +475,23 @@ void destroy_spot_slots(spot_client_state_t *state,
         if (!slot)
             continue;
         slot->stop.store(true, std::memory_order_release);
+    }
+
+    if (state)
+        state->recv_workers_stop.store(true, std::memory_order_release);
+
+    if (state) {
+        for (size_t i = 0; i < state->recv_workers.size(); ++i) {
+            spot_recv_worker_t *worker = state->recv_workers[i];
+            if (!worker)
+                continue;
+            if (worker->thread.joinable())
+                worker->thread.join();
+            if (worker->poller)
+                zlink_poller_destroy(&worker->poller);
+            delete worker;
+        }
+        state->recv_workers.clear();
     }
 
     for (size_t i = 0; i < slots->size(); ++i) {
@@ -626,62 +703,154 @@ void handle_spot_client_parts(const char *topic,
         state->cv.notify_all();
 }
 
-void spot_client_dispatch_event_handler (void *spot_,
-                                         zlink_spot_dispatch_event_t event_,
-                                         void *user_data_)
+bool recv_one_spot_message(spot_client_slot_t *slot, int flags, bool *received)
 {
-    if (event_ != ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE || !spot_
-        || !user_data_)
+    if (!slot || !slot->handle)
+        return false;
+
+    if (received)
+        *received = false;
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[256];
+    size_t topic_len = sizeof(topic) - 1;
+    const int rc = zlink_subscribe(
+      slot->handle, &parts, &part_count, flags, topic, &topic_len);
+    if (rc != 0) {
+        int err = zlink_errno();
+        if (err == 0)
+            err = errno;
+        if (slot->stop.load(std::memory_order_acquire))
+            return false;
+        if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK
+            || err == ETIMEDOUT) {
+            return true;
+        }
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] recv fatal slot=" << slot->index
+                      << " err=" << err << std::endl;
+        }
+        mark_fatal();
+        return false;
+    }
+
+    if (received)
+        *received = true;
+    if (topic_len < sizeof(topic))
+        topic[topic_len] = '\0';
+    handle_spot_client_parts(topic, topic_len, parts, part_count, slot);
+    return true;
+}
+
+bool drain_spot_client_slot(spot_client_slot_t *slot,
+                            int initial_flags,
+                            bool *progressed)
+{
+    if (!slot)
+        return false;
+
+    bool first_attempt = true;
+    while (!slot->stop.load(std::memory_order_acquire)) {
+        bool received = false;
+        const int flags = first_attempt ? initial_flags : ZLINK_DONTWAIT;
+        first_attempt = false;
+        if (!recv_one_spot_message(slot, flags, &received))
+            return false;
+        if (!received)
+            break;
+        if (progressed)
+            *progressed = true;
+    }
+
+    return true;
+}
+
+void spot_client_recv_worker_loop(spot_recv_worker_t *worker)
+{
+    if (!worker || !worker->state || !worker->poller)
         return;
 
-    spot_client_slot_t *slot =
-      static_cast<spot_client_slot_t *> (user_data_);
-    if (!slot || slot->stop.load (std::memory_order_acquire))
-        return;
-
-    while (!slot->stop.load (std::memory_order_acquire)) {
-        zlink_routing_id_t source_rid;
-        std::memset (&source_rid, 0, sizeof (source_rid));
-        zlink_msg_t *parts = NULL;
-        size_t part_count = 0;
-        char topic[256];
-        size_t topic_len = sizeof (topic);
-        const int rc = zlink_subscribe (
-          spot_, &source_rid, &parts, &part_count, topic, &topic_len,
-          ZLINK_RECV_FLAGS_DONTWAIT);
-        if (rc != 0) {
-            const int err = zlink_errno ();
-            if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK
-                || err == ETIMEDOUT) {
+    while (!worker->state->recv_workers_stop.load(std::memory_order_acquire)) {
+        const int poll_rc =
+          zlink_poller_wait_all(worker->poller,
+                                worker->events.empty() ? NULL : &worker->events[0],
+                                static_cast<int>(worker->events.size()),
+                                5, NULL);
+        if (poll_rc < 0) {
+            const int err = zlink_errno();
+            if (worker->state->recv_workers_stop.load(std::memory_order_acquire))
                 break;
+            if (err == EINTR || err == EAGAIN)
+                continue;
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-client] poller fatal err=" << err
+                          << std::endl;
             }
-            if (bench_debug_enabled ()) {
-                std::cerr << "[multi-spot-client] dispatch recv fatal slot="
-                          << slot->index << " err=" << err << std::endl;
-            }
-            mark_fatal ();
+            mark_fatal();
             return;
         }
 
-        handle_spot_client_parts (topic, topic_len, parts, part_count, slot);
+        for (int i = 0; i < poll_rc; ++i) {
+            if ((worker->events[i].events & ZLINK_POLLIN) == 0)
+                continue;
+
+            spot_client_slot_t *slot =
+              static_cast<spot_client_slot_t *>(worker->events[i].user_data);
+            if (!slot || slot->stop.load(std::memory_order_acquire))
+                continue;
+            // Large TLS/WSS payloads can arrive over multiple transport reads.
+            // After POLLIN, block for the first recv so the decoder can finish
+            // assembling the current message, then switch back to DONTWAIT
+            // draining for the steady-state hot path.
+            if (!drain_spot_client_slot(slot, 0, NULL))
+                return;
+        }
     }
 }
 
-bool install_spot_recv_handlers(spot_client_state_t *state)
+bool start_spot_recv_workers(spot_client_state_t *state)
 {
     if (!state || state->slots.empty())
         return false;
 
-    for (size_t i = 0; i < state->slots.size(); ++i) {
-        spot_client_slot_t *slot = state->slots[i];
-        if (!slot || !slot->handle
-            || zlink_spot_dispatch_event_handler (
-                 slot->handle,
-                 &spot_client_dispatch_event_handler,
-                 slot)
-                 != ZLINK_HANDLER_OK) {
+    const size_t worker_count =
+      resolve_spot_recv_worker_count(state->slots.size());
+    if (worker_count == 0)
+        return false;
+
+    state->recv_workers_stop.store(false, std::memory_order_release);
+    state->recv_workers.reserve(worker_count);
+    for (size_t i = 0; i < worker_count; ++i) {
+        spot_recv_worker_t *worker = new (std::nothrow) spot_recv_worker_t();
+        if (!worker)
+            return false;
+        worker->state = state;
+        worker->poller = zlink_poller_new();
+        if (!worker->poller) {
+            delete worker;
             return false;
         }
+        state->recv_workers.push_back(worker);
+    }
+
+    for (size_t i = 0; i < state->slots.size(); ++i) {
+        spot_client_slot_t *slot = state->slots[i];
+        spot_recv_worker_t *worker = state->recv_workers[i % worker_count];
+        if (!slot || !worker || !worker->poller || !slot->handle
+            || zlink_poller_add(worker->poller, slot->handle, slot, ZLINK_POLLIN)
+                 != 0) {
+            return false;
+        }
+        worker->slots.push_back(slot);
+    }
+
+    for (size_t i = 0; i < state->recv_workers.size(); ++i) {
+        spot_recv_worker_t *worker = state->recv_workers[i];
+        if (!worker || worker->slots.empty())
+            continue;
+        worker->events.resize(worker->slots.size());
+        worker->thread = std::thread(spot_client_recv_worker_loop, worker);
     }
 
     return true;
@@ -895,7 +1064,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
                   << perf_multi_metric::now_ns()
                   << " slots=" << slots_out->size() << std::endl;
     }
-    if (!install_spot_recv_handlers(state))
+    if (!start_spot_recv_workers(state))
         return false;
     return true;
 }
@@ -1099,14 +1268,41 @@ bool wait_spot_sender_window_done(spot_client_state_t *state)
     if (!state)
         return false;
 
-    const uint64_t grace_ns =
+    const uint64_t active_duration_ns =
       state->active_duration_ns.load(std::memory_order_acquire);
+    const size_t msg_size =
+      state->expected_msg_size.load(std::memory_order_acquire);
+    const uint64_t grace_ns =
+      resolve_spot_drain_grace_ns(active_duration_ns, msg_size);
     std::unique_lock<std::mutex> lock(state->mutex);
     while (!state->fatal.load(std::memory_order_acquire)) {
         const uint64_t sender_window_end_ns =
           state->sender_window_end_ns.load(std::memory_order_acquire);
         if (sender_window_end_ns == 0) {
-            state->cv.wait(lock, [state]() {
+            const uint64_t control_start_recv_ns =
+              state->control_start_recv_ns.load(std::memory_order_acquire);
+            if (control_start_recv_ns == 0) {
+                state->cv.wait(lock, [state]() {
+                    return state->fatal.load(std::memory_order_acquire)
+                           || state->sender_window_end_ns.load(
+                                std::memory_order_acquire)
+                                != 0
+                           || state->control_start_recv_ns.load(
+                                std::memory_order_acquire)
+                                != 0;
+                });
+                continue;
+            }
+
+            const uint64_t fallback_deadline_ns =
+              control_start_recv_ns + active_duration_ns + grace_ns;
+            const uint64_t now_ns = perf_multi_metric::now_ns();
+            if (now_ns >= fallback_deadline_ns)
+                break;
+
+            const auto wait_ns =
+              std::chrono::nanoseconds(fallback_deadline_ns - now_ns);
+            (void) state->cv.wait_for(lock, wait_ns, [state]() {
                 return state->fatal.load(std::memory_order_acquire)
                        || state->sender_window_end_ns.load(
                             std::memory_order_acquire)
@@ -1277,6 +1473,19 @@ bool run_single_size_case(spot_client_state_t *state,
 
     print_client_result_lines(k_pattern, lib_name, transport, msg_size,
                               throughput, latency);
+
+    const int post_phase_settle_ms = resolve_spot_post_phase_settle_ms(msg_size);
+    if (post_phase_settle_ms > 0
+        && !idle_until(std::chrono::steady_clock::now()
+                       + std::chrono::milliseconds(post_phase_settle_ms))) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] post phase settle failed size="
+                      << msg_size
+                      << " settle_ms=" << post_phase_settle_ms
+                      << " err=" << zlink_errno() << std::endl;
+        }
+        return false;
+    }
     return true;
 }
 

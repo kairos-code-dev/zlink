@@ -4,12 +4,12 @@
 
 # 모니터링 API 레퍼런스
 
-canonical 이벤트 카탈로그는 이제 [events.ko.md](events.ko.md)에 정리합니다.
+canonical 이벤트 카탈로그는 [events.ko.md](events.ko.md)에 정리합니다.
 이 문서는 monitor API, callback, monitor snapshot 중심으로 봅니다.
 
-## 현재 권장 API 방향
+## API 구조
 
-이제 모니터링은 두 가지 클래스로 분리됩니다.
+모니터링은 두 가지 클래스로 분리됩니다.
 
 - 소켓 모니터링:
   `zlink_socket_monitor_open()` + `zlink_socket_monitor_open_options_t`
@@ -209,17 +209,18 @@ void *zlink_socket_monitor_open (
 소켓 모니터에 콜백 핸들러를 부착합니다 (단방향 전환).
 
 ```c
-int zlink_socket_monitor_handler (
+zlink_handler_result_t zlink_socket_monitor_handler (
   void *monitor_,
   zlink_socket_monitor_handler_fn handler_,
   void *userdata_);
 ```
 
 모니터를 recv 모델에서 **callback-only 모델**로 전환합니다. 부착 후
-`zlink_socket_monitor_recv()`는 `errno = EBUSY`와 함께 `-1`을 반환합니다.
-이 전환은 단방향이며 되돌릴 수 없습니다.
+`zlink_socket_monitor_recv()`는 callback 모드임을 나타내는
+`zlink_recv_result_t` 값을 반환합니다. 이 전환은 단방향이며 되돌릴 수
+없습니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_HANDLER_OK`, 실패 시 `zlink_handler_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 ---
 
@@ -228,31 +229,31 @@ int zlink_socket_monitor_handler (
 recv 모델에서 소켓 모니터의 다음 이벤트를 수신합니다.
 
 ```c
-int zlink_socket_monitor_recv (
+zlink_recv_result_t zlink_socket_monitor_recv (
   void *monitor_, zlink_socket_monitor_event_t *out_,
-  zlink_send_flags_t flags_);
+  zlink_recv_flags_t flags_);
 ```
 
 다음 pending 이벤트를 `out_`에 읽어옵니다. `flags_` 매개변수는 논블로킹
 동작을 위해 `ZLINK_DONTWAIT`를 받습니다.
 `zlink_socket_monitor_handler()`를 통해 callback 모델로 전환된 경우
-`errno = EBUSY`와 함께 `-1`을 반환합니다.
+callback 모드임을 나타내는 `zlink_recv_result_t` 값을 반환합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_RECV_OK`, 실패 시 `zlink_recv_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 ---
 
 ### zlink_monitor_snapshot
 
 ```c
-int zlink_monitor_snapshot(void *monitor_, zlink_monitor_snapshot_t *out_);
+zlink_config_result_t zlink_monitor_snapshot(void *monitor_, zlink_monitor_snapshot_t *out_);
 ```
 
 socket/service monitor handle의 현재 aggregate snapshot을 읽습니다.
 queue 값은 조회 시점에 source에서 직접 읽어오며, `rcv_pending_msgs`는
-여전히 approximate 값입니다. recv 모델과 callback 모델 모두에서 동작합니다.
+approximate 값입니다. recv 모델과 callback 모델 모두에서 동작합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_socket_monitor_open`, `zlink_service_monitor_open`
 
@@ -278,7 +279,7 @@ callback 모델로 전환하되 모든 이벤트를 버리고 싶을 때 (예: s
 모든 모니터 핸들(소켓 또는 서비스)을 닫고 리소스를 해제합니다.
 
 ```c
-int zlink_monitor_close (void **monitor_p_);
+zlink_close_result_t zlink_monitor_close (void **monitor_p_);
 ```
 
 모니터를 닫고 `*monitor_p_`를 `NULL`로 설정합니다. 다른 스레드가 모니터
@@ -288,7 +289,7 @@ int zlink_monitor_close (void **monitor_p_);
 **모든** 모니터 타입 -- 소켓 모니터와 서비스 모니터 모두 -- 을 위한 통합 close
 함수입니다.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CLOSE_OK`, 실패 시 `zlink_close_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_socket_monitor_open`, `zlink_service_monitor_open`
 
@@ -302,9 +303,8 @@ int zlink_monitor_close (void **monitor_p_);
 상위 수준 이벤트를 보고합니다.
 
 `zlink_service_monitor_open()`의 target은 공개 service monitor를 제공하는
-서비스 핸들입니다. 현재 대표 대상은 Discovery이며, Spot과 SpotNode는
-더 이상 공개 service-monitor surface를 제공하지 않습니다. 서비스 종류는
-핸들의 runtime tag에서 결정되며, per-service open 함수나 `role`
+서비스 핸들입니다. 현재 대상은 Discovery, Spot, SpotNode입니다. 서비스
+종류는 핸들의 runtime tag에서 결정되며, per-service open 함수나 `role`
 파라미터는 없습니다.
 
 ### zlink_service_event_t / zlink_service_monitor_event_t
@@ -377,23 +377,23 @@ handle에 대해서만 정의된다. 모니터 대상 식별자는
 |------|-------------------------------|------------------|
 | `Discovery` handle | `ZLINK_MONITOR_TARGET_DISCOVERY = 2` | `zlink_service_monitor_recv()` |
 | raw socket | `ZLINK_MONITOR_TARGET_SOCKET = 1` | `zlink_socket_monitor_recv()` |
-| `Spot` facade | `ZLINK_MONITOR_TARGET_SPOT = 4`(예약, 현재 공개 서비스-모니터 대상 아님) | — |
-| `SpotNode` handle | `ZLINK_MONITOR_TARGET_SPOT_NODE = 5` | `zlink_spot_node_monitor_recv()` |
+| `Spot` facade | `ZLINK_MONITOR_TARGET_SPOT = 4` | `zlink_service_monitor_recv()` |
+| `SpotNode` handle | `ZLINK_MONITOR_TARGET_SPOT_NODE = 5` | `zlink_service_monitor_recv()` |
 
 service-aware `SpotNode` attachment monitor event는
 `zlink_service_monitor_open()`이 아니라 `zlink_spot_node_monitor_recv()`로만
 꺼냅니다. 이 recv는 `zlink_spot_service_monitor_event_t`에 `service_name`과
-attachment role을 함께 실어 돌려줍니다. service monitor event mask에는
-`ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`가 포함되어 peer
-admission 결과 변화를 관찰할 수 있습니다.
+attachment role을 함께 실어 돌려줍니다. `Spot` / `SpotNode` generic
+service monitor는 SPOT pub/sub runtime에서 바로 브리지할 수 있는
+운영형 이벤트만 노출합니다.
 
 ### 서비스 종류 상수
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
 | `ZLINK_SERVICE_KIND_DISCOVERY` | 1 | Discovery 컴포넌트 |
-| `ZLINK_SERVICE_KIND_SPOT_SUB` | 3 | 예약된 legacy 값. SPOT은 더 이상 공개 service monitor를 제공하지 않음 |
-| `ZLINK_SERVICE_KIND_SPOT_PUB` | 4 | 예약된 legacy 값. SPOT은 더 이상 공개 service monitor를 제공하지 않음 |
+| `ZLINK_SERVICE_KIND_SPOT_SUB` | 3 | SPOT sub-side service monitor event source |
+| `ZLINK_SERVICE_KIND_SPOT_PUB` | 4 | SPOT pub-side service monitor event source |
 | `ZLINK_SERVICE_KIND_SOCKET` | 5 | 소켓 패밀리 서비스 |
 
 ### 서비스 이벤트 상수
@@ -429,12 +429,35 @@ admission 결과 변화를 관찰할 수 있습니다.
 - `..._DISCOVERY_PROVIDERS_CHANGED` -> `ZLINK_DISCOVERY_PROVIDERS_CHANGED`
 
 **서비스 공통:**
-- `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` (`1u << 8`) -- 같은
-  서비스의 peer admission 상태 변화. 이벤트의 `value` 필드에 새 admission
-  상태가 들어가고, 식별 정보는 `routing_id` 또는 detail flag가 켜진
-  필드에서 가져옵니다.
+- `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` (`1u << 8`) --
+  서비스 계층 peer admission 변경을 위한 예약 unified mask bit 입니다.
+  현재 `Spot` / `SpotNode` generic service monitor는 이 이벤트를 방출하지
+  않습니다.
 
 - `ZLINK_SERVICE_MONITOR_EVENT_ALL` -> 모든 서비스 이벤트
+
+### Spot / SpotNode Generic Events
+
+`zlink_service_monitor_open(spot, ...)`와
+`zlink_service_monitor_open(spot_node, ...)`는 SPOT pub/sub
+monitor bridge가 제공하는 운영형 이벤트만 지원합니다.
+
+| 이벤트 | `Spot` | `SpotNode` | 설명 |
+|--------|--------|------------|------|
+| `ZLINK_MONITOR_EVENT_ERROR` | 지원 | 지원 | runtime / bridge 에러 |
+| `ZLINK_MONITOR_EVENT_CLOSED` | 지원 | 지원 | 종료 이벤트 |
+| `peer up` (`1u << 2`) | 지원 | 지원 | peer 사용 가능 상태 진입 |
+| `peer down` (`1u << 3`) | 지원 | 지원 | peer 사용 불가 상태 진입 |
+| `connection ready` (`1u << 14`) | 지원 | 지원 | data path 준비 완료 |
+| `sub filter applied` (`1u << 13`) | 지원 | 지원 | sub filter 적용 완료 |
+| `pub queue full` (`1u << 15`) | 지원 | 지원 | pub queue 포화 |
+| `pub queue drained` (`1u << 16`) | 지원 | 지원 | pub queue 회복 |
+
+`SpotNode`의 service attachment 상세는 계속
+`zlink_spot_node_monitor_recv()` 전용입니다. 이 전용 recv는
+`service_name`, attachment `role`, nested raw socket monitor event를
+돌려주며, generic service monitor는 이 attachment 상세를 평탄화하지
+않습니다.
 
 ### Detail 플래그 상수
 
@@ -460,9 +483,8 @@ void *zlink_service_monitor_open (
 ```
 
 공개 service monitor를 제공하는 서비스 핸들에 서비스 모니터를 생성하고
-핸들을 반환합니다. `target_`은 Discovery 핸들을 받을 수 있습니다.
-Spot 및 SpotNode는 더 이상 여기 대상이 아니며, SpotNode status/query
-API와 benchmark control barrier를 사용해야 합니다.
+핸들을 반환합니다. `target_`은 Discovery 핸들, Spot facade,
+SpotNode handle을 받을 수 있습니다.
 
 `options_->events` 비트마스크로 관찰할 이벤트를 선택하며, 통합 마스크 타입인
 `zlink_service_monitor_event_mask_t`를 사용합니다.
@@ -485,17 +507,18 @@ API와 benchmark control barrier를 사용해야 합니다.
 서비스 모니터에 콜백 핸들러를 부착합니다 (단방향 전환).
 
 ```c
-int zlink_service_monitor_handler (
+zlink_handler_result_t zlink_service_monitor_handler (
   void *monitor_,
   zlink_service_monitor_handler_fn handler_,
   void *userdata_);
 ```
 
 모니터를 recv 모델에서 **callback-only 모델**로 전환합니다. 부착 후
-`zlink_service_monitor_recv()`는 `errno = EBUSY`와 함께 `-1`을 반환합니다.
-이 전환은 단방향이며 되돌릴 수 없습니다.
+`zlink_service_monitor_recv()`는 callback 모드임을 나타내는
+`zlink_recv_result_t` 값을 반환합니다. 이 전환은 단방향이며 되돌릴 수
+없습니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_HANDLER_OK`, 실패 시 `zlink_handler_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 ---
 
@@ -504,14 +527,14 @@ int zlink_service_monitor_handler (
 recv 모델에서 서비스 모니터의 다음 이벤트를 수신합니다.
 
 ```c
-int zlink_service_monitor_recv (
+zlink_recv_result_t zlink_service_monitor_recv (
   void *monitor_, zlink_service_monitor_event_t *out_,
-  zlink_send_flags_t flags_);
+  zlink_recv_flags_t flags_);
 ```
 
 다음 pending 이벤트를 `out_`에 읽어옵니다. `flags_` 매개변수는 논블로킹
 동작을 위해 `ZLINK_DONTWAIT`를 받습니다.
 `zlink_service_monitor_handler()`를 통해 callback 모델로 전환된 경우
-`errno = EBUSY`와 함께 `-1`을 반환합니다.
+callback 모드임을 나타내는 `zlink_recv_result_t` 값을 반환합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_RECV_OK`, 실패 시 `zlink_recv_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.

@@ -3,6 +3,8 @@
 const zlink = require('../../dist/canonical');
 
 const TOPIC = 'spot:child';
+const SERVICE_TYPE_SPOT = 0x3002;
+const SERVICE_NAME = 'spot-child-service';
 
 function parseArgs(argv) {
   const options = { endpoint: '' };
@@ -18,10 +20,14 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   const node = new zlink.SpotNode(ctx);
-  const spot = node.createSpot();
+  const pubSocket = new zlink.PubSocket(ctx);
+  const subSocket = new zlink.SubSocket(ctx);
+  let spot = null;
 
   try {
-    node.connectPeer(options.endpoint);
+    node.attachPubSub(SERVICE_NAME, pubSocket, subSocket);
+    spot = node.createSpot();
+    subSocket.connect(options.endpoint);
     spot.setSubscription(TOPIC);
     console.log('CLIENT_READY');
 
@@ -36,6 +42,9 @@ async function main() {
         }
       }
       if (received) {
+        if (received.serviceName !== SERVICE_NAME) {
+          throw new Error(`unexpected service name: ${received.serviceName}`);
+        }
         console.log(`RECEIVED,${received.topic},${received.parts[0].data().toString()}`);
         return;
       }
@@ -47,8 +56,12 @@ async function main() {
       subjects: node.subjectsSnapshot()
     })}`);
   } finally {
-    spot.close();
+    if (spot) {
+      spot.close();
+    }
     node.close();
+    subSocket.close();
+    pubSocket.close();
     ctx.close();
   }
 }

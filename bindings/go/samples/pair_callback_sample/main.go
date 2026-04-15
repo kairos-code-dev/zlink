@@ -34,7 +34,12 @@ func main() {
 		err     error
 	}
 	delivered := make(chan result, 1)
-	samplecommon.Must(server.OnReceive(func(received *zlink.Received) {
+	go func() {
+		received, err := server.Recv(zlink.RecvFlagsNone)
+		if err != nil {
+			delivered <- result{err: err}
+			return
+		}
 		defer received.Close()
 		part, err := received.SinglePartOrError()
 		if err != nil {
@@ -42,7 +47,7 @@ func main() {
 			return
 		}
 		delivered <- result{payload: string(part.Data())}
-	}))
+	}()
 
 	sent := "hello-pair"
 	samplecommon.Must(client.Send(zlink.SendFlagsNone, samplecommon.Message(sent)))

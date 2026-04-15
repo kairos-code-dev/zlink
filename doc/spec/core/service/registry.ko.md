@@ -4,7 +4,7 @@
 
 # 레지스트리
 
-## 현재 권장 API 방향
+## API 표면
 
 - Registry는 전역 서비스 디렉터리이자 전체 서비스 요약 정보를 보는 기본
   진입점입니다.
@@ -221,13 +221,14 @@ zlink_config_result_t zlink_registry_set_id(void *registry, uint32_t registry_id
 
 이 Registry 인스턴스에 고유 식별자를 할당합니다. ID는 여러 레지스트리가
 피어 연결을 통해 서로 동기화하는 클러스터 구성에 사용됩니다.
-`zlink_registry_bind` 호출 전에 설정해야 합니다.
+`zlink_registry_bind` 전후 모두 호출할 수 있으며, 변경된 ID는 다음 runtime
+tick에서 반영됩니다. bind 이후에 ID를 바꾸면 이미 송출된 broadcast가
+직전 값으로 나갈 수 있으므로 초기 설정 단계에서 지정하는 것을 권장합니다.
 
 **반환값:** `zlink_config_result_t` 값을 반환합니다.
 
 **스레드 안전성:** 하나의 Registry handle을 여러 스레드에서 동시에 사용할 수
-있습니다 (thread-safe). 다만 이 호출은 여전히 `zlink_registry_bind` 전에만
-허용됩니다.
+있습니다 (thread-safe).
 
 **참고:** `zlink_registry_add_peer`
 
@@ -244,13 +245,13 @@ zlink_config_result_t zlink_registry_add_peer(void *registry,
 
 이 Registry를 피어 Registry의 PUB 엔드포인트에 연결하여 클러스터 전체에서
 서비스 목록을 동기화할 수 있도록 합니다. 여러 피어를 추가할 수 있습니다.
-`zlink_registry_bind` 호출 전에 설정해야 합니다.
+`zlink_registry_bind` 전후 모두 호출할 수 있으며, runtime tick이 다음
+주기에 새 peer endpoint의 PUB에 dial합니다.
 
 **반환값:** `zlink_config_result_t` 값을 반환합니다.
 
 **스레드 안전성:** 하나의 Registry handle을 여러 스레드에서 동시에 사용할 수
-있습니다 (thread-safe). 다만 이 호출은 여전히 `zlink_registry_bind` 전에만
-허용됩니다.
+있습니다 (thread-safe).
 
 **참고:** `zlink_registry_set_id`
 
@@ -269,12 +270,13 @@ zlink_config_result_t zlink_registry_set_heartbeat(void *registry,
 Registry가 등록된 서비스로부터 하트비트 메시지를 기대하는 빈도와 서비스를
 만료로 간주하는 시점을 구성합니다. 서비스가 `timeout_ms` 밀리초 이내에
 하트비트를 보내지 않으면 Registry는 해당 서비스를 서비스 목록에서 제거합니다.
+`zlink_registry_bind` 전후 모두 호출할 수 있으며, runtime tick이 다음 주기에
+새 값을 반영합니다.
 
 **반환값:** `zlink_config_result_t` 값을 반환합니다.
 
 **스레드 안전성:** 하나의 Registry handle을 여러 스레드에서 동시에 사용할 수
-있습니다 (thread-safe). 다만 이 호출은 여전히 `zlink_registry_bind` 전에만
-허용됩니다.
+있습니다 (thread-safe).
 
 **참고:** `zlink_registry_set_broadcast_interval`
 
@@ -291,13 +293,13 @@ zlink_config_result_t zlink_registry_set_broadcast_interval(void *registry,
 
 Registry가 PUB 소켓을 통해 전체 서비스 목록을 게시하는 빈도를 제어합니다.
 PUB 엔드포인트를 구독하는 Discovery 인스턴스는 이 간격으로 업데이트를
-수신합니다.
+수신합니다. `zlink_registry_bind` 전후 모두 호출할 수 있으며, runtime tick이
+다음 주기에 새 간격을 반영합니다.
 
 **반환값:** `zlink_config_result_t` 값을 반환합니다.
 
 **스레드 안전성:** 하나의 Registry handle을 여러 스레드에서 동시에 사용할 수
-있습니다 (thread-safe). 다만 이 호출은 여전히 `zlink_registry_bind` 전에만
-허용됩니다.
+있습니다 (thread-safe).
 
 **참고:** `zlink_registry_set_heartbeat`
 

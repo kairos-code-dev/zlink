@@ -8,6 +8,7 @@ internal static class PerfSpotServer
 {
     private const string Pattern = "SPOT";
     private const uint RunId = 1;
+    private const string ServiceName = "bench-svc";
     private const string Topic = "bench";
     internal static int Run(PerfOptions options)
     {
@@ -134,7 +135,7 @@ internal static class PerfSpotServer
                 return false;
 
             using Message message = Message.FromBytes(payload);
-            SendResult result = spotPub.TryPublish(Topic, message);
+            SendResult result = spotPub.TryPublish(ServiceName, Topic, message);
             if (result == SendResult.Sent)
                 return true;
 

@@ -34,45 +34,36 @@ sequenceDiagram
     Tr->>Tr: ws::write
 ```
 
-## 3. WS/WSS 성능 최적화
+## 3. WS/WSS 성능 특성
 
-### 3.1 Read Path Copy Elimination
-- 기존: Beast flat_buffer → 임시 버퍼 → msg_t (2회 복사)
-- 최적화: Beast flat_buffer에서 직접 msg_t로 이동 (1회 복사 제거)
+### 3.1 Read Path
+- 데이터는 Beast `flat_buffer` 에서 출력 `msg_t` 로 직접 이동한다
+  (중간 staging buffer 없이 단일 copy).
 
-### 3.2 Write Path Copy Elimination
-- 기존: msg_t → 중간 버퍼 → Beast write (2회 복사)
-- 최적화: msg_t 데이터를 직접 Beast write 버퍼로 전달
+### 3.2 Write Path
+- `msg_t` payload 를 Beast write 버퍼로 직접 전달한다 (중간 copy 없음).
 
-### 3.3 Beast Write Buffer 확대
-- 기본 4KB → 64KB로 확대
-- 다중 소형 메시지 배치 전송 효과
+### 3.3 Beast Write Buffer
+- 64KB write 버퍼. 여러 소형 메시지가 하나의 Beast write 로 배치되도록
+  선택된 크기다.
 
-### 3.4 프레임 분할 비활성화
-- `auto_fragment(false)` 설정
-- 메시지별 단일 WebSocket 프레임
+### 3.4 프레임 분할
+- `auto_fragment(false)` — 논리 메시지 하나가 하나의 WebSocket 프레임에
+  대응한다.
 
-## 4. 벤치마크 결과
+## 4. 측정 처리량
 
-### 4.1 WS 최적화 효과 (1KB 메시지)
-| 항목 | 최적화 전 | 최적화 후 | 개선율 |
-|------|-----------|-----------|--------|
-| WS 1KB | 315 MB/s | 473 MB/s | +50% |
-| WSS 1KB | 279 MB/s | 382 MB/s | +37% |
+표준 벤치마크 머신의 단일 socket 대표 처리량:
 
-### 4.2 대용량 메시지 개선
-| 크기 | WS 개선율 | WSS 개선율 |
-|------|-----------|-----------|
-| 64B | +11% | +13% |
-| 1KB | +50% | +37% |
-| 64KB | +97% | +54% |
-| 262KB | +139% | +62% |
+| Transport | Throughput |
+|-----------|------------|
+| TCP       | 1493 MB/s  |
+| WS        |  696 MB/s  |
+| WSS 1KB   |  382 MB/s  |
 
-### 4.3 Beast 단독 대비
-| Transport | Beast | zlink | 비율 |
-|-----------|-------|-------|------|
-| tcp | 1416 MB/s | 1493 MB/s | 105% |
-| ws | 540 MB/s | 696 MB/s | 129% |
+WS 프레이밍 선택의 이득은 대용량 메시지에서 가장 크다. 64KB 이상
+payload 에서는 WS 가 TCP 라인 레이트에 근접하고, WSS 비용은 TLS 암호화
+오버헤드가 지배한다.
 
 ## 5. 설계 트레이드오프
 
@@ -196,14 +187,13 @@ connection 과 함께 decoder state 도 폐기된다.
 
 ## 7. 현재 STREAM 런타임 기본값 (2026-02)
 
-이 문서는 원래 WS/WSS 경로 최적화 중심이었지만, 현재 STREAM은 transport 전반에
-공통된 기본 성능 프로파일을 사용한다.
+STREAM 은 transport 전반에 공통된 기본 성능 프로파일을 사용한다.
 STREAM 외 공통 소켓 기본값은
 [socket-option-defaults.ko.md](socket-option-defaults.ko.md)를 참고한다.
 
 ### 7.1 내부 상수 고정 항목
 
-아래 값들은 STREAM env로 더 이상 제어하지 않고 상수로 고정된다:
+아래 값들은 내부 상수로 고정되며 STREAM env 로 제어하지 않는다:
 - handler allocator: 활성
 - read drain: 활성
 - speculative write: STREAM/TCP 경로에서 상시 on 고정

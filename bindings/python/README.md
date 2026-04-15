@@ -34,8 +34,10 @@ API directly. The public contract is:
 - resource-owning types support sync and async context manager cleanup
 - `*_READY_CHANGED` monitor events do not expose aggregate ready counts
 - monitor snapshots are state/queue inspection surfaces, not ready-count gates
-- callback registration uses canonical names `on_receive`, `on_subscribe`,
-  and `on_send_ready`
+- callback registration uses canonical names `on_packet`, `on_send_ready`,
+  `on_routed_receive`, and `on_dispatch_event`; topic
+  subscription uses `subscribe()` / `receive_subscription_event()` instead of
+  a direct `on_subscribe` callback
 - callback removal by passing `None` is not part of the public contract;
   callback lifecycle ends with socket close
 
@@ -57,18 +59,24 @@ methods:
 
 Examples of policy-enforced capability boundaries:
 
-- `SubSocket` exposes `subscribe`, `set_subscription`,
-  `unset_subscription`, and `on_subscribe`, but not direct `recv`
+- `SubSocket` exposes `subscribe`, `set_subscription`, and
+  `unset_subscription`, but not direct `recv` or a direct subscription
+  callback
 - `XPubSocket` is the only Python socket surface that exposes
   `receive_subscription_event`
 - `StreamSocket` keeps routed send/receive but does not expose generic
   `connect` / `disconnect`
-- `Spot` is a pub/sub service facade on top of `SpotNode`; it exposes
-  `publish`, `subscribe`, `set_subscription`, `unset_subscription`,
-  `on_subscribe`, `on_send_ready`, `send_to_spot`, `request_to_spot`,
-  `reply_to_spot`, `send_to_router`, `request_to_router`,
-  `reply_to_router`, `recv_routed`, `on_routed_receive`, and
-  `on_dispatch_event`, but not direct `recv` / `send`
+- `SpotNode` is the service attachment owner. It exposes
+  `attach_router`, `attach_pubsub`, `service_attachment_count`,
+  `service_attachment_at`, and `node_monitor_recv` on top of discovery and
+  topology management.
+- `Spot` is a service-aware pub/sub and routed facade on top of `SpotNode`;
+  it exposes `publish(service_name, topic, ...)`, `send_service`,
+  `request_service`, `subscribe`, `receive_subscription_event`,
+  `set_subscription`, `unset_subscription`, `on_send_ready`,
+  `send_to_spot`, `request_to_spot`, `reply_to_spot`, `send_to_router`,
+  `request_to_router`, `reply_to_router`, `recv_routed`,
+  `on_routed_receive`, and `on_dispatch_event`, but not direct `recv` / `send`
 - `attach_discovery()` is only available on the discovery-aware socket subset,
   and after `attach_discovery` the native lifecycle contract blocks manual
   `connect`, `disconnect`, `unbind`, and `close`
@@ -104,6 +112,11 @@ Service and topology helpers are also surfaced as domain objects:
 - `RegistryServiceSummaryEntry`
 - `RegistryTopologyFilter`
 - `RegistryServiceSummaryFilter`
+- `SpotServiceAttachmentStats`
+- `SpotServiceMonitorEvent`
+
+`TopicMessage` and `SubscriptionEvent` carry `service_name` for service-aware
+SPOT flows. Raw `SUB` / `XSUB` results leave that field empty.
 
 ## Boundary Rules
 
@@ -115,9 +128,10 @@ policy requires it:
 - `RoutingId` enforces the native 255-byte maximum
 - typed integer options fail on signed/unsigned overflow instead of truncating
 - send/receive convenience does not change the multipart-only contract
-- blocking send/publish inside receive callbacks raises an explicit error instead of
-  silently degrading to non-blocking behavior; use `SendFlags.DONT_WAIT`
-  or `RecvFlags.DONT_WAIT` for explicit non-blocking behavior
+- blocking send/publish inside receive callbacks raises an explicit error
+  instead of silently degrading to non-blocking behavior; use
+  `SendFlags.DONT_WAIT` or `RecvFlags.DONT_WAIT` for explicit
+  non-blocking behavior
 
 ## Typed Options
 

@@ -14,6 +14,7 @@ public final class PubSubCallbackSample {
         String published = SampleSupport.PUBSUB_TOPIC + "/" + SampleSupport.PUBSUB_PAYLOAD;
         CountDownLatch delivered = new CountDownLatch(1);
         AtomicReference<String> subscribed = new AtomicReference<>();
+        AtomicReference<Throwable> receiveError = new AtomicReference<>();
 
         try (Context ctx = new Context();
              PubSocket pub = new PubSocket(ctx);
@@ -22,10 +23,17 @@ public final class PubSubCallbackSample {
                  dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY);
              var subMonitor = sub.monitorOpen(
                  dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY)) {
-            sub.onSubscribe((routingId, topic, received) -> {
-                subscribed.set(topic + "/" + received.singlePartOrThrow().toUtf8String());
-                delivered.countDown();
-            });
+            Thread receiver = new Thread(() -> {
+                try (var received = sub.subscribe()) {
+                    subscribed.set(received.topic() + "/"
+                        + received.singlePartOrThrow().toUtf8String());
+                } catch (Throwable t) {
+                    receiveError.set(t);
+                } finally {
+                    delivered.countDown();
+                }
+            }, "pubsub-recv-sample");
+            receiver.start();
 
             pub.bind(endpoint);
             sub.setSubscription(SampleSupport.PUBSUB_TOPIC);
@@ -41,7 +49,11 @@ public final class PubSubCallbackSample {
             if (!published.equals(value)) {
                 throw new IllegalStateException("unexpected delivery: " + value);
             }
-            System.out.println("[pubsub/callback] publish: \"" + published
+            if (receiveError.get() != null) {
+                throw new IllegalStateException("pubsub receive failed",
+                    receiveError.get());
+            }
+            System.out.println("[pubsub/recv] publish: \"" + published
                 + "\" \u2192 subscribe: \"" + value + "\"");
         }
     }

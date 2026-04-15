@@ -30,8 +30,8 @@ public final class RequestReplyCallbackSample {
             dealerSocket.connect(endpoint);
             SampleSupport.waitConnected(routerMonitor, dealerMonitor);
 
-            routerSocket.onReceive(received -> {
-                try (received) {
+            Thread routerThread = new Thread(() -> {
+                try (var received = routerSocket.recv()) {
                     String request = SampleSupport.singleUtf8(received);
                     if (!SampleSupport.DEALER_REQUEST.equals(request)) {
                         failure.compareAndSet(null,
@@ -49,7 +49,8 @@ public final class RequestReplyCallbackSample {
                 } finally {
                     requestHandled.countDown();
                 }
-            });
+            }, "request-reply-router-recv");
+            routerThread.start();
 
             try (Message request = Message.copyOfUtf8(SampleSupport.DEALER_REQUEST)) {
                 dealerSocket.request(

@@ -266,6 +266,25 @@ func (s *serviceMonitorCallbackState) close() {
 	s.dispatcher.close()
 }
 
+type streamPacketCallbackState struct {
+	dispatcher *callbackDispatcher
+	handler    func(RoutingID, *Message, *Message)
+}
+
+func newStreamPacketCallbackState(handler func(RoutingID, *Message, *Message)) *streamPacketCallbackState {
+	return &streamPacketCallbackState{
+		dispatcher: newCallbackDispatcher(),
+		handler:    handler,
+	}
+}
+
+func (s *streamPacketCallbackState) close() {
+	if s == nil {
+		return
+	}
+	s.dispatcher.close()
+}
+
 func releaseCallbackHandle(handle cgo.Handle) {
 	if handle == 0 {
 		return
@@ -381,6 +400,45 @@ func goZlinkSendReadyTrampoline(_ unsafe.Pointer, userdata C.uintptr_t) {
 			state.handler()
 		},
 	})
+}
+
+//export goZlinkStreamPacketTrampoline
+func goZlinkStreamPacketTrampoline(_ unsafe.Pointer, sourceRID *C.zlink_routing_id_t, header *C.zlink_msg_t, body *C.zlink_msg_t, userdata C.uintptr_t) {
+	value, ok := safeHandleValue(userdata)
+	if !ok {
+		return
+	}
+	state := value.(*streamPacketCallbackState)
+	headerParts, err := takeParts(header, 1)
+	if err != nil {
+		return
+	}
+	bodyParts, err := takeParts(body, 1)
+	if err != nil {
+		MultipartClose(headerParts)
+		return
+	}
+	if len(headerParts) != 1 || len(bodyParts) != 1 {
+		MultipartClose(headerParts)
+		MultipartClose(bodyParts)
+		return
+	}
+	source := routingIDFromCPtr(sourceRID)
+	headerMessage := headerParts[0]
+	bodyMessage := bodyParts[0]
+	if state.dispatcher.enqueue(&callbackTask{
+		label: "stream-packet",
+		invoke: func() {
+			state.handler(source, headerMessage, bodyMessage)
+		},
+		cleanup: func() {
+			MultipartClose([]*Message{headerMessage, bodyMessage})
+		},
+	}) {
+		return
+	}
+	MultipartClose(headerParts)
+	MultipartClose(bodyParts)
 }
 
 //export goZlinkSpotRoutedTrampoline

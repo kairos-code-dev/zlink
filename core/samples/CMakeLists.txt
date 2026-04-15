@@ -38,40 +38,24 @@ add_c_sample(
   pair_recv_sample.c
 )
 add_c_sample(
-  sample_c_pair_callback_sample
-  pair_callback_sample.c
-)
-add_c_sample(
   sample_c_pubsub_recv_sample
   pubsub_recv_sample.c
-)
-add_c_sample(
-  sample_c_pubsub_callback_sample
-  pubsub_callback_sample.c
 )
 add_c_sample(
   sample_c_dealer_router_recv_sample
   dealer_router_recv_sample.c
 )
 add_c_sample(
-  sample_c_dealer_router_callback_sample
-  dealer_router_callback_sample.c
-)
-add_c_sample(
   sample_c_stream_recv_sample
   stream_recv_sample.c
 )
 add_c_sample(
-  sample_c_stream_callback_sample
-  stream_callback_sample.c
+  sample_c_stream_packet_callback_sample
+  stream_packet_callback_sample.c
 )
 add_c_sample(
   sample_c_spot_recv_sample
   spot_recv_sample.c
-)
-add_c_sample(
-  sample_c_spot_callback_sample
-  spot_callback_sample.c
 )
 add_c_sample(
   sample_c_monitor_recv_sample

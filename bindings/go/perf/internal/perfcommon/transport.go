@@ -12,7 +12,6 @@ package perfcommon
 import "C"
 
 import (
-	"errors"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -20,24 +19,31 @@ import (
 	"crypto/x509/pkix"
 	"encoding/binary"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
 	"net"
 	"net/url"
-	"reflect"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unsafe"
-	"syscall"
 
 	"github.com/gorilla/websocket"
+	"zlink"
 )
 
 type StreamConn interface {
+	io.ReadWriteCloser
+	SetDeadline(time.Time) error
+}
+
+type PacketConn interface {
 	io.ReadWriteCloser
 	SetDeadline(time.Time) error
 }
@@ -260,12 +266,12 @@ func buildTLSAssets() (tlsAssetSet, error) {
 			Organization: []string{"ZLink"},
 			Country:      []string{"US"},
 		},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(10 * 365 * 24 * time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{"localhost"},
-		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+		NotBefore:   time.Now().Add(-time.Hour),
+		NotAfter:    time.Now().Add(10 * 365 * 24 * time.Hour),
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:    []string{"localhost"},
+		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
 	}
 	serverDER, err := x509.CreateCertificate(rand.Reader, serverTpl, caTpl, &serverKey.PublicKey, caKey)
 	if err != nil {
@@ -303,6 +309,28 @@ func DialEndpoint(endpoint string) StreamConn {
 	conn, err := openStreamEndpoint(endpoint)
 	Must(err)
 	return conn
+}
+
+func DialPacketEndpoint(endpoint string) PacketConn {
+	conn, err := openPacketEndpoint(endpoint)
+	Must(err)
+	return conn
+}
+
+func FrameStreamPacketMessage(header, body *zlink.Message) *zlink.Message {
+	if header == nil || body == nil {
+		Must(fmt.Errorf("frame stream packet requires non-nil messages"))
+	}
+	headerData := header.Data()
+	bodyData := body.Data()
+	frame := make([]byte, 6+len(headerData)+len(bodyData))
+	binary.BigEndian.PutUint16(frame[:2], uint16(len(headerData)))
+	binary.BigEndian.PutUint32(frame[2:6], uint32(len(bodyData)))
+	copy(frame[6:], headerData)
+	copy(frame[6+len(headerData):], bodyData)
+	msg, err := zlink.NewMessage(frame)
+	Must(err)
+	return msg
 }
 
 func openStreamEndpoint(endpoint string) (StreamConn, error) {
@@ -379,6 +407,82 @@ func openWSStream(endpoint string, secure bool) (StreamConn, error) {
 		return nil, err
 	}
 	return &framedWebSocketConn{conn: conn}, nil
+}
+
+func openPacketEndpoint(endpoint string) (PacketConn, error) {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme == "" {
+		return openPacketTCPStream(endpoint)
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "tcp":
+		return openPacketTCPStream(endpoint)
+	case "tls":
+		return openPacketTLSStream(u.Host)
+	case "ws":
+		return openPacketWSStream(endpoint, false)
+	case "wss":
+		return openPacketWSStream(endpoint, true)
+	default:
+		return openPacketTCPStream(endpoint)
+	}
+}
+
+func openPacketTCPStream(endpoint string) (PacketConn, error) {
+	addr := endpoint
+	if idx := strings.Index(addr, "://"); idx >= 0 {
+		addr = addr[idx+3:]
+	}
+	if idx := strings.IndexByte(addr, '?'); idx >= 0 {
+		addr = addr[:idx]
+	}
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	return &packetNetConn{conn: conn}, nil
+}
+
+func openPacketTLSStream(addr string) (PacketConn, error) {
+	assets, err := EnsureTLSAssets()
+	if err != nil {
+		return nil, err
+	}
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	config := &tls.Config{
+		RootCAs:            assets.rootCAs,
+		ServerName:         "127.0.0.1",
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: false,
+	}
+	conn, err := tls.DialWithDialer(dialer, "tcp", addr, config)
+	if err != nil {
+		return nil, err
+	}
+	return &packetNetConn{conn: conn}, nil
+}
+
+func openPacketWSStream(endpoint string, secure bool) (PacketConn, error) {
+	assets, err := EnsureTLSAssets()
+	if err != nil {
+		return nil, err
+	}
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 5 * time.Second,
+	}
+	if secure {
+		dialer.TLSClientConfig = &tls.Config{
+			RootCAs:            assets.rootCAs,
+			ServerName:         "127.0.0.1",
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: false,
+		}
+	}
+	conn, _, err := dialer.Dial(endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &packetWebSocketConn{conn: conn}, nil
 }
 
 type framedNetConn struct {
@@ -495,6 +599,136 @@ func (c *framedWebSocketConn) Close() error {
 }
 
 func (c *framedWebSocketConn) SetDeadline(t time.Time) error {
+	return c.conn.UnderlyingConn().SetDeadline(t)
+}
+
+type packetNetConn struct {
+	conn       net.Conn
+	pending    []byte
+	pendingPos int
+}
+
+func (c *packetNetConn) Read(p []byte) (int, error) {
+	if c.pendingPos >= len(c.pending) {
+		if err := c.fill(); err != nil {
+			return 0, err
+		}
+	}
+	if len(c.pending) == 0 {
+		return 0, io.EOF
+	}
+	n := copy(p, c.pending[c.pendingPos:])
+	c.pendingPos += n
+	return n, nil
+}
+
+func (c *packetNetConn) fill() error {
+	var prefix [6]byte
+	if _, err := io.ReadFull(c.conn, prefix[:]); err != nil {
+		return err
+	}
+	headerSize := binary.BigEndian.Uint16(prefix[:2])
+	bodySize := binary.BigEndian.Uint32(prefix[2:6])
+	if headerSize > 0 {
+		if _, err := io.CopyN(io.Discard, c.conn, int64(headerSize)); err != nil {
+			return err
+		}
+	}
+	if bodySize == 0 {
+		c.pending = c.pending[:0]
+		c.pendingPos = 0
+		return nil
+	}
+	buf := make([]byte, int(bodySize))
+	if _, err := io.ReadFull(c.conn, buf); err != nil {
+		return err
+	}
+	c.pending = buf
+	c.pendingPos = 0
+	return nil
+}
+
+func (c *packetNetConn) Write(p []byte) (int, error) {
+	frame := make([]byte, 6+len(p))
+	binary.BigEndian.PutUint16(frame[:2], 0)
+	binary.BigEndian.PutUint32(frame[2:6], uint32(len(p)))
+	copy(frame[6:], p)
+	if err := writeFull(c.conn, frame); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+func (c *packetNetConn) Close() error {
+	return c.conn.Close()
+}
+
+func (c *packetNetConn) SetDeadline(t time.Time) error {
+	return c.conn.SetDeadline(t)
+}
+
+type packetWebSocketConn struct {
+	conn       *websocket.Conn
+	pending    []byte
+	pendingPos int
+}
+
+func (c *packetWebSocketConn) Read(p []byte) (int, error) {
+	if c.pendingPos >= len(c.pending) {
+		if err := c.fill(); err != nil {
+			return 0, err
+		}
+	}
+	if len(c.pending) == 0 {
+		return 0, io.EOF
+	}
+	n := copy(p, c.pending[c.pendingPos:])
+	c.pendingPos += n
+	return n, nil
+}
+
+func (c *packetWebSocketConn) fill() error {
+	_, data, err := c.conn.ReadMessage()
+	if err != nil {
+		return err
+	}
+	if len(data) < 6 {
+		return fmt.Errorf("websocket packet frame too small")
+	}
+	headerSize := binary.BigEndian.Uint16(data[:2])
+	bodySize := binary.BigEndian.Uint32(data[2:6])
+	offset := 6 + int(headerSize)
+	if offset > len(data) {
+		return fmt.Errorf("websocket packet header length mismatch")
+	}
+	if int(bodySize) > len(data)-offset {
+		return fmt.Errorf("websocket packet body length mismatch")
+	}
+	c.pending = append(c.pending[:0], data[offset:offset+int(bodySize)]...)
+	c.pendingPos = 0
+	return nil
+}
+
+func (c *packetWebSocketConn) Write(p []byte) (int, error) {
+	frame := make([]byte, 6+len(p))
+	binary.BigEndian.PutUint16(frame[:2], 0)
+	binary.BigEndian.PutUint32(frame[2:6], uint32(len(p)))
+	copy(frame[6:], p)
+	if err := c.conn.WriteMessage(websocket.BinaryMessage, frame); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+func (c *packetWebSocketConn) Close() error {
+	_ = c.conn.WriteMessage(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
+	)
+	return c.conn.Close()
+}
+
+func (c *packetWebSocketConn) SetDeadline(t time.Time) error {
 	return c.conn.UnderlyingConn().SetDeadline(t)
 }
 

@@ -107,6 +107,7 @@ class SubmitResult(IntEnum):
     OUT_OF_MEMORY = 10
     SEQ_EXHAUSTED = 11
     INTERNAL_ERROR = 12
+    NOT_ADMITTED = 13
 
 
 class RequestResult(IntEnum):
@@ -204,7 +205,8 @@ class MonitorEventMask(IntFlag):
     CONNECTION_READY = 0x1000
     HANDSHAKE_FAILED_PROTOCOL = 0x2000
     HANDSHAKE_FAILED_AUTH = 0x4000
-    ALL = 0x7FFF
+    PEER_ADMISSION_CHANGED = 0x8000
+    ALL = 0xFFFF
 
 
 # Legacy alias. Public surface should prefer MonitorEventMask for masks and
@@ -245,14 +247,21 @@ class ServiceMonitorMask(IntFlag):
     DISCOVERY_SERVICE_UP = 1 << 5
     DISCOVERY_SERVICE_DOWN = 1 << 6
     DISCOVERY_PROVIDERS_CHANGED = 1 << 7
+    PEER_ADMISSION_CHANGED = 1 << 8
     CLOSED = 1 << 17
     ALL = (
         ERROR
         | DISCOVERY_SERVICE_UP
         | DISCOVERY_SERVICE_DOWN
         | DISCOVERY_PROVIDERS_CHANGED
+        | PEER_ADMISSION_CHANGED
         | CLOSED
     )
+
+
+class AdmissionState(IntEnum):
+    SERVING = 1
+    DRAINING = 2
 
 
 class RegistrySocketRole(IntEnum):
@@ -316,6 +325,18 @@ class SpotPeerState(IntEnum):
 class SpotSocketRole(IntEnum):
     PUB = 1
     SUB = 2
+
+
+class SpotServiceAttachmentRole(IntEnum):
+    ROUTER = 1
+    PUB = 2
+    SUB = 3
+
+
+class SpotDispatchEvent(IntEnum):
+    SUBSCRIBE_READABLE = 1
+    ROUTED_READABLE = 2
+    TIMER_READABLE = 3
 
 
 class RegistryState(IntEnum):

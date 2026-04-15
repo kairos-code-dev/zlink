@@ -231,11 +231,18 @@ zlink_recv_handler(socket, on_message, NULL);
 | STREAM (raw) | `zlink_recv_handler()` | `fn(rid, parts, count, userdata)` |
 | STREAM (packet) | `zlink_stream_packet_handler()` | `fn(stream, source_rid, header, body, userdata)` |
 | ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` 의 reply 는 별도 completion callback 으로 전달 |
-| SPOT (routed) | `zlink_spot_handler()` | `fn(source_rid, spot_rid, request_seq, parts, count, userdata)` |
+| SPOT (routed direct callback) | `zlink_spot_handler()` — 선택적, 여전히 지원 | `fn(source_rid, spot_rid, request_seq, parts, count, userdata)` |
+| SPOT (dispatch readable 이벤트) | `zlink_spot_dispatch_event_handler()` — topic/routed/timer를 모두 한 콜백으로 통합 | `fn(spot, zlink_spot_dispatch_event_kind_t kind, userdata)` |
+| SPOT (service-aware subscribe recv) | `zlink_spot_subscribe(spot, ..., service_name_out, topic_id_out, ...)` | N/A — recv 기반; `SUBSCRIBE_READABLE` 이벤트 후 drain |
+| SPOT (service-aware routed recv) | `zlink_spot_recv(spot, ...)` | N/A — recv 기반; `ROUTED_READABLE` 이벤트 후 drain |
 | PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` 또는 `zlink_subscribe()` | N/A |
 | DEALER / ROUTER request | `zlink_dealer_request()` / `zlink_router_request()` 에 전달 | `fn(zlink_request_result_t result, parts, count, userdata)` |
 | Timer | `zlink_timer_handler()` | `fn(timer, fire_count, userdata)` |
 | PUB | N/A | Send-only socket |
+
+하나의 `spot` handle에는 `zlink_spot_handler()`와
+`zlink_spot_dispatch_event_handler()`를 동시에 설치할 수 없다. 먼저 attach한
+쪽이 이기고, 두 번째 attach는 `EBUSY`로 실패한다.
 
 Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업을 피해야 한다.
 느린 처리가 필요하면 user queue에 넣고 별도 thread에서 처리한다.

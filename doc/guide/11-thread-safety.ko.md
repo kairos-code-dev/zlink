@@ -64,7 +64,10 @@ void *worker(void *arg)
     char buf[64];
     for (int i = 0; i < 10000; i++) {
         int len = snprintf(buf, sizeof(buf), "worker-%d msg-%d", w->id, i);
-        zlink_send(w->socket, buf, len, 0);  /* no mutex needed */
+        zlink_msg_t part;
+        zlink_msg_init_size(&part, (size_t)len);
+        memcpy(zlink_msg_data(&part), buf, (size_t)len);
+        zlink_send(w->socket, &part, 1, ZLINK_SEND_FLAGS_NONE); /* mutex 불필요 */
     }
     return NULL;
 }

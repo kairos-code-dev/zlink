@@ -65,11 +65,11 @@ public sealed class test_socket_surface
             typeof(RecvFlags)));
 
         Assert.True(HasPublicInstanceMethod(typeof(StreamSocket),
-            nameof(StreamSocket.AttachStreamRaw)));
+            nameof(StreamSocket.OnPacket)));
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Connect"));
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Disconnect"));
         Assert.False(HasPublicInstanceMethod(typeof(PairSocket),
-            nameof(StreamSocket.AttachStreamRaw)));
+            nameof(StreamSocket.OnPacket)));
         Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
             nameof(DealerSocket.AttachDiscovery)));
         Assert.True(HasPublicInstanceMethod(typeof(RouterSocket),
@@ -86,8 +86,14 @@ public sealed class test_socket_surface
             nameof(DealerSocket.AttachDiscovery)));
         Assert.False(HasPublicInstanceMethod(typeof(XSubSocket),
             nameof(DealerSocket.AttachDiscovery)));
-        Assert.True(HasPublicInstanceMethod(typeof(PairSocket),
+        Assert.False(HasPublicInstanceMethod(typeof(PairSocket),
             nameof(MessageSocketBase.OnReceive)));
+        Assert.False(HasPublicInstanceMethod(typeof(DealerSocket),
+            nameof(MessageSocketBase.OnReceive)));
+        Assert.False(HasPublicInstanceMethod(typeof(RouterSocket),
+            nameof(RoutedMessageSocketBase.OnReceive)));
+        Assert.False(HasPublicInstanceMethod(typeof(StreamSocket),
+            nameof(RoutedMessageSocketBase.OnReceive)));
         Assert.True(HasPublicInstanceMethod(typeof(XPubSocket),
             nameof(XPubSocket.ReceiveSubscriptionEvent)));
         Assert.False(HasPublicInstanceMethod(typeof(XPubSocket),
@@ -98,10 +104,12 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(PubSocket),
             nameof(XPubSocket.TryReceiveSubscriptionEvent),
             typeof(SubscriptionEvent).MakeByRefType()));
-        Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
-            nameof(MessageSocketBase.OnReceive)));
         Assert.False(HasPublicInstanceMethod(typeof(PairSocket),
-            nameof(SubscriberSocketBase.OnSubscribe)));
+            "OnSubscribe"));
+        Assert.False(HasPublicInstanceMethod(typeof(SubSocket),
+            "OnSubscribe"));
+        Assert.False(HasPublicInstanceMethod(typeof(XSubSocket),
+            "OnSubscribe"));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Context)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(SocketBase)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(SocketMonitor)));
@@ -210,7 +218,7 @@ public sealed class test_socket_surface
             nameof(DealerSocket.Request), typeof(Message),
             typeof(Action<RequestResult, IReadOnlyList<Message>>),
             typeof(SendFlags), typeof(TimeSpan?)));
-        Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
+        Assert.False(HasPublicInstanceMethod(typeof(DealerSocket),
             nameof(DealerSocket.OnReceive), typeof(SocketRecvHandler)));
         Assert.True(HasPublicInstanceMethod(typeof(RouterSocket),
             nameof(RouterSocket.RequestAsync), typeof(RoutingId),
@@ -265,6 +273,32 @@ public sealed class test_socket_surface
             typeof(ServiceMonitorEvents)));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "MonitorOpen",
             typeof(ServiceMonitorEvents)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "SetAdmissionState",
+            typeof(AdmissionState)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "GetAdmissionState"));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachRouter",
+            typeof(string), typeof(RouterSocket)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachPubSub",
+            typeof(string), typeof(PubSocket), typeof(SubSocket)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "ServiceAttachmentCount"));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "ServiceAttachmentAt",
+            typeof(int)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "NodeMonitorRecv",
+            typeof(RecvFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.SetAdmissionState), typeof(AdmissionState)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.GetAdmissionState)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot), nameof(Spot.Publish),
+            typeof(string), typeof(string), typeof(Message),
+            typeof(SendFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot), nameof(Spot.SendService),
+            typeof(string), typeof(Message), typeof(SendFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.RequestServiceAsync), typeof(string), typeof(Message),
+            typeof(TimeSpan), typeof(System.Threading.CancellationToken)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.ReceiveSubscriptionEvent), typeof(RecvFlags)));
     }
 
     [Fact]

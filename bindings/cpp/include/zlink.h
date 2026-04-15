@@ -963,6 +963,47 @@ ZLINK_EXPORT void *zlink_spot_new (void *node);
 
 /** @brief Destroy a unified SPOT handle. */
 ZLINK_EXPORT zlink_close_result_t zlink_spot_destroy (void **spot_p);
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_service (
+  void *spot_,
+  const char *service_name_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_);
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_service (
+  void *spot_,
+  const char *service_name_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_publish (
+  void *spot_,
+  const char *service_name_,
+  const char *topic_id_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_);
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscribe (
+  void *spot_,
+  zlink_routing_id_t *source_rid_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  char *service_name_out_,
+  size_t *service_name_len_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  zlink_recv_flags_t flags_);
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscription_event (
+  void *spot_,
+  zlink_routing_id_t *source_rid_out_,
+  int *subscribed_out_,
+  char *service_name_out_,
+  size_t *service_name_len_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  zlink_recv_flags_t flags_);
 
 /* SPOT Node --------------------------------------------------------------- */
 
@@ -1014,6 +1055,15 @@ ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer (
  */
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_discovery (void *node,
                                                    void *discovery);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_router (
+  void *node_,
+  const char *service_name_,
+  void *router_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_pubsub (
+  void *node_,
+  const char *service_name_,
+  void *pub_,
+  void *sub_);
 
 /******************************************************************************/
 /*  Service Monitor / Topology API                                            */
@@ -1110,6 +1160,31 @@ typedef struct zlink_spot_node_subject_filter_t
     uint32_t subject_kind;
 } zlink_spot_node_subject_filter_t;
 
+typedef enum zlink_spot_service_attachment_role_t
+{
+    ZLINK_SPOT_SERVICE_ATTACHMENT_ROUTER = 1,
+    ZLINK_SPOT_SERVICE_ATTACHMENT_PUB = 2,
+    ZLINK_SPOT_SERVICE_ATTACHMENT_SUB = 3
+} zlink_spot_service_attachment_role_t;
+
+typedef struct zlink_spot_service_attachment_stats_t
+{
+    char service_name[256];
+    uint32_t router_count;
+    uint32_t pub_count;
+    uint32_t sub_count;
+    uint32_t auto_router_count;
+    uint32_t auto_pub_count;
+    uint32_t auto_sub_count;
+} zlink_spot_service_attachment_stats_t;
+
+typedef struct zlink_spot_service_monitor_event_t
+{
+    char service_name[256];
+    zlink_spot_service_attachment_role_t role;
+    zlink_monitor_event_t event;
+} zlink_spot_service_monitor_event_t;
+
 typedef struct zlink_registry_status_t
 {
     uint32_t registry_id;
@@ -1170,6 +1245,17 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_subjects_snapshot (
   const zlink_spot_node_subject_filter_t *filter_,
   zlink_spot_node_subject_entry_t *entries_,
   size_t *count_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_service_attachment_count (
+  void *node_,
+  size_t *count_out_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_service_attachment_at (
+  void *node_,
+  size_t index_,
+  zlink_spot_service_attachment_stats_t *out_);
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_node_monitor_recv (
+  void *node_,
+  zlink_spot_service_monitor_event_t *out_,
+  zlink_recv_flags_t flags_);
 ZLINK_EXPORT zlink_config_result_t zlink_registry_status_snapshot (
   void *registry_,
   zlink_registry_status_t *out_);

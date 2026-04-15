@@ -1,5 +1,5 @@
 //! Receive Failure Contract Tests – verify EAGAIN handling and
-//! callback/direct recv conflict behavior.
+//! direct recv error propagation.
 
 use zlink::*;
 
@@ -33,23 +33,6 @@ fn eagain_xpub_subscription_event_returns_none() {
 
     let result = xpub.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT);
     assert!(result.is_err());
-}
-
-#[test]
-fn callback_mode_blocks_direct_recv() {
-    // After installing a callback, direct recv should fail with EBUSY
-    let ctx = Context::new().unwrap();
-    let mut sock = ctx.pair_socket().unwrap();
-    sock.bind("inproc://rf-cb-conflict").unwrap();
-
-    sock.on_receive(|_received| {}).unwrap();
-
-    // Direct recv should now fail
-    let result = sock.recv_with_flags(RecvFlags::DONT_WAIT);
-    assert!(
-        result.is_err(),
-        "direct recv after callback install must fail"
-    );
 }
 
 #[test]

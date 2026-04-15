@@ -35,7 +35,7 @@ void test_spot_multi_publisher ()
     TEST_ASSERT_NOT_NULL (node_c);
     void *pub_a = create_spot_pub_handle (node_a);
     void *pub_b = create_spot_pub_handle (node_b);
-    void *sub_c = create_spot_sub_handle (node_c, NULL);
+    void *sub_c = create_spot_sub_handle (node_c);
     TEST_ASSERT_NOT_NULL (pub_a);
     TEST_ASSERT_NOT_NULL (pub_b);
     TEST_ASSERT_NOT_NULL (sub_c);

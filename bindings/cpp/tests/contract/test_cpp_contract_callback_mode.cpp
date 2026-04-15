@@ -45,12 +45,11 @@ int main ()
     assert (pub_node.valid ());
     assert (sub_node.valid ());
 
-    zlink::service::spot_t pub_spot = pub_node.create_spot ();
-    zlink::service::spot_t sub_spot = sub_node.create_spot ();
-    assert (pub_spot.valid ());
-    assert (sub_spot.valid ());
-
-    sub_spot.set_subscription ("topic:alpha");
+    const std::string service_name = detail::k_spot_service;
+    zlink::service::discovery_t pub_discovery (
+      ctx, zlink::service_type::spot, service_name);
+    assert (pub_discovery.valid ());
+    pub_node.attach_discovery (pub_discovery);
 
     pub_node.bind ("tcp://127.0.0.1:0");
     const std::string endpoint = pub_node.last_endpoint ();
@@ -59,11 +58,20 @@ int main ()
     assert (wait_for_spot_ready (pub_node, false, 1u, 10000));
     assert (wait_for_spot_ready (sub_node, true, 1u, 10000));
 
+    zlink::service::spot_t pub_spot = pub_node.create_spot ();
+    zlink::service::spot_t sub_spot = sub_node.create_spot ();
+    assert (pub_spot.valid ());
+    assert (sub_spot.valid ());
+
+    sub_spot.set_subscription ("topic:alpha");
+
     zlink::message_t outbound =
       detail::make_message ("spot-callback");
-    pub_spot.publish ("topic:alpha", outbound);
+    pub_spot.publish (service_name, "topic:alpha", outbound);
 
     const zlink::topic_message_t inbound = sub_spot.subscribe ();
+    assert (inbound.service_name ());
+    assert (*inbound.service_name () == service_name);
     assert (inbound.topic () == "topic:alpha");
     assert (inbound.parts ().size () == 1);
     const std::string received = inbound.parts ()[0].to_string ();

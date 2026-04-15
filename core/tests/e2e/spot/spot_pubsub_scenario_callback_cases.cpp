@@ -14,7 +14,7 @@ void test_spot_sub_handler_basic ()
     TEST_ASSERT_NOT_NULL (pub_node);
     TEST_ASSERT_NOT_NULL (sub_node);
     void *pub = create_spot_pub_handle (pub_node);
-    void *sub = create_spot_sub_handle (sub_node, NULL);
+    void *sub = create_spot_sub_handle (sub_node);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
 
@@ -62,8 +62,8 @@ void test_spot_recv_callback_isolated_by_handle ()
     TEST_ASSERT_NOT_NULL (sub_a);
     TEST_ASSERT_NOT_NULL (sub_b);
     void *pub = create_spot_pub_handle (pub_node);
-    void *sub_a_handle = create_spot_sub_handle (sub_a, NULL);
-    void *sub_b_handle = create_spot_sub_handle (sub_b, NULL);
+    void *sub_a_handle = create_spot_sub_handle (sub_a);
+    void *sub_b_handle = create_spot_sub_handle (sub_b);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub_a_handle);
     TEST_ASSERT_NOT_NULL (sub_b_handle);

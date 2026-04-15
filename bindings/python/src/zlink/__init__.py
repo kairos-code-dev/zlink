@@ -68,6 +68,8 @@ from ._spot import (
     SpotNodePeerFilter,
     SpotNodeSubjectEntry,
     SpotNodeSubjectFilter,
+    SpotServiceAttachmentStats,
+    SpotServiceMonitorEvent,
 )
 from ._utils import (
     AtomicCounter,
@@ -118,7 +120,10 @@ from ._enums import (
     SpotNodeState,
     SpotPeerSource,
     SpotPeerState,
+    SpotDispatchEvent,
+    AdmissionState,
     SpotSocketRole,
+    SpotServiceAttachmentRole,
 )
 
 SERVICE_TYPE_SPOT = ServiceType.SPOT
@@ -183,6 +188,8 @@ __all__ = [
     "SpotNodePeerFilter",
     "SpotNodeSubjectEntry",
     "SpotNodeSubjectFilter",
+    "SpotServiceAttachmentStats",
+    "SpotServiceMonitorEvent",
     "ZlinkError",
     "SubmitError",
     "RequestError",
@@ -227,5 +234,8 @@ __all__ = [
     "SpotNodeState",
     "SpotPeerSource",
     "SpotPeerState",
+    "SpotDispatchEvent",
+    "AdmissionState",
     "SpotSocketRole",
+    "SpotServiceAttachmentRole",
 ]

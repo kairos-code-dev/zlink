@@ -25,15 +25,17 @@ import (
 )
 
 const (
-	MonitorEventAll             MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_ALL)
-	MonitorEventConnectionReady MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY)
+	MonitorEventAll                  MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_ALL)
+	MonitorEventConnectionReady      MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY)
+	MonitorEventPeerAdmissionChanged MonitorEventMask = MonitorEventMask(C.ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED)
 
-	ServiceMonitorEventAll                       ServiceMonitorEventMask = ServiceMonitorEventError | ServiceMonitorEventClosed | ServiceMonitorEventDiscoveryServiceUp | ServiceMonitorEventDiscoveryServiceDown | ServiceMonitorEventDiscoveryProvidersChanged
 	ServiceMonitorEventError                     ServiceMonitorEventMask = ServiceMonitorEventMask(C.ZLINK_SERVICE_MONITOR_EVENT_ERROR)
 	ServiceMonitorEventClosed                    ServiceMonitorEventMask = ServiceMonitorEventMask(C.ZLINK_SERVICE_MONITOR_EVENT_CLOSED)
 	ServiceMonitorEventDiscoveryServiceUp        ServiceMonitorEventMask = ServiceMonitorEventMask(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP)
 	ServiceMonitorEventDiscoveryServiceDown      ServiceMonitorEventMask = ServiceMonitorEventMask(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN)
 	ServiceMonitorEventDiscoveryProvidersChanged ServiceMonitorEventMask = ServiceMonitorEventMask(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED)
+	ServiceMonitorEventPeerAdmissionChanged      ServiceMonitorEventMask = ServiceMonitorEventMask(C.ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED)
+	ServiceMonitorEventAll                       ServiceMonitorEventMask = ServiceMonitorEventError | ServiceMonitorEventClosed | ServiceMonitorEventDiscoveryServiceUp | ServiceMonitorEventDiscoveryServiceDown | ServiceMonitorEventDiscoveryProvidersChanged | ServiceMonitorEventPeerAdmissionChanged
 )
 
 type MonitorEventMask uint32

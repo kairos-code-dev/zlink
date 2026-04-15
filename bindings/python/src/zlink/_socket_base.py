@@ -6,6 +6,7 @@ import queue
 import threading
 
 from ._enums import (
+    AdmissionState,
     BindResult,
     CloseResult,
     ConfigResult,
@@ -48,6 +49,7 @@ from ._core import (
     _routing_id_bytes,
     _validated_c_string_bytes,
     _validated_c_string_text,
+    _validated_c_string_value,
     _validated_int32,
     _validated_routing_id_bytes,
     _send_buffer,
@@ -417,6 +419,11 @@ class _BaseSocket:
         self._send_ready_handler_thread = None
         self._send_ready_handler_stop = None
         self._send_ready_handler_queue = None
+        self._packet_handler = None
+        self._packet_handler_cb = None
+        self._packet_handler_thread = None
+        self._packet_handler_stop = None
+        self._packet_handler_queue = None
         self._options = CommonSocketOptions(self)
 
     @property
@@ -506,6 +513,19 @@ class _BaseSocket:
             _ = _keepalive
             native_parts.append(native)
         return native_parts
+
+    def get_admission_state(self):
+        raw = ctypes.c_int32()
+        rc = lib().zlink_get_admission_state(self._handle, ctypes.byref(raw))
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return AdmissionState(int(raw.value))
+
+    def set_admission_state(self, state):
+        typed = AdmissionState(int(state))
+        rc = lib().zlink_set_admission_state(self._handle, int(typed))
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def _unsupported_capability(self, capability):
         actual = _socket_type_name(self._socket_type)
@@ -641,6 +661,24 @@ class _BaseSocket:
         self._send_ready_handler_thread = None
         self._send_ready_handler_stop = None
         self._send_ready_handler_queue = None
+        self._packet_handler = None
+        packet_stop = self._packet_handler_stop
+        packet_thread = self._packet_handler_thread
+        packet_queue = self._packet_handler_queue
+        if packet_stop is not None:
+            packet_stop.set()
+        if packet_queue is not None:
+            packet_queue.put(_CALLBACK_SENTINEL)
+        if (
+            packet_thread is not None
+            and packet_thread.is_alive()
+            and packet_thread is not threading.current_thread()
+        ):
+            packet_thread.join(timeout=1.0)
+        self._packet_handler_cb = None
+        self._packet_handler_thread = None
+        self._packet_handler_stop = None
+        self._packet_handler_queue = None
         self._socket_handle.close()
 
     def __enter__(self):
@@ -833,7 +871,7 @@ class _MessageSocket(_Socket):
         routing, owner = _recv_native_parts(self._handle, flags)
         return Received(owner, routing)
 
-    def on_receive(self, handler):
+    def _attach_recv_handler(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
         if self._recv_handler_thread is not None:
@@ -899,7 +937,7 @@ class _RoutedMessageSocket(_MessageSocket):
 class _PublisherSocket(_Socket):
     def publish(self, topic, payload, *, flags=0):
         _ensure_not_in_callback("blocking publish")
-        topic_bytes = _validated_c_string_bytes(topic, field="topic")
+        topic_bytes = _validated_c_string_value(topic, field="topic")
         native_parts = self._native_parts_from_payload(payload)
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
@@ -940,18 +978,18 @@ class _SubscriberSocket(_Socket):
         return self._subscribe_once(flags)
 
     def set_subscription(self, topic):
-        topic_bytes = _validated_c_string_bytes(topic, field="subscription")
+        topic_bytes = _validated_c_string_value(topic, field="subscription")
         rc = lib().zlink_set_subscription(self._handle, topic_bytes)
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def unset_subscription(self, topic):
-        topic_bytes = _validated_c_string_bytes(topic, field="subscription")
+        topic_bytes = _validated_c_string_value(topic, field="subscription")
         rc = lib().zlink_unset_subscription(self._handle, topic_bytes)
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
-    def on_subscribe(self, handler):
+    def _attach_subscribe_handler(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
         if self._subscribe_handler_thread is not None:

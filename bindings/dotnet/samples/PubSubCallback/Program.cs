@@ -20,18 +20,8 @@ SubscriptionEvent subscriptionEvent = publisher.ReceiveSubscriptionEvent();
 if (!subscriptionEvent.Subscribed || subscriptionEvent.Topic != "prices")
     throw new InvalidOperationException("unexpected subscription event");
 
-using var signal = new ManualResetEventSlim(false);
-string? output = null;
-subscriber.OnSubscribe((routingId, topic, parts) =>
-{
-    using (parts[0])
-        output = $"{topic}/{parts[0].GetString()}";
-    signal.Set();
-});
-
 using (Message message = Message.FromString("101.25"))
     publisher.Publish("prices", message);
-SampleSupport.WaitOrThrow(() => signal.IsSet, 2000,
-    "pubsub callback timeout");
+string output = SampleSupport.SubscribeUtf8(subscriber, out string topic, 2000);
 Console.WriteLine(
-    $"[pubsub/callback] publish: \"prices/101.25\" -> subscribe: \"{output}\"");
+    $"[pubsub/recv] publish: \"prices/101.25\" -> subscribe: \"{topic}/{output}\"");

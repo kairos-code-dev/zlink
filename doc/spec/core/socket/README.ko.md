@@ -453,7 +453,7 @@ data-plane `ZLINK_POLLIN`은 `errno=EBUSY`로 실패합니다. 동일 handle에 
 소켓을 닫고 리소스를 해제합니다.
 
 ```c
-int zlink_close (void *s_);
+zlink_close_result_t zlink_close (void *s_);
 ```
 
 소켓을 닫고 관련된 모든 리소스를 해제합니다. 송신 대기열에 남아 있는 메시지는
@@ -465,7 +465,7 @@ int zlink_close (void *s_);
 `errno=ESHUTDOWN`으로 실패합니다. send-ready 또는 monitor 콜백 내에서의
 self-close는 콜백 에필로그까지 지연됩니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CLOSE_OK`, 실패 시 `zlink_close_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **에러:** 핸들이 유효한 소켓이 아니면 `ENOTSOCK`. 콜백이나 작업이 진행 중이면
 `EBUSY`.
@@ -479,7 +479,7 @@ self-close는 콜백 에필로그까지 지연됩니다.
 공통 옵션을 설정합니다.
 
 ```c
-int zlink_set_option (void *handle_,
+zlink_config_result_t zlink_set_option (void *handle_,
                       zlink_option_t option_,
                       const void *optval_,
                       size_t optvallen_);
@@ -491,7 +491,7 @@ int zlink_set_option (void *handle_,
 
 일부 옵션은 소켓을 바인딩하거나 연결하기 전에 설정해야 합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **에러:** 옵션이 알 수 없거나 값이 범위를 벗어나면 `EINVAL`. Context가 종료된
 경우 `ETERM`.
@@ -505,7 +505,7 @@ int zlink_set_option (void *handle_,
 공통 옵션을 조회합니다.
 
 ```c
-int zlink_get_option (void *handle_,
+zlink_config_result_t zlink_get_option (void *handle_,
                       zlink_option_t option_,
                       void *optval_,
                       size_t *optvallen_);
@@ -513,7 +513,7 @@ int zlink_get_option (void *handle_,
 
 공통 옵션의 현재 값을 가져옵니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_set_option`
 
@@ -524,7 +524,7 @@ int zlink_get_option (void *handle_,
 소켓의 라우팅 아이덴티티를 설정합니다.
 
 ```c
-int zlink_set_routing_id (void *handle_,
+zlink_config_result_t zlink_set_routing_id (void *handle_,
                            const void *data_,
                            size_t size_);
 ```
@@ -532,7 +532,7 @@ int zlink_set_routing_id (void *handle_,
 ROUTER 주소 지정을 위한 소켓 아이덴티티를 설정합니다. 최대 255바이트.
 바인딩 또는 연결하기 전에 설정해야 합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_get_routing_id`
 
@@ -543,13 +543,13 @@ ROUTER 주소 지정을 위한 소켓 아이덴티티를 설정합니다. 최대
 소켓의 라우팅 아이덴티티를 조회합니다.
 
 ```c
-int zlink_get_routing_id (void *handle_,
+zlink_config_result_t zlink_get_routing_id (void *handle_,
                            zlink_routing_id_t *out_);
 ```
 
 소켓에 설정된 라우팅 아이덴티티를 가져옵니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_set_routing_id`
 
@@ -560,7 +560,7 @@ int zlink_get_routing_id (void *handle_,
 서버 측 TLS를 구성합니다.
 
 ```c
-int zlink_set_tls_server (void *handle_,
+zlink_config_result_t zlink_set_tls_server (void *handle_,
                            const char *cert_,
                            const char *key_,
                            int require_client_cert_);
@@ -574,7 +574,7 @@ client TLS만, Registry는 client/server TLS를 지원하며, SPOT은 `SpotNode`
 handle에서만 TLS를 지원합니다. unified `Spot`과 SPOT child pub/sub handle은
 `ENOTSUP`로 실패합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_set_tls_client`, `zlink_bind`
 
@@ -585,7 +585,7 @@ handle에서만 TLS를 지원합니다. unified `Spot`과 SPOT child pub/sub han
 클라이언트 측 TLS를 구성합니다.
 
 ```c
-int zlink_set_tls_client (void *handle_,
+zlink_config_result_t zlink_set_tls_client (void *handle_,
                            const char *ca_cert_,
                            const char *hostname_,
                            int trust_system_);
@@ -599,7 +599,7 @@ client TLS만, Registry는 client/server TLS를 지원하며, SPOT은 `SpotNode`
 handle에서만 TLS를 지원합니다. unified `Spot`과 SPOT child pub/sub handle은
 `ENOTSUP`로 실패합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_set_tls_server`, `zlink_connect`
 
@@ -610,7 +610,7 @@ handle에서만 TLS를 지원합니다. unified `Spot`과 SPOT child pub/sub han
 소켓을 주소에 바인딩합니다.
 
 ```c
-int zlink_bind (void *s_, const char *addr_);
+zlink_bind_result_t zlink_bind (void *s_, const char *addr_);
 ```
 
 소켓을 로컬 엔드포인트에 바인딩합니다. 엔드포인트 문자열은
@@ -626,7 +626,7 @@ int zlink_bind (void *s_, const char *addr_);
 시스템이 임시 포트를 할당합니다. 실제 엔드포인트를 가져오려면
 `ZLINK_OPT_LAST_ENDPOINT`를 사용하세요.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_BIND_OK`, 실패 시 `zlink_bind_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **에러:** 주소가 이미 사용 중이면 `EADDRINUSE`. 인터페이스가 존재하지 않으면
 `EADDRNOTAVAIL`. 트랜스포트가 지원되지 않으면 `EPROTONOSUPPORT`.
@@ -640,14 +640,14 @@ int zlink_bind (void *s_, const char *addr_);
 소켓을 원격 주소에 연결합니다.
 
 ```c
-int zlink_connect (void *s_, const char *addr_);
+zlink_connect_result_t zlink_connect (void *s_, const char *addr_);
 ```
 
 소켓을 원격 엔드포인트에 연결합니다. 엔드포인트 형식은 `zlink_bind()`와
 동일합니다. 소켓은 여러 엔드포인트에 연결할 수 있으며, 피어가 사용 불가능해지면
 라이브러리가 자동으로 재연결을 처리합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONNECT_OK`, 실패 시 `zlink_connect_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_bind`, `zlink_disconnect`
 
@@ -658,12 +658,12 @@ int zlink_connect (void *s_, const char *addr_);
 소켓의 주소 바인딩을 해제합니다.
 
 ```c
-int zlink_unbind (void *s_, const char *addr_);
+zlink_connect_result_t zlink_unbind (void *s_, const char *addr_);
 ```
 
 이전에 설정된 바인딩을 제거합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONNECT_OK`, 실패 시 `zlink_connect_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_bind`
 
@@ -674,12 +674,12 @@ int zlink_unbind (void *s_, const char *addr_);
 소켓의 원격 주소 연결을 해제합니다.
 
 ```c
-int zlink_disconnect (void *s_, const char *addr_);
+zlink_connect_result_t zlink_disconnect (void *s_, const char *addr_);
 ```
 
 이전에 설정된 연결을 제거합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONNECT_OK`, 실패 시 `zlink_connect_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_connect`
 
@@ -690,7 +690,7 @@ int zlink_disconnect (void *s_, const char *addr_);
 raw 소켓을 discovery 서비스 뷰에 부착합니다.
 
 ```c
-int zlink_socket_attach_discovery (void *socket_, void *discovery_);
+zlink_config_result_t zlink_socket_attach_discovery (void *socket_, void *discovery_);
 ```
 
 raw ROUTER, DEALER, PUB, SUB 소켓을 discovery 서비스 뷰에 부착합니다.
@@ -698,7 +698,7 @@ raw ROUTER, DEALER, PUB, SUB 소켓을 discovery 서비스 뷰에 부착합니�
 실패합니다. discovery 인스턴스를 destroy하면 부착된 소켓 생명주기가
 종료됩니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_socket`, `zlink_close`
 
@@ -709,7 +709,7 @@ raw ROUTER, DEALER, PUB, SUB 소켓을 discovery 서비스 뷰에 부착합니�
 send-ready 콜백을 설정하거나 교체합니다.
 
 ```c
-bool zlink_send_ready_handler (
+zlink_handler_result_t zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
@@ -726,7 +726,7 @@ readiness 신호 자체는 재시도 성공을 보장하지 않으며, 알림 �
 다시 `BACKPRESSURED`로 실패할 수 있습니다. 지원하지 않는 subject는
 `ENOTSUP`를 반환합니다.
 
-**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_HANDLER_OK`, 실패 시 `zlink_handler_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_send`
 

@@ -63,6 +63,9 @@ func TestReceivedAndTopicConvenienceHelpersUseRecvError(t *testing.T) {
 			t.Fatalf("TopicMessage.SinglePartOrError() error type = %T, want *RecvError", err)
 		}
 	}
+	if topic.ServiceName() != "" || topic.HasServiceName() {
+		t.Fatalf("TopicMessage zero value should not report a service name")
+	}
 }
 
 func TestReceivedReplyHelpersCarryCanonicalMetadata(t *testing.T) {
@@ -243,5 +246,36 @@ func TestSubscriptionEventHasRoutingID(t *testing.T) {
 	}
 	if !event.Subscribed() {
 		t.Fatalf("Subscribed() = false, want true")
+	}
+	if event.HasServiceName() {
+		t.Fatalf("SubscriptionEvent zero service name should report false")
+	}
+}
+
+func TestExportedSpecShapeForSpotServiceBindingTypes(t *testing.T) {
+	assertField := func(name string, typ reflect.Type, kind reflect.Kind) {
+		field, ok := typ.FieldByName(name)
+		if !ok {
+			t.Fatalf("%s should expose field %s", typ.Name(), name)
+		}
+		if kind != reflect.Invalid && field.Type.Kind() != kind {
+			t.Fatalf("%s.%s kind = %v, want %v", typ.Name(), name, field.Type.Kind(), kind)
+		}
+	}
+
+	assertField("serviceName", reflect.TypeOf(TopicMessage{}), reflect.String)
+	assertField("serviceName", reflect.TypeOf(SubscriptionEvent{}), reflect.String)
+	assertField("AdmissionState", reflect.TypeOf(SpotNodePeerEntry{}), reflect.Int)
+	assertField("AdmissionState", reflect.TypeOf(MemberPeerEntry{}), reflect.Int)
+	assertField("ServiceName", reflect.TypeOf(SpotServiceAttachmentStats{}), reflect.String)
+	assertField("RouterCount", reflect.TypeOf(SpotServiceAttachmentStats{}), reflect.Uint32)
+	assertField("Role", reflect.TypeOf(SpotServiceMonitorEvent{}), reflect.Int)
+	assertField("Event", reflect.TypeOf(SpotServiceMonitorEvent{}), reflect.Uint64)
+
+	if SpotServiceAttachmentRouter == SpotServiceAttachmentPub || SpotServiceAttachmentRouter == SpotServiceAttachmentSub || SpotServiceAttachmentPub == SpotServiceAttachmentSub {
+		t.Fatalf("SpotServiceAttachmentRole constants should be distinct")
+	}
+	if AdmissionStateServing == AdmissionStateDraining {
+		t.Fatalf("AdmissionState constants should be distinct")
 	}
 }

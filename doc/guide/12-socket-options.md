@@ -397,24 +397,23 @@ Some socket types override common defaults at creation time:
 | `STREAM` | `SNDBUF` | `262144` (if unset) | Large RAW transfer support |
 | `STREAM` | `RCVBUF` | `262144` (if unset) | Large RAW receive support |
 
-> **Observable behavior change (migration note):**
+> **Defaults and observable behavior:**
 >
-> - `ROUTER_MANDATORY` default changed from `0` to `1`. An unset ROUTER
->   now returns `ZLINK_SUBMIT_NOT_CONNECTED` for sends to unconnected
->   peers instead of silently dropping. Writable / `ZLINK_POLLOUT`
->   observation also surfaces readiness only while a reachable peer
->   exists.
-> - `ROUTER_HANDOVER` default changed from `0` to `1`. When a duplicate
->   peer identity arrives, the new connection takes over the existing
->   pipe. Set it explicitly to `0` to keep the legacy "keep old pipe"
->   behavior.
-> - `PUB_NODROP` default changed from `0` to `1`. `zlink_publish()` now
->   returns `ZLINK_SUBMIT_BACKPRESSURED` on HWM instead of silently
->   dropping. Workloads that preferred loss-tolerant progress must set
->   this option to `0` explicitly.
+> - `ROUTER_MANDATORY` defaults to `1`. An unset ROUTER returns
+>   `ZLINK_SUBMIT_NOT_CONNECTED` for sends to unconnected peers instead
+>   of silently dropping. Writable / `ZLINK_POLLOUT` observation also
+>   surfaces readiness only while a reachable peer exists. Set the
+>   option to `0` explicitly if silent-drop is required.
+> - `ROUTER_HANDOVER` defaults to `1`. When a duplicate peer identity
+>   arrives, the new connection takes over the existing pipe. Set it
+>   explicitly to `0` to keep the old pipe and reject the new one.
+> - `PUB_NODROP` defaults to `1`. `zlink_publish()` returns
+>   `ZLINK_SUBMIT_BACKPRESSURED` on HWM instead of silently dropping.
+>   Loss-tolerant workloads that prefer dropping on HWM must set this
+>   option to `0` explicitly.
 >
-> These changes do not alter the option constants or their on/off
-> semantics; only the **default profile** moves.
+> These defaults only govern the **default profile**; the option
+> constants and their on/off semantics are unchanged.
 
 ## Per-Socket-Type Dedicated Options
 

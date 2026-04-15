@@ -8,6 +8,7 @@ const { once } = require('node:events');
 function parseArgs(argv, defaults = {}) {
   const options = {
     endpoint: '',
+    peerEndpoint: '',
     controlEndpoint: '',
     msgSize: 256,
     warmup: 1,
@@ -19,6 +20,8 @@ function parseArgs(argv, defaults = {}) {
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--endpoint') {
       options.endpoint = argv[++i];
+    } else if (argv[i] === '--peer-endpoint') {
+      options.peerEndpoint = argv[++i];
     } else if (argv[i] === '--control-endpoint') {
       options.controlEndpoint = argv[++i];
     } else if (argv[i] === '--msg-size') {

@@ -7,7 +7,6 @@ package zlink
 #include "zlink.h"
 
 extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
-extern void goZlinkRouterRequestTrampoline(zlink_routing_id_t *source_node_rid_, zlink_routing_id_t *source_spot_rid_, uint64_t request_seq_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 
 static inline int zlink_dealer_request_go_local(void *dealer, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
 	return zlink_dealer_request(dealer, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
@@ -17,15 +16,11 @@ static inline int zlink_router_request_go_local(void *router, const zlink_routin
 	return zlink_router_request(router, peer_rid, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
 }
 
-static inline int zlink_router_handler_go_local(void *router, uintptr_t userdata) {
-	return zlink_router_handler(router, (zlink_router_handler_fn)goZlinkRouterRequestTrampoline, (void *)userdata);
-}
 */
 import "C"
 
 import (
 	"runtime/cgo"
-	"sync"
 	"time"
 )
 
@@ -47,12 +42,7 @@ type dealerRequestSupport struct {
 }
 
 type routerRequestSupport struct {
-	socket        *RouterSocket
-	dataQueue     chan *Received
-	closeOnce     sync.Once
-	handlerMu     sync.RWMutex
-	dataHandler   func(*Received)
-	requestHandle cgo.Handle
+	socket *RouterSocket
 }
 
 func newDealerRequestSupport(socket *DealerSocket) *dealerRequestSupport {
@@ -90,9 +80,7 @@ func (r *dealerRequestSupport) RequestCallback(callback RequestReplyCallback, fl
 
 func (r *dealerRequestSupport) Recv(flags RecvFlags) (*Received, error) { return r.socket.Recv(flags) }
 
-func (r *dealerRequestSupport) OnReceive(handler func(*Received)) error { return r.socket.OnReceive(handler) }
-
-func (r *dealerRequestSupport) Close() error { return r.socket.Close() }
+func (r *dealerRequestSupport) onReceive(handler func(*Received)) error { return r.socket.onReceive(handler) }
 
 func (r *dealerRequestSupport) startRequest(flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
 	return startDealerRequest(r.socket, flags, timeout, parts...)
@@ -132,16 +120,7 @@ func startDealerRequest(socket *DealerSocket, flags SendFlags, timeout time.Dura
 }
 
 func newRouterRequestSupport(socket *RouterSocket) *routerRequestSupport {
-	rr := &routerRequestSupport{
-		socket:    socket,
-		dataQueue: make(chan *Received, 64),
-	}
-	rr.requestHandle = cgo.NewHandle(rr)
-	if err := handlerErrorFromResult(C.zlink_router_handler_go_local(socket.raw(), C.uintptr_t(rr.requestHandle))); err != nil {
-		rr.requestHandle.Delete()
-		panic(err)
-	}
-	return rr
+	return &routerRequestSupport{socket: socket}
 }
 
 func (r *routerRequestSupport) Socket() *RouterSocket { return r.socket }
@@ -197,54 +176,6 @@ func (r *routerRequestSupport) Reply(routingID RoutingID, requestSeq uint64, fla
 	return nil
 }
 
-func (r *routerRequestSupport) Recv(flags RecvFlags) (*Received, error) {
-	r.handlerMu.RLock()
-	handler := r.dataHandler
-	r.handlerMu.RUnlock()
-	if handler != nil {
-		return nil, &RecvError{Result: RecvBusy, internalErrno: int(C.EBUSY)}
-	}
-	select {
-	case received, ok := <-r.dataQueue:
-		if !ok {
-			return nil, &RecvError{Result: RecvTerminated, internalErrno: int(C.ETERM)}
-		}
-		return received, nil
-	default:
-		if flags == RecvFlagsDontWait {
-			return nil, &RecvError{Result: RecvNoData, internalErrno: int(C.EAGAIN)}
-		}
-	}
-	received, ok := <-r.dataQueue
-	if !ok {
-		return nil, &RecvError{Result: RecvTerminated, internalErrno: int(C.ETERM)}
-	}
-	return received, nil
-}
-
-func (r *routerRequestSupport) OnReceive(handler func(*Received)) error {
-	if handler == nil {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	r.handlerMu.Lock()
-	r.dataHandler = handler
-	r.handlerMu.Unlock()
-	return nil
-}
-
-func (r *routerRequestSupport) Close() error {
-	var err error
-	r.closeOnce.Do(func() {
-		if r.requestHandle != 0 {
-			r.requestHandle.Delete()
-			r.requestHandle = 0
-		}
-		err = r.socket.Close()
-		close(r.dataQueue)
-	})
-	return err
-}
-
 func (r *routerRequestSupport) startRequest(routingID RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
 	return startRouterRequest(r.socket, routingID, flags, timeout, parts...)
 }
@@ -282,21 +213,6 @@ func startRouterRequest(socket *RouterSocket, routingID RoutingID, flags SendFla
 	}
 	prepared.commit()
 	return resultCh, nil
-}
-
-func (r *routerRequestSupport) deliverRequest(received *Received) {
-	r.handlerMu.RLock()
-	handler := r.dataHandler
-	r.handlerMu.RUnlock()
-	if handler != nil {
-		handler(received)
-		return
-	}
-	select {
-	case r.dataQueue <- received:
-	default:
-		_ = received.Close()
-	}
 }
 
 func requestTimeoutMillis(timeout time.Duration) uint32 {
@@ -349,32 +265,4 @@ func goZlinkReplyTrampoline(result C.zlink_request_result_t, parts *C.zlink_msg_
 		return
 	}
 	state.result <- requestResult{result: RequestResult(result), parts: nil}
-}
-
-//export goZlinkRouterRequestTrampoline
-func goZlinkRouterRequestTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpotRID *C.zlink_routing_id_t, requestSeq C.uint64_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	value, ok := safeHandleValue(userdata)
-	if !ok {
-		return
-	}
-	router := value.(*routerRequestSupport)
-	clonedParts, err := takeParts(parts, partCount)
-	if err != nil {
-		return
-	}
-	nodeRID := routingIDFromCPtr(sourceNodeRID)
-	spotRID := routingIDFromCPtr(sourceSpotRID)
-	received := &Received{
-		routingID:     nodeRID,
-		spotRID:       spotRID,
-		parts:         clonedParts,
-		requestSeq:    uint64(requestSeq),
-		hasRequestSeq: true,
-	}
-	if spotRID.Size() == 0 {
-		received.reply = receivedReplyToRouter(router.socket.Reply, nodeRID, uint64(requestSeq))
-	} else {
-		received.reply = receivedReplyToSpotPeer(router.socket, nodeRID, spotRID, uint64(requestSeq))
-	}
-	router.deliverRequest(received)
 }

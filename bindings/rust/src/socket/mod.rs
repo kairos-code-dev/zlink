@@ -34,7 +34,7 @@ use crate::error::{
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, Message, RoutingId};
-use crate::service::Discovery;
+use crate::service::{AdmissionState, Discovery};
 
 // ---------------------------------------------------------------------------
 // CallbackBox – type-erased, owned callback pointer
@@ -77,9 +77,8 @@ unsafe fn drop_erased<F>(ptr: *mut c_void) {
 #[allow(dead_code)]
 pub(crate) struct SocketInner {
     pub handle: *mut c_void,
-    recv_cb: Option<CallbackBox>,
-    sub_cb: Option<CallbackBox>,
     send_ready_cb: Option<CallbackBox>,
+    packet_cb: Option<CallbackBox>,
 }
 
 unsafe impl Send for SocketInner {}
@@ -99,9 +98,8 @@ impl SocketInner {
         }
         Ok(Self {
             handle,
-            recv_cb: None,
-            sub_cb: None,
             send_ready_cb: None,
+            packet_cb: None,
         })
     }
 
@@ -132,6 +130,16 @@ impl SocketInner {
             ConnectError::new(crate::error::ConnectResult::InvalidArgument, libc::EINVAL)
         })?;
         check_connect_rc(unsafe { ffi::zlink_disconnect(self.handle, c.as_ptr()) })
+    }
+
+    pub fn admission_state(&self) -> Result<AdmissionState, ConfigError> {
+        let mut raw = ffi::zlink_admission_state_t::ZLINK_ADMISSION_SERVING;
+        check_config_rc(unsafe { ffi::zlink_get_admission_state(self.handle, &mut raw) })?;
+        Ok(AdmissionState::from_raw(raw))
+    }
+
+    pub fn set_admission_state(&self, state: AdmissionState) -> Result<(), ConfigError> {
+        check_config_rc(unsafe { ffi::zlink_set_admission_state(self.handle, state.to_raw()) })
     }
 
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
@@ -365,6 +373,7 @@ impl SocketInner {
         let parts = take_parts(parts_ptr, part_count);
         Ok(TopicMessage::new(
             RoutingId::from_raw_optional(rid),
+            None,
             topic,
             parts,
         ))
@@ -404,6 +413,7 @@ impl SocketInner {
         let parts = take_parts(parts_ptr, part_count);
         Ok(Some(TopicMessage::new(
             RoutingId::from_raw_optional(rid),
+            None,
             topic,
             parts,
         )))
@@ -452,6 +462,7 @@ impl SocketInner {
         let topic = cstr_buf_to_string(&topic_buf, topic_len);
         Ok(SubscriptionEvent::new(
             RoutingId::from_raw_optional(rid),
+            None,
             subscribed != 0,
             topic,
         ))
@@ -490,42 +501,13 @@ impl SocketInner {
         let topic = cstr_buf_to_string(&topic_buf, topic_len);
         Ok(Some(SubscriptionEvent::new(
             RoutingId::from_raw_optional(rid),
+            None,
             subscribed != 0,
             topic,
         )))
     }
 
     // -- Callback installation ---------------------------------------------
-
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
-    where
-        F: Fn(Received) + Send + 'static,
-    {
-        let (cb, userdata) = CallbackBox::new(handler);
-        let rc = unsafe { ffi::zlink_recv_handler(self.handle, recv_trampoline::<F>, userdata) };
-        if rc != 0 {
-            drop(cb); // free on failure
-            return check_handler_rc(rc);
-        }
-        self.recv_cb = Some(cb);
-        Ok(())
-    }
-
-    pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), HandlerError>
-    where
-        F: Fn(TopicMessage) + Send + 'static,
-    {
-        let (cb, userdata) = CallbackBox::new(handler);
-        let rc = unsafe {
-            ffi::zlink_subscribe_handler(self.handle, subscribe_trampoline::<F>, userdata)
-        };
-        if rc != 0 {
-            drop(cb);
-            return check_handler_rc(rc);
-        }
-        self.sub_cb = Some(cb);
-        Ok(())
-    }
 
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
@@ -814,9 +796,8 @@ impl SocketInner {
         }
         check_close_rc(unsafe { ffi::zlink_close(self.handle) })?;
         self.handle = ptr::null_mut();
-        self.recv_cb = None;
-        self.sub_cb = None;
         self.send_ready_cb = None;
+        self.packet_cb = None;
         Ok(())
     }
 }
@@ -831,46 +812,6 @@ impl Drop for SocketInner {
             }
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Trampoline functions for native callbacks
-// ---------------------------------------------------------------------------
-
-unsafe extern "C" fn recv_trampoline<F: Fn(Received) + Send + 'static>(
-    source_rid: *const ffi::zlink_routing_id_t,
-    parts: *mut ffi::zlink_msg_t,
-    part_count: usize,
-    userdata: *mut c_void,
-) {
-    let handler = unsafe { &*(userdata as *const F) };
-    let rid = unsafe { *source_rid };
-    let parts_vec = take_parts(parts, part_count);
-    handler(Received::new(RoutingId::from_raw_optional(rid), parts_vec));
-}
-
-pub(crate) unsafe extern "C" fn subscribe_trampoline<F: Fn(TopicMessage) + Send + 'static>(
-    source_rid: *const ffi::zlink_routing_id_t,
-    topic: *const i8,
-    topic_len: usize,
-    parts: *mut ffi::zlink_msg_t,
-    part_count: usize,
-    userdata: *mut c_void,
-) {
-    let handler = unsafe { &*(userdata as *const F) };
-    let rid = unsafe { *source_rid };
-    let topic_str = if topic.is_null() || topic_len == 0 {
-        String::new()
-    } else {
-        let bytes = unsafe { std::slice::from_raw_parts(topic as *const u8, topic_len) };
-        String::from_utf8_lossy(bytes).into_owned()
-    };
-    let parts_vec = take_parts(parts, part_count);
-    handler(TopicMessage::new(
-        RoutingId::from_raw_optional(rid),
-        topic_str,
-        parts_vec,
-    ));
 }
 
 pub(crate) unsafe extern "C" fn send_ready_trampoline<F: Fn() + Send + 'static>(
@@ -1026,6 +967,15 @@ macro_rules! impl_base_socket {
             }
             pub fn last_endpoint(&self) -> Result<String, crate::error::ConfigError> {
                 self.inner.last_endpoint()
+            }
+            pub fn admission_state(&self) -> Result<crate::service::AdmissionState, crate::error::ConfigError> {
+                self.inner.admission_state()
+            }
+            pub fn set_admission_state(
+                &self,
+                state: crate::service::AdmissionState,
+            ) -> Result<(), crate::error::ConfigError> {
+                self.inner.set_admission_state(state)
             }
             pub(crate) fn set_linger(&self, d: Duration) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_linger(d)

@@ -37,6 +37,9 @@ Current alignment notes:
 - both runners are recv-only and follow the policy metric header / RESULT
   contract
 - `MULTI_STREAM` uses the Node public API client/server pair in this tree
+- SPOT benchmarks attach explicit service-aware `PUB + SUB` pairs with
+  `attachPubSub()` before `createSpot()`, then publish with an explicit
+  service name; they do not infer service identity from `statusSnapshot()`
 - result files are written under the shared `perf/results/{single,multi}/report`
   layout required by policy
 - benchmark code is split by pattern file, and the entry scripts select the

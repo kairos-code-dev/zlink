@@ -68,13 +68,12 @@ test('recvHandler delivers multipart Message instances', () => {
   ctx.close();
 });
 
-test('onReceive blocks direct recv on the same socket', () => {
+test('pair surface stays recv-only on the canonical api', () => {
   const ctx = new zlink.Context();
   const receiver = new zlink.PairSocket(ctx);
 
-  receiver.onReceive(() => {});
-
-  assert.throws(() => receiver.recv(), /busy|callback|state|recv/i);
+  assert.equal(receiver.onReceive, undefined);
+  assert.equal(typeof receiver.recv, 'function');
 
   receiver.close();
   ctx.close();

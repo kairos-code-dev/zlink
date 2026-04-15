@@ -26,7 +26,7 @@
 
 `ZLINK_PUB_OPT_NODROP`의 기본값은 `1`입니다. HWM이 찼을 때 조용히 drop하는
 대신 `zlink_publish()`가 `ZLINK_SUBMIT_BACKPRESSURED`를 반환합니다. 호출자가
-예전 동작(조용한 drop)이 필요하면 명시적으로 `0`으로 설정해야 합니다.
+조용한 drop 동작을 원하면 명시적으로 `0`으로 설정해야 합니다.
 
 ## 함수
 
@@ -35,7 +35,7 @@
 PUB/XPUB 소켓, spot-pub, spotnode-pub 전용 옵션을 설정합니다.
 
 ```c
-int zlink_set_pub_option (void *handle_,
+zlink_config_result_t zlink_set_pub_option (void *handle_,
                            zlink_pub_option_t option_,
                            const void *optval_,
                            size_t optvallen_);
@@ -45,9 +45,7 @@ PUB/XPUB 소켓 옵션을 설정합니다. spot-pub과 spotnode-pub 핸들에도
 적용됩니다. 모든 소켓 타입에 공유되는 공통 옵션은 `zlink_set_option()`을
 사용하세요.
 
-**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
-`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
-`zlink_errno()`로 유지됩니다.
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_get_pub_option`, `zlink_set_option`
 
@@ -58,7 +56,7 @@ PUB/XPUB 소켓 옵션을 설정합니다. spot-pub과 spotnode-pub 핸들에도
 PUB/XPUB 소켓, spot-pub, spotnode-pub 전용 옵션을 조회합니다.
 
 ```c
-int zlink_get_pub_option (void *handle_,
+zlink_config_result_t zlink_get_pub_option (void *handle_,
                            zlink_pub_option_t option_,
                            void *optval_,
                            size_t *optvallen_);
@@ -66,9 +64,7 @@ int zlink_get_pub_option (void *handle_,
 
 PUB/XPUB 소켓 옵션의 현재 값을 가져옵니다.
 
-**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
-`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
-`zlink_errno()`로 유지됩니다.
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_set_pub_option`
 
@@ -106,7 +102,7 @@ NULL이거나 지원하지 않는 타입이면 `EINVAL`. subject 타입이 publi
 
 ### 논블로킹 publish
 
-기존 publish API를 이용한 논블로킹 발행입니다.
+publish API를 이용한 논블로킹 발행입니다.
 
 ```c
 zlink_submit_result_t zlink_publish (void *subject_,
@@ -135,7 +131,7 @@ zlink_submit_result_t zlink_publish (void *subject_,
 send-ready 콜백을 설정하거나 교체합니다.
 
 ```c
-bool zlink_send_ready_handler (
+zlink_handler_result_t zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
@@ -149,6 +145,6 @@ bool zlink_send_ready_handler (
 readiness 신호는 송신을 다시 시도할 가치가 있다는 뜻이며, 재시도가 반드시
 성공한다는 보장은 아닙니다. 지원하지 않는 subject는 `ENOTSUP`를 반환합니다.
 
-**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_HANDLER_OK`, 실패 시 `zlink_handler_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_send`

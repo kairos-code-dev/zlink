@@ -1,8 +1,10 @@
 package samplecommon
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"runtime"
@@ -39,6 +41,47 @@ func DialEndpoint(endpoint string) net.Conn {
 	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	Must(err)
 	return conn
+}
+
+func WriteStreamPacket(conn net.Conn, body []byte) {
+	frame := make([]byte, 6+len(body))
+	binary.BigEndian.PutUint16(frame[:2], 0)
+	binary.BigEndian.PutUint32(frame[2:6], uint32(len(body)))
+	copy(frame[6:], body)
+	_, err := conn.Write(frame)
+	Must(err)
+}
+
+func ReadStreamPacketBody(conn net.Conn) []byte {
+	var prefix [6]byte
+	_, err := io.ReadFull(conn, prefix[:])
+	Must(err)
+	headerSize := binary.BigEndian.Uint16(prefix[:2])
+	bodySize := binary.BigEndian.Uint32(prefix[2:6])
+	if headerSize > 0 {
+		_, err := io.CopyN(io.Discard, conn, int64(headerSize))
+		Must(err)
+	}
+	body := make([]byte, int(bodySize))
+	_, err = io.ReadFull(conn, body)
+	Must(err)
+	return body
+}
+
+func FrameStreamPacketMessage(header, body *zlink.Message) *zlink.Message {
+	if header == nil || body == nil {
+		Must(fmt.Errorf("frame stream packet requires non-nil messages"))
+	}
+	headerData := header.Data()
+	bodyData := body.Data()
+	frame := make([]byte, 6+len(headerData)+len(bodyData))
+	binary.BigEndian.PutUint16(frame[:2], uint16(len(headerData)))
+	binary.BigEndian.PutUint32(frame[2:6], uint32(len(bodyData)))
+	copy(frame[6:], headerData)
+	copy(frame[6+len(headerData):], bodyData)
+	msg, err := zlink.NewMessage(frame)
+	Must(err)
+	return msg
 }
 
 func OpenMonitor(socket zlink.SocketTarget) *zlink.SocketMonitor {

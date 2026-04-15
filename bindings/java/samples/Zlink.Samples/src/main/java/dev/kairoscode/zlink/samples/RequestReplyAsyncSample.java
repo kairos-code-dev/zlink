@@ -31,8 +31,8 @@ public final class RequestReplyAsyncSample {
 
             CompletableFuture<Void> replyHandled = new CompletableFuture<>();
 
-            routerSocket.onReceive(received -> {
-                try (received) {
+            Thread routerThread = new Thread(() -> {
+                try (var received = routerSocket.recv()) {
                     String request = SampleSupport.singleUtf8(received);
                     if (!SampleSupport.DEALER_REQUEST.equals(request)) {
                         throw new IllegalStateException("unexpected request: " + request);
@@ -52,7 +52,8 @@ public final class RequestReplyAsyncSample {
                         : new IllegalStateException(
                             "request reply async sample failed", error);
                 }
-            });
+            }, "request-reply-async-router");
+            routerThread.start();
 
             CompletableFuture<Void> roundTrip;
             try (Message request = Message.copyOfUtf8(SampleSupport.DEALER_REQUEST)) {

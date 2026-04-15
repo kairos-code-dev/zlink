@@ -14,18 +14,18 @@ Aligned Node bindings for `libzlink`.
 - discovery attachment: `attachDiscovery(discovery)` on `DealerSocket`,
   `RouterSocket`, `PubSocket`, `SubSocket`
 - publisher sockets: `publish(topic, message|parts)`,
-  `tryPublish(topic, message|parts)`, `onSendReady(handler)`
-- message sockets: `send(message|parts)`, `trySend(message|parts)`,
-  `recv()`, `tryRecv()`, `onReceive(handler)`, `onSendReady(handler)`
+  `onSendReady(handler)`
+- message sockets: `send(message|parts)`, `recv(flags?)`,
+  `onSendReady(handler)`
 - routed sockets: `send(routingId, message|parts)`,
-  `trySend(routingId, message|parts)`, `recv()`, `tryRecv()`,
-  `onReceive(handler)`, `onSendReady(handler)`
+  `recv(flags?)`,
+  `onSendReady(handler)`
 - subscriber sockets: `setSubscription(topicOrPattern)`,
-  `unsetSubscription(topicOrPattern)`, `subscribe()`, `trySubscribe()`,
-  `onSubscribe(handler)`
+  `unsetSubscription(topicOrPattern)`, `subscribe(flags?)`
 - `XPubSocket`: `receiveSubscriptionEvent()`,
-  `tryReceiveSubscriptionEvent()`
-- `StreamSocket`: `setRoutingId()`, `getRoutingId()`
+  `receiveSubscriptionEvent(flags?)`
+- `StreamSocket`: `setRoutingId()`, `getRoutingId()`, `recv(flags?)`,
+  `onPacket(handler)`
 - TLS helpers: `setTlsServer(cert, key, requireClient?)`,
   `setTlsClient(ca, host, trust?)` on sockets, `Registry`, and `SpotNode`
 - canonical option facades:
@@ -37,8 +37,8 @@ Aligned Node bindings for `libzlink`.
   - `SubSocketOptions`
 - context option facade: `ContextOptions`
 - socket option access: `socket.options.*`
-- monitors: `monitorOpen(events?)` with default `ALL`, then `recv()`,
-  `tryRecv()`, `onEvent()`
+- monitors: `monitorOpen(events?)` with default `ALL`, then `recv(flags?)`,
+  `onEvent()`
 
 `Context.options` should be configured immediately after constructing the
 context and before creating sockets.
@@ -65,11 +65,9 @@ Canonical receive results are domain objects:
 - legacy flags-based send/recv, raw stream attach/detach helpers, and raw
   socket option bags are not part of the public package surface
 
-Not part of the canonical or sample contract:
-length-prefixed stream framing such as `len32be`.
-
-Not yet part of the canonical raw surface:
-raw socket TLS convenience helpers, raw publish(topic, payload).
+Not part of the canonical stream API contract:
+length-prefixed stream framing such as `len32be` is only a sample helper and
+is not exposed as a public `StreamSocket` method.
 
 ## Service Surface
 
@@ -79,9 +77,16 @@ raw socket TLS convenience helpers, raw publish(topic, payload).
 - `new SpotNode(ctx)`
 - `new Spot(node)`
 
-`Spot` follows the same multipart/domain-return direction:
-`publish()` / `tryPublish()`, `setSubscription()` / `unsetSubscription()`,
-`subscribe()` / `trySubscribe()`, `onSubscribe()`, `onSendReady()`.
+`SpotNode` also exposes `attachRouter(serviceName, router)`,
+`attachPubSub(serviceName, pub, sub)`, `serviceAttachmentCount()`,
+`serviceAttachmentAt(index)`, and `nodeMonitorRecv(flags?)`.
+
+`Spot` is service-aware and uses explicit service names on the data plane:
+`publish(serviceName, topic, ...)`, `sendService(serviceName, ...)`,
+`requestService(serviceName, ...)`, `setSubscription()` /
+`unsetSubscription()`, `subscribe(flags?)`,
+`receiveSubscriptionEvent()`, `onRoutedReceive()`, `onDispatchEvent()`, and
+`onSendReady()`.
 
 `Discovery` uses `connectRegistry()`, `setValue()` / `getValue()`,
 `setMetadata()` / `getMetadata()`, `memberPeers()`,
@@ -100,11 +105,11 @@ raw socket TLS convenience helpers, raw publish(topic, payload).
 
 `RegistryQueryClient` uses `connect()` and `snapshot(filter?)`.
 
-`SocketMonitor` uses `recv()`, `tryRecv()`, `onEvent()`, `snapshot()`,
-`close()`.
-`ServiceMonitor` uses `recv()`, `tryRecv()`, `onEvent()`, `snapshot()`,
-`close()`. Service monitor events are returned as typed `ServiceEvent`
-objects.
+`SocketMonitor` uses `recv(flags?)`, `onEvent()`, `snapshot()`,
+  `close()`.
+`ServiceMonitor` uses `recv(flags?)`, `onEvent()`, `snapshot()`,
+  `close()`. Service monitor events are returned as typed `ServiceEvent`
+  objects.
 
 `*_READY_CHANGED` monitor events are readiness edge/state notifications.
 Node bindings must not interpret `event.value` as an aggregate ready count, and

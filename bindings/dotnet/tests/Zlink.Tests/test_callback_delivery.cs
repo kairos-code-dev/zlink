@@ -1,4 +1,8 @@
 using System;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using Xunit;
 
@@ -6,62 +10,86 @@ namespace Zlink.Tests;
 
 public sealed class test_callback_delivery
 {
+    private static TcpClient ConnectRawClient(int port)
+    {
+        var client = new TcpClient();
+        client.NoDelay = true;
+        client.ReceiveTimeout = 5000;
+        client.SendTimeout = 5000;
+        client.Connect(IPAddress.Loopback, port);
+        return client;
+    }
+
+    private static void SendAll(NetworkStream stream, ReadOnlySpan<byte> payload)
+    {
+        stream.Write(payload);
+        stream.Flush();
+    }
+
+    private static byte[] ReceiveExact(NetworkStream stream, int size)
+    {
+        byte[] buffer = new byte[size];
+        int read = 0;
+        while (read < size)
+        {
+            int n = stream.Read(buffer, read, size - read);
+            if (n <= 0)
+                throw new TimeoutException("stream receive timeout");
+            read += n;
+        }
+
+        return buffer;
+    }
+
     [Fact]
-    public void recv_callback_hops_to_registered_context_and_send_semantics_hold()
+    public void stream_packet_handler_hops_to_registered_context_and_send_semantics_hold()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
         using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
+        using var stream = new StreamSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp",
-            "callback-delivery-recv");
-        sender.Bind(endpoint);
-        receiver.Connect(endpoint);
+            "callback-delivery-stream");
+        int port = CoreTestSupport.ExtractPort(endpoint);
+        stream.Bind(endpoint);
 
         using var callbackSignal = new ManualResetEventSlim(false);
         using var callbackContext = new SingleThreadSynchronizationContext();
-        string? receivedPayload = null;
+        Message? observedPayload = null;
         int callbackThreadId = -1;
 
         callbackContext.Invoke(() =>
         {
-            receiver.OnReceive((routingId, parts) =>
+            stream.OnPacket((routingId, payload) =>
             {
                 callbackThreadId = Environment.CurrentManagedThreadId;
-                receivedPayload = parts[0].GetString();
+                observedPayload = payload;
                 try
                 {
                     using Message reply = Message.FromString("pong");
-                    receiver.Send(reply);
+                    stream.Send(routingId, reply);
                 }
                 finally
                 {
-                    foreach (Message part in parts)
-                        part.Dispose();
                     callbackSignal.Set();
                 }
+                return 0;
             });
         });
 
-        using Message request = Message.FromString("ping");
-        sender.Send(request);
+        using var client = ConnectRawClient(port);
+        SendAll(client.GetStream(), "ping"u8);
 
         Assert.True(callbackSignal.Wait(3000));
         Assert.Equal(callbackContext.ThreadId, callbackThreadId);
-        Assert.Equal("ping", receivedPayload);
+        Assert.NotNull(observedPayload);
+        Assert.Equal("ping",
+            Encoding.UTF8.GetString(observedPayload!.AsReadOnlySpan()));
 
-        Received reply = CoreTestSupport.ReceiveMessageWithTimeout(sender, 3000);
-        try
-        {
-            Assert.Equal("pong", reply.SinglePartOrThrow().GetString());
-        }
-        finally
-        {
-            foreach (Message part in reply.Parts)
-                part.Dispose();
-        }
+        byte[] reply = ReceiveExact(client.GetStream(), "pong".Length);
+        Assert.Equal("pong", Encoding.UTF8.GetString(reply));
+        observedPayload.Dispose();
     }
 
     [Fact]
@@ -130,11 +158,10 @@ public sealed class test_callback_delivery
             "callback-delivery-service");
         discovery.ConnectRegistry(registryRouter);
 
-        using var provider = new DealerSocket(ctx);
-        provider.AttachDiscovery(discovery);
-
         using var callbackSignal = new ManualResetEventSlim(false);
         using var callbackContext = new SingleThreadSynchronizationContext();
+        var provider = new DealerSocket(ctx);
+        provider.AttachDiscovery(discovery);
         ServiceMonitorEvent? observed = null;
         int callbackThreadId = -1;
 
@@ -166,6 +193,7 @@ public sealed class test_callback_delivery
         finally
         {
             monitor.Dispose();
+            Assert.Throws<ZlinkCloseException>(() => provider.Close());
         }
     }
 }

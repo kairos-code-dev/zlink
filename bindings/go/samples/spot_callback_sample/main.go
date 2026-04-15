@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"runtime"
 	"time"
 	"zlink"
 	"zlink/samples/internal/samplecommon"
@@ -29,24 +28,8 @@ func main() {
 	defer subscriber.Close()
 
 	topic := "room:lobby"
+	serviceName := "bench"
 	payload := "hello-spot"
-	type result struct {
-		value string
-		err   error
-	}
-	delivered := make(chan result, 1)
-	samplecommon.MustStep("subscriber.OnSubscribe", subscriber.OnSubscribe(func(message *zlink.TopicMessage) {
-		defer message.Close()
-		part, err := message.SinglePartOrError()
-		if err != nil {
-			delivered <- result{err: err}
-			return
-		}
-		select {
-		case delivered <- result{value: message.Topic() + "/" + string(part.Data())}:
-		default:
-		}
-	}))
 
 	endpoint := samplecommon.UniqueTCP("spot-callback")
 	samplecommon.MustStep("publisherNode.Bind", publisherNode.Bind(endpoint))
@@ -54,23 +37,14 @@ func main() {
 	samplecommon.MustStep("subscriber.SetSubscription", subscriber.SetSubscription(topic))
 	samplecommon.WaitSpotPeerConnected(subscriberNode, 5*time.Second)
 
-	var got string
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		samplecommon.MustStep("publisher.Publish", publisher.Publish(topic, zlink.SendFlagsNone, samplecommon.Message(payload)))
-		select {
-		case out := <-delivered:
-			samplecommon.Must(out.err)
-			got = out.value
-			goto done
-		default:
-			runtime.Gosched()
-		}
-	}
-	samplecommon.Must(fmt.Errorf("spot callback sample timed out"))
+	samplecommon.MustStep("publisher.Publish", publisher.Publish(serviceName, topic, zlink.SendFlagsNone, samplecommon.Message(payload)))
 
-done:
-
+	message, err := subscriber.Subscribe(zlink.RecvFlagsNone)
+	samplecommon.MustStep("subscriber.Subscribe", err)
+	defer message.Close()
+	part, err := message.SinglePartOrError()
+	samplecommon.MustStep("message.SinglePartOrError", err)
+	got := message.Topic() + "/" + string(part.Data())
 	want := topic + "/" + payload
 	if !bytes.Equal([]byte(got), []byte(want)) {
 		samplecommon.Must(fmt.Errorf("unexpected callback payload %q", got))

@@ -3,7 +3,6 @@
 package dev.kairoscode.zlink;
 
 import java.util.List;
-import java.util.Optional;
 
 public final class StreamSocket extends Socket {
     private final StreamSocketOptions options = new StreamSocketOptions(this);
@@ -20,9 +19,8 @@ public final class StreamSocket extends Socket {
     public void send(RoutingId rid, List<Message> parts, SendFlags flags) { super.send(rid, parts, SendFlag.fromValue(flags.value())); }
     public Received recv() { return super.recv(); }
     public Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
-    public void onReceive(SocketMessageHandler handler) { super.onReceive(handler); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
-    public void attachStreamRaw(StreamPacketHandler handler) { super.attachStreamRaw(handler); }
+    public void onPacket(StreamPacketHandler handler) { super.attachStreamRaw(handler); }
     public void detachStream() { super.detachStream(); }
     @Override public StreamSocketOptions options() { return options; }
 }

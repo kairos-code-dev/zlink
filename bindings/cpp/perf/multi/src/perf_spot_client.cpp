@@ -29,6 +29,7 @@ namespace {
 static const char *k_pattern = "MULTI_SPOT";
 static const char *k_topic = "bench";
 static const char *k_control_topic = "bench_ctl";
+static const char *k_control_service = "spot-control";
 static const size_t k_topic_len = sizeof ("bench") - 1;
 
 perf::multi::start_signal_state_t g_start_gate;
@@ -173,6 +174,7 @@ std::vector<size_t> resolve_msg_sizes (size_t fallback_size_)
 }
 
 bool publish_control_ready_count (zlink::service::spot_t &control_spot_,
+                                  const std::string &control_service_name_,
                                   size_t msg_size_,
                                   size_t ready_count_,
                                   int timeout_ms_)
@@ -186,6 +188,7 @@ bool publish_control_ready_count (zlink::service::spot_t &control_spot_,
       perf::multi::make_ready_count_command (msg_size_, ready_count_);
     return perf::multi::publish_control_message (
       control_spot_,
+      control_service_name_,
       k_control_topic,
       payload,
       timeout_ms_,
@@ -460,7 +463,11 @@ class spot_client_bench_t
               debug_log("publishing ready count size=" + std::to_string(msg_size)
                         + " count=" + std::to_string(_slots.size()));
               if (!publish_control_ready_count(
-                    *_control_spot, msg_size, _slots.size(), timeout_ms)) {
+                    *_control_spot,
+                    _control_service_name,
+                    msg_size,
+                    _slots.size(),
+                    timeout_ms)) {
                   return false;
               }
               debug_log("ready count published size=" + std::to_string(msg_size));
@@ -495,13 +502,16 @@ class spot_client_bench_t
               _ctx.ctx (),
               _transport,
               _control_endpoint,
+              k_control_service,
               k_control_topic,
               _settings,
               &_control_node,
+              &_control_discovery,
               &_control_spot,
               &local_control_endpoint)) {
             return false;
         }
+        _control_service_name = k_control_service;
         std::cout << "CLIENT_CONTROL_ENDPOINT," << local_control_endpoint
                   << std::endl;
         return true;
@@ -544,6 +554,9 @@ class spot_client_bench_t
             }
 
             const zlink::topic_message_t &received = *maybe_received;
+            if (!received.service_name ()
+                || *received.service_name () != _control_service_name)
+                continue;
             if (received.topic () != k_control_topic
                 || received.parts ().size () != 1)
                 continue;
@@ -824,7 +837,9 @@ class spot_client_bench_t
     const bool _callback_mode;
     perf::multi::ctx_guard_t _ctx;
     std::unique_ptr<zlink::service::spot_node_t> _control_node;
+    std::unique_ptr<zlink::service::discovery_t> _control_discovery;
     std::unique_ptr<zlink::service::spot_t> _control_spot;
+    std::string _control_service_name;
     std::vector<std::unique_ptr<client_slot_t> > _slots;
     std::vector<recv_worker_t> _recv_workers;
     std::string _server_endpoint;

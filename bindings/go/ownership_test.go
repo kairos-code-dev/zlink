@@ -3,6 +3,8 @@ package zlink_test
 import (
 	"bytes"
 	"errors"
+	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,25 +66,26 @@ func TestUnsentMessageSupportsExplicitClose(t *testing.T) {
 	}
 }
 
-func TestMultipartRecvShapeMatchesCallbackShape(t *testing.T) {
+func TestStreamRecvShapeMatchesCallbackShape(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
-	directServer, _ := ctx.PairSocket()
-	directClient, _ := ctx.PairSocket()
+	directServer, _ := ctx.StreamSocket()
 	defer directServer.Close()
-	defer directClient.Close()
 
 	directEndpoint := tcpEndpoint(t)
 	if err := directServer.Bind(directEndpoint); err != nil {
 		t.Fatalf("direct Bind() error = %v", err)
 	}
-	if err := directClient.Connect(directEndpoint); err != nil {
-		t.Fatalf("direct Connect() error = %v", err)
+	directConn, err := net.DialTimeout("tcp", strings.TrimPrefix(directEndpoint, "tcp://"), 5*time.Second)
+	if err != nil {
+		t.Fatalf("direct dial error = %v", err)
 	}
+	defer directConn.Close()
 
-	if err := directClient.Send(zlink.SendFlagsNone, newMessage(t, "frame-a"), newMessage(t, "frame-b")); err != nil {
-		t.Fatalf("direct Send() error = %v", err)
+	payload := []byte("frame-a/frame-b")
+	if _, err := directConn.Write(payload); err != nil {
+		t.Fatalf("direct Write() error = %v", err)
 	}
 
 	directReceived, err := directServer.Recv(zlink.RecvFlagsNone)
@@ -91,50 +94,45 @@ func TestMultipartRecvShapeMatchesCallbackShape(t *testing.T) {
 	}
 	defer directReceived.Close()
 
-	callbackServer, _ := ctx.PairSocket()
-	callbackClient, _ := ctx.PairSocket()
+	callbackServer, _ := ctx.StreamSocket()
 	defer callbackServer.Close()
-	defer callbackClient.Close()
 
 	callbackEndpoint := tcpEndpoint(t)
 	if err := callbackServer.Bind(callbackEndpoint); err != nil {
 		t.Fatalf("callback Bind() error = %v", err)
 	}
 
-	callbackPartsCh := make(chan [][]byte, 1)
-	if err := callbackServer.OnReceive(func(received *zlink.Received) {
-		defer received.Close()
-		parts := make([][]byte, len(received.Parts()))
-		for i, part := range received.Parts() {
-			parts[i] = append([]byte(nil), part.Data()...)
-		}
-		callbackPartsCh <- parts
+	callbackPartsCh := make(chan []byte, 1)
+	if err := callbackServer.OnPacket(func(source zlink.RoutingID, header, body *zlink.Message) {
+		defer header.Close()
+		defer body.Close()
+		_ = source
+		callbackPartsCh <- append([]byte(nil), body.Data()...)
 	}); err != nil {
-		t.Fatalf("OnReceive() error = %v", err)
+		t.Fatalf("OnPacket() error = %v", err)
 	}
 
-	if err := callbackClient.Connect(callbackEndpoint); err != nil {
-		t.Fatalf("callback Connect() error = %v", err)
+	callbackConn, err := net.DialTimeout("tcp", strings.TrimPrefix(callbackEndpoint, "tcp://"), 5*time.Second)
+	if err != nil {
+		t.Fatalf("callback dial error = %v", err)
 	}
-	if err := callbackClient.Send(zlink.SendFlagsNone, newMessage(t, "frame-a"), newMessage(t, "frame-b")); err != nil {
-		t.Fatalf("callback Send() error = %v", err)
-	}
+	defer callbackConn.Close()
 
-	var callbackParts [][]byte
+	writeStreamPacket(t, callbackConn, payload)
+
+	var callbackPayload []byte
 	select {
-	case callbackParts = <-callbackPartsCh:
+	case callbackPayload = <-callbackPartsCh:
 	case <-time.After(5 * time.Second):
-		t.Fatalf("callback did not deliver multipart payload within 5s")
+		t.Fatalf("callback did not deliver payload within 5s")
 	}
 
-	directParts := directReceived.Parts()
-	if len(directParts) != len(callbackParts) {
-		t.Fatalf("part count mismatch: direct=%d callback=%d", len(directParts), len(callbackParts))
+	directPart, err := directReceived.SinglePartOrError()
+	if err != nil {
+		t.Fatalf("direct SinglePartOrError() error = %v", err)
 	}
-	for i, part := range directParts {
-		if !bytes.Equal(part.Data(), callbackParts[i]) {
-			t.Fatalf("part %d mismatch: direct=%q callback=%q", i, string(part.Data()), string(callbackParts[i]))
-		}
+	if !bytes.Equal(directPart.Data(), callbackPayload) {
+		t.Fatalf("payload mismatch: direct=%q callback=%q", string(directPart.Data()), string(callbackPayload))
 	}
 }
 

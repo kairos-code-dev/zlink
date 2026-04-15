@@ -3,13 +3,13 @@ package dev.kairoscode.zlink.contract;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
-import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.SubscriptionEvent;
+import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.TopicMessage;
-import dev.kairoscode.zlink.XPubSocket;
 import dev.kairoscode.zlink.XSubSocket;
+import dev.kairoscode.zlink.XPubSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -37,22 +37,12 @@ public class SocketSubscriptionContractTest {
     public void publishUsesCanonicalTopicPath() throws Exception {
         TestSupport.assumeNative();
 
-        CountDownLatch delivered = new CountDownLatch(1);
-        AtomicReference<String> topic = new AtomicReference<>();
-        AtomicReference<byte[]> payload = new AtomicReference<>();
         try (Context ctx = new Context();
-             PubSocket pub = new PubSocket(ctx);
+             XPubSocket pub = new XPubSocket(ctx);
              SubSocket sub = new SubSocket(ctx);
              var pubMonitor = pub.monitorOpen(MonitorEventType.CONNECTION_READY);
              var subMonitor = sub.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             String endpoint = TestSupport.inprocEndpoint("publish-contract");
-            sub.onSubscribe((routingId, receivedTopic, received) -> {
-                try (received) {
-                    topic.set(receivedTopic);
-                    payload.set(received.singlePartOrThrow().toByteArray());
-                    delivered.countDown();
-                }
-            });
             pub.bind(endpoint);
             sub.setSubscription("topic-a");
             sub.connect(endpoint);
@@ -61,14 +51,19 @@ public class SocketSubscriptionContractTest {
             TestSupport.awaitMonitorEvent(pubMonitor,
                 MonitorEventType.CONNECTION_READY);
 
+            SubscriptionEvent event = pub.receiveSubscriptionEvent();
+            assertTrue(event.subscribed());
+            assertEquals("topic-a", event.topic());
+
             try (Message part = Message.copyOfUtf8("payload")) {
                 pub.publish("topic-a", part);
             }
 
-            assertTrue(delivered.await(5, TimeUnit.SECONDS));
-            assertEquals("topic-a", topic.get());
-            assertArrayEquals("payload".getBytes(StandardCharsets.UTF_8),
-                payload.get());
+            try (TopicMessage received = sub.subscribe()) {
+                assertEquals("topic-a", received.topic());
+                assertArrayEquals("payload".getBytes(StandardCharsets.UTF_8),
+                    received.singlePartOrThrow().toByteArray());
+            }
         }
     }
 

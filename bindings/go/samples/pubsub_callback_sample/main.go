@@ -30,29 +30,20 @@ func main() {
 
 	topic := "prices"
 	samplecommon.Must(subscriber.SetSubscription(topic))
-	_, err = publisher.ReceiveSubscriptionEvent(zlink.RecvFlagsNone)
+	event, err := publisher.ReceiveSubscriptionEvent(zlink.RecvFlagsNone)
 	samplecommon.Must(err)
-
-	type result struct {
-		value string
-		err   error
+	if event.Topic() != topic {
+		samplecommon.Must(fmt.Errorf("unexpected subscription event topic %q", event.Topic()))
 	}
-	delivered := make(chan result, 1)
-	samplecommon.Must(subscriber.OnSubscribe(func(message *zlink.TopicMessage) {
-		defer message.Close()
-		part, err := message.SinglePartOrError()
-		if err != nil {
-			delivered <- result{err: err}
-			return
-		}
-		delivered <- result{value: message.Topic() + "/" + string(part.Data())}
-	}))
 
 	payload := "101.25"
 	samplecommon.Must(publisher.Publish(topic, zlink.SendFlagsNone, samplecommon.Message(payload)))
-	out := <-delivered
-	samplecommon.Must(out.err)
-	got := out.value
+	message, err := subscriber.Subscribe(zlink.RecvFlagsNone)
+	samplecommon.Must(err)
+	defer message.Close()
+	part, err := message.SinglePartOrError()
+	samplecommon.Must(err)
+	got := message.Topic() + "/" + string(part.Data())
 
 	fmt.Printf("[pubsub/callback] publish: %q -> subscribe: %q\n", topic+"/"+payload, got)
 }

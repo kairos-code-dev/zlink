@@ -45,7 +45,10 @@ bool perf_debug_enabled ()
     return std::getenv ("PERF_DEBUG") != NULL;
 }
 
-bool send_spot_payload (void *userdata_, const void *data_, size_t size_)
+bool send_spot_payload (void *userdata_,
+                        const std::string &service_name_,
+                        const void *data_,
+                        size_t size_)
 {
     zlink::service::spot_t *spot = static_cast<zlink::service::spot_t *> (userdata_);
     if (!spot)
@@ -55,7 +58,7 @@ bool send_spot_payload (void *userdata_, const void *data_, size_t size_)
     if (!part.valid ())
         return false;
     try {
-        spot->publish (k_topic, part);
+        spot->publish (service_name_, k_topic, part);
         return true;
     } catch (const std::exception &) {
         return false;
@@ -63,13 +66,16 @@ bool send_spot_payload (void *userdata_, const void *data_, size_t size_)
 }
 
 bool record_spot_payload (const zlink::topic_message_t &message,
+                          const std::string &expected_service_name,
                           uint32_t run_id,
                           size_t msg_size,
                           size_t payload_size,
                           std::atomic<unsigned long long> &received_count,
                           perf::single::latency_stats_builder_t &latency_builder)
 {
-    if (message.topic () != k_topic || message.parts ().size () != 1
+    if (!message.service_name ()
+        || *message.service_name () != expected_service_name
+        || message.topic () != k_topic || message.parts ().size () != 1
         || message.parts ()[0].size () != payload_size) {
         return true;
     }
@@ -114,10 +120,27 @@ void run_pattern_spot (const std::string &transport,
 
     zlink::service::spot_node_t pub_node (ctx.ctx ());
     zlink::service::spot_node_t sub_node (ctx.ctx ());
+    if (!pub_node.valid () || !sub_node.valid ()) {
+        if (perf_debug_enabled ())
+            std::cerr << "spot: invalid service topology" << std::endl;
+        perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
+        return;
+    }
+
+    const std::string pub_service_name = "spot-bench";
+    zlink::service::discovery_t pub_discovery (
+      ctx.ctx (), zlink::service_type::spot, pub_service_name);
+    if (!pub_discovery.valid ()) {
+        if (perf_debug_enabled ())
+            std::cerr << "spot: discovery setup failed" << std::endl;
+        perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
+        return;
+    }
+    pub_node.attach_discovery (pub_discovery);
+
     zlink::service::spot_t pub_spot = pub_node.create_spot ();
     zlink::service::spot_t sub_spot = sub_node.create_spot ();
-    if (!pub_node.valid () || !sub_node.valid () || !pub_spot.valid ()
-        || !sub_spot.valid ()) {
+    if (!pub_spot.valid () || !sub_spot.valid ()) {
         if (perf_debug_enabled ())
             std::cerr << "spot: invalid service topology" << std::endl;
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
@@ -196,7 +219,7 @@ void run_pattern_spot (const std::string &transport,
                                                     seq++,
                                                     perf_single_metric::now_ns ())
                 || !send_spot_payload (
-                  &pub_spot, payload.data (), payload.size ())) {
+                  &pub_spot, pub_service_name, payload.data (), payload.size ())) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
@@ -227,6 +250,7 @@ void run_pattern_spot (const std::string &transport,
                 const zlink::topic_message_t message =
                   sub_spot.subscribe (zlink::recv_flags_t::dontwait);
                 if (!record_spot_payload (message,
+                                          pub_service_name,
                                           run_id,
                                           msg_size,
                                           payload_size,
@@ -258,6 +282,7 @@ void run_pattern_spot (const std::string &transport,
             const zlink::topic_message_t message =
               sub_spot.subscribe (zlink::recv_flags_t::dontwait);
             if (!record_spot_payload (message,
+                                      pub_service_name,
                                       run_id,
                                       msg_size,
                                       payload_size,

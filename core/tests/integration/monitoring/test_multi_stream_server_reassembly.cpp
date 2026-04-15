@@ -165,10 +165,12 @@ bool recv_should_timeout (int fd_)
 std::vector<unsigned char> make_frame (const char *payload_)
 {
     const size_t payload_size = std::strlen (payload_);
-    std::vector<unsigned char> frame (4 + payload_size);
+    std::vector<unsigned char> frame (6 + payload_size);
+    frame[0] = 0;
+    frame[1] = 0;
     perf_stream_common::perf_stream_store_u32_be (
-      &frame[0], static_cast<uint32_t> (payload_size));
-    std::memcpy (&frame[4], payload_, payload_size);
+      &frame[2], static_cast<uint32_t> (payload_size));
+    std::memcpy (&frame[6], payload_, payload_size);
     return frame;
 }
 
@@ -183,8 +185,16 @@ void test_multi_stream_server_reassembles_complete_frames_per_connection ()
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
     perf_multi_stream::session_t session;
+    perf_multi_stream::packet_handler_context_t packet_handler_ctx;
     perf_stop_requested ().store (false, std::memory_order_release);
     perf_multi_stream::reset_session (&session, server);
+    packet_handler_ctx.session = &session;
+    packet_handler_ctx.stop_token = "STOP";
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_HANDLER_OK,
+      zlink_stream_packet_handler (
+        server, &perf_multi_stream::stream_packet_handler_callback,
+        &packet_handler_ctx));
     int server_rc = -1;
 
     std::thread server_thread ([&session, server, &server_rc] () {
@@ -198,6 +208,7 @@ void test_multi_stream_server_reassembles_complete_frames_per_connection ()
     TEST_ASSERT_TRUE (client_b >= 0);
     TEST_ASSERT_EQUAL_INT (0, set_raw_fd_timeout (client_a, 200));
     TEST_ASSERT_EQUAL_INT (0, set_raw_fd_timeout (client_b, 1000));
+    msleep (SETTLE_TIME);
 
     const std::vector<unsigned char> frame_a = make_frame ("client-a-frame");
     const std::vector<unsigned char> frame_b = make_frame ("client-b-frame");

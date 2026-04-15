@@ -45,13 +45,13 @@
 이 문서는 “각 언어가 어떻게 보일 수 있는가”보다 “각 언어가 무엇을 보장해야
 하는가”를 정의한다.
 
-## Current Core Alignment Overrides
+## Core Alignment Overrides
 
-아래 언어별 문서에는 과거 시그니처 예제가 일부 남아 있다. 그 내용이 현재
-`core/include/zlink.h` 와 충돌하면 이 절을 우선 적용한다.
+이 절은 언어별 문서의 세부 예제보다 우선 적용되는 core 계약 요약이다.
+`core/include/zlink.h` 와 언어별 문서 간 불일치가 있으면 이 절을 기준으로 한다.
 
-- direct receive callback install surface 는 이제 raw `STREAM` 과 SPOT routed
-  receive 에만 남는다.
+- direct receive callback install surface 는 raw `STREAM` 과 SPOT routed
+  receive 에만 존재한다.
 - 바인딩은 raw `PAIR`, `DEALER`, `ROUTER` 에 대해 `onReceive` 류 direct data
   callback 을 public 으로 노출하면 안 된다.
 - 바인딩은 raw `SUB`, `XSUB`, SPOT subscribe receive 에 대해
@@ -59,8 +59,11 @@
 - `ROUTER` inbound routed traffic 은 data-plane recv-only 이다. 바인딩은
   `zlink_router_recv()` 대응 수신 표면과 request completion callback 만
   노출한다.
-- `STREAM` 은 `recv`, raw callback (`zlink_recv_handler()`), packet callback
-  (`zlink_stream_packet_handler()`) 의 세 모드 중 하나를 선택하는 예외 타입이다.
+- core raw `STREAM` 은 `recv`, raw callback (`zlink_recv_handler()`),
+  packet callback (`zlink_stream_packet_handler()`) 의 세 모드 중 하나를
+  선택하는 예외 타입이다. 고수준 바인딩은 `recv` 와 packet callback
+  surface 를 기본 계약으로 노출해야 하고, raw direct callback 은 해당
+  언어 문서가 명시할 때만 추가로 public 으로 노출한다.
 - SPOT 은 service-aware 모델이다. 바인딩은
   `attach_router(service_name, router)`,
   `attach_pubsub(service_name, pub, sub)`,
@@ -73,7 +76,28 @@
   `zlink_spot_handler()` 와 routed 축에서 mutually exclusive 다.
 - `zlink_send_ready_handler()` 와 poller `ZLINK_POLLOUT` 은 같은
   send-recovery readiness 축을 가리킨다. 바인딩 문서도 같은 의미로 설명해야
-  한다.
+  한다. `ZLINK_POLLOUT` 은 "transport writable" 이 아니라
+  "send recovery readiness / backpressure recovery notification" 으로 설명한다.
+- 바인딩은 `zlink_set_admission_state()` / `zlink_get_admission_state()` 와
+  `ZLINK_ADMISSION_SERVING` / `ZLINK_ADMISSION_DRAINING` enum 을 언어별
+  typed surface 로 노출해야 한다. 대응하는 제출 실패 코드는
+  `ZLINK_SUBMIT_NOT_ADMITTED` (값 13) 이며, 모든 바인딩의 `SubmitError`
+  매핑에 포함되어야 한다.
+- core raw `STREAM` 은 다음 세 수신 모드 중 하나만 선택할 수 있다:
+  (a) `zlink_recv()` blocking/non-blocking recv, (b) `zlink_recv_handler()`
+  raw direct callback, (c) `zlink_stream_packet_handler()` 빅엔디언
+  `u16 header_size + u32 body_size + header + body` 프레이밍 packet callback.
+  두 번째 attach 시 `EBUSY` 가 반환된다. 고수준 바인딩이 raw direct
+  callback 을 공개하지 않더라도, public 으로 노출한 `STREAM` receive
+  surface 들 사이에는 같은 배타 규칙을 유지해야 한다.
+- `zlink_recv_handler()` 는 raw `STREAM` 전용이다. `PAIR`/`DEALER`/`SUB`/
+  `XSUB`/`ROUTER` 에 attach 하면 `ZLINK_HANDLER_NOT_SUPPORTED` 로 실패한다.
+- Discovery auto-connect 으로 같은 서비스의 두 ROUTER 가 쌍을 이룰 때,
+  내부 정책이 `(routing_id, advertise endpoint)` 전순서로 initiator 를
+  선정한다. 사용자가 설정하는 옵션이 아니다.
+- socket 기본값: `ZLINK_ROUTER_OPT_MANDATORY` = `1`,
+  `ZLINK_ROUTER_OPT_HANDOVER` = `1`, `ZLINK_PUB_OPT_NODROP` = `1`.
+  바인딩 예제는 이 기본값을 기준으로 작성한다.
 
 ## 문서 해석 규칙
 - 이 문서의 정책 본문은 기본적으로 규범 문서다.
@@ -596,11 +620,11 @@ socket monitor 가 제공하는 런타임 상태 스냅샷. 모든 바인딩이 
 | `detail_flags` | `uint32` | 세부 비트마스크 |
 | `snd_pending_msgs` | `uint64` | 송신 큐 대기 메시지 수 |
 | `rcv_pending_msgs` | `uint64` | 수신 큐 대기 메시지 수 |
-| `is_ready()` | `bool` | `state_flags` 에서 ready 비트 확인 편의 메서드 |
+| `is_ready()` | `bool` | raw socket monitor source에서만 `state_flags` 의 ready 비트 확인 편의 메서드 |
 
 #### `ServiceEvent`
 
-service monitor (discovery / registry / spot) 가 방출하는 이벤트.
+Discovery `ServiceMonitor` 가 방출하는 이벤트.
 모든 바인딩이 **필수 노출**.
 
 | 구성 | 타입 | 의미 |
@@ -623,16 +647,28 @@ service monitor (discovery / registry / spot) 가 방출하는 이벤트.
 모든 바인딩이 **필드 목록을 spec 에 명시**해야 한다 (C 구조체를 그대로
 노출하면 안 되며 언어별 named field 로 래핑).
 
-- `MemberPeerEntry` — discovery 가 제공하는 멤버 peer 정보
+- `MemberPeerEntry` — discovery 가 제공하는 멤버 peer 정보.
+  `admissionState` (또는 언어 관례의 동등 필드) 를 포함해야 한다.
 - `RegistryTopologyEntry` — registry 의 topology 엔트리
 - `RegistryServiceSummaryEntry` — registry service summary 엔트리
 - `SpotNodeStatus` — spot node 상태 스냅샷
-- `SpotNodePeerEntry` — spot node peer 엔트리
+- `SpotNodePeerEntry` — spot node peer 엔트리.
+  `admissionState` 를 포함해야 한다.
 - `SpotNodeSubjectEntry` — spot node subject 엔트리
+- `SpotServiceAttachmentStats` — `zlink_spot_node_service_attachment_at()` 결과.
+  `serviceName`, `routerCount`, `pubCount`, `subCount`, `autoRouterCount`,
+  `autoPubCount`, `autoSubCount` (언어별 케이싱 변형).
+- `SpotServiceMonitorEvent` — `zlink_spot_node_monitor_recv()` 결과.
+  `serviceName`, `role` (`AttachmentRole` enum: `ROUTER=1`, `PUB=2`, `SUB=3`),
+  `event` (socket monitor event).
 
 각 spec 은 이들 타입의 필드를 표 또는 코드 블록으로 명시한다. `Cpp` 는
 raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `class
 <name>_t { ... }` 형식으로 래핑한다.
+
+`MonitorTargetKind` enum 은 `SOCKET`, `SPOT_PUB`, `SPOT_SUB`, `SPOT_NODE=5` 를
+포함해야 한다. `SPOT_NODE` 는 `zlink_spot_node_monitor_recv()` 경로에서
+사용된다.
 
 위 canonical 을 벗어난 추가 메서드/필드는 정책 위반이다. 언어별 spec 에서
 누락이 발견되면 canonical 기준으로 채워 넣고, 추가된 비표준 메서드는 삭제한다.
@@ -712,9 +748,14 @@ raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `cla
 
 | Capability | Pair | Dealer | Router | Pub | Sub | XPub | XSub | Stream |
 |---|---|---|---|---|---|---|---|---|
-| `onReceive` | — | — | — | — | — | — | — | Y |
+| `onPacket` | — | — | — | — | — | — | — | Y |
 | `onSubscribe` | — | — | — | — | — | — | — | — |
 | `onSendReady` | Y | Y | Y | Y | — | Y | — | Y |
+
+`STREAM` public surface 는 최소 `recv` 와 `onPacket` 을 제공해야 한다.
+일부 바인딩은 raw direct callback `onReceive` 를 추가로 노출할 수 있다.
+이미 한 수신 모드가 걸려 있는 상태에서 다른 모드 attach 를 시도하면
+`HandlerResult::BUSY` (또는 동등한 `EBUSY`) 를 반환한다.
 
 #### Typed Option Capabilities
 
@@ -853,7 +894,7 @@ Discovery (클라이언트 — 서비스 뷰)
 
 SpotNode (service-aware topology runtime)
   ├── bind (endpoint)
-  ├── legacy mesh: connectPeer / disconnectPeer
+  ├── raw mesh: connectPeer / disconnectPeer
   ├── service attach: attachRouter / attachPubSub / attachDiscovery
   ├── introspection: statusSnapshot, peersSnapshot, peersQuery,
   │   subjectsSnapshot, serviceAttachmentCount / serviceAttachmentAt,
@@ -879,8 +920,8 @@ RegistryQueryClient (원격 토폴로지 조회)
 | Capability | SpotNode |
 |---|---|
 | `bind` | Y |
-| `connectPeer` | Legacy only |
-| `disconnectPeer` | Legacy only |
+| `connectPeer` | Raw mesh only |
+| `disconnectPeer` | Raw mesh only |
 | `attachRouter` | Y |
 | `attachPubSub` | Y |
 | `attachDiscovery` | Y |
@@ -897,7 +938,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 - SpotNode는 data plane API(`send`/`recv`/`publish`/`subscribe`)를 직접
   노출하지 않는다.
 - data plane은 `Spot` facade를 통해서만 접근한다.
-- `connectPeer`/`disconnectPeer`는 raw peer topology 용 legacy control path 다.
+- `connectPeer`/`disconnectPeer`는 raw peer topology 전용 control path 다.
 - service-aware public 설명에서는 `attachRouter` / `attachPubSub` /
   `attachDiscovery` 를 중심으로 다룬다.
 
@@ -981,6 +1022,10 @@ RegistryQueryClient (원격 토폴로지 조회)
 - SPOT(SpotNode, Spot)은 ServiceMonitor를 노출하지 않는다.
   SPOT 관찰은 `statusSnapshot`, `peersSnapshot`, `subjectsSnapshot` API를 사용한다.
 - ServiceMonitor는 소켓의 SocketMonitor와 별도 타입이다.
+- SocketMonitor와 ServiceMonitor는 둘 다 기본이 recv model 이다.
+- `onEvent(handler)`를 호출하면 callback-only model로 일방 전환된다.
+  이후 `recv()`는 `BUSY` / `EBUSY` 계열 오류를 반환해야 한다.
+- `snapshot()`은 recv model과 callback-only model 양쪽에서 모두 동작해야 한다.
 - ServiceMonitor API:
   - `recv()`: blocking/non-blocking event 수신 (flags로 제어)
   - `onEvent(handler)`: callback 등록
@@ -1019,12 +1064,16 @@ RegistryQueryClient (원격 토폴로지 조회)
   - `ServiceType`: `SPOT`, `SOCKET`
   - `ServiceRole`: `SPOT`, `ROUTER`, `DEALER`, `PUB`, `SUB`
   - `SpotNodeState`: `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, `ERROR`
+  - `MonitorSourceKind`: `SOCKET`, `SPOT_PUB`, `SPOT_SUB`, `SPOT_NODE`
   - `SpotPeerSource`: `MANUAL`, `DISCOVERY`, `MIXED`
   - `SpotPeerState`: `CONFIGURED`, `CONNECTING`, `CONNECTED`
   - `RegistryState`: `IDLE`, `ACTIVE`, `DEGRADED`, `ERROR`
   - `TopologySource`: `MANUAL`, `DISCOVERY`, `REGISTRY`
   - `TopologyState`: `DISCOVERED`, `CONNECTING`, `READY`, `LOST`,
     `ERROR`, `STOPPED`
+- `MonitorSnapshot.isReady()` 또는 동등한 편의 accessor는 raw socket
+  monitor source에서만 ready 의미를 해석한다. `SPOT_PUB`, `SPOT_SUB`
+  source에서는 ready bit를 SPOT readiness로 확장 해석하면 안 된다.
 
 ### Service Layer Naming Policy
 - 서비스 계층도 Naming Policy를 따른다.
@@ -1037,8 +1086,8 @@ RegistryQueryClient (원격 토폴로지 조회)
 | Component | Canonical Name | 설명 |
 |---|---|---|
 | SpotNode | `bind` | endpoint 바인드 |
-| SpotNode | `connectPeer` | legacy peer 연결 |
-| SpotNode | `disconnectPeer` | legacy peer 연결 해제 |
+| SpotNode | `connectPeer` | raw peer 연결 |
+| SpotNode | `disconnectPeer` | raw peer 연결 해제 |
 | SpotNode | `attachRouter` | 서비스별 ROUTER attach |
 | SpotNode | `attachPubSub` | 서비스별 PUB/SUB pair attach |
 | SpotNode | `attachDiscovery` | Discovery 연결 |
@@ -1194,11 +1243,13 @@ RegistryQueryClient (원격 토폴로지 조회)
 - 위 Callback Capabilities 표가 기준이다.
 - canonical callback 이름:
   - `onReceive`: raw `STREAM` direct fragment callback
+    (해당 바인딩이 이 optional extension 을 public 으로 노출할 때만 사용)
   - `onDispatchEvent`: SPOT unified readable notification callback
   - `onRoutedReceive`: SPOT direct routed callback
   - `onSendReady`: send ready 상태 callback
 - callback payload shape는 direct receive와 동일해야 한다.
   - `onReceive` callback payload = raw `STREAM` recv shape
+    (binding-specific optional extension)
   - `onRoutedReceive` callback payload = SPOT routed recv shape
 - callback 등록 후 동일 subject에 대한 direct recv/subscribe는 native 계약에
   따라 차단된다 (EBUSY).
@@ -1232,15 +1283,14 @@ RegistryQueryClient (원격 토폴로지 조회)
 - request-reply 는 Router/Dealer 소켓과 SPOT 의 기능 확장이다.
   별도 추상 레이어가 아니라 기존 표면에 capability 를 얹는다.
 
-#### 제거된 API
+#### Public surface 에 두지 않는 API
 
-message-level request-reply marker API 와 per-message metadata API 는 제거되었다.
+message-level request-reply marker API 와 per-message metadata API 는
+public surface 의 일부가 아니다. 바인딩은 다음 함수나 상수를 public 으로
+노출하지 않고, `Message` 객체 안에 request marker 상태를 두지 않는다.
 
 - `zlink_msg_set_request`, `zlink_msg_set_reply`, `zlink_msg_get_request_info`
 - `zlink_msg_set_metadata`, `zlink_msg_get_metadata`, `zlink_msg_clear_metadata`
-
-바인딩은 이 함수나 상수를 public surface 로 다시 노출하면 안 된다.
-`Message` 객체 안에 request marker 상태를 두지 않는다.
 
 #### 유효한 Request-Reply 조합
 
@@ -1464,6 +1514,11 @@ int zlink_unset_subscription(void *handle, const char *filter);
 - `subscribe` 수신은 `service_name + topic + parts` 를 돌려주는 typed receive
   surface 로 노출한다.
 - topic filter 설정은 typed subscription API 로 노출한다.
+- service-aware send/publish 의 실패는 `SubmitError` 로 승격된다.
+  - `NOT_FOUND`: 해당 `service_name` 에 attach 된 대상이 없음
+  - `NOT_CONNECTED`: attachment 는 있으나 active/send-ready 경로가 없음
+  - `BACKPRESSURED`: 경로는 있으나 HWM 도달
+  - `NOT_ADMITTED`: 대상 peer 가 drain 상태라 신규 submit 거부
 
 #### Routed Direct Messaging
 
@@ -1521,8 +1576,8 @@ int zlink_spot_node_monitor_recv(void *node,
 - service-aware 바인딩은 `attach_router`, `attach_pubsub`,
   `attach_discovery`, attachment snapshot, node monitor surface 를 함께
   노출해야 한다.
-- `connect_peer` / `disconnect_peer` 는 raw peer topology 용 legacy control
-  path 로 남아 있다. service-aware public surface 의 중심 API 로 설명하면 안 된다.
+- `connect_peer` / `disconnect_peer` 는 raw peer topology 전용 control
+  path 다. service-aware public surface 의 중심 API 로 설명하면 안 된다.
 
 ### SPOT Event Dispatcher Policy
 
@@ -1657,6 +1712,20 @@ zlink_spot_dispatch_event_handler callback
 처리할 수 있어야 한다.
 서로 다른 `spot` 은 필요하면 병렬로 실행될 수 있어야 한다.
 callback 안에서는 event 로 알려진 plane 을 drain 할 수 있어야 한다.
+
+#### Receive-model 요약
+
+| 소켓 타입 | 수신 경로 |
+|-----------|----------|
+| `PAIR` / `DEALER` | `zlink_recv()` 만 (recv-only) |
+| `SUB` / `XSUB` | `zlink_subscribe()` 만 (recv-only) |
+| `ROUTER` | `zlink_router_recv()` 만 (recv-only). request completion 은 `zlink_reply_handler_fn` 으로 유지 |
+| `STREAM` | 아래 세 모드 중 하나 (상호 배타). raw recv / `zlink_recv_handler()` / `zlink_stream_packet_handler()` |
+| `SPOT` | `zlink_spot_recv()` + `zlink_spot_subscribe()` + `zlink_spot_dispatch_event_handler()`. 호환용 `zlink_spot_handler()` 도 제공되며 dispatch event handler 와 routed 축에서 상호 배타 |
+
+바인딩은 위 계약을 그대로 반영한다. 소켓 클래스에 해당 수신 경로만 노출하고,
+금지된 callback install surface 는 base 클래스 어디에서도 우회 접근되지
+않도록 한다.
 
 #### Typed Receive Surface
 
@@ -1926,6 +1995,34 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
 - public 도메인 객체를 만들 때 불필요한 중간 컬렉션 생성은 피한다.
 - helper나 sample이 느린 경로를 canonical path처럼 보이게 만들면 안 된다.
 
+## Admission State Policy
+
+`AdmissionState` 는 peer-level 수용/드레인 상태를 제어하는 canonical surface 다.
+모든 바인딩이 공개해야 한다.
+
+핵심 API:
+- `zlink_set_admission_state(handle, state)` / `zlink_get_admission_state(handle, state_out)`
+- enum `zlink_admission_state_t { SERVING = 1, DRAINING = 2 }`
+- submit 결과 `ZLINK_SUBMIT_NOT_ADMITTED` (값 13) — drain 상태의 peer 로 submit 시 반환
+- socket monitor 이벤트 `ZLINK_EVENT_PEER_ADMISSION_CHANGED` (bit 15)
+- service monitor 이벤트 `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` (bit 8)
+- `zlink_spot_node_peer_entry_t.admission_state` / `zlink_member_peer_entry_t.admission_state`
+
+바인딩 규칙:
+- `AdmissionState` 를 typed enum 으로 노출한다 (`SERVING`, `DRAINING`).
+  언어별 스타일: `AdmissionState.Serving` (C#/.NET), `AdmissionState::Serving`
+  (C++/Rust), `ADMISSION_STATE_SERVING` (Go), `admission_state.serving`
+  (Python), `AdmissionState.SERVING` (Java), `AdmissionState.Serving`
+  (Node/TS).
+- `setAdmissionState(state)` / `getAdmissionState()` 또는 언어 관례에 맞는
+  property/method 로 SOCKET / SPOT handle 에 노출한다.
+- `NOT_ADMITTED` 를 `SubmitError` 계열에 포함하여 caller 가 drain 상태 거부를
+  구분할 수 있게 한다.
+- `PEER_ADMISSION_CHANGED` 이벤트 bit 은 기존 socket monitor / service
+  monitor surface 에 typed value 로 노출한다. raw bit 값만 내보내지 않는다.
+- `SpotNodePeerEntry` / `MemberPeerEntry` 도메인 객체는 `admissionState` /
+  `admission_state` 필드를 포함해야 한다.
+
 ## Monitor Policy
 - monitor plane도 같은 규칙을 따른다.
 - public monitor receive는 `recv()` 하나로 제공한다.
@@ -2020,6 +2117,7 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 | 1 | `BACKPRESSURED` | `EAGAIN` | 제어 흐름 | send 큐 포화 (HWM) |
 | 2 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | 제어 흐름 | 대상 peer/경로 미연결 |
 | 3 | `NOT_FOUND` | `ENOENT` | 제어 흐름 | 대상 peer/spot/route 없음 |
+| 13 | `NOT_ADMITTED` | — | 제어 흐름 | peer 가 `ZLINK_ADMISSION_DRAINING` 상태라 신규 submit 거부 |
 | 4 | `TERMINATED` | `ETERM` | 런타임/생명주기 | context 종료됨 |
 | 5 | `INVALID_HANDLE` | `EFAULT` | caller 계약 위반 | NULL handle / invalid pointer |
 | 6 | `INVALID_ARGUMENT` | `EINVAL` | caller 계약 위반 | 잘못된 인자 |
@@ -2101,11 +2199,11 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 
 ##### Non-OK 값 총합
 
-- 총 **39 개** non-OK 코드 (submit 12 + request 4 + recv 5 + handler 5 +
-  close 3 + bind 4 + connect 3 + config 3 = 39). 값 범위:
-  1–12, 101–104, 201–205, 301–305, 401–403, 501–504, 601–603, 701–703.
+- 총 **40 개** non-OK 코드 (submit 13 + request 4 + recv 5 + handler 5 +
+  close 3 + bind 4 + connect 3 + config 3 = 40). 값 범위:
+  1–13, 101–104, 201–205, 301–305, 401–403, 501–504, 601–603, 701–703.
 - 값 범위는 enum 간 겹치지 않으므로 단일 `int` 로 유일하게 구분된다.
-- 바인딩은 39 개 값 모두에 대해 언어별 에러 표현을 제공해야 한다. 누락 시
+- 바인딩은 40 개 값 모두에 대해 언어별 에러 표현을 제공해야 한다. 누락 시
   caller 가 해당 원인을 구분할 방법이 없다.
 
 언어별 enum/상수 매핑 스타일은 아래 `언어별 ErrorCode 매핑` 절을 참조한다.
@@ -2156,7 +2254,7 @@ zlink 고유 오류 코드. POSIX errno 와 충돌하지 않도록 `ZLINK_HAUSNU
 
 #### 언어별 ErrorCode 매핑
 
-각 바인딩은 Public Result Enum 카탈로그의 39 개 non-OK 코드를 언어별
+각 바인딩은 Public Result Enum 카탈로그의 40 개 non-OK 코드를 언어별
 enum/상수로 매핑하여 타입 안전한 분기를 제공한다.
 
 | 언어 | 처리 | ErrorCode 타입 | 접근 방식 |
@@ -2170,7 +2268,7 @@ enum/상수로 매핑하여 타입 안전한 분기를 제공한다.
 | Go | return | 통합 `ErrorCode` typed int 상수 | `ZlinkError.Code()` |
 | Rust | return (`Result`) | 통합 `ErrorCode` enum variant | `ZlinkError.code()` |
 
-- 통합 enum 의 각 variant 는 Public Result Enum 카탈로그의 39 개 값과
+- 통합 enum 의 각 variant 는 Public Result Enum 카탈로그의 40 개 값과
   1:1 대응한다. 원본 C 의 enum 분리 (submit / recv / handler / close /
   bind / connect / config / request) 를 유지하거나, 언어 관용구에 따라
   단일 enum 으로 통합해도 된다. 둘 중 어떤 스타일이든 **값은 누락 없이 모두
@@ -2377,14 +2475,12 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 ## Compatibility Policy
 - 호환성보다 일관된 public surface를 우선할 수 있다.
 - deprecated compatibility layer는 가능한 빨리 제거한다.
-- 새 canonical path를 도입할 때 기존 우회 표면을 같이 남겨 두지 않는다.
-- legacy flag 타입 정책:
-  - public method signature에서 제거된 `SendFlag` / `ReceiveFlag`는 더 이상
-    public API contract의 일부가 아니다.
-  - 구현 migration 기간에는 internal helper 또는 package/private helper로만
-    유지할 수 있다.
-  - canonical public surface가 전 바인딩에 정착하면, public 노출 타입 자체도
-    삭제 또는 internal 이동을 우선한다.
+- canonical path 외에 동일 기능의 우회 표면을 public 으로 함께 두지 않는다.
+- flag 타입 정책:
+  - public method signature 의 `SendFlag` / `ReceiveFlag` 는 public API
+    contract 의 일부가 아니다.
+  - 필요한 경우 internal helper 또는 package/private helper 로만 유지한다.
+  - public 노출 타입 자체도 삭제 또는 internal 이동을 우선한다.
 
 ## Cross-Language Alignment
 
@@ -2440,7 +2536,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 | Public flags overloads | Raw C only | High-level public surface: No | No | No | No | No | No | No |
 | Typed option surface | N/A raw C options | Required | Required | Required | Required | Required | Required | Required |
 | Socket Capability Matrix 준수 | Core 기준 | Required | Required | Required | Required | Required | Required | Required |
-| `onReceive` callback | STREAM raw fn ptr | Required | Required | Required | Required | Required | Required | Required |
+| `onReceive` callback | STREAM raw fn ptr | Optional | Optional | Optional | Optional | Optional | Optional | Optional |
 | `onDispatchEvent` callback | SPOT raw fn ptr | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required |
 | `onRoutedReceive` callback | SPOT raw fn ptr | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required |
 | `onSendReady` callback | Raw fn ptr | Required | Required | Required | Required | Required | Required | Required |

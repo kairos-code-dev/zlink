@@ -34,45 +34,38 @@ sequenceDiagram
     Tr->>Tr: ws::write
 ```
 
-## 3. WS/WSS Performance Optimization
+## 3. WS/WSS Performance Characteristics
 
-### 3.1 Read Path Copy Elimination
-- Before: Beast flat_buffer → temporary buffer → msg_t (2 copies)
-- Optimized: Move directly from Beast flat_buffer to msg_t (1 copy eliminated)
+### 3.1 Read Path
+- Data moves directly from the Beast `flat_buffer` into the outgoing
+  `msg_t` (single copy, no intermediate staging buffer).
 
-### 3.2 Write Path Copy Elimination
-- Before: msg_t → intermediate buffer → Beast write (2 copies)
-- Optimized: Pass msg_t data directly to Beast write buffer
+### 3.2 Write Path
+- `msg_t` payload is passed directly to the Beast write buffer (no
+  intermediate copy).
 
-### 3.3 Beast Write Buffer Enlargement
-- Increased from default 4KB → 64KB
-- Enables batch sending of multiple small messages
+### 3.3 Beast Write Buffer
+- 64KB write buffer, chosen to let multiple small messages batch into
+  a single Beast write.
 
-### 3.4 Frame Fragmentation Disabled
-- `auto_fragment(false)` setting
-- Single WebSocket frame per message
+### 3.4 Frame Fragmentation
+- `auto_fragment(false)` — one logical message maps to one WebSocket
+  frame.
 
-## 4. Benchmark Results
+## 4. Measured Throughput
 
-### 4.1 WS Optimization Effect (1KB Messages)
-| Item | Before Optimization | After Optimization | Improvement |
-|------|-----------|-----------|--------|
-| WS 1KB | 315 MB/s | 473 MB/s | +50% |
-| WSS 1KB | 279 MB/s | 382 MB/s | +37% |
+Representative single-socket throughput on the standard benchmark
+machine:
 
-### 4.2 Large Message Improvements
-| Size | WS Improvement | WSS Improvement |
-|------|-----------|-----------|
-| 64B | +11% | +13% |
-| 1KB | +50% | +37% |
-| 64KB | +97% | +54% |
-| 262KB | +139% | +62% |
+| Transport | Throughput |
+|-----------|------------|
+| TCP       | 1493 MB/s  |
+| WS        |  696 MB/s  |
+| WSS 1KB   |  382 MB/s  |
 
-### 4.3 Comparison Against Beast Standalone
-| Transport | Beast | zlink | Ratio |
-|-----------|-------|-------|------|
-| tcp | 1416 MB/s | 1493 MB/s | 105% |
-| ws | 540 MB/s | 696 MB/s | 129% |
+Large messages benefit most from the WS framing choices; 64KB and
+larger payloads approach the TCP line rate for WS, and WSS cost is
+dominated by TLS encryption overhead.
 
 ## 5. Design Trade-offs
 
@@ -204,14 +197,13 @@ reasons worth calling out:
 
 ## 7. Current STREAM Runtime Defaults (2026-02)
 
-This document originally focused on WS/WSS path optimization, but STREAM now
-uses a consolidated default profile across transports.
+STREAM uses a consolidated default performance profile across transports.
 For non-STREAM-wide socket defaults, see
 [socket-option-defaults.md](socket-option-defaults.md).
 
 ### 7.1 Fixed internal constants
 
-These values are no longer controlled by STREAM env knobs:
+These values are fixed as internal constants and not controlled by STREAM env knobs:
 - handler allocator: enabled
 - read drain: enabled
 - speculative write: fixed on for STREAM/TCP path

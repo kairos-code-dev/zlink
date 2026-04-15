@@ -13,6 +13,7 @@ import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.service.registry.ServiceType;
 import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.TestSupport;
+import dev.kairoscode.zlink.SpotDispatchEvent;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.registry.Registry;
 import dev.kairoscode.zlink.service.registry.RegistryQueryClient;
@@ -199,9 +200,12 @@ class ServiceContractsIntegrationTest {
             Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
             while (Instant.now().isBefore(deadline)) {
                 try (var payload = dev.kairoscode.zlink.Message.copyOfUtf8("perf-body")) {
-                    publisher.publish("perf-topic", payload, SendFlags.DONT_WAIT);
+                    publisher.publish("spot-perf-service", "perf-topic", payload,
+                        SendFlags.DONT_WAIT);
                 }
                 try (var topicMessage = subscriber.subscribe(RecvFlags.DONT_WAIT)) {
+                    assertEquals("spot-perf-service",
+                        topicMessage.serviceName().orElseThrow());
                     assertEquals("perf-topic", topicMessage.topic());
                     assertArrayEquals("perf-body".getBytes(),
                         topicMessage.singlePartOrThrow().toByteArray());
@@ -218,12 +222,13 @@ class ServiceContractsIntegrationTest {
     }
 
     @Test
-    void spotSubscribeCallbackRunsOnManagedJavaThread() throws Exception {
+    void spotDispatchEventRunsOnManagedJavaThread() throws Exception {
         TestSupport.assumeNative();
 
         String endpoint = TestSupport.tcpEndpoint();
         CountDownLatch delivered = new CountDownLatch(1);
         AtomicReference<Thread> callbackThread = new AtomicReference<>();
+        AtomicReference<String> serviceNameRef = new AtomicReference<>();
         AtomicReference<String> topicRef = new AtomicReference<>();
         AtomicReference<byte[]> payloadRef = new AtomicReference<>();
         AtomicReference<String> rejectionMessage = new AtomicReference<>();
@@ -241,14 +246,21 @@ class ServiceContractsIntegrationTest {
             awaitCondition(() -> clientNode.statusSnapshot().connectedPeerCount() > 0,
                 "spot peer connection");
 
-            subscriber.onSubscribe((routingId, topicId, received) -> {
+            subscriber.onDispatchEvent(event -> {
+                if (event != SpotDispatchEvent.SUBSCRIBE_READABLE) {
+                    return;
+                }
                 try {
                     callbackThread.set(Thread.currentThread());
-                    topicRef.set(topicId);
-                    payloadRef.set(received.singlePartOrThrow().toByteArray());
+                    try (var received = subscriber.subscribe(RecvFlags.DONT_WAIT)) {
+                        serviceNameRef.set(received.serviceName().orElseThrow());
+                        topicRef.set(received.topic());
+                        payloadRef.set(received.singlePartOrThrow().toByteArray());
+                    }
                     try (Message reply = Message.copyOfUtf8("callback-send")) {
                         try {
-                            subscriber.publish(topicId, reply, SendFlags.DONT_WAIT);
+                            subscriber.publish("spot-callback-service",
+                                topicRef.get(), reply, SendFlags.DONT_WAIT);
                             throw new IllegalStateException(
                                 "blocking publish in Spot callback must be rejected");
                         } catch (IllegalStateException ex) {
@@ -263,20 +275,22 @@ class ServiceContractsIntegrationTest {
             });
 
             try (Message payload = Message.copyOfUtf8("spot-body")) {
-                publisher.publish("spot-callback-topic", payload,
-                    SendFlags.DONT_WAIT);
+                publisher.publish("spot-callback-service",
+                    "spot-callback-topic", payload, SendFlags.DONT_WAIT);
             }
 
             assertTrue(delivered.await(TestSupport.DEFAULT_TIMEOUT_MS,
                 TimeUnit.MILLISECONDS), "spot callback timed out");
             assertNull(callbackError.get(), "callback raised: "
                 + callbackError.get());
+            assertEquals("spot-callback-service", serviceNameRef.get());
             assertEquals("spot-callback-topic", topicRef.get());
             assertArrayEquals("spot-body".getBytes(), payloadRef.get());
             Thread observedThread = callbackThread.get();
             assertNotNull(observedThread);
             assertTrue(observedThread != testThread);
-            assertTrue(observedThread.getName().startsWith("zlink-spot-callback"));
+            assertTrue(observedThread.getName().startsWith(
+                "zlink-spot-dispatch-callback"));
             assertNotNull(rejectionMessage.get());
             assertTrue(rejectionMessage.get().contains("blocking publish"));
             assertTrue(rejectionMessage.get().contains("callback context"));

@@ -136,8 +136,8 @@ if (zlink_router_recv(router,
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | Return `ZLINK_SUBMIT_NOT_CONNECTED` for undeliverable messages. Now defaults to `1`, so `zlink_send_rid()` to an unconnected peer surfaces the failure by default. Set to `0` explicitly to restore legacy silent-drop behavior. |
-| `ZLINK_ROUTER_OPT_HANDOVER` | int | 1 | Allow a new connection to take over an existing routing_id. Now defaults to `1`, so duplicate peer identities trigger handover by default. Set to `0` explicitly to keep the existing pipe. |
+| `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | Return `ZLINK_SUBMIT_NOT_CONNECTED` for undeliverable messages. With the default of `1`, `zlink_send_rid()` to an unconnected peer surfaces the failure. Set to `0` explicitly to silently drop instead. |
+| `ZLINK_ROUTER_OPT_HANDOVER` | int | 1 | Allow a new connection to take over an existing routing_id. With the default of `1`, duplicate peer identities trigger handover. Set to `0` explicitly to keep the existing pipe and reject the new one. |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | Default timeout for `zlink_router_request()`. `0` uses the implementation default of `5000ms` |
 | `zlink_set_routing_id()` | binary | Auto (UUID) | The ROUTER's own routing_id (dedicated function) |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | Send HWM |
@@ -146,10 +146,9 @@ if (zlink_router_recv(router,
 
 ### ROUTER_MANDATORY
 
-`ZLINK_ROUTER_OPT_MANDATORY` now defaults to `1`. By default, a
-`zlink_send_rid()` to an unreachable peer no longer silently drops; it
-returns `ZLINK_SUBMIT_NOT_CONNECTED`, giving the caller a chance to log,
-retry, or fall back.
+`ZLINK_ROUTER_OPT_MANDATORY` defaults to `1`. A `zlink_send_rid()` to an
+unreachable peer returns `ZLINK_SUBMIT_NOT_CONNECTED` instead of silently
+dropping, giving the caller a chance to log, retry, or fall back.
 
 ```c
 /* Default behavior (MANDATORY=1) */
@@ -161,18 +160,18 @@ zlink_submit_result_t rc = zlink_send_rid(
     router, &target_rid, &msg, 1, 0);
 /* rc == ZLINK_SUBMIT_NOT_CONNECTED */
 
-/* Opt in to legacy silent-drop behavior by setting MANDATORY=0 */
+/* Opt in to silent-drop behavior by setting MANDATORY=0 */
 int mandatory = 0;
 zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
                         &mandatory, sizeof(mandatory));
 ```
 
-> **Observable behavior change from new defaults:** with `MANDATORY=1` as
-> the default, ROUTER's writable / `ZLINK_POLLOUT` observation surfaces
-> send-recovery readiness only while a reachable peer exists. With
-> `HANDOVER=1` as the default, a duplicate peer identity takes over the
-> existing pipe instead of being rejected. Expect `NOT_CONNECTED` from
-> `send_rid` more often than before.
+> **Observable behavior:** with `MANDATORY=1`, ROUTER's writable /
+> `ZLINK_POLLOUT` observation surfaces send-recovery readiness only while
+> a reachable peer exists. With `HANDOVER=1`, a duplicate peer identity
+> takes over the existing pipe instead of being rejected. `NOT_CONNECTED`
+> from `send_rid` is therefore a common return path when peers come and
+> go.
 
 > Reference: `core/tests/test_router_mandatory.cpp` -- `test_basic()`
 
@@ -326,7 +325,7 @@ if (rc == ZLINK_SUBMIT_NOT_CONNECTED) {
     /* Target "UNKNOWN" not found -- caller chooses retry/log/fallback */
 }
 
-/* If the legacy silent-drop behavior is desired, explicitly disable it */
+/* If silent-drop behavior is desired, explicitly disable MANDATORY */
 int disable_mandatory = 0;
 zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
                         &disable_mandatory, sizeof(disable_mandatory));

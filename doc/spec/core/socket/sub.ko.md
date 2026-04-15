@@ -23,7 +23,7 @@
 SUB/XSUB 소켓, spot-sub, spotnode-sub 전용 옵션을 설정합니다.
 
 ```c
-int zlink_set_sub_option (void *handle_,
+zlink_config_result_t zlink_set_sub_option (void *handle_,
                            zlink_sub_option_t option_,
                            const void *optval_,
                            size_t optvallen_);
@@ -33,7 +33,7 @@ SUB/XSUB 소켓 옵션을 설정합니다. spot-sub과 spotnode-sub 핸들에도
 적용됩니다. 모든 소켓 타입에 공유되는 공통 옵션은 `zlink_set_option()`을
 사용하세요.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_get_sub_option`, `zlink_set_option`
 
@@ -44,7 +44,7 @@ SUB/XSUB 소켓 옵션을 설정합니다. spot-sub과 spotnode-sub 핸들에도
 SUB/XSUB 소켓, spot-sub, spotnode-sub 전용 옵션을 조회합니다.
 
 ```c
-int zlink_get_sub_option (void *handle_,
+zlink_config_result_t zlink_get_sub_option (void *handle_,
                            zlink_sub_option_t option_,
                            void *optval_,
                            size_t *optvallen_);
@@ -52,7 +52,7 @@ int zlink_get_sub_option (void *handle_,
 
 SUB/XSUB 소켓 옵션의 현재 값을 가져옵니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_set_sub_option`
 
@@ -63,7 +63,7 @@ SUB/XSUB 소켓 옵션의 현재 값을 가져옵니다.
 토픽 필터를 구독합니다.
 
 ```c
-int zlink_set_subscription (void *handle_, const char *filter_);
+zlink_config_result_t zlink_set_subscription (void *handle_, const char *filter_);
 ```
 
 `filter_`에 매칭되는 메시지를 구독합니다. 필터 해석: `filter_`가 `*`로
@@ -71,7 +71,7 @@ int zlink_set_subscription (void *handle_, const char *filter_);
 
 적용 대상: raw SUB, raw XSUB.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **에러:** `handle_`이 NULL이면 `EFAULT`. `filter_`가 NULL이거나 비어있거나
 유효하지 않은 패턴 구문(복수 `*`, 중간 `*`)이면 `EINVAL`. handle 타입이
@@ -86,7 +86,7 @@ int zlink_set_subscription (void *handle_, const char *filter_);
 토픽 필터 구독을 해제합니다.
 
 ```c
-int zlink_unset_subscription (void *handle_, const char *filter_);
+zlink_config_result_t zlink_unset_subscription (void *handle_, const char *filter_);
 ```
 
 이전에 등록된 구독을 제거합니다. `zlink_set_subscription()`과 동일한 문자열
@@ -94,7 +94,7 @@ int zlink_unset_subscription (void *handle_, const char *filter_);
 
 적용 대상: raw SUB, raw XSUB.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **에러:** `handle_`이 NULL이면 `EFAULT`. `filter_`가 NULL이거나 비어있으면
 `EINVAL`. handle 타입이 구독 해제를 지원하지 않으면 `ENOTSUP`.
@@ -108,13 +108,13 @@ int zlink_unset_subscription (void *handle_, const char *filter_);
 토픽 기반 멀티파트 메시지를 수신합니다.
 
 ```c
-int zlink_subscribe (void *subject_,
+zlink_recv_result_t zlink_subscribe (void *subject_,
                      zlink_routing_id_t *source_rid_out_,
                      zlink_msg_t **parts_out_,
                      size_t *part_count_out_,
                      char *topic_id_out_,
                      size_t *topic_id_len_out_,
-                     zlink_send_flags_t flags_);
+                     zlink_recv_flags_t flags_);
 ```
 
 recv 모드에서 다음 토픽 기반 메시지를 수신합니다. 성공 시
@@ -129,7 +129,7 @@ raw SUB/XSUB는 recv-only 타입입니다. poller의 `ZLINK_POLLIN`과 함께 �
 
 적용 대상: raw SUB, raw XSUB, `spot`, `spot_node`.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_RECV_OK`, 실패 시 `zlink_recv_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **에러:** `subject_`가 NULL이면 `EFAULT`. `ZLINK_DONTWAIT`가 설정되고
 메시지가 없으면 `EAGAIN`. 토픽 버퍼가 작으면 `EMSGSIZE`. subject 타입이
@@ -144,7 +144,7 @@ subscribe recv를 지원하지 않으면 `ENOTSUP`.
 지정된 인덱스의 구독 필터를 조회한다.
 
 ```c
-int zlink_subscription_at (void *handle_,
+zlink_config_result_t zlink_subscription_at (void *handle_,
                            size_t index_,
                            char *filter_out_,
                            size_t *filter_len_inout_,
@@ -157,7 +157,7 @@ int zlink_subscription_at (void *handle_,
 
 적용 타입: raw SUB, raw XSUB.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **에러:** 인덱스가 범위를 벗어나면 `EINVAL`. 버퍼가 작으면 `EMSGSIZE`.
 handle 타입이 구독 조회를 지원하지 않으면 `ENOTSUP`.

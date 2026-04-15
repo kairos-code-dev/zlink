@@ -39,7 +39,7 @@ zlink_config_result_t zlink_discovery_resolve_spot (
 
 이 함수는 현재 Discovery의 `service_name` 범위 안에서 `spot_rid`에 대한 현재
 `SpotNode`의 `node_rid`를 구합니다. 성공하면 호출자는 반환된
-`owner_node_rid_out`과 원래의 `spot_rid`를 묶어 기존
+`owner_node_rid_out`과 원래의 `spot_rid`를 묶어
 `zlink_spot_send_spot()` 또는 `zlink_spot_request_spot()` 함수에 전달하면
 됩니다.
 
@@ -92,9 +92,9 @@ Registry 쪽 재조회는 구현에 따라 local shard, remote shard, 또는 그
 ### 로컬 최적 경로와 handover 중 request
 
 조회 결과의 `owner_node_rid`가 현재 node와 같으면 구현은 로컬 최적 경로를 쓸
-수 있습니다. 그래도 외부 계약은 바뀌지 않습니다. 여전히
-`dest_node_rid + dest_spot_rid`를 구한 뒤 기존 routed 경로를 사용한 것으로
-해석합니다.
+수 있습니다. 그래도 외부 계약은 바뀌지 않습니다. 호출자는
+`dest_node_rid + dest_spot_rid`를 구한 뒤 일반 routed 경로로 보낸 것과
+동일하게 해석합니다.
 
 handover 도중 이미 특정 owner pair로 전달된 request는 그때 정해진 경로를
 그대로 따릅니다. handover 이후 새로 조회한 request부터만 새 owner 를 사용합니다.
@@ -107,12 +107,13 @@ Discovery에 붙은 서비스의 자동 연결 범위는 현재 Discovery의 `se
 
 ### SpotNode의 socket-service Discovery attach
 
-`zlink_spot_node_attach_discovery()`는 이제 `ZLINK_SERVICE_TYPE_SPOT`뿐 아니라
-`ZLINK_SERVICE_TYPE_SOCKET` Discovery도 받습니다. 이 경로는 "같은 서비스의 다른
-SpotNode endpoint를 자동 연결한다"가 아니라, 해당 `service_name`의 socket provider
-view를 `SpotNode`의 service attachment table에 자동 source로 반영하는 계약입니다.
+`zlink_spot_node_attach_discovery()`는 `ZLINK_SERVICE_TYPE_SPOT`과
+`ZLINK_SERVICE_TYPE_SOCKET` Discovery를 모두 받습니다. 이 경로는 "같은 서비스의
+다른 SpotNode endpoint를 자동 연결한다"가 아니라, 해당 `service_name`의 socket
+provider view를 `SpotNode`의 service attachment table에 자동 source로 반영하는
+계약입니다.
 
-- Discovery 하나는 여전히 하나의 고정 `service_name` view만 가집니다.
+- Discovery 하나는 하나의 고정 `service_name` view만 가집니다.
 - 대신 같은 `SpotNode`에는 서로 다른 `service_name`의 socket-service Discovery를
   여러 개 attach할 수 있습니다.
 - 같은 Discovery handle을 둘 이상의 owner에 attach할 수 없습니다.
@@ -212,7 +213,7 @@ zlink_config_result_t zlink_discovery_set_dealer_peer_mode (
   로 실패하고, destroy가 받아들여진 뒤에는 새 API 진입이 `ESHUTDOWN`으로
   실패합니다.
 
-## 현재 권장 API 방향
+## API 표면
 
 - Discovery 자체의 이름은 `zlink_set_routing_id(discovery, data, size)` /
   `zlink_get_routing_id(discovery, &out)`로 다룹니다.

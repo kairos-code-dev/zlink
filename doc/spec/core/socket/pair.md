@@ -62,11 +62,11 @@ failure, ownership remains with the caller.
 Receive a multipart message from a socket.
 
 ```c
-bool zlink_recv (void *s_,
+zlink_recv_result_t zlink_recv (void *s_,
                  zlink_routing_id_t *source_rid_out_,
                  zlink_msg_t **parts_out_,
                  size_t *part_count_out_,
-                 zlink_send_flags_t flags_);
+                 zlink_recv_flags_t flags_);
 ```
 
 Receives a complete multipart message from socket `s_`. On success,
@@ -79,7 +79,7 @@ the intended pattern is to observe `ZLINK_POLLIN` from a poller and then
 pull data with this function. Pass `ZLINK_DONTWAIT` to return immediately
 when no message is available.
 
-**Returns:** `true` on success, `false` on failure (errno is set).
+**Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was
 set, or if `ZLINK_OPT_RCVTIMEO` expired. `ETERM` if the context was
@@ -94,7 +94,7 @@ terminated.
 Install or replace the send-ready callback.
 
 ```c
-bool zlink_send_ready_handler (
+zlink_handler_result_t zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
@@ -108,6 +108,6 @@ callback and `ZLINK_POLLOUT` expose the same send-recovery readiness axis: a
 readiness signal means it is worth retrying send, not that the retry is
 guaranteed to succeed. Unsupported subjects return `ENOTSUP`.
 
-**Returns:** `true` on success, `false` on failure (errno is set).
+**Returns:** `ZLINK_HANDLER_OK` on success; otherwise a `zlink_handler_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_send`

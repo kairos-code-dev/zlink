@@ -164,6 +164,7 @@ type SpotNodePeerEntry struct {
 	PeerEndpoint     string
 	Source           SpotPeerSource
 	State            SpotPeerState
+	AdmissionState   AdmissionState
 	ConnectedSinceMs uint64
 	LastChangedMs    uint64
 }
@@ -220,12 +221,13 @@ type RegistryServiceSummaryFilter struct {
 }
 
 type MemberPeerEntry struct {
-	ServiceType ServiceType
-	ServiceRole ServiceRole
-	ServiceName string
-	Endpoint    string
-	RoutingID   RoutingID
-	Value       int64
+	ServiceType    ServiceType
+	ServiceRole    ServiceRole
+	ServiceName    string
+	Endpoint       string
+	RoutingID      RoutingID
+	AdmissionState AdmissionState
+	Value          int64
 }
 
 type RegistryTopologyEntry struct {
@@ -249,6 +251,30 @@ type RegistryTopologyFilter struct {
 	RoutingID   *RoutingID
 	State       *TopologyState
 	Source      *TopologySource
+}
+
+type SpotServiceAttachmentRole int
+
+const (
+	SpotServiceAttachmentRouter SpotServiceAttachmentRole = 1
+	SpotServiceAttachmentPub    SpotServiceAttachmentRole = 2
+	SpotServiceAttachmentSub    SpotServiceAttachmentRole = 3
+)
+
+type SpotServiceAttachmentStats struct {
+	ServiceName     string
+	RouterCount     uint32
+	PubCount        uint32
+	SubCount        uint32
+	AutoRouterCount uint32
+	AutoPubCount    uint32
+	AutoSubCount    uint32
+}
+
+type SpotServiceMonitorEvent struct {
+	ServiceName string
+	Role        SpotServiceAttachmentRole
+	Event       MonitorEventType
 }
 
 func (e *MemberPeerEntry) HasRoutingID() bool {
@@ -935,6 +961,7 @@ func spotNodePeerEntryFromC(raw C.zlink_spot_node_peer_entry_t) SpotNodePeerEntr
 		PeerEndpoint:     C.GoString(&raw.peer_endpoint[0]),
 		Source:           SpotPeerSource(raw.source),
 		State:            SpotPeerState(raw.state),
+		AdmissionState:   AdmissionState(raw.admission_state),
 		ConnectedSinceMs: uint64(raw.connected_since_ms),
 		LastChangedMs:    uint64(raw.last_changed_ms),
 	}
@@ -981,12 +1008,13 @@ func registryServiceSummaryEntryFromC(raw C.zlink_registry_service_summary_entry
 
 func memberPeerEntryFromC(raw C.zlink_member_peer_entry_t) MemberPeerEntry {
 	return MemberPeerEntry{
-		ServiceType: ServiceType(raw.service_type),
-		ServiceRole: ServiceRole(raw.service_role),
-		ServiceName: C.GoString(&raw.service_name[0]),
-		Endpoint:    C.GoString(&raw.endpoint[0]),
-		RoutingID:   routingIDFromC(raw.routing_id),
-		Value:       int64(raw.value),
+		ServiceType:    ServiceType(raw.service_type),
+		ServiceRole:    ServiceRole(raw.service_role),
+		ServiceName:    C.GoString(&raw.service_name[0]),
+		Endpoint:       C.GoString(&raw.endpoint[0]),
+		RoutingID:      routingIDFromC(raw.routing_id),
+		AdmissionState: AdmissionState(raw.admission_state),
+		Value:          int64(raw.value),
 	}
 }
 

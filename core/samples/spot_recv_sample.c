@@ -17,15 +17,6 @@ int main (void)
     assert (pub_spot != NULL);
     assert (sub_spot != NULL);
 
-    void *sub_monitor = open_service_monitor (
-      sub_spot,
-      ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED
-        | ZLINK_SERVICE_MONITOR_EVENT_ERROR);
-    void *pub_monitor = open_service_monitor (
-      pub_spot,
-      ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED
-        | ZLINK_SERVICE_MONITOR_EVENT_ERROR);
-
     int rc = zlink_spot_node_bind (pub_node, "tcp://127.0.0.1:0");
     assert (rc == 0);
     zlink_spot_node_status_t status;
@@ -37,8 +28,7 @@ int main (void)
 
     rc = zlink_set_subscription (sub_spot, k_spot_topic);
     assert (rc == 0);
-    assert (wait_spot_ready (sub_monitor, pub_monitor,
-                             status.local_endpoint, 10000));
+    assert (wait_for_spot_node_subject_ready (sub_node, 10000));
 
     zlink_msg_t outbound;
     make_message (&outbound, k_spot_payload);
@@ -65,8 +55,6 @@ int main (void)
             (const char *) zlink_msg_data (&parts[0]));
     zlink_multipart_close (parts, count);
 
-    zlink_monitor_close (&pub_monitor);
-    zlink_monitor_close (&sub_monitor);
     zlink_spot_destroy (&sub_spot);
     zlink_spot_destroy (&pub_spot);
     zlink_spot_node_destroy (&sub_node);

@@ -70,10 +70,10 @@ template<typename Fn> void expect_runtime_error (Fn fn_)
     assert (threw);
 }
 
-void discard_pair_parts (const zlink_routing_id_t *,
-                         zlink_msg_t *parts_,
-                         size_t part_count_,
-                         void *)
+void discard_stream_parts (const zlink_routing_id_t *,
+                           zlink_msg_t *parts_,
+                           size_t part_count_,
+                           void *)
 {
     zlink_multipart_close (parts_, part_count_);
 }
@@ -151,12 +151,12 @@ void test_publish_throws_on_general_error ()
     expect_runtime_error ([&] { socket.publish ("topic:error", outbound); });
 }
 
-void test_pair_receive_throws_in_callback_mode ()
+void test_stream_receive_throws_in_callback_mode ()
 {
     zlink::context_t ctx;
-    zlink::pair_socket_t socket (ctx);
+    zlink::stream_socket_t socket (ctx);
 
-    socket.on_receive (&discard_pair_parts, NULL);
+    socket.on_receive (&discard_stream_parts, NULL);
     expect_runtime_error ([&] { (void) socket.recv (); });
 }
 
@@ -227,7 +227,7 @@ int main ()
     test_router_send_throws_for_closed_socket ();
     test_send_throws_on_general_error ();
     test_publish_throws_on_general_error ();
-    test_pair_receive_throws_in_callback_mode ();
+    test_stream_receive_throws_in_callback_mode ();
     test_socket_monitor_receive_returns_empty_without_event ();
     test_service_monitor_receive_returns_empty_without_event ();
     test_routing_id_from_accepts_maximum_size ();

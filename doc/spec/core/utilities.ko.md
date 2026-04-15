@@ -192,10 +192,11 @@ void *zlink_spot_timer_new (void *spot_);
 타이머를 파괴하고 리소스를 해제한다.
 
 ```c
-int zlink_timer_destroy (void **timer_p_);
+zlink_close_result_t zlink_timer_destroy (void **timer_p_);
 ```
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CLOSE_OK`. 실패 시에는 `zlink_close_result_t`
+값을 반환한다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지된다.
 
 ---
 
@@ -204,15 +205,16 @@ int zlink_timer_destroy (void **timer_p_);
 타이머를 시작한다.
 
 ```c
-int zlink_timer_start (void *timer_,
-                       uint64_t interval_ns_,
-                       uint64_t repeat_count_);
+zlink_config_result_t zlink_timer_start (void *timer_,
+                                         uint64_t interval_ns_,
+                                         uint64_t repeat_count_);
 ```
 
 `interval_ns_` 나노초 간격으로 타이머를 시작한다. `repeat_count_`가 0이면
 무한 반복, 양수이면 해당 횟수만큼 발동 후 자동 정지.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`. 실패 시에는 `zlink_config_result_t`
+값을 반환한다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지된다.
 
 **참고:** `zlink_timer_stop`
 
@@ -223,10 +225,11 @@ int zlink_timer_start (void *timer_,
 실행 중인 타이머를 정지한다.
 
 ```c
-int zlink_timer_stop (void *timer_);
+zlink_config_result_t zlink_timer_stop (void *timer_);
 ```
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`. 실패 시에는 `zlink_config_result_t`
+값을 반환한다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지된다.
 
 **참고:** `zlink_timer_start`
 
@@ -237,15 +240,17 @@ int zlink_timer_stop (void *timer_);
 타이머 발동을 동기적으로 수신한다.
 
 ```c
-int zlink_timer_recv (void *timer_, uint64_t *fire_count_out_);
+zlink_recv_result_t zlink_timer_recv (void *timer_, uint64_t *fire_count_out_);
 ```
 
 recv 모드에서 다음 타이머 발동을 기다린다. 성공하면 `*fire_count_out_`에
 누적 발동 횟수가 설정된다.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_RECV_OK`. 실패 시에는 `zlink_recv_result_t`
+값을 반환한다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지된다.
 
-**에러:** 타이머가 이미 멈췄고 더 읽을 발동이 없으면 `EAGAIN`.
+**에러:** 타이머가 이미 멈췄고 더 읽을 발동이 없으면 `ZLINK_RECV_NO_DATA`
+(내부 `EAGAIN`).
 
 **참고:** `zlink_timer_handler`
 
@@ -256,14 +261,15 @@ recv 모드에서 다음 타이머 발동을 기다린다. 성공하면 `*fire_c
 타이머 만료 콜백 핸들러를 등록한다.
 
 ```c
-int zlink_timer_handler (void *timer_,
-                         zlink_timer_handler_fn handler_,
-                         void *userdata_);
+zlink_handler_result_t zlink_timer_handler (void *timer_,
+                                            zlink_timer_handler_fn handler_,
+                                            void *userdata_);
 ```
 
-콜백 핸들러를 등록하면 `zlink_timer_recv`는 사용할 수 없다 (`EBUSY`).
+콜백 핸들러를 등록하면 `zlink_timer_recv`는 `ZLINK_RECV_BUSY`로 실패한다.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_HANDLER_OK`. 실패 시에는 `zlink_handler_result_t`
+값을 반환한다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지된다.
 
 **참고:** `zlink_timer_recv`
 

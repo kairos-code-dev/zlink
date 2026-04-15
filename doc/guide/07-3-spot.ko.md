@@ -251,9 +251,9 @@ zlink_spot_node_attach_discovery(node, prices_sub_discovery);
 
 위 예의 포인트:
 
-- `ZLINK_SERVICE_TYPE_SOCKET`을 쓴다. raw socket-as-service를 발견·등록하는
-  Discovery 타입이다. (SpotNode 자체의 mesh peer 발견을 쓰던 옛
-  `ZLINK_SERVICE_TYPE_SPOT` 경로와 다르다.)
+- `ZLINK_SERVICE_TYPE_SOCKET`을 쓴다. raw socket-as-service 를 발견·등록
+  하는 Discovery 타입이다. multi-service 모델에서는 `SpotNode` 아래의
+  각 ROUTER/PUB/SUB 가 개별 socket service 로 게시된다.
 - `zlink_socket_attach_discovery()`가 socket을 Discovery에 **소속시키는**
   필수 중간 단계다. 이걸 건너뛰면 Registry에 provider로 올라가지 않고,
   SpotNode에 attach_discovery해도 그 서비스에는 들어오는 attachment가 없다.
@@ -535,12 +535,13 @@ sequenceDiagram
     Sel-->>Spot: chosen = R2
     Spot->>R2: forward payload
     Note over R1,R3: 다음 호출은 R3 → R1 → R2 ... 순으로 회전
-    Note over Sel: admission_state=DRAINING peer는 후보에서 제외
+    Note over Sel: selector는 send-ready만 필터링.<br/>DRAINING은 선택된 ROUTER의 send에서 surface
 ```
 
-- 후보가 0개(모두 send-ready가 아니거나 전부 `DRAINING`)면 호출은
-  `ZLINK_SUBMIT_NOT_CONNECTED`로 정규화된다. 모든 후보가 `DRAINING`이면
-  `ZLINK_SUBMIT_NOT_ADMITTED`.
+- send-ready 후보가 0개면 호출은 `ZLINK_SUBMIT_NOT_CONNECTED`로 정규화된다.
+  선택된 ROUTER가 `DRAINING` 상태의 원격 peer로 forwarding하면 그 send가
+  `ZLINK_SUBMIT_NOT_ADMITTED`를 surface한다. 재시도는 같은 그룹의 다른
+  ROUTER — 원격 peer가 `SERVING`인 쪽 — 에 도달할 수 있다.
 - 선택된 ROUTER가 HWM에 걸리면 `ZLINK_SUBMIT_BACKPRESSURED`. 이 경우 지정한
   peer의 write path 회복이 생기면 재시도한다.
 
@@ -632,7 +633,7 @@ service 기반 routed 송신은 raw DEALER의 round-robin을 `service_name` 단�
 | pool 구성 | 호출자가 직접 `zlink_connect()`로 구성 | 수동 attach와 Discovery 자동 attach가 섞일 수 있음 |
 | round-robin 단위 | connect된 endpoint | ROUTER attachment |
 | reply 상관 | 호출자가 직접 매칭 (send/recv 쌍으로 처리) | 라이브러리가 ingress ROUTER와 `request_seq`로 관리 |
-| admission 인지 | 호출자가 직접 처리 | `DRAINING` peer 자동 제외 + `NOT_ADMITTED` 결과로 surface |
+| admission 인지 | 호출자가 직접 처리 | 하위 ROUTER의 send가 원격 peer `DRAINING` 시 `NOT_ADMITTED`를 surface |
 | 여러 서비스 병렬 | 소켓을 여러 개 만들어 각각 connect | 한 facade에서 `service_name`만 바꿔 호출 |
 | 대상이 비는 경우 | BACKPRESSURED 또는 silent hold | `NOT_CONNECTED`로 정규화 (구성은 있으나 경로 부재) |
 

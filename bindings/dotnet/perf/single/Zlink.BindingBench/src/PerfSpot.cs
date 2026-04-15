@@ -7,6 +7,7 @@ using static PerfRunner;
 
 internal static class PerfSpot
 {
+    private const string ServiceName = "bench-svc";
     private const string Topic = "bench";
     private const int BorrowedPublishThreshold = 65536;
 
@@ -231,9 +232,9 @@ internal static class PerfSpot
     private static SendResult TryPublishPayload(Spot publisher, byte[] payload)
     {
         if (payload.Length >= BorrowedPublishThreshold)
-            return publisher.TryPublishBorrowedSingle(Topic, payload);
+            return publisher.TryPublishBorrowedSingle(ServiceName, Topic, payload);
 
-        return publisher.TryPublishRawSingle(Topic, payload);
+        return publisher.TryPublishRawSingle(ServiceName, Topic, payload);
     }
 
     private static bool TryReceiveSinglePayload(Spot subscriber, Span<byte> buffer,

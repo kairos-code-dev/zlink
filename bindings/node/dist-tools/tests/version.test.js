@@ -30,6 +30,8 @@ test('stream compat helpers stay off the canonical stream surface', () => {
     const stream = new zlink.StreamSocket(ctx);
     assert.equal(stream.streamAttach, undefined);
     assert.equal(stream.streamDetach, undefined);
+    assert.equal(typeof stream.onPacket, 'function');
+    assert.equal(stream.onReceive, undefined);
     assert.equal(typeof stream.send, 'function');
     assert.equal(zlink.Socket, undefined);
     assert.equal(zlink.StreamDispatchMode, undefined);

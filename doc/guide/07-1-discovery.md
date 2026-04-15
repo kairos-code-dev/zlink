@@ -267,6 +267,10 @@ zlink_monitor_close(&mon);
 zlink_discovery_destroy(&discovery);
 ```
 
+For the new multi-service SpotNode topology, use
+`ZLINK_SERVICE_TYPE_SOCKET` per attached socket — see the SPOT guide
+[§3.1 Discovery-Based Automatic Mesh](07-3-spot.md#31-discovery-based-automatic-mesh).
+
 ## 4.1 Socket Family Discovery
 
 Raw ROUTER/DEALER/PUB/SUB sockets can use Discovery for automatic peer

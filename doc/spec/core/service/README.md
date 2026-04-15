@@ -51,19 +51,19 @@ SPOT direct routed messaging is easiest to understand as two modes.
 
 - direct pair mode:
   the caller already knows both `dest_node_rid` and `dest_spot_rid` and passes
-  them directly to the existing SPOT send/request functions
+  them directly to the SPOT send/request functions
 - logical `spot_rid` mode:
   the caller starts from only `spot_rid`, asks the current Discovery service
   view which `SpotNode` currently owns it inside that `service_name`, then
-  passes that result to the existing SPOT send/request functions
+  passes that result to the same SPOT send/request functions
 
-The second mode is not a separate wire path. The final submit step still uses
-the existing `dest_node_rid + dest_spot_rid` pair. Internally, the flow is:
-resolve `spot_rid -> owner_node_rid`, then call the existing routed function.
+The second mode is not a separate wire path. The final submit step always uses
+the `dest_node_rid + dest_spot_rid` pair. Internally, the flow is:
+resolve `spot_rid -> owner_node_rid`, then call the routed function.
 
 This spec does not require extra `send/request/reply` overloads for that flow.
 Instead, the caller first resolves the destination node with the following API
-and then calls the existing routed submit functions.
+and then calls the SPOT routed submit functions.
 
 ```c
 zlink_config_result_t zlink_discovery_resolve_spot (

@@ -8,6 +8,8 @@ const { once } = require('node:events');
 const path = require('node:path');
 const zlink = require('../dist/canonical');
 const SPOT_PEER_SOURCE_MANUAL = 1;
+const SERVICE_TYPE_SPOT = 0x3002;
+const SPOT_SERVICE_NAME = 'pubsub-spot-service';
 async function reservePort() {
     const server = net.createServer();
     server.listen(0, '127.0.0.1');
@@ -34,18 +36,26 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
     const ctx = new zlink.Context();
     const serverNode = new zlink.SpotNode(ctx);
     const clientNode = new zlink.SpotNode(ctx);
-    const serverSpot = serverNode.createSpot();
-    const clientSpot = clientNode.createSpot();
+    const serverPub = new zlink.PubSocket(ctx);
+    const serverSub = new zlink.SubSocket(ctx);
+    const clientPub = new zlink.PubSocket(ctx);
+    const clientSub = new zlink.SubSocket(ctx);
     const topic = 'spot:remote';
     const port = await reservePort();
     const endpoint = `tcp://127.0.0.1:${port}`;
+    let serverSpot;
+    let clientSpot;
     try {
-        serverNode.bind(endpoint);
-        clientNode.connectPeer(endpoint);
+        serverNode.attachPubSub(SPOT_SERVICE_NAME, serverPub, serverSub);
+        clientNode.attachPubSub(SPOT_SERVICE_NAME, clientPub, clientSub);
+        serverSpot = serverNode.createSpot();
+        clientSpot = clientNode.createSpot();
+        serverPub.bind(endpoint);
+        clientSub.connect(endpoint);
         clientSpot.setSubscription(topic);
         const deadline = Date.now() + 5000;
         while (Date.now() < deadline) {
-            serverSpot.publish(topic, 'payload');
+            serverSpot.publish(SPOT_SERVICE_NAME, topic, 'payload');
             let received = null;
             try {
                 received = clientSpot.subscribe(zlink.RecvFlags.DontWait);
@@ -57,6 +67,7 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
             }
             if (received) {
                 assert.equal(received.topic, topic);
+                assert.equal(received.serviceName, SPOT_SERVICE_NAME);
                 assert.deepEqual(received.parts.map((part) => part.data().toString()), ['payload']);
                 return;
             }
@@ -72,10 +83,18 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
         })}`);
     }
     finally {
-        clientSpot.close();
-        serverSpot.close();
-        clientNode.close();
+        if (clientSpot) {
+            clientSpot.close();
+        }
+        if (serverSpot) {
+            serverSpot.close();
+        }
         serverNode.close();
+        clientNode.close();
+        serverPub.close();
+        serverSub.close();
+        clientPub.close();
+        clientSub.close();
         ctx.close();
     }
 });
@@ -241,33 +260,36 @@ test('sub sockets receive TopicMessage domain objects and non-blocking receive r
     pub.publish('topic', 'payload');
     const received = sub.subscribe();
     assert.equal(received.topic, 'topic');
+    assert.equal(received.serviceName, null);
     assert.ok(received.routingId === null || received.routingId instanceof zlink.RoutingId);
     assert.deepEqual(received.parts.map((part) => part.data().toString()), ['payload']);
     sub.close();
     pub.close();
     ctx.close();
 });
-test('onSubscribe delivers topic-aware multipart payloads', async () => {
+test('subscribe returns topic-aware multipart payloads without callback mode', async () => {
     const ctx = new zlink.Context();
     const pub = new zlink.PubSocket(ctx);
     const sub = new zlink.SubSocket(ctx);
     pub.bind('inproc://subscribe-handler-contract');
     sub.connect('inproc://subscribe-handler-contract');
     sub.setSubscription('topic');
-    const receivedPromise = new Promise((resolve, reject) => {
-        try {
-            sub.onSubscribe((message) => {
-                resolve(message);
-            });
-        }
-        catch (err) {
-            reject(err);
-            return;
-        }
-    });
-    await new Promise((resolve) => setTimeout(resolve, 50));
     pub.publish('topic', 'payload');
-    const received = await receivedPromise;
+    const deadline = Date.now() + 5000;
+    let received = null;
+    while (Date.now() < deadline) {
+        try {
+            received = sub.subscribe(zlink.RecvFlags.DontWait);
+            break;
+        }
+        catch (error) {
+            if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
+                throw error;
+            }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.notEqual(received, null);
     assert.ok(received.routingId === null || received.routingId instanceof zlink.RoutingId);
     assert.equal(received.topic, 'topic');
     assert.deepEqual(received.parts.map((part) => part.data().toString()), ['payload']);
@@ -275,11 +297,11 @@ test('onSubscribe delivers topic-aware multipart payloads', async () => {
     pub.close();
     ctx.close();
 });
-test('onSubscribe blocks direct subscribe on the same socket', () => {
+test('sub sockets do not expose callback subscription surfaces', () => {
     const ctx = new zlink.Context();
     const sub = new zlink.SubSocket(ctx);
-    sub.onSubscribe(() => { });
-    assert.throws(() => sub.subscribe(), /busy|callback|state|subscribe/i);
+    assert.equal(sub.onSubscribe, undefined);
+    assert.equal(typeof sub.subscribe, 'function');
     sub.close();
     ctx.close();
 });

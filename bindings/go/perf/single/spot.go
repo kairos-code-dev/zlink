@@ -25,6 +25,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	subscriber, err := subscriberNode.Spot()
 	perfcommon.Must(err)
 	defer subscriber.Close()
+	serviceName := "bench"
 
 	endpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot")
 	perfcommon.Must(perfcommon.ConfigureTLSServer(publisherNode, cfg.transport))
@@ -42,7 +43,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampPayload(payload)
-		err := publisher.Publish("bench.topic", zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
+		err := publisher.Publish(serviceName, "bench.topic", zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -56,12 +57,13 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 }
 
 func waitForSpotReady(publisher *zlink.Spot, subscriber *zlink.Spot) {
+	serviceName := "bench"
 	payload := perfcommon.PreparePayload(64)
 	perfcommon.Must(perfcommon.WaitReady(perfcommon.ReadyConfig{
 		Name: "spot perf endpoint",
 		Probe: func() (bool, error) {
 			perfcommon.StampPayload(payload)
-			err := publisher.Publish("bench.topic", zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
+			err := publisher.Publish(serviceName, "bench.topic", zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					return false, nil

@@ -17,9 +17,9 @@ with the rules here, this section wins.
   plane. Remove `onReceive(...)` from their public contract.
 - `SubSocket` and `XSubSocket` are recv-only. Remove `onSubscribe(...)` from
   their public contract.
-- `StreamSocket` keeps `recv(...)` and raw `onReceive(...)`, and must also
-  expose a packet callback surface mapped to `zlink_stream_packet_handler()`.
-  Recommended canonical name: `onPacket(...)`.
+- `StreamSocket` keeps `recv(...)` and exposes a packet callback surface
+  mapped to `zlink_stream_packet_handler()`. Recommended canonical name:
+  `onPacket(...)`.
 - `SpotNode` must expose service-aware attachment APIs:
   `attachRouter(serviceName, router)`,
   `attachPubSub(serviceName, pub, sub)`,
@@ -35,6 +35,18 @@ with the rules here, this section wins.
   `onDispatchEvent(...)` plus `subscribe(...)` / routed recv / timer recv.
 - `Spot.onRoutedReceive(...)` and `Spot.onDispatchEvent(...)` are mutually
   exclusive on the routed axis.
+- Every socket and `Spot` exposes `setAdmissionState(state)` /
+  `getAdmissionState()` using the typed enum-like object
+  `AdmissionState.Serving` (1) and `AdmissionState.Draining` (2). Submit
+  attempts to a drained peer throw `SubmitError` whose `code` equals
+  `SubmitResult.NotAdmitted`.
+- `POLLOUT` is a send-recovery readiness signal, shared with
+  `onSendReady(...)`. It is not a "transport writable" bit.
+- ROUTER / PUB socket option defaults follow the core header: `mandatory =
+  true`, `handover = true`, `nodrop = true`.
+- Internal pairing rule: when auto-connect pairs two same-service ROUTERs
+  via Discovery, the library picks one initiator per pair by a total order
+  on `(routingId, advertiseEndpoint)`. Users do not configure this.
 
 ## Core
 
@@ -117,6 +129,17 @@ function multipartClose(parts: Message[]): void;
 
 All sockets expose `bind()`, `unbind()`, and `close()` from `BaseSocket`.
 Connectable sockets also expose `connect()` and `disconnect()`.
+
+All sockets (and `Spot`) also expose the admission-state accessor pair:
+
+```typescript
+interface AdmissionGates {
+    /** @throws {ConfigError} */
+    getAdmissionState(): AdmissionState;
+    /** @throws {ConfigError} */
+    setAdmissionState(state: AdmissionState): void;
+}
+```
 
 ### PairSocket
 
@@ -358,11 +381,12 @@ class RouterSocket {
     replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                 requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
 
-    // NOTE: RouterSocket 의 routed 수신 plane 은 단일 표면이다. 일반
-    // ROUTER 트래픽과 spot-origin routed 트래픽을 모두 recv / onReceive 로
-    // 받는다. `Received.routingId` 는 source_node_rid, `Received.spotRid`
-    // 는 spot-origin 트래픽에서만 값이 있다. 별도의 recvSpot /
-    // onSpotReceive 는 제공하지 않는다.
+    // NOTE: RouterSocket 의 routed 수신 plane 은 단일 recv 표면이다. 일반
+    // ROUTER 트래픽과 spot-origin routed 트래픽을 모두 recv 로 받는다.
+    // `Received.routingId` 는 source_node_rid, `Received.spotRid` 는
+    // spot-origin 트래픽에서만 값이 있다. data-plane callback install
+    // surface (예: onReceive) 는 ROUTER 에 제공하지 않는다. request
+    // completion 은 request() 경로에서만 유지된다.
 
     /** @throws {CloseError} */
     close(): void;
@@ -439,10 +463,22 @@ class StreamSocket {
     send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
     send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
-    /** @throws {RecvError} */
+    /**
+     * Three mutually-exclusive receive modes on the same StreamSocket:
+     *   (1) recv(), (2) onPacket(handler). Second attach throws
+     *   HandlerError(HandlerResult.Busy).
+     * @throws {RecvError}
+     */
     recv(flags?: RecvFlags): Received;
-    /** @throws {HandlerError} */
-    onReceive(handler: SocketRecvHandler): void;
+    /**
+     * Mode (3): framed packet callback mapped to
+     * `zlink_stream_packet_handler()`. Wire frame is big-endian u16
+     * header_size + u32 body_size + header + body. Handler receives the
+     * source routing id, a header Message, and a body Message; both
+     * messages transfer ownership to the handler.
+     * @throws {HandlerError}
+     */
+    onPacket(handler: StreamPacketHandler): void;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {CloseError} */
@@ -674,6 +710,7 @@ const SubmitResult = {
     OutOfMemory: 10,
     SeqExhausted: 11,
     InternalError: 12,
+    NotAdmitted: 13,     // target peer is in AdmissionState.Draining
 } as const;
 
 type SubmitResult = typeof SubmitResult[keyof typeof SubmitResult];
@@ -714,7 +751,7 @@ type RecvResult = typeof RecvResult[keyof typeof RecvResult];
 
 ### HandlerResult
 
-Result codes for handler registration operations (stream `onReceive`,
+Result codes for handler registration operations (`onPacket`,
 `onSendReady`, `onRoutedReceive`, `onDispatchEvent`, `onEvent`, etc.).
 
 ```typescript
@@ -856,9 +893,9 @@ class RecvError extends ZlinkError {
 
 ### HandlerError
 
-Thrown by handler registration methods (stream `onReceive`,
-`onSendReady`, `onRoutedReceive`, `onDispatchEvent`, `onFire`, `onEvent`,
-etc.). Wraps a `HandlerResult`.
+Thrown by handler registration methods (`onPacket`, `onSendReady`,
+`onRoutedReceive`, `onDispatchEvent`, `onFire`, `onEvent`, etc.). Wraps a
+`HandlerResult`.
 
 ```typescript
 class HandlerError extends ZlinkError {
@@ -923,11 +960,17 @@ class ConfigError extends ZlinkError {
 
 ### MonitorSocket
 
+Starts in recv model. `onEvent(...)` transitions one-way to callback-only
+model; after that `recv()` throws a busy recv error and `snapshot()` still works.
+
 ```typescript
 class MonitorSocket {
     /**
-     * No-op handler. Pass to onEvent() when driving the monitor via
-     * snapshot() or direct recv() without callback dispatch.
+     * No-op callback for callback-only model. Pass to onEvent() to keep a
+     * valid handler when the application does not care about events; once
+     * installed the monitor is in callback-only model and recv() throws a
+     * busy recv error (snapshot() still works). To drive the monitor via
+     * snapshot() / recv() instead, leave onEvent unset.
      * Maps to zlink_monitor_ignore_handler.
      */
     static readonly ignoreHandler: SocketMonitorHandler;
@@ -949,15 +992,22 @@ Socket monitor event. Canonical shape shared with every other binding.
 
 ```typescript
 class MonitorEvent {
-    readonly event: MonitorEventType;        // CONNECTION_READY, CONNECTED, DISCONNECTED, ...
-    readonly value: number;                  // uint32 — event-specific payload (e.g. reason code)
+    readonly event: MonitorEventType;        // CONNECTION_READY, CONNECTED, DISCONNECTED, PEER_ADMISSION_CHANGED, ...
+    readonly value: number;                  // uint32 — event-specific payload (PEER_ADMISSION_CHANGED carries the new AdmissionState)
     readonly routingId: RoutingId | null;    // peer routing id (null when not applicable)
     readonly localAddr: string;              // local endpoint
     readonly remoteAddr: string;             // remote endpoint
 }
 ```
 
+`MonitorEventType` includes `peerAdmissionChanged` (bit 15). Service
+monitors surface the same change through
+`ServiceMonitorEventMask.peerAdmissionChanged` (bit 8).
+
 ### ServiceMonitor
+
+Starts in recv model. `onEvent(...)` transitions one-way to callback-only
+model; after that `recv()` throws a busy recv error and `snapshot()` still works.
 
 ```typescript
 class ServiceMonitor {
@@ -1322,6 +1372,7 @@ interface MemberPeerEntry {
     readonly endpoint: string;
     readonly routingId: RoutingId;
     readonly value: bigint;                  // int64 user value
+    readonly admissionState: AdmissionState; // Serving | Draining
 }
 
 /** Registry topology entry (full topology view). */
@@ -1391,6 +1442,7 @@ interface SpotNodePeerEntry {
     readonly peerEndpoint: string;
     readonly source: number;                 // zlink_spot_peer_source_t
     readonly state: number;                  // zlink_spot_peer_state_t
+    readonly admissionState: AdmissionState; // Serving | Draining
     readonly connectedSinceMs: bigint;       // uint64 epoch ms
     readonly lastChangedMs: bigint;          // uint64 epoch ms
 }
@@ -1420,6 +1472,14 @@ interface SpotServiceMonitorEvent {
     readonly role: number;
     readonly event: MonitorEventType;
 }
+
+/** Admission state for a peer. */
+const AdmissionState = {
+    Serving: 1,
+    Draining: 2,
+} as const;
+
+type AdmissionState = typeof AdmissionState[keyof typeof AdmissionState];
 
 /** Filter for Registry service summary snapshot. */
 interface RegistryServiceSummaryFilter {
@@ -1543,6 +1603,9 @@ class Timer {
 type SocketRecvHandler = (message: Received) => void;
 type SocketSubscribeHandler = (message: TopicMessage) => void;
 type SocketSendReadyHandler = () => void;
+type StreamPacketHandler = (sourceRid: RoutingId,
+                            header: Message,
+                            body: Message) => void;
 type SpotSubHandler = SocketSubscribeHandler;
 type SpotSendReadyHandler = () => void;
 type SpotRoutedHandler = (sourceRid: RoutingId | null, spotRid: RoutingId | null,

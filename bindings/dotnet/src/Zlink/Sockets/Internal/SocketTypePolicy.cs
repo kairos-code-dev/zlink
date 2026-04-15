@@ -52,9 +52,7 @@ internal sealed class SocketTypePolicy
             SocketCapability.SubscribeReceive => _socketType == SocketType.Sub
                 || _socketType == SocketType.XSub,
             SocketCapability.ReceiveHandler => _socketType == SocketType.Pair
-                || _socketType == SocketType.Dealer
-                || _socketType == SocketType.Router
-                || _socketType == SocketType.Stream,
+                || _socketType == SocketType.Dealer,
             SocketCapability.SubscribeHandler => _socketType == SocketType.Sub
                 || _socketType == SocketType.XSub,
             SocketCapability.SubscriptionEvents => _socketType == SocketType.XPub,

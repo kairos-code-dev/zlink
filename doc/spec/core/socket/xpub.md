@@ -24,7 +24,7 @@ Used with `zlink_set_pub_option()` / `zlink_get_pub_option()`.
 
 `ZLINK_PUB_OPT_NODROP` defaults to `1`. When the HWM is reached,
 `zlink_publish()` returns `ZLINK_SUBMIT_BACKPRESSURED` instead of silently
-dropping. Callers that need the legacy silent-drop behavior must set this
+dropping. Callers that want silent-drop behavior must set this
 option explicitly to `0`.
 
 ## Functions
@@ -34,7 +34,7 @@ option explicitly to `0`.
 Set a pub-specific option.
 
 ```c
-int zlink_set_pub_option (void *handle_,
+zlink_config_result_t zlink_set_pub_option (void *handle_,
                            zlink_pub_option_t option_,
                            const void *optval_,
                            size_t optvallen_);
@@ -44,9 +44,7 @@ Configures a PUB/XPUB socket option. Also applies to spot-pub and
 spotnode-pub handles. Use `zlink_set_option()` for common options shared
 across all socket types.
 
-**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
-`zlink_submit_result_t` value. Detailed internal errno remains available
-through `zlink_errno()` for diagnostics.
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_get_pub_option`, `zlink_set_option`
 
@@ -57,7 +55,7 @@ through `zlink_errno()` for diagnostics.
 Get a pub-specific option.
 
 ```c
-int zlink_get_pub_option (void *handle_,
+zlink_config_result_t zlink_get_pub_option (void *handle_,
                            zlink_pub_option_t option_,
                            void *optval_,
                            size_t *optvallen_);
@@ -65,9 +63,7 @@ int zlink_get_pub_option (void *handle_,
 
 Retrieves the current value of a PUB/XPUB socket option.
 
-**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
-`zlink_submit_result_t` value. Detailed internal errno remains available
-through `zlink_errno()` for diagnostics.
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_set_pub_option`
 
@@ -134,12 +130,12 @@ failure, ownership remains with the caller.
 Receive a subscription event from an XPUB socket.
 
 ```c
-int zlink_subscription_event (void *subject_,
+zlink_recv_result_t zlink_subscription_event (void *subject_,
                                zlink_routing_id_t *source_rid_out_,
                                int *subscribed_out_,
                                char *topic_id_out_,
                                size_t *topic_id_len_out_,
-                               zlink_send_flags_t flags_);
+                               zlink_recv_flags_t flags_);
 ```
 
 Receives the next subscription event in recv mode. On success,
@@ -150,7 +146,7 @@ contract as `zlink_subscribe()`).
 
 Applicable types: raw XPUB only.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Errors:** `EFAULT` if `subject_` is NULL. `EAGAIN` if `ZLINK_DONTWAIT`
 was set and no event is available. `EMSGSIZE` if the topic buffer is too
@@ -165,7 +161,7 @@ small. `ENOTSUP` if the subject is not XPUB.
 Install or replace the send-ready callback.
 
 ```c
-bool zlink_send_ready_handler (
+zlink_handler_result_t zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
@@ -179,6 +175,6 @@ callback and `ZLINK_POLLOUT` expose the same send-recovery readiness axis: a
 readiness signal means it is worth retrying send, not that the retry is
 guaranteed to succeed. Unsupported subjects return `ENOTSUP`.
 
-**Returns:** `true` on success, `false` on failure (errno is set).
+**Returns:** `ZLINK_HANDLER_OK` on success; otherwise a `zlink_handler_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_send`

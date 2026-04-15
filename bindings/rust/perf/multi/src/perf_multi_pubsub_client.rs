@@ -49,8 +49,8 @@ fn main() {
 
             // Drain
             loop {
-                match sockets[i].try_subscribe() {
-                    Ok(Some(topic_msg)) => {
+                match sockets[i].subscribe_with_flags(RecvFlags::DONT_WAIT) {
+                    Ok(topic_msg) => {
                         let data = common::message_payload(topic_msg.parts());
                         if common::is_stop_token(data) {
                             stop_seen = true;
@@ -64,7 +64,6 @@ fn main() {
                             active_count += 1;
                         }
                     }
-                    Ok(None) => break,
                     Err(_) => break,
                 }
             }

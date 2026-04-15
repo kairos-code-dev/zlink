@@ -8,7 +8,7 @@ This document defines the canonical outcome mapping for public C APIs that
 return result enums. Those functions use enum ranges that do not overlap
 across the API, so a single `int` code is always unambiguous.
 
-Some legacy poller helpers still use plain `int` returns with a separate
+Some poller helpers use plain `int` returns with a separate
 `error_out_` output. Those helpers are adjacent to this scheme, but they are
 not themselves members of the result-enum families below.
 

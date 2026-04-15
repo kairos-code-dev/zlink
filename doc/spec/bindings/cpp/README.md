@@ -42,6 +42,17 @@ conflicts with the rules here, this section wins.
 - `service::spot_t::on_routed_receive(...)` and
   `service::spot_t::on_dispatch_event(...)` are mutually exclusive on the
   routed axis.
+- Every socket and `service::spot_t` exposes `set_admission_state(...)` /
+  `get_admission_state(...)` returning the typed enum
+  `admission_state_t { serving = 1, draining = 2 }`. Submit attempts to a
+  drained peer fail with `submit_error_t{.code = submit_result_t::not_admitted}`.
+- `pollout` is a send-recovery readiness signal, shared with
+  `on_send_ready(...)`. It is not a "transport writable" bit.
+- ROUTER / PUB socket option defaults follow the core header:
+  `mandatory = true`, `handover = true`, `nodrop = true`.
+- Internal pairing rule: when auto-connect pairs two same-service ROUTERs via
+  Discovery, the library picks one initiator per pair by total order on
+  `(routing_id, advertise endpoint)`. Users do not configure this.
 
 ## Core
 
@@ -132,6 +143,10 @@ void bind(const std::string& endpoint);
 void unbind(const std::string& endpoint);
 /// @throws config_error_t
 common_socket_options_t options();
+/// @throws config_error_t
+void set_admission_state(admission_state_t state);
+/// @throws config_error_t
+admission_state_t get_admission_state() const;
 /// @throws config_error_t
 void set_tls_server(const std::string& cert, const std::string& key,
                     bool require_client_cert = false);
@@ -460,11 +475,23 @@ class stream_socket_t : public routed_message_socket_t {
     /// @throws submit_error_t
     void send(const routing_id_t& target_rid, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
 
-    // --- receive ---
+    // --- receive (three mutually-exclusive modes) ---
+    /// (1) raw recv. Returns a multipart received_t.
     /// @throws recv_error_t
     received_t recv(recv_flags_t flags = recv_flags_t::none);
+    /// (2) raw direct callback (zlink_recv_handler). Mutually exclusive
+    /// with recv() and on_packet(). Second attach on the same stream returns
+    /// BUSY (EBUSY).
     /// @throws handler_error_t
     void on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
+    /// (3) framed packet callback (zlink_stream_packet_handler). Wire frame
+    /// is big-endian u16 header_size + u32 body_size + header + body.
+    /// Handler receives the source routing_id, a header message_t, and a
+    /// body message_t; ownership of both messages transfers to the callback.
+    /// Mutually exclusive with recv() and on_receive() on the same stream;
+    /// second attach returns BUSY.
+    /// @throws handler_error_t
+    void on_packet(zlink_stream_packet_handler_fn handler, void* userdata = NULL);
     /// @throws handler_error_t
     void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
@@ -819,13 +846,16 @@ Socket monitor event payload. Value struct returned by
 
 ```cpp
 struct monitor_event_t {
-    monitor_event_type_t event;               // event kind (CONNECTED, DISCONNECTED, CONNECTION_READY, ...)
-    uint32_t value;                           // event-specific detail (e.g., DISCONNECTED reason code)
+    monitor_event_type_t event;               // event kind (CONNECTED, DISCONNECTED, CONNECTION_READY, PEER_ADMISSION_CHANGED, ...)
+    uint32_t value;                           // event-specific detail (e.g., DISCONNECTED reason code, PEER_ADMISSION_CHANGED -> admission_state_t)
     std::optional<routing_id_t> routing_id;   // peer routing id; nullopt when event carries none
     std::string local_addr;                   // local endpoint
     std::string remote_addr;                  // remote endpoint
 };
 ```
+
+`monitor_event_type_t` includes `peer_admission_changed` (bit 15). When this
+event fires, `value` holds the new `admission_state_t` for the peer.
 
 ### monitor_snapshot_t
 
@@ -846,7 +876,7 @@ struct monitor_snapshot_t {
 
 ### service_event_t
 
-Service-layer monitor event payload (discovery / registry / spot).
+Discovery service monitor event payload.
 Returned by `service_monitor_handle_t::recv()`.
 
 ```cpp
@@ -885,7 +915,8 @@ enum class submit_result_t : int {
     thread_violation = 9,
     out_of_memory    = 10,
     seq_exhausted    = 11,
-    internal_error   = 12
+    internal_error   = 12,
+    not_admitted     = 13  // target peer is in admission_state_t::draining
 };
 ```
 
@@ -923,7 +954,8 @@ enum class recv_result_t : int {
 #### handler_result_t
 
 Maps to C API `zlink_handler_result_t`.
-Covers handler registration operations (on_receive, on_subscribe, etc.).
+Covers handler registration operations (`on_receive`, `on_send_ready`,
+`on_packet`, `on_routed_receive`, `on_dispatch_event`, etc.).
 
 ```cpp
 enum class handler_result_t : int {
@@ -1089,7 +1121,7 @@ public:
 ##### handler_error_t
 
 Wraps `handler_result_t`. Thrown by handler registration methods
-(`on_receive`, `on_send_ready`, `on_subscribe`, `on_event`,
+(`on_receive`, `on_send_ready`, `on_packet`, `on_event`,
 `on_routed_receive`, `on_dispatch_event`, `set_handler`).
 
 ```cpp
@@ -1239,6 +1271,8 @@ class async_result_t {
 ### monitor_handle_t
 
 RAII wrapper for socket monitoring. Receives connect, disconnect, and handshake events.
+Starts in recv model. `on_event(...)` transitions one-way to callback-only
+model; after that `recv(...)` fails with busy and `snapshot()` still works.
 
 ```cpp
 class monitor_handle_t {
@@ -1267,9 +1301,12 @@ class monitor_handle_t {
     monitor_snapshot_t snapshot() const;
     void close() noexcept;
 
-    // Sentinel handler that ignores every event. Pass this to on_event()
-    // when the caller wants snapshot / direct recv on the monitor without
-    // automatic callback dispatch. Maps to zlink_monitor_ignore_handler.
+    // No-op callback for callback-only model. Pass to on_event() to keep a
+    // valid handler symbol when the caller does not care about events; once
+    // installed the monitor is in callback-only model and recv(...) fails
+    // with busy (snapshot() still works). To drive the monitor through
+    // snapshot() / recv(...) instead, leave on_event unset. Maps to
+    // zlink_monitor_ignore_handler.
     static zlink_monitor_handler_fn ignore_handler;
 };
 ```
@@ -1277,6 +1314,8 @@ class monitor_handle_t {
 ### service_monitor_handle_t
 
 RAII wrapper for service-level monitoring (discovery peer events, subject changes).
+Starts in recv model. `on_event(...)` transitions one-way to callback-only
+model; after that `recv(...)` fails with busy and `snapshot()` still works.
 
 ```cpp
 class service_monitor_handle_t {
@@ -1328,6 +1367,7 @@ struct member_peer_entry_t {
     std::string endpoint;
     std::optional<routing_id_t> routing_id;   // nullopt when peer carries no routing id
     int64_t value;
+    admission_state_t admission_state;
 };
 ```
 
@@ -1430,6 +1470,7 @@ struct spot_node_peer_entry_t {
     std::string peer_endpoint;
     spot_peer_source_t source;
     spot_peer_state_t state;
+    admission_state_t admission_state;
     uint64_t connected_since_ms;
     uint64_t last_changed_ms;
 };
@@ -1459,6 +1500,11 @@ enum class spot_service_attachment_role_t {
     router = 1,
     pub = 2,
     sub = 3,
+};
+
+enum class admission_state_t {
+    serving  = 1,
+    draining = 2,
 };
 
 struct spot_service_attachment_stats_t {

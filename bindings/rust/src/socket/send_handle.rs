@@ -27,12 +27,11 @@ use super::prepare_send_parts;
 /// let mut router = ctx.router_socket().unwrap();
 /// let handle = router.send_handle();
 ///
-/// router.on_receive(move |received| {
-///     let reply = Message::from_bytes(b"pong").unwrap();
-///     handle
-///         .send_to(received.routing_id().expect("missing routing id"), reply)
-///         .unwrap();
-/// }).unwrap();
+/// let received = router.recv().unwrap();
+/// let reply = Message::copy_from(b"pong").unwrap();
+/// handle
+///     .send_to(received.routing_id().expect("missing routing id"), reply)
+///     .unwrap();
 /// ```
 #[derive(Clone)]
 pub struct SendHandle {

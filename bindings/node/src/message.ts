@@ -292,22 +292,36 @@ export class Received {
 
 export class TopicMessage extends MultipartEnvelope {
   readonly routingId: RoutingId | null;
+  readonly serviceName: string | null;
   readonly topic: string;
 
-  constructor(topic: string, parts: readonly Message[], routingId: RoutingId | null = null) {
+  constructor(
+    topic: string,
+    parts: readonly Message[],
+    routingId: RoutingId | null = null,
+    serviceName: string | null = null
+  ) {
     super(parts);
     this.routingId = routingId;
+    this.serviceName = serviceName;
     this.topic = topic;
   }
 }
 
 export class SubscriptionEvent {
   readonly routingId: RoutingId | null;
+  readonly serviceName: string | null;
   readonly topic: string;
   readonly subscribed: boolean;
 
-  constructor(topic: string, subscribed: boolean, routingId: RoutingId | null = null) {
+  constructor(
+    topic: string,
+    subscribed: boolean,
+    routingId: RoutingId | null = null,
+    serviceName: string | null = null
+  ) {
     this.routingId = routingId;
+    this.serviceName = serviceName;
     this.topic = topic;
     this.subscribed = subscribed === true;
   }

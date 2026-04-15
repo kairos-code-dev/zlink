@@ -8,25 +8,20 @@ package zlink
 #include "zlink.h"
 
 extern void goZlinkRecvTrampoline(zlink_routing_id_t *source_rid_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
-extern void goZlinkRouterRecvTrampoline(zlink_routing_id_t *source_node_rid_, zlink_routing_id_t *source_spot_rid_, uint64_t request_seq_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
-extern void goZlinkSubscribeTrampoline(zlink_routing_id_t *source_rid_, char *topic_, size_t topic_len_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 extern void goZlinkSendReadyTrampoline(void *subject_, uintptr_t userdata_);
 extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
+extern void goZlinkStreamPacketTrampoline(void *stream_, const zlink_routing_id_t *source_rid_, zlink_msg_t *header_, zlink_msg_t *body_, uintptr_t userdata_);
 
 static inline int zlink_recv_handler_go_local(void *s, uintptr_t userdata) {
     return zlink_recv_handler(s, (zlink_socket_msg_handler_fn)goZlinkRecvTrampoline, (void *)userdata);
 }
 
-static inline int zlink_router_recv_handler_go_local(void *s, uintptr_t userdata) {
-    return zlink_router_handler(s, (zlink_router_handler_fn)goZlinkRouterRecvTrampoline, (void *)userdata);
-}
-
-static inline int zlink_subscribe_handler_go_local(void *s, uintptr_t userdata) {
-    return zlink_subscribe_handler(s, (zlink_subscribe_handler_fn)goZlinkSubscribeTrampoline, (void *)userdata);
-}
-
 static inline int zlink_send_ready_handler_go_local(void *s, uintptr_t userdata) {
     return zlink_send_ready_handler(s, (zlink_send_ready_handler_fn)goZlinkSendReadyTrampoline, (void *)userdata);
+}
+
+static inline int zlink_stream_packet_handler_go_local(void *s, uintptr_t userdata) {
+    return zlink_stream_packet_handler(s, (zlink_stream_packet_handler_fn)goZlinkStreamPacketTrampoline, (void *)userdata);
 }
 
 static inline int zlink_router_request_spot_go_local(void *router, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
@@ -54,11 +49,12 @@ type sendReadyCallback func()
 const recvTopicBufferCap = 64 * 1024
 
 type socketCore struct {
-	handle          unsafe.Pointer
-	closed          bool
-	recvHandle      cgo.Handle
-	subscribeHandle cgo.Handle
-	sendReadyHandle cgo.Handle
+	handle             unsafe.Pointer
+	closed             bool
+	recvHandle         cgo.Handle
+	subscribeHandle    cgo.Handle
+	sendReadyHandle    cgo.Handle
+	streamPacketHandle cgo.Handle
 }
 
 func newSocketCore(ctx *Context, socketType C.zlink_socket_type_t) (*socketCore, error) {
@@ -126,6 +122,10 @@ func (s *socketCore) releaseCallbacks() {
 		releaseCallbackHandle(s.sendReadyHandle)
 		s.sendReadyHandle = 0
 	}
+	if s.streamPacketHandle != 0 {
+		releaseCallbackHandle(s.streamPacketHandle)
+		s.streamPacketHandle = 0
+	}
 }
 
 func (s *socketCore) setIntOption(option C.zlink_option_t, value int32) error {
@@ -179,6 +179,24 @@ func (s *socketCore) setOption(option C.zlink_option_t, ptr unsafe.Pointer, size
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	return setNativeOption(s.handle, s.closed, "socket is closed", option, ptr, size)
+}
+
+func (s *socketCore) AdmissionState() (AdmissionState, error) {
+	if s == nil {
+		return AdmissionStateServing, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	var raw C.zlink_admission_state_t
+	if err := configErrorFromResult(C.zlink_get_admission_state(s.handle, &raw)); err != nil {
+		return AdmissionStateServing, err
+	}
+	return AdmissionState(raw), nil
+}
+
+func (s *socketCore) SetAdmissionState(state AdmissionState) error {
+	if s == nil {
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	return configErrorFromResult(C.zlink_set_admission_state(s.handle, C.zlink_admission_state_t(state)))
 }
 
 func (s *socketCore) setDurationOption(option C.zlink_option_t, value time.Duration) error {
@@ -422,6 +440,32 @@ func recvTopicMessage(
 	}, nil
 }
 
+func recvSpotTopicMessage(
+	call func(*C.zlink_routing_id_t, **C.zlink_msg_t, *C.size_t, *C.char, *C.size_t, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
+	flags RecvFlags,
+) (*TopicMessage, error) {
+	var rid C.zlink_routing_id_t
+	var parts *C.zlink_msg_t
+	var partCount C.size_t
+	serviceBuf := make([]byte, recvTopicBufferCap)
+	serviceLen := C.size_t(len(serviceBuf))
+	topicBuf := make([]byte, recvTopicBufferCap)
+	topicLen := C.size_t(len(topicBuf))
+	if err := call(&rid, &parts, &partCount, (*C.char)(unsafe.Pointer(&serviceBuf[0])), &serviceLen, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, C.zlink_recv_flags_t(flags)); err != nil {
+		return nil, err
+	}
+	clonedParts, err := takeParts(parts, partCount)
+	if err != nil {
+		return nil, err
+	}
+	return &TopicMessage{
+		routingID:   routingIDFromC(rid),
+		serviceName: string(serviceBuf[:int(serviceLen)]),
+		topic:       string(topicBuf[:int(topicLen)]),
+		parts:       clonedParts,
+	}, nil
+}
+
 func recvSubscriptionEvent(
 	call func(*C.zlink_routing_id_t, *C.int, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
@@ -437,6 +481,27 @@ func recvSubscriptionEvent(
 		routingID:  routingIDFromC(rid),
 		subscribed: subscribed != 0,
 		topic:      string(topicBuf[:int(topicLen)]),
+	}, nil
+}
+
+func recvSpotSubscriptionEvent(
+	call func(*C.zlink_routing_id_t, *C.int, *C.char, *C.size_t, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
+	flags RecvFlags,
+) (*SubscriptionEvent, error) {
+	var rid C.zlink_routing_id_t
+	var subscribed C.int
+	serviceBuf := make([]byte, recvTopicBufferCap)
+	serviceLen := C.size_t(len(serviceBuf))
+	topicBuf := make([]byte, recvTopicBufferCap)
+	topicLen := C.size_t(len(topicBuf))
+	if err := call(&rid, &subscribed, (*C.char)(unsafe.Pointer(&serviceBuf[0])), &serviceLen, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, C.zlink_recv_flags_t(flags)); err != nil {
+		return nil, err
+	}
+	return &SubscriptionEvent{
+		routingID:   routingIDFromC(rid),
+		serviceName: string(serviceBuf[:int(serviceLen)]),
+		subscribed:  subscribed != 0,
+		topic:       string(topicBuf[:int(topicLen)]),
 	}, nil
 }
 
@@ -566,7 +631,7 @@ func (s *directSocket) Recv(flags RecvFlags) (*Received, error) {
 	}, nil
 }
 
-func (s *directSocket) OnReceive(handler func(*Received)) error {
+func (s *directSocket) onReceive(handler func(*Received)) error {
 	if handler == nil {
 		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
@@ -779,29 +844,6 @@ func (s *routedSocket) Recv(flags RecvFlags) (*Received, error) {
 	return s.directRecv(flags)
 }
 
-func (s *routedSocket) OnReceive(handler func(*Received)) error {
-	if handler == nil {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	state := newRecvCallbackState(recvCallback(handler), func(routingID RoutingID, spotRID RoutingID, requestSeq uint64) func(SendFlags, []*Message) error {
-		if spotRID.Size() == 0 {
-			return receivedReplyToRouter(s.reply, routingID, requestSeq)
-		}
-		return receivedReplyToSpotPeer(s, routingID, spotRID, requestSeq)
-	})
-	handle := cgo.NewHandle(state)
-	if err := handlerErrorFromResult(C.zlink_router_recv_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
-		state.close()
-		handle.Delete()
-		return err
-	}
-	if s.recvHandle != 0 {
-		releaseCallbackHandle(s.recvHandle)
-	}
-	s.recvHandle = handle
-	return nil
-}
-
 func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
@@ -859,24 +901,6 @@ func (s *subscribeSocket) Subscribe(flags RecvFlags) (*TopicMessage, error) {
 	return recvTopicMessage(func(rid *C.zlink_routing_id_t, parts **C.zlink_msg_t, partCount *C.size_t, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_subscribe(s.raw(), rid, parts, partCount, topic, topicLen, recvFlags))
 	}, flags)
-}
-
-func (s *subscribeSocket) OnSubscribe(handler func(*TopicMessage)) error {
-	if handler == nil {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	state := newSubscribeCallbackState(subscribeCallback(handler))
-	handle := cgo.NewHandle(state)
-	if err := handlerErrorFromResult(C.zlink_subscribe_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
-		state.close()
-		handle.Delete()
-		return err
-	}
-	if s.subscribeHandle != 0 {
-		releaseCallbackHandle(s.subscribeHandle)
-	}
-	s.subscribeHandle = handle
-	return nil
 }
 
 type xpubSubscribeSocket struct {
@@ -1327,8 +1351,25 @@ func (s *StreamSocket) Recv(flags RecvFlags) (*Received, error) {
 	return (&directSocket{connectionSocket: s.core.connectionSocket}).Recv(flags)
 }
 
-func (s *StreamSocket) OnReceive(handler func(*Received)) error {
-	return (&directSocket{connectionSocket: s.core.connectionSocket}).OnReceive(handler)
+func (s *StreamSocket) OnPacket(handler func(RoutingID, *Message, *Message)) error {
+	if handler == nil {
+		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	if s == nil || s.core == nil || s.core.closed {
+		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EFAULT)}
+	}
+	state := newStreamPacketCallbackState(handler)
+	handle := cgo.NewHandle(state)
+	if err := handlerErrorFromResult(C.zlink_stream_packet_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
+		state.close()
+		handle.Delete()
+		return err
+	}
+	if s.core.streamPacketHandle != 0 {
+		releaseCallbackHandle(s.core.streamPacketHandle)
+	}
+	s.core.streamPacketHandle = handle
+	return nil
 }
 
 func (s *StreamSocket) SetNotify(value bool) error {

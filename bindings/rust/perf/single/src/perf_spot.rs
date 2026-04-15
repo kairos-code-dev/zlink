@@ -2,9 +2,15 @@
 
 mod common;
 
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::thread;
 use std::time::{Duration, Instant};
 use zlink::*;
+
+const SERVICE_NAME: &str = "perf.spot";
 
 fn reserve_tcp_port() -> u16 {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("reserve port");
@@ -20,6 +26,21 @@ fn settle_ms() -> u64 {
         .unwrap_or(1000)
 }
 
+fn attach_service_pair(
+    ctx: &Context,
+    node: &SpotNode,
+    service_name: &str,
+) -> (PubSocket, SubSocket) {
+    let pub_sock = ctx.pub_socket().expect("pub socket");
+    let sub_sock = ctx.sub_socket().expect("sub socket");
+    let endpoint = format!("tcp://127.0.0.1:{}", reserve_tcp_port());
+    pub_sock.bind(&endpoint).expect("pub bind");
+    sub_sock.connect(&endpoint).expect("sub connect");
+    node.attach_pubsub(service_name, &pub_sock, &sub_sock)
+        .expect("attach_pubsub");
+    (pub_sock, sub_sock)
+}
+
 fn main() {
     let config = common::PerfConfig::from_env_and_args();
     let topic = format!("perf.topic.{}", std::process::id());
@@ -27,8 +48,8 @@ fn main() {
     let ctx = Context::new().expect("context");
     let pub_node = SpotNode::new(&ctx).expect("publisher node");
     let sub_node = SpotNode::new(&ctx).expect("subscriber node");
-    let publisher = Spot::new(&pub_node).expect("publisher spot");
-    let subscriber = Spot::new(&sub_node).expect("subscriber spot");
+    let publisher = pub_node.create_spot().expect("publisher spot");
+    let mut subscriber = sub_node.create_spot().expect("subscriber spot");
 
     if matches!(config.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
@@ -39,6 +60,9 @@ fn main() {
             .set_tls_client(&tls.ca, "localhost", false)
             .expect("subscriber tls");
     }
+
+    let _publisher_service = attach_service_pair(&ctx, &pub_node, SERVICE_NAME);
+    let _subscriber_service = attach_service_pair(&ctx, &sub_node, SERVICE_NAME);
 
     let bind_endpoint = match config.transport.as_str() {
         "inproc" => "inproc://perf-spot-node".to_string(),
@@ -62,36 +86,47 @@ fn main() {
     let receiver_done = sender_done.clone();
 
     subscriber.set_subscription(&topic).expect("subscribe");
+    let dispatch_pending = Arc::new(AtomicBool::new(false));
+    let dispatch_trigger = dispatch_pending.clone();
+    subscriber
+        .on_dispatch_event(move |event| {
+            if event == SpotDispatchEvent::SubscribeReadable {
+                dispatch_trigger.store(true, Ordering::Release);
+            }
+        })
+        .expect("on_dispatch_event failed");
+
     let receiver_thread = thread::spawn(move || {
         let mut idle_since: Option<Instant> = None;
         loop {
             let mut saw_message = false;
-            loop {
-                match subscriber.try_subscribe() {
-                    Ok(Some(topic_msg)) => {
-                        let data = common::message_payload(topic_msg.parts());
-                        let phase = common::decode_phase(data);
-                        saw_message = true;
-                        if phase == common::PHASE_ACTIVE {
-                            if !ready_seen.is_done() {
-                                ready_seen.signal_done();
-                                continue;
+            if dispatch_pending.swap(false, Ordering::AcqRel) {
+                loop {
+                    match subscriber.subscribe_with_flags(RecvFlags::DONT_WAIT) {
+                        Ok(topic_msg) => {
+                            let data = common::message_payload(topic_msg.parts());
+                            let phase = common::decode_phase(data);
+                            saw_message = true;
+                            if phase == common::PHASE_ACTIVE {
+                                if !ready_seen.is_done() {
+                                    ready_seen.signal_done();
+                                    continue;
+                                }
+                                if !measurement_gate.is_done() {
+                                    continue;
+                                }
+                                common::handle_recv(data, config.size, &stats);
                             }
-                            if !measurement_gate.is_done() {
-                                continue;
-                            }
-                            common::handle_recv(data, config.size, &stats);
                         }
+                        Err(_) => break,
                     }
-                    Ok(None) => break,
-                    Err(_) => break,
                 }
+            } else {
+                thread::yield_now();
             }
 
             if saw_message {
                 idle_since = None;
-            } else {
-                thread::yield_now();
             }
 
             if receiver_done.is_done() {
@@ -113,8 +148,10 @@ fn main() {
         if Instant::now() >= probe_deadline {
             panic!("spot local probe ready did not finish before timeout");
         }
-        let probe = Message::from_bytes(&probe_buf).expect("probe");
-        publisher.publish(&topic, probe).expect("probe publish");
+        let probe = Message::copy_from(&probe_buf).expect("probe");
+        publisher
+            .publish(SERVICE_NAME, &topic, probe)
+            .expect("probe publish");
         thread::yield_now();
     }
 
@@ -123,17 +160,18 @@ fn main() {
 
     let a = Duration::from_secs(config.duration_seconds);
     let sz = config.size;
-    common::send_loop(
-        a,
-        sz,
-        common::PHASE_ACTIVE,
-        |msg| {
-            let _ = publisher.publish(&topic, msg);
-        },
-    );
+    common::send_loop(a, sz, common::PHASE_ACTIVE, |msg| {
+        let _ = publisher.publish(SERVICE_NAME, &topic, msg);
+    });
     sender_done.signal_done();
     receiver_thread.join().expect("join");
 
     let result = collector.finish();
-    common::print_result("SPOT", &config.transport, config.size, config.duration_seconds, &result);
+    common::print_result(
+        "SPOT",
+        &config.transport,
+        config.size,
+        config.duration_seconds,
+        &result,
+    );
 }

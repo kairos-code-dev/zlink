@@ -2,7 +2,6 @@
 
 'use strict';
 
-const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const {
   createMetricCollector,
@@ -12,10 +11,25 @@ const {
   summarizeMetrics
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
+const { waitForConnectionReady } = require('./perf_multi_runtime');
 
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
+const SERVICE_TYPE_SPOT = 0x3002;
+const SERVICE_NAME = 'perf.spot';
 const DEBUG_SPOT = Boolean(process.env.PERF_DEBUG_TRANSITIONS);
+const READY_SETTLE_MS = Number(process.env.PERF_SPOT_READY_SETTLE_MS ?? 1000);
+const tryRawPublish = (socket, topic, payload) => {
+  try {
+    socket.publish(topic, payload, zlink.SendFlags.DontWait);
+    return true;
+  } catch (error) {
+    if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
+      return false;
+    }
+    throw error;
+  }
+};
 const trySpotSubscribe = (spot) => {
   try {
     return spot.subscribe(zlink.RecvFlags.DontWait);
@@ -26,9 +40,9 @@ const trySpotSubscribe = (spot) => {
     throw error;
   }
 };
-const trySpotPublish = (spot, topic, payload) => {
+const trySpotPublish = (spot, serviceName, topic, payload) => {
   try {
-    spot.publish(topic, payload, zlink.SendFlags.DontWait);
+    spot.publish(serviceName, topic, payload, zlink.SendFlags.DontWait);
     return true;
   } catch (error) {
     if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
@@ -44,31 +58,33 @@ function debugSpot(message) {
   }
 }
 
+function createAttachedSpotNode(ctx) {
+  const node = new zlink.SpotNode(ctx);
+  const pubSend = new zlink.PubSocket(ctx);
+  const pubRecv = new zlink.SubSocket(ctx);
+  return { node, pubSend, pubRecv };
+}
+
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   if (!options.controlEndpoint) {
     throw new Error('missing --control-endpoint');
+  }
+  if (!options.peerEndpoint) {
+    throw new Error('missing --peer-endpoint');
   }
   const ctx = new zlink.Context();
   const collector = createMetricCollector({
     runId: 0,
     msgSize: options.msgSize
   });
-  const controlNode = new zlink.SpotNode(ctx);
-  const controlSpot = controlNode.createSpot();
+  const controlPub = new zlink.PubSocket(ctx);
   const slots = [];
-  let rl = null;
-  let controlLocalEndpoint = '';
   let stop = false;
   let stopResolve;
   let timeoutId = null;
-  let controlConnected = false;
-  let controlConnectedResolve;
   const stopped = new Promise((resolve) => {
     stopResolve = resolve;
-  });
-  const controlConnectedPromise = new Promise((resolve) => {
-    controlConnectedResolve = resolve;
   });
   const deadlineReached = new Promise((resolve) => {
     timeoutId = setTimeout(
@@ -78,7 +94,11 @@ async function main() {
   });
 
   const handleDelivery = (received) => {
-    const header = decodeMetricHeader(received.parts[0].data());
+    const firstPart = received.parts[0];
+    if (!firstPart) {
+      return;
+    }
+    const header = decodeMetricHeader(firstPart.data());
     if (!header) {
       return;
     }
@@ -92,7 +112,7 @@ async function main() {
   const publishControl = async (payload) => {
     const buffer = Buffer.from(payload);
     while (true) {
-      const result = trySpotPublish(controlSpot, CONTROL_TOPIC, buffer);
+      const result = tryRawPublish(controlPub, CONTROL_TOPIC, buffer);
       if (result) {
         return;
       }
@@ -101,54 +121,26 @@ async function main() {
   };
 
   try {
-    debugSpot('stdin watcher start');
-    rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-    (async () => {
-      for await (const line of rl) {
-        if (line.startsWith('CONTROL_CONNECTED,')) {
-          controlConnected = true;
-          controlConnectedResolve();
-          debugSpot(`stdin control connected ${line}`);
-          continue;
-        }
-        if (line === 'STOP' || line === 'QUIT') {
-          stop = true;
-          stopResolve();
-          break;
-        }
-      }
-    })();
-
-    controlSpot.setLinger(0);
-    controlSpot.setSendHighWaterMark(Math.max(1024, options.clients * 8));
-    controlSpot.setSendTimeout(200);
-    controlSpot.setReceiveHighWaterMark(Math.max(1024, options.clients * 8));
-    controlSpot.setReceiveTimeout(200);
-    controlNode.bind('tcp://127.0.0.1:0');
-    const controlStatus = controlNode.statusSnapshot();
-    if (!controlStatus.localEndpoint) {
-      throw new Error('failed to resolve client control endpoint');
-    }
-    controlLocalEndpoint = controlStatus.localEndpoint;
-    debugSpot(`control endpoint ${controlStatus.localEndpoint}`);
-    console.log(`CLIENT_CONTROL_ENDPOINT,${controlStatus.localEndpoint}`);
-    controlNode.connectPeer(options.controlEndpoint);
-    debugSpot(`control connect issued ${options.controlEndpoint}`);
+    controlPub.bind(options.controlEndpoint);
+    await waitForConnectionReady(controlPub);
 
     debugSpot(`create slots begin clients=${options.clients}`);
     for (let i = 0; i < options.clients; i += 1) {
-      const node = new zlink.SpotNode(ctx);
-      const spot = node.createSpot();
-      spot.setLinger(0);
-      spot.setReceiveHighWaterMark(100);
-      spot.setReceiveTimeout(200);
-      slots.push({ node, spot });
+      const {
+        node,
+        pubSend,
+        pubRecv
+      } = createAttachedSpotNode(ctx);
+      slots.push({ node, pubSend, pubRecv, spot: null });
     }
     debugSpot(`create slots done count=${slots.length}`);
 
     debugSpot('connect data slots begin');
     for (const slot of slots) {
-      slot.node.connectPeer(options.endpoint);
+      slot.node.attachPubSub(SERVICE_NAME, slot.pubSend, slot.pubRecv);
+      slot.spot = slot.node.createSpot();
+      slot.pubRecv.connect(options.endpoint);
+      slot.node.connectPeer(options.peerEndpoint);
       slot.spot.setSubscription(TOPIC);
     }
     debugSpot('connect data slots done');
@@ -166,12 +158,10 @@ async function main() {
       }
     })());
 
-    debugSpot('await control connected');
-    await controlConnectedPromise;
-    debugSpot('control connected resolved');
+    await sleepImmediate();
     await publishControl('CONNECTED');
     debugSpot('published CONNECTED');
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => setTimeout(resolve, READY_SETTLE_MS));
     await publishControl(`READY_COUNT,${options.msgSize},${slots.length}`);
     debugSpot('published READY_COUNT');
 
@@ -191,6 +181,8 @@ async function main() {
 
     const result = await collector.finish();
     debugSpot('collector finished');
+    await publishControl(`DONE_COUNT,${options.msgSize},${slots.length}`);
+    debugSpot('published DONE_COUNT');
     const lines = summarizeMetrics(
       'MULTI_SPOT',
       'tcp',
@@ -201,46 +193,25 @@ async function main() {
     for (const line of lines) {
       console.log(line);
     }
-    process.exit(0);
   } finally {
     debugSpot('finally start');
     if (timeoutId) {
       clearTimeout(timeoutId);
       timeoutId = null;
     }
-    try {
-      controlNode.disconnectPeer(options.controlEndpoint);
-    } catch (_) {
-      // best-effort teardown
-    }
-    if (controlLocalEndpoint) {
-      try {
-        controlNode.disconnectPeer(controlLocalEndpoint);
-      } catch (_) {
-        // best-effort teardown
-      }
-    }
-    await sleepImmediate();
-    debugSpot('close control spot');
-    controlSpot.close();
-    debugSpot('close control node');
-    controlNode.close();
-    debugSpot('close readline');
-    if (rl) {
-      rl.close();
-    }
+    debugSpot('close control pub');
+    controlPub.close();
     debugSpot('close collector');
     await collector.close();
     debugSpot('close slots');
     for (const slot of slots) {
-      try {
-        slot.node.disconnectPeer(options.endpoint);
-      } catch (_) {
-        // best-effort teardown
-      }
       await sleepImmediate();
-      slot.spot.close();
+      if (slot.spot) {
+        slot.spot.close();
+      }
       slot.node.close();
+      slot.pubRecv.close();
+      slot.pubSend.close();
     }
     debugSpot('close ctx');
     ctx.close();

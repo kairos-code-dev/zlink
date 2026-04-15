@@ -288,7 +288,9 @@ static void test_spot_callback_model_receive_regression ()
                            zlink_spot_subscribe (
                              sub, &source_rid, &parts, &part_count,
                              service_name, &service_name_len, topic,
-                             &topic_len, ZLINK_DONTWAIT));
+                             &topic_len,
+                             static_cast<zlink_recv_flags_t> (
+                               ZLINK_DONTWAIT)));
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
@@ -328,7 +330,7 @@ static void test_spot_recv_model_receive_regression ()
     TEST_ASSERT_EQUAL_INT (
       ZLINK_RECV_NO_DATA,
       zlink_subscribe (sub, NULL, &parts, &part_count, topic, &topic_len,
-                       ZLINK_DONTWAIT));
+                       static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT)));
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));

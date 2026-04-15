@@ -2,6 +2,7 @@ package zlink_test
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -149,8 +150,13 @@ func TestRequestReplyCanonicalDealerRouterRoundTrip(t *testing.T) {
 	}
 
 	done := make(chan struct{})
-	if err := routerSocket.OnReceive(func(received *zlink.Received) {
+	go func() {
 		defer close(done)
+		received, err := routerSocket.Recv(zlink.RecvFlagsNone)
+		if err != nil {
+			t.Errorf("Recv() error = %v", err)
+			return
+		}
 		defer received.Close()
 		if !received.HasRoutingID() {
 			t.Errorf("HasRoutingID() = false")
@@ -181,9 +187,7 @@ func TestRequestReplyCanonicalDealerRouterRoundTrip(t *testing.T) {
 		if err := received.Reply([]*zlink.Message{reply}); err != nil {
 			t.Errorf("Received.Reply() error = %v", err)
 		}
-	}); err != nil {
-		t.Fatalf("OnReceive() error = %v", err)
-	}
+	}()
 
 	reply, err := dealerSocket.Request([][]byte{[]byte("ping")}, 2*time.Second)
 	if err != nil {
@@ -313,7 +317,7 @@ func TestStreamRecvCanonicalRoundTrip(t *testing.T) {
 	}
 }
 
-func TestStreamOnReceiveCanonicalRoundTrip(t *testing.T) {
+func TestStreamOnPacketCanonicalRoundTrip(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
@@ -338,12 +342,24 @@ func TestStreamOnReceiveCanonicalRoundTrip(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
-	if err := stream.OnReceive(func(received *zlink.Received) {
-		defer received.Close()
-		reply := newMessage(t, "hello-stream")
-		done <- stream.SendTo(received.RoutingID(), zlink.SendFlagsNone, reply)
+	if err := stream.OnPacket(func(source zlink.RoutingID, header, body *zlink.Message) {
+		if got := string(body.Data()); got != "hello-stream" {
+			done <- fmt.Errorf("packet body = %q, want %q", got, "hello-stream")
+			_ = header.Close()
+			_ = body.Close()
+			return
+		}
+		packet := frameStreamPacketMessage(t, header, body)
+		_ = header.Close()
+		_ = body.Close()
+		if err := stream.SendTo(source, zlink.SendFlagsNone, packet); err != nil {
+			_ = packet.Close()
+			done <- err
+			return
+		}
+		done <- nil
 	}); err != nil {
-		t.Fatalf("OnReceive() error = %v", err)
+		t.Fatalf("OnPacket() error = %v", err)
 	}
 
 	conn, err := net.DialTimeout("tcp", strings.TrimPrefix(endpoint, "tcp://"), 5*time.Second)
@@ -355,14 +371,9 @@ func TestStreamOnReceiveCanonicalRoundTrip(t *testing.T) {
 	waitForMonitorEvent(t, monitor, 5*time.Second)
 
 	payload := []byte("hello-stream")
-	if _, err := conn.Write(payload); err != nil {
-		t.Fatalf("conn.Write() error = %v", err)
-	}
+	writeStreamPacket(t, conn, payload)
 
-	buffer := make([]byte, len(payload))
-	if _, err := io.ReadFull(conn, buffer); err != nil {
-		t.Fatalf("io.ReadFull() error = %v", err)
-	}
+	buffer := readStreamPacketBody(t, conn)
 	if !bytes.Equal(buffer, payload) {
 		t.Fatalf("stream callback reply = %q, want %q", string(buffer), string(payload))
 	}

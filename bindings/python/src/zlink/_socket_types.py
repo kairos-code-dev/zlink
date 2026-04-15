@@ -4,6 +4,7 @@ import ctypes
 import asyncio
 import errno
 import queue
+import threading
 
 from ._enums import RouterOption, SocketType
 from ._ffi import ZlinkMsg, lib
@@ -59,6 +60,7 @@ from ._spot import (
 )
 from ._socket_base import (
     _enter_callback,
+    _CALLBACK_SENTINEL,
     _BindSocket,
     _DealerOptionSocket,
     _EndpointSocket,
@@ -75,6 +77,16 @@ from ._socket_base import (
     _SubscriberOptionSocket,
     _SubscriberSocket,
     _leave_callback,
+)
+
+
+_STREAM_PACKET_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_void_p,
+    ctypes.POINTER(ZlinkRoutingId),
+    ctypes.POINTER(ZlinkMsg),
+    ctypes.POINTER(ZlinkMsg),
+    ctypes.c_void_p,
 )
 
 
@@ -285,11 +297,7 @@ class RouterSocket(
     def __init__(self, context):
         super().__init__(context)
         self._request_reply_handler = _REPLY_HANDLER(self._on_request_reply)
-        self._router_receive_handler = None
         self._pending_requests = {}
-        self._received_queue = queue.Queue()
-        self._received_handler = None
-        self._received_handler_loop = None
         self._spot_request_pending = {}
         self._spot_request_reply_handler = None
 
@@ -325,14 +333,6 @@ class RouterSocket(
         )
         if rc != 0:
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
-
-    def on_receive(self, handler):
-        self._ensure_router_receive_handler()
-        self._received_handler = handler
-        try:
-            self._received_handler_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._received_handler_loop = None
 
     def recv(self, *, flags=0):
         source_node_rid = ctypes.POINTER(ZlinkRoutingId)()
@@ -393,19 +393,6 @@ class RouterSocket(
             self._spot_request_reply_handler = _REPLY_HANDLER(self._on_spot_reply)
         return self._spot_request_reply_handler
 
-    def _ensure_router_receive_handler(self):
-        if self._router_receive_handler is not None:
-            return
-        self._router_receive_handler = _ROUTER_HANDLER(self._on_router_receive)
-        rc = lib().zlink_router_handler(
-            self._handle,
-            self._router_receive_handler,
-            None,
-        )
-        if rc != 0:
-            self._router_receive_handler = None
-            _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
-
     def _on_spot_reply(self, result_code, parts, part_count, userdata):
         handle = ctypes.cast(userdata, ctypes.c_void_p).value
         pending = self._spot_request_pending.pop(handle, None)
@@ -427,63 +414,6 @@ class RouterSocket(
         if result == RequestResult.OK:
             reply = _message_list_from_parts(parts, part_count)
         pending.resolve(result, reply, _request_result_internal_errno(result))
-
-    def _deliver_received(self, received, handler, handler_loop, queue_):
-        if handler is None:
-            queue_.put(received)
-            return
-
-        def _deliver():
-            try:
-                _enter_callback()
-                try:
-                    handler(received)
-                finally:
-                    _leave_callback()
-            except Exception:
-                _report_unhandled_callback_exception(handler)
-            finally:
-                received.close()
-
-        if handler_loop is None:
-            _deliver()
-        else:
-            handler_loop.call_soon_threadsafe(_deliver)
-
-    def _on_router_receive(
-        self,
-        source_node_rid,
-        source_spot_rid,
-        request_seq,
-        parts,
-        part_count,
-        userdata,
-    ):
-        del userdata
-        source_node = _routing_id_bytes(source_node_rid.contents)
-        source_spot = _routing_id_bytes(source_spot_rid.contents)
-        routing_id = RoutingId(source_node) if source_node else None
-        spot_rid = RoutingId(source_spot) if source_spot else None
-        received = _request_received(
-            parts,
-            part_count,
-            routing_id=routing_id,
-            spot_rid=spot_rid,
-            request_seq=int(request_seq),
-            reply_sender=lambda payload, *, flags=0, routing_id=routing_id, spot_rid=spot_rid, request_seq=int(request_seq): self._reply_from_receive_context(
-                routing_id,
-                spot_rid,
-                request_seq,
-                payload,
-                flags=flags,
-            ),
-        )
-        self._deliver_received(
-            received,
-            self._received_handler,
-            self._received_handler_loop,
-            self._received_queue,
-        )
 
     def _reply_from_receive_context(
         self, routing_id, spot_rid, request_seq, payload, *, flags=0
@@ -616,7 +546,6 @@ class RouterSocket(
     def close(self):
         self._cancel_pending_requests(RequestResult.TERMINATED)
         self._cancel_spot_pending_requests(RequestResult.TERMINATED)
-        self._received_queue.put(None)
         super().close()
 
     def _cancel_pending_requests(self, result):
@@ -650,6 +579,69 @@ class RouterSocket(
 
 class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingIdSocket, _RoutedMessageSocket):
     _socket_type_value = SocketType.STREAM
+
+    def on_packet(self, handler):
+        if handler is None:
+            raise ValueError("handler must not be None")
+        if self._recv_handler_thread is not None or self._packet_handler_thread is not None:
+            raise RuntimeError("handler is already attached")
+
+        stop = threading.Event()
+        events = queue.SimpleQueue()
+        self._packet_handler = handler
+        self._packet_handler_stop = stop
+        self._packet_handler_queue = events
+
+        def _callback(_stream, source_rid_ptr, header_ptr, body_ptr, _):
+            if stop.is_set():
+                return
+            try:
+                routing_id = None
+                if source_rid_ptr:
+                    routing_id = _routing_id_bytes(source_rid_ptr.contents)
+                header = Message.__new__(Message)
+                header._msg = _clone_native_msg(header_ptr.contents)
+                header._valid = True
+                header._keepalive = None
+                body = Message.__new__(Message)
+                body._msg = _clone_native_msg(body_ptr.contents)
+                body._valid = True
+                body._keepalive = None
+                events.put((routing_id, header, body))
+            except Exception:
+                _report_unhandled_callback_exception(handler)
+
+        callback = _STREAM_PACKET_HANDLER(_callback)
+        rc = lib().zlink_stream_packet_handler(self._handle, callback, None)
+        if rc != 0:
+            self._packet_handler = None
+            self._packet_handler_stop = None
+            self._packet_handler_queue = None
+            _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
+        self._packet_handler_cb = callback
+
+        def _dispatch():
+            while True:
+                item = events.get()
+                if item is _CALLBACK_SENTINEL:
+                    return
+                routing_id, header, body = item
+                _enter_callback()
+                try:
+                    handler(routing_id, header, body)
+                except Exception:
+                    _report_unhandled_callback_exception(handler)
+                finally:
+                    try:
+                        header.close()
+                    finally:
+                        body.close()
+                        _leave_callback()
+
+        thread = threading.Thread(target=_dispatch, name="zlink-stream-packet")
+        thread.daemon = True
+        self._packet_handler_thread = thread
+        thread.start()
 
 
 class PubSocket(_SendReadySocket, _DiscoveryAttachSocket, _EndpointSocket, _PublisherOptionSocket, _PublisherSocket):
@@ -690,6 +682,7 @@ class XPubSocket(_SendReadySocket, _EndpointSocket, _PublisherOptionSocket, _Pub
             routing_id=_routing_id_bytes(routing_id),
             topic=_decode_topic_text(topic_buf.raw[: topic_len.value]),
             subscribed=bool(subscribed.value),
+            service_name=None,
         )
 
     def receive_subscription_event(self, *, flags=0):

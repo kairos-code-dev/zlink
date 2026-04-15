@@ -50,7 +50,7 @@ recv function (`zlink_subscribe()` / `zlink_spot_subscribe()`,
   drain the plane that triggered the notification.
 - `publish()` works in both models.
 
-## Current public surface
+## Public surface
 
 ### SpotNode
 
@@ -90,9 +90,9 @@ zlink_config_result_t zlink_get_routing_id(void *node,
 ```
 
 `SpotNode` is the topology, lifecycle, and service-attachment owner.
-In service-aware mode, a node no longer has a single service name pinned to
-itself. It can host multiple `service_name` attachments at the same time,
-either from manual attach APIs or from one or more Discovery handles.
+In service-aware mode, a node is not pinned to a single service name. It
+can host multiple `service_name` attachments at the same time, either
+from manual attach APIs or from one or more Discovery handles.
 SpotNode does not expose the generic data-plane facade directly. Create a
 unified `Spot` facade with `zlink_spot_new(node)` for
 publish/subscribe/recv callback APIs.
@@ -414,7 +414,7 @@ state through the attachment snapshot or the node monitor.
 |------|---------------|----------------|
 | `node_ == NULL` or invalid handle | `ZLINK_CONFIG_INVALID_HANDLE` | `EFAULT` |
 | `discovery_ == NULL` or invalid handle | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` |
-| Discovery type does not match SPOT auto-attach | `ZLINK_CONFIG_NOT_SUPPORTED` | `ENOTSUP` |
+| Discovery service type is not accepted for this attach path | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` |
 | Same Discovery is already attached to another owner | `ZLINK_CONFIG_BUSY` | `EBUSY` |
 | Node already has a Discovery for the same `service_name` | `ZLINK_CONFIG_BUSY` | `EBUSY` |
 | Node already has two or more public `Spot` facades | `ZLINK_CONFIG_BUSY` | `EBUSY` |
@@ -465,18 +465,19 @@ Peer-side effects on remote nodes:
   (`zlink_spot_request_spot()`, `zlink_router_request_spot()`, and the
   related send paths) fail with `ZLINK_SUBMIT_NOT_ADMITTED` when the
   destination is `DRAINING`.
-- Service-aware `zlink_spot_request_service()` excludes `DRAINING` nodes
-  when picking from the service's active ROUTER candidates. If every
-  candidate is `DRAINING`, the call fails with
-  `ZLINK_SUBMIT_NOT_ADMITTED`.
+- Service-aware `zlink_spot_send_service()` and
+  `zlink_spot_request_service()` pick from the service's send-ready
+  ROUTER candidates. The selector does not pre-filter `DRAINING` at the
+  service-name layer; when the chosen ROUTER forwards the payload to a
+  remote peer that is `DRAINING`, the underlying send surfaces
+  `ZLINK_SUBMIT_NOT_ADMITTED` to the caller. A retry may land on a
+  different ROUTER in the same group whose remote peer is still
+  `SERVING`.
 - `zlink_spot_publish()` is fan-out; a single peer's admission state never
   fails it.
 
 Observation paths:
 
-- Remote service monitors emit
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` for this node when
-  its state transitions.
 - `zlink_spot_node_peers_snapshot()` and
   `zlink_spot_node_peers_query()` return
   `zlink_spot_node_peer_entry_t.admission_state` so callers can inspect
@@ -498,12 +499,12 @@ Key rules:
 
 ### Routed Addressing Summary
 
-The standard SPOT direct routed submit surface remains the existing function
-functions still take `dest_node_rid + dest_spot_rid` directly. Those two
-values are the **final destination pair** used at submit time.
+The SPOT direct routed submit functions take `dest_node_rid + dest_spot_rid`
+directly. Those two values are the **final destination pair** used at submit
+time.
 
-`SpotNode` and `Spot` routing identities are both **logical addresses**, but
-the SPOT public API still expects both "which `SpotNode` to send to" and
+`SpotNode` and `Spot` routing identities are both **logical addresses**. The
+SPOT public API expects both "which `SpotNode` to send to" and
 "which `Spot` inside that node" as a pair.
 
 A caller that starts from only logical `spot_rid` does not use a separate SPOT
@@ -1193,22 +1194,22 @@ typedef void (*zlink_spot_dispatch_event_handler_fn) (
 
 ## Monitoring
 
-The SPOT facade (`Spot`) is not a public service-monitor target. When a
-`SpotNode` has service-aware attachments, monitor events are drained only
-through `zlink_spot_node_monitor_recv()`.
+`Spot` and `SpotNode` are public service-monitor targets for the
+operational events that bridge directly from the SPOT pub/sub runtime.
+When a `SpotNode` has service-aware attachments, attachment detail events
+are drained only through `zlink_spot_node_monitor_recv()`.
 
-- `zlink_monitor_target_kind_t` now includes
+- `zlink_monitor_target_kind_t` includes
   `ZLINK_MONITOR_TARGET_SPOT_NODE = 5`, which identifies the SpotNode as a
   monitor target.
-- The service monitor event mask adds
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` (`1u << 8`). The
-  socket-side counterpart is
-  `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED`, exposed also as
-  `ZLINK_EVENT_PEER_ADMISSION_CHANGED`.
+- The generic service monitor surface for `Spot` / `SpotNode` supports
+  these operational events without an extra event pipeline:
+  `ERROR`, `CLOSED`, `peer up`, `peer down`, `connection ready`,
+  `sub filter applied`, `pub queue full`, and `pub queue drained`.
 - `zlink_spot_node_monitor_recv()` returns a
   `zlink_spot_service_monitor_event_t` that carries the original
   `zlink_monitor_event_t` together with `service_name` and attachment role.
-- Ordinary node-level status summaries remain on
+- Ordinary node-level status summaries are available through
   `zlink_spot_node_status_snapshot()` and
   `zlink_spot_node_peers_snapshot()`.
 
@@ -1496,13 +1497,14 @@ typedef enum zlink_spot_node_option_t {
 | `ROUTED_RECV_HWM` | `int` | 0 (unlimited) | Receive high water mark for routed (request-reply) messages. |
 
 **Returns:** `zlink_set_spot_node_option` / `zlink_get_spot_node_option`
-return 0 on success, -1 on failure (errno is set).
+return `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t`
+value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Options should be set before bind/connect.
 
-## Removed public APIs
+## Public surface scope
 
-The following families are not part of the current public SPOT surface:
+The following families are not part of the public SPOT surface:
 
 - `zlink_spot_pub_*`
 - `zlink_spot_sub_*`

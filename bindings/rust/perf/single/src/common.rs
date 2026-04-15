@@ -81,7 +81,7 @@ pub fn is_valid_active_message(data: &[u8], expected_size: usize) -> bool {
 }
 
 pub fn message_payload<'a>(parts: &'a [Message]) -> &'a [u8] {
-    parts.last().map(|part| part.data()).unwrap_or(&[])
+    parts.last().map(|part| part.as_bytes()).unwrap_or(&[])
 }
 
 pub fn now_ns() -> u64 {
@@ -110,19 +110,19 @@ macro_rules! impl_raw_tls_socket {
         $(
             impl RawTlsSocket for $ty {
                 fn set_tls_cert(&self, cert: &str) -> Result<(), ZlinkError> {
-                    <$ty>::set_tls_cert(self, cert)
+                    Ok(<$ty>::set_tls_cert(self, cert)?)
                 }
                 fn set_tls_key(&self, key: &str) -> Result<(), ZlinkError> {
-                    <$ty>::set_tls_key(self, key)
+                    Ok(<$ty>::set_tls_key(self, key)?)
                 }
                 fn set_tls_ca(&self, ca: &str) -> Result<(), ZlinkError> {
-                    <$ty>::set_tls_ca(self, ca)
+                    Ok(<$ty>::set_tls_ca(self, ca)?)
                 }
                 fn set_tls_hostname(&self, hostname: &str) -> Result<(), ZlinkError> {
-                    <$ty>::set_tls_hostname(self, hostname)
+                    Ok(<$ty>::set_tls_hostname(self, hostname)?)
                 }
                 fn set_tls_trust_system(&self, trust_system: bool) -> Result<(), ZlinkError> {
-                    <$ty>::set_tls_trust_system(self, trust_system)
+                    Ok(<$ty>::set_tls_trust_system(self, trust_system)?)
                 }
             }
         )+
@@ -208,10 +208,9 @@ pub fn wait_monitor_ready(mon: &zlink::SocketMonitor) {
         if Instant::now() > deadline {
             panic!("single perf connection-ready gate timed out");
         }
-        match mon.try_recv() {
-            Ok(Some(ev)) if ev.is_connection_ready() => break,
-            Ok(Some(_)) => continue,
-            Ok(None) => std::thread::yield_now(),
+        match mon.recv() {
+            Ok(ev) if ev.is_connection_ready() => break,
+            Ok(_) => continue,
             Err(_) => break,
         }
     }
@@ -394,7 +393,7 @@ pub fn send_loop<S>(
     let active_end = Instant::now() + active;
     while Instant::now() < active_end {
         encode_header(&mut buf, phase, msg_size as u32, seq);
-        let msg = Message::from_bytes(&buf).expect("msg");
+        let msg = Message::copy_from(&buf).expect("msg");
         send_fn(msg);
         seq += 1;
     }

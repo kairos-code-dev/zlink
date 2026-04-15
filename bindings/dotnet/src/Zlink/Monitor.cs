@@ -192,7 +192,8 @@ public sealed class MonitorSnapshot
     public uint DetailFlags { get; }
     public ulong SndPendingMsgs { get; }
     public ulong RcvPendingMsgs { get; }
-    public bool IsReady => (StateFlags & 0x1u) != 0;
+    public bool IsReady => SourceKind == SourceKind.Socket
+        && (StateFlags & 0x1u) != 0;
 
     internal static MonitorSnapshot FromNative(ref ZlinkMonitorSnapshot native)
     {

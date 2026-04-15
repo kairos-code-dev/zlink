@@ -19,9 +19,9 @@ with the rules here, this section wins.
   plane. Remove `OnReceive(...)` from their public contract.
 - `SubSocket` and `XSubSocket` are recv-only. Remove `OnSubscribe(...)` from
   their public contract.
-- `StreamSocket` keeps `Recv(...)` and raw `OnReceive(...)`, and must also
-  expose a packet callback surface mapped to `zlink_stream_packet_handler()`.
-  Recommended canonical name: `OnPacket(...)`.
+- `StreamSocket` keeps `Recv(...)` and exposes a packet callback surface
+  mapped to `zlink_stream_packet_handler()`. Recommended canonical name:
+  `OnPacket(...)`.
 - `SpotNode` must expose service-aware attachment APIs:
   `AttachRouter(string serviceName, RouterSocket router)`,
   `AttachPubSub(string serviceName, PubSocket pub, SubSocket sub)`,
@@ -37,6 +37,18 @@ with the rules here, this section wins.
   plus `Subscribe(...)` / routed recv / timer recv.
 - `Spot.OnRoutedReceive(...)` and `Spot.OnDispatchEvent(...)` are mutually
   exclusive on the routed axis.
+- Every socket and `Spot` exposes `SetAdmissionState(state)` and
+  `GetAdmissionState()` backed by the typed enum
+  `AdmissionState { Serving = 1, Draining = 2 }`. Submit attempts to a
+  drained peer throw `ZlinkSubmitException` with `Code =
+  SubmitResult.NotAdmitted`.
+- `Pollout` is a send-recovery readiness signal, shared with
+  `OnSendReady(...)`. It is not a "transport writable" bit.
+- ROUTER / PUB socket option defaults follow the core header: `Mandatory =
+  true`, `Handover = true`, `Nodrop = true`.
+- Internal pairing rule: when auto-connect pairs two same-service ROUTERs
+  via Discovery, the library picks one initiator per pair by a total order
+  on `(routing_id, advertise endpoint)`. Users do not configure this.
 
 ## Core
 
@@ -111,6 +123,10 @@ void Bind(string address);
 void Unbind(string address);
 /// <exception cref="ZlinkConfigException"/>
 SocketMonitor MonitorOpen(SocketEvent events = SocketEvent.All);
+/// <exception cref="ZlinkConfigException"/>
+AdmissionState GetAdmissionState();
+/// <exception cref="ZlinkConfigException"/>
+void SetAdmissionState(AdmissionState state);
 /// <exception cref="ZlinkCloseException"/>
 void Close();
 /// <exception cref="ZlinkCloseException"/>
@@ -444,8 +460,6 @@ public sealed class StreamSocket : RoutedMessageSocketBase
     /// <exception cref="ZlinkConfigException"/>
     StreamSocketOptions StreamOptions { get; }
 
-    /// <exception cref="ZlinkHandlerException"/>
-    void AttachStreamRaw(StreamPacketHandler handler);
     /// <exception cref="ZlinkCloseException"/>
     void DetachStream();
 
@@ -460,10 +474,18 @@ public sealed class StreamSocket : RoutedMessageSocketBase
     /// <exception cref="ZlinkSubmitException"/>
     void Send(RoutingId routingId, IReadOnlyList<Message> parts,
               SendFlags flags = SendFlags.None);
+    /// Two mutually-exclusive receive modes on the same StreamSocket:
+    ///   (1) Recv(), (2) OnPacket(handler). Second attach throws
+    ///   ZlinkHandlerException(HandlerResult.Busy).
     /// <exception cref="ZlinkRecvException"/>
     Received Recv(RecvFlags flags = RecvFlags.None);
+    /// Mode (3): framed packet callback. Wire frame is
+    ///   big-endian ushort header_size + uint body_size + header + body.
+    ///   The handler receives the source routing id, a header Message,
+    ///   and a body Message; both messages transfer ownership to the
+    ///   handler. Mutually exclusive with Recv().
     /// <exception cref="ZlinkHandlerException"/>
-    void OnReceive(SocketRecvHandler handler);
+    void OnPacket(StreamPacketHandler handler);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 }
@@ -675,9 +697,9 @@ public sealed class ZlinkRecvException : ZlinkException
 
 ### ZlinkHandlerException
 
-Thrown by handler-registration calls (`OnReceive`, `OnSendReady`,
-`OnSubscribe`, `OnEvent`, `OnFire`, `OnRoutedReceive`,
-`OnDispatchEvent`, `AttachStreamRaw`, etc.). Wraps a `HandlerResult`.
+Thrown by handler-registration calls (`OnPacket`, `OnSendReady`,
+`OnEvent`, `OnFire`, `OnRoutedReceive`, `OnDispatchEvent`, etc.). Wraps a
+`HandlerResult`.
 
 ```csharp
 public sealed class ZlinkHandlerException : ZlinkException
@@ -770,7 +792,8 @@ public enum SubmitResult
     ThreadViolation = 9,
     OutOfMemory = 10,
     SeqExhausted = 11,
-    InternalError = 12
+    InternalError = 12,
+    NotAdmitted = 13   // target peer is in AdmissionState.Draining
 }
 ```
 
@@ -807,7 +830,7 @@ public enum RecvResult
 
 ### HandlerResult
 
-Result code for handler registration operations (stream `OnReceive`,
+Result code for handler registration operations (`OnPacket`,
 `OnSendReady`, `OnRoutedReceive`, `OnDispatchEvent`, `OnEvent`, etc.).
 
 ```csharp
@@ -981,13 +1004,18 @@ public enum RecvFlags
 
 Socket-level event monitor. Receives connect, disconnect, and handshake events.
 Implements `IDisposable` and `IAsyncDisposable`.
+Starts in recv model. `OnEvent(...)` transitions one-way to callback-only
+model; after that `Recv(...)` raises busy and `Snapshot()` still works.
 
 ```csharp
 public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// No-op handler that ignores every event. Assign to OnEvent() when
-    /// driving the monitor via Snapshot() or direct recv. Maps to
+    /// No-op callback for callback-only model. Pass to OnEvent() to keep a
+    /// valid handler when the application does not care about events; once
+    /// installed the monitor is in callback-only model and Recv(...) raises
+    /// busy (Snapshot() still works). To drive the monitor via Snapshot() /
+    /// Recv(...) instead, leave the handler unset. Maps to
     /// zlink_monitor_ignore_handler.
     /// </summary>
     public static readonly Action<MonitorEvent> IgnoreHandler;
@@ -1013,6 +1041,8 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 
 Service-level event monitor for discovery.
 Implements `IDisposable` and `IAsyncDisposable`.
+Starts in recv model. `OnEvent(...)` transitions one-way to callback-only
+model; after that `Recv(...)` raises busy and `Snapshot()` still works.
 
 ```csharp
 public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
@@ -1040,12 +1070,17 @@ Socket monitor event. Pure value object.
 
 ```csharp
 public sealed record MonitorEvent(
-    MonitorEventType Event,                  // CONNECTION_READY, CONNECTED, DISCONNECTED, ...
-    uint Value,                              // per-event detail (e.g. disconnect reason code)
+    MonitorEventType Event,                  // CONNECTION_READY, CONNECTED, DISCONNECTED, PEER_ADMISSION_CHANGED, ...
+    uint Value,                              // per-event detail (e.g. disconnect reason code, PEER_ADMISSION_CHANGED carries the new AdmissionState)
     RoutingId? RoutingId,                    // null when event has no associated peer
     string LocalAddr,
     string RemoteAddr);
 ```
+
+`MonitorEventType` includes `PeerAdmissionChanged` (bit 15). When this event
+fires, `Value` carries the new `AdmissionState` for the peer. The same
+change is also surfaced via service monitors as
+`ServiceMonitorEventMask.PeerAdmissionChanged` (bit 8).
 
 ### MonitorSnapshot
 
@@ -1060,13 +1095,13 @@ public sealed class MonitorSnapshot
     ulong SndPendingMsgs { get; }            // send-queue pending messages
     ulong RcvPendingMsgs { get; }            // recv-queue pending messages
 
-    bool IsReady { get; }                    // ready bit of StateFlags
+    bool IsReady { get; }                    // raw socket monitor source의 ready bit
 }
 ```
 
 ### ServiceEvent
 
-Service monitor event (discovery / registry / spot). Pure value object.
+Discovery service monitor event. Pure value object.
 
 ```csharp
 public sealed record ServiceEvent(
@@ -1466,7 +1501,8 @@ public sealed record MemberPeerEntry(
     string ServiceName,
     string Endpoint,
     RoutingId? RoutingId,
-    long Value);
+    long Value,
+    AdmissionState AdmissionState);
 ```
 
 #### RegistryTopologyEntry
@@ -1554,6 +1590,7 @@ public sealed record SpotNodePeerEntry(
     string PeerEndpoint,
     SpotPeerSource Source,
     SpotPeerState State,
+    AdmissionState AdmissionState,
     ulong ConnectedSinceMs,
     ulong LastChangedMs);
 ```
@@ -1576,6 +1613,12 @@ public enum SpotServiceAttachmentRole
     Router = 1,
     Pub = 2,
     Sub = 3
+}
+
+public enum AdmissionState
+{
+    Serving = 1,
+    Draining = 2
 }
 
 public sealed record SpotServiceAttachmentStats(

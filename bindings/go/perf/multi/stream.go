@@ -27,7 +27,7 @@ func runMultiStream(cfg multiConfig) perfcommon.Result {
 
 	var wg sync.WaitGroup
 	for i := 0; i < cfg.clients; i++ {
-		conn := perfcommon.DialEndpoint(endpoint)
+		conn := perfcommon.DialPacketEndpoint(endpoint)
 		perfcommon.Must(conn.SetDeadline(time.Now().Add(cfg.duration + 5*time.Second)))
 		wg.Add(1)
 		go func(c io.ReadWriteCloser) {
@@ -56,16 +56,10 @@ func runMultiStream(cfg multiConfig) perfcommon.Result {
 }
 
 func startMultiStreamEchoServer(server *zlink.StreamSocket) {
-	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
-	go func() {
-		for {
-			received, err := server.Recv(zlink.RecvFlagsNone)
-			if err != nil {
-				return
-			}
-			perfcommon.Must(server.SendTo(received.RoutingID(), zlink.SendFlagsNone,
-				perfcommon.CloneMessages(received.Parts())...))
-			perfcommon.Must(received.Close())
-		}
-	}()
+	perfcommon.Must(server.OnPacket(func(source zlink.RoutingID, header, body *zlink.Message) {
+		packet := perfcommon.FrameStreamPacketMessage(header, body)
+		_ = header.Close()
+		_ = body.Close()
+		perfcommon.Must(server.SendTo(source, zlink.SendFlagsNone, packet))
+	}))
 }

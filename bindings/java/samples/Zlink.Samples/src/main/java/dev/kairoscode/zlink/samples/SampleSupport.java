@@ -7,6 +7,7 @@ import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.Zlink;
 import dev.kairoscode.zlink.service.spot.SpotNode;
+import dev.kairoscode.zlink.service.spot.SpotNodeState;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -102,7 +103,8 @@ final class SampleSupport {
 
     static void waitSpotPeerConnected(SpotNode node) {
         waitUntil("spot peer connection",
-            () -> node.statusSnapshot().connectedPeerCount() > 0);
+            () -> node.statusSnapshot().connectedPeerCount() > 0
+                && node.statusSnapshot().state() == SpotNodeState.READY);
     }
 
     static java.net.Socket connectRawTcp(String endpoint) {

@@ -29,6 +29,7 @@ func main() {
 	defer func() { samplecommon.MustStep("subscriber.Close", subscriber.Close()) }()
 
 	topic := "room:lobby"
+	serviceName := "bench"
 	payload := "hello-spot"
 	endpoint := samplecommon.UniqueTCP("spot-recv")
 	samplecommon.MustStep("publisherNode.Bind", publisherNode.Bind(endpoint))
@@ -39,7 +40,7 @@ func main() {
 	var message *zlink.TopicMessage
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		samplecommon.MustStep("publisher.Publish", publisher.Publish(topic, zlink.SendFlagsNone, samplecommon.Message(payload)))
+		samplecommon.MustStep("publisher.Publish", publisher.Publish(serviceName, topic, zlink.SendFlagsNone, samplecommon.Message(payload)))
 		received, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
 		if err != nil {
 			runtime.Gosched()

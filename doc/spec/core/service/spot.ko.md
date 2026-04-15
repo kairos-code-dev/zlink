@@ -21,10 +21,10 @@ SPOT public API는 두 계층으로 정리됩니다.
 - `SpotNode`: bind/connect/discovery/TLS wiring owner
 - `Spot`: `SpotNode`에 attach되는 unified pub/sub facade
 
-현재 public surface에는 standalone `zlink_spot_pub_*` / `zlink_spot_sub_*`
-생성자와 destroy, option API가 없습니다. 대신 `SpotNode`와 unified `Spot` 위에
-service-aware attach, send/request/publish/subscribe, node monitor recv 표면이
-추가되었습니다.
+public surface에는 standalone `zlink_spot_pub_*` / `zlink_spot_sub_*`
+생성자와 destroy, option API가 없습니다. service-aware attach,
+send/request/publish/subscribe, node monitor recv 표면은 `SpotNode`와
+unified `Spot` 두 계층 위에서 제공됩니다.
 
 ## I/O 모델
 
@@ -49,7 +49,7 @@ timer readable 알림은 `zlink_spot_dispatch_event_handler()` 하나로 받고,
   plane을 비우기 위해 호출할 수 있습니다.
 - `publish()`는 두 모드 모두에서 동작합니다.
 
-## 현재 public surface
+## Public surface
 
 ### SpotNode
 
@@ -163,9 +163,9 @@ zlink_config_result_t zlink_get_routing_id(void *spot,
                                            zlink_routing_id_t *out);
 ```
 
-`zlink_spot_new(node)`는 기존 spot node를 빌리는 unified facade를
-생성합니다. publish와 subscribe 동작을 모두 제공합니다. publish-only 혹은
-subscribe-only 전용 공개 child handle은 더 이상 제공하지 않습니다.
+`zlink_spot_new(node)`는 주어진 spot node를 빌리는 unified facade를
+생성합니다. publish와 subscribe 동작을 모두 제공합니다. publish-only 또는
+subscribe-only 전용 공개 child handle은 제공되지 않습니다.
 `zlink_set_routing_id()`로 설정하는 `Spot` routing id 역시 transport endpoint가
 아닌 **논리 주소**입니다. 호출자는 원하는 이름을 직접 줄 수 있고, routed
 경로에서는 이 값이 "어느 Spot인가"를 식별하는 이름으로 사용됩니다.
@@ -340,7 +340,7 @@ zlink_recv_result_t zlink_spot_node_monitor_recv (
 | 선택된 ROUTER가 HWM에 걸림 | `ZLINK_SUBMIT_BACKPRESSURED` | `EAGAIN` |
 | request sequence 공간 소진 | `ZLINK_SUBMIT_SEQ_EXHAUSTED` | `EBUSY` |
 | context 종료 | `ZLINK_SUBMIT_TERMINATED` | `ETERM` |
-| 그 외 내부 submit 실패 | 기존 submit enum 규칙 | 표준 errno-map |
+| 그 외 내부 submit 실패 | 표준 submit enum 규칙 | 표준 errno-map |
 
 request completion은 `zlink_request_result_t`를 따릅니다. submit 이후 reply가
 오지 않으면 `ZLINK_REQUEST_TIMED_OUT`, remote "대상 없음" reply는
@@ -357,7 +357,7 @@ request completion은 `zlink_request_result_t`를 따릅니다. submit 이후 re
 | attachment는 있으나 active pub/sub pair가 없음 | `ZLINK_SUBMIT_NOT_CONNECTED` | `ENOTCONN` 또는 `EHOSTUNREACH` |
 | 선택된 `PUB`가 HWM에 걸림 | `ZLINK_SUBMIT_BACKPRESSURED` | `EAGAIN` |
 | context 종료 | `ZLINK_SUBMIT_TERMINATED` | `ETERM` |
-| 그 외 내부 submit 실패 | 기존 submit enum 규칙 | 표준 errno-map |
+| 그 외 내부 submit 실패 | 표준 submit enum 규칙 | 표준 errno-map |
 
 `zlink_spot_subscribe()` / `zlink_spot_subscription_event()`는 일반 recv
 모델을 따릅니다. 읽을 이벤트가 없으면 `ZLINK_RECV_NO_DATA`, 잘못된 핸들이면
@@ -372,7 +372,7 @@ request completion은 `zlink_request_result_t`를 따릅니다. submit 이후 re
 |------|---------------|------------|
 | `node_ == NULL` 또는 잘못된 핸들 | `ZLINK_CONFIG_INVALID_HANDLE` | `EFAULT` |
 | `discovery_ == NULL` 또는 잘못된 핸들 | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` |
-| Discovery 타입이 SPOT 자동 attach와 맞지 않음 | `ZLINK_CONFIG_NOT_SUPPORTED` | `ENOTSUP` |
+| Discovery 서비스 타입이 이 attach 경로에서 허용되지 않음 | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` |
 | 같은 Discovery가 이미 다른 owner에 attach됨 | `ZLINK_CONFIG_BUSY` | `EBUSY` |
 | 같은 node에 같은 `service_name` Discovery가 이미 attach됨 | `ZLINK_CONFIG_BUSY` | `EBUSY` |
 | 같은 node에 공개 facade `Spot`이 둘 이상 이미 생성됨 | `ZLINK_CONFIG_BUSY` | `EBUSY` |
@@ -421,17 +421,17 @@ peer 쪽 효과:
 - 다른 노드에서 이 SpotNode를 대상으로 하는 SPOT direct request
   (`zlink_spot_request_spot()`, `zlink_router_request_spot()` 등)는
   대상이 `DRAINING`이면 `ZLINK_SUBMIT_NOT_ADMITTED`로 실패합니다.
-- service-aware `zlink_spot_request_service()`는 같은 서비스 경로의 active
-  ROUTER 후보를 고를 때 `DRAINING` 노드를 제외합니다. 후보가 모두
-  `DRAINING`이면 `ZLINK_SUBMIT_NOT_ADMITTED`로 실패합니다.
+- service-aware `zlink_spot_send_service()` / `zlink_spot_request_service()`는
+  같은 서비스 경로의 send-ready ROUTER 후보 중에서 round-robin으로 선택합니다.
+  selector 단계에서 `DRAINING`을 미리 걸러내지는 않으며, 선택된 ROUTER가
+  `DRAINING` 상태의 원격 peer로 forwarding을 시도하면 그 하위 send가
+  `ZLINK_SUBMIT_NOT_ADMITTED`를 surface합니다. 재시도는 같은 그룹의 다른
+  ROUTER — 원격 peer가 `SERVING`인 쪽 — 에 도달할 수 있습니다.
 - `zlink_spot_publish()`는 fan-out 의미를 가지므로 단일 peer admission
   으로 거절하지 않습니다.
 
 관찰 경로:
 
-- 다른 노드 쪽 service monitor에서
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`로 이 노드의 상태
-  변화를 받을 수 있습니다.
 - `zlink_spot_node_peers_snapshot()` / `zlink_spot_node_peers_query()`가
   돌려주는 `zlink_spot_node_peer_entry_t.admission_state`로 각 peer의
   현재 admission 상태를 직접 확인할 수 있습니다.
@@ -452,17 +452,17 @@ SPOT request-reply 는 publish/subscribe 경로와 별도입니다. 이 표면�
 
 ### Routed addressing 요약
 
-SPOT direct send/request/reply의 표준 함수는 계속
-`dest_node_rid + dest_spot_rid` 두 값을 직접 받습니다. 이 두 값은 실제 전송
-단계에서 쓰이는 **최종 목적지 주소 쌍**입니다.
+SPOT direct send/request/reply의 표준 함수는 `dest_node_rid + dest_spot_rid`
+두 값을 직접 받습니다. 이 두 값은 실제 전송 단계에서 쓰이는 **최종 목적지 주소
+쌍**입니다.
 
 `SpotNode`와 `Spot`의 routing id는 둘 다 **논리 주소**이지만, SPOT 공개 API는
-여전히 "어느 `SpotNode`로 보낼 것인가"와 "그 안의 어느 `Spot`으로 보낼 것인가"를
+"어느 `SpotNode`로 보낼 것인가"와 "그 안의 어느 `Spot`으로 보낼 것인가"를
 함께 받는 형태입니다.
 
 호출자가 논리 `spot_rid`만 알고 시작하는 경우에도 별도의 SPOT send/request
 함수를 추가로 쓰지 않습니다. 먼저 Discovery에 현재 담당 `SpotNode`를 물어본 뒤,
-그 결과를 기존 함수에 넣는 방식으로 해석합니다.
+그 결과를 동일한 SPOT send/request 함수에 넣어 해석합니다.
 
 ```c
 zlink_config_result_t zlink_discovery_resolve_spot (
@@ -473,9 +473,9 @@ zlink_config_result_t zlink_discovery_resolve_spot (
 
 이 함수가 성공하면, 호출자는 반환된 `owner_node_rid_out`과 원래의 `spot_rid`를
 묶어서 `zlink_spot_send_spot()`, `zlink_spot_request_spot()`,
-`zlink_router_send_spot()`, `zlink_router_request_spot()` 같은 기존 함수에
-전달하면 됩니다. 즉 `spot_rid`만으로 보내는 것처럼 보이더라도, 실제 제출 단계는
-항상 기존 `dest_node_rid + dest_spot_rid` 경로로 내려갑니다.
+`zlink_router_send_spot()`, `zlink_router_request_spot()` 같은 SPOT routed
+함수에 전달하면 됩니다. 즉 `spot_rid`만으로 보내는 것처럼 보이더라도, 실제 제출
+단계는 항상 `dest_node_rid + dest_spot_rid` 경로로 내려갑니다.
 
 - 어떤 `SpotNode`가 현재 그 `spot_rid`를 맡고 있는지에 대한 최종 기준:
   [registry.ko.md](registry.ko.md)
@@ -766,21 +766,22 @@ typedef void (*zlink_spot_dispatch_event_handler_fn) (
 
 ## 모니터링
 
-SPOT facade(`Spot`)는 더 이상 공개 service-monitor 대상이 아닙니다.
-service-aware attachment가 있는 `SpotNode`의 모니터는 별도 recv 표면인
-`zlink_spot_node_monitor_recv()`로만 가져옵니다.
+SPOT facade(`Spot`)는 공개 service-monitor 대상이 아닙니다.
+`Spot`과 `SpotNode`는 SPOT pub/sub runtime에서 바로 브리지할 수
+있는 운영형 generic service monitor event에 대해서는 공개 monitor
+target입니다. 다만 service-aware attachment가 있는 `SpotNode`의 상세
+모니터는 별도 recv 표면인 `zlink_spot_node_monitor_recv()`로만 가져옵니다.
 
-- `zlink_monitor_target_kind_t`에는 `ZLINK_MONITOR_TARGET_SPOT_NODE = 5`가
-  추가되었습니다. SpotNode에서 monitor 대상을 식별할 때 사용됩니다.
-- service monitor event mask에는
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` (`1u << 8`)가
-  추가되었습니다. 소켓 쪽 대응 이벤트는
-  `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED`이며
-  `ZLINK_EVENT_PEER_ADMISSION_CHANGED`로도 표면화됩니다.
+- `zlink_monitor_target_kind_t`의 `ZLINK_MONITOR_TARGET_SPOT_NODE = 5`는
+  SpotNode에서 monitor 대상을 식별할 때 사용됩니다.
+- `Spot` / `SpotNode` generic service monitor는 추가 event pipeline 없이
+  바로 브리지할 수 있는 운영형 이벤트만 지원합니다:
+  `ERROR`, `CLOSED`, `peer up`, `peer down`, `connection ready`,
+  `sub filter applied`, `pub queue full`, `pub queue drained`.
 - `zlink_spot_node_monitor_recv()`가 돌려주는
   `zlink_spot_service_monitor_event_t`는 `service_name`, attachment role,
   원본 `zlink_monitor_event_t`를 함께 싣습니다.
-- 일반 node 상태 요약은 여전히 `zlink_spot_node_status_snapshot()`과
+- 일반 node 상태 요약은 `zlink_spot_node_status_snapshot()`과
   `zlink_spot_node_peers_snapshot()`으로 조회합니다.
 
 ## 스냅샷 / 인트로스펙션
@@ -992,13 +993,14 @@ typedef enum zlink_spot_node_option_t {
 | `ROUTED_RECV_HWM` | `int` | 0 (무제한) | routed (request-reply) 메시지 수신 high water mark. |
 
 **반환값:** `zlink_set_spot_node_option` / `zlink_get_spot_node_option`은
-성공 시 0, 실패 시 -1을 반환합니다 (errno가 설정됨).
+성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값을
+반환합니다. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 옵션은 bind/connect 전에 설정해야 합니다.
 
-## 제거된 public API
+## Public surface 범위
 
-다음 계열은 현재 public SPOT surface에 포함되지 않습니다.
+다음 계열은 public SPOT surface에 포함되지 않습니다.
 
 - `zlink_spot_pub_*`
 - `zlink_spot_sub_*`

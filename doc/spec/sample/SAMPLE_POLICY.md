@@ -32,27 +32,22 @@
 ## Canonical Sample Set
 - 각 샘플 표면은 다음 canonical sample 세트를 기준으로 맞춘다.
   - `request_reply_async_sample`
-  - `request_reply_callback_sample`
   - `pair_recv_sample`
-  - `pair_callback_sample`
   - `pubsub_recv_sample`
-  - `pubsub_callback_sample`
   - `dealer_router_recv_sample`
-  - `dealer_router_callback_sample`
   - `stream_recv_sample`
-  - `stream_callback_sample`
   - `spot_recv_sample`
-  - `spot_callback_sample`
+  - `spot_request_async_sample`
+  - `stream_packet_callback_sample`
   - `monitor_recv_sample`
 - service/spot 계열이 없는 표면은 `spot_*` 샘플을 제외할 수 있다.
 - request-reply wrapper 표면이 없는 바인딩은 `request_reply_*` 샘플을 제외할 수
   있다.
-- `core/samples/`의 request-reply 샘플은 `request_reply_callback_sample`만
-  포함한다. `request_reply_async_sample`은 제외한다 (코어는 async completion
-  표면을 직접 노출하지 않음).
+- `core/samples/`는 request-reply wrapper sample을 canonical set에 포함하지
+  않는다. 코어는 `request_reply_async_sample` 대상이 아니다.
 - `bindings/*/samples/`의 request-reply wrapper 구현 표면은
-  `request_reply_callback_sample`과 `request_reply_async_sample`을 모두
-  포함한다 (callback 버전과 coroutine/async 버전 둘 다 제공).
+  `request_reply_async_sample`을 포함해야 한다. callback 기반 request-reply
+  sample은 포함하지 않는다.
 - 서비스 계층 컴포넌트를 구현하는 표면은 다음 샘플을 추가로 포함한다.
   - `discovery_registry_sample` (Discovery + Registry end-to-end)
   - `registry_query_sample` (RegistryQueryClient로 토폴로지 조회)
@@ -61,23 +56,28 @@
   - RegistryQueryClient 미구현 → `registry_query_sample` 제외
 
 ## Sample Structure Rules
-- recv/direct 버전과 callback 버전은 반드시 개별 파일로 분리한다.
-- 한 파일이 두 수신 모델을 동시에 설명하면 안 된다.
+- recv 버전과 STREAM packet callback 버전은 반드시 개별 파일로 분리한다.
+- `spot_recv_sample` 과 `spot_request_async_sample` 은 반드시 개별 파일로
+  분리한다.
+- 한 파일이 여러 수신 모델을 동시에 설명하면 안 된다.
 - 샘플 파일명은 canonical 이름을 그대로 사용한다.
 - recv sample 이름 패턴은 `*_recv_sample` 로 고정한다.
-- callback sample 이름 패턴은 `*_callback_sample` 로 고정한다.
+- packet callback sample 이름 패턴은 `*_packet_callback_sample` 로 고정한다.
 - async/coroutine sample 이름 패턴은 `*_async_sample` 로 고정한다.
 - monitor sample 이름 패턴은 `*_monitor_recv_sample` 또는 단일
   `monitor_recv_sample` 로 고정한다.
 - 각 샘플은 하나의 핵심 패턴만 설명해야 한다.
 - 혼합형 샘플은 두지 않는다.
+- 다만 `spot_recv_sample` 은 예외다.
+  spot은 publish/subscribe, send/recv, timer event를 함께 제공하는 표면 특성을
+  보여 주기 위해 통합 흐름을 한 파일에 담을 수 있다.
 
 ## Sample Content Rules
 - 샘플은 핵심 로직이 한눈에 보이게 작성한다.
 - 샘플은 문서에 그대로 옮겨도 흐름이 유지되는 짧고 직접적인 코드여야 한다.
 - 보일러플레이트와 과도한 helper 의존을 줄인다.
 - 핵심 메시징 흐름은 샘플 본문에서 직접 보여야 한다.
-- bind/connect, callback 등록, send/publish, recv/subscribe, 출력은 샘플
+- bind/connect, event 등록, send/publish, recv/subscribe, 출력은 샘플
   본문에서 직접 보여야 한다.
 - endpoint 확보, monitor readiness 대기, raw TCP peer 보조 같은 인프라성
   코드는 얇은 sample helper로 분리할 수 있다.
@@ -88,7 +88,7 @@
   - endpoint bind/connect
   - subscription 설정이 필요한 경우 subscription 설정
   - send/publish
-  - recv/subscribe 또는 callback 설치
+  - recv/subscribe 또는 예외적으로 필요한 event callback 설치
   - 수신 결과 확인
   - 종료/정리
 
@@ -96,37 +96,85 @@
 - `recv sample` 은 direct receive 계열만 사용한다.
 - `async sample` 은 future/task/coroutine 또는 그와 동등한 async completion
   surface만 사용한다.
-- `callback sample` 은 callback receive 계열만 사용한다.
+- `packet callback sample` 은 packet callback delivery 계열만 사용한다.
 - `monitor sample` 은 monitor `recv/tryRecv` 계열만 사용한다.
-- 한 샘플 안에서 recv와 callback 수신 모델을 섞지 않는다.
+- `spot_recv_sample` 에서는 dispatcher event callback 안에서 `recv` 를 호출하는
+  흐름을 사용한다. 이 경우 수신의 본질은 recv 이므로 recv sample로 분류한다.
+- `spot_request_async_sample` 은 spot request/reply를 coroutine 또는 async
+  completion 표면으로 설명한다.
+- 한 샘플 안에서 recv, packet callback, monitor 수신 모델을 섞지 않는다.
 - data plane sample과 monitor sample 목적을 섞지 않는다.
 - 샘플 본문은 해당 샘플 분류의 API 표면만 설명해야 한다.
 
 ## Recv Sample Rules
-- `recv sample` 은 callback 등록 API를 사용하지 않는다.
+- `recv sample` 은 packet callback 등록 API를 사용하지 않는다.
 - `send/publish` 후 direct receive 결과를 직접 확인한다.
+- `spot_recv_sample` 은 dispatcher event callback이 호출되면 그 안에서
+  `recv` 를 수행해 데이터를 확인한다.
+- `spot_recv_sample` 은 다음 흐름을 함께 보여 줄 수 있다.
+  - publish 후 subscribe 성격의 메시지 수신
+  - send 후 direct recv
+  - timer event 발생 후 관련 recv 또는 후속 동작 확인
 - recv sample 본문은 recv surface를 배우는 데 필요한 코드만 남긴다.
+
+## Spot Sample Rules
+- `spot_recv_sample` 은 spot이 여러 상호작용 모델을 한 표면에서 제공한다는
+  점을 보여 주는 대표 샘플이다.
+- 이 샘플은 단일 패턴 예제가 아니라 spot event and recv overview로 작성한다.
+- 따라서 한 파일 안에 publish, send, timer 흐름을 함께 둘 수 있다.
+- 다만 각 흐름은 순서대로 분리해서 보여야 한다.
+  사용자가 어떤 호출이 어떤 결과를 만드는지 바로 따라갈 수 있어야 한다.
+- 수신 확인은 dispatcher event callback 안의 `recv` 로 일관되게 처리한다.
+- monitor event, packet callback, 별도 async completion 표면은 여기에 섞지
+  않는다.
+- helper를 쓰더라도 본문에서 다음이 직접 보여야 한다.
+  - publish 호출
+  - send 호출
+  - timer 등록 또는 시작
+  - dispatcher event callback 등록
+  - callback 안의 `recv`
+- `spot` 의 request/reply는 `spot_recv_sample` 에 넣지 않는다.
+  바인딩 샘플에서는 `spot_request_async_sample` 으로 분리해서 coroutine 또는
+  async completion 흐름으로 설명한다.
 
 ## Async Sample Rules
 - `async sample` 은 async request lifecycle이 핵심 표면인 기능에만 적용한다.
 - request-reply wrapper를 제공하는 바인딩 표면은 `request_reply_async_sample`
   을 canonical sample에 포함해야 한다.
-- `core/samples/`는 이 규칙에서 제외한다. 코어 request-reply 샘플은
-  `request_reply_callback_sample`만 둔다.
+- `core/samples/`는 이 규칙에서 제외한다. 코어는 request-reply wrapper sample을
+  canonical set에 두지 않는다.
 - `request_reply_async_sample` 은 `DealerSocket.request()` /
   `RouterSocket.request()` async/coroutine 변형을 직접 사용해야 한다.
   (별도 `RequestDealer` / `RequestRouter` wrapper 클래스는 policy 상 금지됨 —
   `doc/spec/bindings/README.md` Socket Type Capability Policy 참조.)
 - raw `DealerSocket`/`RouterSocket` 의 recv/send 샘플을 재포장해서는 안 된다.
-- async sample은 callback completion으로 결과를 대신 설명하면 안 된다.
+- async sample은 event callback completion으로 결과를 대신 설명하면 안 된다.
 - reply 완료 확인은 `await`, `future.get`, `Task`, `channel receive`,
   `std::future` 등 언어별 async completion 표면으로 보여야 한다.
+- `spot` 이 request/reply async surface를 제공하는 바인딩 표면은
+  `spot_request_async_sample` 을 canonical sample에 포함해야 한다.
+- `core/samples/`는 `spot_request_async_sample` 대상이 아니다.
 
-## Callback Sample Rules
-- `callback sample` 은 callback 등록과 callback delivery만으로 수신을
-  설명해야 한다.
-- 본문에서 `receive()/subscribe()` 로 callback 결과를 대신 확인하지 않는다.
-- callback sample이 recv sample처럼 보이면 안 된다.
+## Request Pattern Rules
+- 일반 request-reply wrapper 샘플의 기본 역할 모델은 `dealer -> router` 다.
+- 샘플 문서와 출력은 요청 측을 requester 또는 client로, 응답 측을 responder
+  또는 server로 설명할 수 있다.
+- 다만 일반 socket request-reply 토폴로지 표기는 가능하면 `dealer -> router`
+  의미가 드러나게 적는다.
+- `router -> router` 토폴로지는 특수 구현이나 내부 구조 설명에는 쓸 수 있어도,
+  일반 canonical request 패턴의 기본 표기로 쓰지 않는다.
+- `spot_request_async_sample` 의 request 흐름도 바깥에서 보이는 의미는
+  requester -> responder 로 설명한다.
+  이는 service-layer request 패턴이며 일반 socket request-reply와 같은 의미를
+  갖지만 토폴로지 표현은 `spot requester -> spotnode/router -> spot responder`
+  로 적을 수 있다.
+
+## Packet Callback Sample Rules
+- packet callback sample은 STREAM에만 적용한다.
+- `stream_packet_callback_sample` 은 packet callback 등록과 callback delivery만으로
+  수신을 설명해야 한다.
+- 본문에서 `recv()` 로 packet callback 결과를 대신 확인하지 않는다.
+- packet callback sample이 recv sample처럼 보이면 안 된다.
 - callback 완료 검증은 결정적 동기화로 작성한다.
 - 허용 패턴:
   - `CountDownLatch`, `CompletableFuture`, `Event`, `condition variable`,
@@ -136,7 +184,7 @@
     `lock`/`mutex` 기반 polling
 - 대기에는 반드시 hard timeout을 건다 (예: 5초).
 - timeout 초과 시 실패로 종료한다 (non-zero exit code 또는 예외).
-- callback이 호출되면 signal을 보내고, 메인 스레드는 signal을 대기한다.
+- packet callback이 호출되면 signal을 보내고, 메인 스레드는 signal을 대기한다.
 
 ## Sample Transport Rules
 - 샘플의 endpoint는 `tcp://127.0.0.1:<port>` 를 기본으로 사용한다.
@@ -144,6 +192,36 @@
   - inproc은 callback이 동작하지 않는 경우가 있고, 실제 사용 환경과 다르다.
 - port 할당은 OS ephemeral port를 사용한다 (bind to port 0 → 실제 port 획득).
 - stream 샘플처럼 raw TCP client를 직접 연결하는 경우도 동일한 방식을 따른다.
+
+## Sample Execution Topology Rules
+- canonical sample의 기본 실행 형태는 프로세스 1개와 스레드 2개다.
+- 한 스레드는 sender, publisher, client 같은 요청 측 역할을 맡고, 다른
+  스레드는 receiver, subscriber, server, service 같은 수신 측 역할을 맡는다.
+- 이 기본 형태를 쓰는 이유는 역할 분리를 분명하게 보여 주면서도 실행, 종료,
+  검증 절차를 단순하게 유지하기 위해서다.
+- 한 스레드에 양쪽 역할을 모두 넣는 방식은 원칙적으로 피한다.
+  흐름 제어가 복잡해지고, 실제 사용 예보다 인위적인 코드가 늘어나기 쉽기
+  때문이다.
+- 프로세스를 둘 이상으로 나누는 방식도 canonical sample의 기본으로 쓰지
+  않는다.
+  실행 스크립트, 포트 전달, 종료 정리, 실패 처리까지 함께 복잡해지기 때문이다.
+- 단일 스레드 샘플은 monitor처럼 한 흐름 안에서 의미가 유지되고 역할 분리가
+  크게 중요하지 않은 경우에만 예외적으로 허용한다.
+- 다중 프로세스 샘플은 canonical sample이 아니라 integration sample 또는
+  end-to-end 검증 용도로만 둔다.
+- `spot_recv_sample` 도 기본적으로 프로세스 1개와 스레드 2개를 사용한다.
+  수신 측 스레드에서 dispatcher event callback을 받고, 그 callback 안에서
+  `recv` 를 호출해 데이터를 확인하는 구조를 사용한다.
+  필요한 경우 같은 샘플 안에서 publish, send, timer를 순서대로 트리거해도
+  된다.
+- `spot_request_async_sample` 도 기본적으로 프로세스 1개와 스레드 2개를
+  사용한다.
+  한쪽은 spot requester, 다른 쪽은 spot responder 역할을 맡고 request/reply는
+  coroutine 또는 async completion 표면으로 확인한다.
+- `stream_recv_sample` 과 `stream_packet_callback_sample` 도 기본적으로
+  프로세스 1개와 스레드 2개를 사용한다.
+  한쪽 스레드는 raw TCP client, 다른 쪽 스레드는 zlink STREAM endpoint 역할을
+  맡는다.
 
 ## Sample Connection Handshake Rules
 - 샘플에서 `sleep`을 이용한 connection 대기는 허용하지 않는다.
@@ -162,7 +240,11 @@
   - expected payload 수신
   - expected topic 수신
   - expected routing id 수신
-  - callback 실제 호출
+  - spot send 경로 실제 수신
+  - spot request/reply async 경로 실제 완료
+  - spot timer event 실제 발생
+  - STREAM packet callback 실제 호출
+  - spot dispatcher event callback 경유 recv 동작
   - monitor event 실제 수신
   - monitor `tryRecv` empty 경로
 - 샘플은 성공 시 명확한 성공 출력 또는 zero exit code를 가져야 한다.
@@ -173,7 +255,9 @@
 - 출력은 실행 시 "메시징이 실제로 일어났음"을 사용자에게 명확히 보여야 한다.
 - 패턴의 메시징 방향에 따라 출력 포맷이 다르다.
   - **bidirectional** (pair, dealer-router, stream): `send/recv` 표현
-  - **one-way** (pubsub, spot): `publish/subscribe` 표현
+  - **one-way** (pubsub): `publish/subscribe` 표현
+  - **composite** (spot recv): publish, send, timer 흐름을 순서대로 표현
+  - **async request** (spot/request): request/reply completion 표현
 - one-way 패턴에서 echo처럼 보이는 self-subscribe 샘플을 만들면 안 된다.
   one-way 패턴은 발행과 구독이 별개 행위임을 출력에서 드러내야 한다.
 - 패턴별 출력 예시:
@@ -181,19 +265,21 @@
 ```text
 # bidirectional (echo / request-reply)
 [dealer-router/request-reply/async] send: "ping" -> recv: "pong"
-[dealer-router/request-reply/callback] send: "ping" -> recv: "pong"
 [pair/recv] send: "hello-pair" -> recv: "hello-pair"
-[pair/callback] send: "hello-pair" -> recv: "hello-pair"
 [dealer-router/recv] send: "ping" -> recv: "pong"
-[dealer-router/callback] send: "ping" -> recv: "pong"
 [stream/recv] send: "hello-stream" -> recv: "hello-stream"
-[stream/callback] send: "hello-stream" -> recv: "hello-stream"
+[stream/packet-callback] send: "hello-stream" -> recv: "hello-stream"
 
 # one-way (publish -> subscribe)
 [pubsub/recv] publish: "prices/101.25" -> subscribe: "prices/101.25"
-[pubsub/callback] publish: "prices/101.25" -> subscribe: "prices/101.25"
-[spot/recv] publish: "room:lobby/hello-spot" -> subscribe: "room:lobby/hello-spot"
-[spot/callback] publish: "room:lobby/hello-spot" -> subscribe: "room:lobby/hello-spot"
+
+# composite (spot recv overview)
+[spot/recv] publish: "room:lobby/hello-spot" -> recv: "room:lobby/hello-spot"
+[spot/recv] send: "hello-spot-send" -> recv: "hello-spot-send"
+[spot/recv] timer: "tick-1" -> recv: "tick-1"
+
+# async request (spot)
+[spot/request/async] request: "spot-ping" -> reply: "spot-pong"
 
 # monitor
 [monitor/recv] recv: "connection-ready" -> tryRecv: empty
@@ -207,6 +293,232 @@
 - `ok`, `done` 같은 단순 성공 메시지만 출력하는 것도 불충분하다.
 - 보낸 값과 받은 값이 콘솔에 명시적으로 나타나야 한다.
 
+## Canonical Sample Profiles
+
+### Pair Sample Profile
+- 대상 샘플: `pair_recv_sample`
+- topology: 프로세스 1개, 스레드 2개, `pair <-> pair`
+- roles: 한쪽은 sender, 다른 쪽은 receiver
+- fixed content: payload는 `"hello-pair"` 를 사용한다.
+- execution order:
+  - monitor readiness 확인
+  - sender가 `"hello-pair"` 전송
+  - receiver가 `recv` 로 `"hello-pair"` 수신
+- verification:
+  - receiver payload가 `"hello-pair"` 와 정확히 일치해야 한다.
+- output example:
+  - `[pair/recv] send: "hello-pair" -> recv: "hello-pair"`
+
+### PubSub Sample Profile
+- 대상 샘플: `pubsub_recv_sample`
+- topology: 프로세스 1개, 스레드 2개, `publisher -> subscriber`
+- roles: 한쪽은 publisher, 다른 쪽은 subscriber
+- fixed content:
+  - topic은 `"prices"`
+  - payload는 `"101.25"`
+- execution order:
+  - subscriber가 `"prices"` subscription 설정
+  - monitor readiness 확인
+  - publisher가 `"prices/101.25"` publish
+  - subscriber가 `recv` 또는 subscribe recv surface로 수신
+- verification:
+  - 수신 topic이 `"prices"` 여야 한다.
+  - 수신 payload가 `"101.25"` 여야 한다.
+- output example:
+  - `[pubsub/recv] publish: "prices/101.25" -> subscribe: "prices/101.25"`
+
+### DealerRouter Sample Profile
+- 대상 샘플: `dealer_router_recv_sample`
+- topology: 프로세스 1개, 스레드 2개, `dealer -> router -> dealer`
+- roles: 한쪽은 dealer requester, 다른 쪽은 router responder
+- fixed content:
+  - request payload는 `"ping"`
+  - reply payload는 `"pong"`
+- execution order:
+  - monitor readiness 확인
+  - dealer가 `"ping"` 전송
+  - router가 `recv` 로 `"ping"` 수신
+  - router가 `"pong"` reply 전송
+  - dealer가 `recv` 로 `"pong"` 수신
+- verification:
+  - request payload가 `"ping"` 이어야 한다.
+  - reply payload가 `"pong"` 이어야 한다.
+  - routed messaging에 필요한 routing 정보가 유효해야 한다.
+- output example:
+  - `[dealer-router/recv] send: "ping" -> recv: "pong"`
+
+### RequestReply Async Sample Profile
+- 대상 샘플: `request_reply_async_sample`
+- topology: 프로세스 1개, 스레드 2개, `dealer -> router`
+- roles: 한쪽은 async dealer requester, 다른 쪽은 router responder
+- fixed content:
+  - request payload는 `"ping"`
+  - reply payload는 `"pong"`
+- execution order:
+  - monitor readiness 확인
+  - dealer requester가 async request `"ping"` 시작
+  - router responder가 request 수신 후 `"pong"` reply 전송
+  - dealer requester가 async completion surface에서 결과 수신
+- verification:
+  - async completion 결과가 `"pong"` 이어야 한다.
+  - 결과 확인은 `await`, `future.get`, `Task` 같은 async surface로만 한다.
+- output example:
+  - `[dealer-router/request-reply/async] send: "ping" -> recv: "pong"`
+
+### Stream Recv Sample Profile
+- 대상 샘플: `stream_recv_sample`
+- topology: 프로세스 1개, 스레드 2개, `tcp client -> zlink stream server`
+- roles: 한쪽은 raw TCP client, 다른 쪽은 zlink STREAM receiver
+- fixed content: payload는 `"hello-stream"` 를 사용한다.
+- execution order:
+  - monitor readiness 확인
+  - raw TCP client가 `"hello-stream"` 전송
+  - STREAM endpoint가 `recv` 로 `"hello-stream"` 수신
+- verification:
+  - STREAM recv payload가 `"hello-stream"` 이어야 한다.
+- output example:
+  - `[stream/recv] send: "hello-stream" -> recv: "hello-stream"`
+
+### Stream Packet Callback Sample Profile
+- 대상 샘플: `stream_packet_callback_sample`
+- topology: 프로세스 1개, 스레드 2개, `tcp client -> zlink stream server`
+- roles: 한쪽은 raw TCP client, 다른 쪽은 zlink STREAM packet callback receiver
+- fixed content: payload는 `"hello-stream"` 를 사용한다.
+- execution order:
+  - monitor readiness 확인
+  - STREAM endpoint에 packet callback 등록
+  - raw TCP client가 `"hello-stream"` 전송
+  - packet callback이 `"hello-stream"` delivery 처리
+- verification:
+  - packet callback이 실제로 호출되어야 한다.
+  - callback으로 전달된 payload가 `"hello-stream"` 이어야 한다.
+- output example:
+  - `[stream/packet-callback] send: "hello-stream" -> recv: "hello-stream"`
+
+### Spot Sample Profile
+- 대상 샘플: `spot_recv_sample`
+- topology:
+  - 프로세스 1개, 스레드 2개
+  - `spot -> spotnode -> pub/sub/router -> spotnode -> spot`
+- roles: 양 끝은 `spot`, 중간은 `spotnode` 와 내부 `pub/sub/router` 흐름이다.
+- fixed content:
+  - service id는 `"sample"`
+  - topic은 `"room:lobby"`
+  - publish payload는 `"hello-spot"`
+  - send payload는 `"hello-spot-send"`
+  - timer tick 값은 `"tick-1"` 부터 시작한다.
+- execution order:
+  - dispatcher event callback 등록
+  - timer 시작
+  - 각 tick마다 같은 순서로 동작
+  - `publish "room:lobby/hello-spot"`
+  - `send "hello-spot-send"`
+  - dispatcher event callback 안에서 `recv`
+- verification:
+  - publish 경로 payload가 `"hello-spot"` 이어야 한다.
+  - send 경로 payload가 `"hello-spot-send"` 이어야 한다.
+  - timer event가 정해진 횟수만큼 발생해야 한다.
+  - 수신 확인은 dispatcher event callback 경유 `recv` 로 일관되어야 한다.
+- output example:
+  - `[spot/recv] service: "sample" tick: 1 publish: "room:lobby/hello-spot" -> recv: "room:lobby/hello-spot"`
+  - `[spot/recv] service: "sample" tick: 1 send: "hello-spot-send" -> recv: "hello-spot-send"`
+  - `[spot/recv] service: "sample" tick: 1 timer: "tick-1" -> next-round`
+
+### Spot Request Async Sample Profile
+- 대상 샘플: `spot_request_async_sample`
+- topology:
+  - 프로세스 1개, 스레드 2개
+  - `spot requester -> spotnode/router -> spot responder`
+- roles:
+  - 한쪽은 spot async requester
+  - 다른 쪽은 spot responder
+- fixed content:
+  - service id는 `"sample"`
+  - request payload는 `"spot-ping"`
+  - reply payload는 `"spot-pong"`
+- execution order:
+  - monitor readiness 확인
+  - spot requester가 async request `"spot-ping"` 시작
+  - spot responder가 request 수신 후 `"spot-pong"` reply 전송
+  - spot requester가 coroutine 또는 async completion surface에서 결과 수신
+- verification:
+  - async completion 결과가 `"spot-pong"` 이어야 한다.
+  - 결과 확인은 `await`, `future.get`, `Task` 같은 async surface로만 한다.
+- output example:
+  - `[spot/request/async] request: "spot-ping" -> reply: "spot-pong"`
+
+### Discovery Registry Sample Profile
+- 대상 샘플: `discovery_registry_sample`
+- topology:
+  - 프로세스 1개, 스레드 2개 또는 3개
+  - `registry server <- service provider`
+  - `discovery client -> registry server`
+- roles:
+  - registry server는 등록 상태를 유지한다.
+  - service provider는 `service id = "sample"` 을 등록하거나 해제한다.
+  - discovery client는 상태 변화를 event stream으로 관찰한다.
+- fixed content:
+  - service id는 `"sample"`
+  - discovery event는 `"service-found"`
+  - removal event를 다루면 `"service-removed"` 를 사용한다.
+- execution order:
+  - registry bind
+  - discovery client connect
+  - service provider register
+  - discovery client가 discovered event 수신
+  - 필요하면 service provider unregister
+  - 필요하면 discovery client가 removed event 수신
+- verification:
+  - register 뒤에 discovery event가 실제로 도착해야 한다.
+  - event 안의 service id가 `"sample"` 이어야 한다.
+  - unregister 흐름을 포함하면 removal event도 확인해야 한다.
+- output example:
+  - `[discovery-registry] service: "sample" -> discover: "service-found"`
+  - `[discovery-registry] service: "sample" -> remove: "service-removed"`
+
+### Registry Query Sample Profile
+- 대상 샘플: `registry_query_sample`
+- topology:
+  - 프로세스 1개, 스레드 2개 또는 3개
+  - `registry server <- service provider`
+  - `registry query client -> registry server`
+- roles:
+  - registry server는 등록 상태를 유지한다.
+  - service provider는 `service id = "sample"` 을 등록한다.
+  - registry query client는 현재 상태를 snapshot으로 조회한다.
+- fixed content:
+  - service id는 `"sample"`
+  - snapshot result는 `"topology-entry-found"` 를 사용한다.
+- execution order:
+  - registry bind
+  - service provider register
+  - registry query client connect
+  - query request 전송
+  - snapshot response 수신
+- verification:
+  - snapshot 안에 `service id = "sample"` entry가 있어야 한다.
+  - query 결과가 비어 있지 않아야 한다.
+- output example:
+  - `[registry-query] service: "sample" -> snapshot: "topology-entry-found"`
+
+### Monitor Sample Profile
+- 대상 샘플: `monitor_recv_sample`
+- topology: 단일 흐름 또는 예외적 단일 스레드 허용
+- roles: monitor consumer가 readiness/state event를 읽는다.
+- fixed content:
+  - recv event는 `"connection-ready"`
+  - `tryRecv` 결과는 `empty`
+- execution order:
+  - monitor attach 또는 enable
+  - connection readiness 유도
+  - `recv` 로 `"connection-ready"` 확인
+  - `tryRecv` 로 empty 경로 확인
+- verification:
+  - 첫 monitor event가 `"connection-ready"` 이어야 한다.
+  - 이후 `tryRecv` 는 empty 를 반환해야 한다.
+- output example:
+  - `[monitor/recv] recv: "connection-ready" -> tryRecv: empty`
+
 ## Sample Message Content Rules
 - 동일 패턴 샘플은 언어와 구현 표면이 달라도 같은 메시지 내용을 사용한다.
 - 언어 간 비교 시 동일한 출력이 나와야 한다.
@@ -219,39 +531,46 @@
 | dealer-router | bidirectional | — | request: `"ping"`, reply: `"pong"` |
 | stream | bidirectional | — | `"hello-stream"` |
 | pubsub | one-way | `"prices"` | `"101.25"` |
-| spot | one-way | `"room:lobby"` | `"hello-spot"` |
+| spot-recv | composite | `"room:lobby"` | service id: `"sample"`, publish: `"hello-spot"`, send: `"hello-spot-send"`, timer: `"tick-1"` |
+| spot-request | async request | — | service id: `"sample"`, request: `"spot-ping"`, reply: `"spot-pong"` |
 | monitor | event plane | — | recv: `"connection-ready"`, tryRecv: `empty` |
-| discovery-registry | service plane | — | discover: `"service-found"` |
-| registry-query | service plane | — | snapshot: `"topology-entry-found"` |
+| discovery-registry | service plane | — | service id: `"sample"`, discover: `"service-found"`, remove: `"service-removed"` |
+| registry-query | service plane | — | service id: `"sample"`, snapshot: `"topology-entry-found"` |
 
 ## Sample Coverage Expectations
 - 각 표면은 canonical sample 세트를 공식 샘플 표면으로 유지한다.
 - request-reply wrapper를 구현한 바인딩 표면:
-  - `request_reply_callback_sample`
   - `request_reply_async_sample`
 - `core/samples/` (request-reply):
-  - `request_reply_callback_sample`만 포함한다.
+  - request-reply wrapper sample을 포함하지 않는다.
 - direct recv 계열:
   - PAIR 또는 동등한 기본 send/recv
   - PUB/SUB 또는 동등한 topic publish/subscribe
   - ROUTER/DEALER 또는 동등한 routed messaging
   - STREAM direct recv
-- callback 계열:
-  - direct recv callback
-  - topic subscribe callback
-  - routed messaging callback
-  - STREAM callback
+- packet callback 계열:
+  - STREAM packet callback
 - monitor 계열:
   - readiness/state event 확인 샘플
-- service/spot 계열이 있는 표면은 spot recv/callback 샘플을 canonical에
+- service/spot 계열이 있는 표면은 `spot_recv_sample` 을 canonical에 포함한다.
+- `spot_recv_sample` 은 dispatcher event callback 안에서 `recv` 를 호출하는
+  구조를 표준 패턴으로 사용한다.
+- `spot_recv_sample` 은 spot event and recv overview 샘플로서 publish, send,
+  timer 흐름을 함께 포함할 수 있다.
+- `spot` request/reply async surface를 제공하는 바인딩 표면은
+  `spot_request_async_sample` 을 canonical에 포함한다.
+- Discovery + Registry를 구현한 표면은 `discovery_registry_sample` 을
+  canonical에 포함한다.
+- RegistryQueryClient를 구현한 표면은 `registry_query_sample` 을 canonical에
   포함한다.
 
 ## Stream Socket Policy
-- STREAM socket은 direct recv 방식과 callback 방식 둘 다 지원해야 한다.
+- STREAM socket은 direct recv 방식과 packet callback 방식을 둘 다 지원해야
+  한다.
 - 따라서 각 표면은 STREAM에 대해 다음 둘을 모두 가져야 한다.
   - blocking/non-blocking direct receive surface
-  - callback receive surface
-- STREAM sample도 recv 버전과 callback 버전을 개별 파일로 제공하는 것을
+  - packet callback receive surface
+- STREAM sample도 recv 버전과 packet callback 버전을 개별 파일로 제공하는 것을
   원칙으로 한다.
 - STREAM payload는 zlink의 canonical message contract를 따른다.
 - `len32be`, length-prefixed framing, 또는 그와 동등한 별도 프레이밍 규약은
@@ -283,8 +602,10 @@
   - 전체 샘플 실행 스크립트에서 성공
 - sample review 시 다음을 확인한다.
   - canonical sample 세트가 모두 존재하는가
-  - recv/callback/monitor 분류가 섞이지 않았는가
-  - recv/callback 버전이 개별 파일로 분리되어 있는가
+  - recv/async/packet-callback/monitor 분류가 정책에 맞는가
+  - recv/packet-callback 버전이 필요한 경우 개별 파일로 분리되어 있는가
+  - `spot_recv_sample` 과 `spot_request_async_sample` 이 분리되어 있는가
+  - `spot_recv_sample` 예외가 문서화된 범위 안에서만 사용되는가
   - canonical API만 사용하는가
   - 핵심 로직이 helper 뒤에 숨지 않았는가
   - 실제 메시징을 하고 결과를 확인하는가

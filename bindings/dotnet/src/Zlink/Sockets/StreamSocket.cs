@@ -12,7 +12,7 @@ public sealed class StreamSocket : RoutedMessageSocketBase
         StreamOptions = new StreamSocketOptions(this);
     }
 
-    public void AttachStreamRaw(StreamPacketHandler handler)
+    public void OnPacket(StreamPacketHandler handler)
     {
         Kernel.AttachStreamRaw(handler);
     }

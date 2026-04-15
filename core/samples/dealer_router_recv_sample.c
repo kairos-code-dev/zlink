@@ -29,12 +29,19 @@ int main (void)
     rc = zlink_send (dealer, &outbound, 1, 0);
     assert (rc == 0);
 
-    zlink_routing_id_t rid;
+    const zlink_routing_id_t *source_node_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t count = 0;
-    rc = zlink_recv (router, &rid, &parts, &count, 0);
+    rc = zlink_router_recv (router, &source_node_rid, &source_spot_rid,
+                            &request_seq, &parts, &count, 0);
     assert (rc == 0);
-    assert (rid.size > 0);
+    assert (source_node_rid != NULL);
+    assert (source_node_rid->size > 0);
+    assert (source_spot_rid != NULL);
+    assert (source_spot_rid->size == 0);
+    assert (request_seq == 0);
     assert (count == 1);
     assert (zlink_msg_size (&parts[0]) == strlen (k_dealer_router_request));
     assert (memcmp (zlink_msg_data (&parts[0]), k_dealer_router_request,
@@ -44,7 +51,7 @@ int main (void)
 
     zlink_msg_t reply;
     make_message (&reply, k_dealer_router_reply);
-    rc = zlink_send_rid (router, &rid, &reply, 1, 0);
+    rc = zlink_send_rid (router, source_node_rid, &reply, 1, 0);
     assert (rc == 0);
 
     zlink_routing_id_t echo_rid;

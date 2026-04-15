@@ -216,9 +216,9 @@ void *data = zlink_msg_data(&msg);
 size_t size = zlink_msg_size(&msg);
 ```
 
-> **제거됨:** `zlink_msg_more()`와 `ZLINK_MORE`는 header에서 제거되었다.
-> Multipart parts-array API를 사용하면 `more` flag가 application
-> code에서 더 이상 필요하지 않다.
+> **참고:** header 에는 `zlink_msg_more()` 나 `ZLINK_MORE` 가 없다.
+> 애플리케이션 코드는 per-message `more` flag 대신 multipart parts-array
+> API 를 사용한다.
 
 ### 4.3 Move와 Copy
 
@@ -608,20 +608,12 @@ zlink_send_rid(router, &target_rid, parts, part_count, 0);
 ```
 
 
-## 11. request-reply 와 metadata 변경 사항
+## 11. request-reply 와 metadata
 
-이 가이드의 예전 버전은 message-level request-reply 와 per-message metadata
-함수를 설명했지만, 현재 구현은 그렇게 동작하지 않는다.
+`zlink_msg_t` 는 payload part 컨테이너다. 메시지 자체에 request-reply
+문맥이나 per-message metadata 필드는 담지 않는다.
 
-정리:
-
-- `zlink_msg_set_request`, `zlink_msg_set_reply`,
-  `zlink_msg_get_request_info` 는 제거되었다.
-- `zlink_msg_set_metadata`, `zlink_msg_get_metadata`,
-  `zlink_msg_clear_metadata` 도 제거되었다.
-- `zlink_msg_t` 는 payload part 컨테이너 역할만 유지한다.
-
-현재 request-reply 흐름은 전용 API 로 연다.
+request-reply 흐름은 전용 API 로 연다.
 
 - `DEALER` / `ROUTER`: [03-3-dealer.ko.md](03-3-dealer.ko.md),
   [03-4-router.ko.md](03-4-router.ko.md)
@@ -630,9 +622,9 @@ zlink_send_rid(router, &target_rid, parts, part_count, 0);
 
 즉 message API 관점에서 기억할 점은 단순하다.
 
-- payload 는 여전히 `zlink_msg_t` 로 만든다.
+- payload 는 `zlink_msg_t` 로 만든다.
 - request-reply 문맥은 message 내부 필드가 아니라 와이어 제어 파트(control part)에 있다.
-- message metadata 직렬화 경로는 더 이상 공개 계약이 아니다.
+- message metadata 직렬화 경로는 공개 계약이 아니다.
 
 ---
 [← Routing ID](08-routing-id.ko.md) | [Performance →](10-performance.ko.md)

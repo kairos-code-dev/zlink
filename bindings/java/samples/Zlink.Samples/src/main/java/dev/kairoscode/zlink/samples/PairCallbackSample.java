@@ -24,10 +24,14 @@ public final class PairCallbackSample {
             client.connect(endpoint);
             SampleSupport.waitConnected(serverMonitor, clientMonitor);
 
-            server.onReceive(received -> {
-                receivedValue.set(SampleSupport.singleUtf8(received));
-                delivered.countDown();
-            });
+            Thread receiver = new Thread(() -> {
+                try (var received = server.recv()) {
+                    receivedValue.set(SampleSupport.singleUtf8(received));
+                } finally {
+                    delivered.countDown();
+                }
+            }, "pair-recv-sample");
+            receiver.start();
 
             try (Message outbound = Message.copyOfUtf8(SampleSupport.PAIR_PAYLOAD)) {
                 client.send(outbound);
@@ -38,7 +42,7 @@ public final class PairCallbackSample {
             if (!SampleSupport.PAIR_PAYLOAD.equals(value)) {
                 throw new IllegalStateException("unexpected payload: " + value);
             }
-            System.out.println("[pair/callback] send: \"" + SampleSupport.PAIR_PAYLOAD
+            System.out.println("[pair/recv] send: \"" + SampleSupport.PAIR_PAYLOAD
                 + "\" \u2192 recv: \"" + value + "\"");
         }
     }

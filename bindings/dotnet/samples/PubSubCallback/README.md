@@ -1,1 +1,2 @@
-`PubSubCallback` shows `OnSubscribe` on `SubSocket` with `XPubSocket`.
+`PubSubCallback` shows `XPubSocket.ReceiveSubscriptionEvent()` together with
+`SubSocket.SetSubscription(...)` and canonical publish/subscribe flow.

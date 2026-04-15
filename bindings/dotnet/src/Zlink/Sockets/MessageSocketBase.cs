@@ -39,7 +39,7 @@ public abstract class MessageSocketBase : ConnectableSocketBase
         return Kernel.TrySend(parts);
     }
 
-    public void OnReceive(SocketRecvHandler handler)
+    internal void OnReceive(SocketRecvHandler handler)
     {
         Kernel.RecvHandler(handler);
     }

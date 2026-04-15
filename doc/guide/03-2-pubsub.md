@@ -127,11 +127,11 @@ SUB / XSUB are recv-only types. The intended pattern is to observe
 `ZLINK_POLLIN` from a poller and then pull topic messages with
 `zlink_subscribe()`. No direct topic callback surface is provided.
 
-> **PUB / XPUB default change:** `ZLINK_PUB_OPT_NODROP` now defaults to
-> `1`. Instead of silently dropping when the HWM is reached,
+> **PUB / XPUB default:** `ZLINK_PUB_OPT_NODROP` defaults to `1`.
+> Instead of silently dropping when the HWM is reached,
 > `zlink_publish()` returns `ZLINK_SUBMIT_BACKPRESSURED`. Callers that
-> need the previous loss-tolerant behavior must set
-> `ZLINK_PUB_OPT_NODROP` to `0` explicitly.
+> want loss-tolerant behavior must set `ZLINK_PUB_OPT_NODROP` to `0`
+> explicitly.
 
 ??? example "Full Sample Code -- Recv"
 
@@ -216,8 +216,9 @@ separates the topic from data on the receive side. Callers never need to
 assemble topic frames manually.
 
 > **Note:** Passing `NULL` as topic (`zlink_publish(pub, NULL, parts, ...)`)
-> activates a legacy path where parts[0] is used as the topic frame.
-> This is not recommended. Always pass the `topic_id` parameter explicitly.
+> activates a compatibility path where parts[0] is used as the topic
+> frame. This is not recommended. Always pass the `topic_id` parameter
+> explicitly.
 
 ## 5. PUB/SUB Socket Options
 

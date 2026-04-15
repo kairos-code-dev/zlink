@@ -36,15 +36,26 @@ async function main() {
         const sent = '101.25';
         sub.setSubscription(topic);
         const receivedPromise = new Promise((resolve, reject) => {
-            try {
-                sub.onSubscribe((message) => {
+            const deadline = Date.now() + 5000;
+            const poll = () => {
+                try {
+                    const message = sub.subscribe(zlink.RecvFlags.DontWait);
                     resolve(message);
-                });
-            }
-            catch (error) {
-                reject(error);
-                return;
-            }
+                }
+                catch (error) {
+                    if (error instanceof zlink.RecvError
+                        && error.result === zlink.RecvResult.NoData) {
+                        if (Date.now() >= deadline) {
+                            reject(new Error('pubsub callback sample timed out'));
+                            return;
+                        }
+                        setImmediate(poll);
+                        return;
+                    }
+                    reject(error);
+                }
+            };
+            poll();
         });
         const timeoutPromise = new Promise((_, reject) => {
             setTimeout(() => reject(new Error('pubsub callback sample timed out')), 5000);
@@ -55,7 +66,7 @@ async function main() {
         const received = await Promise.race([receivedPromise, timeoutPromise]).finally(() => {
             clearInterval(publishTimer);
         });
-        assert.ok(received.routingId instanceof zlink.RoutingId);
+        assert.ok(received.routingId === null || received.routingId instanceof zlink.RoutingId);
         assert.equal(received.topic, topic);
         const recv = received.parts[0].data().toString();
         assert.equal(recv, sent);

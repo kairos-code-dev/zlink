@@ -11,6 +11,7 @@
 #include <set>
 #include <string>
 #include <stdint.h>
+#include <vector>
 
 #include "api/internal_pair_queue_internal.hpp"
 #include "api/request_timeout_scheduler_internal.hpp"
@@ -110,12 +111,92 @@ std::string make_spot_identity_key (const std::string &node_rid_,
                                     const std::string &spot_rid_);
 int validate_request_parts (zlink_msg_t *parts_, size_t part_count_);
 int init_buffer_frame (zlink_msg_t *msg_, const void *data_, size_t size_);
-
 std::shared_ptr<spot_request_reply_state_t> try_find_spot_state (void *spot_);
 void erase_spot_owner_state (void *spot_);
 int install_spot_dispatch_event_task (spot_request_reply_state_t *state_);
 void maybe_dispatch_spot_event (spot_request_reply_state_t *state_,
                                 zlink_spot_dispatch_event_t event_);
+void close_spot_dispatch_parts (zlink_msg_t *parts_, size_t part_count_);
+int queue_spot_message (spot_request_reply_state_t *state_,
+                        const zlink_routing_id_t *source_rid_,
+                        const zlink_routing_id_t *spot_rid_,
+                        uint64_t request_seq_,
+                        zlink_msg_t *parts_,
+                        size_t part_count_);
+int queue_spot_subscribe_message (spot_request_reply_state_t *state_,
+                                  const zlink_routing_id_t *source_rid_,
+                                  const char *topic_,
+                                  size_t topic_len_,
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_);
+int recv_internal_spot_queue (zlink::internal_pair_queue::queue_t *queue_,
+                              const zlink_routing_id_t **source_rid_out_,
+                              const zlink_routing_id_t **spot_rid_out_,
+                              uint64_t *request_seq_out_,
+                              zlink_msg_t **parts_out_,
+                              size_t *part_count_out_,
+                              int flags_);
+int recv_internal_spot_subscribe_queue (
+  zlink::internal_pair_queue::queue_t *queue_,
+  zlink_routing_id_t *source_rid_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  int flags_);
+int register_spot_pending_request (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  const pending_spot_key_t &key_,
+  uint32_t timeout_ms_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_);
+int register_router_spot_pending_request (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_,
+  uint64_t request_seq_,
+  const pending_spot_key_t &key_,
+  uint32_t timeout_ms_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_);
+void erase_spot_pending_request (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  const pending_spot_key_t &key_);
+int recv_combined_router_message (zlink::socket_base_t *socket_,
+                                  std::vector<zlink_msg_t> *out_);
+int build_spot_request_reply_message (uint8_t source_class_,
+                                      const std::string &source_node_rid_,
+                                      const std::string &source_endpoint_rid_,
+                                      uint8_t destination_class_,
+                                      const std::string &destination_node_rid_,
+                                      const std::string &destination_endpoint_rid_,
+                                      uint8_t message_type_,
+                                      uint64_t request_seq_,
+                                      zlink_msg_t *parts_,
+                                      size_t part_count_,
+                                      std::vector<zlink_msg_t> *out_);
+int build_spot_routed_message (uint8_t source_class_,
+                               const std::string &source_node_rid_,
+                               const std::string &source_endpoint_rid_,
+                               uint8_t destination_class_,
+                               const std::string &destination_node_rid_,
+                               const std::string &destination_endpoint_rid_,
+                               zlink_msg_t *parts_,
+                               size_t part_count_,
+                               std::vector<zlink_msg_t> *out_);
+int dispatch_local_reply (std::vector<zlink_msg_t> *combined_);
+int dispatch_local_request (const std::string &router_rid_,
+                            std::vector<zlink_msg_t> *combined_);
+int dispatch_local_built_message (uint8_t source_class_,
+                                  const std::string &source_node_rid_,
+                                  const std::string &source_endpoint_rid_,
+                                  uint8_t destination_class_,
+                                  const std::string &destination_node_rid_,
+                                  const std::string &destination_endpoint_rid_,
+                                  uint8_t message_type_,
+                                  uint64_t request_seq_,
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_);
+int process_route_combined_for_local_delivery (
+  std::vector<zlink_msg_t> *combined_);
 std::shared_ptr<spot_request_reply_state_t> find_or_create_spot_state (
   void *spot_);
 std::shared_ptr<router_spot_request_reply_state_t> find_or_create_router_state (

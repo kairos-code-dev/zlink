@@ -105,7 +105,6 @@ fn xsub_socket_has_subscribe_no_send() {
 
     let _ = sock.subscribe_with_flags(RecvFlags::DONT_WAIT);
     let _ = sock.sub_options().topics_count();
-    sock.on_subscribe(|_topic_message| {}).unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +169,7 @@ fn stream_typed_options() {
     assert!(options.notify().unwrap());
     let _set = StreamSocket::set_routing_id;
     let _get = StreamSocket::routing_id;
+    let _on_packet = StreamSocket::on_packet::<fn(RoutingId, Message, Message)>;
 }
 
 // ---------------------------------------------------------------------------

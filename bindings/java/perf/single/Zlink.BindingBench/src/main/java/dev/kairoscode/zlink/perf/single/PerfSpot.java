@@ -5,6 +5,9 @@ package dev.kairoscode.zlink.perf.single;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.perf.PerfUtil;
+import dev.kairoscode.zlink.service.discovery.Discovery;
+import dev.kairoscode.zlink.service.registry.Registry;
+import dev.kairoscode.zlink.service.registry.ServiceType;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.time.Duration;
@@ -13,6 +16,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfSpot {
+    private static final String SERVICE_NAME = "perf.spot.service";
+
     private PerfSpot() {
     }
 
@@ -22,22 +27,36 @@ final class PerfSpot {
         CountDownLatch ready = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics();
+        String registryPub = PerfUtil.endpoint(config.transport(),
+            "single-spot-registry-pub");
+        String registryRouter = PerfUtil.endpoint(config.transport(),
+            "single-spot-registry-router");
         String endpoint = normalizeSpotEndpoint(
             PerfUtil.endpoint(config.transport(), "single-spot"),
             config.transport());
         try (Context ctx = PerfUtil.newContext(config);
+             Registry registry = new Registry(ctx);
+             Discovery discovery = new Discovery(ctx, ServiceType.SPOT,
+                 SERVICE_NAME);
              SpotNode pubNode = new SpotNode(ctx);
              SpotNode subNode = new SpotNode(ctx);
              Spot publisher = pubNode.createSpot();
              Spot subscriber = subNode.createSpot()) {
+            registry.bind(registryPub, registryRouter);
+            discovery.connectRegistry(registryRouter);
+            pubNode.attachDiscovery(discovery);
+            subNode.attachDiscovery(discovery);
             PerfUtil.applySpotOptions(pubNode, config);
             PerfUtil.applySpotOptions(subNode, config);
             PerfUtil.configureServerTls(pubNode, config.transport());
             PerfUtil.configureClientTls(subNode, config.transport());
-            pubNode.bind(endpoint);
+            pubNode.bind("tcp://127.0.0.1:0");
+            endpoint = normalizeSpotEndpoint(
+                pubNode.statusSnapshot().localEndpoint(), config.transport());
             subNode.connectPeer(endpoint);
             subscriber.setSubscription(topic);
-            sleepQuietly(Duration.ofMillis(250), "spot settle interrupted");
+            waitForPeerConnected(pubNode);
+            waitForPeerConnected(subNode);
 
             Thread receiverThread = new Thread(() -> {
                 try {
@@ -73,7 +92,7 @@ final class PerfSpot {
             while (ready.getCount() > 0L && System.nanoTime() < readyDeadline) {
                 try (Message probe = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                    publisher.publish(topic, List.of(probe));
+                    publisher.publish(SERVICE_NAME, topic, List.of(probe));
                 }
                 sleepQuietly(Duration.ofMillis(10), "spot probe interrupted");
             }
@@ -86,13 +105,13 @@ final class PerfSpot {
                 while (System.nanoTime() < activeEnd) {
                     try (Message m = PerfUtil.payload(config.size(),
                              (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                        publisher.publish(topic, List.of(m));
+                        publisher.publish(SERVICE_NAME, topic, List.of(m));
                     }
                 }
                 for (int i = 0; i < 8; i++) {
                     try (Message m = PerfUtil.payload(config.size(),
                              (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                        publisher.publish(topic, List.of(m));
+                        publisher.publish(SERVICE_NAME, topic, List.of(m));
                     }
                     sleepQuietly(Duration.ofMillis(2), "spot cooldown interrupted");
                 }
@@ -116,6 +135,17 @@ final class PerfSpot {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(label, ex);
         }
+    }
+
+    private static void waitForPeerConnected(SpotNode node) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (node.statusSnapshot().connectedPeerCount() > 0) {
+                return;
+            }
+            sleepQuietly(Duration.ofMillis(10), "spot settle interrupted");
+        }
+        throw new IllegalStateException("spot peer connection timed out");
     }
 
     private static String normalizeSpotEndpoint(String endpoint, String transport) {

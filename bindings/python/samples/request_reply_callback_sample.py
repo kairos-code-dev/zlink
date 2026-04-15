@@ -1,4 +1,5 @@
 import asyncio
+import threading
 
 import zlink
 
@@ -48,7 +49,11 @@ async def main():
                             errors.append(AssertionError("unexpected reply payload"))
                         reply_seen.set()
 
-                    router_socket.on_receive(on_receive)
+                    def respond():
+                        with router_socket.recv() as received:
+                            on_receive(received)
+
+                    threading.Thread(target=respond, daemon=True).start()
                     dealer_socket.request([b"ping"], on_reply, timeout=2.0)
                     await asyncio.wait_for(request_seen.wait(), timeout=2.0)
                     await asyncio.wait_for(reply_seen.wait(), timeout=2.0)

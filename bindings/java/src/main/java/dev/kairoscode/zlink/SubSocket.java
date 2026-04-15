@@ -3,7 +3,6 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.service.discovery.Discovery;
-import java.util.Optional;
 
 public final class SubSocket extends Socket {
     private final SubSocketOptions options = new SubSocketOptions(this);
@@ -21,6 +20,5 @@ public final class SubSocket extends Socket {
     public void unsetSubscription(String filter) { super.unsetSubscription(filter); }
     public TopicMessage subscribe() { return super.subscribe(); }
     public TopicMessage subscribe(RecvFlags flags) { return super.subscribe(ReceiveFlag.fromValue(flags.value())); }
-    public void onSubscribe(SubscribeHandler handler) { super.onSubscribe(handler); }
     @Override public SubSocketOptions options() { return options; }
 }

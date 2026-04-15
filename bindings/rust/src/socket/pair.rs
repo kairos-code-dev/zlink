@@ -15,7 +15,7 @@ use super::{
 
 /// PAIR socket – bidirectional one-to-one messaging.
 ///
-/// Capabilities: `send`, `recv`, `on_receive`, `on_send_ready`.
+/// Capabilities: `send`, `recv`, `on_send_ready`.
 pub struct PairSocket {
     pub(crate) inner: SocketInner,
 }
@@ -45,13 +45,6 @@ impl PairSocket {
 
     pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {
         self.inner.recv_with_flags(flags)
-    }
-
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
-    where
-        F: Fn(Received) + Send + 'static,
-    {
-        self.inner.on_receive(handler)
     }
 
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>

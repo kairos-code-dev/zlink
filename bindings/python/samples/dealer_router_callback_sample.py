@@ -21,32 +21,32 @@ def main():
                 reply_done = threading.Event()
                 observed = {}
 
-                def on_request(received):
-                    observed["request_routing_id"] = received.routing_id
-                    observed["request_payload"] = received.to_bytes_list()
-                    request_done.set()
-
-                def on_reply(received):
-                    observed["reply_payload"] = received.to_bytes_list()
+                def on_reply(result, reply):
+                    if result != zlink.RequestResult.OK:
+                        raise AssertionError(f"request failed: {result}")
+                    observed["reply_payload"] = [part.to_bytes() for part in reply]
                     reply_done.set()
 
-                router.on_receive(on_request)
-                dealer.on_receive(on_reply)
+                def on_request():
+                    with router.recv() as received:
+                        observed["request_routing_id"] = received.routing_id
+                        observed["request_payload"] = received.to_bytes_list()
+                        received.reply([b"pong"])
+                        request_done.set()
 
-                dealer.send(b"ping")
+                threading.Thread(target=on_request, daemon=True).start()
+                dealer.request([b"ping"], on_reply, timeout=2.0)
                 if not request_done.wait(3.0):
-                    raise TimeoutError("router callback did not receive a request")
+                    raise TimeoutError("router did not receive a request")
                 if observed["request_routing_id"] != zlink.RoutingId(b"CLIENT"):
-                    raise AssertionError("unexpected dealer-router callback routing id")
+                    raise AssertionError("unexpected dealer-router request routing id")
                 if observed["request_payload"] != [b"ping"]:
-                    raise AssertionError("unexpected dealer-router callback request payload")
-
-                router.send(observed["request_routing_id"], b"pong")
+                    raise AssertionError("unexpected dealer-router request payload")
                 if not reply_done.wait(3.0):
                     raise TimeoutError("dealer callback did not receive a reply")
                 if observed["reply_payload"] != [b"pong"]:
                     raise AssertionError("unexpected dealer-router callback reply payload")
-                print('[dealer-router/callback] send: "ping" → recv: "pong"')
+                print('[dealer-router/callback] request: "ping" → reply: "pong"')
 
 
 if __name__ == "__main__":

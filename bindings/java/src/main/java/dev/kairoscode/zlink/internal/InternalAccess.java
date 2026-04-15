@@ -4,6 +4,7 @@ package dev.kairoscode.zlink.internal;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendFlags;
@@ -28,6 +29,8 @@ public final class InternalAccess {
         method(Context.class, "handle");
     private static final Method DISCOVERY_HANDLE =
         method(Discovery.class, "handle");
+    private static final Method SOCKET_HANDLE =
+        method(Socket.class, "handle");
     private static final Method SPOT_HANDLE =
         method(Spot.class, "handle");
     private static final Constructor<ServiceMonitor> SERVICE_MONITOR_CTOR =
@@ -73,6 +76,10 @@ public final class InternalAccess {
 
     public static MemorySegment discoveryHandle(Discovery discovery) {
         return (MemorySegment) invoke(DISCOVERY_HANDLE, discovery);
+    }
+
+    public static MemorySegment socketHandle(Socket socket) {
+        return (MemorySegment) invoke(SOCKET_HANDLE, socket);
     }
 
     public static MemorySegment spotHandle(Spot spot) {

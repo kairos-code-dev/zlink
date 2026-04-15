@@ -116,6 +116,14 @@ internal static partial class NativeMethods
         out ZlinkRoutingId routingId);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_set_admission_state(IntPtr handle,
+        int state);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_get_admission_state(IntPtr handle,
+        out int state);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_set_tls_server(IntPtr handle,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string cert,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string key,

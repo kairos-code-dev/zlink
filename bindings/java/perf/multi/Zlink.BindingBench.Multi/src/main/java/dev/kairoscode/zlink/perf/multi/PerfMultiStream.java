@@ -42,7 +42,7 @@ final class PerfMultiStream {
             server.options().sendTimeout(java.time.Duration.ZERO);
             server.options().recvTimeout(java.time.Duration.ZERO);
             server.bind(config.endpoint());
-            server.attachStreamRaw((routingId, payload) ->
+            server.onPacket((routingId, payload) ->
                 onPacket(server, routingId, payload, pending, pendingCount));
 
             while (!stopRequested.get()) {

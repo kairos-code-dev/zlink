@@ -28,7 +28,8 @@ to `1`.
 - With `HANDOVER=1`, a new connection arriving with the same peer identity
   takes over the existing pipe.
 
-Callers that need the legacy behavior (silent drop, keep the old pipe) must
+Callers that want the alternative behavior (silent drop when no peer is
+reachable, keep the existing pipe when a duplicate identity arrives) must
 set these options explicitly to `0`.
 
 ## Admission state
@@ -90,7 +91,7 @@ already-received request and is allowed regardless of admission state.
 Set a router-specific option.
 
 ```c
-int zlink_set_router_option (void *handle_,
+zlink_config_result_t zlink_set_router_option (void *handle_,
                               zlink_router_option_t option_,
                               const void *optval_,
                               size_t optvallen_);
@@ -99,9 +100,7 @@ int zlink_set_router_option (void *handle_,
 Configures a ROUTER socket option. Use `zlink_set_option()` for common
 options shared across all socket types.
 
-**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
-`zlink_submit_result_t` value. Detailed internal errno remains available
-through `zlink_errno()` for diagnostics.
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_get_router_option`, `zlink_set_option`
 
@@ -112,7 +111,7 @@ through `zlink_errno()` for diagnostics.
 Get a router-specific option.
 
 ```c
-int zlink_get_router_option (void *handle_,
+zlink_config_result_t zlink_get_router_option (void *handle_,
                               zlink_router_option_t option_,
                               void *optval_,
                               size_t *optvallen_);
@@ -120,9 +119,7 @@ int zlink_get_router_option (void *handle_,
 
 Retrieves the current value of a ROUTER socket option.
 
-**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
-`zlink_submit_result_t` value. Detailed internal errno remains available
-through `zlink_errno()` for diagnostics.
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_set_router_option`
 
@@ -165,7 +162,7 @@ result matrix.
 
 ### Non-blocking routed send
 
-Non-blocking directed send using the existing routed send API.
+Non-blocking directed send using the routed send API.
 
 ```c
 zlink_submit_result_t zlink_send_rid (void *s_,
@@ -323,7 +320,7 @@ through `zlink_errno()` for diagnostics.
 Set the routing identity on a socket.
 
 ```c
-int zlink_set_routing_id (void *handle_,
+zlink_config_result_t zlink_set_routing_id (void *handle_,
                            const void *data_,
                            size_t size_);
 ```
@@ -332,7 +329,7 @@ Assigns a routing identity to the socket. The identity is used for ROUTER
 addressing and must be at most 255 bytes. Must be set before the first
 bind or connect.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_get_routing_id`
 
@@ -343,7 +340,7 @@ bind or connect.
 Install or replace the send-ready callback.
 
 ```c
-bool zlink_send_ready_handler (
+zlink_handler_result_t zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
@@ -359,6 +356,6 @@ guaranteed to succeed. With the default `MANDATORY=1`, ROUTER readiness is
 surfaced only while a reachable peer exists. Unsupported subjects return
 `ENOTSUP`.
 
-**Returns:** `true` on success, `false` on failure (errno is set).
+**Returns:** `ZLINK_HANDLER_OK` on success; otherwise a `zlink_handler_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_send`

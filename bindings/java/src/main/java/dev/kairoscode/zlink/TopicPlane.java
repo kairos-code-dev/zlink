@@ -89,7 +89,8 @@ final class TopicPlane {
                         ? ""
                         : new String(topicOut.asSlice(0, topicLength).toArray(
                             ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
-                    return new TopicMessage(Socket.toRoutingId(routingId), topicId, parts);
+                    return new TopicMessage(Socket.toRoutingId(routingId), null,
+                        topicId, parts);
                 }
                 RecvResult result = RecvResult.fromValue(rc);
                 if (result == RecvResult.BUSY) {
@@ -137,7 +138,7 @@ final class TopicPlane {
                         : new String(topicOut.asSlice(0, topicLength).toArray(
                             ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
                     return Optional.of(new TopicMessage(Socket.toRoutingId(routingId),
-                        topicId, parts));
+                        null, topicId, parts));
                 }
                 RecvResult result = RecvResult.fromValue(rc);
                 if (result == RecvResult.BUSY) {
@@ -192,7 +193,8 @@ final class TopicPlane {
                 : new String(topicOut.asSlice(0, topicLength).toArray(
                     ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
             return new SubscriptionEvent(java.util.Optional.ofNullable(
-                Socket.toRoutingId(Socket.decodeRoutingId(rid))), filter,
+                Socket.toRoutingId(Socket.decodeRoutingId(rid))),
+                filter, java.util.Optional.empty(),
                 subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0);
         }
     }
@@ -221,7 +223,8 @@ final class TopicPlane {
                     return Optional.of(new SubscriptionEvent(
                         java.util.Optional.ofNullable(
                           Socket.toRoutingId(Socket.decodeRoutingId(rid))),
-                        filter, subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
+                        filter, java.util.Optional.empty(),
+                        subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
                 }
             }
 

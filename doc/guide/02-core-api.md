@@ -232,11 +232,18 @@ Each socket type uses a dedicated registration function:
 | STREAM (raw) | `zlink_recv_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
 | STREAM (packet) | `zlink_stream_packet_handler(socket, fn, userdata)` | `void fn(void *stream, const zlink_routing_id_t *source_rid, zlink_msg_t *header, zlink_msg_t *body, void *userdata)` |
 | ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` reply is delivered through a separate completion callback |
-| SPOT (routed) | `zlink_spot_handler(spot, fn, userdata)` | `void fn(const zlink_routing_id_t *source_rid, const zlink_routing_id_t *spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
+| SPOT (routed direct callback) | `zlink_spot_handler(spot, fn, userdata)` — optional; still supported | `void fn(const zlink_routing_id_t *source_rid, const zlink_routing_id_t *spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
+| SPOT (dispatch readable events) | `zlink_spot_dispatch_event_handler(spot, fn, userdata)` — unified readable-event callback for topic/routed/timer | `void fn(void *spot, zlink_spot_dispatch_event_kind_t kind, void *userdata)` |
+| SPOT (service-aware subscribe recv) | `zlink_spot_subscribe(spot, ..., service_name_out, topic_id_out, ...)` | N/A — recv-driven; drained after a `SUBSCRIBE_READABLE` dispatch event |
+| SPOT (service-aware routed recv) | `zlink_spot_recv(spot, ...)` | N/A — recv-driven; drained after a `ROUTED_READABLE` dispatch event |
 | PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` or `zlink_subscribe()` | N/A |
 | DEALER / ROUTER request | `zlink_reply_handler_fn` passed to `zlink_dealer_request()` / `zlink_router_request()` | `void fn(zlink_request_result_t result, zlink_msg_t *parts, size_t count, void *userdata)` |
 | Timer | `zlink_timer_handler(timer, fn, userdata)` | `void fn(void *timer, uint64_t fire_count, void *userdata)` |
 | PUB | N/A | Send-only socket |
+
+On a single `spot` handle, `zlink_spot_handler()` and
+`zlink_spot_dispatch_event_handler()` cannot both be installed; the first
+attach wins and the second returns `EBUSY`.
 
 Callbacks are invoked on the I/O thread. Avoid blocking work inside callbacks.
 If slow processing is needed, enqueue to a user queue and handle it on a

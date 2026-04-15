@@ -26,8 +26,6 @@ struct queued_spot_probe_t
     std::vector<queued_spot_message_t> messages;
 };
 
-struct callback_probe_t;
-
 bool test_debug_enabled ();
 void step_log (const char *msg_);
 
@@ -49,7 +47,7 @@ void queued_spot_handler (const zlink_routing_id_t *,
 
 void *create_spot_node (void *ctx_, const char *service_name_);
 void *create_spot_pub_handle (void *node_);
-void *create_spot_sub_handle (void *node_, zlink_subscribe_handler_fn handler_);
+void *create_spot_sub_handle (void *node_);
 int destroy_spot_node_with_handles (void **node_p_);
 typedef zlink_submit_result_t (*spot_publish_fn_t) (void *,
                                                     const char *,

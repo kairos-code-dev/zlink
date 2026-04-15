@@ -2,6 +2,8 @@
 
 'use strict';
 
+const net = require('node:net');
+const { once } = require('node:events');
 const zlink = require('../../dist/canonical');
 const {
   createMetricCollector,
@@ -14,8 +16,27 @@ const {
 } = require('../common/perf_metrics');
 
 const TOPIC = 'perf.topic';
+const SERVICE_TYPE_SPOT = 0x3002;
+const SERVICE_NAME = 'perf.spot';
 const DEBUG = process.env.PERF_DEBUG === '1';
 const POLLIN = 1;
+
+async function reserveTcpEndpoint() {
+  const server = net.createServer();
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  await new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+  return `tcp://127.0.0.1:${address.port}`;
+}
 
 function trySpotSubscribe(spot) {
   try {
@@ -31,9 +52,9 @@ function trySpotSubscribe(spot) {
   }
 }
 
-function trySpotPublish(spot, topic, payload) {
+function trySpotPublish(spot, serviceName, topic, payload) {
   try {
-    spot.publish(topic, payload, zlink.SendFlags.DontWait);
+    spot.publish(serviceName, topic, payload, zlink.SendFlags.DontWait);
     return true;
   } catch (error) {
     if (
@@ -50,22 +71,30 @@ async function runSpotBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
   const pubNode = new zlink.SpotNode(ctx);
   const subNode = new zlink.SpotNode(ctx);
-  const pubSpot = pubNode.createSpot();
-  const subSpot = subNode.createSpot();
+  const pubSendSocket = new zlink.PubSocket(ctx);
+  const pubRecvSocket = new zlink.SubSocket(ctx);
+  const subSendSocket = new zlink.PubSocket(ctx);
+  const subRecvSocket = new zlink.SubSocket(ctx);
+  let pubSpot = null;
+  let subSpot = null;
   const poller = new zlink.Poller();
-  const endpoint = `inproc://perf-spot-${process.pid}-${msgSize}`;
+  const serviceEndpoint = await reserveTcpEndpoint();
+  const peerEndpoint = `inproc://perf-spot-peer-${process.pid}`;
 
   try {
+    pubNode.attachPubSub(SERVICE_NAME, pubSendSocket, pubRecvSocket);
+    subNode.attachPubSub(SERVICE_NAME, subSendSocket, subRecvSocket);
+    pubSpot = pubNode.createSpot();
+    subSpot = subNode.createSpot();
+    pubSendSocket.bind(serviceEndpoint);
+    subRecvSocket.connect(serviceEndpoint);
+    pubNode.bind(peerEndpoint);
+    subNode.connectPeer(peerEndpoint);
     if (DEBUG) {
       console.error('spot setup start');
     }
-    pubNode.bind(endpoint);
     if (DEBUG) {
-      console.error('spot pub bound');
-    }
-    subNode.connectPeer(endpoint);
-    if (DEBUG) {
-      console.error('spot sub connected');
+      console.error('spot node peer connected');
     }
     subSpot.setSubscription(TOPIC);
     if (DEBUG) {
@@ -88,7 +117,7 @@ async function runSpotBenchmark(msgSize, options) {
         msgSize,
         seq
       });
-      if (trySpotPublish(pubSpot, TOPIC, payload)) {
+      if (trySpotPublish(pubSpot, SERVICE_NAME, TOPIC, payload)) {
         seq += 1n;
       }
       while (true) {
@@ -96,7 +125,11 @@ async function runSpotBenchmark(msgSize, options) {
         if (!received) {
           break;
         }
-        const header = decodeMetricHeader(received.parts[0].data());
+        const firstPart = received.parts[0];
+        if (!firstPart) {
+          continue;
+        }
+        const header = decodeMetricHeader(firstPart.data());
         if (header) {
           ready = true;
           collector.record(header, currentEpochNs());
@@ -122,7 +155,7 @@ async function runSpotBenchmark(msgSize, options) {
           msgSize,
           seq
         });
-        if (!trySpotPublish(pubSpot, TOPIC, payload)) {
+        if (!trySpotPublish(pubSpot, SERVICE_NAME, TOPIC, payload)) {
           break;
         }
         seq += 1n;
@@ -144,7 +177,11 @@ async function runSpotBenchmark(msgSize, options) {
           if (!received) {
             break;
           }
-          const header = decodeMetricHeader(received.parts[0].data());
+          const firstPart = received.parts[0];
+          if (!firstPart) {
+            continue;
+          }
+          const header = decodeMetricHeader(firstPart.data());
           collector.record(header, currentEpochNs());
         }
       }
@@ -159,7 +196,11 @@ async function runSpotBenchmark(msgSize, options) {
         if (!received) {
           break;
         }
-        const header = decodeMetricHeader(received.parts[0].data());
+        const firstPart = received.parts[0];
+        if (!firstPart) {
+          continue;
+        }
+        const header = decodeMetricHeader(firstPart.data());
         collector.record(header, currentEpochNs());
       }
       await sleepImmediate();
@@ -171,10 +212,18 @@ async function runSpotBenchmark(msgSize, options) {
     return result.latenciesNs;
   } finally {
     poller.close();
-    pubSpot.close();
-    subSpot.close();
+    if (pubSpot) {
+      pubSpot.close();
+    }
+    if (subSpot) {
+      subSpot.close();
+    }
     pubNode.close();
     subNode.close();
+    subRecvSocket.close();
+    subSendSocket.close();
+    pubRecvSocket.close();
+    pubSendSocket.close();
     ctx.close();
   }
 }

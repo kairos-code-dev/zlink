@@ -108,12 +108,12 @@ static inline int wait_connected (void *server_monitor, void *client_monitor,
 {
     if (!wait_for_socket_monitor_event (
           server_monitor,
-          ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, 1,
+          ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, -1,
           timeout_ms))
         return 0;
     if (!wait_for_socket_monitor_event (
           client_monitor,
-          ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, 1,
+          ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, -1,
           timeout_ms))
         return 0;
     return 1;
@@ -285,6 +285,41 @@ static inline int wait_spot_ready (void *sub_monitor, void *pub_monitor,
           timeout_ms))
         return 0;
     return 1;
+}
+
+static inline int wait_for_spot_node_subject_ready (void *node_,
+                                                    int timeout_ms)
+{
+    struct timespec start;
+    clock_gettime (CLOCK_MONOTONIC, &start);
+
+    for (;;) {
+        zlink_spot_node_status_t status;
+        if (zlink_spot_node_status_snapshot (node_, &status) == 0
+            && status.subject_count > 0
+            && (status.ready_subject_count > 0
+                || status.connected_peer_count > 0
+                || status.active_peer_count > 0
+                || status.configured_peer_count == 0)) {
+            return 1;
+        }
+
+        struct timespec now;
+        clock_gettime (CLOCK_MONOTONIC, &now);
+        long elapsed_ms =
+          (long) (now.tv_sec - start.tv_sec) * 1000
+          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
+        long remaining = (long) timeout_ms - elapsed_ms;
+        if (remaining <= 0)
+            break;
+        if (remaining > 10)
+            remaining = 10;
+
+        zlink_pollitem_t item = {NULL, 0, 0, 0};
+        (void) zlink_poll (&item, 0, remaining, NULL);
+    }
+
+    return 0;
 }
 
 /* ---- Callback synchronization primitives (POSIX) ------------------------- */

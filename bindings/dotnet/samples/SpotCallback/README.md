@@ -1,1 +1,1 @@
-`SpotCallback` is a minimal SPOT callback API smoke sample.
+`SpotCallback` is a minimal service-aware SPOT publish/subscribe smoke sample.

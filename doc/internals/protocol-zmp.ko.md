@@ -20,18 +20,16 @@
 
 ## 1. 기본 방향
 
-현재 구현에서 request-reply 와 SPOT 직접 전달은 `zlink_msg_t` 내부 필드가
-아니라 ZMP multipart control part 로 표현한다.
-
-즉 다음 설명은 더 이상 맞지 않는다.
+request-reply 와 SPOT 직접 전달은 `zlink_msg_t` 내부 필드가 아니라 ZMP
+multipart control part 로 표현한다. 즉 다음 방식은 이 프로토콜의 모델이 아니다.
 
 - message-level request marking
 - per-message metadata envelope
 - recv 후 내부 필드를 복원하는 방식
 
-ordinary `zlink_send()` / `zlink_recv()` 는 여전히 payload part 만 다룬다.
-request-reply 와 SPOT routed 는 전용 공개 API 가 control part 를 앞에 붙여
-보내고, 전용 decode 경로가 이를 해석한다.
+ordinary `zlink_send()` / `zlink_recv()` 는 payload part 만 다룬다.
+request-reply 와 SPOT routed 는 전용 공개 API 가 control part 를 앞에
+붙여 보내고, 전용 decode 경로가 이를 해석한다.
 
 ## 2. 공통 프레임 헤더
 

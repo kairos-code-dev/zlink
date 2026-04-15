@@ -160,9 +160,8 @@ void *create_spot_pub_handle (void *node_)
     return spot;
 }
 
-void *create_spot_sub_handle (void *node_, zlink_subscribe_handler_fn handler_)
+void *create_spot_sub_handle (void *node_)
 {
-    LIBZLINK_UNUSED (handler_);
     void *spot_sub = create_spot_pub_handle (node_);
     if (!spot_sub)
         return NULL;
@@ -591,8 +590,9 @@ bool wait_for_spot_recv_message (void *spot_sub_,
         size_t part_count = 0;
         char topic[256] = {0};
         size_t topic_len = sizeof (topic);
-        const int rc = zlink_subscribe (spot_sub_, NULL, &parts, &part_count,
-                                        topic, &topic_len, ZLINK_DONTWAIT);
+        const int rc = zlink_subscribe (
+          spot_sub_, NULL, &parts, &part_count, topic, &topic_len,
+          static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
         if (rc == 0) {
             const bool topic_ok =
               topic_len == expected_topic_size
@@ -636,7 +636,7 @@ void run_spot_peer_tcp_test ()
     void *node_b = create_spot_node (ctx, "spot-test");
     TEST_ASSERT_NOT_NULL (node_b);
     void *pub = create_spot_pub_handle (node_a);
-    void *sub = create_spot_sub_handle (node_b, NULL);
+    void *sub = create_spot_sub_handle (node_b);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
     char endpoint_a[MAX_SOCKET_STRING] = {0};
@@ -719,7 +719,7 @@ void run_spot_peer_reverse_tcp_test ()
     TEST_ASSERT_NOT_NULL (node_a);
     void *node_b = create_spot_node (ctx, "spot-test");
     TEST_ASSERT_NOT_NULL (node_b);
-    void *sub_a = create_spot_sub_handle (node_a, &queued_spot_handler);
+    void *sub_a = create_spot_sub_handle (node_a);
     void *pub_b = create_spot_pub_handle (node_b);
     TEST_ASSERT_NOT_NULL (sub_a);
     TEST_ASSERT_NOT_NULL (pub_b);

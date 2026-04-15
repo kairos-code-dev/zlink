@@ -43,17 +43,44 @@ async function main() {
         reject(new Error('dealer-router callback sample timed out'));
       }, 5000);
 
-      router.onReceive((message) => {
-        const payload = message.parts[0].data().toString();
-        assert.ok(message.routingId instanceof zlink.RoutingId);
-        assert.equal(payload, 'ping');
-        router.send(message.routingId, Buffer.from('pong'));
-      });
+      const waitForRequest = () => {
+        try {
+          const message = router.recv(zlink.RecvFlags.DontWait);
+          const payload = message.parts[0].data().toString();
+          assert.ok(message.routingId instanceof zlink.RoutingId);
+          assert.equal(payload, 'ping');
+          router.send(message.routingId, Buffer.from('pong'));
+        } catch (error) {
+          if (
+            error instanceof zlink.RecvError
+            && error.result === zlink.RecvResult.NoData
+          ) {
+            setImmediate(waitForRequest);
+            return;
+          }
+          reject(error);
+          return;
+        }
 
-      dealer.onReceive((message) => {
-        clearTimeout(timeout);
-        resolve(message);
-      });
+        const waitForReply = () => {
+          try {
+            const message = dealer.recv(zlink.RecvFlags.DontWait);
+            clearTimeout(timeout);
+            resolve(message);
+          } catch (error) {
+            if (
+              error instanceof zlink.RecvError
+              && error.result === zlink.RecvResult.NoData
+            ) {
+              setImmediate(waitForReply);
+              return;
+            }
+            reject(error);
+          }
+        };
+        waitForReply();
+      };
+      waitForRequest();
     });
 
     const sent = 'ping';

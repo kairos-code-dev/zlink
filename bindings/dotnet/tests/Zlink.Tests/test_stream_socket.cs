@@ -78,7 +78,7 @@ public sealed class test_stream_socket
     {
         var accumulators = new Dictionary<string, Len32BeAccumulator>(
             StringComparer.Ordinal);
-        stream.AttachStreamRaw((routingId, payload) =>
+        stream.OnPacket((routingId, payload) =>
         {
             Message[] frames = Array.Empty<Message>();
             try
@@ -274,9 +274,9 @@ public sealed class test_stream_socket
         using var ctx = new Context();
         using var stream = new StreamSocket(ctx);
 
-        stream.AttachStreamRaw((_, _) => 0);
+        stream.OnPacket((_, _) => 0);
         Assert.Throws<InvalidOperationException>(() =>
-            stream.AttachStreamRaw((_, _) => 0));
+            stream.OnPacket((_, _) => 0));
         Assert.Throws<InvalidOperationException>(() =>
             AttachLen32Be(stream, (_, _) => 0));
         stream.DetachStream();
@@ -306,7 +306,7 @@ public sealed class test_stream_socket
         Runtime.UnhandledCallbackException += OnUnhandled;
         try
         {
-            stream.AttachStreamRaw((_, payload) =>
+            stream.OnPacket((_, payload) =>
             {
                 payload.Dispose();
                 throw new InvalidOperationException("stream-callback-fail");
@@ -347,7 +347,7 @@ public sealed class test_stream_socket
         using var stream = new StreamSocket(ctx);
 
         stream.StreamOptions.Notify = true;
-        stream.AttachStreamRaw((_, _) => 0);
+        stream.OnPacket((_, _) => 0);
         stream.DetachStream();
     }
 
@@ -378,7 +378,7 @@ public sealed class test_stream_socket
 
         int matched = 0;
         byte[] expected = "stream-callback-raw"u8.ToArray();
-        stream.AttachStreamRaw((rid, payload) =>
+        stream.OnPacket((rid, payload) =>
         {
             if (payload.AsReadOnlySpan().SequenceEqual(expected))
                 Interlocked.Increment(ref matched);
@@ -413,7 +413,7 @@ public sealed class test_stream_socket
         using var receivedSignal = new ManualResetEventSlim(false);
         Message? owned = null;
         byte[] expected = "stream-raw-owned-payload"u8.ToArray();
-        stream.AttachStreamRaw((_, payload) =>
+        stream.OnPacket((_, payload) =>
         {
             ReadOnlySpan<byte> bytes = payload.AsReadOnlySpan();
             if (bytes.Length == 1 && (bytes[0] == 0x00 || bytes[0] == 0x01))
@@ -547,7 +547,7 @@ public sealed class test_stream_socket
 
         int matched = 0;
         byte[] payload = { 0x00 };
-        stream.AttachStreamRaw((rid, msg) =>
+        stream.OnPacket((rid, msg) =>
         {
             ReadOnlySpan<byte> payload = msg.AsReadOnlySpan();
             if (payload.Length == 1 && payload[0] == 0)
@@ -847,7 +847,7 @@ public sealed class test_stream_socket
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
 
-        stream.AttachStreamRaw((rid, payload) =>
+        stream.OnPacket((rid, payload) =>
         {
             stream.Send(rid, payload);
             return 0;

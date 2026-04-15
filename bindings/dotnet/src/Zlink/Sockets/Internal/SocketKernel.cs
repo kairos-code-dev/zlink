@@ -41,7 +41,6 @@ internal sealed class SocketKernel : IDisposable
     private SynchronizationContext? _subscribeHandlerContext;
     private SynchronizationContext? _sendReadyHandlerContext;
     private NativeMethods.ZlinkSocketMsgHandlerDelegate? _recvHandlerNative;
-    private NativeMethods.ZlinkRouterRequestHandlerDelegate? _routerRecvHandlerNative;
     private NativeMethods.ZlinkSubscribeHandlerDelegate? _subscribeHandlerNative;
     private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
     private bool _streamAttached;
@@ -577,42 +576,19 @@ internal sealed class SocketKernel : IDisposable
             throw new ArgumentNullException(nameof(handler));
 
         SynchronizationContext? context = SynchronizationContext.Current;
-        int rc;
-        if (Type == SocketType.Router)
-        {
-            var native = new NativeMethods.ZlinkRouterRequestHandlerDelegate(
-                OnNativeRouterReceive);
-            rc = NativeMethods.zlink_router_handler(Handle, native, IntPtr.Zero);
-            if (rc != 0)
-            {
-                _recvHandler = null;
-                _recvHandlerContext = null;
-                _routerRecvHandlerNative = null;
-                ZlinkException.ThrowIfError(rc);
-            }
-
-            _recvHandler = handler;
-            _recvHandlerContext = context;
-            _recvHandlerNative = null;
-            _routerRecvHandlerNative = native;
-            return;
-        }
-
         var socketNative = new NativeMethods.ZlinkSocketMsgHandlerDelegate(
             OnNativeReceive);
-        rc = NativeMethods.zlink_recv_handler(Handle, socketNative, IntPtr.Zero);
+        int rc = NativeMethods.zlink_recv_handler(Handle, socketNative, IntPtr.Zero);
         if (rc != 0)
         {
             _recvHandler = null;
             _recvHandlerContext = null;
             _recvHandlerNative = null;
-            _routerRecvHandlerNative = null;
             ZlinkException.ThrowIfError(rc);
         }
         _recvHandler = handler;
         _recvHandlerContext = context;
         _recvHandlerNative = socketNative;
-        _routerRecvHandlerNative = null;
     }
 
     public void SendReadyHandler(Action handler)
@@ -929,7 +905,6 @@ internal sealed class SocketKernel : IDisposable
         _sendReadyHandler = null;
         _sendReadyHandlerContext = null;
         _recvHandlerNative = null;
-        _routerRecvHandlerNative = null;
         _subscribeHandlerNative = null;
         _sendReadyHandlerNative = null;
         GC.SuppressFinalize(this);
@@ -1137,7 +1112,7 @@ internal sealed class SocketKernel : IDisposable
             partCount = 0;
             if (parts.Length == 0)
                 throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-            return new TopicMessage(routingId, topic, parts);
+            return new TopicMessage(routingId, null, topic, parts);
         }
         catch
         {
@@ -1242,7 +1217,8 @@ internal sealed class SocketKernel : IDisposable
             RoutingId? routingId = RoutingIdCodec.ToRoutingId(
                 NativeHelpers.ReadRoutingId(ref nativeRoutingId));
             string topic = DecodeTopic(topicBuffer, topicLength);
-            return new SubscriptionEvent(routingId, topic, subscribedInt != 0);
+            return new SubscriptionEvent(routingId, null, topic,
+                subscribedInt != 0);
         }
         finally
         {
@@ -1769,55 +1745,6 @@ internal sealed class SocketKernel : IDisposable
                 ZlinkRoutingId* nativeRoutingId = (ZlinkRoutingId*)sourceRoutingId;
                 routingId = RoutingIdCodec.ToPublicString(
                     NativeHelpers.ReadRoutingId(ref *nativeRoutingId));
-            }
-
-            managedParts = Message.FromNativeVector(parts, partCount);
-            parts = IntPtr.Zero;
-            partCount = 0;
-            delivered = true;
-            CallbackDelivery.Post(context,
-                () => handler(routingId, managedParts));
-        }
-        catch (Exception ex)
-        {
-            Runtime.ReportUnhandledCallbackException(ex);
-            if (!delivered && managedParts != null)
-            {
-                foreach (Message part in managedParts)
-                    part.Dispose();
-            }
-        }
-        finally
-        {
-            if (parts != IntPtr.Zero)
-                NativeMethods.zlink_multipart_close(parts, partCount);
-        }
-    }
-
-    private unsafe void OnNativeRouterReceive(ZlinkRoutingId* sourceNodeRoutingId,
-        ZlinkRoutingId* sourceSpotRoutingId, ulong requestSequence, IntPtr parts,
-        nuint partCount, IntPtr userData)
-    {
-        _ = sourceSpotRoutingId;
-        _ = requestSequence;
-        SocketRecvHandler? handler = _recvHandler;
-        SynchronizationContext? context = _recvHandlerContext;
-        if (handler == null)
-        {
-            if (parts != IntPtr.Zero)
-                NativeMethods.zlink_multipart_close(parts, partCount);
-            return;
-        }
-
-        Message[]? managedParts = null;
-        bool delivered = false;
-        try
-        {
-            string routingId = string.Empty;
-            if (sourceNodeRoutingId != null)
-            {
-                routingId = RoutingIdCodec.ToPublicString(
-                    NativeHelpers.ReadRoutingId(ref *sourceNodeRoutingId));
             }
 
             managedParts = Message.FromNativeVector(parts, partCount);

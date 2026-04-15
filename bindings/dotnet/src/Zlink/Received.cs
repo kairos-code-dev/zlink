@@ -98,5 +98,6 @@ public sealed class Received : IDisposable
 
 public sealed record SubscriptionEvent(
     RoutingId? RoutingId,
+    string? ServiceName,
     string Topic,
     bool Subscribed);

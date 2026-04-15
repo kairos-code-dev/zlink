@@ -8,7 +8,7 @@
 이 함수들은 API 전체에서 숫자 범위가 겹치지 않는 결과 enum을 반환하므로,
 하나의 `int` 코드만으로도 항상 의미를 식별할 수 있다.
 
-일부 레거시 poller 보조 함수는 여전히 plain `int`와 별도 `error_out_`
+일부 poller 보조 함수는 plain `int`와 별도 `error_out_`
 출력으로 동작한다. 이 함수들은 아래 결과 enum 분류표의 대상이 아니다.
 
 내부 구현 경로는 계속 상세 `errno`를 사용하고, exported API 경계에서

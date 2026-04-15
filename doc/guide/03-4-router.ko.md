@@ -155,8 +155,8 @@ if (zlink_router_recv(router,
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | 미도달 시 `ZLINK_SUBMIT_NOT_CONNECTED` 반환. 기본값이 `1` 이므로 `zlink_send_rid()` 로 미연결 peer 를 지정하면 기본 동작에서 실패가 surface 된다. 예전 조용한 drop 동작이 필요하면 `0` 으로 설정한다. |
-| `ZLINK_ROUTER_OPT_HANDOVER` | int | 1 | routing_id 충돌 시 새 연결이 기존 pipe 를 인수. 기본값이 `1` 이므로 duplicate peer identity 가 들어오면 기본 동작에서 handover 가 발생한다. 예전처럼 기존 연결 유지가 필요하면 `0` 으로 설정한다. |
+| `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | 미도달 시 `ZLINK_SUBMIT_NOT_CONNECTED` 반환. 기본값이 `1` 이므로 `zlink_send_rid()` 로 미연결 peer 를 지정하면 실패가 surface 된다. 조용한 drop 이 필요하면 `0` 으로 설정한다. |
+| `ZLINK_ROUTER_OPT_HANDOVER` | int | 1 | routing_id 충돌 시 새 연결이 기존 pipe 를 인수. 기본값이 `1` 이므로 duplicate peer identity 가 들어오면 handover 가 발생한다. 기존 연결을 유지하고 새 연결을 거부하려면 `0` 으로 설정한다. |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_router_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER 자신의 routing_id (전용 함수) |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 HWM |
@@ -165,8 +165,8 @@ if (zlink_router_recv(router,
 
 ### ROUTER_MANDATORY
 
-`ZLINK_ROUTER_OPT_MANDATORY` 의 기본값이 `1` 로 변경되었다. 기본 상태에서
-도달할 수 없는 peer 로 `zlink_send_rid()` 를 보내면 조용히 drop 하지 않고
+`ZLINK_ROUTER_OPT_MANDATORY` 의 기본값은 `1` 이다. 도달할 수 없는 peer 로
+`zlink_send_rid()` 를 보내면 조용히 drop 하지 않고
 `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환한다. 호출자가 `NOT_CONNECTED` 를
 처리하거나 재시도/에러로그로 surface 할 기회가 생긴다.
 
@@ -180,18 +180,17 @@ zlink_submit_result_t rc = zlink_send_rid(
     router, &target_rid, &msg, 1, 0);
 /* rc == ZLINK_SUBMIT_NOT_CONNECTED */
 
-/* 예전(조용한 drop) 동작이 필요하면 명시적으로 0 으로 설정 */
+/* 조용한 drop 동작이 필요하면 명시적으로 0 으로 설정 */
 int mandatory = 0;
 zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
                         &mandatory, sizeof(mandatory));
 ```
 
-> **기본값 변경으로 인한 관찰 변화:** `ROUTER_MANDATORY=1` 이 기본이 되면,
-> writable / `ZLINK_POLLOUT` 관찰값도 실제로 쓸 수 있는 peer 가 있을 때만
-> send-recovery readiness 로 surface 된다. `HANDOVER=1` 이 기본이 되면,
-> duplicate peer identity 가 들어올 때 기본 동작이 "기존 pipe 유지" 에서
-> "새 연결 인수" 로 바뀐다. `send_rid` 의 `NOT_CONNECTED` 빈도도 이전보다
-> 높아질 수 있다.
+> **관찰 가능한 동작:** `MANDATORY=1` 기본값에서는 writable / `ZLINK_POLLOUT`
+> 관찰값이 실제로 쓸 수 있는 peer 가 있을 때만 send-recovery readiness 로
+> surface 된다. `HANDOVER=1` 기본값에서는 duplicate peer identity 가
+> 들어오면 새 연결이 기존 pipe 를 인수하고 거부되지 않는다. peer 가
+> 들고 날 때 `send_rid` 가 `NOT_CONNECTED` 를 반환하는 일이 흔하다.
 
 > 참고: `core/tests/test_router_mandatory.cpp` — `test_basic()`
 
@@ -386,7 +385,7 @@ if (rc == ZLINK_SUBMIT_NOT_CONNECTED) {
     /* Target "UNKNOWN" not found -- 호출자가 재시도/로그 등을 결정 */
 }
 
-/* 예전처럼 조용한 drop 이 필요하면 MANDATORY 를 끈다 */
+/* 조용한 drop 이 필요하면 MANDATORY 를 끈다 */
 int disable_mandatory = 0;
 zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
                         &disable_mandatory, sizeof(disable_mandatory));
@@ -718,11 +717,11 @@ zlink_admission_state_t cur;
 zlink_get_admission_state(router, &cur);
 ```
 
-`DRAINING`은 로컬 halt가 아니라 peer-side advisory다. 로컬 핸들은
-기존과 동일하게 inbound를 처리한다 — `zlink_router_recv()`,
-`zlink_send_rid()`, `zlink_router_reply()` 모두 정상 동작하므로
-진행 중인 request는 마저 완료할 수 있다. 바뀌는 것은 원격 peer가 이
-ROUTER를 더 이상 새 작업 대상으로 선택하지 않는다는 점이다:
+`DRAINING` 은 로컬 halt 가 아니라 peer-side advisory 다. 로컬 핸들은
+평상시와 같이 inbound 를 처리한다 — `zlink_router_recv()`,
+`zlink_send_rid()`, `zlink_router_reply()` 모두 정상 동작하므로 진행
+중인 request 는 마저 완료할 수 있다. 달라지는 부분은 원격 peer 가 이
+ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다:
 
 - 원격 DEALER는 이 ROUTER를 round-robin 후보에서 제외한다.
 - 원격 ROUTER가 이 RID로 `zlink_send_rid()` 또는

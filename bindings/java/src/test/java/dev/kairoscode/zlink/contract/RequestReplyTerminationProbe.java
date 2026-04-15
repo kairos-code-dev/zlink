@@ -47,32 +47,17 @@ public final class RequestReplyTerminationProbe {
 
             CompletableFuture<Void> server;
             if (callbackMode) {
-                log("server callback install");
-                CountDownLatch handled = new CountDownLatch(1);
-                CompletableFuture<Void> callbackFuture = new CompletableFuture<>();
-                routerSocket.onReceive(received -> {
-                    log("server callback recv");
-                    try (received) {
-                        if (!received.requestSeq().isPresent()) {
-                            throw new IllegalStateException("missing request seq");
-                        }
-                        log("server callback reply");
-                        received.reply(List.of(Message.copyOfUtf8("pong")));
-                        callbackFuture.complete(null);
-                    } catch (Throwable error) {
-                        callbackFuture.completeExceptionally(error);
-                    } finally {
-                        handled.countDown();
-                    }
-                });
                 server = CompletableFuture.runAsync(() -> {
                     try {
-                        log("server callback await");
-                        if (!handled.await(2, TimeUnit.SECONDS)) {
-                            throw new IllegalStateException("router callback timed out");
+                        log("server recv wait");
+                        try (Received received = routerSocket.recv()) {
+                            log("server recv got");
+                            if (!received.requestSeq().isPresent()) {
+                                throw new IllegalStateException("missing request seq");
+                            }
+                            log("server recv reply");
+                            received.reply(List.of(Message.copyOfUtf8("pong")));
                         }
-                        callbackFuture.get(2, TimeUnit.SECONDS);
-                        log("server callback done");
                     } catch (Exception ex) {
                         throw new IllegalStateException(ex);
                     }

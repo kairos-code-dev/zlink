@@ -456,7 +456,7 @@ through `zlink_errno()` for diagnostics.
 Close a socket and release its resources.
 
 ```c
-int zlink_close (void *s_);
+zlink_close_result_t zlink_close (void *s_);
 ```
 
 Closes the socket and releases all associated resources. Any outstanding
@@ -469,7 +469,7 @@ handle, close fails with `errno=EBUSY`. After close is accepted, new API entry
 fails with `errno=ESHUTDOWN`. Self-close from a send-ready or monitor callback
 is deferred until callback epilogue.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CLOSE_OK` on success; otherwise a `zlink_close_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Errors:** `ENOTSOCK` if the handle is not a valid socket. `EBUSY` if a
 callback or operation is in-flight on the handle.
@@ -483,7 +483,7 @@ callback or operation is in-flight on the handle.
 Set a common socket option.
 
 ```c
-int zlink_set_option (void *handle_,
+zlink_config_result_t zlink_set_option (void *handle_,
                       zlink_option_t option_,
                       const void *optval_,
                       size_t optvallen_);
@@ -495,7 +495,7 @@ pointer supplies the value and `optvallen_` specifies its size in bytes.
 
 Some options must be set before binding or connecting the socket.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Errors:** `EINVAL` if the option is unknown or the value is out of range.
 `ETERM` if the context was terminated.
@@ -509,7 +509,7 @@ Some options must be set before binding or connecting the socket.
 Get a common socket option.
 
 ```c
-int zlink_get_option (void *handle_,
+zlink_config_result_t zlink_get_option (void *handle_,
                       zlink_option_t option_,
                       void *optval_,
                       size_t *optvallen_);
@@ -517,7 +517,7 @@ int zlink_get_option (void *handle_,
 
 Retrieves the current value of a common socket option.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_set_option`
 
@@ -528,7 +528,7 @@ Retrieves the current value of a common socket option.
 Set the routing identity on a socket.
 
 ```c
-int zlink_set_routing_id (void *handle_,
+zlink_config_result_t zlink_set_routing_id (void *handle_,
                            const void *data_,
                            size_t size_);
 ```
@@ -537,7 +537,7 @@ Assigns a routing identity to the socket. The identity is used for ROUTER
 addressing and must be at most 255 bytes. Must be set before the first
 bind or connect.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_get_routing_id`
 
@@ -548,13 +548,13 @@ bind or connect.
 Get the routing identity of a socket.
 
 ```c
-int zlink_get_routing_id (void *handle_,
+zlink_config_result_t zlink_get_routing_id (void *handle_,
                            zlink_routing_id_t *out_);
 ```
 
 Retrieves the current routing identity into `*out_`.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_set_routing_id`
 
@@ -565,7 +565,7 @@ Retrieves the current routing identity into `*out_`.
 Configure TLS for a server socket.
 
 ```c
-int zlink_set_tls_server (void *handle_,
+zlink_config_result_t zlink_set_tls_server (void *handle_,
                            const char *cert_,
                            const char *key_,
                            int require_client_cert_);
@@ -580,7 +580,7 @@ client TLS, Registry accepts client/server TLS, and SPOT accepts TLS only
 for `SpotNode` handles. Unified `Spot` and SPOT child pub/sub handles fail
 with `ENOTSUP`.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_set_tls_client`
 
@@ -591,7 +591,7 @@ with `ENOTSUP`.
 Configure TLS for a client socket.
 
 ```c
-int zlink_set_tls_client (void *handle_,
+zlink_config_result_t zlink_set_tls_client (void *handle_,
                            const char *ca_cert_,
                            const char *hostname_,
                            int trust_system_);
@@ -607,7 +607,7 @@ client TLS, Registry accepts client/server TLS, and SPOT accepts TLS only
 for `SpotNode` handles. Unified `Spot` and SPOT child pub/sub handles fail
 with `ENOTSUP`.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_set_tls_server`
 
@@ -618,7 +618,7 @@ with `ENOTSUP`.
 Bind a socket to an address.
 
 ```c
-int zlink_bind (void *s_, const char *addr_);
+zlink_bind_result_t zlink_bind (void *s_, const char *addr_);
 ```
 
 Binds the socket to a local endpoint. The endpoint string uses the format
@@ -634,7 +634,7 @@ A socket can be bound to multiple endpoints. For TCP, if port 0 is specified
 the system assigns an ephemeral port; use `ZLINK_OPT_LAST_ENDPOINT` to retrieve
 the actual endpoint.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_BIND_OK` on success; otherwise a `zlink_bind_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Errors:** `EADDRINUSE` if the address is already in use. `EADDRNOTAVAIL` if
 the interface does not exist. `EPROTONOSUPPORT` if the transport is not
@@ -649,14 +649,14 @@ supported.
 Connect a socket to a remote address.
 
 ```c
-int zlink_connect (void *s_, const char *addr_);
+zlink_connect_result_t zlink_connect (void *s_, const char *addr_);
 ```
 
 Connects the socket to a remote endpoint. The endpoint format is the same as
 for `zlink_bind()`. A socket can connect to multiple endpoints, and the
 library handles reconnection automatically if the peer becomes unavailable.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONNECT_OK` on success; otherwise a `zlink_connect_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_bind`, `zlink_disconnect`
 
@@ -667,12 +667,12 @@ library handles reconnection automatically if the peer becomes unavailable.
 Unbind a socket from an address.
 
 ```c
-int zlink_unbind (void *s_, const char *addr_);
+zlink_connect_result_t zlink_unbind (void *s_, const char *addr_);
 ```
 
 Removes a previously established binding.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONNECT_OK` on success; otherwise a `zlink_connect_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_bind`
 
@@ -683,12 +683,12 @@ Removes a previously established binding.
 Disconnect a socket from a remote address.
 
 ```c
-int zlink_disconnect (void *s_, const char *addr_);
+zlink_connect_result_t zlink_disconnect (void *s_, const char *addr_);
 ```
 
 Removes a previously established connection.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONNECT_OK` on success; otherwise a `zlink_connect_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_connect`
 
@@ -699,7 +699,7 @@ Removes a previously established connection.
 Attach a raw socket to a discovery service view.
 
 ```c
-int zlink_socket_attach_discovery (void *socket_, void *discovery_);
+zlink_config_result_t zlink_socket_attach_discovery (void *socket_, void *discovery_);
 ```
 
 Attaches a raw ROUTER, DEALER, PUB, or SUB socket to a discovery service
@@ -707,7 +707,7 @@ view. While attached, manual `connect`, `disconnect`, `unbind`, and `close`
 operations fail. Destroy the discovery instance to terminate the attached
 socket lifecycle.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_socket`, `zlink_close`
 
@@ -718,7 +718,7 @@ socket lifecycle.
 Install or replace the send-ready callback.
 
 ```c
-bool zlink_send_ready_handler (
+zlink_handler_result_t zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
@@ -735,7 +735,7 @@ worth retrying; the signal itself does not guarantee the retry will
 succeed, and the first retry after the notification may still fail with
 `BACKPRESSURED`. Unsupported subjects return `ENOTSUP`.
 
-**Returns:** `true` on success, `false` on failure (errno is set).
+**Returns:** `ZLINK_HANDLER_OK` on success; otherwise a `zlink_handler_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_send`
 

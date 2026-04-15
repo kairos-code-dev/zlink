@@ -1917,101 +1917,20 @@ bool attach_recv_handler(napi_env env, void *socket, napi_value handler)
 
 bool attach_router_handler(napi_env env, void *socket, napi_value handler)
 {
-    router_handler_js_state_t *slot = NULL;
-    size_t slot_index = 0;
-    {
-        std::lock_guard<std::mutex> lock(g_router_handler_slots_mu);
-        if (find_router_handler_slot_by_socket_unsafe(socket)) {
-            napi_throw_error(env, NULL, "routerHandler already attached");
-            return false;
-        }
-        slot = find_free_router_handler_slot_unsafe();
-        if (!slot) {
-            napi_throw_error(env, NULL, "no free routerHandler slot");
-            return false;
-        }
-        slot_index = static_cast<size_t>(slot - g_router_handler_slots);
-    }
-
-    napi_value resource_name;
-    napi_create_string_utf8(env, "zlink-router-handler", NAPI_AUTO_LENGTH,
-                            &resource_name);
-    napi_threadsafe_function tsfn = NULL;
-    napi_status tsfn_status = napi_create_threadsafe_function(
-      env, handler, NULL, resource_name, 0, 1, slot,
-      router_handler_tsfn_finalize, slot, router_handler_tsfn_call_js, &tsfn);
-    if (tsfn_status != napi_ok) {
-        napi_throw_error(
-          env, NULL, "routerHandler failed to create callback queue");
-        return false;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(g_router_handler_slots_mu);
-        slot->used = true;
-        slot->socket = socket;
-        slot->env = env;
-        slot->tsfn = tsfn;
-    }
-
-    int rc = zlink_router_handler(
-      socket, g_router_handler_slot_callbacks[slot_index], slot);
-    if (rc != 0) {
-        router_handler_release_slot(socket);
-        throw_last_error(env, "routerHandler failed");
-        return false;
-    }
-    return true;
+    (void) socket;
+    (void) handler;
+    napi_throw_error(
+      env, NULL, "routerHandler is not available on the aligned public API");
+    return false;
 }
 
 bool attach_subscribe_handler(napi_env env, void *socket, napi_value handler)
 {
-    subscribe_handler_js_state_t *slot = NULL;
-    size_t slot_index = 0;
-    {
-        std::lock_guard<std::mutex> lock(g_subscribe_handler_slots_mu);
-        if (find_subscribe_handler_slot_by_socket_unsafe(socket)) {
-            napi_throw_error(env, NULL, "subscribeHandler already attached");
-            return false;
-        }
-        slot = find_free_subscribe_handler_slot_unsafe();
-        if (!slot) {
-            napi_throw_error(env, NULL, "no free subscribeHandler slot");
-            return false;
-        }
-        slot_index = static_cast<size_t>(slot - g_subscribe_handler_slots);
-    }
-
-    napi_value resource_name;
-    napi_create_string_utf8(env, "zlink-subscribe-handler", NAPI_AUTO_LENGTH,
-                            &resource_name);
-    napi_threadsafe_function tsfn = NULL;
-    napi_status tsfn_status = napi_create_threadsafe_function(
-      env, handler, NULL, resource_name, 0, 1, slot,
-      subscribe_handler_tsfn_finalize, slot, subscribe_handler_tsfn_call_js,
-      &tsfn);
-    if (tsfn_status != napi_ok) {
-        napi_throw_error(
-          env, NULL, "subscribeHandler failed to create callback queue");
-        return false;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(g_subscribe_handler_slots_mu);
-        slot->used = true;
-        slot->socket = socket;
-        slot->env = env;
-        slot->tsfn = tsfn;
-    }
-
-    int rc = zlink_subscribe_handler(
-      socket, g_subscribe_handler_slot_callbacks[slot_index], slot);
-    if (rc != 0) {
-        subscribe_handler_release_slot(socket);
-        throw_last_error(env, "subscribeHandler failed");
-        return false;
-    }
-    return true;
+    (void) socket;
+    (void) handler;
+    napi_throw_error(
+      env, NULL, "subscribeHandler is not available on the aligned public API");
+    return false;
 }
 
 bool attach_send_ready_handler(napi_env env, void *socket, napi_value handler)

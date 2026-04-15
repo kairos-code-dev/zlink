@@ -7,17 +7,30 @@ namespace Zlink.Tests;
 public sealed class test_spot_pubsub_basic
 {
     [Fact]
-    public void spot_subscription_roundtrip()
+    public void spot_subscription_roundtrip_reports_subscription_event()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
         using var ctx = new Context();
         using var node = new SpotNode(ctx);
+        using var pubSocket = new PubSocket(ctx);
+        using var subSocket = new SubSocket(ctx);
         using var spot = node.CreateSpot();
+        const string serviceName = "svc:subscription";
+        const string topic = "zone:12:*";
 
-        spot.SetSubscription("zone:12:*");
-        spot.UnsetSubscription("zone:12:*");
+        string endpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-subscription-roundtrip");
+        pubSocket.Bind(endpoint);
+        subSocket.Connect(endpoint);
+        node.AttachPubSub(serviceName, pubSocket, subSocket);
+
+        spot.SetSubscription(topic);
+        SubscriptionEvent subscribed = spot.ReceiveSubscriptionEvent();
+
+        Assert.True(subscribed.Subscribed);
+        Assert.Equal(topic, subscribed.Topic);
     }
 
     [Fact]
@@ -28,33 +41,18 @@ public sealed class test_spot_pubsub_basic
 
         using var ctx = new Context();
         using var node = new SpotNode(ctx);
+        using var pubSocket = new PubSocket(ctx);
+        using var subSocket = new SubSocket(ctx);
         using var spot = node.CreateSpot();
-        spot.SetSubscription("own:topic");
+        string endpoint = CoreTestSupport.NewEndpoint("tcp", "spot-owned");
+        pubSocket.Bind(endpoint);
+        subSocket.Connect(endpoint);
+        node.AttachPubSub("svc:owned", pubSocket, subSocket);
 
         using var msg = Message.FromString("owned-spot");
-        spot.Publish("own:topic", msg);
+        spot.Publish("svc:owned", "own:topic", msg);
 
         Assert.Throws<ObjectDisposedException>(() => _ = msg.Size);
-    }
-
-    [Fact]
-    public void spot_subscribe_handler_blocks_direct_subscribe_path()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
-        using var spot = node.CreateSpot();
-        spot.SetSubscription("cb:topic");
-        spot.OnSubscribe((topic, parts) =>
-        {
-            foreach (Message part in parts)
-                part.Dispose();
-        });
-
-        Assert.Throws<ZlinkRecvException>(() =>
-            spot.Subscribe(RecvFlags.DontWait));
     }
 
     [Fact]
@@ -68,17 +66,20 @@ public sealed class test_spot_pubsub_basic
         using var spot = node.CreateSpot();
 
         string tooLongTopic = new string('a', 256);
+        string tooLongService = new string('s', 256);
 
-        Assert.Throws<ArgumentException>(() => spot.SetSubscription(""));
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            spot.SetSubscription(tooLongTopic));
-        Assert.Throws<ArgumentException>(() => spot.UnsetSubscription(""));
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            spot.UnsetSubscription(tooLongTopic));
-        Assert.Throws<ArgumentException>(() =>
-            spot.Publish("", Message.FromString("x")));
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            spot.Publish(tooLongTopic, Message.FromString("x")));
+        using (Message message = Message.FromString("x"))
+            Assert.ThrowsAny<ArgumentException>(() => spot.Publish("", "topic",
+                message));
+        using (Message message = Message.FromString("x"))
+            Assert.ThrowsAny<ArgumentException>(() => spot.Publish("svc", "",
+                message));
+        using (Message message = Message.FromString("x"))
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                spot.Publish(tooLongService, "topic", message));
+        using (Message message = Message.FromString("x"))
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                spot.Publish("svc", tooLongTopic, message));
     }
 
     [Fact]
@@ -90,194 +91,59 @@ public sealed class test_spot_pubsub_basic
             return;
 
         using var ctx = new Context();
-        using var pubNode = new SpotNode(ctx);
-        using var subNode = new SpotNode(ctx);
-        using var publisher = pubNode.CreateSpot();
-        using var subscriber = subNode.CreateSpot();
+        using var node = new SpotNode(ctx);
+        using var pubSocket = new PubSocket(ctx);
+        using var subSocket = new SubSocket(ctx);
+        using var spot = node.CreateSpot();
 
-        string endpoint = CoreTestSupport.NewEndpoint("tcp", "spot-node-manual");
-        pubNode.Bind(endpoint);
-        subNode.ConnectPeer(endpoint);
-        subscriber.SetSubscription("spot:test");
+        const string serviceName = "svc:spot-node";
+        const string topic = "spot:test";
+        string endpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-node-manual");
+        pubSocket.Bind(endpoint);
+        subSocket.Connect(endpoint);
+        node.AttachPubSub(serviceName, pubSocket, subSocket);
+        spot.SetSubscription(topic);
 
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(5000);
         while (DateTime.UtcNow < deadline)
         {
             using Message message = Message.FromString("node-backed");
-            publisher.Publish("spot:test", message);
-            string? received = TryReceiveSpotUtf8(subscriber);
-            if (received == "node-backed")
-                return;
-            Thread.Sleep(10);
-        }
+            spot.Publish(serviceName, topic, message);
 
-        throw new TimeoutException("spot node-backed roundtrip timeout");
-    }
-
-    [Fact]
-    public void spot_node_backed_subscribe_handler_blocks_direct_subscribe_path()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
-        using var spot = node.CreateSpot();
-        spot.SetSubscription("node:cb");
-        spot.OnSubscribe((topic, parts) =>
-        {
-            foreach (Message part in parts)
-                part.Dispose();
-        });
-
-        Assert.Throws<ZlinkRecvException>(() =>
-            spot.Subscribe(RecvFlags.DontWait));
-    }
-
-    [Fact]
-    public void spot_node_backed_callback_roundtrip_over_manual_peer()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-        if (!CoreTestSupport.IsTransportSupported("tcp"))
-            return;
-
-        using var ctx = new Context();
-        using var pubNode = new SpotNode(ctx);
-        using var subNode = new SpotNode(ctx);
-        using var publisher = pubNode.CreateSpot();
-        using var subscriber = subNode.CreateSpot();
-        using var receivedSignal = new ManualResetEventSlim(false);
-
-        string? receivedPayload = null;
-        subscriber.OnSubscribe((_, parts) =>
-        {
-            try
-            {
-                if (parts.Length == 1)
-                    receivedPayload = parts[0].GetString();
-            }
-            finally
-            {
-                foreach (Message part in parts)
-                    part.Dispose();
-                receivedSignal.Set();
-            }
-        });
-
-        string endpoint = CoreTestSupport.NewEndpoint("tcp", "spot-node-callback");
-        pubNode.Bind(endpoint);
-        subNode.ConnectPeer(endpoint);
-        subscriber.SetSubscription("spot:callback");
-
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(5000);
-        while (DateTime.UtcNow < deadline && !receivedSignal.IsSet)
-        {
-            using Message message = Message.FromString("node-callback");
-            publisher.Publish("spot:callback", message);
-            receivedSignal.Wait(10);
-        }
-
-        Assert.True(receivedSignal.IsSet, "spot node-backed callback timeout");
-        Assert.Equal("node-callback", receivedPayload);
-    }
-
-    [Fact]
-    public void spot_subscribe_callback_hops_to_registered_context()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-        if (!CoreTestSupport.IsTransportSupported("tcp"))
-            return;
-
-        using var ctx = new Context();
-        using var pubNode = new SpotNode(ctx);
-        using var subNode = new SpotNode(ctx);
-        using var publisher = pubNode.CreateSpot();
-        using var subscriber = subNode.CreateSpot();
-        using var receivedSignal = new ManualResetEventSlim(false);
-        using var callbackContext = new SingleThreadSynchronizationContext();
-
-        string? receivedPayload = null;
-        int callbackThreadId = -1;
-
-        callbackContext.Invoke(() =>
-        {
-            subscriber.OnSubscribe((topic, parts) =>
-            {
-                callbackThreadId = Environment.CurrentManagedThreadId;
-                try
-                {
-                    if (parts.Length == 1)
-                        receivedPayload = parts[0].GetString();
-                }
-                finally
-                {
-                    foreach (Message part in parts)
-                        part.Dispose();
-                    receivedSignal.Set();
-                }
-            });
-        });
-
-        string endpoint = CoreTestSupport.NewEndpoint("tcp",
-            "spot-callback-context");
-        pubNode.Bind(endpoint);
-        subNode.ConnectPeer(endpoint);
-        subscriber.SetSubscription("spot:callback");
-
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(5000);
-        while (DateTime.UtcNow < deadline && !receivedSignal.IsSet)
-        {
-            using Message message = Message.FromString("node-callback");
-            publisher.Publish("spot:callback", message);
-            receivedSignal.Wait(10);
-        }
-
-        Assert.True(receivedSignal.IsSet, "spot subscribe callback timeout");
-        Assert.Equal(callbackContext.ThreadId, callbackThreadId);
-        Assert.Equal("node-callback", receivedPayload);
-    }
-
-    private static string? TryReceiveSpotUtf8(Spot subscriber)
-    {
-        Subscribed subscribed;
-        try
-        {
-            subscribed = subscriber.Subscribe(RecvFlags.DontWait);
-        }
-        catch (ZlinkRecvException)
-        {
-            return null;
-        }
-
-        try
-        {
-            return subscribed!.Parts.Count == 0
-                ? string.Empty
-                : subscribed.SinglePartOrThrow().GetString();
-        }
-        finally
-        {
-            foreach (Message part in subscribed!.Parts)
-                part.Dispose();
-        }
-    }
-
-    private static string ReceiveSpotUtf8WithTimeout(Spot subscriber, int timeoutMs)
-    {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            string? received = TryReceiveSpotUtf8(subscriber);
+            TopicMessage? received = TryReceiveSpot(spot);
             if (received == null)
             {
                 Thread.Sleep(10);
                 continue;
             }
-            return received;
+
+            try
+            {
+                Assert.Equal(serviceName, received.ServiceName);
+                Assert.Equal(topic, received.Topic);
+                Assert.Equal("node-backed",
+                    received.SinglePartOrThrow().GetString());
+                return;
+            }
+            finally
+            {
+                received.Dispose();
+            }
         }
 
-        throw new TimeoutException("spot subscribe timeout");
+        throw new TimeoutException("spot node-backed roundtrip timeout");
+    }
+
+    private static TopicMessage? TryReceiveSpot(Spot subscriber)
+    {
+        try
+        {
+            return subscriber.Subscribe(RecvFlags.DontWait);
+        }
+        catch (ZlinkRecvException)
+        {
+            return null;
+        }
     }
 }

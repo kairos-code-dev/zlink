@@ -16,6 +16,13 @@ async function reservePort() {
   return port;
 }
 
+function frame(payload) {
+  const framed = Buffer.allocUnsafe(payload.length + 4);
+  framed.writeUInt32BE(payload.length, 0);
+  payload.copy(framed, 4);
+  return framed;
+}
+
 async function main() {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
@@ -30,25 +37,26 @@ async function main() {
 
     const received = await new Promise((resolve, reject) => {
       try {
-        stream.onReceive((message) => {
-          resolve(message);
+        stream.onPacket((sourceRid, header, body) => {
+          resolve({ sourceRid, header, body });
         });
       } catch (error) {
         reject(error);
         return;
       }
-      const sent = 'hello-stream';
-      client.write(Buffer.from(sent));
+      const header = Buffer.from('hello-stream-header');
+      const body = Buffer.from('hello-stream-body');
+      client.write(Buffer.concat([frame(header), frame(body)]));
     });
 
-    assert.ok(received.routingId instanceof zlink.RoutingId);
-    const recv = received.parts[0].data().toString();
-    assert.equal(recv, 'hello-stream');
+    assert.ok(received.sourceRid instanceof zlink.RoutingId);
+    assert.equal(received.header.data().toString(), 'hello-stream-header');
+    assert.equal(received.body.data().toString(), 'hello-stream-body');
 
-    stream.send(received.routingId, Buffer.from('hello-stream'));
+    stream.send(received.sourceRid, received.body.data());
     const [reply] = await once(client, 'data');
-    assert.equal(reply.toString(), 'hello-stream');
-    console.log(`[stream/callback] send: "hello-stream" \u2192 recv: "${recv}"`);
+    assert.equal(reply.toString(), 'hello-stream-body');
+    console.log('[stream/packet] packet handler received framed header/body and echoed the body');
   } finally {
     if (client) {
       client.destroy();

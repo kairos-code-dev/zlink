@@ -281,7 +281,8 @@ public final class PerfUtil {
         try {
             return Optional.ofNullable(supplier.get());
         } catch (RecvException ex) {
-            if (ex.getResult() == RecvResult.NO_DATA) {
+            if (ex.getResult() == RecvResult.NO_DATA
+                || ex.getResult() == RecvResult.BUSY) {
                 return Optional.empty();
             }
             throw ex;

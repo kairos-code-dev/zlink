@@ -63,7 +63,7 @@ public abstract class RoutedMessageSocketBase : SocketBase
         return Kernel.TrySend(routingId, parts);
     }
 
-    public void OnReceive(SocketRecvHandler handler)
+    internal void OnReceive(SocketRecvHandler handler)
     {
         Kernel.RecvHandler(handler);
     }

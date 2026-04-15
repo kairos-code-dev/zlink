@@ -36,7 +36,7 @@ handle에서 이 세 모델 중 정확히 하나만 활성화할 수 있습니�
 STREAM 소켓 전용 옵션을 설정합니다.
 
 ```c
-int zlink_set_stream_option (void *handle_,
+zlink_config_result_t zlink_set_stream_option (void *handle_,
                               zlink_stream_option_t option_,
                               const void *optval_,
                               size_t optvallen_);
@@ -45,9 +45,7 @@ int zlink_set_stream_option (void *handle_,
 STREAM 소켓 옵션을 설정합니다. 모든 소켓 타입에 공유되는 공통 옵션은
 `zlink_set_option()`을 사용하세요.
 
-**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
-`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
-`zlink_errno()`로 유지됩니다.
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_get_stream_option`, `zlink_set_option`
 
@@ -58,7 +56,7 @@ STREAM 소켓 옵션을 설정합니다. 모든 소켓 타입에 공유되는 �
 STREAM 소켓 전용 옵션을 조회합니다.
 
 ```c
-int zlink_get_stream_option (void *handle_,
+zlink_config_result_t zlink_get_stream_option (void *handle_,
                               zlink_stream_option_t option_,
                               void *optval_,
                               size_t *optvallen_);
@@ -66,9 +64,7 @@ int zlink_get_stream_option (void *handle_,
 
 STREAM 소켓 옵션의 현재 값을 가져옵니다.
 
-**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
-`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
-`zlink_errno()`로 유지됩니다.
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_set_stream_option`
 
@@ -107,7 +103,7 @@ zlink_submit_result_t zlink_send_rid (void *s_,
 
 ### 논블로킹 routed send
 
-기존 routed send API를 이용한 논블로킹 전송입니다.
+routed send API를 이용한 논블로킹 전송입니다.
 
 ```c
 zlink_submit_result_t zlink_send_rid (void *s_,
@@ -135,11 +131,11 @@ zlink_submit_result_t zlink_send_rid (void *s_,
 소켓에서 멀티파트 메시지를 수신합니다.
 
 ```c
-bool zlink_recv (void *s_,
+zlink_recv_result_t zlink_recv (void *s_,
                  zlink_routing_id_t *source_rid_out_,
                  zlink_msg_t **parts_out_,
                  size_t *part_count_out_,
-                 zlink_send_flags_t flags_);
+                 zlink_recv_flags_t flags_);
 ```
 
 소켓 `s_`에서 완전한 멀티파트 메시지를 수신합니다. 성공 시 `*parts_out_`는
@@ -152,7 +148,7 @@ bool zlink_recv (void *s_,
 (`zlink_stream_packet_handler()` 부착)에서는 `errno=EBUSY`로 실패합니다.
 메시지가 없을 때 즉시 반환하려면 `ZLINK_DONTWAIT`를 전달하세요.
 
-**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_RECV_OK`, 실패 시 `zlink_recv_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우, 또는
 `ZLINK_OPT_RCVTIMEO`가 만료된 경우 `EAGAIN`. raw callback이나 packet
@@ -254,7 +250,7 @@ invalid stream으로 처리되며 기본 동작은 연결 종료입니다. 부�
 send-ready 콜백을 설정하거나 교체합니다.
 
 ```c
-bool zlink_send_ready_handler (
+zlink_handler_result_t zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
@@ -268,6 +264,6 @@ bool zlink_send_ready_handler (
 readiness 신호는 송신을 다시 시도할 가치가 있다는 뜻이며, 재시도가 반드시
 성공한다는 보장은 아닙니다. 지원하지 않는 subject는 `ENOTSUP`를 반환합니다.
 
-**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_HANDLER_OK`, 실패 시 `zlink_handler_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_send`

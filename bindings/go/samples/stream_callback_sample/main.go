@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"zlink"
 	"zlink/samples/internal/samplecommon"
 )
@@ -20,21 +19,31 @@ func main() {
 	samplecommon.Must(server.Bind(endpoint))
 
 	done := make(chan error, 1)
-	samplecommon.Must(server.OnReceive(func(received *zlink.Received) {
-		defer received.Close()
-		done <- server.SendTo(received.RoutingID(), zlink.SendFlagsNone, samplecommon.Message("hello-stream"))
+	samplecommon.Must(server.OnPacket(func(source zlink.RoutingID, header, body *zlink.Message) {
+		if got := string(body.Data()); got != "hello-stream" {
+			done <- fmt.Errorf("unexpected packet body %q", got)
+			_ = header.Close()
+			_ = body.Close()
+			return
+		}
+		packet := samplecommon.FrameStreamPacketMessage(header, body)
+		_ = header.Close()
+		_ = body.Close()
+		if err := server.SendTo(source, zlink.SendFlagsNone, packet); err != nil {
+			_ = packet.Close()
+			done <- err
+			return
+		}
+		done <- nil
 	}))
 
 	conn := samplecommon.DialEndpoint(endpoint)
 	defer conn.Close()
 
 	sent := "hello-stream"
-	_, err = conn.Write([]byte(sent))
-	samplecommon.Must(err)
+	samplecommon.WriteStreamPacket(conn, []byte(sent))
 
-	buffer := make([]byte, len(sent))
-	_, err = io.ReadFull(conn, buffer)
-	samplecommon.Must(err)
+	buffer := samplecommon.ReadStreamPacketBody(conn)
 	samplecommon.Must(<-done)
 
 	fmt.Printf("[stream/callback] send: %q -> recv: %q\n", sent, string(buffer))

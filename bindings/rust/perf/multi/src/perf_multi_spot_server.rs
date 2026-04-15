@@ -1,69 +1,88 @@
-//! MULTI_SPOT server: one-way PUB sender through SPOT facade.
-//! Sends active → stop token. POLLOUT for backpressure.
+//! MULTI_SPOT server: service-aware Spot publisher.
 
 mod common;
 
-use common::backpressure::SocketBackpressure;
+use std::thread;
 use std::time::{Duration, Instant};
 use zlink::*;
+
+const SERVICE_NAME: &str = "perf.spot";
+const TOPIC: &str = "perf.spot.topic";
+
+fn reserve_tcp_port() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("reserve port");
+    let port = listener.local_addr().expect("local_addr").port();
+    drop(listener);
+    port
+}
+
+fn settle_ms() -> u64 {
+    std::env::var("PERF_SETTLE_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(500)
+}
+
+fn bind_endpoint(transport: &str) -> String {
+    match transport {
+        "ws" => "ws://0.0.0.0:0".to_string(),
+        "wss" => "wss://0.0.0.0:0".to_string(),
+        "tls" => "tls://0.0.0.0:0".to_string(),
+        _ => "tcp://0.0.0.0:0".to_string(),
+    }
+}
+
+fn attach_service_pair(ctx: &Context, node: &SpotNode, service_name: &str) -> (PubSocket, SubSocket) {
+    let pub_sock = ctx.pub_socket().expect("pub socket");
+    let sub_sock = ctx.sub_socket().expect("sub socket");
+    let endpoint = format!("tcp://127.0.0.1:{}", reserve_tcp_port());
+    pub_sock.bind(&endpoint).expect("pub bind");
+    sub_sock.connect(&endpoint).expect("sub connect");
+    node.attach_pubsub(service_name, &pub_sock, &sub_sock)
+        .expect("attach_pubsub");
+    (pub_sock, sub_sock)
+}
 
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
 
     let ctx = Context::new().expect("context");
-    let pub_sock = ctx.pub_socket().expect("pub");
-    pub_sock.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
-    pub_sock.bind("tcp://0.0.0.0:0").expect("bind");
-    let endpoint = pub_sock.last_endpoint().expect("endpoint");
+    let node = SpotNode::new(&ctx).expect("spot node");
+
+    if matches!(args.transport.as_str(), "tls" | "wss") {
+        let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
+        node.set_tls_server(&tls.cert, &tls.key, false)
+            .expect("node tls");
+    }
+
+    let _service_pair = attach_service_pair(&ctx, &node, SERVICE_NAME);
+
+    let endpoint = bind_endpoint(&args.transport);
+    node.bind(&endpoint).expect("bind");
+    let endpoint = node.last_endpoint().expect("endpoint");
+    let spot = node.create_spot().expect("spot");
 
     common::print_ready(&endpoint);
-    std::thread::sleep(Duration::from_millis(500));
-
-    let poller = Poller::new().expect("poller");
-    poller.add_socket(&pub_sock, 0, POLLOUT).expect("poller add");
+    thread::sleep(Duration::from_millis(settle_ms()));
 
     let msg_size = args.msg_size;
     let mut buf = vec![0u8; msg_size.max(common::HEADER_SIZE)];
+    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     let mut seq: u64 = 1;
 
-    send_phase(&pub_sock, &poller, &mut buf, &mut seq, msg_size,
-               common::PHASE_ACTIVE, Duration::from_secs(settings.duration_seconds));
+    while Instant::now() < deadline {
+        common::encode_header(&mut buf, common::PHASE_ACTIVE, msg_size as u32, seq);
+        seq += 1;
+        let msg = Message::copy_from(&buf).expect("msg");
+        let _ = spot.publish(SERVICE_NAME, TOPIC, msg);
+    }
 
     let stop_deadline = Instant::now() + Duration::from_secs(1);
     while Instant::now() < stop_deadline {
-        let stop = Message::from_bytes(common::STOP_TOKEN).expect("stop");
-        let _ = pub_sock.publish("S", stop);
+        let stop_msg = Message::copy_from(common::STOP_TOKEN).expect("stop");
+        let _ = spot.publish(SERVICE_NAME, TOPIC, stop_msg);
     }
 
-}
-
-fn send_phase(pub_sock: &PubSocket, poller: &Poller, buf: &mut [u8], seq: &mut u64, msg_size: usize,
-              phase: u8, duration: Duration) {
-    let deadline = Instant::now() + duration;
-    let mut backpressure = SocketBackpressure::new();
-    while Instant::now() < deadline {
-        if !backpressure.is_pending() {
-            common::encode_header(buf, phase, msg_size as u32, *seq);
-            let msg = Message::from_bytes(buf).expect("msg");
-            match pub_sock.try_publish("S", msg) {
-                Ok(SendResult::Sent) => { *seq += 1; }
-                _ => {
-                    backpressure.mark_pending(|| {
-                        let _ = poller.modify_socket(pub_sock, POLLOUT);
-                    });
-                }
-            }
-        } else {
-            let remain = (deadline - Instant::now()).as_millis() as i64;
-            let wait = remain.min(50).max(1);
-            if let Ok(Some(ev)) = poller.wait(wait) {
-                if ev.is_writable() {
-                    backpressure.clear_pending(|| {
-                        let _ = poller.modify_socket(pub_sock, 0);
-                    });
-                }
-            }
-        }
-    }
+    common::wait_for_stop_stdin();
 }

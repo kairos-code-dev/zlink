@@ -35,7 +35,7 @@ void test_spot_node_discovery_direct_and_child_interop ()
     TEST_ASSERT_NOT_NULL (pub_node);
     TEST_ASSERT_NOT_NULL (sub_node);
     void *pub = create_spot_pub_handle (pub_node);
-    void *sub = create_spot_sub_handle (sub_node, &queued_spot_handler);
+    void *sub = create_spot_sub_handle (sub_node);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
 

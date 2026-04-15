@@ -72,6 +72,9 @@ func TestMonitorOnEventReceivesStateChange(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("OnEvent() error = %v", err)
 	}
+	if _, err := serverMon.Recv(); err == nil {
+		t.Fatalf("Recv() after OnEvent() should fail")
+	}
 
 	if err := server.Bind(endpoint); err != nil {
 		t.Fatalf("Bind() error = %v", err)
@@ -155,5 +158,8 @@ func TestServiceMonitorOnEventReceivesRegistryStateChange(t *testing.T) {
 	mask := zlink.ServiceMonitorEventType(zlink.ServiceMonitorEventDiscoveryServiceUp | zlink.ServiceMonitorEventDiscoveryProvidersChanged)
 	if event.EventType&mask == 0 {
 		t.Fatalf("unexpected service monitor callback event: %+v", event)
+	}
+	if _, err := monitor.Recv(); err == nil {
+		t.Fatalf("Recv() after service OnEvent() should fail")
 	}
 }

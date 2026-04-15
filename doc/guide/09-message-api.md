@@ -78,9 +78,9 @@ void *data = zlink_msg_data(&msg);
 size_t size = zlink_msg_size(&msg);
 ```
 
-> **Removed:** `zlink_msg_more()` and `ZLINK_MORE` have been removed from the header.
-> With the multipart parts-array API, the `more` flag is no longer needed in
-> application code.
+> **Note:** The header does not expose `zlink_msg_more()` or
+> `ZLINK_MORE`. Application code uses the multipart parts-array API
+> instead of a per-message `more` flag.
 
 ### 3.3 Sending
 
@@ -419,18 +419,12 @@ zlink_send_rid(router, &target_rid, parts, part_count, 0);
 ```
 
 
-## 10. Request-Reply and Metadata Changes
+## 10. Request-Reply and Metadata
 
-Previous versions of this guide documented message-level request-reply and
-per-message metadata functions. These have been removed:
+`zlink_msg_t` is a payload part container. It does not carry
+request-reply or per-message metadata fields.
 
-- `zlink_msg_set_request`, `zlink_msg_set_reply`,
-  `zlink_msg_get_request_info` -- removed
-- `zlink_msg_set_metadata`, `zlink_msg_get_metadata`,
-  `zlink_msg_clear_metadata` -- removed
-- `zlink_msg_t` now serves purely as a payload part container
-
-Current request-reply uses dedicated typed API surfaces:
+Request-reply uses dedicated typed API surfaces:
 
 - **DEALER/ROUTER**: `zlink_dealer_request()`, `zlink_router_request()`,
   `zlink_router_reply()`, `zlink_router_recv()`
@@ -441,11 +435,11 @@ Current request-reply uses dedicated typed API surfaces:
 
 From the message API perspective, the key points are:
 
-- Payload is still built with `zlink_msg_t` (init, send, close)
-- Request-reply context lives in wire control parts, not message fields
-- The message metadata serialization path is no longer a public contract
+- Payload is built with `zlink_msg_t` (init, send, close).
+- Request-reply context lives in wire control parts, not message fields.
+- Message metadata serialization is not a public contract.
 - If application-level metadata is needed (trace-id, priority, etc.),
-  encode it as a multipart payload frame
+  encode it as a multipart payload frame.
 
 ---
 [← Routing ID](08-routing-id.md) | [Performance →](10-performance.md)

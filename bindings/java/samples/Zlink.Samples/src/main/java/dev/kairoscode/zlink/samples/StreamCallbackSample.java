@@ -23,17 +23,17 @@ public final class StreamCallbackSample {
             try (var rawClient = SampleSupport.connectRawTcp(endpoint)) {
                 SampleSupport.waitStreamConnected(monitor);
 
-                server.onReceive(received -> {
-                    String value = SampleSupport.singleUtf8(received);
-                    RoutingId rid = received.routingId().orElse(null);
-                    if (!SampleSupport.STREAM_PAYLOAD.equals(value) || rid == null) {
-                        throw new IllegalStateException("unexpected stream delivery");
+                server.onPacket((routingId, payload) -> {
+                    String value = payload.toUtf8String();
+                    if (!SampleSupport.STREAM_PAYLOAD.equals(value) || routingId == null) {
+                        return 0;
                     }
                     try (Message reply = Message.copyOfUtf8(
                              SampleSupport.STREAM_PAYLOAD)) {
-                        server.send(rid, reply, SendFlags.DONT_WAIT);
+                        server.send(routingId, reply, SendFlags.DONT_WAIT);
                     }
                     delivered.countDown();
+                    return 0;
                 });
 
                 byte[] payload =

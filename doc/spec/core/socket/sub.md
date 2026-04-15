@@ -20,7 +20,7 @@ Used with `zlink_set_sub_option()` / `zlink_get_sub_option()`.
 Set a sub-specific option.
 
 ```c
-int zlink_set_sub_option (void *handle_,
+zlink_config_result_t zlink_set_sub_option (void *handle_,
                            zlink_sub_option_t option_,
                            const void *optval_,
                            size_t optvallen_);
@@ -30,7 +30,7 @@ Configures a SUB/XSUB socket option. Also applies to spot-sub and
 spotnode-sub handles. Use `zlink_set_option()` for common options shared
 across all socket types.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_get_sub_option`, `zlink_set_option`
 
@@ -41,7 +41,7 @@ across all socket types.
 Get a sub-specific option.
 
 ```c
-int zlink_get_sub_option (void *handle_,
+zlink_config_result_t zlink_get_sub_option (void *handle_,
                            zlink_sub_option_t option_,
                            void *optval_,
                            size_t *optvallen_);
@@ -49,7 +49,7 @@ int zlink_get_sub_option (void *handle_,
 
 Retrieves the current value of a SUB/XSUB socket option.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_set_sub_option`
 
@@ -60,7 +60,7 @@ Retrieves the current value of a SUB/XSUB socket option.
 Subscribe to a topic filter on a raw socket.
 
 ```c
-int zlink_set_subscription (void *handle_, const char *filter_);
+zlink_config_result_t zlink_set_subscription (void *handle_, const char *filter_);
 ```
 
 Subscribes the handle to messages matching `filter_`. Filter
@@ -69,7 +69,7 @@ otherwise it is an exact topic.
 
 Applicable types: raw SUB, raw XSUB.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Errors:** `EFAULT` if `handle_` is NULL. `EINVAL` if `filter_` is NULL,
 empty, or contains invalid pattern syntax (multiple `*` or mid-string `*`).
@@ -84,7 +84,7 @@ empty, or contains invalid pattern syntax (multiple `*` or mid-string `*`).
 Unsubscribe from a topic filter on a raw socket.
 
 ```c
-int zlink_unset_subscription (void *handle_, const char *filter_);
+zlink_config_result_t zlink_unset_subscription (void *handle_, const char *filter_);
 ```
 
 Removes a previously registered subscription. The same string
@@ -93,7 +93,7 @@ means pattern unsubscribe, otherwise exact topic unsubscribe.
 
 Applicable types: raw SUB, raw XSUB.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Errors:** `EFAULT` if `handle_` is NULL. `EINVAL` if `filter_` is NULL
 or empty. `ENOTSUP` if the handle type does not support unsubscribe.
@@ -107,13 +107,13 @@ or empty. `ENOTSUP` if the handle type does not support unsubscribe.
 Receive a topic-bearing multipart message.
 
 ```c
-int zlink_subscribe (void *subject_,
+zlink_recv_result_t zlink_subscribe (void *subject_,
                      zlink_routing_id_t *source_rid_out_,
                      zlink_msg_t **parts_out_,
                      size_t *part_count_out_,
                      char *topic_id_out_,
                      size_t *topic_id_len_out_,
-                     zlink_send_flags_t flags_);
+                     zlink_recv_flags_t flags_);
 ```
 
 Receives the next topic-bearing message in recv mode. On success,
@@ -129,7 +129,7 @@ function.
 
 Applicable types: raw SUB, raw XSUB, `spot`, `spot_node`.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Errors:** `EFAULT` if `subject_` is NULL. `EAGAIN` if `ZLINK_DONTWAIT`
 was set and no message is available. `EMSGSIZE` if the topic buffer is
@@ -144,7 +144,7 @@ too small. `ENOTSUP` if the subject type does not support subscribe recv.
 Retrieve the subscription filter at a given index.
 
 ```c
-int zlink_subscription_at (void *handle_,
+zlink_config_result_t zlink_subscription_at (void *handle_,
                            size_t index_,
                            char *filter_out_,
                            size_t *filter_len_inout_,
@@ -158,7 +158,7 @@ length. `*is_pattern_out_` is 1 if the filter is a prefix pattern (trailing
 
 Applicable types: raw SUB, raw XSUB.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Errors:** `EINVAL` if index is out of range. `EMSGSIZE` if the buffer is
 too small. `ENOTSUP` if the handle type does not support subscription query.

@@ -744,6 +744,7 @@ class base_socket_t : public socket_handle_t
         message_ = topic_message_t (
           source_rid.empty () ? std::nullopt
                               : std::optional<routing_id_t> (source_rid),
+          std::nullopt,
           std::move (topic), std::move (parts));
         return 0;
     }
@@ -777,6 +778,7 @@ class base_socket_t : public socket_handle_t
                         recv_flags_t flags_ = recv_flags_t::none)
     {
         event_.routing_id = std::nullopt;
+        event_.service_name = std::nullopt;
         event_.topic.clear ();
         event_.subscribed = false;
         routing_id_t source_rid;
@@ -812,12 +814,6 @@ class base_socket_t : public socket_handle_t
         return 0;
     }
 
-    ZLINK_CPP_NODISCARD int on_receive (zlink_socket_msg_handler_fn handler_,
-                                        void *userdata_ = NULL)
-    {
-        return zlink_recv_handler (handle (), handler_, userdata_);
-    }
-
     ZLINK_CPP_NODISCARD int
     on_send_ready (zlink_send_ready_handler_fn handler_,
                    void *userdata_ = NULL)
@@ -826,6 +822,18 @@ class base_socket_t : public socket_handle_t
     }
 
   protected:
+    ZLINK_CPP_NODISCARD int on_receive (zlink_socket_msg_handler_fn handler_,
+                                        void *userdata_ = NULL)
+    {
+        return zlink_recv_handler (handle (), handler_, userdata_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    on_packet (zlink_stream_packet_handler_fn handler_, void *userdata_ = NULL)
+    {
+        return zlink_stream_packet_handler (handle (), handler_, userdata_);
+    }
+
     ZLINK_CPP_NODISCARD int
     set_option (socket_option option_, const void *value_, size_t size_)
     {

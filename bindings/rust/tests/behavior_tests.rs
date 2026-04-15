@@ -1,7 +1,6 @@
 //! Behavior tests -- verify that the binding layer correctly relays
 //! core send/recv/publish/subscribe contracts.
 
-use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -101,6 +100,7 @@ fn pub_sub_roundtrip() {
 
     let topic_msg = sub_sock.subscribe().unwrap();
     assert_eq!(topic_msg.topic(), "market.price");
+    assert!(topic_msg.service_name.is_none());
     assert_eq!(topic_msg.parts()[0].as_bytes(), b"price=42.5");
 }
 
@@ -178,36 +178,22 @@ fn dealer_router_send_from_callback() {
     drop(router_mon);
     drop(dealer_mon);
 
-    // Install callback that echoes a reply via SendHandle.
+    // Use direct recv and reply with SendHandle.
     let handle = router.send_handle();
-    let reply_ready = Arc::new((Mutex::new(false), Condvar::new()));
-    let reply_signal = reply_ready.clone();
-
-    router
-        .on_receive(move |received| {
-            assert_eq!(received.parts()[0].as_bytes(), b"request-42");
-            let reply = Message::copy_from(b"reply-42").unwrap();
-            handle
-                .send_to(received.routing_id().expect("missing routing id"), reply)
-                .unwrap();
-            let (lock, cv) = &*reply_signal;
-            *lock.lock().unwrap() = true;
-            cv.notify_one();
-        })
-        .unwrap();
 
     // Dealer sends request.
     dealer
         .send(Message::copy_from(b"request-42").unwrap())
         .unwrap();
 
-    // Wait for the callback to fire and send the reply.
-    let (lock, cv) = &*reply_ready;
-    let guard = lock.lock().unwrap();
-    let result = cv.wait_timeout(guard, Duration::from_secs(5)).unwrap();
-    assert!(!result.1.timed_out(), "callback did not fire within 5s");
+    let received = router.recv().unwrap();
+    assert_eq!(received.parts()[0].as_bytes(), b"request-42");
+    let reply = Message::copy_from(b"reply-42").unwrap();
+    handle
+        .send_to(received.routing_id().expect("missing routing id"), reply)
+        .unwrap();
 
-    // Dealer receives the reply sent from within the router callback.
+    // Dealer receives the reply sent from the router handle.
     dealer
         .common_options()
         .set_recv_timeout(Duration::from_secs(5))
@@ -233,21 +219,17 @@ fn pair_send_from_callback() {
     drop(server_mon);
     drop(client_mon);
 
-    // Install callback that echoes a reply via SendHandle.
+    // Use direct recv and echo a reply via SendHandle.
     let handle = server.send_handle();
-
-    server
-        .on_receive(move |received| {
-            assert_eq!(received.parts()[0].as_bytes(), b"ping-pair");
-            let reply = Message::copy_from(b"pong-pair").unwrap();
-            handle.send(reply).unwrap();
-        })
-        .unwrap();
 
     // Client sends and receives.
     client
         .send(Message::copy_from(b"ping-pair").unwrap())
         .unwrap();
+    let received = server.recv().unwrap();
+    assert_eq!(received.parts()[0].as_bytes(), b"ping-pair");
+    let reply = Message::copy_from(b"pong-pair").unwrap();
+    handle.send(reply).unwrap();
     client
         .common_options()
         .set_recv_timeout(Duration::from_secs(5))

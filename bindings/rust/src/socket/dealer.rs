@@ -32,7 +32,7 @@ struct CallbackRequestState {
 
 /// DEALER socket – asynchronous request/reply pattern (client side).
 ///
-/// Capabilities: `send`, `recv`, `on_receive`, `on_send_ready`.
+/// Capabilities: `send`, `recv`, `on_send_ready`.
 pub struct DealerSocket {
     pub(crate) inner: SocketInner,
 }
@@ -136,13 +136,6 @@ impl DealerSocket {
         }
         let _ = Box::into_raw(state);
         Ok(())
-    }
-
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
-    where
-        F: Fn(Received) + Send + 'static,
-    {
-        self.inner.on_receive(handler)
     }
 
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>

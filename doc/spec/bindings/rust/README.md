@@ -15,11 +15,21 @@ with the rules here, this section wins.
 
 - `PairSocket`, `DealerSocket`, and `RouterSocket` are recv-only on the data
   plane. Remove `on_receive(...)` from their public contract.
+- Every socket and `Spot` exposes `set_admission_state(state)` and
+  `admission_state()` using the typed enum
+  `AdmissionState::Serving` / `AdmissionState::Draining`. Submit to a drained
+  peer returns `Err(SubmitError { code: SubmitResult::NotAdmitted, .. })`.
+- `POLLOUT` is a send-recovery readiness signal, shared with
+  `on_send_ready(...)`. It is not a "transport writable" bit.
+- ROUTER / PUB socket option defaults follow the core header: `mandatory =
+  true`, `handover = true`, `nodrop = true`.
+- Internal pairing rule: when auto-connect pairs two same-service ROUTERs
+  via Discovery, the library picks one initiator per pair by a total order
+  on `(routing_id, advertise_endpoint)`. Users do not configure this.
 - `SubSocket` and `XSubSocket` are recv-only. Remove `on_subscribe(...)` from
   their public contract.
-- `StreamSocket` keeps `recv` and raw `on_receive`, and must also expose a
-  packet callback surface mapped to `zlink_stream_packet_handler()`.
-  Recommended canonical name: `on_packet`.
+- `StreamSocket` keeps `recv` and exposes a packet callback surface mapped to
+  `zlink_stream_packet_handler()`. Recommended canonical name: `on_packet`.
 - `SpotNode` must expose service-aware attachment APIs:
   `attach_router(service_name, &RouterSocket)`,
   `attach_pubsub(service_name, &PubSocket, &SubSocket)`,
@@ -175,6 +185,19 @@ All sockets implement `Drop` (calls `close`). Common connection and
 option methods are provided through the internal `SocketCore` but appear
 as direct methods on each socket type.
 
+Every socket type (and `Spot`) also exposes the admission-state accessor
+pair through `CommonSocketOptions` (or an equivalent inherent method):
+
+```rust
+impl<'a, S> CommonSocketOptions<'a, S> {
+    /// # Errors: ConfigError
+    pub fn admission_state(&self) -> Result<AdmissionState, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_admission_state(&self, state: AdmissionState)
+        -> Result<(), ConfigError>;
+}
+```
+
 ### PairSocket
 
 ```rust
@@ -195,9 +218,6 @@ impl PairSocket {
     pub fn recv(&self) -> Result<Received, RecvError>;
     /// # Errors: RecvError
     pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
-    /// # Errors: HandlerError
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(Received) + Send + 'static;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -290,9 +310,6 @@ impl DealerSocket {
     /// # Errors: RecvError
     pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
     /// # Errors: HandlerError
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(Received) + Send + 'static;
-    /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
 
@@ -346,9 +363,6 @@ impl RouterSocket {
     pub fn recv(&self) -> Result<Received, RecvError>;
     /// # Errors: RecvError
     pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
-    /// # Errors: HandlerError
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(Received) + Send + 'static;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -415,11 +429,12 @@ impl RouterSocket {
     pub fn reply_to_spot_with_flags(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
         request_seq: u64, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
 
-    // NOTE: RouterSocket 의 routed 수신 plane 은 단일 표면이다. 일반
-    // ROUTER 트래픽과 spot-origin routed 트래픽을 모두 recv / on_receive 로
-    // 받는다. `Received::routing_id()` 는 source_node_rid,
-    // `Received::spot_rid()` 는 spot-origin 트래픽에서만 값이 있다. 별도의
-    // recv_spot / on_spot_receive 는 제공하지 않는다.
+    // NOTE: RouterSocket 의 routed 수신 plane 은 단일 recv 표면이다. 일반
+    // ROUTER 트래픽과 spot-origin routed 트래픽을 모두 recv/recv_with_flags
+    // 로 받는다. `Received::routing_id()` 는 source_node_rid,
+    // `Received::spot_rid()` 는 spot-origin 트래픽에서만 값이 있다.
+    // data-plane callback install surface (e.g. on_receive) 는 ROUTER 에
+    // 제공하지 않는다. request completion 은 request() 경로에서만 유지된다.
 
     /// # Errors: CloseError
     pub fn close(&mut self) -> Result<(), CloseError>;
@@ -501,13 +516,21 @@ impl StreamSocket {
     /// # Errors: SubmitError
     pub fn send_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
         flags: SendFlags) -> Result<(), SubmitError>;
+    /// Two mutually-exclusive receive modes on the same StreamSocket:
+    ///   (1) recv(), (2) on_packet(handler). Second attach returns
+    ///   Err(HandlerError { code: HandlerResult::Busy, .. }).
     /// # Errors: RecvError
     pub fn recv(&self) -> Result<Received, RecvError>;
     /// # Errors: RecvError
     pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    /// Mode (3): framed packet callback mapped to
+    /// `zlink_stream_packet_handler`. Wire frame is big-endian `u16`
+    /// header_size + `u32` body_size + header + body. The handler receives
+    /// the source routing id, a header `Message`, and a body `Message`;
+    /// both messages transfer ownership to the handler.
     /// # Errors: HandlerError
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(Received) + Send + 'static;
+    pub fn on_packet<F>(&mut self, handler: F) -> Result<(), HandlerError>
+        where F: Fn(RoutingId, Message, Message) + Send + 'static;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -702,6 +725,7 @@ pub enum SubmitResult {
     OutOfMemory = 10,
     SeqExhausted = 11,
     InternalError = 12,
+    NotAdmitted = 13,   // target peer is in AdmissionState::Draining
 }
 ```
 
@@ -740,7 +764,8 @@ pub enum RecvResult {
 
 ### HandlerResult
 
-Result codes for handler registration operations (on_receive, on_subscribe, etc.).
+Result codes for handler registration operations (`on_packet`,
+`on_send_ready`, `on_routed_receive`, `on_dispatch_event`, etc.).
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -938,8 +963,8 @@ impl From<RecvError> for ZlinkError { /* wraps as ZlinkError::Recv */ }
 
 ### HandlerError
 
-Errors from handler registration (`on_receive`, `on_subscribe`,
-`on_send_ready`, `on_event`, `on_fire`, `on_dispatch_event`, etc.).
+Errors from handler registration (`on_packet`, `on_send_ready`,
+`on_event`, `on_fire`, `on_dispatch_event`, `on_routed_receive`, etc.).
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1059,6 +1084,9 @@ pub trait IntoMultipart {
 
 ### SocketMonitor
 
+Starts in recv model. `on_event(...)` transitions one-way to callback-only
+model; after that `recv()` returns a busy recv error and `snapshot()` still works.
+
 ```rust
 impl SocketMonitor {
     /// # Errors: ConfigError
@@ -1070,8 +1098,11 @@ impl SocketMonitor {
     /// # Errors: HandlerError
     pub fn on_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(&MonitorEvent) + Send + 'static;
-    /// No-op handler. Pass to `on_event` when driving the monitor via
-    /// `snapshot()` or direct `recv()` without callback dispatch.
+    /// No-op callback for callback-only model. Pass to `on_event` to keep a
+    /// valid handler when the application does not care about events; once
+    /// installed the monitor is in callback-only model and `recv()` returns
+    /// a busy recv error (`snapshot()` still works). To drive the monitor
+    /// via `snapshot()` / `recv()` instead, leave `on_event` unset.
     /// Maps to `zlink_monitor_ignore_handler`.
     pub fn ignore_handler() -> fn(&MonitorEvent);
     /// # Errors: CloseError
@@ -1080,6 +1111,9 @@ impl SocketMonitor {
 ```
 
 ### ServiceMonitor
+
+Starts in recv model. `on_event(...)` transitions one-way to callback-only
+model; after that `recv()` returns a busy recv error and `snapshot()` still works.
 
 ```rust
 impl ServiceMonitor {
@@ -1110,6 +1144,7 @@ pub struct MonitorSnapshot {
 
 impl MonitorSnapshot {
     /// Convenience check for the ready bit in `state_flags`.
+    /// Use this only for raw socket monitor sources.
     pub fn is_ready(&self) -> bool;
     pub fn is_closed(&self) -> bool;
 }
@@ -1122,18 +1157,22 @@ bindings.
 
 ```rust
 pub struct MonitorEvent {
-    pub event: MonitorEventType,         // event kind (CONNECTION_READY, CONNECTED, DISCONNECTED, ...)
-    pub value: u32,                      // event-specific detail (e.g. reason code on DISCONNECTED)
+    pub event: MonitorEventType,         // event kind (CONNECTION_READY, CONNECTED, DISCONNECTED, PeerAdmissionChanged, ...)
+    pub value: u32,                      // event-specific detail (PeerAdmissionChanged carries the new AdmissionState)
     pub routing_id: Option<RoutingId>,   // peer routing id when the event carries one
     pub local_addr: String,              // local endpoint
     pub remote_addr: String,             // remote endpoint
 }
 ```
 
+`MonitorEventType` includes `PeerAdmissionChanged` (bit 15). Service
+monitors surface the same change through
+`ServiceMonitorEventMask::PeerAdmissionChanged` (bit 8).
+
 ### ServiceEvent
 
-Event emitted by `ServiceMonitor::recv` / `on_event` (discovery,
-registry, spot). Required by all bindings.
+Event emitted by Discovery `ServiceMonitor::recv` / `on_event`.
+Required by all bindings.
 
 ```rust
 pub struct ServiceEvent {
@@ -1486,6 +1525,7 @@ pub struct MemberPeerEntry {
     pub endpoint: String,
     pub routing_id: RoutingId,
     pub value: i64,
+    pub admission_state: AdmissionState,
 }
 
 pub struct RegistryTopologyEntry {
@@ -1550,6 +1590,7 @@ pub struct SpotNodePeerEntry {
     pub peer_endpoint: String,
     pub source: SpotPeerSource,
     pub state: SpotPeerState,
+    pub admission_state: AdmissionState,
     pub connected_since_ms: u64,
     pub last_changed_ms: u64,
 }
@@ -1595,6 +1636,12 @@ pub enum SpotServiceAttachmentRole {
     Router = 1,
     Pub = 2,
     Sub = 3,
+}
+
+#[repr(i32)]
+pub enum AdmissionState {
+    Serving  = 1,
+    Draining = 2,
 }
 
 pub struct SpotServiceAttachmentStats {

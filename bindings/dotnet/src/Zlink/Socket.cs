@@ -13,7 +13,7 @@ namespace Zlink;
 /// </summary>
 public delegate int StreamPacketHandler(string routingId, Message payload);
 public delegate void SocketRecvHandler(string routingId, Message[] parts);
-public delegate void SocketSubscribeHandler(string routingId, string topic,
+internal delegate void SocketSubscribeHandler(string routingId, string topic,
     Message[] parts);
 
 internal sealed class Socket : ConnectableSocketBase

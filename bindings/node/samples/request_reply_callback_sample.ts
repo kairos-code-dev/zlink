@@ -55,20 +55,33 @@ async function main() {
     const replyHandled = waitFor('reply callback', 2000);
     const requestHandled = waitFor('request callback', 2000);
 
-    routerSocket.onReceive((received) => {
+    const waitForRequest = () => {
       try {
-        assert.equal(received.routingId.toBytes().toString(), 'request-reply-client');
-        assert.ok(typeof received.requestSeq === 'bigint');
-        routerSocket.reply(
-          received.routingId,
-          received.requestSeq,
-          zlink.Message.from(Buffer.from('pong'))
-        );
-        requestHandled.resolve();
-      } finally {
-        received.close();
+        const received = routerSocket.recv(zlink.RecvFlags.DontWait);
+        try {
+          assert.equal(received.routingId.toBytes().toString(), 'request-reply-client');
+          assert.ok(typeof received.requestSeq === 'bigint');
+          routerSocket.reply(
+            received.routingId,
+            received.requestSeq,
+            zlink.Message.from(Buffer.from('pong'))
+          );
+          requestHandled.resolve();
+        } finally {
+          received.close();
+        }
+      } catch (error) {
+        if (
+          error instanceof zlink.RecvError
+          && error.result === zlink.RecvResult.NoData
+        ) {
+          setImmediate(waitForRequest);
+          return;
+        }
+        throw error;
       }
-    });
+    };
+    waitForRequest();
 
     dealerSocket.request(
       zlink.Message.from(Buffer.from('ping')),

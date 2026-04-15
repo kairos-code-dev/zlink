@@ -31,12 +31,6 @@ class message_socket_t : public base_socket_t
         return received;
     }
 
-    ZLINK_CPP_NODISCARD int on_receive (zlink_socket_msg_handler_fn handler_,
-                                        void *userdata_ = NULL)
-    {
-        return base_socket_t::on_receive (handler_, userdata_);
-    }
-
     ZLINK_CPP_NODISCARD int
     on_send_ready (zlink_send_ready_handler_fn handler_,
                    void *userdata_ = NULL)
@@ -45,6 +39,12 @@ class message_socket_t : public base_socket_t
     }
 
   protected:
+    ZLINK_CPP_NODISCARD int on_receive (zlink_socket_msg_handler_fn handler_,
+                                        void *userdata_ = NULL)
+    {
+        return base_socket_t::on_receive (handler_, userdata_);
+    }
+
     message_socket_t (context_t &ctx_, socket_type type_) : base_socket_t (ctx_, type_) {}
 };
 

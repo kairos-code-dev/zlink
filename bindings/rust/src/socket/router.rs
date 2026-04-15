@@ -11,7 +11,7 @@ use crate::ctx::Context;
 use crate::domain::Received;
 use crate::error::{
     ConfigError, HandlerError, RecvError, RequestError, RequestResult, SubmitError, ZlinkError,
-    check_config_rc, check_handler_rc, check_recv_rc, check_submit_rc, request_error_from_result,
+    check_config_rc, check_recv_rc, check_submit_rc, request_error_from_result,
     submit_error_from_config, submit_not_supported_error,
 };
 use crate::ffi;
@@ -30,15 +30,10 @@ struct CallbackRouterRequestState {
     native_parts: Vec<ffi::zlink_msg_t>,
 }
 
-struct RouterReceiveCallback<F> {
-    handle: *mut c_void,
-    handler: F,
-}
-
 /// ROUTER socket – asynchronous request/reply pattern (server side).
 ///
 /// All sends are routed: `send(target, parts)` addresses a specific peer.
-/// Capabilities: `send` (routed), `recv`, `on_receive`, `on_send_ready`.
+/// Capabilities: `send` (routed), `recv`, `on_send_ready`.
 pub struct RouterSocket {
     pub(crate) inner: SocketInner,
 }
@@ -317,26 +312,6 @@ impl RouterSocket {
         };
         drop(parts);
         check_submit_rc(rc)
-    }
-
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
-    where
-        F: Fn(Received) + Send + 'static,
-    {
-        let state = RouterReceiveCallback {
-            handle: self.inner.handle,
-            handler,
-        };
-        let (cb, userdata) = super::CallbackBox::new(state);
-        let rc = unsafe {
-            ffi::zlink_router_handler(self.inner.handle, router_recv_trampoline::<F>, userdata)
-        };
-        if rc != 0 {
-            drop(cb);
-            return check_handler_rc(rc);
-        }
-        self.inner.recv_cb = Some(cb);
-        Ok(())
     }
 
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
@@ -626,25 +601,6 @@ fn timeout_to_ms(timeout: Duration) -> u32 {
     } else {
         millis.min(u32::MAX as u128) as u32
     }
-}
-
-unsafe extern "C" fn router_recv_trampoline<F: Fn(Received) + Send + 'static>(
-    source_node_rid: *const ffi::zlink_routing_id_t,
-    source_spot_rid: *const ffi::zlink_routing_id_t,
-    request_seq: u64,
-    parts: *mut ffi::zlink_msg_t,
-    part_count: usize,
-    userdata: *mut c_void,
-) {
-    let state = unsafe { &*(userdata as *const RouterReceiveCallback<F>) };
-    (state.handler)(router_received_from_raw(
-        state.handle,
-        source_node_rid,
-        source_spot_rid,
-        request_seq,
-        parts,
-        part_count,
-    ));
 }
 
 fn set_router_bool(

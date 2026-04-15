@@ -35,7 +35,6 @@ public final class DealerSocket extends Socket {
     public void send(List<Message> parts, SendFlags flags) { super.send(parts, SendFlag.fromValue(flags.value())); }
     public Received recv() { return super.recv(); }
     public Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
-    public void onReceive(SocketMessageHandler handler) { super.onReceive(handler); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     public CompletableFuture<List<Message>> request(Message part) { return request(List.of(part)); }
     public CompletableFuture<List<Message>> request(Message part, Duration timeout) {

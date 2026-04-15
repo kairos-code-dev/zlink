@@ -412,21 +412,22 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 | `STREAM` | `SNDBUF` | `262144` (미설정 시) | 대용량 RAW 전송 대응 |
 | `STREAM` | `RCVBUF` | `262144` (미설정 시) | 대용량 RAW 수신 대응 |
 
-> **관찰 가능한 동작 변화 (migration note):**
+> **기본값과 관찰 가능한 동작:**
 >
-> - `ROUTER_MANDATORY` 기본값이 `0 → 1` 로 바뀌었다. 옵션을 명시하지 않은
->   ROUTER 에서 `zlink_send_rid()` 로 미연결 peer 를 지정하면 조용히 넘어가지
->   않고 `ZLINK_SUBMIT_NOT_CONNECTED` 가 반환된다. writable / `ZLINK_POLLOUT`
->   관찰값도 실제로 쓸 수 있는 peer 가 있을 때만 surface 된다.
-> - `ROUTER_HANDOVER` 기본값이 `0 → 1` 로 바뀌었다. duplicate peer identity 로
->   새 연결이 들어오면 기존 pipe 를 인수한다. 예전처럼 기존 연결을 유지하려면
->   `0` 으로 설정해야 한다.
-> - `PUB_NODROP` 기본값이 `0 → 1` 로 바뀌었다. HWM 상황에서
->   `zlink_publish()` 가 조용히 drop 하지 않고 `ZLINK_SUBMIT_BACKPRESSURED` 를
->   반환한다. 진행률을 위해 드롭이 필요하면 `0` 으로 설정한다.
+> - `ROUTER_MANDATORY` 기본값은 `1` 이다. 옵션을 명시하지 않은 ROUTER 에서
+>   `zlink_send_rid()` 로 미연결 peer 를 지정하면 조용히 넘어가지 않고
+>   `ZLINK_SUBMIT_NOT_CONNECTED` 가 반환된다. writable / `ZLINK_POLLOUT`
+>   관찰값도 실제로 쓸 수 있는 peer 가 있을 때만 surface 된다. 조용한 drop
+>   이 필요하면 옵션을 `0` 으로 명시 설정한다.
+> - `ROUTER_HANDOVER` 기본값은 `1` 이다. duplicate peer identity 로 새 연결
+>   이 들어오면 새 연결이 기존 pipe 를 인수한다. 기존 연결을 유지하고
+>   새 연결을 거부하려면 `0` 으로 명시 설정한다.
+> - `PUB_NODROP` 기본값은 `1` 이다. HWM 상황에서 `zlink_publish()` 가 조용히
+>   drop 하지 않고 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 진행률을 위해
+>   drop 이 필요한 loss-tolerant workload 는 `0` 으로 명시 설정한다.
 >
-> 이 변경은 공개 상수 이름이나 옵션 on/off 의미를 바꾸지 않는다. 각 옵션의
-> **기본 프로파일만** 조정된 것이다.
+> 이 기본값은 **기본 프로파일** 에만 영향을 주며 옵션 상수 이름이나 on/off
+> 의미는 그대로다.
 
 ## 소켓 타입별 전용 옵션
 

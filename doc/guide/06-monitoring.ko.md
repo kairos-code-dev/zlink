@@ -379,8 +379,8 @@ zlink_service_monitor_open_options_t opts = {
 void *mon = zlink_service_monitor_open(discovery, &opts);
 ```
 
-공개 service monitor를 제공하는 handle을 넘기면 된다.
-SPOT과 SpotNode는 더 이상 공개 service-monitor surface를 제공하지 않는다.
+공개 service monitor 를 제공하는 handle 을 넘기면 된다.
+SPOT 과 SpotNode 는 공개 service-monitor surface 를 제공하지 않는다.
 
 ### 콜백 모드
 
@@ -629,8 +629,8 @@ printf("sndq=%llu, rcvq=%llu\n",
 
 ### 11.4 서비스 — SPOT
 
-SPOT은 더 이상 공개 service-monitor surface를 제공하지 않는다.
-SPOT perf는 monitor event 대신 명시적 benchmark control barrier를 사용한다.
+SPOT 은 공개 service-monitor surface 를 제공하지 않는다.
+SPOT perf 는 monitor event 대신 명시적 benchmark control barrier 를 사용한다.
 
 ```c
 /* SPOT perf gate: explicit READY/START barrier */

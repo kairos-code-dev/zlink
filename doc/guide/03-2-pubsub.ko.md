@@ -127,10 +127,10 @@ SUB / XSUB는 recv-only 타입이다. poller의 `ZLINK_POLLIN`과 함께 사용�
 서버 루프에서 readable을 관찰한 뒤 `zlink_subscribe()`로 토픽 메시지를
 가져온다. 별도 direct topic callback 표면은 제공하지 않는다.
 
-> **PUB/XPUB 기본값 변경:** `ZLINK_PUB_OPT_NODROP`의 기본값이 `1`로
-> 변경되었다. HWM이 찼을 때 조용히 drop하지 않고 `zlink_publish()`가
-> `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 기존처럼 loss-tolerant 동작이
->필요하면 `ZLINK_PUB_OPT_NODROP`을 명시적으로 `0`으로 설정해야 한다.
+> **PUB/XPUB 기본값:** `ZLINK_PUB_OPT_NODROP` 의 기본값은 `1` 이다.
+> HWM 이 찼을 때 조용히 drop 하지 않고 `zlink_publish()` 가
+> `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. loss-tolerant 동작이 필요하면
+> `ZLINK_PUB_OPT_NODROP` 을 명시적으로 `0` 으로 설정한다.
 
 ??? example "Full Sample Code -- Recv"
 
@@ -213,7 +213,7 @@ zlink_publish(pub, "sensor:cpu", parts, 2, 0);
 호출자가 토픽 프레임을 직접 조립할 필요 없다.
 
 > **참고:** `zlink_publish(pub, NULL, parts, ...)`처럼 topic을 NULL로 전달하면
-> parts[0]이 토픽 프레임으로 사용되는 레거시 호환 경로가 동작하지만,
+> parts[0]이 토픽 프레임으로 사용되는 호환 경로가 동작하지만,
 > 이 방식은 권장하지 않는다. 항상 `topic_id` 파라미터를 명시적으로 전달한다.
 
 ## 5. PUB/SUB 소켓 옵션

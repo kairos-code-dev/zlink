@@ -17,9 +17,9 @@ with the rules here, this section wins.
   plane. Remove `OnReceive(...)` from their public contract.
 - `SubSocket` and `XSubSocket` are recv-only. Remove `OnSubscribe(...)` from
   their public contract.
-- `StreamSocket` keeps `Recv(...)` and raw `OnReceive(...)`, and must also
-  expose a packet callback surface mapped to `zlink_stream_packet_handler()`.
-  Recommended canonical name: `OnPacket(...)`.
+- `StreamSocket` keeps `Recv(...)` and exposes a packet callback surface
+  mapped to `zlink_stream_packet_handler()`. Recommended canonical name:
+  `OnPacket(...)`.
 - `SpotNode` must expose service-aware attachment APIs:
   `AttachRouter(serviceName string, router *RouterSocket)`,
   `AttachPubSub(serviceName string, pub *PubSocket, sub *SubSocket)`,
@@ -36,6 +36,18 @@ with the rules here, this section wins.
   plus `Subscribe(...)` / routed recv / timer recv.
 - `Spot.OnRoutedReceive(...)` and `OnDispatchEvent(...)` are mutually exclusive
   on the routed axis.
+- Every socket and `Spot` exposes `SetAdmissionState(state)` and
+  `AdmissionState()` using the typed enum
+  `AdmissionState` with constants `AdmissionStateServing = 1` and
+  `AdmissionStateDraining = 2`. Submit attempts to a drained peer return
+  `*SubmitError` whose `Code()` is `SubmitResultNotAdmitted`.
+- `POLLOUT` is a send-recovery readiness signal, shared with
+  `OnSendReady(...)`. It is not a "transport writable" bit.
+- ROUTER / PUB socket option defaults follow the core header: `Mandatory =
+  true`, `Handover = true`, `NoDrop = true`.
+- Internal pairing rule: when auto-connect pairs two same-service ROUTERs
+  via Discovery, the library picks one initiator per pair by a total order
+  on `(routingID, advertiseEndpoint)`. Users do not configure this.
 
 ## Core
 
@@ -105,6 +117,17 @@ type Version struct {
 
 All sockets listed below share common connection and option methods
 inherited from internal base types. Only the public methods are shown.
+
+Every socket type (and `*Spot`) exposes the admission-state accessor pair:
+
+```go
+// AdmissionState returns the current admission state for the handle.
+// Returns *ConfigError on failure.
+func (s *<Socket>) AdmissionState() (AdmissionState, error)
+// SetAdmissionState updates the admission state for the handle.
+// Returns *ConfigError on failure.
+func (s *<Socket>) SetAdmissionState(state AdmissionState) error
+```
 
 ### PairSocket
 
@@ -367,10 +390,17 @@ func (s *StreamSocket) SetRoutingID(id RoutingID) error
 func (s *StreamSocket) RoutingID() (RoutingID, error)
 // SendTo submits parts to a specific peer. Returns *SubmitError on failure.
 func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) error
+// Two mutually-exclusive receive modes on the same StreamSocket:
+//   (1) Recv, (2) OnPacket(handler). Second attach on the same stream
+//   returns *HandlerError{Code: HandlerResultBusy}.
 // Recv receives a message. Returns *RecvError on failure.
 func (s *StreamSocket) Recv(flags RecvFlags) (*Received, error)
-// OnReceive registers a receive handler. Returns *HandlerError on failure.
-func (s *StreamSocket) OnReceive(handler func(*Received)) error
+// OnPacket registers the framed packet callback mapped to
+// zlink_stream_packet_handler. The wire frame is big-endian uint16
+// header_size + uint32 body_size + header + body. The handler receives the
+// source routing id, a header Message, and a body Message; both messages
+// transfer ownership to the handler. Returns *HandlerError on failure.
+func (s *StreamSocket) OnPacket(handler func(source RoutingID, header *Message, body *Message)) error
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *StreamSocket) OnSendReady(handler func()) error
 // Option setters/getters return *ConfigError on failure.
@@ -566,6 +596,7 @@ const (
     SubmitOutOfMemory     SubmitResult = 10
     SubmitSeqExhausted    SubmitResult = 11
     SubmitInternalError   SubmitResult = 12
+    SubmitNotAdmitted     SubmitResult = 13   // target peer is in AdmissionStateDraining
 )
 ```
 
@@ -610,7 +641,7 @@ const (
 
 ### HandlerResult
 
-Result codes for handler registration operations (stream `OnReceive`,
+Result codes for handler registration operations (`OnPacket`,
 `OnSendReady`, `OnRoutedReceive`, `OnDispatchEvent`, `OnEvent`, etc.).
 
 ```go
@@ -798,6 +829,9 @@ handling, or treat the value as `ZlinkError` / plain `error`.
 
 ### SocketMonitor
 
+Starts in recv model. `OnEvent(...)` transitions one-way to callback-only
+model; after that `Recv()` returns a busy recv error and `Snapshot()` still works.
+
 ```go
 // OpenSocketMonitor creates a monitor on the given socket. Returns *ConfigError on failure.
 func OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*SocketMonitor, error)
@@ -807,15 +841,21 @@ func (m *SocketMonitor) Recv() (*MonitorEvent, error)
 func (m *SocketMonitor) Snapshot() (*MonitorSnapshot, error)
 // OnEvent registers an event handler. Returns *HandlerError on failure.
 func (m *SocketMonitor) OnEvent(handler func(*MonitorEvent)) error
-// IgnoreMonitorHandler is a no-op handler. Pass it to (*SocketMonitor).OnEvent
-// when driving the monitor via Snapshot() or direct Recv() without callback
-// dispatch. Maps to zlink_monitor_ignore_handler.
+// IgnoreMonitorHandler is a no-op callback for callback-only model. Pass it to
+// (*SocketMonitor).OnEvent to keep a valid handler when the application does
+// not care about events; once installed the monitor is in callback-only model
+// and Recv() returns a busy recv error (Snapshot() still works). To drive the
+// monitor via Snapshot() / Recv() instead, leave OnEvent unset. Maps to
+// zlink_monitor_ignore_handler.
 var IgnoreMonitorHandler func(MonitorEvent)
 // Close closes the monitor. Returns *CloseError on failure.
 func (m *SocketMonitor) Close() error
 ```
 
 ### ServiceMonitor
+
+Starts in recv model. `OnEvent(...)` transitions one-way to callback-only
+model; after that `Recv()` returns a busy recv error and `Snapshot()` still works.
 
 ```go
 // Recv receives the next service event. Returns *RecvError on failure.
@@ -842,6 +882,7 @@ type MonitorSnapshot struct {
 }
 
 // IsReady returns true when the ready bit is set in StateFlags.
+// Use this only for raw socket monitor sources.
 func (s *MonitorSnapshot) IsReady() bool
 ```
 
@@ -852,12 +893,16 @@ event has no peer (check with `HasRoutingID`).
 
 ```go
 type MonitorEvent struct {
-    Event      MonitorEventType // event kind (CONNECTION_READY, CONNECTED, DISCONNECTED, ...)
-    Value      uint32           // event-specific detail (e.g. DISCONNECTED reason code)
+    Event      MonitorEventType // event kind (CONNECTION_READY, CONNECTED, DISCONNECTED, PEER_ADMISSION_CHANGED, ...)
+    Value      uint32           // event-specific detail (PEER_ADMISSION_CHANGED carries the new AdmissionState)
     RoutingID  RoutingID        // peer routing id (empty when not applicable)
     LocalAddr  string           // local endpoint
     RemoteAddr string           // remote endpoint
 }
+
+// MonitorEventType includes MonitorEventPeerAdmissionChanged (bit 15).
+// Service monitors surface the same change through
+// ServiceMonitorEventPeerAdmissionChanged (bit 8).
 
 func (e *MonitorEvent) HasRoutingID() bool
 
@@ -871,8 +916,8 @@ func (e *MonitorEvent) IsConnectionReady() bool
 
 ### ServiceMonitorEvent
 
-Canonical service monitor event (discovery / registry / spot). Commonly
-aliased as `ServiceEvent` in Go idiom.
+Canonical discovery service monitor event. Commonly aliased as
+`ServiceEvent` in Go idiom.
 
 ```go
 type ServiceMonitorEvent struct {
@@ -1103,12 +1148,13 @@ Primary entry types used in the default service flow:
 ```go
 // MemberPeerEntry — entry from Registry.MemberPeers / Discovery.MemberPeers.
 type MemberPeerEntry struct {
-    ServiceType ServiceType
-    ServiceRole ServiceRole
-    ServiceName string
-    Endpoint    string
-    RoutingID   RoutingID
-    Value       int64
+    ServiceType    ServiceType
+    ServiceRole    ServiceRole
+    ServiceName    string
+    Endpoint       string
+    RoutingID      RoutingID
+    Value          int64
+    AdmissionState AdmissionState
 }
 
 func (e *MemberPeerEntry) HasRoutingID() bool
@@ -1185,6 +1231,7 @@ type SpotNodePeerEntry struct {
     PeerEndpoint     string
     Source           SpotPeerSource
     State            SpotPeerState
+    AdmissionState   AdmissionState
     ConnectedSinceMs uint64
     LastChangedMs    uint64
 }
@@ -1205,6 +1252,13 @@ const (
     SpotServiceAttachmentRouter SpotServiceAttachmentRole = 1
     SpotServiceAttachmentPub    SpotServiceAttachmentRole = 2
     SpotServiceAttachmentSub    SpotServiceAttachmentRole = 3
+)
+
+type AdmissionState int
+
+const (
+    AdmissionStateServing  AdmissionState = 1
+    AdmissionStateDraining AdmissionState = 2
 )
 
 type SpotServiceAttachmentStats struct {

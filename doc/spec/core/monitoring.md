@@ -4,10 +4,10 @@
 
 # Monitoring API Reference
 
-The canonical event catalog now lives in [events.md](events.md). This file
+The canonical event catalog lives in [events.md](events.md). This file
 focuses on monitor APIs, callbacks, and monitor snapshots.
 
-## Current API Direction
+## API Structure
 
 There are two distinct monitoring classes:
 
@@ -206,17 +206,18 @@ use `zlink_socket_monitor_recv()` to pull events, or call
 Attach a callback handler to a socket monitor (one-way transition).
 
 ```c
-int zlink_socket_monitor_handler (
+zlink_handler_result_t zlink_socket_monitor_handler (
   void *monitor_,
   zlink_socket_monitor_handler_fn handler_,
   void *userdata_);
 ```
 
 Transitions the monitor from recv model to **callback-only model**. Once
-attached, `zlink_socket_monitor_recv()` will return `-1` with
-`errno = EBUSY`. This transition is one-way and cannot be reversed.
+attached, `zlink_socket_monitor_recv()` will return a `zlink_recv_result_t`
+indicating the monitor is in callback mode. This transition is one-way and
+cannot be reversed.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_HANDLER_OK` on success; otherwise a `zlink_handler_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 ---
 
@@ -225,33 +226,33 @@ attached, `zlink_socket_monitor_recv()` will return `-1` with
 Receive the next event from a socket monitor in recv model.
 
 ```c
-int zlink_socket_monitor_recv (
+zlink_recv_result_t zlink_socket_monitor_recv (
   void *monitor_, zlink_socket_monitor_event_t *out_,
-  zlink_send_flags_t flags_);
+  zlink_recv_flags_t flags_);
 ```
 
 Reads the next pending event into `out_`. The `flags_` parameter accepts
 `ZLINK_DONTWAIT` for non-blocking operation. If the monitor has transitioned
 to callback model via `zlink_socket_monitor_handler()`, this function returns
-`-1` with `errno = EBUSY`.
+a `zlink_recv_result_t` indicating the monitor is in callback mode.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 ---
 
 ### zlink_monitor_snapshot
 
 ```c
-int zlink_monitor_snapshot (void *monitor_,
+zlink_config_result_t zlink_monitor_snapshot (void *monitor_,
                              zlink_monitor_snapshot_t *out_);
 ```
 
 Reads the current aggregate snapshot for a socket or service monitor handle.
 The snapshot is queried from the monitor source at call time. Queue counts are
-local message counts, and `rcv_pending_msgs` remains approximate. Works in
+local message counts, and `rcv_pending_msgs` is approximate. Works in
 both recv model and callback model.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_socket_monitor_open`, `zlink_service_monitor_open`
 
@@ -277,7 +278,7 @@ snapshot access and want to silence the event stream).
 Close any monitor handle (socket or service) and release its resources.
 
 ```c
-int zlink_monitor_close (void **monitor_p_);
+zlink_close_result_t zlink_monitor_close (void **monitor_p_);
 ```
 
 Closes the monitor and sets `*monitor_p_` to `NULL`. If another thread is
@@ -288,7 +289,7 @@ callback returns.
 This is the unified close function for **all** monitor types -- both socket
 monitors and service monitors.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CLOSE_OK` on success; otherwise a `zlink_close_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_socket_monitor_open`, `zlink_service_monitor_open`
 
@@ -302,10 +303,9 @@ socket monitors that report transport-level events, service monitors
 report higher-level service events such as Discovery membership changes.
 
 The target for `zlink_service_monitor_open()` is any service handle
-that still exposes public service monitoring, such as Discovery. SPOT
-and SpotNode no longer expose a public service-monitor surface. The
-service kind is determined from the handle's runtime tag -- there is no
-per-service open function and no `role` parameter.
+that still exposes public service monitoring, such as Discovery, SPOT,
+or SpotNode. The service kind is determined from the handle's runtime
+tag -- there is no per-service open function and no `role` parameter.
 
 ### zlink_service_event_t / zlink_service_monitor_event_t
 
@@ -377,25 +377,25 @@ public service-monitor surface. Monitor targets are identified by
 |--------|-------------------------------|---------------------|
 | `Discovery` handle | `ZLINK_MONITOR_TARGET_DISCOVERY = 2` | `zlink_service_monitor_recv()` |
 | raw socket | `ZLINK_MONITOR_TARGET_SOCKET = 1` | `zlink_socket_monitor_recv()` |
-| `Spot` facade | `ZLINK_MONITOR_TARGET_SPOT = 4` (reserved, not a public service-monitor target) | — |
-| `SpotNode` handle | `ZLINK_MONITOR_TARGET_SPOT_NODE = 5` | `zlink_spot_node_monitor_recv()` |
+| `Spot` facade | `ZLINK_MONITOR_TARGET_SPOT = 4` | `zlink_service_monitor_recv()` |
+| `SpotNode` handle | `ZLINK_MONITOR_TARGET_SPOT_NODE = 5` | `zlink_service_monitor_recv()` |
 
-Service-aware attachment monitor events on a `SpotNode` are drained only
-through `zlink_spot_node_monitor_recv()`, not through
+`Spot` and `SpotNode` expose the generic service-monitor surface only for
+the operational events that bridge directly from the pub/sub runtime
+without a separate event pipeline. Service-aware attachment monitor
+events on a `SpotNode` are drained only through
+`zlink_spot_node_monitor_recv()`, not through
 `zlink_service_monitor_open()`. That recv returns a
 `zlink_spot_service_monitor_event_t` that carries the `service_name` and
-attachment role together with the usual monitor event. The service monitor
-event mask now includes
-`ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` so callers can observe
-peer admission decision changes.
+attachment role together with the usual monitor event.
 
 ### Service Kind Constants
 
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `ZLINK_SERVICE_KIND_DISCOVERY` | 1 | Discovery component |
-| `ZLINK_SERVICE_KIND_SPOT_SUB` | 3 | Reserved legacy value; SPOT no longer exposes a public service monitor |
-| `ZLINK_SERVICE_KIND_SPOT_PUB` | 4 | Reserved legacy value; SPOT no longer exposes a public service monitor |
+| `ZLINK_SERVICE_KIND_SPOT_SUB` | 3 | SPOT sub-side service monitor event source |
+| `ZLINK_SERVICE_KIND_SPOT_PUB` | 4 | SPOT pub-side service monitor event source |
 | `ZLINK_SERVICE_KIND_SOCKET` | 5 | Socket family service |
 
 ### Service Event Constants
@@ -428,8 +428,31 @@ They map to the same underlying bits as the per-service constants above.
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | `ZLINK_DISCOVERY_SERVICE_UP` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | `ZLINK_DISCOVERY_SERVICE_DOWN` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` | Bit `1u << 8`. A peer's admission state changed inside a service the monitor is watching. The event's `value` field carries the new admission state; identification is provided through `routing_id` or the detail-flagged identity fields. |
+| `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` | Bit `1u << 8`. Reserved unified mask bit for service-level peer admission change surfaces. The current `Spot` / `SpotNode` generic service monitor does not emit this event. |
 | `ZLINK_SERVICE_MONITOR_EVENT_ALL` | All service events |
+
+### Spot / SpotNode Generic Events
+
+`zlink_service_monitor_open(spot, ...)` and
+`zlink_service_monitor_open(spot_node, ...)` support only the
+operational events produced by the SPOT pub/sub monitor bridges.
+
+| Event | `Spot` | `SpotNode` | Notes |
+|-------|--------|------------|-------|
+| `ZLINK_MONITOR_EVENT_ERROR` | Yes | Yes | Runtime or bridge error |
+| `ZLINK_MONITOR_EVENT_CLOSED` | Yes | Yes | Terminal close event |
+| `peer up` (`1u << 2`) | Yes | Yes | Peer became usable |
+| `peer down` (`1u << 3`) | Yes | Yes | Peer became unusable |
+| `connection ready` (`1u << 14`) | Yes | Yes | Data path ready |
+| `sub filter applied` (`1u << 13`) | Yes | Yes | Sub filter applied |
+| `pub queue full` (`1u << 15`) | Yes | Yes | Pub queue saturated |
+| `pub queue drained` (`1u << 16`) | Yes | Yes | Pub queue recovered |
+
+`SpotNode` service-attachment detail remains dedicated to
+`zlink_spot_node_monitor_recv()`. That dedicated recv reports
+`service_name`, attachment `role`, and the nested raw socket monitor
+event. The generic service monitor does not flatten those attachment
+details.
 
 ### Detail Flag Constants
 
@@ -455,9 +478,8 @@ void *zlink_service_monitor_open (
 ```
 
 Creates a service monitor on a service handle that exposes public service
-monitoring and returns a handle. `target_` can be a Discovery handle.
-SPOT and SpotNode must not be passed here; use SpotNode status/query
-APIs and benchmark control barriers instead.
+monitoring and returns a handle. `target_` can be a Discovery handle,
+SPOT facade, or SpotNode handle.
 
 The `options_->events` bitmask selects which events to observe, using the
 unified `zlink_service_monitor_event_mask_t` type.
@@ -480,17 +502,18 @@ callback model.
 Attach a callback handler to a service monitor (one-way transition).
 
 ```c
-int zlink_service_monitor_handler (
+zlink_handler_result_t zlink_service_monitor_handler (
   void *monitor_,
   zlink_service_monitor_handler_fn handler_,
   void *userdata_);
 ```
 
 Transitions the monitor from recv model to **callback-only model**. Once
-attached, `zlink_service_monitor_recv()` will return `-1` with
-`errno = EBUSY`. This transition is one-way and cannot be reversed.
+attached, `zlink_service_monitor_recv()` will return a `zlink_recv_result_t`
+indicating the monitor is in callback mode. This transition is one-way and
+cannot be reversed.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_HANDLER_OK` on success; otherwise a `zlink_handler_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 ---
 
@@ -499,14 +522,14 @@ attached, `zlink_service_monitor_recv()` will return `-1` with
 Receive the next event from a service monitor in recv model.
 
 ```c
-int zlink_service_monitor_recv (
+zlink_recv_result_t zlink_service_monitor_recv (
   void *monitor_, zlink_service_monitor_event_t *out_,
-  zlink_send_flags_t flags_);
+  zlink_recv_flags_t flags_);
 ```
 
 Reads the next pending event into `out_`. The `flags_` parameter accepts
 `ZLINK_DONTWAIT` for non-blocking operation. If the monitor has transitioned
 to callback model via `zlink_service_monitor_handler()`, this function returns
-`-1` with `errno = EBUSY`.
+a `zlink_recv_result_t` indicating the monitor is in callback mode.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.

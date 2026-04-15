@@ -48,13 +48,12 @@ fn main() {
                 Ok(Some(_)) => {
                     let mut saw_message = false;
                     loop {
-                        match sub_sock.try_subscribe() {
-                            Ok(Some(topic_msg)) => {
+                        match sub_sock.subscribe_with_flags(RecvFlags::DONT_WAIT) {
+                            Ok(topic_msg) => {
                                 let data = common::message_payload(topic_msg.parts());
                                 common::handle_recv(data, config.size, &stats);
                                 saw_message = true;
                             }
-                            Ok(None) => break,
                             Err(_) => break,
                         }
                     }

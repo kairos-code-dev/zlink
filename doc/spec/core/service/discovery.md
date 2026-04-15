@@ -94,8 +94,8 @@ equivalent authority service.
 
 If the resolved `owner_node_rid` is the current node, the implementation may
 use a local fast path. The external contract does not change. Final submit is
-still interpreted as using the normalized
-`dest_node_rid + dest_spot_rid` pair and the existing routed path.
+interpreted as using the normalized
+`dest_node_rid + dest_spot_rid` pair and the routed path.
 
 If a request has already been delivered to a specific owner pair, that request
 continues on the already resolved path even if ownership handover happens
@@ -229,7 +229,7 @@ Not every call has the same timing constraints, though.
   fails with `EBUSY`. Once destroy is accepted, new API entry fails with
   `ESHUTDOWN`.
 
-## Current API Direction
+## API Surface
 
 - Use `zlink_set_routing_id(discovery, data, size)` /
   `zlink_get_routing_id(discovery, &out)` for Discovery identity.

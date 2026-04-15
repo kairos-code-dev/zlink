@@ -4,6 +4,7 @@
 #include "../testutil_unity.hpp"
 
 #include <string.h>
+#include <sstream>
 #include <unity.h>
 
 void setUp ()
@@ -16,6 +17,48 @@ void tearDown ()
 
 namespace
 {
+bool bind_registry_test_endpoints_local (void *registry_,
+                                         std::string *pub_out_,
+                                         std::string *router_out_)
+{
+    const int base_port = 47000 + test_port_offset ();
+    for (int i = 0; i < 128; ++i) {
+        std::ostringstream pub_endpoint;
+        std::ostringstream router_endpoint;
+        pub_endpoint << "tcp://127.0.0.1:" << (base_port + i * 2);
+        router_endpoint << "tcp://127.0.0.1:" << (base_port + i * 2 + 1);
+        if (zlink_registry_bind (
+              registry_, pub_endpoint.str ().c_str (),
+              router_endpoint.str ().c_str ())
+            == ZLINK_BIND_OK) {
+            if (pub_out_)
+                *pub_out_ = pub_endpoint.str ();
+            if (router_out_)
+                *router_out_ = router_endpoint.str ();
+            return true;
+        }
+    }
+    return false;
+}
+
+bool bind_spot_test_endpoint_local (void *node_, std::string *endpoint_out_)
+{
+    if (!node_)
+        return false;
+
+    const int base_port = 48000 + test_port_offset ();
+    for (int i = 0; i < 128; ++i) {
+        std::ostringstream endpoint;
+        endpoint << "tcp://127.0.0.1:" << (base_port + i);
+        if (zlink_spot_node_bind (node_, endpoint.str ().c_str ()) == 0) {
+            if (endpoint_out_)
+                *endpoint_out_ = endpoint.str ();
+            return true;
+        }
+    }
+    return false;
+}
+
 bool connect_discovery_registry_with_retry_local (void *discovery_,
                                                   const char *endpoint_,
                                                   int timeout_ms_)
@@ -144,24 +187,17 @@ void test_discovery_resolve_spot_returns_owner_node_rid ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_set_broadcast_interval (registry, 50));
 
-    char registry_pub[MAX_SOCKET_STRING];
-    char registry_router[MAX_SOCKET_STRING];
-    char node_endpoint[MAX_SOCKET_STRING];
-    snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
-              test_port (5910));
-    snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d",
-              test_port (5911));
-    snprintf (node_endpoint, sizeof (node_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5912));
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_bind (registry, registry_pub, registry_router));
+    std::string registry_pub;
+    std::string registry_router;
+    std::string node_endpoint;
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, &registry_pub, &registry_router));
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "resolve-spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
-      discovery, registry_router, 3000));
+      discovery, registry_router.c_str (), 3000));
 
     void *node = zlink_spot_node_new (ctx);
     TEST_ASSERT_NOT_NULL (node);
@@ -172,7 +208,7 @@ void test_discovery_resolve_spot_returns_owner_node_rid ()
       zlink_set_routing_id (node, "resolve-node-a", 14));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (spot, "resolve-spot-a", 14));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node, node_endpoint));
+    TEST_ASSERT_TRUE (bind_spot_test_endpoint_local (node, &node_endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_attach_discovery (node, discovery));
 
     zlink_routing_id_t spot_rid;
@@ -223,21 +259,12 @@ void test_discovery_resolve_spot_is_scoped_by_service_name ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_set_broadcast_interval (registry, 50));
 
-    char registry_pub[MAX_SOCKET_STRING];
-    char registry_router[MAX_SOCKET_STRING];
-    char node_a_endpoint[MAX_SOCKET_STRING];
-    char node_b_endpoint[MAX_SOCKET_STRING];
-    snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
-              test_port (5920));
-    snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d",
-              test_port (5921));
-    snprintf (node_a_endpoint, sizeof (node_a_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5922));
-    snprintf (node_b_endpoint, sizeof (node_b_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5923));
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_bind (registry, registry_pub, registry_router));
+    std::string registry_pub;
+    std::string registry_router;
+    std::string node_a_endpoint;
+    std::string node_b_endpoint;
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, &registry_pub, &registry_router));
 
     void *discovery_a =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "resolve-svc-a");
@@ -246,9 +273,9 @@ void test_discovery_resolve_spot_is_scoped_by_service_name ()
     TEST_ASSERT_NOT_NULL (discovery_a);
     TEST_ASSERT_NOT_NULL (discovery_b);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
-      discovery_a, registry_router, 3000));
+      discovery_a, registry_router.c_str (), 3000));
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
-      discovery_b, registry_router, 3000));
+      discovery_b, registry_router.c_str (), 3000));
 
     void *node_a = zlink_spot_node_new (ctx);
     void *node_b = zlink_spot_node_new (ctx);
@@ -263,8 +290,8 @@ void test_discovery_resolve_spot_is_scoped_by_service_name ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (node_b, "resolve-node-b", 14));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (spot_a, "shared-spot", 11));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (spot_b, "shared-spot", 11));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, node_a_endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, node_b_endpoint));
+    TEST_ASSERT_TRUE (bind_spot_test_endpoint_local (node_a, &node_a_endpoint));
+    TEST_ASSERT_TRUE (bind_spot_test_endpoint_local (node_b, &node_b_endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_attach_discovery (node_a, discovery_a));
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -322,24 +349,17 @@ void test_discovery_resolve_spot_returns_enoent_after_owner_unregister ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_set_broadcast_interval (registry, 50));
 
-    char registry_pub[MAX_SOCKET_STRING];
-    char registry_router[MAX_SOCKET_STRING];
-    char node_endpoint[MAX_SOCKET_STRING];
-    snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
-              test_port (5990));
-    snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d",
-              test_port (5991));
-    snprintf (node_endpoint, sizeof (node_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5992));
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_bind (registry, registry_pub, registry_router));
+    std::string registry_pub;
+    std::string registry_router;
+    std::string node_endpoint;
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, &registry_pub, &registry_router));
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "resolve-unregister");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
-      discovery, registry_router, 3000));
+      discovery, registry_router.c_str (), 3000));
 
     void *node = zlink_spot_node_new (ctx);
     void *spot = zlink_spot_new (node);
@@ -348,7 +368,7 @@ void test_discovery_resolve_spot_returns_enoent_after_owner_unregister ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (node, "resolve-node-u", 14));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (spot, "resolve-spot-u", 14));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node, node_endpoint));
+    TEST_ASSERT_TRUE (bind_spot_test_endpoint_local (node, &node_endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_attach_discovery (node, discovery));
 
     zlink_routing_id_t spot_rid;
@@ -385,21 +405,12 @@ void test_discovery_resolve_spot_handover_switches_owner ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_set_broadcast_interval (registry, 50));
 
-    char registry_pub[MAX_SOCKET_STRING];
-    char registry_router[MAX_SOCKET_STRING];
-    char node_a_endpoint[MAX_SOCKET_STRING];
-    char node_b_endpoint[MAX_SOCKET_STRING];
-    snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
-              test_port (6000));
-    snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d",
-              test_port (6001));
-    snprintf (node_a_endpoint, sizeof (node_a_endpoint), "tcp://127.0.0.1:%d",
-              test_port (6002));
-    snprintf (node_b_endpoint, sizeof (node_b_endpoint), "tcp://127.0.0.1:%d",
-              test_port (6003));
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_bind (registry, registry_pub, registry_router));
+    std::string registry_pub;
+    std::string registry_router;
+    std::string node_a_endpoint;
+    std::string node_b_endpoint;
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, &registry_pub, &registry_router));
 
     void *discovery_a =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "resolve-handover");
@@ -411,11 +422,11 @@ void test_discovery_resolve_spot_handover_switches_owner ()
     TEST_ASSERT_NOT_NULL (discovery_b);
     TEST_ASSERT_NOT_NULL (resolver_discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
-      discovery_a, registry_router, 3000));
+      discovery_a, registry_router.c_str (), 3000));
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
-      discovery_b, registry_router, 3000));
+      discovery_b, registry_router.c_str (), 3000));
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
-      resolver_discovery, registry_router, 3000));
+      resolver_discovery, registry_router.c_str (), 3000));
 
     void *node_a = zlink_spot_node_new (ctx);
     void *node_b = zlink_spot_node_new (ctx);
@@ -430,7 +441,7 @@ void test_discovery_resolve_spot_handover_switches_owner ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (node_b, "resolve-node-h1", 15));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (spot_a, "handover-spot", 13));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (spot_b, "handover-spot", 13));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, node_a_endpoint));
+    TEST_ASSERT_TRUE (bind_spot_test_endpoint_local (node_a, &node_a_endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_attach_discovery (node_a, discovery_a));
 
@@ -449,14 +460,15 @@ void test_discovery_resolve_spot_handover_switches_owner ()
     TEST_ASSERT_TRUE (wait_for_resolve_owner_local (
       resolver_discovery, &handover_spot_rid, &node_a_rid, 5000));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, node_b_endpoint));
+    TEST_ASSERT_TRUE (bind_spot_test_endpoint_local (node_b, &node_b_endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_attach_discovery (node_b, discovery_b));
 
     TEST_ASSERT_TRUE (wait_for_resolve_owner_local (
       resolver_discovery, &handover_spot_rid, &node_b_rid, 5000));
     TEST_ASSERT_TRUE (wait_for_spot_owner_topology_entry_local (
-      registry, "resolve-handover", &handover_spot_rid, node_b_endpoint,
+      registry, "resolve-handover", &handover_spot_rid,
+      node_b_endpoint.c_str (),
       5000));
     TEST_ASSERT_TRUE (wait_for_resolve_spot_local (
       resolver_discovery, &handover_spot_rid, &resolved_node_rid, 5000));

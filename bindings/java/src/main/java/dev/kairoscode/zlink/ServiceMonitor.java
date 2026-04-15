@@ -82,7 +82,12 @@ public final class ServiceMonitor implements AutoCloseable {
             int rc = Native.serviceMonitorRecv(handle, event,
               RecvFlags.NONE.value());
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_service_monitor_recv");
+                try {
+                    throw new RecvException(RecvResult.fromValue(rc),
+                      Native.errno());
+                } catch (IllegalArgumentException ex) {
+                    throw ZlinkException.fromLastError("zlink_service_monitor_recv");
+                }
             }
             return ServiceEvent.fromNative(event);
         }
@@ -96,7 +101,14 @@ public final class ServiceMonitor implements AutoCloseable {
               RecvFlags.DONT_WAIT.value());
             if (rc == 0)
                 return Optional.of(ServiceEvent.fromNative(event));
-            throw ZlinkException.fromLastError("zlink_service_monitor_recv");
+            try {
+                RecvResult result = RecvResult.fromValue(rc);
+                if (result == RecvResult.NO_DATA || result == RecvResult.BUSY)
+                    return Optional.empty();
+                throw new RecvException(result, Native.errno());
+            } catch (IllegalArgumentException ex) {
+                throw ZlinkException.fromLastError("zlink_service_monitor_recv");
+            }
         } catch (RecvException ex) {
             if (ex.getResult() == RecvResult.NO_DATA)
                 return Optional.empty();

@@ -57,19 +57,19 @@ fn main() {
 
     let (request_done_tx, request_done_rx) = mpsc::channel();
     let expected_routing_id = routing_id.clone();
-    router_socket
-        .on_receive(move |received| {
-            assert_eq!(received.parts()[0].as_str().unwrap_or("?"), "ping");
-            assert_eq!(
-                received.routing_id().expect("missing routing id").as_bytes(),
-                expected_routing_id.as_bytes()
-            );
-            received
-                .reply(vec![Message::copy_from(b"pong").expect("reply message failed")])
-                .expect("reply send failed");
-            request_done_tx.send(()).expect("request done send failed");
-        })
-        .expect("failed to install router receive handler");
+    let mut router_thread = router_socket;
+    thread::spawn(move || {
+        let received = router_thread.recv().expect("router recv failed");
+        assert_eq!(received.parts()[0].as_str().unwrap_or("?"), "ping");
+        assert_eq!(
+            received.routing_id().expect("missing routing id").as_bytes(),
+            expected_routing_id.as_bytes()
+        );
+        received
+            .reply(vec![Message::copy_from(b"pong").expect("reply message failed")])
+            .expect("reply send failed");
+        request_done_tx.send(()).expect("request done send failed");
+    });
 
     let reply = block_on(dealer_socket.request(&[b"ping"], Some(Duration::from_secs(2))))
         .expect("dealer request failed");

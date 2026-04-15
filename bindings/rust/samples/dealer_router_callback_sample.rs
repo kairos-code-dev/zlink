@@ -1,5 +1,4 @@
-//! DEALER/ROUTER callback sample -- demonstrates routed send inside a
-//! receive callback (request/reply pattern with callback-mode router).
+//! DEALER/ROUTER sample -- demonstrates routed send with direct router recv.
 
 use std::time::Duration;
 
@@ -63,21 +62,17 @@ fn main() {
     drop(router_mon);
     drop(dealer_mon);
 
-    let handle = router.send_handle();
-
-    router
-        .on_receive(move |received| {
-            let payload = received.parts()[0].as_str().unwrap_or("?");
-            assert_eq!(payload, "ping");
-            let reply = Message::copy_from(b"pong").unwrap();
-            handle
-                .send_to(received.routing_id().expect("missing routing id"), reply)
-                .unwrap();
-        })
-        .expect("on_receive failed");
-
     let msg = Message::copy_from(b"ping").unwrap();
     dealer.send(msg).expect("send failed");
+
+    let received = router.recv().expect("router recv failed");
+    let payload = received.parts()[0].as_str().unwrap_or("?");
+    assert_eq!(payload, "ping");
+    let handle = router.send_handle();
+    let reply = Message::copy_from(b"pong").unwrap();
+    handle
+        .send_to(received.routing_id().expect("missing routing id"), reply)
+        .expect("send_to failed");
 
     dealer
         .common_options()

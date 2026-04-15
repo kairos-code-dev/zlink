@@ -5,7 +5,6 @@
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { drainRecvSocket } = require('./perf_multi_runtime');
 
 function frame(buffer) {
   const framed = Buffer.allocUnsafe(buffer.length + 4);
@@ -14,54 +13,20 @@ function frame(buffer) {
   return framed;
 }
 
-function parseFrames(state, chunk) {
-  state.buffer = Buffer.concat([state.buffer, chunk]);
-  const payloads = [];
-
-  while (state.buffer.length >= 4) {
-    const payloadLength = state.buffer.readUInt32BE(0);
-    const frameLength = payloadLength + 4;
-    if (state.buffer.length < frameLength) {
-      break;
-    }
-    payloads.push(state.buffer.subarray(4, frameLength));
-    state.buffer = state.buffer.subarray(frameLength);
-  }
-
-  return payloads;
-}
-
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2), { msgSize: undefined, warmup: undefined, duration: undefined, clients: undefined });
   const ctx = new zlink.Context();
   const stream = new zlink.StreamSocket(ctx);
-  const states = new Map();
   let stop = false;
-  let receiveLoop = null;
 
-  const processReceived = (received) => {
-    const routingId = received.routingId;
-    if (!routingId) {
-      return;
-    }
-    const key = routingId.toString('hex');
-    let state = states.get(key);
-    if (!state) {
-      state = { buffer: Buffer.alloc(0) };
-      states.set(key, state);
-    }
-
-    for (const part of received.parts) {
-      const payloads = parseFrames(state, part.data());
-      for (const payload of payloads) {
-        stream.send(routingId, Buffer.from(frame(payload)));
-      }
-    }
+  const processPacket = (routingId, header, body) => {
+    const payload = body && body.data().length > 0 ? body.data() : header.data();
+    stream.send(routingId, Buffer.from(frame(payload)));
   };
 
   try {
     stream.bind(options.endpoint);
-    receiveLoop = drainRecvSocket(stream, processReceived, () => stop);
+    stream.onPacket(processPacket);
     console.log(`READY,${options.endpoint}`);
 
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -73,9 +38,6 @@ async function main() {
       }
     }
   } finally {
-    if (receiveLoop) {
-      await receiveLoop;
-    }
     stream.close();
     ctx.close();
   }

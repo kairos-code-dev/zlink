@@ -17,9 +17,9 @@ with the rules here, this section wins.
   plane. Remove `on_receive(...)` from their public contract.
 - `SubSocket` and `XSubSocket` are recv-only. Remove `on_subscribe(...)` from
   their public contract.
-- `StreamSocket` keeps `recv(...)` and raw `on_receive(...)`, and must also
-  expose a packet callback surface mapped to `zlink_stream_packet_handler()`.
-  Recommended canonical name: `on_packet(...)`.
+- `StreamSocket` keeps `recv(...)` and exposes a packet callback surface
+  mapped to `zlink_stream_packet_handler()`. Recommended canonical name:
+  `on_packet(...)`.
 - `SpotNode` must expose service-aware attachment APIs:
   `attach_router(service_name, router)`,
   `attach_pubsub(service_name, pub, sub)`,
@@ -37,6 +37,18 @@ with the rules here, this section wins.
   timer recv.
 - `Spot.on_routed_receive(...)` and `Spot.on_dispatch_event(...)` are mutually
   exclusive on the routed axis.
+- Every socket and `Spot` exposes `set_admission_state(state)` and
+  `get_admission_state()` using the typed enum
+  `AdmissionState.serving` (1) and `AdmissionState.draining` (2). Submit
+  attempts to a drained peer raise `SubmitError` whose `code` is
+  `SubmitResult.NOT_ADMITTED`.
+- `POLLOUT` is a send-recovery readiness signal, shared with
+  `on_send_ready(...)`. It is not a "transport writable" bit.
+- ROUTER / PUB socket option defaults follow the core header: `mandatory =
+  True`, `handover = True`, `nodrop = True`.
+- Internal pairing rule: when auto-connect pairs two same-service ROUTERs
+  via Discovery, the library picks one initiator per pair by a total order
+  on `(routing_id, advertise_endpoint)`. Users do not configure this.
 
 ## Core
 
@@ -96,6 +108,14 @@ class ContextOptions:
 ## Socket Types
 
 All sockets support `with` / `async with` context managers.
+
+All sockets (and `Spot`) expose the admission-state accessor pair:
+
+```python
+# Inherited on every socket type (and on Spot):
+def get_admission_state(self) -> AdmissionState: ...                         # Raises: ConfigError
+def set_admission_state(self, state: AdmissionState) -> None: ...            # Raises: ConfigError
+```
 
 ### PairSocket
 
@@ -265,11 +285,12 @@ class RouterSocket:
                       request_seq: int,
                       payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
 
-    # NOTE: RouterSocket 의 routed 수신 plane 은 단일 표면이다. 일반 ROUTER
-    # 트래픽과 spot-origin routed 트래픽을 모두 recv / on_receive 로 받는다.
+    # NOTE: RouterSocket 의 routed 수신 plane 은 단일 recv 표면이다. 일반
+    # ROUTER 트래픽과 spot-origin routed 트래픽을 모두 recv 로 받는다.
     # `Received.routing_id` 는 source_node_rid, `Received.spot_rid` 는
-    # spot-origin 트래픽에서만 값이 있다. 별도의 recv_spot /
-    # on_spot_receive 는 제공하지 않는다.
+    # spot-origin 트래픽에서만 값이 있다. data-plane callback install
+    # surface (예: on_receive) 는 ROUTER 에 제공하지 않는다. request
+    # completion 은 request() 경로에서만 유지된다.
 
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -328,8 +349,19 @@ class StreamSocket:
     def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
     def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
     def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    # Two mutually-exclusive receive modes on the same StreamSocket:
+    #   (1) recv(), (2) on_packet(handler). Second attach raises
+    #   HandlerError(code=HandlerResult.BUSY).
     def recv(self, *, flags: int = 0) -> Received: ...                           # Raises: RecvError
-    def on_receive(self, handler: Callable[[Received], None]) -> None: ...       # Raises: HandlerError
+    # Mode (3): framed packet callback mapped to
+    # zlink_stream_packet_handler(). Wire frame is big-endian u16
+    # header_size + u32 body_size + header + body. The handler receives
+    # the source routing id, a header Message, and a body Message; both
+    # messages transfer ownership to the handler.
+    def on_packet(
+        self,
+        handler: Callable[[RoutingId, "Message", "Message"], None],
+    ) -> None: ...                                                               # Raises: HandlerError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -576,6 +608,7 @@ class SubmitResult(IntEnum):
     OUT_OF_MEMORY = 10
     SEQ_EXHAUSTED = 11
     INTERNAL_ERROR = 12
+    NOT_ADMITTED = 13   # target peer is in AdmissionState.DRAINING
 ```
 
 ### RequestResult
@@ -607,7 +640,8 @@ class RecvResult(IntEnum):
 
 ### HandlerResult
 
-Result codes for handler registration operations (on_receive, on_subscribe, etc.).
+Result codes for handler registration operations (`on_packet`,
+`on_send_ready`, `on_routed_receive`, `on_dispatch_event`, etc.).
 
 ```python
 class HandlerResult(IntEnum):
@@ -740,8 +774,9 @@ class RecvError(ZlinkError):
 
 ### HandlerError
 
-Raised by handler-registration operations (`on_receive`,
-`on_send_ready`, `on_subscribe`, `on_event`, `on_fire`, etc.).
+Raised by handler-registration operations (`on_packet`,
+`on_send_ready`, `on_event`, `on_fire`, `on_routed_receive`,
+`on_dispatch_event`, etc.).
 Wraps `HandlerResult`.
 
 ```python
@@ -810,10 +845,16 @@ class ConfigError(ZlinkError):
 
 ### MonitorSocket (SocketMonitor)
 
+Starts in recv model. `on_event(...)` transitions one-way to callback-only
+model; after that `recv()` raises a busy recv error and `snapshot()` still works.
+
 ```python
 class MonitorSocket:
-    # No-op handler. Pass to on_event() when driving the monitor via
-    # snapshot() or direct recv() without callback dispatch.
+    # No-op callback for callback-only model. Pass to on_event() to keep a
+    # valid handler when the application does not care about events; once
+    # installed the monitor is in callback-only model and recv() raises a
+    # busy recv error (snapshot() still works). To drive the monitor via
+    # snapshot() / recv() instead, leave on_event unset.
     # Maps to zlink_monitor_ignore_handler.
     ignore_handler: ClassVar[Callable[[MonitorEvent], None]]
 
@@ -824,6 +865,9 @@ class MonitorSocket:
 ```
 
 ### ServiceMonitor
+
+Starts in recv model. `on_event(...)` transitions one-way to callback-only
+model; after that `recv()` raises a busy recv error and `snapshot()` still works.
 
 ```python
 class ServiceMonitor:
@@ -852,20 +896,24 @@ class MonitorSnapshot:
 
 ### MonitorEvent
 
-Value object emitted by `MonitorSocket.recv()` / `on_event(...)`.
-Renamed from the legacy `SocketMonitorEvent`; the old name remains
-exported as an alias for backward compatibility.
+Value object emitted by `MonitorSocket.recv()` / `on_event(...)`. The
+canonical name is `MonitorEvent`. `SocketMonitorEvent` is exported as an
+alias for backward compatibility.
 
 ```python
 class MonitorEvent:
-    event: MonitorEventType          # enum (CONNECTION_READY, CONNECTED, DISCONNECTED, ...)
-    value: int                       # event-specific detail (e.g. reason code)
+    event: MonitorEventType          # enum (CONNECTION_READY, CONNECTED, DISCONNECTED, PEER_ADMISSION_CHANGED, ...)
+    value: int                       # event-specific detail (PEER_ADMISSION_CHANGED carries the new AdmissionState)
     routing_id: RoutingId | None     # peer routing id when carried by the event, else None
     local_addr: str                  # local endpoint
     remote_addr: str                 # remote endpoint
 
-SocketMonitorEvent = MonitorEvent    # legacy alias; prefer MonitorEvent
+SocketMonitorEvent = MonitorEvent    # backward-compat alias; prefer MonitorEvent
 ```
+
+`MonitorEventType` includes `PEER_ADMISSION_CHANGED` (bit 15). Service
+monitors surface the same change through
+`ServiceMonitorMask.PEER_ADMISSION_CHANGED` (bit 8).
 
 ### MonitorEventMask
 
@@ -898,7 +946,7 @@ class ServiceEvent:
     subject: str                     # subscribe subject (topic), empty when N/A
     subject_kind: int                # subject kind enum
 
-ServiceMonitorEvent = ServiceEvent   # legacy alias; prefer ServiceEvent
+ServiceMonitorEvent = ServiceEvent   # backward-compat alias; prefer ServiceEvent
 ```
 
 ---
@@ -1116,6 +1164,7 @@ class MemberPeerEntry:
     endpoint: str
     routing_id: RoutingId
     value: int                       # int64
+    admission_state: AdmissionState  # SERVING | DRAINING
 
 @dataclass(frozen=True)
 class RegistryTopologyEntry:
@@ -1180,6 +1229,7 @@ class SpotNodePeerEntry:
     peer_endpoint: str
     source: int                      # zlink_spot_peer_source_t
     state: int                       # zlink_spot_peer_state_t
+    admission_state: AdmissionState  # SERVING | DRAINING
     connected_since_ms: int
     last_changed_ms: int
 
@@ -1207,6 +1257,10 @@ class SpotServiceMonitorEvent:
     service_name: str
     role: int                        # zlink_spot_service_attachment_role_t
     event: int                       # zlink_monitor_event_t
+
+class AdmissionState(IntEnum):
+    SERVING = 1
+    DRAINING = 2
 
 @dataclass(frozen=True)
 class RegistryServiceSummaryFilter:

@@ -4,7 +4,7 @@ use std::time::Duration;
 use super::{SocketInner, impl_base_socket, impl_connect, impl_recv_options, impl_send_options};
 use crate::ctx::Context;
 use crate::domain::TopicMessage;
-use crate::error::{ConfigError, HandlerError, RecvError, check_config_rc};
+use crate::error::{ConfigError, RecvError, check_config_rc};
 use crate::ffi;
 use crate::flags::RecvFlags;
 use crate::options::{CommonSocketOptions, SubSocketOptions};
@@ -12,7 +12,7 @@ use crate::options::{CommonSocketOptions, SubSocketOptions};
 /// XSUB socket – extended subscribe, pairs with XPUB.
 ///
 /// Capabilities: `subscribe` (blocking recv), `set_subscription`,
-/// `unset_subscription`, `on_subscribe`.
+/// `unset_subscription`.
 /// No send capabilities – no send options exposed.
 pub struct XSubSocket {
     pub(crate) inner: SocketInner,
@@ -39,13 +39,6 @@ impl XSubSocket {
 
     pub fn unset_subscription(&self, filter: &str) -> Result<(), ConfigError> {
         self.inner.unset_subscription(filter)
-    }
-
-    pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), HandlerError>
-    where
-        F: Fn(TopicMessage) + Send + 'static,
-    {
-        self.inner.on_subscribe(handler)
     }
 
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self> {

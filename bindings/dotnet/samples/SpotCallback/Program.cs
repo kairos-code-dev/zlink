@@ -10,35 +10,20 @@ using var pubNode = new SpotNode(ctx);
 using var subNode = new SpotNode(ctx);
 using var publisher = pubNode.CreateSpot();
 using var subscriber = subNode.CreateSpot();
+const string serviceName = "room:lobby";
 const string topic = "room:lobby";
 const string payload = "hello-spot";
 pubNode.Bind("tcp://127.0.0.1:0");
 string endpoint = pubNode.LastEndpoint;
 subNode.ConnectPeer(endpoint);
-using var signal = new ManualResetEventSlim(false);
-string? output = null;
-subscriber.OnSubscribe((receivedTopic, parts) =>
-{
-    try
-    {
-        using Message body = parts[0];
-        output = $"{receivedTopic}/{body.GetString()}";
-        signal.Set();
-    }
-    finally
-    {
-        for (int i = 1; i < parts.Length; i++)
-            parts[i].Dispose();
-    }
-});
 subscriber.SetSubscription(topic);
 SampleSupport.WaitSpotPeerConnected(subNode);
 
-DateTime deadline = DateTime.UtcNow.AddSeconds(5);
-while (!signal.IsSet && DateTime.UtcNow < deadline)
-{
-    using (Message message = Message.FromString(payload))
-        publisher.Publish(topic, message);
-}
-SampleSupport.WaitOrThrow(() => signal.IsSet, 5000, "spot callback timeout");
-Console.WriteLine($"[spot/callback] publish: \"{topic}/{payload}\" -> subscribe: \"{output}\"");
+using (Message message = Message.FromString(payload))
+    publisher.Publish(serviceName, topic, message);
+
+using TopicMessage subscribed = subscriber.Subscribe();
+string output = $"{subscribed.ServiceName}/{subscribed.Topic}/"
+    + subscribed.SinglePartOrThrow().GetString();
+Console.WriteLine(
+    $"[spot/recv] publish: \"{serviceName}/{topic}/{payload}\" -> subscribe: \"{output}\"");

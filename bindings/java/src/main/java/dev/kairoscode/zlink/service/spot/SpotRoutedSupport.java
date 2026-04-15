@@ -246,8 +246,9 @@ final class SpotRoutedSupport implements AutoCloseable {
         ExecutorService executor = ensureCallbackExecutor("zlink-spot-dispatch-callback");
         Arena arena = Arena.ofShared();
         MemorySegment stub = LINKER.upcallStub(callbackHandle(
-          "handleDispatchEventCallback", MethodType.methodType(void.class,
-            MemorySegment.class, int.class, MemorySegment.class)),
+          "handleDispatchEventCallback",
+          MethodType.methodType(void.class, MemorySegment.class, int.class,
+            MemorySegment.class), this),
           FD_DISPATCH_HANDLER, arena);
         boolean success = false;
         try {
@@ -636,6 +637,16 @@ final class SpotRoutedSupport implements AutoCloseable {
         try {
             return MethodHandles.lookup().findStatic(SpotRoutedSupport.class,
               name, type);
+        } catch (ReflectiveOperationException ex) {
+            throw new ExceptionInInitializerError(ex);
+        }
+    }
+
+    private MethodHandle callbackHandle(String name, MethodType type,
+                                        SpotRoutedSupport receiver) {
+        try {
+            return MethodHandles.lookup().findVirtual(SpotRoutedSupport.class,
+              name, type).bindTo(receiver);
         } catch (ReflectiveOperationException ex) {
             throw new ExceptionInInitializerError(ex);
         }

@@ -13,6 +13,12 @@ int main ()
     assert (pub_node.valid ());
     assert (sub_node.valid ());
 
+    const std::string service_name = detail::k_spot_service;
+    zlink::service::discovery_t pub_discovery (
+      ctx, zlink::service_type::spot, service_name);
+    assert (pub_discovery.valid ());
+    pub_node.attach_discovery (pub_discovery);
+
     zlink::service::spot_t pub_spot = pub_node.create_spot ();
     zlink::service::spot_t sub_spot = sub_node.create_spot ();
     assert (pub_spot.valid ());
@@ -28,16 +34,19 @@ int main ()
 
     const std::string sent = detail::k_spot_payload;
     zlink::message_t outbound = detail::make_message (sent);
-    pub_spot.publish (topic, outbound);
+    pub_spot.publish (service_name, topic, outbound);
 
     const zlink::topic_message_t inbound = sub_spot.subscribe ();
+    assert (inbound.service_name ());
+    assert (*inbound.service_name () == service_name);
     assert (inbound.topic () == topic);
     assert (inbound.parts ().size () == 1);
     const std::string received = inbound.parts ()[0].to_string ();
     assert (received == detail::k_spot_payload);
     std::printf (
-      "[spot/recv] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
-      topic.c_str (), sent.c_str (), inbound.topic ().c_str (),
+      "[spot/recv] publish: \"%s/%s/%s\" → subscribe: \"%s/%s/%s\"\n",
+      service_name.c_str (), topic.c_str (), sent.c_str (),
+      inbound.service_name ()->c_str (), inbound.topic ().c_str (),
       received.c_str ());
     sub_spot.close ();
     pub_spot.close ();

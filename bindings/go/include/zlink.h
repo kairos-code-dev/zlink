@@ -313,6 +313,13 @@ typedef void (*zlink_reply_handler_fn) (
   size_t part_count_,
   void *userdata_);
 
+typedef void (*zlink_stream_packet_handler_fn) (
+  void *stream_,
+  const zlink_routing_id_t *source_rid_,
+  zlink_msg_t *header_,
+  zlink_msg_t *body_,
+  void *userdata_);
+
 typedef void (*zlink_router_handler_fn) (
   const zlink_routing_id_t *peer_rid_,
   uint64_t request_seq_,
@@ -365,6 +372,11 @@ ZLINK_EXPORT void *zlink_socket (void *, zlink_socket_type_t type_);
  */
 ZLINK_EXPORT zlink_handler_result_t zlink_recv_handler (
   void *s_, zlink_socket_msg_handler_fn handler_, void *userdata_);
+
+ZLINK_EXPORT zlink_handler_result_t zlink_stream_packet_handler (
+  void *stream_,
+  zlink_stream_packet_handler_fn handler_,
+  void *userdata_);
 
 /**
  * @brief Attach a direct topic-aware receive handler to a subscribe subject.
@@ -440,6 +452,12 @@ ZLINK_EXPORT zlink_config_result_t zlink_set_routing_id (void *handle_,
                                         size_t size_);
 ZLINK_EXPORT zlink_config_result_t zlink_get_routing_id (void *handle_,
                                         zlink_routing_id_t *out_);
+ZLINK_EXPORT zlink_config_result_t zlink_set_admission_state (
+  void *handle_,
+  zlink_admission_state_t state_);
+ZLINK_EXPORT zlink_config_result_t zlink_get_admission_state (
+  void *handle_,
+  zlink_admission_state_t *state_out_);
 ZLINK_EXPORT zlink_config_result_t zlink_set_tls_server (void *handle_,
                                         const char *cert_,
                                         const char *key_,
@@ -670,6 +688,110 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_reply_router (
   zlink_msg_t *parts_,
   size_t part_count_);
 
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_service (
+  void *spot_,
+  const char *service_name_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_publish (
+  void *spot_,
+  const char *service_name_,
+  const char *topic_id_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_);
+
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscribe (
+  void *spot_,
+  zlink_routing_id_t *source_rid_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  char *service_name_out_,
+  size_t *service_name_len_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  zlink_recv_flags_t flags_);
+
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscription_event (
+  void *spot_,
+  zlink_routing_id_t *source_rid_out_,
+  int *subscribed_out_,
+  char *service_name_out_,
+  size_t *service_name_len_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  zlink_recv_flags_t flags_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_service (
+  void *spot_,
+  const char *service_name_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
+
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_router (
+  void *node_,
+  const char *service_name_,
+  void *router_);
+
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_pubsub (
+  void *node_,
+  const char *service_name_,
+  void *pub_,
+  void *sub_);
+
+typedef enum zlink_spot_service_attachment_role_t
+{
+    ZLINK_SPOT_SERVICE_ATTACHMENT_ROUTER = 1,
+    ZLINK_SPOT_SERVICE_ATTACHMENT_PUB = 2,
+    ZLINK_SPOT_SERVICE_ATTACHMENT_SUB = 3
+} zlink_spot_service_attachment_role_t;
+
+typedef struct zlink_spot_service_attachment_stats_t
+{
+    char service_name[256];
+    uint32_t router_count;
+    uint32_t pub_count;
+    uint32_t sub_count;
+    uint32_t auto_router_count;
+    uint32_t auto_pub_count;
+    uint32_t auto_sub_count;
+} zlink_spot_service_attachment_stats_t;
+
+typedef struct {
+    uint64_t event;
+    uint64_t value;
+    zlink_routing_id_t routing_id;
+    char local_addr[256];
+    char remote_addr[256];
+} zlink_monitor_event_t;
+
+typedef struct zlink_spot_service_monitor_event_t
+{
+    char service_name[256];
+    zlink_spot_service_attachment_role_t role;
+    zlink_monitor_event_t event;
+} zlink_spot_service_monitor_event_t;
+
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_service_attachment_count (
+  void *node_,
+  size_t *count_out_);
+
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_service_attachment_at (
+  void *node_,
+  size_t index_,
+  zlink_spot_service_attachment_stats_t *out_);
+
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_node_monitor_recv (
+  void *node_,
+  zlink_spot_service_monitor_event_t *out_,
+  zlink_recv_flags_t flags_);
+
 ZLINK_EXPORT zlink_handler_result_t zlink_spot_handler (
   void *spot_, zlink_spot_handler_fn handler_, void *userdata_);
 
@@ -778,14 +900,6 @@ ZLINK_EXPORT zlink_recv_result_t zlink_subscription_event (
   char *topic_id_out_,
   size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_);
-
-typedef struct {
-    uint64_t event;
-    uint64_t value;
-    zlink_routing_id_t routing_id;
-    char local_addr[256];
-    char remote_addr[256];
-} zlink_monitor_event_t;
 
 typedef void (*zlink_monitor_handler_fn) (
   const zlink_monitor_event_t *event_, void *userdata_);

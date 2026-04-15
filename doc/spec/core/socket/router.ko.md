@@ -30,8 +30,8 @@ request-reply 패턴에서 응답 측입니다.
 - `HANDOVER=1`이 기본이므로 동일한 peer identity로 새 연결이 들어오면
   새 연결이 기존 pipe를 인수합니다.
 
-호출자가 예전 동작(조용한 drop, 기존 pipe 유지)이 필요하면 해당 옵션을
-명시적으로 `0`으로 설정해야 합니다.
+호출자가 다른 동작(peer 미도달 시 조용한 drop, 중복 identity 도착 시 기존
+pipe 유지)을 원하면 해당 옵션을 명시적으로 `0`으로 설정해야 합니다.
 
 ## Admission 상태
 
@@ -92,7 +92,7 @@ reply 경로에는 admission 판정을 적용하지 않습니다.
 ROUTER 소켓 전용 옵션을 설정합니다.
 
 ```c
-int zlink_set_router_option (void *handle_,
+zlink_config_result_t zlink_set_router_option (void *handle_,
                               zlink_router_option_t option_,
                               const void *optval_,
                               size_t optvallen_);
@@ -101,9 +101,7 @@ int zlink_set_router_option (void *handle_,
 ROUTER 소켓 옵션을 설정합니다. 모든 소켓 타입에 공유되는 공통 옵션은
 `zlink_set_option()`을 사용하세요.
 
-**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
-`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
-`zlink_errno()`로 유지됩니다.
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_get_router_option`, `zlink_set_option`
 
@@ -114,7 +112,7 @@ ROUTER 소켓 옵션을 설정합니다. 모든 소켓 타입에 공유되는 �
 ROUTER 소켓 전용 옵션을 조회합니다.
 
 ```c
-int zlink_get_router_option (void *handle_,
+zlink_config_result_t zlink_get_router_option (void *handle_,
                               zlink_router_option_t option_,
                               void *optval_,
                               size_t *optvallen_);
@@ -122,9 +120,7 @@ int zlink_get_router_option (void *handle_,
 
 ROUTER 소켓 옵션의 현재 값을 가져옵니다.
 
-**반환값:** 성공 시 `ZLINK_SUBMIT_OK`. 실패 시에는
-`zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
-`zlink_errno()`로 유지됩니다.
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_set_router_option`
 
@@ -165,7 +161,7 @@ zlink_submit_result_t zlink_send_rid (void *s_,
 
 ### 논블로킹 routed send
 
-기존 routed send API를 이용한 논블로킹 지정 송신입니다.
+routed send API를 이용한 논블로킹 지정 송신입니다.
 
 ```c
 zlink_submit_result_t zlink_send_rid (void *s_,
@@ -319,7 +315,7 @@ zlink_recv_result_t zlink_recv (void *s_,
 소켓의 라우팅 아이덴티티를 설정합니다.
 
 ```c
-int zlink_set_routing_id (void *handle_,
+zlink_config_result_t zlink_set_routing_id (void *handle_,
                            const void *data_,
                            size_t size_);
 ```
@@ -327,7 +323,7 @@ int zlink_set_routing_id (void *handle_,
 ROUTER 주소 지정을 위한 소켓 아이덴티티를 설정합니다. 최대 255바이트.
 바인딩 또는 연결하기 전에 설정해야 합니다.
 
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_get_routing_id`
 
@@ -338,7 +334,7 @@ ROUTER 주소 지정을 위한 소켓 아이덴티티를 설정합니다. 최대
 send-ready 콜백을 설정하거나 교체합니다.
 
 ```c
-bool zlink_send_ready_handler (
+zlink_handler_result_t zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
@@ -354,6 +350,6 @@ readiness 신호는 송신을 다시 시도할 가치가 있다는 뜻이며, �
 실제로 쓸 수 있는 peer가 있을 때만 surface됩니다. 지원하지 않는 subject는
 `ENOTSUP`를 반환합니다.
 
-**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_HANDLER_OK`, 실패 시 `zlink_handler_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_send`

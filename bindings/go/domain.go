@@ -37,6 +37,7 @@ const (
 	SubmitOutOfMemory     SubmitResult = 10
 	SubmitSeqExhausted    SubmitResult = 11
 	SubmitInternalError   SubmitResult = 12
+	SubmitNotAdmitted     SubmitResult = 13
 )
 
 type RequestResult int
@@ -114,6 +115,13 @@ const (
 	SpotDispatchEventSubscribeReadable SpotDispatchEvent = 1
 	SpotDispatchEventRoutedReadable    SpotDispatchEvent = 2
 	SpotDispatchEventTimerReadable     SpotDispatchEvent = 3
+)
+
+type AdmissionState int
+
+const (
+	AdmissionStateServing  AdmissionState = AdmissionState(C.ZLINK_ADMISSION_SERVING)
+	AdmissionStateDraining AdmissionState = AdmissionState(C.ZLINK_ADMISSION_DRAINING)
 )
 
 type Received struct {
@@ -227,9 +235,10 @@ func (r *Received) Close() error {
 }
 
 type TopicMessage struct {
-	routingID RoutingID
-	topic     string
-	parts     []*Message
+	routingID   RoutingID
+	serviceName string
+	topic       string
+	parts       []*Message
 }
 
 func (t *TopicMessage) RoutingID() RoutingID {
@@ -241,6 +250,17 @@ func (t *TopicMessage) RoutingID() RoutingID {
 
 func (t *TopicMessage) HasRoutingID() bool {
 	return t != nil && t.routingID.Size() > 0
+}
+
+func (t *TopicMessage) ServiceName() string {
+	if t == nil {
+		return ""
+	}
+	return t.serviceName
+}
+
+func (t *TopicMessage) HasServiceName() bool {
+	return t != nil && t.serviceName != ""
 }
 
 func (t *TopicMessage) Topic() string {
@@ -295,9 +315,10 @@ func (t *TopicMessage) Close() error {
 }
 
 type SubscriptionEvent struct {
-	routingID  RoutingID
-	subscribed bool
-	topic      string
+	routingID   RoutingID
+	serviceName string
+	subscribed  bool
+	topic       string
 }
 
 func (s SubscriptionEvent) RoutingID() RoutingID {
@@ -306,6 +327,14 @@ func (s SubscriptionEvent) RoutingID() RoutingID {
 
 func (s SubscriptionEvent) HasRoutingID() bool {
 	return s.routingID.Size() > 0
+}
+
+func (s SubscriptionEvent) ServiceName() string {
+	return s.serviceName
+}
+
+func (s SubscriptionEvent) HasServiceName() bool {
+	return s.serviceName != ""
 }
 
 func (s SubscriptionEvent) Subscribed() bool {

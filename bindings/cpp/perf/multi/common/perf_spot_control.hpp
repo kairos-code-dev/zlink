@@ -66,11 +66,14 @@ inline void stop_control_connect_gate (control_connect_gate_t *gate_)
 
 template<typename SpotHandle>
 inline zlink::send_result_t
-try_publish_nowait (SpotHandle &spot_, const std::string &topic_,
+try_publish_nowait (SpotHandle &spot_,
+                    const std::string &service_name_,
+                    const std::string &topic_,
                     zlink::message_t &outbound)
 {
     try {
-        spot_.publish (topic_, outbound, zlink::send_flags_t::dontwait);
+        spot_.publish (
+          service_name_, topic_, outbound, zlink::send_flags_t::dontwait);
         return zlink::send_result_t::sent;
     }
     catch (const zlink::submit_error_t &err) {
@@ -318,6 +321,7 @@ inline bool wait_for_control_connect (control_connect_gate_t *gate_,
 
 template<typename SpotHandle, typename WaitFn>
 inline bool publish_control_message (SpotHandle &spot_,
+                                     const std::string &service_name_,
                                      const std::string &topic_,
                                      const std::string &payload_,
                                      int timeout_ms_,
@@ -335,7 +339,7 @@ inline bool publish_control_message (SpotHandle &spot_,
         }
 
         const zlink::send_result_t result =
-          try_publish_nowait (spot_, topic_, outbound);
+          try_publish_nowait (spot_, service_name_, topic_, outbound);
         if (result == zlink::send_result_t::sent)
             return true;
         if (result != zlink::send_result_t::backpressured
@@ -353,6 +357,7 @@ inline bool publish_control_message (SpotHandle &spot_,
 
 template<typename SpotHandle, typename ParseFn, typename IdleFn>
 inline bool wait_for_ready_counts (SpotHandle &spot_,
+                                   const std::string &service_name_,
                                    const std::string &topic_,
                                    size_t msg_size_,
                                    size_t expected_ready_count_,
@@ -377,6 +382,10 @@ inline bool wait_for_ready_counts (SpotHandle &spot_,
         }
 
         const zlink::topic_message_t &received = *maybe_received;
+        if (!service_name_.empty ()
+            && (!received.service_name ()
+                || *received.service_name () != service_name_))
+            continue;
         if (received.topic () != topic_ || received.parts ().size () != 1)
             continue;
 
@@ -404,14 +413,17 @@ inline bool initialize_client_control_session (
   zlink::context_t &ctx_,
   const std::string &transport_,
   const std::string &remote_control_endpoint_,
+  const std::string &service_name_,
   const std::string &control_topic_,
   const multi_bench_settings_t &settings_,
   std::unique_ptr<SpotNode> *control_node_out_,
+  std::unique_ptr<zlink::service::discovery_t> *control_discovery_out_,
   std::unique_ptr<SpotHandle> *control_spot_out_,
   std::string *local_control_endpoint_out_)
 {
-    if (!control_node_out_ || !control_spot_out_ || !local_control_endpoint_out_
-        || remote_control_endpoint_.empty () || control_topic_.empty ()) {
+    if (!control_node_out_ || !control_discovery_out_ || !control_spot_out_
+        || !local_control_endpoint_out_ || remote_control_endpoint_.empty ()
+        || control_topic_.empty () || service_name_.empty ()) {
         errno = EINVAL;
         return false;
     }
@@ -419,6 +431,13 @@ inline bool initialize_client_control_session (
     std::unique_ptr<SpotNode> control_node (new SpotNode (ctx_));
     if (!control_node->valid ())
         return false;
+
+    std::unique_ptr<zlink::service::discovery_t> control_discovery (
+      new zlink::service::discovery_t (
+        ctx_, zlink::service_type::spot, service_name_));
+    if (!control_discovery->valid ())
+        return false;
+    control_node->attach_discovery (*control_discovery);
 
     std::unique_ptr<SpotHandle> control_spot (
       new SpotHandle (control_node->create_spot ()));
@@ -449,6 +468,7 @@ inline bool initialize_client_control_session (
 
     *local_control_endpoint_out_ = local_control_endpoint;
     *control_node_out_ = std::move (control_node);
+    *control_discovery_out_ = std::move (control_discovery);
     *control_spot_out_ = std::move (control_spot);
     return true;
 }

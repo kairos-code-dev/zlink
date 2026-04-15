@@ -64,6 +64,7 @@ internal unsafe struct ZlinkSpotNodePeerEntry
     public fixed byte PeerEndpoint[256];
     public int Source;
     public int State;
+    public int AdmissionState;
     public ulong ConnectedSinceMs;
     public ulong LastChangedMs;
 }
@@ -139,6 +140,7 @@ internal unsafe struct ZlinkMemberPeerEntry
     public fixed byte ServiceName[256];
     public fixed byte Endpoint[256];
     public ZlinkRoutingId RoutingId;
+    public int AdmissionState;
     public long Value;
 }
 
@@ -167,4 +169,24 @@ internal unsafe struct ZlinkRegistryTopologyFilter
     public ZlinkRoutingId RoutingId;
     public int State;
     public int Source;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct ZlinkSpotServiceAttachmentStats
+{
+    public fixed byte ServiceName[256];
+    public uint RouterCount;
+    public uint PubCount;
+    public uint SubCount;
+    public uint AutoRouterCount;
+    public uint AutoPubCount;
+    public uint AutoSubCount;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct ZlinkSpotServiceMonitorEvent
+{
+    public fixed byte ServiceName[256];
+    public int Role;
+    public ZlinkMonitorEvent Event;
 }

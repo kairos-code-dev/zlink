@@ -4,6 +4,7 @@ using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using Zlink.Sockets.Internal;
+using Zlink.Native;
 
 namespace Zlink;
 
@@ -63,6 +64,21 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         {
             throw ZlinkException.CreateConfigException(ex.InternalErrno);
         }
+    }
+
+    public AdmissionState GetAdmissionState()
+    {
+        int rc = NativeMethods.zlink_get_admission_state(Handle, out int state);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        return (AdmissionState)state;
+    }
+
+    public void SetAdmissionState(AdmissionState state)
+    {
+        int rc = NativeMethods.zlink_set_admission_state(Handle, (int)state);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
     public void Close()

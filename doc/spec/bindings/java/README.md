@@ -22,9 +22,9 @@ with the rules here, this section wins.
   plane. Remove `onReceive(...)` from their public contract.
 - `SubSocket` and `XSubSocket` are recv-only. Remove `onSubscribe(...)` from
   their public contract.
-- `StreamSocket` keeps `recv(...)` and raw `onReceive(...)`, and must also
-  expose a packet callback surface mapped to `zlink_stream_packet_handler()`.
-  Recommended canonical name: `onPacket(...)`.
+- `StreamSocket` keeps `recv(...)` and exposes a packet callback surface
+  mapped to `zlink_stream_packet_handler()`. Recommended canonical name:
+  `onPacket(...)`.
 - `SpotNode` must expose service-aware attachment APIs:
   `attachRouter(String serviceName, RouterSocket router)`,
   `attachPubSub(String serviceName, PubSocket pub, SubSocket sub)`,
@@ -40,6 +40,17 @@ with the rules here, this section wins.
   `onDispatchEvent(...)` plus `subscribe(...)` / routed recv / timer recv.
 - `Spot.onRoutedReceive(...)` and `Spot.onDispatchEvent(...)` are mutually
   exclusive on the routed axis.
+- Every socket and `Spot` exposes `setAdmissionState(state)` /
+  `getAdmissionState()` using the typed enum
+  `AdmissionState { SERVING, DRAINING }`. Submit attempts to a drained peer
+  raise `SubmitException` with `getCode() == SubmitResult.NOT_ADMITTED`.
+- `POLLOUT` is a send-recovery readiness signal, shared with
+  `onSendReady(...)`. It is not a "transport writable" bit.
+- ROUTER / PUB socket option defaults follow the core header: `mandatory =
+  true`, `handover = true`, `nodrop = true`.
+- Internal pairing rule: when auto-connect pairs two same-service ROUTERs
+  via Discovery, the library picks one initiator per pair by a total order
+  on `(routingId, advertiseEndpoint)`. Users do not configure this.
 
 ## Core
 
@@ -86,6 +97,19 @@ public final class ContextOptions {
 ---
 
 ## Socket Types
+
+### Common base methods
+
+All socket types inherit from `Socket` and expose these common operations.
+
+```java
+// Available on all socket types
+void close();                                                    // @throws CloseException
+SocketMonitor monitorOpen();                                     // @throws ConfigException
+SocketMonitor monitorOpen(SocketEventMask events);               // @throws ConfigException
+AdmissionState getAdmissionState();                              // @throws ConfigException
+void setAdmissionState(AdmissionState state);                    // @throws ConfigException
+```
 
 ### PairSocket
 
@@ -390,10 +414,17 @@ public final class StreamSocket extends Socket {
 
     Received recv();                                                 // @throws RecvException
     Received recv(RecvFlags flags);                                  // @throws RecvException
-    void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
-    void attachStreamRaw(StreamPacketHandler handler);               // @throws ConfigException
+    // Two mutually-exclusive receive modes on the same StreamSocket:
+    //   (1) recv(), (2) onPacket(handler). Second attach raises
+    //   HandlerException(HandlerResult.BUSY).
+    // Mode (3): framed packet callback mapped to
+    //   zlink_stream_packet_handler(). Wire frame is big-endian u16
+    //   header_size + u32 body_size + header + body. The handler receives
+    //   the source routing id, a header Message, and a body Message; both
+    //   messages transfer ownership to the handler.
+    void onPacket(StreamPacketHandler handler);                      // @throws HandlerException
     void detachStream();                                             // @throws ConfigException
 
     StreamSocketOptions options();
@@ -582,8 +613,8 @@ public final class RecvException extends ZlinkException {
 
 ### HandlerException
 
-Thrown by handler registration methods (stream `onReceive`,
-`onSendReady`, `onRoutedReceive`, `onDispatchEvent`, `onEvent`, etc.). Wraps a
+Thrown by handler registration methods (`onPacket`, `onSendReady`,
+`onRoutedReceive`, `onDispatchEvent`, `onEvent`, etc.). Wraps a
 `HandlerResult`.
 
 ```java
@@ -664,7 +695,8 @@ public enum SubmitResult {
     THREAD_VIOLATION(9),
     OUT_OF_MEMORY(10),
     SEQ_EXHAUSTED(11),
-    INTERNAL_ERROR(12);
+    INTERNAL_ERROR(12),
+    NOT_ADMITTED(13);  // target peer is in AdmissionState.DRAINING
 
     SubmitResult(int value);
     public int value();
@@ -711,7 +743,7 @@ public enum RecvResult {
 
 ### HandlerResult
 
-Result code for handler registration operations (stream `onReceive`,
+Result code for handler registration operations (`onPacket`,
 `onSendReady`, `onRoutedReceive`, `onDispatchEvent`, `onEvent`, etc.).
 
 ```java
@@ -869,14 +901,21 @@ public record SubscriptionEvent(Optional<RoutingId> routingId,
 
 Socket-level event monitor. Receives connect, disconnect, and handshake events.
 Implements `AutoCloseable`.
+Starts in recv model. `onEvent(...)` transitions one-way to callback-only
+model; after that `recv()` raises busy and `snapshot()` still works.
 
 ```java
 public final class MonitorSocket implements AutoCloseable {
-    /** No-op handler. Assign to {@link #onEvent(SocketMonitorHandler)} when
-     *  driving the monitor via {@link #snapshot()} or direct {@link #recv()}
-     *  without callback dispatch. Maps to zlink_monitor_ignore_handler. */
+    /** No-op callback for callback-only model. Pass to
+     *  {@link #onEvent(SocketMonitorHandler)} to keep a valid handler symbol
+     *  when the application does not care about events; once installed, the
+     *  monitor is in callback-only model and {@link #recv()} raises busy
+     *  ({@link #snapshot()} still works). To drive the monitor through
+     *  {@code snapshot()} / {@code recv()} instead, leave the handler unset.
+     *  Maps to zlink_monitor_ignore_handler. */
     public static final SocketMonitorHandler IGNORE_HANDLER = event -> {};
 
+    void onEvent(SocketMonitorHandler handler);                      // @throws HandlerException
     MonitorEvent recv();                                             // @throws RecvException
     MonitorSnapshot snapshot();                                      // @throws ConfigException
 
@@ -886,8 +925,10 @@ public final class MonitorSocket implements AutoCloseable {
 
 ### ServiceMonitor
 
-Service-level event monitor for discovery, registry, and spot.
+Service-level event monitor for discovery.
 Implements `AutoCloseable`.
+Starts in recv model. `onEvent(...)` transitions one-way to callback-only
+model; after that `recv()` raises busy and `snapshot()` still works.
 
 ```java
 public final class ServiceMonitor implements AutoCloseable {
@@ -911,6 +952,11 @@ public record MonitorEvent(MonitorEventType event,
                            String remoteAddr) {}
 ```
 
+`MonitorEventType` includes `PEER_ADMISSION_CHANGED` (bit 15). When this
+event fires, `value` carries the new `AdmissionState` for the peer. Service
+monitors surface the same change through
+`ServiceMonitorEventMask.PEER_ADMISSION_CHANGED` (bit 8).
+
 ### MonitorSnapshot
 
 Runtime state snapshot produced by `MonitorSocket.snapshot()` and
@@ -922,13 +968,15 @@ public record MonitorSnapshot(MonitorSourceKind sourceKind,
                               int detailFlags,
                               long sndPendingMsgs,
                               long rcvPendingMsgs) {
+    // Raw socket monitor source에서만 ready 의미를 사용한다.
     boolean isReady();
 }
 ```
 
 ### ServiceEvent
 
-Service monitor event value object. Produced by `ServiceMonitor.recv()`.
+Discovery service monitor event value object. Produced by
+`ServiceMonitor.recv()`.
 
 ```java
 public record ServiceEvent(ServiceKind serviceKind,
@@ -1229,7 +1277,8 @@ public record MemberPeerEntry(ServiceType serviceType,
                               String serviceName,
                               String endpoint,
                               RoutingId routingId,
-                              long value) {}
+                              long value,
+                              AdmissionState admissionState) {}
 ```
 
 ### RegistryTopologyEntry
@@ -1316,6 +1365,7 @@ public record SpotNodePeerEntry(String serviceName,
                                 String peerEndpoint,
                                 SpotPeerSource source,
                                 SpotPeerState state,
+                                AdmissionState admissionState,
                                 long connectedSinceMs,
                                 long lastChangedMs) {}
 ```
@@ -1349,6 +1399,11 @@ public enum SpotServiceAttachmentRole {
     ROUTER,
     PUB,
     SUB
+}
+
+public enum AdmissionState {
+    SERVING,   // value = 1
+    DRAINING   // value = 2
 }
 ```
 

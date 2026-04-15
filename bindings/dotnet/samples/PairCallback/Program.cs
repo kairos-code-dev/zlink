@@ -15,17 +15,8 @@ sender.Bind(endpoint);
 receiver.Connect(endpoint);
 SampleSupport.WaitConnected(senderMonitor, receiverMonitor);
 
-using var signal = new ManualResetEventSlim(false);
-string? payload = null;
-receiver.OnReceive((routingId, parts) =>
-{
-    using (parts[0])
-        payload = parts[0].GetString();
-    signal.Set();
-});
-
 using (Message message = Message.FromString("hello-pair"))
     sender.Send(message);
-SampleSupport.WaitOrThrow(() => signal.IsSet, 2000, "pair callback timeout");
+string payload = SampleSupport.ReceiveUtf8(receiver, 2000);
 Console.WriteLine(
-    $"[pair/callback] send: \"hello-pair\" -> recv: \"{payload}\"");
+    $"[pair/recv] send: \"hello-pair\" -> recv: \"{payload}\"");

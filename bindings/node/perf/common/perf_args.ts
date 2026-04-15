@@ -56,6 +56,10 @@ function parseCommonArgs(argv, defaults) {
     } else if (arg === '--warmup') {
       options.warmup = Number(argv[i + 1]);
       i += 1;
+    } else if (arg === '--msg-size') {
+      options.msgSizes = parseSizeList(argv[i + 1], defaults.msgSizes).slice(0, 1);
+      options.msgSizesExplicit = true;
+      i += 1;
     } else if (arg === '--msg-sizes') {
       options.msgSizes = parseSizeList(argv[i + 1], defaults.msgSizes);
       options.msgSizesExplicit = true;

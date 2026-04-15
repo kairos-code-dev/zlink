@@ -1,10 +1,12 @@
 import socket as _socket
+import threading
 import time
 
 import zlink
 
 
 _MONITOR_POLL_SLEEP_S = 0.005
+_MONITOR_WAIT = threading.Event()
 
 
 def tcp_endpoint():
@@ -20,7 +22,7 @@ def _poll_monitor_event(monitor, timeout_ms):
     while time.monotonic() < deadline:
         if monitor.snapshot().is_ready():
             return monitor.recv()
-        time.sleep(_MONITOR_POLL_SLEEP_S)
+        _MONITOR_WAIT.wait(_MONITOR_POLL_SLEEP_S)
     return None
 
 
@@ -67,7 +69,7 @@ def wait_service_event_type(monitor, expected_event_type, timeout_ms=5000):
         if time.monotonic() >= deadline:
             raise TimeoutError("service monitor did not produce the expected event")
         if not monitor.snapshot().is_ready():
-            time.sleep(_MONITOR_POLL_SLEEP_S)
+            _MONITOR_WAIT.wait(_MONITOR_POLL_SLEEP_S)
             continue
         event = monitor.recv()
         if int(event.event_type) == expected_value:
@@ -76,9 +78,11 @@ def wait_service_event_type(monitor, expected_event_type, timeout_ms=5000):
 
 def wait_until(predicate, timeout_ms=5000, description="condition"):
     deadline = time.monotonic() + (timeout_ms / 1000.0)
+    waiter = threading.Event()
     while time.monotonic() < deadline:
         if predicate():
             return
+        waiter.wait(0.001)
     raise TimeoutError(f"timed out waiting for {description}")
 
 

@@ -35,7 +35,12 @@ func main() {
 	requestDone := make(chan error, 1)
 	replyDone := make(chan error, 1)
 
-	samplecommon.Must(routerSocket.OnReceive(func(received *zlink.Received) {
+	go func() {
+		received, err := routerSocket.Recv(zlink.RecvFlagsNone)
+		if err != nil {
+			requestDone <- err
+			return
+		}
 		defer received.Close()
 		part, err := received.SinglePartOrError()
 		if err != nil {
@@ -56,7 +61,7 @@ func main() {
 			return
 		}
 		requestDone <- routerSocket.Reply(received.RoutingID(), requestSeq, zlink.SendFlagsNone, samplecommon.Message("pong"))
-	}))
+	}()
 
 	samplecommon.Must(dealerSocket.RequestCallback([][]byte{[]byte("ping")}, func(result zlink.RequestResult, reply []*zlink.Message) {
 		defer func() {

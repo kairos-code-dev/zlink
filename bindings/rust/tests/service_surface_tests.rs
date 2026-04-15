@@ -24,11 +24,16 @@ fn spot_node_snapshot_surfaces_exist() {
     let node = SpotNode::new(&ctx).unwrap();
     let endpoint = format!("tcp://127.0.0.1:{}", reserve_tcp_port());
     node.bind(&endpoint).unwrap();
+    let _ = node.admission_state().unwrap();
+    let _ = node.set_admission_state(AdmissionState::Serving);
     let _ = node.status_snapshot().unwrap();
     let _ = node.peers_snapshot().unwrap();
     let _ = node.subjects_snapshot(None).unwrap();
     let _ = node.set_tls_server("cert", "key", false);
     let _ = node.set_tls_client("ca", "localhost", true);
+    let _ = node.service_attachment_count().unwrap();
+    let _ = node.service_attachment_at(0);
+    let _ = node.node_monitor_recv_with_flags(RecvFlags::DONT_WAIT);
     node.set_routing_id(&RoutingId::from_bytes(b"node-surface"))
         .unwrap();
     let _ = node.routing_id().unwrap();
@@ -41,8 +46,31 @@ fn spot_callback_surfaces_exist() {
     let spot = node.create_spot().unwrap();
     spot.set_routing_id(&RoutingId::from_bytes(b"spot-surface"))
         .unwrap();
+    let _ = spot.admission_state().unwrap();
+    let _ = spot.set_admission_state(AdmissionState::Serving);
     let _ = spot.routing_id().unwrap();
-    let _on_subscribe = Spot::on_subscribe::<fn(TopicMessage)>;
+    let _ = spot.publish("svc-surface", "topic", Message::copy_from(b"payload").unwrap());
+    let _ = spot.publish_with_flags(
+        "svc-surface",
+        "topic",
+        Message::copy_from(b"payload").unwrap(),
+        SendFlags::DONT_WAIT,
+    );
+    let _ = spot.send_service("svc-surface", Message::copy_from(b"payload").unwrap());
+    let _ = spot.send_service_with_flags(
+        "svc-surface",
+        Message::copy_from(b"payload").unwrap(),
+        SendFlags::DONT_WAIT,
+    );
+    let _ = spot.request_service("svc-surface", Message::copy_from(b"payload").unwrap(), std::time::Duration::from_millis(1));
+    let _ = spot.request_service_callback(
+        "svc-surface",
+        Message::copy_from(b"payload").unwrap(),
+        |_result| {},
+        SendFlags::DONT_WAIT,
+        std::time::Duration::from_millis(1),
+    );
+    let _ = spot.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT);
     let _on_send_ready = Spot::on_send_ready::<fn()>;
     let _on_routed_receive = Spot::on_routed_receive::<fn(RoutingId, RoutingId, u64, Vec<Message>)>;
     let _on_dispatch_event = Spot::on_dispatch_event::<fn(SpotDispatchEvent)>;

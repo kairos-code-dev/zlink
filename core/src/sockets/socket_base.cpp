@@ -155,17 +155,6 @@ zlink::i_mailbox *zlink::socket_base_t::get_mailbox () const
     return _mailbox;
 }
 
-std::shared_ptr<void> zlink::socket_base_t::router_spot_request_reply_state () const
-{
-    return _router_spot_request_reply_state;
-}
-
-void zlink::socket_base_t::set_router_spot_request_reply_state (
-  const std::shared_ptr<void> &state_)
-{
-    _router_spot_request_reply_state = state_;
-}
-
 void zlink::socket_base_t::store_socket_msg_part (
   std::vector<zlink_msg_t> *parts_,
   zlink::msg_t *msg_)
@@ -227,27 +216,6 @@ bool zlink::socket_base_t::decode_peer_admission_command (
     if (state_out_)
         *state_out_ = static_cast<zlink_admission_state_t> (state);
     return true;
-}
-
-void zlink::socket_base_t::clear_router_spot_request_reply_state ()
-{
-    _router_spot_request_reply_state.reset ();
-}
-
-std::shared_ptr<void> zlink::socket_base_t::request_reply_state () const
-{
-    return _request_reply_state;
-}
-
-void zlink::socket_base_t::set_request_reply_state (
-  const std::shared_ptr<void> &state_)
-{
-    _request_reply_state = state_;
-}
-
-void zlink::socket_base_t::clear_request_reply_state ()
-{
-    _request_reply_state.reset ();
 }
 
 void zlink::socket_base_t::stop ()

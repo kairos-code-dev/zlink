@@ -1,0 +1,42 @@
+## Effective Options (start)
+- lang: node
+- suite: single
+- runs: 1
+- patterns: PUBSUB
+- transports: inproc
+- msg_sizes: 64
+- duration_seconds: 5
+- warmup_seconds: 2
+- results_dir: /home/hep7/project/kairos/zlink/perf/results
+- pin_cpu: off
+
+## PATTERN: PUBSUB
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|----------------|---------------|---------------|
+| 64B | 301.16 Kmsg/s | 19.27 MB/s | 0.424271 | 0.740502 | 1.217877 |
+
+
+## Result Data
+RESULT,current,PUBSUB,inproc,64,throughput,301158.40
+RESULT,current,PUBSUB,inproc,64,bandwidth,19.27
+RESULT,current,PUBSUB,inproc,64,latency,0.424271
+RESULT,current,PUBSUB,inproc,64,latency_p95,0.740502
+RESULT,current,PUBSUB,inproc,64,latency_p99,1.217877
+
+## Effective Options (result)
+- lang: node
+- suite: single
+- runs: 1
+- patterns: PUBSUB
+- transports: inproc
+- msg_sizes: 64
+- duration_seconds: 5
+- warmup_seconds: 2
+- results_dir: /home/hep7/project/kairos/zlink/perf/results
+- pin_cpu: off
+- result_lines: 5
+## Status Summary
+- result_lines: 5
+- status: complete
+- expected_result_lines: 5
+- actual_result_lines: 5

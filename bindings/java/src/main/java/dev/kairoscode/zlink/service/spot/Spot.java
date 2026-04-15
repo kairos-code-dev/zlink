@@ -9,14 +9,18 @@ import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.RecvException;
 import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.RecvResult;
+import dev.kairoscode.zlink.RequestException;
 import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SendReadyHandler;
 import dev.kairoscode.zlink.SubscribeHandler;
 import dev.kairoscode.zlink.TopicMessage;
+import dev.kairoscode.zlink.SubscriptionEvent;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.SpotDispatchEventHandler;
 import dev.kairoscode.zlink.SpotRoutedHandler;
+import dev.kairoscode.zlink.SubmitException;
+import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.NativeHelpers;
@@ -36,10 +40,17 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
 /**
@@ -70,6 +81,32 @@ public final class Spot implements AutoCloseable {
         ValueLayout.ADDRESS);
     private static final FunctionDescriptor FD_SEND_READY_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+    private static final FunctionDescriptor FD_REPLY_CALLBACK =
+      FunctionDescriptor.ofVoid(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
+    private static final Arena REQUEST_CALLBACK_ARENA = Arena.ofShared();
+    private static final MemorySegment REPLY_CALLBACK;
+    private static final AtomicLong NEXT_REQUEST_ID = new AtomicLong(1L);
+    private static final ConcurrentMap<Long, CompletableFuture<Received>> PENDING =
+      new ConcurrentHashMap<>();
+    private static final ScheduledExecutorService REQUEST_TIMEOUTS =
+      Executors.newSingleThreadScheduledExecutor(runnable -> {
+          Thread thread = new Thread(runnable, "zlink-spot-request-timeout");
+          thread.setDaemon(true);
+          return thread;
+      });
+
+    static {
+        try {
+            REPLY_CALLBACK = LINKER.upcallStub(MethodHandles.lookup().findStatic(
+              Spot.class, "handleReplyCallback",
+              MethodType.methodType(void.class, int.class, MemorySegment.class,
+                long.class, MemorySegment.class)), FD_REPLY_CALLBACK,
+              REQUEST_CALLBACK_ARENA);
+        } catch (ReflectiveOperationException ex) {
+            throw new ExceptionInInitializerError(ex);
+        }
+    }
 
     private final ConcurrentHashMap<String, MemorySegment> topicCache =
       new ConcurrentHashMap<>();
@@ -147,38 +184,63 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    /** Publishes one payload part on the topic. */
-    public void publish(String topicId, Message part) {
+    /** Publishes one payload part through a service-aware Spot attachment. */
+    public void publish(String serviceName, String topicId, Message part) {
         Objects.requireNonNull(part, "part");
-        publishInternal(topicId, part, false);
+        publishInternal(serviceName, topicId, part, false);
     }
 
-    public void publish(String topicId, Message part, SendFlags flags) {
+    public void publish(String serviceName, String topicId, Message part,
+                        SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
-        publishInternal(topicId, part, flags == SendFlags.DONT_WAIT);
+        publishInternal(serviceName, topicId, part,
+          flags == SendFlags.DONT_WAIT);
     }
 
-    SendResult tryPublish(String topicId, Message part) {
+    /** Publishes a multipart payload through a service-aware Spot attachment. */
+    public void publish(String serviceName, String topicId,
+                        List<Message> parts) {
+        publishInternal(serviceName, topicId, parts, false);
+    }
+
+    public void publish(String serviceName, String topicId,
+                        List<Message> parts, SendFlags flags) {
+        Objects.requireNonNull(flags, "flags");
+        publishInternal(serviceName, topicId, parts, flags == SendFlags.DONT_WAIT);
+    }
+
+    public void sendService(String serviceName, Message part) {
+        sendService(serviceName, part, SendFlags.NONE);
+    }
+
+    public void sendService(String serviceName, Message part, SendFlags flags) {
         Objects.requireNonNull(part, "part");
-        return publishInternal(topicId, part, true);
+        sendService(serviceName, List.of(part), flags);
     }
 
-    /** Publishes a multipart payload on the topic. */
-    public void publish(String topicId, List<Message> parts) {
-        publishInternal(topicId, parts, false);
+    public void sendService(String serviceName, List<Message> parts) {
+        sendService(serviceName, parts, SendFlags.NONE);
     }
 
-    public void publish(String topicId, List<Message> parts, SendFlags flags) {
+    public void sendService(String serviceName, List<Message> parts,
+                            SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
-        publishInternal(topicId, parts, flags == SendFlags.DONT_WAIT);
+        sendServiceInternal(serviceName, parts, flags == SendFlags.DONT_WAIT);
     }
 
-    SendResult tryPublish(String topicId, List<Message> parts) {
-        return publishInternal(topicId, parts, true);
+    public CompletableFuture<List<Message>> requestService(String serviceName,
+                                                           Message part) {
+        return requestService(serviceName, List.of(part));
     }
 
-    private SendResult publishInternal(String topicId, Message part,
-                                       boolean nonBlocking) {
+    public CompletableFuture<List<Message>> requestService(String serviceName,
+                                                           List<Message> parts) {
+        return requestServiceInternal(serviceName, parts,
+          Duration.ofMillis(5_000L));
+    }
+
+    private SendResult publishInternal(String serviceName, String topicId,
+                                       Message part, boolean nonBlocking) {
         Objects.requireNonNull(topicId, "topicId");
         Objects.requireNonNull(part, "part");
         if (!nonBlocking && InternalAccess.inCallback()) {
@@ -187,6 +249,8 @@ public final class Spot implements AutoCloseable {
         }
         while (true) {
             try (Arena arena = Arena.ofConfined()) {
+                MemorySegment service = NativeHelpers.toCString(arena,
+                  requireServiceName(serviceName));
                 MemorySegment topic = topicCString(topicId);
                 MemorySegment msg = arena.allocate(MSG_SIZE);
                 int initRc = NativeMsg.msgInit(msg);
@@ -194,26 +258,27 @@ public final class Spot implements AutoCloseable {
                     throw ZlinkException.fromLastError("zlink_msg_init");
                 InternalAccess.messageCopyTo(part, msg);
                 int rc = nonBlocking
-                    ? Native.publish(handle, topic, msg, 1, SEND_DONTWAIT)
-                    : Native.publish(handle, topic, msg, 1, 0);
+                    ? Native.spotPublish(handle, service, topic, msg, 1,
+                      SEND_DONTWAIT)
+                    : Native.spotPublish(handle, service, topic, msg, 1, 0);
                 if (nonBlocking) {
                     if (rc == 0)
                         return SendResult.SENT;
                 } else {
                     if (rc != 0)
-                        throw ZlinkException.fromLastError("zlink_publish");
+                        throw ZlinkException.fromLastError("zlink_spot_publish");
                     return SendResult.SENT;
                 }
             }
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            return classifyNonBlockingSendErrno("zlink_publish");
+            return classifyNonBlockingSendErrno("zlink_spot_publish");
         }
     }
 
-    private SendResult publishInternal(String topicId, List<Message> parts,
-                                       boolean nonBlocking) {
+    private SendResult publishInternal(String serviceName, String topicId,
+                                       List<Message> parts, boolean nonBlocking) {
         int partCount = validateMessages(parts, "parts");
         if (!nonBlocking && InternalAccess.inCallback()) {
             throw new IllegalStateException(
@@ -221,6 +286,8 @@ public final class Spot implements AutoCloseable {
         }
         while (true) {
             try (Arena arena = Arena.ofConfined()) {
+                MemorySegment service = NativeHelpers.toCString(arena,
+                  requireServiceName(serviceName));
                 MemorySegment topic = topicCString(topicId);
                 MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT,
                   partCount);
@@ -239,9 +306,10 @@ public final class Spot implements AutoCloseable {
                         InternalAccess.messageCopyTo(part, dest);
                     }
                     int rc = nonBlocking
-                        ? Native.publish(handle, topic, vec, partCount,
-                            SEND_DONTWAIT)
-                        : Native.publish(handle, topic, vec, partCount, 0);
+                        ? Native.spotPublish(handle, service, topic, vec,
+                            partCount, SEND_DONTWAIT)
+                        : Native.spotPublish(handle, service, topic, vec,
+                            partCount, 0);
                     if (nonBlocking) {
                         if (rc == 0) {
                             success = true;
@@ -249,7 +317,7 @@ public final class Spot implements AutoCloseable {
                         }
                     } else {
                         if (rc != 0)
-                            throw ZlinkException.fromLastError("zlink_publish");
+                            throw ZlinkException.fromLastError("zlink_spot_publish");
                         success = true;
                         return SendResult.SENT;
                     }
@@ -261,8 +329,96 @@ public final class Spot implements AutoCloseable {
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            return classifyNonBlockingSendErrno("zlink_publish");
+            return classifyNonBlockingSendErrno("zlink_spot_publish");
         }
+    }
+
+    private void sendServiceInternal(String serviceName, List<Message> parts,
+                                     boolean nonBlocking) {
+        int partCount = validateMessages(parts, "parts");
+        if (!nonBlocking && InternalAccess.inCallback()) {
+            throw new IllegalStateException(
+                "blocking sendService is not supported from callback context; use trySend");
+        }
+        while (true) {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment service = NativeHelpers.toCString(arena,
+                  requireServiceName(serviceName));
+                MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT,
+                  partCount);
+                int initialized = 0;
+                boolean success = false;
+                try {
+                    for (int i = 0; i < partCount; i++) {
+                        Message part = Objects.requireNonNull(parts.get(i),
+                          "parts[" + i + "]");
+                        MemorySegment dest = vec.asSlice((long) i * MSG_SIZE,
+                          MSG_SIZE);
+                        int initRc = NativeMsg.msgInit(dest);
+                        if (initRc != 0)
+                            throw ZlinkException.fromLastError("zlink_msg_init");
+                        initialized++;
+                        InternalAccess.messageCopyTo(part, dest);
+                    }
+                    int rc = nonBlocking
+                        ? Native.spotSendService(handle, service, vec,
+                            partCount, SEND_DONTWAIT)
+                        : Native.spotSendService(handle, service, vec,
+                            partCount, 0);
+                    if (nonBlocking) {
+                        if (rc == 0) {
+                            success = true;
+                            return;
+                        }
+                    } else {
+                        if (rc != 0)
+                            throw ZlinkException.fromLastError(
+                              "zlink_spot_send_service");
+                        success = true;
+                        return;
+                    }
+                } finally {
+                    if (!success)
+                        closeMsgVector(vec, initialized);
+                }
+            }
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            throw ZlinkException.fromLastError("zlink_spot_send_service");
+        }
+    }
+
+    private CompletableFuture<List<Message>> requestServiceInternal(
+      String serviceName, List<Message> parts, Duration timeout) {
+        long timeoutMs = timeoutMillis(timeout);
+        long requestId = NEXT_REQUEST_ID.getAndIncrement();
+        List<Message> payload = clonePayload(parts);
+        CompletableFuture<Received> future = registerPending(requestId,
+          timeoutMs);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment service = NativeHelpers.toCString(arena,
+              requireServiceName(serviceName));
+            int rc = Native.spotRequestService(handle, service,
+              movePayloadToNative(arena, payload), payload.size(),
+              REPLY_CALLBACK, MemorySegment.ofAddress(requestId),
+              SendFlags.NONE.value(), toTimeoutInt(timeoutMs));
+            if (rc != 0) {
+                closeAll(payload);
+                future.cancel(false);
+                throw new SubmitException(SubmitResult.fromValue(rc));
+            }
+        } catch (RuntimeException ex) {
+            closeAll(payload);
+            PENDING.remove(requestId);
+            future.cancel(false);
+            throw ex;
+        }
+        return future.thenApply(reply -> {
+            try (reply) {
+                return cloneReceivedParts(reply);
+            }
+        });
     }
 
     private SendResult classifyNonBlockingSendErrno(String apiName) {
@@ -290,45 +446,6 @@ public final class Spot implements AutoCloseable {
         int rc = Native.unsetSubscription(handle, filter);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_unset_subscription");
-    }
-
-    /** Installs the subscribe callback for topic deliveries. */
-    public void onSubscribe(SubscribeHandler handler) {
-        Objects.requireNonNull(handler, "handler");
-        ensureOpen();
-        ensureNoCallbackFailure();
-        ExecutorService executor = callbackExecutor;
-        boolean createdExecutor = false;
-        if (executor == null) {
-            executor = newCallbackExecutor();
-            callbackExecutor = executor;
-            createdExecutor = true;
-        }
-        Arena arena = Arena.ofShared();
-        MemorySegment stub = LINKER.upcallStub(callbackHandle(
-          "handleSubscribeCallback", MethodType.methodType(void.class,
-            MemorySegment.class, MemorySegment.class, long.class,
-            MemorySegment.class, long.class, MemorySegment.class)),
-          FD_SUBSCRIBE_CALLBACK, arena);
-        boolean success = false;
-        try {
-            int rc = Native.subscribeHandler(handle, stub, MemorySegment.NULL);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_subscribe_handler");
-            success = true;
-            closeArena(subscribeCallbackArena);
-            subscribeCallbackArena = arena;
-            subscribeCallbackStub = stub;
-            subscribeHandler = handler;
-        } finally {
-            if (!success) {
-                if (createdExecutor) {
-                    callbackExecutor = null;
-                    shutdownExecutor(executor);
-                }
-                closeArena(arena);
-            }
-        }
     }
 
     /** Installs the send-ready callback. */
@@ -388,6 +505,17 @@ public final class Spot implements AutoCloseable {
 
     Optional<TopicMessage> trySubscribe() {
         return receiveTopicMessage(true);
+    }
+
+    /** Receives the next subscription event for this spot. */
+    public SubscriptionEvent receiveSubscriptionEvent() {
+        return receiveSubscriptionEvent(RecvFlags.NONE);
+    }
+
+    public SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags) {
+        Objects.requireNonNull(flags, "flags");
+        return receiveSubscriptionEvent(flags == RecvFlags.DONT_WAIT)
+          .orElseThrow(() -> new RecvException(RecvResult.NO_DATA));
     }
 
     public void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
@@ -826,36 +954,111 @@ public final class Spot implements AutoCloseable {
                   (byte) 0);
                 MemorySegment partsOut = arena.allocate(ValueLayout.ADDRESS);
                 MemorySegment partCountOut = arena.allocate(ValueLayout.JAVA_LONG);
+                MemorySegment serviceOut = arena.allocate(TOPIC_CAPACITY);
+                MemorySegment serviceLenOut = arena.allocate(ValueLayout.JAVA_LONG);
+                serviceLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
                 MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
                 MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
                 topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
 
-                int rc = Native.subscribe(handle, rid, partsOut, partCountOut,
-                  topicOut, topicLenOut,
-                  nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
+                int rc = Native.spotSubscribe(handle, rid, partsOut,
+                  partCountOut, serviceOut, serviceLenOut, topicOut,
+                  topicLenOut, nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
                 if (rc == 0) {
                     long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
                     MemorySegment partsAddr = partsOut.get(ValueLayout.ADDRESS, 0);
                     Message[] parts = InternalAccess.messageFromOwnedMsgVector(
                         partsAddr, partCount);
+                    String serviceName = decodeTopic(serviceOut,
+                      normalizeTopicLength(serviceOut, TOPIC_CAPACITY,
+                        serviceLenOut.get(ValueLayout.JAVA_LONG, 0)));
                     int topicLength = normalizeTopicLength(topicOut, TOPIC_CAPACITY,
                       topicLenOut.get(ValueLayout.JAVA_LONG, 0));
                     String topicId = topicLength == 0
                       ? ""
                       : new String(topicOut.asSlice(0, topicLength).toArray(
                         ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
-                    return Optional.of(new TopicMessage(null, topicId, parts));
+                    return Optional.of(new TopicMessage(readRoutingId(rid),
+                        serviceName.isEmpty() ? null : serviceName, topicId, parts));
                 }
+                RecvResult result;
+                try {
+                    result = RecvResult.fromValue(rc);
+                } catch (IllegalArgumentException ex) {
+                    int errno = Native.errno();
+                    if (errno == ERRNO_EINTR)
+                        continue;
+                    throw ZlinkException.fromLastError("zlink_spot_subscribe");
+                }
+                if (result == RecvResult.NO_DATA && nonBlocking) {
+                    return Optional.empty();
+                }
+                if (result == RecvResult.NO_DATA) {
+                    throw new RecvException(result, Native.errno());
+                }
+                if (result == RecvResult.BUSY && nonBlocking) {
+                    return Optional.empty();
+                }
+                throw new RecvException(result, Native.errno());
             }
+        }
+    }
 
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            if (nonBlocking
-                && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                return Optional.empty();
+    private Optional<SubscriptionEvent> receiveSubscriptionEvent(
+      boolean nonBlocking) {
+        ensureOpen();
+        while (true) {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment rid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+                rid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+                  (byte) 0);
+                MemorySegment subscribedOut = arena.allocate(ValueLayout.JAVA_INT);
+                MemorySegment serviceOut = arena.allocate(TOPIC_CAPACITY);
+                MemorySegment serviceLenOut = arena.allocate(ValueLayout.JAVA_LONG);
+                serviceLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
+                MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
+                MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
+                topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
+
+                int rc = Native.spotSubscriptionEvent(handle, rid,
+                  subscribedOut, serviceOut, serviceLenOut, topicOut,
+                  topicLenOut, nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
+                if (rc == 0) {
+                    String serviceName = decodeTopic(serviceOut,
+                      normalizeTopicLength(serviceOut, TOPIC_CAPACITY,
+                        serviceLenOut.get(ValueLayout.JAVA_LONG, 0)));
+                    int topicLength = normalizeTopicLength(topicOut,
+                      TOPIC_CAPACITY, topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+                    String topicId = topicLength == 0 ? "" : new String(
+                      topicOut.asSlice(0, topicLength).toArray(
+                        ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+                    return Optional.of(new SubscriptionEvent(
+                      Optional.ofNullable(readRoutingId(rid)), topicId,
+                      serviceName.isEmpty() ? Optional.empty()
+                        : Optional.of(serviceName),
+                      subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
+                }
+                RecvResult result;
+                try {
+                    result = RecvResult.fromValue(rc);
+                } catch (IllegalArgumentException ex) {
+                    int errno = Native.errno();
+                    if (errno == ERRNO_EINTR)
+                        continue;
+                    throw ZlinkException.fromLastError(
+                      "zlink_spot_subscription_event");
+                }
+                if (result == RecvResult.NO_DATA && nonBlocking) {
+                    return Optional.empty();
+                }
+                if (result == RecvResult.NO_DATA) {
+                    throw new RecvException(result, Native.errno());
+                }
+                if (result == RecvResult.BUSY && nonBlocking) {
+                    return Optional.empty();
+                }
+                throw new RecvException(result, Native.errno());
             }
-            throw ZlinkException.fromLastError("zlink_subscribe");
         }
     }
 
@@ -878,6 +1081,140 @@ public final class Spot implements AutoCloseable {
             } catch (RuntimeException ignored) {
             }
         }
+    }
+
+    private static CompletableFuture<Received> registerPending(long requestId,
+                                                               long timeoutMs) {
+        CompletableFuture<Received> future = new CompletableFuture<>();
+        PENDING.put(requestId, future);
+        ScheduledFuture<?> timeout = REQUEST_TIMEOUTS.schedule(() -> {
+            if (PENDING.remove(requestId, future)) {
+                future.completeExceptionally(new TimeoutException(
+                    "request timed out"));
+            }
+        }, timeoutMs, TimeUnit.MILLISECONDS);
+        future.whenComplete((ignored, error) -> timeout.cancel(false));
+        return future;
+    }
+
+    private static void handleReplyCallback(int result, MemorySegment parts,
+                                           long partCount,
+                                           MemorySegment userdata) {
+        long requestId = userdata.address();
+        CompletableFuture<Received> future = PENDING.remove(requestId);
+        try {
+            if (result != RequestResult.OK.value()) {
+                if (future != null) {
+                    future.completeExceptionally(new RequestException(
+                        RequestResult.fromValue(result), result));
+                }
+                return;
+            }
+            Message[] frames = InternalAccess.messageFromOwnedMsgVectorShared(
+              parts, partCount);
+            Received received = InternalAccess.received(null, null, frames, 0L,
+              false, null);
+            if (future == null || !future.complete(received)) {
+                received.close();
+            }
+        } catch (Throwable error) {
+            if (future != null) {
+                future.completeExceptionally(error);
+            }
+        } finally {
+            NativeMsg.multipartClose(parts, partCount);
+        }
+    }
+
+    private static List<Message> clonePayload(List<Message> parts) {
+        Objects.requireNonNull(parts, "parts");
+        if (parts.isEmpty())
+            throw new IllegalArgumentException("parts must not be empty");
+        Message[] copies = new Message[parts.size()];
+        for (int i = 0; i < copies.length; i++) {
+            copies[i] = InternalAccess.messageSharedCopyOf(parts.get(i));
+        }
+        return List.of(copies);
+    }
+
+    private static List<Message> cloneReceivedParts(Received received) {
+        List<Message> parts = received.parts();
+        Message[] copies = new Message[parts.size()];
+        for (int i = 0; i < copies.length; i++) {
+            copies[i] = InternalAccess.messageSharedCopyOf(parts.get(i));
+        }
+        return List.of(copies);
+    }
+
+    private static void closeAll(List<Message> parts) {
+        for (Message part : parts) {
+            try {
+                part.close();
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
+
+    private static MemorySegment movePayloadToNative(Arena arena,
+                                                     List<Message> payload) {
+        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+        MemorySegment nativeParts = arena.allocate(msgSize * payload.size(),
+          NativeLayouts.MSG_LAYOUT.byteAlignment());
+        int built = 0;
+        try {
+            for (int i = 0; i < payload.size(); i++) {
+                InternalAccess.messageMoveTo(payload.get(i),
+                  nativeParts.asSlice((long) i * msgSize, msgSize));
+                built++;
+            }
+            return nativeParts;
+        } catch (RuntimeException ex) {
+            for (int i = built; i < payload.size(); i++) {
+                try {
+                    payload.get(i).close();
+                } catch (RuntimeException ignored) {
+                }
+            }
+            throw ex;
+        }
+    }
+
+    private static long timeoutMillis(Duration timeout) {
+        return timeout == null ? 5_000L : Math.max(1L, timeout.toMillis());
+    }
+
+    private static int toTimeoutInt(long timeoutMs) {
+        if (timeoutMs <= 1L)
+            return 1;
+        return timeoutMs >= Integer.MAX_VALUE ? Integer.MAX_VALUE
+          : (int) timeoutMs;
+    }
+
+    private static Throwable unwrap(Throwable error) {
+        if (error instanceof java.util.concurrent.CompletionException
+            && error.getCause() != null) {
+            return error.getCause();
+        }
+        return error;
+    }
+
+    private static RequestResult requestResult(Throwable error) {
+        Throwable cause = unwrap(error);
+        if (cause instanceof RequestException requestException) {
+            return requestException.getResult();
+        }
+        if (cause instanceof TimeoutException) {
+            return RequestResult.TIMED_OUT;
+        }
+        return RequestResult.PROTOCOL_ERROR;
+    }
+
+    private static String requireServiceName(String serviceName) {
+        Objects.requireNonNull(serviceName, "serviceName");
+        if (serviceName.isEmpty()) {
+            throw new IllegalArgumentException("serviceName must not be empty");
+        }
+        return serviceName;
     }
 
     private static void closeSnapshot(CallbackSubscribeData snapshot) {

@@ -52,7 +52,7 @@ typedef enum zlink_poller_source_kind_t
 
 ### zlink_pollitem_t
 
-레거시 `zlink_poll` 함수에서 사용하는 디스크립터입니다.
+`zlink_poll` 함수에서 사용하는 디스크립터입니다.
 
 ```c
 typedef struct zlink_pollitem_t
@@ -73,7 +73,7 @@ typedef struct zlink_pollitem_t
 
 ### zlink_poller_event_t
 
-모던 폴러 API가 반환하는 이벤트 구조체입니다.
+폴러 API가 반환하는 이벤트 구조체입니다.
 
 ```c
 typedef struct zlink_poller_event_t
@@ -116,19 +116,20 @@ typedef struct zlink_poller_event_t
 | `ZLINK_POLLITEMS_DFLT` | 16 | 기본 poll-item 배열 크기 |
 | `ZLINK_HAVE_POLLER` | 1 | 폴러 지원이 포함되어 컴파일됨 |
 
-## 함수 -- 레거시 Poll
+## 함수 -- 배열 Poll
 
 ### zlink_poll
 
 소켓 및/또는 파일 디스크립터 집합의 I/O 준비 상태를 폴링합니다.
 
 ```c
-int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_);
+int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_, zlink_config_result_t *error_out_);
 ```
 
 `items_`에 나열된 디스크립터의 이벤트를 기다립니다. 각 항목은 `events` 필드에
 관심 이벤트를 지정하며, 반환 시 각 항목의 `revents` 필드에 발생한 이벤트가
-표시됩니다.
+표시됩니다. 실패 시 `*error_out_`에 설정 결과(`zlink_config_result_t`)가
+기록되고, 성공 시 항목 수가 기본 반환값으로 반환됩니다.
 
 **매개변수:**
 
@@ -137,9 +138,11 @@ int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_);
 | `items_` | 모니터링할 poll 항목 배열 |
 | `nitems_` | 배열의 항목 수 |
 | `timeout_` | 최대 대기 시간(밀리초); `0`이면 즉시 반환, `-1`이면 무한 대기 |
+| `error_out_` | 실패 시 `zlink_config_result_t`가 기록됨 |
 
-**반환값:** 이벤트가 시그널된 항목 수, 타임아웃 시 `0`, 실패 시 `-1` (errno가
-설정됨).
+**반환값:** 이벤트가 시그널된 항목 수, 타임아웃 시 `0`, 실패 시 `-1`이며
+`*error_out_`에 `zlink_config_result_t`가 기록됩니다. `zlink_errno()`는
+진단용 내부 errno를 그대로 유지합니다.
 
 **에러:**
 - `ETERM` -- 컨텍스트가 종료되었습니다.
@@ -155,7 +158,7 @@ int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_);
 
 ## 함수 -- 폴러 API
 
-폴러는 `zlink_poll`의 모던 객체 기반 대안입니다. 단일 이벤트 루프에서 소켓,
+폴러는 `zlink_poll`을 보완하는 객체 기반 API입니다. 단일 이벤트 루프에서 소켓,
 네이티브 파일 디스크립터, 타이머를 지원합니다.
 
 ### zlink_poller_new
@@ -182,12 +185,12 @@ void *zlink_poller_new (void);
 폴러를 파괴하고 리소스를 해제합니다.
 
 ```c
-int zlink_poller_destroy (void **poller_p_);
+zlink_close_result_t zlink_poller_destroy (void **poller_p_);
 ```
 
 폴러 핸들을 해제합니다. 파괴 후 `*poller_p_`의 포인터는 `NULL`로 설정됩니다.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CLOSE_OK`, 실패 시 `zlink_close_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 다른 스레드가 동일한 폴러를 사용 중일 때 호출해서는 안 됩니다.
 
@@ -200,11 +203,15 @@ int zlink_poller_destroy (void **poller_p_);
 폴러에 등록된 소스의 수를 반환합니다.
 
 ```c
-int zlink_poller_size (void *poller_);
+int zlink_poller_size (void *poller_, zlink_config_result_t *error_out_);
 ```
 
-**반환값:** 등록된 소켓, 파일 디스크립터, 타이머의 현재 수, 실패 시 `-1`
-(errno가 설정됨).
+실패 시 `*error_out_`에 설정 결과(`zlink_config_result_t`)가 기록되고,
+성공 시 항목 수가 기본 반환값으로 반환됩니다.
+
+**반환값:** 등록된 소켓, 파일 디스크립터, 타이머의 현재 수, 실패 시 `-1`이며
+`*error_out_`에 `zlink_config_result_t`가 기록됩니다. `zlink_errno()`는
+진단용 내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 동일한 폴러에서 추가/제거 작업과 동시에 호출해서는 안 됩니다.
 
@@ -215,7 +222,7 @@ int zlink_poller_size (void *poller_);
 zlink 소켓을 폴러에 등록합니다.
 
 ```c
-int zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_);
+zlink_config_result_t zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_);
 ```
 
 `socket_`을 폴러에 추가하고 `events_`에 지정된 이벤트를 모니터링합니다.
@@ -231,7 +238,7 @@ int zlink_poller_add (void *poller_, void *socket_, void *user_data_, short even
 | `user_data_` | 이벤트와 함께 반환되는 불투명 포인터 |
 | `events_` | 이벤트 마스크 (`ZLINK_POLLIN`, `ZLINK_POLLOUT` 등) |
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
@@ -244,12 +251,12 @@ int zlink_poller_add (void *poller_, void *socket_, void *user_data_, short even
 등록된 소켓의 모니터링 이벤트를 변경합니다.
 
 ```c
-int zlink_poller_modify (void *poller_, void *socket_, short events_);
+zlink_config_result_t zlink_poller_modify (void *poller_, void *socket_, short events_);
 ```
 
 `zlink_poller_add`로 이전에 추가한 `socket_`의 이벤트 마스크를 업데이트합니다.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
@@ -262,12 +269,12 @@ int zlink_poller_modify (void *poller_, void *socket_, short events_);
 폴러에서 zlink 소켓을 제거합니다.
 
 ```c
-int zlink_poller_remove (void *poller_, void *socket_);
+zlink_config_result_t zlink_poller_remove (void *poller_, void *socket_);
 ```
 
 소켓의 등록을 해제합니다. 더 이상 이벤트를 생성하지 않습니다.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
@@ -280,7 +287,7 @@ int zlink_poller_remove (void *poller_, void *socket_);
 네이티브 파일 디스크립터를 폴러에 등록합니다.
 
 ```c
-int zlink_poller_add_fd (void *poller_, zlink_fd_t fd_, void *user_data_, short events_);
+zlink_config_result_t zlink_poller_add_fd (void *poller_, zlink_fd_t fd_, void *user_data_, short events_);
 ```
 
 파일 디스크립터 `fd_`를 추가하고 지정된 이벤트를 모니터링합니다.
@@ -294,7 +301,7 @@ int zlink_poller_add_fd (void *poller_, zlink_fd_t fd_, void *user_data_, short 
 | `user_data_` | 이벤트와 함께 반환되는 불투명 포인터 |
 | `events_` | 이벤트 마스크 |
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
@@ -307,7 +314,7 @@ int zlink_poller_add_fd (void *poller_, zlink_fd_t fd_, void *user_data_, short 
 타이머를 폴러에 등록합니다.
 
 ```c
-int zlink_poller_add_timer (void *poller_, void *timer_, void *user_data_);
+zlink_config_result_t zlink_poller_add_timer (void *poller_, void *timer_, void *user_data_);
 ```
 
 타이머 핸들 `timer_`를 폴러에 추가합니다. 타이머가 발동하면 폴러는
@@ -321,7 +328,7 @@ int zlink_poller_add_timer (void *poller_, void *timer_, void *user_data_);
 | `timer_` | 타이머 핸들 (`zlink_timer_new` 또는 `zlink_spot_timer_new`에서 반환) |
 | `user_data_` | 이벤트와 함께 반환되는 불투명 포인터 |
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
@@ -334,12 +341,12 @@ int zlink_poller_add_timer (void *poller_, void *timer_, void *user_data_);
 등록된 파일 디스크립터의 모니터링 이벤트를 변경합니다.
 
 ```c
-int zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_);
+zlink_config_result_t zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_);
 ```
 
 `zlink_poller_add_fd`로 이전에 추가한 `fd_`의 이벤트 마스크를 업데이트합니다.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
@@ -352,12 +359,12 @@ int zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_);
 폴러에서 파일 디스크립터를 제거합니다.
 
 ```c
-int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
+zlink_config_result_t zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
 ```
 
 파일 디스크립터의 등록을 해제합니다. 더 이상 이벤트를 생성하지 않습니다.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
@@ -370,12 +377,12 @@ int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
 폴러에서 타이머를 제거합니다.
 
 ```c
-int zlink_poller_remove_timer (void *poller_, void *timer_);
+zlink_config_result_t zlink_poller_remove_timer (void *poller_, void *timer_);
 ```
 
 타이머의 등록을 해제합니다. 더 이상 폴러 이벤트를 생성하지 않습니다.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
@@ -388,11 +395,13 @@ int zlink_poller_remove_timer (void *poller_, void *timer_);
 단일 이벤트를 기다립니다.
 
 ```c
-int zlink_poller_wait (void *poller_, zlink_poller_event_t *event_, long timeout_);
+int zlink_poller_wait (void *poller_, zlink_poller_event_t *event_, long timeout_, zlink_config_result_t *error_out_);
 ```
 
 등록된 소스 중 하나에 이벤트가 준비되거나 타임아웃이 만료될 때까지
-블록합니다. 성공 시 `event_`에 이벤트 세부 정보가 채워집니다.
+블록합니다. 성공 시 `event_`에 이벤트 세부 정보가 채워집니다. 실패 시
+`*error_out_`에 설정 결과(`zlink_config_result_t`)가 기록되고, 성공 시
+기본 결과값이 반환됩니다.
 
 **매개변수:**
 
@@ -401,9 +410,11 @@ int zlink_poller_wait (void *poller_, zlink_poller_event_t *event_, long timeout
 | `poller_` | 폴러 핸들 |
 | `event_` | 채울 단일 이벤트 구조체 포인터 |
 | `timeout_` | 최대 대기 시간(밀리초); `0`이면 즉시, `-1`이면 무한 대기 |
+| `error_out_` | 실패 또는 타임아웃 시 `zlink_config_result_t`가 기록됨 |
 
-**반환값:** 이벤트를 수신한 경우 `0`, 타임아웃 또는 실패 시 `-1` (errno가
-설정됨; 타임아웃 시 `EAGAIN`).
+**반환값:** 이벤트를 수신한 경우 `0`, 타임아웃 또는 실패 시 `-1`이며
+`*error_out_`에 `zlink_config_result_t`가 기록됩니다(타임아웃 시 `EAGAIN`).
+`zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
@@ -419,11 +430,14 @@ int zlink_poller_wait (void *poller_, zlink_poller_event_t *event_, long timeout
 int zlink_poller_wait_all (void *poller_,
                            zlink_poller_event_t *events_,
                            int n_events_,
-                           long timeout_);
+                           long timeout_,
+                           zlink_config_result_t *error_out_);
 ```
 
 등록된 소스 중 하나 이상에 이벤트가 준비될 때까지 블록한 후, `events_`에
-최대 `n_events_`개의 이벤트를 채웁니다.
+최대 `n_events_`개의 이벤트를 채웁니다. 실패 시 `*error_out_`에 설정
+결과(`zlink_config_result_t`)가 기록되고, 성공 시 이벤트 수가 기본 반환값으로
+반환됩니다.
 
 **매개변수:**
 
@@ -433,9 +447,11 @@ int zlink_poller_wait_all (void *poller_,
 | `events_` | 채울 이벤트 구조체 배열 |
 | `n_events_` | 반환할 최대 이벤트 수 |
 | `timeout_` | 최대 대기 시간(밀리초); `0`이면 즉시, `-1`이면 무한 대기 |
+| `error_out_` | 실패 또는 타임아웃 시 `zlink_config_result_t`가 기록됨 |
 
-**반환값:** `events_`에 저장된 이벤트 수, 실패 시 `-1` (errno가 설정됨;
-타임아웃 시 `EAGAIN`).
+**반환값:** `events_`에 저장된 이벤트 수, 실패 시 `-1`이며 `*error_out_`에
+`zlink_config_result_t`가 기록됩니다(타임아웃 시 `EAGAIN`). `zlink_errno()`는
+진단용 내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
@@ -450,7 +466,7 @@ int zlink_poller_wait_all (void *poller_,
 프론트엔드와 백엔드 소켓 간의 내장 프록시를 시작합니다.
 
 ```c
-int zlink_proxy (void *frontend_, void *backend_, void *capture_);
+zlink_config_result_t zlink_proxy (void *frontend_, void *backend_, void *capture_);
 ```
 
 프론트엔드 소켓을 백엔드 소켓에 연결하여 양방향으로 메시지를 전달합니다.
@@ -466,7 +482,8 @@ int zlink_proxy (void *frontend_, void *backend_, void *capture_);
 | `backend_` | 워커/서비스를 향하는 소켓 |
 | `capture_` | 메시지 캡처용 선택적 소켓, 또는 `NULL` |
 
-**반환값:** 프록시 종료 시 `-1` (errno가 `ETERM`으로 설정됨).
+**반환값:** 프록시 종료 시 `zlink_config_result_t` 값을 반환합니다. 컨텍스트
+종료로 정상 종료되면 내부적으로 `ETERM`이 `zlink_errno()`에 설정됩니다.
 
 **에러:**
 - `ETERM` -- 컨텍스트가 종료되었습니다.
@@ -483,10 +500,10 @@ int zlink_proxy (void *frontend_, void *backend_, void *capture_);
 추가 제어 소켓이 있는 제어 가능 프록시를 시작합니다.
 
 ```c
-int zlink_proxy_steerable (void *frontend_,
-                           void *backend_,
-                           void *capture_,
-                           void *control_);
+zlink_config_result_t zlink_proxy_steerable (void *frontend_,
+                                             void *backend_,
+                                             void *capture_,
+                                             void *control_);
 ```
 
 `zlink_proxy`처럼 동작하지만 `control_`에서 명령을 수신합니다. 메시지 전달을
@@ -503,7 +520,8 @@ int zlink_proxy_steerable (void *frontend_,
 | `capture_` | 메시지 캡처용 선택적 소켓, 또는 `NULL` |
 | `control_` | 제어 소켓 (PAIR 타입), 또는 `NULL` |
 
-**반환값:** 제어 소켓을 통해 종료 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`. 실패 시에는 `zlink_config_result_t`
+값을 반환합니다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지됩니다.
 
 **스레드 안전성:** 프록시가 실행 중인 동안 네 소켓 핸들은 다른 스레드에서
 사용해서는 안 됩니다. 제어 소켓은 모든 스레드에서 쓸 수 있습니다.

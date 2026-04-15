@@ -11,7 +11,7 @@ and it comprehensively covers the system's layer structure, core components, dat
 ## Table of Contents
 
 1. [Overview and Design Philosophy](#1-overview-and-design-philosophy)
-2. [From Reactor to Proactor — I/O Model Migration](#2-from-reactor-to-proactor--io-model-migration)
+2. [I/O Model: Proactor Pattern](#2-io-model-proactor-pattern)
 3. [5-Layer Architecture](#3-5-layer-architecture)
 4. [Component Relationships](#4-component-relationships)
 5. [Socket Logic Layer Details](#5-socket-logic-layer-details)
@@ -27,8 +27,8 @@ and it comprehensively covers the system's layer structure, core components, dat
 
 ### 1.1 What is zlink?
 
-zlink is a high-performance messaging library based on libzmq.
-While maintaining compatibility with libzmq's patterns and API, it applies the following modern design principles:
+zlink is a high-performance messaging library that shares its socket
+patterns and API shape with libzmq. Its design includes:
 
 - **Boost.Asio-based I/O**: Uses Asio's unified asynchronous I/O instead of platform-specific pollers (epoll/kqueue/IOCP)
 - **Native WebSocket/TLS support**: Built-in support for `ws://`, `wss://`, `tls://` protocols at the library level
@@ -73,12 +73,14 @@ While maintaining compatibility with libzmq's patterns and API, it applies the f
 
 ---
 
-## 2. From Reactor to Proactor — I/O Model Migration
+## 2. I/O Model: Proactor Pattern
 
-The most fundamental architectural change in zlink is the I/O model transition.
-libzmq's **Reactor pattern** has been replaced with a Boost.Asio-based **Proactor pattern**.
+zlink's I/O core is a Boost.Asio-based **Proactor pattern**. Engines
+request asynchronous operations from the OS and receive completion
+callbacks when the I/O finishes. For comparison, libzmq's classic
+**Reactor pattern** is also shown below.
 
-### 2.1 Reactor Pattern (libzmq)
+### 2.1 Reactor Pattern (libzmq, for comparison)
 
 libzmq uses a classic **Reactor pattern**.
 A central poller (`poller_t`) monitors fd readiness (readable/writable state)
@@ -191,16 +193,19 @@ Engines request asynchronous I/O operations from the OS, and the OS invokes comp
 +------------------+--------------------------+------------------------------+
 ```
 
-### 2.4 Migration Strategy
+### 2.4 Layer Composition
 
-The port from libzmq to zlink used **selective per-layer replacement**, not a full rewrite.
+zlink shares its socket-logic building blocks with libzmq, swaps out
+the I/O core for an Asio-based Proactor, and adds several capabilities
+of its own. The diagram labels what each layer looks like in the
+current codebase.
 
 ```
 +---------------------------------------------------------------------+
-|                   Per-Layer: Preserved / Replaced / Added           |
+|                   Per-Layer: Shared / Asio / Added                  |
 +---------------------------------------------------------------------+
 |                                                                     |
-|  ■ Preserved (kept from libzmq as-is)                               |
+|  ■ Shared with libzmq (same socket-logic building blocks)           |
 |  +---------------------------------------------------------------+  |
 |  |  Socket Logic Layer                                           |  |
 |  |  - socket_base_t, pair_t, dealer_t, router_t, pub_t, sub_t   |   |
@@ -217,22 +222,22 @@ The port from libzmq to zlink used **selective per-layer replacement**, not a fu
 |  |  - msg_t (64-byte fixed, VSM/LMSG/CMSG/ZCLMSG)              |    |
 |  +---------------------------------------------------------------+  |
 |                                                                     |
-|  ■ Replaced (libzmq implementation swapped for new)                 |
+|  ■ Asio-based I/O core                                              |
 |  +---------------------------------------------------------------+  |
-|  |  poller_t (epoll/kqueue/select)  →  asio_poller_t            |   |
-|  |  - Minimal reactor wrapper for mailbox monitoring             |  |
+|  |  asio_poller_t                                                |  |
+|  |  - Minimal reactor wrapper for mailbox fd monitoring          |  |
 |  +---------------------------------------------------------------+  |
-|  |  zmtp_engine_t (ZMTP 3.x)  →  asio_engine_t (Proactor)      |    |
-|  |  - Core I/O engine completely redesigned for completion-based |  |
+|  |  asio_engine_t (Proactor)                                     |  |
+|  |  - Completion-based I/O engine                                |  |
 |  +---------------------------------------------------------------+  |
-|  |  Direct fd management  →  i_asio_transport interface         |   |
+|  |  i_asio_transport interface                                   |  |
 |  |  - TCP/IPC wrapped with Boost.Asio sockets                   |   |
 |  +---------------------------------------------------------------+  |
-|  |  ZMTP 3.x  →  ZMP v1.0                                       |   |
-|  |  - Simplified to 8-byte fixed header, HELLO/READY handshake  |   |
+|  |  ZMP v1.0                                                     |  |
+|  |  - 8-byte fixed header, HELLO/READY handshake                 |  |
 |  +---------------------------------------------------------------+  |
 |                                                                     |
-|  ■ Added (new in zlink)                                             |
+|  ■ Added in zlink                                                   |
 |  +---------------------------------------------------------------+  |
 |  |  Speculative I/O                                              |  |
 |  |  - Synchronous attempt before async → eliminates callback     |  |
@@ -247,19 +252,20 @@ The port from libzmq to zlink used **selective per-layer replacement**, not a fu
 |  |  Native WS/WSS/TLS Transports                                |   |
 |  |  - Beast WebSocket + OpenSSL unified via i_asio_transport    |   |
 |  +---------------------------------------------------------------+  |
-|  |  Service Layer (Registry, Discovery, SPOT)                  |    |
-|  |  - Higher-level service abstractions not present in libzmq   |   |
+|  |  Service Layer (Registry, Discovery, SPOT)                    |  |
+|  |  - Higher-level service abstractions layered over sockets     |  |
 |  +---------------------------------------------------------------+  |
 |                                                                     |
 +---------------------------------------------------------------------+
 ```
 
-**Why wasn't the Reactor completely removed?**
+**Why a minimal reactor wrapper?**
 
-`asio_poller_t` remains as a minimal Reactor-compatible wrapper for monitoring mailbox fds.
-The existing libzmq `io_object_t` infrastructure receives mailbox events through poller callbacks,
-so this path is wrapped with Asio's `async_wait()` to maintain compatibility.
-The actual data I/O path (`asio_engine_t`) operates as a pure Proactor pattern.
+`asio_poller_t` is a minimal Reactor-compatible wrapper for monitoring
+mailbox fds. The `io_object_t` infrastructure that receives mailbox
+events through poller callbacks is adapted with Asio's `async_wait()`,
+so mailbox plumbing stays on the reactor-shaped path. The actual data
+I/O path (`asio_engine_t`) runs as a pure Proactor pattern.
 
 ---
 

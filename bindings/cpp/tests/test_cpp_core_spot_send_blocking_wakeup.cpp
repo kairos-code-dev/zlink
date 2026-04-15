@@ -155,9 +155,8 @@ void setup_fixture (spot_fixture_t *fixture_)
     const std::string endpoint =
       unique_inproc ("inproc://cpp-", "spot-send-smoke");
     assert (zlink_spot_node_bind (fixture_->pub_node, endpoint.c_str ()) == 0);
-    assert (
-      zlink_spot_node_connect_peer_pub (fixture_->sub_node, endpoint.c_str ())
-      == 0);
+    assert (zlink_spot_node_connect_peer (fixture_->sub_node, endpoint.c_str ())
+            == 0);
     assert (zlink_spot_sub_subscribe (fixture_->spot_sub, kTopic) == 0);
     assert (wait_until_ready (fixture_->spot_pub, fixture_->spot_sub));
 }

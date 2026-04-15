@@ -6,13 +6,12 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
-import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.SendFlags;
+import dev.kairoscode.zlink.SubmitException;
+import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.ZlinkException;
-import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
 final class PerfMultiDealerDealer {
@@ -76,22 +75,19 @@ final class PerfMultiDealerDealer {
                     go.countDown();
                 }
                 PerfUtil.await(go, "dealer/dealer start", java.time.Duration.ofSeconds(10));
-                try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                    List.of(client), PollEventType.POLLOUT.getValue())) {
-                    long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
-                    while (System.nanoTime() < activeEnd) {
-                        try (Message m = PerfUtil.payload(config.size(),
-                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                            sendUntilDeadline(client, pollSet, m, activeEnd);
-                        }
+                long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
+                while (System.nanoTime() < activeEnd) {
+                    try (Message m = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                        sendUntilDeadline(client, m, activeEnd);
                     }
-                    long cooldownDeadline =
-                        System.nanoTime() + Duration.ofMillis(50L).toNanos();
-                    for (int i = 0; i < 4; i++) {
-                        try (Message m = PerfUtil.payload(config.size(),
-                                 (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                            sendUntilDeadline(client, pollSet, m, cooldownDeadline);
-                        }
+                }
+                long cooldownDeadline =
+                    System.nanoTime() + Duration.ofMillis(50L).toNanos();
+                for (int i = 0; i < 4; i++) {
+                    try (Message m = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                        sendUntilDeadline(client, m, cooldownDeadline);
                     }
                 }
                 try {
@@ -105,19 +101,18 @@ final class PerfMultiDealerDealer {
             config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
     }
 
-    private static void sendUntilDeadline(DealerSocket client, PerfSocketPollSet pollSet,
-                                          Message part, long deadlineNs) {
+    private static void sendUntilDeadline(DealerSocket client, Message part, long deadlineNs) {
+        int attempts = 0;
         while (true) {
             try {
                 client.send(part, SendFlags.DONT_WAIT);
-                    return;
+                return;
+            } catch (SubmitException ex) {
+                if (!isTransient(ex)) {
+                    throw ex;
+                }
             } catch (ZlinkException ex) {
-                if (ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4) {
-                    // Treat transient backpressure and interrupts the same as an
-                    // unsent trySend result. This keeps one-way perf clients from
-                    // blocking indefinitely when the server is already draining or
-                    // shutting down.
-                } else {
+                if (!isTransient(ex)) {
                     throw ex;
                 }
             }
@@ -125,18 +120,25 @@ final class PerfMultiDealerDealer {
             if (System.nanoTime() >= deadlineNs) {
                 return;
             }
-
-            pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
+            attempts++;
+            if (attempts < 32) {
+                Thread.onSpinWait();
+                continue;
+            }
             try {
-                int rc = pollSet.poll(5);
-                if (rc == 0 && System.nanoTime() >= deadlineNs) {
-                    return;
-                }
-            } catch (ZlinkException ex) {
-                if (ex.getInternalErrno() != 11 && ex.getInternalErrno() != 4) {
-                    throw ex;
-                }
+                Thread.sleep(1L);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("dealer/dealer retry interrupted", ex);
             }
         }
+    }
+
+    private static boolean isTransient(ZlinkException ex) {
+        if (ex instanceof SubmitException submit) {
+            return submit.getResult() == SubmitResult.BACKPRESSURED
+                || submit.getResult() == SubmitResult.NOT_CONNECTED;
+        }
+        return ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4;
     }
 }

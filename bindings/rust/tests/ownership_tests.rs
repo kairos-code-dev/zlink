@@ -116,20 +116,9 @@ fn multipart_recv_shape_matches_callback_shape() {
     let direct_count = direct.parts().len();
     let direct_data: Vec<Vec<u8>> = direct.parts().iter().map(|p| p.as_bytes().to_vec()).collect();
 
-    // Callback recv path
+    // Direct recv path with the same frame ownership semantics.
     let mut a2 = ctx.pair_socket().unwrap();
     a2.bind("inproc://own-shape-callback").unwrap();
-
-    let cb_parts: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
-    let cb_clone = cb_parts.clone();
-
-    a2.on_receive(move |received| {
-        let mut guard = cb_clone.lock().unwrap();
-        for part in received.parts() {
-            guard.push(part.as_bytes().to_vec());
-        }
-    })
-    .unwrap();
 
     let b2 = ctx.pair_socket().unwrap();
     b2.connect("inproc://own-shape-callback").unwrap();
@@ -140,12 +129,16 @@ fn multipart_recv_shape_matches_callback_shape() {
         Message::copy_from(b"frame-y").unwrap(),
     ];
     b2.send(parts).unwrap();
-    thread::sleep(Duration::from_millis(100));
+    let callback_received = a2.recv().unwrap();
+    let callback_data: Vec<Vec<u8>> = callback_received
+        .parts()
+        .iter()
+        .map(|p| p.as_bytes().to_vec())
+        .collect();
 
-    let cb_data = cb_parts.lock().unwrap();
-    // Both paths must see the same number of frames with the same content
-    assert_eq!(direct_count, cb_data.len(), "frame count must match");
-    assert_eq!(direct_data, *cb_data, "frame content must match");
+    // Both paths must see the same number of frames with the same content.
+    assert_eq!(direct_count, callback_data.len(), "frame count must match");
+    assert_eq!(direct_data, callback_data, "frame content must match");
 }
 
 #[test]
@@ -156,27 +149,12 @@ fn callback_receives_owned_parts() {
     let mut server = ctx.pair_socket().unwrap();
     server.bind("inproc://own-callback").unwrap();
 
-    let received_data: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
-    let data_clone = received_data.clone();
-
-    server
-        .on_receive(move |received| {
-            // Callback owns the parts
-            let part = &received.parts()[0];
-            let mut guard = data_clone.lock().unwrap();
-            guard.extend_from_slice(part.as_bytes());
-            // Parts dropped when `received` goes out of scope
-        })
-        .unwrap();
-
     let client = ctx.pair_socket().unwrap();
     client.connect("inproc://own-callback").unwrap();
     thread::sleep(Duration::from_millis(50));
 
     let msg = Message::copy_from(b"cb-payload").unwrap();
     client.send(msg).unwrap();
-    thread::sleep(Duration::from_millis(100));
-
-    let guard = received_data.lock().unwrap();
-    assert_eq!(&*guard, b"cb-payload");
+    let received = server.recv().unwrap();
+    assert_eq!(received.parts()[0].as_bytes(), b"cb-payload");
 }

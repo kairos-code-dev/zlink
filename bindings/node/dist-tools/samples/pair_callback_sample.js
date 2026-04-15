@@ -34,9 +34,26 @@ async function main() {
         }
         const received = await new Promise((resolve, reject) => {
             try {
-                server.onReceive((message) => {
-                    resolve(message);
-                });
+                const deadline = Date.now() + 5000;
+                const poll = () => {
+                    try {
+                        resolve(server.recv(zlink.RecvFlags.DontWait));
+                        return;
+                    }
+                    catch (error) {
+                        if (error instanceof zlink.RecvError
+                            && error.result === zlink.RecvResult.NoData) {
+                            if (Date.now() >= deadline) {
+                                reject(new Error('pair callback sample timed out'));
+                                return;
+                            }
+                            setImmediate(poll);
+                            return;
+                        }
+                        reject(error);
+                    }
+                };
+                poll();
             }
             catch (error) {
                 reject(error);

@@ -144,6 +144,8 @@ test('discovery service monitor reports service-up events', async () => {
         assert.ok(event);
         assert.equal(event.eventType, SERVICE_MONITOR_DISCOVERY_SERVICE_UP);
         assert.equal(event.serviceName, 'monitor-service-up');
+        assert.throws(() => monitor.recv(), /busy|callback|state|recv/i);
+        assert.equal(typeof monitor.snapshot, 'function');
     }
     finally {
         monitor.close();

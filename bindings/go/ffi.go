@@ -15,11 +15,9 @@ package zlink
 #include "zlink.h"
 
 extern void goZlinkRecvTrampoline(zlink_routing_id_t *source_rid_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
-extern void goZlinkSubscribeTrampoline(zlink_routing_id_t *source_rid_, char *topic_, size_t topic_len_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 extern void goZlinkSendReadyTrampoline(void *subject_, uintptr_t userdata_);
 extern void goZlinkMonitorTrampoline(zlink_monitor_event_t *event_, uintptr_t userdata_);
 extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
-extern void goZlinkRouterRequestTrampoline(const zlink_routing_id_t *source_node_rid_, const zlink_routing_id_t *source_spot_rid_, uint64_t request_seq_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 
 static inline int zlink_bind_go(void *s, const char *addr) {
     return zlink_bind(s, addr);
@@ -41,10 +39,6 @@ static inline int zlink_recv_handler_go(void *s, uintptr_t userdata) {
     return zlink_recv_handler(s, (zlink_socket_msg_handler_fn)goZlinkRecvTrampoline, (void *)userdata);
 }
 
-static inline int zlink_subscribe_handler_go(void *s, uintptr_t userdata) {
-    return zlink_subscribe_handler(s, (zlink_subscribe_handler_fn)goZlinkSubscribeTrampoline, (void *)userdata);
-}
-
 static inline int zlink_send_ready_handler_go(void *s, uintptr_t userdata) {
     return zlink_send_ready_handler(s, (zlink_send_ready_handler_fn)goZlinkSendReadyTrampoline, (void *)userdata);
 }
@@ -59,10 +53,6 @@ static inline int zlink_dealer_request_go(void *dealer, zlink_msg_t *parts, size
 
 static inline int zlink_router_request_go(void *router, const zlink_routing_id_t *peer_rid, zlink_msg_t *parts, size_t part_count, uint32_t timeout_ms, uintptr_t userdata) {
     return zlink_router_request(router, peer_rid, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, 0, timeout_ms);
-}
-
-static inline int zlink_router_handler_go(void *router, uintptr_t userdata) {
-    return zlink_router_handler(router, (zlink_router_handler_fn)goZlinkRouterRequestTrampoline, (void *)userdata);
 }
 
 static inline int zlink_discovery_resolve_spot_go(void *discovery, const zlink_routing_id_t *spot_rid, zlink_routing_id_t *owner_node_rid_out) {

@@ -52,7 +52,7 @@ typedef enum zlink_poller_source_kind_t
 
 ### zlink_pollitem_t
 
-Descriptor used with the legacy `zlink_poll` function.
+Descriptor used with the `zlink_poll` function.
 
 ```c
 typedef struct zlink_pollitem_t
@@ -73,7 +73,7 @@ typedef struct zlink_pollitem_t
 
 ### zlink_poller_event_t
 
-Event structure returned by the modern poller API.
+Event structure returned by the poller API.
 
 ```c
 typedef struct zlink_poller_event_t
@@ -116,19 +116,21 @@ typedef struct zlink_poller_event_t
 | `ZLINK_POLLITEMS_DFLT` | 16 | Default poll-item array size |
 | `ZLINK_HAVE_POLLER` | 1 | Library was compiled with poller support |
 
-## Functions -- Legacy Poll
+## Functions -- Array Poll
 
 ### zlink_poll
 
 Poll a set of sockets and/or file descriptors for I/O readiness.
 
 ```c
-int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_);
+int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_, zlink_config_result_t *error_out_);
 ```
 
 Waits for events on the descriptors listed in `items_`. Each entry specifies
 the events of interest in its `events` field; on return, the `revents` field
-of each entry indicates which events occurred.
+of each entry indicates which events occurred. Writes the configuration result
+into `*error_out_` on failure; returns the count as the primary return on
+success.
 
 **Parameters:**
 
@@ -137,9 +139,11 @@ of each entry indicates which events occurred.
 | `items_` | Array of poll items to monitor |
 | `nitems_` | Number of entries in the array |
 | `timeout_` | Maximum wait time in milliseconds; `0` for immediate return, `-1` for indefinite blocking |
+| `error_out_` | Receives a `zlink_config_result_t` on failure |
 
 **Returns:** The number of items with events signalled, `0` on timeout, or
-`-1` on failure (errno is set).
+`-1` on failure with the `zlink_config_result_t` written through `*error_out_`.
+`zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Errors:**
 - `ETERM` -- the context was terminated.
@@ -155,7 +159,7 @@ during the call.
 
 ## Functions -- Poller API
 
-The poller is a modern, object-based alternative to `zlink_poll`. It supports
+The poller is an object-based API that complements `zlink_poll`. It supports
 sockets, native file descriptors, and timers in a single event loop.
 
 ### zlink_poller_new
@@ -182,13 +186,13 @@ Allocates and returns an opaque poller handle. Destroy with
 Destroy a poller and release its resources.
 
 ```c
-int zlink_poller_destroy (void **poller_p_);
+zlink_close_result_t zlink_poller_destroy (void **poller_p_);
 ```
 
 Frees the poller handle. The pointer at `*poller_p_` is set to `NULL` after
 destruction.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CLOSE_OK` on success; otherwise a `zlink_close_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called while another thread is using the same
 poller.
@@ -202,11 +206,16 @@ poller.
 Return the number of sources registered with the poller.
 
 ```c
-int zlink_poller_size (void *poller_);
+int zlink_poller_size (void *poller_, zlink_config_result_t *error_out_);
 ```
 
+Writes the configuration result into `*error_out_` on failure; returns the
+count as the primary return on success.
+
 **Returns:** The current count of registered sockets, file descriptors, and
-timers, or `-1` on failure (errno is set).
+timers, or `-1` on failure with the `zlink_config_result_t` written through
+`*error_out_`. `zlink_errno()` retains the detailed internal errno for
+diagnostics.
 
 **Thread safety:** Must not be called concurrently with add/remove operations
 on the same poller.
@@ -218,7 +227,7 @@ on the same poller.
 Register a zlink socket with the poller.
 
 ```c
-int zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_);
+zlink_config_result_t zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_);
 ```
 
 Adds `socket_` to the poller and monitors it for the events specified in
@@ -234,7 +243,7 @@ Adds `socket_` to the poller and monitors it for the events specified in
 | `user_data_` | Opaque pointer returned with events |
 | `events_` | Event mask (`ZLINK_POLLIN`, `ZLINK_POLLOUT`, etc.) |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same poller.
@@ -248,13 +257,13 @@ the same poller.
 Change the monitored events for a registered socket.
 
 ```c
-int zlink_poller_modify (void *poller_, void *socket_, short events_);
+zlink_config_result_t zlink_poller_modify (void *poller_, void *socket_, short events_);
 ```
 
 Updates the event mask for `socket_` that was previously added with
 `zlink_poller_add`.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same poller.
@@ -268,12 +277,12 @@ the same poller.
 Remove a zlink socket from the poller.
 
 ```c
-int zlink_poller_remove (void *poller_, void *socket_);
+zlink_config_result_t zlink_poller_remove (void *poller_, void *socket_);
 ```
 
 Unregisters the socket. It will no longer produce events.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same poller.
@@ -287,7 +296,7 @@ the same poller.
 Register a native file descriptor with the poller.
 
 ```c
-int zlink_poller_add_fd (void *poller_, zlink_fd_t fd_, void *user_data_, short events_);
+zlink_config_result_t zlink_poller_add_fd (void *poller_, zlink_fd_t fd_, void *user_data_, short events_);
 ```
 
 Adds the file descriptor `fd_` and monitors it for the specified events.
@@ -301,7 +310,7 @@ Adds the file descriptor `fd_` and monitors it for the specified events.
 | `user_data_` | Opaque pointer returned with events |
 | `events_` | Event mask |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same poller.
@@ -315,7 +324,7 @@ the same poller.
 Register a timer with the poller.
 
 ```c
-int zlink_poller_add_timer (void *poller_, void *timer_, void *user_data_);
+zlink_config_result_t zlink_poller_add_timer (void *poller_, void *timer_, void *user_data_);
 ```
 
 Adds the timer handle `timer_` to the poller. When the timer fires, the poller
@@ -329,7 +338,7 @@ returns an event with `source_kind` set to `ZLINK_POLLER_SOURCE_TIMER`.
 | `timer_` | Timer handle (from `zlink_timer_new` or `zlink_spot_timer_new`) |
 | `user_data_` | Opaque pointer returned with events |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same poller.
@@ -343,13 +352,13 @@ the same poller.
 Change the monitored events for a registered file descriptor.
 
 ```c
-int zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_);
+zlink_config_result_t zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_);
 ```
 
 Updates the event mask for `fd_` that was previously added with
 `zlink_poller_add_fd`.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same poller.
@@ -363,12 +372,12 @@ the same poller.
 Remove a file descriptor from the poller.
 
 ```c
-int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
+zlink_config_result_t zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
 ```
 
 Unregisters the file descriptor. It will no longer produce events.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same poller.
@@ -382,12 +391,12 @@ the same poller.
 Remove a timer from the poller.
 
 ```c
-int zlink_poller_remove_timer (void *poller_, void *timer_);
+zlink_config_result_t zlink_poller_remove_timer (void *poller_, void *timer_);
 ```
 
 Unregisters the timer. It will no longer produce poller events.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same poller.
@@ -401,11 +410,13 @@ the same poller.
 Wait for a single event.
 
 ```c
-int zlink_poller_wait (void *poller_, zlink_poller_event_t *event_, long timeout_);
+int zlink_poller_wait (void *poller_, zlink_poller_event_t *event_, long timeout_, zlink_config_result_t *error_out_);
 ```
 
 Blocks until one of the registered sources has an event ready, or the timeout
-expires. On success, `event_` is populated with the event details.
+expires. On success, `event_` is populated with the event details. Writes the
+configuration result into `*error_out_` on failure; returns the primary result
+value on success.
 
 **Parameters:**
 
@@ -414,9 +425,11 @@ expires. On success, `event_` is populated with the event details.
 | `poller_` | Poller handle |
 | `event_` | Pointer to a single event structure to fill |
 | `timeout_` | Maximum wait in milliseconds; `0` for immediate, `-1` for indefinite |
+| `error_out_` | Receives a `zlink_config_result_t` on failure or timeout |
 
-**Returns:** `0` if an event was received, `-1` on timeout or failure (errno
-is set; `EAGAIN` on timeout).
+**Returns:** `0` if an event was received, `-1` on timeout or failure with the
+`zlink_config_result_t` written through `*error_out_` (`EAGAIN` on timeout).
+`zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same poller.
@@ -433,11 +446,13 @@ Wait for multiple events in a single call.
 int zlink_poller_wait_all (void *poller_,
                            zlink_poller_event_t *events_,
                            int n_events_,
-                           long timeout_);
+                           long timeout_,
+                           zlink_config_result_t *error_out_);
 ```
 
 Blocks until at least one registered source has an event ready, then fills
-`events_` with up to `n_events_` events.
+`events_` with up to `n_events_` events. Writes the configuration result into
+`*error_out_` on failure; returns the count as the primary return on success.
 
 **Parameters:**
 
@@ -447,9 +462,11 @@ Blocks until at least one registered source has an event ready, then fills
 | `events_` | Array of event structures to fill |
 | `n_events_` | Maximum number of events to return |
 | `timeout_` | Maximum wait in milliseconds; `0` for immediate, `-1` for indefinite |
+| `error_out_` | Receives a `zlink_config_result_t` on failure or timeout |
 
-**Returns:** The number of events stored in `events_`, or `-1` on failure
-(errno is set; `EAGAIN` on timeout).
+**Returns:** The number of events stored in `events_`, or `-1` on failure with
+the `zlink_config_result_t` written through `*error_out_` (`EAGAIN` on
+timeout). `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same poller.
@@ -465,7 +482,7 @@ the same poller.
 Start a built-in proxy between a frontend and a backend socket.
 
 ```c
-int zlink_proxy (void *frontend_, void *backend_, void *capture_);
+zlink_config_result_t zlink_proxy (void *frontend_, void *backend_, void *capture_);
 ```
 
 Connects a frontend socket to a backend socket, forwarding messages in both
@@ -481,7 +498,8 @@ context is terminated) and does not return under normal operation.
 | `backend_` | Socket facing workers / services |
 | `capture_` | Optional socket for message capture, or `NULL` |
 
-**Returns:** `-1` when the proxy terminates (errno is set to `ETERM`).
+**Returns:** A `zlink_config_result_t` value when the proxy terminates;
+`zlink_errno()` is set to `ETERM` on normal context-termination shutdown.
 
 **Errors:**
 - `ETERM` -- the context was terminated.
@@ -498,10 +516,10 @@ while the proxy is running.
 Start a steerable proxy with an additional control socket.
 
 ```c
-int zlink_proxy_steerable (void *frontend_,
-                           void *backend_,
-                           void *capture_,
-                           void *control_);
+zlink_config_result_t zlink_proxy_steerable (void *frontend_,
+                                             void *backend_,
+                                             void *capture_,
+                                             void *control_);
 ```
 
 Behaves like `zlink_proxy` but accepts commands on `control_`. Send the string
@@ -518,8 +536,9 @@ behaves identically to `zlink_proxy`.
 | `capture_` | Optional socket for message capture, or `NULL` |
 | `control_` | Control socket (PAIR type), or `NULL` |
 
-**Returns:** `0` when terminated via the control socket, or `-1` on failure
-(errno is set).
+**Returns:** `ZLINK_CONFIG_OK` when terminated cleanly via the control
+socket; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains
+the detailed internal errno for diagnostics.
 
 **Thread safety:** The four socket handles must not be used by other threads
 while the proxy is running. The control socket may be written to from any

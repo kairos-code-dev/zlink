@@ -1,4 +1,8 @@
 using System;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using Xunit;
 
@@ -6,49 +10,67 @@ namespace Zlink.Tests;
 
 public sealed class test_callback_contract
 {
+    private static TcpClient ConnectRawClient(int port)
+    {
+        var client = new TcpClient();
+        client.NoDelay = true;
+        client.ReceiveTimeout = 5000;
+        client.SendTimeout = 5000;
+        client.Connect(IPAddress.Loopback, port);
+        return client;
+    }
+
+    private static void SendAll(NetworkStream stream, ReadOnlySpan<byte> payload)
+    {
+        stream.Write(payload);
+        stream.Flush();
+    }
+
     [Fact]
-    public void recv_handler_transfers_message_ownership_to_application()
+    public void stream_packet_handler_transfers_message_ownership_to_application()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
         using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
-        string endpoint = CoreTestSupport.NewEndpoint("tcp", "callback-owned");
-        sender.Bind(endpoint);
-        receiver.Connect(endpoint);
+        using var stream = new StreamSocket(ctx);
+        string endpoint = CoreTestSupport.NewEndpoint("tcp",
+            "callback-owned");
+        int port = CoreTestSupport.ExtractPort(endpoint);
+        stream.Bind(endpoint);
 
         using var receivedSignal = new ManualResetEventSlim(false);
         Message? owned = null;
-        receiver.OnReceive((routingId, parts) =>
+        stream.OnPacket((_, payload) =>
         {
-            Assert.Single(parts);
-            owned = parts[0];
+            owned = payload;
             receivedSignal.Set();
+            return 0;
         });
 
-        CoreTestSupport.SendWithRetry(sender, "callback-owned"u8, 3000);
+        using var client = ConnectRawClient(port);
+        SendAll(client.GetStream(), "callback-owned"u8);
 
         Assert.True(receivedSignal.Wait(3000));
         Assert.NotNull(owned);
-        Assert.Equal("callback-owned", CoreTestSupport.Utf8(owned!));
-        owned!.Dispose();
+        Assert.Equal("callback-owned",
+            Encoding.UTF8.GetString(owned!.AsReadOnlySpan()));
+        owned.Dispose();
         Assert.Throws<ObjectDisposedException>(() => _ = owned.Size);
     }
 
     [Fact]
-    public void recv_handler_exception_reports_unhandled_callback_exception()
+    public void stream_packet_handler_exception_reports_unhandled_callback_exception()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
         using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
-        string endpoint = CoreTestSupport.NewEndpoint("tcp", "callback-recv");
-        sender.Bind(endpoint);
-        receiver.Connect(endpoint);
+        using var stream = new StreamSocket(ctx);
+        string endpoint = CoreTestSupport.NewEndpoint("tcp",
+            "callback-packet-ex");
+        int port = CoreTestSupport.ExtractPort(endpoint);
+        stream.Bind(endpoint);
 
         using var observedSignal = new ManualResetEventSlim(false);
         Exception? observed = null;
@@ -61,101 +83,29 @@ public sealed class test_callback_contract
         Runtime.UnhandledCallbackException += OnUnhandled;
         try
         {
-            receiver.OnReceive((routingId, parts) =>
+            stream.OnPacket((_, payload) =>
             {
-                throw new InvalidOperationException("recv-handler-fail");
+                payload.Dispose();
+                throw new InvalidOperationException("stream-packet-fail");
             });
 
-            CoreTestSupport.SendWithRetry(sender, "callback"u8, 3000);
+            using var client = ConnectRawClient(port);
+            SendAll(client.GetStream(), "stream-packet-fail"u8);
 
             Assert.True(observedSignal.Wait(3000));
             Assert.NotNull(observed);
-            Assert.Equal("recv-handler-fail", observed!.Message);
+            Assert.Equal("stream-packet-fail", observed!.Message);
         }
         finally
         {
             Runtime.UnhandledCallbackException -= OnUnhandled;
-        }
-    }
-
-    [Fact]
-    public void subscribe_handler_transfers_message_ownership_to_application()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var publisher = new PubSocket(ctx);
-        using var subscriber = new SubSocket(ctx);
-        string endpoint = CoreTestSupport.NewEndpoint("inproc",
-            "callback-subscribe-owned");
-        publisher.Bind(endpoint);
-        subscriber.Connect(endpoint);
-        subscriber.SetSubscription("callback");
-
-        using var receivedSignal = new ManualResetEventSlim(false);
-        Message? owned = null;
-        string? receivedTopic = null;
-        subscriber.OnSubscribe((routingId, topic, parts) =>
-        {
-            Assert.Single(parts);
-            receivedTopic = topic;
-            owned = parts[0];
-            receivedSignal.Set();
-        });
-
-        CoreTestSupport.PublishWithRetry(publisher, "callback",
-            "payload"u8, 3000);
-
-        Assert.True(receivedSignal.Wait(3000));
-        Assert.Equal("callback", receivedTopic);
-        Assert.NotNull(owned);
-        Assert.Equal("payload", CoreTestSupport.Utf8(owned!));
-        owned!.Dispose();
-        Assert.Throws<ObjectDisposedException>(() => _ = owned.Size);
-    }
-
-    [Fact]
-    public void subscribe_handler_exception_reports_unhandled_callback_exception()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var publisher = new PubSocket(ctx);
-        using var subscriber = new SubSocket(ctx);
-        string endpoint = CoreTestSupport.NewEndpoint("inproc",
-            "callback-subscribe");
-        publisher.Bind(endpoint);
-        subscriber.Connect(endpoint);
-        subscriber.SetSubscription("callback");
-
-        using var observedSignal = new ManualResetEventSlim(false);
-        Exception? observed = null;
-        void OnUnhandled(Exception ex)
-        {
-            observed = ex;
-            observedSignal.Set();
-        }
-
-        Runtime.UnhandledCallbackException += OnUnhandled;
-        try
-        {
-            subscriber.OnSubscribe((routingId, topic, parts) =>
+            try
             {
-                throw new InvalidOperationException("subscribe-handler-fail");
-            });
-
-            CoreTestSupport.PublishWithRetry(publisher, "callback",
-                "payload"u8, 3000);
-
-            Assert.True(observedSignal.Wait(3000));
-            Assert.NotNull(observed);
-            Assert.Equal("subscribe-handler-fail", observed!.Message);
-        }
-        finally
-        {
-            Runtime.UnhandledCallbackException -= OnUnhandled;
+                stream.DetachStream();
+            }
+            catch (ZlinkException)
+            {
+            }
         }
     }
 }

@@ -330,6 +330,12 @@ def _validated_c_string_bytes(data, *, field="value", max_length=None):
     return raw
 
 
+def _validated_c_string_value(value, *, field="value", max_length=None):
+    if isinstance(value, str):
+        return _validated_c_string_text(value, field=field, max_length=max_length)
+    return _validated_c_string_bytes(value, field=field, max_length=max_length)
+
+
 def _validated_c_string_text(text, *, field="value", max_length=None):
     if "\0" in text:
         raise ValueError(f"{field} must not contain NUL characters")
@@ -821,8 +827,17 @@ class ReceivedMultipart:
 
 
 class TopicMessage:
-    def __init__(self, topic, owner, routing_id=None, request_seq=None):
+    def __init__(
+        self,
+        topic,
+        owner,
+        routing_id=None,
+        request_seq=None,
+        *,
+        service_name=None,
+    ):
         self.topic = topic
+        self.service_name = service_name
         self._owner = owner
         self.parts = tuple(
             ReceivedMessage._from_owner(owner, index)
@@ -881,8 +896,9 @@ class Subscribed(TopicMessage):
 
 
 class SubscriptionEvent:
-    def __init__(self, topic, subscribed, routing_id=None):
+    def __init__(self, topic, subscribed, routing_id=None, service_name=None):
         self.routing_id = routing_id
+        self.service_name = service_name
         self.topic = topic
         self.subscribed = subscribed
 

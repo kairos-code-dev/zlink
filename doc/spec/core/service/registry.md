@@ -4,9 +4,9 @@
 
 # Registry
 
-## Current API Direction
+## API Surface
 
-- Registry remains the global service directory and topology summary source.
+- Registry is the global service directory and topology summary source.
 - Use `zlink_registry_topology_snapshot()` for local in-process summary access.
 - Use `zlink_registry_query_client_*()` and `zlink_registry_query_snapshot()`
   for remote summary queries.
@@ -221,12 +221,15 @@ zlink_config_result_t zlink_registry_set_id(void *registry, uint32_t registry_id
 
 Assigns a unique identifier to this Registry instance. The ID is used for
 cluster configuration when multiple registries synchronize with each other
-via peer connections. Must be called before `zlink_registry_bind`.
+via peer connections. Can be called before or after `zlink_registry_bind`;
+changes take effect on the next runtime tick. Setting the ID after bind
+may cause already-sent broadcasts to carry the previous value, so in
+practice set it during setup.
 
 **Returns:** A `zlink_config_result_t` value.
 
 **Thread safety:** A single Registry handle can be used concurrently from
-multiple threads (thread-safe). This call must still be made before `zlink_registry_bind`.
+multiple threads (thread-safe).
 
 **See also:** `zlink_registry_add_peer`
 
@@ -243,12 +246,13 @@ zlink_config_result_t zlink_registry_add_peer(void *registry,
 
 Connects this Registry to a peer Registry's PUB endpoint so that service
 lists can be synchronized across a cluster. Multiple peers may be added.
-Must be called before `zlink_registry_bind`.
+Can be called before or after `zlink_registry_bind`; the runtime tick
+picks up new peer endpoints and dials their PUB on the next cycle.
 
 **Returns:** A `zlink_config_result_t` value.
 
 **Thread safety:** A single Registry handle can be used concurrently from
-multiple threads (thread-safe). This call must still be made before `zlink_registry_bind`.
+multiple threads (thread-safe).
 
 **See also:** `zlink_registry_set_id`
 
@@ -267,12 +271,13 @@ zlink_config_result_t zlink_registry_set_heartbeat(void *registry,
 Configures how frequently the Registry expects heartbeat messages from
 registered services and when to consider a service expired. If a service
 does not send a heartbeat within `timeout_ms` milliseconds, the Registry
-removes it from the service list.
+removes it from the service list. Can be called at any time; the runtime
+tick picks up the new values on the next cycle.
 
 **Returns:** A `zlink_config_result_t` value.
 
 **Thread safety:** A single Registry handle can be used concurrently from
-multiple threads (thread-safe). This call must still be made before `zlink_registry_bind`.
+multiple threads (thread-safe).
 
 **See also:** `zlink_registry_set_broadcast_interval`
 
@@ -289,12 +294,13 @@ zlink_config_result_t zlink_registry_set_broadcast_interval(void *registry,
 
 Controls how frequently the Registry publishes the full service list on its
 PUB socket. Discovery instances subscribed to the PUB endpoint will receive
-updates at this interval.
+updates at this interval. Can be called at any time; the runtime tick
+picks up the new interval on the next cycle.
 
 **Returns:** A `zlink_config_result_t` value.
 
 **Thread safety:** A single Registry handle can be used concurrently from
-multiple threads (thread-safe). This call must still be made before `zlink_registry_bind`.
+multiple threads (thread-safe).
 
 **See also:** `zlink_registry_set_heartbeat`
 

@@ -5,7 +5,6 @@ import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.SendFlags;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -27,27 +26,34 @@ public final class DealerRouterCallbackSample {
             dealer.connect(endpoint);
             SampleSupport.waitConnected(routerMonitor, dealerMonitor);
 
-            router.onReceive(received -> {
-                String request = SampleSupport.singleUtf8(received);
-                RoutingId rid = received.routingId().orElse(null);
-                if (!SampleSupport.DEALER_REQUEST.equals(request) || rid == null) {
-                    throw new IllegalStateException("unexpected routed request");
+            Thread dealerThread = new Thread(() -> {
+                try (var received = dealer.recv()) {
+                    replyValue.set(SampleSupport.singleUtf8(received));
+                } finally {
+                    delivered.countDown();
                 }
-                try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
-                    router.send(rid, reply, SendFlags.DONT_WAIT);
-                }
-            });
+            }, "dealer-router-client-recv");
+            dealerThread.start();
 
-            dealer.onReceive(received -> {
-                replyValue.set(SampleSupport.singleUtf8(received));
-                delivered.countDown();
-            });
+            Thread routerThread = new Thread(() -> {
+                try (var received = router.recv()) {
+                    String request = SampleSupport.singleUtf8(received);
+                    RoutingId rid = received.routingId().orElse(null);
+                    if (!SampleSupport.DEALER_REQUEST.equals(request) || rid == null) {
+                        throw new IllegalStateException("unexpected routed request");
+                    }
+                    try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
+                        router.send(rid, reply);
+                    }
+                }
+            }, "dealer-router-recv");
+            routerThread.start();
 
             try (Message request = Message.copyOfUtf8(SampleSupport.DEALER_REQUEST)) {
                 dealer.send(request);
             }
 
-            SampleSupport.await(delivered, "dealer-router callback");
+            SampleSupport.await(delivered, "dealer-router recv");
             String value = replyValue.get();
             if (!SampleSupport.DEALER_REPLY.equals(value)) {
                 throw new IllegalStateException("unexpected reply: " + value);

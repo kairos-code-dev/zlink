@@ -29,7 +29,7 @@ flowchart TB
     end
 
     subgraph DataPlaneLayer["Data Plane (별도 스레드)"]
-        dp_loop["spot_data_plane_loop_t<br/>main polling loop<br/>(7개 소켓 poll)"]
+        dp_loop["spot_data_plane_loop_t<br/>main polling loop<br/>(반복당 최대 7개 ready 이벤트)"]
         dp_fwd["forwarding<br/>topic batching,<br/>encoding/decoding"]
         dp_proto["protocol<br/>control msgs,<br/>bootstrap descriptors"]
     end

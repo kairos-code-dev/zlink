@@ -54,6 +54,7 @@ pub enum zlink_ctx_option_t {
 // ---------------------------------------------------------------------------
 
 pub type zlink_send_flags_t = u32;
+pub type zlink_recv_flags_t = u32;
 
 pub const ZLINK_DONTWAIT: zlink_send_flags_t = 0x0001;
 
@@ -199,6 +200,13 @@ pub enum zlink_stream_option_t {
     ZLINK_STREAM_OPT_NOTIFY = 0x3501,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum zlink_admission_state_t {
+    ZLINK_ADMISSION_SERVING = 1,
+    ZLINK_ADMISSION_DRAINING = 2,
+}
+
 // ---------------------------------------------------------------------------
 // Monitor types
 // ---------------------------------------------------------------------------
@@ -287,6 +295,34 @@ pub struct zlink_monitor_snapshot_t {
     pub rcv_pending_msgs: u64,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum zlink_spot_service_attachment_role_t {
+    ZLINK_SPOT_SERVICE_ATTACHMENT_ROUTER = 1,
+    ZLINK_SPOT_SERVICE_ATTACHMENT_PUB = 2,
+    ZLINK_SPOT_SERVICE_ATTACHMENT_SUB = 3,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct zlink_spot_service_attachment_stats_t {
+    pub service_name: [c_char; 256],
+    pub router_count: u32,
+    pub pub_count: u32,
+    pub sub_count: u32,
+    pub auto_router_count: u32,
+    pub auto_pub_count: u32,
+    pub auto_sub_count: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct zlink_spot_service_monitor_event_t {
+    pub service_name: [c_char; 256],
+    pub role: zlink_spot_service_attachment_role_t,
+    pub event: zlink_monitor_event_t,
+}
+
 // ---------------------------------------------------------------------------
 // Callback function pointer types
 // ---------------------------------------------------------------------------
@@ -295,6 +331,14 @@ pub type zlink_socket_msg_handler_fn = unsafe extern "C" fn(
     source_rid: *const zlink_routing_id_t,
     parts: *mut zlink_msg_t,
     part_count: usize,
+    userdata: *mut c_void,
+);
+
+pub type zlink_stream_packet_handler_fn = unsafe extern "C" fn(
+    stream: *mut c_void,
+    source_rid: *const zlink_routing_id_t,
+    header: *mut zlink_msg_t,
+    body: *mut zlink_msg_t,
     userdata: *mut c_void,
 );
 
@@ -710,6 +754,11 @@ unsafe extern "C" {
         handler: zlink_socket_msg_handler_fn,
         userdata: *mut c_void,
     ) -> c_int;
+    pub fn zlink_stream_packet_handler(
+        stream: *mut c_void,
+        handler: zlink_stream_packet_handler_fn,
+        userdata: *mut c_void,
+    ) -> c_int;
     pub fn zlink_subscribe_handler(
         socket: *mut c_void,
         handler: zlink_subscribe_handler_fn,
@@ -733,6 +782,14 @@ unsafe extern "C" {
         option: zlink_option_t,
         optval: *mut c_void,
         optvallen: *mut usize,
+    ) -> c_int;
+    pub fn zlink_set_admission_state(
+        handle: *mut c_void,
+        state: zlink_admission_state_t,
+    ) -> c_int;
+    pub fn zlink_get_admission_state(
+        handle: *mut c_void,
+        state: *mut zlink_admission_state_t,
     ) -> c_int;
     pub fn zlink_set_routing_id(handle: *mut c_void, data: *const c_void, size: usize) -> c_int;
     pub fn zlink_get_routing_id(handle: *mut c_void, out: *mut zlink_routing_id_t) -> c_int;
@@ -1036,6 +1093,31 @@ unsafe extern "C" {
         peer_endpoint: *const c_char,
     ) -> c_int;
     pub fn zlink_spot_node_attach_discovery(node: *mut c_void, discovery: *mut c_void) -> c_int;
+    pub fn zlink_spot_node_attach_router(
+        node: *mut c_void,
+        service_name: *const c_char,
+        router: *mut c_void,
+    ) -> c_int;
+    pub fn zlink_spot_node_attach_pubsub(
+        node: *mut c_void,
+        service_name: *const c_char,
+        pub_socket: *mut c_void,
+        sub_socket: *mut c_void,
+    ) -> c_int;
+    pub fn zlink_spot_node_service_attachment_count(
+        node: *mut c_void,
+        count_out: *mut usize,
+    ) -> c_int;
+    pub fn zlink_spot_node_service_attachment_at(
+        node: *mut c_void,
+        index: usize,
+        out: *mut zlink_spot_service_attachment_stats_t,
+    ) -> c_int;
+    pub fn zlink_spot_node_monitor_recv(
+        node: *mut c_void,
+        out: *mut zlink_spot_service_monitor_event_t,
+        flags: zlink_recv_flags_t,
+    ) -> c_int;
     pub fn zlink_spot_send_spot(
         spot: *mut c_void,
         dest_node_rid: *const zlink_routing_id_t,
@@ -1086,6 +1168,52 @@ unsafe extern "C" {
         request_seq: u64,
         parts: *mut zlink_msg_t,
         part_count: usize,
+    ) -> c_int;
+    pub fn zlink_spot_send_service(
+        spot: *mut c_void,
+        service_name: *const c_char,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
+        flags: zlink_send_flags_t,
+    ) -> c_int;
+    pub fn zlink_spot_request_service(
+        spot: *mut c_void,
+        service_name: *const c_char,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
+        handler: zlink_reply_handler_fn,
+        userdata: *mut c_void,
+        flags: zlink_send_flags_t,
+        timeout_ms: u32,
+    ) -> c_int;
+    pub fn zlink_spot_publish(
+        spot: *mut c_void,
+        service_name: *const c_char,
+        topic_id: *const c_char,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
+        flags: zlink_send_flags_t,
+    ) -> c_int;
+    pub fn zlink_spot_subscribe(
+        spot: *mut c_void,
+        source_rid_out: *mut *const zlink_routing_id_t,
+        parts_out: *mut *mut zlink_msg_t,
+        part_count_out: *mut usize,
+        service_name_out: *mut c_char,
+        service_name_len_out: *mut usize,
+        topic_id_out: *mut c_char,
+        topic_id_len_out: *mut usize,
+        flags: zlink_recv_flags_t,
+    ) -> c_int;
+    pub fn zlink_spot_subscription_event(
+        spot: *mut c_void,
+        source_rid_out: *mut *const zlink_routing_id_t,
+        subscribed_out: *mut c_int,
+        service_name_out: *mut c_char,
+        service_name_len_out: *mut usize,
+        topic_id_out: *mut c_char,
+        topic_id_len_out: *mut usize,
+        flags: zlink_recv_flags_t,
     ) -> c_int;
     pub fn zlink_spot_handler(
         spot: *mut c_void,

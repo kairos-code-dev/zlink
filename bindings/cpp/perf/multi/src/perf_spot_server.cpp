@@ -178,11 +178,13 @@ bool parse_ready_count_command (const std::string &line_,
 }
 
 bool publish_control_message (zlink::service::spot_t &spot_,
+                              const std::string &service_name_,
                               const std::string &payload_,
                               int timeout_ms_)
 {
     return perf::multi::publish_control_message (
       spot_,
+      service_name_,
       k_control_topic,
       payload_,
       timeout_ms_,
@@ -190,22 +192,26 @@ bool publish_control_message (zlink::service::spot_t &spot_,
 }
 
 bool publish_control_start (zlink::service::spot_t &spot_,
+                            const std::string &service_name_,
                             size_t msg_size_,
                             int timeout_ms_)
 {
     return publish_control_message (
       spot_,
+      service_name_,
       perf::multi::make_start_command (msg_size_),
       timeout_ms_);
 }
 
 bool wait_for_ready_counts (zlink::service::spot_t &spot_,
+                            const std::string &service_name_,
                             size_t msg_size_,
                             size_t expected_ready_count_,
                             int timeout_ms_)
 {
     return perf::multi::wait_for_ready_counts (
       spot_,
+      service_name_,
       k_control_topic,
       msg_size_,
       expected_ready_count_,
@@ -222,6 +228,7 @@ bool wait_for_ready_counts (zlink::service::spot_t &spot_,
 }
 
 bool run_phase (zlink::service::spot_t &spot_,
+                const std::string &service_name_,
                 size_t msg_size_,
                 uint64_t &seq_,
                 perf_metric::phase_t phase_,
@@ -252,7 +259,8 @@ bool run_phase (zlink::service::spot_t &spot_,
         }
 
         const zlink::send_result_t result =
-          perf::multi::try_publish_nowait (spot_, k_topic, outbound);
+          perf::multi::try_publish_nowait (
+            spot_, service_name_, k_topic, outbound);
         if (result == zlink::send_result_t::sent) {
             ++seq_;
             outbound.init (payload_size);
@@ -296,17 +304,23 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
     if (!node.valid ())
         return false;
 
-    zlink::service::spot_t spot = node.create_spot ();
-    if (!spot.valid ())
+    const std::string spot_service_name = "spot-bench";
+    zlink::service::discovery_t spot_discovery (
+      ctx.ctx (), zlink::service_type::spot, spot_service_name);
+    if (!spot_discovery.valid ())
         return false;
+    node.attach_discovery (spot_discovery);
 
     zlink::service::spot_node_t control_node (ctx.ctx ());
     if (!control_node.valid ())
         return false;
 
-    zlink::service::spot_t control_spot = control_node.create_spot ();
-    if (!control_spot.valid ())
+    const std::string control_service_name = "spot-control";
+    zlink::service::discovery_t control_discovery (
+      ctx.ctx (), zlink::service_type::spot, control_service_name);
+    if (!control_discovery.valid ())
         return false;
+    control_node.attach_discovery (control_discovery);
 
     if (!perf::multi::configure_spot_server_tls (node, transport_))
         return false;
@@ -323,6 +337,13 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
     const std::string control_endpoint =
       perf::multi::bind_spot_endpoint (control_node, transport_, base_port + 256);
     if (control_endpoint.empty ())
+        return false;
+
+    zlink::service::spot_t spot = node.create_spot ();
+    if (!spot.valid ())
+        return false;
+    zlink::service::spot_t control_spot = control_node.create_spot ();
+    if (!control_spot.valid ())
         return false;
 
     spot.options ().send_hwm (settings.sndhwm);
@@ -367,14 +388,16 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
                         + std::to_string(settings.clients));
               return wait_for_ready_counts(
                 control_spot,
+                control_service_name,
                 current_size,
                 std::max<size_t>(1, settings.clients),
                 barrier_timeout_ms);
           },
-          [&](size_t current_size) {
+              [&](size_t current_size) {
               const int barrier_timeout_ms =
                 resolve_spot_barrier_timeout_ms(settings, transport_);
               return publish_control_start(control_spot,
+                                           control_service_name,
                                            current_size,
                                            barrier_timeout_ms);
           },
@@ -383,7 +406,12 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
               std::chrono::steady_clock::duration duration) {
               const bench_multi_cpu_sample_t resource_probe_start =
                 perf::multi::start_resource_probe();
-              const bool ok = run_phase(spot, current_size, seq, phase, duration);
+              const bool ok = run_phase(spot,
+                                        spot_service_name,
+                                        current_size,
+                                        seq,
+                                        phase,
+                                        duration);
               if (ok) {
                   const bench_multi_resource_metrics_t resource_metrics =
                     perf::multi::finish_resource_probe(resource_probe_start);

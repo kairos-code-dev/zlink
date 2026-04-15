@@ -28,6 +28,12 @@ public enum ServiceRole : ushort
     Sub = 6
 }
 
+public enum AdmissionState
+{
+    Serving = 1,
+    Draining = 2
+}
+
 public enum DiscoveryDealerPeerMode
 {
     Router = 1,
@@ -93,6 +99,13 @@ public enum SpotRole
 {
     Pub = 1,
     Sub = 2
+}
+
+public enum SpotServiceAttachmentRole
+{
+    Router = 1,
+    Pub = 2,
+    Sub = 3
 }
 
 public enum ServiceEventType : uint
@@ -221,7 +234,8 @@ public sealed record MemberPeerEntry(
     string ServiceName,
     string Endpoint,
     RoutingId? RoutingId,
-    long Value)
+    long Value,
+    AdmissionState AdmissionState)
 {
     internal static unsafe MemberPeerEntry FromNative(ref ZlinkMemberPeerEntry native)
     {
@@ -234,7 +248,8 @@ public sealed record MemberPeerEntry(
                 NativeHelpers.ReadFixedString(endpoint, 256),
                 RoutingIdCodec.ToRoutingId(
                     NativeHelpers.ReadRoutingId(ref native.RoutingId)),
-                native.Value);
+                native.Value,
+                (AdmissionState)native.AdmissionState);
         }
     }
 }
@@ -276,6 +291,7 @@ public sealed record SpotNodePeerEntry(
     string PeerEndpoint,
     SpotPeerSource Source,
     SpotPeerState State,
+    AdmissionState AdmissionState,
     ulong ConnectedSinceMs,
     ulong LastChangedMs)
 {
@@ -291,7 +307,49 @@ public sealed record SpotNodePeerEntry(
                 NativeHelpers.ReadFixedString(local, 256),
                 NativeHelpers.ReadFixedString(peer, 256),
                 (SpotPeerSource)native.Source, (SpotPeerState)native.State,
+                (AdmissionState)native.AdmissionState,
                 native.ConnectedSinceMs, native.LastChangedMs);
+        }
+    }
+}
+
+public sealed record SpotServiceAttachmentStats(
+    string ServiceName,
+    uint RouterCount,
+    uint PubCount,
+    uint SubCount,
+    uint AutoRouterCount,
+    uint AutoPubCount,
+    uint AutoSubCount)
+{
+    internal static unsafe SpotServiceAttachmentStats FromNative(
+        ref ZlinkSpotServiceAttachmentStats native)
+    {
+        fixed (byte* serviceName = native.ServiceName)
+        {
+            return new SpotServiceAttachmentStats(
+                NativeHelpers.ReadFixedString(serviceName, 256),
+                native.RouterCount, native.PubCount, native.SubCount,
+                native.AutoRouterCount, native.AutoPubCount,
+                native.AutoSubCount);
+        }
+    }
+}
+
+public sealed record SpotServiceMonitorEvent(
+    string ServiceName,
+    SpotServiceAttachmentRole Role,
+    MonitorEventType Event)
+{
+    internal static unsafe SpotServiceMonitorEvent FromNative(
+        ref ZlinkSpotServiceMonitorEvent native)
+    {
+        fixed (byte* serviceName = native.ServiceName)
+        {
+            return new SpotServiceMonitorEvent(
+                NativeHelpers.ReadFixedString(serviceName, 256),
+                (SpotServiceAttachmentRole)native.Role,
+                (MonitorEventType)(native.Event.Event & 0xFFFFFFFFuL));
         }
     }
 }

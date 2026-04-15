@@ -15,23 +15,24 @@ router.Bind(endpoint);
 dealer.Connect(endpoint);
 SampleSupport.WaitConnected(routerMonitor, dealerMonitor);
 
-using var signal = new ManualResetEventSlim(false);
-string? payload = null;
-router.OnReceive((routingId, parts) =>
-{
-    using (parts[0])
-    {
-        SampleSupport.EnsureEqual("ping", parts[0].GetString(), "request");
-        using var reply = Message.FromString("pong");
-        router.Send(routingId, reply);
-    }
-    signal.Set();
-});
-
 using (Message request = Message.FromString("ping"))
     dealer.Send(request);
-SampleSupport.WaitOrThrow(() => signal.IsSet, 2000,
-    "dealer/router callback timeout");
-payload = SampleSupport.ReceiveUtf8(dealer, 2000);
+Received received = router.Recv();
+try
+{
+    RoutingId routingId = received.RoutingId
+        ?? throw new InvalidOperationException("missing routing id");
+    Message requestPart = received.FirstPart();
+    SampleSupport.EnsureEqual("ping", requestPart.GetString(), "request");
+    using var reply = Message.FromString("pong");
+    router.Send(routingId, reply);
+}
+finally
+{
+    foreach (Message part in received.Parts)
+        part.Dispose();
+}
+
+string payload = SampleSupport.ReceiveUtf8(dealer, 2000);
 Console.WriteLine(
-    $"[dealer-router/callback] send: \"ping\" -> recv: \"{payload}\"");
+    $"[dealer-router/recv] send: \"ping\" -> recv: \"{payload}\"");

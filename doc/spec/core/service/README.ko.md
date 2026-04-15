@@ -50,20 +50,21 @@ Registry, Discovery는 각각 다른 공개 API를 가지지만, 세 문서는 �
 SPOT direct routed 메시징은 크게 두 방식으로 생각하면 이해하기 쉽습니다.
 
 - 직접 지정 방식:
-  호출자가 `dest_node_rid + dest_spot_rid`를 모두 알고 있고, 그 값을 기존
-  SPOT send/request 함수에 바로 넣는 방식입니다.
+  호출자가 `dest_node_rid + dest_spot_rid`를 모두 알고 있고, 그 값을 그대로
+  SPOT send/request 함수에 넣는 방식입니다.
 - 논리 `spot_rid`에서 시작하는 방식:
   호출자는 `spot_rid`만 알고 있고, 먼저 현재 Discovery가 보고 있는
   `service_name` 안에서 "이 `spot_rid`를 지금 어느 `SpotNode`가 맡고 있는가"를
-  물어본 뒤, 그 결과를 기존 SPOT send/request 함수에 넣는 방식입니다.
+  물어본 뒤, 그 결과를 동일한 SPOT send/request 함수에 넣는 방식입니다.
 
 두 번째 방식은 새로운 wire 형식을 뜻하지 않습니다. 최종 전송 단계에서는 항상
-기존과 같은 `dest_node_rid + dest_spot_rid` 조합을 사용합니다. 즉 내부적으로는
-먼저 `spot_rid -> owner_node_rid`를 조회한 뒤, 기존 함수로 내려가는 구조입니다.
+`dest_node_rid + dest_spot_rid` 조합을 사용합니다. 즉 내부적으로는
+먼저 `spot_rid -> owner_node_rid`를 조회한 뒤, 동일한 routed 함수로 내려가는
+구조입니다.
 
 이 문서 집합은 이 흐름을 위해 별도의 `send/request/reply` 함수 오버로드를
 추가로 요구하지 않습니다. 대신 아래 조회 함수를 사용해 목적지 `node_rid`를 먼저
-구한 뒤, 기존 SPOT routed submit 함수를 그대로 사용합니다.
+구한 뒤, 동일한 SPOT routed submit 함수를 그대로 사용합니다.
 
 ```c
 zlink_config_result_t zlink_discovery_resolve_spot (
@@ -73,8 +74,8 @@ zlink_config_result_t zlink_discovery_resolve_spot (
 ```
 
 이 함수가 성공하면, 호출자는 반환된 `owner_node_rid_out`과 원래의 `spot_rid`를
-묶어 `zlink_spot_send_spot()`, `zlink_spot_request_spot()` 같은 기존 함수에
-전달하면 됩니다. 이 조회 결과는 현재 Discovery의 `service_name` 범위 안에서만
+묶어 `zlink_spot_send_spot()`, `zlink_spot_request_spot()` 같은 SPOT routed
+함수에 전달하면 됩니다. 이 조회 결과는 현재 Discovery의 `service_name` 범위 안에서만
 유효합니다. reply는 예외입니다. reply는 새로 조회하지 않고, request를 받을 때
 함께 전달된 source 주소를 그대로 사용해야 합니다.
 

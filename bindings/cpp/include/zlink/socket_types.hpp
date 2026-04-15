@@ -188,12 +188,6 @@ class pair_socket_t : public message_socket_t
         return received;
     }
 
-    void on_receive (zlink_socket_msg_handler_fn handler_, void *userdata_ = NULL)
-    {
-        if (base_socket_t::on_receive (handler_, userdata_) != 0)
-            throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
-    }
-
     void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
     {
         if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
@@ -238,12 +232,6 @@ class dealer_socket_t : public message_socket_t
         if (rc != recv_result_t::ok)
             throw recv_error_t (rc, zlink_errno ());
         return received;
-    }
-
-    void on_receive (zlink_socket_msg_handler_fn handler_, void *userdata_ = NULL)
-    {
-        if (base_socket_t::on_receive (handler_, userdata_) != 0)
-            throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
     }
 
     void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
@@ -699,6 +687,12 @@ class stream_socket_t : public routed_message_socket_t
     void on_receive (zlink_socket_msg_handler_fn handler_, void *userdata_ = NULL)
     {
         if (base_socket_t::on_receive (handler_, userdata_) != 0)
+            throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
+    }
+
+    void on_packet (zlink_stream_packet_handler_fn handler_, void *userdata_ = NULL)
+    {
+        if (base_socket_t::on_packet (handler_, userdata_) != 0)
             throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
     }
 

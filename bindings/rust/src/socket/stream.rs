@@ -1,12 +1,15 @@
 use std::ffi::c_void;
+use std::mem::MaybeUninit;
 use std::time::Duration;
 
 use crate::ctx::Context;
 use crate::domain::Received;
-use crate::error::{ConfigError, HandlerError, RecvError, SubmitError, check_config_rc};
+use crate::error::{
+    ConfigError, HandlerError, RecvError, SubmitError, check_config_rc, check_handler_rc,
+};
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
-use crate::message::{IntoMultipart, RoutingId};
+use crate::message::{IntoMultipart, Message, RoutingId};
 use crate::options::{CommonSocketOptions, StreamSocketOptions};
 
 use super::{
@@ -16,10 +19,10 @@ use super::{
 
 /// STREAM socket – raw TCP/transport-level messaging with routing-id.
 ///
-/// All sends are routed to a specific peer. STREAM supports both direct
-/// recv and callback modes.
+/// All sends are routed to a specific peer. STREAM supports direct recv and
+/// packet-handler callback mode.
 ///
-/// Capabilities: `send` (routed), `recv`, `on_receive`, `on_send_ready`.
+/// Capabilities: `send` (routed), `recv`, `on_packet`, `on_send_ready`.
 /// No general `connect` / `disconnect` – peers connect inward.
 pub struct StreamSocket {
     pub(crate) inner: SocketInner,
@@ -53,11 +56,24 @@ impl StreamSocket {
         self.inner.recv_with_flags(flags)
     }
 
-    pub fn on_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
+    pub fn on_packet<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
-        F: Fn(Received) + Send + 'static,
+        F: Fn(RoutingId, Message, Message) + Send + 'static,
     {
-        self.inner.on_receive(handler)
+        let (cb, userdata) = super::CallbackBox::new(handler);
+        let rc = unsafe {
+            ffi::zlink_stream_packet_handler(
+                self.inner.handle,
+                stream_packet_trampoline::<F>,
+                userdata,
+            )
+        };
+        if rc != 0 {
+            drop(cb);
+            return check_handler_rc(rc);
+        }
+        self.inner.packet_cb = Some(cb);
+        Ok(())
     }
 
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
@@ -138,3 +154,29 @@ impl_base_socket!(StreamSocket);
 impl_send_options!(StreamSocket);
 impl_recv_options!(StreamSocket);
 impl_routing_id_options!(StreamSocket);
+
+fn take_message(raw: *mut ffi::zlink_msg_t) -> Message {
+    unsafe {
+        let mut dest = MaybeUninit::<ffi::zlink_msg_t>::uninit();
+        ffi::zlink_msg_init(dest.as_mut_ptr());
+        ffi::zlink_msg_move(dest.as_mut_ptr(), raw);
+        Message::from_raw(dest.assume_init())
+    }
+}
+
+unsafe extern "C" fn stream_packet_trampoline<F: Fn(RoutingId, Message, Message) + Send + 'static>(
+    _stream: *mut c_void,
+    source_rid: *const ffi::zlink_routing_id_t,
+    header: *mut ffi::zlink_msg_t,
+    body: *mut ffi::zlink_msg_t,
+    userdata: *mut c_void,
+) {
+    let handler = unsafe { &*(userdata as *const F) };
+    let header = take_message(header);
+    let body = take_message(body);
+    if source_rid.is_null() {
+        return;
+    }
+    let routing_id = unsafe { RoutingId::from_raw(*source_rid) };
+    handler(routing_id, header, body);
+}

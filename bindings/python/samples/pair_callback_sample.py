@@ -19,17 +19,18 @@ def main():
                 done = threading.Event()
                 observed = {}
 
-                def on_message(received):
-                    observed["payload"] = received.to_bytes_list()
+                def on_ready(_sock):
                     done.set()
 
-                server.on_receive(on_message)
+                server.on_send_ready(on_ready)
                 client.send(b"hello-pair")
                 if not done.wait(3.0):
-                    raise TimeoutError("pair callback did not receive a message")
+                    raise TimeoutError("pair send-ready callback did not fire")
+                with server.recv() as received:
+                    observed["payload"] = received.to_bytes_list()
                 if observed["payload"] != [b"hello-pair"]:
                     raise AssertionError(f"unexpected pair payload: {observed['payload']!r}")
-                print('[pair/callback] send: "hello-pair" → recv: "hello-pair"')
+                print('[pair/callback] send-ready + recv: "hello-pair"')
 
 
 if __name__ == "__main__":

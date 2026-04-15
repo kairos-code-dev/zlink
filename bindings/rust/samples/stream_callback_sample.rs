@@ -1,4 +1,4 @@
-//! STREAM callback sample – demonstrates STREAM socket with callback handler.
+//! STREAM callback sample – demonstrates STREAM socket with packet handler.
 //! The STREAM socket binds as a server; a raw TCP client connects inward.
 
 use std::io::Write;
@@ -57,11 +57,12 @@ fn main() {
     let (tx, rx) = mpsc::channel();
 
     stream
-        .on_receive(move |received| {
-            let payload = received.parts()[0].as_bytes().to_vec();
-            let _ = tx.send(payload);
+        .on_packet(move |routing_id, header, body| {
+            assert!(!routing_id.as_bytes().is_empty());
+            assert!(header.as_bytes().is_empty());
+            let _ = tx.send(body.as_bytes().to_vec());
         })
-        .expect("on_receive failed");
+        .expect("on_packet failed");
 
     let tcp_addr = endpoint.strip_prefix("tcp://").unwrap();
     let mut tcp_client = TcpStream::connect(tcp_addr).expect("tcp connect failed");

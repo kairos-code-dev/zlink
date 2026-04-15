@@ -10,14 +10,18 @@ public sealed class TopicMessage : IDisposable
 {
     private int _closed;
 
-    internal TopicMessage(RoutingId? routingId, string topic, Message[] parts)
+    internal TopicMessage(RoutingId? routingId, string? serviceName, string topic,
+        Message[] parts)
     {
         RoutingId = routingId;
+        ServiceName = serviceName;
         Topic = topic ?? string.Empty;
         Parts = parts ?? Array.Empty<Message>();
     }
 
     public RoutingId? RoutingId { get; }
+
+    public string? ServiceName { get; }
 
     public string Topic { get; }
 

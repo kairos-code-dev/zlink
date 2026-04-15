@@ -3,7 +3,13 @@
 package dev.kairoscode.zlink.service.spot;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.RecvFlags;
+import dev.kairoscode.zlink.RecvResult;
+import dev.kairoscode.zlink.AdmissionState;
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.RouterSocket;
+import dev.kairoscode.zlink.PubSocket;
+import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.SocketOption;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
@@ -11,6 +17,8 @@ import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.service.discovery.Discovery;
+import dev.kairoscode.zlink.service.spot.SpotServiceAttachmentStats;
+import dev.kairoscode.zlink.service.spot.SpotServiceMonitorEvent;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -83,6 +91,29 @@ public final class SpotNode implements AutoCloseable {
         if (rc != 0) {
             throw ZlinkException.fromLastError(
               "zlink_spot_node_attach_discovery");
+        }
+    }
+
+    /** Attaches one service-specific ROUTER socket to the node. */
+    public void attachRouter(String serviceName, RouterSocket router) {
+        Objects.requireNonNull(router, "router");
+        attachRouterInternal(serviceName, InternalAccess.socketHandle(router));
+    }
+
+    /** Attaches one service-specific PUB/SUB pair to the node. */
+    public void attachPubSub(String serviceName, PubSocket pub,
+                             SubSocket sub) {
+        Objects.requireNonNull(pub, "pub");
+        Objects.requireNonNull(sub, "sub");
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.spotNodeAttachPubSub(handle,
+              NativeHelpers.toCString(arena, requireServiceName(serviceName)),
+              InternalAccess.socketHandle(pub),
+              InternalAccess.socketHandle(sub));
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_spot_node_attach_pubsub");
+            }
         }
     }
 
@@ -242,6 +273,43 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
+    /** Returns how many service attachments are currently registered. */
+    public int serviceAttachmentCount() {
+        ensureOpen();
+        return Native.spotNodeServiceAttachmentCount(handle);
+    }
+
+    /** Returns one service attachment snapshot entry. */
+    public SpotServiceAttachmentStats serviceAttachmentAt(int index) {
+        ensureOpen();
+        if (index < 0) {
+            throw new IllegalArgumentException("index must be non-negative");
+        }
+        return Native.spotNodeServiceAttachmentAt(handle, index);
+    }
+
+    /** Receives the next service attachment monitor event. */
+    public SpotServiceMonitorEvent nodeMonitorRecv() {
+        return nodeMonitorRecv(RecvFlags.NONE);
+    }
+
+    /** Receives the next service attachment monitor event with flags. */
+    public SpotServiceMonitorEvent nodeMonitorRecv(RecvFlags flags) {
+        Objects.requireNonNull(flags, "flags");
+        ensureOpen();
+        try {
+            return Native.spotNodeMonitorRecv(handle,
+              flags == RecvFlags.DONT_WAIT ? RecvFlags.DONT_WAIT.value()
+                : RecvFlags.NONE.value());
+        } catch (RuntimeException ex) {
+            if (ex instanceof dev.kairoscode.zlink.RecvException recv
+                && recv.getResult() == RecvResult.NO_DATA) {
+                throw recv;
+            }
+            throw ex;
+        }
+    }
+
     @Override
     public void close() {
         List<Spot> ownedSpots;
@@ -326,12 +394,32 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
+    private void attachRouterInternal(String serviceName, MemorySegment router) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.spotNodeAttachRouter(handle,
+              NativeHelpers.toCString(arena, requireServiceName(serviceName)),
+              router);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_spot_node_attach_router");
+            }
+        }
+    }
+
     private static int boundedCount(long value) {
         if (value <= 0)
             return 0;
         if (value > Integer.MAX_VALUE)
             return Integer.MAX_VALUE;
         return (int) value;
+    }
+
+    private static String requireServiceName(String serviceName) {
+        Objects.requireNonNull(serviceName, "serviceName");
+        if (serviceName.isEmpty()) {
+            throw new IllegalArgumentException("serviceName must not be empty");
+        }
+        return serviceName;
     }
 
     private final class SpotNodeSocketOptions {

@@ -259,10 +259,9 @@ zlink_spot_node_attach_discovery(node, prices_sub_discovery);
 Key points:
 
 - Use `ZLINK_SERVICE_TYPE_SOCKET` — this is the Discovery service type
-  that advertises raw-socket services. (The legacy `ZLINK_SERVICE_TYPE_SPOT`
-  path was used when `SpotNode` itself was a single-service peer; the
-  new multi-service model publishes each underlying ROUTER/PUB/SUB as
-  its own socket service.)
+  that advertises raw-socket services. In the multi-service model, each
+  underlying ROUTER/PUB/SUB is published as its own socket service under
+  `SpotNode`.
 - `zlink_socket_attach_discovery()` is the **mandatory intermediate
   step** that places the socket under Discovery ownership. If you skip
   it, Registry never sees the socket as a provider, and attaching the
@@ -562,12 +561,14 @@ sequenceDiagram
     Sel-->>Spot: chosen = R2
     Spot->>R2: forward payload
     Note over R1,R3: subsequent calls rotate R3 -> R1 -> R2 ...
-    Note over Sel: peers with admission_state=DRAINING are excluded
+    Note over Sel: selector filters by send-ready only;<br/>DRAINING surfaces from the chosen ROUTER
 ```
 
 - If no candidate is send-ready, the call is normalized to
-  `ZLINK_SUBMIT_NOT_CONNECTED`. If every candidate is `DRAINING`, it is
-  `ZLINK_SUBMIT_NOT_ADMITTED`.
+  `ZLINK_SUBMIT_NOT_CONNECTED`. If the chosen ROUTER forwards to a
+  remote peer that is `DRAINING`, the call surfaces
+  `ZLINK_SUBMIT_NOT_ADMITTED`; a retry may land on a different ROUTER
+  in the same group whose remote peer is still `SERVING`.
 - If the picked ROUTER is at HWM, the call returns
   `ZLINK_SUBMIT_BACKPRESSURED` and can be retried when that peer's
   write path recovers.
@@ -666,7 +667,7 @@ grouping it under `service_name`.
 | Pool composition | Caller uses `zlink_connect()` directly | Mix of manual attach and Discovery-driven auto attach |
 | Round-robin unit | Connected endpoint | ROUTER attachment |
 | Reply correlation | Caller matches send/recv pairs | Library pins ingress ROUTER and `request_seq` |
-| Admission awareness | Caller handles it | `DRAINING` peers auto-excluded; `NOT_ADMITTED` surfaced |
+| Admission awareness | Caller handles it | Underlying ROUTER send surfaces `NOT_ADMITTED` when its remote peer is `DRAINING` |
 | Multiple services | Need separate sockets for each | Same facade, different `service_name` argument |
 | Empty candidate set | BACKPRESSURED or silent hold | Normalized to `NOT_CONNECTED` (configured but no path) |
 

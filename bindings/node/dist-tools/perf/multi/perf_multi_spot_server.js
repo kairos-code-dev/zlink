@@ -1,13 +1,25 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createPayload, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
+const SERVICE_TYPE_SPOT = 0x3002;
+const SERVICE_NAME = 'perf.spot';
 const DEBUG_SPOT = Boolean(process.env.PERF_DEBUG_TRANSITIONS);
+const tryRawSubscribe = (socket) => {
+    try {
+        return socket.subscribe(zlink.RecvFlags.DontWait);
+    }
+    catch (error) {
+        if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
+            return null;
+        }
+        throw error;
+    }
+};
 const trySpotSubscribe = (spot) => {
     try {
         return spot.subscribe(zlink.RecvFlags.DontWait);
@@ -19,9 +31,9 @@ const trySpotSubscribe = (spot) => {
         throw error;
     }
 };
-const trySpotPublish = (spot, topic, payload) => {
+const trySpotPublish = (spot, serviceName, topic, payload) => {
     try {
-        spot.publish(topic, payload, zlink.SendFlags.DontWait);
+        spot.publish(serviceName, topic, payload, zlink.SendFlags.DontWait);
         return true;
     }
     catch (error) {
@@ -47,21 +59,25 @@ async function main() {
     if (!options.controlEndpoint) {
         throw new Error('missing --control-endpoint');
     }
+    if (!options.peerEndpoint) {
+        throw new Error('missing --peer-endpoint');
+    }
     const ctx = new zlink.Context();
     const node = new zlink.SpotNode(ctx);
-    const spot = node.createSpot();
-    const controlNode = new zlink.SpotNode(ctx);
-    const controlSpot = controlNode.createSpot();
+    const nodePubSend = new zlink.PubSocket(ctx);
+    const nodePubRecv = new zlink.SubSocket(ctx);
+    const controlSub = new zlink.SubSocket(ctx);
+    let spot = null;
     const warmupPayload = createPayload(options.msgSize);
     const activePayload = createPayload(options.msgSize);
     const stopPayload = createPayload(options.msgSize);
     let controlConnected = false;
     let controlReadyCount = 0;
-    let startRequested = false;
+    let controlDoneCount = 0;
     let seq = 1n;
     const drainControlMessages = () => {
         while (true) {
-            const received = trySpotSubscribe(controlSpot);
+            const received = tryRawSubscribe(controlSub);
             if (!received) {
                 return;
             }
@@ -79,6 +95,14 @@ async function main() {
                     controlReadyCount = Number(countText);
                     debugSpot(`control ready count received ${controlReadyCount}`);
                 }
+                continue;
+            }
+            if (payload.startsWith('DONE_COUNT,')) {
+                const [, sizeText, countText] = payload.split(',');
+                if (Number(sizeText) === options.msgSize) {
+                    controlDoneCount = Number(countText);
+                    debugSpot(`control done count received ${controlDoneCount}`);
+                }
             }
         }
     };
@@ -86,7 +110,7 @@ async function main() {
         debugSpot(`publish phase begin ${phase}`);
         while (process.hrtime.bigint() < deadlineNs) {
             stampPayload(payload, { phase, runId: 0, msgSize: options.msgSize, seq });
-            trySpotPublish(spot, TOPIC, payload);
+            trySpotPublish(spot, SERVICE_NAME, TOPIC, Buffer.from(payload));
             seq += 1n;
             await new Promise((resolve) => setImmediate(resolve));
         }
@@ -98,7 +122,7 @@ async function main() {
         const deadline = Date.now() + 5000;
         while (sent < options.clients && Date.now() < deadline) {
             stampPayload(stopPayload, { phase: 2, runId: 0, msgSize: options.msgSize, seq });
-            const result = trySpotPublish(spot, TOPIC, stopPayload);
+            const result = trySpotPublish(spot, SERVICE_NAME, TOPIC, Buffer.from(stopPayload));
             if (result) {
                 sent += 1;
                 seq += 1n;
@@ -115,18 +139,6 @@ async function main() {
             await new Promise((resolve) => setImmediate(resolve));
         }
     };
-    const publishControlStart = async () => {
-        debugSpot('publish control start begin');
-        const startPayload = Buffer.from(`START,${options.msgSize}`);
-        while (true) {
-            const result = trySpotPublish(controlSpot, CONTROL_TOPIC, startPayload);
-            if (result) {
-                debugSpot('publish control start end');
-                return;
-            }
-            await sleepImmediate();
-        }
-    };
     const waitForControlReadyCount = async (timeoutMs) => {
         const deadline = Date.now() + timeoutMs;
         while (Date.now() < deadline) {
@@ -139,56 +151,48 @@ async function main() {
         }
         throw new Error(`spot server control ready timeout: connected=${controlConnected} ready=${controlReadyCount} expected=${options.clients}`);
     };
+    const waitForControlDoneCount = async (timeoutMs) => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+            drainControlMessages();
+            if (controlDoneCount >= options.clients) {
+                debugSpot(`control done satisfied ${controlDoneCount}`);
+                return;
+            }
+            await sleepImmediate();
+        }
+        throw new Error(`spot server control done timeout: done=${controlDoneCount} expected=${options.clients}`);
+    };
     try {
-        controlNode.bind(options.controlEndpoint);
-        controlSpot.setSubscription(CONTROL_TOPIC);
-        controlSpot.setLinger(0);
-        controlSpot.setSendHighWaterMark(Math.max(1024, options.clients * 8));
-        controlSpot.setSendTimeout(200);
-        controlSpot.setReceiveHighWaterMark(Math.max(1024, options.clients * 8));
-        controlSpot.setReceiveTimeout(200);
-        node.bind(options.endpoint);
+        node.attachPubSub(SERVICE_NAME, nodePubSend, nodePubRecv);
+        nodePubSend.bind(options.endpoint);
+        node.bind(options.peerEndpoint);
+        spot = node.createSpot();
+        controlSub.setSubscription(CONTROL_TOPIC);
+        controlSub.connect(options.controlEndpoint);
         console.log(`READY,${options.endpoint}`);
         console.log(`CONTROL_READY,${options.controlEndpoint}`);
         debugSpot(`ready emitted ${options.endpoint} ${options.controlEndpoint}`);
-        const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-        for await (const line of rl) {
-            debugSpot(`stdin line ${line}`);
-            if (line.startsWith('CONNECT_CONTROL,')) {
-                const endpoint = line.slice('CONNECT_CONTROL,'.length);
-                if (endpoint) {
-                    controlNode.connectPeer(endpoint);
-                    controlConnected = true;
-                    console.log(`CONTROL_CONNECTED,${endpoint}`);
-                }
-                if (startRequested && controlConnected) {
-                    break;
-                }
-                continue;
-            }
-            if (line !== `START,${options.msgSize}`) {
-                continue;
-            }
-            startRequested = true;
-            if (controlConnected) {
-                break;
-            }
-        }
         debugSpot('await control ready count');
         await waitForControlReadyCount(5000);
         debugSpot('control ready count satisfied');
-        await publishControlStart();
         await publishUntil(warmupPayload, 0, process.hrtime.bigint() + BigInt(Math.floor(options.warmup * 1_000_000_000)));
         await publishUntil(activePayload, 1, process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000)));
         await publishStopFrames();
+        debugSpot('await control done');
+        await waitForControlDoneCount(5000);
+        debugSpot('control done satisfied');
         debugSpot('done');
     }
     finally {
         debugSpot('finally start');
-        spot.close();
+        if (spot) {
+            spot.close();
+        }
         node.close();
-        controlSpot.close();
-        controlNode.close();
+        controlSub.close();
+        nodePubRecv.close();
+        nodePubSend.close();
         debugSpot('close ctx');
         ctx.close();
         debugSpot('finally done');

@@ -1,6 +1,5 @@
-//! PAIR callback sample – demonstrates receive via callback handler.
+//! PAIR sample – demonstrates direct recv with the same frame shape.
 
-use std::sync::mpsc;
 use std::time::Duration;
 
 use zlink::{Context, Message, SocketMonitor};
@@ -51,18 +50,6 @@ fn main() {
     let mut server = ctx.pair_socket().expect("server socket failed");
     let client = ctx.pair_socket().expect("client socket failed");
 
-    let (tx, rx) = mpsc::channel();
-
-    server
-        .on_receive(move |received| {
-            let payload = received.parts()[0]
-                .as_str()
-                .unwrap_or("(binary)")
-                .to_string();
-            let _ = tx.send(payload);
-        })
-        .expect("on_receive failed");
-
     let server_mon = SocketMonitor::open(&server).expect("server monitor open failed");
     let client_mon = SocketMonitor::open(&client).expect("client monitor open failed");
 
@@ -76,9 +63,8 @@ fn main() {
     let msg = Message::copy_from(b"hello-pair").unwrap();
     client.send(msg).expect("send failed");
 
-    let payload = rx
-        .recv_timeout(Duration::from_secs(5))
-        .expect("pair callback did not fire within 5s");
+    let received = server.recv().expect("pair recv failed");
+    let payload = received.parts()[0].as_str().unwrap_or("(binary)").to_string();
     assert_eq!(payload, "hello-pair");
     println!(
         "[pair/callback] send: \"hello-pair\" → recv: \"{}\"",

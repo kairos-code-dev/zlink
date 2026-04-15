@@ -262,6 +262,11 @@ zlink_monitor_close(&mon);
 zlink_discovery_destroy(&discovery);
 ```
 
+새로운 multi-service SpotNode 토폴로지에서는 attach되는 socket마다
+`ZLINK_SERVICE_TYPE_SOCKET`을 사용한다. SPOT 가이드의
+[§3.1 Discovery 기반 자동 Mesh](07-3-spot.ko.md#31-discovery-기반-자동-mesh)를
+참고한다.
+
 ## 4.1 소켓 패밀리 Discovery
 
 raw ROUTER/DEALER/PUB/SUB 소켓은 Discovery를 사용하여 자동 피어 발견과

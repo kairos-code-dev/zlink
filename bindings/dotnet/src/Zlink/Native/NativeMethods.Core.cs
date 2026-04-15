@@ -19,6 +19,8 @@ internal static partial class NativeMethods
         "zlink_send_rid",
         "zlink_recv",
         "zlink_publish",
+        "zlink_set_admission_state",
+        "zlink_get_admission_state",
         "zlink_errno",
         "zlink_strerror",
         "zlink_msg_init",
@@ -35,7 +37,6 @@ internal static partial class NativeMethods
         "zlink_dealer_request",
         "zlink_router_request",
         "zlink_router_reply",
-        "zlink_router_handler",
         "zlink_router_request_spot",
         "zlink_router_reply_spot",
         "zlink_router_send_spot",
@@ -48,6 +49,16 @@ internal static partial class NativeMethods
         "zlink_spot_handler",
         "zlink_spot_dispatch_event_handler",
         "zlink_spot_recv",
+        "zlink_spot_send_service",
+        "zlink_spot_request_service",
+        "zlink_spot_publish",
+        "zlink_spot_subscribe",
+        "zlink_spot_subscription_event",
+        "zlink_spot_node_attach_router",
+        "zlink_spot_node_attach_pubsub",
+        "zlink_spot_node_service_attachment_count",
+        "zlink_spot_node_service_attachment_at",
+        "zlink_spot_node_monitor_recv",
         "zlink_atomic_counter_new",
         "zlink_atomic_counter_set",
         "zlink_atomic_counter_inc",
@@ -144,11 +155,6 @@ internal static partial class NativeMethods
         nuint partCount, IntPtr userData);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal unsafe delegate void ZlinkRouterRequestHandlerDelegate(
-        ZlinkRoutingId* sourceNodeRoutingId, ZlinkRoutingId* sourceSpotRoutingId,
-        ulong requestSequence, IntPtr parts, nuint partCount, IntPtr userData);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal unsafe delegate void ZlinkSpotRequestHandlerDelegate(
         ZlinkRoutingId* sourceRoutingId, ZlinkRoutingId* spotRoutingId,
         ulong requestSequence, IntPtr parts, nuint partCount, IntPtr userData);
@@ -172,10 +178,6 @@ internal static partial class NativeMethods
     internal static extern int zlink_router_reply(IntPtr router,
         ref ZlinkRoutingId peerRoutingId, ulong requestSequence, IntPtr parts,
         nuint partCount);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_router_handler(IntPtr router,
-        ZlinkRouterRequestHandlerDelegate handler, IntPtr userData);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_request_spot(IntPtr router,

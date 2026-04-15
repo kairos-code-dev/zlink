@@ -1,5 +1,6 @@
 import asyncio
 import time
+import threading
 import unittest
 
 import zlink
@@ -25,12 +26,17 @@ class RequestReplyScenarioTest(unittest.TestCase):
                 async def scenario():
                     handled = asyncio.Event()
 
-                    def on_receive(received):
-                        self.assertIsNotNone(received.request_seq)
-                        router_socket.reply(received.routing_id, received.request_seq, [b"pong"])
-                        handled.set()
+                    def responder():
+                        with router_socket.recv() as received:
+                            self.assertIsNotNone(received.request_seq)
+                            router_socket.reply(
+                                received.routing_id,
+                                received.request_seq,
+                                [b"pong"],
+                            )
+                            handled.set()
 
-                    router_socket.on_receive(on_receive)
+                    threading.Thread(target=responder, daemon=True).start()
                     reply = await dealer_socket.request([b"ping"], timeout=2.0)
                     try:
                         self.assertEqual([part.to_bytes() for part in reply], [b"pong"])

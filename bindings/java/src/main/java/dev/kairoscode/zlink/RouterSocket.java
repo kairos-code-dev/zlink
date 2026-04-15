@@ -36,7 +36,6 @@ public final class RouterSocket extends Socket {
     public void send(RoutingId rid, List<Message> parts, SendFlags flags) { super.send(rid, parts, SendFlag.fromValue(flags.value())); }
     public Received recv() { return routedRequests.recv(); }
     public Received recv(RecvFlags flags) { return routedRequests.recv(flags); }
-    public void onReceive(SocketMessageHandler handler) { routedRequests.onReceive(handler); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     public CompletableFuture<List<Message>> request(RoutingId rid, Message part) {
         return request(rid, List.of(part));

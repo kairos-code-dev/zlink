@@ -6,7 +6,16 @@ import time
 
 import zlink
 
-from perf_multi_common import TOPIC, new_payload, stamp_payload, tcp_endpoint
+from perf_multi_common import (
+    TOPIC,
+    attach_spot_service_pair,
+    new_payload,
+    stamp_payload,
+    tcp_endpoint,
+)
+
+
+SERVICE_NAME = "spot-svc"
 
 
 def main(argv=None):
@@ -17,6 +26,7 @@ def main(argv=None):
 
     endpoint = tcp_endpoint()
     stop = threading.Event()
+    payload = new_payload(args.msg_size)
 
     def wait_stop():
         sys.stdin.readline()
@@ -27,13 +37,15 @@ def main(argv=None):
     with zlink.Context() as ctx:
         with zlink.SpotNode(ctx) as node:
             node.set_routing_id(b"SPOT-SERVER")
+            _service = attach_spot_service_pair(ctx, node, SERVICE_NAME)
             node.bind(endpoint)
-            with node.wrap_handle() as spot:
+            with node.create_spot() as spot:
                 print(f"READY,{endpoint}", flush=True)
                 while not stop.is_set():
                     spot.publish(
+                        SERVICE_NAME,
                         TOPIC,
-                        [stamp_payload(new_payload(args.msg_size), phase=1)],
+                        [stamp_payload(payload, phase=1)],
                     )
                     time.sleep(0.001)
                 sys.stdout.flush()

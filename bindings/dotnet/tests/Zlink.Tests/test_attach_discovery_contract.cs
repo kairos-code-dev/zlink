@@ -11,9 +11,9 @@ public sealed class test_attach_discovery_contract
             return;
 
         using var ctx = new Context();
-        using var dealer = new DealerSocket(ctx);
         using var discovery = new Discovery(ctx, ServiceType.Socket,
             "attach-discovery");
+        var dealer = new DealerSocket(ctx);
 
         dealer.AttachDiscovery(discovery);
 
@@ -23,5 +23,7 @@ public sealed class test_attach_discovery_contract
             dealer.Disconnect("tcp://127.0.0.1:5555"));
         Assert.Throws<ZlinkConnectException>(() =>
             dealer.Unbind("tcp://127.0.0.1:5555"));
+
+        Assert.Throws<ZlinkCloseException>(() => dealer.Close());
     }
 }

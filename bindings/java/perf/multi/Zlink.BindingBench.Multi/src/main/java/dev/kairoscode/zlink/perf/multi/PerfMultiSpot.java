@@ -5,6 +5,9 @@ package dev.kairoscode.zlink.perf.multi;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.perf.PerfUtil;
+import dev.kairoscode.zlink.service.discovery.Discovery;
+import dev.kairoscode.zlink.service.registry.Registry;
+import dev.kairoscode.zlink.service.registry.ServiceType;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.time.Duration;
@@ -15,6 +18,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfMultiSpot {
     private static final String TOPIC = "perf.topic";
+    private static final String SERVICE_NAME = "perf.spot.service";
     private static final Duration STABILIZATION = Duration.ofSeconds(1);
     private static final Duration CONTROL_SETTLE = Duration.ofMillis(25);
 
@@ -23,8 +27,18 @@ final class PerfMultiSpot {
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         try (Context ctx = PerfUtil.newContext(config);
+             Registry registry = new Registry(ctx);
+             Discovery discovery = new Discovery(ctx, ServiceType.SPOT,
+                 SERVICE_NAME);
              SpotNode node = new SpotNode(ctx);
              Spot publisher = node.createSpot()) {
+            String registryPub = PerfUtil.endpoint(config.transport(),
+                "multi-spot-registry-pub");
+            String registryRouter = PerfUtil.endpoint(config.transport(),
+                "multi-spot-registry-router");
+            registry.bind(registryPub, registryRouter);
+            discovery.connectRegistry(registryRouter);
+            node.attachDiscovery(discovery);
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             node.bind(config.endpoint());
@@ -34,13 +48,13 @@ final class PerfMultiSpot {
             while (System.nanoTime() < activeEnd) {
                 try (Message m = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    publisher.publish(TOPIC, List.of(m));
+                    publisher.publish(SERVICE_NAME, TOPIC, List.of(m));
                 }
             }
             for (int i = 0; i < Math.max(16, config.clients() * 8); i++) {
                 try (Message m = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                    publisher.publish(TOPIC, List.of(m));
+                    publisher.publish(SERVICE_NAME, TOPIC, List.of(m));
                 }
             }
             return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
@@ -75,7 +89,7 @@ final class PerfMultiSpot {
             PerfUtil.configureClientTls(node, config.transport());
             node.connectPeer(config.endpoint());
             subscriber.setSubscription(TOPIC);
-            sleepQuietly(STABILIZATION);
+            waitForPeerConnected(node);
             ready.countDown();
             if (ready.getCount() == 0L) {
                 metrics.startActiveWindow();
@@ -130,5 +144,16 @@ final class PerfMultiSpot {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("spot multi barrier interrupted", ex);
         }
+    }
+
+    private static void waitForPeerConnected(SpotNode node) {
+        long deadline = System.nanoTime() + STABILIZATION.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (node.statusSnapshot().connectedPeerCount() > 0) {
+                return;
+            }
+            sleepQuietly(Duration.ofMillis(10));
+        }
+        throw new IllegalStateException("spot peer connection timed out");
     }
 }

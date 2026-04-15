@@ -56,7 +56,7 @@ pub fn decode_sent_ts_ns(data: &[u8]) -> i64 {
 }
 
 pub fn message_payload<'a>(parts: &'a [Message]) -> &'a [u8] {
-    parts.last().map(|part| part.data()).unwrap_or(&[])
+    parts.last().map(|part| part.as_bytes()).unwrap_or(&[])
 }
 
 pub fn now_ns() -> u64 {
@@ -82,19 +82,19 @@ macro_rules! impl_raw_tls_socket {
         $(
             impl RawTlsSocket for $ty {
                 fn set_tls_cert(&self, cert: &str) -> Result<(), ZlinkError> {
-                    <$ty>::set_tls_cert(self, cert)
+                    Ok(<$ty>::set_tls_cert(self, cert)?)
                 }
                 fn set_tls_key(&self, key: &str) -> Result<(), ZlinkError> {
-                    <$ty>::set_tls_key(self, key)
+                    Ok(<$ty>::set_tls_key(self, key)?)
                 }
                 fn set_tls_ca(&self, ca: &str) -> Result<(), ZlinkError> {
-                    <$ty>::set_tls_ca(self, ca)
+                    Ok(<$ty>::set_tls_ca(self, ca)?)
                 }
                 fn set_tls_hostname(&self, hostname: &str) -> Result<(), ZlinkError> {
-                    <$ty>::set_tls_hostname(self, hostname)
+                    Ok(<$ty>::set_tls_hostname(self, hostname)?)
                 }
                 fn set_tls_trust_system(&self, trust_system: bool) -> Result<(), ZlinkError> {
-                    <$ty>::set_tls_trust_system(self, trust_system)
+                    Ok(<$ty>::set_tls_trust_system(self, trust_system)?)
                 }
             }
         )+

@@ -1,0 +1,92 @@
+## Effective Options (start)
+- lang: node
+- suite: multi
+- runs: 1
+- patterns: MULTI_PUBSUB,MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_STREAM
+- transports: tcp
+- msg_sizes: 64
+- duration_seconds: 5
+- warmup_seconds: 2
+- results_dir: /home/hep7/project/kairos/zlink/perf/results
+- pin_cpu: off
+- clients: 2
+
+## PATTERN: MULTI_PUBSUB
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|----------------|---------------|---------------|
+| 64B | 0.00 Kmsg/s | 0.00 MB/s | 0.000000 | 0.000000 | 0.000000 |
+
+===============================================================================
+
+## PATTERN: MULTI_DEALER_DEALER
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|----------------|---------------|---------------|
+| 64B | 491.89 Kmsg/s | 31.48 MB/s | 1168.279866 | 1378.496193 | 1416.893689 |
+
+===============================================================================
+
+## PATTERN: MULTI_DEALER_ROUTER
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|----------------|---------------|---------------|
+| 64B | 10.36 Kops/s | 1.33 MB/s | 0.187017 | 0.235713 | 0.363390 |
+
+===============================================================================
+
+## PATTERN: MULTI_ROUTER_ROUTER
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|----------------|---------------|---------------|
+| 64B | 4.48 Kops/s | 0.57 MB/s | 0.221925 | 0.270200 | 0.313129 |
+
+===============================================================================
+
+## PATTERN: MULTI_STREAM
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|----------------|---------------|---------------|
+| 64B | 9.02 Kops/s | 1.15 MB/s | 0.110340 | 0.194081 | 0.235479 |
+
+
+## Result Data
+RESULT,current,MULTI_PUBSUB,tcp,64,throughput,0.00
+RESULT,current,MULTI_PUBSUB,tcp,64,bandwidth,0.00
+RESULT,current,MULTI_PUBSUB,tcp,64,latency,0.000000
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p95,0.000000
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p99,0.000000
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,throughput,491890.80
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,bandwidth,31.48
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency,1168.279866
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency_p95,1378.496193
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency_p99,1416.893689
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,throughput,10358.80
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,bandwidth,1.33
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency,0.187017
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency_p95,0.235713
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency_p99,0.363390
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,throughput,4484.40
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,bandwidth,0.57
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency,0.221925
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency_p95,0.270200
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency_p99,0.313129
+RESULT,current,MULTI_STREAM,tcp,64,throughput,9020.40
+RESULT,current,MULTI_STREAM,tcp,64,bandwidth,1.15
+RESULT,current,MULTI_STREAM,tcp,64,latency,0.110340
+RESULT,current,MULTI_STREAM,tcp,64,latency_p95,0.194081
+RESULT,current,MULTI_STREAM,tcp,64,latency_p99,0.235479
+
+## Effective Options (result)
+- lang: node
+- suite: multi
+- runs: 1
+- patterns: MULTI_PUBSUB,MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_STREAM
+- transports: tcp
+- msg_sizes: 64
+- duration_seconds: 5
+- warmup_seconds: 2
+- results_dir: /home/hep7/project/kairos/zlink/perf/results
+- pin_cpu: off
+- clients: 2
+- result_lines: 25
+## Status Summary
+- result_lines: 25
+- status: complete
+- expected_result_lines: 25
+- actual_result_lines: 25

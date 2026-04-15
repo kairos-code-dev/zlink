@@ -29,7 +29,7 @@ flowchart TB
     end
 
     subgraph DataPlaneLayer["Data Plane (separate thread)"]
-        dp_loop["spot_data_plane_loop_t<br/>main polling loop<br/>(7 sockets polled)"]
+        dp_loop["spot_data_plane_loop_t<br/>main polling loop<br/>(up to 7 ready events per iteration)"]
         dp_fwd["forwarding<br/>topic batching,<br/>encoding/decoding"]
         dp_proto["protocol<br/>control msgs,<br/>bootstrap descriptors"]
     end

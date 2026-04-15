@@ -38,9 +38,4 @@ public abstract class SubscriberSocketBase : ConnectableSocketBase
         subscribed = Kernel.TrySubscribe();
         return subscribed != null;
     }
-
-    public void OnSubscribe(SocketSubscribeHandler handler)
-    {
-        Kernel.SubscribeHandler(handler);
-    }
 }

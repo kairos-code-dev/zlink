@@ -205,13 +205,14 @@ simultaneously mutating the same timer handle.
 Destroy a timer and release its resources.
 
 ```c
-int zlink_timer_destroy (void **timer_p_);
+zlink_close_result_t zlink_timer_destroy (void **timer_p_);
 ```
 
 Stops the timer if running and frees the handle. The pointer at `*timer_p_`
 is set to `NULL` after destruction.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CLOSE_OK` on success; otherwise a `zlink_close_result_t`
+value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called while another thread is using the same
 timer.
@@ -225,7 +226,9 @@ timer.
 Start the timer with a nanosecond interval and repeat count.
 
 ```c
-int zlink_timer_start (void *timer_, uint64_t interval_ns_, uint64_t repeat_count_);
+zlink_config_result_t zlink_timer_start (void *timer_,
+                                         uint64_t interval_ns_,
+                                         uint64_t repeat_count_);
 ```
 
 Arms the timer to fire after `interval_ns_` nanoseconds. If `repeat_count_`
@@ -241,7 +244,8 @@ stopped.
 | `interval_ns_` | Interval between fires in nanoseconds |
 | `repeat_count_` | Number of times to fire (`0` = indefinite) |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t`
+value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same timer.
@@ -255,13 +259,14 @@ the same timer.
 Stop a running timer.
 
 ```c
-int zlink_timer_stop (void *timer_);
+zlink_config_result_t zlink_timer_stop (void *timer_);
 ```
 
 Disarms the timer. No further fire events will be generated until the timer
 is started again.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t`
+value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same timer.
@@ -275,7 +280,7 @@ the same timer.
 Synchronously receive a timer fire event.
 
 ```c
-int zlink_timer_recv (void *timer_, uint64_t *fire_count_out_);
+zlink_recv_result_t zlink_timer_recv (void *timer_, uint64_t *fire_count_out_);
 ```
 
 Waits for the timer to fire and writes the cumulative fire count into
@@ -289,8 +294,10 @@ timer.
 | `timer_` | Timer handle |
 | `fire_count_out_` | Pointer to receive the cumulative fire count |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set; `EAGAIN` if the
-timer has stopped and no fire event remains to receive).
+**Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t`
+value. `ZLINK_RECV_NO_DATA` (internal `EAGAIN`) when the timer has stopped
+and no fire event remains to receive. `zlink_errno()` retains the detailed
+internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same timer.
@@ -304,9 +311,9 @@ the same timer.
 Attach a callback handler to the timer.
 
 ```c
-int zlink_timer_handler (void *timer_,
-                         zlink_timer_handler_fn handler_,
-                         void *userdata_);
+zlink_handler_result_t zlink_timer_handler (void *timer_,
+                                            zlink_timer_handler_fn handler_,
+                                            void *userdata_);
 ```
 
 Registers `handler_` to be called each time the timer fires. The callback
@@ -321,7 +328,8 @@ receives the timer handle, cumulative fire count, and `userdata_`. Set
 | `handler_` | Callback function, or `NULL` to detach |
 | `userdata_` | Opaque pointer passed to the callback |
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_HANDLER_OK` on success; otherwise a `zlink_handler_result_t`
+value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same timer.

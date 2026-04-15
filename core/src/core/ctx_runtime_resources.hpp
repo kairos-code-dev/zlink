@@ -32,6 +32,7 @@ class ctx_runtime_resources_t
     service_control_runtime_t *service_data_runtime () const;
     service_control_runtime_t *service_data_runtime_for_key (
       uint32_t key_) const;
+    service_control_runtime_t *spot_worker_runtime_for_key (uint32_t key_) const;
     object_t *reaper_object () const;
     void stop_reaper ();
 
@@ -45,6 +46,7 @@ class ctx_runtime_resources_t
                               ctx_socket_registry_t &socket_registry_);
     bool start_service_runtime_locked (ctx_t &ctx_);
     bool start_service_data_runtime_locked (ctx_t &ctx_);
+    bool start_spot_worker_runtime_locked (ctx_t &ctx_);
     bool start_io_threads_locked (ctx_t &ctx_,
                                   ctx_socket_registry_t &socket_registry_,
                                   int io_thread_count_);
@@ -52,6 +54,7 @@ class ctx_runtime_resources_t
     reaper_t *_reaper;
     service_control_runtime_t *_service_control_runtime;
     std::vector<service_control_runtime_t *> _service_data_runtimes;
+    std::vector<service_control_runtime_t *> _spot_worker_runtimes;
     ctx_io_thread_registry_t _io_thread_registry;
 };
 }

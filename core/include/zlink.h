@@ -110,6 +110,7 @@ ZLINK_EXPORT void zlink_version (int *major_, int *minor_, int *patch_);
 #define ZLINK_MAX_SOCKETS_DFLT 4095
 #define ZLINK_THREAD_PRIORITY_DFLT -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT -1
+#define ZLINK_SPOT_WORKER_THREADS_DFLT 0
 
 /**
  * @brief Create a new zlink context.

@@ -54,12 +54,16 @@ bool is_allowed_to_raise_priority ()
 void test_ctx_thread_opts ()
 {
     // verify that setting negative values (e.g., default values) fail:
-    TEST_ASSERT_FAILURE_ERRNO (
-      EINVAL, zlink_ctx_set (get_test_context (), ZLINK_THREAD_SCHED_POLICY,
-                           ZLINK_THREAD_SCHED_POLICY_DFLT));
-    TEST_ASSERT_FAILURE_ERRNO (EINVAL, zlink_ctx_set (get_test_context (),
-                                                    ZLINK_THREAD_PRIORITY,
-                                                    ZLINK_THREAD_PRIORITY_DFLT));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_ctx_set (get_test_context (), ZLINK_THREAD_SCHED_POLICY,
+                     ZLINK_THREAD_SCHED_POLICY_DFLT));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_ctx_set (get_test_context (), ZLINK_THREAD_PRIORITY,
+                     ZLINK_THREAD_PRIORITY_DFLT));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
 
     // test scheduling policy:
@@ -185,6 +189,31 @@ void test_ctx_option_io_threads ()
                            zlink_ctx_get (get_test_context (), ZLINK_IO_THREADS, NULL));
 }
 
+void test_ctx_option_spot_worker_threads ()
+{
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SPOT_WORKER_THREADS_DFLT,
+      zlink_ctx_get (get_test_context (), ZLINK_SPOT_WORKER_THREADS, NULL));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (get_test_context (), ZLINK_SPOT_WORKER_THREADS, 3));
+    TEST_ASSERT_EQUAL_INT (
+      3, zlink_ctx_get (get_test_context (), ZLINK_SPOT_WORKER_THREADS, NULL));
+}
+
+void test_ctx_option_spot_worker_threads_rejects_change_after_runtime_start ()
+{
+    void *socket = test_context_socket (ZLINK_SOCKET_PAIR);
+    TEST_ASSERT_NOT_NULL (socket);
+
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_ctx_set (get_test_context (), ZLINK_SPOT_WORKER_THREADS, 2));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    test_context_socket_close (socket);
+}
+
 void test_ctx_option_msg_t_size ()
 {
 #if defined(ZLINK_MSG_T_SIZE)
@@ -197,7 +226,7 @@ void test_ctx_option_blocky ()
 {
     TEST_ASSERT_EQUAL_INT (1,
                            zlink_ctx_get (get_test_context (),
-                                          ZLINK_CTX_OPT_BLOCKY));
+                                          ZLINK_CTX_OPT_BLOCKY, NULL));
 
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     int value;
@@ -219,7 +248,8 @@ void test_ctx_option_blocky ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_BLOCKY, false));
     TEST_ASSERT_EQUAL_INT (0, TEST_ASSERT_SUCCESS_ERRNO ((zlink_ctx_get (
-                                get_test_context (), ZLINK_CTX_OPT_BLOCKY))));
+                                get_test_context (), ZLINK_CTX_OPT_BLOCKY,
+                                NULL))));
     router = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_LINGER, &value, &optsize));
@@ -229,7 +259,10 @@ void test_ctx_option_blocky ()
 
 void test_ctx_option_invalid ()
 {
-    TEST_ASSERT_EQUAL_INT (-1, zlink_ctx_set (get_test_context (), static_cast<zlink_ctx_option_t>(-1), 0));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_ctx_set (get_test_context (),
+                     static_cast<zlink_ctx_option_t> (-1), 0));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_EQUAL_INT (-1, zlink_ctx_get (get_test_context (), static_cast<zlink_ctx_option_t>(-1), NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
@@ -243,6 +276,8 @@ int main (void)
     RUN_TEST (test_ctx_option_max_sockets);
     RUN_TEST (test_ctx_option_socket_limit);
     RUN_TEST (test_ctx_option_io_threads);
+    RUN_TEST (test_ctx_option_spot_worker_threads);
+    RUN_TEST (test_ctx_option_spot_worker_threads_rejects_change_after_runtime_start);
     RUN_TEST (test_ctx_option_msg_t_size);
     RUN_TEST (test_ctx_thread_opts);
     RUN_TEST (test_ctx_zero_copy);

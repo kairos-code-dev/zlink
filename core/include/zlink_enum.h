@@ -17,7 +17,8 @@ typedef enum zlink_ctx_option_t
     ZLINK_THREAD_AFFINITY_CPU_ADD = 7,
     ZLINK_THREAD_AFFINITY_CPU_REMOVE = 8,
     ZLINK_THREAD_NAME_PREFIX = 9,
-    ZLINK_CTX_OPT_BLOCKY = 10
+    ZLINK_CTX_OPT_BLOCKY = 10,
+    ZLINK_SPOT_WORKER_THREADS = 11
 } zlink_ctx_option_t;
 
 typedef enum zlink_socket_type_t

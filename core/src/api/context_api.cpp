@@ -27,6 +27,7 @@ static bool is_public_ctx_set_option (int option_)
         case ZLINK_THREAD_AFFINITY_CPU_REMOVE:
         case ZLINK_THREAD_NAME_PREFIX:
         case ZLINK_CTX_OPT_BLOCKY:
+        case ZLINK_SPOT_WORKER_THREADS:
             return true;
         default:
             return false;
@@ -42,7 +43,8 @@ static bool is_public_ctx_get_option (int option_)
            || option_ == ZLINK_THREAD_AFFINITY_CPU_ADD
            || option_ == ZLINK_THREAD_AFFINITY_CPU_REMOVE
            || option_ == ZLINK_THREAD_NAME_PREFIX
-           || option_ == ZLINK_CTX_OPT_BLOCKY;
+           || option_ == ZLINK_CTX_OPT_BLOCKY
+           || option_ == ZLINK_SPOT_WORKER_THREADS;
 }
 }
 

@@ -256,7 +256,7 @@ int zlink::spot_reqrep_internal::install_spot_dispatch_event_task (
         return -1;
 
     zlink::service_control_runtime_t *runtime =
-      ctx->service_data_runtime_for_key (dispatch_runtime_key (state_->owner));
+      ctx->spot_worker_runtime_for_key (dispatch_runtime_key (state_->owner));
     if (!runtime) {
         errno = ETERM;
         return -1;

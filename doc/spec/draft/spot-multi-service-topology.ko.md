@@ -382,6 +382,8 @@ zlink_recv_result_t zlink_spot_subscribe (
   뜻한다.
 - 논리 코어 수를 알 수 없으면 자동 선택은 1로 떨어져야 한다.
 - 최소 1 worker는 항상 보장해야 한다.
+- 이 옵션은 dispatch worker runtime이 실제로 시작되기 전에 설정해야 한다.
+- runtime 시작 뒤 값을 바꾸려 하면 이 draft는 설정 오류로 본다.
 
 ### 7.2.2 inbound 소유 모델
 
@@ -862,6 +864,30 @@ attach 이후 운용 중 provider 변화로 짝이 깨지면 아래처럼 처리
 
 이 draft는 service 이름을 새 구조체로 감싸지 않고 `const char *`와 버퍼 길이
 방식으로 둔다. 기존 공개 API가 topic/filter에서 같은 방식을 쓰기 때문이다.
+
+context 옵션에는 아래 항목을 추가한다.
+
+```c
+typedef enum zlink_ctx_option_t
+{
+    /* ... existing ctx options ... */
+    ZLINK_SPOT_WORKER_THREADS = ...
+} zlink_ctx_option_t;
+
+#define ZLINK_SPOT_WORKER_THREADS_DFLT 0
+```
+
+의미는 아래와 같다.
+
+- `zlink_ctx_set(ctx, ZLINK_SPOT_WORKER_THREADS, n)`으로 설정한다.
+- `zlink_ctx_get(ctx, ZLINK_SPOT_WORKER_THREADS, ...)`로 현재 설정값을 조회할 수
+  있어야 한다.
+- 기본값 `0`은 자동 선택이다.
+- 자동 선택은 `min(visible logical cores, 8)`이며, 코어 수 조회에 실패하면 `1`
+  로 본다.
+- 이 값은 Spot dispatch worker runtime이 시작되기 전에만 설정할 수 있다.
+- runtime 시작 뒤 값을 바꾸려 하면 `ZLINK_CONFIG_INVALID_ARGUMENT`,
+  내부 `errno=EINVAL`로 실패한다.
 
 아래 구조체는 채택하지 않는 대안 메모다.
 

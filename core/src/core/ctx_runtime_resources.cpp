@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <new>
 #include <sstream>
+#include <thread>
 
 #include "core/ctx_runtime_resources.hpp"
 
@@ -18,6 +19,29 @@
 namespace
 {
 const int term_and_reaper_threads_count = 2;
+
+size_t resolve_runtime_index (
+  const std::vector<zlink::service_control_runtime_t *> &runtimes_,
+  uint32_t key_)
+{
+    return runtimes_.size () == 1
+             ? 0
+             : static_cast<size_t> (key_) % runtimes_.size ();
+}
+
+int resolve_spot_worker_runtime_count (zlink::ctx_t &ctx_)
+{
+    int configured = ctx_.get (ZLINK_SPOT_WORKER_THREADS);
+    if (configured < 0)
+        return 1;
+    if (configured > 0)
+        return configured;
+
+    unsigned int logical_cores = std::thread::hardware_concurrency ();
+    if (logical_cores == 0)
+        return 1;
+    return std::min<unsigned int> (logical_cores, 8u);
+}
 }
 
 zlink::ctx_runtime_resources_t::ctx_runtime_resources_t () :
@@ -44,6 +68,7 @@ bool zlink::ctx_runtime_resources_t::start_locked (
     if (!start_reaper_locked (ctx_, socket_registry_)
         || !start_service_runtime_locked (ctx_)
         || !start_service_data_runtime_locked (ctx_)
+        || !start_spot_worker_runtime_locked (ctx_)
         || !start_io_threads_locked (ctx_, socket_registry_, io_thread_count_)) {
         cleanup_failed_start_locked (ctx_, socket_registry_);
         return false;
@@ -70,6 +95,13 @@ void zlink::ctx_runtime_resources_t::teardown (
         }
     }
     _service_data_runtimes.clear ();
+    for (size_t i = 0; i < _spot_worker_runtimes.size (); ++i) {
+        if (_spot_worker_runtimes[i]) {
+            _spot_worker_runtimes[i]->stop ();
+            delete _spot_worker_runtimes[i];
+        }
+    }
+    _spot_worker_runtimes.clear ();
 
     _io_thread_registry.stop_all ();
     _io_thread_registry.destroy_all ();
@@ -97,12 +129,18 @@ zlink::ctx_runtime_resources_t::service_data_runtime_for_key (
 {
     if (_service_data_runtimes.empty ())
         return NULL;
-
-    const size_t index =
-      _service_data_runtimes.size () == 1
-        ? 0
-        : static_cast<size_t> (key_) % _service_data_runtimes.size ();
+    const size_t index = resolve_runtime_index (_service_data_runtimes, key_);
     return _service_data_runtimes[index];
+}
+
+zlink::service_control_runtime_t *
+zlink::ctx_runtime_resources_t::spot_worker_runtime_for_key (
+  uint32_t key_) const
+{
+    if (_spot_worker_runtimes.empty ())
+        return NULL;
+    const size_t index = resolve_runtime_index (_spot_worker_runtimes, key_);
+    return _spot_worker_runtimes[index];
 }
 
 zlink::object_t *zlink::ctx_runtime_resources_t::reaper_object () const
@@ -194,6 +232,36 @@ bool zlink::ctx_runtime_resources_t::start_service_data_runtime_locked (
     }
 
     return !_service_data_runtimes.empty ();
+}
+
+bool zlink::ctx_runtime_resources_t::start_spot_worker_runtime_locked (
+  ctx_t &ctx_)
+{
+    int runtime_count = resolve_spot_worker_runtime_count (ctx_);
+    runtime_count = std::max (runtime_count, 1);
+
+    for (int i = 0; i < runtime_count; ++i) {
+        std::ostringstream name;
+        if (runtime_count == 1)
+            name << "spot-worker";
+        else
+            name << "spot-worker-" << i;
+
+        service_control_runtime_t *runtime =
+          new (std::nothrow)
+            service_control_runtime_t (&ctx_, name.str ().c_str ());
+        if (!runtime) {
+            errno = ENOMEM;
+            return false;
+        }
+        if (!runtime->start ()) {
+            delete runtime;
+            return false;
+        }
+        _spot_worker_runtimes.push_back (runtime);
+    }
+
+    return !_spot_worker_runtimes.empty ();
 }
 
 bool zlink::ctx_runtime_resources_t::start_io_threads_locked (

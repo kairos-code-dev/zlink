@@ -28,20 +28,25 @@ service-aware attach, send/request/publish/subscribe, node monitor recv 표면�
 
 ## I/O 모델
 
-`SpotNode`와 unified `Spot` 모두 **recv 모드**로 시작하고,
-`zlink_subscribe_handler()`로 receive surface를 callback 모드로 **일방 전환**
-합니다. send-ready는 별도 축입니다.
+`SpotNode`와 unified `Spot` 모두 **recv 모드**로 시작합니다. topic/routed/
+timer readable 알림은 `zlink_spot_dispatch_event_handler()` 하나로 받고,
+실제 payload는 대응 recv 함수(`zlink_subscribe()` / `zlink_spot_subscribe()`,
+`zlink_spot_recv()`, `zlink_timer_recv()`)로 drain합니다. send-ready는 별도
+축입니다.
 
-| 동작 | Recv 모드 (기본) | Callback 모드 |
-|------|-----------------|--------------|
+| 동작 | Recv 모드 (기본) | Dispatch callback 모드 |
+|------|-----------------|----------------------|
 | **SpotNode 수신** | *(미노출 — unified Spot 사용)* | *(미노출 — unified Spot 사용)* |
-| **Spot 수신** | `zlink_subscribe()` / `zlink_spot_subscribe()` | `subscribe_handler()` 또는 dispatch readable callback |
+| **Spot 수신** | `zlink_subscribe()` / `zlink_spot_subscribe()` / `zlink_spot_recv()` | `zlink_spot_dispatch_event_handler()` readable 알림 후 recv |
 | **읽기 poller** | `ZLINK_POLLIN` | `EBUSY` |
-| **Send-ready** | poller 또는 `send_ready_handler()` | poller 또는 `send_ready_handler()` |
+| **Send-ready** | poller 또는 `zlink_send_ready_handler()` | poller 또는 `zlink_send_ready_handler()` |
 
 - `zlink_send_ready_handler()`는 receive callback 선행 조건이 없습니다.
 - send-ready attach 이후 data-plane `ZLINK_POLLOUT` poller는 `EBUSY`로 실패합니다.
-- receive callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은 `EBUSY`로 실패합니다.
+- dispatch callback 모드로 전환된 뒤 `zlink_subscribe()`와 data-plane
+  `ZLINK_POLLIN`은 일반 문맥에서 `EBUSY`로 실패합니다. 다만 같은 `spot_`의
+  활성 `zlink_spot_dispatch_event_handler()` callback 안에서는 해당 readable
+  plane을 비우기 위해 호출할 수 있습니다.
 - `publish()`는 두 모드 모두에서 동작합니다.
 
 ## 현재 public surface
@@ -319,6 +324,117 @@ zlink_recv_result_t zlink_spot_node_monitor_recv (
 - service-aware monitor event는 `Spot` dispatch readable plane에 섞이지 않습니다.
   monitor event의 소유자는 `spot_`이 아니라 `node_`입니다.
 
+### service data-plane 실패 표
+
+`zlink_spot_send_service()` / `zlink_spot_request_service()`:
+
+| 케이스 | public result | 내부 errno |
+|------|---------------|------------|
+| `spot_ == NULL` 또는 잘못된 핸들 | `ZLINK_SUBMIT_INVALID_HANDLE` | `EFAULT` |
+| `service_name_ == NULL` 또는 빈 문자열 | `ZLINK_SUBMIT_INVALID_ARGUMENT` | `EINVAL` |
+| `parts_ == NULL`인데 `part_count_ > 0` | `ZLINK_SUBMIT_INVALID_ARGUMENT` | `EINVAL` |
+| 지정한 `service_name_`에 attachment가 없음 | `ZLINK_SUBMIT_NOT_FOUND` | `ENOENT` |
+| attachment는 있으나 active ROUTER가 없음 | `ZLINK_SUBMIT_NOT_CONNECTED` | `ENOTCONN` 또는 `EHOSTUNREACH` |
+| active ROUTER는 있으나 send-ready 후보가 없음 | `ZLINK_SUBMIT_NOT_CONNECTED` | `ENOTCONN` 또는 `EHOSTUNREACH` |
+| 선택된 ROUTER가 HWM에 걸림 | `ZLINK_SUBMIT_BACKPRESSURED` | `EAGAIN` |
+| request sequence 공간 소진 | `ZLINK_SUBMIT_SEQ_EXHAUSTED` | `EBUSY` |
+| context 종료 | `ZLINK_SUBMIT_TERMINATED` | `ETERM` |
+| 그 외 내부 submit 실패 | 기존 submit enum 규칙 | 표준 errno-map |
+
+request completion은 `zlink_request_result_t`를 따릅니다. submit 이후 reply가
+오지 않으면 `ZLINK_REQUEST_TIMED_OUT`, remote "대상 없음" reply는
+`ZLINK_REQUEST_NOT_FOUND`로 정규화됩니다.
+
+`zlink_spot_publish()`:
+
+| 케이스 | public result | 내부 errno |
+|------|---------------|------------|
+| `spot_ == NULL` 또는 잘못된 핸들 | `ZLINK_SUBMIT_INVALID_HANDLE` | `EFAULT` |
+| `service_name_ == NULL` 또는 빈 문자열 | `ZLINK_SUBMIT_INVALID_ARGUMENT` | `EINVAL` |
+| `topic_id_ == NULL` 또는 잘못된 topic | `ZLINK_SUBMIT_INVALID_ARGUMENT` | `EINVAL` |
+| 지정한 `service_name_`에 attachment가 없음 | `ZLINK_SUBMIT_NOT_FOUND` | `ENOENT` |
+| attachment는 있으나 active pub/sub pair가 없음 | `ZLINK_SUBMIT_NOT_CONNECTED` | `ENOTCONN` 또는 `EHOSTUNREACH` |
+| 선택된 `PUB`가 HWM에 걸림 | `ZLINK_SUBMIT_BACKPRESSURED` | `EAGAIN` |
+| context 종료 | `ZLINK_SUBMIT_TERMINATED` | `ETERM` |
+| 그 외 내부 submit 실패 | 기존 submit enum 규칙 | 표준 errno-map |
+
+`zlink_spot_subscribe()` / `zlink_spot_subscription_event()`는 일반 recv
+모델을 따릅니다. 읽을 이벤트가 없으면 `ZLINK_RECV_NO_DATA`, 잘못된 핸들이면
+`ZLINK_RECV_INVALID_HANDLE`, context 종료이면 `ZLINK_RECV_TERMINATED`,
+그 외 내부 실패는 `ZLINK_RECV_INTERNAL_ERROR`입니다. "active attachment
+없음" 상태는 recv 결과로 올리지 않고 attachment snapshot 또는 node monitor
+에서 관찰합니다.
+
+### attach_discovery 실패 표
+
+| 케이스 | public result | 내부 errno |
+|------|---------------|------------|
+| `node_ == NULL` 또는 잘못된 핸들 | `ZLINK_CONFIG_INVALID_HANDLE` | `EFAULT` |
+| `discovery_ == NULL` 또는 잘못된 핸들 | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` |
+| Discovery 타입이 SPOT 자동 attach와 맞지 않음 | `ZLINK_CONFIG_NOT_SUPPORTED` | `ENOTSUP` |
+| 같은 Discovery가 이미 다른 owner에 attach됨 | `ZLINK_CONFIG_BUSY` | `EBUSY` |
+| 같은 node에 같은 `service_name` Discovery가 이미 attach됨 | `ZLINK_CONFIG_BUSY` | `EBUSY` |
+| 같은 node에 공개 facade `Spot`이 둘 이상 이미 생성됨 | `ZLINK_CONFIG_BUSY` | `EBUSY` |
+| Discovery view에 `pub`만 있음 | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` |
+| Discovery view에 `sub`만 있음 | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` |
+| Discovery view에 `router + pub`만 있음 | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` |
+| Discovery view에 `router + sub`만 있음 | `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL` |
+| 모든 서비스가 `router only` 또는 `router + pub + sub`이고 같은 서비스 중복 없음 | `ZLINK_CONFIG_OK` | `0` |
+
+pub/sub 짝은 attach 시점에만 검증합니다. 운용 중 provider 변화로 짝이 깨지면
+해당 서비스의 pub/sub pair는 active 집합에서 제외되고, 그 서비스에 대한 publish
+또는 subscribe submit은 pair가 다시 완전해질 때까지 `NOT_CONNECTED`로
+실패합니다. 짝이 복구되면 subscription filter가 replay된 뒤 active 집합으로
+돌아옵니다.
+
+## SpotNode admission 상태
+
+`SpotNode`는 ROUTER와 같은 admission 상태 표면을 공유합니다. 점검 또는
+롤링 재시작 같은 운영 상황에서 peer가 새 작업을 이 노드로 보내지 않게
+하려면 `zlink_set_admission_state()`를 사용합니다.
+
+```c
+zlink_config_result_t zlink_set_admission_state (
+  void *handle_,
+  zlink_admission_state_t state_);
+
+zlink_config_result_t zlink_get_admission_state (
+  void *handle_,
+  zlink_admission_state_t *state_out_);
+```
+
+특징:
+
+- 기본값은 `ZLINK_ADMISSION_SERVING`이며, 점검 시점에
+  `ZLINK_ADMISSION_DRAINING`으로 바꿀 수 있습니다. runtime에 양방향 전환을
+  허용합니다.
+- 로컬 SpotNode 자체의 recv/send/request/reply/handler-dispatch 동작은
+  admission 상태와 무관합니다. `DRAINING`은 "내가 멈춘다"가 아니라 "남이
+  나를 새 작업 대상으로 고르지 않게 한다"는 신호입니다.
+- 상태는 SpotNode peer control 경로를 통해 연결된 peer에게 best-effort
+  runtime 신호로 전파됩니다. peer는 자신의 cache를 갱신하고, 재연결 후에는
+  현재 상태를 다시 동기화합니다.
+
+peer 쪽 효과:
+
+- 다른 노드에서 이 SpotNode를 대상으로 하는 SPOT direct request
+  (`zlink_spot_request_spot()`, `zlink_router_request_spot()` 등)는
+  대상이 `DRAINING`이면 `ZLINK_SUBMIT_NOT_ADMITTED`로 실패합니다.
+- service-aware `zlink_spot_request_service()`는 같은 서비스 경로의 active
+  ROUTER 후보를 고를 때 `DRAINING` 노드를 제외합니다. 후보가 모두
+  `DRAINING`이면 `ZLINK_SUBMIT_NOT_ADMITTED`로 실패합니다.
+- `zlink_spot_publish()`는 fan-out 의미를 가지므로 단일 peer admission
+  으로 거절하지 않습니다.
+
+관찰 경로:
+
+- 다른 노드 쪽 service monitor에서
+  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`로 이 노드의 상태
+  변화를 받을 수 있습니다.
+- `zlink_spot_node_peers_snapshot()` / `zlink_spot_node_peers_query()`가
+  돌려주는 `zlink_spot_node_peer_entry_t.admission_state`로 각 peer의
+  현재 admission 상태를 직접 확인할 수 있습니다.
+
 ## SPOT routed request-reply
 
 SPOT request-reply 는 publish/subscribe 경로와 별도입니다. 이 표면은 topic 을
@@ -544,11 +660,6 @@ zlink_submit_result_t zlink_router_reply_spot (void *router_,
                              zlink_msg_t *parts_,
                              size_t part_count_);
 
-zlink_handler_result_t zlink_router_handler (
-  void *router_,
-  zlink_router_handler_fn handler_,
-  void *userdata_);
-
 zlink_recv_result_t zlink_router_recv (
   void *router_,
   const zlink_routing_id_t **source_node_rid_out_,
@@ -563,17 +674,17 @@ zlink_recv_result_t zlink_router_recv (
 `ROUTER` 쪽 reply 주소는 transport `peer_rid` 가 아니라
 `dest_node_rid + dest_spot_rid + request_seq` 조합입니다.
 
-`ROUTER` 수신 표면은 하나만 둡니다.
+`ROUTER` 는 모든 routed 트래픽을 `zlink_router_recv()` 단일 직접 수신
+표면으로만 드레인합니다.
 
-- ordinary `ROUTER` 메시지는 `source_node_rid_` 에 peer routing id 를 담고,
-  `source_spot_rid_` 는 빈 routing id 로 돌려줍니다.
-- SPOT에서 온 메시지는 `source_node_rid_` 와 `source_spot_rid_` 를 함께
-  reply 주소로 사용합니다.
-- `request_seq_ == 0` 이면 ordinary direct send 입니다.
-- `request_seq_ != 0` 이면 request-reply 트래픽입니다.
+- ordinary `ROUTER` 메시지는 `source_node_rid_out_` 에 peer routing id 를
+  담고, `source_spot_rid_out_` 는 빈 routing id 로 돌려줍니다.
+- SPOT에서 온 메시지는 `source_node_rid_out_` 와 `source_spot_rid_out_` 를
+  함께 reply 주소로 사용합니다.
+- `request_seq_out_ == 0` 이면 ordinary direct send (fire-and-forget) 입니다.
+- `request_seq_out_ != 0` 이면 request-reply 트래픽입니다.
 
-별도의 `zlink_router_spot_handler()` / `zlink_router_spot_recv()` 계약은 두지
-않습니다.
+별도의 `zlink_router_spot_recv()` 계약은 두지 않습니다.
 
 `zlink_router_request_spot()`은 request submit이 수락되면
 `ZLINK_SUBMIT_OK`를 반환합니다. 실패 시에는 `zlink_submit_result_t` 값을
@@ -608,21 +719,34 @@ publish/subscribe 경로와 routed 경로가 함께 있고, 두 경로가 같은
 
 ## callback 계약
 
+`Spot` facade에서 topic / routed / timer readable 알림은 단일 dispatch
+event callback으로 받습니다.
+
 ```c
-typedef void (*zlink_subscribe_handler_fn)(const zlink_routing_id_t *source_rid,
-                                           const char *topic,
-                                           size_t topic_len,
-                                           zlink_msg_t *parts,
-                                           size_t part_count,
-                                           void *userdata);
+typedef enum zlink_spot_dispatch_event_t
+{
+    ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,
+    ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE    = 2,
+    ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE     = 3
+} zlink_spot_dispatch_event_t;
+
+typedef void (*zlink_spot_dispatch_event_handler_fn) (
+  void *spot_,
+  zlink_spot_dispatch_event_t event_,
+  void *userdata_);
 ```
 
-- callback은 `zlink_subscribe_handler(node_or_spot, handler, userdata)`로
+- callback은 `zlink_spot_dispatch_event_handler(spot, handler, userdata)`로
   설치합니다.
-- handle은 recv 모드로 시작하고 callback 모드로 한 번만 전환됩니다.
-- callback 모드 전환 후 `zlink_subscribe()`는
-  `EBUSY`로 실패합니다.
-- callback은 전달받은 `parts`의 ownership을 소비해야 합니다.
+- 같은 `spot_`의 dispatch callback delivery는 직렬화됩니다.
+- 이 callback은 readability 알림 전용입니다. payload는 callback 반환 이후
+  (또는 callback 문맥 안에서) `zlink_subscribe()` / `zlink_spot_subscribe()`,
+  `zlink_spot_recv()`, `zlink_timer_recv()`로 drain합니다.
+- routed 축은 `zlink_spot_handler()`(direct routed callback)와
+  `zlink_spot_dispatch_event_handler()`를 동시에 설치할 수 없습니다. 두
+  번째 설치는 `ZLINK_HANDLER_BUSY`로 실패합니다.
+- `zlink_subscribe_handler_fn` typedef는 헤더에 남아 있지만, 이를 설치할
+  수 있는 공개 등록 함수는 제공되지 않습니다.
 
 ## 옵션 요약
 
@@ -637,8 +761,22 @@ typedef void (*zlink_subscribe_handler_fn)(const zlink_routing_id_t *source_rid,
 
 ## 모니터링
 
-SPOT은 더 이상 public service-monitor surface를 노출하지 않습니다.
-`zlink_service_monitor_open()` 대신 SpotNode status/query API를 사용합니다.
+SPOT facade(`Spot`)는 더 이상 공개 service-monitor 대상이 아닙니다.
+service-aware attachment가 있는 `SpotNode`의 모니터는 별도 recv 표면인
+`zlink_spot_node_monitor_recv()`로만 가져옵니다.
+
+- `zlink_monitor_target_kind_t`에는 `ZLINK_MONITOR_TARGET_SPOT_NODE = 5`가
+  추가되었습니다. SpotNode에서 monitor 대상을 식별할 때 사용됩니다.
+- service monitor event mask에는
+  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` (`1u << 8`)가
+  추가되었습니다. 소켓 쪽 대응 이벤트는
+  `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED`이며
+  `ZLINK_EVENT_PEER_ADMISSION_CHANGED`로도 표면화됩니다.
+- `zlink_spot_node_monitor_recv()`가 돌려주는
+  `zlink_spot_service_monitor_event_t`는 `service_name`, attachment role,
+  원본 `zlink_monitor_event_t`를 함께 싣습니다.
+- 일반 node 상태 요약은 여전히 `zlink_spot_node_status_snapshot()`과
+  `zlink_spot_node_peers_snapshot()`으로 조회합니다.
 
 ## 스냅샷 / 인트로스펙션
 
@@ -725,6 +863,7 @@ typedef struct zlink_spot_node_peer_entry_t
     char peer_endpoint[256];
     zlink_spot_peer_source_t source;
     zlink_spot_peer_state_t state;
+    zlink_admission_state_t admission_state;
     uint64_t connected_since_ms;
     uint64_t last_changed_ms;
 } zlink_spot_node_peer_entry_t;
@@ -737,6 +876,7 @@ typedef struct zlink_spot_node_peer_entry_t
 | `peer_endpoint` | null 종료 피어 엔드포인트. |
 | `source` | `MANUAL`, `DISCOVERY`, 또는 `MIXED`. |
 | `state` | `CONFIGURED`, `CONNECTING`, 또는 `CONNECTED`. |
+| `admission_state` | 이 peer의 admission 상태. `ZLINK_ADMISSION_SERVING` 또는 `ZLINK_ADMISSION_DRAINING`. peer가 `DRAINING`이면 로컬은 그 peer를 새 outbound 대상으로 사용하지 않습니다. |
 | `connected_since_ms` | 피어 연결 시점 (에포크 ms, 미연결 시 0). |
 | `last_changed_ms` | 이 피어의 마지막 상태 변경 시점 (에포크 ms). |
 
@@ -869,23 +1009,38 @@ typedef enum zlink_spot_node_option_t {
 
 ## 예시
 
-### Callback 모드
+### Callback 모드 (dispatch event handler)
 
 ```c
-void on_spot_message(const zlink_routing_id_t *source_rid,
-                     const char *topic,
-                     size_t topic_len,
-                     zlink_msg_t *parts,
-                     size_t part_count,
-                     void *userdata);
+static void on_spot_event(void *spot,
+                          zlink_spot_dispatch_event_t event,
+                          void *userdata)
+{
+    if (event != ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE)
+        return;
+    for (;;) {
+        zlink_routing_id_t src;
+        zlink_msg_t *parts = NULL;
+        size_t parts_count = 0;
+        char topic[256];
+        size_t topic_len = sizeof(topic);
+        zlink_recv_result_t rc = zlink_subscribe(
+            spot, &src, &parts, &parts_count,
+            topic, &topic_len, ZLINK_DONTWAIT);
+        if (rc != ZLINK_RECV_OK) break;
+        /* 메시지 처리 */
+        for (size_t i = 0; i < parts_count; ++i)
+            zlink_msg_close(&parts[i]);
+    }
+}
 
 void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
 void *spot = zlink_spot_new(node);
-zlink_subscribe_handler(spot, on_spot_message, NULL);
-zlink_set_subscription (spot, "room:lobby");
+zlink_set_subscription(spot, "room:lobby");
+zlink_spot_dispatch_event_handler(spot, on_spot_event, NULL);
 
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);

@@ -115,6 +115,21 @@ int main (int argc, char **argv)
 
     perf_stop_requested ().store (false, std::memory_order_release);
     perf_multi_stream::reset_session (&g_stream_session, server);
+    perf_multi_stream::packet_handler_context_t packet_handler_ctx;
+    packet_handler_ctx.session = &g_stream_session;
+    packet_handler_ctx.stop_token = k_stop_token;
+    if (zlink_stream_packet_handler (server,
+                                     &perf_multi_stream::stream_packet_handler_callback,
+                                     &packet_handler_ctx)
+        != ZLINK_HANDLER_OK) {
+        if (bench_debug_enabled ()) {
+            std::cerr << "[multi-stream-server] packet handler install failed errno="
+                      << zlink_errno () << std::endl;
+        }
+        perf_multi_stream::clear_session (&g_stream_session);
+        zlink_close (server);
+        return 1;
+    }
     install_perf_signal_handlers ();
 
     std::thread stdin_watcher ([] () {
@@ -129,14 +144,19 @@ int main (int argc, char **argv)
     });
     stdin_watcher.detach ();
 
-    std::cout << "READY," << endpoint << std::endl;
+    std::atomic<int> loop_rc (0);
+    std::thread event_loop_thread ([&] () {
+        loop_rc.store (perf_multi_stream::run_server_event_loop (
+                         &g_stream_session,
+                         server,
+                         k_stop_token,
+                         NULL,
+                         NULL),
+                       std::memory_order_release);
+    });
 
-    const int rc = perf_multi_stream::run_server_event_loop (
-      &g_stream_session,
-      server,
-      k_stop_token,
-      NULL,
-      NULL);
+    std::cout << "READY," << endpoint << std::endl;
+    event_loop_thread.join ();
 
     perf_multi_stream::clear_session (&g_stream_session);
 
@@ -144,5 +164,5 @@ int main (int argc, char **argv)
       bench_finish_resource_probe (cpu_start);
     print_server_metrics (lib_name, transport, sizes, metrics);
     zlink_close (server);
-    return rc;
+    return loop_rc.load (std::memory_order_acquire);
 }

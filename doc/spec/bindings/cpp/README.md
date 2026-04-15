@@ -10,6 +10,39 @@ All types live in the `zlink` namespace. Service types live in `zlink::service`.
 
 ---
 
+## Current Core Alignment Overrides
+
+The sections below still contain some older signatures. When a later section
+conflicts with the rules here, this section wins.
+
+- `pair_socket_t`, `dealer_socket_t`, and `router_socket_t` are recv-only on
+  the data plane. Remove `on_receive(...)` from their public contract.
+- `sub_socket_t` and `xsub_socket_t` are recv-only. Remove
+  `on_subscribe(...)` from their public contract.
+- `stream_socket_t` keeps `recv(...)` and raw `on_receive(...)`, and must also
+  expose a dedicated packet callback surface mapped to
+  `zlink_stream_packet_handler()`. Recommended canonical name:
+  `on_packet(...)`.
+- `service::spot_node_t` must expose service-aware attachment methods:
+  `attach_router(const std::string& service_name, router_socket_t&)`,
+  `attach_pubsub(const std::string& service_name, pub_socket_t&, sub_socket_t&)`,
+  and attachment snapshot / monitor accessors mapped to
+  `zlink_spot_node_service_attachment_count()`,
+  `zlink_spot_node_service_attachment_at()`, and
+  `zlink_spot_node_monitor_recv()`.
+- `service::spot_t` must expose service-aware data-plane methods:
+  `send_service(...)`, `request_service(...)`, and
+  `publish(const std::string& service_name, const std::string& topic, ...)`.
+- `service::spot_t::subscribe(...)` returns a service-aware `topic_message_t`.
+  `topic_message_t` therefore needs `std::optional<std::string> service_name()`
+  populated for SPOT subscribe results and empty for raw `SUB` / `XSUB`.
+- `service::spot_t` must not expose `on_subscribe(...)`. SPOT topic readable
+  notifications come from `on_dispatch_event(...)`, then callers drain with
+  `subscribe(...)` / `recv_routed(...)` / timer recv.
+- `service::spot_t::on_routed_receive(...)` and
+  `service::spot_t::on_dispatch_event(...)` are mutually exclusive on the
+  routed axis.
+
 ## Core
 
 ### context_t

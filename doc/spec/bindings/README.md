@@ -45,6 +45,36 @@
 이 문서는 “각 언어가 어떻게 보일 수 있는가”보다 “각 언어가 무엇을 보장해야
 하는가”를 정의한다.
 
+## Current Core Alignment Overrides
+
+아래 언어별 문서에는 과거 시그니처 예제가 일부 남아 있다. 그 내용이 현재
+`core/include/zlink.h` 와 충돌하면 이 절을 우선 적용한다.
+
+- direct receive callback install surface 는 이제 raw `STREAM` 과 SPOT routed
+  receive 에만 남는다.
+- 바인딩은 raw `PAIR`, `DEALER`, `ROUTER` 에 대해 `onReceive` 류 direct data
+  callback 을 public 으로 노출하면 안 된다.
+- 바인딩은 raw `SUB`, `XSUB`, SPOT subscribe receive 에 대해
+  `onSubscribe` 류 direct topic callback 을 public 으로 노출하면 안 된다.
+- `ROUTER` inbound routed traffic 은 data-plane recv-only 이다. 바인딩은
+  `zlink_router_recv()` 대응 수신 표면과 request completion callback 만
+  노출한다.
+- `STREAM` 은 `recv`, raw callback (`zlink_recv_handler()`), packet callback
+  (`zlink_stream_packet_handler()`) 의 세 모드 중 하나를 선택하는 예외 타입이다.
+- SPOT 은 service-aware 모델이다. 바인딩은
+  `attach_router(service_name, router)`,
+  `attach_pubsub(service_name, pub, sub)`,
+  `send_service`, `request_service`,
+  service-aware publish / subscribe 표면을 제공해야 한다.
+- service-aware SPOT subscribe 결과는 topic / parts 와 함께 반드시
+  `service_name` 을 노출해야 한다.
+- `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/timer plane 의
+  canonical readable notification surface 이다.
+  `zlink_spot_handler()` 와 routed 축에서 mutually exclusive 다.
+- `zlink_send_ready_handler()` 와 poller `ZLINK_POLLOUT` 은 같은
+  send-recovery readiness 축을 가리킨다. 바인딩 문서도 같은 의미로 설명해야
+  한다.
+
 ## 문서 해석 규칙
 - 이 문서의 정책 본문은 기본적으로 규범 문서다.
 - 아래 용어는 다음 의미로 해석한다.
@@ -158,7 +188,7 @@
 - capability-specific shared base는 descendant 전부에 공통인 capability에 한해
   허용할 수 있다.
   - 예: subscriber-only base의 `setSubscription`, `unsetSubscription`,
-    `subscribe`, `onSubscribe`
+    `subscribe`
   - 예: publisher-only base의 `publish`, `onSendReady`
   - 예: discovery-capable socket base의 `attachDiscovery`
 - 위 capability는 capability matrix에서 `Y`인 concrete socket type에만
@@ -356,16 +386,23 @@ request_callback(parts, callback, flags, timeout)
 
 #### SPOT 대상 네이밍
 
-SPOT routed 대상 함수는 `_to_spot`, `_to_router` 접미사를 사용한다.
+SPOT routed 네이밍은 두 축을 함께 가져간다.
 
-```
-send_to_spot(dest_node_rid, dest_spot_rid, parts, flags)
-request_to_spot(dest_node_rid, dest_spot_rid, parts, callback, flags, timeout)
-reply_to_spot(dest_node_rid, dest_spot_rid, request_seq, parts, flags)
-send_to_router(peer_rid, parts, flags)
-request_to_router(peer_rid, parts, callback, flags, timeout)
-reply_to_router(peer_rid, request_seq, parts, flags)
-```
+- **service-aware 경로**
+  - `send_service(service_name, parts, flags)`
+  - `request_service(service_name, parts, callback, flags, timeout)`
+  - `publish(service_name, topic, parts, flags)`
+- **직접 주소 지정 경로**
+  - `send_to_spot(dest_node_rid, dest_spot_rid, parts, flags)`
+  - `request_to_spot(dest_node_rid, dest_spot_rid, parts, callback, flags, timeout)`
+  - `reply_to_spot(dest_node_rid, dest_spot_rid, request_seq, parts, flags)`
+  - `send_to_router(peer_rid, parts, flags)`
+  - `request_to_router(peer_rid, parts, callback, flags, timeout)`
+  - `reply_to_router(peer_rid, request_seq, parts, flags)`
+
+새 service-aware 바인딩 표면에서는 `send_service` / `request_service` /
+`publish(service_name, ...)` 가 필수다. 직접 주소 지정 경로는 코어가 제공하는
+typed routed surface 로서 별도 지원할 수 있다.
 
 언어별 관례에 따라 camelCase / PascalCase / snake_case 로 변환한다.
 
@@ -668,8 +705,8 @@ raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `cla
 
 | Capability | Pair | Dealer | Router | Pub | Sub | XPub | XSub | Stream |
 |---|---|---|---|---|---|---|---|---|
-| `onReceive` | Y | Y | Y | — | — | — | — | Y |
-| `onSubscribe` | — | — | — | — | Y | — | Y | — |
+| `onReceive` | — | — | — | — | — | — | — | Y |
+| `onSubscribe` | — | — | — | — | — | — | — | — |
 | `onSendReady` | Y | Y | Y | Y | — | Y | — | Y |
 
 #### Typed Option Capabilities
@@ -807,19 +844,21 @@ Discovery (클라이언트 — 서비스 뷰)
   ├── introspection: memberPeers, memberPeerMetadata
   └── lifecycle: destroy → 연결된 모든 participant 종료
 
-SpotNode (토폴로지 런타임)
+SpotNode (service-aware topology runtime)
   ├── bind (endpoint)
-  ├── mesh: connectPeer / disconnectPeer
-  ├── attachDiscovery (Discovery에 위임)
+  ├── legacy mesh: connectPeer / disconnectPeer
+  ├── service attach: attachRouter / attachPubSub / attachDiscovery
   ├── introspection: statusSnapshot, peersSnapshot, peersQuery,
-  │   subjectsSnapshot
+  │   subjectsSnapshot, serviceAttachmentCount / serviceAttachmentAt,
+  │   nodeMonitorRecv
   └── TLS: setTlsServer, setTlsClient
 
-Spot (pub/sub facade — SpotNode 위에 올라감)
-  ├── publish
+Spot (service-aware facade — SpotNode 위에 올라감)
+  ├── publish(service_name, topic, ...)
   ├── subscribe
+  ├── sendService / requestService
   ├── setSubscription / unsetSubscription
-  ├── onSubscribe, onSendReady
+  ├── onDispatchEvent / onRoutedReceive / onSendReady
   └── close (node는 살아 있음)
 
 RegistryQueryClient (원격 토폴로지 조회)
@@ -833,9 +872,13 @@ RegistryQueryClient (원격 토폴로지 조회)
 | Capability | SpotNode |
 |---|---|
 | `bind` | Y |
-| `connectPeer` | Y (discovery 미연결 시만) |
-| `disconnectPeer` | Y (discovery 미연결 시만) |
+| `connectPeer` | Legacy only |
+| `disconnectPeer` | Legacy only |
+| `attachRouter` | Y |
+| `attachPubSub` | Y |
 | `attachDiscovery` | Y |
+| `serviceAttachmentCount` / `serviceAttachmentAt` | Y |
+| `nodeMonitorRecv` | Y |
 | `setTlsServer` | Y |
 | `setTlsClient` | Y |
 | `statusSnapshot` | Y |
@@ -847,21 +890,28 @@ RegistryQueryClient (원격 토폴로지 조회)
 - SpotNode는 data plane API(`send`/`recv`/`publish`/`subscribe`)를 직접
   노출하지 않는다.
 - data plane은 `Spot` facade를 통해서만 접근한다.
-- `connectPeer`/`disconnectPeer`는 discovery가 연결되면 EFSM으로 차단된다.
+- `connectPeer`/`disconnectPeer`는 raw peer topology 용 legacy control path 다.
+- service-aware public 설명에서는 `attachRouter` / `attachPubSub` /
+  `attachDiscovery` 를 중심으로 다룬다.
 
 ### Spot Capability Matrix
 
 | Capability | Spot |
 |---|---|
-| `publish` | Y |
+| `publish(service_name, topic, ...)` | Y |
 | `subscribe` | Y |
 | `setSubscription` / `unsetSubscription` | Y |
-| `onSubscribe` | Y |
+| `sendService` / `requestService` | Y |
+| `sendToSpot` / `requestToSpot` / `replyToSpot` | Optional typed routed surface |
+| `sendToRouter` / `requestToRouter` / `replyToRouter` | Optional typed routed surface |
+| `onDispatchEvent` | Y |
+| `onRoutedReceive` | Y |
 | `onSendReady` | Y |
 | `close` | Y |
 
-- Spot은 소켓 타입이 아니라 SpotNode 위에 올라가는 pub/sub facade다.
-- Spot은 `recv`, `send`, `onReceive`를 갖지 않는다.
+- Spot은 소켓 타입이 아니라 SpotNode 위에 올라가는 service-aware facade다.
+- Spot routed receive 는 `recv_routed` 또는 동등한 typed recv surface 로
+  노출할 수 있다.
 - Spot은 `bind`/`connect`를 갖지 않는다 (SpotNode가 담당).
 - Spot `close`는 facade만 해제하고 SpotNode는 살아 있다.
 
@@ -979,9 +1029,13 @@ RegistryQueryClient (원격 토폴로지 조회)
 | Component | Canonical Name | 설명 |
 |---|---|---|
 | SpotNode | `bind` | endpoint 바인드 |
-| SpotNode | `connectPeer` | peer 연결 |
-| SpotNode | `disconnectPeer` | peer 연결 해제 |
+| SpotNode | `connectPeer` | legacy peer 연결 |
+| SpotNode | `disconnectPeer` | legacy peer 연결 해제 |
+| SpotNode | `attachRouter` | 서비스별 ROUTER attach |
+| SpotNode | `attachPubSub` | 서비스별 PUB/SUB pair attach |
 | SpotNode | `attachDiscovery` | Discovery 연결 |
+| SpotNode | `serviceAttachmentCount` / `serviceAttachmentAt` | attachment 스냅샷 |
+| SpotNode | `nodeMonitorRecv` | 서비스별 attachment monitor recv |
 | SpotNode | `setTlsServer` | TLS 서버 설정 |
 | SpotNode | `setTlsClient` | TLS 클라이언트 설정 |
 | SpotNode | `statusSnapshot` | 노드 상태 스냅샷 |
@@ -989,10 +1043,12 @@ RegistryQueryClient (원격 토폴로지 조회)
 | SpotNode | `peersQuery` | peer 필터 조회 |
 | SpotNode | `subjectsSnapshot` | subject 목록 스냅샷 |
 | SpotNode | `close` | 노드 종료 |
-| Spot | `publish` | 토픽 발행 |
+| Spot | `publish(service_name, topic, ...)` | 서비스 단위 토픽 발행 |
 | Spot | `subscribe` | 토픽 구독 수신 |
 | Spot | `setSubscription` / `unsetSubscription` | 구독 필터 관리 |
-| Spot | `onSubscribe` | 구독 수신 callback |
+| Spot | `sendService` / `requestService` | 서비스 단위 routed 송신 / 요청 |
+| Spot | `onDispatchEvent` | topic/routed/timer readable 알림 |
+| Spot | `onRoutedReceive` | direct routed callback |
 | Spot | `onSendReady` | send ready callback |
 | Spot | `close` | facade 종료 |
 | Discovery | `connectRegistry` | Registry에 연결 |
@@ -1053,10 +1109,10 @@ RegistryQueryClient (원격 토폴로지 조회)
 - SpotNode bind → Spot publish → Spot subscribe 경로 성공
 - Spot subscribe → 데이터 없음 시 empty 반환 (non-blocking)
 - Spot publish 실패 시 예외 확인
-- Spot onSubscribe callback 호출 확인
+- Spot dispatch event callback 호출 확인
 - Spot onSendReady callback 호출 확인
-- SpotNode connectPeer → peer 간 publish/subscribe 경로 성공
-- SpotNode attachDiscovery 후 connectPeer 차단 (EFSM) 확인
+- SpotNode attachRouter / attachPubSub 경로 동작 확인
+- SpotNode service attachment snapshot / node monitor 확인
 - Discovery connectRegistry → 서비스 등록 경로 성공
 - Discovery setValue/getValue round-trip 확인
 - Discovery setMetadata/getMetadata round-trip 확인
@@ -1104,8 +1160,8 @@ RegistryQueryClient (원격 토폴로지 조회)
 
 ### Service Layer Sample Policy
 - Canonical Sample Set에 정의된 서비스 계열 샘플:
-  - `spot_recv_sample`: Spot direct subscribe
-  - `spot_callback_sample`: Spot onSubscribe callback
+  - `spot_recv_sample`: Spot service-aware subscribe / routed recv
+  - `spot_callback_sample`: Spot dispatch event callback
   - `monitor_recv_sample`: monitor event 수신 (socket monitor 포함)
 - service/spot 계열이 없는 바인딩은 `spot_*` 샘플을 제외할 수 있다.
 
@@ -1125,12 +1181,13 @@ RegistryQueryClient (원격 토폴로지 조회)
 - callback 등록 API는 각 소켓 타입의 capability에 따라 노출한다.
 - 위 Callback Capabilities 표가 기준이다.
 - canonical callback 이름:
-  - `onReceive`: direct message 수신 callback
-  - `onSubscribe`: topic message 수신 callback
+  - `onReceive`: raw `STREAM` direct fragment callback
+  - `onDispatchEvent`: SPOT unified readable notification callback
+  - `onRoutedReceive`: SPOT direct routed callback
   - `onSendReady`: send ready 상태 callback
 - callback payload shape는 direct receive와 동일해야 한다.
-  - `onReceive` callback payload = `recv()` 반환 shape
-  - `onSubscribe` callback payload = `subscribe()` 반환 shape
+  - `onReceive` callback payload = raw `STREAM` recv shape
+  - `onRoutedReceive` callback payload = SPOT routed recv shape
 - callback 등록 후 동일 subject에 대한 direct recv/subscribe는 native 계약에
   따라 차단된다 (EBUSY).
 - callback을 `null`/`None`으로 설정하여 해제하는 것은 허용하지 않는다.
@@ -1205,12 +1262,9 @@ message-level request-reply marker API 와 per-message metadata API 는 제거�
 typedef void (*zlink_reply_handler_fn)(
     zlink_request_result_t result_, zlink_msg_t *parts, size_t part_count, void *userdata);
 
-typedef void (*zlink_router_handler_fn)(
-    const zlink_routing_id_t *peer_rid, uint64_t request_seq,
-    zlink_msg_t *parts, size_t part_count, void *userdata);
 ```
 
-callback 으로 전달된 `parts`, `peer_rid` 는 borrowed view 다.
+callback 으로 전달된 `parts` 는 borrowed view 다.
 callback 반환 시점까지만 유효하다. 밖에서 유지하려면 복사한다.
 
 **Socket API:**
@@ -1226,9 +1280,6 @@ int zlink_router_request(void *router, const zlink_routing_id_t *peer_rid,
 
 int zlink_router_reply(void *router, const zlink_routing_id_t *peer_rid,
     uint64_t request_seq, zlink_msg_t *parts, size_t part_count);
-
-int zlink_router_handler(void *router, zlink_router_handler_fn handler,
-    void *userdata);
 
 int zlink_router_recv(void *router, const zlink_routing_id_t **peer_rid_out,
     uint64_t *request_seq_out, zlink_msg_t **parts_out,
@@ -1247,8 +1298,11 @@ int zlink_router_reply_spot(void *router, ...);
 int zlink_router_send_spot(void *router, ...);
 int zlink_spot_handler(void *spot, ...);
 int zlink_spot_recv(void *spot, ...);
-int zlink_router_handler(void *router, ...);
 int zlink_router_recv(void *router, ...);
+int zlink_spot_send_service(void *spot, ...);
+int zlink_spot_request_service(void *spot, ...);
+int zlink_spot_publish(void *spot, ...);
+int zlink_spot_subscribe(void *spot, ...);
 ```
 
 전체 시그니처는 `core/include/zlink.h` 를 참조한다.
@@ -1261,12 +1315,12 @@ core 가 request-reply dispatch 를 처리한다. 바인딩은 dispatch owner �
 - `request_seq != 0` 이면 request-reply message.
 - core 가 pending map 에서 `source_node_rid + request_seq` 로 매칭한다.
 - 매칭 실패한 reply (stray/late reply) 는 drop 한다.
-- ROUTER 는 generic `zlink_recv()` 대신 `zlink_router_recv()` / `zlink_router_handler()`
-  typed surface 를 사용한다. generic `zlink_recv()` 호출 시 `EOPNOTSUPP`.
+- ROUTER 는 generic `zlink_recv()` 대신 `zlink_router_recv()` typed surface 를
+  사용한다. generic `zlink_recv()` 호출 시 `EOPNOTSUPP`.
 - ROUTER 의 routed 수신 plane 은 **단일 표면**이다. 일반 ROUTER 트래픽과
-  spot-origin routed 트래픽 모두 `zlink_router_recv()` / `zlink_router_handler()`
-  하나로 받는다. `source_spot_rid` 가 `NULL` 이면 일반 ROUTER 트래픽,
-  채워져 있으면 spot-origin 트래픽이다.
+  spot-origin routed 트래픽 모두 `zlink_router_recv()` 하나로 받는다.
+  `source_spot_rid` 가 `NULL` 이면 일반 ROUTER 트래픽, 채워져 있으면
+  spot-origin 트래픽이다.
 
 #### Request API 변형
 
@@ -1370,16 +1424,18 @@ request-reply 는 routed direct messaging 위에 얹어진다.
 
 #### Pub/Sub 메시징
 
-SPOT pub/sub 는 topic 기반 발행/구독 모델이다.
+service-aware SPOT pub/sub 는 `service_name + topic` 기반 발행/구독 모델이다.
 
 ```c
 /* 발행 */
-int zlink_publish(void *subject, const char *topic_id,
+int zlink_spot_publish(void *spot, const char *service_name,
+    const char *topic_id,
     zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags);
 
 /* 구독 수신 */
-int zlink_subscribe(void *subject, zlink_routing_id_t *source_rid_out,
+int zlink_spot_subscribe(void *spot, zlink_routing_id_t *source_rid_out,
     zlink_msg_t **parts_out, size_t *part_count_out,
+    char *service_name_out, size_t *service_name_len_out,
     char *topic_id_out, size_t *topic_id_len_out, zlink_send_flags_t flags);
 
 /* 구독 필터 */
@@ -1389,9 +1445,10 @@ int zlink_unset_subscription(void *handle, const char *filter);
 
 바인딩 규칙:
 - C API 는 `try_*` 발행 함수를 따로 두지 않는다.
-- non-blocking publish 는 `zlink_publish(..., ZLINK_DONTWAIT)` 를 호출하고
+- non-blocking publish 는 `zlink_spot_publish(..., ZLINK_DONTWAIT)` 를 호출하고
   errno 를 `zlink_send_result_t` 로 분류한다. 바인딩은 별도 `tryPublish` 를 두지 않는다.
-- `subscribe` 수신은 typed receive surface 또는 handler callback 으로 노출한다.
+- `subscribe` 수신은 `service_name + topic + parts` 를 돌려주는 typed receive
+  surface 로 노출한다.
 - topic filter 설정은 typed subscription API 로 노출한다.
 
 #### Routed Direct Messaging
@@ -1423,7 +1480,7 @@ int zlink_router_send_spot(void *router,
 - 목적지 주소는 `dest_node_rid + dest_spot_rid` 또는 `peer_rid` 로 지정한다.
 - routed recv 는 아래 Event Dispatcher 의 handler/recv surface 를 사용한다.
 
-#### SPOT Lifecycle
+#### SPOT Lifecycle / Attachment
 
 ```c
 void *zlink_spot_new(void *node);          /* SPOT facade 생성 */
@@ -1434,13 +1491,24 @@ int zlink_spot_node_destroy(void **node_p);/* SPOT Node 해제 */
 int zlink_spot_node_bind(void *node, const char *endpoint);
 int zlink_spot_node_connect_peer(void *node, const char *peer_endpoint);
 int zlink_spot_node_disconnect_peer(void *node, const char *peer_endpoint);
+int zlink_spot_node_attach_router(void *node, const char *service_name, void *router);
+int zlink_spot_node_attach_pubsub(void *node, const char *service_name, void *pub, void *sub);
 int zlink_spot_node_attach_discovery(void *node, void *discovery);
+int zlink_spot_node_service_attachment_count(void *node, size_t *count_out);
+int zlink_spot_node_service_attachment_at(void *node, size_t index,
+    zlink_spot_service_attachment_stats_t *out);
+int zlink_spot_node_monitor_recv(void *node,
+    zlink_spot_service_monitor_event_t *out, int flags);
 ```
 
 바인딩 규칙:
 - `SpotNode` 와 `Spot` 은 별도 typed handle 로 노출한다.
 - `Spot` 은 `SpotNode` 위에 올라가는 facade 다. `SpotNode` 해제 시 `Spot` 도 무효가 된다.
-- `zlink_spot_node_attach_discovery` 후에는 peer connect/disconnect 를 수동으로 하면 `EFSM`.
+- service-aware 바인딩은 `attach_router`, `attach_pubsub`,
+  `attach_discovery`, attachment snapshot, node monitor surface 를 함께
+  노출해야 한다.
+- `connect_peer` / `disconnect_peer` 는 raw peer topology 용 legacy control
+  path 로 남아 있다. service-aware public surface 의 중심 API 로 설명하면 안 된다.
 
 ### SPOT Event Dispatcher Policy
 
@@ -1457,28 +1525,31 @@ core 는 callback 기반 event dispatcher 모델을 제공한다.
 #### Callback 등록 API
 
 ```c
-/* 소켓/subject 에 direct recv callback 등록 */
+/* raw STREAM direct recv callback */
 int zlink_recv_handler(void *s, zlink_socket_msg_handler_fn handler, void *userdata);
 
-/* pub/sub subject 에 topic-aware recv callback 등록 */
-int zlink_subscribe_handler(void *s, zlink_subscribe_handler_fn handler, void *userdata);
+/* raw STREAM packet callback */
+int zlink_stream_packet_handler(void *stream, zlink_stream_packet_handler_fn handler,
+    void *userdata);
 
 /* writable 알림 callback 등록 */
 int zlink_send_ready_handler(void *s, zlink_send_ready_handler_fn handler, void *userdata);
 
 /* SPOT typed recv callback */
 int zlink_spot_handler(void *spot, zlink_spot_handler_fn handler, void *userdata);
-
-/* ROUTER typed recv callback — 일반 ROUTER 트래픽과 spot-origin routed
-   트래픽을 모두 받는 단일 표면 */
-int zlink_router_handler(void *router, zlink_router_handler_fn handler, void *userdata);
 ```
 
 규칙:
 - callback 등록은 한 subject 당 하나만 가능하다.
   이미 등록된 상태에서 다시 등록하면 `EBUSY`.
-- callback 등록 후 같은 subject 에 대한 direct recv (`zlink_recv`, `zlink_subscribe`) 와
-  poller `ZLINK_POLLIN` 등록은 `EBUSY` 로 실패한다.
+- `zlink_recv_handler()` 는 raw `STREAM` 에만 허용한다.
+- `zlink_stream_packet_handler()` 도 raw `STREAM` 에만 허용하며,
+  `recv` / raw callback / packet callback 세 모드는 서로 배타적이다.
+- raw `PAIR`, `DEALER`, `ROUTER`, `SUB`, `XSUB` 는 direct receive callback
+  install surface 를 두지 않는다. data plane 은 recv-only 이다.
+- callback 등록 후 같은 subject 에 대한 direct recv 와 해당 data-plane
+  `ZLINK_POLLIN` 등록은 `EBUSY` 로 실패할 수 있다. 정확한 적용 범위는
+  STREAM / SPOT 의 타입별 규칙을 따른다.
 - callback 은 replace-only 다. `NULL` 전달은 허용하지 않는다.
 
 #### Spot Dispatch Event Handler
@@ -1512,7 +1583,7 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(void *spot,
 - dispatch event handler 를 등록한다.
 - callback 이 호출되면 `event` 를 확인한다.
 - 같은 `spot` 의 활성 dispatch callback 안에서는 기본 recv surface 를 사용할 수 있다.
-- `SUBSCRIBE_READABLE` 이면 `zlink_subscribe()` 로 pub/sub 메시지를 recv 한다.
+- `SUBSCRIBE_READABLE` 이면 `zlink_spot_subscribe()` 로 pub/sub 메시지를 recv 한다.
 - `ROUTED_READABLE` 이면 `zlink_spot_recv()` 로 routed/request 메시지를 recv 한다.
 - `TIMER_READABLE` 이면 `zlink_timer_recv()` 로 timer fire 를 recv 한다.
 - dispatch event 는 readable 알림이다. callback 1회가 메시지 1개를 뜻하지는 않는다.
@@ -1561,7 +1632,7 @@ int zlink_timer_recv(void *timer, uint64_t *fire_count_out);
 ```
 zlink_spot_dispatch_event_handler callback
   (serialized per spot, non-reentrant)
-  ├── SUBSCRIBE_READABLE → zlink_subscribe()    (pub/sub 메시지)
+  ├── SUBSCRIBE_READABLE → zlink_spot_subscribe() (pub/sub 메시지)
   ├── ROUTED_READABLE    → zlink_spot_recv()    (routed / request 메시지)
   └── TIMER_READABLE     → zlink_timer_recv()   (timer fire)
 ```
@@ -1595,17 +1666,9 @@ zlink_recv_result_t zlink_spot_recv(void *spot, ...);
 - `zlink_spot_handler()` 와 `zlink_spot_recv()` 는 같은 수신 plane 을 공유한다.
   동시에 허용하지 않는다. 충돌 시 `EBUSY`.
 
-#### Router 수신 (routed 통합 표면)
+#### Router 수신 (routed 통합 recv-only 표면)
 
 ```c
-typedef void (*zlink_router_handler_fn)(
-    const zlink_routing_id_t *source_node_rid,
-    const zlink_routing_id_t *source_spot_rid,
-    uint64_t request_seq,
-    zlink_msg_t *parts, size_t part_count, void *userdata);
-
-zlink_handler_result_t zlink_router_handler(void *router,
-    zlink_router_handler_fn handler, void *userdata);
 zlink_recv_result_t zlink_router_recv(void *router,
     const zlink_routing_id_t **source_node_rid_out,
     const zlink_routing_id_t **source_spot_rid_out,
@@ -1615,25 +1678,19 @@ zlink_recv_result_t zlink_router_recv(void *router,
 ```
 
 - ROUTER 의 routed 수신은 단일 plane 이다. 일반 ROUTER 트래픽과
-  spot-origin routed 트래픽을 하나의 handler / recv 로 받는다.
+  spot-origin routed 트래픽을 하나의 recv 로 받는다.
 - `source_spot_rid == NULL` 이면 일반 ROUTER 트래픽 (reply 는
   `zlink_router_reply` 사용). `source_spot_rid` 가 채워져 있으면 spot-origin
   트래픽 (reply 는 `zlink_router_reply_spot` 사용).
 - `request_seq == 0` 이면 fire-and-forget. `request_seq != 0` 이면 request.
-- `zlink_router_handler()` 와 `zlink_router_recv()` 는 같은 plane 을
-  공유하므로 동시에 허용하지 않는다. 충돌 시 `EBUSY`.
+- 바인딩은 ROUTER data-plane callback install surface 를 별도로 노출하지 않는다.
+  request completion callback 은 `request(...)` 경로에서만 유지한다.
 
 #### Pub/Sub 수신
 
-```c
-typedef void (*zlink_subscribe_handler_fn)(
-    zlink_routing_id_t *source_rid,
-    zlink_msg_t *parts, size_t part_count,
-    void *userdata);
-
-int zlink_subscribe_handler(void *s, zlink_subscribe_handler_fn handler,
-    void *userdata);
-```
+- raw `SUB`, `XSUB` 는 recv-only 이다.
+- 바인딩은 `zlink_subscribe()` typed receive surface 를 노출한다.
+- direct topic callback install surface 는 raw pub/sub family 에 두지 않는다.
 
 #### Service Monitor
 
@@ -2238,7 +2295,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
   - `subscribe`
   - `receiveSubscriptionEvent`
   - `setSubscription`, `unsetSubscription`
-  - `onReceive`, `onSubscribe`, `onSendReady`
+  - `onReceive`, `onDispatchEvent`, `onRoutedReceive`, `onSendReady`
 
 ### Method Name Conciseness
 - 이 규칙은 public API에 엄격히 적용한다.
@@ -2362,8 +2419,9 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 | Public flags overloads | Raw C only | High-level public surface: No | No | No | No | No | No | No |
 | Typed option surface | N/A raw C options | Required | Required | Required | Required | Required | Required | Required |
 | Socket Capability Matrix 준수 | Core 기준 | Required | Required | Required | Required | Required | Required | Required |
-| `onReceive` callback | Raw fn ptr | Required | Required | Required | Required | Required | Required | Required |
-| `onSubscribe` callback | Raw fn ptr | Required | Required | Required | Required | Required | Required | Required |
+| `onReceive` callback | STREAM raw fn ptr | Required | Required | Required | Required | Required | Required | Required |
+| `onDispatchEvent` callback | SPOT raw fn ptr | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required |
+| `onRoutedReceive` callback | SPOT raw fn ptr | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required |
 | `onSendReady` callback | Raw fn ptr | Required | Required | Required | Required | Required | Required | Required |
 | StreamSocket `connect` 차단 | N/A | Required | Required | Required | Required | Required | Required | Required |
 | Monitor typed event surface | Raw struct | Required | Required | Required | Required | Required | Required | Required |
@@ -2626,8 +2684,8 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 - 검증: surface test에서 canonical 이름 존재를 확인한다.
 - 대표 위반 예:
   - `recvHandler` → `onReceive`
-  - `subscribeHandler` → `onSubscribe`
-  - `on_topic_message` → `on_subscribe`
+  - `spotDispatchHandler` → `onDispatchEvent`
+  - `on_topic_message` → `subscribe`
 
 #### 3단계: 깊은 모듈 구조
 - POSD deep module 원칙에 따라 public 타입의 깊이를 확보한다.
@@ -2714,8 +2772,8 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 2. **이름 정규화 완료**
    - 모든 public API가 Naming Policy의 canonical 이름을 사용한다.
    - deprecated alias가 남아 있지 않다.
-   - Callback API Policy의 canonical 이름 3개(`onReceive`, `onSubscribe`,
-     `onSendReady`)가 해당 소켓에 존재한다.
+   - Callback API Policy의 canonical 이름(`onReceive`, `onDispatchEvent`,
+     `onRoutedReceive`, `onSendReady`)이 해당 capability에 맞게 존재한다.
 
 3. **얕은 래퍼 제거**
    - native 함수를 1:1로 감싸기만 하는 public 타입이 없다.

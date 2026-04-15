@@ -132,7 +132,7 @@ typedef enum zlink_recv_result_t
 
 /*  Handler registration result (301+).                                      */
 /*  Applies to recv_handler, subscribe_handler, send_ready_handler,          */
-/*  router_handler, spot_handler, router_spot_handler,                       */
+/*  spot_handler, router_spot_handler,                                        */
 /*  spot_dispatch_event_handler, monitor_handler.                            */
 typedef enum zlink_handler_result_t
 {

@@ -91,6 +91,7 @@ These report transport/session state for raw sockets.
 | `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | Handshake failed (protocol error) | error code | — | Both | check version/config |
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | Handshake failed (auth) | — | — | Both | check TLS/auth config |
 | `MONITOR_STOPPED` | `0x0400` | Monitor stopped | — | — | Both | `zlink_monitor_close()` |
+| `PEER_ADMISSION_CHANGED` | `0x8000` | Connected peer's admission state changed | new admission state | peer id | Both | re-evaluate dispatch / dashboard |
 
 ### Connection flow
 
@@ -131,6 +132,47 @@ When `HANDSHAKE_FAILED_PROTOCOL` fires, the `value` field contains one of these 
 | Constant | Value | Description |
 |---|---|---|
 | `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | Malformed ZMP HELLO command. |
+
+### Peer admission changes
+
+When a peer connected to a ROUTER or DEALER changes its own admission
+state, `ZLINK_EVENT_PEER_ADMISSION_CHANGED` is delivered through the raw
+socket monitor. The event's `routing_id` identifies the peer that
+changed; `value` holds the new admission state
+(`ZLINK_ADMISSION_SERVING` or `ZLINK_ADMISSION_DRAINING`).
+
+```c
+void on_admission(const zlink_monitor_event_t *ev, void *userdata)
+{
+    if (!(ev->event & ZLINK_EVENT_PEER_ADMISSION_CHANGED))
+        return;
+
+    const char *state =
+        (ev->value == ZLINK_ADMISSION_DRAINING) ? "DRAINING" : "SERVING";
+    printf("orders-exec peer admission -> %s\n", state);
+}
+
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
+zlink_connect(dealer, "tcp://orders-exec-1:7100");
+
+zlink_socket_monitor_open_options_t opts = {
+    .events = ZLINK_EVENT_CONNECTION_READY
+            | ZLINK_EVENT_DISCONNECTED
+            | ZLINK_EVENT_PEER_ADMISSION_CHANGED,
+};
+void *mon = zlink_socket_monitor_open(dealer, &opts);
+zlink_socket_monitor_handler(mon, on_admission, NULL);
+```
+
+DEALER automatically excludes `DRAINING` ROUTERs from its round-robin
+candidates, so the application typically only needs this event to update
+diagnostics or dashboards. Once every known ROUTER is `DRAINING`, new
+submits start failing with `ZLINK_SUBMIT_NOT_ADMITTED`.
+
+`SpotNode` callers receive the same change through the service monitor
+event `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`, drained from
+`zlink_spot_node_monitor_recv()` together with the `service_name` and
+attachment role.
 
 ## 5. Event Flow Diagrams
 

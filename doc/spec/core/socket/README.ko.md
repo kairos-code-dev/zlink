@@ -35,6 +35,34 @@
   reentrant API, 같은 `zlink_msg_t` 인스턴스의 동시 공유는 기본 허용 범위
   밖입니다.
 
+## 수신 모델 요약
+
+소켓 타입별 수신 모델은 아래와 같이 고정합니다. 기본 모델은
+`recv + poller`이며, 예외 타입만 콜백 기반 수신을 지원합니다.
+
+| 소켓 타입 | 수신 표면 | 비고 |
+|-----------|-----------|------|
+| PAIR | `zlink_recv()` | recv-only |
+| DEALER | `zlink_recv()` (+ `zlink_dealer_request()` completion callback) | recv-only data plane |
+| SUB | `zlink_subscribe()` | recv-only |
+| XSUB | `zlink_subscribe()` | recv-only |
+| ROUTER | `zlink_router_recv()` (+ `zlink_router_request()` completion callback) | recv-only data plane |
+| STREAM | `zlink_recv()` / `zlink_recv_handler()` / `zlink_stream_packet_handler()` | 세 모드 중 하나 선택 (예외) |
+| PUB | 해당 없음 | 송신 전용 |
+| XPUB | `zlink_subscription_event()` (구독 이벤트 recv-only) | 데이터 plane은 송신 |
+| monitor / timer | recv / callback 모두 지원 | 관찰/유틸 계층 |
+
+핵심 원칙:
+
+- raw data-plane 수신은 recv + poller 조합이 기본이며, 서버 루프는
+  `ZLINK_POLLIN`을 관찰한 뒤 recv 계열 함수로 데이터를 가져오는 방식을 씁니다.
+- `DEALER`/`ROUTER`의 request completion callback은 data-plane receive가
+  아니라 비동기 작업 완료 통지입니다. 이 둘은 역할이 다르므로 같은 범주로
+  묶지 않습니다.
+- STREAM만은 예외입니다. raw transport 특성상 세 가지 수신 모드(raw recv,
+  raw callback, packet callback) 중 하나를 선택할 수 있습니다. 한 handle
+  에서 두 번째 모드로 전환하려 하면 `EBUSY`로 실패합니다.
+
 ## 콜백 타입
 
 ### zlink_socket_msg_handler_fn
@@ -47,35 +75,28 @@ typedef void (*zlink_socket_msg_handler_fn) (
   void *userdata_);
 ```
 
-멀티파트 수신 subject(raw `PAIR`, `DEALER`, `STREAM`)에서
-멀티파트 메시지 dispatch에 사용되는 콜백입니다.
-소유 I/O 스레드에서 호출됩니다. 모든 메시지 파트의 소유권이 콜백으로
-이전되며, 각 파트는 정확히 한 번 close하거나 소비해야 합니다.
-`zlink_recv_handler()`와 함께 사용합니다.
+raw `STREAM`의 raw 수신 콜백에 사용되는 타입입니다. 소유 I/O 스레드에서
+호출되며, 모든 메시지 파트의 소유권이 콜백으로 이전됩니다. 각 파트는
+정확히 한 번 close하거나 소비해야 합니다. `zlink_recv_handler()`와 함께
+사용합니다.
 
-### zlink_subscribe_handler_fn
+### zlink_stream_packet_handler_fn
 
 ```c
-typedef void (*zlink_subscribe_handler_fn) (const zlink_routing_id_t *source_rid_,
-                                       const char *topic_,
-                                       size_t topic_len_,
-                                       zlink_msg_t *parts_,
-                                       size_t part_count_,
-                                       void *userdata_);
+typedef void (*zlink_stream_packet_handler_fn) (
+  void *stream_,
+  const zlink_routing_id_t *source_rid_,
+  zlink_msg_t *header_,
+  zlink_msg_t *body_,
+  void *userdata_);
 ```
 
-토픽 기반 수신 subject(raw `SUB`, `XSUB`, `spot`, `spot_node`)에서
-토픽 기반 메시지 dispatch에 사용되는 콜백입니다. 소유 I/O 스레드에서
-호출되며, 파트의 소유권이 이전됩니다.
-`zlink_subscribe_handler()`와 함께 사용합니다.
-
-각 콜백 타입은 전용 함수를 통해 등록합니다. 소켓 타입별 등록 함수 매핑:
-
-| 소켓 타입 | 등록 함수 | 콜백 |
-|---|---|---|
-| PAIR, DEALER, STREAM | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
-| SUB, XSUB, spot, spot_node | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
-| PUB | N/A | 송신 전용; 핸들러 불필요 |
+raw `STREAM`의 packet 단위 수신 콜백 타입입니다. `source_rid_`는 packet을
+보낸 client 연결의 routing id를 가리키는 borrowed view이고, `header_`와
+`body_`는 고정 framing 규약에 따라 조립된 packet의 header/body 페이로드
+입니다. 길이가 0인 경우에도 NULL이 아닌 유효한 `zlink_msg_t`로 전달되며,
+두 `msg_t`의 소유권은 콜백으로 이전됩니다. `zlink_stream_packet_handler()`
+와 함께 사용합니다.
 
 ### zlink_send_ready_handler_fn
 
@@ -83,7 +104,9 @@ typedef void (*zlink_subscribe_handler_fn) (const zlink_routing_id_t *source_rid
 typedef void (*zlink_send_ready_handler_fn) (void *subject_, void *userdata_);
 ```
 
-송신 가능한 핸들이 쓰기 가능 상태로 전환될 때 호출되는 콜백.
+해당 handle이 backpressure 상태에서 벗어나 송신 재시도를 시도할 가치가
+있는 시점에 호출되는 콜백입니다. `ZLINK_POLLOUT`과 같은 send-recovery
+readiness 축을 공유하며, 콜백 자체는 재시도 성공을 보장하지 않습니다.
 
 ### zlink_reply_handler_fn
 
@@ -99,27 +122,9 @@ typedef void (*zlink_reply_handler_fn) (
 호출됩니다. 타임아웃 시 `result_`는 `ZLINK_REQUEST_TIMED_OUT`이고 `parts_`는
 NULL입니다. 성공 시 `result_`는 `ZLINK_REQUEST_OK`이고 모든 메시지 파트의
 소유권이 콜백으로 이전됩니다. `result_`는 submit 실패가 아니라
-`zlink_request_result_t` 값으로 request completion 결과를 나타냅니다.
-
-### zlink_router_handler_fn
-
-```c
-typedef void (*zlink_router_handler_fn) (
-  const zlink_routing_id_t *source_node_rid_,
-  const zlink_routing_id_t *source_spot_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  void *userdata_);
-```
-
-ROUTER 소켓의 routed 수신 콜백입니다. `source_node_rid_`는 모든 routed
-delivery의 source node를 가리킵니다. 일반 ROUTER peer에서 온 트래픽이면
-`source_spot_rid_`는 `NULL`입니다. spot에서 시작한 routed 트래픽이면
-`source_spot_rid_`가 source spot을 가리킵니다.
-`request_seq_ == 0`이면 fire-and-forget routed message이고,
-`request_seq_ != 0`이면 응답이 필요한 request입니다. 모든 메시지 파트의
-소유권이 콜백으로 이전됩니다.
+`zlink_request_result_t` 값으로 request completion 결과를 나타냅니다. 이
+콜백은 data-plane receive가 아니라 async operation completion 통지 축이며,
+`DEALER`/`ROUTER`의 request API에서만 사용됩니다.
 
 ## 상수
 
@@ -144,16 +149,40 @@ typedef enum zlink_socket_type_t
 ### 송신 플래그
 
 ```c
-typedef uint32_t zlink_send_flags_t;
-
-#define ZLINK_DONTWAIT  ((zlink_send_flags_t) 0x0001u)
-#define ZLINK_SEND_FLAG_DONTWAIT ZLINK_DONTWAIT
+typedef enum zlink_send_flags_t
+{
+    ZLINK_SEND_FLAGS_NONE     = 0,
+    ZLINK_SEND_FLAGS_DONTWAIT = 0x0001u
+} zlink_send_flags_t;
 ```
+
+`ZLINK_DONTWAIT` 와 `ZLINK_SEND_FLAG_DONTWAIT` 는 헤더에
+`ZLINK_SEND_FLAGS_DONTWAIT` 의 backward-compatible alias 로 남아 있습니다.
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_DONTWAIT` | 논블로킹 모드; 블로킹 시 `ZLINK_SUBMIT_BACKPRESSURED` 반환 |
-| `ZLINK_SEND_FLAG_DONTWAIT` | `ZLINK_DONTWAIT`의 별칭 |
+| `ZLINK_SEND_FLAGS_NONE` | 플래그 없음; 블로킹 송신 동작. |
+| `ZLINK_SEND_FLAGS_DONTWAIT` | 논블로킹 모드; 블로킹 시 `ZLINK_SUBMIT_BACKPRESSURED` 반환 |
+| `ZLINK_DONTWAIT` | `ZLINK_SEND_FLAGS_DONTWAIT` 의 backward-compatible alias |
+| `ZLINK_SEND_FLAG_DONTWAIT` | `ZLINK_SEND_FLAGS_DONTWAIT` 의 backward-compatible alias |
+
+### 수신 플래그
+
+```c
+typedef enum zlink_recv_flags_t
+{
+    ZLINK_RECV_FLAGS_NONE     = 0,
+    ZLINK_RECV_FLAGS_DONTWAIT = 0x0001u
+} zlink_recv_flags_t;
+```
+
+`zlink_recv`, `zlink_subscribe`, 소켓별 `zlink_*_recv` 계열, 그리고
+monitor `zlink_*_monitor_recv` 함수들이 이 플래그를 사용합니다.
+
+| 상수 | 설명 |
+|---|---|
+| `ZLINK_RECV_FLAGS_NONE` | 플래그 없음; 블로킹 수신 동작. |
+| `ZLINK_RECV_FLAGS_DONTWAIT` | 논블로킹 수신; 수신할 메시지가 없으면 `ZLINK_RECV_AGAIN` 을 즉시 반환. |
 
 ### 송신 결과
 
@@ -167,6 +196,7 @@ typedef enum zlink_submit_result_t
     ZLINK_SUBMIT_BACKPRESSURED = 1,
     ZLINK_SUBMIT_NOT_CONNECTED = 2,
     ZLINK_SUBMIT_NOT_FOUND = 3,
+    ZLINK_SUBMIT_NOT_ADMITTED = 13,
 
     /* Runtime / lifecycle failure. */
     ZLINK_SUBMIT_TERMINATED = 4,
@@ -196,6 +226,7 @@ send, request submit, reply submit API의 공개 결과를 정규화할 때
 | `ZLINK_SUBMIT_BACKPRESSURED` | 1 | 송신 큐가 가득 참 (HWM 도달) |
 | `ZLINK_SUBMIT_NOT_CONNECTED` | 2 | 대상 경로나 peer가 아직 연결되지 않음 |
 | `ZLINK_SUBMIT_NOT_FOUND` | 3 | 대상 peer, spot, routed destination을 찾지 못함 |
+| `ZLINK_SUBMIT_NOT_ADMITTED` | 13 | Normal control-flow 결과. DRAINING 대상이 신규 outbound를 거부함; 호출자는 다른 peer를 선택하거나 대기해야 함 |
 | `ZLINK_SUBMIT_TERMINATED` | 4 | context가 종료됨 |
 | `ZLINK_SUBMIT_INVALID_HANDLE` | 5 | 핸들이 NULL이거나 유효하지 않음 |
 | `ZLINK_SUBMIT_INVALID_ARGUMENT` | 6 | API 계약에 맞지 않는 인자 |
@@ -375,11 +406,12 @@ void *zlink_socket (void *context_, zlink_socket_type_t type_);
 ```
 
 지정된 context 내에서 새 소켓을 생성합니다. `type_` 매개변수는 메시징 패턴을
-선택합니다. raw socket은 recv 모드로 시작합니다. 멀티파트 수신
-subject(`PAIR`, `DEALER`, `STREAM`)는 `zlink_recv_handler()`
-callback attach를 지원하고, 토픽 기반 subject(`SUB`, `XSUB`)는
-`zlink_subscribe_handler()`를 지원합니다. 소켓은 context가
-종료되기 전에 `zlink_close()`로 닫아야 합니다.
+선택합니다. raw socket의 수신 모델은 타입별로 고정됩니다. `PAIR`, `DEALER`,
+`SUB`, `XSUB`는 recv-only이며, `ROUTER`는 `zlink_router_recv()`로
+수신합니다. `STREAM`만이 예외 타입으로, raw recv / raw callback
+(`zlink_recv_handler()`) / packet callback
+(`zlink_stream_packet_handler()`) 세 모드 중 하나를 선택해 사용할 수
+있습니다. 소켓은 context가 종료되기 전에 `zlink_close()`로 닫아야 합니다.
 
 **반환값:** 성공 시 소켓 핸들, 실패 시 `NULL` (errno가 설정됨).
 
@@ -388,57 +420,31 @@ callback attach를 지원하고, 토픽 기반 subject(`SUB`, `XSUB`)는
 
 **스레드 안전성:** Context에 대해 스레드 안전합니다.
 
-**참고:** `zlink_close`, `zlink_ctx_new`, `zlink_recv_handler`
+**참고:** `zlink_close`, `zlink_ctx_new`
 
 ---
 
 ### zlink_recv_handler
 
-소켓에 메시지 수신 핸들러를 부착합니다.
+raw `STREAM` 소켓에 raw 수신 콜백을 부착합니다.
 
 ```c
-bool zlink_recv_handler (void *s_,
-                         zlink_socket_msg_handler_fn handler_,
-                         void *userdata_);
+zlink_handler_result_t zlink_recv_handler (
+  void *s_, zlink_socket_msg_handler_fn handler_, void *userdata_);
 ```
 
-멀티파트 수신 subject에 메시지 수신 핸들러를 부착합니다. 지원 대상은 raw
-`PAIR`, `DEALER`, `STREAM`입니다. attach 이후 같은
-subject의 direct recv와 data-plane poller `ZLINK_POLLIN`은 `errno=EBUSY`로
-실패합니다. 동일 subject에 대한 두 번째 attach도 `errno=EBUSY`입니다.
-지원하지 않는 subject는 `ENOTSUP`를 반환합니다.
+raw `STREAM` 전용 direct receive callback 등록 함수입니다. 지원 대상은
+raw `STREAM` 뿐이며, 다른 subject(PAIR, DEALER 등)는 `ENOTSUP`로 실패합니다.
+attach 이후 같은 handle의 `zlink_recv()`, `zlink_stream_packet_handler()`,
+data-plane `ZLINK_POLLIN`은 `errno=EBUSY`로 실패합니다. 동일 handle에 대한
+두 번째 attach도 `errno=EBUSY`입니다.
 
-**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
+자세한 계약은 `stream.ko.md`를 참조하세요.
 
-**에러:** 핸들러가 NULL이면 `EINVAL`. 소켓 타입이 메시지 핸들러를
-허용하지 않으면 `ENOTSUP`. 핸들러가 이미 부착된 경우 `EBUSY`.
+**반환값:** 성공 시 `ZLINK_HANDLER_OK`. 실패 시에는 `zlink_handler_result_t`
+값을 반환합니다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지됩니다.
 
-**참고:** `zlink_subscribe_handler`, `zlink_socket`, `zlink_close`
-
----
-
-### zlink_subscribe_handler
-
-소켓에 토픽 기반 수신 핸들러를 부착합니다.
-
-```c
-bool zlink_subscribe_handler (void *s_,
-                              zlink_subscribe_handler_fn handler_,
-                              void *userdata_);
-```
-
-raw `SUB`, raw `XSUB`, `spot`, `spot_node`에 토픽 기반 수신 핸들러를
-부착합니다. attach 이후 같은 subject의 `zlink_subscribe()`와 data-plane
-poller `ZLINK_POLLIN`은 `errno=EBUSY`로 실패합니다. 동일 subject에 대한
-두 번째 attach도 `errno=EBUSY`입니다. 지원하지 않는 subject는 `ENOTSUP`를
-반환합니다.
-
-**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
-
-**에러:** 핸들러가 NULL이면 `EINVAL`. handle 타입이 subscribe handler를
-허용하지 않으면 `ENOTSUP`. 핸들러가 이미 부착된 경우 `EBUSY`.
-
-**참고:** `zlink_recv_handler`, `zlink_socket`, `zlink_close`
+**참고:** `zlink_stream_packet_handler`, `zlink_socket`, `zlink_close`
 
 ---
 
@@ -712,9 +718,12 @@ bool zlink_send_ready_handler (
 `errno=EDEADLK`로 실패합니다.
 
 지원 대상은 raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, `spot_node`입니다. send-ready는 receive callback 모드와
-독립적입니다. attach 이후 같은 subject의 data-plane poller
-`ZLINK_POLLOUT`은 `errno=EBUSY`로 실패합니다. 지원하지 않는 subject는
+`spot`, `spot_node`입니다. send-ready는 수신 모드와 독립적입니다.
+
+이 콜백과 `ZLINK_POLLOUT`은 같은 send-recovery readiness 축을 가리킵니다.
+`BACKPRESSURED` 결과를 본 호출자가 재시도할 가치가 있는 시점을 알립니다.
+readiness 신호 자체는 재시도 성공을 보장하지 않으며, 알림 뒤 첫 재시도가
+다시 `BACKPRESSURED`로 실패할 수 있습니다. 지원하지 않는 subject는
 `ENOTSUP`를 반환합니다.
 
 **반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).

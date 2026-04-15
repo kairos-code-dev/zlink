@@ -163,6 +163,44 @@ For socket family services, Discovery matches peers by **service role**:
 The role is derived automatically from the socket type at attach time --
 no configuration needed.
 
+For ROUTER ↔ ROUTER auto-connect, where both sides could start an
+outbound, **the library decides which side dials per pair.** Two ROUTERs
+that see each other through Discovery still produce only one `connect`.
+You do not need to configure who-dials-whom; the rule is a built-in
+internal policy that reduces duplicate-connection races and handover
+churn. It applies to Discovery-managed auto-connect only -- manual
+`zlink_connect()` calls made through the raw API are not mediated by the
+library.
+
+#### Who dials whom -- pairwise initiator rule
+
+When Discovery pairs two ROUTER peers of the same service, the library
+picks exactly one side as the initiator per pair. The comparison key is
+a total order over the advertised `routing_id` first, then the advertise
+endpoint as a tie-breaker, so both ends independently arrive at the same
+decision. Users do not configure this -- same-service ROUTERs can be
+added to Discovery symmetrically, and only the chosen side produces a
+`connect`.
+
+```mermaid
+sequenceDiagram
+    participant A as ROUTER orders-exec-a
+    participant Reg as Registry
+    participant B as ROUTER orders-exec-b
+
+    A->>Reg: register (rid=A, advertise=tcp://hostA:9100)
+    B->>Reg: register (rid=B, advertise=tcp://hostB:9100)
+    Reg-->>A: service_list {A, B}
+    Reg-->>B: service_list {A, B}
+    Note over A,B: both evaluate order(A, B): A < B → B dials A
+    B->>A: connect (tcp://hostA:9100)
+```
+
+Handover still covers the exceptional case where the same `routing_id`
+appears from two different hosts (misconfiguration, zombie instance,
+rolling restart overlap); `ROUTER_HANDOVER=1` -- the default -- then lets
+the newer connection take over the existing pipe.
+
 ## 3. Registry Setup
 
 Registry is the central coordination server. In production, deploy a
@@ -258,6 +296,49 @@ zlink_discovery_destroy(&discovery);
 **Lifecycle:** Once a socket is attached, manual `connect`, `disconnect`,
 `unbind`, and `close` calls fail. Destroying the Discovery instance
 terminates all attached sockets.
+
+## 4.2 Attaching Multiple Service Discoveries to One SpotNode
+
+A single Discovery still watches one `service_name`. What changed is that
+one `SpotNode` can host several Discovery handles at the same time, each
+watching a **different** `service_name`. The ROUTER/PUB/SUB providers
+supplied by each Discovery land in the node's service attachment table as
+automatic sources.
+
+```c
+void *orders_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "orders-exec");
+void *prices_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "market-data");
+
+zlink_discovery_connect_registry(orders_discovery, "tcp://registry1:5551");
+zlink_discovery_connect_registry(prices_discovery, "tcp://registry1:5551");
+
+void *node = zlink_spot_node_new(ctx);
+zlink_spot_node_bind(node, "tcp://*:9000");
+
+/* The same SpotNode hosts attachments for two different services. */
+zlink_spot_node_attach_discovery(node, orders_discovery);
+zlink_spot_node_attach_discovery(node, prices_discovery);
+```
+
+Rules to keep in mind:
+
+- **No same-service duplicates.** Attaching two Discovery handles for the
+  same `service_name` on one node fails with `EBUSY`.
+- **pub/sub must be paired.** If a Discovery view contains a service with
+  only `pub`, only `sub`, or a half-pair like `router + pub`, the attach is
+  rejected with `EINVAL`. Accepted shapes are `router only` or
+  `router + pub + sub`.
+- **At most one public `Spot` facade.** A node with any service-aware
+  attachment admits exactly one `zlink_spot_new(node)` facade. If two or
+  more facades already exist, the attach fails with `EBUSY`.
+- **Discovery destroy removes only that source.** Destroying one Discovery
+  removes only the automatic attachments it was supplying. Manual
+  attachments and attachments from other Discovery sources remain.
+
+See the attach_discovery failure table in the
+[SPOT spec](../spec/core/service/spot.md) for the full matrix.
 
 ## 5. Liveness and Summary Updates
 

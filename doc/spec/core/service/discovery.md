@@ -108,6 +108,33 @@ For Discovery-attached services, the current Discovery `service_name` is the
 auto-connect boundary. Managed auto-connect operates only inside that service
 scope and never crosses into a different `service_name`.
 
+### SpotNode socket-service Discovery attach
+
+`zlink_spot_node_attach_discovery()` accepts both `ZLINK_SERVICE_TYPE_SPOT`
+and `ZLINK_SERVICE_TYPE_SOCKET` Discovery handles. For a socket-service
+Discovery, the attach semantics are "reflect the socket provider view of
+this `service_name` into the SpotNode's service attachment table as an
+automatic source," not "auto-connect to peer SpotNode endpoints."
+
+- A Discovery still has exactly one fixed `service_name` view.
+- One `SpotNode` can host several socket-service Discovery handles, one
+  per distinct `service_name`.
+- The same Discovery handle must not be attached to more than one owner.
+- A node must not have more than one Discovery for the same `service_name`.
+- A node with any service-aware attachment accepts only one public `Spot`
+  facade.
+- Destroying a Discovery removes only the automatic attachments that this
+  Discovery was supplying. Manual attachments and attachments from other
+  Discovery sources are left alone.
+- Providers supplied by a socket-service Discovery are visible through the
+  service attachment snapshot and through the node monitor recv surface.
+
+At attach time, Discovery view shape is validated. A service that has only
+`pub`, only `sub`, `router + pub`, or `router + sub` is rejected because
+pub/sub must be paired. A service that has `router` only, or the full
+`router + pub + sub`, is accepted. See the attach_discovery failure table
+in [spot.md](spot.md) for the exact result codes.
+
 ### SPOT Node
 
 SPOT Node may automatically discover and connect to other SPOT Node endpoints
@@ -128,6 +155,33 @@ initiate the outbound connect.
 - `SUB -> PUB`
 - `PUB -> none`
 - `DEALER -> ROUTER` by default
+
+### Pairwise initiator rule (ROUTER ↔ ROUTER)
+
+When two ROUTERs in the same service discover each other via Discovery,
+a single successful connect already provides a bidirectional message path.
+Letting both sides dial in parallel creates duplicate-connection races and
+handover churn, so the library decides internally that exactly one side of
+each pair initiates the connect.
+
+- The comparison key is `routing_id` (primary) with the advertised endpoint
+  string as a tie-break. Both peers compute the same total order from the
+  same inputs, so each pair has exactly one initiator.
+- Users do not configure who-dials-whom; the externally observable behavior
+  is "only one side dials."
+- The rule applies to Discovery-managed auto-connect only. Manual
+  `zlink_connect()` calls made through the raw API are not mediated by the
+  library; the caller remains responsible for connection direction.
+
+### Auto-connected peer entries and admission state
+
+Peer entries surfaced by Discovery carry admission state.
+`zlink_member_peer_entry_t.admission_state` shows whether each peer is
+currently `ZLINK_ADMISSION_SERVING` or `ZLINK_ADMISSION_DRAINING`. DEALER
+attachments exclude `DRAINING` ROUTERs from round-robin selection and fail
+submit with `ZLINK_SUBMIT_NOT_ADMITTED` when every known peer is
+`DRAINING`. See [router.md](../socket/router.md) and [spot.md](spot.md) for
+the admission contract and the API used to change the state.
 
 DEALER is the only exception that may be changed by service-level policy. If a
 service explicitly switches its DEALER peer mode, the service may use

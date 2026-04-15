@@ -2,6 +2,7 @@
 #define PERF_MULTI_SPOT_CONTROL_HPP
 
 #include "perf_common.hpp"
+#include "perf_multi_poll.hpp"
 #include "perf_multi_spot_handshake.hpp"
 #include "perf_multi_spot_handle.hpp"
 #include "../../common/perf_tls_setup.hpp"
@@ -23,6 +24,31 @@ namespace perf_multi_spot_control {
 
 using ::setup_tls_client;
 using ::setup_tls_server;
+
+inline long remaining_wait_ms(
+  const std::chrono::steady_clock::time_point &deadline)
+{
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline)
+        return 0;
+
+    const auto remaining =
+      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+    return std::max<long>(1, static_cast<long>(remaining.count()));
+}
+
+inline bool wait_for_control_readable(
+  void *control_sub, const std::chrono::steady_clock::time_point &deadline)
+{
+    if (!control_sub)
+        return false;
+
+    const long wait_ms = std::min<long>(remaining_wait_ms(deadline), 50);
+    if (wait_ms <= 0)
+        return true;
+
+    return perf_socket_poll(NULL, 0, wait_ms) == 0;
+}
 
 struct client_session_t
 {
@@ -388,8 +414,10 @@ inline bool wait_for_connected_peer_count(void *node,
             return false;
         }
 
-        zlink_pollitem_t item = {NULL, 0, 0, 0};
-        if (zlink_poll(&item, 0, 5, NULL) < 0 && zlink_errno() != EINTR)
+        if (perf_socket_poll(
+              NULL, 0, std::min<long>(remaining_wait_ms(deadline), 50))
+            < 0
+            && zlink_errno() != EINTR)
             return false;
     }
 
@@ -618,8 +646,7 @@ inline bool wait_for_ready_units(
             return true;
         }
 
-        zlink_pollitem_t item = {NULL, 0, 0, 0};
-        if (zlink_poll(&item, 0, 5, NULL) < 0 && zlink_errno() != EINTR)
+        if (!wait_for_control_readable(control_sub, deadline))
             return false;
     }
 
@@ -679,8 +706,7 @@ inline bool wait_for_control_link_ready(StateT *state,
             return false;
         if (state->control_link_ready.load(std::memory_order_acquire))
             return true;
-        zlink_pollitem_t item = {NULL, 0, 0, 0};
-        if (zlink_poll(&item, 0, 5, NULL) < 0 && zlink_errno() != EINTR)
+        if (!wait_for_control_readable(state->control_sub, deadline))
             return false;
     }
 

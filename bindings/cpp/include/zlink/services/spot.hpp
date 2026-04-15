@@ -617,15 +617,6 @@ class spot_t
         throw config_error_t (config_result_t::invalid_argument, EINVAL);
     }
 
-    void on_subscribe (zlink_subscribe_handler_fn handler_,
-                       void *userdata_ = NULL)
-    {
-        const handler_result_t rc = static_cast<handler_result_t> (
-          zlink_subscribe_handler (_spot, handler_, userdata_));
-        if (rc != handler_result_t::ok)
-            throw handler_error_t (rc, zlink_errno ());
-    }
-
     void on_send_ready (zlink_send_ready_handler_fn handler_,
                         void *userdata_ = NULL)
     {

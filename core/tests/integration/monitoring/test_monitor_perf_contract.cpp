@@ -71,22 +71,6 @@ struct delivery_ready_monitor_t
     delivery_ready_monitor_state_t *state;
 };
 
-struct perf_pubsub_callback_state_t
-{
-    perf_pubsub_callback_state_t () : received (false), fatal (false)
-    {
-        memset (payload, 0, sizeof (payload));
-    }
-
-    std::mutex sync;
-    std::condition_variable cv;
-    bool received;
-    bool fatal;
-    char payload[128];
-};
-
-perf_pubsub_callback_state_t g_perf_pubsub_callback_state;
-
 struct queue_probe_t
 {
     queue_probe_t (void *send_socket_,
@@ -180,37 +164,6 @@ void close_socket_zero_linger (void *socket_)
     const int zero = 0;
     (void) zlink_set_option (socket_, ZLINK_OPT_LINGER, &zero, sizeof (zero));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_));
-}
-
-void perf_pubsub_sub_handler (const zlink_routing_id_t *,
-                              const char *topic_,
-                              size_t topic_len_,
-                              zlink_msg_t *parts_,
-                              size_t part_count_,
-                              void *)
-{
-    std::lock_guard<std::mutex> lock (g_perf_pubsub_callback_state.sync);
-
-    const bool topic_ok =
-      topic_ != NULL && topic_len_ == strlen (kPerfPubsubTopic)
-      && memcmp (topic_, kPerfPubsubTopic, topic_len_) == 0;
-    const bool payload_ok = parts_ != NULL && part_count_ == 1
-                            && zlink_msg_size (&parts_[0]) < sizeof (
-                                 g_perf_pubsub_callback_state.payload);
-    if (!topic_ok || !payload_ok) {
-        if (parts_)
-            zlink_multipart_close (parts_, part_count_);
-        g_perf_pubsub_callback_state.fatal = true;
-        g_perf_pubsub_callback_state.cv.notify_all ();
-        return;
-    }
-
-    memcpy (g_perf_pubsub_callback_state.payload, zlink_msg_data (&parts_[0]),
-            zlink_msg_size (&parts_[0]));
-    g_perf_pubsub_callback_state.payload[zlink_msg_size (&parts_[0])] = '\0';
-    zlink_multipart_close (parts_, part_count_);
-    g_perf_pubsub_callback_state.received = true;
-    g_perf_pubsub_callback_state.cv.notify_all ();
 }
 
 void perf_pubsub_delivery_ready_monitor_handler (
@@ -355,23 +308,6 @@ void recv_pubsub_perf_payload_expect_success (void *client_,
     TEST_ASSERT_EQUAL_MEMORY (payload_, zlink_msg_data (&parts[0]),
                               strlen (payload_));
     zlink_multipart_close (parts, part_count);
-}
-
-bool wait_perf_pubsub_callback_payload (const char *payload_, int timeout_ms_)
-{
-    std::unique_lock<std::mutex> lock (g_perf_pubsub_callback_state.sync);
-    const bool signaled = g_perf_pubsub_callback_state.cv.wait_for (
-      lock,
-      std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
-      [payload_] () {
-          return g_perf_pubsub_callback_state.fatal
-                 || (g_perf_pubsub_callback_state.received
-                     && strcmp (g_perf_pubsub_callback_state.payload, payload_)
-                          == 0);
-      });
-    return signaled && !g_perf_pubsub_callback_state.fatal
-           && g_perf_pubsub_callback_state.received
-           && strcmp (g_perf_pubsub_callback_state.payload, payload_) == 0;
 }
 
 void discard_socket_message (const zlink_routing_id_t *,
@@ -985,18 +921,15 @@ void test_pubsub_raw_socket_callback_model_is_accepted ()
     void *client = zlink_socket (ctx, ZLINK_SOCKET_SUB);
     TEST_ASSERT_NOT_NULL (client);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (client, &perf_pubsub_sub_handler, NULL));
-
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     char topic[32];
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_RECV_BUSY,
+      ZLINK_RECV_NO_DATA,
       zlink_subscribe (client, NULL, &parts, &part_count, topic, &topic_len,
                        ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
     close_socket_zero_linger (client);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));

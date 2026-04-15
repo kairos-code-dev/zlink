@@ -74,43 +74,17 @@ bool zlink_recv (void *s_,
 라이브러리가 할당한 `*part_count_out_`개 메시지 파트 배열을 가리키며,
 `*source_rid_out_`는 송신자의 routing id로 설정됩니다 (해당하는 경우). 파트
 배열과 각 파트의 소유권이 호출자에게 이전되며, 호출자는 모든 파트를 close하거나
-`zlink_multipart_close()`를 호출하고 배열을 해제해야 합니다. 소켓이 recv
-모드여야 합니다 (핸들러 미부착). `zlink_recv_handler()`로 수신 핸들러가
-부착된 경우 `errno=EBUSY`로 실패합니다. 메시지가 없을 때 즉시 반환하려면
-`ZLINK_DONTWAIT`를 전달하세요.
+`zlink_multipart_close()`를 호출하고 배열을 해제해야 합니다. PAIR는 recv-only
+타입이며, poller의 `ZLINK_POLLIN`과 함께 사용해 서버 루프에서 readable을
+관찰한 뒤 이 함수로 데이터를 가져오는 방식을 기본 경로로 합니다. 메시지가
+없을 때 즉시 반환하려면 `ZLINK_DONTWAIT`를 전달하세요.
 
 **반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
 
 **에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우, 또는
-`ZLINK_OPT_RCVTIMEO`가 만료된 경우 `EAGAIN`. 수신 핸들러가 부착된 경우 `EBUSY`.
-Context가 종료된 경우 `ETERM`.
+`ZLINK_OPT_RCVTIMEO`가 만료된 경우 `EAGAIN`. Context가 종료된 경우 `ETERM`.
 
-**참고:** `zlink_send`, `zlink_recv_handler`, `zlink_multipart_close`
-
----
-
-### zlink_recv_handler
-
-소켓에 메시지 수신 핸들러를 부착합니다.
-
-```c
-bool zlink_recv_handler (void *s_,
-                         zlink_socket_msg_handler_fn handler_,
-                         void *userdata_);
-```
-
-멀티파트 수신 subject에 메시지 수신 핸들러를 부착합니다. 지원 대상은 raw
-`PAIR`, `DEALER`, `STREAM`입니다. attach 이후 같은
-subject의 direct recv와 data-plane poller `ZLINK_POLLIN`은 `errno=EBUSY`로
-실패합니다. 동일 subject에 대한 두 번째 attach도 `errno=EBUSY`입니다.
-지원하지 않는 subject는 `ENOTSUP`를 반환합니다.
-
-**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
-
-**에러:** 핸들러가 NULL이면 `EINVAL`. 소켓 타입이 메시지 핸들러를
-허용하지 않으면 `ENOTSUP`. 핸들러가 이미 부착된 경우 `EBUSY`.
-
-**참고:** `zlink_subscribe_handler`, `zlink_socket`, `zlink_close`
+**참고:** `zlink_send`, `zlink_multipart_close`
 
 ---
 
@@ -128,10 +102,10 @@ bool zlink_send_ready_handler (
 `errno=EDEADLK`로 실패합니다.
 
 지원 대상은 raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, `spot_node`입니다. send-ready는 receive callback 모드와
-독립적입니다. attach 이후 같은 subject의 data-plane poller
-`ZLINK_POLLOUT`은 `errno=EBUSY`로 실패합니다. 지원하지 않는 subject는
-`ENOTSUP`를 반환합니다.
+`spot`, `spot_node`입니다. send-ready는 수신 모드와 독립적입니다.
+이 콜백과 `ZLINK_POLLOUT`은 같은 send-recovery readiness 축을 가리킵니다.
+readiness 신호는 송신을 다시 시도할 가치가 있다는 뜻이며, 재시도가 반드시
+성공한다는 보장은 아닙니다. 지원하지 않는 subject는 `ENOTSUP`를 반환합니다.
 
 **반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
 

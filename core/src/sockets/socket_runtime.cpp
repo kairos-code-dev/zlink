@@ -303,6 +303,40 @@ bool zlink::socket_dispatch_bridge_t::consume_send_ready_notification ()
       expected, false, std::memory_order_acq_rel, std::memory_order_acquire);
 }
 
+void zlink::socket_dispatch_bridge_t::mark_send_recovery_pending ()
+{
+    send_ready_recovery_pending.store (true, std::memory_order_release);
+    send_ready_recovery_ready.store (false, std::memory_order_release);
+}
+
+void zlink::socket_dispatch_bridge_t::clear_send_recovery_pending ()
+{
+    send_ready_recovery_pending.store (false, std::memory_order_release);
+    send_ready_recovery_ready.store (false, std::memory_order_release);
+}
+
+void zlink::socket_dispatch_bridge_t::mark_send_recovery_ready ()
+{
+    if (!send_ready_recovery_pending.load (std::memory_order_acquire))
+        return;
+    send_ready_recovery_ready.store (true, std::memory_order_release);
+}
+
+void zlink::socket_dispatch_bridge_t::clear_send_recovery_ready ()
+{
+    send_ready_recovery_ready.store (false, std::memory_order_release);
+}
+
+bool zlink::socket_dispatch_bridge_t::send_recovery_pending () const
+{
+    return send_ready_recovery_pending.load (std::memory_order_acquire);
+}
+
+bool zlink::socket_dispatch_bridge_t::send_recovery_ready () const
+{
+    return send_ready_recovery_ready.load (std::memory_order_acquire);
+}
+
 bool zlink::socket_lifecycle_coordinator_t::enter_public_api ()
 {
     const uint32_t old =

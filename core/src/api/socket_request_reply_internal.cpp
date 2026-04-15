@@ -26,9 +26,7 @@ socket_request_reply_state_t::socket_request_reply_state_t (
     socket_type (socket_type_),
     default_timeout_ms (zlink::request_reply::default_timeout_ms),
     next_request_seq (1),
-    internal_dispatch_installed (false),
-    router_handler (NULL),
-    router_handler_userdata (NULL)
+    internal_dispatch_installed (false)
 {
 }
 

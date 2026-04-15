@@ -33,6 +33,36 @@ same cost model, though.
   init-only configuration, callback-context restrictions on specific
   reentrant APIs, and concurrent sharing of the same `zlink_msg_t` instance.
 
+## Receive Model Summary
+
+Receive surfaces are fixed per socket type. The default model is
+`recv + poller`; only a few exception types expose callback-based receive.
+
+| Socket Type | Receive Surface | Notes |
+|-------------|-----------------|------|
+| PAIR | `zlink_recv()` | recv-only |
+| DEALER | `zlink_recv()` (+ `zlink_dealer_request()` completion callback) | recv-only data plane |
+| SUB | `zlink_subscribe()` | recv-only |
+| XSUB | `zlink_subscribe()` | recv-only |
+| ROUTER | `zlink_router_recv()` (+ `zlink_router_request()` completion callback) | recv-only data plane |
+| STREAM | `zlink_recv()` / `zlink_recv_handler()` / `zlink_stream_packet_handler()` | Exception: choose exactly one mode |
+| PUB | N/A | Send-only |
+| XPUB | `zlink_subscription_event()` (subscription events, recv-only) | Data plane is send |
+| monitor / timer | recv and callback both supported | Observation / utility layer |
+
+Key principles:
+
+- For raw data-plane receive, `recv + poller` is the primary path: the
+  server loop observes `ZLINK_POLLIN` and pulls data with a recv-family
+  function.
+- The request completion callback on `DEALER` / `ROUTER` is an async
+  operation completion surface, not a data-plane receive callback. The
+  two roles are kept separate.
+- STREAM is the exception. Because of its raw transport nature, one of
+  three receive models (raw recv, raw callback, packet callback) can be
+  chosen per handle. A second attempt to activate a different mode on the
+  same handle fails with `EBUSY`.
+
 ## Callback Types
 
 ### zlink_socket_msg_handler_fn
@@ -45,36 +75,29 @@ typedef void (*zlink_socket_msg_handler_fn) (
   void *userdata_);
 ```
 
-Callback for multipart message dispatch on multipart receive subjects (raw
-`PAIR`, `DEALER`, and `STREAM`). Invoked on the owning
-I/O thread. Ownership of all message parts is transferred to the callback;
-each part must be closed or consumed exactly once. Used with
+Callback type used by the raw `STREAM` raw receive mode. Invoked on the
+owning I/O thread. Ownership of all message parts is transferred to the
+callback; each part must be closed or consumed exactly once. Used with
 `zlink_recv_handler()`.
 
-### zlink_subscribe_handler_fn
+### zlink_stream_packet_handler_fn
 
 ```c
-typedef void (*zlink_subscribe_handler_fn) (const zlink_routing_id_t *source_rid_,
-                                       const char *topic_,
-                                       size_t topic_len_,
-                                       zlink_msg_t *parts_,
-                                       size_t part_count_,
-                                       void *userdata_);
+typedef void (*zlink_stream_packet_handler_fn) (
+  void *stream_,
+  const zlink_routing_id_t *source_rid_,
+  zlink_msg_t *header_,
+  zlink_msg_t *body_,
+  void *userdata_);
 ```
 
-Callback for topic-based message dispatch on topic-aware receive subjects
-(raw `SUB`, `XSUB`, `spot`, and `spot_node`). Invoked on the owning I/O
-thread. Ownership of parts is transferred. Used with
-`zlink_subscribe_handler()`.
-
-Each callback type is registered through a dedicated function. The mapping
-of socket types to registration functions:
-
-| Socket Type | Registration Function | Callback |
-|---|---|---|
-| PAIR, DEALER, STREAM | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
-| SUB, XSUB, spot, spot_node | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
-| PUB | N/A | Send-only; no handler needed |
+Callback type for the raw `STREAM` packet receive mode. `source_rid_` is
+a borrowed view pointing to the routing id of the sending client
+connection. `header_` and `body_` are the header / body payloads of a
+packet assembled per the fixed framing convention. Both are delivered as
+valid `zlink_msg_t` objects even when length is zero (never `NULL`), and
+ownership of both is transferred to the callback. Used with
+`zlink_stream_packet_handler()`.
 
 ### zlink_send_ready_handler_fn
 
@@ -82,7 +105,10 @@ of socket types to registration functions:
 typedef void (*zlink_send_ready_handler_fn) (void *subject_, void *userdata_);
 ```
 
-Callback invoked when a send-capable handle transitions to writable.
+Callback invoked when a send-capable handle leaves backpressure and a
+send retry is worth attempting. Shares the same send-recovery readiness
+axis as `ZLINK_POLLOUT`; the callback itself does not guarantee that the
+retry will succeed.
 
 ### zlink_reply_handler_fn
 
@@ -99,28 +125,9 @@ arrives or the request times out. On timeout, `result_` is set to
 `ZLINK_REQUEST_TIMED_OUT` and `parts_` is NULL. On success, `result_` is
 `ZLINK_REQUEST_OK` and ownership of all message parts is transferred to
 the callback. `result_` represents request completion as a
-`zlink_request_result_t` value, not submit failure.
-
-### zlink_router_handler_fn
-
-```c
-typedef void (*zlink_router_handler_fn) (
-  const zlink_routing_id_t *source_node_rid_,
-  const zlink_routing_id_t *source_spot_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  void *userdata_);
-```
-
-Callback for incoming routed traffic on a ROUTER socket.
-`source_node_rid_` identifies the source node for every routed delivery.
-For plain ROUTER peers, `source_spot_rid_` is `NULL`. For spot-originated
-traffic, `source_spot_rid_` identifies the source spot.
-`request_seq_ == 0` means a fire-and-forget routed message.
-`request_seq_ != 0` means a request that must be replied to with the
-matching ROUTER reply surface. Ownership of all message parts is
-transferred to the callback.
+`zlink_request_result_t` value, not submit failure. This callback is an
+async operation completion surface, not a data-plane receive callback,
+and is used only through the request APIs of `DEALER` and `ROUTER`.
 
 ## Constants
 
@@ -145,16 +152,40 @@ Always use the fully qualified `ZLINK_SOCKET_*` constants shown above.
 ### Send Flags
 
 ```c
-typedef uint32_t zlink_send_flags_t;
-
-#define ZLINK_DONTWAIT  ((zlink_send_flags_t) 0x0001u)
-#define ZLINK_SEND_FLAG_DONTWAIT ZLINK_DONTWAIT
+typedef enum zlink_send_flags_t
+{
+    ZLINK_SEND_FLAGS_NONE     = 0,
+    ZLINK_SEND_FLAGS_DONTWAIT = 0x0001u
+} zlink_send_flags_t;
 ```
+
+`ZLINK_DONTWAIT` and `ZLINK_SEND_FLAG_DONTWAIT` remain in the header as
+backward-compatible aliases for `ZLINK_SEND_FLAGS_DONTWAIT`.
 
 | Constant | Description |
 |---|---|
-| `ZLINK_DONTWAIT` | Non-blocking operation; return immediately with `ZLINK_SUBMIT_BACKPRESSURED` if the operation would block |
-| `ZLINK_SEND_FLAG_DONTWAIT` | Alias of `ZLINK_DONTWAIT` |
+| `ZLINK_SEND_FLAGS_NONE` | No flags; blocking send semantics. |
+| `ZLINK_SEND_FLAGS_DONTWAIT` | Non-blocking operation; return immediately with `ZLINK_SUBMIT_BACKPRESSURED` if the operation would block |
+| `ZLINK_DONTWAIT` | Backward-compatible alias of `ZLINK_SEND_FLAGS_DONTWAIT` |
+| `ZLINK_SEND_FLAG_DONTWAIT` | Backward-compatible alias of `ZLINK_SEND_FLAGS_DONTWAIT` |
+
+### Recv Flags
+
+```c
+typedef enum zlink_recv_flags_t
+{
+    ZLINK_RECV_FLAGS_NONE     = 0,
+    ZLINK_RECV_FLAGS_DONTWAIT = 0x0001u
+} zlink_recv_flags_t;
+```
+
+Used by `zlink_recv`, `zlink_subscribe`, the socket-specific
+`zlink_*_recv` family, and the monitor `zlink_*_monitor_recv` functions.
+
+| Constant | Description |
+|---|---|
+| `ZLINK_RECV_FLAGS_NONE` | No flags; blocking recv semantics. |
+| `ZLINK_RECV_FLAGS_DONTWAIT` | Non-blocking recv; return immediately with `ZLINK_RECV_AGAIN` if no message is available. |
 
 ### Send Result
 
@@ -168,6 +199,7 @@ typedef enum zlink_submit_result_t
     ZLINK_SUBMIT_BACKPRESSURED = 1,
     ZLINK_SUBMIT_NOT_CONNECTED = 2,
     ZLINK_SUBMIT_NOT_FOUND = 3,
+    ZLINK_SUBMIT_NOT_ADMITTED = 13,
 
     /* Runtime / lifecycle failure. */
     ZLINK_SUBMIT_TERMINATED = 4,
@@ -197,6 +229,7 @@ boundaries normalize those values into this public contract.
 | `ZLINK_SUBMIT_BACKPRESSURED` | 1 | Send queue is full (HWM reached) |
 | `ZLINK_SUBMIT_NOT_CONNECTED` | 2 | Target path or peer is not connected |
 | `ZLINK_SUBMIT_NOT_FOUND` | 3 | Target peer, spot, or routed destination was not found |
+| `ZLINK_SUBMIT_NOT_ADMITTED` | 13 | Normal control-flow result. DRAINING target refuses new outbound; caller should pick another peer or wait |
 | `ZLINK_SUBMIT_TERMINATED` | 4 | Context was terminated |
 | `ZLINK_SUBMIT_INVALID_HANDLE` | 5 | Handle is NULL or invalid |
 | `ZLINK_SUBMIT_INVALID_ARGUMENT` | 6 | Argument is invalid for the API contract |
@@ -374,11 +407,12 @@ void *zlink_socket (void *context_, zlink_socket_type_t type_);
 ```
 
 Creates a new socket within the given context. The `type_` parameter selects
-the messaging pattern. Raw sockets start in recv model. Multipart receive
-subjects (`PAIR`, `DEALER`, `STREAM`) support
-`zlink_recv_handler()` callback attach; topic-aware subjects (`SUB`, `XSUB`)
-support `zlink_subscribe_handler()`. The socket must be closed with
-`zlink_close()` before the context is terminated.
+the messaging pattern. Receive mode for raw sockets is fixed per type:
+`PAIR`, `DEALER`, `SUB`, and `XSUB` are recv-only, and `ROUTER` uses
+`zlink_router_recv()`. Only `STREAM` offers a choice of raw recv, raw
+callback (`zlink_recv_handler()`), or packet callback
+(`zlink_stream_packet_handler()`) — see [stream.md](stream.md). The socket
+must be closed with `zlink_close()` before the context is terminated.
 
 **Returns:** Socket handle on success, `NULL` on failure (errno is set).
 
@@ -387,57 +421,33 @@ number of sockets has been reached. `ETERM` if the context was terminated.
 
 **Thread safety:** Thread-safe with respect to the context.
 
-**See also:** `zlink_close`, `zlink_ctx_new`, `zlink_recv_handler`
+**See also:** `zlink_close`, `zlink_ctx_new`
 
 ---
 
 ### zlink_recv_handler
 
-Attach a message receive handler to a socket.
+Attach a raw receive callback to a raw `STREAM` socket.
 
 ```c
-bool zlink_recv_handler (void *s_,
-                         zlink_socket_msg_handler_fn handler_,
-                         void *userdata_);
+zlink_handler_result_t zlink_recv_handler (
+  void *s_, zlink_socket_msg_handler_fn handler_, void *userdata_);
 ```
 
-Attach a message receive handler to a multipart receive subject. Supported
-subjects are raw `PAIR`, `DEALER`, and `STREAM`.
-After attach, direct recv and data-plane poller `ZLINK_POLLIN` on the same
-subject fail with `errno=EBUSY`. A second attach on the same subject also
-fails with `errno=EBUSY`. Unsupported subjects return `ENOTSUP`.
+Direct receive callback registration scoped to raw `STREAM`. Supported
+subjects are raw `STREAM` only; other subjects (PAIR, DEALER, etc.) fail
+with `ENOTSUP`. After attach, `zlink_recv()`,
+`zlink_stream_packet_handler()`, and data-plane poller `ZLINK_POLLIN` on
+the same handle fail with `errno=EBUSY`. A second attach on the same
+handle also fails with `errno=EBUSY`.
 
-**Returns:** `true` on success, `false` on failure (errno is set).
+See [stream.md](stream.md) for the full contract.
 
-**Errors:** `EINVAL` if the handler is NULL. `ENOTSUP` if the socket type does
-not accept a message handler. `EBUSY` if a handler is already attached.
+**Returns:** `ZLINK_HANDLER_OK` on success. On failure, returns a
+`zlink_handler_result_t` value. Detailed internal errno remains available
+through `zlink_errno()` for diagnostics.
 
-**See also:** `zlink_subscribe_handler`, `zlink_socket`, `zlink_close`
-
----
-
-### zlink_subscribe_handler
-
-Attach a topic-based receive handler to a socket.
-
-```c
-bool zlink_subscribe_handler (void *s_,
-                              zlink_subscribe_handler_fn handler_,
-                              void *userdata_);
-```
-
-Attach a topic-based receive handler to raw `SUB`, raw `XSUB`, `spot`, or
-`spot_node`. After attach, `zlink_subscribe()` and data-plane poller
-`ZLINK_POLLIN` on the same subject fail with `errno=EBUSY`. A second attach
-on the same subject also fails with `errno=EBUSY`. Unsupported subjects
-return `ENOTSUP`.
-
-**Returns:** `true` on success, `false` on failure (errno is set).
-
-**Errors:** `EINVAL` if the handler is NULL. `ENOTSUP` if the handle type does
-not accept a subscribe handler. `EBUSY` if a handler is already attached.
-
-**See also:** `zlink_recv_handler`, `zlink_socket`, `zlink_close`
+**See also:** `zlink_stream_packet_handler`, `zlink_socket`, `zlink_close`
 
 ---
 
@@ -717,9 +727,13 @@ visible from the next writable transition. If called reentrantly from the
 same handle's send-ready callback, the call fails with `errno=EDEADLK`.
 
 Supported subjects: raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, and `spot_node`. Send-ready is independent from receive
-callback mode. After attach, data-plane poller `ZLINK_POLLOUT` on the same
-subject fails with `errno=EBUSY`. Unsupported subjects return `ENOTSUP`.
+`spot`, and `spot_node`. Send-ready is independent from receive mode.
+
+This callback and `ZLINK_POLLOUT` share the same send-recovery readiness
+axis. After a `BACKPRESSURED` result, the signal tells the caller it is
+worth retrying; the signal itself does not guarantee the retry will
+succeed, and the first retry after the notification may still fail with
+`BACKPRESSURED`. Unsupported subjects return `ENOTSUP`.
 
 **Returns:** `true` on success, `false` on failure (errno is set).
 

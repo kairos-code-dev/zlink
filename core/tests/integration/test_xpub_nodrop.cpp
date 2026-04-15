@@ -153,38 +153,6 @@ void close_delivery_ready_monitor (delivery_ready_monitor_t *monitor_)
     monitor_->state = NULL;
 }
 
-void pubsub_callback_counter_handler (const zlink_routing_id_t *,
-                                      const char *topic_,
-                                      size_t topic_len_,
-                                      zlink_msg_t *parts_,
-                                      size_t part_count_,
-                                      void *userdata_)
-{
-    pubsub_callback_counter_t *state =
-      static_cast<pubsub_callback_counter_t *> (userdata_);
-    int error = 0;
-    if (!state)
-        error = EFAULT;
-    else if (!topic_ || part_count_ != 1
-             || topic_len_ != std::strlen (kPubsubTopic)
-             || memcmp (topic_, kPubsubTopic, topic_len_) != 0
-             || zlink_msg_size (&parts_[0]) != kPubsubPayloadSize)
-        error = EPROTO;
-
-    zlink_multipart_close (parts_, part_count_);
-
-    if (!state)
-        return;
-
-    if (error != 0) {
-        state->error.store (error, std::memory_order_release);
-    } else {
-        state->received.fetch_add (1, std::memory_order_acq_rel);
-    }
-
-    std::lock_guard<std::mutex> lock (state->sync);
-    state->cv.notify_all ();
-}
 } // namespace
 
 void test ()
@@ -295,8 +263,45 @@ void test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, ""));
     pubsub_callback_counter_t callback_state;
     const int target_messages = 50000;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
-      sub, &pubsub_callback_counter_handler, &callback_state));
+
+    std::future<int> recv_future =
+      std::async (std::launch::async, [&]() -> int {
+          while (callback_state.received.load (std::memory_order_acquire)
+                 < target_messages) {
+              zlink_msg_t *parts = NULL;
+              size_t part_count = 0;
+              char topic[64] = {0};
+              size_t topic_len = sizeof (topic);
+              if (zlink_subscribe (sub, NULL, &parts, &part_count, topic,
+                                   &topic_len, ZLINK_DONTWAIT)
+                  == 0) {
+                  const bool ok = part_count == 1
+                                  && topic_len == std::strlen (kPubsubTopic)
+                                  && memcmp (topic, kPubsubTopic, topic_len)
+                                       == 0
+                                  && zlink_msg_size (&parts[0])
+                                       == kPubsubPayloadSize;
+                  zlink_multipart_close (parts, part_count);
+                  if (!ok) {
+                      callback_state.error.store (
+                        EPROTO, std::memory_order_release);
+                      return -1;
+                  }
+                  callback_state.received.fetch_add (
+                    1, std::memory_order_acq_rel);
+                  continue;
+              }
+
+              const int err = zlink_errno ();
+              if (err != EAGAIN && err != EINTR) {
+                  callback_state.error.store (err, std::memory_order_release);
+                  return -1;
+              }
+              msleep (1);
+          }
+
+          return callback_state.received.load (std::memory_order_acquire);
+      });
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (pub, endpoint, sizeof (endpoint));
@@ -331,18 +336,11 @@ void test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp ()
 
     const std::future_status send_status =
       send_future.wait_for (std::chrono::seconds (8));
-    bool recv_ready = false;
-    {
-        std::unique_lock<std::mutex> lock (callback_state.sync);
-        recv_ready = callback_state.cv.wait_for (
-          lock, std::chrono::seconds (8), [&callback_state, target_messages] {
-              return callback_state.error.load (std::memory_order_acquire) != 0
-                     || callback_state.received.load (std::memory_order_acquire)
-                          >= target_messages;
-          });
-    }
+    const std::future_status recv_status =
+      recv_future.wait_for (std::chrono::seconds (8));
 
-    if (send_status != std::future_status::ready || !recv_ready) {
+    if (send_status != std::future_status::ready
+        || recv_status != std::future_status::ready) {
         char detail[160];
         snprintf (detail, sizeof (detail),
                   "blocking publish timeout: sent=%d recv=%d",
@@ -356,14 +354,13 @@ void test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp ()
     }
 
     const int send_result = send_future.get ();
-    const int recv_result =
-      callback_state.received.load (std::memory_order_acquire);
+    const int recv_result = recv_future.get ();
     TEST_ASSERT_EQUAL_INT_MESSAGE (
       target_messages, send_result,
       "blocking publish timed out or failed while subscriber drained");
     TEST_ASSERT_EQUAL_INT_MESSAGE (
       0, callback_state.error.load (std::memory_order_acquire),
-      "subscriber callback observed malformed topic/payload shape");
+      "subscriber recv observed malformed topic/payload shape");
     TEST_ASSERT_EQUAL_INT_MESSAGE (
       target_messages, recv_result,
       "subscriber did not drain the expected number of published messages");

@@ -69,12 +69,12 @@ For detailed behavior and scope of each option, see the
 | Socket Type | Option/Behavior | Default |
 |---|---|---|
 | `ZLINK_DEALER` | `ZLINK_DEALER_OPT_PROBE` | `0` |
-| `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_MANDATORY` | `0` (set via `zlink_set_router_option()`) |
+| `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_MANDATORY` | `1` (set via `zlink_set_router_option()`) |
 | `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_PROBE` | `0` |
-| `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_HANDOVER` | `0` |
+| `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_HANDOVER` | `1` |
 | `ZLINK_XPUB` | `ZLINK_PUB_OPT_VERBOSE` | `0` (set via `zlink_set_pub_option()`) |
 | `ZLINK_XPUB` | `ZLINK_PUB_OPT_VERBOSER` | `0` |
-| `ZLINK_XPUB` | `ZLINK_PUB_OPT_NODROP` | `0` (`_lossy=true`) |
+| `ZLINK_XPUB` | `ZLINK_PUB_OPT_NODROP` | `1` (`_lossy=false`) |
 | `ZLINK_XPUB` | `ZLINK_PUB_OPT_MANUAL` | `0` |
 | `ZLINK_XPUB` | `ZLINK_PUB_OPT_MANUAL_LAST_VALUE` | `0` |
 | `ZLINK_XPUB` | `ZLINK_PUB_OPT_WELCOME_MSG` | empty |

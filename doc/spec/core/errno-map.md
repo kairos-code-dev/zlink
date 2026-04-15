@@ -52,6 +52,7 @@ typedef enum zlink_submit_result_t
     ZLINK_SUBMIT_BACKPRESSURED    = 1,
     ZLINK_SUBMIT_NOT_CONNECTED    = 2,
     ZLINK_SUBMIT_NOT_FOUND        = 3,
+    ZLINK_SUBMIT_NOT_ADMITTED     = 13,
 
     /* Runtime / lifecycle failure. */
     ZLINK_SUBMIT_TERMINATED       = 4,
@@ -82,6 +83,7 @@ These are expected outcomes that callers may handle directly.
 | `BACKPRESSURED` | `EAGAIN` | Send queue full (HWM) or not writable yet |
 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | Target peer or path is not connected |
 | `NOT_FOUND` | `ENOENT` | Target peer, spot, or routed destination was not found |
+| `NOT_ADMITTED` | `ECONNREFUSED`-class | The local peer knows the remote admission state is `DRAINING`, so admission denied a new outbound. The connection itself may still be alive; the failure is an admission refusal that lifts when the peer returns to `SERVING`. State propagation is best-effort, so under races the same situation may surface first as `NOT_CONNECTED` or `NOT_FOUND`. |
 
 #### Runtime / lifecycle failure
 
@@ -240,10 +242,9 @@ typedef enum zlink_handler_result_t
 
 | Category | Functions |
 |---|---|
-| Recv handler | `zlink_recv_handler` |
-| Subscribe handler | `zlink_subscribe_handler` |
+| Recv handler (STREAM only) | `zlink_recv_handler` |
+| Stream packet handler | `zlink_stream_packet_handler` |
 | Send-ready handler | `zlink_send_ready_handler` |
-| Router handler | `zlink_router_handler` |
 | Spot handler | `zlink_spot_handler` |
 | Spot dispatch-event handler | `zlink_spot_dispatch_event_handler` |
 | Socket monitor handler | `zlink_socket_monitor_handler` |
@@ -395,7 +396,7 @@ typedef enum zlink_config_result_t
 | Routing ID | `zlink_set_routing_id`, `zlink_get_routing_id` |
 | TLS | `zlink_set_tls_server`, `zlink_set_tls_client` |
 | Subscription | `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at` |
-| Service attach | `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery` |
+| Service attach | `zlink_socket_attach_discovery`, `zlink_spot_node_attach_router`, `zlink_spot_node_attach_pubsub`, `zlink_spot_node_attach_discovery`, `zlink_spot_node_service_attachment_count`, `zlink_spot_node_service_attachment_at` |
 | Registry/discovery config | Registry and discovery configuration functions |
 | Snapshot/query | Service snapshot and query functions |
 | Poller config | `zlink_poller_add`, `zlink_poller_modify`, `zlink_poller_remove`, `zlink_poller_add_fd`, `zlink_poller_add_timer`, `zlink_poller_modify_fd`, `zlink_poller_remove_fd`, `zlink_poller_remove_timer` |
@@ -421,6 +422,7 @@ not directly return `zlink_config_result_t`.
 | `BACKPRESSURED` | Y | Y | Y |
 | `NOT_CONNECTED` | -- | Y | -- |
 | `NOT_FOUND` | -- | -- | -- |
+| `NOT_ADMITTED` | Y | Y | -- |
 | `TERMINATED` | Y | Y | Y |
 | `INVALID_HANDLE` | Y | Y | Y |
 | `INVALID_ARGUMENT` | Y | Y | Y |
@@ -431,6 +433,10 @@ not directly return `zlink_config_result_t`.
 | `SEQ_EXHAUSTED` | -- | -- | -- |
 | `INTERNAL_ERROR` | -- | -- | -- |
 
+`zlink_send` returns `NOT_ADMITTED` when every ROUTER known to the DEALER is
+`DRAINING`. `zlink_send_rid` returns `NOT_ADMITTED` when the target RID is
+`DRAINING`.
+
 ### Socket request functions
 
 | Result | `zlink_dealer_request` | `zlink_router_request` |
@@ -439,6 +445,7 @@ not directly return `zlink_config_result_t`.
 | `BACKPRESSURED` | Y | Y |
 | `NOT_CONNECTED` | -- | -- |
 | `NOT_FOUND` | -- | -- |
+| `NOT_ADMITTED` | Y | Y |
 | `TERMINATED` | Y | Y |
 | `INVALID_HANDLE` | Y | Y |
 | `INVALID_ARGUMENT` | Y | Y |
@@ -449,6 +456,10 @@ not directly return `zlink_config_result_t`.
 | `SEQ_EXHAUSTED` | Y | Y |
 | `INTERNAL_ERROR` | Y | Y |
 
+`zlink_dealer_request` fails with `NOT_ADMITTED` when every known ROUTER is
+`DRAINING`. `zlink_router_request` fails with `NOT_ADMITTED` when the target
+RID is `DRAINING`.
+
 ### Socket reply function
 
 | Result | `zlink_router_reply` |
@@ -457,6 +468,7 @@ not directly return `zlink_config_result_t`.
 | `BACKPRESSURED` | Y |
 | `NOT_CONNECTED` | -- |
 | `NOT_FOUND` | -- |
+| `NOT_ADMITTED` | -- |
 | `TERMINATED` | Y |
 | `INVALID_HANDLE` | Y |
 | `INVALID_ARGUMENT` | Y |
@@ -467,41 +479,55 @@ not directly return `zlink_config_result_t`.
 | `SEQ_EXHAUSTED` | -- |
 | `INTERNAL_ERROR` | Y |
 
+Replies answer in-flight requests, so admission is not re-evaluated for them.
+`zlink_router_reply` therefore never returns `NOT_ADMITTED`.
+
 ### SPOT request functions
 
-| Result | `zlink_spot_request_spot` | `zlink_spot_request_router` | `zlink_router_request_spot` |
-|---|---|---|---|
-| `OK` | Y | Y | Y |
-| `BACKPRESSURED` | Y | Y | Y |
-| `NOT_CONNECTED` | Y | Y | Y |
-| `NOT_FOUND` | Y | Y | Y |
-| `TERMINATED` | -- | -- | -- |
-| `INVALID_HANDLE` | Y | Y | Y |
-| `INVALID_ARGUMENT` | Y | Y | Y |
-| `NOT_SUPPORTED` | Y | Y | Y |
-| `INVALID_STATE` | -- | -- | Y |
-| `THREAD_VIOLATION` | -- | -- | Y |
-| `OUT_OF_MEMORY` | Y | Y | Y |
-| `SEQ_EXHAUSTED` | Y | Y | Y |
-| `INTERNAL_ERROR` | Y | Y | Y |
+| Result | `zlink_spot_request_spot` | `zlink_spot_request_router` | `zlink_spot_request_service` | `zlink_router_request_spot` |
+|---|---|---|---|---|
+| `OK` | Y | Y | Y | Y |
+| `BACKPRESSURED` | Y | Y | Y | Y |
+| `NOT_CONNECTED` | Y | Y | Y | Y |
+| `NOT_FOUND` | Y | Y | Y | Y |
+| `NOT_ADMITTED` | Y | Y | Y | Y |
+| `TERMINATED` | -- | -- | Y | -- |
+| `INVALID_HANDLE` | Y | Y | Y | Y |
+| `INVALID_ARGUMENT` | Y | Y | Y | Y |
+| `NOT_SUPPORTED` | Y | Y | Y | Y |
+| `INVALID_STATE` | -- | -- | -- | Y |
+| `THREAD_VIOLATION` | -- | -- | -- | Y |
+| `OUT_OF_MEMORY` | Y | Y | Y | Y |
+| `SEQ_EXHAUSTED` | Y | Y | Y | Y |
+| `INTERNAL_ERROR` | Y | Y | Y | Y |
+
+SPOT request paths return `NOT_ADMITTED` when the destination SpotNode or
+ROUTER is `DRAINING`. `zlink_spot_request_service` also returns
+`NOT_ADMITTED` when every active ROUTER attached for the service is
+`DRAINING`.
 
 ### SPOT send functions
 
-| Result | `zlink_spot_send_spot` | `zlink_spot_send_router` | `zlink_router_send_spot` |
-|---|---|---|---|
-| `OK` | Y | Y | Y |
-| `BACKPRESSURED` | Y | Y | Y |
-| `NOT_CONNECTED` | Y | Y | Y |
-| `NOT_FOUND` | Y | Y | Y |
-| `TERMINATED` | -- | -- | -- |
-| `INVALID_HANDLE` | Y | Y | Y |
-| `INVALID_ARGUMENT` | Y | Y | Y |
-| `NOT_SUPPORTED` | Y | Y | Y |
-| `INVALID_STATE` | -- | -- | Y |
-| `THREAD_VIOLATION` | -- | -- | Y |
-| `OUT_OF_MEMORY` | -- | -- | -- |
-| `SEQ_EXHAUSTED` | -- | -- | -- |
-| `INTERNAL_ERROR` | Y | Y | Y |
+| Result | `zlink_spot_send_spot` | `zlink_spot_send_router` | `zlink_spot_send_service` | `zlink_spot_publish` | `zlink_router_send_spot` |
+|---|---|---|---|---|---|
+| `OK` | Y | Y | Y | Y | Y |
+| `BACKPRESSURED` | Y | Y | Y | Y | Y |
+| `NOT_CONNECTED` | Y | Y | Y | Y | Y |
+| `NOT_FOUND` | Y | Y | Y | Y | Y |
+| `NOT_ADMITTED` | Y | Y | Y | -- | Y |
+| `TERMINATED` | -- | -- | Y | Y | -- |
+| `INVALID_HANDLE` | Y | Y | Y | Y | Y |
+| `INVALID_ARGUMENT` | Y | Y | Y | Y | Y |
+| `NOT_SUPPORTED` | Y | Y | Y | Y | Y |
+| `INVALID_STATE` | -- | -- | -- | -- | Y |
+| `THREAD_VIOLATION` | -- | -- | -- | -- | Y |
+| `OUT_OF_MEMORY` | -- | -- | -- | -- | -- |
+| `SEQ_EXHAUSTED` | -- | -- | -- | -- | -- |
+| `INTERNAL_ERROR` | Y | Y | Y | Y | Y |
+
+`zlink_spot_publish` is fan-out, so a single peer's admission state never
+fails it. The other routed/direct send functions return `NOT_ADMITTED` when
+the destination SpotNode or ROUTER is `DRAINING`.
 
 ### SPOT reply functions
 
@@ -511,6 +537,7 @@ not directly return `zlink_config_result_t`.
 | `BACKPRESSURED` | Y | Y | Y |
 | `NOT_CONNECTED` | Y | Y | Y |
 | `NOT_FOUND` | Y | Y | Y |
+| `NOT_ADMITTED` | -- | -- | -- |
 | `TERMINATED` | -- | -- | -- |
 | `INVALID_HANDLE` | Y | Y | Y |
 | `INVALID_ARGUMENT` | Y | Y | Y |
@@ -521,17 +548,20 @@ not directly return `zlink_config_result_t`.
 | `SEQ_EXHAUSTED` | -- | -- | -- |
 | `INTERNAL_ERROR` | Y | Y | Y |
 
+SPOT replies answer in-flight requests, so admission is not re-evaluated
+for them. None of the SPOT reply functions return `NOT_ADMITTED`.
+
 ---
 
 ## All Functions by Result Enum
 
 | Result enum | Functions |
 |---|---|
-| `zlink_submit_result_t` | `zlink_send`, `zlink_send_rid`, `zlink_publish`, `zlink_dealer_request`, `zlink_router_request`, `zlink_router_reply`, `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_router_request_spot`, `zlink_spot_send_spot`, `zlink_spot_send_router`, `zlink_router_send_spot`, `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
+| `zlink_submit_result_t` | `zlink_send`, `zlink_send_rid`, `zlink_publish`, `zlink_dealer_request`, `zlink_router_request`, `zlink_router_reply`, `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_spot_request_service`, `zlink_router_request_spot`, `zlink_spot_send_spot`, `zlink_spot_send_router`, `zlink_spot_send_service`, `zlink_spot_publish`, `zlink_router_send_spot`, `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
 | `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback) |
-| `zlink_recv_result_t` | `zlink_router_recv`, `zlink_spot_recv`, `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_socket_monitor_recv`, `zlink_service_monitor_recv`, `zlink_timer_recv` |
-| `zlink_handler_result_t` | `zlink_recv_handler`, `zlink_subscribe_handler`, `zlink_send_ready_handler`, `zlink_router_handler`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_service_monitor_handler`, `zlink_timer_handler` |
+| `zlink_recv_result_t` | `zlink_router_recv`, `zlink_spot_recv`, `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_spot_subscribe`, `zlink_spot_subscription_event`, `zlink_socket_monitor_recv`, `zlink_service_monitor_recv`, `zlink_spot_node_monitor_recv`, `zlink_timer_recv` |
+| `zlink_handler_result_t` | `zlink_recv_handler` (raw STREAM only), `zlink_stream_packet_handler`, `zlink_send_ready_handler`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_service_monitor_handler`, `zlink_timer_handler` |
 | `zlink_close_result_t` | `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_close`, `zlink_monitor_close`, `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_destroy`, `zlink_poller_destroy`, `zlink_timer_destroy` |
 | `zlink_bind_result_t` | `zlink_bind` |
 | `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_unbind` |
-| `zlink_config_result_t` | `zlink_ctx_set`, message lifecycle/config functions, socket/TLS/routing/subscription configuration functions, `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery`, registry/discovery/snapshot/query functions, poller mutation functions, proxy functions, and `zlink_timer_start` / `zlink_timer_stop` |
+| `zlink_config_result_t` | `zlink_ctx_set`, message lifecycle/config functions, socket/TLS/routing/subscription configuration functions, `zlink_socket_attach_discovery`, `zlink_spot_node_attach_router`, `zlink_spot_node_attach_pubsub`, `zlink_spot_node_attach_discovery`, `zlink_spot_node_service_attachment_count`, `zlink_spot_node_service_attachment_at`, registry/discovery/snapshot/query functions, poller mutation functions, proxy functions, and `zlink_timer_start` / `zlink_timer_stop` |

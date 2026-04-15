@@ -228,11 +228,12 @@ zlink_recv_handler(socket, on_message, NULL);
 
 | Socket Type | 등록 호출 | Callback Signature |
 |---|---|---|
-| STREAM | `zlink_recv_handler()` | `fn(rid, parts, count, userdata)` |
-| ROUTER (routed, 통합) | `zlink_router_handler()` | `fn(source_node_rid, source_spot_rid, request_seq, parts, count, userdata)` — 일반 ROUTER 트래픽(`source_spot_rid == NULL`, one-way 는 `request_seq == 0`, request 는 `> 0`)과 SPOT 에서 시작된 routed 트래픽(`source_spot_rid` 채워짐)을 한 표면에서 받는다 |
+| STREAM (raw) | `zlink_recv_handler()` | `fn(rid, parts, count, userdata)` |
+| STREAM (packet) | `zlink_stream_packet_handler()` | `fn(stream, source_rid, header, body, userdata)` |
+| ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` 의 reply 는 별도 completion callback 으로 전달 |
 | SPOT (routed) | `zlink_spot_handler()` | `fn(source_rid, spot_rid, request_seq, parts, count, userdata)` |
-| spot, spot_node (topic) | `zlink_subscribe_handler()` | `fn(rid, topic, topic_len, parts, count, userdata)` |
-| DEALER (reply) | `zlink_dealer_request()` 에 전달 | `fn(zlink_request_result_t result, parts, count, userdata)` |
+| PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` 또는 `zlink_subscribe()` | N/A |
+| DEALER / ROUTER request | `zlink_dealer_request()` / `zlink_router_request()` 에 전달 | `fn(zlink_request_result_t result, parts, count, userdata)` |
 | Timer | `zlink_timer_handler()` | `fn(timer, fire_count, userdata)` |
 | PUB | N/A | Send-only socket |
 
@@ -350,41 +351,15 @@ zlink_poller_remove_timer(poller, timer);
 #include <string.h>
 #include <stdio.h>
 
-void on_router_message(const zlink_routing_id_t *source_node_rid,
-                       const zlink_routing_id_t *source_spot_rid,
-                       uint64_t request_seq,
-                       zlink_msg_t *parts, size_t part_count,
-                       void *userdata)
-{
-    /* 일반 DEALER → ROUTER: source_spot_rid == NULL, request_seq == 0 */
-    printf("Received from [%.*s]: %.*s\n",
-           (int)source_node_rid->size, source_node_rid->data,
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-    zlink_multipart_close(parts, part_count);
-}
-
-void on_dealer_message(const zlink_routing_id_t *source_rid,
-                       zlink_msg_t *parts, size_t part_count,
-                       void *userdata)
-{
-    printf("Reply: %.*s\n",
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-    zlink_multipart_close(parts, part_count);
-}
-
 int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* ROUTER (server) */
     void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    zlink_router_handler(router, on_router_message, NULL);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (client) */
     void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-    zlink_recv_handler(dealer, on_dealer_message, NULL);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */
@@ -393,8 +368,10 @@ int main(void) {
     memcpy(zlink_msg_data(&req), "request", 7);
     zlink_send(dealer, &req, 1, 0);
 
-    /* Handler callbacks process messages asynchronously */
-    msleep(100);
+    /* Server loop: watch a poller for ZLINK_POLLIN on router, drain with
+       zlink_router_recv(), and reply with zlink_router_reply() or
+       zlink_send_rid(). Client drains replies with zlink_recv() in its
+       own poller loop. */
 
     zlink_close(dealer);
     zlink_close(router);

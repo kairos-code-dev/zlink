@@ -87,6 +87,7 @@ detail flag:
 | `ZLINK_EVENT_CONNECTION_READY` | transport handshake 이후 ready edge / first usable send path |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | protocol handshake 오류 |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | auth handshake 오류 |
+| `ZLINK_EVENT_PEER_ADMISSION_CHANGED` | 연결된 raw peer의 admission 상태가 바뀜. `routing_id`가 그 peer를 식별하고, `value`에 새 상태(`ZLINK_ADMISSION_SERVING` 또는 `ZLINK_ADMISSION_DRAINING`)가 들어간다. `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED`의 별칭이다. |
 
 disconnect reason:
 - `ZLINK_DISCONNECT_UNKNOWN`
@@ -110,6 +111,20 @@ disconnect reason:
 | `ZLINK_DISCOVERY_SERVICE_UP` | provider 가용 |
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | provider 소실 |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | provider 집합 변경 |
+
+### 서비스 공통 (service-aware)
+
+| 상수 | 의미 |
+|---|---|
+| `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` | 같은 서비스의 peer admission 결과가 바뀜. 소켓 쪽 대응 이벤트는 `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED`(= `ZLINK_EVENT_PEER_ADMISSION_CHANGED`)이다 |
+
+service monitor는 `zlink_monitor_target_kind_t`의
+`ZLINK_MONITOR_TARGET_DISCOVERY`와 `ZLINK_MONITOR_TARGET_SPOT_NODE`를 대상으로
+받습니다. Spot facade(`ZLINK_MONITOR_TARGET_SPOT`)는 공개 monitor 대상이
+아닙니다. SpotNode 서비스-aware monitor event는 generic service monitor surface
+가 아니라 `zlink_spot_node_monitor_recv()`로만 꺼냅니다. 해당 recv는 이벤트에
+`service_name`과 attachment role(`ROUTER` / `PUB` / `SUB`)을 함께 실어
+돌려줍니다.
 
 ## 예시
 

@@ -195,8 +195,13 @@ int zlink::wait_socket_events_internal (void *socket_,
 
     while (true) {
         uint32_t ready = 0;
-        if (socket->get_events_internal (events_, &ready) != 0)
-            return -1;
+        const short non_out_events = events_ & ~ZLINK_POLLOUT;
+        if (non_out_events != 0) {
+            if (socket->get_events_internal (non_out_events, &ready) != 0)
+                return -1;
+        }
+        if ((events_ & ZLINK_POLLOUT) != 0 && socket->transport_has_out ())
+            ready |= ZLINK_POLLOUT;
         if ((ready & events_) == static_cast<uint32_t> (events_))
             return 1;
 

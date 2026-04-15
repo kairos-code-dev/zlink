@@ -105,7 +105,7 @@ zlink_connect(sub, "tcp://127.0.0.1:5556");
 /* Subscribe to topic -- set after connect */
 zlink_set_subscription(sub, "weather");
 
-/* Use zlink_subscribe() or zlink_subscribe_handler() to receive */
+/* Use zlink_subscribe() (typically inside a poller loop) to receive */
 ```
 
 > 참고: `core/tests/test_pubsub.cpp` — 빈 구독("") → 모든 메시지 수신
@@ -115,21 +115,22 @@ zlink_set_subscription(sub, "weather");
 | 소켓 | 방향 | 수신 API | 비고 |
 |------|------|----------|------|
 | PUB | 송신 전용 | N/A | 수신 불가 (`ZLINK_RECV_NOT_SUPPORTED`) |
-| SUB | 수신 전용 | `zlink_subscribe()` / `zlink_subscribe_handler()` | 토픽 + 데이터 분리 반환 |
+| SUB | 수신 전용 | `zlink_subscribe()` | 토픽 + 데이터 분리 반환 |
 | XPUB | 양방향 | `zlink_subscription_event()` | 구독 이벤트 수신 |
-| XSUB | 수신 전용 | `zlink_subscribe()` / `zlink_subscribe_handler()` | 필터 없이 전체 수신 |
+| XSUB | 수신 전용 | `zlink_subscribe()` | 필터 없이 전체 수신 |
 
 > **참고:** PUB/SUB 계열 4소켓에서 `zlink_send()`/`zlink_recv()`는
-> 모두 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 이다. 발행은 `zlink_publish()`, 수신은
-> `zlink_subscribe()` / `zlink_subscribe_handler()`를 사용한다.
+> 모두 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 이다. 발행은
+> `zlink_publish()`, 수신은 `zlink_subscribe()`를 사용한다.
 
-PUB/SUB 계열 소켓의 수신은 두 가지 모드를 지원한다:
+SUB / XSUB는 recv-only 타입이다. poller의 `ZLINK_POLLIN`과 함께 사용해
+서버 루프에서 readable을 관찰한 뒤 `zlink_subscribe()`로 토픽 메시지를
+가져온다. 별도 direct topic callback 표면은 제공하지 않는다.
 
-- **Pull 모드** (기본): `zlink_subscribe()`로 토픽과 데이터를 분리하여 직접 수신
-- **Callback 모드**: `zlink_subscribe_handler()`로 콜백을 등록하면 메시지 도착 시 자동 dispatch
-
-callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
-`EBUSY`로 실패한다.
+> **PUB/XPUB 기본값 변경:** `ZLINK_PUB_OPT_NODROP`의 기본값이 `1`로
+> 변경되었다. HWM이 찼을 때 조용히 drop하지 않고 `zlink_publish()`가
+> `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 기존처럼 loss-tolerant 동작이
+>필요하면 `ZLINK_PUB_OPT_NODROP`을 명시적으로 `0`으로 설정해야 한다.
 
 ??? example "Full Sample Code -- Recv"
 
@@ -144,21 +145,9 @@ callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
     | Rust | [pubsub_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_recv_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_recv_sample/main.go) |
 
-??? example "Full Sample Code -- Callback"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [pubsub_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pubsub_callback_sample.c) |
-    | C++ | [pubsub_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pubsub_callback_sample.cpp) |
-    | Java | [PubSubCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PubSubCallbackSample.java) |
-    | Python | [pubsub_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pubsub_callback.py) |
-    | Node | [pubsub_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pubsub_callback_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PubSubCallback/Program.cs) |
-    | Rust | [pubsub_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_callback_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_callback_sample/main.go) |
-
-> PUB의 송신 큐가 가득 차면(HWM) 블로킹 대신 메시지를 **드롭**한다.
-> 상세는 [성능 가이드](10-performance.ko.md)를 참고.
+> PUB의 송신 큐가 가득 차면(HWM) 기본값(`ZLINK_PUB_OPT_NODROP=1`)에서는
+> 조용히 drop하지 않고 `zlink_publish()`가 `ZLINK_SUBMIT_BACKPRESSURED`를
+> 반환한다. 상세는 [성능 가이드](10-performance.ko.md)를 참고.
 
 ## 3. 토픽 필터링
 
@@ -219,8 +208,8 @@ zlink_publish(pub, "sensor:cpu", parts, 2, 0);
    parts[1]  = "73" */
 ```
 
-토픽은 와이어(wire, 프로토콜 전송 레벨)에서 첫 프레임으로 전송되고, `zlink_subscribe()` /
-`zlink_subscribe_handler()`가 토픽과 데이터를 분리하여 반환한다.
+토픽은 와이어(wire, 프로토콜 전송 레벨)에서 첫 프레임으로 전송되고,
+`zlink_subscribe()`가 토픽과 데이터를 분리하여 반환한다.
 호출자가 토픽 프레임을 직접 조립할 필요 없다.
 
 > **참고:** `zlink_publish(pub, NULL, parts, ...)`처럼 topic을 NULL로 전달하면
@@ -416,7 +405,6 @@ XPUB는 어떤 client가 어떤 topic을 구독/해지했는지 알 수 있다.
 |----------|-----|-----|------|------|
 | `zlink_publish()` | 가능 | — | 가능 | — |
 | `zlink_subscribe()` | — | 가능 | — | 가능 |
-| `zlink_subscribe_handler()` | — | 가능 | — | 가능 |
 | `zlink_set_subscription()` | — | 가능 | — | 가능 |
 | `zlink_subscription_event()` | — | — | 가능 | — |
 | 로컬 필터 | N/A | **켜짐** | N/A | **꺼짐** |

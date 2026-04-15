@@ -82,14 +82,22 @@ for (int dx = -1; dx <= 1; dx++) {
     }
 }
 
-/* 인접 존 데이터 수신 */
-void on_adjacent_zone(const zlink_routing_id_t *rid,
-                      const char *topic, size_t topic_len,
-                      zlink_msg_t *parts, size_t part_count, void *ud)
-{
+/* 인접 존 데이터 수신 — poller 루프에서 zlink_spot_subscribe() 로 드레인 */
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+char service_name[64];
+size_t service_name_len = sizeof(service_name);
+char topic[64];
+size_t topic_len = sizeof(topic);
+
+if (zlink_spot_subscribe(spot, &source_rid,
+                         &parts, &part_count,
+                         service_name, &service_name_len,
+                         topic, &topic_len, 0) == ZLINK_RECV_OK) {
     /* topic = "zone:2:1:state" → 인접 존 엔티티 상태 처리 */
+    zlink_multipart_close(parts, part_count);
 }
-zlink_subscribe_handler(spot, on_adjacent_zone, NULL);
 ```
 
 ## 왜 SPOT인가

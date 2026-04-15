@@ -62,7 +62,7 @@ void test_spot_node_discovery_direct_and_child_interop ()
 
     TEST_ASSERT_SUCCESS_ERRNO (publish_text (
       &zlink_publish, pub, "interop:node", "node-hop", 0));
-    TEST_ASSERT_TRUE (wait_for_spot_message (
+    TEST_ASSERT_TRUE (wait_for_spot_recv_message (
       sub, "interop:node", "node-hop", 8, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (

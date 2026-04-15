@@ -104,7 +104,7 @@ zlink_connect(sub, "tcp://127.0.0.1:5556");
 /* Subscribe to topic -- set after connect */
 zlink_set_subscription(sub, "weather");
 
-/* Use zlink_subscribe() or zlink_subscribe_handler() to receive */
+/* Use zlink_subscribe() (typically inside a poller loop) to receive */
 ```
 
 > Reference: `core/tests/test_pubsub.cpp` -- empty subscription ("") → receives all messages
@@ -114,21 +114,24 @@ zlink_set_subscription(sub, "weather");
 | Socket | Direction | Receive API | Notes |
 |--------|-----------|-------------|-------|
 | PUB | Send only | N/A | Cannot receive (`ZLINK_RECV_NOT_SUPPORTED`) |
-| SUB | Receive only | `zlink_subscribe()` / `zlink_subscribe_handler()` | Topic + data separated |
+| SUB | Receive only | `zlink_subscribe()` | Topic + data separated |
 | XPUB | Bidirectional | `zlink_subscription_event()` | Receives subscription events |
-| XSUB | Receive only | `zlink_subscribe()` / `zlink_subscribe_handler()` | No local filter; receives all |
+| XSUB | Receive only | `zlink_subscribe()` | No local filter; receives all |
 
-> **Note:** `zlink_send()` / `zlink_recv()` return `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` on all 4
+> **Note:** `zlink_send()` / `zlink_recv()` return
+> `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` on all 4
 > PUB/SUB sockets. Use `zlink_publish()` for publishing and
-> `zlink_subscribe()` / `zlink_subscribe_handler()` for receiving.
+> `zlink_subscribe()` for receiving.
 
-PUB/SUB sockets support two receive modes:
+SUB / XSUB are recv-only types. The intended pattern is to observe
+`ZLINK_POLLIN` from a poller and then pull topic messages with
+`zlink_subscribe()`. No direct topic callback surface is provided.
 
-- **Pull mode** (default): `zlink_subscribe()` returns topic and data separately
-- **Callback mode**: `zlink_subscribe_handler()` registers a callback for automatic dispatch
-
-After callback attach, `zlink_subscribe()` and data-plane `ZLINK_POLLIN`
-return `EBUSY`.
+> **PUB / XPUB default change:** `ZLINK_PUB_OPT_NODROP` now defaults to
+> `1`. Instead of silently dropping when the HWM is reached,
+> `zlink_publish()` returns `ZLINK_SUBMIT_BACKPRESSURED`. Callers that
+> need the previous loss-tolerant behavior must set
+> `ZLINK_PUB_OPT_NODROP` to `0` explicitly.
 
 ??? example "Full Sample Code -- Recv"
 
@@ -143,22 +146,10 @@ return `EBUSY`.
     | Rust | [pubsub_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_recv_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_recv_sample/main.go) |
 
-??? example "Full Sample Code -- Callback"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [pubsub_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pubsub_callback_sample.c) |
-    | C++ | [pubsub_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pubsub_callback_sample.cpp) |
-    | Java | [PubSubCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PubSubCallbackSample.java) |
-    | Python | [pubsub_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pubsub_callback.py) |
-    | Node | [pubsub_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pubsub_callback_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PubSubCallback/Program.cs) |
-    | Rust | [pubsub_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_callback_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_callback_sample/main.go) |
-
-> When PUB's send queue is full (HWM), messages are **dropped** rather
-> than blocking. For details, see
-> [Performance Guide](10-performance.md).
+> When PUB's send queue is full (HWM), the default
+> (`ZLINK_PUB_OPT_NODROP=1`) makes `zlink_publish()` return
+> `ZLINK_SUBMIT_BACKPRESSURED` instead of silently dropping. For details,
+> see [Performance Guide](10-performance.md).
 
 ## 3. Topic Filtering
 
@@ -220,9 +211,9 @@ zlink_publish(pub, "sensor:cpu", parts, 2, 0);
    parts[1]  = "73" */
 ```
 
-The topic is sent on the wire as the first frame. `zlink_subscribe()` /
-`zlink_subscribe_handler()` separate the topic from data on the receive
-side. Callers never need to assemble topic frames manually.
+The topic is sent on the wire as the first frame. `zlink_subscribe()`
+separates the topic from data on the receive side. Callers never need to
+assemble topic frames manually.
 
 > **Note:** Passing `NULL` as topic (`zlink_publish(pub, NULL, parts, ...)`)
 > activates a legacy path where parts[0] is used as the topic frame.
@@ -467,7 +458,6 @@ flowchart LR
 |------------|-----|-----|------|------|
 | `zlink_publish()` | OK | — | OK | — |
 | `zlink_subscribe()` | — | OK | — | OK |
-| `zlink_subscribe_handler()` | — | OK | — | OK |
 | `zlink_set_subscription()` | — | OK | — | OK |
 | `zlink_subscription_event()` | — | — | OK | — |
 | Local filter | N/A | **On** | N/A | **Off** |

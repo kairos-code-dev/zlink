@@ -32,7 +32,7 @@
 |------|-----------|------|
 | [`zlink_msg_t`](message.ko.md) | message.ko.md | 불투명 메시지 컨테이너 (64B, 스택 할당 가능) |
 | [`zlink_routing_id_t`](message.ko.md) | message.ko.md | 피어 라우팅 아이덴티티 |
-| `zlink_socket_msg_handler_fn` | [socket/](socket/README.ko.md) | 소켓 메시지 수신 콜백 |
+| `zlink_socket_msg_handler_fn` | [socket/](socket/README.ko.md) | raw `STREAM` raw 수신 콜백 |
 | [`zlink_monitor_event_t`](monitoring.ko.md) | monitoring.ko.md | 모니터 이벤트 구조체 (이벤트, 값, 주소) |
 | [`zlink_monitor_snapshot_t`](monitoring.ko.md) | monitoring.ko.md | monitor snapshot (state, queue depth) |
 | [`zlink_service_event_t`](events.ko.md) | events.ko.md | 서비스 모니터 이벤트 구조체 |
@@ -42,10 +42,9 @@
 
 | 타입 | 정의 위치 | 설명 |
 |------|-----------|------|
-| [`zlink_socket_msg_handler_fn`](socket/README.ko.md) | socket/ | 소켓 멀티파트 메시지 dispatch 콜백 |
-| [`zlink_subscribe_handler_fn`](socket/README.ko.md) | socket/ | 토픽 기반 메시지 dispatch 콜백 |
+| [`zlink_socket_msg_handler_fn`](socket/README.ko.md) | socket/ | raw `STREAM`의 raw 수신 콜백 타입 |
+| [`zlink_stream_packet_handler_fn`](socket/README.ko.md) | socket/ | raw `STREAM`의 packet 수신 콜백 타입 |
 | [`zlink_reply_handler_fn`](socket/README.ko.md) | socket/ | 비동기 request-reply 완료 콜백 |
-| [`zlink_router_handler_fn`](socket/README.ko.md) | socket/ | ROUTER routed 메시지 dispatch 콜백 |
 | [`zlink_spot_handler_fn`](service/spot.ko.md) | service/spot.ko.md | SPOT routed 메시지 dispatch 콜백 |
 | [`zlink_spot_dispatch_event_handler_fn`](service/spot.ko.md) | service/spot.ko.md | SPOT dispatch 이벤트 콜백 |
 | [`zlink_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 소켓 모니터 이벤트 콜백 |

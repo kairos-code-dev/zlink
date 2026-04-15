@@ -354,11 +354,34 @@ zlink_recv_result_t zlink_spot_subscribe (
 
 - 느린 user callback이 I/O thread를 막지 않게 해야 한다.
 - subscribe, routed, timer producer가 user 로직에 끌려 다니지 않게 해야 한다.
+- callback 안에서 사실상 응용의 main receive logic이 실행되므로, 이 경로는
+  data-plane 내부 유지 작업과도 분리되어야 한다.
 - 같은 `Spot`의 이벤트 순서는 유지하면서, 다른 `Spot` 간 병렬성은 열어 두어야
   한다.
 
-즉 구현은 단순 공용 thread pool보다는, "shared executor + per-Spot serial
-ordering" 또는 그와 같은 구조를 가져야 한다.
+즉 구현은 dispatch callback 실행 경로를 data-plane 내부 유지 경로와 분리하고,
+같은 `Spot` 직렬 실행 규칙을 보장하는 구조를 가져야 한다.
+
+이 초안은 dispatch executor worker 수를 설정할 수 있는 별도 context 옵션도
+필요하다고 본다.
+
+- 옵션은 dispatch callback 처리 병렬성만 조절한다.
+- 이 옵션은 `zlink_spot_dispatch_event_handler()` 경로에만 적용한다.
+- send-ready callback, monitor callback, 다른 socket family callback에는 적용하지
+  않는다.
+- 같은 `Spot` 내부 직렬 실행 규칙은 worker 수를 늘려도 바뀌지 않는다.
+- worker 수를 늘렸을 때 이득이 생기는 경우는 여러 `Spot`에서 callback이 동시에
+  오래 실행될 때다.
+
+기본 정책은 아래와 같이 둔다.
+
+- 옵션 이름은 임시로 `ZLINK_SPOT_WORKER_THREADS`로 둔다.
+- 값 `0`은 자동 선택을 뜻한다.
+- 자동 선택 기본값은 `min(visible logical cores, 8)`로 둔다.
+- 여기서 `visible logical cores`는 프로세스에서 관찰 가능한 논리 코어 수를
+  뜻한다.
+- 논리 코어 수를 알 수 없으면 자동 선택은 1로 떨어져야 한다.
+- 최소 1 worker는 항상 보장해야 한다.
 
 ### 7.2.2 inbound 소유 모델
 
@@ -990,6 +1013,12 @@ typedef enum zlink_spot_dispatch_event_t
 - 같은 `spot_`의 callback은 직렬 실행되어야 한다.
 - 다른 `spot_`은 병렬 실행될 수 있다.
 
+dispatch executor worker 수는 context 옵션으로 조절할 수 있어야 한다.
+
+- 임시 옵션 이름: `ZLINK_SPOT_WORKER_THREADS`
+- `0`: 자동 선택
+- 자동 기본값: `min(visible logical cores, 8)`, 실패 시 `1`
+
 ### 12.7 Router 쪽 service 기반 SPOT 전송 제외
 
 이 draft에서는 `router -> spot` 경로에 `service_name` 기반 보조 함수를 두지
@@ -1354,22 +1383,84 @@ service-aware subscribe recv는 submit 계열과 다르게 "대상이 없는 서
 - monitor event에 `service_name`과 attachment role이 함께 실리는지 확인한다.
 - 같은 `Spot`의 dispatch callback은 직렬 실행되고, 느린 callback이 I/O thread를
   직접 점유하지 않는지 확인한다.
+- dispatch executor worker 수를 1보다 크게 두었을 때 서로 다른 `Spot` callback은
+  병렬로 실행될 수 있고, 같은 `Spot` callback은 여전히 직렬 실행되는지 확인한다.
+- `ZLINK_SPOT_WORKER_THREADS=0`일 때 자동 기본값이
+  `min(visible logical cores, 8)`이고, 논리 코어 수를 알 수 없으면 `1`로
+  잡히는지 확인한다.
 
 이 절은 구현 후 최소 회귀 범위를 적은 것이다. 실제 테스트 파일 배치와 fixture
 구성은 구현 코드 구조에 맞춰 정하되, 위 계약 항목은 빠지지 않아야 한다.
 
-## 13. 정식 spec 분해 계획
+## 13. 정식 문서 반영 계획
 
 구현과 공개 헤더가 정리되면 이 초안 내용은 한 문서로 유지하지 않고 아래처럼
 나누어 반영한다.
 
+### 13.1 spec 반영
+
 - `doc/spec/core/service/spot*.md`
-  `SpotNode`와 `Spot`의 새 공개 surface, service 기반 send/request/publish
+  `SpotNode`와 `Spot`의 새 공개 surface, service 기반 send/request/publish,
+  dispatch callback 계약, readable plane 종류, 같은 `Spot` 직렬 실행 규칙,
+  다른 `Spot` 병렬 실행 허용 범위
+- `doc/spec/core/context*.md`
+  dispatch executor worker 수를 조절하는 context 옵션
+  `ZLINK_SPOT_WORKER_THREADS`, 값 `0`의 의미, 자동 기본값
+  `min(visible logical cores, 8)`, 코어 수 조회 실패 시 `1`, 최소 1 worker 보장
 - `doc/spec/core/service/discovery*.md`
   Discovery가 service attachment를 어떻게 공급하는지
 - 필요하면 `router*.md`
   service 기반 routed 경로가 ROUTER 계약에 미치는 영향
 - 필요하면 `errno-map*.md`
   attach 충돌, service 대상 없음, attachment 없음 같은 새 실패 코드
+
+### 13.2 guide 반영
+
+- `doc/guide/07-3-spot*.md`
+  multi-service `Spot`을 언제 쓰는지, service 이름으로 publish/send/request를
+  어떻게 고르는지, dispatch callback과 recv를 어떤 흐름으로 함께 쓰는지
+- 필요하면 `doc/guide/11-thread-safety*.md`
+  dispatch callback worker 수 옵션이 "같은 `Spot` 직렬 실행 규칙은 바꾸지 않고,
+  여러 `Spot` 사이 병렬성만 조절한다"는 점
+
+guide 문서에는 아래 내용을 둔다.
+
+- 왜 dispatch executor를 data-plane/I/O와 분리했는지
+- 사용자가 `ZLINK_SPOT_WORKER_THREADS`를 언제 조절해야 하는지
+- callback 안에서 어떤 recv 함수를 호출해 queue를 비우는지
+- 느린 callback이 전체 수신 처리량에 주는 영향과 실전 튜닝 기준
+
+guide에는 내부 queue 구조, worker 배치 방식, 해시 선택 규칙 같은 구현 설명을
+넣지 않는다.
+
+### 13.3 internals 반영
+
+- `doc/internals/spot-internals*.md`
+  unified service event queue, dispatch executor, per-Spot serial ordering,
+  routed/pubsub/timer producer와 callback consumer의 연결 구조
+- 필요하면 `doc/internals/threading-model*.md`
+  dispatch executor가 기존 I/O/data-plane/thread model 안에서 어디에 위치하는지
+- 필요하면 `doc/internals/thread-safety*.md`
+  dispatch callback 문맥, callback 중 허용 API, close/admission과의 관계
+
+internals 문서에는 아래 내용을 둔다.
+
+- dispatch executor worker가 어떤 큐를 어떻게 소비하는지
+- 같은 `Spot` 직렬 실행을 어떤 내부 상태로 보장하는지
+- worker 수 옵션이 runtime 자원 배치에 어떻게 반영되는지
+- data-plane thread, timer producer, dispatch executor 사이의 handoff 구조
+
+### 13.4 정리 기준
+
+정리 기준은 아래처럼 둔다.
+
+- `spot*.md`에는 사용자가 observable한 dispatch 계약만 남긴다.
+  어느 executor가 callback을 호출하는지, callback 안에서 어떤 recv를 drain할 수
+  있는지, 같은 `Spot` 직렬 실행 규칙이 무엇인지를 적는다.
+- `context*.md`에는 worker 수를 정하는 옵션과 기본값 정책만 둔다.
+  내부 worker 배치 방식, queue 구조, 구현체 클래스 이름 같은 내용은 넣지 않는다.
+- guide에는 사용 목적, callback 사용 흐름, worker 수 튜닝 기준만 둔다.
+- executor 내부 구조와 per-Spot ordering을 어떻게 구현했는지는 internals 문서로
+  분리한다.
 
 정식 문서에는 구현과 공개 헤더에 실제로 들어간 내용만 남긴다.

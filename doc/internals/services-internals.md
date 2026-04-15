@@ -454,12 +454,11 @@ flowchart TB
         dealer_req["zlink_dealer_request()"]
         router_req["zlink_router_request()"]
         router_reply["zlink_router_reply()"]
-        router_handler["zlink_router_handler()"]
         router_recv["zlink_router_recv()"]
     end
 
     subgraph State["Per-Socket State"]
-        rr_state["socket_request_reply_state_t<br/>pending_sequences,<br/>pending_requests map,<br/>router_handler"]
+        rr_state["socket_request_reply_state_t<br/>pending_sequences,<br/>pending_requests map"]
     end
 
     subgraph Dispatch["Internal Dispatch"]
@@ -479,12 +478,10 @@ flowchart TB
 
     dealer_req --> rr_state
     router_req --> rr_state
-    router_handler --> rr_state
     rr_state --> msg_dispatch
     msg_dispatch --> envelope_parse
 
-    envelope_parse -->|request| router_handler
-    envelope_parse -->|request, no handler| tx
+    envelope_parse -->|request| tx
     tx -.->|inproc PAIR| rx
     router_recv --> rx
 
@@ -496,23 +493,18 @@ flowchart TB
     dealer_req --> timeout_schedule
 ```
 
-### 7.2 Dispatch Sequence (Handler Mode)
+### 7.2 Dispatch Sequence (Reply Completion)
 
 ```mermaid
 sequenceDiagram
     participant Net as Network
-    participant Socket as ROUTER Socket
+    participant Socket as ROUTER/DEALER Socket
     participant Dispatch as request_reply_dispatch
-    participant Handler as router_handler_fn
 
     Net->>Socket: incoming message
     Socket->>Dispatch: msg_handler callback
     Dispatch->>Dispatch: parse_envelope()
-    alt message_type = request (plain ROUTER)
-        Dispatch->>Handler: handler(source_node_rid, NULL, request_seq, parts, userdata)
-    else message_type = request (SPOT-originated)
-        Dispatch->>Handler: handler(source_node_rid, source_spot_rid, request_seq, parts, userdata)
-    else message_type = reply
+    alt message_type = reply
         Dispatch->>Dispatch: lookup pending[source_node_rid + seq]
         Dispatch->>Dispatch: cancel timeout task
         Dispatch->>Dispatch: invoke reply_handler(errno, parts, userdata)
@@ -522,7 +514,7 @@ sequenceDiagram
     end
 ```
 
-### 7.3 Dispatch Sequence (Recv/Pull Mode)
+### 7.3 Dispatch Sequence (Router Recv Path)
 
 ```mermaid
 sequenceDiagram
@@ -701,3 +693,77 @@ traffic through the same framing):
 - Frame 2: `source_spot_rid` bytes (zero length for plain ROUTER traffic)
 - Frame 3: `request_seq` (8 bytes Big Endian; `0` for fire-and-forget)
 - Frame 4+: Payload parts
+
+## 10. Admission state propagation
+
+Both raw ROUTER and SpotNode drive their own admission state through
+`zlink_set_admission_state()`. Internally each subject advertises the
+change to its connected peers as a **best-effort runtime signal**, and
+each peer updates its admission cache so outbound candidate selection
+reflects the new state.
+
+Baseline behavior:
+
+- A state change is applied to the local cache immediately. Other local
+  outbound paths on the same node (e.g. local spot or router send) see the
+  new state right away.
+- Peer-side propagation flows through the SpotNode peer control path
+  (`peer_ctrl_pub` / `peer_ctrl_sub`) and through the dedicated raw socket
+  admission signal path. The signal is a best-effort runtime control
+  message; no strong synchronous model is provided.
+- After reconnect the admission state resyncs. When a new session becomes
+  ready the subject re-advertises its current admission state once so a
+  stale cache does not cause incorrect candidate selection.
+- When a peer's cache shows `DRAINING`, the peer drops that target from
+  outbound candidate selection. If every candidate is `DRAINING`, the
+  submit path normalizes to `ZLINK_SUBMIT_NOT_ADMITTED`. Under races where
+  connection state changes are observed before the admission cache update,
+  the same refusal may surface first as `ZLINK_SUBMIT_NOT_CONNECTED` or
+  `ZLINK_SUBMIT_NOT_FOUND`.
+- Raw socket changes are exposed to the application via the socket monitor
+  event `ZLINK_EVENT_PEER_ADMISSION_CHANGED`. SpotNode changes use the
+  service monitor event
+  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`. The implementation
+  carries both the peer identifier (`routing_id`) and the new admission
+  state inside the same event payload.
+
+## 11. Pairwise initiator rule (Discovery auto-connect)
+
+When two ROUTERs in the same service discover each other via Discovery,
+the library decides internally that exactly one side dials. This is an
+internal Discovery auto-connect rule, not a user-facing knob.
+
+Comparison procedure:
+
+1. Verify that local and remote share the same `service_name` and that
+   both sides are in ROUTER role.
+2. Build a stable comparison key for each side. The primary key is the
+   `routing_id`; if `routing_id` is equal, the advertised endpoint string
+   is used as the tie-break.
+3. If the local key compares less than the remote key, the local side is
+   chosen as initiator. Otherwise the local side does not generate the
+   connect.
+4. Both peers compute the same total order from the same inputs, so each
+   pair has exactly one initiator.
+
+Interaction with provider-snapshot refresh:
+
+- Discovery sees a new provider set on every SERVICE_LIST update. Because
+  the comparison is deterministic for any pair, snapshot refresh does not
+  flap the initiator direction.
+- Environments where `routing_id` changes after restart may see the
+  initiator direction flip on the next run. This is not an error: the
+  contract is "exactly one side dials per pair at any given time," not
+  "the same side always dials."
+
+Relationship with manual connect and handover:
+
+- The rule applies only to Discovery-managed auto-connect. Manual
+  `zlink_connect()` calls made through the raw API are not mediated by
+  the library.
+- Distinct peers that happen to share the same `routing_id` are not
+  resolved by this rule. Such collisions are handled by the existing
+  ROUTER handover policy.
+- Pairwise initiator and handover are two separate layers: the initiator
+  rule prevents duplicate dials up-front, while handover cleans up
+  duplicates that still appear after the fact.

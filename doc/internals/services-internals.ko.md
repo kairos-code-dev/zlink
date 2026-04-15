@@ -473,12 +473,11 @@ flowchart TB
         dealer_req["zlink_dealer_request()"]
         router_req["zlink_router_request()"]
         router_reply["zlink_router_reply()"]
-        router_handler["zlink_router_handler()"]
         router_recv["zlink_router_recv()"]
     end
 
     subgraph State["Per-Socket State"]
-        rr_state["socket_request_reply_state_t<br/>pending_sequences,<br/>pending_requests map,<br/>router_handler"]
+        rr_state["socket_request_reply_state_t<br/>pending_sequences,<br/>pending_requests map"]
     end
 
     subgraph Dispatch["Internal Dispatch"]
@@ -498,12 +497,10 @@ flowchart TB
 
     dealer_req --> rr_state
     router_req --> rr_state
-    router_handler --> rr_state
     rr_state --> msg_dispatch
     msg_dispatch --> envelope_parse
 
-    envelope_parse -->|request| router_handler
-    envelope_parse -->|request, handler 없음| tx
+    envelope_parse -->|request| tx
     tx -.->|inproc PAIR| rx
     router_recv --> rx
 
@@ -515,23 +512,18 @@ flowchart TB
     dealer_req --> timeout_schedule
 ```
 
-### 7.2 Dispatch 시퀀스 (Handler 모드)
+### 7.2 Dispatch 시퀀스 (Reply 완료)
 
 ```mermaid
 sequenceDiagram
     participant Net as Network
-    participant Socket as ROUTER Socket
+    participant Socket as ROUTER/DEALER Socket
     participant Dispatch as request_reply_dispatch
-    participant Handler as router_handler_fn
 
     Net->>Socket: 수신 메시지
     Socket->>Dispatch: msg_handler callback
     Dispatch->>Dispatch: parse_envelope()
-    alt message_type = request (plain ROUTER)
-        Dispatch->>Handler: handler(source_node_rid, NULL, request_seq, parts, userdata)
-    else message_type = request (SPOT 발원)
-        Dispatch->>Handler: handler(source_node_rid, source_spot_rid, request_seq, parts, userdata)
-    else message_type = reply
+    alt message_type = reply
         Dispatch->>Dispatch: pending[source_node_rid + seq] 조회
         Dispatch->>Dispatch: timeout task 취소
         Dispatch->>Dispatch: reply_handler(errno, parts, userdata) 호출
@@ -541,7 +533,7 @@ sequenceDiagram
     end
 ```
 
-### 7.3 Dispatch 시퀀스 (Recv/Pull 모드)
+### 7.3 Dispatch 시퀀스 (Router Recv 경로)
 
 ```mermaid
 sequenceDiagram
@@ -719,3 +711,69 @@ ROUTER recv queue frame 인코딩 (routed 표면 통합 — 이 큐는 일반 RO
 - Frame 2: `source_spot_rid` 바이트 (일반 ROUTER 트래픽이면 길이 0)
 - Frame 3: `request_seq` (8바이트 Big Endian; fire-and-forget 이면 `0`)
 - Frame 4+: Payload parts
+
+## 10. Admission state 전파
+
+raw ROUTER와 SpotNode는 모두 `zlink_set_admission_state()`로 자기
+admission 상태를 바꾼다. 내부 구현은 그 변경을 연결된 peer에게
+**최선 노력의 runtime 신호**로 알리고, peer는 자신의 admission cache를
+갱신해서 outbound 후보 선택에 반영한다.
+
+기본 동작 약속:
+
+- 상태 변경은 즉시 로컬 캐시에 반영된다. 같은 노드에서 동작하는 다른
+  outbound 경로(예: 로컬 spot 또는 router send)는 그 즉시 새 상태를
+  본다.
+- peer 쪽 전파는 SpotNode peer control 경로(`peer_ctrl_pub`/
+  `peer_ctrl_sub`)와 raw socket 쪽 전용 admission 신호 경로를 통해
+  이루어진다. 이 신호는 누락 가능성을 가정한 best-effort runtime
+  control 신호이며, 강한 동기 모델은 보장하지 않는다.
+- 재연결 시에는 admission 상태가 다시 동기화된다. 새 세션이 ready
+  되면 현재 admission 상태를 한 번 더 advertise해서 stale cache로 인한
+  잘못된 후보 선택을 줄인다.
+- peer 쪽 admission cache가 `DRAINING`을 보면 outbound 후보에서 그 peer
+  를 제외하고, 후보가 모두 `DRAINING`이면 submit을
+  `ZLINK_SUBMIT_NOT_ADMITTED`로 정규화해 반환한다. 상태 캐시 전파보다
+  연결 변화가 먼저 관찰되는 경합 상황에서는 같은 거절이
+  `ZLINK_SUBMIT_NOT_CONNECTED` 또는 `ZLINK_SUBMIT_NOT_FOUND`로 먼저 보일
+  수 있다.
+- raw socket 쪽 변경은 socket monitor의
+  `ZLINK_EVENT_PEER_ADMISSION_CHANGED`로, SpotNode 쪽 변경은
+  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`로 외부에 노출된다.
+  내부 구현은 peer 식별자(`routing_id`)와 새 admission 상태를 같은
+  이벤트 payload에 함께 싣는다.
+
+## 11. Pairwise initiator 규칙 (Discovery 자동 연결)
+
+같은 서비스의 두 ROUTER가 Discovery에서 서로를 발견하면, 한쪽만 dial하도록
+라이브러리 내부에서 결정한다. 이 결정은 사용자 설정이 아니라 Discovery
+auto-connect path 내부 규칙이다.
+
+비교 절차:
+
+1. local과 remote가 같은 `service_name`이고 둘 다 ROUTER 역할인지 확인한다.
+2. 두 peer를 정렬할 stable key를 만든다. 우선 비교 기준은 `routing_id`
+   이고, `routing_id`가 같으면 advertise endpoint 문자열로 타이브레이크
+   한다.
+3. local key가 remote key보다 작으면 local이 initiator로 정해진다. 그렇지
+   않으면 local은 dial을 만들지 않는다.
+4. 두 peer 모두 같은 입력으로 같은 total order를 계산하므로, pair마다
+   initiator가 정확히 하나만 정해진다.
+
+provider snapshot과의 상호작용:
+
+- Discovery는 SERVICE_LIST 갱신마다 새 provider 집합을 본다. 같은 pair에
+  대해 매번 같은 비교 결과가 나오므로, snapshot이 갱신되어도 initiator
+  방향이 흔들리지 않는다.
+- `routing_id`가 재시작 후 바뀌는 환경에서는 다음 실행에서 initiator
+  방향이 바뀔 수 있다. 이는 오류가 아니다. 같은 시점 안에서 pair마다
+  한쪽만 dial한다는 보장이 핵심 계약이다.
+
+수동 연결과 handover:
+
+- 이 규칙은 Discovery-managed 자동 연결에만 적용된다. 사용자가 raw API로
+  직접 `zlink_connect()`를 호출한 수동 연결은 라이브러리가 중재하지 않는다.
+- 서로 다른 peer가 우연히 같은 `routing_id`를 쓰는 충돌 자체는 이 규칙이
+  해결하지 않는다. 그런 충돌은 기존 ROUTER handover 정책으로 처리한다.
+- pairwise initiator는 duplicate dial을 사전에 줄이고, handover는 그래도
+  생긴 duplicate를 사후에 정리하는 두 개의 분리된 계층이다.

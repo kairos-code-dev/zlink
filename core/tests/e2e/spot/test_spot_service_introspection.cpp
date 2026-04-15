@@ -26,17 +26,6 @@
 
 namespace {
 
-struct subscribe_probe_t
-{
-    subscribe_probe_t () : calls (0) {}
-
-    std::mutex mutex;
-    std::condition_variable cv;
-    int calls;
-    std::string topic;
-    std::string payload;
-};
-
 static std::atomic<int> g_port_seed (22618);
 static std::mutex g_default_handle_mutex;
 static std::map<void *, spot_handle_t *> g_default_spot_handles;
@@ -99,36 +88,6 @@ static bool wait_for_subscription_ready (void *sub_node_,
     if (zlink_set_subscription (sub_handle, topic_) != ZLINK_CONFIG_OK)
         return false;
     return wait_for_spot_node_subject_ready (sub_node_, 3000);
-}
-
-static void subscribe_probe_handler (const zlink_routing_id_t *,
-                                     const char *topic_,
-                                     size_t topic_len_,
-                                     zlink_msg_t *parts_,
-                                     size_t part_count_,
-                                     void *userdata_)
-{
-    subscribe_probe_t *probe = static_cast<subscribe_probe_t *> (userdata_);
-    if (!probe) {
-        for (size_t i = 0; i < part_count_; ++i)
-            zlink_msg_close (&parts_[i]);
-        return;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock (probe->mutex);
-        ++probe->calls;
-        probe->topic.assign (topic_ ? topic_ : "", topic_len_);
-        probe->payload.clear ();
-        if (part_count_ > 0) {
-            probe->payload.assign (
-              static_cast<const char *> (zlink_msg_data (&parts_[0])),
-              zlink_msg_size (&parts_[0]));
-        }
-    }
-    for (size_t i = 0; i < part_count_; ++i)
-        zlink_msg_close (&parts_[i]);
-    probe->cv.notify_all ();
 }
 
 static void set_linger_zero (void *handle_)
@@ -310,10 +269,6 @@ static void test_spot_callback_model_receive_regression ()
     set_linger_zero (pub);
     set_linger_zero (sub);
 
-    subscribe_probe_t probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub, &subscribe_probe_handler, &probe));
-
     char endpoint[MAX_SOCKET_STRING];
     int port_seed = next_port_seed ();
     TEST_ASSERT_SUCCESS_ERRNO (bind_node (pub_node, &port_seed, endpoint));
@@ -321,7 +276,20 @@ static void test_spot_callback_model_receive_regression ()
       zlink_spot_node_connect_peer (sub_node, endpoint));
     TEST_ASSERT_TRUE (
       wait_for_subscription_ready (sub_node, endpoint, "topic.callback"));
-    TEST_ASSERT_EQUAL_INT (0, probe.calls);
+
+    zlink_routing_id_t source_rid;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char service_name[64];
+    size_t service_name_len = sizeof (service_name);
+    char topic[64];
+    size_t topic_len = sizeof (topic);
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA,
+                           zlink_spot_subscribe (
+                             sub, &source_rid, &parts, &part_count,
+                             service_name, &service_name_len, topic,
+                             &topic_len, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));

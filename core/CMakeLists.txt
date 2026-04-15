@@ -967,6 +967,7 @@ set(api-sources
     src/api/service_spot_dispatch_context.cpp
     src/api/request_timeout_scheduler_internal.cpp
     src/api/service_spot_request_reply_internal.cpp
+    src/api/service_spot_request_reply_registry.cpp
     src/api/service_spot_request_reply_api.cpp
     src/api/service_spot_subject_option_api.cpp
     src/api/service_spot_subject_subscription_api.cpp
@@ -1077,6 +1078,7 @@ set(spot-sources
     src/services/spot/spot_node_defaults.cpp
     src/services/spot/spot_node_handles.cpp
     src/services/spot/spot_node_lifecycle.cpp
+    src/services/spot/spot_node_service_attachment.cpp
     src/services/spot/spot_node_summary.cpp
     src/services/spot/spot_pub.cpp
     src/services/spot/spot_dispatch_context.cpp
@@ -1091,6 +1093,7 @@ set(socket-sources
     src/sockets/socket_close_ops.cpp
     src/sockets/socket_base.cpp
     src/sockets/socket_base_api.cpp
+    src/sockets/socket_base_service_attachment.cpp
     src/sockets/socket_base_dispatch.cpp
     src/sockets/socket_dispatch_context.cpp
     src/sockets/socket_base_endpoint.cpp

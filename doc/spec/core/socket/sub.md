@@ -123,44 +123,19 @@ underlying transport does not carry identity), `*topic_id_out_` /
 `*parts_out_` / `*part_count_out_` receive the payload frames. Ownership
 of the parts array is transferred to the caller.
 
-The subject must be in recv mode (no handler attached). If a subscribe
-handler has been attached, this call fails with `EBUSY`.
+Raw SUB/XSUB are recv-only types: the intended pattern is to observe
+`ZLINK_POLLIN` from a poller and then pull topic messages with this
+function.
 
 Applicable types: raw SUB, raw XSUB, `spot`, `spot_node`.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
 **Errors:** `EFAULT` if `subject_` is NULL. `EAGAIN` if `ZLINK_DONTWAIT`
-was set and no message is available. `EBUSY` if a subscribe handler is
-attached. `EMSGSIZE` if the topic buffer is too small. `ENOTSUP` if the
-subject type does not support subscribe recv.
+was set and no message is available. `EMSGSIZE` if the topic buffer is
+too small. `ENOTSUP` if the subject type does not support subscribe recv.
 
-**See also:** `zlink_subscribe_handler`, `zlink_set_subscription`
-
----
-
-### zlink_subscribe_handler
-
-Attach a topic-based receive handler to a socket.
-
-```c
-bool zlink_subscribe_handler (void *s_,
-                              zlink_subscribe_handler_fn handler_,
-                              void *userdata_);
-```
-
-Attach a topic-based receive handler to raw `SUB`, raw `XSUB`, `spot`, or
-`spot_node`. After attach, `zlink_subscribe()` and data-plane poller
-`ZLINK_POLLIN` on the same subject fail with `errno=EBUSY`. A second attach
-on the same subject also fails with `errno=EBUSY`. Unsupported subjects
-return `ENOTSUP`.
-
-**Returns:** `true` on success, `false` on failure (errno is set).
-
-**Errors:** `EINVAL` if the handler is NULL. `ENOTSUP` if the handle type does
-not accept a subscribe handler. `EBUSY` if a handler is already attached.
-
-**See also:** `zlink_recv_handler`, `zlink_socket`, `zlink_close`
+**See also:** `zlink_set_subscription`
 
 ---
 

@@ -365,3 +365,40 @@ topology summary 에는 `endpoint` (전송 URI) 만 저장되며 owner SpotNode 
 | 0x000A | TOPOLOGY_REPORT | DEALER→ROUTER | topology 상태 보고 |
 | 0x000B | TOPOLOGY_QUERY | DEALER→ROUTER | 서비스 topology 조회 (`resolve_spot` 도 사용) |
 | 0x000C | TOPOLOGY_REPLY | ROUTER→DEALER | topology 조회 응답 |
+
+## 12. ROUTER ↔ ROUTER pairwise initiator
+
+같은 서비스의 두 ROUTER가 SERVICE_LIST를 통해 서로를 보면, Discovery는
+한쪽만 outbound `connect`를 만든다. 이 결정은 `socket_discovery_attachment_t`
+의 `refresh_peers()` 안에서 새 provider 후보를 처리할 때 수행된다.
+
+```mermaid
+sequenceDiagram
+    participant Disc as Discovery
+    participant Attach as socket_discovery_attachment_t (ROUTER)
+    participant Cmp as pairwise initiator key
+
+    Disc->>Attach: on_service_update(providers)
+    Attach->>Attach: 각 candidate에 대해 service_role 매칭
+    Attach->>Cmp: local_key vs remote_key 비교
+    Note over Cmp: 1) routing_id 우선<br/>2) 같으면 advertise endpoint 문자열로 tie-break
+    alt local_key < remote_key
+        Attach->>Attach: 이 peer 는 initiator → connect 만들기
+    else local_key >= remote_key
+        Attach->>Attach: dial 생략 (반대편이 initiator)
+    end
+```
+
+핵심 포인트:
+
+- 비교는 새 provider 후보 처리 단계에서 일어난다. 따라서 같은 pair에 대해
+  매번 같은 결론을 낸다. SERVICE_LIST 브로드캐스트로 provider 집합이 다시
+  들어와도 initiator 방향이 흔들리지 않는다.
+- Discovery는 자신이 만든 outbound와 상대편이 만든 inbound를 별도의 entry
+  로 보지 않는다. 한 번의 connect로 이미 양방향 메시지 경로가 성립한다.
+- 이 규칙은 ROUTER↔ROUTER 자동 연결에만 적용한다. PUB/SUB 같은 단방향
+  pair는 기존 역할 매칭 그대로 한쪽이 dial하고 다른 쪽이 받는다.
+- 같은 `routing_id`를 가진 서로 다른 peer가 동시에 보이는 충돌은 이
+  규칙이 해결하지 않는다. 충돌은 ROUTER handover 정책으로 처리한다.
+- 사용자 raw API를 통해 직접 호출한 `zlink_connect()`는 이 경로를 거치지
+  않으므로 라이브러리가 중재하지 않는다.

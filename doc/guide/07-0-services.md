@@ -67,15 +67,27 @@ A service registration/discovery system based on a Registry cluster. When a serv
 
 See the [Service Discovery Guide](07-1-discovery.md) and the [Registry Guide](07-4-registry.md) for details.
 
-### 3.2 SPOT -- Location-Transparent Topic PUB/SUB
+### 3.2 SPOT -- Service-Centric Routed + PUB/SUB Hub
 
-Automatically constructs a PUB/SUB Mesh based on Discovery to publish/subscribe topic messages across the entire cluster.
+A `SpotNode` is the hub that owns a service attachment table. It holds one
+or more `service_name` entries, each with its own ROUTER set and optional
+PUB/SUB pair. A single public `Spot` facade sits on top of the node and
+drives routed send/request and publish/subscribe per service.
 
-- Topic-based publish/subscribe
-- Pattern (wildcard) subscriptions
-- Discovery-based automatic Mesh construction
-- **Thread-safe** -- a single `spot` / `spot_node` handle allows concurrent operational API calls from multiple threads
-- Internal modules: `spot_node_access` · `spot_subject_access` (API seam) · `spot_handle` · `spot_data_plane` (forwarding · protocol) · `spot_pub` · `spot_sub` (option · recv)
+- Manual attachments via `zlink_spot_node_attach_router()` and
+  `zlink_spot_node_attach_pubsub()` (PUB+SUB is required together).
+- Automatic attachments via `zlink_spot_node_attach_discovery()`, which
+  accepts one Discovery per `service_name` and validates pub/sub pairing.
+- Service-aware data plane:
+  `zlink_spot_send_service()` / `zlink_spot_request_service()` /
+  `zlink_spot_publish()` / `zlink_spot_subscribe()` /
+  `zlink_spot_subscription_event()`.
+- Readable notifications share one callback surface:
+  `zlink_spot_dispatch_event_handler()`.
+- Service-aware monitoring goes through `zlink_spot_node_monitor_recv()`,
+  not the Spot dispatch plane.
+- **Thread-safe** -- a single `spot` / `spot_node` handle admits concurrent
+  operational API calls from multiple threads.
 
 See the [SPOT Guide](07-3-spot.md) for details.
 
@@ -127,6 +139,46 @@ This structure ensures the API layer does not know concrete service
 implementations, and adding a new service only requires changes to
 `api/service_*_api.cpp`, the corresponding `*_access` file, and the
 service implementation files.
+
+## 4.1 Graceful Maintenance (admission state)
+
+When you need to take a SPOT Node or raw ROUTER offline for maintenance,
+prefer a graceful drain over an abrupt disconnect. Marking the node as
+`DRAINING` lets in-flight work finish while peers automatically stop
+selecting it as a target for new outbound work.
+
+Recommended sequence:
+
+1. Call `zlink_set_admission_state(handle, ZLINK_ADMISSION_DRAINING)`.
+2. Allow connected peers a moment to update their admission caches. You
+   can observe this via the socket monitor event
+   `ZLINK_EVENT_PEER_ADMISSION_CHANGED` or the service monitor event
+   `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`.
+3. Wait long enough for in-flight replies to drain. In production this
+   wait is typically driven by your request SLA.
+4. Restart or replace the node, then rejoin the service with
+   `zlink_set_admission_state(handle, ZLINK_ADMISSION_SERVING)`.
+
+```c
+/* 1) Drain orders-exec-1 before maintenance */
+zlink_set_admission_state(orders_exec_node, ZLINK_ADMISSION_DRAINING);
+
+/* 2) Wait for in-flight requests to complete (for example, SLA + small
+      margin) while peers re-route new work to other orders-exec nodes. */
+sleep_seconds(60);
+
+/* 3) Restart or replace this node ... */
+
+/* 4) Rejoin the service */
+zlink_set_admission_state(orders_exec_node, ZLINK_ADMISSION_SERVING);
+```
+
+A node in `DRAINING` keeps serving recv/send/reply/handler traffic
+normally. Admission state is a peer-side advisory ("do not pick me for
+new work"), not a local halt. Peer submits that meet the `DRAINING` state
+are rejected with `ZLINK_SUBMIT_NOT_ADMITTED`. The connection itself
+stays alive, so the node automatically becomes a candidate again once it
+returns to `SERVING`.
 
 ## 5. Relationships Between Services
 

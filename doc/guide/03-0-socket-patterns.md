@@ -97,9 +97,10 @@ See the individual documents for detailed usage of each socket type.
 
 ## 7. Common Receive Interface
 
-Most socket types use `zlink_recv()` and recv callbacks with a shared
-shape. ROUTER and SPOT have their own typed recv surfaces (with extra
-outputs), and PUB/SUB sockets use dedicated subscribe/publish APIs.
+The primary receive model for the raw socket family is `recv + poller`.
+The server loop watches `ZLINK_POLLIN` on a poller and then pulls data
+with the recv-family function appropriate to the socket. `zlink_recv()`
+is the common entry point for that model.
 
 ```c
 zlink_recv_result_t zlink_recv (
@@ -123,19 +124,30 @@ zlink_recv_result_t zlink_recv (
 
 **Socket-specific receive surfaces:**
 
+- **PAIR / DEALER**: use `zlink_recv()`. DEALER additionally delivers
+  replies through the `zlink_dealer_request()` completion callback.
 - **ROUTER**: `zlink_recv()` on a ROUTER handle fails with
   `ZLINK_RECV_NOT_SUPPORTED`. ROUTER uses a single unified typed surface —
-  `zlink_router_recv()` / `zlink_router_handler()` — that returns both
-  `source_node_rid` and `source_spot_rid`, plus `request_seq`. This one
-  surface carries plain ROUTER traffic and SPOT-originated routed
-  traffic. See [03-4-router.md](03-4-router.md).
+  `zlink_router_recv()` — that returns `source_node_rid`,
+  `source_spot_rid`, and `request_seq`. This one surface carries plain
+  ROUTER traffic and SPOT-originated routed traffic. Request replies are
+  delivered through a separate completion callback. See
+  [03-4-router.md](03-4-router.md).
+- **SUB / XSUB**: use `zlink_subscribe()`. They are recv-only; no direct
+  topic callback surface is provided.
+- **STREAM**: exception type. Choose one of three models:
+  `zlink_recv()` (raw recv), `zlink_recv_handler()` (raw callback), or
+  `zlink_stream_packet_handler()` (packet callback). A second attempt to
+  activate a different mode on the same handle fails with `EBUSY`.
 - **SPOT (routed)**: uses `zlink_spot_recv()` / `zlink_spot_handler()`
   with `(source_rid, spot_rid, request_seq, …)`.
-- **PUB/SUB**: use dedicated APIs — `zlink_subscribe()` /
-  `zlink_subscribe_handler()` for receive, `zlink_publish()` for send.
-  `zlink_send()` / `zlink_recv()` return
-  `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` on all four
-  PUB/SUB sockets.
+- **monitor / timer**: both recv and callback models are supported.
+
+In short, data-plane receive defaults to `recv + poller`. Callback-based
+receive is kept only for exception types whose usage pattern justifies
+it: `STREAM`, monitor/timer, SPOT dispatch events. Request completion
+callbacks live on a separate axis (async operation completion), not on
+the data-plane receive axis.
 
 ## 8. Terminology
 
@@ -154,38 +166,43 @@ Terms used throughout the documentation:
 
 ## 9. Basic Usage Flow
 
-The basic pattern common to all socket types:
+The basic pattern common to raw socket types is a `recv + poller` loop.
+For example, a DEALER client receiving replies uses the following shape:
 
 ```c
 /* 1. Create Context */
 void *ctx = zlink_ctx_new();
 
-/* 2. Define handler callback */
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* process received message */
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
+/* 2. Create Socket */
+void *socket = zlink_socket(ctx, ZLINK_DEALER);
 
-/* 3. Create Socket (raw STREAM callback example) */
-void *socket = zlink_socket(ctx, ZLINK_STREAM);
-zlink_recv_handler(socket, on_message, NULL);
+/* 3. Set options (before bind/connect) */
+zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 
-/* 4. Set socket options (before bind/connect) */
-zlink_set_option(socket, ZLINK_OPT_<OPTION>, &value, sizeof(value));
-
-/* 5. Establish connection (bind or connect) */
-zlink_bind(socket, "tcp://*:5555");
-// or
+/* 4. Establish connection */
 zlink_connect(socket, "tcp://127.0.0.1:5555");
 
-/* 6. Send messages (receive is handled by callback) */
-zlink_send(socket, data, size, flags);
+/* 5. Poll and recv */
+void *poller = zlink_poller_new(ctx);
+zlink_poller_add(poller, socket, ZLINK_POLLIN, user_data);
 
-/* 7. Cleanup */
+while (running) {
+    zlink_poller_event_t ev;
+    if (zlink_poller_wait(poller, &ev, timeout_ms) <= 0) continue;
+    if (ev.events & ZLINK_POLLIN) {
+        zlink_routing_id_t rid;
+        zlink_msg_t *parts = NULL;
+        size_t n = 0;
+        if (zlink_recv(socket, &rid, &parts, &n, 0) == ZLINK_RECV_OK) {
+            /* process parts, then close each */
+            zlink_multipart_close(parts, n);
+            free(parts);
+        }
+    }
+}
+
+/* 6. Cleanup */
+zlink_poller_destroy(poller);
 zlink_close(socket);
 zlink_ctx_term(ctx);
 ```
@@ -195,20 +212,13 @@ zlink_ctx_term(ctx);
 > `zlink_set_routing_id()`, `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (via `zlink_set_router_option()`), `ZLINK_ROUTER_OPT_PROBE` (via `zlink_set_router_option()`), `zlink_set_tls_server()` / `zlink_set_tls_client()`.
 > Other options (`ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_LINGER`, `ZLINK_OPT_SNDTIMEO`, etc.) can be changed after bind/connect.
 
-> The example above is the raw `STREAM` callback form. Other raw socket
-> families use recv/poller as the canonical model. For a comparison of the
-> two modes, see [Core API](02-core-api.md) section 3.2.
-
-> **Callback mode constraints:** After installing `zlink_recv_handler()`,
-> `zlink_recv()` returns `ZLINK_RECV_BUSY` (irreversible transition). The following
-> recv-related options become ineffective:
->
-> | Option | Reason |
-> |--------|--------|
-> | `ZLINK_OPT_RCVTIMEO` | No `recv()` calls, so timeout has no effect |
-> | `ZLINK_RCVMORE` (removed) | Complete multipart delivered atomically as `parts[]` |
->
-> `ZLINK_OPT_RCVHWM` remains effective in callback mode (applies to the I/O thread's internal queue).
+> **Why callbacks are not the default:** raw `PAIR`, `DEALER`, `SUB`,
+> `XSUB`, and `ROUTER` are recv-only. Multiple sockets, monitors, and
+> timers compose naturally in the same poller loop, and the caller keeps
+> explicit control over which thread runs what in which order. Callback
+> surfaces are retained only where the usage pattern justifies them:
+> `STREAM`, monitor/timer, SPOT dispatch events, and request
+> completion.
 
 ---
 [← Core API](02-core-api.md) | [PAIR →](03-1-pair.md)

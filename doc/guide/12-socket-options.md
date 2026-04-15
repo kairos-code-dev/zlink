@@ -390,9 +390,31 @@ Some socket types override common defaults at creation time:
 | Socket Type | Overridden Option | Value | Reason |
 |-------------|-------------------|-------|--------|
 | `SUB` / `XSUB` | `LINGER` | `0` | Subscription sockets have nothing to drain on close |
+| `ROUTER` | `ROUTER_MANDATORY` | `1` | Surface failures to unconnected peers instead of silently dropping |
+| `ROUTER` | `ROUTER_HANDOVER` | `1` | Let a new connection take over an existing peer identity |
+| `PUB` / `XPUB` | `PUB_NODROP` | `1` | Surface `BACKPRESSURED` on HWM instead of silently dropping |
 | `STREAM` | `BACKLOG` | `65536` | Accommodate many external clients |
 | `STREAM` | `SNDBUF` | `262144` (if unset) | Large RAW transfer support |
 | `STREAM` | `RCVBUF` | `262144` (if unset) | Large RAW receive support |
+
+> **Observable behavior change (migration note):**
+>
+> - `ROUTER_MANDATORY` default changed from `0` to `1`. An unset ROUTER
+>   now returns `ZLINK_SUBMIT_NOT_CONNECTED` for sends to unconnected
+>   peers instead of silently dropping. Writable / `ZLINK_POLLOUT`
+>   observation also surfaces readiness only while a reachable peer
+>   exists.
+> - `ROUTER_HANDOVER` default changed from `0` to `1`. When a duplicate
+>   peer identity arrives, the new connection takes over the existing
+>   pipe. Set it explicitly to `0` to keep the legacy "keep old pipe"
+>   behavior.
+> - `PUB_NODROP` default changed from `0` to `1`. `zlink_publish()` now
+>   returns `ZLINK_SUBMIT_BACKPRESSURED` on HWM instead of silently
+>   dropping. Workloads that preferred loss-tolerant progress must set
+>   this option to `0` explicitly.
+>
+> These changes do not alter the option constants or their on/off
+> semantics; only the **default profile** moves.
 
 ## Per-Socket-Type Dedicated Options
 
@@ -400,9 +422,9 @@ Beyond common options, socket-type-specific options use dedicated APIs:
 
 | Socket | API | Representative Options |
 |--------|-----|----------------------|
-| ROUTER | `zlink_set_router_option()` | `MANDATORY`, `HANDOVER`, `PROBE`, `CONNECT_ROUTING_ID` |
+| ROUTER | `zlink_set_router_option()` | `MANDATORY` (default `1`), `HANDOVER` (default `1`), `PROBE`, `CONNECT_ROUTING_ID` |
 | DEALER | `zlink_set_dealer_option()` | `PROBE` |
-| XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP`, `MANUAL`, `WELCOME_MSG` |
+| XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (default `1`), `MANUAL`, `WELCOME_MSG` |
 | SUB/XSUB | `zlink_set_sub_option()` | Subscription-related |
 | STREAM | `zlink_set_stream_option()` | `NOTIFY` |
 

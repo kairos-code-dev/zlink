@@ -18,6 +18,7 @@
 namespace zlink
 {
 class service_control_runtime_t;
+struct spot_runtime_t;
 
 namespace spot_reqrep_internal
 {
@@ -109,6 +110,28 @@ std::string make_spot_identity_key (const std::string &node_rid_,
                                     const std::string &spot_rid_);
 int validate_request_parts (zlink_msg_t *parts_, size_t part_count_);
 int init_buffer_frame (zlink_msg_t *msg_, const void *data_, size_t size_);
+
+std::shared_ptr<spot_request_reply_state_t> try_find_spot_state (void *spot_);
+void erase_spot_owner_state (void *spot_);
+int install_spot_dispatch_event_task (spot_request_reply_state_t *state_);
+void maybe_dispatch_spot_event (spot_request_reply_state_t *state_,
+                                zlink_spot_dispatch_event_t event_);
+std::shared_ptr<spot_request_reply_state_t> find_or_create_spot_state (
+  void *spot_);
+std::shared_ptr<router_spot_request_reply_state_t> find_or_create_router_state (
+  void *router_);
+std::shared_ptr<spot_request_reply_state_t> find_spot_state_by_identity (
+  const std::string &node_rid_,
+  const std::string &spot_rid_);
+std::shared_ptr<router_spot_request_reply_state_t> find_router_state_by_rid (
+  const std::string &router_rid_);
+zlink::spot_runtime_t *resolve_runtime_for_spot_destination (
+  const std::string &node_rid_,
+  const std::string &spot_rid_);
+void bind_router_state_rid (
+  void *router_,
+  const std::string &router_rid_,
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_);
 }
 }
 

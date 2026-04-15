@@ -143,6 +143,32 @@ raw socket family 자동 연결은 역할별 방향 규칙을 따릅니다. 이 
 - `PUB -> none`
 - `DEALER -> ROUTER` 가 기본값입니다.
 
+### Pairwise initiator 규칙 (ROUTER ↔ ROUTER)
+
+같은 서비스의 두 ROUTER가 Discovery를 통해 서로를 발견하면, 한 번의
+connect만으로도 양방향 메시지 경로가 만들어집니다. 양쪽이 동시에 dial하면
+중복 연결 경쟁과 handover churn이 생기므로, 라이브러리는 쌍마다 한쪽만
+dial하도록 내부에서 결정합니다.
+
+- 비교 key는 `routing_id`(우선)와 advertise endpoint 문자열(타이브레이크)
+  입니다. 두 peer가 같은 입력으로 같은 total order를 계산하므로 쌍마다
+  initiator가 정확히 하나만 정해집니다.
+- 사용자 입장에서는 "누가 누구에게 connect할지"를 따로 설정할 필요가 없으며,
+  결과적으로 한쪽만 dial하는 것으로 보입니다.
+- 이 규칙은 Discovery-managed 자동 연결에만 적용됩니다. raw API로 직접
+  `zlink_connect()`를 호출하는 수동 연결은 라이브러리가 중재하지 않으며,
+  연결 방향 책임은 호출자에게 남습니다.
+
+### 자동 연결 peer 항목과 admission 상태
+
+Discovery가 노출하는 peer 항목은 admission 상태를 함께 가집니다.
+`zlink_member_peer_entry_t.admission_state`는 그 peer가 현재
+`ZLINK_ADMISSION_SERVING`인지 `ZLINK_ADMISSION_DRAINING`인지를 나타냅니다.
+DEALER attachment는 `DRAINING` ROUTER를 round-robin 후보에서 제외하고,
+모두 `DRAINING`이면 submit이 `ZLINK_SUBMIT_NOT_ADMITTED`로 실패합니다.
+admission 상태의 의미와 변경 방법은 [router.ko.md](../socket/router.ko.md)와
+[spot.ko.md](spot.ko.md)에 정리되어 있습니다.
+
 DEALER는 예외적으로 서비스 단위 정책 변경을 허용할 수 있습니다. 서비스가
 명시적으로 DEALER peer 모드를 바꾸면, 같은 `service_name` 안에서
 `DEALER -> DEALER`를 사용하도록 바꿀 수 있습니다.

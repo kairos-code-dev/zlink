@@ -51,9 +51,14 @@ void zlink::mailbox_t::send (const command_t &cmd_)
     _sync.unlock ();
 
     if (!ok) {
-        _signaler.send ();
+        signal ();
         schedule_if_needed ();
     }
+}
+
+void zlink::mailbox_t::signal ()
+{
+    _signaler.send ();
 }
 
 int zlink::mailbox_t::recv (command_t *cmd_, int timeout_)

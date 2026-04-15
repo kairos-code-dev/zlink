@@ -18,11 +18,15 @@
 | `ZLINK_PUB_OPT_VERBOSER` | 구독/해제 메시지를 업스트림 전달 (`int`; 0 또는 1) |
 | `ZLINK_PUB_OPT_MANUAL` | XPUB 수동 구독 관리 (`int`; 0 또는 1) |
 | `ZLINK_PUB_OPT_MANUAL_LAST_VALUE` | 수동 모드 최신 값 캐싱 (`int`; 0 또는 1) |
-| `ZLINK_PUB_OPT_NODROP` | HWM 시 drop 대신 `EAGAIN` 반환 (`int`; 0 또는 1) |
+| `ZLINK_PUB_OPT_NODROP` | HWM 시 drop 대신 `EAGAIN` 반환 (`int`; 0 또는 1, 기본값 `1`) |
 | `ZLINK_PUB_OPT_WELCOME_MSG` | 새 subscriber 연결 시 전송 메시지 (`binary`) |
 | `ZLINK_PUB_OPT_TOPICS_COUNT` | 구독된 토픽 수 (`int`, 읽기 전용) |
 | `ZLINK_PUB_OPT_APPROVE_SUBSCRIBE` | manual 모드 구독 승인 (`binary`) |
 | `ZLINK_PUB_OPT_REJECT_SUBSCRIBE` | manual 모드 구독 거부 (`binary`) |
+
+`ZLINK_PUB_OPT_NODROP`의 기본값은 `1`입니다. HWM이 찼을 때 조용히 drop하는
+대신 `zlink_publish()`가 `ZLINK_SUBMIT_BACKPRESSURED`를 반환합니다. 호출자가
+예전 동작(조용한 drop)이 필요하면 명시적으로 `0`으로 설정해야 합니다.
 
 ## 함수
 
@@ -140,10 +144,10 @@ bool zlink_send_ready_handler (
 `errno=EDEADLK`로 실패합니다.
 
 지원 대상은 raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, `spot_node`입니다. send-ready는 receive callback 모드와
-독립적입니다. attach 이후 같은 subject의 data-plane poller
-`ZLINK_POLLOUT`은 `errno=EBUSY`로 실패합니다. 지원하지 않는 subject는
-`ENOTSUP`를 반환합니다.
+`spot`, `spot_node`입니다. send-ready는 수신 모드와 독립적입니다.
+이 콜백과 `ZLINK_POLLOUT`은 같은 send-recovery readiness 축을 가리킵니다.
+readiness 신호는 송신을 다시 시도할 가치가 있다는 뜻이며, 재시도가 반드시
+성공한다는 보장은 아닙니다. 지원하지 않는 subject는 `ENOTSUP`를 반환합니다.
 
 **반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
 

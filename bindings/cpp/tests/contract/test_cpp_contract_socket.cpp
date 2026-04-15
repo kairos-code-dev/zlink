@@ -82,44 +82,12 @@ template<typename SocketT> class has_attach_discovery_t
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
-template<typename SocketT> class has_router_on_receive_t
-{
-  private:
-    template<typename T>
-    static auto test (int)
-      -> decltype (std::declval<T &> ().on_receive (
-                      static_cast<zlink_router_handler_fn> (NULL),
-                      static_cast<void *> (NULL)),
-                    std::true_type ());
-
-    template<typename> static std::false_type test (...);
-
-  public:
-    static const bool value = decltype (test<SocketT> (0))::value;
-};
-
 template<typename SocketT> class has_recv_spot_t
 {
   private:
     template<typename T>
     static auto test (int)
       -> decltype (std::declval<T &> ().recv_spot (), std::true_type ());
-
-    template<typename> static std::false_type test (...);
-
-  public:
-    static const bool value = decltype (test<SocketT> (0))::value;
-};
-
-template<typename SocketT> class has_on_spot_receive_t
-{
-  private:
-    template<typename T>
-    static auto test (int)
-      -> decltype (std::declval<T &> ().on_spot_receive (
-                      static_cast<zlink_router_handler_fn> (NULL),
-                      static_cast<void *> (NULL)),
-                    std::true_type ());
 
     template<typename> static std::false_type test (...);
 
@@ -147,12 +115,8 @@ static_assert (has_routed_send_t<zlink::router_socket_t>::value,
                "router_socket_t must expose routed send");
 static_assert (has_receive_t<zlink::router_socket_t>::value,
                "router_socket_t must expose recv");
-static_assert (has_router_on_receive_t<zlink::router_socket_t>::value,
-               "router_socket_t must expose router on_receive");
 static_assert (!has_recv_spot_t<zlink::router_socket_t>::value,
                "router_socket_t must not expose recv_spot");
-static_assert (!has_on_spot_receive_t<zlink::router_socket_t>::value,
-               "router_socket_t must not expose on_spot_receive");
 static_assert (has_attach_discovery_t<zlink::router_socket_t>::value,
                "router_socket_t must expose attach_discovery");
 static_assert (has_attach_discovery_t<zlink::pub_socket_t>::value,

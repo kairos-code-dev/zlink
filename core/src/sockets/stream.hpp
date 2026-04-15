@@ -22,6 +22,13 @@ class pipe_t;
 class stream_t ZLINK_FINAL : public routing_socket_base_t
 {
   public:
+    enum dispatch_mode_t
+    {
+        dispatch_mode_none = 0,
+        dispatch_mode_raw,
+        dispatch_mode_packet
+    };
+
     stream_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
     ~stream_t () ZLINK_OVERRIDE;
 
@@ -42,6 +49,9 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
       ZLINK_OVERRIDE;
     int stream_set_msg_handler_with_userdata (
       zlink_socket_msg_handler_fn handler_, void *userdata_) ZLINK_OVERRIDE;
+    int stream_set_packet_msg_handler_with_userdata (
+      zlink_stream_packet_handler_fn handler_, void *userdata_)
+      ZLINK_OVERRIDE;
     int stream_dispatch_stop () ZLINK_OVERRIDE;
     bool stream_dispatch_active () const ZLINK_OVERRIDE;
     bool stream_dispatch_in_callback () const ZLINK_OVERRIDE;
@@ -78,9 +88,15 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
                                    uint32_t routing_id_value_ = 0);
     int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_)
       ZLINK_OVERRIDE;
+    int stream_dispatch_packet_msg_from_io (const zlink_routing_id_t *rid_,
+                                            zlink::msg_t *msg_,
+                                            zlink::pipe_t *pipe_);
+    int stream_dispatch_raw_msg_from_io (const zlink_routing_id_t *rid_,
+                                         zlink::msg_t *msg_);
     uint32_t resolve_dispatch_routing_id_fast (const zlink::msg_t *msg_,
                                                zlink::pipe_t *pipe_);
     void stop_dispatch_from_callback ();
+    void clear_packet_dispatch_state ();
     bool stream_dispatch_owns_tls () const;
     fq_t _fq;
 
@@ -98,10 +114,13 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     route_shard_t _route_shards[route_shard_count];
 
     std::atomic<bool> _dispatch_active;
+    std::atomic<dispatch_mode_t> _dispatch_mode;
     std::atomic<uint32_t> _dispatch_inflight;
     std::atomic<zlink_stream_on_raw_fn> _dispatch_raw_callback;
     std::atomic<zlink_socket_msg_handler_fn> _dispatch_msg_handler;
     std::atomic<void *> _dispatch_msg_handler_userdata;
+    std::atomic<zlink_stream_packet_handler_fn> _dispatch_packet_handler;
+    std::atomic<void *> _dispatch_packet_handler_userdata;
     mutable std::recursive_mutex _api_mutex;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (stream_t)

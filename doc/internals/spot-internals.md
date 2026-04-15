@@ -342,7 +342,7 @@ struct spot_handle_t {
     spot_node_t *node;                           // Parent SpotNode
     spot_pub_t *pub;                             // Publisher (inproc PUB → ingress)
     spot_sub_t *sub;                             // Subscriber (inproc SUB ← fanout)
-    zlink_subscribe_handler_fn handler;          // Topic callback
+    zlink_subscribe_handler_fn handler;          // internal-only: SPOT subscribe adapter
     void *handler_userdata;
     spot_node_t::pub_defaults_t pending_pub_defaults;
     spot_node_t::sub_defaults_t pending_sub_defaults;
@@ -468,10 +468,9 @@ check `state->request_handler || state->dispatch_event_handler` under
 slot is non-NULL. This is the source of the "mutually exclusive" rule
 documented in the user guide.
 
-`zlink_subscribe_handler()` is on a different axis — it installs a
-direct subscribe callback on the underlying `spot_sub_t` and is not
-blocked by `dispatch_event_handler`. Mixing the two is technically
-allowed but defeats the unified-worker benefit.
+There is no public function to install a direct subscribe callback;
+the `zlink_subscribe_handler_fn` typedef only backs internal SPOT
+adapters.
 
 ### 10.3 Per-event fire conditions
 
@@ -566,3 +565,137 @@ three queues from one application thread:
 This is the core reason the user-facing guide recommends
 `zlink_spot_dispatch_event_handler` as the unified consumption pattern
 when timer, routed recv, and subscribe all live on one Spot handle.
+
+## 11. Service Attachment Topology
+
+Service-aware SPOT rides on top of the existing SpotNode data plane. It
+introduces a per-node service attachment table that maps `service_name` to a
+set of external ROUTER / PUB / SUB attachments, plus a unified service event
+queue that the public Spot facade drains.
+
+```text
++------------------------------------------------------------------+
+|                          SpotNode Runtime                        |
+|------------------------------------------------------------------|
+| service attachment map                                           |
+|  service -> { router set, pub/sub pair }                         |
+|  per entry: { manual sources, discovery sources }                |
+|------------------------------------------------------------------|
+| service router selector                                          |
+|  round-robin over active + send-ready ROUTER candidates          |
+|  0 candidates -> NOT_CONNECTED                                   |
+|------------------------------------------------------------------|
+| service subscribe ingress                                        |
+|  attach service_name to each inbound SUB delivery                |
+|------------------------------------------------------------------|
+| unified service event queue                                      |
+|  item = { kind, service_name, source_rid, topic, request_seq,    |
+|           spot_rid, payload }                                    |
+|------------------------------------------------------------------|
+| unified service monitor queue                                    |
+|  item = { service_name, role, monitor_event }                    |
++------------------------------------------------------------------+
+```
+
+### 11.1 Attachment map
+
+- One entry per `service_name` with the combined set of ROUTER, PUB, and
+  SUB attachments, regardless of whether they came from manual attach APIs
+  or from a Discovery handle.
+- Discovery-supplied providers are tagged with their Discovery source so
+  that Discovery destroy removes only that source's automatic attachments
+  without touching manual attachments or attachments supplied by other
+  Discovery handles.
+- Same-service Discovery duplicate attach is rejected at admission; the
+  map never holds more than one Discovery source per `service_name`.
+- A node that already hosts any service-aware entry admits at most one
+  public `Spot` facade. The facade admission check and the attach
+  admission check share the same gate.
+
+### 11.2 Service router selector
+
+- The selector pulls candidates from the ROUTER set of a single
+  `service_name` entry.
+- Inactive attachments and attachments that are not currently send-ready
+  are filtered out before selection.
+- Selection is round-robin; a request pins to whatever ROUTER the selector
+  returned, and its eventual reply reuses that ingress path without a
+  fresh round-robin.
+- When zero candidates remain after filtering, the submit path normalizes
+  the result to `NOT_CONNECTED` rather than pretending the submission is
+  just queued. HWM backpressure on a chosen candidate is still reported as
+  `BACKPRESSURED`.
+
+### 11.3 Service subscribe ingress
+
+- Every service SUB attachment feeds a service-aware ingress stage that
+  tags each inbound topic delivery with its `service_name` before pushing
+  it onto the unified service event queue. The local fanout path is not
+  reused for service-aware SUB traffic; it would lose the service tag.
+- Subscription filters are unioned across the facade. A filter addition
+  fans out to every attached SUB; a filter removal removes only when no
+  remaining subscriber wants it. A newly attached SUB (or a SUB that comes
+  back after discovery churn) replays the current filter set before it is
+  admitted into the active set.
+- `source_rid` on pub/sub deliveries is normalized to an empty routing id
+  when the underlying SUB has no reliable source. Applications treat
+  `service_name` + `topic_id` as the primary metadata.
+
+### 11.4 Unified service event queue
+
+- The queue is owned by the single public `Spot` facade attached to the
+  node. All subscribe, routed-reply, and routed-request-delivery items
+  land here tagged with their `kind`, `service_name`, source metadata,
+  and payload.
+- `zlink_spot_subscribe()`, `zlink_spot_subscription_event()`, and
+  `zlink_spot_recv()` drain matching items from the queue. Drain is
+  serialized per facade through the same dispatch-event machinery
+  described in §10.
+- Dispatch readable events notify the facade that the queue (or the
+  routed/timer planes) has drainable content. The user handler is invoked
+  by the shared dispatch executor, not by the I/O thread directly, so a
+  slow user handler cannot stall attachment I/O.
+
+### 11.5 Node-owned monitor fan-in
+
+- Each attachment has its own socket-level monitor. The node collects all
+  attachment monitor events into a unified service monitor queue tagged
+  with `service_name` and the attachment `role`.
+- `zlink_spot_node_monitor_recv()` is the only public drain for this
+  queue. Service-aware monitor events are never multiplexed into the Spot
+  dispatch readable plane; the facade is not the owner of monitor traffic.
+
+### 11.6 Active set maintenance
+
+- Discovery churn that breaks a pub/sub pair removes that pair from the
+  active set immediately. Routed submits on the same service keep working
+  if a ROUTER is still active.
+- When a broken pair is restored, the runtime replays the current
+  subscription filter set before the pair re-enters the active set.
+- Manual attachments do not participate in pair-break detection the same
+  way; they are active as long as the socket is healthy, per the normal
+  socket state machine.
+
+### 11.7 Admission state propagation
+
+When `zlink_set_admission_state()` switches a SpotNode between `SERVING`
+and `DRAINING`, the change is advertised to other SpotNode peers through
+the SpotNode peer control path (`peer_ctrl_pub` / `peer_ctrl_sub`) as a
+best-effort runtime signal.
+
+- Each peer updates the matching entry inside its SpotNode peer cache
+  (see §2.2). That cache is also the source for the `admission_state`
+  field returned by `zlink_spot_node_peers_snapshot()` and
+  `zlink_spot_node_peers_query()`.
+- The same cache drives service-aware ROUTER candidate selection. A peer
+  marked `DRAINING` is excluded from candidates, and when every candidate
+  is `DRAINING` the submit path normalizes the result to
+  `ZLINK_SUBMIT_NOT_ADMITTED`. Direct SPOT requests targeting a
+  `DRAINING` SpotNode return the same result.
+- The change is also surfaced via the service monitor event
+  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`. The corresponding
+  raw socket transition is exposed separately through the socket monitor
+  event `ZLINK_EVENT_PEER_ADMISSION_CHANGED`.
+- After a peer reconnects, the SpotNode re-advertises its current
+  admission state once so that stale caches do not cause incorrect
+  candidate selection.

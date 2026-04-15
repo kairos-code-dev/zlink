@@ -15,11 +15,16 @@ Used with `zlink_set_pub_option()` / `zlink_get_pub_option()`.
 | `ZLINK_PUB_OPT_VERBOSER` | Pass all subscribe and unsubscribe messages upstream (`int`; 0 or 1) |
 | `ZLINK_PUB_OPT_MANUAL` | Enable manual subscription management (`int`; 0 or 1) |
 | `ZLINK_PUB_OPT_MANUAL_LAST_VALUE` | Enable last-value caching in manual mode (`int`; 0 or 1) |
-| `ZLINK_PUB_OPT_NODROP` | Do not silently drop messages on HWM; return `EAGAIN` instead (`int`; 0 or 1) |
+| `ZLINK_PUB_OPT_NODROP` | Do not silently drop messages on HWM; return `EAGAIN` instead (`int`; 0 or 1, default `1`) |
 | `ZLINK_PUB_OPT_WELCOME_MSG` | Message sent to new subscribers on connect (`binary`) |
 | `ZLINK_PUB_OPT_TOPICS_COUNT` | Number of subscribed topics (get-only, `int`) |
 | `ZLINK_PUB_OPT_APPROVE_SUBSCRIBE` | Approve a pending subscription in manual mode (`binary`) |
 | `ZLINK_PUB_OPT_REJECT_SUBSCRIBE` | Reject a pending subscription in manual mode (`binary`) |
+
+`ZLINK_PUB_OPT_NODROP` defaults to `1`. When the HWM is reached,
+`zlink_publish()` returns `ZLINK_SUBMIT_BACKPRESSURED` instead of silently
+dropping. Callers that need the legacy silent-drop behavior must set this
+option explicitly to `0`.
 
 ## Functions
 
@@ -137,9 +142,10 @@ visible from the next writable transition. If called reentrantly from the
 same handle's send-ready callback, the call fails with `errno=EDEADLK`.
 
 Supported subjects: raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, and `spot_node`. Send-ready is independent from receive
-callback mode. After attach, data-plane poller `ZLINK_POLLOUT` on the same
-subject fails with `errno=EBUSY`. Unsupported subjects return `ENOTSUP`.
+`spot`, and `spot_node`. Send-ready is independent from receive mode. This
+callback and `ZLINK_POLLOUT` expose the same send-recovery readiness axis: a
+readiness signal means it is worth retrying send, not that the retry is
+guaranteed to succeed. Unsupported subjects return `ENOTSUP`.
 
 **Returns:** `true` on success, `false` on failure (errno is set).
 

@@ -1,15 +1,15 @@
 #ifndef PERF_STREAM_CLIENT_STREAM_CLIENT_HPP
 #define PERF_STREAM_CLIENT_STREAM_CLIENT_HPP
 
-// Header-only synchronous transport client with len32be framing.
+// Header-only synchronous transport client with packet framing.
 // Supports four transport modes: tcp, tls, ws, wss.
 //
 // Wire format on all transports:
-//   send_payload() → [4-byte BE length][payload bytes]
-//   recv_payload() ← [4-byte BE length][payload bytes]
+//   send_payload() → [2-byte BE header length][4-byte BE body length][header][body]
+//   recv_payload() ← [2-byte BE header length][4-byte BE body length][header][body]
 //
-// For ws/wss, len32be frames are packed inside WebSocket binary messages.
-// Multiple len32be frames may arrive in a single WS message, so the
+// For ws/wss, packet frames are packed inside WebSocket binary messages.
+// Multiple packet frames may arrive in a single WS message, so the
 // receiver buffers partial data in ws_pending_frame and reassembles.
 //
 // Uses Boost.Asio for TCP/TLS and Boost.Beast for WebSocket.
@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-// Synchronous len32be transport client.
+// Synchronous packet-framed transport client.
 // One active socket at a time, selected by the transport mode.
 class stream_client_t
 {
@@ -122,18 +122,21 @@ class stream_client_t
         return !ec;
     }
 
-    // Send a len32be-framed payload: [4B BE length][payload].
+    // Send a packet-framed payload with an empty header.
     bool send_payload (const std::vector<unsigned char> &payload)
     {
-        std::vector<unsigned char> frame (4 + payload.size ());
+        std::vector<unsigned char> frame (
+          perf_stream_common::k_stream_packet_prefix_size + payload.size ());
+        perf_stream_common::perf_stream_store_u16_be (&frame[0], 0);
         perf_stream_common::perf_stream_store_u32_be (
-          &frame[0], static_cast<uint32_t> (payload.size ()));
+          &frame[2], static_cast<uint32_t> (payload.size ()));
         if (!payload.empty ())
-            std::memcpy (&frame[4], &payload[0], payload.size ());
+            std::memcpy (&frame[perf_stream_common::k_stream_packet_prefix_size],
+                         &payload[0], payload.size ());
         return write_frame_bytes (&frame[0], frame.size ());
     }
 
-    // Receive a len32be-framed payload. Validates declared size against max
+    // Receive a packet-framed payload. Validates declared size against max
     // and optional expected_size.
     bool recv_payload (std::vector<unsigned char> *payload_out,
                        size_t expected_size = 0)
@@ -145,21 +148,28 @@ class stream_client_t
         std::vector<unsigned char> frame;
         if (!read_frame_bytes (&frame))
             return false;
-        if (frame.size () < 4)
+        if (frame.size () < perf_stream_common::k_stream_packet_prefix_size)
             return false;
 
-        const uint32_t declared = perf_stream_common::perf_stream_load_u32_be (
+        const uint16_t header_size = perf_stream_common::perf_stream_load_u16_be (
           &frame[0]);
-        if (declared
-            > static_cast<uint32_t> (perf_stream_common::k_stream_max_chunk_size)) {
+        const uint32_t declared = perf_stream_common::perf_stream_load_u32_be (
+          &frame[2]);
+        if (header_size != 0
+            || declared > static_cast<uint32_t> (
+                         perf_stream_common::k_stream_max_chunk_size)) {
             return false;
         }
-        if (frame.size () != static_cast<size_t> (4 + declared))
+        if (frame.size ()
+            != static_cast<size_t> (
+              perf_stream_common::k_stream_packet_prefix_size + declared))
             return false;
         if (expected_size > 0 && declared != expected_size)
             return false;
 
-        payload_out->assign (frame.begin () + 4, frame.end ());
+        payload_out->assign (
+          frame.begin () + perf_stream_common::k_stream_packet_prefix_size,
+          frame.end ());
         return true;
     }
 
@@ -287,8 +297,8 @@ class stream_client_t
         return true;
     }
 
-    // Read one complete len32be frame [4B header + payload].
-    // For TCP/TLS: reads header then payload directly.
+    // Read one complete packet frame.
+    // For TCP/TLS: reads prefix then body directly.
     // For WS/WSS: reassembles from ws_pending_frame buffer, fetching
     //             new WS messages as needed.
     bool read_frame_bytes (std::vector<unsigned char> *frame_out)
@@ -298,20 +308,25 @@ class stream_client_t
         frame_out->clear ();
 
         if (mode == raw_transport_tcp || mode == raw_transport_tls) {
-            unsigned char hdr[4];
+            unsigned char hdr[perf_stream_common::k_stream_packet_prefix_size];
             if (!read_exact_tcp_like (hdr, sizeof (hdr)))
                 return false;
+            const uint16_t header_size =
+              perf_stream_common::perf_stream_load_u16_be (hdr);
             const uint32_t declared =
-              perf_stream_common::perf_stream_load_u32_be (hdr);
-            if (declared
-                > static_cast<uint32_t> (perf_stream_common::k_stream_max_chunk_size)) {
+              perf_stream_common::perf_stream_load_u32_be (hdr + 2);
+            if (header_size != 0
+                || declared > static_cast<uint32_t> (
+                              perf_stream_common::k_stream_max_chunk_size)) {
                 return false;
             }
 
-            frame_out->resize (4 + declared);
+            frame_out->resize (
+              perf_stream_common::k_stream_packet_prefix_size + declared);
             std::memcpy (&(*frame_out)[0], hdr, sizeof (hdr));
             if (declared > 0
-                && !read_exact_tcp_like (&(*frame_out)[4],
+                && !read_exact_tcp_like (
+                  &(*frame_out)[perf_stream_common::k_stream_packet_prefix_size],
                                          static_cast<size_t> (declared))) {
                 return false;
             }
@@ -361,7 +376,7 @@ class stream_client_t
       boost::asio::ssl::stream<boost::asio::ip::tcp::socket> > > wss_socket;
 
     // Reassembly buffer for WS/WSS: accumulates bytes across WS messages
-    // until a complete len32be frame can be extracted.
+    // until a complete packet frame can be extracted.
     perf_stream_frame::buffer_t ws_pending_frame;
 };
 

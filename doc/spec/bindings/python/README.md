@@ -8,6 +8,36 @@ must expose. Internal/private methods are omitted.
 
 ---
 
+## Current Core Alignment Overrides
+
+The sections below still contain some older method lists. When they conflict
+with the rules here, this section wins.
+
+- `PairSocket`, `DealerSocket`, and `RouterSocket` are recv-only on the data
+  plane. Remove `on_receive(...)` from their public contract.
+- `SubSocket` and `XSubSocket` are recv-only. Remove `on_subscribe(...)` from
+  their public contract.
+- `StreamSocket` keeps `recv(...)` and raw `on_receive(...)`, and must also
+  expose a packet callback surface mapped to `zlink_stream_packet_handler()`.
+  Recommended canonical name: `on_packet(...)`.
+- `SpotNode` must expose service-aware attachment APIs:
+  `attach_router(service_name, router)`,
+  `attach_pubsub(service_name, pub, sub)`,
+  `service_attachment_count()`,
+  `service_attachment_at(index)`, and a node monitor recv/open surface for
+  `zlink_spot_node_monitor_recv()`.
+- `Spot` must expose service-aware data-plane methods:
+  `send_service(...)`, `request_service(...)`, and
+  `publish(service_name, topic, ...)`.
+- `Spot.subscribe(...)` returns a service-aware `TopicMessage`. `TopicMessage`
+  therefore needs `service_name: str | None`, populated for SPOT subscribe
+  results and `None` for raw `SUB` / `XSUB`.
+- `Spot` must not expose `on_subscribe(...)`. Use
+  `on_dispatch_event(...)` plus `subscribe(...)` / `recv_routed(...)` /
+  timer recv.
+- `Spot.on_routed_receive(...)` and `Spot.on_dispatch_event(...)` are mutually
+  exclusive on the routed axis.
+
 ## Core
 
 ### Context

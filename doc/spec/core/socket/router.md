@@ -11,11 +11,77 @@ Used with `zlink_set_router_option()` / `zlink_get_router_option()`.
 
 | Constant | Description |
 |---|---|
-| `ZLINK_ROUTER_OPT_MANDATORY` | Return `EHOSTUNREACH` when routing to an unconnected peer (`int`; 0 or 1) |
-| `ZLINK_ROUTER_OPT_HANDOVER` | Allow new connection to take over an existing routing identity (`int`; 0 or 1) |
+| `ZLINK_ROUTER_OPT_MANDATORY` | Return `EHOSTUNREACH` when routing to an unconnected peer (`int`; 0 or 1, default `1`) |
+| `ZLINK_ROUTER_OPT_HANDOVER` | Allow new connection to take over an existing routing identity (`int`; 0 or 1, default `1`) |
 | `ZLINK_ROUTER_OPT_PROBE` | Send an empty message on connect to establish identity at the ROUTER peer (`int`; 0 or 1) |
 | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | Set routing identity for the next outgoing connection (`binary`) |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | Default request timeout in milliseconds for `zlink_router_request()` (`uint32_t`) |
+
+`ZLINK_ROUTER_OPT_MANDATORY` and `ZLINK_ROUTER_OPT_HANDOVER` both default
+to `1`.
+
+- With `MANDATORY=1`, `zlink_send_rid()` returns
+  `ZLINK_SUBMIT_NOT_CONNECTED` instead of silently dropping when the target
+  peer is not connected. For the same reason, ROUTER's writable /
+  `ZLINK_POLLOUT` observation surfaces readiness only while at least one
+  reachable peer exists.
+- With `HANDOVER=1`, a new connection arriving with the same peer identity
+  takes over the existing pipe.
+
+Callers that need the legacy behavior (silent drop, keep the old pipe) must
+set these options explicitly to `0`.
+
+## Admission state
+
+A ROUTER carries an admission state that tells peers whether they may pick
+this ROUTER as a target for new work. The default is
+`ZLINK_ADMISSION_SERVING`. Operators can switch to
+`ZLINK_ADMISSION_DRAINING` before maintenance or a rolling restart so peers
+stop dispatching new work to this ROUTER while in-flight work finishes.
+
+```c
+zlink_config_result_t zlink_set_admission_state (
+  void *handle_,
+  zlink_admission_state_t state_);
+
+zlink_config_result_t zlink_get_admission_state (
+  void *handle_,
+  zlink_admission_state_t *state_out_);
+```
+
+States:
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `ZLINK_ADMISSION_SERVING` | `1` | Peers may select this ROUTER as a target for new outbound. Default. |
+| `ZLINK_ADMISSION_DRAINING` | `2` | Peers must exclude this ROUTER from new outbound selection. The local ROUTER continues to serve work that has already arrived. |
+
+Behavior:
+
+- `SERVING ↔ DRAINING` transitions are allowed at runtime in either direction.
+- The local ROUTER's own recv/send/reply/handler-dispatch behavior is
+  unchanged by admission state. `DRAINING` is a peer-side advisory ("do not
+  pick me for new work"), not a local halt.
+- Changes are propagated to connected peers as a best-effort runtime signal.
+  Each peer updates its admission cache, and state resyncs after reconnect.
+- Transitions are observable via the socket monitor event
+  `ZLINK_EVENT_PEER_ADMISSION_CHANGED`. The peer is identified by
+  `routing_id`, and `value` carries the new admission state.
+
+## Peer outbound from ROUTER
+
+When a ROUTER sends a directed message or request to another ROUTER, it
+checks the target RID's admission state before submit.
+
+- If the target RID is `SERVING`, submit proceeds normally.
+- If the target RID is `DRAINING`, both `zlink_send_rid()` and
+  `zlink_router_request()` fail immediately with
+  `ZLINK_SUBMIT_NOT_ADMITTED`.
+- Because admission cache propagation is best-effort, a race can surface
+  the same refusal first as `ZLINK_SUBMIT_NOT_CONNECTED`.
+
+Replies are not subject to admission. `zlink_router_reply()` answers an
+already-received request and is allowed regardless of admission state.
 
 ## Functions
 
@@ -87,8 +153,11 @@ through `zlink_errno()` for diagnostics.
 
 **Errors:** `INVALID_HANDLE` if `s_` is NULL. `BACKPRESSURED` if the operation would block
 and `ZLINK_DONTWAIT` was set. `NOT_CONNECTED` if the target peer is not
-connected (ROUTER with `ROUTER_MANDATORY`). `TERMINATED` if the context was
-terminated. See [errno-map.md](../errno-map.md) for the full result matrix.
+connected (`ROUTER_MANDATORY` defaults to `1`, so this result is observable
+by default unless the option is explicitly disabled). `NOT_ADMITTED` if the
+target RID is in `DRAINING` admission state. `TERMINATED` if the
+context was terminated. See [errno-map.md](../errno-map.md) for the full
+result matrix.
 
 **See also:** `zlink_send_rid`, `zlink_recv`
 
@@ -108,8 +177,9 @@ zlink_submit_result_t zlink_send_rid (void *s_,
 
 Use `zlink_send_rid(..., ZLINK_DONTWAIT)` for non-blocking routed send.
 Non-blocking send returns `ZLINK_SUBMIT_BACKPRESSURED` when the operation
-would block, `ZLINK_SUBMIT_NOT_CONNECTED` when the peer is not reachable.
-See [errno-map.md](../errno-map.md) for the full result matrix.
+would block, `ZLINK_SUBMIT_NOT_CONNECTED` when the peer is not reachable,
+and `ZLINK_SUBMIT_NOT_ADMITTED` when the target RID is in `DRAINING`
+admission state. See [errno-map.md](../errno-map.md) for the full result matrix.
 
 On success, ownership of all parts is transferred to the library. On
 failure, ownership remains with the caller.
@@ -168,36 +238,7 @@ parts is transferred to the library.
 `zlink_submit_result_t` value. Detailed internal errno remains available
 through `zlink_errno()` for diagnostics.
 
-**See also:** `zlink_router_request`, `zlink_router_handler`
-
----
-
-### zlink_router_handler
-
-Attach the routed receive handler to a ROUTER socket.
-
-```c
-zlink_handler_result_t zlink_router_handler (void *router_,
-                                             zlink_router_handler_fn handler_,
-                                             void *userdata_);
-```
-
-Attaches the single direct receive callback for a ROUTER socket. The
-callback receives both plain ROUTER traffic and spot-originated routed
-traffic. Plain ROUTER traffic sets `source_spot_rid_` to `NULL`.
-Spot-originated traffic sets both `source_node_rid_` and
-`source_spot_rid_`.
-
-Only one routed receive callback may be attached to a ROUTER handle.
-While the callback is attached, direct routed recv on the same ROUTER
-handle fails with `ZLINK_RECV_BUSY`.
-
-**Returns:** `ZLINK_HANDLER_OK` on success. On failure, returns a
-`zlink_handler_result_t` value. Detailed internal errno remains available
-through `zlink_errno()` for diagnostics.
-
-**See also:** `zlink_router_reply`, `zlink_router_reply_spot`,
-`zlink_router_handler_fn`, `zlink_router_recv`
+**See also:** `zlink_router_request`, `zlink_router_recv`
 
 ---
 
@@ -218,7 +259,11 @@ zlink_recv_result_t zlink_router_recv (
 
 Receives the next routed delivery for a ROUTER socket. This is the only
 direct recv surface for ROUTER. It covers both plain ROUTER traffic and
-spot-originated routed traffic.
+spot-originated routed traffic. ROUTER inbound receive is recv-only: the
+intended pattern is to observe `ZLINK_POLLIN` from a poller and drain it
+with this function. `zlink_router_request()` reply completion is not
+delivered here; it flows through a separate `zlink_reply_handler_fn`
+callback.
 
 On success, `*source_node_rid_out_` points to the source node routing id.
 For plain ROUTER traffic, `*source_spot_rid_out_` is `NULL`. For
@@ -239,7 +284,7 @@ part.
 through `zlink_errno()` for diagnostics.
 
 **See also:** `zlink_router_reply`, `zlink_router_reply_spot`,
-`zlink_router_handler`
+`zlink_router_request`
 
 ---
 
@@ -269,32 +314,7 @@ surface. If `s_` is a ROUTER socket, this call fails with
 `zlink_recv_result_t` value. Detailed internal errno remains available
 through `zlink_errno()` for diagnostics.
 
-**See also:** `zlink_send`, `zlink_recv_handler`, `zlink_multipart_close`
-
----
-
-### zlink_recv_handler
-
-Attach a message receive handler to a socket.
-
-```c
-bool zlink_recv_handler (void *s_,
-                         zlink_socket_msg_handler_fn handler_,
-                         void *userdata_);
-```
-
-Attach a message receive handler to a multipart receive subject. Supported
-subjects are raw `PAIR`, `DEALER`, and `STREAM`.
-After attach, direct recv and data-plane poller `ZLINK_POLLIN` on the same
-subject fail with `errno=EBUSY`. A second attach on the same subject also
-fails with `errno=EBUSY`. Unsupported subjects return `ENOTSUP`.
-
-**Returns:** `true` on success, `false` on failure (errno is set).
-
-**Errors:** `EINVAL` if the handler is NULL. `ENOTSUP` if the socket type does
-not accept a message handler. `EBUSY` if a handler is already attached.
-
-**See also:** `zlink_subscribe_handler`, `zlink_socket`, `zlink_close`
+**See also:** `zlink_send`, `zlink_router_recv`, `zlink_multipart_close`
 
 ---
 
@@ -332,9 +352,12 @@ visible from the next writable transition. If called reentrantly from the
 same handle's send-ready callback, the call fails with `errno=EDEADLK`.
 
 Supported subjects: raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, and `spot_node`. Send-ready is independent from receive
-callback mode. After attach, data-plane poller `ZLINK_POLLOUT` on the same
-subject fails with `errno=EBUSY`. Unsupported subjects return `ENOTSUP`.
+`spot`, and `spot_node`. Send-ready is independent from receive mode. This
+callback and `ZLINK_POLLOUT` expose the same send-recovery readiness axis: a
+readiness signal means it is worth retrying send, not that the retry is
+guaranteed to succeed. With the default `MANDATORY=1`, ROUTER readiness is
+surfaced only while a reachable peer exists. Unsupported subjects return
+`ENOTSUP`.
 
 **Returns:** `true` on success, `false` on failure (errno is set).
 

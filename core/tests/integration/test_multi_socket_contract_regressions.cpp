@@ -756,13 +756,6 @@ void test_pubsub_callback_is_supported_on_raw_sub_sockets ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_a, ""));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_b, ""));
 
-    pubsub_callback_probe_t probe_a;
-    pubsub_callback_probe_t probe_b;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub_a, &pubsub_handler, &probe_a));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub_b, &pubsub_handler, &probe_b));
-
     delivery_ready_monitor_t pub_monitor;
     delivery_ready_monitor_t sub_a_monitor;
     delivery_ready_monitor_t sub_b_monitor;
@@ -785,12 +778,48 @@ void test_pubsub_callback_is_supported_on_raw_sub_sockets ()
     publish_phase_message (pub, 'W', 1);
     publish_phase_message (pub, 'A', 1);
 
-    TEST_ASSERT_TRUE (wait_probe_phase_count (&probe_a, 'W', 1, 5000));
-    TEST_ASSERT_TRUE (wait_probe_phase_count (&probe_b, 'W', 1, 5000));
-    TEST_ASSERT_TRUE (wait_probe_phase_count (&probe_a, 'A', 1, 5000));
-    TEST_ASSERT_TRUE (wait_probe_phase_count (&probe_b, 'A', 1, 5000));
-    TEST_ASSERT_FALSE (probe_a.fatal);
-    TEST_ASSERT_FALSE (probe_b.fatal);
+    for (int i = 0; i < 2; ++i) {
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        char topic[32] = {0};
+        size_t topic_len = sizeof (topic);
+        char expected_payload[16];
+        std::snprintf (
+          expected_payload, sizeof (expected_payload), "%c%06d",
+          i == 0 ? 'W' : 'A', 1);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_subscribe (sub_a, NULL, &parts, &part_count, topic,
+                           &topic_len, 0));
+        TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+        TEST_ASSERT_EQUAL_STRING (k_pubsub_topic, topic);
+        TEST_ASSERT_EQUAL_UINT64 (std::strlen (expected_payload),
+                                  zlink_msg_size (&parts[0]));
+        TEST_ASSERT_EQUAL_MEMORY (
+          expected_payload, zlink_msg_data (&parts[0]),
+          std::strlen (expected_payload));
+        zlink_multipart_close (parts, part_count);
+    }
+    for (int i = 0; i < 2; ++i) {
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        char topic[32] = {0};
+        size_t topic_len = sizeof (topic);
+        char expected_payload[16];
+        std::snprintf (
+          expected_payload, sizeof (expected_payload), "%c%06d",
+          i == 0 ? 'W' : 'A', 1);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_subscribe (sub_b, NULL, &parts, &part_count, topic,
+                           &topic_len, 0));
+        TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+        TEST_ASSERT_EQUAL_STRING (k_pubsub_topic, topic);
+        TEST_ASSERT_EQUAL_UINT64 (std::strlen (expected_payload),
+                                  zlink_msg_size (&parts[0]));
+        TEST_ASSERT_EQUAL_MEMORY (
+          expected_payload, zlink_msg_data (&parts[0]),
+          std::strlen (expected_payload));
+        zlink_multipart_close (parts, part_count);
+    }
 
     close_delivery_ready_monitor (&sub_b_monitor);
     close_delivery_ready_monitor (&sub_a_monitor);

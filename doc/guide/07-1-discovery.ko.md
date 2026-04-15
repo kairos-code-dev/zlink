@@ -162,6 +162,40 @@ sequenceDiagram
 
 역할은 attach 시 소켓 타입에서 자동으로 파생된다 — 별도 설정 불필요.
 
+ROUTER ↔ ROUTER 자동 연결처럼 양쪽 모두 outbound를 시작할 수 있는 경우,
+**자동 연결 방향은 라이브러리가 쌍마다 한쪽만 결정한다.** 즉 두 ROUTER가
+서로를 발견해도 `connect`는 한 번만 만들어진다. 사용자는 어느 쪽이 dial할지
+따로 설정할 필요가 없으며, 결과적으로 중복 연결 경쟁과 handover churn이
+줄어든다. 이 규칙은 Discovery-managed 자동 연결에만 적용되며, raw API로
+직접 호출한 `zlink_connect()`는 라이브러리가 중재하지 않는다.
+
+#### 누가 dial 하는가 — pairwise initiator 규칙
+
+Discovery가 같은 서비스의 ROUTER peer 두 개를 pair 로 묶을 때, 라이브러리는
+pair 마다 한쪽만 initiator 로 선택한다. 비교 키는 광고된 `routing_id` 의
+total order 가 먼저이고, 동점이면 advertise endpoint 가 tie-breaker 가 된다.
+두 ROUTER 가 독립적으로 평가해도 같은 결과에 도달하므로, 사용자는 이
+결정을 설정할 필요가 없다. 같은 서비스에 속한 ROUTER 들은 Discovery 에
+대칭적으로 추가해도 되고, 선택된 한쪽에서만 `connect` 가 발생한다.
+
+```mermaid
+sequenceDiagram
+    participant A as ROUTER orders-exec-a
+    participant Reg as Registry
+    participant B as ROUTER orders-exec-b
+
+    A->>Reg: register (rid=A, advertise=tcp://hostA:9100)
+    B->>Reg: register (rid=B, advertise=tcp://hostB:9100)
+    Reg-->>A: service_list {A, B}
+    Reg-->>B: service_list {A, B}
+    Note over A,B: 양쪽에서 order(A, B): A < B → B 가 A 로 dial
+    B->>A: connect (tcp://hostA:9100)
+```
+
+서로 다른 host 에서 같은 `routing_id` 가 올라오는 예외 (오설정, zombie
+instance, 롤링 재시작 겹침) 는 여전히 handover 가 담당한다. 기본값인
+`ROUTER_HANDOVER=1` 이면 나중에 들어온 연결이 기존 pipe 를 인수한다.
+
 ## 3. Registry 설정
 
 Registry는 중앙 조정 서버다. 운영 환경에서는 HA를 위해 3노드 클러스터를
@@ -257,6 +291,47 @@ zlink_discovery_destroy(&discovery);
 **Lifecycle:** 소켓이 연결되면 `connect`, `disconnect`, `unbind`, `close`
 수동 호출이 실패한다. Discovery 인스턴스를 파괴하면 모든 연결된 소켓이
 종료된다.
+
+## 4.2 SpotNode에 여러 서비스 Discovery 붙이기
+
+Discovery 하나는 여전히 `service_name` 하나만 본다. 다만 하나의
+`SpotNode`에는 서로 다른 `service_name`을 보는 Discovery handle 여러 개를
+동시에 attach할 수 있다. 각 Discovery가 공급하는 ROUTER/PUB/SUB provider는
+node의 service attachment table에 자동 source로 들어온다.
+
+```c
+void *orders_discovery   = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "orders-exec");
+void *prices_discovery   = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "market-data");
+
+zlink_discovery_connect_registry(orders_discovery, "tcp://registry1:5551");
+zlink_discovery_connect_registry(prices_discovery, "tcp://registry1:5551");
+
+void *node = zlink_spot_node_new(ctx);
+zlink_spot_node_bind(node, "tcp://*:9000");
+
+/* Same SpotNode hosts attachments for two different services. */
+zlink_spot_node_attach_discovery(node, orders_discovery);
+zlink_spot_node_attach_discovery(node, prices_discovery);
+```
+
+attach 시 지켜야 하는 규칙:
+
+- **같은 `service_name` Discovery 중복 금지.** 같은 node에 같은
+  `service_name` Discovery를 두 번 attach하면 `EBUSY`로 실패한다.
+- **pub/sub 짝 필요.** Discovery view 안의 한 서비스에 `pub`만 있거나
+  `sub`만 있으면 attach 자체가 `EINVAL`로 거절된다. 허용되는 구성은
+  `router only` 또는 `router + pub + sub`다.
+- **공개 facade는 하나만.** service-aware attachment가 붙은 node에는
+  `zlink_spot_new(node)`로 만드는 공개 `Spot` facade가 하나만 존재할 수
+  있다. 이미 두 개 이상 facade가 있는 node에 attach하면 `EBUSY`로 실패한다.
+- **Discovery destroy는 그 source만 내린다.** 특정 Discovery만 파괴하면 그
+  Discovery가 공급하던 자동 attachment만 제거되고, 수동 attachment나 다른
+  Discovery source의 attachment는 그대로 유지된다.
+
+자세한 attach 오류 표는 [SPOT spec](../spec/core/service/spot.ko.md) 의
+attach_discovery 실패 표를 참고한다.
 
 ## 5. Liveness 및 Summary 업데이트
 

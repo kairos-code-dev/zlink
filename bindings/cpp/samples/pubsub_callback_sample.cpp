@@ -3,36 +3,6 @@
 #include "sample_common.hpp"
 
 namespace {
-
-struct callback_result_t
-{
-    std::string topic;
-    std::string payload;
-};
-
-void subscribe_callback (const zlink_routing_id_t *,
-                         const char *topic_,
-                         size_t topic_len_,
-                         zlink_msg_t *parts_,
-                         size_t part_count_,
-                         void *userdata_)
-{
-    std::promise<callback_result_t> *result_promise =
-      static_cast<std::promise<callback_result_t> *> (userdata_);
-    assert (result_promise != NULL);
-    assert (topic_ != NULL);
-    assert (part_count_ == 1);
-
-    callback_result_t result;
-    result.topic.assign (topic_, topic_len_);
-    result.payload.assign (
-      static_cast<const char *> (zlink_msg_data (&parts_[0])),
-      zlink_msg_size (&parts_[0]));
-
-    zlink_multipart_close (parts_, part_count_);
-    result_promise->set_value (result);
-}
-
 } // namespace
 
 int main ()
@@ -50,10 +20,7 @@ int main ()
     assert (detail::wait_connected (pub_monitor, sub_monitor));
 
     const std::string topic = detail::k_pubsub_topic;
-    std::promise<callback_result_t> result_promise;
-    std::future<callback_result_t> result_future = result_promise.get_future ();
     subscriber.set_subscription (topic);
-    subscriber.on_subscribe (&subscribe_callback, &result_promise);
 
     const zlink::subscription_event_t event =
       publisher.receive_subscription_event ();
@@ -64,11 +31,14 @@ int main ()
     zlink::message_t outbound = detail::make_message (sent);
     publisher.publish (topic, outbound);
 
-    const callback_result_t result = detail::wait_future (result_future, 2000);
-    assert (result.topic == topic);
-    assert (result.payload == detail::k_pubsub_payload);
+    const zlink::topic_message_t inbound = subscriber.subscribe ();
+    assert (inbound.topic () == topic);
+    assert (inbound.parts ().size () == 1);
+    const std::string received = inbound.parts ()[0].to_string ();
+    assert (received == detail::k_pubsub_payload);
     std::printf (
-      "[pubsub/callback] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
-      topic.c_str (), sent.c_str (), result.topic.c_str (), result.payload.c_str ());
+      "[pubsub/recv] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
+      topic.c_str (), sent.c_str (), inbound.topic ().c_str (),
+      received.c_str ());
     return 0;
 }

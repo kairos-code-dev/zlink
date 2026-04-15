@@ -157,7 +157,8 @@ typedef enum zlink_monitor_source_kind_t
 | `ZLINK_EVENT_CONNECTION_READY` | `0x1000` | raw socket의 ready edge. 지원 raw socket 패밀리에서는 이 이벤트 이후 즉시 메시징을 시작할 수 있음. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 에러로 핸드셰이크 실패. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패로 핸드셰이크 실패. |
-| `ZLINK_EVENT_ALL` | `0x7FFF` | 모든 이벤트 구독. |
+| `ZLINK_EVENT_PEER_ADMISSION_CHANGED` | `0x8000` | 연결된 raw peer의 admission 상태 변화. `value`에 새 admission 상태가 들어간다. `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED`의 별칭이다. |
+| `ZLINK_EVENT_ALL` | `0xFFFF` | 모든 이벤트 구독. |
 
 ### 연결 해제 사유
 
@@ -369,12 +370,22 @@ typedef struct zlink_service_monitor_open_options_t
 ### 지원되는 서비스 모니터 대상
 
 `zlink_service_monitor_open()`은 현재 공개 service-monitor surface를 가진
-handle에 대해서만 정의된다.
+handle에 대해서만 정의된다. 모니터 대상 식별자는
+`zlink_monitor_target_kind_t`로 정의된다.
 
-- `Discovery` handle: 지원
-- `SPOT` 파사드: 현재 공개 surface에서는 지원하지 않음
-- `SpotNode` handle: 현재 공개 surface에서는 지원하지 않음. 대신 status
-  및 query API를 사용
+| 대상 | `zlink_monitor_target_kind_t` | 공개 recv surface |
+|------|-------------------------------|------------------|
+| `Discovery` handle | `ZLINK_MONITOR_TARGET_DISCOVERY = 2` | `zlink_service_monitor_recv()` |
+| raw socket | `ZLINK_MONITOR_TARGET_SOCKET = 1` | `zlink_socket_monitor_recv()` |
+| `Spot` facade | `ZLINK_MONITOR_TARGET_SPOT = 4`(예약, 현재 공개 서비스-모니터 대상 아님) | — |
+| `SpotNode` handle | `ZLINK_MONITOR_TARGET_SPOT_NODE = 5` | `zlink_spot_node_monitor_recv()` |
+
+service-aware `SpotNode` attachment monitor event는
+`zlink_service_monitor_open()`이 아니라 `zlink_spot_node_monitor_recv()`로만
+꺼냅니다. 이 recv는 `zlink_spot_service_monitor_event_t`에 `service_name`과
+attachment role을 함께 실어 돌려줍니다. service monitor event mask에는
+`ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`가 포함되어 peer
+admission 결과 변화를 관찰할 수 있습니다.
 
 ### 서비스 종류 상수
 
@@ -416,6 +427,12 @@ handle에 대해서만 정의된다.
 - `..._DISCOVERY_SERVICE_UP` -> `ZLINK_DISCOVERY_SERVICE_UP`
 - `..._DISCOVERY_SERVICE_DOWN` -> `ZLINK_DISCOVERY_SERVICE_DOWN`
 - `..._DISCOVERY_PROVIDERS_CHANGED` -> `ZLINK_DISCOVERY_PROVIDERS_CHANGED`
+
+**서비스 공통:**
+- `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` (`1u << 8`) -- 같은
+  서비스의 peer admission 상태 변화. 이벤트의 `value` 필드에 새 admission
+  상태가 들어가고, 식별 정보는 `routing_id` 또는 detail flag가 켜진
+  필드에서 가져옵니다.
 
 - `ZLINK_SERVICE_MONITOR_EVENT_ALL` -> 모든 서비스 이벤트
 

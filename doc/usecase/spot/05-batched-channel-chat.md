@@ -202,17 +202,6 @@ zlink_spot_handler(room_spot, on_room_message, &room_batch);
 ### 2. session spot 준비
 
 ```c
-static void on_session_delivery(const zlink_routing_id_t *source_rid,
-                                const char *topic,
-                                size_t topic_len,
-                                zlink_msg_t *parts,
-                                size_t part_count,
-                                void *userdata)
-{
-    session_ctx_t *session = (session_ctx_t *)userdata;
-    deliver_batch_to_client(session, topic, parts, part_count);
-}
-
 void *session_node = zlink_spot_node_new(ctx);
 void *session_spot = zlink_spot_new(session_node);
 
@@ -221,7 +210,26 @@ zlink_set_routing_id(session_spot, "session:user-A:mobile",
 
 zlink_set_subscription(session_spot, "room:123:out");
 zlink_set_subscription(session_spot, "room:456:out");
-zlink_subscribe_handler(session_spot, on_session_delivery, session_ctx);
+
+/* 세션 delivery 는 poller 루프에서 zlink_spot_subscribe() 로 드레인 */
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+char service_name[64];
+size_t service_name_len = sizeof(service_name);
+char topic[64];
+size_t topic_len = sizeof(topic);
+
+while (zlink_spot_subscribe(session_spot, &source_rid,
+                            &parts, &part_count,
+                            service_name, &service_name_len,
+                            topic, &topic_len,
+                            ZLINK_DONTWAIT) == ZLINK_RECV_OK) {
+    deliver_batch_to_client(session_ctx, topic, parts, part_count);
+    zlink_multipart_close(parts, part_count);
+    service_name_len = sizeof(service_name);
+    topic_len = sizeof(topic);
+}
 ```
 
 세션이 채널에 들어오면 해당 topic을 구독하고, 채널을 떠나면 구독을 해제하면

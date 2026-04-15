@@ -124,44 +124,19 @@ recv 모드에서 다음 토픽 기반 메시지를 수신합니다. 성공 시
 (binary-safe), `*parts_out_` / `*part_count_out_`는 페이로드 프레임을
 받습니다. 파트 배열의 소유권은 호출자에게 이전됩니다.
 
-subject가 recv 모드여야 합니다 (핸들러 미부착). subscribe handler가 부착된
-경우 `EBUSY`로 실패합니다.
+raw SUB/XSUB는 recv-only 타입입니다. poller의 `ZLINK_POLLIN`과 함께 사용해
+서버 루프에서 readable을 관찰한 뒤 이 함수로 토픽 메시지를 가져오는 방식을
+기본 경로로 합니다.
 
 적용 대상: raw SUB, raw XSUB, `spot`, `spot_node`.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
 **에러:** `subject_`가 NULL이면 `EFAULT`. `ZLINK_DONTWAIT`가 설정되고
-메시지가 없으면 `EAGAIN`. subscribe handler가 부착된 경우 `EBUSY`. 토픽
-버퍼가 작으면 `EMSGSIZE`. subject 타입이 subscribe recv를 지원하지 않으면
-`ENOTSUP`.
+메시지가 없으면 `EAGAIN`. 토픽 버퍼가 작으면 `EMSGSIZE`. subject 타입이
+subscribe recv를 지원하지 않으면 `ENOTSUP`.
 
-**참고:** `zlink_subscribe_handler`, `zlink_set_subscription`
-
----
-
-### zlink_subscribe_handler
-
-소켓에 토픽 기반 수신 핸들러를 부착합니다.
-
-```c
-bool zlink_subscribe_handler (void *s_,
-                              zlink_subscribe_handler_fn handler_,
-                              void *userdata_);
-```
-
-raw `SUB`, raw `XSUB`, `spot`, `spot_node`에 토픽 기반 수신 핸들러를
-부착합니다. attach 이후 같은 subject의 `zlink_subscribe()`와 data-plane
-poller `ZLINK_POLLIN`은 `errno=EBUSY`로 실패합니다. 동일 subject에 대한
-두 번째 attach도 `errno=EBUSY`입니다. 지원하지 않는 subject는 `ENOTSUP`를
-반환합니다.
-
-**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
-
-**에러:** 핸들러가 NULL이면 `EINVAL`. handle 타입이 subscribe handler를
-허용하지 않으면 `ENOTSUP`. 핸들러가 이미 부착된 경우 `EBUSY`.
-
-**참고:** `zlink_recv_handler`, `zlink_socket`, `zlink_close`
+**참고:** `zlink_set_subscription`
 
 ---
 

@@ -110,7 +110,7 @@ typedef struct zlink_poller_event_t
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `ZLINK_POLLIN` | 1 | Data is available for reading |
-| `ZLINK_POLLOUT` | 2 | Writing will not block |
+| `ZLINK_POLLOUT` | 2 | Send recovery readiness. Signals that the handle has left backpressure and a send retry is worth attempting. This is not a bare "transport writable" signal, and does not guarantee the retry will succeed. Shares the same readiness axis as `zlink_send_ready_handler()`. After `ZLINK_SUBMIT_BACKPRESSURED`, observing this event means the caller can retry, but the retry itself may still fail with `BACKPRESSURED`. |
 | `ZLINK_POLLERR` | 4 | An error occurred on the descriptor |
 | `ZLINK_POLLPRI` | 8 | Urgent / priority data available |
 | `ZLINK_POLLITEMS_DFLT` | 16 | Default poll-item array size |

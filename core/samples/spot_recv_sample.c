@@ -19,11 +19,11 @@ int main (void)
 
     void *sub_monitor = open_service_monitor (
       sub_spot,
-      ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED
+      ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED
         | ZLINK_SERVICE_MONITOR_EVENT_ERROR);
     void *pub_monitor = open_service_monitor (
       pub_spot,
-      ZLINK_SERVICE_MONITOR_EVENT_SPOT_PEER_UP
+      ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED
         | ZLINK_SERVICE_MONITOR_EVENT_ERROR);
 
     int rc = zlink_spot_node_bind (pub_node, "tcp://127.0.0.1:0");

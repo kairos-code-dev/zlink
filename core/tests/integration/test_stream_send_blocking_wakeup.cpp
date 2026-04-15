@@ -45,6 +45,15 @@ struct stream_route_probe_t
 
 stream_route_probe_t *g_stream_route_probe = NULL;
 
+struct stream_send_ready_probe_t
+{
+    stream_send_ready_probe_t () : ready_count (0) {}
+
+    std::atomic<int> ready_count;
+};
+
+static stream_send_ready_probe_t *g_stream_send_ready_probe = NULL;
+
 void configure_stream_socket (void *socket_)
 {
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -241,6 +250,43 @@ int capture_stream_route_raw_callback (const zlink_routing_id_t *rid_,
     return capture_stream_route_callback (rid_, msg_, NULL);
 }
 
+void capture_stream_send_ready_callback (void *, void *)
+{
+    if (g_stream_send_ready_probe) {
+        g_stream_send_ready_probe->ready_count.fetch_add (
+          1, std::memory_order_acq_rel);
+    }
+}
+
+bool wait_stream_send_ready_count_at_least (
+  stream_send_ready_probe_t *probe_, int expected_, int timeout_ms_)
+{
+    if (!probe_)
+        return false;
+
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (probe_->ready_count.load (std::memory_order_acquire) >= expected_)
+            return true;
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    return probe_->ready_count.load (std::memory_order_acquire) >= expected_;
+}
+
+bool wait_stream_poller_no_event (
+  void *poller_, zlink_poller_event_t *event_, zlink_config_result_t *error_out_,
+  long timeout_ms_)
+{
+    if (!poller_ || !event_ || !error_out_)
+        return false;
+
+    const int rc = zlink_poller_wait (poller_, event_, timeout_ms_, error_out_);
+    if (rc == 0)
+        return true;
+    return rc == -1 && errno == EAGAIN;
+}
+
 void establish_stream_route (void *server_, int raw_fd_, zlink_routing_id_t *rid_)
 {
     stream_route_probe_t probe;
@@ -292,6 +338,28 @@ void fill_stream_send_queue_until_hwm (void *server_, const zlink_routing_id_t *
 
     TEST_ASSERT_GREATER_THAN_INT (0, sent);
     TEST_ASSERT_TRUE (reached_full);
+}
+
+void fill_stream_send_queue_until_backpressured_once (
+  void *server_, const zlink_routing_id_t *rid_)
+{
+    std::vector<unsigned char> payload (kPayloadSize, 0x5A);
+    int sent = 0;
+    while (true) {
+        const int rc =
+          test_stream_send_bytes (server_, rid_, &payload[0], kPayloadSize,
+                                  ZLINK_DONTWAIT);
+        if (rc == static_cast<int> (kPayloadSize)) {
+            ++sent;
+            continue;
+        }
+
+        TEST_ASSERT_EQUAL_INT (-1, rc);
+        TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+        break;
+    }
+
+    TEST_ASSERT_GREATER_THAN_INT (0, sent);
 }
 
 bool drain_stream_until_send_reopens (void *server_,
@@ -397,6 +465,180 @@ void test_stream_queue_reopens_after_peer_reads ()
 #endif
 }
 
+void test_stream_send_ready_pollout_share_recovery_axis ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_socket (server);
+
+    char endpoint[MAX_SOCKET_STRING];
+    memset (endpoint, 0, sizeof (endpoint));
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    const int raw_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT (0, raw_fd);
+    set_raw_timeout (raw_fd, 200);
+
+    zlink_routing_id_t rid;
+    establish_stream_route (server, raw_fd, &rid);
+
+    stream_send_ready_probe_t probe;
+    g_stream_send_ready_probe = &probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (server, &capture_stream_send_ready_callback,
+                                NULL));
+
+    fill_stream_send_queue_until_backpressured_once (server, &rid);
+
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, server, server, ZLINK_POLLOUT));
+
+    unsigned char drain_buf[64 * 1024];
+    const auto drain_deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (1000);
+    while (std::chrono::steady_clock::now () < drain_deadline
+           && probe.ready_count.load (std::memory_order_acquire) == 0) {
+        const int n = recv_raw (raw_fd, drain_buf, sizeof (drain_buf));
+        if (n > 0)
+            continue;
+    }
+
+    bool pollout_ready = false;
+    const auto poll_deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
+    while (std::chrono::steady_clock::now () < poll_deadline) {
+        zlink_poller_event_t event;
+        zlink_config_result_t error = ZLINK_CONFIG_OK;
+        const int rc = zlink_poller_wait (poller, &event, 50, &error);
+        if (rc <= 0)
+            continue;
+        if (event.socket == server && (event.events & ZLINK_POLLOUT) != 0) {
+            pollout_ready = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE (pollout_ready);
+
+    TEST_ASSERT_TRUE (
+      wait_stream_send_ready_count_at_least (&probe, 1, 3000));
+
+    uint32_t ready_events = 0;
+    size_t ready_events_size = sizeof (ready_events);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (
+      server, ZLINK_OPT_EVENTS, &ready_events, &ready_events_size));
+    TEST_ASSERT_TRUE ((ready_events & ZLINK_POLLOUT) != 0);
+
+    std::vector<unsigned char> payload (kPayloadSize, 0x77);
+    const int retry_rc =
+      test_stream_send_bytes (server, &rid, &payload[0], kPayloadSize,
+                              ZLINK_DONTWAIT);
+    if (retry_rc != static_cast<int> (kPayloadSize)) {
+        TEST_ASSERT_EQUAL_INT (-1, retry_rc);
+        TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+    }
+
+    g_stream_send_ready_probe = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    close_raw_fd (raw_fd);
+    test_context_socket_close (server);
+#endif
+}
+
+void test_stream_pollout_only_observes_recovery_readiness ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_socket (server);
+
+    char endpoint[MAX_SOCKET_STRING];
+    memset (endpoint, 0, sizeof (endpoint));
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    const int raw_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT (0, raw_fd);
+    set_raw_timeout (raw_fd, 200);
+
+    zlink_routing_id_t rid;
+    establish_stream_route (server, raw_fd, &rid);
+
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, server, server, ZLINK_POLLOUT));
+
+    zlink_poller_event_t event;
+    zlink_config_result_t error = ZLINK_CONFIG_OK;
+    TEST_ASSERT_TRUE (wait_stream_poller_no_event (poller, &event, &error, 0));
+
+    fill_stream_send_queue_until_hwm (server, &rid);
+
+    std::vector<unsigned char> payload (kPayloadSize, 0x21);
+    TEST_ASSERT_EQUAL_INT (
+      -1,
+      test_stream_send_bytes (server, &rid, &payload[0], kPayloadSize,
+                              ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+
+    TEST_ASSERT_TRUE (wait_stream_poller_no_event (poller, &event, &error, 0));
+
+    unsigned char drain_buf[64 * 1024];
+    const auto reopen_deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (1500);
+    while (std::chrono::steady_clock::now () < reopen_deadline) {
+        const int n = recv_raw (raw_fd, drain_buf, sizeof (drain_buf));
+        if (n > 0)
+            continue;
+        if (n < 0 && errno != EAGAIN)
+            break;
+    }
+
+    bool pollout_ready = false;
+    const auto poll_deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
+    while (std::chrono::steady_clock::now () < poll_deadline) {
+        const int rc = zlink_poller_wait (poller, &event, 50, &error);
+        if (rc <= 0)
+            continue;
+        TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, error);
+        if (event.socket == server && (event.events & ZLINK_POLLOUT) != 0) {
+            pollout_ready = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE (pollout_ready);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, server, server, ZLINK_POLLOUT));
+    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 0, &error));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, error);
+    TEST_ASSERT_EQUAL_PTR (server, event.socket);
+    TEST_ASSERT_TRUE ((event.events & ZLINK_POLLOUT) != 0);
+
+    std::vector<unsigned char> retry_payload (kPayloadSize, 0x29);
+    const int retry_rc = test_stream_send_bytes (
+      server, &rid, &retry_payload[0], kPayloadSize, ZLINK_DONTWAIT);
+    if (retry_rc != static_cast<int> (kPayloadSize)) {
+        TEST_ASSERT_EQUAL_INT (-1, retry_rc);
+        TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    close_raw_fd (raw_fd);
+    test_context_socket_close (server);
+#endif
+}
+
 void test_stream_blocking_send_times_out_without_peer_reads ()
 {
 #if defined(ZLINK_HAVE_WINDOWS)
@@ -491,6 +733,8 @@ int main ()
 
     UNITY_BEGIN ();
     RUN_TEST (test_stream_queue_reopens_after_peer_reads);
+    RUN_TEST (test_stream_send_ready_pollout_share_recovery_axis);
+    RUN_TEST (test_stream_pollout_only_observes_recovery_readiness);
     RUN_TEST (test_stream_blocking_send_times_out_without_peer_reads);
     RUN_TEST (test_stream_nonblocking_send_preserves_message_for_retry);
     return UNITY_END ();

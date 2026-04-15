@@ -85,6 +85,7 @@ Recommended perf gates:
 | `ZLINK_EVENT_CONNECTION_READY` | Ready edge after transport handshake / first usable send path |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | Protocol handshake error |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | Auth handshake error |
+| `ZLINK_EVENT_PEER_ADMISSION_CHANGED` | A connected raw peer's admission state changed. `routing_id` identifies the peer and `value` carries the new state (`ZLINK_ADMISSION_SERVING` or `ZLINK_ADMISSION_DRAINING`). Alias for `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED`. |
 
 Disconnect reasons:
 - `ZLINK_DISCONNECT_UNKNOWN`
@@ -108,6 +109,21 @@ Disconnect reasons:
 | `ZLINK_DISCOVERY_SERVICE_UP` | A service provider became available |
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | A service provider disappeared |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | Provider set changed |
+
+### Service-aware common
+
+| Constant | Meaning |
+|---|---|
+| `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` | Peer admission decision changed for a service. The socket-side counterpart is `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED` (aliased as `ZLINK_EVENT_PEER_ADMISSION_CHANGED`). |
+
+Service monitors are opened against one of the targets in
+`zlink_monitor_target_kind_t`: `ZLINK_MONITOR_TARGET_DISCOVERY` and
+`ZLINK_MONITOR_TARGET_SPOT_NODE`. The `ZLINK_MONITOR_TARGET_SPOT` value is
+reserved; the `Spot` facade is not a public service-monitor target. SpotNode
+service-aware monitor events are not delivered through the generic service
+monitor surface. Instead, call `zlink_spot_node_monitor_recv()`, which
+returns each event together with its `service_name` and attachment role
+(`ROUTER` / `PUB` / `SUB`).
 
 ## Examples
 

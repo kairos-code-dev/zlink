@@ -819,12 +819,6 @@ class base_socket_t : public socket_handle_t
     }
 
     ZLINK_CPP_NODISCARD int
-    on_subscribe (zlink_subscribe_handler_fn handler_, void *userdata_ = NULL)
-    {
-        return zlink_subscribe_handler (handle (), handler_, userdata_);
-    }
-
-    ZLINK_CPP_NODISCARD int
     on_send_ready (zlink_send_ready_handler_fn handler_,
                    void *userdata_ = NULL)
     {

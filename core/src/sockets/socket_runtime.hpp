@@ -185,7 +185,9 @@ struct socket_dispatch_bridge_t
         send_ready_handler_subject (NULL),
         send_ready_handler_userdata (NULL),
         send_ready_seq (0),
-        send_ready_armed (false)
+        send_ready_armed (false),
+        send_ready_recovery_pending (false),
+        send_ready_recovery_ready (false)
     {
     }
 
@@ -198,6 +200,12 @@ struct socket_dispatch_bridge_t
                                    void *userdata_);
     bool arm_send_ready_notification ();
     bool consume_send_ready_notification ();
+    void mark_send_recovery_pending ();
+    void clear_send_recovery_pending ();
+    void mark_send_recovery_ready ();
+    void clear_send_recovery_ready ();
+    bool send_recovery_pending () const;
+    bool send_recovery_ready () const;
 
     std::atomic<zlink_socket_msg_handler_fn> socket_msg_handler;
     std::atomic<void *> socket_msg_handler_subject;
@@ -210,6 +218,8 @@ struct socket_dispatch_bridge_t
     std::atomic<uint32_t> send_ready_seq;
     mutex_t send_ready_writer_sync;
     std::atomic<bool> send_ready_armed;
+    std::atomic<bool> send_ready_recovery_pending;
+    std::atomic<bool> send_ready_recovery_ready;
     std::recursive_mutex socket_msg_dispatch_sync;
 };
 

@@ -55,34 +55,40 @@ zlink_bind(router, "tcp://*:5558");
 
 ### 메시지 수신
 
-ROUTER 의 direct 수신 표면은 하나다. `zlink_router_handler()` 로 routed
-콜백을 부착하거나 `zlink_router_recv()` 로 동기 수신한다. 두 표면 모두
-일반 ROUTER 트래픽(DEALER 또는 다른 ROUTER) 과 SPOT 에서 시작된 routed
-트래픽을 같은 콜백 모양으로 전달한다. 일반 ROUTER 트래픽에서는
-`source_spot_rid == NULL`, `request_seq == 0` 이다.
+ROUTER 의 direct 수신 표면은 하나다. 모든 inbound routed 트래픽은
+`zlink_router_recv()` 로 가져온다. 이 함수는 일반 ROUTER 트래픽(DEALER
+또는 다른 ROUTER) 과 SPOT 에서 시작된 routed 트래픽을 같은 출력 모양으로
+전달한다. 일반 ROUTER 트래픽에서는 `source_spot_rid` 가 빈 routing id,
+`request_seq == 0` 이다. 서버 루프는 poller 의 `ZLINK_POLLIN` 을
+관찰한 뒤 `zlink_router_recv()` 로 데이터를 드레인한다.
 
 ```c
-/* DEALER sends "Hello" → handler receives source_node_rid + parts */
-void on_message(const zlink_routing_id_t *source_node_rid,
-                const zlink_routing_id_t *source_spot_rid,
-                uint64_t request_seq,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* 일반 ROUTER 트래픽: source_spot_rid == NULL, request_seq == 0 */
+const zlink_routing_id_t *source_node_rid;
+const zlink_routing_id_t *source_spot_rid;
+uint64_t request_seq;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+zlink_recv_result_t rc = zlink_router_recv(
+    router,
+    &source_node_rid, &source_spot_rid,
+    &request_seq,
+    &parts, &part_count,
+    0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
+    /* 일반 ROUTER: source_spot_rid->size == 0, request_seq == 0 */
     printf("From [%.*s]: %.*s\n",
            (int)source_node_rid->size, source_node_rid->data,
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
     zlink_multipart_close(parts, part_count);
+    free(parts);
 }
-
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_router_handler(router, on_message, NULL);
 ```
 
 > ROUTER 핸들에 `zlink_recv()` 를 호출하면 `ZLINK_RECV_NOT_SUPPORTED` 로
-> 실패한다. Pull 모드에서는 `zlink_router_recv()` 를 사용한다.
+> 실패한다. ROUTER 는 `zlink_router_recv()` 로 수신한다. request-reply의
+> reply는 여기서 받지 않고 `zlink_router_request()` 의 reply completion
+> callback 으로 별도 전달된다.
 
 ### 메시지 송신
 
@@ -98,36 +104,9 @@ memcpy(zlink_msg_data(&reply), "World", 5);
 zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 ```
 
-### 수신 모드
-
-**Pull 모드**: 핸들러를 부착하지 않으면 `zlink_router_recv()` 로 동기
-수신한다. 이 표면은 node rid 와 spot rid 를 모두 반환하며, 일반 ROUTER
-트래픽에서는 `source_spot_rid` 가 빈 routing id 로, `request_seq` 는 0
-으로 돌아온다.
-
-```c
-const zlink_routing_id_t *source_node_rid;
-const zlink_routing_id_t *source_spot_rid;
-uint64_t request_seq;
-zlink_msg_t *parts = NULL;
-size_t part_count = 0;
-zlink_recv_result_t rc = zlink_router_recv(
-    router,
-    &source_node_rid, &source_spot_rid,
-    &request_seq,
-    &parts, &part_count,
-    0 /* flags */);
-if (rc == ZLINK_RECV_OK) {
-    /* source_node_rid 가 송신자 식별 */
-    /* 일반 ROUTER: source_spot_rid->size == 0, request_seq == 0 */
-    /* parts[0..part_count-1] 처리 */
-    zlink_multipart_close(parts, part_count);
-}
-```
-
-> 피어별 송신 큐가 가득 차면(HWM) `ROUTER_MANDATORY` 활성 시
-> `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환하고, 그렇지 않으면 메시지를 조용히
-> 드롭한다.
+> 피어별 송신 큐가 가득 차면(HWM) `ROUTER_MANDATORY=1`(기본값)이면
+> `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환한다. 호출자가 명시적으로
+> `ROUTER_MANDATORY` 를 `0` 으로 끄면 메시지를 조용히 드롭한다.
 > 고급 backpressure 패턴은 [성능 가이드](10-performance.ko.md)를 참고.
 
 ??? example "Full Sample Code"
@@ -146,27 +125,29 @@ if (rc == ZLINK_RECV_OK) {
 ## 3. 사용 예제
 
 ROUTER 는 `zlink_send_rid()` 로 특정 peer 에 전송하고,
-`zlink_router_handler()` 또는 `zlink_router_recv()` 가 전달하는
-`source_node_rid` 로 송신자를 식별한다.
+`zlink_router_recv()` 가 반환하는 `source_node_rid` 로 송신자를 식별한다.
 
-### 콜백을 사용한 수신/응답
+### recv 루프에서 수신/응답
 
 ```c
-/* Receive: handler callback provides routing_id and data */
-void on_message(const zlink_routing_id_t *source_node_rid,
-                const zlink_routing_id_t *source_spot_rid,
-                uint64_t request_seq,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* 일반 ROUTER: source_spot_rid == NULL, request_seq == 0.
-       zlink_send_rid 로 송신자에게 응답 */
+/* poller 루프 내부에서 zlink_router_recv() 로 드레인 후 응답한다 */
+const zlink_routing_id_t *source_node_rid;
+const zlink_routing_id_t *source_spot_rid;
+uint64_t request_seq;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+
+if (zlink_router_recv(router,
+                      &source_node_rid, &source_spot_rid,
+                      &request_seq,
+                      &parts, &part_count, 0) == ZLINK_RECV_OK) {
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "reply", 5);
     zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 
     zlink_multipart_close(parts, part_count);
+    free(parts);
 }
 ```
 
@@ -174,8 +155,8 @@ void on_message(const zlink_routing_id_t *source_node_rid,
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | 미도달 시 `ZLINK_SUBMIT_NOT_CONNECTED` 반환 |
-| `ZLINK_ROUTER_OPT_HANDOVER` | int | 0 | routing_id 충돌 시 기존 연결 대체 |
+| `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | 미도달 시 `ZLINK_SUBMIT_NOT_CONNECTED` 반환. 기본값이 `1` 이므로 `zlink_send_rid()` 로 미연결 peer 를 지정하면 기본 동작에서 실패가 surface 된다. 예전 조용한 drop 동작이 필요하면 `0` 으로 설정한다. |
+| `ZLINK_ROUTER_OPT_HANDOVER` | int | 1 | routing_id 충돌 시 새 연결이 기존 pipe 를 인수. 기본값이 `1` 이므로 duplicate peer identity 가 들어오면 기본 동작에서 handover 가 발생한다. 예전처럼 기존 연결 유지가 필요하면 `0` 으로 설정한다. |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_router_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER 자신의 routing_id (전용 함수) |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 HWM |
@@ -184,13 +165,13 @@ void on_message(const zlink_routing_id_t *source_node_rid,
 
 ### ROUTER_MANDATORY
 
-기본적으로 ROUTER는 대상을 찾을 수 없는 메시지를 **조용히 드롭**한다. `ROUTER_MANDATORY`를 활성화하면 `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환한다.
+`ZLINK_ROUTER_OPT_MANDATORY` 의 기본값이 `1` 로 변경되었다. 기본 상태에서
+도달할 수 없는 peer 로 `zlink_send_rid()` 를 보내면 조용히 drop 하지 않고
+`ZLINK_SUBMIT_NOT_CONNECTED` 를 반환한다. 호출자가 `NOT_CONNECTED` 를
+처리하거나 재시도/에러로그로 surface 할 기회가 생긴다.
 
 ```c
-int mandatory = 1;
-zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
-
-/* Attempt to send to a non-existent target */
+/* 기본 상태 (MANDATORY=1) */
 zlink_routing_id_t target_rid = { .data = "UNKNOWN", .size = 7 };
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
@@ -198,7 +179,19 @@ memcpy(zlink_msg_data(&msg), "data", 4);
 zlink_submit_result_t rc = zlink_send_rid(
     router, &target_rid, &msg, 1, 0);
 /* rc == ZLINK_SUBMIT_NOT_CONNECTED */
+
+/* 예전(조용한 drop) 동작이 필요하면 명시적으로 0 으로 설정 */
+int mandatory = 0;
+zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
+                        &mandatory, sizeof(mandatory));
 ```
+
+> **기본값 변경으로 인한 관찰 변화:** `ROUTER_MANDATORY=1` 이 기본이 되면,
+> writable / `ZLINK_POLLOUT` 관찰값도 실제로 쓸 수 있는 peer 가 있을 때만
+> send-recovery readiness 로 surface 된다. `HANDOVER=1` 이 기본이 되면,
+> duplicate peer identity 가 들어올 때 기본 동작이 "기존 pipe 유지" 에서
+> "새 연결 인수" 로 바뀐다. `send_rid` 의 `NOT_CONNECTED` 빈도도 이전보다
+> 높아질 수 있다.
 
 > 참고: `core/tests/test_router_mandatory.cpp` — `test_basic()`
 
@@ -206,9 +199,10 @@ zlink_submit_result_t rc = zlink_send_rid(
 
 `ROUTER` 는 request-reply 에서 두 역할을 모두 맡을 수 있다.
 
-- 서버 역할: `zlink_router_handler()` 로 request 를 받고
+- 서버 역할: `zlink_router_recv()` 로 request 를 받고
   `zlink_router_reply()` 로 응답
-- 능동 client 역할: `zlink_router_request()` 로 특정 peer 에 요청
+- 능동 client 역할: `zlink_router_request()` 로 특정 peer 에 요청. reply 는
+  `zlink_reply_handler_fn` completion callback 으로 별도 전달
 
 가장 중요한 값은 `source_node_rid + request_seq` 조합이다. `request_seq`
 만 맞고 source 가 다르면 같은 요청의 reply 로 보면 안 된다. 일반 ROUTER
@@ -221,25 +215,28 @@ request-reply 에서는 `source_spot_rid` 가 `NULL` 이고, SPOT 에서 시작�
 > [서비스 내부 설계](../internals/services-internals.ko.md)를 참고.
 
 ```c
-static void on_request(const zlink_routing_id_t *source_node_rid,
-                       const zlink_routing_id_t *source_spot_rid,
-                       uint64_t request_seq,
-                       zlink_msg_t *parts,
-                       size_t part_count,
-                       void *userdata)
-{
-    /* 일반 ROUTER request: source_spot_rid == NULL, request_seq > 0.
+/* 서버 루프: poller 로 READABLE 을 관찰한 뒤 router_recv 로 드레인 */
+const zlink_routing_id_t *source_node_rid;
+const zlink_routing_id_t *source_spot_rid;
+uint64_t request_seq;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+
+if (zlink_router_recv(router,
+                      &source_node_rid, &source_spot_rid,
+                      &request_seq,
+                      &parts, &part_count, 0) == ZLINK_RECV_OK) {
+    /* 일반 ROUTER request: source_spot_rid->size == 0, request_seq > 0.
        SPOT 에서 시작된 request 라면 spot rid 가 채워지며, 이때는
        zlink_router_reply_spot() 로 응답한다. */
     zlink_multipart_close(parts, part_count);
+    free(parts);
 
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 4);
     memcpy(zlink_msg_data(&reply), "pong", 4);
     zlink_router_reply(router, source_node_rid, request_seq, &reply, 1);
 }
-
-zlink_router_handler(router, on_request, NULL);
 ```
 
 `ROUTER` 가 먼저 request 를 시작할 때는 reply callback 을 받는다.
@@ -264,40 +261,10 @@ zlink_submit_result_t rc = zlink_router_request(
 if (rc != ZLINK_SUBMIT_OK) { /* submit 실패 처리 */ }
 ```
 
-#### Typed Recv (Pull 모드)
-
-Callback 대신 `zlink_router_recv()` 로 routed 메시지를 직접 수신할 수
-있다. `source_node_rid`, `source_spot_rid`, `request_seq`, payload parts
-를 반환한다. 일반 ROUTER request-reply 에서는
-`source_spot_rid->size == 0`, `request_seq > 0` 이다.
-
-```c
-const zlink_routing_id_t *source_node_rid;
-const zlink_routing_id_t *source_spot_rid;
-uint64_t request_seq;
-zlink_msg_t *parts;
-size_t part_count;
-zlink_recv_result_t rc = zlink_router_recv(
-    router,
-    &source_node_rid, &source_spot_rid,
-    &request_seq,
-    &parts, &part_count,
-    0 /* flags */);
-if (rc == ZLINK_RECV_OK) {
-    /* request payload 처리 */
-    zlink_multipart_close(parts, part_count);
-
-    /* 일반 ROUTER request 의 reply 생성 및 전송 */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 4);
-    memcpy(zlink_msg_data(&reply), "pong", 4);
-    zlink_router_reply(router, source_node_rid, request_seq, &reply, 1);
-}
-```
-
-**주의:** `zlink_router_recv()` 와 `zlink_router_handler()` 는 상호
-배타적이다. 둘 다 사용하면 `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY` 를
-반환한다. 두 표면은 SPOT 에서 시작된 routed 트래픽도 함께 전달한다.
+**주의:** ROUTER 의 inbound routed delivery 는 `zlink_router_recv()` 로만
+받는다. `zlink_router_request()` 의 reply 는 별도 completion callback
+으로 전달되며, data-plane receive 와 섞이지 않는다. `zlink_router_recv()`
+는 SPOT 에서 시작된 routed 트래픽도 같은 표면으로 전달한다.
 `source_spot_rid` 가 채워져 있으면 `zlink_router_reply_spot()` 으로
 응답한다. [SPOT 가이드](07-3-spot.ko.md) 참고.
 
@@ -309,21 +276,6 @@ ROUTER의 핵심 패턴. N개 노드가 각각 상대의 routing_id를 지정하
 1:1이면 DEALER로 충분하므로, ROUTER ↔ ROUTER는 N개 노드 간 통신에서 의미가 있다.
 
 ```c
-/* ROUTER handler: DEALER's initial message confirms connection */
-void on_connect(const zlink_routing_id_t *source_node_rid,
-                const zlink_routing_id_t *source_spot_rid,
-                uint64_t request_seq,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* source_node_rid->data = "X" — 이제 "X" 로 안전하게 전송 가능 */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 7);
-    memcpy(zlink_msg_data(&reply), "Welcome", 7);
-    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
-    zlink_multipart_close(parts, part_count);
-}
-
 /* DEALER connects and sends initial message */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 zlink_set_routing_id(dealer, "X", 1);
@@ -333,29 +285,27 @@ zlink_msg_init_size(&hello, 5);
 memcpy(zlink_msg_data(&hello), "Hello", 5);
 zlink_send(dealer, &hello, 1, 0);
 
-/* on_connect receives: source_node_rid = "X", parts[0] = "Hello"
-   and replies with "Welcome" */
+/* Router: poller 루프에서 router_recv 로 첫 메시지를 받고 "Welcome" 을 회신.
+   source_node_rid->data == "X" 이므로 이후부터 "X" 로 안전하게 전송 가능 */
 ```
 
 ```c
-/* Server: ROUTER with handler */
-void on_request(const zlink_routing_id_t *source_node_rid,
-                const zlink_routing_id_t *source_spot_rid,
-                uint64_t request_seq,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* 일반 DEALER → ROUTER: source_spot_rid == NULL, request_seq == 0 */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 5);
-    memcpy(zlink_msg_data(&reply), "reply", 5);
-    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
-    zlink_multipart_close(parts, part_count);
-}
-
+/* Server: ROUTER recv loop */
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_router_handler(router, on_request, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
+
+/* poller 등록 후 루프에서:
+   while (running) {
+       if (readable(router)) {
+           zlink_router_recv(router, &src_node, &src_spot, &seq,
+                             &parts, &n, 0);
+           zlink_msg_t reply;
+           zlink_msg_init_size(&reply, 5);
+           memcpy(zlink_msg_data(&reply), "reply", 5);
+           zlink_send_rid(router, src_node, &reply, 1, 0);
+           zlink_multipart_close(parts, n); free(parts);
+       }
+   } */
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
@@ -373,7 +323,7 @@ void *d2 = zlink_socket(ctx, ZLINK_DEALER);
 zlink_set_routing_id(d2, "D2", 2);
 zlink_connect(d2, endpoint);
 
-/* Each client sends a message -- on_request receives source_node_rid */
+/* Each client sends a message -- router_recv returns source_node_rid */
 zlink_msg_t m1;
 zlink_msg_init_size(&m1, 7);
 memcpy(zlink_msg_data(&m1), "from_d1", 7);
@@ -384,7 +334,7 @@ zlink_msg_init_size(&m2, 7);
 memcpy(zlink_msg_data(&m2), "from_d2", 7);
 zlink_send(d2, &m2, 1, 0);
 
-/* on_reply receives the reply for each DEALER */
+/* Each DEALER drains replies with zlink_recv() in its own poller loop */
 ```
 
 > ROUTER ↔ ROUTER는 브로커, 클러스터 노드 간 메시 통신에 적합하다.
@@ -426,26 +376,20 @@ DEALER ↔ ROUTER 조합의 핵심 장점:
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 
-/* Default behavior: silently drops undeliverable messages */
+/* 기본 동작(MANDATORY=1): 도달 불가 peer 전송이 실패로 surface 된다 */
 zlink_routing_id_t bad_rid = { .data = "UNKNOWN", .size = 7 };
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
 memcpy(zlink_msg_data(&msg), "DATA", 4);
-zlink_send_rid(router, &bad_rid, &msg, 1, 0);
-/* No error, message lost */
-
-/* Enable MANDATORY mode */
-int mandatory = 1;
-zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
-
-/* Now returns error on undeliverable message */
-zlink_msg_t msg2;
-zlink_msg_init_size(&msg2, 4);
-memcpy(zlink_msg_data(&msg2), "DATA", 4);
-zlink_submit_result_t rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
+zlink_submit_result_t rc = zlink_send_rid(router, &bad_rid, &msg, 1, 0);
 if (rc == ZLINK_SUBMIT_NOT_CONNECTED) {
-    /* Target "UNKNOWN" not found */
+    /* Target "UNKNOWN" not found -- 호출자가 재시도/로그 등을 결정 */
 }
+
+/* 예전처럼 조용한 drop 이 필요하면 MANDATORY 를 끈다 */
+int disable_mandatory = 0;
+zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
+                        &disable_mandatory, sizeof(disable_mandatory));
 ```
 
 ### 패턴 3: ROUTER ↔ ROUTER 가중치 라우팅
@@ -753,6 +697,62 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 같은 routing_id를 가진 두 DEALER가 동시에 연결되면, 기본적으로 두 번째 연결이 거부된다. `ROUTER_HANDOVER`를 활성화하면 기존 연결을 대체한다.
 
 > routing_id의 상세 개념은 [08-routing-id.ko.md](08-routing-id.ko.md)를 참고.
+
+### 점진적 유지보수를 위한 admission 상태
+
+롤링 재시작이나 설정 리로드 직전, 로컬 ROUTER의 admission 상태를
+바꿔 원격 peer들이 이 ROUTER를 새 outbound 대상으로 선택하지 않도록
+만들 수 있다.
+
+```c
+/* 유지보수 진입: DRAINING 으로 전환 */
+zlink_set_admission_state(router, ZLINK_ADMISSION_DRAINING);
+
+/* ... in-flight 작업/응답이 소진될 때까지 대기 ... */
+
+/* 재시작 또는 재설정 후 SERVING 복귀 */
+zlink_set_admission_state(router, ZLINK_ADMISSION_SERVING);
+
+/* 현재 상태 조회 */
+zlink_admission_state_t cur;
+zlink_get_admission_state(router, &cur);
+```
+
+`DRAINING`은 로컬 halt가 아니라 peer-side advisory다. 로컬 핸들은
+기존과 동일하게 inbound를 처리한다 — `zlink_router_recv()`,
+`zlink_send_rid()`, `zlink_router_reply()` 모두 정상 동작하므로
+진행 중인 request는 마저 완료할 수 있다. 바뀌는 것은 원격 peer가 이
+ROUTER를 더 이상 새 작업 대상으로 선택하지 않는다는 점이다:
+
+- 원격 DEALER는 이 ROUTER를 round-robin 후보에서 제외한다.
+- 원격 ROUTER가 이 RID로 `zlink_send_rid()` 또는
+  `zlink_router_request()`를 호출하면 `ZLINK_SUBMIT_NOT_ADMITTED`로
+  즉시 실패한다.
+- `zlink_router_reply()`는 admission 검사 대상이 아니다. 이미 받은
+  request에는 `DRAINING` 상태에서도 응답할 수 있다.
+
+송신 쪽 규칙은 반대 방향에서도 동일하다. 로컬 ROUTER가
+`zlink_send_rid()` 또는 `zlink_router_request()`로 원격 RID에 보낼
+때, 해당 RID의 광고된 admission 상태가 `DRAINING`이면
+`ZLINK_SUBMIT_NOT_ADMITTED`로 실패한다. Admission 캐시 전파는
+best-effort이므로, 경합 상황에서는 같은 거절이 먼저
+`ZLINK_SUBMIT_NOT_CONNECTED`로 관찰될 수도 있다.
+
+일반적인 유지보수 순서:
+
+1. `zlink_set_admission_state(router, ZLINK_ADMISSION_DRAINING)`
+2. In-flight request/reply가 소진될 때까지 대기.
+3. 인스턴스 재시작 또는 재설정.
+4. `zlink_set_admission_state(router, ZLINK_ADMISSION_SERVING)`.
+
+연결된 peer의 admission 전이는 socket monitor의
+`ZLINK_EVENT_PEER_ADMISSION_CHANGED`로 surface 된다. 이벤트 형태는
+[모니터링 가이드](06-monitoring.ko.md)의 "Peer admission 상태 변화 감지"
+섹션을 참고.
+
+> 상세 규약은 ROUTER spec
+> [router.ko.md](../spec/core/socket/router.ko.md) 의 "Admission 상태"
+> 와 "ROUTER에서 시작하는 directed send와 admission" 섹션을 참고.
 
 ---
 [← DEALER](03-3-dealer.ko.md) | [STREAM →](03-5-stream.ko.md)

@@ -49,8 +49,6 @@ struct socket_request_reply_state_t
     std::map<pending_key_t, pending_request_t> pending_requests;
     bool internal_dispatch_installed;
     zlink::internal_pair_queue::queue_t recv_queue;
-    zlink_router_handler_fn router_handler;
-    void *router_handler_userdata;
 };
 
 extern thread_local zlink_routing_id_t g_router_recv_source_rid;

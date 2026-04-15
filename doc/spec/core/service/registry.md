@@ -667,6 +667,7 @@ typedef struct zlink_member_peer_entry_t
     char service_name[256];
     char endpoint[256];
     zlink_routing_id_t routing_id;
+    zlink_admission_state_t admission_state;
     int64_t value;
 } zlink_member_peer_entry_t;
 ```
@@ -678,6 +679,7 @@ typedef struct zlink_member_peer_entry_t
 | `service_name` | Null-terminated service name. |
 | `endpoint` | Null-terminated endpoint. |
 | `routing_id` | Routing identity of the peer. |
+| `admission_state` | `zlink_admission_state_t`. `SERVING` means the provider accepts new outbound traffic; `DRAINING` means it refuses new outbound and is excluded from auto-connect outbound candidates. |
 | `value` | Service-specific numeric value. |
 
 ---

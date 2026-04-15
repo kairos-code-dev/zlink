@@ -34,26 +34,26 @@ void test_spot_node_direct_local_and_child_interop ()
 
     TEST_ASSERT_SUCCESS_ERRNO (publish_text (
       &zlink_publish, pub, "mix:direct", "direct-msg", 0));
-    TEST_ASSERT_TRUE (wait_for_spot_message (
+    TEST_ASSERT_TRUE (wait_for_spot_recv_message (
       sub, "mix:direct", "direct-msg", 10, 3000));
 
     TEST_ASSERT_SUCCESS_ERRNO (publish_text (
       &zlink_publish, pub, "mix:visibility", "before-unsub", 0));
-    TEST_ASSERT_TRUE (wait_for_spot_message (
+    TEST_ASSERT_TRUE (wait_for_spot_recv_message (
       sub, "mix:visibility", "before-unsub", 12, 3000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_unset_subscription (sub, "mix:visibility"));
     TEST_ASSERT_SUCCESS_ERRNO (publish_text (
       &zlink_publish, pub, "mix:visibility", "after-unsub", 0));
-    TEST_ASSERT_FALSE (wait_for_spot_message (
+    TEST_ASSERT_FALSE (wait_for_spot_recv_message (
       sub, "mix:visibility", "after-unsub", 11, 200));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub, "mix:visibility"));
     TEST_ASSERT_SUCCESS_ERRNO (publish_text (
       &zlink_publish, pub, "mix:visibility", "after-resub", 0));
-    TEST_ASSERT_TRUE (wait_for_spot_message (
+    TEST_ASSERT_TRUE (wait_for_spot_recv_message (
       sub, "mix:visibility", "after-resub", 11, 3000));
 
     TEST_ASSERT_SUCCESS_ERRNO (

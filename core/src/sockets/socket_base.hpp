@@ -159,6 +159,8 @@ class socket_base_t : public own_t,
     virtual int stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_);
     virtual int stream_set_msg_handler_with_userdata (
       zlink_socket_msg_handler_fn handler_, void *userdata_);
+    virtual int stream_set_packet_msg_handler_with_userdata (
+      zlink_stream_packet_handler_fn handler_, void *userdata_);
     virtual int stream_dispatch_stop ();
     virtual bool stream_dispatch_active () const;
     virtual bool stream_dispatch_in_callback () const;
@@ -179,6 +181,7 @@ class socket_base_t : public own_t,
     //  which events are to be reported from this socket.
     bool has_in ();
     bool has_out ();
+    bool transport_has_out ();
 
     //  Joining and leaving groups
     int join (const char *group_);

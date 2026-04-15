@@ -928,13 +928,7 @@ void run_pair_ready_matrix (monitor_mode_t monitor_mode_,
     server_probe.socket = server;
     g_pair_server_probe = &server_probe;
     g_pair_client_probe = &client_probe;
-
-    if (socket_mode_ == socket_callback_mode) {
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_recv_handler (server, &pair_server_handler, NULL));
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_recv_handler (client, &pair_client_handler, NULL));
-    }
+    (void) socket_mode_;
 
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
@@ -962,23 +956,16 @@ void run_pair_ready_matrix (monitor_mode_t monitor_mode_,
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (client, "ping", 4, 0));
 
-    if (socket_mode_ == socket_recv_mode) {
-        char request_buf[16] = {0};
-        TEST_ASSERT_EQUAL_INT (4, zlink_recv (server, request_buf,
-                                              sizeof (request_buf), 0));
-        TEST_ASSERT_EQUAL_STRING ("ping", request_buf);
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_send (server, "pong", 4, 0));
+    char request_buf[16] = {0};
+    TEST_ASSERT_EQUAL_INT (
+      4, zlink_recv (server, request_buf, sizeof (request_buf), 0));
+    TEST_ASSERT_EQUAL_STRING ("ping", request_buf);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (server, "pong", 4, 0));
 
-        char reply_buf[16] = {0};
-        TEST_ASSERT_EQUAL_INT (4, zlink_recv (client, reply_buf,
-                                              sizeof (reply_buf), 0));
-        TEST_ASSERT_EQUAL_STRING ("pong", reply_buf);
-    } else {
-        TEST_ASSERT_TRUE (wait_for_pair_callback (&server_probe, true, 3000));
-        TEST_ASSERT_TRUE (wait_for_pair_callback (&client_probe, false, 3000));
-        TEST_ASSERT_EQUAL_STRING ("ping", server_probe.request_payload);
-        TEST_ASSERT_EQUAL_STRING ("pong", client_probe.reply_payload);
-    }
+    char reply_buf[16] = {0};
+    TEST_ASSERT_EQUAL_INT (
+      4, zlink_recv (client, reply_buf, sizeof (reply_buf), 0));
+    TEST_ASSERT_EQUAL_STRING ("pong", reply_buf);
 
     g_pair_server_probe = NULL;
     g_pair_client_probe = NULL;
@@ -1000,16 +987,6 @@ void run_dealer_router_ready_matrix (monitor_mode_t monitor_mode_,
     const char dealer_id[] = "MRX01";
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (client, dealer_id, sizeof (dealer_id) - 1));
-
-    raw_callback_probe_t server_probe;
-    raw_callback_probe_t client_probe;
-    server_probe.socket = server;
-    g_router_server_probe = &server_probe;
-    g_router_client_probe = &client_probe;
-    if (socket_mode_ == socket_callback_mode) {
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_recv_handler (client, &raw_client_handler, NULL));
-    }
 
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
@@ -1042,50 +1019,36 @@ void run_dealer_router_ready_matrix (monitor_mode_t monitor_mode_,
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (client, "ping", 4, 0));
 
-    if (socket_mode_ == socket_recv_mode) {
-        unsigned char rid_buf[255];
-        const int rid_size =
-          TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (server, rid_buf, sizeof (rid_buf), 0));
-        TEST_ASSERT_EQUAL_INT (static_cast<int> (routing_id_size), rid_size);
-        TEST_ASSERT_EQUAL_MEMORY (routing_id, rid_buf, routing_id_size);
-        char request_buf[16] = {0};
-        TEST_ASSERT_EQUAL_INT (4, zlink_recv (server, request_buf,
-                                              sizeof (request_buf), 0));
-        TEST_ASSERT_EQUAL_STRING ("ping", request_buf);
+    const zlink_routing_id_t *source_node_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (
+      server, &source_node_rid, &source_spot_rid, &request_seq, &parts,
+      &part_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (0, request_seq);
+    TEST_ASSERT_EQUAL_UINT64 (static_cast<uint64_t> (routing_id_size),
+                              source_node_rid->size);
+    TEST_ASSERT_EQUAL_MEMORY (routing_id, source_node_rid->data,
+                              routing_id_size);
+    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_UINT64 (4, zlink_msg_size (&parts[0]));
+    TEST_ASSERT_EQUAL_MEMORY ("ping", zlink_msg_data (&parts[0]), 4);
+    zlink_multipart_close (parts, part_count);
 
-        TEST_ASSERT_EQUAL_INT (
-          static_cast<int> (routing_id_size),
-          TEST_ASSERT_SUCCESS_ERRNO (
-            zlink_send (server, routing_id, routing_id_size, ZLINK_SNDMORE)));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_send (server, "pong", 4, 0));
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (source_node_rid->size),
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_send (
+        server, source_node_rid->data, source_node_rid->size, ZLINK_SNDMORE)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (server, "pong", 4, 0));
 
-        char reply_buf[16] = {0};
-        TEST_ASSERT_EQUAL_INT (4, zlink_recv (client, reply_buf,
-                                              sizeof (reply_buf), 0));
-        TEST_ASSERT_EQUAL_STRING ("pong", reply_buf);
-    } else {
-        unsigned char rid_buf[255];
-        const int rid_size =
-          TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (server, rid_buf, sizeof (rid_buf), 0));
-        TEST_ASSERT_EQUAL_INT (static_cast<int> (routing_id_size), rid_size);
-        TEST_ASSERT_EQUAL_MEMORY (routing_id, rid_buf, routing_id_size);
-        char request_buf[16] = {0};
-        TEST_ASSERT_EQUAL_INT (4, zlink_recv (server, request_buf,
-                                              sizeof (request_buf), 0));
-        TEST_ASSERT_EQUAL_STRING ("ping", request_buf);
+    char reply_buf[16] = {0};
+    TEST_ASSERT_EQUAL_INT (4, zlink_recv (client, reply_buf,
+                                          sizeof (reply_buf), 0));
+    TEST_ASSERT_EQUAL_STRING ("pong", reply_buf);
 
-        TEST_ASSERT_EQUAL_INT (
-          static_cast<int> (routing_id_size),
-          TEST_ASSERT_SUCCESS_ERRNO (
-            zlink_send (server, routing_id, routing_id_size, ZLINK_SNDMORE)));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_send (server, "pong", 4, 0));
-
-        TEST_ASSERT_TRUE (wait_for_raw_callback (&client_probe, 3000));
-        TEST_ASSERT_EQUAL_STRING ("pong", client_probe.parts[0]);
-    }
-
-    g_router_server_probe = NULL;
-    g_router_client_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     test_context_socket_close_zero_linger (client);
     test_context_socket_close_zero_linger (server);
@@ -1110,13 +1073,6 @@ void run_router_router_ready_matrix (monitor_mode_t monitor_mode_,
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
       client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, server_id,
       sizeof (server_id) - 1));
-
-    raw_callback_probe_t client_probe;
-    g_router_client_probe = &client_probe;
-    if (socket_mode_ == socket_callback_mode) {
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_router_handler (client, &typed_router_client_handler, NULL));
-    }
 
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
@@ -1156,42 +1112,49 @@ void run_router_router_ready_matrix (monitor_mode_t monitor_mode_,
         zlink_send (client, server_id, sizeof (server_id) - 1, ZLINK_SNDMORE)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (client, "ping", 4, 0));
 
-    unsigned char rid_buf[255];
-    const int rid_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (server, rid_buf, sizeof (rid_buf), 0));
-    TEST_ASSERT_EQUAL_INT (static_cast<int> (routing_id_size), rid_size);
-    TEST_ASSERT_EQUAL_MEMORY (routing_id, rid_buf, routing_id_size);
-    char request_buf[16] = {0};
-    TEST_ASSERT_EQUAL_INT (4, zlink_recv (server, request_buf,
-                                          sizeof (request_buf), 0));
-    TEST_ASSERT_EQUAL_STRING ("ping", request_buf);
+    const zlink_routing_id_t *source_node_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (
+      server, &source_node_rid, &source_spot_rid, &request_seq, &parts,
+      &part_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (0, request_seq);
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (client_id) - 1, source_node_rid->size);
+    TEST_ASSERT_EQUAL_MEMORY (client_id, source_node_rid->data,
+                              source_node_rid->size);
+    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_UINT64 (4, zlink_msg_size (&parts[0]));
+    TEST_ASSERT_EQUAL_MEMORY ("ping", zlink_msg_data (&parts[0]), 4);
+    zlink_multipart_close (parts, part_count);
 
     TEST_ASSERT_EQUAL_INT (
-      static_cast<int> (routing_id_size),
-      TEST_ASSERT_SUCCESS_ERRNO (
-        zlink_send (server, routing_id, routing_id_size, ZLINK_SNDMORE)));
+      static_cast<int> (source_node_rid->size),
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_send (
+        server, source_node_rid->data, source_node_rid->size, ZLINK_SNDMORE)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (server, "pong", 4, 0));
 
-    if (socket_mode_ == socket_recv_mode) {
-        unsigned char reply_rid[255];
-        const int reply_rid_size = TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_recv (client, reply_rid, sizeof (reply_rid), 0));
-        TEST_ASSERT_EQUAL_INT (sizeof (server_id) - 1, reply_rid_size);
-        TEST_ASSERT_EQUAL_MEMORY (server_id, reply_rid, reply_rid_size);
-        char reply_buf[16] = {0};
-        TEST_ASSERT_EQUAL_INT (4, zlink_recv (client, reply_buf,
-                                              sizeof (reply_buf), 0));
-        TEST_ASSERT_EQUAL_STRING ("pong", reply_buf);
-    } else {
-        TEST_ASSERT_TRUE (wait_for_raw_callback (&client_probe, 3000));
-        TEST_ASSERT_EQUAL_INT (sizeof (server_id) - 1,
-                               static_cast<int> (client_probe.rid_size));
-        TEST_ASSERT_EQUAL_MEMORY (server_id, client_probe.rid,
-                                  client_probe.rid_size);
-        TEST_ASSERT_EQUAL_STRING ("pong", client_probe.parts[0]);
-    }
+    const zlink_routing_id_t *reply_source_node_rid = NULL;
+    const zlink_routing_id_t *reply_source_spot_rid = NULL;
+    uint64_t reply_request_seq = 0;
+    zlink_msg_t *reply_parts = NULL;
+    size_t reply_part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (
+      client, &reply_source_node_rid, &reply_source_spot_rid,
+      &reply_request_seq, &reply_parts, &reply_part_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (0, reply_request_seq);
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (server_id) - 1,
+                              reply_source_node_rid->size);
+    TEST_ASSERT_EQUAL_MEMORY (server_id, reply_source_node_rid->data,
+                              reply_source_node_rid->size);
+    TEST_ASSERT_EQUAL_UINT64 (0, reply_source_spot_rid->size);
+    TEST_ASSERT_EQUAL_UINT64 (1, reply_part_count);
+    TEST_ASSERT_EQUAL_UINT64 (4, zlink_msg_size (&reply_parts[0]));
+    TEST_ASSERT_EQUAL_MEMORY ("pong", zlink_msg_data (&reply_parts[0]), 4);
+    zlink_multipart_close (reply_parts, reply_part_count);
 
-    g_router_client_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     test_context_socket_close_zero_linger (client);
     test_context_socket_close_zero_linger (server);
@@ -1207,13 +1170,6 @@ void run_pubsub_ready_matrix (monitor_mode_t monitor_mode_,
     configure_pair_socket (pub);
     configure_pair_socket (sub);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "topic"));
-
-    raw_callback_probe_t sub_probe;
-    g_sub_probe = &sub_probe;
-    if (socket_mode_ == socket_callback_mode) {
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_subscribe_handler (sub, &pubsub_subscribe_handler, NULL));
-    }
 
     zlink_socket_monitor_open_options_t sub_monitor_opts;
     memset (&sub_monitor_opts, 0, sizeof (sub_monitor_opts));
@@ -1255,38 +1211,28 @@ void run_pubsub_ready_matrix (monitor_mode_t monitor_mode_,
     s_send_seq (pub, "topic", "payload-2", SEQ_END);
     s_send_seq (pub, "topic", "payload-3", SEQ_END);
 
-    if (socket_mode_ == socket_recv_mode) {
-        for (int i = 0; i < 3; ++i) {
-            zlink_msg_t *parts = NULL;
-            size_t part_count = 0;
-            char topic[32] = {0};
-            size_t topic_len = sizeof (topic);
-            TEST_ASSERT_SUCCESS_ERRNO (
-              zlink_subscribe (sub, &parts, &part_count, 0, topic, &topic_len));
-            TEST_ASSERT_EQUAL_UINT64 (1, part_count);
-            TEST_ASSERT_EQUAL_STRING ("topic", topic);
-            if (i == 0)
-                TEST_ASSERT_EQUAL_MEMORY ("payload-1", zlink_msg_data (&parts[0]), 9);
-            else if (i == 1)
-                TEST_ASSERT_EQUAL_MEMORY ("payload-2", zlink_msg_data (&parts[0]), 9);
-            else
-                TEST_ASSERT_EQUAL_MEMORY ("payload-3", zlink_msg_data (&parts[0]), 9);
-            zlink_multipart_close (parts, part_count);
-        }
-    } else {
-        TEST_ASSERT_TRUE (wait_for_raw_callback_count (&sub_probe, 3, 3000));
-        TEST_ASSERT_EQUAL_INT (2, static_cast<int> (sub_probe.recorded_part_counts[0]));
-        TEST_ASSERT_EQUAL_STRING ("topic", sub_probe.recorded_parts[0][0]);
-        TEST_ASSERT_EQUAL_STRING ("payload-1", sub_probe.recorded_parts[0][1]);
-        TEST_ASSERT_EQUAL_INT (2, static_cast<int> (sub_probe.recorded_part_counts[1]));
-        TEST_ASSERT_EQUAL_STRING ("topic", sub_probe.recorded_parts[1][0]);
-        TEST_ASSERT_EQUAL_STRING ("payload-2", sub_probe.recorded_parts[1][1]);
-        TEST_ASSERT_EQUAL_INT (2, static_cast<int> (sub_probe.recorded_part_counts[2]));
-        TEST_ASSERT_EQUAL_STRING ("topic", sub_probe.recorded_parts[2][0]);
-        TEST_ASSERT_EQUAL_STRING ("payload-3", sub_probe.recorded_parts[2][1]);
+    for (int i = 0; i < 3; ++i) {
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        char topic[32] = {0};
+        size_t topic_len = sizeof (topic);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_subscribe (sub, NULL, &parts, &part_count, topic, &topic_len,
+                           0));
+        TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+        TEST_ASSERT_EQUAL_STRING ("topic", topic);
+        if (i == 0)
+            TEST_ASSERT_EQUAL_MEMORY ("payload-1", zlink_msg_data (&parts[0]),
+                                      9);
+        else if (i == 1)
+            TEST_ASSERT_EQUAL_MEMORY ("payload-2", zlink_msg_data (&parts[0]),
+                                      9);
+        else
+            TEST_ASSERT_EQUAL_MEMORY ("payload-3", zlink_msg_data (&parts[0]),
+                                      9);
+        zlink_multipart_close (parts, part_count);
     }
 
-    g_sub_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&pub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&sub_monitor));
     test_context_socket_close_zero_linger (sub);

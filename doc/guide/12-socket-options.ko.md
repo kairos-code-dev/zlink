@@ -405,9 +405,28 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 | 소켓 타입 | override 옵션 | 값 | 이유 |
 |-----------|---------------|-----|------|
 | `SUB` / `XSUB` | `LINGER` | `0` | 구독 소켓은 종료 시 대기 불필요 |
+| `ROUTER` | `ROUTER_MANDATORY` | `1` | 미연결 peer 대상 전송 실패를 surface |
+| `ROUTER` | `ROUTER_HANDOVER` | `1` | duplicate peer identity 시 새 연결이 인수 |
+| `PUB` / `XPUB` | `PUB_NODROP` | `1` | HWM 시 조용한 drop 대신 `BACKPRESSURED` surface |
 | `STREAM` | `BACKLOG` | `65536` | 다수 외부 클라이언트 수용 |
 | `STREAM` | `SNDBUF` | `262144` (미설정 시) | 대용량 RAW 전송 대응 |
 | `STREAM` | `RCVBUF` | `262144` (미설정 시) | 대용량 RAW 수신 대응 |
+
+> **관찰 가능한 동작 변화 (migration note):**
+>
+> - `ROUTER_MANDATORY` 기본값이 `0 → 1` 로 바뀌었다. 옵션을 명시하지 않은
+>   ROUTER 에서 `zlink_send_rid()` 로 미연결 peer 를 지정하면 조용히 넘어가지
+>   않고 `ZLINK_SUBMIT_NOT_CONNECTED` 가 반환된다. writable / `ZLINK_POLLOUT`
+>   관찰값도 실제로 쓸 수 있는 peer 가 있을 때만 surface 된다.
+> - `ROUTER_HANDOVER` 기본값이 `0 → 1` 로 바뀌었다. duplicate peer identity 로
+>   새 연결이 들어오면 기존 pipe 를 인수한다. 예전처럼 기존 연결을 유지하려면
+>   `0` 으로 설정해야 한다.
+> - `PUB_NODROP` 기본값이 `0 → 1` 로 바뀌었다. HWM 상황에서
+>   `zlink_publish()` 가 조용히 drop 하지 않고 `ZLINK_SUBMIT_BACKPRESSURED` 를
+>   반환한다. 진행률을 위해 드롭이 필요하면 `0` 으로 설정한다.
+>
+> 이 변경은 공개 상수 이름이나 옵션 on/off 의미를 바꾸지 않는다. 각 옵션의
+> **기본 프로파일만** 조정된 것이다.
 
 ## 소켓 타입별 전용 옵션
 
@@ -415,9 +434,9 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 
 | 소켓 | API | 대표 옵션 |
 |------|-----|-----------|
-| ROUTER | `zlink_set_router_option()` | `MANDATORY`, `HANDOVER`, `PROBE`, `CONNECT_ROUTING_ID` |
+| ROUTER | `zlink_set_router_option()` | `MANDATORY` (기본 `1`), `HANDOVER` (기본 `1`), `PROBE`, `CONNECT_ROUTING_ID` |
 | DEALER | `zlink_set_dealer_option()` | `PROBE` |
-| XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP`, `MANUAL`, `WELCOME_MSG` |
+| XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (기본 `1`), `MANUAL`, `WELCOME_MSG` |
 | SUB/XSUB | `zlink_set_sub_option()` | 구독 관련 |
 | STREAM | `zlink_set_stream_option()` | `NOTIFY` |
 

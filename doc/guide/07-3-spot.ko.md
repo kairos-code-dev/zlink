@@ -3,9 +3,12 @@
 # SPOT (위치투명 메시징)
 
 > 이 가이드는 recv-first public surface 기준으로 작성되었다.
-> `SpotNode`와 unified `Spot`은 recv 모드로 시작하고,
-> topic 경로는 `zlink_subscribe_handler()`, routed 경로는
-> `zlink_spot_handler()`로 callback 모드로 전환된다.
+> `SpotNode`와 unified `Spot`은 recv 모드로 시작한다. topic/routed/timer
+> readable 알림은 `zlink_spot_dispatch_event_handler()` 하나로 받고, 실제
+> payload는 대응 recv 함수(`zlink_spot_subscribe()` /
+> `zlink_spot_recv()` / `zlink_timer_recv()`)로 drain한다. routed 경로에는
+> 기존 direct 수신 callback `zlink_spot_handler()`도 여전히 설치할 수
+> 있다.
 
 ## 1. 개요
 
@@ -106,23 +109,187 @@ flowchart LR
 
 ## 3. SPOT Node 설정
 
+### 3.0 핵심 멘탈 모델 — SpotNode는 여러 서비스의 허브다
+
+**하나의 `SpotNode`는 여러 개의 외부 서비스와 동시에 연결된다.** 각 서비스는
+`service_name`이라는 문자열로 식별되며, 그 아래에 ROUTER, 또는 PUB+SUB 한 쌍,
+또는 ROUTER+PUB+SUB 세 가지 중 하나의 attachment 구성을 가진다. `SpotNode`는
+이 서비스별 attachment를 `service attachment table`에 모아 관리하고, 그 위에
+올라가는 공개 `Spot` facade 하나가 모든 서비스와 통신하는 창구가 된다.
+
+```text
++------------------------------------------------------------------+
+|                         SpotNode (hub)                           |
+|------------------------------------------------------------------|
+|                       service attachment table                   |
+|                                                                  |
+|  service_name = "orders-exec"   -> { ROUTER }                    |
+|  service_name = "market-data"   -> { PUB, SUB }                  |
+|  service_name = "billing"       -> { ROUTER, PUB, SUB }          |
+|                                                                  |
+|                               ^                                  |
+|                               | single public facade             |
+|                               |                                  |
+|                +---------------------------+                     |
+|                |       Spot (facade)       |                     |
+|                |                           |                     |
+|                |  spot_send_service(...)   |                     |
+|                |  spot_request_service(...)|                     |
+|                |  spot_publish(...)        |                     |
+|                |  spot_subscribe(...)      |                     |
+|                +---------------------------+                     |
++------------------------------------------------------------------+
+```
+
+위 구조의 요점:
+
+- 한 `SpotNode`에 서로 다른 `service_name`을 여러 개 등록할 수 있다. 예를
+  들어 `orders-exec`(routed only), `market-data`(pub/sub only),
+  `billing`(routed + pub/sub)을 동시에 올려 둘 수 있다.
+- 같은 `service_name` 아래에 여러 개의 ROUTER를 attach할 수도 있다. 이 경우
+  `zlink_spot_send_service()` / `zlink_spot_request_service()`가 active+
+  send-ready ROUTER 중 하나를 round-robin으로 고른다.
+- **pub/sub는 반드시 쌍으로 등록**한다. PUB만 있거나 SUB만 있는 서비스는
+  허용하지 않는다. 이 제약은 Discovery attach와 수동 attach 모두에 적용된다.
+- `Spot` facade는 **node당 하나**만 허용된다. service-aware attachment가 붙은
+  node에 두 번째 `zlink_spot_new(node)`를 호출하면 `EBUSY`로 실패한다. 반대로
+  이미 facade가 둘 이상 만들어진 node에는 service-aware attach 함수군이
+  `EBUSY`로 실패한다.
+
+### 3.0.1 서비스를 등록하는 두 가지 방법
+
+서비스별 router/pub/sub attachment는 두 경로 중 하나로 올라간다. 두 경로를
+같은 node에서 섞어 쓰는 것도 허용된다.
+
+| 방법 | 설명 | 사용 함수 |
+|------|------|-----------|
+| **수동 attach** | 호출자가 외부 소켓(ROUTER / PUB / SUB)을 직접 만들어 `service_name`과 함께 등록한다. 테스트, 고정 토폴로지, 부트스트랩 서비스에 적합하다. | `zlink_spot_node_attach_router()`, `zlink_spot_node_attach_pubsub()` |
+| **Discovery attach** | Discovery handle을 서비스별로 만들어 붙이면, Registry가 알려 주는 provider가 자동으로 service attachment table에 ROUTER/PUB/SUB 소스로 들어온다. 운영 토폴로지에 적합하다. | `zlink_spot_node_attach_discovery()` |
+
+자동 attach에서도 같은 규칙이 적용된다. `router`만 있는 서비스는 허용,
+`router + pub + sub`도 허용, `pub + sub`만 있는 서비스도 허용, 그러나
+`pub` xor `sub` 상태인 서비스(한쪽만 살아 있는 pub/sub)는 attach 시점에서
+거부된다.
+
+각 방법의 구체적인 사용은 §3.1 Discovery 기반 자동 Mesh와 §3.1a 수동 service
+attach에서 다룬다.
+
 ### 3.1 Discovery 기반 자동 Mesh
+
+Discovery 기반 등록은 **서비스마다 아래 4단계를 따로 반복**한다. 각 서비스의
+ROUTER 또는 PUB/SUB를 먼저 만들어 그 서비스 전용 Discovery에 붙여 둔 뒤,
+마지막에 `SpotNode`에 그 Discovery들을 하나씩 attach하면 된다.
+
+1. 그 서비스에서 쓸 raw socket(ROUTER 또는 PUB/SUB)을 만든다.
+2. `ZLINK_SERVICE_TYPE_SOCKET` + 해당 `service_name`으로 Discovery handle을
+   만든다. Registry에 연결한다.
+3. `zlink_socket_attach_discovery(socket, discovery)`로 socket을 그 Discovery에
+   소속시킨다. 이때부터 Discovery가 이 socket의 lifecycle을 소유하고,
+   Registry에는 이 서비스의 provider로 등록된다.
+4. `SpotNode`를 만들고 bind한 뒤, 위에서 만든 Discovery들을
+   `zlink_spot_node_attach_discovery(node, discovery)`로 차례로 붙인다.
+
+아래는 한 node가 `orders-exec`(ROUTER only)와 `market-data`(PUB+SUB)
+두 서비스를 동시에 운용하는 예다.
 
 ```c
 void *ctx = zlink_ctx_new();
 
-/* Discovery setup (peer discovery + registry uplink / heartbeat owner) */
-void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SPOT, "spot-node");
-zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+/* ---- Service 1: orders-exec (routed only) ---- */
 
-/* SPOT Node setup */
+/* 1. Build the ROUTER socket this process provides under "orders-exec" */
+void *orders_router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
+zlink_bind(orders_router, "tcp://*:9001");
+
+/* 2. Open a Discovery view scoped to this service */
+void *orders_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "orders-exec");
+zlink_discovery_connect_registry(orders_discovery,
+    "tcp://registry1:5551");
+
+/* 3. Attach the socket to its Discovery — now Discovery owns the socket
+ *    lifecycle and advertises it as an "orders-exec" ROUTER provider. */
+zlink_socket_attach_discovery(orders_router, orders_discovery);
+
+/* ---- Service 2: market-data (pub+sub pair) ---- */
+
+void *prices_pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
+void *prices_sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
+zlink_bind(prices_pub, "tcp://*:9002");
+/* SUB does not bind; Discovery will connect it to other "market-data"
+ * PUB providers as they appear. */
+
+void *prices_pub_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "market-data");
+zlink_discovery_connect_registry(prices_pub_discovery,
+    "tcp://registry1:5551");
+
+void *prices_sub_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "market-data");
+zlink_discovery_connect_registry(prices_sub_discovery,
+    "tcp://registry1:5551");
+
+zlink_socket_attach_discovery(prices_pub, prices_pub_discovery);
+zlink_socket_attach_discovery(prices_sub, prices_sub_discovery);
+
+/* ---- SpotNode: bind, then attach each service's Discovery ---- */
+
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
-/* Attach Discovery */
-zlink_spot_node_attach_discovery(node, discovery);
+zlink_spot_node_attach_discovery(node, orders_discovery);
+zlink_spot_node_attach_discovery(node, prices_pub_discovery);
+zlink_spot_node_attach_discovery(node, prices_sub_discovery);
 ```
+
+위 예의 포인트:
+
+- `ZLINK_SERVICE_TYPE_SOCKET`을 쓴다. raw socket-as-service를 발견·등록하는
+  Discovery 타입이다. (SpotNode 자체의 mesh peer 발견을 쓰던 옛
+  `ZLINK_SERVICE_TYPE_SPOT` 경로와 다르다.)
+- `zlink_socket_attach_discovery()`가 socket을 Discovery에 **소속시키는**
+  필수 중간 단계다. 이걸 건너뛰면 Registry에 provider로 올라가지 않고,
+  SpotNode에 attach_discovery해도 그 서비스에는 들어오는 attachment가 없다.
+- pub/sub 서비스는 PUB와 SUB가 **둘 다 같은 `service_name`**을 공유하도록
+  Discovery를 각각 만든다. 서비스 구성이 pub xor sub(한쪽만 존재) 상태이면
+  `attach_discovery`가 `INVALID_ARGUMENT`로 거부된다.
+- 같은 node에 서로 다른 `service_name`의 Discovery를 여러 개 attach할 수
+  있다. 같은 `service_name` Discovery를 한 node에 두 번 attach하면 `EBUSY`로
+  실패한다.
+- Discovery가 공급하는 자동 attachment는 `SpotNode`의 service attachment
+  table에 ROUTER/PUB/SUB 자동 source로 들어간다. 이 상태에서
+  `zlink_spot_new(node)`로 facade를 만들면
+  `zlink_spot_send_service(spot, "orders-exec", ...)`이나
+  `zlink_spot_publish(spot, "market-data", ...)`로 서비스 이름만으로 송수신할
+  수 있다.
+
+> Discovery가 provider 목록과 pairwise initiator를 계산하는 방식은
+> [Discovery 내부 구조](../internals/discovery-internals.ko.md)를 참고한다.
+
+### 3.1a 수동 service attach
+
+서비스 socket을 직접 만들어 attach하는 경우:
+
+```c
+/* Routed 전용 서비스: ROUTER 하나만 attach */
+void *orders_router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
+zlink_bind(orders_router, "tcp://*:9001");
+zlink_spot_node_attach_router(node, "orders-exec", orders_router);
+
+/* pub/sub 서비스: PUB와 SUB를 반드시 한 쌍으로 attach */
+void *prices_pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
+void *prices_sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
+zlink_bind(prices_pub, "tcp://*:9002");
+zlink_connect(prices_sub, "tcp://peer:9002");
+zlink_spot_node_attach_pubsub(node, "market-data",
+                              prices_pub, prices_sub);
+```
+
+- attach는 소유권을 가져오지 않는다. `SpotNode` destroy가 수동 attach된
+  소켓을 함께 destroy하지 않는다. 소켓 lifecycle은 호출자가 직접 관리한다.
+- 같은 소켓을 두 서비스에 중복 attach하는 것은 금지한다.
+- pub 따로 / sub 따로 attach하는 표면은 없다. pub/sub 경로를 쓰려면 둘을
+  한 번에 넘긴다.
 
 > `SpotNode`는 mesh 참여를 위한 토폴로지 및 라이프사이클 소유자이다.
 > 범용 데이터 플레인(data plane, 실제 메시지가 흐르는 경로) facade(publish/subscribe)를 노출하지 않는다.
@@ -243,23 +410,39 @@ if (rc == ZLINK_RECV_OK) {
 
 #### Callback 모드
 
-`zlink_subscribe_handler()`를 호출하면 recv 모드에서 callback 모드로
-일방 전환된다. 이후 수신 메시지는 설치된 callback으로 자동 dispatch된다.
+`zlink_spot_dispatch_event_handler()`를 호출하면 topic/routed/timer readable
+알림이 단일 event callback으로 들어온다. callback은 event kind만 알려주고,
+실제 topic payload는 callback 안에서 `zlink_spot_subscribe()` /
+`zlink_subscribe()`로 drain한다.
 
 ```c
-/* Define callback function */
-void on_message(const zlink_routing_id_t *source_rid,
-                const char *topic, size_t topic_len,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
+static void on_spot_event(void *spot,
+                          zlink_spot_dispatch_event_t event,
+                          void *userdata)
 {
-    printf("Topic: %.*s, Parts: %zu\n", (int)topic_len, topic, part_count);
+    if (event != ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE)
+        return;
+    for (;;) {
+        zlink_routing_id_t src;
+        zlink_msg_t *parts = NULL;
+        size_t part_count  = 0;
+        char topic[256];
+        size_t topic_len = sizeof(topic);
+        zlink_recv_result_t rc = zlink_subscribe(
+            spot, &src, &parts, &part_count,
+            topic, &topic_len, ZLINK_DONTWAIT);
+        if (rc != ZLINK_RECV_OK) break;
+        /* topic 메시지 처리 */
+        zlink_multipart_close(parts, part_count);
+    }
 }
 
-/* Register handler at unified spot creation */
 void *spot = zlink_spot_new(node);
-zlink_subscribe_handler(spot, on_message, NULL);
+zlink_set_subscription(spot, "chat:room1:message");
+zlink_spot_dispatch_event_handler(spot, on_spot_event, NULL);
 ```
+
+실전 패턴(알림 + 단일 워커 루프)은 §7.2를 참고한다.
 
 <details>
 <summary>Full Sample Code</summary>
@@ -283,6 +466,108 @@ zlink_subscribe_handler(spot, on_message, NULL);
 connect/monitor는 제어 경로(control path)로 호출할 수 있다. 다만
 callback은 I/O 경로에서 직접 호출되므로, 느린 처리는 사용자 queue로 넘겨 별도
 thread에서 처리하는 편이 안전하다.
+
+## 4a. Service-aware 송수신
+
+service attachment가 붙어 있을 때는 `service_name`으로 바로 송신하고,
+수신 시에도 어느 서비스에서 온 메시지인지 함께 돌려받는 표면을 쓴다.
+
+### 4a.1 service 기반 송신 / publish
+
+```c
+/* routed 서비스: 같은 서비스의 ROUTER 중 하나가 round-robin으로 선택된다 */
+zlink_msg_t cmd;
+zlink_msg_init_size(&cmd, 13);
+memcpy(zlink_msg_data(&cmd), "place_order:1", 13);
+zlink_submit_result_t rc = zlink_spot_send_service(
+    spot, "orders-exec", &cmd, 1, 0);
+
+/* request_service: reply는 같은 ingress ROUTER 경로로 pinning된다 */
+rc = zlink_spot_request_service(
+    spot,
+    "orders-exec",
+    &cmd, 1,
+    on_order_reply,
+    NULL,
+    0 /* flags */,
+    2000 /* timeout_ms */);
+
+/* service 기반 publish */
+zlink_msg_t tick;
+zlink_msg_init_size(&tick, 20);
+memcpy(zlink_msg_data(&tick), "USD/JPY=151.24 09:15", 20);
+rc = zlink_spot_publish(
+    spot, "market-data", "quotes.fx.usdjpy", &tick, 1, 0);
+```
+
+- 지정한 `service_name`에 attachment가 없으면 `NOT_FOUND`.
+- attachment는 있으나 지금 쓸 수 있는 active 경로가 없으면
+  `NOT_CONNECTED`로 정규화된다. (이는 HWM에 걸린 `BACKPRESSURED`와 다르다.)
+- pub/sub는 pair 전체가 active일 때만 publish가 성공한다. Discovery churn
+  으로 짝이 깨지면 그 서비스의 publish는 `NOT_CONNECTED`로 실패하고, 짝이
+  복구되면 `set_subscription()`으로 등록해 둔 filter가 자동 replay된 뒤
+  다시 active가 된다.
+
+### 4a.2 service 기반 수신
+
+```c
+zlink_routing_id_t src;
+zlink_msg_t *parts = NULL;
+size_t part_count  = 0;
+char service[128];  size_t service_len = sizeof(service);
+char topic[256];    size_t topic_len   = sizeof(topic);
+
+zlink_recv_result_t rc = zlink_spot_subscribe(
+    spot,
+    &src,
+    &parts, &part_count,
+    service, &service_len,
+    topic, &topic_len,
+    ZLINK_DONTWAIT);
+if (rc == ZLINK_RECV_OK) {
+    /* service 이름으로 디스패치 */
+    zlink_multipart_close(parts, part_count);
+}
+```
+
+- pub/sub 경로의 `source_rid`(`src`)는 비어 있을 수 있다. 응용은
+  `service_name`과 `topic`을 기본 식별 메타데이터로 다룬다.
+- subscription filter는 `Spot` facade 전체에서 합집합으로 계산된다.
+  `zlink_set_subscription(spot, filter)` 하나가 현재 붙어 있는 모든 service
+  SUB에 반영된다.
+- subscribe 이벤트(subscribe/unsubscribe 통지)는
+  `zlink_spot_subscription_event()`로 뽑는다. 이 함수도 `service_name`과
+  `topic`을 함께 돌려준다.
+
+### 4a.3 readable 알림과 통합 callback
+
+service-aware subscribe/routed 수신 readable 알림은 기존과 같이
+`zlink_spot_dispatch_event_handler()` 하나로 받는다. event kind가
+플레인(Plane)을 가리키고, 실제 payload는 해당 recv 함수로 drain한다.
+
+```text
+SUBSCRIBE_READABLE -> zlink_spot_subscribe()
+                      또는 zlink_spot_subscription_event()
+ROUTED_READABLE    -> zlink_spot_recv()
+TIMER_READABLE     -> zlink_timer_recv()
+```
+
+reply 주소는 request 수신 시 받은 ingress ROUTER 경로에 고정된다.
+service 이름만으로 새로 round-robin을 돌리지 않는다.
+
+### 4a.4 service-aware monitor
+
+서비스별 attachment 상태는 아래 두 소스에서 관찰한다.
+
+- `zlink_spot_node_service_attachment_count()` /
+  `zlink_spot_node_service_attachment_at()` —
+  `zlink_spot_service_attachment_stats_t`로 서비스별 수동/자동 attachment
+  수를 반환한다.
+- `zlink_spot_node_monitor_recv()` — attachment별 monitor event를
+  `service_name` + role(`ROUTER` / `PUB` / `SUB`) 태그와 함께 돌려준다.
+
+service-aware monitor event는 `zlink_spot_dispatch_event_handler()`의
+readable plane에 섞이지 않는다. monitor는 `SpotNode`가 소유한다.
 
 ## 5. Routed (직접) 메시징
 
@@ -443,8 +728,11 @@ void on_routed(const zlink_routing_id_t *source_rid,
 zlink_spot_handler(spot, on_routed, NULL);
 ```
 
-**참고:** `zlink_spot_handler()` (routed)와 `zlink_subscribe_handler()`
-(topic)는 독립된 surface다. 같은 SPOT handle에서 둘 다 사용할 수 있다.
+**참고:** `zlink_spot_handler()` (routed direct)와
+`zlink_spot_dispatch_event_handler()` (unified readable 알림)는 routed 축의
+같은 slot을 공유하므로 동시에 설치할 수 없다. topic 경로는
+`zlink_spot_dispatch_event_handler()`의 `SUBSCRIBE_READABLE` 알림으로 받은
+뒤 `zlink_subscribe()`로 drain한다.
 
 ### 5.3 ROUTER가 SPOT으로부터 수신
 
@@ -455,14 +743,26 @@ SPOT 에서 오는 routed 메시지를 받는다. 별도의
 구분한다.
 
 ```c
-void on_router_routed(const zlink_routing_id_t *source_node_rid,
-                      const zlink_routing_id_t *source_spot_rid,
-                      uint64_t request_seq,
-                      zlink_msg_t *parts, size_t part_count,
-                      void *userdata)
-{
+/* orders-exec ROUTER 는 poller loop 에서 routed 트래픽을 drain 한다. */
+for (;;) {
+    const zlink_routing_id_t *source_node_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+
+    zlink_recv_result_t rr = zlink_router_recv(
+      router,
+      &source_node_rid,
+      &source_spot_rid,
+      &request_seq,
+      &parts,
+      &part_count,
+      ZLINK_RECV_FLAGS_DONTWAIT);
+    if (rr != ZLINK_RECV_OK) break;
+
     if (source_spot_rid && source_spot_rid->size > 0) {
-        /* SPOT 에서 온 routed 트래픽. request 에 대한 reply 는
+        /* SPOT 에서 온 routed 트래픽. request_seq != 0 이면 reply 는
            zlink_router_reply_spot(router, source_node_rid,
                                    source_spot_rid, request_seq, ...)
            으로 보낸다. */
@@ -471,15 +771,6 @@ void on_router_routed(const zlink_routing_id_t *source_node_rid,
     }
     zlink_multipart_close(parts, part_count);
 }
-
-zlink_router_handler(router, on_router_routed, NULL);
-```
-
-Pull 모드도 같은 통합 표면을 사용한다:
-
-```c
-zlink_router_recv(router, &source_node_rid, &source_spot_rid,
-                  &request_seq, &parts, &part_count, 0);
 ```
 
 자세한 표면 설명은 [ROUTER 가이드](03-4-router.ko.md)를 참고.
@@ -635,12 +926,11 @@ reply 주소는 handler 인자로 받은 source 주소와 `request_seq` 를 그�
 ### 6.3 spot <-> router 조합
 
 SPOT request-reply 는 일반 `ROUTER` 와도 직접 연결할 수 있다. ROUTER
-측은 통합된 `zlink_router_handler()` / `zlink_router_recv()` 표면을
-사용하며, SPOT 에서 시작된 트래픽은 `source_spot_rid` 가 채워진 것으로
-구분한다.
+측은 통합된 `zlink_router_recv()` 표면을 사용하며, SPOT 에서 시작된
+트래픽은 `source_spot_rid` 가 채워진 것으로 구분한다.
 
 - `spot -> router`: `zlink_spot_request_router()`,
-  `zlink_router_handler()` (`source_spot_rid` 채워짐),
+  `zlink_router_recv()` (`source_spot_rid` 채워짐),
   `zlink_router_reply_spot()`
 - `router -> spot`: `zlink_router_request_spot()`,
   `zlink_spot_handler()`,
@@ -680,9 +970,9 @@ zlink_timer_handler(spot_timer, on_fire, NULL);
 
 **제약 사항:**
 
-- recv 모드에서는 `zlink_subscribe()`를 사용한다
-- receive callback 전환은 `zlink_subscribe_handler()`로 한 번만 수행한다
-- receive callback 모드에서는 `zlink_subscribe()` 와 데이터 플레인 `ZLINK_POLLIN` 이 `ZLINK_RECV_BUSY` 를 반환한다
+- recv 모드에서는 `zlink_subscribe()` / `zlink_spot_subscribe()`를 사용한다
+- topic/routed/timer readable 알림은 `zlink_spot_dispatch_event_handler()`로 받는다
+- 활성 dispatch callback 문맥 밖에서 callback 모드가 걸린 경우, `zlink_subscribe()`와 데이터 플레인 `ZLINK_POLLIN`은 `ZLINK_RECV_BUSY`를 반환한다
 - `zlink_send_ready_handler()`는 receive callback 선행 조건이 없다
 - send-ready attach 이후 데이터 플레인 `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다
 - 전환 후 callback 교체나 해제는 지원하지 않는다
@@ -892,7 +1182,6 @@ pthread_create(&worker, NULL, spot_worker, /* ctx */);
 | 조합 | 결과 |
 |---|---|
 | `zlink_spot_dispatch_event_handler` + `zlink_spot_handler` | 상호 배타 — 두 번째 설치 시 `ZLINK_HANDLER_BUSY` |
-| `zlink_spot_dispatch_event_handler` + `zlink_subscribe_handler` | 허용되지만 두 subsystem 이 독립적으로 동작한다. 통합 워커를 우회해 subscribe 데이터를 직접 받고 싶을 때만 혼용 |
 | `zlink_spot_dispatch_event_handler` + timer 의 `zlink_timer_handler` | 해당 타이머에는 자신의 handler 가 우선한다. direct timer handler 가 붙은 타이머는 `TIMER_READABLE` 을 발행하지 않는다. 타이머를 통합 dispatch 로 묶으려면 recv 모드로 둔다 |
 | `zlink_spot_dispatch_event_handler` + `zlink_send_ready_handler` | 독립된 축. send-ready 는 자신의 handler 를 쓴다 |
 

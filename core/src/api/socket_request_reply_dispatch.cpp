@@ -162,21 +162,6 @@ bool router_raw_part_has_more (const zlink_msg_t *part_)
     return (msg->flags () & zlink::msg_t::more) != 0;
 }
 
-void copy_routing_id_or_clear (zlink_routing_id_t *dst_,
-                               const zlink_routing_id_t *src_)
-{
-    if (!dst_)
-        return;
-
-    memset (dst_, 0, sizeof (*dst_));
-    if (!has_valid_routing_id (src_))
-        return;
-
-    const size_t copy_size =
-      src_->size > sizeof (dst_->data) ? sizeof (dst_->data) : src_->size;
-    memcpy (dst_->data, src_->data, copy_size);
-    dst_->size = static_cast<uint8_t> (copy_size);
-}
 }
 
 int queue_router_message (socket_request_reply_state_t *state_,
@@ -246,30 +231,6 @@ int dispatch_router_message (socket_request_reply_state_t *state_,
         errno = EFAULT;
         return -1;
     }
-
-    zlink_router_handler_fn handler = NULL;
-    void *handler_userdata = NULL;
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        handler = state_->router_handler;
-        handler_userdata = state_->router_handler_userdata;
-        if (!handler
-            && zlink::internal_pair_queue::ensure (
-                 state_->socket ? state_->socket->get_ctx () : NULL,
-                 "zlink.router.reqrep.recv", &state_->recv_queue)
-                 != 0)
-            return -1;
-    }
-
-    if (handler) {
-        copy_routing_id_or_clear (&g_router_recv_source_rid, source_node_rid_);
-        copy_routing_id_or_clear (&g_router_recv_source_spot_rid,
-                                  source_spot_rid_);
-        handler (&g_router_recv_source_rid, &g_router_recv_source_spot_rid,
-                 request_seq_, parts_, part_count_, handler_userdata);
-        return 0;
-    }
-
     return queue_router_message (
       state_, source_node_rid_, source_spot_rid_, request_seq_, parts_,
       part_count_);
@@ -778,8 +739,6 @@ void cleanup_request_reply_socket (socket_handle_t handle_)
         }
         state->pending_requests.clear ();
         state->pending_sequences.clear ();
-        state->router_handler = NULL;
-        state->router_handler_userdata = NULL;
         zlink::internal_pair_queue::close (&state->recv_queue);
     }
     for (size_t i = 0; i < timeout_tasks.size (); ++i)

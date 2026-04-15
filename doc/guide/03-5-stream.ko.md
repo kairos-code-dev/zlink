@@ -42,7 +42,20 @@ zlink_bind(stream, "tcp://0.0.0.0:8080");
 
 ## 3. STREAM 고유 동작
 
-STREAM은 다른 소켓과 동일한 recv/callback 모델을 사용한다.
+STREAM은 raw socket family에서 유일한 예외 타입이다. 한 handle에서 세
+가지 수신 모델 중 정확히 하나를 선택한다.
+
+- **raw recv**: `zlink_recv()`로 transport 조각을 직접 가져온다. poller의
+  `ZLINK_POLLIN`과 함께 사용한다.
+- **raw callback**: `zlink_recv_handler()`로 raw 조각을 콜백으로 받는다.
+  event-driven 서버에 적합하다.
+- **packet callback**: `zlink_stream_packet_handler()`로 고정 framing
+  규약(2B header size + 4B body size + header + body, big-endian)을 따르는
+  packet을 조립된 header/body 로 받는다.
+
+세 모델은 상호 배타이며, 한 handle에서 두 번째 모드로 전환하려 하면
+`EBUSY`로 실패한다. 응용이 필요에 맞는 모드 하나만 선택한다.
+
 STREAM만의 고유 동작은 다음과 같다.
 
 - `source_rid`는 서버가 연결별로 자동 할당하며,
@@ -135,6 +148,54 @@ zlink_recv_handler(stream, on_message, NULL);
     | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/StreamCallback/Program.cs) |
     | Rust | [stream_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/stream_callback_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/stream_callback_sample/main.go) |
+
+---
+
+## 4.1 packet callback 모드
+
+고정 framing 규약(2바이트 big-endian header size + 4바이트 big-endian
+body size + header payload + body payload)을 사용하는 상위 프로토콜에서는
+`zlink_stream_packet_handler()`로 packet 단위 콜백을 등록할 수 있다.
+core가 fragment 누적과 길이 해석을 직접 처리하므로, 응용은 header/body를
+그대로 받아 처리한다.
+
+```c
+void on_packet(void *stream,
+               const zlink_routing_id_t *source_rid,
+               zlink_msg_t *header,
+               zlink_msg_t *body,
+               void *userdata)
+{
+    /* header_size == 0 이어도 header 는 길이 0 의 유효한 msg_t 로 전달된다.
+       body 도 마찬가지. NULL 이 들어오지 않는다. */
+    /* source_rid 는 콜백 실행 중에만 유효한 borrowed view 이므로,
+       이후에도 유지하려면 값을 복사해 둔다. */
+
+    /* ... header / body 로 상위 프로토콜 처리 ... */
+
+    zlink_msg_close(header);
+    zlink_msg_close(body);
+}
+
+zlink_stream_packet_handler(stream, on_packet, NULL);
+```
+
+packet callback 모드의 규칙은 다음과 같다.
+
+- `header_size` 와 `body_size` 각각 0 도 허용된다. 길이가 0 이어도 msg_t 는
+  유효한 객체로 전달된다.
+- `header` 와 `body` 의 소유권은 콜백으로 이전된다. 콜백은 두 msg_t 를 각각
+  정확히 한 번 close 하거나 소비해야 한다.
+- 같은 handle 에서 raw recv (`zlink_recv()`), raw callback
+  (`zlink_recv_handler()`), data-plane `ZLINK_POLLIN` 등록은 모두
+  `EBUSY` 로 실패한다. 두 번째 packet handler attach 도 마찬가지다.
+- framing 규약을 지키지 않는 malformed packet (길이 제한 초과, 조립 실패,
+  불완전 상태 연결 종료 등) 은 연결을 닫는 기본 동작으로 이어진다. 이
+  이벤트는 socket monitor 경로로 관찰한다.
+
+이 모드는 fragment 누적을 응용 쪽에서 다시 구현하지 않아도 되는 사용성
+이득을 주지만, transport fragment 경계와 packet 경계가 다르다는 점 자체를
+바꾸지는 않는다.
 
 ---
 

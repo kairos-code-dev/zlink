@@ -396,14 +396,6 @@ class router_socket_t : public routed_message_socket_t
         return detail::recv_router_received (handle (), flags_);
     }
 
-    void on_receive (zlink_router_handler_fn handler_, void *userdata_ = NULL)
-    {
-        const handler_result_t rc = static_cast<handler_result_t> (
-          zlink_router_handler (handle (), handler_, userdata_));
-        if (rc != handler_result_t::ok)
-            throw handler_error_t (rc, zlink_errno ());
-    }
-
     void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
     {
         if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
@@ -885,12 +877,6 @@ class sub_socket_t : public subscriber_socket_t
         return message;
     }
 
-    void on_subscribe (zlink_subscribe_handler_fn handler_, void *userdata_ = NULL)
-    {
-        if (base_socket_t::on_subscribe (handler_, userdata_) != 0)
-            throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
-    }
-
     template<typename DiscoveryT>
     void attach_discovery (DiscoveryT &discovery_)
     {
@@ -904,7 +890,6 @@ class sub_socket_t : public subscriber_socket_t
     }
 
   private:
-    using subscriber_socket_t::on_subscribe;
     using subscriber_socket_t::set_subscription;
     using subscriber_socket_t::subscribe;
     using subscriber_socket_t::subscription_at;
@@ -948,19 +933,12 @@ class xsub_socket_t : public subscriber_socket_t
         return message;
     }
 
-    void on_subscribe (zlink_subscribe_handler_fn handler_, void *userdata_ = NULL)
-    {
-        if (base_socket_t::on_subscribe (handler_, userdata_) != 0)
-            throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
-    }
-
     sub_socket_options_t sub_options ()
     {
         return sub_socket_options_t (handle ());
     }
 
   private:
-    using subscriber_socket_t::on_subscribe;
     using subscriber_socket_t::set_subscription;
     using subscriber_socket_t::subscribe;
     using subscriber_socket_t::subscription_at;

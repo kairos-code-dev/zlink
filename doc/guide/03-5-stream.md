@@ -42,7 +42,21 @@ Supported server transports:
 
 ## 3. STREAM-Specific Behavior
 
-STREAM uses the same recv/callback model as other sockets.
+STREAM is the only exception type in the raw socket family. Exactly one of
+three receive models may be active on a given handle.
+
+- **raw recv**: `zlink_recv()` pulls transport fragments directly. Pair it
+  with a poller watching `ZLINK_POLLIN`.
+- **raw callback**: `zlink_recv_handler()` delivers raw fragments through
+  a callback. Useful for event-driven servers.
+- **packet callback**: `zlink_stream_packet_handler()` delivers packets
+  assembled from a fixed framing convention (2B header size + 4B body
+  size + header + body, all big-endian) as header/body pairs.
+
+The three models are mutually exclusive; a second attempt to activate a
+different mode on the same handle fails with `EBUSY`. Applications pick
+whichever model fits best.
+
 STREAM-specific behavior:
 
 - `source_rid` is auto-assigned per connection by the server,
@@ -134,6 +148,56 @@ zlink_recv_handler(stream, on_message, NULL);
     | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/StreamCallback/Program.cs) |
     | Rust | [stream_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/stream_callback_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/stream_callback_sample/main.go) |
+
+---
+
+## 4.1 Packet Callback Mode
+
+When the upstream protocol uses the fixed framing convention (2-byte
+big-endian header size + 4-byte big-endian body size + header payload +
+body payload), register a packet-level callback with
+`zlink_stream_packet_handler()`. The core handles fragment accumulation
+and length parsing, so the application receives assembled header/body
+pairs directly.
+
+```c
+void on_packet(void *stream,
+               const zlink_routing_id_t *source_rid,
+               zlink_msg_t *header,
+               zlink_msg_t *body,
+               void *userdata)
+{
+    /* header and body are always valid zlink_msg_t objects. Length zero
+       is still delivered as a valid msg_t (never NULL). */
+    /* source_rid is a borrowed view valid only for the duration of the
+       callback. Copy the value if you need to keep it afterwards. */
+
+    /* ... process header / body ... */
+
+    zlink_msg_close(header);
+    zlink_msg_close(body);
+}
+
+zlink_stream_packet_handler(stream, on_packet, NULL);
+```
+
+Rules for packet callback mode:
+
+- `header_size` or `body_size` equal to zero is allowed; both sides are
+  still delivered as valid `zlink_msg_t` objects.
+- Ownership of `header` and `body` is transferred to the callback. The
+  callback must close or consume each `msg_t` exactly once.
+- With packet handler attached, raw recv (`zlink_recv()`), raw callback
+  (`zlink_recv_handler()`), and data-plane `ZLINK_POLLIN` registration on
+  the same handle all fail with `EBUSY`. A second
+  `zlink_stream_packet_handler()` attach also fails with `EBUSY`.
+- Malformed packets (length exceeding implementation limits, assembly
+  failure, premature close, etc.) result in the connection being closed
+  as the default policy. Observe such events via the socket monitor.
+
+This mode relieves the application from re-implementing fragment
+accumulation, but it does not change the fact that transport fragment
+boundaries differ from packet boundaries.
 
 ---
 

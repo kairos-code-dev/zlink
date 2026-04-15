@@ -94,6 +94,54 @@ void zlink::send_hello_msg (pipe_t *pipe_, const options_t &options_)
     pipe_->flush ();
 }
 
+zlink::pipe_t::stream_packet_state_t::stream_packet_state_t () :
+    stage (prefix_stage),
+    prefix_used (0),
+    header_size (0),
+    body_size (0),
+    header_used (0),
+    body_used (0)
+{
+    memset (prefix, 0, sizeof (prefix));
+    const int header_rc = header.init ();
+    errno_assert (header_rc == 0);
+    const int body_rc = body.init ();
+    errno_assert (body_rc == 0);
+}
+
+zlink::pipe_t::stream_packet_state_t::~stream_packet_state_t ()
+{
+    const int header_rc = header.close ();
+    errno_assert (header_rc == 0);
+    const int body_rc = body.close ();
+    errno_assert (body_rc == 0);
+}
+
+void zlink::pipe_t::stream_packet_state_t::reset ()
+{
+    if (header.check ()) {
+        const int header_rc = header.close ();
+        errno_assert (header_rc == 0);
+    }
+    if (body.check ()) {
+        const int body_rc = body.close ();
+        errno_assert (body_rc == 0);
+    }
+
+    const int header_rc = header.init ();
+    errno_assert (header_rc == 0);
+    const int body_rc = body.init ();
+    errno_assert (body_rc == 0);
+
+    stage = prefix_stage;
+    prefix_used = 0;
+    header_size = 0;
+    body_size = 0;
+    header_used = 0;
+    body_used = 0;
+    memset (prefix, 0, sizeof (prefix));
+}
+
 zlink::pipe_t::pipe_t (object_t *parent_,
                      upipe_t *inpipe_,
                      upipe_t *outpipe_,
@@ -257,6 +305,29 @@ bool zlink::pipe_t::mark_connection_ready_event_emitted ()
 void zlink::pipe_t::reset_connection_ready_event_emitted ()
 {
     _connection_ready_event_emitted.store (false, std::memory_order_release);
+}
+
+zlink::pipe_t::stream_packet_state_t &
+zlink::pipe_t::stream_packet_state ()
+{
+    return _stream_packet_state;
+}
+
+const zlink::pipe_t::stream_packet_state_t &
+zlink::pipe_t::stream_packet_state () const
+{
+    return _stream_packet_state;
+}
+
+zlink::fast_mutex_t &zlink::pipe_t::stream_packet_dispatch_sync ()
+{
+    return _stream_packet_sync;
+}
+
+void zlink::pipe_t::reset_stream_packet_state ()
+{
+    scoped_fast_lock_t lock (_stream_packet_sync);
+    _stream_packet_state.reset ();
 }
 
 bool zlink::pipe_t::check_read ()

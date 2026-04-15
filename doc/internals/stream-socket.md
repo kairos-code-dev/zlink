@@ -80,14 +80,136 @@ sequenceDiagram
 - Gather write supported for WS/WSS (Beast handles internal buffering)
 - TLS/WSS has encryption overhead
 
-## 6. Current STREAM Runtime Defaults (2026-02)
+## 6. Packet Handler Receive Mode
+
+STREAM sockets expose three mutually exclusive receive modes. Exactly
+one can be active per socket; the second activation attempt on the same
+socket fails with `EBUSY`.
+
+| Mode | Activation | Delivery |
+|------|------------|----------|
+| Raw recv | default | `zlink_recv()` returns raw bytes per read |
+| Raw callback | `zlink_recv_handler()` | `zlink_recv_handler_fn` with raw bytes |
+| Packet callback | `zlink_stream_packet_handler()` | `zlink_stream_packet_handler_fn` with decoded header/body messages |
+
+The packet handler mode is tailored to application protocols that carry
+`header + body` framing on top of the raw STREAM byte pipe -- for
+example an orders-exec gateway whose clients send a small control
+header followed by a larger payload. Instead of each caller writing the
+same length-prefix decoder and buffering state machine, STREAM parses
+the frames internally and delivers already-allocated `zlink_msg_t`
+objects to the callback.
+
+### 6.1 Wire framing
+
+Each logical packet is carried on the wire as:
+
+```
++------------------+--------------------+----------------+-------------------+
+| u16 header_size  | u32 body_size      | header bytes   | body bytes        |
+| (big-endian)     | (big-endian)       | (header_size)  | (body_size)       |
++------------------+--------------------+----------------+-------------------+
+```
+
+- `header_size` is a 2-byte big-endian unsigned integer.
+- `body_size` is a 4-byte big-endian unsigned integer.
+- Both sizes may be `0`. A packet with `header_size=0 && body_size=0`
+  still yields a callback, with two empty but non-`NULL` `zlink_msg_t`
+  instances.
+- Maximum sizes are bounded by internal limits. Advertising a size that
+  exceeds those limits is treated as malformed framing (see 6.4).
+
+### 6.2 Per-connection accumulator
+
+Incoming bytes are fed through a per-connection decoder that is keyed
+by `source_rid` (the STREAM routing identity of the remote end).
+
+```
+  wire bytes (arbitrary fragmentation)
+         |
+         v
+  +-------------------------+
+  | stream decoder (per rid)|
+  |   state: PARSE_HEADER_SIZE
+  |          PARSE_BODY_SIZE
+  |          ALLOC_MSGS
+  |          READ_HEADER
+  |          READ_BODY
+  |          DELIVER
+  +-------------------------+
+         |
+         v
+  callback(stream, source_rid, header_msg, body_msg, userdata)
+```
+
+Length fields are parsed first. Once both `header_size` and `body_size`
+are known, the implementation pre-allocates the final `zlink_msg_t`
+objects for header and body, and subsequent socket reads stream bytes
+directly into the backing buffers of those messages. There is no second
+copy at delivery time -- by the time the callback runs, the payload is
+already in the message it will receive.
+
+### 6.3 Callback contract
+
+The signature is:
+
+```
+zlink_stream_packet_handler_fn(stream,
+                               source_rid,    // borrowed view
+                               header_msg,    // ownership transfers
+                               body_msg,      // ownership transfers
+                               userdata)
+```
+
+- `source_rid` is a borrowed view for the duration of the callback. It
+  must not be retained past the call; copy it if needed.
+- `header_msg` and `body_msg` are always non-`NULL`, even when the
+  corresponding wire size is `0`. Ownership of both transfers to the
+  callback, which is responsible for closing them with
+  `zlink_msg_close()`.
+- Packets from the same `source_rid` are serialized: a later packet on
+  the same peer cannot overtake an earlier one. Packets from different
+  `source_rid` may be dispatched in parallel on different worker
+  threads.
+- Self-close from within the raw callback is the same rule as the raw
+  `zlink_recv_handler` case: attempting to flip the socket's receive
+  mode or close the socket from inside the callback fails with `EBUSY`.
+
+### 6.4 Malformed framing
+
+STREAM treats the following as malformed and closes the offending
+connection:
+
+- A declared `header_size` or `body_size` that exceeds internal limits.
+- The peer closes (or resets) after the length fields have started but
+  before the full packet has arrived -- i.e. mid-length or mid-payload
+  close.
+
+Closure is observable through the STREAM socket monitor as a disconnect
+event for that `source_rid`. No partial packet is ever delivered to the
+callback; the decoder state for that connection is discarded with the
+connection.
+
+### 6.5 Why decode inside STREAM
+
+Decoding inside STREAM (rather than in each application) has two
+reasons worth calling out:
+
+- **One fewer copy.** The application never sees a contiguous
+  "assembled" buffer that it later has to split -- the header and body
+  messages are the destination buffers for the socket reads.
+- **Ordering guarantees.** Per-`source_rid` serialization is enforced
+  by the decoder, so callers do not have to build their own reordering
+  logic on top of raw byte delivery.
+
+## 7. Current STREAM Runtime Defaults (2026-02)
 
 This document originally focused on WS/WSS path optimization, but STREAM now
 uses a consolidated default profile across transports.
 For non-STREAM-wide socket defaults, see
 [socket-option-defaults.md](socket-option-defaults.md).
 
-### 6.1 Fixed internal constants
+### 7.1 Fixed internal constants
 
 These values are no longer controlled by STREAM env knobs:
 - handler allocator: enabled
@@ -100,7 +222,7 @@ These values are no longer controlled by STREAM env knobs:
 - read drain max loops: `16`
 - read drain max bytes: `1048576`
 
-### 6.2 Effective socket/listener defaults
+### 7.2 Effective socket/listener defaults
 
 - backlog: `65536`
 - `sndbuf` default when unset: `262144`
@@ -108,7 +230,7 @@ These values are no longer controlled by STREAM env knobs:
 - accept concurrency (STREAM only): default `4`, max `128`
 - session scheduler (STREAM): default `rr`
 
-### 6.3 Remaining STREAM runtime env controls
+### 7.3 Remaining STREAM runtime env controls
 
 - `ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY`
 - `ZLINK_ASIO_STREAM_SESSION_SCHED` (`rr|minload`)

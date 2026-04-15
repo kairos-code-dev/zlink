@@ -79,7 +79,8 @@ zlink_msg_init_size(&msg3, 9);
 memcpy(zlink_msg_data(&msg3), "request-3", 9);
 zlink_send(dealer, &msg3, 1, 0);
 
-/* Responses are dispatched to the handler callback registered at creation */
+/* Responses are drained with zlink_recv() in a poller loop,
+   or (for zlink_dealer_request()) delivered through its reply callback */
 ```
 
 ### 수신 모드
@@ -299,6 +300,24 @@ zlink_connect(dealer, endpoint);  /* identified as D1 */
 ### 라운드 로빈 분배
 
 여러 피어가 연결된 경우 메시지는 라운드 로빈으로 순환 분배된다. 특정 피어에게만 전송하려면 ROUTER를 사용한다.
+
+### Admission 기반 송신 대상 선택
+
+원격 ROUTER는 자신의 admission 상태(`ZLINK_ADMISSION_SERVING` 또는
+`ZLINK_ADMISSION_DRAINING`)를 함께 광고한다. DEALER는 `DRAINING` 상태의
+ROUTER를 round-robin 후보에서 자동으로 제외하며, `SERVING` ROUTER들
+사이에서만 순환 분배한다. 연결 자체는 유지되므로, ROUTER가 다시
+`SERVING`으로 돌아오면 재연결 없이 후보에 복귀한다.
+
+알고 있는 ROUTER가 모두 `DRAINING`이면 `zlink_send()`와
+`zlink_dealer_request()`는 `ZLINK_SUBMIT_NOT_ADMITTED`를 반환한다.
+호출자는 최소 한 대의 ROUTER가 `SERVING`으로 돌아올 때까지 대기한 뒤
+재시도하는 것이 맞다. `NOT_ADMITTED`를 최종 실패로 처리하면 운영상
+일시적으로 막힌 메시지를 불필요하게 버리게 된다.
+
+> 상세 규약은 DEALER spec
+> [dealer.ko.md](../spec/core/socket/dealer.ko.md) 의 Admission-aware
+> outbound 선택 섹션을 참고.
 
 ### routing_id는 connect 전에 설정
 

@@ -162,30 +162,10 @@ void *create_spot_pub_handle (void *node_)
 
 void *create_spot_sub_handle (void *node_, zlink_subscribe_handler_fn handler_)
 {
+    LIBZLINK_UNUSED (handler_);
     void *spot_sub = create_spot_pub_handle (node_);
     if (!spot_sub)
         return NULL;
-
-    queued_spot_probe_t *probe = NULL;
-    void *handler_userdata = NULL;
-    if (handler_ == &queued_spot_handler) {
-        probe = ensure_queued_spot_probe (spot_sub, false);
-        if (!probe) {
-            errno = ENOMEM;
-            return NULL;
-        }
-        handler_userdata = probe;
-    }
-
-    if (handler_
-        && zlink_subscribe_handler (spot_sub, handler_, handler_userdata)
-             != ZLINK_HANDLER_OK) {
-        const int err = errno;
-        if (probe)
-            remove_queued_spot_probe (spot_sub, false);
-        errno = err;
-        return NULL;
-    }
 
     const int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
@@ -783,7 +763,7 @@ void run_spot_peer_reverse_tcp_test ()
 
     step_log ("spot peer reverse transport: wait delivery");
     TEST_ASSERT_TRUE (
-      wait_for_spot_message (sub_a, topic, payload, payload_size, 2000));
+      wait_for_spot_recv_message (sub_a, topic, payload, payload_size, 2000));
 
     step_log ("spot peer reverse transport: detach subscriber");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_unset_subscription (sub_a, topic));

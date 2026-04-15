@@ -68,12 +68,12 @@
 | 소켓 타입 | 옵션/동작 | 기본값 |
 |---|---|---|
 | `ZLINK_DEALER` | `ZLINK_DEALER_OPT_PROBE` | `0` |
-| `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_MANDATORY` | `0` (router_option API로 설정) |
+| `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_MANDATORY` | `1` (router_option API로 설정) |
 | `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_PROBE` | `0` |
-| `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_HANDOVER` | `0` |
+| `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_HANDOVER` | `1` |
 | `ZLINK_XPUB` | `ZLINK_PUB_OPT_VERBOSE` | `0` (pub_option API로 설정) |
 | `ZLINK_XPUB` | `ZLINK_PUB_OPT_VERBOSER` | `0` |
-| `ZLINK_XPUB` | `ZLINK_PUB_OPT_NODROP` | `0` (`_lossy=true`) |
+| `ZLINK_XPUB` | `ZLINK_PUB_OPT_NODROP` | `1` (`_lossy=false`) |
 | `ZLINK_XPUB` | `ZLINK_PUB_OPT_MANUAL` | `0` |
 | `ZLINK_XPUB` | `ZLINK_PUB_OPT_MANUAL_LAST_VALUE` | `0` |
 | `ZLINK_XPUB` | `ZLINK_PUB_OPT_WELCOME_MSG` | 빈 값 |

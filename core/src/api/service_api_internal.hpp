@@ -306,13 +306,6 @@ int zlink_service_spot_subscription_at_internal (void *handle_,
                                                  char *filter_out_,
                                                  size_t *filter_len_inout_,
                                                  int *is_pattern_out_);
-int zlink_service_recv_handler_internal (void *handle_,
-                                         zlink_subscribe_handler_fn handler_,
-                                         void *userdata_);
-int zlink_service_msg_recv_handler_internal (
-  void *handle_,
-  zlink_socket_msg_handler_fn handler_,
-  void *userdata_);
 int zlink_service_send_ready_handler_internal (
   void *handle_,
   zlink_send_ready_handler_fn handler_,

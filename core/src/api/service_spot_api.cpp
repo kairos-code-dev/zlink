@@ -139,32 +139,6 @@ int spot_node_recv_internal (void *node_,
                               topic_id_out_, topic_id_len_, flags_);
 }
 
-int zlink_service_recv_handler_internal (void *handle_,
-                                         zlink_subscribe_handler_fn handler_,
-                                         void *userdata_)
-{
-    if (!handler_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    const zlink::service_handle_resolution_t resolved =
-      zlink::resolve_service_handle (handle_);
-
-    if (resolved.kind == zlink::service_handle_spot) {
-        return spot_install_recv_handler (
-          static_cast<spot_handle_t *> (handle_), handler_, userdata_);
-    }
-
-    if (resolved.kind == zlink::service_handle_spot_node) {
-        return spot_node_install_recv_handler (
-          static_cast<zlink::spot_node_t *> (handle_), handler_, userdata_);
-    }
-
-    errno = EFAULT;
-    return -1;
-}
-
 zlink_submit_result_t zlink_spot_publish (void *spot_,
                                           const char *service_name_,
                                           const char *topic_id_,

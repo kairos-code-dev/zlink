@@ -6,7 +6,7 @@
 //   Benchmark tuning constants (connect batch, socket buffers, RTT capacity)
 //   phase_mode_t  - ready / active state enum
 //   resize_latch_t – condition-variable barrier for chunk-size transitions
-//   client_session_t – single transport connection with len32be async I/O loop
+//   client_session_t – single transport connection with packet-framed async I/O loop
 //
 // Each client_session_t runs entirely on a strand and reports events
 // back to the bench_client_t orchestrator via the bench_client_iface_t
@@ -119,7 +119,7 @@ parse_transport_mode (const std::string &transport)
     return raw_transport_tcp;
 }
 
-// Single async transport connection that runs a len32be echo loop.
+// Single async transport connection that runs a packet-framed echo loop.
 //
 // Lifecycle:
 //   begin_connect() → do_connect() → on_connect()
@@ -438,6 +438,13 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             return;
         }
 
+        if (std::getenv ("PERF_DEBUG")) {
+            std::fprintf (
+              stderr,
+              "perf_stream_client: connect_error code=%d message=%s\n",
+              ec.value (),
+              ec.message ().c_str ());
+        }
         connect_reported = true;
         owner.on_connect_result (false, shared_from_this ());
         close_internal ();
@@ -461,7 +468,8 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         send_one ();
     }
 
-    // Build a len32be frame, stamp common metric header, and async_write.
+    // Build a packet-framed payload, stamp the metric header into the body,
+    // and async_write.
     void send_one ()
     {
         const size_t size = owner.current_phase_size ();
@@ -470,13 +478,18 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             return;
 
         chunk_size = size;
-        const size_t wire_size = size + 4;
+        const size_t wire_size =
+          perf_stream_common::k_stream_packet_prefix_size + size;
         if (write_buf.size () != wire_size)
             write_buf.resize (wire_size);
 
+        perf_stream_common::perf_stream_store_u16_be (&write_buf[0], 0);
         perf_stream_common::perf_stream_store_u32_be (
-          &write_buf[0], static_cast<uint32_t> (size));
-        unsigned char *payload_write = write_buf.size () > 4 ? &write_buf[4] : NULL;
+          &write_buf[2], static_cast<uint32_t> (size));
+        unsigned char *payload_write =
+          write_buf.size () > perf_stream_common::k_stream_packet_prefix_size
+            ? &write_buf[perf_stream_common::k_stream_packet_prefix_size]
+            : NULL;
 
         if (payload_write
             && size >= perf_multi_metric::header_size ()) {
@@ -568,7 +581,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         maybe_send_more ();
     }
 
-    // Read the 4-byte len32be header from the echo server.
+    // Read the 6-byte packet prefix from the echo server.
     void start_read_header ()
     {
         if (closed || !connected ())
@@ -612,7 +625,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
           0);
     }
 
-    // Read the payload body (size declared in the header).
+    // Read the packet body (size declared in the prefix).
     void start_read_payload ()
     {
         if (closed || !connected ())
@@ -767,12 +780,16 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             return;
         }
 
-        read_declared = perf_stream_common::perf_stream_load_u32_be (read_header);
+        const uint16_t header_size =
+          perf_stream_common::perf_stream_load_u16_be (read_header);
+        read_declared = perf_stream_common::perf_stream_load_u32_be (read_header + 2);
+        if (header_size != 0)
+            owner.on_size_mismatch ();
         start_read_payload ();
     }
 
-    // Complete a roundtrip: decode stamped header, report to orchestrator,
-    // and re-enter the send loop.
+    // Complete a roundtrip: decode stamped body header, report to
+    // orchestrator, and re-enter the send loop.
     void on_read_payload (const boost::system::error_code &ec, size_t bytes)
     {
         read_pending = false;
@@ -950,9 +967,9 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
     boost::asio::ip::tcp::endpoint endpoint;         // server address
     boost::asio::ip::tcp::endpoint source_bind_ep;   // loopback shard bind address
 
-    std::vector<unsigned char> write_buf;   // reusable send buffer [4B header + payload]
-    unsigned char read_header[4];           // len32be header read buffer
-    uint32_t read_declared;                 // payload length from header
+    std::vector<unsigned char> write_buf;   // reusable send buffer [prefix + body]
+    unsigned char read_header[perf_stream_common::k_stream_packet_prefix_size];
+    uint32_t read_declared;                 // body length from packet prefix
     std::vector<unsigned char> read_buf;    // reusable receive buffer
 };
 

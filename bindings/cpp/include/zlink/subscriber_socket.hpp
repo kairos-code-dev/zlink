@@ -36,13 +36,6 @@ class subscriber_socket_t : public base_socket_t
         return message;
     }
 
-    ZLINK_CPP_NODISCARD int
-    on_subscribe (zlink_subscribe_handler_fn handler_,
-                  void *userdata_ = NULL)
-    {
-        return base_socket_t::on_subscribe (handler_, userdata_);
-    }
-
   protected:
     subscriber_socket_t (context_t &ctx_, socket_type type_) : base_socket_t (ctx_, type_) {}
 };

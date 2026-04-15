@@ -341,7 +341,7 @@ struct spot_handle_t {
     spot_node_t *node;                           // 부모 SpotNode
     spot_pub_t *pub;                             // Publisher (inproc PUB → ingress)
     spot_sub_t *sub;                             // Subscriber (inproc SUB ← fanout)
-    zlink_subscribe_handler_fn handler;          // 토픽 callback
+    zlink_subscribe_handler_fn handler;          // internal-only: SPOT subscribe adapter
     void *handler_userdata;
     spot_node_t::pub_defaults_t pending_pub_defaults;
     spot_node_t::sub_defaults_t pending_sub_defaults;
@@ -467,10 +467,8 @@ struct spot_request_reply_state_t {
 둘 중 하나라도 NULL 이 아니면 `ZLINK_HANDLER_BUSY` 를 반환한다. 이것이
 사용자 가이드에서 이야기하는 "상호 배타" 규칙의 출처다.
 
-`zlink_subscribe_handler()` 는 다른 축이다. 내부 `spot_sub_t` 에 direct
-subscribe callback 을 설치하는 것이며 `dispatch_event_handler` 와
-충돌하지 않는다. 기술적으로는 함께 쓸 수 있으나, 그 경우 통합 워커
-패턴의 이점이 사라진다.
+direct subscribe callback 을 설치하는 공개 함수는 없다.
+`zlink_subscribe_handler_fn` typedef 는 내부 SPOT adapter 만 사용한다.
 
 ### 10.3 이벤트별 발생 조건
 
@@ -563,3 +561,123 @@ timer) 만 접근한다.
 이것이 사용자 가이드에서 timer, routed recv, subscribe 가 하나의 Spot
 handle 위에 공존할 때 `zlink_spot_dispatch_event_handler` 를 통합
 소비 패턴으로 권장하는 근본 이유다.
+
+## 11. Service Attachment 토폴로지
+
+service-aware SPOT은 기존 SpotNode data plane 위에 올라간다. 핵심 추가 구조는
+`service_name` 별 외부 ROUTER/PUB/SUB attachment를 모아 두는 node 수준 테이블
+하나와, 공개 `Spot` facade가 drain하는 통합 service event queue다.
+
+```text
++------------------------------------------------------------------+
+|                          SpotNode Runtime                        |
+|------------------------------------------------------------------|
+| service attachment map                                           |
+|  service -> { router set, pub/sub pair }                         |
+|  per entry: { manual sources, discovery sources }                |
+|------------------------------------------------------------------|
+| service router selector                                          |
+|  round-robin over active + send-ready ROUTER candidates          |
+|  0 candidates -> NOT_CONNECTED                                   |
+|------------------------------------------------------------------|
+| service subscribe ingress                                        |
+|  attach service_name to each inbound SUB delivery                |
+|------------------------------------------------------------------|
+| unified service event queue                                      |
+|  item = { kind, service_name, source_rid, topic, request_seq,    |
+|           spot_rid, payload }                                    |
+|------------------------------------------------------------------|
+| unified service monitor queue                                    |
+|  item = { service_name, role, monitor_event }                    |
++------------------------------------------------------------------+
+```
+
+### 11.1 Attachment map
+
+- `service_name` 하나에 ROUTER, PUB, SUB attachment를 모두 모아 둔다. 수동
+  attach와 Discovery가 공급한 자동 attach가 같은 엔트리를 공유한다.
+- Discovery가 공급한 provider는 source 태그로 구분해 둔다. Discovery destroy는
+  그 Discovery가 공급하던 자동 attach만 제거하고, 수동 attachment나 다른
+  Discovery source의 attachment는 그대로 둔다.
+- 같은 `service_name` Discovery 중복 attach는 admission 단계에서 거절되므로
+  map에는 `service_name` 당 Discovery source가 둘 이상 들어오지 않는다.
+- service-aware entry가 하나라도 있는 node는 공개 facade `Spot`을 하나만
+  허용한다. attach admission과 facade admission이 같은 gate를 공유한다.
+
+### 11.2 Service router selector
+
+- selector는 하나의 `service_name` 엔트리가 보유한 ROUTER 집합에서 후보를
+  고른다.
+- 비활성 attachment와 send-ready가 아닌 attachment는 필터링으로 제외한다.
+- 선택 규칙은 round-robin이며, 한 request는 고른 ROUTER에 귀속된다. reply는
+  해당 ingress ROUTER 경로를 그대로 재사용하며 새로운 round-robin을 돌리지
+  않는다.
+- 필터링 후 후보가 0개면 submit 결과는 `NOT_CONNECTED`로 정규화된다. 선택된
+  ROUTER가 HWM에 걸린 경우는 여전히 `BACKPRESSURED`다.
+
+### 11.3 Service subscribe ingress
+
+- service SUB attachment에서 들어온 inbound delivery는 service-aware ingress
+  단계에서 `service_name`을 붙인 뒤 통합 queue로 푸시한다. 로컬 fanout 경로를
+  그대로 재사용하지 않는다. 그렇게 하면 service 태그가 사라진다.
+- subscription filter는 facade 보유 집합의 합집합으로 계산된다. filter 추가는
+  attach된 모든 SUB에 반영되고, filter 제거는 다른 subscriber가 여전히 그
+  filter를 원할 때는 실제로 제거하지 않는다. 새 SUB가 attach되거나 churn 후
+  다시 살아난 SUB가 active 집합으로 돌아올 때는 현재 filter 집합을 replay해야
+  한다.
+- pub/sub 경로의 `source_rid`는 신뢰할 수 있는 값이 없으면 빈 routing id로
+  정규화된다. 응용은 `service_name`과 `topic_id`를 주요 메타데이터로 다룬다.
+
+### 11.4 통합 service event queue
+
+- queue의 소유자는 node에 attach된 단일 공개 `Spot` facade다. subscribe,
+  routed reply, routed request delivery 아이템이 모두 `kind`, `service_name`,
+  source 메타데이터, payload를 태그로 붙인 형태로 이 queue에 들어온다.
+- `zlink_spot_subscribe()`, `zlink_spot_subscription_event()`,
+  `zlink_spot_recv()`가 이 queue에서 아이템을 drain한다. drain은 §10에서
+  설명한 dispatch event 기계를 공유하며, facade 단위로 직렬화된다.
+- dispatch readable event는 facade에 "queue(또는 routed/timer plane)가 비어
+  있지 않다"를 알린다. user handler는 I/O 스레드가 직접 호출하지 않고 공용
+  dispatch executor가 실행한다. 느린 user handler 때문에 attachment I/O가
+  멈추는 일이 없도록 하기 위함이다.
+
+### 11.5 Node 소유 monitor fan-in
+
+- attachment별 socket monitor가 올리는 이벤트는 node 단에서 통합 service
+  monitor queue로 모아지며, 각 아이템은 `service_name`과 attachment `role`을
+  태그로 같이 싣는다.
+- 이 queue의 공개 drain은 `zlink_spot_node_monitor_recv()` 하나다. service
+  monitor event는 Spot dispatch readable plane에 섞이지 않는다. monitor는
+  facade의 책임이 아니다.
+
+### 11.6 Active set 유지
+
+- Discovery churn으로 pub/sub 짝이 깨지면 해당 pair는 즉시 active 집합에서
+  제외된다. 같은 서비스에 ROUTER가 여전히 active이면 routed submit은 계속
+  허용된다.
+- pair가 복구되면 현재 subscription filter 집합을 replay한 뒤 active 집합에
+  재진입시킨다.
+- 수동 attachment는 위와 같은 pair-break 판정을 따로 받지 않는다. socket
+  상태가 정상인 동안 active로 유지된다. (일반 socket 상태 기계에 따른다.)
+
+### 11.7 Admission state 전파
+
+`zlink_set_admission_state()`로 SpotNode 자신이 `SERVING`/`DRAINING`을 바꾸면,
+변경은 SpotNode 내부 peer control 경로(`peer_ctrl_pub` / `peer_ctrl_sub`)
+를 통해 best-effort runtime 신호로 다른 SpotNode peer에게 advertise된다.
+
+- 각 peer는 자신의 SpotNode peer cache(§2.2 참조)에서 해당 항목의
+  admission state를 갱신한다. 이 cache는 `zlink_spot_node_peers_snapshot()`
+  과 `zlink_spot_node_peers_query()`가 돌려주는
+  `zlink_spot_node_peer_entry_t.admission_state`의 source이기도 하다.
+- 같은 cache는 service-aware ROUTER 후보 선택에도 쓰인다. 따라서 peer가
+  `DRAINING`으로 보이면 service-aware send/request는 그 peer를 후보에서
+  제외하고, 후보가 모두 `DRAINING`이면 submit은
+  `ZLINK_SUBMIT_NOT_ADMITTED`로 정규화되어 반환된다. 직접 SPOT request도
+  대상 SpotNode가 `DRAINING`이면 같은 결과를 낸다.
+- 변경은 service monitor의
+  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`로도 함께 노출된다.
+  같은 raw socket 쪽 변경은 별도로 socket monitor의
+  `ZLINK_EVENT_PEER_ADMISSION_CHANGED`로 surface된다.
+- peer 재연결 후에는 현재 admission state를 한 번 더 advertise해서 stale
+  cache로 인한 잘못된 후보 선택을 줄인다.

@@ -61,13 +61,6 @@ int main (void)
     rc = zlink_set_subscription (subscriber, k_pubsub_topic);
     assert (rc == 0);
 
-    pubsub_callback_ctx_t cb_ctx;
-    callback_signal_init (&cb_ctx.signal);
-    cb_ctx.topic_len = 0;
-    cb_ctx.payload_len = 0;
-    rc = zlink_subscribe_handler (subscriber, &subscribe_callback, &cb_ctx);
-    assert (rc == 0);
-
     zlink_routing_id_t event_rid;
     int subscribed = 0;
     char event_topic[256];
@@ -83,14 +76,23 @@ int main (void)
     rc = zlink_publish (publisher, k_pubsub_topic, &outbound, 1, 0);
     assert (rc == 0);
 
-    assert (callback_signal_wait (&cb_ctx.signal, 2000));
-    assert (strcmp (cb_ctx.topic, k_pubsub_topic) == 0);
-    assert (strcmp (cb_ctx.payload, k_pubsub_payload) == 0);
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[256];
+    size_t topic_len = sizeof (topic);
+    rc = zlink_subscribe (subscriber, NULL, &parts, &part_count, topic,
+                          &topic_len, 0);
+    assert (rc == 0);
+    assert (part_count == 1);
+    assert (topic_len == strlen (k_pubsub_topic));
+    assert (memcmp (topic, k_pubsub_topic, topic_len) == 0);
+    assert (zlink_msg_size (&parts[0]) == strlen (k_pubsub_payload));
+    assert (memcmp (zlink_msg_data (&parts[0]), k_pubsub_payload,
+                    strlen (k_pubsub_payload)) == 0);
+    zlink_multipart_close (parts, part_count);
     printf (
-      "[pubsub/callback] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
-      k_pubsub_topic, k_pubsub_payload, cb_ctx.topic, cb_ctx.payload);
-
-    callback_signal_destroy (&cb_ctx.signal);
+      "[pubsub/callback] publish: \"%s/%s\" -> subscribe via recv\n",
+      k_pubsub_topic, k_pubsub_payload);
     zlink_monitor_close (&sub_monitor);
     zlink_monitor_close (&pub_monitor);
     zlink_close (subscriber);

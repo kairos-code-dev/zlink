@@ -365,3 +365,45 @@ This two-step design means resolve_spot can answer consistently even when a spot
 | 0x000A | TOPOLOGY_REPORT | DEALER→ROUTER | Topology state report |
 | 0x000B | TOPOLOGY_QUERY | DEALER→ROUTER | Query service topology (also used by `resolve_spot`) |
 | 0x000C | TOPOLOGY_REPLY | ROUTER→DEALER | Topology query response |
+
+## 12. ROUTER ↔ ROUTER pairwise initiator
+
+When two ROUTERs in the same service see each other through SERVICE_LIST,
+Discovery generates an outbound `connect` from only one side. The decision
+runs inside `socket_discovery_attachment_t::refresh_peers()` while it
+processes new provider candidates.
+
+```mermaid
+sequenceDiagram
+    participant Disc as Discovery
+    participant Attach as socket_discovery_attachment_t (ROUTER)
+    participant Cmp as pairwise initiator key
+
+    Disc->>Attach: on_service_update(providers)
+    Attach->>Attach: filter candidates by service_role match
+    Attach->>Cmp: compare local_key vs remote_key
+    Note over Cmp: 1) routing_id (primary)<br/>2) advertise endpoint string (tie-break)
+    alt local_key < remote_key
+        Attach->>Attach: this peer is initiator → make connect
+    else local_key >= remote_key
+        Attach->>Attach: skip dial (the other side initiates)
+    end
+```
+
+Key points:
+
+- The comparison runs while processing new provider candidates, so it
+  produces the same result for any given pair on every refresh. SERVICE_LIST
+  broadcasts that re-deliver the provider set do not flap the initiator
+  direction.
+- Discovery does not bookkeep its own outbound and the peer's inbound as
+  separate entries. A single connect already provides the bidirectional
+  message path.
+- The rule applies to ROUTER↔ROUTER auto-connect only. Asymmetric pairs
+  such as PUB/SUB keep the existing role match: one side dials, the other
+  receives.
+- Distinct peers that happen to share the same `routing_id` are not
+  resolved by this rule; that case is handled by the existing ROUTER
+  handover policy.
+- Manual `zlink_connect()` calls made through the raw API bypass this
+  path, so the library does not mediate them.

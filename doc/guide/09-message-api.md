@@ -103,19 +103,22 @@ if (rc != ZLINK_SUBMIT_OK) {
 
 ### 3.4 Receiving
 
-Messages are received via handler callbacks attached to the socket or service handle after creation (via `zlink_recv_handler` or `zlink_subscribe_handler`). The callback provides `zlink_msg_t` parts directly:
+Messages are pulled with `zlink_recv()` / `zlink_subscribe()` /
+`zlink_router_recv()` (typically inside a poller loop). `zlink_recv_handler()`
+is kept only for raw `STREAM`. The recv functions return `zlink_msg_t`
+parts directly:
 
 ```c
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+if (zlink_recv(socket, &source_rid, &parts, &part_count, 0) == ZLINK_RECV_OK) {
     printf("Received: %.*s\n",
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
 
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
+    free(parts);
 }
 ```
 
@@ -430,7 +433,7 @@ per-message metadata functions. These have been removed:
 Current request-reply uses dedicated typed API surfaces:
 
 - **DEALER/ROUTER**: `zlink_dealer_request()`, `zlink_router_request()`,
-  `zlink_router_reply()`, `zlink_router_handler()`, `zlink_router_recv()`
+  `zlink_router_reply()`, `zlink_router_recv()`
   -- see [DEALER Guide](03-3-dealer.md), [ROUTER Guide](03-4-router.md)
 - **SPOT routed request-reply**: `zlink_spot_request_spot()`,
   `zlink_spot_reply_spot()`, `zlink_spot_handler()`, `zlink_spot_recv()`

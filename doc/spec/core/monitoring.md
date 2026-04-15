@@ -154,7 +154,8 @@ bitwise OR.
 | `ZLINK_EVENT_CONNECTION_READY` | `0x1000` | Ready edge for raw sockets. Messaging may start immediately after this event on supported raw socket families. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | Handshake failed due to a protocol error. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | `0x4000` | Handshake failed due to authentication failure. |
-| `ZLINK_EVENT_ALL` | `0x7FFF` | Subscribe to all events. |
+| `ZLINK_EVENT_PEER_ADMISSION_CHANGED` | `0x8000` | A connected raw peer's admission state changed. `value` carries the new admission state. Alias for `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED`. |
+| `ZLINK_EVENT_ALL` | `0xFFFF` | Subscribe to all events. |
 
 ### Disconnect Reasons
 
@@ -369,12 +370,24 @@ typedef struct zlink_service_monitor_open_options_t
 ### Supported Service Monitor Targets
 
 `zlink_service_monitor_open()` is currently defined for handles that expose a
-public service-monitor surface.
+public service-monitor surface. Monitor targets are identified by
+`zlink_monitor_target_kind_t`.
 
-- `Discovery` handle: supported
-- `SPOT` facade: not supported on the current public surface
-- `SpotNode` handle: not supported on the current public surface; use status
-  and query APIs instead
+| Target | `zlink_monitor_target_kind_t` | Public recv surface |
+|--------|-------------------------------|---------------------|
+| `Discovery` handle | `ZLINK_MONITOR_TARGET_DISCOVERY = 2` | `zlink_service_monitor_recv()` |
+| raw socket | `ZLINK_MONITOR_TARGET_SOCKET = 1` | `zlink_socket_monitor_recv()` |
+| `Spot` facade | `ZLINK_MONITOR_TARGET_SPOT = 4` (reserved, not a public service-monitor target) | — |
+| `SpotNode` handle | `ZLINK_MONITOR_TARGET_SPOT_NODE = 5` | `zlink_spot_node_monitor_recv()` |
+
+Service-aware attachment monitor events on a `SpotNode` are drained only
+through `zlink_spot_node_monitor_recv()`, not through
+`zlink_service_monitor_open()`. That recv returns a
+`zlink_spot_service_monitor_event_t` that carries the `service_name` and
+attachment role together with the usual monitor event. The service monitor
+event mask now includes
+`ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` so callers can observe
+peer admission decision changes.
 
 ### Service Kind Constants
 
@@ -415,6 +428,7 @@ They map to the same underlying bits as the per-service constants above.
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | `ZLINK_DISCOVERY_SERVICE_UP` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | `ZLINK_DISCOVERY_SERVICE_DOWN` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` |
+| `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` | Bit `1u << 8`. A peer's admission state changed inside a service the monitor is watching. The event's `value` field carries the new admission state; identification is provided through `routing_id` or the detail-flagged identity fields. |
 | `ZLINK_SERVICE_MONITOR_EVENT_ALL` | All service events |
 
 ### Detail Flag Constants

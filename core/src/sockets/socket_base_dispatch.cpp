@@ -472,6 +472,7 @@ void zlink::socket_base_t::dispatch_spot_handler_from_io (
 void zlink::socket_base_t::arm_send_ready_notification ()
 {
     dispatch_runtime ().arm_send_ready_notification ();
+    notify_send_ready_if_armed ();
 }
 
 void zlink::socket_base_t::notify_send_ready_if_armed ()
@@ -527,6 +528,14 @@ int zlink::socket_base_t::stream_dispatch_start_raw (zlink_stream_on_raw_fn)
 
 int zlink::socket_base_t::stream_set_msg_handler_with_userdata (
   zlink_socket_msg_handler_fn,
+  void *)
+{
+    errno = ENOTSUP;
+    return -1;
+}
+
+int zlink::socket_base_t::stream_set_packet_msg_handler_with_userdata (
+  zlink_stream_packet_handler_fn,
   void *)
 {
     errno = ENOTSUP;

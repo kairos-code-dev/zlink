@@ -36,53 +36,34 @@ zlink_connect(client, "tcp://127.0.0.1:5555");
 
 ### 메시지 교환
 
+PAIR는 recv-only 타입이다. 수신은 `zlink_recv()`와 poller를 조합해서
+처리한다. 양쪽 모두 send와 recv를 자유롭게 호출할 수 있다.
+
 ```c
-/* Define receive handler */
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    printf("Received: %.*s\n",
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-
-/* Server stays in recv model */
-void *server = zlink_socket(ctx, ZLINK_PAIR);
-
-/* Client (send only) */
-void *client = zlink_socket(ctx, ZLINK_PAIR);
-
-/* ... bind/connect ... */
-
 /* Client → Server */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 5);
 memcpy(zlink_msg_data(&msg), "Hello", 5);
 zlink_send(client, &msg, 1, 0);
-/* Server receives with zlink_recv() or poller + zlink_recv() */
 
-/* Server → Client (bidirectional, but client needs handler too for receiving) */
+/* Server receives with zlink_recv() (typically inside a poller loop) */
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+if (zlink_recv(server, &source_rid, &parts, &part_count, 0) == ZLINK_RECV_OK) {
+    printf("Received: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    zlink_multipart_close(parts, part_count);
+    free(parts);
+}
+
+/* Server → Client (bidirectional; client uses the same recv+poller pattern) */
 zlink_msg_t reply;
 zlink_msg_init_size(&reply, 5);
 memcpy(zlink_msg_data(&reply), "World", 5);
 zlink_send(server, &reply, 1, 0);
 ```
-
-??? example "Full Sample Code"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [pair_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pair_callback_sample.c) |
-    | C++ | [pair_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pair_callback_sample.cpp) |
-    | Java | [PairCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PairCallbackSample.java) |
-    | Python | [pair_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pair_callback.py) |
-    | Node | [pair_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pair_callback_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PairCallback/Program.cs) |
-    | Rust | [pair_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_callback_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_callback_sample/main.go) |
 
 ### 멀티파트 데이터 전송
 

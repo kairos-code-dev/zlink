@@ -119,42 +119,6 @@ zlink_submit_result_t zlink_router_reply (void *router_,
                                          request_seq_));
 }
 
-zlink_handler_result_t zlink_router_handler (void *router_,
-                                            zlink_router_handler_fn handler_,
-                                            void *userdata_)
-{
-    if (!handler_) {
-        errno = EINVAL;
-        return ZLINK_HANDLER_INVALID_ARGUMENT;
-    }
-    if (validate_socket_type (router_, ZLINK_CORE_SOCKET_ROUTER) != 0)
-        return zlink::handler_result_internal::from_errno (errno);
-
-    socket_handle_t handle = as_socket_handle (router_);
-    if (!handle.socket)
-        return zlink::handler_result_internal::from_errno (EFAULT);
-    if (zlink_router_enable_spot_receive (router_) != 0)
-        return zlink::handler_result_internal::from_errno (errno);
-
-    std::shared_ptr<reqrep::socket_request_reply_state_t> state =
-      reqrep::find_or_create_request_reply_state (handle);
-    if (reqrep::ensure_recv_queue_ready (state) != 0)
-        return zlink::handler_result_internal::from_errno (errno);
-    if (reqrep::ensure_internal_dispatch_installed (state) != 0)
-        return zlink::handler_result_internal::from_errno (errno);
-
-    std::lock_guard<std::mutex> lock (state->mutex);
-    if (state->router_handler) {
-        errno = EBUSY;
-        return ZLINK_HANDLER_BUSY;
-    }
-
-    state->router_handler = handler_;
-    state->router_handler_userdata = userdata_;
-    errno = 0;
-    return ZLINK_HANDLER_OK;
-}
-
 zlink_recv_result_t zlink_router_recv (void *router_,
                                       const zlink_routing_id_t **source_node_rid_out_,
                                       const zlink_routing_id_t **source_spot_rid_out_,
@@ -192,13 +156,10 @@ zlink_recv_result_t zlink_router_recv (void *router_,
     }
 
     std::unique_lock<std::mutex> lock (state->mutex);
-    if (state->router_handler) {
-        errno = EBUSY;
-        return ZLINK_RECV_BUSY;
-    }
+    const bool has_recv_queue = state->recv_queue.rx || state->recv_queue.tx;
     const bool can_drain_direct =
-      !state->internal_dispatch_installed && state->pending_requests.empty ()
-      && state->pending_sequences.empty ();
+      !has_recv_queue && !state->internal_dispatch_installed
+      && state->pending_requests.empty () && state->pending_sequences.empty ();
     lock.unlock ();
 
     if (can_drain_direct) {

@@ -3,12 +3,10 @@
 #include "utils/precompiled.hpp"
 
 #include "sockets/socket_base.hpp"
-#include "services/discovery/socket_discovery_attachment.hpp"
 #include "core/mailbox.hpp"
 #include "core/msg.hpp"
 #include "core/options.hpp"
 #include "utils/err.hpp"
-#include "utils/likely.hpp"
 
 void zlink::socket_base_t::finish_close_handoff ()
 {
@@ -27,64 +25,6 @@ int zlink::socket_base_t::get_peer_state (const void *routing_id_,
 
     errno = ENOTSUP;
     return -1;
-}
-
-int zlink::socket_base_t::set_admission_state (zlink_admission_state_t state_)
-{
-    if (state_ != ZLINK_ADMISSION_SERVING && state_ != ZLINK_ADMISSION_DRAINING) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
-    socket_public_api_scope_t admission (lifecycle);
-    if (!admission.acquired ())
-        return -1;
-
-    if (unlikely (_ctx_terminated)) {
-        errno = ETERM;
-        return -1;
-    }
-
-    {
-        socket_public_api_lock_scope_t guard (lifecycle);
-        if (_local_admission_state == state_)
-            return 0;
-        _local_admission_state = state_;
-        if (_service_attachment)
-            _service_attachment->on_local_admission_state_changed ();
-        xlocal_admission_state_changed ();
-    }
-    return 0;
-}
-
-int zlink::socket_base_t::get_admission_state (
-  zlink_admission_state_t *state_out_) const
-{
-    if (!state_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    socket_lifecycle_coordinator_t &lifecycle =
-      const_cast<socket_base_t *> (this)->lifecycle_coordinator ();
-    socket_public_api_scope_t admission (lifecycle);
-    if (!admission.acquired ())
-        return -1;
-
-    if (unlikely (_ctx_terminated)) {
-        errno = ETERM;
-        return -1;
-    }
-
-    socket_public_api_lock_scope_t guard (lifecycle);
-    *state_out_ = _local_admission_state;
-    return 0;
-}
-
-zlink_admission_state_t zlink::socket_base_t::local_admission_state () const
-{
-    return _local_admission_state;
 }
 
 void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
@@ -167,15 +107,15 @@ int zlink::socket_base_t::getsockopt (int option_,
     }
 
     if (option_ == ZLINK_INTERNAL_OPT_EVENTS) {
-        {
-            socket_public_api_lock_scope_t guard (lifecycle);
-            const int events_rc = process_commands (0, false);
-            if (events_rc != 0 && (errno == EINTR || errno == ETERM))
-                return -1;
+    {
+        socket_public_api_lock_scope_t guard (lifecycle);
+        const int events_rc = process_commands (0, false);
+        if (events_rc != 0 && (errno == EINTR || errno == ETERM))
+            return -1;
 
-            errno_assert (events_rc == 0);
-            return do_getsockopt<int> (optval_, optvallen_,
-                                       has_out () ? ZLINK_POLLOUT : 0);
+        errno_assert (events_rc == 0);
+        return do_getsockopt<int> (optval_, optvallen_,
+                                   has_out () ? ZLINK_POLLOUT : 0);
         }
     }
 
@@ -262,41 +202,20 @@ int zlink::socket_base_t::socket_type () const
     return options.type;
 }
 
-int zlink::socket_base_t::close ()
-{
-    if (_service_attachment && _service_attachment->on_public_close () != 0)
-        return -1;
-
-    const bool from_self_callback =
-      socket_send_ready_dispatch_scope_t::dispatching_socket (this);
-    if (!lifecycle_coordinator ().begin_close_or_fail_busy (from_self_callback))
-        return -1;
-    if (from_self_callback)
-        return 0;
-
-    finish_close_handoff ();
-    return 0;
-}
-
-int zlink::socket_base_t::attach_discovery (discovery_t *discovery_)
-{
-    if (!_service_attachment) {
-        _service_attachment = new (std::nothrow)
-          socket_discovery_attachment_t (this);
-        if (!_service_attachment) {
-            errno = ENOMEM;
-            return -1;
-        }
-    }
-    return _service_attachment->attach (discovery_);
-}
-
 bool zlink::socket_base_t::has_in ()
 {
     return xhas_in ();
 }
 
 bool zlink::socket_base_t::has_out ()
+{
+    const zlink::socket_dispatch_bridge_t &dispatch = dispatch_runtime ();
+    if (!dispatch.send_recovery_pending ())
+        return false;
+    return dispatch.send_recovery_ready ();
+}
+
+bool zlink::socket_base_t::transport_has_out ()
 {
     return xhas_out ();
 }
@@ -309,6 +228,11 @@ void zlink::socket_base_t::read_activated (pipe_t *pipe_)
 void zlink::socket_base_t::write_activated (pipe_t *pipe_)
 {
     xwrite_activated (pipe_);
+    if (dispatch_runtime ().send_recovery_pending ()
+        && !dispatch_runtime ().send_recovery_ready ()) {
+        dispatch_runtime ().mark_send_recovery_ready ();
+        static_cast<mailbox_t *> (_mailbox)->signal ();
+    }
     notify_send_ready_if_armed ();
 }
 

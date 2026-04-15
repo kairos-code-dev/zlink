@@ -457,12 +457,6 @@ bool zlink::socket_base_t::dispatch_monitor_event (
     zlink_msg_init_size (&msg, sizeof (wire_event));
     memcpy (zlink_msg_data (&msg), &wire_event, sizeof (wire_event));
     const int send_flags = monitor_runtime ().lossy ? ZLINK_DONTWAIT : 0;
-    if (getenv ("ZLINK_MONITOR_TASK_DIAG")
-        && record_.event == ZLINK_EVENT_CONNECTION_READY) {
-        fprintf (stderr,
-                 "raw-monitor-dispatch source-socket=%p local=%s remote=%s\n",
-                 this, wire_event.local_addr, wire_event.remote_addr);
-    }
     if (zlink::send_msg_internal (monitor_socket_, &msg, send_flags) == -1) {
         zlink_msg_close (&msg);
         return false;

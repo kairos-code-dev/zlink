@@ -297,12 +297,11 @@ typedef void (*zlink_socket_msg_handler_fn) (
   size_t part_count_,
   void *userdata_);
 
-typedef void (*zlink_subscribe_handler_fn) (
+typedef void (*zlink_stream_packet_handler_fn) (
+  void *stream_,
   const zlink_routing_id_t *source_rid_,
-  const char *topic_,
-  size_t topic_len_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
+  zlink_msg_t *header_,
+  zlink_msg_t *body_,
   void *userdata_);
 
 typedef void (*zlink_send_ready_handler_fn) (void *subject_, void *userdata_);
@@ -313,10 +312,10 @@ typedef void (*zlink_reply_handler_fn) (
   size_t part_count_,
   void *userdata_);
 
-typedef void (*zlink_router_handler_fn) (
-  const zlink_routing_id_t *source_node_rid_,
-  const zlink_routing_id_t *source_spot_rid_,
-  uint64_t request_seq_,
+typedef void (*zlink_subscribe_handler_fn) (
+  const zlink_routing_id_t *source_rid_,
+  const char *topic_,
+  size_t topic_len_,
   zlink_msg_t *parts_,
   size_t part_count_,
   void *userdata_);
@@ -346,37 +345,15 @@ ZLINK_EXPORT void *zlink_socket (void *, zlink_socket_type_t type_);
  * @brief Attach a direct receive handler to a multipart receive subject.
  *
  * Supported subjects:
- * - raw `PAIR`
- * - raw `DEALER`
  * - raw `STREAM`
- *
- * The subject starts in recv model. After a successful attach, direct recv on
- * the same subject and data-plane poller `ZLINK_POLLIN` registration fail with
- * errno=EBUSY. A second attach on the same subject also fails with errno=EBUSY.
  *
  * Unsupported subjects fail with errno=ENOTSUP.
  */
 ZLINK_EXPORT zlink_handler_result_t zlink_recv_handler (
   void *s_, zlink_socket_msg_handler_fn handler_, void *userdata_);
 
-/**
- * @brief Attach a direct topic-aware receive handler to a subscribe subject.
- *
- * Supported subjects:
- * - raw `SUB`
- * - raw `XSUB`
- * - unified `spot`
- * - `spot node`
- *
- * The subject starts in recv model. After a successful attach,
- * `zlink_subscribe()` and data-plane poller `ZLINK_POLLIN` registration on the
- * same subject fail with errno=EBUSY. A second attach on the same subject also
- * fails with errno=EBUSY.
- *
- * Unsupported subjects fail with errno=ENOTSUP.
- */
-ZLINK_EXPORT zlink_handler_result_t zlink_subscribe_handler (
-  void *s_, zlink_subscribe_handler_fn handler_, void *userdata_);
+ZLINK_EXPORT zlink_handler_result_t zlink_stream_packet_handler (
+  void *stream_, zlink_stream_packet_handler_fn handler_, void *userdata_);
 
 /**
  * @brief Install or replace the send-ready callback for a send-capable subject.
@@ -395,9 +372,10 @@ ZLINK_EXPORT zlink_handler_result_t zlink_subscribe_handler (
  * - unified `spot`
  * - `spot node`
  *
- * Send-ready is independent from receive callback mode. After a successful
- * attach, data-plane poller `ZLINK_POLLOUT` registration on the same subject
- * fails with errno=EBUSY.
+ * Send-ready is independent from receive callback mode. `ZLINK_POLLOUT`
+ * observes the same send-recovery readiness axis and may be registered on the
+ * same subject. A readiness signal only means it is worth retrying send, not
+ * that the retry is guaranteed to succeed.
  *
  * Unsupported subjects fail with errno=ENOTSUP.
  */
@@ -607,9 +585,6 @@ ZLINK_EXPORT zlink_submit_result_t zlink_router_reply (
   uint64_t request_seq_,
   zlink_msg_t *parts_,
   size_t part_count_);
-
-ZLINK_EXPORT zlink_handler_result_t zlink_router_handler (
-  void *router_, zlink_router_handler_fn handler_, void *userdata_);
 
 ZLINK_EXPORT zlink_recv_result_t zlink_router_recv (void *router_,
                                     const zlink_routing_id_t **source_node_rid_out_,

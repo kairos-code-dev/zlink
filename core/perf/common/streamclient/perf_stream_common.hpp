@@ -2,7 +2,7 @@
 #define PERF_STREAM_COMMON_HPP
 
 // Shared utilities for the perf stream client.
-// Provides: len32be wire encoding/decoding, nanosecond clock, string helpers,
+// Provides: packet framing helpers, nanosecond clock, string helpers,
 // percentile calculation, and CLI parsing for --sizes and --endpoint.
 // Used by both async (bench_client_t) and sync (stream_client_t) paths.
 
@@ -33,8 +33,20 @@ inline uint64_t perf_stream_now_ns ()
         .count ());
 }
 
-// Big-endian wire encoding helpers for the len32be framing protocol.
-// Wire format: [4-byte BE length][payload]
+// Big-endian wire encoding helpers for the packet framing protocol.
+// Wire format: [2-byte BE header length][4-byte BE body length][header][body]
+inline uint16_t perf_stream_load_u16_be (const unsigned char *p)
+{
+    return (static_cast<uint16_t> (p[0]) << 8)
+           | static_cast<uint16_t> (p[1]);
+}
+
+inline void perf_stream_store_u16_be (unsigned char *p, uint16_t v)
+{
+    p[0] = static_cast<unsigned char> ((v >> 8) & 0xFF);
+    p[1] = static_cast<unsigned char> (v & 0xFF);
+}
+
 inline uint32_t perf_stream_load_u32_be (const unsigned char *p)
 {
     return (static_cast<uint32_t> (p[0]) << 24)
@@ -50,6 +62,8 @@ inline void perf_stream_store_u32_be (unsigned char *p, uint32_t v)
     p[2] = static_cast<unsigned char> ((v >> 8) & 0xFF);
     p[3] = static_cast<unsigned char> (v & 0xFF);
 }
+
+inline constexpr size_t k_stream_packet_prefix_size = 6;
 
 inline std::string lower_copy (const std::string &text)
 {

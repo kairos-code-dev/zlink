@@ -8,6 +8,19 @@
 피어 routing id 주소 지정을 사용하는 raw TCP/WS 통신. STREAM은 bind 전용이며
 `zlink_connect`를 지원하지 않습니다.
 
+## 수신 모델
+
+STREAM은 다른 소켓 타입과 달리 세 가지 수신 모델을 지원합니다. 하나의
+handle에서 이 세 모델 중 정확히 하나만 활성화할 수 있습니다.
+
+- raw recv: `zlink_recv()`로 transport 조각을 직접 가져옵니다.
+- raw callback: `zlink_recv_handler()`로 raw 조각을 콜백으로 받습니다.
+- packet callback: `zlink_stream_packet_handler()`로 고정 framing 규약에
+  따라 조립된 packet을 header/body로 받습니다.
+
+한 handle에서 두 번째 모드로 전환하려 하면 `EBUSY`로 실패합니다. 즉 모드
+전환은 한 방향으로만 일어나며, 세 모델은 상호 배타입니다.
+
 ## Stream 옵션 (`zlink_stream_option_t`)
 
 `zlink_set_stream_option()` / `zlink_get_stream_option()`과 함께 사용합니다.
@@ -133,43 +146,106 @@ bool zlink_recv (void *s_,
 라이브러리가 할당한 `*part_count_out_`개 메시지 파트 배열을 가리키며,
 `*source_rid_out_`는 송신자의 routing id로 설정됩니다 (해당하는 경우). 파트
 배열과 각 파트의 소유권이 호출자에게 이전되며, 호출자는 모든 파트를 close하거나
-`zlink_multipart_close()`를 호출하고 배열을 해제해야 합니다. 소켓이 recv
-모드여야 합니다 (핸들러 미부착). `zlink_recv_handler()`로 수신 핸들러가
-부착된 경우 `errno=EBUSY`로 실패합니다. 메시지가 없을 때 즉시 반환하려면
-`ZLINK_DONTWAIT`를 전달하세요.
+`zlink_multipart_close()`를 호출하고 배열을 해제해야 합니다. STREAM의 세 수신
+모드 중 raw recv 모드일 때만 사용할 수 있습니다. raw callback 모드
+(`zlink_recv_handler()` 부착) 또는 packet callback 모드
+(`zlink_stream_packet_handler()` 부착)에서는 `errno=EBUSY`로 실패합니다.
+메시지가 없을 때 즉시 반환하려면 `ZLINK_DONTWAIT`를 전달하세요.
 
 **반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
 
 **에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우, 또는
-`ZLINK_OPT_RCVTIMEO`가 만료된 경우 `EAGAIN`. 수신 핸들러가 부착된 경우 `EBUSY`.
-Context가 종료된 경우 `ETERM`.
+`ZLINK_OPT_RCVTIMEO`가 만료된 경우 `EAGAIN`. raw callback이나 packet
+callback이 부착된 경우 `EBUSY`. Context가 종료된 경우 `ETERM`.
 
-**참고:** `zlink_send`, `zlink_recv_handler`, `zlink_multipart_close`
+**참고:** `zlink_send`, `zlink_recv_handler`, `zlink_stream_packet_handler`,
+`zlink_multipart_close`
 
 ---
 
 ### zlink_recv_handler
 
-소켓에 메시지 수신 핸들러를 부착합니다.
+raw `STREAM` 소켓에 raw 수신 콜백을 부착합니다.
 
 ```c
-bool zlink_recv_handler (void *s_,
-                         zlink_socket_msg_handler_fn handler_,
-                         void *userdata_);
+zlink_handler_result_t zlink_recv_handler (
+  void *s_, zlink_socket_msg_handler_fn handler_, void *userdata_);
 ```
 
-멀티파트 수신 subject에 메시지 수신 핸들러를 부착합니다. 지원 대상은 raw
-`PAIR`, `DEALER`, `STREAM`입니다. attach 이후 같은
-subject의 direct recv와 data-plane poller `ZLINK_POLLIN`은 `errno=EBUSY`로
-실패합니다. 동일 subject에 대한 두 번째 attach도 `errno=EBUSY`입니다.
-지원하지 않는 subject는 `ENOTSUP`를 반환합니다.
+멀티파트 수신 subject에 raw 메시지 수신 핸들러를 부착합니다. 지원 대상은
+raw `STREAM` 뿐입니다. 지원하지 않는 subject(PAIR, DEALER 등)는 `ENOTSUP`로
+실패합니다. attach 이후 같은 handle의 `zlink_recv()`, `zlink_stream_packet_handler()`,
+data-plane poller `ZLINK_POLLIN`은 `errno=EBUSY`로 실패합니다. 동일 handle에
+대한 두 번째 attach도 `errno=EBUSY`입니다.
 
-**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_HANDLER_OK`. 실패 시에는 `zlink_handler_result_t`
+값을 반환합니다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지됩니다.
 
-**에러:** 핸들러가 NULL이면 `EINVAL`. 소켓 타입이 메시지 핸들러를
-허용하지 않으면 `ENOTSUP`. 핸들러가 이미 부착된 경우 `EBUSY`.
+**참고:** `zlink_recv`, `zlink_stream_packet_handler`
 
-**참고:** `zlink_subscribe_handler`, `zlink_socket`, `zlink_close`
+---
+
+### zlink_stream_packet_handler
+
+raw `STREAM` 소켓에 packet 단위 수신 콜백을 부착합니다.
+
+```c
+typedef void (*zlink_stream_packet_handler_fn) (
+  void *stream_,
+  const zlink_routing_id_t *source_rid_,
+  zlink_msg_t *header_,
+  zlink_msg_t *body_,
+  void *userdata_);
+
+zlink_handler_result_t zlink_stream_packet_handler (
+  void *stream_,
+  zlink_stream_packet_handler_fn handler_,
+  void *userdata_);
+```
+
+이 함수는 raw `STREAM` 전용입니다. 다른 소켓 타입에서는 `ENOTSUP`로
+실패합니다.
+
+attach 이후에는 구현이 연결별 수신 바이트를 내부에 누적해 packet 하나가
+완성될 때마다 콜백을 호출합니다. framing 규약은 고정이며 아래 순서로 읽어
+해석합니다.
+
+1. `header_size`: 2바이트 big-endian `uint16_t`
+2. `body_size`: 4바이트 big-endian `uint32_t`
+3. header payload (`header_size` 바이트)
+4. body payload (`body_size` 바이트)
+
+`header_size == 0` 또는 `body_size == 0`인 packet도 허용됩니다. 둘 다 0인
+packet도 허용됩니다. 이 경우에도 `header_`, `body_`는 길이가 0인 유효한
+`zlink_msg_t`로 전달되며, `NULL`이 넘어오지 않습니다.
+
+소유권 규칙은 아래와 같습니다.
+
+- `source_rid_`는 packet을 보낸 client 연결의 routing id를 가리키는
+  borrowed view입니다. 콜백 실행 중에만 유효하며, 이후에도 유지하려면
+  호출자가 값을 복사해야 합니다.
+- `header_`와 `body_`의 소유권은 콜백으로 이전됩니다. 콜백은 두 `msg_t`를
+  각각 정확히 한 번 close하거나 소비해야 합니다.
+
+같은 handle에 이미 raw callback 모드(`zlink_recv_handler()`)가 붙어 있으면
+이 함수는 `EBUSY`로 실패합니다. 반대로 packet callback이 이미 붙어 있는
+handle에서 `zlink_recv()`, `zlink_recv_handler()`, data-plane
+`ZLINK_POLLIN`은 모두 `EBUSY`로 실패합니다. 같은 handle에 대한 두 번째
+`zlink_stream_packet_handler()` attach도 `EBUSY`입니다.
+
+조립 중 malformed packet(불완전 상태로 연결 종료, 선언 길이가 구현 제한을
+초과, 내부 조립 실패 등)이 감지되면 해당 연결은 packet mode 기준으로
+invalid stream으로 처리되며 기본 동작은 연결 종료입니다. 부분 packet이
+콜백으로 전달되지는 않습니다. malformed 이벤트는 socket monitor 경로에서
+관찰합니다.
+
+**반환값:** 성공 시 `ZLINK_HANDLER_OK`. 실패 시에는 `zlink_handler_result_t`
+값을 반환합니다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지됩니다.
+
+**에러:** 핸들러가 NULL이면 `INVALID_ARGUMENT`. handle이 raw `STREAM`이
+아니면 `NOT_SUPPORTED`. 이미 다른 수신 모드가 활성화된 경우 `BUSY`.
+
+**참고:** `zlink_recv`, `zlink_recv_handler`
 
 ---
 
@@ -187,10 +263,10 @@ bool zlink_send_ready_handler (
 `errno=EDEADLK`로 실패합니다.
 
 지원 대상은 raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, `spot_node`입니다. send-ready는 receive callback 모드와
-독립적입니다. attach 이후 같은 subject의 data-plane poller
-`ZLINK_POLLOUT`은 `errno=EBUSY`로 실패합니다. 지원하지 않는 subject는
-`ENOTSUP`를 반환합니다.
+`spot`, `spot_node`입니다. send-ready는 수신 모드와 독립적입니다.
+이 콜백과 `ZLINK_POLLOUT`은 같은 send-recovery readiness 축을 가리킵니다.
+readiness 신호는 송신을 다시 시도할 가치가 있다는 뜻이며, 재시도가 반드시
+성공한다는 보장은 아닙니다. 지원하지 않는 subject는 `ENOTSUP`를 반환합니다.
 
 **반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
 

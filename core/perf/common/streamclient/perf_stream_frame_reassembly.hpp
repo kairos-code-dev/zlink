@@ -20,10 +20,20 @@ struct buffer_t
 
 struct frame_view_t
 {
-    frame_view_t() : data(NULL), size(0), payload(NULL), payload_size(0) {}
+    frame_view_t()
+        : data(NULL),
+          size(0),
+          header(NULL),
+          header_size(0),
+          payload(NULL),
+          payload_size(0)
+    {
+    }
 
     const unsigned char *data;
     size_t size;
+    const unsigned char *header;
+    size_t header_size;
     const unsigned char *payload;
     size_t payload_size;
 };
@@ -53,13 +63,17 @@ inline bool has_invalid_declared_size(const buffer_t *buffer)
         return false;
 
     const size_t available = buffer->bytes.size() - buffer->consumed;
-    if (available < 4)
+    if (available < perf_stream_common::k_stream_packet_prefix_size)
         return false;
 
     const unsigned char *frame = &buffer->bytes[buffer->consumed];
-    const uint32_t declared = perf_stream_common::perf_stream_load_u32_be(frame);
-    return declared
-           > static_cast<uint32_t>(perf_stream_common::k_stream_max_chunk_size);
+    const uint16_t header_size = perf_stream_common::perf_stream_load_u16_be (frame);
+    const uint32_t payload_size =
+      perf_stream_common::perf_stream_load_u32_be (frame + 2);
+    const size_t max_size = perf_stream_common::k_stream_max_chunk_size;
+    return static_cast<size_t> (header_size) > max_size
+           || payload_size > static_cast<uint32_t> (max_size)
+           || static_cast<size_t> (header_size) > max_size - payload_size;
 }
 
 inline bool try_peek(const buffer_t *buffer, frame_view_t *frame_out)
@@ -69,27 +83,37 @@ inline bool try_peek(const buffer_t *buffer, frame_view_t *frame_out)
 
     frame_out->data = NULL;
     frame_out->size = 0;
+    frame_out->header = NULL;
+    frame_out->header_size = 0;
     frame_out->payload = NULL;
     frame_out->payload_size = 0;
 
     const size_t available = buffer->bytes.size() - buffer->consumed;
-    if (available < 4)
+    if (available < perf_stream_common::k_stream_packet_prefix_size)
         return false;
 
     const unsigned char *frame = &buffer->bytes[buffer->consumed];
-    const uint32_t declared = perf_stream_common::perf_stream_load_u32_be(frame);
-    if (declared
-        > static_cast<uint32_t>(perf_stream_common::k_stream_max_chunk_size))
+    const uint16_t header_size = perf_stream_common::perf_stream_load_u16_be (frame);
+    const uint32_t payload_size =
+      perf_stream_common::perf_stream_load_u32_be (frame + 2);
+    const size_t max_size = perf_stream_common::k_stream_max_chunk_size;
+    if (static_cast<size_t> (header_size) > max_size
+        || payload_size > static_cast<uint32_t> (max_size)
+        || static_cast<size_t> (header_size) > max_size - payload_size)
         return false;
 
-    const size_t frame_size = 4 + static_cast<size_t>(declared);
+    const size_t frame_size =
+      perf_stream_common::k_stream_packet_prefix_size
+      + static_cast<size_t> (header_size) + static_cast<size_t> (payload_size);
     if (available < frame_size)
         return false;
 
     frame_out->data = frame;
     frame_out->size = frame_size;
-    frame_out->payload = frame + 4;
-    frame_out->payload_size = declared;
+    frame_out->header = frame + perf_stream_common::k_stream_packet_prefix_size;
+    frame_out->header_size = header_size;
+    frame_out->payload = frame_out->header + header_size;
+    frame_out->payload_size = payload_size;
     return true;
 }
 

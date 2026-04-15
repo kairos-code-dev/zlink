@@ -66,6 +66,27 @@ bool is_stream_control_event (const unsigned char *payload_, size_t size_)
     return size_ == 0;
 }
 
+bool wait_dispatch_send_retry (
+  const std::chrono::steady_clock::time_point &deadline_, bool dontwait_)
+{
+    if (dontwait_)
+        return false;
+
+    unsigned int spin_count = 0;
+    while (std::chrono::steady_clock::now () < deadline_) {
+        if (spin_count < 32) {
+            ++spin_count;
+            std::this_thread::yield ();
+            return true;
+        }
+
+        std::this_thread::sleep_for (std::chrono::microseconds (100));
+        return true;
+    }
+
+    return false;
+}
+
 uint32_t claim_next_routing_id (std::atomic<uint32_t> &next_)
 {
     while (true) {
@@ -172,10 +193,13 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _more_out (false),
     _next_integral_routing_id (1),
     _dispatch_active (false),
+    _dispatch_mode (dispatch_mode_none),
     _dispatch_inflight (0),
     _dispatch_raw_callback (NULL),
     _dispatch_msg_handler (NULL),
-    _dispatch_msg_handler_userdata (NULL)
+    _dispatch_msg_handler_userdata (NULL),
+    _dispatch_packet_handler (NULL),
+    _dispatch_packet_handler_userdata (NULL)
 {
     options.type = ZLINK_CORE_SOCKET_STREAM;
     options.backlog = 65536;
@@ -223,6 +247,7 @@ void zlink::stream_t::xpipe_terminated (pipe_t *pipe_)
     zlink_assert (pipe_);
 
     const uint32_t server_routing_id = pipe_->get_server_socket_routing_id ();
+    pipe_->reset_stream_packet_state ();
 
     std::lock_guard<std::recursive_mutex> api_lock (_api_mutex);
     if (pipe_ == _current_out)
@@ -445,9 +470,13 @@ int zlink::stream_t::stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_
         return -1;
     }
 
+    clear_packet_dispatch_state ();
+    _dispatch_mode.store (dispatch_mode_raw, std::memory_order_release);
     _dispatch_raw_callback.store (callback_, std::memory_order_release);
     _dispatch_msg_handler.store (NULL, std::memory_order_release);
     _dispatch_msg_handler_userdata.store (NULL, std::memory_order_release);
+    _dispatch_packet_handler.store (NULL, std::memory_order_release);
+    _dispatch_packet_handler_userdata.store (NULL, std::memory_order_release);
     _dispatch_active.store (true, std::memory_order_release);
     return 0;
 }
@@ -466,8 +495,39 @@ int zlink::stream_t::stream_set_msg_handler_with_userdata (
         return -1;
     }
 
+    clear_packet_dispatch_state ();
+    _dispatch_mode.store (dispatch_mode_raw, std::memory_order_release);
+    _dispatch_raw_callback.store (NULL, std::memory_order_release);
     _dispatch_msg_handler.store (handler_, std::memory_order_release);
     _dispatch_msg_handler_userdata.store (userdata_, std::memory_order_release);
+    _dispatch_packet_handler.store (NULL, std::memory_order_release);
+    _dispatch_packet_handler_userdata.store (NULL, std::memory_order_release);
+    _dispatch_active.store (true, std::memory_order_release);
+    return 0;
+}
+
+int zlink::stream_t::stream_set_packet_msg_handler_with_userdata (
+  zlink_stream_packet_handler_fn handler_, void *userdata_)
+{
+    std::lock_guard<std::recursive_mutex> lock (_api_mutex);
+
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (_dispatch_active.load (std::memory_order_acquire)) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    clear_packet_dispatch_state ();
+    _dispatch_mode.store (dispatch_mode_packet, std::memory_order_release);
+    _dispatch_raw_callback.store (NULL, std::memory_order_release);
+    _dispatch_msg_handler.store (NULL, std::memory_order_release);
+    _dispatch_msg_handler_userdata.store (NULL, std::memory_order_release);
+    _dispatch_packet_handler.store (handler_, std::memory_order_release);
+    _dispatch_packet_handler_userdata.store (userdata_,
+                                             std::memory_order_release);
     _dispatch_active.store (true, std::memory_order_release);
     return 0;
 }
@@ -482,15 +542,20 @@ int zlink::stream_t::stream_dispatch_stop ()
     }
 
     _dispatch_active.store (false, std::memory_order_release);
+    _dispatch_mode.store (dispatch_mode_none, std::memory_order_release);
     _dispatch_raw_callback.store (NULL, std::memory_order_release);
     _dispatch_msg_handler.store (NULL, std::memory_order_release);
     _dispatch_msg_handler_userdata.store (NULL, std::memory_order_release);
+    _dispatch_packet_handler.store (NULL, std::memory_order_release);
+    _dispatch_packet_handler_userdata.store (NULL, std::memory_order_release);
+    clear_packet_dispatch_state ();
     return 0;
 }
 
 bool zlink::stream_t::stream_dispatch_active () const
 {
-    return _dispatch_active.load (std::memory_order_acquire);
+    return _dispatch_mode.load (std::memory_order_acquire)
+           != dispatch_mode_none;
 }
 
 bool zlink::stream_t::stream_dispatch_in_callback () const
@@ -604,8 +669,14 @@ int zlink::stream_t::stream_dispatch_send_from_io (
             return -1;
         }
 
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        if (!wait_dispatch_send_retry (deadline, dontwait))
+            break;
     }
+
+    const int rc = out_msg.close ();
+    errno_assert (rc == 0);
+    errno = EAGAIN;
+    return -1;
 }
 
 int zlink::stream_t::stream_dispatch_send_msg_from_io (
@@ -692,8 +763,12 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
             return -1;
         }
 
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        if (!wait_dispatch_send_retry (deadline, dontwait))
+            break;
     }
+
+    errno = EAGAIN;
+    return -1;
 }
 
 int zlink::stream_t::stream_dispatch_send_current_msg_from_io (msg_t *msg_,
@@ -751,9 +826,12 @@ void zlink::stream_t::stop_dispatch_from_callback ()
 {
     std::lock_guard<std::recursive_mutex> lk (_api_mutex);
     _dispatch_active.store (false, std::memory_order_release);
+    _dispatch_mode.store (dispatch_mode_none, std::memory_order_release);
     _dispatch_raw_callback.store (NULL, std::memory_order_release);
     _dispatch_msg_handler.store (NULL, std::memory_order_release);
     _dispatch_msg_handler_userdata.store (NULL, std::memory_order_release);
+    _dispatch_packet_handler.store (NULL, std::memory_order_release);
+    _dispatch_packet_handler_userdata.store (NULL, std::memory_order_release);
 }
 
 uint32_t zlink::stream_t::resolve_dispatch_routing_id_fast (const msg_t *msg_,
@@ -779,13 +857,6 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     if (!_dispatch_active.load (std::memory_order_acquire))
         return 0;
     if (!msg_ || !pipe_)
-        return 1;
-
-    zlink_stream_on_raw_fn raw_callback =
-      _dispatch_raw_callback.load (std::memory_order_acquire);
-    zlink_socket_msg_handler_fn handler =
-      _dispatch_msg_handler.load (std::memory_order_acquire);
-    if (!raw_callback && !handler)
         return 1;
 
     const unsigned char *payload =
@@ -819,10 +890,47 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
 
     const stream_dispatch_context_t dispatch_scope (this, pipe_,
                                                     routing_id_value);
+    switch (_dispatch_mode.load (std::memory_order_acquire)) {
+        case dispatch_mode_raw:
+            return stream_dispatch_raw_msg_from_io (&rid, msg_);
+        case dispatch_mode_packet:
+            return stream_dispatch_packet_msg_from_io (&rid, msg_, pipe_);
+        default:
+            break;
+    }
+
+    reset_dispatched_msg (msg_);
+    return 1;
+}
+
+bool zlink::stream_t::stream_dispatch_owns_tls () const
+{
+    return zlink::stream_dispatch_owns_socket (this);
+}
+
+void zlink::stream_t::clear_packet_dispatch_state ()
+{
+    std::vector<pipe_t *> pipes;
+    snapshot_attached_pipes (&pipes);
+    for (size_t i = 0; i < pipes.size (); ++i) {
+        if (pipes[i])
+            pipes[i]->reset_stream_packet_state ();
+    }
+}
+
+int zlink::stream_t::stream_dispatch_raw_msg_from_io (
+  const zlink_routing_id_t *rid_,
+  msg_t *msg_)
+{
+    zlink_stream_on_raw_fn raw_callback =
+      _dispatch_raw_callback.load (std::memory_order_acquire);
+    zlink_socket_msg_handler_fn handler =
+      _dispatch_msg_handler.load (std::memory_order_acquire);
+
     _dispatch_inflight.fetch_add (1, std::memory_order_acq_rel);
 
     if (raw_callback) {
-        const int cb_rc = raw_callback (&rid, reinterpret_cast<zlink_msg_t *> (msg_));
+        const int cb_rc = raw_callback (rid_, reinterpret_cast<zlink_msg_t *> (msg_));
         reset_dispatched_msg (msg_);
         _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel);
         if (cb_rc != 0)
@@ -830,16 +938,156 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
         return 2;
     }
 
-    handler (&rid, reinterpret_cast<zlink_msg_t *> (msg_), 1,
-             _dispatch_msg_handler_userdata.load (std::memory_order_acquire));
-    reset_dispatched_msg (msg_);
+    if (handler) {
+        handler (rid_, reinterpret_cast<zlink_msg_t *> (msg_), 1,
+                 _dispatch_msg_handler_userdata.load (std::memory_order_acquire));
+        reset_dispatched_msg (msg_);
+        _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel);
+        return 2;
+    }
+
     _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel);
-    return 2;
+    return 1;
 }
 
-bool zlink::stream_t::stream_dispatch_owns_tls () const
+int zlink::stream_t::stream_dispatch_packet_msg_from_io (
+  const zlink_routing_id_t *rid_,
+  msg_t *msg_,
+  pipe_t *pipe_)
 {
-    return zlink::stream_dispatch_owns_socket (this);
+    zlink_stream_packet_handler_fn handler =
+      _dispatch_packet_handler.load (std::memory_order_acquire);
+    if (!handler) {
+        return 1;
+    }
+
+    pipe_t::stream_packet_state_t &state = pipe_->stream_packet_state ();
+    scoped_fast_lock_t packet_lock (pipe_->stream_packet_dispatch_sync ());
+
+    const unsigned char *payload =
+      static_cast<const unsigned char *> (msg_->data ());
+    const size_t payload_size = msg_->size ();
+    size_t offset = 0;
+
+    while (offset < payload_size) {
+        if (state.stage == pipe_t::stream_packet_state_t::prefix_stage) {
+            const size_t remaining_prefix = sizeof (state.prefix) - state.prefix_used;
+            const size_t to_copy = payload_size - offset < remaining_prefix
+                                     ? payload_size - offset
+                                     : remaining_prefix;
+            if (to_copy > 0) {
+                memcpy (state.prefix + state.prefix_used, payload + offset,
+                        to_copy);
+                state.prefix_used += to_copy;
+                offset += to_copy;
+            }
+
+            if (state.prefix_used < sizeof (state.prefix))
+                continue;
+
+            state.header_size = static_cast<size_t> (get_uint16 (state.prefix));
+            state.body_size = static_cast<size_t> (get_uint32 (state.prefix + 2));
+
+            if (options.maxmsgsize > 0) {
+                const size_t limit = static_cast<size_t> (options.maxmsgsize);
+                if (state.header_size > limit || state.body_size > limit
+                    || state.header_size > limit - state.body_size) {
+                    state.reset ();
+                    reset_dispatched_msg (msg_);
+                    if (pipe_) {
+                        event_disconnected (pipe_->get_endpoint_pair (),
+                                            EMSGSIZE,
+                                            rid_ ? rid_->data : NULL,
+                                            rid_ ? rid_->size : 0);
+                        pipe_->terminate (false);
+                    }
+                    errno = EMSGSIZE;
+                    return -1;
+                }
+            }
+
+            if (state.header.init_size (state.header_size) != 0
+                || state.body.init_size (state.body_size) != 0) {
+                state.reset ();
+                reset_dispatched_msg (msg_);
+                if (pipe_) {
+                    event_disconnected (pipe_->get_endpoint_pair (), EMSGSIZE,
+                                        rid_ ? rid_->data : NULL,
+                                        rid_ ? rid_->size : 0);
+                    pipe_->terminate (false);
+                }
+                return -1;
+            }
+
+            state.header_used = 0;
+            state.body_used = 0;
+            state.stage = pipe_t::stream_packet_state_t::header_stage;
+
+            if (state.header_size == 0)
+                state.stage = pipe_t::stream_packet_state_t::body_stage;
+        }
+
+        if (state.stage == pipe_t::stream_packet_state_t::header_stage) {
+            const size_t remaining_header = state.header_size - state.header_used;
+            const size_t to_copy = payload_size - offset < remaining_header
+                                     ? payload_size - offset
+                                     : remaining_header;
+            if (to_copy > 0) {
+                memcpy (static_cast<unsigned char *> (state.header.data ())
+                          + state.header_used,
+                        payload + offset, to_copy);
+                state.header_used += to_copy;
+                offset += to_copy;
+            }
+
+            if (state.header_used < state.header_size)
+                continue;
+
+            state.stage = pipe_t::stream_packet_state_t::body_stage;
+        }
+
+        if (state.stage == pipe_t::stream_packet_state_t::body_stage) {
+            const size_t remaining_body = state.body_size - state.body_used;
+            const size_t to_copy = payload_size - offset < remaining_body
+                                     ? payload_size - offset
+                                     : remaining_body;
+            if (to_copy > 0) {
+                memcpy (static_cast<unsigned char *> (state.body.data ())
+                          + state.body_used,
+                        payload + offset, to_copy);
+                state.body_used += to_copy;
+                offset += to_copy;
+            }
+
+            if (state.body_used < state.body_size)
+                continue;
+
+            msg_t header_out;
+            msg_t body_out;
+            const int header_init_rc = header_out.init ();
+            errno_assert (header_init_rc == 0);
+            const int body_init_rc = body_out.init ();
+            errno_assert (body_init_rc == 0);
+            const int header_move_rc = header_out.move (state.header);
+            errno_assert (header_move_rc == 0);
+            const int body_move_rc = body_out.move (state.body);
+            errno_assert (body_move_rc == 0);
+
+            state.reset ();
+
+            _dispatch_inflight.fetch_add (1, std::memory_order_acq_rel);
+            handler (this, rid_, reinterpret_cast<zlink_msg_t *> (&header_out),
+                     reinterpret_cast<zlink_msg_t *> (&body_out),
+                     _dispatch_packet_handler_userdata.load (
+                       std::memory_order_acquire));
+            reset_dispatched_msg (&header_out);
+            reset_dispatched_msg (&body_out);
+            _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel);
+        }
+    }
+
+    reset_dispatched_msg (msg_);
+    return 2;
 }
 
 uint32_t zlink::stream_t::ensure_dispatch_routing_id (pipe_t *pipe_)

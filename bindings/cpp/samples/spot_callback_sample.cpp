@@ -3,36 +3,6 @@
 #include "sample_common.hpp"
 
 namespace {
-
-struct callback_result_t
-{
-    std::string topic;
-    std::string payload;
-};
-
-void subscribe_callback (const zlink_routing_id_t *,
-                         const char *topic_,
-                         size_t topic_len_,
-                         zlink_msg_t *parts_,
-                         size_t part_count_,
-                         void *userdata_)
-{
-    std::promise<callback_result_t> *result_promise =
-      static_cast<std::promise<callback_result_t> *> (userdata_);
-    assert (result_promise != NULL);
-    assert (topic_ != NULL);
-    assert (part_count_ == 1);
-
-    callback_result_t result;
-    result.topic.assign (topic_, topic_len_);
-    result.payload.assign (
-      static_cast<const char *> (zlink_msg_data (&parts_[0])),
-      zlink_msg_size (&parts_[0]));
-
-    zlink_multipart_close (parts_, part_count_);
-    result_promise->set_value (result);
-}
-
 } // namespace
 
 int main ()
@@ -54,21 +24,21 @@ int main ()
     sub_node.connect_peer (endpoint);
 
     const std::string topic = detail::k_spot_topic;
-    std::promise<callback_result_t> result_promise;
-    std::future<callback_result_t> result_future = result_promise.get_future ();
-    sub_spot.on_subscribe (&subscribe_callback, &result_promise);
     sub_spot.set_subscription (topic);
 
     const std::string sent = detail::k_spot_payload;
     zlink::message_t outbound = detail::make_message (sent);
     pub_spot.publish (topic, outbound);
 
-    const callback_result_t result = detail::wait_future (result_future, 10000);
-    assert (result.topic == topic);
-    assert (result.payload == detail::k_spot_payload);
+    const zlink::topic_message_t inbound = sub_spot.subscribe ();
+    assert (inbound.topic () == topic);
+    assert (inbound.parts ().size () == 1);
+    const std::string received = inbound.parts ()[0].to_string ();
+    assert (received == detail::k_spot_payload);
     std::printf (
-      "[spot/callback] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
-      topic.c_str (), sent.c_str (), result.topic.c_str (), result.payload.c_str ());
+      "[spot/recv] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
+      topic.c_str (), sent.c_str (), inbound.topic ().c_str (),
+      received.c_str ());
     sub_spot.close ();
     pub_spot.close ();
     sub_node.close ();

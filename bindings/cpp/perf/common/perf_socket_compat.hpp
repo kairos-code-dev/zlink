@@ -41,7 +41,6 @@ class socket_t : public base_socket_t
     using base_socket_t::disconnect;
     using base_socket_t::on_receive;
     using base_socket_t::on_send_ready;
-    using base_socket_t::on_subscribe;
     using base_socket_t::publish;
     using base_socket_t::receive;
     using base_socket_t::send;

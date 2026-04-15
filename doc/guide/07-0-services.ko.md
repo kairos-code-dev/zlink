@@ -75,19 +75,27 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템. 서비스가 
 자세한 내용은 [Service Discovery 가이드](07-1-discovery.ko.md) 및
 [Registry 가이드](07-4-registry.ko.md)를 참고.
 
-### 3.2 SPOT — 위치투명 토픽 PUB/SUB
+### 3.2 SPOT — service 중심 routed + PUB/SUB 허브
 
-Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여 클러스터 전체에서 토픽 메시지를 발행/구독한다.
+`SpotNode`는 service attachment table을 소유하는 허브다. 각 엔트리는
+`service_name`마다 ROUTER 집합과 선택적 PUB/SUB 쌍을 담는다. 그 위에 공개
+`Spot` facade 하나가 올라가 서비스별 routed send/request와 publish/subscribe
+를 함께 수행한다.
 
-- 토픽 기반 발행/구독
-- 패턴(와일드카드) 구독
-- Discovery 기반 자동 Mesh 구성
-- **Thread-safe** — 하나의 `spot` / `spot_node` handle에서 operational API를 여러 스레드가 동시 호출 가능
-- 내부 모듈:
-  - `spot_node_access` · `spot_subject_access` (API 접합 지점)
-  - `spot_handle` · `spot_node`
-  - `spot_data_plane` (forwarding · protocol)
-  - `spot_pub` · `spot_sub` (option · recv)
+- 수동 attach: `zlink_spot_node_attach_router()` /
+  `zlink_spot_node_attach_pubsub()` (PUB+SUB는 한 쌍으로만 등록 가능)
+- 자동 attach: `zlink_spot_node_attach_discovery()` — `service_name`별로
+  서로 다른 Discovery를 여러 개 붙일 수 있고, pub/sub 짝 검증을 함께 수행
+- service-aware data plane:
+  `zlink_spot_send_service()` / `zlink_spot_request_service()` /
+  `zlink_spot_publish()` / `zlink_spot_subscribe()` /
+  `zlink_spot_subscription_event()`
+- readable 알림은 한 콜백 surface로 통합:
+  `zlink_spot_dispatch_event_handler()`
+- service-aware 모니터링은 `zlink_spot_node_monitor_recv()`로만 drain하며
+  Spot dispatch plane에 섞이지 않음
+- **Thread-safe** — 하나의 `spot` / `spot_node` handle에서 여러 스레드가
+  operational API를 동시에 호출 가능
 
 자세한 내용은 [SPOT 가이드](07-3-spot.ko.md)를 참고.
 
@@ -138,6 +146,47 @@ lifecycle gate(destroy 시 `EBUSY`/`ESHUTDOWN` 계약)를 제공한다.
 이 구조 덕분에 API 계층은 concrete service 구현을 직접 알지 않고,
 service 추가 시 `api/service_*_api.cpp`, 해당 `*_access` 파일,
 해당 service 구현 파일만 수정하면 된다.
+
+## 4.1 점검을 위한 graceful maintenance (admission state)
+
+운영 환경에서 SPOT Node나 raw ROUTER를 잠시 내려야 할 때, 연결을 즉시
+끊는 대신 admission state로 "이미 들어온 작업은 마무리하고, 새 요청은
+받지 않는" 단계를 거치는 것을 권장한다. peer가 `DRAINING` 상태의 노드를
+새 outbound 후보에서 자동으로 제외해 준다.
+
+권장 절차:
+
+1. `zlink_set_admission_state(handle, ZLINK_ADMISSION_DRAINING)` 호출.
+2. 연결된 peer가 자신의 admission cache를 갱신할 시간을 둔다. 이 갱신은
+   socket monitor의 `ZLINK_EVENT_PEER_ADMISSION_CHANGED` 또는 service
+   monitor의 `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`로
+   관찰할 수 있다.
+3. 진행 중인 reply가 빠질 때까지 기다린다. 운영 시 이 시간은 보통 SLA
+   기반으로 설정한다.
+4. 노드를 재시작/교체한 뒤,
+   `zlink_set_admission_state(handle, ZLINK_ADMISSION_SERVING)`로 다시
+   서비스에 합류시킨다.
+
+```c
+/* 1) Drain orders-exec-1 before maintenance */
+zlink_set_admission_state(orders_exec_node, ZLINK_ADMISSION_DRAINING);
+
+/* 2) Wait for in-flight requests to complete (e.g. SLA + small margin)
+      while peers re-route new work to other orders-exec nodes. */
+sleep_seconds(60);
+
+/* 3) Restart or replace this node ... */
+
+/* 4) Rejoin the service */
+zlink_set_admission_state(orders_exec_node, ZLINK_ADMISSION_SERVING);
+```
+
+`DRAINING` 상태에서도 로컬 노드는 평소처럼 recv/send/reply/handler를
+처리한다. admission state는 "남이 나를 새 작업 대상으로 고르지 않게"
+하는 신호이지, 로컬 동작을 강제로 멈추는 신호가 아니다. peer 쪽의 새
+submit이 `DRAINING` 상태를 만나면 `ZLINK_SUBMIT_NOT_ADMITTED`로 거절되며,
+연결 자체가 끊긴 것은 아니므로 다시 `SERVING`이 되면 자동으로 후보로
+돌아간다.
 
 ## 5. 서비스 간 관계
 

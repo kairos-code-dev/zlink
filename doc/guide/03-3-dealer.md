@@ -67,7 +67,8 @@ zlink_msg_init_size(&msg3, 9);
 memcpy(zlink_msg_data(&msg3), "request-3", 9);
 zlink_send(dealer, &msg3, 1, 0);
 
-/* Responses are dispatched to the handler callback registered at creation */
+/* Responses are drained with zlink_recv() in a poller loop,
+   or (for zlink_dealer_request()) delivered through its reply callback */
 ```
 
 ### Receive Modes
@@ -377,6 +378,24 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 ### Round-Robin Distribution
 
 When multiple peers are connected, messages are distributed in a round-robin fashion. To send to a specific peer, use ROUTER instead.
+
+### Admission-Aware Outbound Selection
+
+Remote ROUTERs advertise an admission state (`ZLINK_ADMISSION_SERVING` or
+`ZLINK_ADMISSION_DRAINING`). DEALER automatically drops `DRAINING` peers
+from its round-robin candidate set -- new sends cycle only across the
+`SERVING` ROUTERs. The underlying connections stay alive, so a ROUTER
+that flips back to `SERVING` rejoins the rotation without reconnect.
+
+If every known ROUTER is `DRAINING`, `zlink_send()` and
+`zlink_dealer_request()` return `ZLINK_SUBMIT_NOT_ADMITTED`. The caller
+should wait for at least one ROUTER to return to `SERVING` before
+retrying; treating `NOT_ADMITTED` as a hard failure would discard
+messages that are expected to succeed once maintenance ends.
+
+> For the full contract, see
+> [Admission-aware outbound selection](../spec/core/socket/dealer.md#admission-aware-outbound-selection)
+> in the DEALER spec.
 
 ### Set routing_id Before connect
 

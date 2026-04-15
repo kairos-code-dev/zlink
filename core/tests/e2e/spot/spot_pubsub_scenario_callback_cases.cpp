@@ -2,68 +2,7 @@
 
 #include "spot_pubsub_scenario_shared.hpp"
 
-#include <atomic>
-#include <chrono>
 #include <string.h>
-
-struct callback_probe_t
-{
-    callback_probe_t () :
-        calls (0),
-        payload_ok (0),
-        topic_ok (0),
-        saw_source_rid (0)
-    {
-    }
-
-    std::mutex mutex;
-    std::condition_variable cv;
-    std::atomic<int> calls;
-    std::atomic<int> payload_ok;
-    std::atomic<int> topic_ok;
-    std::atomic<int> saw_source_rid;
-};
-
-static void spot_sub_probe_handler (const zlink_routing_id_t *source_rid_,
-                                    const char *topic_,
-                                    size_t topic_len_,
-                                    zlink_msg_t *parts_,
-                                    size_t part_count_,
-                                    void *userdata_)
-{
-    callback_probe_t *probe = static_cast<callback_probe_t *> (userdata_);
-    if (!probe) {
-        close_spot_parts (parts_, part_count_);
-        return;
-    }
-
-    probe->calls.fetch_add (1);
-    if (source_rid_ && source_rid_->size > 0)
-        probe->saw_source_rid.store (1);
-    if (topic_ && topic_len_ == 14 && memcmp (topic_, "zone:auto:test", 14) == 0)
-        probe->topic_ok.store (1);
-    if (parts_ && part_count_ == 1 && zlink_msg_size (&parts_[0]) == 4
-        && memcmp (zlink_msg_data (&parts_[0]), "ping", 4) == 0) {
-        probe->payload_ok.store (1);
-    }
-
-    close_spot_parts (parts_, part_count_);
-    probe->cv.notify_all ();
-}
-
-static bool wait_until_counter_at_least (std::atomic<int> *value_,
-                                         int expected_,
-                                         int timeout_ms_)
-{
-    const int sleep_ms_step = 10;
-    const int max_attempts = timeout_ms_ / sleep_ms_step;
-    for (int i = 0; i < max_attempts; ++i) {
-        if (value_->load () >= expected_)
-            return true;
-        msleep (sleep_ms_step);
-    }
-    return value_->load () >= expected_;
-}
 
 void test_spot_sub_handler_basic ()
 {
@@ -78,10 +17,6 @@ void test_spot_sub_handler_basic ()
     void *sub = create_spot_sub_handle (sub_node, NULL);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
-
-    callback_probe_t probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub, &spot_sub_probe_handler, &probe));
 
     char endpoint[MAX_SOCKET_STRING];
     int port_seed = 33140;
@@ -102,9 +37,8 @@ void test_spot_sub_handler_basic ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_publish (pub, "zone:auto:test", &part, 1, 0));
 
-    TEST_ASSERT_TRUE (wait_until_counter_at_least (&probe.calls, 1, 3000));
-    TEST_ASSERT_EQUAL_INT (1, probe.payload_ok.load ());
-    TEST_ASSERT_EQUAL_INT (1, probe.topic_ok.load ());
+    TEST_ASSERT_TRUE (wait_for_spot_recv_message (
+      sub, "zone:auto:test", "ping", 4, 3000));
 
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&pub_node));
@@ -134,13 +68,6 @@ void test_spot_recv_callback_isolated_by_handle ()
     TEST_ASSERT_NOT_NULL (sub_a_handle);
     TEST_ASSERT_NOT_NULL (sub_b_handle);
 
-    callback_probe_t probe_a;
-    callback_probe_t probe_b;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub_a_handle, &spot_sub_probe_handler, &probe_a));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub_b_handle, &spot_sub_probe_handler, &probe_b));
-
     char endpoint[MAX_SOCKET_STRING];
     int port_seed = 33180;
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
@@ -157,8 +84,10 @@ void test_spot_recv_callback_isolated_by_handle ()
 
     TEST_ASSERT_SUCCESS_ERRNO (
       publish_text (&zlink_publish, pub, "zone:auto:test", "ping", 0));
-    TEST_ASSERT_TRUE (wait_until_counter_at_least (&probe_a.calls, 1, 3000));
-    TEST_ASSERT_EQUAL_INT (0, probe_b.calls.load ());
+    TEST_ASSERT_TRUE (wait_for_spot_recv_message (
+      sub_a_handle, "zone:auto:test", "ping", 4, 3000));
+    TEST_ASSERT_FALSE (wait_for_spot_recv_message (
+      sub_b_handle, "zone:auto:test", "ping", 4, 200));
 
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_b));
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_a));

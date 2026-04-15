@@ -37,10 +37,6 @@ static int activate_service_send_ready_mode (zlink::service_mode_state_t *state_
         errno = EFAULT;
         return -1;
     }
-    if (!state_->send_ready_active && state_->pollout_refs > 0) {
-        errno = EBUSY;
-        return -1;
-    }
     state_->send_ready_active = true;
     return 0;
 }
@@ -72,10 +68,6 @@ static int increment_service_poller_refs (zlink::service_mode_state_t *state_,
         return -1;
     }
     if ((events_ & ZLINK_POLLIN) != 0 && state_->receive_callback_active) {
-        errno = EBUSY;
-        return -1;
-    }
-    if ((events_ & ZLINK_POLLOUT) != 0 && state_->send_ready_active) {
         errno = EBUSY;
         return -1;
     }

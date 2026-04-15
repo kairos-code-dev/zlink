@@ -98,9 +98,10 @@ Is the communication peer an external client (browser, game)?
 
 ## 7. 공통 수신 인터페이스
 
-대부분의 소켓 타입은 `zlink_recv()` 와 recv callback 이 같은 모양을
-공유한다. ROUTER 와 SPOT 은 추가 출력이 있는 전용 typed recv 표면을
-사용하고, PUB/SUB 은 subscribe/publish 전용 API 를 쓴다.
+zlink는 raw socket family의 기본 수신 모델을 `recv + poller` 조합으로
+고정한다. 서버 루프가 poller로 `ZLINK_POLLIN`을 관찰한 뒤, 그 소켓에 맞는
+recv 계열 함수로 데이터를 가져오는 방식이 표준이다. `zlink_recv()`는 이
+모델의 가장 일반적인 진입점이다.
 
 ```c
 zlink_recv_result_t zlink_recv (
@@ -122,18 +123,29 @@ zlink_recv_result_t zlink_recv (
 
 **소켓별 전용 수신 표면:**
 
+- **PAIR / DEALER**: `zlink_recv()`로 수신한다. DEALER는 추가로
+  `zlink_dealer_request()`의 completion callback으로 reply를 받는다.
 - **ROUTER**: ROUTER 핸들에 `zlink_recv()` 를 호출하면
   `ZLINK_RECV_NOT_SUPPORTED` 로 실패한다. ROUTER 는 통합된 단일 typed
-  표면 — `zlink_router_recv()` / `zlink_router_handler()` — 를 사용하며,
-  `source_node_rid`, `source_spot_rid`, `request_seq` 를 함께 반환한다.
-  이 하나의 표면이 일반 ROUTER 트래픽과 SPOT 에서 시작된 routed
-  트래픽을 모두 전달한다. 자세한 내용은 [03-4-router.ko.md](03-4-router.ko.md).
+  표면 — `zlink_router_recv()` — 를 사용하며, `source_node_rid`,
+  `source_spot_rid`, `request_seq` 를 함께 반환한다. 이 하나의 표면이 일반
+  ROUTER 트래픽과 SPOT 에서 시작된 routed 트래픽을 모두 전달한다.
+  request의 reply는 별도 completion callback으로 받는다. 자세한 내용은
+  [03-4-router.ko.md](03-4-router.ko.md).
+- **SUB / XSUB**: `zlink_subscribe()`로 수신한다. recv-only이며, direct
+  topic callback 표면은 제공하지 않는다.
+- **STREAM**: 예외 타입이다. `zlink_recv()` (raw recv),
+  `zlink_recv_handler()` (raw callback), `zlink_stream_packet_handler()`
+  (packet callback) 세 모델 중 하나를 고른다. 한 handle에서 두 번째 모델로
+  전환하려 하면 `EBUSY`로 실패한다.
 - **SPOT (routed)**: `zlink_spot_recv()` / `zlink_spot_handler()` 를
   사용하며 `(source_rid, spot_rid, request_seq, …)` 를 반환한다.
-- **PUB/SUB**: 전용 API 를 사용한다 — 수신은 `zlink_subscribe()` /
-  `zlink_subscribe_handler()`, 발행은 `zlink_publish()`. 4 개 PUB/SUB
-  소켓 모두 `zlink_send()` / `zlink_recv()` 는
-  `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 를 반환한다.
+- **monitor / timer**: recv와 callback 두 방식을 모두 지원한다.
+
+즉 data-plane 수신은 `recv + poller`가 기본이며, callback은
+`STREAM`, monitor/timer, SPOT dispatch event처럼 실제 사용 패턴이 분명한
+예외 타입에만 남긴다. request completion callback은 data-plane receive가
+아닌 별도 축의 비동기 작업 완료 통지임에 유의한다.
 
 ## 8. 용어 정리
 
@@ -152,38 +164,43 @@ zlink_recv_result_t zlink_recv (
 
 ## 9. 기본 사용 흐름
 
-모든 소켓 타입에 공통되는 기본 패턴:
+모든 소켓 타입에 공통되는 기본 패턴은 `recv + poller` 루프다. 예를 들어
+DEALER에서 응답을 받는 서버는 아래와 같은 형태를 쓴다.
 
 ```c
 /* 1. Create Context */
 void *ctx = zlink_ctx_new();
 
-/* 2. Define handler callback */
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* process received message */
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
+/* 2. Create Socket */
+void *socket = zlink_socket(ctx, ZLINK_DEALER);
 
-/* 3. Create Socket (raw STREAM callback example) */
-void *socket = zlink_socket(ctx, ZLINK_STREAM);
-zlink_recv_handler(socket, on_message, NULL);
+/* 3. Set options (before bind/connect) */
+zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 
-/* 4. Set socket options (before bind/connect) */
-zlink_set_option(socket, ZLINK_OPT_<OPTION>, &value, sizeof(value));
-
-/* 5. Establish connection (bind or connect) */
-zlink_bind(socket, "tcp://*:5555");
-// or
+/* 4. Establish connection */
 zlink_connect(socket, "tcp://127.0.0.1:5555");
 
-/* 6. Send messages (receive is handled by callback) */
-zlink_send(socket, data, size, flags);
+/* 5. Poll and recv */
+void *poller = zlink_poller_new(ctx);
+zlink_poller_add(poller, socket, ZLINK_POLLIN, user_data);
 
-/* 7. Cleanup */
+while (running) {
+    zlink_poller_event_t ev;
+    if (zlink_poller_wait(poller, &ev, timeout_ms) <= 0) continue;
+    if (ev.events & ZLINK_POLLIN) {
+        zlink_routing_id_t rid;
+        zlink_msg_t *parts = NULL;
+        size_t n = 0;
+        if (zlink_recv(socket, &rid, &parts, &n, 0) == ZLINK_RECV_OK) {
+            /* process parts, then close each */
+            zlink_multipart_close(parts, n);
+            free(parts);
+        }
+    }
+}
+
+/* 6. Cleanup */
+zlink_poller_destroy(poller);
 zlink_close(socket);
 zlink_ctx_term(ctx);
 ```
@@ -199,19 +216,11 @@ zlink_ctx_term(ctx);
 > 그 외 옵션(`SNDHWM`, `RCVHWM`, `LINGER`, `SNDTIMEO` 등)은
 > bind/connect 이후에도 변경 가능하다.
 
-> 위 예제는 raw `STREAM` callback 형태다. 다른 raw socket 계열은 recv/poller가
-> canonical 모델이다. 두 모드의 비교는
-> [Core API](02-core-api.ko.md) 섹션 3.2를 참고.
-
-> **Callback 모드 제약:** `zlink_recv_handler()` 설치 후 `zlink_recv()`는
-> `EBUSY`를 반환한다 (비가역 전환). 수신 관련 옵션 중 다음이 무효화된다:
->
-> | 옵션 | 이유 |
-> |------|------|
-> | `ZLINK_OPT_RCVTIMEO` | `recv()`를 호출하지 않으므로 타임아웃 무효 |
-> | `ZLINK_RCVMORE` (제거됨) | 멀티파트 전체가 `parts[]` 배열로 원자적 전달 |
->
-> `ZLINK_OPT_RCVHWM`은 callback 모드에서도 유효하다 (I/O 스레드 내부 큐에 적용).
+> **Callback이 기본이 아닌 이유:** raw `PAIR`, `DEALER`, `SUB`, `XSUB`,
+> `ROUTER`는 recv-only다. 여러 소켓, monitor, timer를 같은 poller에서
+> 다루기 쉽고, 호출자가 실행 스레드와 순서를 직접 통제할 수 있기 때문이다.
+> callback 경로는 `STREAM`, monitor/timer, SPOT dispatch event, request
+> completion처럼 실제 사용 패턴이 분명한 경우에만 남는다.
 
 ---
 [← Core API](02-core-api.ko.md) | [PAIR →](03-1-pair.ko.md)

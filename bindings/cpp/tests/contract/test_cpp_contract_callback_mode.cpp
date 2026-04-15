@@ -3,38 +3,9 @@
 #include "../../samples/sample_common.hpp"
 
 #include <chrono>
-#include <future>
 #include <thread>
 
 namespace {
-
-struct callback_result_t
-{
-    std::string topic;
-    std::string payload;
-};
-
-void subscribe_callback (const zlink_routing_id_t *,
-                         const char *topic_,
-                         size_t topic_len_,
-                         zlink_msg_t *parts_,
-                         size_t part_count_,
-                         void *userdata_)
-{
-    std::promise<callback_result_t> *result_promise =
-      static_cast<std::promise<callback_result_t> *> (userdata_);
-    assert (result_promise != NULL);
-    assert (part_count_ == 1);
-
-    callback_result_t result;
-    result.topic.assign (topic_, topic_len_);
-    result.payload.assign (
-      static_cast<const char *> (zlink_msg_data (&parts_[0])),
-      zlink_msg_size (&parts_[0]));
-
-    zlink_multipart_close (parts_, part_count_);
-    result_promise->set_value (result);
-}
 
 bool wait_for_spot_ready (zlink::service::spot_node_t &node_,
                           bool require_subject_,
@@ -79,9 +50,6 @@ int main ()
     assert (pub_spot.valid ());
     assert (sub_spot.valid ());
 
-    std::promise<callback_result_t> result_promise;
-    std::future<callback_result_t> result_future = result_promise.get_future ();
-    sub_spot.on_subscribe (&subscribe_callback, &result_promise);
     sub_spot.set_subscription ("topic:alpha");
 
     pub_node.bind ("tcp://127.0.0.1:0");
@@ -95,9 +63,11 @@ int main ()
       detail::make_message ("spot-callback");
     pub_spot.publish ("topic:alpha", outbound);
 
-    const callback_result_t result = detail::wait_future (result_future, 10000);
-    assert (result.topic == "topic:alpha");
-    assert (result.payload == "spot-callback");
+    const zlink::topic_message_t inbound = sub_spot.subscribe ();
+    assert (inbound.topic () == "topic:alpha");
+    assert (inbound.parts ().size () == 1);
+    const std::string received = inbound.parts ()[0].to_string ();
+    assert (received == "spot-callback");
     sub_spot.close ();
     pub_spot.close ();
     sub_node.close ();

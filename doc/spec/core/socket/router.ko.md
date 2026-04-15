@@ -14,11 +14,76 @@ request-reply 패턴에서 응답 측입니다.
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_ROUTER_OPT_MANDATORY` | 라우팅 불가 시 `EHOSTUNREACH` 반환 (`int`; 0 또는 1) |
-| `ZLINK_ROUTER_OPT_HANDOVER` | 기존 routing id를 새 연결이 인수 허용 (`int`; 0 또는 1) |
+| `ZLINK_ROUTER_OPT_MANDATORY` | 라우팅 불가 시 `EHOSTUNREACH` 반환 (`int`; 0 또는 1, 기본값 `1`) |
+| `ZLINK_ROUTER_OPT_HANDOVER` | 기존 routing id를 새 연결이 인수 허용 (`int`; 0 또는 1, 기본값 `1`) |
 | `ZLINK_ROUTER_OPT_PROBE` | 연결 시 빈 메시지로 아이덴티티 설정 (`int`; 0 또는 1) |
 | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 발신 연결의 routing id 설정 (`binary`) |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | `zlink_router_request()` 기본 요청 타임아웃 (ms, `uint32_t`) |
+
+`ZLINK_ROUTER_OPT_MANDATORY`와 `ZLINK_ROUTER_OPT_HANDOVER`의 기본값은
+각각 `1`입니다.
+
+- `MANDATORY=1`이 기본이므로 `zlink_send_rid()`는 연결되지 않은 peer를
+  대상으로 지정하면 조용히 넘어가지 않고 `ZLINK_SUBMIT_NOT_CONNECTED`를
+  반환합니다. 같은 이유로 ROUTER의 writable/`ZLINK_POLLOUT` 관찰값은
+  실제로 보낼 수 있는 peer가 있을 때만 readiness로 surface됩니다.
+- `HANDOVER=1`이 기본이므로 동일한 peer identity로 새 연결이 들어오면
+  새 연결이 기존 pipe를 인수합니다.
+
+호출자가 예전 동작(조용한 drop, 기존 pipe 유지)이 필요하면 해당 옵션을
+명시적으로 `0`으로 설정해야 합니다.
+
+## Admission 상태
+
+ROUTER는 peer가 자신을 새 작업 대상으로 사용할지 여부를 알리는 admission
+상태를 가집니다. 기본값은 `ZLINK_ADMISSION_SERVING`이며, 점검이나 롤링
+재시작처럼 새 요청을 더 이상 받지 않으려는 시점에는
+`ZLINK_ADMISSION_DRAINING`으로 바꿀 수 있습니다.
+
+```c
+zlink_config_result_t zlink_set_admission_state (
+  void *handle_,
+  zlink_admission_state_t state_);
+
+zlink_config_result_t zlink_get_admission_state (
+  void *handle_,
+  zlink_admission_state_t *state_out_);
+```
+
+상태 값:
+
+| 상수 | 값 | 의미 |
+|---|---|---|
+| `ZLINK_ADMISSION_SERVING` | `1` | peer가 이 ROUTER를 새 outbound 대상으로 사용할 수 있음. 기본값. |
+| `ZLINK_ADMISSION_DRAINING` | `2` | peer가 이 ROUTER를 새 outbound 대상에서 제외해야 함. 이미 들어온 작업 처리는 정상 진행. |
+
+특징:
+
+- `SERVING ↔ DRAINING` 전환은 runtime에 양방향으로 허용됩니다.
+- 로컬 ROUTER 자체의 recv/send/reply/handler-dispatch 동작은 admission
+  상태와 무관하게 평소처럼 진행됩니다. 즉 `DRAINING`은 "내가 멈춘다"가
+  아니라 "남이 나를 새 작업 대상으로 고르면 안 된다"는 신호입니다.
+- 상태 변화는 연결된 peer에게 best-effort runtime 신호로 전파됩니다.
+  peer는 자신의 상태 캐시를 갱신하며, 재연결 시 다시 동기화됩니다.
+- 상태 전환은 socket monitor의
+  `ZLINK_EVENT_PEER_ADMISSION_CHANGED` 이벤트로 관찰할 수 있습니다.
+  `routing_id`로 peer를 식별하고, `value`에는 새 상태가 들어갑니다.
+
+## ROUTER에서 시작하는 directed send와 admission
+
+ROUTER가 다른 ROUTER에 directed send/request를 보낼 때는 target RID의
+admission 상태를 먼저 확인합니다.
+
+- target RID가 `SERVING`이면 평소처럼 submit합니다.
+- target RID가 `DRAINING`이면 `zlink_send_rid()`와
+  `zlink_router_request()`는 모두 `ZLINK_SUBMIT_NOT_ADMITTED`로 즉시
+  실패합니다.
+- 상태 캐시 전파는 best-effort이므로, 경합 상황에서는 같은 거절이
+  `ZLINK_SUBMIT_NOT_CONNECTED`로 먼저 관찰될 수도 있습니다.
+
+reply 경로에는 admission 판정을 적용하지 않습니다.
+`zlink_router_reply()`는 이미 들어온 request에 대한 응답이라 admission
+상태와 관계없이 보낼 수 있습니다.
 
 ## 함수
 
@@ -89,7 +154,9 @@ zlink_submit_result_t zlink_send_rid (void *s_,
 
 **에러:** `s_`가 NULL이면 `INVALID_HANDLE`. 작업이 블로킹되고
 `ZLINK_DONTWAIT`가 설정된 경우 `BACKPRESSURED`. 대상 피어가 연결되지 않은 경우
-(`ROUTER_MANDATORY` 활성 시) `NOT_CONNECTED`. Context가 종료된 경우 `TERMINATED`.
+`NOT_CONNECTED` (`ROUTER_MANDATORY=1`이 기본이므로 옵션을 명시적으로 끄지
+않았다면 이 결과를 더 자주 보게 됩니다). 대상 RID가 `DRAINING` 상태이면
+`NOT_ADMITTED`. Context가 종료된 경우 `TERMINATED`.
 [errno-map.ko.md](../errno-map.ko.md)에서 전체 결과 매트릭스를 참조.
 
 **참고:** `zlink_send_rid`, `zlink_recv`
@@ -110,8 +177,9 @@ zlink_submit_result_t zlink_send_rid (void *s_,
 
 논블로킹 routed 전송은 `zlink_send_rid(..., ZLINK_DONTWAIT)` 로 처리합니다.
 `ZLINK_SUBMIT_BACKPRESSURED`는 작업이 블로킹되는 경우,
-`ZLINK_SUBMIT_NOT_CONNECTED`는 peer에 도달할 수 없는 경우에 반환됩니다.
-[errno-map.ko.md](../errno-map.ko.md)에서 전체 결과 매트릭스를 참조.
+`ZLINK_SUBMIT_NOT_CONNECTED`는 peer에 도달할 수 없는 경우,
+`ZLINK_SUBMIT_NOT_ADMITTED`는 대상 RID가 `DRAINING` 상태인 경우에
+반환됩니다. [errno-map.ko.md](../errno-map.ko.md)에서 전체 결과 매트릭스를 참조.
 
 성공하면 모든 파트의 소유권이 라이브러리로 이전됩니다. 실패하면
 소유권은 호출자에게 유지됩니다.
@@ -169,36 +237,7 @@ zlink_submit_result_t zlink_router_reply (void *router_,
 `zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
 `zlink_errno()`로 유지됩니다.
 
-**참고:** `zlink_router_request`, `zlink_router_handler`
-
----
-
-### zlink_router_handler
-
-ROUTER 소켓의 routed 수신 핸들러를 부착합니다.
-
-```c
-zlink_handler_result_t zlink_router_handler (void *router_,
-                                             zlink_router_handler_fn handler_,
-                                             void *userdata_);
-```
-
-ROUTER 소켓의 단일 direct 수신 콜백을 부착합니다. 이 콜백은 일반
-ROUTER 트래픽과 spot에서 시작한 routed 트래픽을 함께 받습니다. 일반
-ROUTER 트래픽이면 `source_spot_rid_`는 `NULL`입니다. spot에서 온
-routed 트래픽이면 `source_node_rid_`와 `source_spot_rid_`가 모두
-채워집니다.
-
-ROUTER 핸들 하나에는 routed 수신 콜백을 하나만 붙일 수 있습니다.
-콜백이 붙어 있는 동안 같은 ROUTER 핸들의 direct routed recv는
-`ZLINK_RECV_BUSY`로 실패합니다.
-
-**반환값:** 성공 시 `ZLINK_HANDLER_OK`. 실패 시에는
-`zlink_handler_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
-`zlink_errno()`로 유지됩니다.
-
-**참고:** `zlink_router_reply`, `zlink_router_reply_spot`,
-`zlink_router_handler_fn`, `zlink_router_recv`
+**참고:** `zlink_router_request`, `zlink_router_recv`
 
 ---
 
@@ -219,7 +258,10 @@ zlink_recv_result_t zlink_router_recv (
 
 ROUTER 소켓의 다음 routed delivery를 받습니다. 이 함수가 ROUTER의 유일한
 direct recv 표면입니다. 일반 ROUTER 트래픽과 spot에서 시작한 routed
-트래픽을 모두 이 함수 하나로 받습니다.
+트래픽을 모두 이 함수 하나로 받습니다. ROUTER의 inbound 수신은 recv 전용이며,
+poller의 `ZLINK_POLLIN`과 함께 서버 루프에서 사용하는 것이 기본 경로입니다.
+`zlink_router_request()`의 reply completion callback은 여기서 전달되지
+않고, 별도 `zlink_reply_handler_fn` 축으로 전달됩니다.
 
 성공 시 `*source_node_rid_out_`는 source node routing id를 가리킵니다.
 일반 ROUTER 트래픽이면 `*source_spot_rid_out_`는 `NULL`입니다.
@@ -239,7 +281,7 @@ routing id를 가리킵니다.
 `zlink_errno()`로 유지됩니다.
 
 **참고:** `zlink_router_reply`, `zlink_router_reply_spot`,
-`zlink_router_handler`
+`zlink_router_request`
 
 ---
 
@@ -268,32 +310,7 @@ zlink_recv_result_t zlink_recv (void *s_,
 `zlink_recv_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
 `zlink_errno()`로 유지됩니다.
 
-**참고:** `zlink_send`, `zlink_recv_handler`, `zlink_multipart_close`
-
----
-
-### zlink_recv_handler
-
-소켓에 메시지 수신 핸들러를 부착합니다.
-
-```c
-bool zlink_recv_handler (void *s_,
-                         zlink_socket_msg_handler_fn handler_,
-                         void *userdata_);
-```
-
-멀티파트 수신 subject에 메시지 수신 핸들러를 부착합니다. 지원 대상은 raw
-`PAIR`, `DEALER`, `STREAM`입니다. attach 이후 같은
-subject의 direct recv와 data-plane poller `ZLINK_POLLIN`은 `errno=EBUSY`로
-실패합니다. 동일 subject에 대한 두 번째 attach도 `errno=EBUSY`입니다.
-지원하지 않는 subject는 `ENOTSUP`를 반환합니다.
-
-**반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).
-
-**에러:** 핸들러가 NULL이면 `EINVAL`. 소켓 타입이 메시지 핸들러를
-허용하지 않으면 `ENOTSUP`. 핸들러가 이미 부착된 경우 `EBUSY`.
-
-**참고:** `zlink_subscribe_handler`, `zlink_socket`, `zlink_close`
+**참고:** `zlink_send`, `zlink_router_recv`, `zlink_multipart_close`
 
 ---
 
@@ -330,9 +347,11 @@ bool zlink_send_ready_handler (
 `errno=EDEADLK`로 실패합니다.
 
 지원 대상은 raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, `spot_node`입니다. send-ready는 receive callback 모드와
-독립적입니다. attach 이후 같은 subject의 data-plane poller
-`ZLINK_POLLOUT`은 `errno=EBUSY`로 실패합니다. 지원하지 않는 subject는
+`spot`, `spot_node`입니다. send-ready는 수신 모드와 독립적입니다.
+이 콜백과 `ZLINK_POLLOUT`은 같은 send-recovery readiness 축을 가리킵니다.
+readiness 신호는 송신을 다시 시도할 가치가 있다는 뜻이며, 재시도가 반드시
+성공한다는 보장은 아닙니다. `MANDATORY=1`이 기본이면 ROUTER의 readiness는
+실제로 쓸 수 있는 peer가 있을 때만 surface됩니다. 지원하지 않는 subject는
 `ENOTSUP`를 반환합니다.
 
 **반환값:** 성공 시 `true`, 실패 시 `false` (errno가 설정됨).

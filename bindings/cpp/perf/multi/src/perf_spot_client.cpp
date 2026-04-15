@@ -233,26 +233,11 @@ class callback_slot_t
         _spot = &spot_;
         _state = state_;
         _synced.store (false, std::memory_order_release);
-        try {
-            _spot->on_subscribe (&callback_slot_t::handle_subscribe, this);
-            return true;
-        }
-        catch (const std::exception &) {
-            _spot = NULL;
-            _state = NULL;
-            return false;
-        }
+        return true;
     }
 
     void stop ()
     {
-        if (_spot) {
-            try {
-                _spot->on_subscribe (NULL, NULL);
-            }
-            catch (const std::exception &) {
-            }
-        }
         _spot = NULL;
         _state = NULL;
     }
@@ -463,13 +448,6 @@ class spot_client_bench_t
         _recv_fatal.store (false, std::memory_order_release);
         _recv_metrics_epoch.fetch_add (1, std::memory_order_acq_rel);
 
-        bool callbacks_attached = false;
-        if (_callback_mode) {
-            if (!attach_callbacks ())
-                return false;
-            callbacks_attached = true;
-        }
-
         const int phase_timeout_ms =
           resolve_spot_phase_timeout_ms (_settings, _msg_size);
         const bool ok = perf::multi::run_spot_client_case(
@@ -503,11 +481,8 @@ class spot_client_bench_t
               std::cout << "CLIENT_DONE," << _msg_size << std::endl;
               return true;
           });
-        if (!ok) {
-            if (callbacks_attached)
-                stop_callbacks ();
+        if (!ok)
             return false;
-        }
         return true;
     }
 
@@ -550,29 +525,9 @@ class spot_client_bench_t
             _slots.push_back (std::move (slot));
         }
 
-        if (!_callback_mode && !start_recv_workers ())
+        if (!start_recv_workers ())
             return false;
         return !_slots.empty ();
-    }
-
-    bool attach_callbacks ()
-    {
-        for (size_t i = 0; i < _slots.size (); ++i) {
-            if (!_slots[i]->spot)
-                return false;
-            if (!_slots[i]->callback.attach (*_slots[i]->spot, &_callback_state)) {
-                debug_log ("callback attach failed");
-                stop_callbacks ();
-                return false;
-            }
-        }
-        return true;
-    }
-
-    void stop_callbacks ()
-    {
-        for (size_t i = 0; i < _slots.size (); ++i)
-            _slots[i]->callback.stop ();
     }
 
     bool wait_for_control_start (int timeout_ms_)
@@ -610,81 +565,7 @@ class spot_client_bench_t
 
     bool run_active ()
     {
-        return _callback_mode ? run_callback_active () : run_recv_active ();
-    }
-
-    bool run_callback_active ()
-    {
-        const auto start_deadline = std::chrono::steady_clock::now ()
-                                    + std::chrono::milliseconds (
-                                      resolve_spot_phase_timeout_ms (
-                                        _settings, _msg_size));
-        _callback_state.collect_active.store (true, std::memory_order_release);
-        {
-            std::unique_lock<std::mutex> lock (_callback_state.phase_mutex);
-            const bool started = _callback_state.phase_cv.wait_until (
-              lock,
-              start_deadline,
-              [this]() {
-                  return _callback_state.active_started.load (
-                           std::memory_order_acquire)
-                         || _callback_state.fatal.load (
-                              std::memory_order_acquire);
-              });
-            if (!started) {
-                errno = ETIMEDOUT;
-                debug_log ("callback active start timed out");
-                _callback_state.collect_active.store (false,
-                                                      std::memory_order_release);
-                return false;
-            }
-        }
-
-        if (_callback_state.fatal.load (std::memory_order_acquire)) {
-            errno = EOVERFLOW;
-            debug_log ("callback active failed before start");
-            _callback_state.collect_active.store (false,
-                                                  std::memory_order_release);
-            return false;
-        }
-        if (!_callback_state.active_started.load (std::memory_order_acquire)) {
-            errno = ETIMEDOUT;
-            debug_log ("callback active start timed out");
-            _callback_state.collect_active.store (false,
-                                                  std::memory_order_release);
-            return false;
-        }
-
-        const auto active_deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::seconds (std::max (1, _settings.duration_seconds));
-        {
-            std::unique_lock<std::mutex> lock (_callback_state.phase_mutex);
-            while (!_callback_state.fatal.load (std::memory_order_acquire)) {
-                if (_callback_state.phase_cv.wait_until (
-                      lock, active_deadline) == std::cv_status::timeout) {
-                    break;
-                }
-            }
-        }
-        if (_callback_state.fatal.load (std::memory_order_acquire)) {
-            errno = EOVERFLOW;
-            debug_log ("callback active failed during run");
-            _callback_state.collect_active.store (false,
-                                                  std::memory_order_release);
-            return false;
-        }
-        _callback_state.collect_active.store (false, std::memory_order_release);
-        stop_callbacks ();
-
-        perf::multi::collect_spot_callback_thread_metrics (
-          &_callback_state,
-          &_callback_state.thread_metrics_mutex,
-          &_callback_state.thread_metrics,
-          &_callback_state.metrics_epoch,
-          &_active_count,
-          &_latency);
-        return _active_count > 0;
+        return run_recv_active ();
     }
 
     bool run_recv_active ()

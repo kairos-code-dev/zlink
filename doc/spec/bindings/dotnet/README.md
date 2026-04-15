@@ -10,6 +10,34 @@ All types live in the `Zlink` namespace.
 
 ---
 
+## Current Core Alignment Overrides
+
+The sections below still contain some older signatures. When they conflict
+with the rules here, this section wins.
+
+- `PairSocket`, `DealerSocket`, and `RouterSocket` are recv-only on the data
+  plane. Remove `OnReceive(...)` from their public contract.
+- `SubSocket` and `XSubSocket` are recv-only. Remove `OnSubscribe(...)` from
+  their public contract.
+- `StreamSocket` keeps `Recv(...)` and raw `OnReceive(...)`, and must also
+  expose a packet callback surface mapped to `zlink_stream_packet_handler()`.
+  Recommended canonical name: `OnPacket(...)`.
+- `SpotNode` must expose service-aware attachment APIs:
+  `AttachRouter(string serviceName, RouterSocket router)`,
+  `AttachPubSub(string serviceName, PubSocket pub, SubSocket sub)`,
+  service attachment snapshot accessors, and node monitor receive/open mapped
+  to `zlink_spot_node_monitor_recv()`.
+- `Spot` must expose service-aware data-plane methods:
+  `SendService(...)`, `RequestService(...)`, and
+  `Publish(string serviceName, string topic, ...)`.
+- `Spot.Subscribe(...)` returns a service-aware `TopicMessage`.
+  `TopicMessage` therefore needs `ServiceName` populated for SPOT subscribe
+  results and `null` for raw `SUB` / `XSUB`.
+- `Spot` must not expose `OnSubscribe(...)`. Use `OnDispatchEvent(...)`
+  plus `Subscribe(...)` / routed recv / timer recv.
+- `Spot.OnRoutedReceive(...)` and `Spot.OnDispatchEvent(...)` are mutually
+  exclusive on the routed axis.
+
 ## Core
 
 ### Context

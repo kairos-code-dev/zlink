@@ -51,6 +51,7 @@ typedef enum zlink_submit_result_t
     ZLINK_SUBMIT_BACKPRESSURED    = 1,
     ZLINK_SUBMIT_NOT_CONNECTED    = 2,
     ZLINK_SUBMIT_NOT_FOUND        = 3,
+    ZLINK_SUBMIT_NOT_ADMITTED     = 13,
 
     /* Runtime / lifecycle failure. */
     ZLINK_SUBMIT_TERMINATED       = 4,
@@ -81,6 +82,7 @@ typedef enum zlink_submit_result_t
 | `BACKPRESSURED` | `EAGAIN` | send 큐가 가득 찼거나 (HWM) 아직 쓰기 준비가 안 됨 |
 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | 대상 peer 또는 경로가 연결되지 않음 |
 | `NOT_FOUND` | `ENOENT` | 대상 peer, spot, routed destination을 찾지 못함 |
+| `NOT_ADMITTED` | `ECONNREFUSED` 계열 | local peer가 알고 있는 remote의 admission state가 `DRAINING`이라 새 outbound가 거부됨. 연결이 끊긴 것이 아니라 admission 거절이며, peer가 다시 `SERVING`으로 돌아오면 자동으로 풀린다. 상태 전파는 최선 노력이라 경합 상황에서는 같은 실패가 `NOT_CONNECTED` 또는 `NOT_FOUND`로 먼저 관찰될 수 있다. |
 
 #### 런타임 / 수명주기 실패
 
@@ -238,10 +240,9 @@ typedef enum zlink_handler_result_t
 
 | 분류 | 함수 |
 |---|---|
-| Recv handler | `zlink_recv_handler` |
-| Subscribe handler | `zlink_subscribe_handler` |
+| Recv handler (STREAM only) | `zlink_recv_handler` |
+| Stream packet handler | `zlink_stream_packet_handler` |
 | Send-ready handler | `zlink_send_ready_handler` |
-| Router handler | `zlink_router_handler` |
 | Spot handler | `zlink_spot_handler` |
 | Spot dispatch-event handler | `zlink_spot_dispatch_event_handler` |
 | Socket monitor handler | `zlink_socket_monitor_handler` |
@@ -418,6 +419,7 @@ typedef enum zlink_config_result_t
 | `BACKPRESSURED` | Y | Y | Y |
 | `NOT_CONNECTED` | -- | Y | -- |
 | `NOT_FOUND` | -- | -- | -- |
+| `NOT_ADMITTED` | Y | Y | -- |
 | `TERMINATED` | Y | Y | Y |
 | `INVALID_HANDLE` | Y | Y | Y |
 | `INVALID_ARGUMENT` | Y | Y | Y |
@@ -428,6 +430,10 @@ typedef enum zlink_config_result_t
 | `SEQ_EXHAUSTED` | -- | -- | -- |
 | `INTERNAL_ERROR` | -- | -- | -- |
 
+`zlink_send`의 `NOT_ADMITTED`는 DEALER가 알고 있는 ROUTER가 모두
+`DRAINING`일 때 발생한다. `zlink_send_rid`의 `NOT_ADMITTED`는 ROUTER가
+`DRAINING` 상태의 target RID로 보내려 할 때 발생한다.
+
 ### Socket request 함수
 
 | Result | `zlink_dealer_request` | `zlink_router_request` |
@@ -436,6 +442,7 @@ typedef enum zlink_config_result_t
 | `BACKPRESSURED` | Y | Y |
 | `NOT_CONNECTED` | -- | -- |
 | `NOT_FOUND` | -- | -- |
+| `NOT_ADMITTED` | Y | Y |
 | `TERMINATED` | Y | Y |
 | `INVALID_HANDLE` | Y | Y |
 | `INVALID_ARGUMENT` | Y | Y |
@@ -446,6 +453,10 @@ typedef enum zlink_config_result_t
 | `SEQ_EXHAUSTED` | Y | Y |
 | `INTERNAL_ERROR` | Y | Y |
 
+`zlink_dealer_request`는 알고 있는 ROUTER가 모두 `DRAINING`일 때
+`NOT_ADMITTED`로 실패한다. `zlink_router_request`는 target RID가
+`DRAINING` 상태일 때 `NOT_ADMITTED`로 실패한다.
+
 ### Socket reply 함수
 
 | Result | `zlink_router_reply` |
@@ -454,6 +465,7 @@ typedef enum zlink_config_result_t
 | `BACKPRESSURED` | Y |
 | `NOT_CONNECTED` | -- |
 | `NOT_FOUND` | -- |
+| `NOT_ADMITTED` | -- |
 | `TERMINATED` | Y |
 | `INVALID_HANDLE` | Y |
 | `INVALID_ARGUMENT` | Y |
@@ -464,41 +476,54 @@ typedef enum zlink_config_result_t
 | `SEQ_EXHAUSTED` | -- |
 | `INTERNAL_ERROR` | Y |
 
+reply는 이미 들어온 request에 대한 응답이라 admission 판정을 새로 적용하지
+않는다. 따라서 `zlink_router_reply`는 `NOT_ADMITTED`를 내지 않는다.
+
 ### SPOT request 함수
 
-| Result | `zlink_spot_request_spot` | `zlink_spot_request_router` | `zlink_router_request_spot` |
-|---|---|---|---|
-| `OK` | Y | Y | Y |
-| `BACKPRESSURED` | Y | Y | Y |
-| `NOT_CONNECTED` | Y | Y | Y |
-| `NOT_FOUND` | Y | Y | Y |
-| `TERMINATED` | -- | -- | -- |
-| `INVALID_HANDLE` | Y | Y | Y |
-| `INVALID_ARGUMENT` | Y | Y | Y |
-| `NOT_SUPPORTED` | Y | Y | Y |
-| `INVALID_STATE` | -- | -- | Y |
-| `THREAD_VIOLATION` | -- | -- | Y |
-| `OUT_OF_MEMORY` | Y | Y | Y |
-| `SEQ_EXHAUSTED` | Y | Y | Y |
-| `INTERNAL_ERROR` | Y | Y | Y |
+| Result | `zlink_spot_request_spot` | `zlink_spot_request_router` | `zlink_spot_request_service` | `zlink_router_request_spot` |
+|---|---|---|---|---|
+| `OK` | Y | Y | Y | Y |
+| `BACKPRESSURED` | Y | Y | Y | Y |
+| `NOT_CONNECTED` | Y | Y | Y | Y |
+| `NOT_FOUND` | Y | Y | Y | Y |
+| `NOT_ADMITTED` | Y | Y | Y | Y |
+| `TERMINATED` | -- | -- | Y | -- |
+| `INVALID_HANDLE` | Y | Y | Y | Y |
+| `INVALID_ARGUMENT` | Y | Y | Y | Y |
+| `NOT_SUPPORTED` | Y | Y | Y | Y |
+| `INVALID_STATE` | -- | -- | -- | Y |
+| `THREAD_VIOLATION` | -- | -- | -- | Y |
+| `OUT_OF_MEMORY` | Y | Y | Y | Y |
+| `SEQ_EXHAUSTED` | Y | Y | Y | Y |
+| `INTERNAL_ERROR` | Y | Y | Y | Y |
+
+대상 SpotNode 또는 ROUTER가 `DRAINING`이면 SPOT request 계열은
+`NOT_ADMITTED`로 실패한다. `zlink_spot_request_service`는 같은 서비스에
+속한 active ROUTER가 모두 `DRAINING`인 경우에도 같은 결과를 낸다.
 
 ### SPOT send 함수
 
-| Result | `zlink_spot_send_spot` | `zlink_spot_send_router` | `zlink_router_send_spot` |
-|---|---|---|---|
-| `OK` | Y | Y | Y |
-| `BACKPRESSURED` | Y | Y | Y |
-| `NOT_CONNECTED` | Y | Y | Y |
-| `NOT_FOUND` | Y | Y | Y |
-| `TERMINATED` | -- | -- | -- |
-| `INVALID_HANDLE` | Y | Y | Y |
-| `INVALID_ARGUMENT` | Y | Y | Y |
-| `NOT_SUPPORTED` | Y | Y | Y |
-| `INVALID_STATE` | -- | -- | Y |
-| `THREAD_VIOLATION` | -- | -- | Y |
-| `OUT_OF_MEMORY` | -- | -- | -- |
-| `SEQ_EXHAUSTED` | -- | -- | -- |
-| `INTERNAL_ERROR` | Y | Y | Y |
+| Result | `zlink_spot_send_spot` | `zlink_spot_send_router` | `zlink_spot_send_service` | `zlink_spot_publish` | `zlink_router_send_spot` |
+|---|---|---|---|---|---|
+| `OK` | Y | Y | Y | Y | Y |
+| `BACKPRESSURED` | Y | Y | Y | Y | Y |
+| `NOT_CONNECTED` | Y | Y | Y | Y | Y |
+| `NOT_FOUND` | Y | Y | Y | Y | Y |
+| `NOT_ADMITTED` | Y | Y | Y | -- | Y |
+| `TERMINATED` | -- | -- | Y | Y | -- |
+| `INVALID_HANDLE` | Y | Y | Y | Y | Y |
+| `INVALID_ARGUMENT` | Y | Y | Y | Y | Y |
+| `NOT_SUPPORTED` | Y | Y | Y | Y | Y |
+| `INVALID_STATE` | -- | -- | -- | -- | Y |
+| `THREAD_VIOLATION` | -- | -- | -- | -- | Y |
+| `OUT_OF_MEMORY` | -- | -- | -- | -- | -- |
+| `SEQ_EXHAUSTED` | -- | -- | -- | -- | -- |
+| `INTERNAL_ERROR` | Y | Y | Y | Y | Y |
+
+`zlink_spot_publish`는 fan-out 의미를 가지므로 단일 peer admission으로
+거절하지 않는다. 다른 routed/direct send 함수는 대상 SpotNode 또는
+ROUTER가 `DRAINING`이면 `NOT_ADMITTED`를 낸다.
 
 ### SPOT reply 함수
 
@@ -508,6 +533,7 @@ typedef enum zlink_config_result_t
 | `BACKPRESSURED` | Y | Y | Y |
 | `NOT_CONNECTED` | Y | Y | Y |
 | `NOT_FOUND` | Y | Y | Y |
+| `NOT_ADMITTED` | -- | -- | -- |
 | `TERMINATED` | -- | -- | -- |
 | `INVALID_HANDLE` | Y | Y | Y |
 | `INVALID_ARGUMENT` | Y | Y | Y |
@@ -517,6 +543,9 @@ typedef enum zlink_config_result_t
 | `OUT_OF_MEMORY` | -- | -- | -- |
 | `SEQ_EXHAUSTED` | -- | -- | -- |
 | `INTERNAL_ERROR` | Y | Y | Y |
+
+reply는 이미 진행 중인 request에 대한 응답이라 admission 판정을 다시
+적용하지 않는다. 따라서 SPOT reply 함수도 `NOT_ADMITTED`를 내지 않는다.
 
 ---
 
@@ -527,7 +556,7 @@ typedef enum zlink_config_result_t
 | `zlink_submit_result_t` | `zlink_send`, `zlink_send_rid`, `zlink_publish`, `zlink_dealer_request`, `zlink_router_request`, `zlink_router_reply`, `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_spot_request_service`, `zlink_router_request_spot`, `zlink_spot_send_spot`, `zlink_spot_send_router`, `zlink_spot_send_service`, `zlink_spot_publish`, `zlink_router_send_spot`, `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
 | `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback) |
 | `zlink_recv_result_t` | `zlink_router_recv`, `zlink_spot_recv`, `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_spot_subscribe`, `zlink_spot_subscription_event`, `zlink_socket_monitor_recv`, `zlink_service_monitor_recv`, `zlink_spot_node_monitor_recv`, `zlink_timer_recv` |
-| `zlink_handler_result_t` | `zlink_recv_handler`, `zlink_subscribe_handler`, `zlink_send_ready_handler`, `zlink_router_handler`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_service_monitor_handler`, `zlink_timer_handler` |
+| `zlink_handler_result_t` | `zlink_recv_handler` (raw STREAM only), `zlink_stream_packet_handler`, `zlink_send_ready_handler`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_service_monitor_handler`, `zlink_timer_handler` |
 | `zlink_close_result_t` | `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_close`, `zlink_monitor_close`, `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_destroy`, `zlink_poller_destroy`, `zlink_timer_destroy` |
 | `zlink_bind_result_t` | `zlink_bind` |
 | `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_unbind` |

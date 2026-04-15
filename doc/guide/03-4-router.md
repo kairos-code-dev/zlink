@@ -31,56 +31,13 @@ zlink_bind(router, "tcp://*:5558");
 
 ### Receiving Messages
 
-ROUTER has a single direct receive surface. Install it by attaching a
-routed handler with `zlink_router_handler()`, or pull synchronously with
-`zlink_router_recv()`. Both surfaces deliver plain ROUTER traffic (from a
-DEALER or another ROUTER) and SPOT-originated routed traffic through the
-same callback shape. Plain ROUTER traffic sets `source_spot_rid = NULL`
-and `request_seq = 0`.
-
-```c
-/* DEALER sends "Hello" → handler receives source_node_rid + parts */
-void on_message(const zlink_routing_id_t *source_node_rid,
-                const zlink_routing_id_t *source_spot_rid,
-                uint64_t request_seq,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* plain ROUTER traffic: source_spot_rid == NULL, request_seq == 0 */
-    printf("From [%.*s]: %.*s\n",
-           (int)source_node_rid->size, source_node_rid->data,
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-    zlink_multipart_close(parts, part_count);
-}
-
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_router_handler(router, on_message, NULL);
-```
-
-> `zlink_recv()` on a ROUTER handle fails with `ZLINK_RECV_NOT_SUPPORTED`.
-> Use `zlink_router_recv()` for pull mode.
-
-### Sending Messages
-
-When replying to a plain ROUTER message, use `zlink_send_rid` with the
-`source_node_rid` to specify the target. For request-reply, use
-`zlink_router_reply()` with `source_node_rid` and `request_seq`.
-
-```c
-/* Reply using source_node_rid from the callback */
-zlink_msg_t reply;
-zlink_msg_init_size(&reply, 5);
-memcpy(zlink_msg_data(&reply), "World", 5);
-zlink_send_rid(router, source_node_rid, &reply, 1, 0);
-```
-
-### Receive Modes
-
-**Pull mode**: without attaching a handler, call `zlink_router_recv()`
-to receive synchronously. The surface returns both the node and spot
-routing id outputs; for plain ROUTER traffic, `source_spot_rid` comes
-back as an empty routing id and `request_seq == 0`.
+ROUTER has a single direct receive surface. All inbound routed traffic
+is drained through `zlink_router_recv()`. It delivers both plain ROUTER
+traffic (from a DEALER or another ROUTER) and SPOT-originated routed
+traffic with the same output shape. Plain ROUTER traffic sets
+`source_spot_rid` to an empty routing id and `request_seq == 0`. The
+intended pattern is to observe `ZLINK_POLLIN` from a poller and drain
+with `zlink_router_recv()`.
 
 ```c
 const zlink_routing_id_t *source_node_rid;
@@ -95,16 +52,39 @@ zlink_recv_result_t rc = zlink_router_recv(
     &parts, &part_count,
     0 /* flags */);
 if (rc == ZLINK_RECV_OK) {
-    /* source_node_rid identifies the sender */
-    /* plain ROUTER: source_spot_rid->size == 0, request_seq == 0 */
-    /* process parts[0..part_count-1] */
+    /* Plain ROUTER: source_spot_rid->size == 0, request_seq == 0 */
+    printf("From [%.*s]: %.*s\n",
+           (int)source_node_rid->size, source_node_rid->data,
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
     zlink_multipart_close(parts, part_count);
+    free(parts);
 }
 ```
 
-> When the per-peer send queue is full (HWM), ROUTER returns
-> `ZLINK_SUBMIT_NOT_CONNECTED` with `ROUTER_MANDATORY` enabled, or silently
-> drops the message otherwise. For advanced backpressure patterns, see
+> `zlink_recv()` on a ROUTER handle fails with `ZLINK_RECV_NOT_SUPPORTED`.
+> ROUTER uses `zlink_router_recv()`. Replies to `zlink_router_request()`
+> are not delivered here; they are delivered through a separate reply
+> completion callback.
+
+### Sending Messages
+
+When replying to a plain ROUTER message, use `zlink_send_rid` with the
+`source_node_rid` to specify the target. For request-reply, use
+`zlink_router_reply()` with `source_node_rid` and `request_seq`.
+
+```c
+/* Reply using source_node_rid from the router_recv output */
+zlink_msg_t reply;
+zlink_msg_init_size(&reply, 5);
+memcpy(zlink_msg_data(&reply), "World", 5);
+zlink_send_rid(router, source_node_rid, &reply, 1, 0);
+```
+
+> When the per-peer send queue is full (HWM), with the default
+> `ROUTER_MANDATORY=1` ROUTER returns `ZLINK_SUBMIT_NOT_CONNECTED`. If the
+> caller explicitly sets `ROUTER_MANDATORY=0`, the message is silently
+> dropped. For advanced backpressure patterns, see
 > [Performance Guide](10-performance.md).
 
 ??? example "Full Sample Code"
@@ -123,20 +103,24 @@ if (rc == ZLINK_RECV_OK) {
 ## 3. Usage Examples
 
 ROUTER uses `zlink_send_rid()` to send to a specific peer, and
-identifies the sender via `source_node_rid` delivered through
-`zlink_router_handler()` or `zlink_router_recv()`.
+identifies the sender via the `source_node_rid` returned by
+`zlink_router_recv()`.
 
-### Receive/Reply Using Handler Callback
+### Receive/Reply Using recv Loop
 
 ```c
-/* Receive: handler callback provides routing_id and data */
-void on_message(const zlink_routing_id_t *source_node_rid,
-                const zlink_routing_id_t *source_spot_rid,
-                uint64_t request_seq,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* Plain ROUTER traffic: source_spot_rid == NULL, request_seq == 0.
+/* Inside a poller loop: drain router_recv, reply with zlink_send_rid */
+const zlink_routing_id_t *source_node_rid;
+const zlink_routing_id_t *source_spot_rid;
+uint64_t request_seq;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+
+if (zlink_router_recv(router,
+                      &source_node_rid, &source_spot_rid,
+                      &request_seq,
+                      &parts, &part_count, 0) == ZLINK_RECV_OK) {
+    /* Plain ROUTER traffic: source_spot_rid->size == 0, request_seq == 0.
        Reply with zlink_send_rid to the source peer. */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
@@ -144,6 +128,7 @@ void on_message(const zlink_routing_id_t *source_node_rid,
     zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 
     zlink_multipart_close(parts, part_count);
+    free(parts);
 }
 ```
 
@@ -151,8 +136,8 @@ void on_message(const zlink_routing_id_t *source_node_rid,
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | Return `ZLINK_SUBMIT_NOT_CONNECTED` for undeliverable messages (set via `zlink_set_router_option()`) |
-| `ZLINK_ROUTER_OPT_HANDOVER` | int | 0 | Replace existing connection on routing_id conflict |
+| `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | Return `ZLINK_SUBMIT_NOT_CONNECTED` for undeliverable messages. Now defaults to `1`, so `zlink_send_rid()` to an unconnected peer surfaces the failure by default. Set to `0` explicitly to restore legacy silent-drop behavior. |
+| `ZLINK_ROUTER_OPT_HANDOVER` | int | 1 | Allow a new connection to take over an existing routing_id. Now defaults to `1`, so duplicate peer identities trigger handover by default. Set to `0` explicitly to keep the existing pipe. |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | Default timeout for `zlink_router_request()`. `0` uses the implementation default of `5000ms` |
 | `zlink_set_routing_id()` | binary | Auto (UUID) | The ROUTER's own routing_id (dedicated function) |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | Send HWM |
@@ -161,13 +146,13 @@ void on_message(const zlink_routing_id_t *source_node_rid,
 
 ### ROUTER_MANDATORY
 
-By default, ROUTER **silently drops** messages when the target cannot be found. Enabling `ROUTER_MANDATORY` returns `ZLINK_SUBMIT_NOT_CONNECTED` instead.
+`ZLINK_ROUTER_OPT_MANDATORY` now defaults to `1`. By default, a
+`zlink_send_rid()` to an unreachable peer no longer silently drops; it
+returns `ZLINK_SUBMIT_NOT_CONNECTED`, giving the caller a chance to log,
+retry, or fall back.
 
 ```c
-int mandatory = 1;
-zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
-
-/* Attempt to send to a non-existent target */
+/* Default behavior (MANDATORY=1) */
 zlink_routing_id_t target_rid = { .data = "UNKNOWN", .size = 7 };
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
@@ -175,7 +160,19 @@ memcpy(zlink_msg_data(&msg), "data", 4);
 zlink_submit_result_t rc = zlink_send_rid(
     router, &target_rid, &msg, 1, 0);
 /* rc == ZLINK_SUBMIT_NOT_CONNECTED */
+
+/* Opt in to legacy silent-drop behavior by setting MANDATORY=0 */
+int mandatory = 0;
+zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
+                        &mandatory, sizeof(mandatory));
 ```
+
+> **Observable behavior change from new defaults:** with `MANDATORY=1` as
+> the default, ROUTER's writable / `ZLINK_POLLOUT` observation surfaces
+> send-recovery readiness only while a reachable peer exists. With
+> `HANDOVER=1` as the default, a duplicate peer identity takes over the
+> existing pipe instead of being rejected. Expect `NOT_CONNECTED` from
+> `send_rid` more often than before.
 
 > Reference: `core/tests/test_router_mandatory.cpp` -- `test_basic()`
 
@@ -183,10 +180,11 @@ zlink_submit_result_t rc = zlink_send_rid(
 
 ROUTER can play both roles in request-reply:
 
-- **Server role**: receive requests with `zlink_router_handler()` and
-  reply with `zlink_router_reply()`
+- **Server role**: drain requests with `zlink_router_recv()` and reply
+  with `zlink_router_reply()`
 - **Active client role**: initiate requests with `zlink_router_request()`
-  to a specific peer
+  to a specific peer; the reply is delivered through a
+  `zlink_reply_handler_fn` completion callback
 
 The key identifier is the `source_node_rid + request_seq` combination.
 A reply must match both values -- the same `request_seq` from a different
@@ -202,25 +200,28 @@ SPOT-originated traffic).
 #### Server: Receive Requests and Reply
 
 ```c
-static void on_request(const zlink_routing_id_t *source_node_rid,
-                       const zlink_routing_id_t *source_spot_rid,
-                       uint64_t request_seq,
-                       zlink_msg_t *parts,
-                       size_t part_count,
-                       void *userdata)
-{
-    /* Plain ROUTER request: source_spot_rid == NULL, request_seq > 0.
+/* Server loop: watch the poller for readable, then drain with router_recv */
+const zlink_routing_id_t *source_node_rid;
+const zlink_routing_id_t *source_spot_rid;
+uint64_t request_seq;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+
+if (zlink_router_recv(router,
+                      &source_node_rid, &source_spot_rid,
+                      &request_seq,
+                      &parts, &part_count, 0) == ZLINK_RECV_OK) {
+    /* Plain ROUTER request: source_spot_rid->size == 0, request_seq > 0.
        For SPOT-originated requests the spot rid is also populated;
        reply via zlink_router_reply_spot() in that case. */
     zlink_multipart_close(parts, part_count);
+    free(parts);
 
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 4);
     memcpy(zlink_msg_data(&reply), "pong", 4);
     zlink_router_reply(router, source_node_rid, request_seq, &reply, 1);
 }
-
-zlink_router_handler(router, on_request, NULL);
 ```
 
 #### Client: Initiate Request
@@ -247,42 +248,12 @@ zlink_submit_result_t rc = zlink_router_request(
 if (rc != ZLINK_SUBMIT_OK) { /* handle submit failure */ }
 ```
 
-#### Typed Recv (Pull Mode)
-
-Instead of the callback model, ROUTER can pull request-reply messages
-using `zlink_router_recv()`. This returns `source_node_rid`,
-`source_spot_rid`, `request_seq`, and payload parts. For plain ROUTER
-request-reply, `source_spot_rid->size == 0` and `request_seq > 0`.
-
-```c
-const zlink_routing_id_t *source_node_rid;
-const zlink_routing_id_t *source_spot_rid;
-uint64_t request_seq;
-zlink_msg_t *parts;
-size_t part_count;
-zlink_recv_result_t rc = zlink_router_recv(
-    router,
-    &source_node_rid, &source_spot_rid,
-    &request_seq,
-    &parts, &part_count,
-    0 /* flags */);
-if (rc == ZLINK_RECV_OK) {
-    /* process request payload */
-    zlink_multipart_close(parts, part_count);
-
-    /* build and send reply (plain ROUTER request) */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 4);
-    memcpy(zlink_msg_data(&reply), "pong", 4);
-    zlink_router_reply(router, source_node_rid, request_seq, &reply, 1);
-}
-```
-
-**Note:** `zlink_router_recv()` and `zlink_router_handler()` are mutually
-exclusive. Using both returns `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY`.
-Both surfaces also carry SPOT-originated routed traffic; when
-`source_spot_rid` is populated, reply with `zlink_router_reply_spot()`.
-See [SPOT Guide](07-3-spot.md).
+**Note:** ROUTER's inbound routed delivery is received only through
+`zlink_router_recv()`. Replies to `zlink_router_request()` are delivered
+on a separate completion-callback axis and are not mixed with data-plane
+receive. `zlink_router_recv()` also carries SPOT-originated routed
+traffic; when `source_spot_rid` is populated, reply with
+`zlink_router_reply_spot()`. See [SPOT Guide](07-3-spot.md).
 
 ## 5. Usage Patterns
 
@@ -291,28 +262,26 @@ See [SPOT Guide](07-3-spot.md).
 The most basic ROUTER pattern. Distinguishes multiple DEALER clients by routing_id.
 
 ```c
-/* Server: ROUTER with handler */
-void on_request(const zlink_routing_id_t *source_node_rid,
-                const zlink_routing_id_t *source_spot_rid,
-                uint64_t request_seq,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* Reply to the sender (plain DEALER → ROUTER: request_seq == 0) */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 5);
-    memcpy(zlink_msg_data(&reply), "reply", 5);
-    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
-    zlink_multipart_close(parts, part_count);
-}
-
+/* Server: ROUTER uses a recv loop */
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_router_handler(router, on_request, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
 zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
+
+/* Inside a poller loop:
+   while (running) {
+       if (readable(router)) {
+           zlink_router_recv(router, &src_node, &src_spot, &seq,
+                             &parts, &n, 0);
+           zlink_msg_t reply;
+           zlink_msg_init_size(&reply, 5);
+           memcpy(zlink_msg_data(&reply), "reply", 5);
+           zlink_send_rid(router, src_node, &reply, 1, 0);
+           zlink_multipart_close(parts, n); free(parts);
+       }
+   } */
 
 /* Client 1 */
 void *d1 = zlink_socket(ctx, ZLINK_DEALER);
@@ -325,7 +294,7 @@ void *d2 = zlink_socket(ctx, ZLINK_DEALER);
 zlink_set_routing_id(d2, "D2", 2);
 zlink_connect(d2, endpoint);
 
-/* Each client sends a message -- on_request receives source_node_rid */
+/* Each client sends a message -- router_recv returns source_node_rid */
 zlink_msg_t m1;
 zlink_msg_init_size(&m1, 7);
 memcpy(zlink_msg_data(&m1), "from_d1", 7);
@@ -336,7 +305,7 @@ zlink_msg_init_size(&m2, 7);
 memcpy(zlink_msg_data(&m2), "from_d2", 7);
 zlink_send(d2, &m2, 1, 0);
 
-/* on_reply receives the reply for each DEALER */
+/* Each DEALER drains replies with zlink_recv() in its own poller loop */
 ```
 
 > Reference: `core/tests/test_router_multiple_dealers.cpp` -- TCP/IPC/inproc across 3 transports
@@ -347,26 +316,20 @@ zlink_send(d2, &m2, 1, 0);
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 
-/* Default behavior: silently drops undeliverable messages */
+/* Default behavior (MANDATORY=1): undeliverable sends surface as failures */
 zlink_routing_id_t bad_rid = { .data = "UNKNOWN", .size = 7 };
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
 memcpy(zlink_msg_data(&msg), "DATA", 4);
-zlink_send_rid(router, &bad_rid, &msg, 1, 0);
-/* No error, message lost */
-
-/* Enable MANDATORY mode */
-int mandatory = 1;
-zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
-
-/* Now returns error on undeliverable message */
-zlink_msg_t msg2;
-zlink_msg_init_size(&msg2, 4);
-memcpy(zlink_msg_data(&msg2), "DATA", 4);
-zlink_submit_result_t rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
+zlink_submit_result_t rc = zlink_send_rid(router, &bad_rid, &msg, 1, 0);
 if (rc == ZLINK_SUBMIT_NOT_CONNECTED) {
-    /* Target "UNKNOWN" not found */
+    /* Target "UNKNOWN" not found -- caller chooses retry/log/fallback */
 }
+
+/* If the legacy silent-drop behavior is desired, explicitly disable it */
+int disable_mandatory = 0;
+zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
+                        &disable_mandatory, sizeof(disable_mandatory));
 ```
 
 > Reference: `core/tests/test_router_mandatory.cpp` -- default drop vs MANDATORY error
@@ -376,21 +339,6 @@ if (rc == ZLINK_SUBMIT_NOT_CONNECTED) {
 DEALER sends a message first to notify ROUTER of its connection, then ROUTER replies.
 
 ```c
-/* ROUTER handler: DEALER's initial message confirms connection */
-void on_connect(const zlink_routing_id_t *source_node_rid,
-                const zlink_routing_id_t *source_spot_rid,
-                uint64_t request_seq,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* source_node_rid->data = "X" -- now it is safe to send to "X" */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 7);
-    memcpy(zlink_msg_data(&reply), "Welcome", 7);
-    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
-    zlink_multipart_close(parts, part_count);
-}
-
 /* DEALER connects and sends initial message */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 zlink_set_routing_id(dealer, "X", 1);
@@ -400,8 +348,9 @@ zlink_msg_init_size(&hello, 5);
 memcpy(zlink_msg_data(&hello), "Hello", 5);
 zlink_send(dealer, &hello, 1, 0);
 
-/* on_connect receives: source_node_rid = "X", parts[0] = "Hello"
-   and replies with "Welcome" */
+/* ROUTER: inside a poller loop, router_recv returns
+   source_node_rid = "X" and parts[0] = "Hello";
+   the server then replies with "Welcome" via zlink_send_rid. */
 ```
 
 > Reference: `core/tests/test_router_mandatory.cpp` -- DEALER connect → message → ROUTER reply
@@ -447,6 +396,62 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 If two DEALERs with the same routing_id connect simultaneously, the second connection is rejected by default. Enable `ROUTER_HANDOVER` to replace the existing connection instead.
 
 > For a detailed explanation of routing_id concepts, see [08-routing-id.md](08-routing-id.md).
+
+### Admission state for graceful maintenance
+
+Before a ROUTER is taken down for a rolling restart or config reload,
+flip its local admission state so remote peers stop selecting it for new
+outbound:
+
+```c
+/* Enter DRAINING before maintenance */
+zlink_set_admission_state(router, ZLINK_ADMISSION_DRAINING);
+
+/* ... let in-flight work finish / reply ... */
+
+/* Restart or reconfigure, then return to SERVING */
+zlink_set_admission_state(router, ZLINK_ADMISSION_SERVING);
+
+/* Readback */
+zlink_admission_state_t cur;
+zlink_get_admission_state(router, &cur);
+```
+
+`DRAINING` is a peer-side advisory, not a local halt. The local handle
+keeps draining inbound work normally -- `zlink_router_recv()`,
+`zlink_send_rid()`, and `zlink_router_reply()` all keep functioning, so
+in-flight requests can still be completed. Connected peers simply stop
+picking this ROUTER as a target for new work:
+
+- Remote DEALERs drop this ROUTER from their round-robin candidate set.
+- Remote ROUTERs that call `zlink_send_rid()` or `zlink_router_request()`
+  toward this RID get `ZLINK_SUBMIT_NOT_ADMITTED` right away.
+- `zlink_router_reply()` is not subject to admission; already-received
+  requests can still be answered while `DRAINING`.
+
+The same send-side rule applies in the opposite direction: a local
+ROUTER that calls `zlink_send_rid()` or `zlink_router_request()`
+targeting a remote RID whose advertised admission state is `DRAINING`
+fails with `ZLINK_SUBMIT_NOT_ADMITTED`. Admission cache propagation is
+best-effort, so races may surface the same refusal first as
+`ZLINK_SUBMIT_NOT_CONNECTED`.
+
+Typical maintenance pattern:
+
+1. `zlink_set_admission_state(router, ZLINK_ADMISSION_DRAINING)`
+2. Wait for in-flight requests/replies to drain.
+3. Restart or reconfigure the instance.
+4. `zlink_set_admission_state(router, ZLINK_ADMISSION_SERVING)`.
+
+Admission transitions on connected peers surface on the socket monitor
+as `ZLINK_EVENT_PEER_ADMISSION_CHANGED`; see
+[monitoring guide](06-monitoring.md#peer-admission-changes) for the
+event shape.
+
+> For the full contract, see
+> [Admission state](../spec/core/socket/router.md#admission-state) and
+> [Peer outbound from ROUTER](../spec/core/socket/router.md#peer-outbound-from-router)
+> in the ROUTER spec.
 
 ---
 [← DEALER](03-3-dealer.md) | [STREAM →](03-5-stream.md)

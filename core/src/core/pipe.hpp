@@ -66,6 +66,31 @@ class pipe_t ZLINK_FINAL : public object_t,
                          const bool conflate_[2]);
 
   public:
+    struct stream_packet_state_t
+    {
+        enum stage_t
+        {
+            prefix_stage,
+            header_stage,
+            body_stage
+        };
+
+        stream_packet_state_t ();
+        ~stream_packet_state_t ();
+
+        void reset ();
+
+        stage_t stage;
+        unsigned char prefix[6];
+        size_t prefix_used;
+        size_t header_size;
+        size_t body_size;
+        size_t header_used;
+        size_t body_used;
+        msg_t header;
+        msg_t body;
+    };
+
     //  Specifies the object to send events to.
     void set_event_sink (i_pipe_events *sink_);
 
@@ -88,6 +113,10 @@ class pipe_t ZLINK_FINAL : public object_t,
     void reset_stream_connect_event_emitted ();
     bool mark_connection_ready_event_emitted ();
     void reset_connection_ready_event_emitted ();
+    stream_packet_state_t &stream_packet_state ();
+    const stream_packet_state_t &stream_packet_state () const;
+    fast_mutex_t &stream_packet_dispatch_sync ();
+    void reset_stream_packet_state ();
 
     //  Returns true if there is at least one message to read in the pipe.
     bool check_read ();
@@ -280,6 +309,8 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     std::atomic<bool> _stream_connect_event_emitted;
     std::atomic<bool> _connection_ready_event_emitted;
+    fast_mutex_t _stream_packet_sync;
+    stream_packet_state_t _stream_packet_state;
 
     //  Returns true if the message is delimiter; false otherwise.
     static bool is_delimiter (const msg_t &msg_);

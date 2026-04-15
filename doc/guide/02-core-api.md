@@ -229,11 +229,12 @@ Each socket type uses a dedicated registration function:
 
 | Socket Type | Registration Call | Callback Signature |
 |---|---|---|
-| STREAM | `zlink_recv_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
-| ROUTER (routed, unified) | `zlink_router_handler(router, fn, userdata)` | `void fn(const zlink_routing_id_t *source_node_rid, const zlink_routing_id_t *source_spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` — single surface for plain ROUTER traffic (`source_spot_rid == NULL`, `request_seq == 0` for one-way or `> 0` for requests) and SPOT-originated routed traffic (`source_spot_rid` populated) |
+| STREAM (raw) | `zlink_recv_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
+| STREAM (packet) | `zlink_stream_packet_handler(socket, fn, userdata)` | `void fn(void *stream, const zlink_routing_id_t *source_rid, zlink_msg_t *header, zlink_msg_t *body, void *userdata)` |
+| ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` reply is delivered through a separate completion callback |
 | SPOT (routed) | `zlink_spot_handler(spot, fn, userdata)` | `void fn(const zlink_routing_id_t *source_rid, const zlink_routing_id_t *spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
-| spot, spot_node (topic) | `zlink_subscribe_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)` |
-| DEALER (reply) | `zlink_reply_handler_fn` passed to `zlink_dealer_request()` | `void fn(zlink_request_result_t result, zlink_msg_t *parts, size_t count, void *userdata)` |
+| PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` or `zlink_subscribe()` | N/A |
+| DEALER / ROUTER request | `zlink_reply_handler_fn` passed to `zlink_dealer_request()` / `zlink_router_request()` | `void fn(zlink_request_result_t result, zlink_msg_t *parts, size_t count, void *userdata)` |
 | Timer | `zlink_timer_handler(timer, fn, userdata)` | `void fn(void *timer, uint64_t fire_count, void *userdata)` |
 | PUB | N/A | Send-only socket |
 
@@ -354,41 +355,15 @@ zlink_poller_remove_timer(poller, timer);
 #include <string.h>
 #include <stdio.h>
 
-void on_router_message(const zlink_routing_id_t *source_node_rid,
-                       const zlink_routing_id_t *source_spot_rid,
-                       uint64_t request_seq,
-                       zlink_msg_t *parts, size_t part_count,
-                       void *userdata)
-{
-    /* Plain DEALER → ROUTER: source_spot_rid == NULL, request_seq == 0 */
-    printf("Received from [%.*s]: %.*s\n",
-           (int)source_node_rid->size, source_node_rid->data,
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-    zlink_multipart_close(parts, part_count);
-}
-
-void on_dealer_message(const zlink_routing_id_t *source_rid,
-                       zlink_msg_t *parts, size_t part_count,
-                       void *userdata)
-{
-    printf("Reply: %.*s\n",
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-    zlink_multipart_close(parts, part_count);
-}
-
 int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* ROUTER (server) */
     void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    zlink_router_handler(router, on_router_message, NULL);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (client) */
     void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-    zlink_recv_handler(dealer, on_dealer_message, NULL);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */
@@ -397,8 +372,10 @@ int main(void) {
     memcpy(zlink_msg_data(&req), "request", 7);
     zlink_send(dealer, &req, 1, 0);
 
-    /* Handler callbacks process messages asynchronously */
-    msleep(100);
+    /* Server loop: watch a poller for ZLINK_POLLIN on router, drain with
+       zlink_router_recv(), and reply with zlink_router_reply() or
+       zlink_send_rid(). The client drains replies with zlink_recv() in
+       its own poller loop. */
 
     zlink_close(dealer);
     zlink_close(router);

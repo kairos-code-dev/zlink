@@ -5,9 +5,12 @@
 > **Normative status: Authoritative.**
 > This guide reflects `core/include/zlink.h`.
 
-> `SpotNode` and unified `Spot` start in recv model and use
-> `zlink_subscribe_handler()` for the one-way transition to callback model
-> (topic path), or `zlink_spot_handler()` for the routed path.
+> `SpotNode` and the unified `Spot` start in recv model. Topic, routed, and
+> timer readable notifications are delivered through one callback:
+> `zlink_spot_dispatch_event_handler()`. The caller then drains the
+> corresponding plane with `zlink_spot_subscribe()`, `zlink_spot_recv()`,
+> or `zlink_timer_recv()`. A direct routed callback `zlink_spot_handler()`
+> is still available on the routed plane.
 
 ## 1. Overview
 
@@ -108,23 +111,198 @@ flowchart LR
 
 ## 3. SPOT Node Setup
 
+### 3.0 Core Mental Model — SpotNode is a Multi-Service Hub
+
+**A single `SpotNode` talks to several external services at once.** Each
+service is identified by a string `service_name`, and under that name the
+node holds either a ROUTER, or a PUB+SUB pair, or ROUTER+PUB+SUB together.
+`SpotNode` keeps these per-service attachments in a `service attachment
+table`, and a single public `Spot` facade on top becomes the one entry
+point for talking to all of them.
+
+```text
++------------------------------------------------------------------+
+|                         SpotNode (hub)                           |
+|------------------------------------------------------------------|
+|                       service attachment table                   |
+|                                                                  |
+|  service_name = "orders-exec"   -> { ROUTER }                    |
+|  service_name = "market-data"   -> { PUB, SUB }                  |
+|  service_name = "billing"       -> { ROUTER, PUB, SUB }          |
+|                                                                  |
+|                               ^                                  |
+|                               | single public facade             |
+|                               |                                  |
+|                +---------------------------+                     |
+|                |       Spot (facade)       |                     |
+|                |                           |                     |
+|                |  spot_send_service(...)   |                     |
+|                |  spot_request_service(...)|                     |
+|                |  spot_publish(...)        |                     |
+|                |  spot_subscribe(...)      |                     |
+|                +---------------------------+                     |
++------------------------------------------------------------------+
+```
+
+Key points:
+
+- One `SpotNode` can carry many different `service_name`s. A typical
+  deployment might host `orders-exec` (routed only), `market-data`
+  (pub/sub only), and `billing` (routed + pub/sub) side by side.
+- The same `service_name` may own more than one ROUTER attachment. When
+  that happens, `zlink_spot_send_service()` /
+  `zlink_spot_request_service()` pick one active and send-ready ROUTER
+  per call using round-robin.
+- **Pub/sub must be attached as a pair.** A service with only a PUB or
+  only a SUB is rejected. The rule applies to manual attach and to
+  Discovery attach alike.
+- Exactly **one `Spot` facade per node**. A second `zlink_spot_new(node)`
+  on a service-aware node fails with `EBUSY`. Conversely, a node that
+  already has two or more plain facades cannot accept service-aware
+  attach calls (they fail with `EBUSY`).
+
+### 3.0.1 Two Ways to Register a Service
+
+Per-service router/pub/sub attachments reach the table via one of two
+paths, and the two paths can coexist on the same node.
+
+| Method | When to use | Functions |
+|--------|-------------|-----------|
+| **Manual attach** | The caller builds external sockets (ROUTER / PUB / SUB) and registers them under an explicit `service_name`. Fits tests, fixed topologies, and bootstrap services. | `zlink_spot_node_attach_router()`, `zlink_spot_node_attach_pubsub()` |
+| **Discovery attach** | Attach a per-service Discovery handle; providers learned from Registry flow into the service attachment table as automatic ROUTER/PUB/SUB sources. Fits production topologies. | `zlink_spot_node_attach_discovery()` |
+
+The same pairing rule applies to the automatic path. `router`-only is
+allowed, `router + pub + sub` is allowed, and `pub + sub` is allowed, but
+a service whose Discovery view reports a half-pair (`pub` xor `sub`) is
+rejected at attach time.
+
+Concrete usage of each method follows in §3.1 Discovery-Based Automatic
+Mesh and §3.1a Manual service attach.
+
 ### 3.1 Discovery-Based Automatic Mesh
+
+Discovery-based registration follows the **same four-step recipe per
+service**. For each service you build its ROUTER (or PUB/SUB pair) first,
+attach it to a per-service Discovery, and only then attach those
+Discovery handles to the `SpotNode`.
+
+1. Create the raw socket (ROUTER or PUB/SUB) the process will provide
+   under this service.
+2. Open a Discovery handle with `ZLINK_SERVICE_TYPE_SOCKET` and the
+   matching `service_name`. Connect it to Registry.
+3. Call `zlink_socket_attach_discovery(socket, discovery)` to bind the
+   socket to that Discovery. Discovery now owns the socket lifecycle and
+   advertises it to Registry as a provider for this service.
+4. Create the `SpotNode`, bind it, and attach each per-service Discovery
+   with `zlink_spot_node_attach_discovery(node, discovery)`.
+
+The example below runs two services side by side on the same node:
+`orders-exec` (ROUTER only) and `market-data` (PUB + SUB pair).
 
 ```c
 void *ctx = zlink_ctx_new();
 
-/* Discovery setup (peer discovery + registry uplink / heartbeat owner) */
-void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SPOT, "spot-node");
-zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+/* ---- Service 1: orders-exec (routed only) ---- */
 
-/* SPOT Node setup */
+/* 1. Build the ROUTER socket this process provides under "orders-exec" */
+void *orders_router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
+zlink_bind(orders_router, "tcp://*:9001");
+
+/* 2. Open a Discovery view scoped to this service */
+void *orders_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "orders-exec");
+zlink_discovery_connect_registry(orders_discovery,
+    "tcp://registry1:5551");
+
+/* 3. Attach the socket to its Discovery — Discovery now owns the
+ *    socket lifecycle and advertises it as an "orders-exec" ROUTER. */
+zlink_socket_attach_discovery(orders_router, orders_discovery);
+
+/* ---- Service 2: market-data (pub+sub pair) ---- */
+
+void *prices_pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
+void *prices_sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
+zlink_bind(prices_pub, "tcp://*:9002");
+/* SUB does not bind; Discovery will connect it to the other
+ * "market-data" PUB providers as they appear. */
+
+void *prices_pub_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "market-data");
+zlink_discovery_connect_registry(prices_pub_discovery,
+    "tcp://registry1:5551");
+
+void *prices_sub_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "market-data");
+zlink_discovery_connect_registry(prices_sub_discovery,
+    "tcp://registry1:5551");
+
+zlink_socket_attach_discovery(prices_pub, prices_pub_discovery);
+zlink_socket_attach_discovery(prices_sub, prices_sub_discovery);
+
+/* ---- SpotNode: bind, then attach each service's Discovery ---- */
+
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
-/* Attach Discovery */
-zlink_spot_node_attach_discovery(node, discovery);
+zlink_spot_node_attach_discovery(node, orders_discovery);
+zlink_spot_node_attach_discovery(node, prices_pub_discovery);
+zlink_spot_node_attach_discovery(node, prices_sub_discovery);
 ```
+
+Key points:
+
+- Use `ZLINK_SERVICE_TYPE_SOCKET` — this is the Discovery service type
+  that advertises raw-socket services. (The legacy `ZLINK_SERVICE_TYPE_SPOT`
+  path was used when `SpotNode` itself was a single-service peer; the
+  new multi-service model publishes each underlying ROUTER/PUB/SUB as
+  its own socket service.)
+- `zlink_socket_attach_discovery()` is the **mandatory intermediate
+  step** that places the socket under Discovery ownership. If you skip
+  it, Registry never sees the socket as a provider, and attaching the
+  Discovery to the node will bring no automatic attachments for that
+  service.
+- Pub/sub services require a Discovery for **both** PUB and SUB under
+  the same `service_name`. If the Discovery view reports only a PUB or
+  only a SUB for a service, `attach_discovery` rejects it with
+  `INVALID_ARGUMENT`.
+- The same node may carry Discovery handles for many different
+  `service_name`s. Two Discovery handles for the same `service_name` on
+  the same node fail with `EBUSY`.
+- Providers supplied by Discovery land in the `SpotNode`'s service
+  attachment table as automatic sources. Once a `zlink_spot_new(node)`
+  facade is on top, callers can drive everything by service name:
+  `zlink_spot_send_service(spot, "orders-exec", ...)` or
+  `zlink_spot_publish(spot, "market-data", ...)`.
+
+> See [Discovery Internals](../internals/discovery-internals.md) for how
+> Discovery builds the provider list and applies the pairwise initiator
+> rule.
+
+### 3.1a Manual service attach
+
+When the service sockets are built by the application itself:
+
+```c
+/* Routed-only service: attach one ROUTER */
+void *orders_router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
+zlink_bind(orders_router, "tcp://*:9001");
+zlink_spot_node_attach_router(node, "orders-exec", orders_router);
+
+/* Pub/Sub service: PUB and SUB must be attached together */
+void *prices_pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
+void *prices_sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
+zlink_bind(prices_pub, "tcp://*:9002");
+zlink_connect(prices_sub, "tcp://peer:9002");
+zlink_spot_node_attach_pubsub(node, "market-data",
+                              prices_pub, prices_sub);
+```
+
+- Attach does not take ownership of the sockets. Destroying the `SpotNode`
+  does not destroy sockets that were manually attached; the caller keeps
+  owning them.
+- A single external socket must not be attached to more than one service.
+- There is no public half-pair attach. To use a pub/sub path, pass both
+  sides in one call.
 
 > `SpotNode` is the topology and lifecycle owner for mesh participation.
 > It does not expose the generic data-plane facade (publish/subscribe).
@@ -244,24 +422,39 @@ if (rc == ZLINK_RECV_OK) {
 
 #### Callback model
 
-Install the callback with `zlink_subscribe_handler()` to make a one-way
-transition from recv model to callback model. Incoming messages are then
-dispatched automatically through that callback.
+Install `zlink_spot_dispatch_event_handler()` to receive a single readable
+notification for topic, routed, and timer planes. The callback only signals
+which plane became readable; drain the actual payload from the matching
+recv function (for topics: `zlink_subscribe()` or `zlink_spot_subscribe()`).
 
 ```c
-/* Define callback function */
-void on_message(const zlink_routing_id_t *source_rid,
-                const char *topic, size_t topic_len,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
+static void on_spot_event(void *spot,
+                          zlink_spot_dispatch_event_t event,
+                          void *userdata)
 {
-    printf("Topic: %.*s, Parts: %zu\n", (int)topic_len, topic, part_count);
+    if (event != ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE)
+        return;
+    for (;;) {
+        zlink_routing_id_t src;
+        zlink_msg_t *parts = NULL;
+        size_t part_count  = 0;
+        char topic[256];
+        size_t topic_len = sizeof(topic);
+        zlink_recv_result_t rc = zlink_subscribe(
+            spot, &src, &parts, &part_count,
+            topic, &topic_len, ZLINK_DONTWAIT);
+        if (rc != ZLINK_RECV_OK) break;
+        /* handle topic delivery */
+        zlink_multipart_close(parts, part_count);
+    }
 }
 
-/* Register handler at unified spot creation */
 void *spot = zlink_spot_new(node);
-zlink_subscribe_handler(spot, on_message, NULL);
+zlink_set_subscription(spot, "chat:room1:message");
+zlink_spot_dispatch_event_handler(spot, on_spot_event, NULL);
 ```
+
+For the production-style notify + single worker pattern, see §7.2.
 
 ??? example "Full Sample Code"
 
@@ -284,9 +477,9 @@ should be offloaded to an application queue or worker thread.
 
 **Constraints:**
 
-- In recv model, use `zlink_subscribe()`
-- Call `zlink_subscribe_handler()` to transition the receive surface once to callback mode
-- In receive callback mode, `zlink_subscribe()` and data-plane `ZLINK_POLLIN` return `ZLINK_RECV_BUSY`
+- In recv model, use `zlink_subscribe()` / `zlink_spot_subscribe()`
+- Call `zlink_spot_dispatch_event_handler()` to receive readable notifications for the topic, routed, and timer planes
+- In receive callback mode, `zlink_subscribe()` and data-plane `ZLINK_POLLIN` return `ZLINK_RECV_BUSY`, except inside the active dispatch callback for the same `spot_`
 - `zlink_send_ready_handler()` is independent from receive callback mode
 - After send-ready attach, data-plane `ZLINK_POLLOUT` returns `ZLINK_HANDLER_BUSY`
 - Replacing or clearing the callback after transition is not supported
@@ -297,6 +490,116 @@ should be offloaded to an application queue or worker thread.
   stop external use first and then tear down the handle
 
 > See [Thread-Safety Guide](11-thread-safety.md) for the full three-tier contract and additional patterns.
+
+## 4a. Service-aware send and receive
+
+Once one or more attachments exist, send by `service_name` and receive
+with the service identifier alongside the payload.
+
+### 4a.1 Service-based send / publish
+
+```c
+/* routed service: a send-ready ROUTER from the service is picked
+   round-robin */
+zlink_msg_t cmd;
+zlink_msg_init_size(&cmd, 13);
+memcpy(zlink_msg_data(&cmd), "place_order:1", 13);
+zlink_submit_result_t rc = zlink_spot_send_service(
+    spot, "orders-exec", &cmd, 1, 0);
+
+/* request_service: the reply pins to the ingress ROUTER that carried the
+   outbound submit */
+rc = zlink_spot_request_service(
+    spot,
+    "orders-exec",
+    &cmd, 1,
+    on_order_reply,
+    NULL,
+    0 /* flags */,
+    2000 /* timeout_ms */);
+
+/* service-aware publish */
+zlink_msg_t tick;
+zlink_msg_init_size(&tick, 20);
+memcpy(zlink_msg_data(&tick), "USD/JPY=151.24 09:15", 20);
+rc = zlink_spot_publish(
+    spot, "market-data", "quotes.fx.usdjpy", &tick, 1, 0);
+```
+
+- If no attachment exists for the given `service_name`, the result is
+  `NOT_FOUND`.
+- If attachments exist but no usable active path is available, the result
+  is normalized to `NOT_CONNECTED`. This is distinct from `BACKPRESSURED`,
+  which means a chosen path is momentarily full.
+- `zlink_spot_publish()` succeeds only while the pub/sub pair is active as
+  a pair. Provider churn that breaks the pair takes the pub/sub path out
+  of the active set; publishing returns `NOT_CONNECTED` until the pair is
+  restored. Once restored, the subscription filter set is replayed
+  automatically before the pair returns to the active set.
+
+### 4a.2 Service-based receive
+
+```c
+zlink_routing_id_t src;
+zlink_msg_t *parts = NULL;
+size_t part_count  = 0;
+char service[128];  size_t service_len = sizeof(service);
+char topic[256];    size_t topic_len   = sizeof(topic);
+
+zlink_recv_result_t rc = zlink_spot_subscribe(
+    spot,
+    &src,
+    &parts, &part_count,
+    service, &service_len,
+    topic, &topic_len,
+    ZLINK_DONTWAIT);
+if (rc == ZLINK_RECV_OK) {
+    /* dispatch on (service, topic) */
+    zlink_multipart_close(parts, part_count);
+}
+```
+
+- `source_rid` (`src`) on pub/sub paths may be empty. The application
+  should treat `service_name` and `topic` as the primary metadata.
+- Subscription filters are unioned across the `Spot` facade. A single
+  `zlink_set_subscription(spot, filter)` is replayed across every
+  currently attached service SUB.
+- Subscribe / unsubscribe notifications are drained with
+  `zlink_spot_subscription_event()`, which also returns the service name
+  and topic.
+
+### 4a.3 Readable notifications and the unified callback
+
+Service-aware subscribe and routed readability notifications still arrive
+through `zlink_spot_dispatch_event_handler()`. The event kind identifies
+the plane; actual payloads are drained with the matching recv function:
+
+```text
+SUBSCRIBE_READABLE -> zlink_spot_subscribe()
+                      or zlink_spot_subscription_event()
+ROUTED_READABLE    -> zlink_spot_recv()
+TIMER_READABLE     -> zlink_timer_recv()
+```
+
+Reply addresses pin to the ingress ROUTER the original request was
+submitted through. A reply does not re-run round-robin selection by
+service name.
+
+### 4a.4 Service-aware monitoring
+
+Per-service attachment state is observed through two surfaces:
+
+- `zlink_spot_node_service_attachment_count()` /
+  `zlink_spot_node_service_attachment_at()` return a
+  `zlink_spot_service_attachment_stats_t` per service, counting both
+  manually attached and Discovery-supplied sources.
+- `zlink_spot_node_monitor_recv()` returns per-attachment monitor events
+  tagged with `service_name` and the attachment role (`ROUTER`, `PUB`, or
+  `SUB`).
+
+Service-aware monitor events are not folded into the
+`zlink_spot_dispatch_event_handler()` readable plane. The `SpotNode` owns
+monitor traffic.
 
 ## 5. Routed (Direct) Messaging
 
@@ -397,8 +700,11 @@ void on_routed(const zlink_routing_id_t *source_rid,
 zlink_spot_handler(spot, on_routed, NULL);
 ```
 
-**Note:** `zlink_spot_handler()` (routed) and `zlink_subscribe_handler()`
-(topic) are independent surfaces. You can use both on the same SPOT handle.
+**Note:** `zlink_spot_handler()` (direct routed callback) and
+`zlink_spot_dispatch_event_handler()` (unified readable notifications) share
+the routed axis slot and must not be installed together. To consume topic
+messages, use the `SUBSCRIBE_READABLE` notification from
+`zlink_spot_dispatch_event_handler()` and drain with `zlink_subscribe()`.
 
 ### 5.3 Router Receiving from SPOT
 
@@ -409,14 +715,26 @@ contract. Distinguish SPOT-originated traffic by checking whether
 `source_spot_rid` is populated.
 
 ```c
-void on_router_routed(const zlink_routing_id_t *source_node_rid,
-                      const zlink_routing_id_t *source_spot_rid,
-                      uint64_t request_seq,
-                      zlink_msg_t *parts, size_t part_count,
-                      void *userdata)
-{
+/* orders-exec ROUTER drains routed traffic in its poller loop. */
+for (;;) {
+    const zlink_routing_id_t *source_node_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+
+    zlink_recv_result_t rr = zlink_router_recv(
+      router,
+      &source_node_rid,
+      &source_spot_rid,
+      &request_seq,
+      &parts,
+      &part_count,
+      ZLINK_RECV_FLAGS_DONTWAIT);
+    if (rr != ZLINK_RECV_OK) break;
+
     if (source_spot_rid && source_spot_rid->size > 0) {
-        /* SPOT-originated traffic. Reply (if request) uses
+        /* SPOT-originated traffic. Reply (if request_seq != 0) uses
            zlink_router_reply_spot(router, source_node_rid,
                                    source_spot_rid, request_seq, ...). */
     } else {
@@ -424,15 +742,6 @@ void on_router_routed(const zlink_routing_id_t *source_node_rid,
     }
     zlink_multipart_close(parts, part_count);
 }
-
-zlink_router_handler(router, on_router_routed, NULL);
-```
-
-Pull mode uses the same unified surface:
-
-```c
-zlink_router_recv(router, &source_node_rid, &source_spot_rid,
-                  &request_seq, &parts, &part_count, 0);
 ```
 
 See [ROUTER guide](03-4-router.md) for the full surface description.
@@ -546,12 +855,11 @@ pending request.
 ### 6.3 spot ↔ router Combinations
 
 SPOT request-reply can also cross directly with plain ROUTER sockets.
-The ROUTER side uses the unified `zlink_router_handler()` /
-`zlink_router_recv()` surface; SPOT-originated traffic is identified by a
-populated `source_spot_rid`.
+The ROUTER side uses the unified `zlink_router_recv()` surface;
+SPOT-originated traffic is identified by a populated `source_spot_rid`.
 
 - **spot → router**: `zlink_spot_request_router()` →
-  `zlink_router_handler()` (`source_spot_rid` populated) →
+  `zlink_router_recv()` (`source_spot_rid` populated) →
   `zlink_router_reply_spot()`
 - **router → spot**: `zlink_router_request_spot()` →
   `zlink_spot_handler()` → `zlink_spot_reply_router()`
@@ -789,7 +1097,6 @@ no additional synchronization in user code.
 | Combination | Result |
 |---|---|
 | `zlink_spot_dispatch_event_handler` + `zlink_spot_handler` | Mutually exclusive — second install returns `ZLINK_HANDLER_BUSY` |
-| `zlink_spot_dispatch_event_handler` + `zlink_subscribe_handler` | Allowed; they feed independent subsystems. Mix only when you really want the subscribe data to bypass the unified worker |
 | `zlink_spot_dispatch_event_handler` + per-timer `zlink_timer_handler` | The timer's own handler wins for that specific timer; `TIMER_READABLE` is not fired while a direct timer handler is attached to the same timer. Leave timers in recv mode to route them through the dispatch event |
 | `zlink_spot_dispatch_event_handler` + `zlink_send_ready_handler` | Independent axis — send-ready has its own handler |
 

@@ -482,12 +482,14 @@ canonical 에 없는 메서드를 추가하거나(`__iter__`, `to_bytes_list` �
 
 #### `TopicMessage`
 
-SUB / XSUB / Spot subscribe 의 recv 결과. C API `zlink_subscribe()` 의
-4개 out 파라미터를 하나로 묶는다.
+raw `SUB` / `XSUB` 와 service-aware `Spot subscribe` 의 recv 결과다.
+raw pub/sub 는 C API `zlink_subscribe()` 를, Spot subscribe 는
+`zlink_spot_subscribe()` 를 바인딩 도메인 객체 하나로 감싼다.
 
 | 구성 | 타입 | 의미 |
 |------|------|------|
 | `routing_id` | `RoutingId?` (optional) | 송신자 routing id. transport 가 carry 안 하면 null/None/empty |
+| `service_name` | `string?` (optional) | Spot subscribe 에서만 설정되는 서비스명. raw `SUB` / `XSUB` 는 null/None/empty |
 | `topic` | **`string` (UTF-8)** | 매칭된 topic. **bytes 가 아니다.** |
 | `parts` | `List<Message>` / `Vec<Message>` | multipart payload |
 | `is_single_part()` | `bool` | `parts.size() == 1` |
@@ -498,6 +500,8 @@ SUB / XSUB / Spot subscribe 의 recv 결과. C API `zlink_subscribe()` 의
 규칙:
 - `Subscribed` 나 그와 유사한 subclass 를 만들지 않는다. `TopicMessage`
   하나만 노출한다.
+- Spot subscribe 결과는 `service_name + topic + parts` 를 함께 노출해야 한다.
+  `service_name` 을 버리거나 별도 부가 객체로 분리하면 안 된다.
 - `topic` 은 UTF-8 `string` 이다. `bytes` / `byte[]` / `Vec<u8>` 으로
   노출하지 않는다 (내부적으로 raw bytes 로 왔더라도 공개 API 는 decode).
 - `RoutingId` 필드는 typed `RoutingId` 하나만 둔다. `RoutingId: string` +
@@ -535,17 +539,20 @@ PAIR / DEALER / ROUTER / SPOT 의 recv 결과. topic 필드가 없는 점 외에
 
 #### `SubscriptionEvent`
 
-XPub 이 받는 subscribe/unsubscribe 이벤트.
+XPub 이 받는 subscribe/unsubscribe 이벤트와 Spot subscription event recv 결과다.
 
 | 구성 | 타입 | 의미 |
 |------|------|------|
 | `routing_id` | `RoutingId?` | 구독자 routing id |
+| `service_name` | `string?` | Spot subscription event 에서만 설정되는 서비스명. XPub 는 null/None/empty |
 | `topic` | `string` (UTF-8) | 구독/해제 topic |
 | `subscribed` | `bool` | true=subscribe, false=unsubscribe |
 
 규칙:
 - value object 로만 노출한다 (메서드 없음, 필드만).
 - `close()` 등 lifecycle 없음 (값 타입).
+- Spot subscription event 결과는 `service_name + topic + subscribed` 를
+  함께 노출해야 한다.
 
 #### `RoutingId`
 
@@ -900,6 +907,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 |---|---|
 | `publish(service_name, topic, ...)` | Y |
 | `subscribe` | Y |
+| `receiveSubscriptionEvent` | Y |
 | `setSubscription` / `unsetSubscription` | Y |
 | `sendService` / `requestService` | Y |
 | `sendToSpot` / `requestToSpot` / `replyToSpot` | Optional typed routed surface |
@@ -1045,6 +1053,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 | SpotNode | `close` | 노드 종료 |
 | Spot | `publish(service_name, topic, ...)` | 서비스 단위 토픽 발행 |
 | Spot | `subscribe` | 토픽 구독 수신 |
+| Spot | `receiveSubscriptionEvent` | service-aware 구독 이벤트 수신 |
 | Spot | `setSubscription` / `unsetSubscription` | 구독 필터 관리 |
 | Spot | `sendService` / `requestService` | 서비스 단위 routed 송신 / 요청 |
 | Spot | `onDispatchEvent` | topic/routed/timer readable 알림 |
@@ -1111,6 +1120,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 - Spot publish 실패 시 예외 확인
 - Spot dispatch event callback 호출 확인
 - Spot onSendReady callback 호출 확인
+- Spot receiveSubscriptionEvent 경로 확인
 - SpotNode attachRouter / attachPubSub 경로 동작 확인
 - SpotNode service attachment snapshot / node monitor 확인
 - Discovery connectRegistry → 서비스 등록 경로 성공
@@ -1157,6 +1167,8 @@ RegistryQueryClient (원격 토폴로지 조회)
 | Introspection | Required | Required | 구현 시 Required | 구현 시 Required |
 
 - service/spot 계열이 없는 바인딩은 이 테스트를 제외할 수 있다.
+- 여기서 `SpotNode+Spot` 의 `Monitor` 는 `nodeMonitorRecv` 와 socket monitor 를
+  뜻한다. `ServiceMonitor` open surface 를 뜻하지 않는다.
 
 ### Service Layer Sample Policy
 - Canonical Sample Set에 정의된 서비스 계열 샘플:
@@ -1419,8 +1431,10 @@ high-level request 완료는 첫 reply 1건으로 끝난다.
 
 > 언어별 SPOT 인터페이스는 `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
 
-SPOT 은 pub/sub 메시징과 routed direct messaging 두 가지를 지원한다.
-request-reply 는 routed direct messaging 위에 얹어진다.
+SPOT public surface 는 service-aware 경로를 기본으로 둔다. 즉
+`publish(service_name, ...)`, `sendService(...)`, `requestService(...)` 가
+우선 경로다. 직접 주소 지정 routed messaging 은 선택적으로 추가할 수 있는
+보조 typed surface 다. request-reply 는 routed messaging 위에 얹어진다.
 
 #### Pub/Sub 메시징
 
@@ -1583,7 +1597,8 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(void *spot,
 - dispatch event handler 를 등록한다.
 - callback 이 호출되면 `event` 를 확인한다.
 - 같은 `spot` 의 활성 dispatch callback 안에서는 기본 recv surface 를 사용할 수 있다.
-- `SUBSCRIBE_READABLE` 이면 `zlink_spot_subscribe()` 로 pub/sub 메시지를 recv 한다.
+- `SUBSCRIBE_READABLE` 이면 `zlink_spot_subscribe()` 또는
+  `zlink_spot_subscription_event()` 로 pub/sub plane 을 drain 한다.
 - `ROUTED_READABLE` 이면 `zlink_spot_recv()` 로 routed/request 메시지를 recv 한다.
 - `TIMER_READABLE` 이면 `zlink_timer_recv()` 로 timer fire 를 recv 한다.
 - dispatch event 는 readable 알림이다. callback 1회가 메시지 1개를 뜻하지는 않는다.
@@ -1632,7 +1647,8 @@ int zlink_timer_recv(void *timer, uint64_t *fire_count_out);
 ```
 zlink_spot_dispatch_event_handler callback
   (serialized per spot, non-reentrant)
-  ├── SUBSCRIBE_READABLE → zlink_spot_subscribe() (pub/sub 메시지)
+  ├── SUBSCRIBE_READABLE → zlink_spot_subscribe() or
+  │                        zlink_spot_subscription_event()
   ├── ROUTED_READABLE    → zlink_spot_recv()    (routed / request 메시지)
   └── TIMER_READABLE     → zlink_timer_recv()   (timer fire)
 ```
@@ -1694,13 +1710,15 @@ zlink_recv_result_t zlink_router_recv(void *router,
 
 #### Service Monitor
 
-SPOT Node 상태 변경을 모니터링하는 event surface 다.
+Discovery service view 를 모니터링하는 event surface 다. SPOT Node
+service-aware attachment monitor 는 이 API가 아니라
+`zlink_spot_node_monitor_recv()` 로만 받는다.
 
 ```c
 typedef void (*zlink_service_monitor_handler_fn)(
     const zlink_service_event_t *event, void *userdata);
 
-void *zlink_service_monitor_open(void *node,
+void *zlink_service_monitor_open(void *target,
     const zlink_service_monitor_open_options_t *options);
 int zlink_service_monitor_handler(void *monitor,
     zlink_service_monitor_handler_fn handler, void *userdata);
@@ -1718,6 +1736,9 @@ int zlink_service_monitor_recv(void *monitor,
 
 바인딩 규칙:
 - monitor 는 typed handle 로 노출한다.
+- Discovery 지원 바인딩에서는 `ServiceMonitor` 를 노출해야 한다.
+- SpotNode/Spot public API 는 `ServiceMonitor` 를 열지 않는다.
+  SpotNode monitor 는 `nodeMonitorRecv` typed surface 로만 노출한다.
 - event 수신은 handler callback 또는 direct recv 로 제공한다.
 - event mask 필터링은 open 옵션으로 설정한다.
 - `zlink_service_event_t` 는 바인딩이 언어별 typed event object 로 변환한다.

@@ -121,8 +121,6 @@ func (s *PairSocket) Disconnect(endpoint string) error
 func (s *PairSocket) Send(flags SendFlags, parts ...*Message) error
 // Recv receives a message. Returns *RecvError on failure.
 func (s *PairSocket) Recv(flags RecvFlags) (*Received, error)
-// OnReceive registers a receive handler. Returns *HandlerError on failure.
-func (s *PairSocket) OnReceive(handler func(*Received)) error
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *PairSocket) OnSendReady(handler func()) error
 // Option setters/getters return *ConfigError on failure.
@@ -190,8 +188,6 @@ func (s *SubSocket) SetSubscription(filter string) error
 func (s *SubSocket) UnsetSubscription(filter string) error
 // Subscribe receives the next topic message. Returns *RecvError on failure.
 func (s *SubSocket) Subscribe(flags RecvFlags) (*TopicMessage, error)
-// OnSubscribe registers a subscription handler. Returns *HandlerError on failure.
-func (s *SubSocket) OnSubscribe(handler func(*TopicMessage)) error
 // AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
 func (s *SubSocket) AttachDiscovery(discovery *Discovery) error
 // SubscriptionAt / TopicsCount are snapshot queries. Return *ConfigError on failure.
@@ -231,8 +227,6 @@ func (s *DealerSocket) Request(parts [][]byte, timeout time.Duration) ([]*Messag
 // RequestResult which maps to *RequestError for failures.
 // The reply parts slice is nil/empty on failure.
 func (s *DealerSocket) RequestCallback(parts [][]byte, cb func(RequestResult, []*Message), flags SendFlags, timeout time.Duration) error
-// OnReceive registers a receive handler. Returns *HandlerError on failure.
-func (s *DealerSocket) OnReceive(handler func(*Received)) error
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *DealerSocket) OnSendReady(handler func()) error
 // AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
@@ -276,8 +270,6 @@ func (s *RouterSocket) Request(peerRid RoutingID, parts [][]byte, timeout time.D
 func (s *RouterSocket) RequestCallback(peerRid RoutingID, parts [][]byte, cb func(RequestResult, []*Message), flags SendFlags, timeout time.Duration) error
 // Reply submits a reply to a request from peer rid. Returns *SubmitError on failure.
 func (s *RouterSocket) Reply(rid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error
-// OnReceive registers a receive handler. Returns *HandlerError on failure.
-func (s *RouterSocket) OnReceive(handler func(*Received)) error
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *RouterSocket) OnSendReady(handler func()) error
 // AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
@@ -301,7 +293,7 @@ func (s *RouterSocket) ReplyToSpot(destNodeRid, destSpotRid RoutingID,
     requestSeq uint64, flags SendFlags, parts ...*Message) error
 
 // NOTE: RouterSocket 의 routed 수신 plane 은 단일 표면이다. 일반 ROUTER
-// 트래픽과 spot-origin routed 트래픽을 모두 Recv / OnReceive 로 받는다.
+// 트래픽과 spot-origin routed 트래픽을 모두 Recv 로 받는다.
 // Received 에는 RoutingID (source_node_rid) 와 SpotRoutingID
 // (source_spot_rid; spot-origin 일 때만 값 있음), RequestSeq 가 함께 실려
 // 온다. 별도의 RecvSpot / OnSpotReceive 는 제공하지 않는다.
@@ -356,8 +348,6 @@ func (s *XSubSocket) SetSubscription(filter string) error
 func (s *XSubSocket) UnsetSubscription(filter string) error
 // Subscribe receives the next topic message. Returns *RecvError on failure.
 func (s *XSubSocket) Subscribe(flags RecvFlags) (*TopicMessage, error)
-// OnSubscribe registers a subscription handler. Returns *HandlerError on failure.
-func (s *XSubSocket) OnSubscribe(handler func(*TopicMessage)) error
 // SubscriptionAt / TopicsCount are snapshot queries. Return *ConfigError on failure.
 func (s *XSubSocket) SubscriptionAt(index int) (string, bool, error)
 func (s *XSubSocket) TopicsCount() (int, error)
@@ -494,6 +484,10 @@ Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
 // not carry a source id (check with HasRoutingID).
 func (t *TopicMessage) RoutingID() RoutingID
 func (t *TopicMessage) HasRoutingID() bool
+// ServiceName returns the service name for Spot subscribe results.
+// Empty when the message comes from raw SUB / XSUB (check with HasServiceName).
+func (t *TopicMessage) ServiceName() string
+func (t *TopicMessage) HasServiceName() bool
 // Topic is the matched topic (UTF-8).
 func (t *TopicMessage) Topic() string
 func (t *TopicMessage) Parts() []*Message
@@ -509,13 +503,18 @@ func (t *TopicMessage) Close() error
 
 ### SubscriptionEvent
 
-XPub-facing subscribe/unsubscribe event. Value struct (no lifecycle).
+XPub-facing subscribe/unsubscribe event and Spot subscription event recv
+result. Value struct (no lifecycle).
 
 ```go
 // RoutingID returns the subscriber routing id. Empty when the transport
 // does not carry a source id (check with HasRoutingID).
 func (s SubscriptionEvent) RoutingID() RoutingID
 func (s SubscriptionEvent) HasRoutingID() bool
+// ServiceName returns the service name for Spot subscription events.
+// Empty when the event comes from XPub (check with HasServiceName).
+func (s SubscriptionEvent) ServiceName() string
+func (s SubscriptionEvent) HasServiceName() bool
 // Topic is the subscribed/unsubscribed topic (UTF-8).
 func (s SubscriptionEvent) Topic() string
 // Subscribed is true for subscribe, false for unsubscribe.
@@ -611,7 +610,8 @@ const (
 
 ### HandlerResult
 
-Result codes for handler registration operations (OnReceive, OnSubscribe, etc.).
+Result codes for handler registration operations (stream `OnReceive`,
+`OnSendReady`, `OnRoutedReceive`, `OnDispatchEvent`, `OnEvent`, etc.).
 
 ```go
 type HandlerResult int
@@ -965,6 +965,9 @@ func (n *SpotNode) Bind(endpoint string) error
 // ConnectPeer / DisconnectPeer manage peer links. Return *ConnectError on failure.
 func (n *SpotNode) ConnectPeer(endpoint string) error
 func (n *SpotNode) DisconnectPeer(endpoint string) error
+// Service-aware attachment APIs return *ConfigError on failure.
+func (n *SpotNode) AttachRouter(serviceName string, router *RouterSocket) error
+func (n *SpotNode) AttachPubSub(serviceName string, pub *PubSocket, sub *SubSocket) error
 // AttachDiscovery and TLS setters return *ConfigError on failure.
 func (n *SpotNode) AttachDiscovery(discovery *Discovery) error
 func (n *SpotNode) SetTLSServer(certPath, keyPath string, requireClientCert bool) error
@@ -982,6 +985,9 @@ func (n *SpotNode) StatusSnapshot() (*SpotNodeStatus, error)
 func (n *SpotNode) PeersSnapshot() ([]SpotNodePeerEntry, error)
 func (n *SpotNode) PeersQuery(filter *SpotNodePeerFilter) ([]SpotNodePeerEntry, error)
 func (n *SpotNode) SubjectsSnapshot(filters ...*SpotNodeSubjectFilter) ([]SpotNodeSubjectEntry, error)
+func (n *SpotNode) ServiceAttachmentCount() (int, error)
+func (n *SpotNode) ServiceAttachmentAt(index int) (*SpotServiceAttachmentStats, error)
+func (n *SpotNode) NodeMonitorRecv(flags RecvFlags) (*SpotServiceMonitorEvent, error)
 // Close closes the spot node after cascading close to all live Spot handles.
 // Returns *CloseError on failure.
 func (n *SpotNode) Close() error
@@ -995,15 +1001,21 @@ There is no standalone `NewSpot` constructor in the public API.
 
 ```go
 // Spot is a pub/sub facade owned by SpotNode and created only by SpotNode.Spot().
-// Publish sends parts on the given topic. Returns *SubmitError on failure.
-func (s *Spot) Publish(topic string, flags SendFlags, parts ...*Message) error
+// Publish sends parts on the given service/topic. Returns *SubmitError on failure.
+func (s *Spot) Publish(serviceName, topic string, flags SendFlags, parts ...*Message) error
+// SendService sends routed multipart data to the selected service. Returns *SubmitError on failure.
+func (s *Spot) SendService(serviceName string, flags SendFlags, parts ...*Message) error
+// RequestService submits a service-aware request. Returns *SubmitError on submit failure.
+func (s *Spot) RequestService(serviceName string, callback RequestReplyCallback,
+    flags SendFlags, timeout time.Duration, parts ...*Message) error
 // Subscription filter mutation returns *ConfigError on failure.
 func (s *Spot) SetSubscription(filter string) error
 func (s *Spot) UnsetSubscription(filter string) error
 // Subscribe receives the next topic message. Returns *RecvError on failure.
 func (s *Spot) Subscribe(flags RecvFlags) (*TopicMessage, error)
-// OnSubscribe registers a subscription handler. Returns *HandlerError on failure.
-func (s *Spot) OnSubscribe(handler func(*TopicMessage)) error
+// ReceiveSubscriptionEvent receives the next service-aware subscription event.
+// Returns *RecvError on failure.
+func (s *Spot) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *Spot) OnSendReady(handler func()) error
 // Option setters return *ConfigError on failure.
@@ -1185,6 +1197,30 @@ type SpotNodeSubjectEntry struct {
     ReadyPeerCount   uint32
     ActivePeerCount  uint32
     LastChangedMs    uint64
+}
+
+type SpotServiceAttachmentRole int
+
+const (
+    SpotServiceAttachmentRouter SpotServiceAttachmentRole = 1
+    SpotServiceAttachmentPub    SpotServiceAttachmentRole = 2
+    SpotServiceAttachmentSub    SpotServiceAttachmentRole = 3
+)
+
+type SpotServiceAttachmentStats struct {
+    ServiceName     string
+    RouterCount     uint32
+    PubCount        uint32
+    SubCount        uint32
+    AutoRouterCount uint32
+    AutoPubCount    uint32
+    AutoSubCount    uint32
+}
+
+type SpotServiceMonitorEvent struct {
+    ServiceName string
+    Role        SpotServiceAttachmentRole
+    Event       MonitorEventType
 }
 
 // RegistryServiceSummaryFilter — optional filter for Registry.ServiceSummarySnapshot.

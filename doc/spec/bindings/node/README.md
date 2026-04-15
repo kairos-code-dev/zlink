@@ -23,7 +23,7 @@ with the rules here, this section wins.
 - `SpotNode` must expose service-aware attachment APIs:
   `attachRouter(serviceName, router)`,
   `attachPubSub(serviceName, pub, sub)`,
-  service attachment snapshot accessors, and node monitor receive/open mapped
+  service attachment snapshot accessors, and node monitor receive mapped
   to `zlink_spot_node_monitor_recv()`.
 - `Spot` must expose service-aware data-plane methods:
   `sendService(...)`, `requestService(...)`, and
@@ -139,8 +139,6 @@ class PairSocket {
     /** @throws {RecvError} */
     recv(flags?: RecvFlags): Received;
     /** @throws {HandlerError} */
-    onReceive(handler: SocketRecvHandler): void;
-    /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {CloseError} */
     close(): void;
@@ -194,8 +192,6 @@ class SubSocket {
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {RecvError} */
     subscribe(flags?: RecvFlags): TopicMessage;
-    /** @throws {HandlerError} */
-    onSubscribe(handler: SocketSubscribeHandler): void;
     /** @throws {ConfigError} */
     attachDiscovery(discovery: Discovery): void;
     /** @throws {CloseError} */
@@ -227,8 +223,6 @@ class DealerSocket {
     send(parts: readonly MessageLike[], flags?: SendFlags): void;
     /** @throws {RecvError} */
     recv(flags?: RecvFlags): Received;
-    /** @throws {HandlerError} */
-    onReceive(handler: SocketRecvHandler): void;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
@@ -285,8 +279,6 @@ class RouterSocket {
     send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
     /** @throws {RecvError} */
     recv(flags?: RecvFlags): Received;
-    /** @throws {HandlerError} */
-    onReceive(handler: SocketRecvHandler): void;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
@@ -424,8 +416,6 @@ class XSubSocket {
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {RecvError} */
     subscribe(flags?: RecvFlags): TopicMessage;
-    /** @throws {HandlerError} */
-    onSubscribe(handler: SocketSubscribeHandler): void;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -613,6 +603,7 @@ Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
 ```typescript
 class TopicMessage {
     readonly routingId: RoutingId | null;    // null when transport carries no source id
+    readonly serviceName: string | null;     // Spot subscribe only; null for raw SUB / XSUB
     readonly topic: string;                  // UTF-8
     readonly parts: Message[];
     isSinglePart(): boolean;
@@ -627,12 +618,13 @@ class TopicMessage {
 
 ### SubscriptionEvent
 
-Value object emitted by `XPubSocket.receiveSubscriptionEvent`. No
-lifecycle methods.
+Value object emitted by `XPubSocket.receiveSubscriptionEvent` and
+`Spot.receiveSubscriptionEvent`. No lifecycle methods.
 
 ```typescript
 class SubscriptionEvent {
     readonly routingId: RoutingId | null;
+    readonly serviceName: string | null;
     readonly topic: string;                  // UTF-8
     readonly subscribed: boolean;            // true=subscribe, false=unsubscribe
 }
@@ -722,7 +714,8 @@ type RecvResult = typeof RecvResult[keyof typeof RecvResult];
 
 ### HandlerResult
 
-Result codes for handler registration operations (onReceive, onSubscribe, etc.).
+Result codes for handler registration operations (stream `onReceive`,
+`onSendReady`, `onRoutedReceive`, `onDispatchEvent`, `onEvent`, etc.).
 
 ```typescript
 const HandlerResult = {
@@ -863,7 +856,7 @@ class RecvError extends ZlinkError {
 
 ### HandlerError
 
-Thrown by handler registration methods (`onReceive`, `onSubscribe`,
+Thrown by handler registration methods (stream `onReceive`,
 `onSendReady`, `onRoutedReceive`, `onDispatchEvent`, `onFire`, `onEvent`,
 etc.). Wraps a `HandlerResult`.
 
@@ -1112,6 +1105,10 @@ class SpotNode {
     /** @throws {ConnectError} */
     disconnectPeer(endpoint: string): void;
     /** @throws {ConfigError} */
+    attachRouter(serviceName: string, router: RouterSocket): void;
+    /** @throws {ConfigError} */
+    attachPubSub(serviceName: string, pub: PubSocket, sub: SubSocket): void;
+    /** @throws {ConfigError} */
     attachDiscovery(discovery: Discovery): void;
     /** @throws {ConfigError} */
     setTlsServer(cert: string, key: string, requireClient?: number): void;
@@ -1127,6 +1124,12 @@ class SpotNode {
     peersQuery(filter?: SpotNodePeerFilter): SpotNodePeerEntry[];
     /** @throws {ConfigError} */
     subjectsSnapshot(filter?: SpotNodeSubjectFilter): SpotNodeSubjectEntry[];
+    /** @throws {ConfigError} */
+    serviceAttachmentCount(): number;
+    /** @throws {ConfigError} */
+    serviceAttachmentAt(index: number): SpotServiceAttachmentStats;
+    /** @throws {RecvError} */
+    nodeMonitorRecv(flags?: RecvFlags): SpotServiceMonitorEvent;
 
     // --- identity / routing ---
     /**
@@ -1152,17 +1155,25 @@ and is not part of the public API contract.
 class Spot {
     // The SpotNode constructor path is internal. Public code must use SpotNode.createSpot().
     /** @throws {SubmitError} */
-    publish(topic: string, payload: MessageLike, flags?: SendFlags): void;
+    publish(serviceName: string, topic: string, payload: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
-    publish(topic: string, payloadParts: readonly MessageLike[], flags?: SendFlags): void;
+    publish(serviceName: string, topic: string, payloadParts: readonly MessageLike[], flags?: SendFlags): void;
+    /** @throws {SubmitError} */
+    sendService(serviceName: string, payload: MessageLike, flags?: SendFlags): void;
+    /** @throws {SubmitError} */
+    sendService(serviceName: string, payloadParts: readonly MessageLike[], flags?: SendFlags): void;
+    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    requestService(serviceName: string, message: MessageLike, timeout?: number): Promise<Message[]>;
+    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    requestService(serviceName: string, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
     /** @throws {ConfigError} */
     setSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {RecvError} */
     subscribe(flags?: RecvFlags): TopicMessage;
-    /** @throws {HandlerError} */
-    onSubscribe(handler: SpotSubHandler): void;
+    /** @throws {RecvError} */
+    receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent;
     /** @throws {HandlerError} */
     onSendReady(handler: SpotSendReadyHandler): void;
     /** @throws {ConfigError} */
@@ -1392,6 +1403,22 @@ interface SpotNodeSubjectEntry {
     readonly readyPeerCount: number;         // uint32
     readonly activePeerCount: number;        // uint32
     readonly lastChangedMs: bigint;          // uint64 epoch ms
+}
+
+interface SpotServiceAttachmentStats {
+    readonly serviceName: string;
+    readonly routerCount: number;
+    readonly pubCount: number;
+    readonly subCount: number;
+    readonly autoRouterCount: number;
+    readonly autoPubCount: number;
+    readonly autoSubCount: number;
+}
+
+interface SpotServiceMonitorEvent {
+    readonly serviceName: string;
+    readonly role: number;
+    readonly event: MonitorEventType;
 }
 
 /** Filter for Registry service summary snapshot. */

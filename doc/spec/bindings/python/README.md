@@ -24,7 +24,7 @@ with the rules here, this section wins.
   `attach_router(service_name, router)`,
   `attach_pubsub(service_name, pub, sub)`,
   `service_attachment_count()`,
-  `service_attachment_at(index)`, and a node monitor recv/open surface for
+  `service_attachment_at(index)`, and a node monitor recv surface for
   `zlink_spot_node_monitor_recv()`.
 - `Spot` must expose service-aware data-plane methods:
   `send_service(...)`, `request_service(...)`, and
@@ -110,7 +110,6 @@ class PairSocket:
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
     def send(self, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
     def recv(self, *, flags: int = 0) -> Received: ...                           # Raises: RecvError
-    def on_receive(self, handler: Callable[[Received], None]) -> None: ...       # Raises: HandlerError
     def on_send_ready(self, handler: Callable[[PairSocket], None]) -> None: ...  # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -152,7 +151,6 @@ class SubSocket:
     def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
     def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
     def subscribe(self, *, flags: int = 0) -> TopicMessage: ...                    # Raises: RecvError
-    def on_subscribe(self, handler: Callable[[TopicMessage], None]) -> None: ...   # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -175,7 +173,6 @@ class DealerSocket:
     def get_routing_id(self) -> RoutingId | None: ...                              # Raises: ConfigError
     def send(self, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
     def recv(self, *, flags: int = 0) -> Received: ...                             # Raises: RecvError
-    def on_receive(self, handler: Callable[[Received], None]) -> None: ...         # Raises: HandlerError
     def on_send_ready(self, handler: Callable[[DealerSocket], None]) -> None: ...  # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                  # Raises: ConfigError
@@ -215,7 +212,6 @@ class RouterSocket:
     def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
     def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> None: ...  # Raises: SubmitError
     def recv(self, *, flags: int = 0) -> Received: ...                           # Raises: RecvError
-    def on_receive(self, handler: Callable[[Received], None]) -> None: ...       # Raises: HandlerError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
@@ -314,7 +310,6 @@ class XSubSocket:
     def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
     def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
     def subscribe(self, *, flags: int = 0) -> TopicMessage: ...                    # Raises: RecvError
-    def on_subscribe(self, handler: Callable[[TopicMessage], None]) -> None: ...   # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -534,6 +529,7 @@ class Received:
 ```python
 class TopicMessage:
     routing_id: RoutingId | None             # None when transport carries no source id
+    service_name: str | None                 # Spot subscribe only; None for raw SUB / XSUB
     topic: str                               # UTF-8
     parts: tuple[Message, ...]
 
@@ -547,12 +543,14 @@ class TopicMessage:
 
 ### SubscriptionEvent
 
-Value object delivered by `XPubSocket.receive_subscription_event()`.
+Value object delivered by `XPubSocket.receive_subscription_event()` and
+`Spot.receive_subscription_event()`.
 Fields only — no `close()` / lifecycle methods.
 
 ```python
 class SubscriptionEvent:
     routing_id: RoutingId | None    # subscriber routing id; None if transport carries none
+    service_name: str | None        # Spot subscription event only; None for XPub
     topic: str                       # UTF-8 topic string (NOT bytes)
     subscribed: bool                 # True = subscribe, False = unsubscribe
 ```
@@ -972,6 +970,8 @@ class SpotNode:
     def last_endpoint(self) -> str: ...                                          # Raises: ConfigError
     def connect_peer(self, endpoint: str) -> None: ...                           # Raises: ConnectError
     def disconnect_peer(self, endpoint: str) -> None: ...                        # Raises: ConnectError
+    def attach_router(self, service_name: str, router: RouterSocket) -> None: ...  # Raises: ConfigError
+    def attach_pubsub(self, service_name: str, pub: PubSocket, sub: SubSocket) -> None: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
 
     # --- identity / routing ---
@@ -992,6 +992,9 @@ class SpotNode:
                     ) -> list[SpotNodePeerEntry]: ...                            # Raises: ConfigError
     def subjects_snapshot(self, filter_: SpotNodeSubjectFilter | None = None
                           ) -> list[SpotNodeSubjectEntry]: ...                   # Raises: ConfigError
+    def service_attachment_count(self) -> int: ...                               # Raises: ConfigError
+    def service_attachment_at(self, index: int) -> SpotServiceAttachmentStats: ...  # Raises: ConfigError
+    def node_monitor_recv(self, *, flags: int = 0) -> SpotServiceMonitorEvent: ...  # Raises: RecvError
     # close() cascades: closes all live Spot handles before the node becomes invalid.
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -1013,11 +1016,14 @@ class Spot:
     @property
     def routing_id(self) -> RoutingId: ...                                       # Raises: ConfigError
 
-    def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    def publish(self, service_name: str, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    def send_service(self, service_name: str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    async def request_service(self, service_name: str, payload: Message | bytes | list,
+                              *, timeout: int = 0) -> list[Message]: ...
     def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
     def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
-    def subscribe(self, *, flags: int = 0) -> TopicMessage: ...                    # Raises: RecvError
-    def on_subscribe(self, handler: Callable[[TopicMessage], None]) -> None: ...   # Raises: HandlerError
+    def subscribe(self, *, flags: int = 0) -> TopicMessage: ...                  # Raises: RecvError
+    def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable[[Spot], None]) -> None: ...        # Raises: HandlerError
 
     # --- routed send (spot → spot) ---
@@ -1185,6 +1191,22 @@ class SpotNodeSubjectEntry:
     ready_peer_count: int
     active_peer_count: int
     last_changed_ms: int
+
+@dataclass(frozen=True)
+class SpotServiceAttachmentStats:
+    service_name: str
+    router_count: int
+    pub_count: int
+    sub_count: int
+    auto_router_count: int
+    auto_pub_count: int
+    auto_sub_count: int
+
+@dataclass(frozen=True)
+class SpotServiceMonitorEvent:
+    service_name: str
+    role: int                        # zlink_spot_service_attachment_role_t
+    event: int                       # zlink_monitor_event_t
 
 @dataclass(frozen=True)
 class RegistryServiceSummaryFilter:

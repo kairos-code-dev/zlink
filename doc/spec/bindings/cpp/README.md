@@ -166,8 +166,6 @@ class pair_socket_t : public message_socket_t {
     /// @throws recv_error_t
     received_t recv(recv_flags_t flags = recv_flags_t::none);
     /// @throws handler_error_t
-    void on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
-    /// @throws handler_error_t
     void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 };
 ```
@@ -217,9 +215,6 @@ class sub_socket_t : public subscriber_socket_t {
     // --- receive ---
     /// @throws recv_error_t
     topic_message_t subscribe(recv_flags_t flags = recv_flags_t::none);
-    /// @throws handler_error_t
-    void on_subscribe(zlink_subscribe_handler_fn handler, void* userdata = NULL);
-
     // --- sub-specific options ---
     /// @throws config_error_t
     sub_socket_options_t sub_options();
@@ -247,8 +242,6 @@ class dealer_socket_t : public message_socket_t {
     // --- receive ---
     /// @throws recv_error_t
     received_t recv(recv_flags_t flags = recv_flags_t::none);
-    /// @throws handler_error_t
-    void on_receive(zlink_socket_msg_handler_fn handler, void* userdata = NULL);
     /// @throws handler_error_t
     void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
@@ -314,8 +307,6 @@ class router_socket_t : public routed_message_socket_t {
     // 트래픽 (reply 는 reply_to_spot 사용).
     /// @throws recv_error_t
     received_t recv(recv_flags_t flags = recv_flags_t::none);
-    /// @throws handler_error_t
-    void on_receive(zlink_router_handler_fn handler, void* userdata = NULL);
     /// @throws handler_error_t
     void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
@@ -446,8 +437,6 @@ class xsub_socket_t : public subscriber_socket_t {
     // --- receive ---
     /// @throws recv_error_t
     topic_message_t subscribe(recv_flags_t flags = recv_flags_t::none);
-    /// @throws handler_error_t
-    void on_subscribe(zlink_subscribe_handler_fn handler, void* userdata = NULL);
 
     // --- sub-specific options ---
     /// @throws config_error_t
@@ -788,10 +777,12 @@ Owns `message_t` parts; destructor releases them.
 class topic_message_t {
 public:
     topic_message_t(std::optional<routing_id_t> routing_id,
+                    std::optional<std::string> service_name,
                     std::string topic,
                     std::vector<message_t> parts);
 
     const std::optional<routing_id_t>& routing_id() const noexcept;  // nullopt if transport carries no source id
+    const std::optional<std::string>& service_name() const noexcept; // Spot subscribe only; empty for raw SUB / XSUB
     const std::string& topic() const noexcept;                       // UTF-8
     const std::vector<message_t>& parts() const noexcept;
     std::vector<message_t>& parts() noexcept;
@@ -809,12 +800,13 @@ public:
 
 ### subscription_event_t
 
-Reports a subscribe/unsubscribe event from xpub sockets. Plain value
-struct — no methods, no lifecycle.
+Reports a subscribe/unsubscribe event from xpub sockets and Spot
+subscription event recv. Plain value struct — no methods, no lifecycle.
 
 ```cpp
 struct subscription_event_t {
     std::optional<routing_id_t> routing_id;  // nullopt if transport carries no subscriber id
+    std::optional<std::string> service_name; // Spot subscription event only; empty for XPub
     std::string topic;                        // UTF-8
     bool subscribed;                          // true = subscribe, false = unsubscribe
 };
@@ -1463,6 +1455,28 @@ struct spot_node_subject_entry_t {
     uint64_t last_changed_ms;
 };
 
+enum class spot_service_attachment_role_t {
+    router = 1,
+    pub = 2,
+    sub = 3,
+};
+
+struct spot_service_attachment_stats_t {
+    std::string service_name;
+    uint32_t router_count;
+    uint32_t pub_count;
+    uint32_t sub_count;
+    uint32_t auto_router_count;
+    uint32_t auto_pub_count;
+    uint32_t auto_sub_count;
+};
+
+struct spot_service_monitor_event_t {
+    std::string service_name;
+    spot_service_attachment_role_t role;
+    monitor_event_t event;
+};
+
 struct spot_node_subject_filter_t {
     spot_role_t role;
     std::string subject;
@@ -1687,27 +1701,35 @@ class spot_t {
     bool valid() const noexcept;
     void* handle() const;
 
-    // --- publish ---
+    // --- service-aware publish / request ---
     /// @throws submit_error_t
-    void publish(const std::string& topic, message_t& part, send_flags_t flags = send_flags_t::none);
+    void publish(const std::string& service_name, const std::string& topic,
+                 message_t& part, send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    void publish(const std::string& topic, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    void publish(const std::string& service_name, const std::string& topic,
+                 std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    void publish(const char* topic, message_t& part, send_flags_t flags = send_flags_t::none);
+    void send_service(const std::string& service_name,
+                      std::vector<message_t>& parts,
+                      send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    void publish(const char* topic, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    void request_service(const std::string& service_name,
+                         std::vector<message_t>& parts,
+                         std::function<void(request_result_t, std::vector<message_t>)> callback,
+                         send_flags_t flags = send_flags_t::none,
+                         std::chrono::milliseconds timeout = {});
 
     // --- subscribe ---
     /// @throws recv_error_t
     topic_message_t subscribe(recv_flags_t flags = recv_flags_t::none);
+    /// @throws recv_error_t
+    subscription_event_t receive_subscription_event(recv_flags_t flags = recv_flags_t::none);
     /// @throws config_error_t
     void set_subscription(const std::string& filter);
     /// @throws config_error_t
     void unset_subscription(const std::string& filter);
     /// @throws config_error_t
     void subscription_at(size_t index, std::string& filter_out, bool* is_pattern_out = NULL) const;
-    /// @throws handler_error_t
-    void on_subscribe(zlink_subscribe_handler_fn handler, void* userdata = NULL);
     /// @throws handler_error_t
     void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 

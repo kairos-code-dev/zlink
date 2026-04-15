@@ -28,7 +28,7 @@ with the rules here, this section wins.
 - `SpotNode` must expose service-aware attachment APIs:
   `attachRouter(String serviceName, RouterSocket router)`,
   `attachPubSub(String serviceName, PubSocket pub, SubSocket sub)`,
-  service attachment snapshot accessors, and node monitor receive/open mapped
+  service attachment snapshot accessors, and node monitor receive mapped
   to `zlink_spot_node_monitor_recv()`.
 - `Spot` must expose service-aware data-plane methods:
   `sendService(...)`, `requestService(...)`, and
@@ -107,7 +107,6 @@ public final class PairSocket extends Socket {
 
     Received recv();                                                 // @throws RecvException
     Received recv(RecvFlags flags);                                  // @throws RecvException
-    void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 }
 ```
@@ -154,7 +153,6 @@ public final class SubSocket extends Socket {
     void unsetSubscription(String filter);                           // @throws ConfigException
     TopicMessage subscribe();                                        // @throws RecvException
     TopicMessage subscribe(RecvFlags flags);                         // @throws RecvException
-    void onSubscribe(SubscribeHandler handler);                      // @throws HandlerException
 
     SubSocketOptions options();
 }
@@ -184,7 +182,6 @@ public final class DealerSocket extends Socket {
 
     Received recv();                                                 // @throws RecvException
     Received recv(RecvFlags flags);                                  // @throws RecvException
-    void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // --- request (async, no flags) ---
@@ -237,7 +234,6 @@ public final class RouterSocket extends Socket {
 
     Received recv();                                                 // @throws RecvException
     Received recv(RecvFlags flags);                                  // @throws RecvException
-    void onReceive(SocketMessageHandler handler);                    // @throws HandlerException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // --- request to a specific peer (async, no flags) ---
@@ -371,7 +367,6 @@ public final class XSubSocket extends Socket {
     void unsetSubscription(String filter);                           // @throws ConfigException
     TopicMessage subscribe();                                        // @throws RecvException
     TopicMessage subscribe(RecvFlags flags);                         // @throws RecvException
-    void onSubscribe(SubscribeHandler handler);                      // @throws HandlerException
 
     SubSocketOptions options();
 }
@@ -587,8 +582,8 @@ public final class RecvException extends ZlinkException {
 
 ### HandlerException
 
-Thrown by handler registration methods (`onReceive`, `onSubscribe`,
-`onSendReady`, `onRoutedReceive`, `onDispatchEvent`, etc.). Wraps a
+Thrown by handler registration methods (stream `onReceive`,
+`onSendReady`, `onRoutedReceive`, `onDispatchEvent`, `onEvent`, etc.). Wraps a
 `HandlerResult`.
 
 ```java
@@ -716,7 +711,8 @@ public enum RecvResult {
 
 ### HandlerResult
 
-Result code for handler registration operations (onReceive, onSubscribe, etc.).
+Result code for handler registration operations (stream `onReceive`,
+`onSendReady`, `onRoutedReceive`, `onDispatchEvent`, `onEvent`, etc.).
 
 ```java
 public enum HandlerResult {
@@ -839,9 +835,10 @@ Implements `AutoCloseable`.
 
 ```java
 public final class TopicMessage implements AutoCloseable {
-    TopicMessage(RoutingId routingId, String topic, Message[] parts);
+    TopicMessage(RoutingId routingId, String serviceName, String topic, Message[] parts);
 
     Optional<RoutingId> routingId();
+    Optional<String> serviceName();          // empty for raw SUB / XSUB
     String topic();                          // UTF-8
     List<Message> parts();
     boolean isSinglePart();
@@ -854,11 +851,12 @@ public final class TopicMessage implements AutoCloseable {
 
 ### SubscriptionEvent
 
-Reports a subscribe/unsubscribe event from XPub sockets. Immutable value
-object; no lifecycle methods.
+Reports a subscribe/unsubscribe event from XPub sockets and Spot
+subscription event recv. Immutable value object; no lifecycle methods.
 
 ```java
 public record SubscriptionEvent(Optional<RoutingId> routingId,
+                                Optional<String> serviceName,
                                 String topic,           // UTF-8
                                 boolean subscribed) {}
 ```
@@ -1027,6 +1025,8 @@ public final class SpotNode implements AutoCloseable {
     void bind(String endpoint);                                      // @throws BindException
     void connectPeer(String peerEndpoint);                           // @throws ConnectException
     void disconnectPeer(String peerEndpoint);                        // @throws ConnectException
+    void attachRouter(String serviceName, RouterSocket router);      // @throws ConfigException
+    void attachPubSub(String serviceName, PubSocket pub, SubSocket sub); // @throws ConfigException
     void attachDiscovery(Discovery discovery);                       // @throws ConfigException
     void setTlsServer(String certPem, String keyPem, boolean requireClientCert); // @throws ConfigException
     void setTlsClient(String caCertPem, String hostname, boolean trustSystem);   // @throws ConfigException
@@ -1045,6 +1045,10 @@ public final class SpotNode implements AutoCloseable {
     List<SpotNodePeerEntry> peersQuery(SpotNodePeerFilter filter);   // @throws ConfigException
     List<SpotNodeSubjectEntry> subjectsSnapshot();                   // @throws ConfigException
     List<SpotNodeSubjectEntry> subjectsSnapshot(SpotNodeSubjectFilter filter); // @throws ConfigException
+    int serviceAttachmentCount();                                    // @throws ConfigException
+    SpotServiceAttachmentStats serviceAttachmentAt(int index);       // @throws ConfigException
+    SpotServiceMonitorEvent nodeMonitorRecv();                       // @throws RecvException
+    SpotServiceMonitorEvent nodeMonitorRecv(RecvFlags flags);        // @throws RecvException
 
     // close() cascades: 모든 live Spot 먼저 close 한 후 node 종료
     void close();                                                    // @throws CloseException
@@ -1057,7 +1061,7 @@ factory 로만 생성한다. 직접 `new Spot(node)` 호출은 internal 로 격�
 
 ### Spot
 
-Spot messaging endpoint. Provides pub/sub and subscription management.
+Spot messaging endpoint. Provides service-aware pub/sub and routed messaging.
 Implements `AutoCloseable`. **`SpotNode.createSpot()` 로만 생성**.
 
 ```java
@@ -1070,19 +1074,26 @@ public final class Spot implements AutoCloseable {
     void setRoutingId(RoutingId rid);                                // @throws ConfigException
     RoutingId routingId();                                           // @throws ConfigException
 
-    // --- publish ---
-    void publish(String topicId, Message part);                      // @throws SubmitException
-    void publish(String topicId, Message part, SendFlags flags);     // @throws SubmitException
-    void publish(String topicId, List<Message> parts);               // @throws SubmitException
-    void publish(String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
+    // --- service-aware publish / request ---
+    void publish(String serviceName, String topicId, Message part);                      // @throws SubmitException
+    void publish(String serviceName, String topicId, Message part, SendFlags flags);     // @throws SubmitException
+    void publish(String serviceName, String topicId, List<Message> parts);               // @throws SubmitException
+    void publish(String serviceName, String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
+    void sendService(String serviceName, Message part);                                  // @throws SubmitException
+    void sendService(String serviceName, Message part, SendFlags flags);                 // @throws SubmitException
+    void sendService(String serviceName, List<Message> parts);                           // @throws SubmitException
+    void sendService(String serviceName, List<Message> parts, SendFlags flags);          // @throws SubmitException
+    CompletableFuture<List<Message>> requestService(String serviceName, Message part);   // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> requestService(String serviceName, List<Message> parts); // @throws SubmitException; future completes with RequestException on failure
 
     // --- subscribe ---
     void setSubscription(String topicId);                            // @throws ConfigException
     void unsetSubscription(String topicIdOrPattern);                 // @throws ConfigException
-    void onSubscribe(SubscribeHandler handler);                      // @throws HandlerException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
     TopicMessage subscribe();                                        // @throws RecvException
     TopicMessage subscribe(RecvFlags flags);                         // @throws RecvException
+    SubscriptionEvent receiveSubscriptionEvent();                    // @throws RecvException
+    SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags);     // @throws RecvException
 
     // --- routed send (spot -> spot) ---
     void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);         // @throws SubmitException
@@ -1321,6 +1332,24 @@ public record SpotNodeSubjectEntry(SpotRole role,
                                    int readyPeerCount,
                                    int activePeerCount,
                                    long lastChangedMs) {}
+
+public record SpotServiceAttachmentStats(String serviceName,
+                                         int routerCount,
+                                         int pubCount,
+                                         int subCount,
+                                         int autoRouterCount,
+                                         int autoPubCount,
+                                         int autoSubCount) {}
+
+public record SpotServiceMonitorEvent(String serviceName,
+                                      SpotServiceAttachmentRole role,
+                                      MonitorEventType event) {}
+
+public enum SpotServiceAttachmentRole {
+    ROUTER,
+    PUB,
+    SUB
+}
 ```
 
 ### SpotNodePeerFilter

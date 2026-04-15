@@ -256,9 +256,6 @@ impl SubSocket {
     pub fn subscribe(&self) -> Result<TopicMessage, RecvError>;
     /// # Errors: RecvError
     pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, RecvError>;
-    /// # Errors: HandlerError
-    pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(TopicMessage) + Send + 'static;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn sub_options(&self) -> SubSocketOptions<'_, Self>;
     /// # Errors: ConfigError
@@ -479,9 +476,6 @@ impl XSubSocket {
     pub fn subscribe(&self) -> Result<TopicMessage, RecvError>;
     /// # Errors: RecvError
     pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, RecvError>;
-    /// # Errors: HandlerError
-    pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(TopicMessage) + Send + 'static;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn sub_options(&self) -> SubSocketOptions<'_, Self>;
     /// # Errors: CloseError
@@ -653,6 +647,7 @@ for deterministic cleanup.
 ```rust
 pub struct TopicMessage {
     pub routing_id: Option<RoutingId>,   // None when transport carries no source id
+    pub service_name: Option<String>,    // Spot subscribe only; None for raw SUB / XSUB
     pub topic: String,                   // UTF-8
     pub parts: Vec<Message>,
 }
@@ -671,13 +666,14 @@ impl TopicMessage {
 
 ### SubscriptionEvent
 
-Value struct emitted by `XPubSocket::receive_subscription_event`. Pure
-value type: no methods, no lifecycle. `topic` is UTF-8 `String` (never
-raw bytes).
+Value struct emitted by `XPubSocket::receive_subscription_event` and
+`Spot::receive_subscription_event`. Pure value type: no methods, no
+lifecycle. `topic` is UTF-8 `String` (never raw bytes).
 
 ```rust
 pub struct SubscriptionEvent {
     pub routing_id: Option<RoutingId>,   // None when transport carries no source id
+    pub service_name: Option<String>,    // Spot subscription event only; None for XPub
     pub topic: String,                   // UTF-8 subscribe/unsubscribe topic
     pub subscribed: bool,                // true = subscribe, false = unsubscribe
 }
@@ -1267,6 +1263,12 @@ impl SpotNode {
     /// # Errors: ConnectError
     pub fn disconnect_peer(&self, peer_endpoint: &str) -> Result<(), ConnectError>;
     /// # Errors: ConfigError
+    pub fn attach_router(&self, service_name: &str, router: &RouterSocket)
+        -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn attach_pubsub(&self, service_name: &str, pub: &PubSocket, sub: &SubSocket)
+        -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn set_tls_server(&self, cert_path: &str, key_path: &str,
@@ -1286,6 +1288,16 @@ impl SpotNode {
     /// # Errors: ConfigError
     pub fn subjects_snapshot(&self, filter: Option<&SpotNodeSubjectFilter>)
         -> Result<Vec<SpotNodeSubjectEntry>, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn service_attachment_count(&self) -> Result<usize, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn service_attachment_at(&self, index: usize)
+        -> Result<SpotServiceAttachmentStats, ConfigError>;
+    /// # Errors: RecvError
+    pub fn node_monitor_recv(&self) -> Result<SpotServiceMonitorEvent, RecvError>;
+    /// # Errors: RecvError
+    pub fn node_monitor_recv_with_flags(&self, flags: RecvFlags)
+        -> Result<SpotServiceMonitorEvent, RecvError>;
 
     // --- identity / routing ---
     /// SpotNode's logical address.
@@ -1311,9 +1323,26 @@ internal and is not part of the public API contract.
 impl Spot {
     // Spot::new(&node) is internal. Public code must use SpotNode::create_spot().
     /// # Errors: SubmitError
-    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    pub fn publish(&self, service_name: &str, topic: &str,
+        parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
-    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    pub fn publish_with_flags(&self, service_name: &str, topic: &str,
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn send_service(&self, service_name: &str,
+        parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn send_service_with_flags(&self, service_name: &str,
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
+    pub fn request_service_callback<F>(&self, service_name: &str,
+        parts: impl IntoMultipart, callback: F,
+        flags: SendFlags, timeout: Duration)
+        -> Result<(), SubmitError>
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
+    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
+    pub async fn request_service(&self, service_name: &str,
+        parts: impl IntoMultipart, timeout: Duration) -> Result<Vec<Message>, ZlinkError>;
     /// # Errors: ConfigError
     pub fn set_subscription(&self, filter: &str) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
@@ -1322,9 +1351,10 @@ impl Spot {
     pub fn subscribe(&self) -> Result<TopicMessage, RecvError>;
     /// # Errors: RecvError
     pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, RecvError>;
-    /// # Errors: HandlerError
-    pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(TopicMessage) + Send + 'static;
+    pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError>;
+    /// # Errors: RecvError
+    pub fn receive_subscription_event_with_flags(&self, flags: RecvFlags)
+        -> Result<SubscriptionEvent, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -1558,6 +1588,29 @@ pub struct SpotNodeSubjectFilter {
     pub role: Option<SpotRole>,
     pub subject: Option<String>,
     pub subject_kind: Option<u32>,
+}
+
+#[repr(i32)]
+pub enum SpotServiceAttachmentRole {
+    Router = 1,
+    Pub = 2,
+    Sub = 3,
+}
+
+pub struct SpotServiceAttachmentStats {
+    pub service_name: String,
+    pub router_count: u32,
+    pub pub_count: u32,
+    pub sub_count: u32,
+    pub auto_router_count: u32,
+    pub auto_pub_count: u32,
+    pub auto_sub_count: u32,
+}
+
+pub struct SpotServiceMonitorEvent {
+    pub service_name: String,
+    pub role: SpotServiceAttachmentRole,
+    pub event: MonitorEventType,
 }
 ```
 

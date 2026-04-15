@@ -25,7 +25,7 @@ with the rules here, this section wins.
 - `SpotNode` must expose service-aware attachment APIs:
   `AttachRouter(string serviceName, RouterSocket router)`,
   `AttachPubSub(string serviceName, PubSocket pub, SubSocket sub)`,
-  service attachment snapshot accessors, and node monitor receive/open mapped
+  service attachment snapshot accessors, and node monitor receive mapped
   to `zlink_spot_node_monitor_recv()`.
 - `Spot` must expose service-aware data-plane methods:
   `SendService(...)`, `RequestService(...)`, and
@@ -142,8 +142,6 @@ public sealed class PairSocket : MessageSocketBase
     /// <exception cref="ZlinkRecvException"/>
     Received Recv(RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
-    void OnReceive(SocketRecvHandler handler);
-    /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 }
 ```
@@ -195,8 +193,6 @@ public sealed class SubSocket : SubscriberSocketBase
     void UnsetSubscription(string topicOrPattern);
     /// <exception cref="ZlinkRecvException"/>
     TopicMessage Subscribe(RecvFlags flags = RecvFlags.None);
-    /// <exception cref="ZlinkHandlerException"/>
-    void OnSubscribe(SocketSubscribeHandler handler);
 }
 ```
 
@@ -227,8 +223,6 @@ public sealed class DealerSocket : MessageSocketBase
     void Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkRecvException"/>
     Received Recv(RecvFlags flags = RecvFlags.None);
-    /// <exception cref="ZlinkHandlerException"/>
-    void OnReceive(SocketRecvHandler handler);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 
@@ -293,8 +287,6 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
               SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkRecvException"/>
     Received Recv(RecvFlags flags = RecvFlags.None);
-    /// <exception cref="ZlinkHandlerException"/>
-    void OnReceive(SocketRecvHandler handler);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 
@@ -386,9 +378,9 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                      SendFlags flags = SendFlags.None);
 
     // NOTE: RouterSocket 의 routed 수신 plane 은 단일 표면이다. 일반
-    // ROUTER 트래픽과 spot-origin routed 트래픽을 모두 Recv / OnReceive 로
-    // 받는다. `Received.RoutingId` 는 source_node_rid, `Received.SpotRid`
-    // 는 spot-origin 트래픽에서만 값이 있다. 별도의 RecvSpot /
+    // ROUTER 트래픽과 spot-origin routed 트래픽을 모두 Recv 로 받는다.
+    // `Received.RoutingId` 는 source_node_rid, `Received.SpotRid` 는
+    // spot-origin 트래픽에서만 값이 있다. 별도의 RecvSpot /
     // OnSpotReceive 는 제공하지 않는다.
 }
 ```
@@ -437,8 +429,6 @@ public sealed class XSubSocket : SubscriberSocketBase
     void UnsetSubscription(string topicOrPattern);
     /// <exception cref="ZlinkRecvException"/>
     TopicMessage Subscribe(RecvFlags flags = RecvFlags.None);
-    /// <exception cref="ZlinkHandlerException"/>
-    void OnSubscribe(SocketSubscribeHandler handler);
 }
 ```
 
@@ -817,7 +807,8 @@ public enum RecvResult
 
 ### HandlerResult
 
-Result code for handler registration operations (OnReceive, OnSubscribe, etc.).
+Result code for handler registration operations (stream `OnReceive`,
+`OnSendReady`, `OnRoutedReceive`, `OnDispatchEvent`, `OnEvent`, etc.).
 
 ```csharp
 public enum HandlerResult
@@ -932,6 +923,7 @@ Implements `IDisposable`.
 public sealed class TopicMessage : IDisposable
 {
     RoutingId? RoutingId { get; }            // null when transport carries no source id
+    string? ServiceName { get; }             // Spot subscribe only; null for raw SUB / XSUB
     string Topic { get; }                    // UTF-8
     IReadOnlyList<Message> Parts { get; }
     bool IsSinglePart { get; }
@@ -948,12 +940,13 @@ public sealed class TopicMessage : IDisposable
 
 ### SubscriptionEvent
 
-Reports a subscribe/unsubscribe event from XPub sockets.
-Pure value object (no lifecycle). Defined as a record.
+Reports a subscribe/unsubscribe event from XPub sockets and Spot
+subscription event recv. Pure value object (no lifecycle). Defined as a record.
 
 ```csharp
 public sealed record SubscriptionEvent(
     RoutingId? RoutingId,                    // null when transport carries no source id
+    string? ServiceName,                     // Spot subscription event only; null for XPub
     string Topic,                            // UTF-8
     bool Subscribed);                        // true=subscribe, false=unsubscribe
 ```
@@ -1018,7 +1011,7 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 
 ### ServiceMonitor
 
-Service-level event monitor for discovery and spot.
+Service-level event monitor for discovery.
 Implements `IDisposable` and `IAsyncDisposable`.
 
 ```csharp
@@ -1227,6 +1220,10 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConnectException"/>
     void DisconnectPeer(string peerEndpoint);
     /// <exception cref="ZlinkConfigException"/>
+    void AttachRouter(string serviceName, RouterSocket router);
+    /// <exception cref="ZlinkConfigException"/>
+    void AttachPubSub(string serviceName, PubSocket pub, SubSocket sub);
+    /// <exception cref="ZlinkConfigException"/>
     void AttachDiscovery(Discovery discovery);
 
     /// <exception cref="ZlinkConfigException"/>
@@ -1245,6 +1242,12 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     SpotNodeSubjectEntry[] SubjectsSnapshot(
         SpotNodeSubjectFilter? filter = null);
+    /// <exception cref="ZlinkConfigException"/>
+    int ServiceAttachmentCount();
+    /// <exception cref="ZlinkConfigException"/>
+    SpotServiceAttachmentStats ServiceAttachmentAt(int index);
+    /// <exception cref="ZlinkRecvException"/>
+    SpotServiceMonitorEvent NodeMonitorRecv(RecvFlags flags = RecvFlags.None);
 
     // Spot 생성은 반드시 SpotNode 에서만
     /// <exception cref="ZlinkConfigException"/>
@@ -1265,7 +1268,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
 
 ### Spot
 
-Spot messaging endpoint. Provides pub/sub and subscription management.
+Spot messaging endpoint. Provides service-aware pub/sub and routed messaging.
 Implements `IDisposable` and `IAsyncDisposable`. **`SpotNode.CreateSpot()`
 로만 생성**.
 
@@ -1284,12 +1287,22 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     RoutingId RoutingId { get; }
 
-    // --- publish ---
+    // --- service-aware publish / request ---
     /// <exception cref="ZlinkSubmitException"/>
-    void Publish(string topic, Message message, SendFlags flags = SendFlags.None);
+    void Publish(string serviceName, string topic, Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void Publish(string topic, IReadOnlyList<Message> parts,
+    void Publish(string serviceName, string topic, IReadOnlyList<Message> parts,
                  SendFlags flags = SendFlags.None);
+    /// <exception cref="ZlinkSubmitException"/>
+    void SendService(string serviceName, Message message, SendFlags flags = SendFlags.None);
+    /// <exception cref="ZlinkSubmitException"/>
+    void SendService(string serviceName, IReadOnlyList<Message> parts,
+                     SendFlags flags = SendFlags.None);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
+    Task<IReadOnlyList<Message>> RequestServiceAsync(string serviceName, Message message,
+                                                     TimeSpan timeout = default,
+                                                     CancellationToken ct = default);
 
     // --- subscribe ---
     /// <exception cref="ZlinkConfigException"/>
@@ -1298,8 +1311,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     void UnsetSubscription(string topicOrPattern);
     /// <exception cref="ZlinkRecvException"/>
     TopicMessage Subscribe(RecvFlags flags = RecvFlags.None);
-    /// <exception cref="ZlinkHandlerException"/>
-    void OnSubscribe(SpotSubHandler handler);
+    /// <exception cref="ZlinkRecvException"/>
+    SubscriptionEvent ReceiveSubscriptionEvent(RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 
@@ -1557,6 +1570,27 @@ public sealed record SpotNodeSubjectEntry(
     uint ReadyPeerCount,
     uint ActivePeerCount,
     ulong LastChangedMs);
+
+public enum SpotServiceAttachmentRole
+{
+    Router = 1,
+    Pub = 2,
+    Sub = 3
+}
+
+public sealed record SpotServiceAttachmentStats(
+    string ServiceName,
+    uint RouterCount,
+    uint PubCount,
+    uint SubCount,
+    uint AutoRouterCount,
+    uint AutoPubCount,
+    uint AutoSubCount);
+
+public sealed record SpotServiceMonitorEvent(
+    string ServiceName,
+    SpotServiceAttachmentRole Role,
+    MonitorEventType Event);
 
 public sealed record RegistryServiceSummaryFilter(
     ServiceKind? ServiceKind = null,

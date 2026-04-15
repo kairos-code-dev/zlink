@@ -6,7 +6,9 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <map>
 #include <stdint.h>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -193,10 +195,45 @@ class zlink_stream_echo_server_t
             return 0;
         }
 
-        recv_msgs.fetch_add (1, std::memory_order_relaxed);
-        if (zlink_send_rid (server, rid_, msg_, 1, ZLINK_SEND_FLAGS_NONE) != 0) {
-            send_error.fetch_add (1, std::memory_order_relaxed);
-            (void) zlink_msg_close (msg_);
+        const std::string rid_key (
+          reinterpret_cast<const char *> (rid_->data),
+          reinterpret_cast<const char *> (rid_->data) + rid_->size);
+        std::lock_guard<std::mutex> lock (frame_mu);
+        stream_echo::frame_buffer_t &buffer = frame_buffers[rid_key];
+        stream_echo::append_frame_bytes (&buffer, payload, payload_size);
+        (void) zlink_msg_close (msg_);
+
+        if (stream_echo::has_invalid_declared_size (&buffer)) {
+            mark_parse_error ();
+            stream_echo::reset_frame_buffer (&buffer);
+            return 0;
+        }
+
+        stream_echo::frame_view_t frame;
+        while (stream_echo::try_peek_frame (&buffer, &frame)) {
+            if (!stream_echo::is_msg_name (frame.header, frame.header_size)) {
+                mark_parse_error ();
+                stream_echo::reset_frame_buffer (&buffer);
+                return 0;
+            }
+
+            zlink_msg_t reply;
+            if (zlink_msg_init_size (&reply, frame.size) != 0) {
+                send_error.fetch_add (1, std::memory_order_relaxed);
+                stream_echo::reset_frame_buffer (&buffer);
+                return 0;
+            }
+            std::memcpy (zlink_msg_data (&reply), frame.data, frame.size);
+            recv_msgs.fetch_add (1, std::memory_order_relaxed);
+            if (zlink_send_rid (server, rid_, &reply, 1, ZLINK_SEND_FLAGS_NONE) != 0) {
+                send_error.fetch_add (1, std::memory_order_relaxed);
+                (void) zlink_msg_close (&reply);
+                stream_echo::reset_frame_buffer (&buffer);
+                return 0;
+            }
+            (void) zlink_msg_close (&reply);
+            stream_echo::consume_frame (&buffer, frame);
+            stream_echo::compact_frame_buffer (&buffer);
         }
         return 0;
     }
@@ -225,6 +262,8 @@ class zlink_stream_echo_server_t
     std::atomic<long> send_error;
 
     std::atomic<bool> stop;
+    std::mutex frame_mu;
+    std::map<std::string, stream_echo::frame_buffer_t> frame_buffers;
 };
 
 bool parse_options (int argc, char **argv, server_options_t &opt)

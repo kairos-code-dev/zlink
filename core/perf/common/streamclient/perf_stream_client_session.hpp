@@ -158,6 +158,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
           endpoint (),
           source_bind_ep (source_bind_ep_),
           write_buf (),
+          read_header_declared (0),
           read_declared (0),
           read_buf ()
     {
@@ -479,16 +480,25 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
         chunk_size = size;
         const size_t wire_size =
-          perf_stream_common::k_stream_packet_prefix_size + size;
+          perf_stream_common::k_stream_packet_prefix_size
+          + perf_stream_common::k_stream_msg_name_size + size;
         if (write_buf.size () != wire_size)
             write_buf.resize (wire_size);
 
-        perf_stream_common::perf_stream_store_u16_be (&write_buf[0], 0);
+        perf_stream_common::perf_stream_store_u16_be (
+          &write_buf[0],
+          static_cast<uint16_t> (perf_stream_common::k_stream_msg_name_size));
         perf_stream_common::perf_stream_store_u32_be (
           &write_buf[2], static_cast<uint32_t> (size));
+        std::memcpy (&write_buf[perf_stream_common::k_stream_packet_prefix_size],
+                     perf_stream_common::k_stream_msg_name,
+                     perf_stream_common::k_stream_msg_name_size);
         unsigned char *payload_write =
-          write_buf.size () > perf_stream_common::k_stream_packet_prefix_size
-            ? &write_buf[perf_stream_common::k_stream_packet_prefix_size]
+          write_buf.size ()
+                > (perf_stream_common::k_stream_packet_prefix_size
+                   + perf_stream_common::k_stream_msg_name_size)
+            ? &write_buf[perf_stream_common::k_stream_packet_prefix_size
+                         + perf_stream_common::k_stream_msg_name_size]
             : NULL;
 
         if (payload_write
@@ -631,8 +641,8 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         if (closed || !connected ())
             return;
 
-        if (read_declared
-            > static_cast<uint32_t> (perf_stream_common::k_stream_max_chunk_size)) {
+        if (!perf_stream_common::perf_stream_validate_frame_sizes (
+              read_header_declared, read_declared)) {
             owner.on_recv_error ();
             if (outstanding > 0) {
                 const long dropped = static_cast<long> (outstanding);
@@ -643,8 +653,11 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             return;
         }
 
-        if (read_buf.size () != static_cast<size_t> (read_declared))
-            read_buf.resize (static_cast<size_t> (read_declared));
+        const size_t read_total_size =
+          static_cast<size_t> (read_header_declared)
+          + static_cast<size_t> (read_declared);
+        if (read_buf.size () != read_total_size)
+            read_buf.resize (read_total_size);
 
         const std::shared_ptr<client_session_t> self = shared_from_this ();
         if (transport_mode == raw_transport_tcp && tcp_socket) {
@@ -721,18 +734,25 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
         perf_stream_frame::frame_view_t frame;
         if (perf_stream_frame::try_peek (&ws_pending_frame, &frame)) {
+            read_header_declared = static_cast<uint16_t> (frame.header_size);
             read_declared = static_cast<uint32_t> (frame.payload_size);
-            if (read_buf.size () != static_cast<size_t> (read_declared))
-                read_buf.resize (static_cast<size_t> (read_declared));
+            const size_t total_size =
+              static_cast<size_t> (read_header_declared)
+              + static_cast<size_t> (read_declared);
+            if (read_buf.size () != total_size)
+                read_buf.resize (total_size);
+            if (frame.header_size > 0) {
+                std::memcpy (&read_buf[0], frame.header, frame.header_size);
+            }
             if (read_declared > 0) {
-                std::memcpy (&read_buf[0], frame.payload,
-                             static_cast<size_t> (read_declared));
+                std::memcpy (&read_buf[static_cast<size_t> (read_header_declared)],
+                             frame.payload, static_cast<size_t> (read_declared));
             }
             perf_stream_frame::consume (&ws_pending_frame, frame);
             perf_stream_frame::compact (&ws_pending_frame);
 
             on_read_payload (boost::system::error_code (),
-                             static_cast<size_t> (read_declared));
+                             total_size);
             return;
         }
 
@@ -782,9 +802,8 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
         const uint16_t header_size =
           perf_stream_common::perf_stream_load_u16_be (read_header);
+        read_header_declared = header_size;
         read_declared = perf_stream_common::perf_stream_load_u32_be (read_header + 2);
-        if (header_size != 0)
-            owner.on_size_mismatch ();
         start_read_payload ();
     }
 
@@ -797,7 +816,10 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         if (closed)
             return;
 
-        if (ec || bytes != static_cast<size_t> (read_declared)) {
+        const size_t expected_bytes =
+          static_cast<size_t> (read_header_declared)
+          + static_cast<size_t> (read_declared);
+        if (ec || bytes != expected_bytes) {
             owner.on_recv_error ();
             if (outstanding > 0) {
                 const long dropped = static_cast<long> (outstanding);
@@ -808,6 +830,10 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             return;
         }
 
+        if (!perf_stream_common::perf_stream_is_msg_name (
+              bytes > 0 ? &read_buf[0] : NULL, read_header_declared)) {
+            owner.on_size_mismatch ();
+        }
         if (read_declared != static_cast<uint32_t> (chunk_size)) {
             owner.on_size_mismatch ();
             if (outstanding > 0) {
@@ -820,8 +846,11 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             return;
         }
 
-        const size_t payload_bytes = bytes;
-        const unsigned char *payload_ptr = payload_bytes > 0 ? &read_buf[0] : NULL;
+        const size_t payload_bytes = static_cast<size_t> (read_declared);
+        const unsigned char *payload_ptr =
+          payload_bytes > 0
+            ? &read_buf[static_cast<size_t> (read_header_declared)]
+            : NULL;
 
         uint64_t sent_ts_ns = 0;
         if (payload_ptr
@@ -969,6 +998,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
     std::vector<unsigned char> write_buf;   // reusable send buffer [prefix + body]
     unsigned char read_header[perf_stream_common::k_stream_packet_prefix_size];
+    uint16_t read_header_declared;          // header length from packet prefix
     uint32_t read_declared;                 // body length from packet prefix
     std::vector<unsigned char> read_buf;    // reusable receive buffer
 };

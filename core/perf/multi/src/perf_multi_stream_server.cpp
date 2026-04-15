@@ -15,6 +15,11 @@
 #define ZLINK_SOCKET_STREAM ((zlink_socket_type_t) 0x1008)
 #endif
 
+extern "C" {
+typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *, zlink_msg_t *);
+int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_);
+}
+
 namespace {
 
 #ifndef PERF_MULTI_STREAM_PATTERN_NAME
@@ -25,6 +30,18 @@ static const char *k_pattern = PERF_MULTI_STREAM_PATTERN_NAME;
 static const char k_stop_token[] = "__zlink_perf_stop__";
 
 static perf_multi_stream::session_t g_stream_session;
+
+int on_stream_raw_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg)
+{
+    if (!perf_multi_stream::handle_raw_stream_chunk (&g_stream_session,
+                                                     g_stream_session.send_socket,
+                                                     rid, msg, k_stop_token)) {
+        perf_stop_requested ().store (true, std::memory_order_release);
+    }
+    if (msg)
+        (void) zlink_msg_close (msg);
+    return 0;
+}
 
 inline void print_server_metrics (
   const std::string &lib_name,
@@ -115,15 +132,9 @@ int main (int argc, char **argv)
 
     perf_stop_requested ().store (false, std::memory_order_release);
     perf_multi_stream::reset_session (&g_stream_session, server);
-    perf_multi_stream::packet_handler_context_t packet_handler_ctx;
-    packet_handler_ctx.session = &g_stream_session;
-    packet_handler_ctx.stop_token = k_stop_token;
-    if (zlink_stream_packet_handler (server,
-                                     &perf_multi_stream::stream_packet_handler_callback,
-                                     &packet_handler_ctx)
-        != ZLINK_HANDLER_OK) {
+    if (zlink_stream_attach_raw (server, &on_stream_raw_packet) != 0) {
         if (bench_debug_enabled ()) {
-            std::cerr << "[multi-stream-server] packet handler install failed errno="
+            std::cerr << "[multi-stream-server] raw stream attach failed errno="
                       << zlink_errno () << std::endl;
         }
         perf_multi_stream::clear_session (&g_stream_session);

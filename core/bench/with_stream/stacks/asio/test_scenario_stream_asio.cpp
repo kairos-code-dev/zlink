@@ -7,6 +7,7 @@
 #include <atomic>
 #include <csignal>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <thread>
@@ -66,8 +67,9 @@ class asio_session_t : public std::enable_shared_from_this<asio_session_t>
     boost::asio::strand<boost::asio::io_context::executor_type> strand;
 
     bool closed;
-    size_t pending_echo_size;
     std::array<unsigned char, 16384> read_chunk;
+    std::vector<unsigned char> pending_write;
+    stream_echo::frame_buffer_t frame_buffer;
 };
 
 class asio_echo_server_t
@@ -233,8 +235,9 @@ asio_session_t::asio_session_t (asio_echo_server_t &owner_, boost::asio::io_cont
       socket (io_),
       strand (boost::asio::make_strand (io_)),
       closed (false),
-      pending_echo_size (0),
-      read_chunk ()
+      read_chunk (),
+      pending_write (),
+      frame_buffer ()
 {
 }
 
@@ -270,19 +273,42 @@ void asio_session_t::on_read_chunk (const boost::system::error_code &ec,
         return;
     }
 
-    pending_echo_size = bytes;
-    owner.on_recv_frame (bytes);
+    stream_echo::append_frame_bytes (&frame_buffer, &read_chunk[0], bytes);
+    if (stream_echo::has_invalid_declared_size (&frame_buffer)) {
+        close_internal ();
+        return;
+    }
+
+    pending_write.clear ();
+    stream_echo::frame_view_t frame;
+    while (stream_echo::try_peek_frame (&frame_buffer, &frame)) {
+        if (!stream_echo::is_msg_name (frame.header, frame.header_size)) {
+            close_internal ();
+            return;
+        }
+        const size_t old_size = pending_write.size ();
+        pending_write.resize (old_size + frame.size);
+        std::memcpy (&pending_write[old_size], frame.data, frame.size);
+        owner.on_recv_frame (frame.payload_size);
+        stream_echo::consume_frame (&frame_buffer, frame);
+        stream_echo::compact_frame_buffer (&frame_buffer);
+    }
+
+    if (pending_write.empty ()) {
+        start_read_chunk ();
+        return;
+    }
     start_write_chunk ();
 }
 
 void asio_session_t::start_write_chunk ()
 {
-    if (closed || pending_echo_size == 0)
+    if (closed || pending_write.empty ())
         return;
 
     const std::shared_ptr<asio_session_t> self = shared_from_this ();
     boost::asio::async_write (
-      socket, boost::asio::buffer (&read_chunk[0], pending_echo_size),
+      socket, boost::asio::buffer (pending_write),
       boost::asio::bind_executor (
         strand,
         [self] (const boost::system::error_code &ec, size_t bytes) {
@@ -295,13 +321,13 @@ void asio_session_t::on_write (const boost::system::error_code &ec, size_t bytes
     if (closed)
         return;
 
-    if (ec || bytes != pending_echo_size) {
+    if (ec || bytes != pending_write.size ()) {
         owner.on_send_error ();
         close_internal ();
         return;
     }
 
-    pending_echo_size = 0;
+    pending_write.clear ();
     start_read_chunk ();
 }
 
@@ -316,7 +342,7 @@ void asio_session_t::close_internal ()
     if (closed)
         return;
     closed = true;
-    pending_echo_size = 0;
+    pending_write.clear ();
 
     boost::system::error_code ec;
     socket.cancel (ec);

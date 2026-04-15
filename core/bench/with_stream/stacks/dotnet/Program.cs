@@ -108,6 +108,9 @@ internal sealed class Metrics
 
 internal sealed class EchoServer
 {
+    private const int PrefixSize = 6;
+    private static readonly byte[] MessageName =
+        System.Text.Encoding.ASCII.GetBytes("stream.echo");
     private readonly ServerOptions _options;
     private readonly Metrics _metrics;
     private readonly List<Task> _connections = new();
@@ -224,6 +227,7 @@ internal sealed class EchoServer
     private async Task RunConnectionAsync(Socket socket, CancellationToken token)
     {
         byte[] readChunk = ArrayPool<byte>.Shared.Rent(16 * 1024);
+        List<byte> stash = new();
 
         try
         {
@@ -234,22 +238,67 @@ internal sealed class EchoServer
                 if (nread <= 0)
                     break;
 
-                _metrics.AddRecvMsg();
+                for (int i = 0; i < nread; i++)
+                    stash.Add(readChunk[i]);
 
-                int sent = 0;
-                while (sent < nread)
+                int consumed = 0;
+                while (true)
                 {
-                    int nsend = await socket.SendAsync(
-                        new ArraySegment<byte>(readChunk, sent, nread - sent),
-                        SocketFlags.None,
-                        token).ConfigureAwait(false);
-                    if (nsend <= 0)
-                    {
-                        _metrics.AddSendError();
+                    if ((stash.Count - consumed) < PrefixSize)
+                        break;
+
+                    int headerSize = (stash[consumed] << 8) | stash[consumed + 1];
+                    int bodySize = (stash[consumed + 2] << 24)
+                                   | (stash[consumed + 3] << 16)
+                                   | (stash[consumed + 4] << 8)
+                                   | stash[consumed + 5];
+                    if (headerSize != MessageName.Length
+                        || bodySize < ServerOptions.MinPayloadSize
+                        || bodySize > ServerOptions.MaxPayloadSize) {
+                        _metrics.AddParseError();
+                        _metrics.AddProtocolError();
                         return;
                     }
-                    sent += nsend;
+
+                    int total = PrefixSize + headerSize + bodySize;
+                    if ((stash.Count - consumed) < total)
+                        break;
+
+                    bool headerMatch = true;
+                    for (int i = 0; i < MessageName.Length; i++) {
+                        if (stash[consumed + PrefixSize + i] != MessageName[i]) {
+                            headerMatch = false;
+                            break;
+                        }
+                    }
+                    if (!headerMatch)
+                    {
+                        _metrics.AddParseError();
+                        _metrics.AddProtocolError();
+                        return;
+                    }
+
+                    _metrics.AddRecvMsg();
+                    byte[] reply = stash.GetRange(consumed, total).ToArray();
+                    int sent = 0;
+                    while (sent < reply.Length)
+                    {
+                        int nsend = await socket.SendAsync(
+                            new ArraySegment<byte>(reply, sent, reply.Length - sent),
+                            SocketFlags.None,
+                            token).ConfigureAwait(false);
+                        if (nsend <= 0)
+                        {
+                            _metrics.AddSendError();
+                            return;
+                        }
+                        sent += nsend;
+                    }
+                    consumed += total;
                 }
+
+                if (consumed > 0)
+                    stash.RemoveRange(0, consumed);
             }
         }
         catch (OperationCanceledException)

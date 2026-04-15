@@ -23,6 +23,8 @@ public final class NettyStreamServer
 {
     private static final int MIN_PAYLOAD_SIZE = 16;
     private static final int MAX_PAYLOAD_SIZE = 4 * 1024 * 1024;
+    private static final byte[] MSG_NAME = "stream.echo".getBytes();
+    private static final int PREFIX_SIZE = 6;
 
     private NettyStreamServer()
     {
@@ -149,7 +151,19 @@ public final class NettyStreamServer
                 return;
             }
             ByteBuf frame = (ByteBuf) msg;
-            final int bodySize = frame.readableBytes() - 4;
+            final int headerSize = frame.getUnsignedShort(0);
+            final int bodySize = frame.readableBytes() - PREFIX_SIZE - headerSize;
+            boolean headerMatch = headerSize == MSG_NAME.length;
+            for (int i = 0; headerMatch && i < MSG_NAME.length; i++) {
+                headerMatch = frame.getByte(PREFIX_SIZE + i) == MSG_NAME[i];
+            }
+            if (!headerMatch) {
+                metrics.parseError.incrementAndGet();
+                metrics.protocolError.incrementAndGet();
+                frame.release();
+                ctx.close();
+                return;
+            }
             if (bodySize < MIN_PAYLOAD_SIZE || bodySize > MAX_PAYLOAD_SIZE) {
                 metrics.parseError.incrementAndGet();
                 metrics.protocolError.incrementAndGet();
@@ -255,7 +269,8 @@ public final class NettyStreamServer
                   {
                       ch.pipeline().addLast(
                         new LengthFieldBasedFrameDecoder(
-                          MAX_PAYLOAD_SIZE + 4, 0, 4, 0, 0));
+                          MAX_PAYLOAD_SIZE + PREFIX_SIZE + MSG_NAME.length,
+                          2, 4, MSG_NAME.length, 0));
                       ch.pipeline().addLast(new EchoHandler(opt, metrics));
                   }
               });

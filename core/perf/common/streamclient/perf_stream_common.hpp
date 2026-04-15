@@ -11,6 +11,7 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <cstdlib>
 #include <sstream>
 #include <string>
@@ -64,6 +65,23 @@ inline void perf_stream_store_u32_be (unsigned char *p, uint32_t v)
 }
 
 inline constexpr size_t k_stream_packet_prefix_size = 6;
+inline constexpr char k_stream_msg_name[] = "stream.echo";
+inline constexpr size_t k_stream_msg_name_size =
+  sizeof (k_stream_msg_name) - 1;
+
+inline bool perf_stream_validate_frame_sizes (size_t header_size,
+                                              size_t body_size)
+{
+    const size_t max_size = k_stream_max_chunk_size;
+    return header_size <= max_size && body_size <= max_size
+           && header_size <= max_size - body_size;
+}
+
+inline bool perf_stream_is_msg_name (const unsigned char *data, size_t size)
+{
+    return data && size == k_stream_msg_name_size
+           && std::memcmp (data, k_stream_msg_name, k_stream_msg_name_size) == 0;
+}
 
 inline std::string lower_copy (const std::string &text)
 {

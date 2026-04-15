@@ -2,7 +2,16 @@ package dev.kairoscode.stream;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.Received;
+import dev.kairoscode.zlink.RecvException;
+import dev.kairoscode.zlink.RecvResult;
+import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.StreamSocket;
+import java.time.Duration;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -10,6 +19,8 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class JvmZlinkStreamServer {
     private static final int MIN_PAYLOAD_SIZE = 16;
     private static final int MAX_PAYLOAD_SIZE = 4 * 1024 * 1024;
+    private static final int PREFIX_SIZE = 6;
+    private static final byte[] MSG_NAME = "stream.echo".getBytes(StandardCharsets.US_ASCII);
 
     private JvmZlinkStreamServer() {
     }
@@ -83,6 +94,34 @@ public final class JvmZlinkStreamServer {
         final AtomicLong sendError = new AtomicLong();
     }
 
+    private static final class BufferState {
+        byte[] data = new byte[0];
+        int size = 0;
+
+        void append(byte[] chunk) {
+            int needed = size + chunk.length;
+            if (data.length < needed)
+                data = Arrays.copyOf(data, Math.max(needed, Math.max(64, data.length * 2)));
+            System.arraycopy(chunk, 0, data, size, chunk.length);
+            size = needed;
+        }
+
+        void consume(int count) {
+            if (count <= 0)
+                return;
+            if (count >= size) {
+                size = 0;
+                return;
+            }
+            System.arraycopy(data, count, data, 0, size - count);
+            size -= count;
+        }
+
+        void clear() {
+            size = 0;
+        }
+    }
+
     private static String endpoint(String host, int port) {
         return "tcp://" + host + ":" + port;
     }
@@ -101,36 +140,81 @@ public final class JvmZlinkStreamServer {
             server.options().backlog(opt.backlog);
             server.options().sendHwm(100);
             server.options().recvHwm(100);
+            server.options().recvTimeout(Duration.ofMillis(200));
             server.options().tcpNoDelay(opt.tcpNoDelay != 0);
-            server.options().notify(true);
             server.bind(endpoint(opt.host, opt.port));
+            final Map<RoutingId, BufferState> buffers = new HashMap<>();
 
             Runtime.getRuntime().addShutdownHook(shutdownHook);
-            server.attachStreamRaw((routingId, payload) -> {
-                if (stop.get() || routingId == null)
-                    return 0;
-                int payloadSize = payload.size();
-                if (payloadSize <= 0)
-                    return 0;
-                if (payloadSize > MAX_PAYLOAD_SIZE) {
-                    metrics.parseError.incrementAndGet();
-                    metrics.protocolError.incrementAndGet();
-                    return 0;
-                }
-                if (payloadSize < MIN_PAYLOAD_SIZE)
-                    return 0;
+            while (!stop.get()) {
+                try (Received received = server.recv()) {
+                    RoutingId routingId = received.routingId().orElse(null);
+                    if (routingId == null || !received.isSinglePart())
+                        continue;
 
-                metrics.recvMsgs.incrementAndGet();
-                try {
-                    server.send(routingId, payload);
-                } catch (Throwable t) {
-                    metrics.sendError.incrementAndGet();
-                }
-                return 0;
-            });
+                    byte[] chunk = received.singlePartOrThrow().toByteArray();
+                    int payloadSize = chunk.length;
+                    if (payloadSize <= 0)
+                        continue;
 
-            while (!stop.get())
-                stopped.await();
+                    synchronized (buffers) {
+                        BufferState buffer = buffers.computeIfAbsent(routingId,
+                                unused -> new BufferState());
+                        buffer.append(chunk);
+
+                        while (true) {
+                            if ((buffer.size) < PREFIX_SIZE)
+                                break;
+                            int headerSize = ((buffer.data[0] & 0xFF) << 8)
+                                             | (buffer.data[1] & 0xFF);
+                            int bodySize = ((buffer.data[2] & 0xFF) << 24)
+                                           | ((buffer.data[3] & 0xFF) << 16)
+                                           | ((buffer.data[4] & 0xFF) << 8)
+                                           | (buffer.data[5] & 0xFF);
+                            if (headerSize != MSG_NAME.length
+                                || bodySize < MIN_PAYLOAD_SIZE
+                                || bodySize > MAX_PAYLOAD_SIZE) {
+                                metrics.parseError.incrementAndGet();
+                                metrics.protocolError.incrementAndGet();
+                                buffer.clear();
+                                break;
+                            }
+
+                            int total = PREFIX_SIZE + headerSize + bodySize;
+                            if (buffer.size < total)
+                                break;
+
+                            boolean headerMatch = true;
+                            for (int i = 0; i < MSG_NAME.length; i++) {
+                                if (buffer.data[PREFIX_SIZE + i] != MSG_NAME[i]) {
+                                    headerMatch = false;
+                                    break;
+                                }
+                            }
+                            if (!headerMatch) {
+                                metrics.parseError.incrementAndGet();
+                                metrics.protocolError.incrementAndGet();
+                                buffer.clear();
+                                break;
+                            }
+
+                            metrics.recvMsgs.incrementAndGet();
+                            try (Message reply = Message.copyOf(buffer.data, 0, total)) {
+                                server.send(routingId, reply);
+                            } catch (Throwable t) {
+                                metrics.sendError.incrementAndGet();
+                                buffer.clear();
+                                break;
+                            }
+                            buffer.consume(total);
+                        }
+                    }
+                } catch (RecvException ex) {
+                    if (ex.getResult() == RecvResult.NO_DATA)
+                        continue;
+                    throw ex;
+                }
+            }
             return 0;
         } catch (Throwable t) {
             System.err.printf("jvmzlink stream: %s%n", t.getMessage());

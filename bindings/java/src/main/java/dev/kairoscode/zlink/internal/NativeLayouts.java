@@ -31,6 +31,7 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_INT.withName("source_kind"),
                     ValueLayout.JAVA_INT.withName("state_flags"),
                     ValueLayout.JAVA_INT.withName("detail_flags"),
+                    MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("snd_pending_msgs"),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("rcv_pending_msgs"));
     public static final long MONITOR_SNAPSHOT_SOURCE_KIND_OFFSET =
@@ -57,8 +58,8 @@ public final class NativeLayouts {
                     PathElement.groupElement("events"));
 
     public static final MemoryLayout MONITOR_EVENT_LAYOUT = MemoryLayout.structLayout(
-            ValueLayout.JAVA_LONG.withName("event"),
-            ValueLayout.JAVA_LONG.withName("value"),
+            ValueLayout.JAVA_LONG_UNALIGNED.withName("event"),
+            ValueLayout.JAVA_LONG_UNALIGNED.withName("value"),
             ROUTING_ID_LAYOUT.withName("routing_id"),
             MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("local_addr"),
             MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("remote_addr"));
@@ -131,7 +132,7 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_INT.withName("subject_count"),
                     ValueLayout.JAVA_INT.withName("ready_subject_count"),
                     ValueLayout.JAVA_INT.withName("last_error"),
-                    MemoryLayout.paddingLayout(32),
+                    MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("last_changed_ms"));
 
     public static final MemoryLayout SPOT_NODE_PEER_ENTRY_LAYOUT =
@@ -141,8 +142,26 @@ public final class NativeLayouts {
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("peer_endpoint"),
                     ValueLayout.JAVA_INT.withName("source"),
                     ValueLayout.JAVA_INT.withName("state"),
-                    ValueLayout.JAVA_LONG.withName("connected_since_ms"),
-                    ValueLayout.JAVA_LONG.withName("last_changed_ms"));
+                    ValueLayout.JAVA_INT.withName("admission_state"),
+                    MemoryLayout.paddingLayout(4),
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("connected_since_ms"),
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("last_changed_ms"));
+
+    public static final MemoryLayout SPOT_SERVICE_ATTACHMENT_STATS_LAYOUT =
+            MemoryLayout.structLayout(
+                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
+                    ValueLayout.JAVA_INT.withName("router_count"),
+                    ValueLayout.JAVA_INT.withName("pub_count"),
+                    ValueLayout.JAVA_INT.withName("sub_count"),
+                    ValueLayout.JAVA_INT.withName("auto_router_count"),
+                    ValueLayout.JAVA_INT.withName("auto_pub_count"),
+                    ValueLayout.JAVA_INT.withName("auto_sub_count"));
+
+    public static final MemoryLayout SPOT_SERVICE_MONITOR_EVENT_LAYOUT =
+            MemoryLayout.structLayout(
+                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
+                    ValueLayout.JAVA_INT.withName("role"),
+                    MONITOR_EVENT_LAYOUT.withName("event"));
 
     public static final MemoryLayout SPOT_NODE_PEER_FILTER_LAYOUT =
             MemoryLayout.structLayout(
@@ -157,7 +176,8 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_INT.withName("subject_kind"),
                     ValueLayout.JAVA_INT.withName("ready_peer_count"),
                     ValueLayout.JAVA_INT.withName("active_peer_count"),
-                    ValueLayout.JAVA_LONG.withName("last_changed_ms"));
+                    MemoryLayout.paddingLayout(8),
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("last_changed_ms"));
 
     public static final MemoryLayout SPOT_NODE_SUBJECT_FILTER_LAYOUT =
             MemoryLayout.structLayout(
@@ -173,10 +193,10 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_INT.withName("topology_entry_count"),
                     ValueLayout.JAVA_INT.withName("peer_registry_count"),
                     ValueLayout.JAVA_INT.withName("connected_peer_registry_count"),
-                    MemoryLayout.paddingLayout(32),
+                    MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("list_seq"),
                     ValueLayout.JAVA_INT.withName("last_error"),
-                    MemoryLayout.paddingLayout(32),
+                    MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("last_changed_ms"));
 
     public static final MemoryLayout REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT =
@@ -189,7 +209,7 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_INT.withName("ready_count"),
                     ValueLayout.JAVA_INT.withName("error_count"),
                     ValueLayout.JAVA_INT.withName("stopped_count"),
-                    MemoryLayout.paddingLayout(32),
+                    MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("last_reported_ms"));
 
     public static final MemoryLayout REGISTRY_SERVICE_SUMMARY_FILTER_LAYOUT =
@@ -205,7 +225,8 @@ public final class NativeLayouts {
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("endpoint"),
                     ROUTING_ID_LAYOUT.withName("routing_id"),
-                    MemoryLayout.paddingLayout(32),
+                    ValueLayout.JAVA_INT.withName("admission_state"),
+                    MemoryLayout.paddingLayout(8),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("value"));
     public static final long MEMBER_PEER_SERVICE_TYPE_OFFSET =
             MEMBER_PEER_ENTRY_LAYOUT.byteOffset(
@@ -238,7 +259,7 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_INT.withName("desired_count"),
                     ValueLayout.JAVA_INT.withName("ready_count"),
                     ValueLayout.JAVA_INT.withName("error_code"),
-                    MemoryLayout.paddingLayout(32),
+                    MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("last_reported_ms"));
 
     public static final MemoryLayout REGISTRY_TOPOLOGY_FILTER_LAYOUT =

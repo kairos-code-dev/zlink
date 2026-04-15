@@ -10,10 +10,23 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <string>
 #include <vector>
 
 namespace stream_echo {
+
+inline uint16_t load_u16_be (const unsigned char *p)
+{
+    return (static_cast<uint16_t> (p[0]) << 8)
+           | static_cast<uint16_t> (p[1]);
+}
+
+inline void store_u16_be (unsigned char *p, uint16_t v)
+{
+    p[0] = static_cast<unsigned char> ((v >> 8) & 0xFF);
+    p[1] = static_cast<unsigned char> (v & 0xFF);
+}
 
 inline uint32_t load_u32_be (const unsigned char *p)
 {
@@ -53,6 +66,166 @@ inline void store_u64_be (unsigned char *p, uint64_t v)
     p[5] = static_cast<unsigned char> ((v >> 16) & 0xFF);
     p[6] = static_cast<unsigned char> ((v >> 8) & 0xFF);
     p[7] = static_cast<unsigned char> (v & 0xFF);
+}
+
+inline constexpr size_t k_stream_packet_prefix_size = 6;
+inline constexpr size_t k_stream_max_payload_size = 4 * 1024 * 1024;
+inline constexpr char k_stream_msg_name[] = "stream.echo";
+inline constexpr size_t k_stream_msg_name_size =
+  sizeof (k_stream_msg_name) - 1;
+
+inline bool valid_frame_sizes (size_t header_size, size_t body_size)
+{
+    const size_t max_size = k_stream_max_payload_size;
+    return header_size <= max_size && body_size <= max_size
+           && header_size <= max_size - body_size;
+}
+
+inline bool is_msg_name (const unsigned char *data, size_t size)
+{
+    return data && size == k_stream_msg_name_size
+           && std::memcmp (data, k_stream_msg_name, k_stream_msg_name_size) == 0;
+}
+
+struct frame_buffer_t
+{
+    frame_buffer_t () : bytes (), consumed (0) {}
+
+    std::vector<unsigned char> bytes;
+    size_t consumed;
+};
+
+struct frame_view_t
+{
+    frame_view_t ()
+        : data (NULL),
+          size (0),
+          header (NULL),
+          header_size (0),
+          payload (NULL),
+          payload_size (0)
+    {
+    }
+
+    const unsigned char *data;
+    size_t size;
+    const unsigned char *header;
+    size_t header_size;
+    const unsigned char *payload;
+    size_t payload_size;
+};
+
+inline void reset_frame_buffer (frame_buffer_t *buffer)
+{
+    if (!buffer)
+        return;
+    buffer->bytes.clear ();
+    buffer->consumed = 0;
+}
+
+inline void append_frame_bytes (frame_buffer_t *buffer,
+                                const unsigned char *data,
+                                size_t size)
+{
+    if (!buffer || !data || size == 0)
+        return;
+    const size_t old_size = buffer->bytes.size ();
+    buffer->bytes.resize (old_size + size);
+    std::memcpy (&buffer->bytes[old_size], data, size);
+}
+
+inline bool has_invalid_declared_size (const frame_buffer_t *buffer)
+{
+    if (!buffer)
+        return false;
+    const size_t available = buffer->bytes.size () - buffer->consumed;
+    if (available < k_stream_packet_prefix_size)
+        return false;
+
+    const unsigned char *frame = &buffer->bytes[buffer->consumed];
+    const uint16_t header_size = load_u16_be (frame);
+    const uint32_t body_size = load_u32_be (frame + 2);
+    return !valid_frame_sizes (header_size, body_size);
+}
+
+inline bool try_peek_frame (const frame_buffer_t *buffer, frame_view_t *frame_out)
+{
+    if (!buffer || !frame_out)
+        return false;
+
+    frame_out->data = NULL;
+    frame_out->size = 0;
+    frame_out->header = NULL;
+    frame_out->header_size = 0;
+    frame_out->payload = NULL;
+    frame_out->payload_size = 0;
+
+    const size_t available = buffer->bytes.size () - buffer->consumed;
+    if (available < k_stream_packet_prefix_size)
+        return false;
+
+    const unsigned char *frame = &buffer->bytes[buffer->consumed];
+    const uint16_t header_size = load_u16_be (frame);
+    const uint32_t body_size = load_u32_be (frame + 2);
+    if (!valid_frame_sizes (header_size, body_size))
+        return false;
+
+    const size_t frame_size =
+      k_stream_packet_prefix_size + static_cast<size_t> (header_size)
+      + static_cast<size_t> (body_size);
+    if (available < frame_size)
+        return false;
+
+    frame_out->data = frame;
+    frame_out->size = frame_size;
+    frame_out->header = frame + k_stream_packet_prefix_size;
+    frame_out->header_size = header_size;
+    frame_out->payload = frame_out->header + header_size;
+    frame_out->payload_size = body_size;
+    return true;
+}
+
+inline void consume_frame (frame_buffer_t *buffer, const frame_view_t &frame)
+{
+    if (!buffer || frame.size == 0)
+        return;
+    buffer->consumed += frame.size;
+}
+
+inline void compact_frame_buffer (frame_buffer_t *buffer)
+{
+    if (!buffer || buffer->consumed == 0)
+        return;
+    if (buffer->consumed >= buffer->bytes.size ()) {
+        reset_frame_buffer (buffer);
+        return;
+    }
+    if (buffer->consumed < 4096 && (buffer->consumed * 2) < buffer->bytes.size ())
+        return;
+    const size_t remaining = buffer->bytes.size () - buffer->consumed;
+    std::memmove (&buffer->bytes[0], &buffer->bytes[buffer->consumed], remaining);
+    buffer->bytes.resize (remaining);
+    buffer->consumed = 0;
+}
+
+inline void build_frame (const unsigned char *payload,
+                         size_t payload_size,
+                         std::vector<unsigned char> *frame_out)
+{
+    if (!frame_out)
+        return;
+    frame_out->assign (k_stream_packet_prefix_size + k_stream_msg_name_size
+                         + payload_size,
+                       0);
+    store_u16_be (&(*frame_out)[0], static_cast<uint16_t> (k_stream_msg_name_size));
+    store_u32_be (&(*frame_out)[2], static_cast<uint32_t> (payload_size));
+    std::memcpy (&(*frame_out)[k_stream_packet_prefix_size], k_stream_msg_name,
+                 k_stream_msg_name_size);
+    if (payload && payload_size > 0) {
+        std::memcpy (&(*frame_out)[k_stream_packet_prefix_size
+                                   + k_stream_msg_name_size],
+                     payload, payload_size);
+    }
 }
 
 inline uint64_t now_ns ()

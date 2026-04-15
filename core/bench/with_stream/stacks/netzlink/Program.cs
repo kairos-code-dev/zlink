@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using Zlink;
 
@@ -101,8 +103,11 @@ internal sealed class StreamEchoServer : IDisposable
 {
     private const byte StreamEventConnect = 0x01;
     private const byte StreamEventDisconnect = 0x00;
+    private const int PrefixSize = 6;
+    private static readonly byte[] MessageName = Encoding.ASCII.GetBytes("stream.echo");
     private readonly StreamSocket _socket;
     private readonly Metrics _metrics;
+    private readonly Dictionary<string, List<byte>> _buffers = new();
     private bool _attached;
 
     internal StreamEchoServer(StreamSocket socket, Metrics metrics)
@@ -121,7 +126,6 @@ internal sealed class StreamEchoServer : IDisposable
 
     private int OnRawPacket(string routingId, Message payload)
     {
-        bool consumed = false;
         try
         {
             int payloadSize = payload.Size;
@@ -142,9 +146,68 @@ internal sealed class StreamEchoServer : IDisposable
                 return 0;
             }
 
-            _metrics.AddRecvMsg();
-            _socket.Send(routingId, payload);
-            consumed = true;
+            lock (_buffers)
+            {
+                if (!_buffers.TryGetValue(routingId, out List<byte>? buffer))
+                {
+                    buffer = new List<byte>();
+                    _buffers[routingId] = buffer;
+                }
+                foreach (byte b in chunk)
+                    buffer.Add(b);
+
+                int consumed = 0;
+                while (true)
+                {
+                    if ((buffer.Count - consumed) < PrefixSize)
+                        break;
+
+                    int headerSize = (buffer[consumed] << 8) | buffer[consumed + 1];
+                    int bodySize = (buffer[consumed + 2] << 24)
+                                   | (buffer[consumed + 3] << 16)
+                                   | (buffer[consumed + 4] << 8)
+                                   | buffer[consumed + 5];
+                    if (headerSize != MessageName.Length
+                        || bodySize < ServerOptions.MinPayloadSize
+                        || bodySize > ServerOptions.MaxPayloadSize)
+                    {
+                        _metrics.AddParseError();
+                        _metrics.AddProtocolError();
+                        buffer.Clear();
+                        return 0;
+                    }
+
+                    int total = PrefixSize + headerSize + bodySize;
+                    if ((buffer.Count - consumed) < total)
+                        break;
+
+                    bool headerMatch = true;
+                    for (int i = 0; i < MessageName.Length; i++)
+                    {
+                        if (buffer[consumed + PrefixSize + i] != MessageName[i])
+                        {
+                            headerMatch = false;
+                            break;
+                        }
+                    }
+                    if (!headerMatch)
+                    {
+                        _metrics.AddParseError();
+                        _metrics.AddProtocolError();
+                        buffer.Clear();
+                        return 0;
+                    }
+
+                    _metrics.AddRecvMsg();
+                    byte[] replyBytes = buffer.GetRange(consumed, total).ToArray();
+                    using Message reply = Message.FromBytes(replyBytes);
+                    _socket.Send(routingId, reply);
+                    consumed += total;
+                }
+
+                if (consumed > 0)
+                    buffer.RemoveRange(0, consumed);
+            }
             return 0;
         }
         catch
@@ -154,8 +217,7 @@ internal sealed class StreamEchoServer : IDisposable
         }
         finally
         {
-            if (!consumed)
-                payload.Dispose();
+            payload.Dispose();
         }
     }
 

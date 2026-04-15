@@ -101,6 +101,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
     std::vector<unsigned char> read_header;
     std::vector<unsigned char> read_body;
     std::vector<unsigned char> write_buf;
+    size_t read_header_size;
 };
 
 struct loopback_bind_plan_t
@@ -501,13 +502,15 @@ client_session_t::client_session_t (echo_client_t &owner_,
       connect_deadline (),
       endpoint (),
       source_bind_ep (source_bind_ep_),
-      read_header (4, 0),
+      read_header (stream_echo::k_stream_packet_prefix_size, 0),
       read_body (owner_.options ().size, 0),
-      write_buf (4 + owner_.options ().size, 0)
+      write_buf (),
+      read_header_size (0)
 {
-    stream_echo::store_u32_be (&write_buf[0],
-                               static_cast<uint32_t> (owner.options ().size));
-    for (size_t i = 20; i < write_buf.size (); ++i)
+    stream_echo::build_frame (NULL, owner.options ().size, &write_buf);
+    for (size_t i = stream_echo::k_stream_packet_prefix_size
+                      + stream_echo::k_stream_msg_name_size + 16;
+         i < write_buf.size (); ++i)
         write_buf[i] = 0xA5;
 }
 
@@ -643,19 +646,22 @@ void client_session_t::on_read_header (const boost::system::error_code &ec, size
     if (closed)
         return;
 
-    if (ec || bytes != 4) {
+    if (ec || bytes != stream_echo::k_stream_packet_prefix_size) {
         close_internal ();
         return;
     }
 
-    const size_t len = static_cast<size_t> (stream_echo::load_u32_be (&read_header[0]));
-    if (len < k_min_payload_size || len > k_max_payload_size) {
+    read_header_size = static_cast<size_t> (stream_echo::load_u16_be (&read_header[0]));
+    const size_t len =
+      static_cast<size_t> (stream_echo::load_u32_be (&read_header[2]));
+    if (!stream_echo::valid_frame_sizes (read_header_size, len)
+        || len < k_min_payload_size || len > k_max_payload_size) {
         owner.add_parse_error ();
         close_internal ();
         return;
     }
 
-    start_read_body (len);
+    start_read_body (read_header_size + len);
 }
 
 void client_session_t::start_read_body (size_t len)
@@ -663,11 +669,13 @@ void client_session_t::start_read_body (size_t len)
     if (closed || !connected ())
         return;
 
-    if (len != read_body.size ()) {
+    if (len != (stream_echo::k_stream_msg_name_size + owner.options ().size)) {
         owner.add_parse_error ();
         close_internal ();
         return;
     }
+    if (read_body.size () != len)
+        read_body.resize (len);
     const std::shared_ptr<client_session_t> self = shared_from_this ();
     boost::asio::async_read (
       socket, boost::asio::buffer (&read_body[0], len),
@@ -688,9 +696,18 @@ void client_session_t::on_read_body (const boost::system::error_code &ec, size_t
         return;
     }
 
-    if (read_body.size () != owner.options ().size) {
+    if (read_body.size ()
+        != (stream_echo::k_stream_msg_name_size + owner.options ().size)) {
         owner.add_parse_error ();
     }
+
+    if (!stream_echo::is_msg_name (&read_body[0], read_header_size)) {
+        owner.add_parse_error ();
+    }
+
+    const unsigned char *payload =
+      &read_body[static_cast<size_t> (read_header_size)];
+    const size_t payload_size = read_body.size () - read_header_size;
 
     if (outstanding > 0) {
         outstanding -= 1;
@@ -701,9 +718,9 @@ void client_session_t::on_read_body (const boost::system::error_code &ec, size_t
             owner.add_parse_error ();
     }
 
-    if (read_body.size () >= 16) {
-        const uint64_t seq = stream_echo::load_u64_be (&read_body[0]);
-        const uint64_t sent_ns = stream_echo::load_u64_be (&read_body[8]);
+    if (payload_size >= 16) {
+        const uint64_t seq = stream_echo::load_u64_be (payload);
+        const uint64_t sent_ns = stream_echo::load_u64_be (payload + 8);
         if (seq > 0 && sent_ns > 0 && (seq % k_rtt_sample_rate) == 0) {
             const uint64_t now_ns = stream_echo::now_ns ();
             if (now_ns > sent_ns) {
@@ -738,8 +755,10 @@ void client_session_t::send_one ()
 {
     const uint64_t seq = owner.next_seq ();
     const uint64_t sent_ns = stream_echo::now_ns ();
-    stream_echo::store_u64_be (&write_buf[4], seq);
-    stream_echo::store_u64_be (&write_buf[12], sent_ns);
+    const size_t payload_offset =
+      stream_echo::k_stream_packet_prefix_size + stream_echo::k_stream_msg_name_size;
+    stream_echo::store_u64_be (&write_buf[payload_offset], seq);
+    stream_echo::store_u64_be (&write_buf[payload_offset + 8], sent_ns);
 
     owner.mark_send_success ();
     outstanding += 1;

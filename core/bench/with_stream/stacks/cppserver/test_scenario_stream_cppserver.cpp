@@ -8,8 +8,10 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace CppServer::Asio;
 
@@ -74,7 +76,11 @@ class stream_echo_session_t : public TCPSession
     stream_echo_session_t (const std::shared_ptr<TCPServer> &server,
                            const server_options_t &opt_,
                            metrics_t &metrics_)
-        : TCPSession (server), opt (opt_), metrics (metrics_)
+        : TCPSession (server),
+          opt (opt_),
+          metrics (metrics_),
+          frame_buffer (),
+          pending_send ()
     {
     }
 
@@ -99,13 +105,38 @@ class stream_echo_session_t : public TCPSession
         if (!buffer || size == 0)
             return;
 
-        if (!SendAsync (buffer, size)) {
-            metrics.send_error.fetch_add (1, std::memory_order_relaxed);
+        stream_echo::append_frame_bytes (
+          &frame_buffer, static_cast<const unsigned char *> (buffer), size);
+        if (stream_echo::has_invalid_declared_size (&frame_buffer)) {
+            metrics.parse_error.fetch_add (1, std::memory_order_relaxed);
+            metrics.protocol_error.fetch_add (1, std::memory_order_relaxed);
+            stream_echo::reset_frame_buffer (&frame_buffer);
             Disconnect ();
             return;
         }
 
-        metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
+        stream_echo::frame_view_t frame;
+        while (stream_echo::try_peek_frame (&frame_buffer, &frame)) {
+            if (!stream_echo::is_msg_name (frame.header, frame.header_size)) {
+                metrics.parse_error.fetch_add (1, std::memory_order_relaxed);
+                metrics.protocol_error.fetch_add (1, std::memory_order_relaxed);
+                stream_echo::reset_frame_buffer (&frame_buffer);
+                Disconnect ();
+                return;
+            }
+
+            pending_send.resize (frame.size);
+            std::memcpy (&pending_send[0], frame.data, frame.size);
+            if (!SendAsync (&pending_send[0], pending_send.size ())) {
+                metrics.send_error.fetch_add (1, std::memory_order_relaxed);
+                Disconnect ();
+                return;
+            }
+
+            metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
+            stream_echo::consume_frame (&frame_buffer, frame);
+            stream_echo::compact_frame_buffer (&frame_buffer);
+        }
     }
 
     void onError (int,
@@ -118,6 +149,8 @@ class stream_echo_session_t : public TCPSession
   private:
     const server_options_t &opt;
     metrics_t &metrics;
+    stream_echo::frame_buffer_t frame_buffer;
+    std::vector<unsigned char> pending_send;
 };
 
 class stream_echo_server_t : public TCPServer

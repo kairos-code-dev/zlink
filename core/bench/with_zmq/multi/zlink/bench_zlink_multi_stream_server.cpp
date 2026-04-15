@@ -15,11 +15,28 @@
 #define ZLINK_SOCKET_STREAM ((zlink_socket_type_t) 0x1008)
 #endif
 
+extern "C" {
+typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *, zlink_msg_t *);
+int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_);
+}
+
 namespace {
 
 static const char *k_pattern = "MULTI_STREAM";
 static const char k_stop_token[] = "__zlink_perf_stop__";
 static perf_multi_stream::session_t g_stream_session;
+
+int on_stream_raw_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg)
+{
+    if (!perf_multi_stream::handle_raw_stream_chunk (&g_stream_session,
+                                                     g_stream_session.send_socket,
+                                                     rid, msg, k_stop_token)) {
+        perf_stop_requested ().store (true, std::memory_order_release);
+    }
+    if (msg)
+        (void) zlink_msg_close (msg);
+    return 0;
+}
 
 inline void on_signal (int)
 {
@@ -175,6 +192,15 @@ int main (int argc, char **argv)
 
     perf_stop_requested ().store (false, std::memory_order_release);
     perf_multi_stream::reset_session (&g_stream_session, server);
+    if (zlink_stream_attach_raw (server, &on_stream_raw_packet) != 0) {
+        if (bench_debug_enabled ()) {
+            std::cerr << "[multi-stream-server] raw stream attach failed errno="
+                      << zlink_errno () << std::endl;
+        }
+        perf_multi_stream::clear_session (&g_stream_session);
+        zlink_close (server);
+        return 1;
+    }
     install_signal_handlers ();
     start_control_stdin_watcher ();
 

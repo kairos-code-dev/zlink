@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
+#include <map>
 #include <string>
 
 #ifndef ZMQ_STREAM
@@ -155,14 +156,16 @@ int recv_one_stream_chunk_msg_nowait (void *server,
 
 bool send_stream_reply_msg (void *server,
                             zmq_msg_t *routing_id_msg,
-                            zmq_msg_t *payload_msg)
+                            const unsigned char *payload_data,
+                            size_t payload_size)
 {
-    if (!server || !routing_id_msg || !payload_msg)
+    if (!server || !routing_id_msg || !payload_data)
         return false;
 
     if (zmq_msg_send (routing_id_msg, server, ZMQ_SNDMORE) < 0)
         return false;
-    return zmq_msg_send (payload_msg, server, 0) >= 0;
+    return zmq_send (server, payload_data, payload_size, 0)
+           == static_cast<int> (payload_size);
 }
 
 class zmq_stream_echo_server_t
@@ -260,17 +263,42 @@ class zmq_stream_echo_server_t
             if (rc < 0)
                 return processed == 0 ? -1 : processed;
 
+            const char *rid_data =
+              static_cast<const char *> (zmq_msg_data (&routing_id_msg));
+            const size_t rid_size = zmq_msg_size (&routing_id_msg);
+            const unsigned char *payload_data =
+              static_cast<const unsigned char *> (zmq_msg_data (&payload_msg));
             const size_t payload_size = zmq_msg_size (&payload_msg);
-            if (payload_size > k_max_payload_size) {
+
+            stream_echo::frame_buffer_t &buffer =
+              frame_buffers[std::string (rid_data, rid_data + rid_size)];
+            stream_echo::append_frame_bytes (&buffer, payload_data, payload_size);
+            if (stream_echo::has_invalid_declared_size (&buffer)) {
+                parse_error.fetch_add (1, std::memory_order_relaxed);
                 protocol_error.fetch_add (1, std::memory_order_relaxed);
+                stream_echo::reset_frame_buffer (&buffer);
                 zmq_msg_close (&payload_msg);
                 zmq_msg_close (&routing_id_msg);
                 continue;
             }
 
-            recv_msgs.fetch_add (1, std::memory_order_relaxed);
-            if (!send_stream_reply_msg (server, &routing_id_msg, &payload_msg))
-                send_error.fetch_add (1, std::memory_order_relaxed);
+            stream_echo::frame_view_t frame;
+            while (stream_echo::try_peek_frame (&buffer, &frame)) {
+                if (!stream_echo::is_msg_name (frame.header, frame.header_size)) {
+                    parse_error.fetch_add (1, std::memory_order_relaxed);
+                    protocol_error.fetch_add (1, std::memory_order_relaxed);
+                    stream_echo::reset_frame_buffer (&buffer);
+                    break;
+                }
+                recv_msgs.fetch_add (1, std::memory_order_relaxed);
+                if (!send_stream_reply_msg (server, &routing_id_msg, frame.data,
+                                            frame.size)) {
+                    send_error.fetch_add (1, std::memory_order_relaxed);
+                    break;
+                }
+                stream_echo::consume_frame (&buffer, frame);
+                stream_echo::compact_frame_buffer (&buffer);
+            }
 
             zmq_msg_close (&payload_msg);
             zmq_msg_close (&routing_id_msg);
@@ -301,6 +329,7 @@ class zmq_stream_echo_server_t
     std::atomic<long> send_error;
 
     std::atomic<bool> stop;
+    std::map<std::string, stream_echo::frame_buffer_t> frame_buffers;
 };
 
 bool parse_options (int argc, char **argv, server_options_t &opt)

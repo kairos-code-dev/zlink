@@ -122,16 +122,23 @@ class stream_client_t
         return !ec;
     }
 
-    // Send a packet-framed payload with an empty header.
+    // Send a packet-framed payload with the shared stream message name.
     bool send_payload (const std::vector<unsigned char> &payload)
     {
         std::vector<unsigned char> frame (
-          perf_stream_common::k_stream_packet_prefix_size + payload.size ());
-        perf_stream_common::perf_stream_store_u16_be (&frame[0], 0);
+          perf_stream_common::k_stream_packet_prefix_size
+          + perf_stream_common::k_stream_msg_name_size + payload.size ());
+        perf_stream_common::perf_stream_store_u16_be (
+          &frame[0],
+          static_cast<uint16_t> (perf_stream_common::k_stream_msg_name_size));
         perf_stream_common::perf_stream_store_u32_be (
           &frame[2], static_cast<uint32_t> (payload.size ()));
+        std::memcpy (&frame[perf_stream_common::k_stream_packet_prefix_size],
+                     perf_stream_common::k_stream_msg_name,
+                     perf_stream_common::k_stream_msg_name_size);
         if (!payload.empty ())
-            std::memcpy (&frame[perf_stream_common::k_stream_packet_prefix_size],
+            std::memcpy (&frame[perf_stream_common::k_stream_packet_prefix_size
+                                + perf_stream_common::k_stream_msg_name_size],
                          &payload[0], payload.size ());
         return write_frame_bytes (&frame[0], frame.size ());
     }
@@ -155,20 +162,26 @@ class stream_client_t
           &frame[0]);
         const uint32_t declared = perf_stream_common::perf_stream_load_u32_be (
           &frame[2]);
-        if (header_size != 0
-            || declared > static_cast<uint32_t> (
-                         perf_stream_common::k_stream_max_chunk_size)) {
+        if (!perf_stream_common::perf_stream_validate_frame_sizes (
+              header_size, declared)) {
             return false;
         }
         if (frame.size ()
             != static_cast<size_t> (
-              perf_stream_common::k_stream_packet_prefix_size + declared))
+              perf_stream_common::k_stream_packet_prefix_size + header_size
+              + declared))
             return false;
         if (expected_size > 0 && declared != expected_size)
             return false;
+        if (!perf_stream_common::perf_stream_is_msg_name (
+              &frame[perf_stream_common::k_stream_packet_prefix_size],
+              header_size)) {
+            return false;
+        }
 
         payload_out->assign (
-          frame.begin () + perf_stream_common::k_stream_packet_prefix_size,
+          frame.begin () + perf_stream_common::k_stream_packet_prefix_size
+            + header_size,
           frame.end ());
         return true;
     }
@@ -315,19 +328,19 @@ class stream_client_t
               perf_stream_common::perf_stream_load_u16_be (hdr);
             const uint32_t declared =
               perf_stream_common::perf_stream_load_u32_be (hdr + 2);
-            if (header_size != 0
-                || declared > static_cast<uint32_t> (
-                              perf_stream_common::k_stream_max_chunk_size)) {
+            if (!perf_stream_common::perf_stream_validate_frame_sizes (
+                  header_size, declared)) {
                 return false;
             }
 
             frame_out->resize (
-              perf_stream_common::k_stream_packet_prefix_size + declared);
+              perf_stream_common::k_stream_packet_prefix_size + header_size
+              + declared);
             std::memcpy (&(*frame_out)[0], hdr, sizeof (hdr));
-            if (declared > 0
+            if ((header_size + declared) > 0
                 && !read_exact_tcp_like (
                   &(*frame_out)[perf_stream_common::k_stream_packet_prefix_size],
-                                         static_cast<size_t> (declared))) {
+                  static_cast<size_t> (header_size) + static_cast<size_t> (declared))) {
                 return false;
             }
             return true;

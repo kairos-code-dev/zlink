@@ -655,6 +655,9 @@ queue that the public Spot facade drains.
   routed/timer planes) has drainable content. The user handler is invoked
   by the shared dispatch executor, not by the I/O thread directly, so a
   slow user handler cannot stall attachment I/O.
+- The dispatch executor runs on Spot-specific worker runtimes. The worker
+  count follows the context option `ZLINK_SPOT_WORKER_THREADS`; a value of `0`
+  means auto-select (`min(visible logical cores, 8)`, fallback `1`).
 
 ### 11.5 Node-owned monitor fan-in
 

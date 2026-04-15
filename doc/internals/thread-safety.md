@@ -210,7 +210,9 @@ higher level can restore the handle to operational state.
 
 ## 5. Callback Dispatch Internals
 
-All callbacks execute on the I/O thread. The dispatch mechanism uses
+Most callbacks execute on the I/O thread. The exception is
+`zlink_spot_dispatch_event_handler()`, which runs on the Spot-specific worker
+runtime. The dispatch mechanism uses
 atomic loads to read handler pointers, ensuring visibility of handler
 replacements without broad locks on the hot path.
 

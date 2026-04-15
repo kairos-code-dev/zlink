@@ -177,7 +177,8 @@ handle에 `zlink_set_tls_server()` 또는 `zlink_set_tls_client()`를 호출하�
 `zlink_subscribe()`는 recv 모드에서 동기식 pull 방식의 수신을 제공합니다.
 다음 메시지와 source routing ID, topic을 반환합니다. 성공 시 `source_rid_out_`,
 `parts_out_`, `topic_id_out_`이 채워집니다. non-blocking 동작은 `flags_`에
-`ZLINK_DONTWAIT`를 전달합니다. callback 모드에서는 `EBUSY`로 실패합니다.
+`ZLINK_DONTWAIT`를 전달합니다. dispatch callback 모드에서는 일반 문맥에서
+`EBUSY`로 실패합니다.
 다만 같은 `spot_`의 활성 `zlink_spot_dispatch_event_handler()` callback 안에서
 readable subscribe plane을 비우는 경우에는 호출할 수 있습니다.
 
@@ -627,12 +628,16 @@ dispatch callback 을 같은 `spot_` 에 대해 호출할 수 있습니다.
 실행할 수 있어야 하며, 이 병렬성 때문에 같은 `spot_` 의 순차 처리 계약이
 깨지면 안 됩니다.
 
-구현은 고성능 데이터 경로를 유지할 수 있어야 합니다. 이를 위해 내부 topic,
-routed, timer producer 경로와 user callback 실행 경로를 분리할 수 있습니다.
-예를 들어 `spot_` 단위 queue, mailbox, scheduler 를 사용해 callback delivery 를
-직렬화하는 것은 허용됩니다. 다만 어떤 내부 방식을 쓰더라도 public contract 는
-같습니다. 호출자는 같은 `spot_` 에 대해 메시징을 순차적으로 처리할 수 있어야
-하고, 서로 다른 `spot_` 은 병렬 처리될 수 있어야 합니다.
+구현은 고성능 데이터 경로를 유지할 수 있어야 합니다. 이를 위해 topic,
+routed, timer producer 경로와 user callback 실행 경로는 분리됩니다.
+`zlink_spot_dispatch_event_handler()` callback 은 I/O thread 에서 직접
+실행되지 않으며, 전용 Spot worker runtime 에서 실행됩니다. worker 수는
+context 옵션 `ZLINK_SPOT_WORKER_THREADS`로 조절합니다. 값 `0`은 자동 선택이고,
+자동값은 `min(visible logical cores, 8)`이며 코어 수를 알 수 없으면 `1`입니다.
+이 옵션은 runtime 시작 전에 설정해야 하며, 시작 뒤 변경은
+`ZLINK_CONFIG_INVALID_ARGUMENT` (`errno=EINVAL`)로 실패합니다. 이 옵션은
+dispatch event callback 경로에만 적용되며 send-ready, monitor, 다른 callback
+경로에는 적용되지 않습니다.
 
 dispatch event 는 readability notification 이며, callback 1회가 논리 메시지
 1개 또는 timer fire 1개를 보장하지는 않습니다. 구현은 여러 readiness cause 를

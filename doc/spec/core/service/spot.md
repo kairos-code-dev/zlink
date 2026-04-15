@@ -621,12 +621,17 @@ serialization across different Spot handles. The implementation may process
 dispatch callbacks for different `spot_` handles in parallel, provided the
 serialized, non-reentrant contract is preserved for each individual `spot_`.
 
-The implementation must also preserve a high-performance data path. To do so,
-it may decouple internal topic, routed, and timer producer paths from user
-callback execution, for example by using a per-spot queue, mailbox, or
-scheduler. Any such mechanism is acceptable as long as the public contract
-remains the same: sequential processing for the same `spot_`, and parallelism
-across different `spot_` handles when available.
+The implementation must also preserve a high-performance data path. Topic,
+routed, and timer producer paths are decoupled from user callback execution.
+`zlink_spot_dispatch_event_handler()` callbacks are not invoked directly on the
+I/O thread; they run on a dedicated Spot worker runtime. The worker count is
+controlled by the context option `ZLINK_SPOT_WORKER_THREADS`. A value of `0`
+means auto-select, which resolves to `min(visible logical cores, 8)` and falls
+back to `1` if the core count cannot be determined. This option must be set
+before runtime startup; changing it afterwards fails with
+`ZLINK_CONFIG_INVALID_ARGUMENT` (`errno=EINVAL`). The option applies only to
+the dispatch-event callback path, not to send-ready, monitor, or other
+callback families.
 
 A dispatch event is a readability notification, not a promise that exactly one
 logical message or timer fire is available. The implementation may coalesce

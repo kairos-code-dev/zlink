@@ -7,6 +7,10 @@
 #include <sstream>
 #include <thread>
 
+#if defined(ZLINK_HAVE_LINUX)
+#include <sched.h>
+#endif
+
 #include "core/ctx_runtime_resources.hpp"
 
 #include "core/ctx.hpp"
@@ -36,6 +40,16 @@ int resolve_spot_worker_runtime_count (zlink::ctx_t &ctx_)
         return 1;
     if (configured > 0)
         return configured;
+
+#if defined(ZLINK_HAVE_LINUX)
+    cpu_set_t cpuset;
+    CPU_ZERO (&cpuset);
+    if (sched_getaffinity (0, sizeof (cpuset), &cpuset) == 0) {
+        const int visible_logical_cores = CPU_COUNT (&cpuset);
+        if (visible_logical_cores > 0)
+            return std::min (visible_logical_cores, 8);
+    }
+#endif
 
     unsigned int logical_cores = std::thread::hardware_concurrency ();
     if (logical_cores == 0)

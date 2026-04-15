@@ -923,6 +923,46 @@ void test_discovery_dealer_peer_mode_rejects_spot_service_view ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_spot_node_attach_discovery_rejects_unsupported_socket_role ()
+{
+    using namespace zlink::discovery_owned_service;
+    using namespace zlink::discovery_protocol;
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+
+    std::string registry_pub_endpoint;
+    std::string registry_router_endpoint;
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints (
+      registry, &registry_pub_endpoint, &registry_router_endpoint));
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "svc-dealer");
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      discovery, registry_router_endpoint.c_str (), 3000));
+
+    std::string registered_endpoint;
+    TEST_ASSERT_SUCCESS_ERRNO (register_endpoint (
+      static_cast<zlink::discovery_t *> (discovery), service_type_socket,
+      "tcp://127.0.0.1:39111", &registered_endpoint, NULL, service_role_dealer));
+
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_spot_node_attach_discovery (node, discovery));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_discovery_resolve_spot_rejects_invalid_arguments ()
 {
     void *ctx = zlink_ctx_new ();
@@ -1446,6 +1486,7 @@ int main (void)
     RUN_TEST (test_discovery_dealer_peer_mode_defaults_and_accepts_known_modes);
     RUN_TEST (test_discovery_dealer_peer_mode_rejects_invalid_mode);
     RUN_TEST (test_discovery_dealer_peer_mode_rejects_spot_service_view);
+    RUN_TEST (test_spot_node_attach_discovery_rejects_unsupported_socket_role);
     RUN_TEST (test_discovery_resolve_spot_rejects_invalid_arguments);
     RUN_TEST (test_discovery_resolve_spot_rejects_socket_service_view);
     RUN_TEST (test_stream_send_ready_is_independent_from_recv_callback);

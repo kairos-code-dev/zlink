@@ -167,6 +167,25 @@ void test_ctx_spot_worker_runtime_respects_configured_count ()
 
     TEST_ASSERT_SUCCESS_ERRNO (ctx->terminate ());
 }
+
+void test_ctx_spot_worker_runtime_auto_count_is_bounded ()
+{
+    zlink::ctx_t *ctx = new zlink::ctx_t;
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    zlink::service_control_runtime_t *first =
+      ctx->spot_worker_runtime_for_key (0);
+    zlink::service_control_runtime_t *repeat =
+      ctx->spot_worker_runtime_for_key (0);
+    zlink::service_control_runtime_t *other =
+      ctx->spot_worker_runtime_for_key (17);
+
+    TEST_ASSERT_NOT_NULL (first);
+    TEST_ASSERT_EQUAL_PTR (first, repeat);
+    TEST_ASSERT_NOT_NULL (other);
+
+    TEST_ASSERT_SUCCESS_ERRNO (ctx->terminate ());
+}
 }
 
 extern "C" int main ()
@@ -178,5 +197,6 @@ extern "C" int main ()
     RUN_TEST (test_ctx_io_thread_selection_respects_affinity);
     RUN_TEST (test_ctx_service_runtime_bootstraps_runtime_resources_once);
     RUN_TEST (test_ctx_spot_worker_runtime_respects_configured_count);
+    RUN_TEST (test_ctx_spot_worker_runtime_auto_count_is_bounded);
     return UNITY_END ();
 }

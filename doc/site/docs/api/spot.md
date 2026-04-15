@@ -11,20 +11,22 @@ constructors, destroy functions, option setters, or monitor entrypoints.
 
 ## I/O Model
 
-Both `SpotNode` and unified `Spot` handles start in **recv model** and use
-`zlink_subscribe_handler()` for a **one-way transition** of the receive surface
-to callback mode. Send-ready is a separate axis.
+Both `SpotNode` and unified `Spot` handles start in **recv model**. Topic,
+routed, and timer readable notifications are delivered through one callback:
+`zlink_spot_dispatch_event_handler()`. Payloads are drained from the matching
+recv function. Send-ready is a separate axis.
 
 | | Recv Model (default) | Receive Callback Active |
 |---|---|---|
 | **SpotNode receive** | *(not exposed — use unified Spot)* | *(not exposed — use unified Spot)* |
-| **Spot receive** | `zlink_subscribe()` | `zlink_subscribe_handler()` callback |
+| **Spot receive** | `zlink_subscribe()` / `zlink_spot_subscribe()` / `zlink_spot_recv()` | `zlink_spot_dispatch_event_handler()` notification followed by recv |
 | **Readable poller** | `ZLINK_POLLIN` | `EBUSY` |
 | **Send-ready** | `ZLINK_POLLOUT` poller or `zlink_send_ready_handler()` | `ZLINK_POLLOUT` poller or `zlink_send_ready_handler()` |
 
 - `zlink_send_ready_handler()` does not require receive callback mode first.
 - Once send-ready is attached, data-plane `ZLINK_POLLOUT` poller use fails with `EBUSY`.
-- Once receive callback is attached, `zlink_subscribe()` and data-plane `ZLINK_POLLIN` fail with `EBUSY`.
+- In dispatch callback mode, `zlink_subscribe()` and data-plane `ZLINK_POLLIN` fail with `EBUSY` outside the active dispatch callback.
+- The caller may still use the matching recv function inside the active `zlink_spot_dispatch_event_handler()` callback for the same `spot_`.
 - `publish()` works in both models.
 
 ## Current public surface
@@ -149,7 +151,7 @@ before the node participates in bind/connect/discovery.
 model. It returns the next available message with its source routing ID and
 topic. `source_rid_out_`, `parts_out_`, and `topic_id_out_` are filled on
 success. Pass `ZLINK_DONTWAIT` in `flags_` for non-blocking operation.
-Returns `EBUSY` in callback model.
+Returns `EBUSY` in ordinary call sites once dispatch callback mode is active.
 
 Use `zlink_spot_node_status_snapshot()`, `zlink_spot_node_peers_snapshot()`,
 and `zlink_spot_node_subjects_snapshot()` for observability.
@@ -188,21 +190,22 @@ control-plane default and is not grouped into the SpotNode data-plane HWM.
   - `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM`
   - `ZLINK_SPOT_INTERNAL_MESH_XSUB_RCVHWM`
 
-## Callback contract
+## Spot dispatch event callback contract
 
 ```c
-typedef void (*zlink_subscribe_handler_fn)(const zlink_routing_id_t *source_rid,
-                                      const char *topic,
-                                      size_t topic_len,
-                                      zlink_msg_t *parts,
-                                      size_t part_count,
-                                      void *userdata);
+typedef void (*zlink_spot_dispatch_event_handler_fn) (
+  void *spot_,
+  zlink_spot_dispatch_event_t event_,
+  void *userdata_);
 ```
 
-- Install the callback with `zlink_subscribe_handler(node_or_spot, handler, userdata)`.
-- Handles start in recv model and switch one-way to callback model.
-- Once in callback model, `zlink_subscribe()` fails with `EBUSY`.
-- The callback consumes ownership of `parts`.
+- Install the callback with `zlink_spot_dispatch_event_handler(spot, handler, userdata)`.
+- Handles start in recv model and switch one-way to dispatch callback model.
+- The callback reports only the event kind. Drain payload through the matching recv function.
+- `zlink_spot_dispatch_event_handler()` callbacks are not invoked directly on the I/O thread; they run on a dedicated Spot worker runtime.
+- The worker count is controlled by the context option `ZLINK_SPOT_WORKER_THREADS`. A value of `0` means `min(visible logical cores, 8)` with fallback `1`.
+- The option applies only to the dispatch event callback path, not to send-ready, monitor, or other callback families.
+- Set the option before runtime startup. Changes after startup fail with `EINVAL`.
 
 ## Option summary
 
@@ -450,22 +453,19 @@ The following families are not part of the current public SPOT surface:
 
 ## Example
 
-### Callback model
+### Dispatch callback model
 
 ```c
-void on_spot_message(const zlink_routing_id_t *source_rid,
-                     const char *topic,
-                     size_t topic_len,
-                     zlink_msg_t *parts,
-                     size_t part_count,
-                     void *userdata);
+void on_spot_event(void *spot,
+                   zlink_spot_dispatch_event_t event,
+                   void *userdata);
 
 void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
 void *spot = zlink_spot_new(node);
-zlink_subscribe_handler(spot, on_spot_message, NULL);
+zlink_spot_dispatch_event_handler(spot, on_spot_event, NULL);
 zlink_set_subscription (spot, "room:lobby");
 
 zlink_msg_t part;

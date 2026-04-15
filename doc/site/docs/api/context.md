@@ -22,7 +22,9 @@ typedef enum zlink_ctx_option_t
     ZLINK_MSG_T_SIZE              = 6,
     ZLINK_THREAD_AFFINITY_CPU_ADD      = 7,
     ZLINK_THREAD_AFFINITY_CPU_REMOVE   = 8,
-    ZLINK_THREAD_NAME_PREFIX      = 9
+    ZLINK_THREAD_NAME_PREFIX      = 9,
+    ZLINK_CTX_OPT_BLOCKY          = 10,
+    ZLINK_SPOT_WORKER_THREADS     = 11
 } zlink_ctx_option_t;
 ```
 
@@ -38,6 +40,8 @@ typedef enum zlink_ctx_option_t
 | `ZLINK_THREAD_AFFINITY_CPU_ADD` | 7 | Add a CPU to the I/O thread affinity set |
 | `ZLINK_THREAD_AFFINITY_CPU_REMOVE` | 8 | Remove a CPU from the I/O thread affinity set |
 | `ZLINK_THREAD_NAME_PREFIX` | 9 | Prefix for I/O thread names |
+| `ZLINK_CTX_OPT_BLOCKY` | 10 | Legacy option for blocking behavior on context termination (`int`; default 1) |
+| `ZLINK_SPOT_WORKER_THREADS` | 11 | Worker count for `zlink_spot_dispatch_event_handler()` callbacks (`0` = auto) |
 
 ## Default Values
 
@@ -46,6 +50,7 @@ typedef enum zlink_ctx_option_t
 #define ZLINK_MAX_SOCKETS_DFLT          4095
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
+#define ZLINK_SPOT_WORKER_THREADS_DFLT  0
 ```
 
 | Constant | Value | Description |
@@ -54,6 +59,7 @@ typedef enum zlink_ctx_option_t
 | `ZLINK_MAX_SOCKETS_DFLT` | 4095 | Default maximum socket count |
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | Default thread priority (OS default) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | Default scheduling policy (OS default) |
+| `ZLINK_SPOT_WORKER_THREADS_DFLT` | 0 | Default Spot worker count (`0` = auto) |
 
 ## Functions
 

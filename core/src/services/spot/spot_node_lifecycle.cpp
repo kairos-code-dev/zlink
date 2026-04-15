@@ -513,13 +513,20 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
         bool has_pub = false;
         bool has_sub = false;
         for (size_t i = 0; i < providers.size (); ++i) {
-            if (providers[i].service_role == discovery_protocol::service_role_router
-                || providers[i].service_role == discovery_protocol::service_role_dealer)
+            if (providers[i].service_role == discovery_protocol::service_role_dealer) {
+                errno = ENOTSUP;
+                return -1;
+            }
+            if (providers[i].service_role == discovery_protocol::service_role_router)
                 has_router = true;
             else if (providers[i].service_role == discovery_protocol::service_role_pub)
                 has_pub = true;
             else if (providers[i].service_role == discovery_protocol::service_role_sub)
                 has_sub = true;
+            else {
+                errno = ENOTSUP;
+                return -1;
+            }
         }
         if (has_pub != has_sub) {
             errno = EINVAL;

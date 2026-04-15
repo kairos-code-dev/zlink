@@ -336,7 +336,7 @@ void *control(void *arg)
 | What went wrong | Why | How to fix |
 |---|---|---|
 | Two threads writing to the same `zlink_msg_t` | Message objects are not thread-safe | Create a separate `zlink_msg_t` in each thread |
-| Callback does heavy work and throughput drops | Callbacks run on the I/O thread — blocking stalls everything | Push to a queue, process on a worker thread |
+| Callback path does heavy work and throughput drops | It stalls the callback's background execution path and reduces delivery throughput | Push to a queue, process on a worker thread |
 | Calling APIs after `close`/`destroy` | Returns `ZLINK_CLOSE_SHUTDOWN` (or per-function `*_TERMINATED`) or undefined behavior | Coordinate shutdown; check return codes |
 | Calling `connect`/`set_option` in a per-message loop | Configuration APIs are serialized — adds unnecessary overhead | Call them only when configuration actually changes |
 

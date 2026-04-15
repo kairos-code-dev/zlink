@@ -3,7 +3,8 @@
 
 > 이 가이드는 recv-first public surface 기준으로 작성되었다.
 > `SpotNode`와 unified `Spot`은 recv 모드로 시작하고,
-> `zlink_subscribe_handler()`로 callback 모드로 일방 전환된다.
+> readable 알림은 `zlink_spot_dispatch_event_handler()` 하나로 받는다.
+> 실제 payload는 대응 recv 함수로 drain한다.
 
 ## 1. 개요
 
@@ -181,8 +182,8 @@ zlink_unset_subscription(spot, "chat:room1:*");
 ### 4.4 메시지 수신
 
 `SpotNode`와 unified `Spot` 모두 **recv 모드**로 시작한다. 메시지를 직접
-수신하거나, receive surface를 **callback 모드**로 한 번 전환할 수 있다.
-send-ready는 별도 축이다.
+수신하거나, topic/routed/timer readable 알림을 하나의 dispatch callback으로
+받을 수 있다. 실제 payload는 대응 recv 함수로 꺼낸다. send-ready는 별도 축이다.
 
 #### Recv 모드 (기본)
 
@@ -221,24 +222,36 @@ if (rc == 0) {
     | Rust | [spot_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/spot_recv_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/spot_recv_sample/main.go) |
 
-#### Callback 모드
+#### Dispatch callback 모드
 
-`zlink_subscribe_handler()`를 호출하면 recv 모드에서 callback 모드로
-일방 전환된다. 이후 수신 메시지는 설치된 callback으로 자동 dispatch된다.
+`zlink_spot_dispatch_event_handler()`를 호출하면 recv 모드에서 dispatch
+callback 모드로 일방 전환된다. callback은 readable event kind만 알려 주고,
+실제 payload는 대응 recv 함수로 drain한다.
 
 ```c
 /* Define callback function */
-void on_message(const zlink_routing_id_t *source_rid,
-                const char *topic, size_t topic_len,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
+void on_spot_event(void *spot,
+                   zlink_spot_dispatch_event_t event,
+                   void *userdata)
 {
-    printf("Topic: %.*s, Parts: %zu\n", (int)topic_len, topic, part_count);
+    if (event == ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE) {
+        zlink_routing_id_t source_rid;
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        char topic_buf[256];
+        size_t topic_len = sizeof(topic_buf);
+
+        if (zlink_subscribe(spot, &source_rid, &parts, &part_count,
+                            topic_buf, &topic_len, ZLINK_DONTWAIT) == 0) {
+            printf("Topic: %.*s, Parts: %zu\n",
+                   (int)topic_len, topic_buf, part_count);
+        }
+    }
 }
 
 /* Register handler at unified spot creation */
 void *spot = zlink_spot_new(node);
-zlink_subscribe_handler(spot, on_message, NULL);
+zlink_spot_dispatch_event_handler(spot, on_spot_event, NULL);
 ```
 
 ??? example "Full Sample Code"
@@ -257,20 +270,23 @@ zlink_subscribe_handler(spot, on_message, NULL);
 **중요:** 하나의 `spot` / `spot_node` handle을 여러 스레드에서 동시에
 사용할 수 있다 (thread-safe). `publish`는 hot path(고빈도 데이터 경로)로서 여러 스레드에서 동시 호출을 허용하고,
 subscribe/unsubscribe/attach/peer connect/monitor는 control path(저빈도 설정/관리 경로)로
-호출할 수 있다. 다만 callback은 I/O 경로에서 직접 호출되므로, 느린 처리는
-사용자 queue로 넘겨 별도 thread에서 처리하는 편이 안전하다.
+호출할 수 있다. `zlink_spot_dispatch_event_handler()` callback은 I/O thread에서
+직접 실행되지 않고, 전용 SPOT worker runtime에서 실행된다. worker 수는
+context 옵션 `ZLINK_SPOT_WORKER_THREADS`로 조절한다.
 
 **제약 사항:**
 
 - recv 모드에서는 `zlink_subscribe()`를 사용한다
-- receive callback 전환은 `zlink_subscribe_handler()`로 한 번만 수행한다
-- receive callback 모드에서는 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`이 `EBUSY`로 실패한다
+- topic/routed/timer readable 알림은 `zlink_spot_dispatch_event_handler()`로 받는다
+- dispatch callback 모드에서는 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`이 일반 문맥에서 `EBUSY`로 실패한다
+- 같은 `spot`의 활성 dispatch callback 안에서는 해당 readable plane을 비우기 위해 recv 함수를 호출할 수 있다
 - `zlink_send_ready_handler()`는 receive callback 선행 조건이 없다
 - send-ready attach 이후 data-plane `ZLINK_POLLOUT`은 `EBUSY`로 실패한다
 - 전환 후 callback 교체나 해제는 지원하지 않는다
-- 콜백은 소켓 dispatch / I/O 경로에서 직접 호출된다
-- 콜백에서 블로킹 작업을 수행하면 다른 I/O 진행에 영향을 줄 수 있다
-- 느린 처리가 필요하면 콜백 안에서 사용자 queue로 넘기고 별도 thread에서 처리한다
+- callback은 전용 SPOT worker runtime에서 실행된다
+- 같은 `Spot`의 callback은 직렬 실행되고, 다른 `Spot`은 병렬 실행될 수 있다
+- `ZLINK_SPOT_WORKER_THREADS=0`이면 `min(visible logical cores, 8)`을 사용하고, 알 수 없으면 `1`을 사용한다
+- 이 옵션은 runtime 시작 전에 설정해야 하며, 시작 후 변경은 `EINVAL`로 실패한다
 - `destroy`는 fail-fast lifecycle gate(사용 중이면 `EBUSY`, 종료 후 `ESHUTDOWN`)를 가지므로, 외부 사용을 중단한 뒤
   정리하는 것이 가장 단순하다
 

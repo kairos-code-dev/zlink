@@ -201,7 +201,9 @@ Guard는 단일 `atomic<uint32_t>`를 사용하며, 하나의 워드에 두 필�
 
 ## 5. Callback Dispatch 구현
 
-모든 callback은 I/O 스레드에서 실행됩니다. Dispatch 메커니즘은 원자적
+대부분의 callback은 I/O 스레드에서 실행됩니다. 다만
+`zlink_spot_dispatch_event_handler()`는 Spot 전용 worker runtime에서
+실행됩니다. Dispatch 메커니즘은 원자적
 load를 사용하여 핸들러 포인터를 읽으며, hot path에 broad lock 없이
 핸들러 교체의 가시성을 보장합니다.
 

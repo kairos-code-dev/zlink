@@ -20,6 +20,8 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 #define ZLINK_THREAD_AFFINITY_CPU_ADD      7
 #define ZLINK_THREAD_AFFINITY_CPU_REMOVE   8
 #define ZLINK_THREAD_NAME_PREFIX      9
+#define ZLINK_CTX_OPT_BLOCKY          10
+#define ZLINK_SPOT_WORKER_THREADS     11
 ```
 
 | 상수 | 값 | 설명 |
@@ -34,6 +36,8 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 | `ZLINK_THREAD_AFFINITY_CPU_ADD` | 7 | I/O 스레드 어피니티 집합에 CPU 추가 |
 | `ZLINK_THREAD_AFFINITY_CPU_REMOVE` | 8 | I/O 스레드 어피니티 집합에서 CPU 제거 |
 | `ZLINK_THREAD_NAME_PREFIX` | 9 | I/O 스레드 이름 접두사 |
+| `ZLINK_CTX_OPT_BLOCKY` | 10 | context 종료 시 블로킹 동작 제어 |
+| `ZLINK_SPOT_WORKER_THREADS` | 11 | `zlink_spot_dispatch_event_handler()` 전용 worker 수 (`0` = 자동) |
 
 ## 기본값
 
@@ -42,6 +46,7 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 #define ZLINK_MAX_SOCKETS_DFLT          4095
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
+#define ZLINK_SPOT_WORKER_THREADS_DFLT  0
 ```
 
 | 상수 | 값 | 설명 |
@@ -50,6 +55,7 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 | `ZLINK_MAX_SOCKETS_DFLT` | 4095 | 기본 최대 소켓 수 |
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | 기본 스레드 우선순위 (OS 기본값) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | 기본 스케줄링 정책 (OS 기본값) |
+| `ZLINK_SPOT_WORKER_THREADS_DFLT` | 0 | 기본 Spot worker 수 (`0` = 자동) |
 
 ## 함수
 

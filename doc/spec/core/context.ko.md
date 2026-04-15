@@ -23,6 +23,8 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 #define ZLINK_THREAD_AFFINITY_CPU_ADD      7
 #define ZLINK_THREAD_AFFINITY_CPU_REMOVE   8
 #define ZLINK_THREAD_NAME_PREFIX      9
+#define ZLINK_CTX_OPT_BLOCKY          10
+#define ZLINK_SPOT_WORKER_THREADS     11
 ```
 
 | 상수 | 값 | 설명 |
@@ -37,6 +39,8 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 | `ZLINK_THREAD_AFFINITY_CPU_ADD` | 7 | I/O 스레드 어피니티 집합에 CPU 추가 |
 | `ZLINK_THREAD_AFFINITY_CPU_REMOVE` | 8 | I/O 스레드 어피니티 집합에서 CPU 제거 |
 | `ZLINK_THREAD_NAME_PREFIX` | 9 | I/O 스레드 이름 접두사 |
+| `ZLINK_CTX_OPT_BLOCKY` | 10 | context 종료 시 블로킹 동작 제어 |
+| `ZLINK_SPOT_WORKER_THREADS` | 11 | `zlink_spot_dispatch_event_handler()` 전용 worker 수 (`0` = 자동) |
 
 ## 기본값
 
@@ -45,6 +49,7 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 #define ZLINK_MAX_SOCKETS_DFLT          4095
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
+#define ZLINK_SPOT_WORKER_THREADS_DFLT  0
 ```
 
 | 상수 | 값 | 설명 |
@@ -53,6 +58,7 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 | `ZLINK_MAX_SOCKETS_DFLT` | 4095 | 기본 최대 소켓 수 |
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | 기본 스레드 우선순위 (OS 기본값) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | 기본 스케줄링 정책 (OS 기본값) |
+| `ZLINK_SPOT_WORKER_THREADS_DFLT` | 0 | 기본 Spot worker 수 (`0` = 자동) |
 
 ## 함수
 
@@ -82,7 +88,7 @@ Context가 더 이상 필요하지 않으면 `zlink_ctx_term`으로 해제합니
 Context를 종료하고 관련된 모든 리소스를 해제합니다.
 
 ```c
-int zlink_ctx_term(void *context_);
+zlink_close_result_t zlink_ctx_term(void *context_);
 ```
 
 Context를 파괴합니다. 이 호출은 context 내에서 생성된 모든 소켓이 닫힐 때까지
@@ -90,7 +96,7 @@ Context를 파괴합니다. 이 호출은 context 내에서 생성된 모든 소
 호출되거나 모든 소켓이 닫힌 후 `ETERM`을 반환합니다. 각 context는 정확히
 한 번만 종료해야 합니다.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CLOSE_OK`, 실패 시 `zlink_close_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **에러:**
 - `EFAULT` -- 유효하지 않은 context 핸들.
@@ -109,7 +115,7 @@ Context를 파괴합니다. 이 호출은 context 내에서 생성된 모든 소
 Context를 즉시 종료합니다.
 
 ```c
-int zlink_ctx_shutdown(void *context_);
+zlink_close_result_t zlink_ctx_shutdown(void *context_);
 ```
 
 이 context에 속한 소켓의 모든 블로킹 작업이 `ETERM`과 함께 즉시 반환되도록
@@ -118,7 +124,7 @@ int zlink_ctx_shutdown(void *context_);
 term 전에 shutdown을 호출하면 여러 스레드에서 소켓을 사용할 때 데드락을
 방지할 수 있습니다.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CLOSE_OK`, 실패 시 `zlink_close_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **에러:**
 - `EFAULT` -- 유효하지 않은 context 핸들.
@@ -134,14 +140,20 @@ term 전에 shutdown을 호출하면 여러 스레드에서 소켓을 사용할 
 Context 옵션을 설정합니다.
 
 ```c
-int zlink_ctx_set(void *context_, int option_, int optval_);
+zlink_config_result_t zlink_ctx_set(void *context_, zlink_ctx_option_t option_, int optval_);
 ```
 
 소켓이 생성되기 전 또는 후에 context를 구성합니다. 일부 옵션(예:
-`ZLINK_IO_THREADS`)은 소켓을 생성하기 전에 설정해야 적용됩니다. 유효한 옵션
-이름과 의미는 위의 옵션 상수 테이블을 참조하세요.
+`ZLINK_IO_THREADS`, `ZLINK_SPOT_WORKER_THREADS`)은 runtime이 시작되기 전에
+설정해야 적용됩니다. `ZLINK_SPOT_WORKER_THREADS`는
+`zlink_spot_dispatch_event_handler()` callback을 실행하는 전용 worker 수를
+정합니다. 값 `0`은 자동 선택이며, 자동값은
+`min(visible logical cores, 8)`이고 코어 수를 알 수 없으면 `1`입니다.
+runtime이 시작된 뒤 이 값을 바꾸려 하면 `ZLINK_CONFIG_INVALID_ARGUMENT`
+(`errno=EINVAL`)로 실패합니다. 유효한 옵션 이름과 의미는 위의 옵션 상수
+테이블을 참조하세요.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **에러:**
 - `EINVAL` -- 알 수 없는 옵션 또는 유효하지 않은 값.
@@ -157,14 +169,17 @@ int zlink_ctx_set(void *context_, int option_, int optval_);
 Context 옵션을 조회합니다.
 
 ```c
-int zlink_ctx_get(void *context_, int option_);
+int zlink_ctx_get(void *context_, zlink_ctx_option_t option_, zlink_config_result_t *error_out_);
 ```
 
 Context 옵션의 현재 값을 가져옵니다. `ZLINK_SOCKET_LIMIT` 및 `ZLINK_MSG_T_SIZE`
 같은 읽기 전용 옵션을 포함하여 언제든지 context 구성을 검사하는 데 사용할 수
-있습니다.
+있습니다. 실패 시 `*error_out_`에 설정 결과(`zlink_config_result_t`)가
+기록되고, 성공 시 옵션 값이 기본 반환값으로 반환됩니다.
 
-**반환값:** 성공 시 옵션 값, 실패 시 `-1` (errno가 설정됨).
+**반환값:** 성공 시 옵션 값, 실패 시 `-1`이며 `*error_out_`에
+`zlink_config_result_t`가 기록됩니다. `zlink_errno()`는 진단용 내부 errno를
+그대로 유지합니다.
 
 **에러:**
 - `EINVAL` -- 알 수 없는 옵션.

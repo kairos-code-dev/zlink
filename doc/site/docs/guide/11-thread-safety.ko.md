@@ -333,7 +333,7 @@ void *control(void *arg)
 | 실수 | 이유 | 해결 |
 |---|---|---|
 | 같은 `zlink_msg_t` 공유 | msg는 thread-safe 아님 | 스레드별 별도 msg 생성 |
-| 콜백에서 무거운 작업 | I/O 스레드 블로킹 | 큐로 오프로드 |
+| 콜백 경로에서 무거운 작업 | 내부 worker 또는 I/O 경로 정체 | 큐로 오프로드 |
 | `close` 후 API 호출 | `ESHUTDOWN` 반환 | 반환 코드 확인 |
 | 메시지마다 `set_option` | 순차 처리 오버헤드 | 변경 시에만 호출 |
 

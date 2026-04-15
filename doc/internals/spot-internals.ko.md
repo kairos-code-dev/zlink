@@ -640,6 +640,9 @@ service-aware SPOT은 기존 SpotNode data plane 위에 올라간다. 핵심 추
   있지 않다"를 알린다. user handler는 I/O 스레드가 직접 호출하지 않고 공용
   dispatch executor가 실행한다. 느린 user handler 때문에 attachment I/O가
   멈추는 일이 없도록 하기 위함이다.
+- dispatch executor는 Spot 전용 worker runtime 위에서 돈다. worker 수는
+  context 옵션 `ZLINK_SPOT_WORKER_THREADS`를 따르며, 값 `0`은 자동 선택
+  (`min(visible logical cores, 8)`, 실패 시 `1`)이다.
 
 ### 11.5 Node 소유 monitor fan-in
 

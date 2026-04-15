@@ -164,12 +164,19 @@ flowchart LR
 | 방법 | 설명 | 사용 함수 |
 |------|------|-----------|
 | **수동 attach** | 호출자가 외부 소켓(ROUTER / PUB / SUB)을 직접 만들어 `service_name`과 함께 등록한다. 테스트, 고정 토폴로지, 부트스트랩 서비스에 적합하다. | `zlink_spot_node_attach_router()`, `zlink_spot_node_attach_pubsub()` |
-| **Discovery attach** | Discovery handle을 서비스별로 만들어 붙이면, Registry가 알려 주는 provider가 자동으로 service attachment table에 ROUTER/PUB/SUB 소스로 들어온다. 운영 토폴로지에 적합하다. | `zlink_spot_node_attach_discovery()` |
+| **Discovery attach** | Discovery handle을 서비스별로 만들어 붙이면, Registry가 알려 주는 provider가 자동으로 service attachment table에 ROUTER/PUB/SUB 소스로 들어온다. 운영 토폴로지에 적합하다. | `zlink_socket_attach_discovery()` (각 내부 소켓마다) + `zlink_spot_node_attach_discovery()` |
 
 자동 attach에서도 같은 규칙이 적용된다. `router`만 있는 서비스는 허용,
 `router + pub + sub`도 허용, `pub + sub`만 있는 서비스도 허용, 그러나
 `pub` xor `sub` 상태인 서비스(한쪽만 살아 있는 pub/sub)는 attach 시점에서
 거부된다.
+
+수동 attach와 Discovery attach는 같은 `service_name` 아래에서 공존할 수 있다.
+각 attachment는 자신만의 source marker(`ZLINK_SPOT_PEER_SOURCE_MANUAL` 또는
+`ZLINK_SPOT_PEER_SOURCE_DISCOVERY`)를 유지한다. router selector는 round-robin
+선택 시 양쪽을 동일하게 취급하지만, peer-removal 이벤트는 일치하는 source만
+retract한다 — 즉, 수동 attachment는 Discovery provider churn에 영향받지
+않고 유지된다.
 
 각 방법의 구체적인 사용은 §3.1 Discovery 기반 자동 Mesh와 §3.1a 수동 service
 attach에서 다룬다.
@@ -250,6 +257,11 @@ zlink_spot_node_attach_discovery(node, prices_sub_discovery);
 - `zlink_socket_attach_discovery()`가 socket을 Discovery에 **소속시키는**
   필수 중간 단계다. 이걸 건너뛰면 Registry에 provider로 올라가지 않고,
   SpotNode에 attach_discovery해도 그 서비스에는 들어오는 attachment가 없다.
+  이 호출은 이후 SpotNode attach가 의존하는 두 가지 작업을 수행한다:
+  (a) socket의 lifecycle 소유권이 Discovery로 이전되어, Discovery를 destroy
+  하면 해당 socket도 함께 종료된다; (b) socket을 Registry에 이 서비스의 명명된
+  provider로 등록하여, 다른 노드의 Discovery view에서 이 socket을 보고
+  자동 연결할 수 있게 한다.
 - pub/sub 서비스는 PUB와 SUB가 **둘 다 같은 `service_name`**을 공유하도록
   Discovery를 각각 만든다. 서비스 구성이 pub xor sub(한쪽만 존재) 상태이면
   `attach_discovery`가 `INVALID_ARGUMENT`로 거부된다.
@@ -464,13 +476,171 @@ zlink_spot_dispatch_event_handler(spot, on_spot_event, NULL);
 사용할 수 있다 (thread-safe). `publish`는 핫 패스로서
 여러 스레드에서 동시 호출을 허용하고, subscribe/unsubscribe/attach/peer
 connect/monitor는 제어 경로(control path)로 호출할 수 있다. 다만
-callback은 I/O 경로에서 직접 호출되므로, 느린 처리는 사용자 queue로 넘겨 별도
-thread에서 처리하는 편이 안전하다.
+`zlink_spot_dispatch_event_handler()` callback은 I/O thread에서 직접 실행되지
+않고, 전용 SPOT worker runtime에서 실행된다. worker 수는 context 옵션
+`ZLINK_SPOT_WORKER_THREADS`로 조절한다.
 
 ## 4a. Service-aware 송수신
 
 service attachment가 붙어 있을 때는 `service_name`으로 바로 송신하고,
 수신 시에도 어느 서비스에서 온 메시지인지 함께 돌려받는 표면을 쓴다.
+
+### 4a.0 서비스별 peer 그룹과 메시지 경로 개요
+
+여러 서비스를 attach하면 `SpotNode`의 service attachment table은 각
+`service_name`마다 **독립된 peer 그룹**을 유지한다. `Spot` facade의 service
+기반 API는 그룹 이름(`service_name`)만 받고, 실제 전송 대상은 그룹 안에서
+규칙에 따라 고른다. routed 경로는 raw DEALER가 하나의 endpoint pool에서
+round-robin하듯 **"같은 서비스의 ROUTER pool"** 안에서 round-robin으로 부하를
+분배한다. pub/sub 경로는 해당 서비스의 PUB/SUB 쌍 안에서만 돈다.
+
+#### Peer 그룹 토폴로지
+
+```mermaid
+flowchart LR
+    App[Application]
+    Facade["Spot facade<br/>(one per node)"]
+
+    App --> Facade
+
+    subgraph Node["SpotNode service attachment table"]
+        direction TB
+        OX["service_name: 'orders-exec'<br/>ROUTER group: R1, R2, R3<br/>(DEALER-like round-robin)"]
+        MD["service_name: 'market-data'<br/>PUB + SUB pair: P, S"]
+        BL["service_name: 'billing'<br/>ROUTER + PUB/SUB<br/>R1, R2, P, S"]
+    end
+
+    Facade -->|spot_send_service / spot_request_service| OX
+    Facade -->|spot_publish / spot_subscribe| MD
+    Facade -->|send_service 또는 publish| BL
+```
+
+그룹 경계는 `service_name`이다. `orders-exec`로 보낸 호출은 `R1/R2/R3` 중
+하나로만 가고 다른 서비스의 ROUTER는 후보에서 제외된다. `market-data`로
+publish한 메시지는 `P`로만 나가고 `orders-exec`의 ROUTER로는 가지 않는다.
+
+#### send_service — DEALER 유사 round-robin 분배
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant Spot
+    participant Sel as Router Selector
+    participant R1 as orders-exec/R1
+    participant R2 as orders-exec/R2
+    participant R3 as orders-exec/R3
+
+    App->>Spot: spot_send_service(spot, "orders-exec", msg)
+    Spot->>Sel: lookup(service_name)<br/>filter(active, send_ready)
+    Sel-->>Spot: chosen = R2
+    Spot->>R2: forward payload
+    Note over R1,R3: 다음 호출은 R3 → R1 → R2 ... 순으로 회전
+    Note over Sel: admission_state=DRAINING peer는 후보에서 제외
+```
+
+- 후보가 0개(모두 send-ready가 아니거나 전부 `DRAINING`)면 호출은
+  `ZLINK_SUBMIT_NOT_CONNECTED`로 정규화된다. 모든 후보가 `DRAINING`이면
+  `ZLINK_SUBMIT_NOT_ADMITTED`.
+- 선택된 ROUTER가 HWM에 걸리면 `ZLINK_SUBMIT_BACKPRESSURED`. 이 경우 지정한
+  peer의 write path 회복이 생기면 재시도한다.
+
+#### request_service — reply는 ingress ROUTER에 pinning
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant Spot
+    participant Sel as Router Selector
+    participant R2 as orders-exec/R2
+    participant Remote as Remote responder
+
+    App->>Spot: spot_request_service("orders-exec", msg, cb, 2000ms)
+    Spot->>Sel: pick send-ready ROUTER
+    Sel-->>Spot: R2 (this request's ingress)
+    Spot->>R2: send request
+    R2->>Remote: routed transport
+    Remote-->>R2: reply
+    R2-->>Spot: reply delivered on same ingress
+    Note over Spot: reply는 R1/R3로 재선택하지 않는다
+    Spot-->>App: reply handler(result, parts)
+```
+
+- 송신은 round-robin으로 ROUTER를 고르지만, **reply는 그 최초 송신 ROUTER에
+  고정**된다. 라이브러리가 request_seq와 ingress를 같이 관리한다.
+- timeout 뒤 재시도는 기본 계약에 없다. timeout이 나면 completion callback이
+  `ZLINK_REQUEST_TIMED_OUT`으로 호출된다.
+
+#### publish — service의 PUB로 고정
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant Spot
+    participant Map as Service Map
+    participant P as market-data/PUB
+    participant Remote as Remote SUBs
+
+    App->>Spot: spot_publish(spot, "market-data", "quotes.fx.usdjpy", msg)
+    Spot->>Map: lookup("market-data")
+    Map-->>Spot: attachment { pub: P, sub: S }
+    Spot->>P: send [topic] + [payload]
+    P->>Remote: fan-out to matching subscribers
+```
+
+- 같은 서비스의 PUB/SUB 쌍이 active일 때만 publish가 성공한다. Discovery
+  churn으로 쌍이 깨진 서비스는 `NOT_CONNECTED`로 실패한다.
+- 쌍이 다시 복구되면 `zlink_set_subscription()`으로 등록해 둔 filter가 자동
+  replay된 뒤 active 집합에 재진입한다.
+
+#### subscribe — service_name이 수신 메타에 포함
+
+```mermaid
+sequenceDiagram
+    participant RPub as Remote PUB ('market-data')
+    participant S as market-data/SUB
+    participant Ingress as Subscribe Ingress
+    participant Q as Unified Service Event Queue
+    participant Exec as Dispatch Executor
+    participant Spot
+    participant App
+
+    RPub->>S: [topic] + [payload]
+    S->>Ingress: recv fragment
+    Ingress->>Q: push { kind=SUBSCRIBE,<br/>service='market-data',<br/>topic, payload }
+    Q->>Exec: SUBSCRIBE_READABLE
+    Exec-->>Spot: dispatch_event callback
+    App->>Spot: spot_subscribe(spot, ...)
+    Spot-->>App: (service_name='market-data', topic, payload)
+```
+
+- 여러 서비스의 SUB에서 들어온 메시지가 한 facade의 recv 표면으로 섞여
+  올라오더라도, 응용은 `service_name`과 `topic`으로 바로 구분할 수 있다.
+- pub/sub 경로의 `source_rid`는 비어 있을 수 있다. 응용은 `service_name` +
+  `topic`을 기본 식별자로 다루고, `source_rid`는 선택 메타데이터로만 쓴다.
+- `zlink_set_subscription(spot, filter)`는 facade 전체의 합집합이 되어 attach
+  되어 있는 모든 서비스의 SUB에 한 번에 반영된다. 새로 attach되는 SUB에는
+  기존 filter가 자동으로 replay된다.
+
+#### raw DEALER와의 비교 — 무엇이 같고 무엇이 다른가
+
+service 기반 routed 송신은 raw DEALER의 round-robin을 `service_name` 단위로
+**그룹화한 일반화**로 볼 수 있다.
+
+| 축 | raw DEALER | `zlink_spot_send_service()` / `request_service()` |
+|----|-----------|---------------------------------------------------|
+| pool 경계 | 한 DEALER가 connect한 endpoint 집합 | 같은 `service_name`의 ROUTER attachment 그룹 |
+| pool 구성 | 호출자가 직접 `zlink_connect()`로 구성 | 수동 attach와 Discovery 자동 attach가 섞일 수 있음 |
+| round-robin 단위 | connect된 endpoint | ROUTER attachment |
+| reply 상관 | 호출자가 직접 매칭 (send/recv 쌍으로 처리) | 라이브러리가 ingress ROUTER와 `request_seq`로 관리 |
+| admission 인지 | 호출자가 직접 처리 | `DRAINING` peer 자동 제외 + `NOT_ADMITTED` 결과로 surface |
+| 여러 서비스 병렬 | 소켓을 여러 개 만들어 각각 connect | 한 facade에서 `service_name`만 바꿔 호출 |
+| 대상이 비는 경우 | BACKPRESSURED 또는 silent hold | `NOT_CONNECTED`로 정규화 (구성은 있으나 경로 부재) |
+
+즉 "`orders-exec`로 지금 보낼 수 있는 ROUTER를 골라 전송하되 reply가 올
+경로까지 맞춰 놓아라"는 요구를 한 줄 호출로 처리하는 것이
+`zlink_spot_request_service()`이고, 그 선택 규칙이 DEALER의 round-robin과
+같다고 보면 된다. 단 경계가 `service_name`이며, attach된 소속만 보고 다른
+서비스로는 절대 넘어가지 않는다.
 
 ### 4a.1 service 기반 송신 / publish
 
@@ -1167,15 +1337,20 @@ pthread_create(&worker, NULL, spot_worker, /* ctx */);
 
 | dispatch event handler 미사용 | dispatch event handler 사용 |
 |---|---|
-| Subscribe callback 이 I/O 스레드에서 실행 | I/O 스레드가 알림만 → 워커 스레드에서 pull |
-| Routed handler 가 routed dispatch 스레드에서 실행 | Routed 스레드가 알림만 → 워커 스레드에서 pull |
-| Timer handler 가 스케줄러 스레드에서 실행 | 스케줄러 스레드가 알림만 → 워커 스레드에서 pull |
+| Subscribe callback 이 I/O 스레드에서 실행 | I/O 스레드가 알림만 → SPOT worker runtime → 워커 스레드에서 pull |
+| Routed handler 가 routed dispatch 스레드에서 실행 | Routed 스레드가 알림만 → SPOT worker runtime → 워커 스레드에서 pull |
+| Timer handler 가 스케줄러 스레드에서 실행 | 스케줄러 스레드가 알림만 → SPOT worker runtime → 워커 스레드에서 pull |
 | 세 개의 producer 스레드 사이 공유 상태를 사용자 코드가 직접 lock 으로 보호 | 모든 데이터 소비/처리가 애플리케이션 소유의 단일 스레드에서 이루어짐 |
 
 세 내부 스레드는 작은 알림 함수 외에는 애플리케이션 로직에 들어오지
 않는다. subscribe/recv/timer 데이터는 전부 단일 애플리케이션 스레드에서
 읽히므로, 세 스트림 사이의 공유 상태에 대해 사용자 코드가 별도 동기화를
 둘 필요가 없다.
+
+Spot dispatch event의 내부 worker 수는 context 옵션
+`ZLINK_SPOT_WORKER_THREADS`로 조절할 수 있다. 값 `0`은 자동 선택이고,
+자동값은 `min(visible logical cores, 8)`이며 코어 수를 알 수 없으면 `1`이다.
+이 옵션은 runtime 시작 전에 설정해야 한다.
 
 ### 7.4 병행 사용 규칙
 
@@ -1229,6 +1404,28 @@ receiver는 batch를 내부적으로 풀어서 application이 보는
 publish/subscribe 계약은 변경되지 않는다.
 
 ### 활성화
+
+Batching 임계값은 `SpotNode` handle에서 `zlink_set_spot_node_option()`으로
+노드 단위로 조정한다. 작은 업데이트가 폭발적으로 발생하는 시세 데이터 노드라면
+토픽 HWM은 크게, routed HWM은 중간 정도로 설정하는 것이 일반적이다:
+
+```c
+uint32_t topic_hwm  = 20000;
+uint32_t routed_hwm = 8000;
+
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM,
+                           &topic_hwm, sizeof(topic_hwm));
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM,
+                           &topic_hwm, sizeof(topic_hwm));
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM,
+                           &routed_hwm, sizeof(routed_hwm));
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM,
+                           &routed_hwm, sizeof(routed_hwm));
+```
+
+대부분의 배포에서는 기본값으로 충분하다. 이 옵션들은 producer 폭주나
+느린 consumer로 인해 노드 간 경로에 backpressure가 발생할 때 HWM을 올리기
+위한 수단이다.
 
 ## 11. 전달 보장
 

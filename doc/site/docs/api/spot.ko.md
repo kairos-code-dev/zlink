@@ -23,20 +23,21 @@ SPOT public API는 두 계층으로 정리됩니다.
 
 ## I/O 모델
 
-`SpotNode`와 unified `Spot` 모두 **recv 모드**로 시작하고,
-`zlink_subscribe_handler()`로 receive surface를 callback 모드로 **일방 전환**
-합니다. send-ready는 별도 축입니다.
+`SpotNode`와 unified `Spot` 모두 **recv 모드**로 시작합니다. topic/routed/
+timer readable 알림은 `zlink_spot_dispatch_event_handler()` 하나로 받고,
+실제 payload는 대응 recv 함수로 drain합니다. send-ready는 별도 축입니다.
 
 | 동작 | Recv 모드 (기본) | Callback 모드 |
 |------|-----------------|--------------|
 | **SpotNode 수신** | *(미노출 — unified Spot 사용)* | *(미노출 — unified Spot 사용)* |
-| **Spot 수신** | `zlink_subscribe()` | `subscribe_handler()` 콜백 |
+| **Spot 수신** | `zlink_subscribe()` / `zlink_spot_subscribe()` / `zlink_spot_recv()` | `zlink_spot_dispatch_event_handler()` readable 알림 후 recv |
 | **읽기 poller** | `ZLINK_POLLIN` | `EBUSY` |
 | **Send-ready** | poller 또는 `send_ready_handler()` | poller 또는 `send_ready_handler()` |
 
 - `zlink_send_ready_handler()`는 receive callback 선행 조건이 없습니다.
 - send-ready attach 이후 data-plane `ZLINK_POLLOUT` poller는 `EBUSY`로 실패합니다.
-- receive callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은 `EBUSY`로 실패합니다.
+- dispatch callback 모드에서는 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`이 일반 문맥에서 `EBUSY`로 실패합니다.
+- 다만 같은 `spot_`의 활성 `zlink_spot_dispatch_event_handler()` callback 안에서는 해당 readable plane을 비우기 위해 recv 함수를 호출할 수 있습니다.
 - `publish()`는 두 모드 모두에서 동작합니다.
 
 ## 현재 public surface
@@ -158,7 +159,8 @@ handle에 `zlink_set_tls_server()` 또는 `zlink_set_tls_client()`를 호출하�
 `zlink_subscribe()`는 recv 모드에서 동기식 pull 방식의 수신을 제공합니다.
 다음 메시지와 source routing ID, topic을 반환합니다. 성공 시 `source_rid_out_`,
 `parts_out_`, `topic_id_out_`이 채워집니다. non-blocking 동작은 `flags_`에
-`ZLINK_DONTWAIT`를 전달합니다. callback 모드에서는 `EBUSY`로 실패합니다.
+`ZLINK_DONTWAIT`를 전달합니다. dispatch callback 모드에서는 일반 문맥에서
+`EBUSY`로 실패합니다.
 
 관찰/운영 상태 확인은 `zlink_spot_node_status_snapshot()`,
 `zlink_spot_node_peers_snapshot()`, `zlink_spot_node_subjects_snapshot()`을
@@ -197,23 +199,28 @@ SpotNode는 다음 내부 data-plane을 가집니다.
   - `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM`
   - `ZLINK_SPOT_INTERNAL_MESH_XSUB_RCVHWM`
 
-## callback 계약
+## Spot dispatch event callback 계약
 
 ```c
-typedef void (*zlink_subscribe_handler_fn)(const zlink_routing_id_t *source_rid,
-                                           const char *topic,
-                                           size_t topic_len,
-                                           zlink_msg_t *parts,
-                                           size_t part_count,
-                                           void *userdata);
+typedef void (*zlink_spot_dispatch_event_handler_fn) (
+  void *spot_,
+  zlink_spot_dispatch_event_t event_,
+  void *userdata_);
 ```
 
-- callback은 `zlink_subscribe_handler(node_or_spot, handler, userdata)`로
+- callback은 `zlink_spot_dispatch_event_handler(spot, handler, userdata)`로
   설치합니다.
-- handle은 recv 모드로 시작하고 callback 모드로 한 번만 전환됩니다.
-- callback 모드 전환 후 `zlink_subscribe()`는
-  `EBUSY`로 실패합니다.
-- callback은 전달받은 `parts`의 ownership을 소비해야 합니다.
+- handle은 recv 모드로 시작하고 dispatch callback 모드로 한 번만 전환됩니다.
+- callback은 event kind만 전달합니다. payload는 대응 recv 함수로 꺼냅니다.
+- `zlink_spot_dispatch_event_handler()` callback은 I/O thread에서 직접 실행되지
+  않고, 전용 Spot worker runtime에서 실행됩니다.
+- worker 수는 context 옵션 `ZLINK_SPOT_WORKER_THREADS`로 조절합니다. 값 `0`은
+  `min(visible logical cores, 8)`을 뜻하고, 코어 수를 알 수 없으면 `1`을
+  사용합니다.
+- 이 옵션은 dispatch event callback 경로에만 적용되며 send-ready, monitor,
+  다른 callback에는 적용되지 않습니다.
+- 이 옵션은 runtime 시작 전에 설정해야 하며, 시작 후 변경은 `EINVAL`로
+  실패합니다.
 
 ## 옵션 요약
 
@@ -460,22 +467,19 @@ typedef enum zlink_spot_node_option_t {
 
 ## 예시
 
-### Callback 모드
+### Dispatch callback 모드
 
 ```c
-void on_spot_message(const zlink_routing_id_t *source_rid,
-                     const char *topic,
-                     size_t topic_len,
-                     zlink_msg_t *parts,
-                     size_t part_count,
-                     void *userdata);
+void on_spot_event(void *spot,
+                   zlink_spot_dispatch_event_t event,
+                   void *userdata);
 
 void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
 void *spot = zlink_spot_new(node);
-zlink_subscribe_handler(spot, on_spot_message, NULL);
+zlink_spot_dispatch_event_handler(spot, on_spot_event, NULL);
 zlink_set_subscription (spot, "room:lobby");
 
 zlink_msg_t part;

@@ -6,7 +6,8 @@
 
 > This guide reflects the recv-first public surface.
 > `SpotNode` and unified `Spot` start in recv model and use
-> `zlink_subscribe_handler()` for the one-way transition to callback model.
+> `zlink_spot_dispatch_event_handler()` as the single readable notification
+> entrypoint. The caller drains payloads through the matching recv function.
 
 ## 1. Overview
 
@@ -183,7 +184,8 @@ zlink_unset_subscription(spot, "chat:room1:*");
 ### 4.4 Receiving Messages
 
 Both `SpotNode` and unified `Spot` start in **recv model**. You can either
-pull messages directly or switch the receive surface once to **callback mode**.
+pull messages directly or switch the receive surface once to a unified
+dispatch callback that reports topic, routed, and timer readability.
 Send-ready remains a separate axis.
 
 #### Recv model (default)
@@ -223,25 +225,36 @@ if (rc == 0) {
     | Rust | [spot_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/spot_recv_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/spot_recv_sample/main.go) |
 
-#### Callback model
+#### Dispatch callback model
 
-Install the callback with `zlink_subscribe_handler()` to make a one-way
-transition from recv model to callback model. Incoming messages are then
-dispatched automatically through that callback.
+Install `zlink_spot_dispatch_event_handler()` to make a one-way transition
+from recv model to dispatch callback model. The callback reports only the
+readable event kind; the payload is drained through the matching recv
+function.
 
 ```c
 /* Define callback function */
-void on_message(const zlink_routing_id_t *source_rid,
-                const char *topic, size_t topic_len,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
+void on_spot_event(void *spot,
+                   zlink_spot_dispatch_event_t event,
+                   void *userdata)
 {
-    printf("Topic: %.*s, Parts: %zu\n", (int)topic_len, topic, part_count);
+    if (event == ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE) {
+        zlink_routing_id_t source_rid;
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        char topic_buf[256];
+        size_t topic_len = sizeof(topic_buf);
+
+        if (zlink_subscribe(spot, &source_rid, &parts, &part_count,
+                            topic_buf, &topic_len, ZLINK_DONTWAIT) == 0) {
+            printf("Topic: %.*s, Parts: %zu\n", (int)topic_len, topic_buf, part_count);
+        }
+    }
 }
 
 /* Register handler at unified spot creation */
 void *spot = zlink_spot_new(node);
-zlink_subscribe_handler(spot, on_message, NULL);
+zlink_spot_dispatch_event_handler(spot, on_spot_event, NULL);
 ```
 
 ??? example "Full Sample Code"
@@ -260,20 +273,24 @@ zlink_subscribe_handler(spot, on_message, NULL);
 **Important:** A single `spot` / `spot_node` handle can be used concurrently
 from multiple threads (thread-safe). `publish` is the concurrent hot path, while
 subscribe/unsubscribe/attach/peer-connect/monitor calls remain valid runtime
-control-path operations. Callbacks still run on the I/O path, so slow work
-should be offloaded to an application queue or worker thread.
+control-path operations. `zlink_spot_dispatch_event_handler()` callbacks are
+not invoked directly on the I/O thread; they run on a dedicated SPOT worker
+runtime. The worker count is controlled by the context option
+`ZLINK_SPOT_WORKER_THREADS`.
 
 **Constraints:**
 
 - In recv model, use `zlink_subscribe()`
-- Call `zlink_subscribe_handler()` to transition the receive surface once to callback mode
-- In receive callback mode, `zlink_subscribe()` and data-plane `ZLINK_POLLIN` fail with `EBUSY`
+- Use `zlink_spot_dispatch_event_handler()` for topic, routed, and timer readable notifications
+- In dispatch callback mode, `zlink_subscribe()` and data-plane `ZLINK_POLLIN` fail with `EBUSY` in ordinary call sites
+- The active dispatch callback for the same `spot` may still call the matching recv function to drain the readable plane
 - `zlink_send_ready_handler()` is independent from receive callback mode
 - After send-ready attach, data-plane `ZLINK_POLLOUT` fails with `EBUSY`
 - Replacing or clearing the callback after transition is not supported
-- Callbacks are invoked on the socket dispatch / I/O path
-- Blocking work in the callback can delay other I/O
-- For slow processing, enqueue from the callback and handle it on your own thread
+- Callbacks run on the dedicated SPOT worker runtime
+- Callback execution is serialized per `Spot`, while different `Spot` handles may run in parallel
+- `ZLINK_SPOT_WORKER_THREADS=0` means auto-select `min(visible logical cores, 8)`, with fallback `1`
+- Set the option before runtime startup; changes after startup fail with `EINVAL`
 - `destroy` uses a fail-fast lifecycle gate, so the simplest pattern is to
   stop external use first and then tear down the handle
 

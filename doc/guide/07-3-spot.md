@@ -169,12 +169,19 @@ paths, and the two paths can coexist on the same node.
 | Method | When to use | Functions |
 |--------|-------------|-----------|
 | **Manual attach** | The caller builds external sockets (ROUTER / PUB / SUB) and registers them under an explicit `service_name`. Fits tests, fixed topologies, and bootstrap services. | `zlink_spot_node_attach_router()`, `zlink_spot_node_attach_pubsub()` |
-| **Discovery attach** | Attach a per-service Discovery handle; providers learned from Registry flow into the service attachment table as automatic ROUTER/PUB/SUB sources. Fits production topologies. | `zlink_spot_node_attach_discovery()` |
+| **Discovery attach** | Attach a per-service Discovery handle; providers learned from Registry flow into the service attachment table as automatic ROUTER/PUB/SUB sources. Fits production topologies. | `zlink_socket_attach_discovery()` (per underlying socket) + `zlink_spot_node_attach_discovery()` |
 
 The same pairing rule applies to the automatic path. `router`-only is
 allowed, `router + pub + sub` is allowed, and `pub + sub` is allowed, but
 a service whose Discovery view reports a half-pair (`pub` xor `sub`) is
 rejected at attach time.
+
+Manual and Discovery attachments can coexist under the same
+`service_name`. Each attachment keeps its own source marker
+(`ZLINK_SPOT_PEER_SOURCE_MANUAL` or `ZLINK_SPOT_PEER_SOURCE_DISCOVERY`).
+The router selector treats them uniformly for round-robin, but
+peer-removal events only retract the matching source — manual
+attachments survive Discovery provider churn.
 
 Concrete usage of each method follows in §3.1 Discovery-Based Automatic
 Mesh and §3.1a Manual service attach.
@@ -260,7 +267,11 @@ Key points:
   step** that places the socket under Discovery ownership. If you skip
   it, Registry never sees the socket as a provider, and attaching the
   Discovery to the node will bring no automatic attachments for that
-  service.
+  service. The call does two things that the subsequent SpotNode attach
+  depends on: (a) it transfers socket lifecycle ownership to Discovery,
+  so destroying the Discovery shuts down the attached socket; and (b) it
+  registers the socket as a named provider in Registry so other nodes'
+  Discovery views can see it and auto-connect to it.
 - Pub/sub services require a Discovery for **both** PUB and SUB under
   the same `service_name`. If the Discovery view reports only a PUB or
   only a SUB for a service, `attach_discovery` rejects it with
@@ -472,20 +483,23 @@ For the production-style notify + single worker pattern, see §7.2.
 **Important:** A single `spot` / `spot_node` handle can be used concurrently
 from multiple threads (thread-safe). `publish` is the concurrent hot path, while
 subscribe/unsubscribe/attach/peer-connect/monitor calls remain valid runtime
-control-path operations. Callbacks still run on the I/O path, so slow work
-should be offloaded to an application queue or worker thread.
+control-path operations. `zlink_spot_dispatch_event_handler()` callbacks are
+not invoked directly on the I/O thread; they run on a dedicated SPOT worker
+runtime. The worker count is controlled by the context option
+`ZLINK_SPOT_WORKER_THREADS`.
 
 **Constraints:**
 
 - In recv model, use `zlink_subscribe()` / `zlink_spot_subscribe()`
 - Call `zlink_spot_dispatch_event_handler()` to receive readable notifications for the topic, routed, and timer planes
-- In receive callback mode, `zlink_subscribe()` and data-plane `ZLINK_POLLIN` return `ZLINK_RECV_BUSY`, except inside the active dispatch callback for the same `spot_`
+- In dispatch callback mode, `zlink_subscribe()` and data-plane `ZLINK_POLLIN` return `ZLINK_RECV_BUSY` in ordinary call sites, except inside the active dispatch callback for the same `spot_`
 - `zlink_send_ready_handler()` is independent from receive callback mode
 - After send-ready attach, data-plane `ZLINK_POLLOUT` returns `ZLINK_HANDLER_BUSY`
 - Replacing or clearing the callback after transition is not supported
-- Callbacks are invoked on the socket dispatch / I/O path
-- Blocking work in the callback can delay other I/O
-- For slow processing, enqueue from the callback and handle it on your own thread
+- Callbacks run on the dedicated SPOT worker runtime
+- Callback execution is serialized per `Spot`, while different `Spot` handles may run in parallel
+- `ZLINK_SPOT_WORKER_THREADS=0` means auto-select `min(visible logical cores, 8)`, with fallback `1`
+- Set the option before runtime startup; changes after startup fail with `EINVAL`
 - `destroy` uses a fail-fast lifecycle gate, so the simplest pattern is to
   stop external use first and then tear down the handle
 
@@ -495,6 +509,172 @@ should be offloaded to an application queue or worker thread.
 
 Once one or more attachments exist, send by `service_name` and receive
 with the service identifier alongside the payload.
+
+### 4a.0 Per-service peer groups and message paths
+
+When multiple services are attached, `SpotNode`'s service attachment
+table keeps an **independent peer group per `service_name`**. The
+service-based `Spot` API takes only the group name; the actual target
+inside that group is picked by a rule. On the routed side, it behaves
+like raw DEALER round-robin — but **the pool is now the ROUTER group of
+one `service_name`** instead of one DEALER's endpoint set. On the pub/sub
+side, traffic flows only through that service's PUB/SUB pair.
+
+#### Per-service peer topology
+
+```mermaid
+flowchart LR
+    App[Application]
+    Facade["Spot facade<br/>(one per node)"]
+
+    App --> Facade
+
+    subgraph Node["SpotNode service attachment table"]
+        direction TB
+        OX["service_name: 'orders-exec'<br/>ROUTER group: R1, R2, R3<br/>(DEALER-like round-robin)"]
+        MD["service_name: 'market-data'<br/>PUB + SUB pair: P, S"]
+        BL["service_name: 'billing'<br/>ROUTER + PUB/SUB<br/>R1, R2, P, S"]
+    end
+
+    Facade -->|spot_send_service / spot_request_service| OX
+    Facade -->|spot_publish / spot_subscribe| MD
+    Facade -->|send_service or publish| BL
+```
+
+Group boundaries follow `service_name`. A call to `orders-exec` goes to
+one of `R1/R2/R3` only; it never crosses into another service's group. A
+`market-data` publish goes out only through `P`; it never touches an
+`orders-exec` ROUTER.
+
+#### send_service — DEALER-like round-robin distribution
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant Spot
+    participant Sel as Router Selector
+    participant R1 as orders-exec/R1
+    participant R2 as orders-exec/R2
+    participant R3 as orders-exec/R3
+
+    App->>Spot: spot_send_service(spot, "orders-exec", msg)
+    Spot->>Sel: lookup(service_name)<br/>filter(active, send_ready)
+    Sel-->>Spot: chosen = R2
+    Spot->>R2: forward payload
+    Note over R1,R3: subsequent calls rotate R3 -> R1 -> R2 ...
+    Note over Sel: peers with admission_state=DRAINING are excluded
+```
+
+- If no candidate is send-ready, the call is normalized to
+  `ZLINK_SUBMIT_NOT_CONNECTED`. If every candidate is `DRAINING`, it is
+  `ZLINK_SUBMIT_NOT_ADMITTED`.
+- If the picked ROUTER is at HWM, the call returns
+  `ZLINK_SUBMIT_BACKPRESSURED` and can be retried when that peer's
+  write path recovers.
+
+#### request_service — reply pins to the ingress ROUTER
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant Spot
+    participant Sel as Router Selector
+    participant R2 as orders-exec/R2
+    participant Remote as Remote responder
+
+    App->>Spot: spot_request_service("orders-exec", msg, cb, 2000ms)
+    Spot->>Sel: pick send-ready ROUTER
+    Sel-->>Spot: R2 (this request's ingress)
+    Spot->>R2: send request
+    R2->>Remote: routed transport
+    Remote-->>R2: reply
+    R2-->>Spot: reply delivered on same ingress
+    Note over Spot: the reply is not re-routed through R1 or R3
+    Spot-->>App: reply handler(result, parts)
+```
+
+- The send step is round-robin across the group, but the **reply is
+  pinned to that original ROUTER**. The library manages the ingress
+  ROUTER together with `request_seq` under the covers.
+- Automatic retry on timeout is **not** part of the default contract.
+  When the timeout fires, the completion callback is invoked with
+  `ZLINK_REQUEST_TIMED_OUT`.
+
+#### publish — fixed to the service's PUB
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant Spot
+    participant Map as Service Map
+    participant P as market-data/PUB
+    participant Remote as Remote SUBs
+
+    App->>Spot: spot_publish(spot, "market-data", "quotes.fx.usdjpy", msg)
+    Spot->>Map: lookup("market-data")
+    Map-->>Spot: attachment { pub: P, sub: S }
+    Spot->>P: send [topic] + [payload]
+    P->>Remote: fan-out to matching subscribers
+```
+
+- Publish succeeds only when that service's PUB/SUB pair is active.
+  Services broken by Discovery churn (half-pair) return
+  `NOT_CONNECTED`.
+- When the pair recovers, any `zlink_set_subscription()` filter already
+  registered on the facade is replayed onto the new SUB before the
+  service rejoins the active set.
+
+#### subscribe — `service_name` is preserved in recv metadata
+
+```mermaid
+sequenceDiagram
+    participant RPub as Remote PUB ('market-data')
+    participant S as market-data/SUB
+    participant Ingress as Subscribe Ingress
+    participant Q as Unified Service Event Queue
+    participant Exec as Dispatch Executor
+    participant Spot
+    participant App
+
+    RPub->>S: [topic] + [payload]
+    S->>Ingress: recv fragment
+    Ingress->>Q: push { kind=SUBSCRIBE,<br/>service='market-data',<br/>topic, payload }
+    Q->>Exec: SUBSCRIBE_READABLE
+    Exec-->>Spot: dispatch_event callback
+    App->>Spot: spot_subscribe(spot, ...)
+    Spot-->>App: (service_name='market-data', topic, payload)
+```
+
+- Messages from SUBs of different services land on the same facade
+  recv surface, but the application can distinguish them immediately
+  by `service_name` + `topic`.
+- The `source_rid` on pub/sub paths may be empty. Treat
+  `service_name` + `topic` as the primary identifier and `source_rid`
+  as optional metadata.
+- `zlink_set_subscription(spot, filter)` is the **union** over the
+  whole facade and is projected onto every attached service's SUB. New
+  SUBs gain the current filter set via replay automatically.
+
+#### Compared to raw DEALER — what stays and what differs
+
+Service-based routed send generalizes raw DEALER's round-robin by
+grouping it under `service_name`.
+
+| Axis | raw DEALER | `zlink_spot_send_service()` / `request_service()` |
+|------|-----------|--------------------------------------------------|
+| Pool boundary | Endpoints a single DEALER connected to | ROUTER attachments of one `service_name` |
+| Pool composition | Caller uses `zlink_connect()` directly | Mix of manual attach and Discovery-driven auto attach |
+| Round-robin unit | Connected endpoint | ROUTER attachment |
+| Reply correlation | Caller matches send/recv pairs | Library pins ingress ROUTER and `request_seq` |
+| Admission awareness | Caller handles it | `DRAINING` peers auto-excluded; `NOT_ADMITTED` surfaced |
+| Multiple services | Need separate sockets for each | Same facade, different `service_name` argument |
+| Empty candidate set | BACKPRESSURED or silent hold | Normalized to `NOT_CONNECTED` (configured but no path) |
+
+In other words, "pick a ROUTER in `orders-exec` that can send right now
+and remember which one replied" is a one-line call:
+`zlink_spot_request_service()`. The selection rule is the same
+round-robin DEALER uses, but the boundary is `service_name` and the
+library never crosses into another service's attachments.
 
 ### 4a.1 Service-based send / publish
 
@@ -620,6 +800,69 @@ ROUTER, only `peer_rid` is needed.
 Topic path:     publish("price:USD:JPY", ...) → all matching subscribers
 Routed path:    send_spot(dest_node_rid, dest_spot_rid, ...) → one target
 ```
+
+### Routed Delivery Flow
+
+#### spot → spot (same / different nodes)
+
+```mermaid
+sequenceDiagram
+    participant A as Spot A (Node 1)
+    participant W1 as Node 1 Worker
+    participant W2 as Node 2 Worker
+    participant B as Spot B (Node 2)
+
+    A->>W1: send_spot(node2_rid, spotB_rid, msg)
+    W1->>W2: routed envelope (tcp mesh)
+    W2->>B: deliver to spot_rid
+```
+
+When Spot A addresses Spot B by `(node_rid + spot_rid)`, the Node 1 worker
+forwards the routed envelope to Node 2 over the mesh, and the Node 2 worker
+delivers it to the exact Spot B identified by `spot_rid`.
+
+#### spot ↔ router (cross pattern)
+
+```mermaid
+sequenceDiagram
+    participant S as Spot (Node)
+    participant W as Node Worker
+    participant R as ROUTER
+
+    Note over S,R: spot → router
+    S->>W: send_router(peer_rid, msg)
+    W->>R: routed envelope (tcp)
+
+    Note over S,R: router → spot
+    R->>W: send_spot(node_rid, spot_rid, msg)
+    W->>S: deliver to spot_rid
+```
+
+SPOT and a plain ROUTER socket can exchange routed messages directly in
+either direction. Sending to a ROUTER needs only `peer_rid`; sending to a
+SPOT needs the two-level address `node_rid + spot_rid`.
+
+#### Overall Routed structure summary
+
+```mermaid
+flowchart LR
+    subgraph Node1["Node 1"]
+        SA[Spot A] --> W1[Worker]
+    end
+    subgraph Node2["Node 2"]
+        W2[Worker] --> SB[Spot B]
+    end
+    R[ROUTER]
+
+    W1 -- "routed (tcp mesh)" --> W2
+    W1 -- "routed (tcp)" --> R
+    R -- "routed (tcp)" --> W2
+```
+
+- The topic path (PUB/SUB) and the Routed path share the same mesh
+  infrastructure but form **independent channels**.
+- Routed messages bypass topic matching and are delivered by address.
+- A ROUTER socket can participate in the Routed path without any SpotNode.
 
 ### 5.1 Direct Send
 
@@ -783,6 +1026,56 @@ still goes through its local `SpotNode`, but the router side connects to
 the SpotNode directly as a ROUTER peer over transport (not via a mesh-to-
 mesh hop). See `doc/internals/spot-internals.md` for the detailed routing
 paths per variant.
+
+### Request-Reply Flow
+
+#### spot → spot request-reply
+
+```mermaid
+sequenceDiagram
+    participant A as Spot A (requester)
+    participant W1 as Node 1 Worker
+    participant W2 as Node 2 Worker
+    participant B as Spot B (replier)
+
+    A->>W1: request_spot(nodeB, spotB, msg, timeout, callback)
+    W1->>W2: request envelope (tcp mesh)
+    W2->>B: on_routed(source_rid, spot_rid, request_seq, msg)
+    B->>W2: reply_spot(nodeA, spotA, request_seq, reply)
+    W2->>W1: reply envelope (tcp mesh)
+    W1->>A: callback(0, reply)
+```
+
+1. Spot A sends a message via `request_spot` and registers a reply callback.
+2. Spot B's handler receives a message with `request_seq > 0`.
+3. Spot B replies with `reply_spot`, preserving the same `request_seq`.
+4. Spot A's callback receives the reply. If no reply arrives within the
+   timeout, the callback fires with an error result.
+
+#### spot ↔ router request-reply
+
+```mermaid
+sequenceDiagram
+    participant S as Spot
+    participant W as Node Worker
+    participant R as ROUTER
+
+    Note over S,R: spot requests router
+    S->>W: request_router(peer_rid, msg, timeout, cb)
+    W->>R: request envelope (tcp)
+    R->>W: reply_spot(node_rid, spot_rid, seq, reply)
+    W->>S: callback(0, reply)
+
+    Note over S,R: router requests spot
+    R->>W: request_spot(node_rid, spot_rid, msg, timeout, cb)
+    W->>S: on_routed(source_rid, spot_rid, seq, msg)
+    S->>W: reply_router(peer_rid, seq, reply)
+    W->>R: callback(0, reply)
+```
+
+Request-reply between SPOT and ROUTER follows the same pattern: the
+requester calls `request_*` and the responder answers with `reply_*`,
+copying the same `request_seq`.
 
 ### 6.1 spot → spot Request
 
@@ -1082,15 +1375,20 @@ pthread_create(&worker, NULL, spot_worker, /* ctx */);
 
 | Without dispatch event handler | With dispatch event handler |
 |---|---|
-| Subscribe callback runs on I/O thread | Notification from I/O thread → pull on worker thread |
-| Routed handler runs on routed dispatch thread | Notification from routed thread → pull on worker thread |
-| Timer handler runs on scheduler thread | Notification from scheduler thread → pull on worker thread |
+| Subscribe callback runs on I/O thread | Notification from I/O thread → SPOT worker runtime → pull on worker thread |
+| Routed handler runs on routed dispatch thread | Notification from routed thread → SPOT worker runtime → pull on worker thread |
+| Timer handler runs on scheduler thread | Notification from scheduler thread → SPOT worker runtime → pull on worker thread |
 | User must protect shared state with locks between 3 producer threads | All data consumption and processing runs on 1 application thread |
 
 The three internal threads never invoke application logic beyond the
 tiny notifier. Actual subscribe/recv/timer data is read on a single
 application thread, so shared state between those three streams needs
 no additional synchronization in user code.
+
+The internal worker count for Spot dispatch events can be tuned with the
+context option `ZLINK_SPOT_WORKER_THREADS`. A value of `0` means auto-select,
+which resolves to `min(visible logical cores, 8)` and falls back to `1` if
+the core count cannot be determined. Set this option before runtime startup.
 
 ### 7.4 Coexistence rules
 
@@ -1145,6 +1443,28 @@ unpacks batches internally — application-visible publish/subscribe
 contracts are unchanged.
 
 ### Enabling
+
+Batching thresholds are tuned per node through `zlink_set_spot_node_option()`
+on the `SpotNode` handle. For a market-data style node that bursts many
+small updates, raise the topic HWMs and keep routed HWMs moderate:
+
+```c
+uint32_t topic_hwm  = 20000;
+uint32_t routed_hwm = 8000;
+
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM,
+                           &topic_hwm, sizeof(topic_hwm));
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM,
+                           &topic_hwm, sizeof(topic_hwm));
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM,
+                           &routed_hwm, sizeof(routed_hwm));
+zlink_set_spot_node_option(node, ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM,
+                           &routed_hwm, sizeof(routed_hwm));
+```
+
+Defaults are fine for most deployments; these options exist so operators
+can raise the HWM when bursty producers or slow consumers cause
+backpressure on the cross-node path.
 
 ## 11. Delivery Guarantees
 

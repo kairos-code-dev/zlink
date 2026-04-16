@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -107,8 +108,67 @@ internal sealed class StreamEchoServer : IDisposable
     private static readonly byte[] MessageName = Encoding.ASCII.GetBytes("stream.echo");
     private readonly StreamSocket _socket;
     private readonly Metrics _metrics;
-    private readonly Dictionary<string, List<byte>> _buffers = new();
+    private readonly ConcurrentDictionary<string, FrameBuffer> _buffers = new();
     private bool _attached;
+
+    private sealed class FrameBuffer
+    {
+        private byte[] _bytes = new byte[4096];
+        public int Count;
+        public int Consumed;
+        public object Sync { get; } = new object();
+
+        public void Clear()
+        {
+            Count = 0;
+            Consumed = 0;
+        }
+
+        public void Append(ReadOnlySpan<byte> chunk)
+        {
+            if (chunk.IsEmpty)
+                return;
+
+            int needed = Count + chunk.Length;
+            if (needed > _bytes.Length)
+            {
+                int next = _bytes.Length;
+                while (next < needed)
+                    next *= 2;
+                Array.Resize(ref _bytes, next);
+            }
+
+            chunk.CopyTo(_bytes.AsSpan(Count));
+            Count = needed;
+        }
+
+        public ReadOnlySpan<byte> Span => _bytes.AsSpan(0, Count);
+
+        public void Compact()
+        {
+            if (Consumed <= 0)
+                return;
+
+            if (Consumed >= Count)
+            {
+                Clear();
+                return;
+            }
+
+            int remaining = Count - Consumed;
+            if (Consumed < 4096 && (Consumed * 2) < Count)
+                return;
+
+            Buffer.BlockCopy(_bytes, Consumed, _bytes, 0, remaining);
+            Count = remaining;
+            Consumed = 0;
+        }
+
+        public void CopyTo(int sourceOffset, byte[] destination, int destinationOffset, int count)
+        {
+            Buffer.BlockCopy(_bytes, sourceOffset, destination, destinationOffset, count);
+        }
+    }
 
     internal StreamEchoServer(StreamSocket socket, Metrics metrics)
     {
@@ -120,7 +180,7 @@ internal sealed class StreamEchoServer : IDisposable
     {
         if (_attached)
             return;
-        _socket.AttachStreamRaw(OnRawPacket);
+        _socket.OnPacket(OnRawPacket);
         _attached = true;
     }
 
@@ -143,25 +203,24 @@ internal sealed class StreamEchoServer : IDisposable
             if (chunk.Length == 1
                 && (chunk[0] == StreamEventConnect
                     || chunk[0] == StreamEventDisconnect)) {
+                if (chunk[0] == StreamEventDisconnect)
+                    _buffers.TryRemove(routingId, out _);
                 return 0;
             }
 
-            lock (_buffers)
+            FrameBuffer state = _buffers.GetOrAdd(routingId, static _ => new FrameBuffer());
+            lock (state.Sync)
             {
-                if (!_buffers.TryGetValue(routingId, out List<byte>? buffer))
-                {
-                    buffer = new List<byte>();
-                    _buffers[routingId] = buffer;
-                }
-                foreach (byte b in chunk)
-                    buffer.Add(b);
+                state.Append(chunk);
 
-                int consumed = 0;
+                ReadOnlySpan<byte> buffer = state.Span;
                 while (true)
                 {
-                    if ((buffer.Count - consumed) < PrefixSize)
+                    int available = state.Count - state.Consumed;
+                    if (available < PrefixSize)
                         break;
 
+                    int consumed = state.Consumed;
                     int headerSize = (buffer[consumed] << 8) | buffer[consumed + 1];
                     int bodySize = (buffer[consumed + 2] << 24)
                                    | (buffer[consumed + 3] << 16)
@@ -173,40 +232,34 @@ internal sealed class StreamEchoServer : IDisposable
                     {
                         _metrics.AddParseError();
                         _metrics.AddProtocolError();
-                        buffer.Clear();
+                        state.Clear();
                         return 0;
                     }
 
                     int total = PrefixSize + headerSize + bodySize;
-                    if ((buffer.Count - consumed) < total)
+                    if (available < total)
                         break;
 
-                    bool headerMatch = true;
-                    for (int i = 0; i < MessageName.Length; i++)
-                    {
-                        if (buffer[consumed + PrefixSize + i] != MessageName[i])
-                        {
-                            headerMatch = false;
-                            break;
-                        }
-                    }
+                    bool headerMatch =
+                        buffer.Slice(consumed + PrefixSize, MessageName.Length)
+                            .SequenceEqual(MessageName);
                     if (!headerMatch)
                     {
                         _metrics.AddParseError();
                         _metrics.AddProtocolError();
-                        buffer.Clear();
+                        state.Clear();
                         return 0;
                     }
 
                     _metrics.AddRecvMsg();
-                    byte[] replyBytes = buffer.GetRange(consumed, total).ToArray();
+                    byte[] replyBytes = new byte[total];
+                    state.CopyTo(consumed, replyBytes, 0, total);
                     using Message reply = Message.FromBytes(replyBytes);
                     _socket.Send(routingId, reply);
-                    consumed += total;
+                    state.Consumed += total;
                 }
 
-                if (consumed > 0)
-                    buffer.RemoveRange(0, consumed);
+                state.Compact();
             }
             return 0;
         }

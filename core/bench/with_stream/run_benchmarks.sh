@@ -27,7 +27,7 @@ Usage:
   run_benchmarks.sh [options]
 
 Options:
-  --stack <asio|cppserver|dotnet|netzlink|jvmzlink|netty|zlink|zmq|all|comma-list>
+  --stack <asio|cppserver|dotnet|netzlink|jvmzlink|netty|zlink|zlink_packet|zmq|all|comma-list>
   --size <64|1024|65536|all|comma-list>
   --build-dir PATH            Build directory (default: core/build).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
@@ -51,7 +51,7 @@ Examples:
 USAGE
 }
 
-STACKS_ALL=(zlink netzlink jvmzlink asio cppserver dotnet zmq netty)
+STACKS_ALL=(zlink zlink_packet netzlink jvmzlink asio cppserver dotnet zmq netty)
 SIZES_ALL=(64 1024 65536)
 
 TARGET_STACK="all"
@@ -205,7 +205,7 @@ fi
 
 for s in "${RUN_STACKS[@]}"; do
     case "${s}" in
-        asio|cppserver|dotnet|netzlink|jvmzlink|netty|zlink|zmq)
+        asio|cppserver|dotnet|netzlink|jvmzlink|netty|zlink|zlink_packet|zmq)
             ;;
         *)
             echo "invalid stack: ${s}" >&2
@@ -237,6 +237,7 @@ CLIENT_BIN="${BUILD_DIR}/bin/bench_streamcompare_client"
 ASIO_BIN="${BUILD_DIR}/bin/test_scenario_stream_asio"
 ZLINK_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlink"
 ZMQ_BIN="${BUILD_DIR}/bin/test_scenario_stream_zmq"
+ZLINK_PACKET_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlink_packet"
 
 STACKS_ROOT_DIR="${STACKS_ROOT_DIR:-${ROOT_DIR}/core/bench/with_stream/stacks}"
 if [[ ! -d "${STACKS_ROOT_DIR}" ]]; then
@@ -360,7 +361,7 @@ resolve_stack_tuning()
             STACK_SNDBUF=2097152
             STACK_RCVBUF=2097152
             ;;
-        zlink|zlink-len32be)
+        zlink|zlink_packet|zlink-len32be)
             STACK_IO_THREADS="${SERVER_IO_THREADS}"
             if (( size_hint >= 65536 && STACK_IO_THREADS < 8 )); then
                 STACK_IO_THREADS=8
@@ -1058,6 +1059,13 @@ try_build_stack()
                 build_core_tests_stream_target "test_scenario_stream_zlink"
             fi
             ;;
+        zlink_packet)
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -f "${ZLINK_PACKET_BIN}" ]]
+            else
+                build_core_tests_stream_target "test_scenario_stream_zlink_packet"
+            fi
+            ;;
         zmq)
             if [[ "${BUILD_MODE}" == "reuse" ]]; then
                 [[ -f "${ZMQ_BIN}" ]]
@@ -1079,18 +1087,18 @@ CPP
             ;;
         dotnet)
             if [[ "${BUILD_MODE}" == "reuse" ]]; then
-                [[ -f "${DOTNET_DLL}" ]]
+                dotnet build "${DOTNET_PROJECT}" -c Release -o "${DOTNET_OUT_DIR}" --no-restore >/dev/null
             else
                 dotnet build "${DOTNET_PROJECT}" -c Release -o "${DOTNET_OUT_DIR}" >/dev/null
             fi
             ;;
         netzlink)
             if [[ "${BUILD_MODE}" == "reuse" ]]; then
-                [[ -f "${NETZLINK_DLL}" ]]
+                dotnet build "${NETZLINK_PROJECT}" -c Release -o "${NETZLINK_OUT_DIR}" --no-restore >/dev/null
             else
                 dotnet build "${NETZLINK_PROJECT}" -c Release -o "${NETZLINK_OUT_DIR}" >/dev/null
-                [[ -f "${NETZLINK_DLL}" ]]
             fi
+            [[ -f "${NETZLINK_DLL}" ]]
             ;;
         netzlink-len32be)
             if [[ "${BUILD_MODE}" == "reuse" ]]; then
@@ -1187,6 +1195,9 @@ start_server()
             ;;
         zlink)
             cmd=("${ZLINK_BIN}")
+            ;;
+        zlink_packet)
+            cmd=("${ZLINK_PACKET_BIN}")
             ;;
         zmq)
             cmd=("${ZMQ_BIN}")

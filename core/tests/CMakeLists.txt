@@ -68,6 +68,7 @@ set(tests
   ${E2E_TEST_ROOT}/spot/test_spot_service_introspection
   ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
   ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink
+  ${STREAM_SCENARIO_ROOT}/zlink_packet/test_scenario_stream_zlink_packet
   ${STREAM_SCENARIO_ROOT}/asio/test_scenario_stream_asio)
 
 set(ROUTER_ROUTER_ZLINK_CONNECT_TEST
@@ -789,6 +790,8 @@ set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
 set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
+set_tests_properties(test_scenario_stream_zlink_packet PROPERTIES TIMEOUT 120)
+set_tests_properties(test_scenario_stream_zlink_packet PROPERTIES LABELS "scenario;stream;zlink_packet")
 set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
 if(TARGET test_scenario_stream_zmq)
@@ -801,6 +804,7 @@ set(E2E_SERIAL_TESTS
     test_spot_service_introspection
     test_scenario_stream_client
     test_scenario_stream_zlink
+    test_scenario_stream_zlink_packet
     test_scenario_stream_asio)
 if(TARGET test_scenario_stream_zmq)
   list(APPEND E2E_SERIAL_TESTS test_scenario_stream_zmq)

@@ -3,13 +3,14 @@
 #include "../../../../include/zlink.h"
 
 #include <atomic>
+#include <array>
 #include <chrono>
 #include <csignal>
 #include <cstdio>
-#include <map>
+#include <cstddef>
+#include <unordered_map>
 #include <stdint.h>
 #include <mutex>
-#include <string>
 #include <thread>
 
 extern "C" {
@@ -23,6 +24,7 @@ static const size_t k_min_payload_size = 16;
 static const size_t k_max_payload_size = 4 * 1024 * 1024;
 static const unsigned char k_stream_event_connect = 0x01;
 static const unsigned char k_stream_event_disconnect = 0x00;
+static const size_t k_frame_shard_count = 64;
 
 struct server_options_t
 {
@@ -80,9 +82,79 @@ void apply_socket_tuning (void *socket, const server_options_t &opt)
     (void) zlink_set_option (socket, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm));
 }
 
+uint32_t routing_id_key (const zlink_routing_id_t *rid_)
+{
+    return (static_cast<uint32_t> (rid_->data[0]) << 24)
+           | (static_cast<uint32_t> (rid_->data[1]) << 16)
+           | (static_cast<uint32_t> (rid_->data[2]) << 8)
+           | static_cast<uint32_t> (rid_->data[3]);
+}
+
+size_t routing_id_shard (uint32_t rid_value_)
+{
+    return static_cast<size_t> (rid_value_ % k_frame_shard_count);
+}
+
+bool is_complete_stream_frame (const unsigned char *payload_,
+                               size_t payload_size_)
+{
+    if (!payload_ || payload_size_ < stream_echo::k_stream_packet_prefix_size)
+        return false;
+
+    const size_t header_size =
+      static_cast<size_t> (stream_echo::load_u16_be (payload_));
+    const size_t body_size =
+      static_cast<size_t> (stream_echo::load_u32_be (payload_ + 2));
+    if (!stream_echo::valid_frame_sizes (header_size, body_size))
+        return false;
+
+    const size_t frame_size =
+      stream_echo::k_stream_packet_prefix_size + header_size + body_size;
+    if (payload_size_ != frame_size)
+        return false;
+
+    return stream_echo::is_msg_name (
+      payload_ + stream_echo::k_stream_packet_prefix_size, header_size);
+}
+
+bool try_parse_stream_frame (const unsigned char *payload_,
+                             size_t payload_size_,
+                             size_t *frame_size_out_)
+{
+    if (!payload_ || !frame_size_out_
+        || payload_size_ < stream_echo::k_stream_packet_prefix_size)
+        return false;
+
+    const size_t header_size =
+      static_cast<size_t> (stream_echo::load_u16_be (payload_));
+    const size_t body_size =
+      static_cast<size_t> (stream_echo::load_u32_be (payload_ + 2));
+    if (!stream_echo::valid_frame_sizes (header_size, body_size))
+        return false;
+
+    const size_t frame_size =
+      stream_echo::k_stream_packet_prefix_size + header_size + body_size;
+    if (payload_size_ < frame_size)
+        return false;
+
+    if (!stream_echo::is_msg_name (
+          payload_ + stream_echo::k_stream_packet_prefix_size, header_size)) {
+        return false;
+    }
+
+    *frame_size_out_ = frame_size;
+    return true;
+}
+
 class zlink_stream_echo_server_t
 {
   public:
+    struct frame_shard_t
+    {
+        std::mutex mu;
+        std::unordered_map<uint32_t, stream_echo::frame_buffer_t> buffers;
+    };
+
     explicit zlink_stream_echo_server_t (const server_options_t &opt_) :
         opt (opt_),
         ctx (NULL),
@@ -172,6 +244,60 @@ class zlink_stream_echo_server_t
         protocol_error.fetch_add (1, std::memory_order_relaxed);
     }
 
+    bool try_process_complete_chunk (const zlink_routing_id_t *rid_,
+                                     zlink_msg_t *msg_,
+                                     const unsigned char *payload_,
+                                     size_t payload_size_)
+    {
+        if (!rid_ || !msg_ || !payload_ || payload_size_ == 0)
+            return false;
+
+        size_t offset = 0;
+        size_t frame_count = 0;
+        while (offset < payload_size_) {
+            size_t frame_size = 0;
+            if (!try_parse_stream_frame (payload_ + offset, payload_size_ - offset,
+                                         &frame_size)) {
+                if (offset == 0)
+                    return false;
+                mark_parse_error ();
+                (void) zlink_msg_close (msg_);
+                return true;
+            }
+
+            recv_msgs.fetch_add (1, std::memory_order_relaxed);
+            if (offset == 0 && frame_size == payload_size_ && frame_count == 0) {
+                if (zlink_send_rid (server, rid_, msg_, 1, ZLINK_SEND_FLAGS_NONE)
+                    != 0) {
+                    send_error.fetch_add (1, std::memory_order_relaxed);
+                    (void) zlink_msg_close (msg_);
+                }
+                return true;
+            }
+
+            zlink_msg_t reply;
+            if (zlink_msg_init_size (&reply, frame_size) != 0) {
+                send_error.fetch_add (1, std::memory_order_relaxed);
+                (void) zlink_msg_close (msg_);
+                return true;
+            }
+            std::memcpy (zlink_msg_data (&reply), payload_ + offset, frame_size);
+            if (zlink_send_rid (server, rid_, &reply, 1, ZLINK_SEND_FLAGS_NONE)
+                != 0) {
+                send_error.fetch_add (1, std::memory_order_relaxed);
+                (void) zlink_msg_close (&reply);
+                (void) zlink_msg_close (msg_);
+                return true;
+            }
+            (void) zlink_msg_close (&reply);
+            offset += frame_size;
+            ++frame_count;
+        }
+
+        (void) zlink_msg_close (msg_);
+        return frame_count > 0;
+    }
+
     int on_raw_packet (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
     {
         if (!rid_ || rid_->size != 4) {
@@ -191,15 +317,35 @@ class zlink_stream_echo_server_t
         if (payload_size == 1 && payload
             && (payload[0] == k_stream_event_connect
                 || payload[0] == k_stream_event_disconnect)) {
+            if (payload[0] == k_stream_event_disconnect) {
+                const uint32_t rid_value = routing_id_key (rid_);
+                frame_shard_t &shard = frame_shards[routing_id_shard (rid_value)];
+                std::lock_guard<std::mutex> shard_lock (shard.mu);
+                shard.buffers.erase (rid_value);
+            }
             (void) zlink_msg_close (msg_);
             return 0;
         }
 
-        const std::string rid_key (
-          reinterpret_cast<const char *> (rid_->data),
-          reinterpret_cast<const char *> (rid_->data) + rid_->size);
-        std::lock_guard<std::mutex> lock (frame_mu);
-        stream_echo::frame_buffer_t &buffer = frame_buffers[rid_key];
+        const uint32_t rid_value = routing_id_key (rid_);
+        frame_shard_t &shard = frame_shards[routing_id_shard (rid_value)];
+        std::lock_guard<std::mutex> lock (shard.mu);
+        stream_echo::frame_buffer_t &buffer = shard.buffers[rid_value];
+
+        if (buffer.bytes.empty () && buffer.consumed == 0) {
+            if (is_complete_stream_frame (payload, payload_size)) {
+                recv_msgs.fetch_add (1, std::memory_order_relaxed);
+                if (zlink_send_rid (server, rid_, msg_, 1, ZLINK_SEND_FLAGS_NONE)
+                    != 0) {
+                    send_error.fetch_add (1, std::memory_order_relaxed);
+                    (void) zlink_msg_close (msg_);
+                }
+                return 0;
+            }
+            if (try_process_complete_chunk (rid_, msg_, payload, payload_size))
+                return 0;
+        }
+
         stream_echo::append_frame_bytes (&buffer, payload, payload_size);
         (void) zlink_msg_close (msg_);
 
@@ -262,8 +408,7 @@ class zlink_stream_echo_server_t
     std::atomic<long> send_error;
 
     std::atomic<bool> stop;
-    std::mutex frame_mu;
-    std::map<std::string, stream_echo::frame_buffer_t> frame_buffers;
+    std::array<frame_shard_t, k_frame_shard_count> frame_shards;
 };
 
 bool parse_options (int argc, char **argv, server_options_t &opt)

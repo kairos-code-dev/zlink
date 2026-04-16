@@ -33,6 +33,15 @@ endif()
 target_compile_options(test_scenario_stream_zlink PRIVATE ${STREAMCOMPARE_CXX_FLAGS})
 target_compile_features(test_scenario_stream_zlink PRIVATE cxx_std_17)
 
+if(NOT TARGET test_scenario_stream_zlink_packet)
+    add_executable(
+        test_scenario_stream_zlink_packet
+        ${STREAM_SCENARIO_ROOT}/zlink_packet/test_scenario_stream_zlink_packet.cpp)
+    target_link_libraries(test_scenario_stream_zlink_packet libzlink Threads::Threads)
+endif()
+target_compile_options(test_scenario_stream_zlink_packet PRIVATE ${STREAMCOMPARE_CXX_FLAGS})
+target_compile_features(test_scenario_stream_zlink_packet PRIVATE cxx_std_17)
+
 if(NOT TARGET test_scenario_stream_asio)
     add_executable(
         test_scenario_stream_asio

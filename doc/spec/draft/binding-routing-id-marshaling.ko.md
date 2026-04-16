@@ -201,10 +201,12 @@ sample과 guide는 raw bytes만 직접 다루는 예제를 기본 경로로 두�
 
 이 초안 기준으로 실제 변경이 시작되면 binding 쪽 작업 범위는 아래를 포함한다.
 
+- core 변경을 각 binding의 언어별 native 폴더 또는 동기화 대상 파일에 먼저 반영
 - `bindings/python/`, `bindings/rust/`, `bindings/node/` 등 각 언어의
   `RoutingId` wrapper 정리
 - raw bytes canonical 유지 여부 확인
 - `from_u32`, `to_u32`, `from_text`, `to_text`, `to_hex` helper 추가
+- binding library 뿐 아니라 sample, perf 경로까지 함께 정리
 - `STREAM` packet/raw callback, send, recv 예제의 helper 사용 경로 정리
 - 일반 routed/service 예제의 text helper 사용 경로 정리
 - 바인딩 테스트에 변환 성공/실패 케이스 추가
@@ -217,12 +219,20 @@ sample과 guide는 raw bytes만 직접 다루는 예제를 기본 경로로 두�
 
 binding 쪽은 아래 순서로 진행하는 것이 좋다.
 
-1. `RoutingId` raw bytes canonical 유지 확인
-2. `from_u32`, `to_u32`, `from_text`, `to_text`, `to_hex` helper 추가
-3. `STREAM` callback/send helper 사용 경로 정리
-4. routed/service helper 사용 경로 정리
-5. sample과 test 갱신
-6. binding spec 문서 반영
+운영 원칙은 아래와 같다.
+
+- 특별한 blocker가 없으면 중간 보고 없이 다음 단계로 이어서 진행한다.
+- native 동기화, library, sample, perf, test를 끊어서 따로 끝내지 않고 순서대로 마무리한다.
+- 보고는 최종 완료 상태와 최종 검증 결과를 기준으로 한다.
+
+1. core 변경을 binding native 폴더 또는 동기화 대상 파일에 반영
+2. `RoutingId` raw bytes canonical 유지 확인
+3. `from_u32`, `to_u32`, `from_text`, `to_text`, `to_hex` helper 추가
+4. `STREAM` callback/send helper 사용 경로 정리
+5. routed/service helper 사용 경로 정리
+6. binding library, sample, perf 갱신
+7. sample과 test 갱신
+8. binding spec 문서 반영
 
 구체적인 적용 순서는 저장소 상태와 각 binding의 준비 정도에 맞춰 조정할 수 있다.
 

@@ -367,7 +367,18 @@ to_hex(peer_rid) = "a1ff0013"
 - ROUTER/DEALER/SPOT 계열은 텍스트 helper 또는 hex helper를 쓰는 쪽으로 예시 정리
 - perf 문서에서 `routing_id` 표현을 설명하는 부분이 있으면 바이트 열 기준으로 수정
 
-### 13.4 `bindings/`
+### 13.4 `core sample`
+
+- `core/samples/`가 새 helper 모델과 설명 규칙을 따르도록 정리
+- `STREAM` sample은 `u32` helper 관점, routed/service sample은 `text`/`hex` helper
+  관점으로 맞춤
+- sample policy 문서와 실제 sample 코드가 같은 모델을 따르는지 점검
+
+### 13.5 `bindings/`
+
+- core 변경이 각 binding의 언어별 native 폴더에 반영되어야 하는지 점검
+- native wrapper, generated binding input, copied header/source가 있으면 core 기준으로 동기화
+- 동기화 뒤 binding library, sample, perf가 같은 helper 규칙을 따르도록 정리
 
 - 각 binding의 `RoutingId` wrapper 또는 동등 타입을 raw bytes canonical로 통일
 - `from_bytes`, `to_bytes`, `from_u32`, `to_u32`, `from_text`, `to_text`, `to_hex`
@@ -376,7 +387,7 @@ to_hex(peer_rid) = "a1ff0013"
 - 일반 routed/service surface가 문자열 전용 타입을 canonical처럼 취급하지 않도록 정리
 - 바인딩별 테스트에 정수/문자열 변환 규칙과 실패 케이스를 추가
 
-### 13.5 `doc/`
+### 13.6 `doc/`
 
 - core spec: `routing_id` 공개 표현 설명을 바이트 열 기준으로 맞춤
 - binding spec: helper surface와 marshaling 규칙을 언어별로 반영
@@ -390,6 +401,12 @@ sample, test를 함께 맞춰야 하는 횡단 변경이다.
 ## 14. 구현 순서
 
 이 초안 기준으로 실제 구현은 아래 순서를 권장한다.
+
+운영 원칙은 아래와 같다.
+
+- 특별한 blocker가 없으면 단계 중간 산출물에서 멈추지 않는다.
+- 한 단계가 끝나면 바로 다음 단계로 이어서 진행한다.
+- 중간 보고보다 최종 완료 상태와 최종 검증 결과를 우선한다.
 
 ### 14.1 1단계 -- `core/include`
 
@@ -421,9 +438,41 @@ sample, test를 함께 맞춰야 하는 횡단 변경이다.
 - C API helper가 있으면 round-trip 테스트가 통과
 - helper 실패 경로의 errno와 반환 코드가 문서와 일치
 
-### 14.3 3단계 -- `bindings/`
+### 14.3 3단계 -- `core perf`와 `core sample`
 
-그 다음 각 binding의 `RoutingId` wrapper와 helper를 맞춘다.
+binding으로 내려가기 전에 core 쪽 perf와 sample을 먼저 맞춘다.
+
+주요 작업:
+
+- `core/perf/` 경로가 새 helper 설명 모델과 충돌하지 않도록 정리
+- `core/samples/` 경로를 `STREAM u32 helper`, routed/service `text`/`hex` helper
+  모델로 정리
+- sample policy와 실제 sample이 같은 규칙을 따르는지 확인
+
+완료 기준:
+
+- core perf와 sample이 새 `routing_id` helper 규칙과 모순되지 않음
+- core 기준 예제가 binding 쪽으로 내려갈 준비가 됨
+
+### 14.4 4단계 -- binding native 동기화
+
+core 쪽 변경을 끝낸 뒤, 각 binding의 언어별 native 폴더나 동기화 대상 파일을
+최신화한다.
+
+주요 작업:
+
+- copied header/source가 있으면 core 기준으로 갱신
+- generated native bridge input이 있으면 새 규칙을 반영
+- 각 binding이 참조하는 native layer와 core 헤더가 어긋나지 않게 맞춤
+
+완료 기준:
+
+- binding native 폴더의 헤더/bridge/source가 core 변경과 일치
+- binding 라이브러리 작업을 시작할 수 있는 기준점이 확보됨
+
+### 14.5 5단계 -- `bindings/`
+
+그 다음 각 binding의 라이브러리, sample, perf를 맞춘다.
 
 예시 적용 순서:
 
@@ -438,6 +487,7 @@ sample, test를 함께 맞춰야 하는 횡단 변경이다.
 - `from_u32`, `to_u32`, `from_text`, `to_text`, `to_hex` 추가
 - `STREAM` callback/send surface가 별도 정수 canonical 타입을 노출하지 않도록 정리
 - routed/service surface가 문자열 canonical 타입을 전제로 삼지 않도록 정리
+- binding sample과 perf를 helper 기준으로 정리
 
 완료 기준:
 
@@ -445,22 +495,7 @@ sample, test를 함께 맞춰야 하는 횡단 변경이다.
 - `STREAM` 예제는 `u32` helper, routed 예제는 `text` helper로 동작
 - 기존 raw bytes 경로도 계속 동작
 
-### 14.4 4단계 -- `perf`
-
-binding helper가 들어간 뒤 perf와 sample 경로를 helper 기준으로 맞춘다.
-
-주요 작업:
-
-- `STREAM` 관련 샘플/도우미를 `to_u32` / `from_u32` 기준으로 정리
-- routed/service 관련 샘플/도우미를 `to_text` / `from_text` 또는 `to_hex` 기준으로 정리
-- perf 문서의 설명도 같은 모델로 정리
-
-완료 기준:
-
-- perf와 sample 경로에 raw encode/decode 반복 코드가 줄어듦
-- helper 사용 예제가 guide와 일치
-
-### 14.5 5단계 -- `doc/`
+### 14.6 6단계 -- `doc/`
 
 마지막으로 정식 문서와 guide를 draft 기준으로 반영한다.
 
@@ -503,6 +538,7 @@ binding helper가 들어간 뒤 perf와 sample 경로를 helper 기준으로 맞
 - 기존 raw bytes `RoutingId` 경로가 깨지지 않음
 - monitor/event/service surface에서 `routing_id` 처리 회귀 없음
 - perf/sample smoke가 helper 적용 후에도 정상 동작
+- core 변경과 binding native 동기화 뒤 라이브러리/sample/perf가 같은 규칙으로 동작
 
 ## 16. 비목표
 

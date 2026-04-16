@@ -63,14 +63,13 @@ def main(argv=None):
                     thread.start()
                 for thread in threads:
                     thread.join()
-                elapsed = time.perf_counter() - started
                 latencies = []
                 for bucket in results:
                     latencies.extend(bucket or [])
                 metrics = result_metrics(
                     count=len(latencies),
                     msg_size=args.msg_size,
-                    elapsed_s=max(args.duration, elapsed),
+                    elapsed_s=max(args.duration, time.perf_counter() - started),
                     latencies_ns=latencies,
                 )
                 print_result_lines("MULTI_ROUTER_ROUTER", "tcp", args.msg_size, metrics)

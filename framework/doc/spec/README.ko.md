@@ -20,6 +20,17 @@ provider 선택을 위해 흔히 두는 별도 gateway나 전용 로드밸런서
 client-side policy가 맡는다. 응용은 gateway 주소나 load balancer 주소보다
 논리 서비스 이름을 기준으로 요청을 보낸다.
 
+현재 초안은 아래 공개 기반 기능을 전제로 설명한다.
+
+- Discovery 기반 서비스 뷰와 자동 연결
+- Registry topology snapshot/query 및 원격 `RegistryQueryClient`
+- `service_name` 기준 direct request/reply
+- `SPOT` publish/subscribe와 routed request/reply
+- raw `STREAM`의 packet callback 같은 low-level helper
+
+즉 `framework/doc/spec/`는 위 기능을 새로 정의하는 자리가 아니라, 그 기능들을
+프레임워크 사용자에게 어떤 개념과 API로 다시 보일지 정리하는 자리다.
+
 ## 문서 구조
 
 | 섹션 | 경로 | 설명 |

@@ -15,7 +15,7 @@ func main() {
 	samplecommon.MustStep("Registry", err)
 	defer func() { samplecommon.MustStep("registry.Close", registry.Close()) }()
 
-	discovery, err := ctx.Discovery(zlink.ServiceTypeSocket, "service-found")
+	discovery, err := ctx.Discovery(zlink.ServiceTypeSocket, "sample")
 	samplecommon.MustStep("Discovery", err)
 
 	pub, err := ctx.PubSocket()
@@ -32,7 +32,7 @@ func main() {
 	samplecommon.MustStep("pub.Bind", pub.Bind(serviceEndpoint))
 
 	_ = serviceEndpoint
-	_ = samplecommon.WaitTopologyEntry(registry.TopologySnapshot, "service-found")
+	_ = samplecommon.WaitTopologyEntry(registry.TopologySnapshot, "sample")
 
-	fmt.Println("[discovery-registry] registry: bind -> discovery: connect -> discover: \"service-found\"")
+	fmt.Println("[discovery-registry] service: \"sample\" -> discovered")
 }

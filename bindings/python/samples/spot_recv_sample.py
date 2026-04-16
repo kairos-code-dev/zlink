@@ -2,7 +2,7 @@ import zlink
 from sample_support import tcp_endpoint, wait_until
 
 
-SERVICE_NAME = "spot-svc"
+SERVICE_NAME = "sample"
 TOPIC = b"room:lobby"
 
 
@@ -47,7 +47,7 @@ def main():
                         return True
 
                     wait_until(attempt_receive, description="spot payload delivery")
-                    print('[spot/recv] publish: "room:lobby/hello-spot" → subscribe: "room:lobby/hello-spot"')
+                    print('[spot/recv] service: "sample" tick: 1 publish: "room:lobby/hello-spot" -> recv: "room:lobby/hello-spot"')
             finally:
                 sub_sock.close()
                 pub_sock.close()

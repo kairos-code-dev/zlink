@@ -28,6 +28,6 @@ int main ()
     assert (!client_monitor.recv (zlink::non_blocking_t {}));
 
     std::printf (
-      "[monitor] event: \"CONNECTION_READY\" -> tryRecv: empty\n");
+      "[monitor/recv] recv: \"connection-ready\" -> tryRecv: empty\n");
     return 0;
 }

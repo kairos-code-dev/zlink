@@ -35,6 +35,10 @@
 - provider selection은 adapter 내부 정책으로 처리할 수 있어야 한다.
 - 단순 unary request 외에 event publish와 필요하면 aggregate helper를 분리할 수
   있어야 한다.
+- 운영 점검이나 관리 API에서는 Registry topology snapshot/query 결과를 읽는
+  별도 surface를 둘 수 있어야 한다.
+- `SPOT`을 쓰는 프레임워크에서는 publish/subscribe만이 아니라 필요 시 routed
+  request/reply도 같은 큰 개념 안에서 설명할 수 있어야 한다.
 
 ## 3. ASP.NET Core 방향
 

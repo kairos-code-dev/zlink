@@ -3,12 +3,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
-const { drainRecvNow, drainRecvSocket, waitForConnectionReady, trySocketSend } = require('./perf_single_common');
+const { benchmarkEndpoint, drainRecvNow, drainRecvSocket, waitForConnectionReady, trySocketSend } = require('./perf_single_common');
 async function runPairBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     const server = new zlink.PairSocket(ctx);
     const client = new zlink.PairSocket(ctx);
-    const endpoint = `inproc://perf-pair-${process.pid}-${msgSize}`;
+    const endpoint = await benchmarkEndpoint(options.transport, `pair-${msgSize}`);
     try {
         server.bind(endpoint);
         await waitForConnectionReady(client, () => client.connect(endpoint));

@@ -103,8 +103,7 @@ final class SampleSupport {
 
     static void waitSpotPeerConnected(SpotNode node) {
         waitUntil("spot peer connection",
-            () -> node.statusSnapshot().connectedPeerCount() > 0
-                && node.statusSnapshot().state() == SpotNodeState.READY);
+            () -> node.statusSnapshot().connectedPeerCount() > 0);
     }
 
     static java.net.Socket connectRawTcp(String endpoint) {

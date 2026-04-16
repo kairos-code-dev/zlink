@@ -10,6 +10,9 @@ namespace {
 
 static napi_value create_routing_id_value(napi_env env, const zlink_routing_id_t &rid);
 static napi_value unsupported_spot_node(napi_env env, const char *method);
+static napi_value create_message_snapshot_value(napi_env env,
+                                                const zlink_routing_id_t *routing_id,
+                                                zlink_msg_t *msg);
 
 static const size_t k_spot_send_ready_slot_count = 8;
 
@@ -341,14 +344,9 @@ static napi_value create_spot_routed_value(napi_env env,
     napi_value parts_array;
     napi_create_array_with_length(env, part_count, &parts_array);
     for (size_t i = 0; i < part_count; ++i) {
-        napi_value part_buf;
-        napi_create_buffer_copy(
-          env,
-          zlink_msg_size(&parts[i]),
-          zlink_msg_size(&parts[i]) > 0 ? zlink_msg_data(&parts[i]) : NULL,
-          NULL,
-          &part_buf);
-        napi_set_element(env, parts_array, static_cast<uint32_t>(i), part_buf);
+        napi_value part =
+          create_message_snapshot_value(env, source_rid, &parts[i]);
+        napi_set_element(env, parts_array, static_cast<uint32_t>(i), part);
     }
     napi_set_named_property(env, obj, "parts", parts_array);
     return obj;
@@ -968,7 +966,6 @@ static request_js_state_t *create_request_js_state(napi_env env,
         napi_throw_error(env, NULL, "spot request callback setup failed");
         return NULL;
     }
-    (void) napi_unref_threadsafe_function(env, tsfn);
     state->tsfn = tsfn;
     return state;
 }
@@ -1088,16 +1085,89 @@ napi_value router_spot_send(napi_env env, napi_callback_info info)
 
 napi_value spot_send_spot(napi_env env, napi_callback_info info)
 {
-    (void) info;
-    napi_throw_error(env, NULL, "spotSendSpot not implemented");
-    return NULL;
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    zlink_routing_id_t dest_node_rid;
+    zlink_routing_id_t dest_spot_rid;
+    if (!parse_routing_id_value(env, argv[1], &dest_node_rid))
+        return NULL;
+    if (!parse_routing_id_value(env, argv[2], &dest_spot_rid))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[3], &parts))
+        return NULL;
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[4], &flags);
+
+    int rc = zlink_spot_send_spot(
+      spot, &dest_node_rid, &dest_spot_rid, parts.data(), parts.size(),
+      static_cast<zlink_send_flags_t>(flags));
+    if (rc != 0) {
+        close_msg_vector(parts);
+        return throw_last_error(env, "spotSendSpot failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
 }
 
 napi_value spot_request_spot(napi_env env, napi_callback_info info)
 {
-    (void) info;
-    napi_throw_error(env, NULL, "spotRequestSpot not implemented");
-    return NULL;
+    napi_value argv[7];
+    size_t argc = 7;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 7) {
+        napi_throw_type_error(
+          env, NULL,
+          "spotRequestSpot requires (spot, destNodeRid, destSpotRid, parts, handler, flags, timeoutMs)");
+        return NULL;
+    }
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    zlink_routing_id_t dest_node_rid;
+    zlink_routing_id_t dest_spot_rid;
+    if (!parse_routing_id_value(env, argv[1], &dest_node_rid))
+        return NULL;
+    if (!parse_routing_id_value(env, argv[2], &dest_spot_rid))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[3], &parts))
+        return NULL;
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[4], &handler_type);
+    if (handler_type != napi_function) {
+        close_msg_vector(parts);
+        napi_throw_type_error(env, NULL, "spotRequestSpot handler must be a function");
+        return NULL;
+    }
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[5], &flags);
+    int32_t timeout_ms = 0;
+    napi_get_value_int32(env, argv[6], &timeout_ms);
+    request_js_state_t *state = create_request_js_state(env, argv[4]);
+    if (!state) {
+        close_msg_vector(parts);
+        return NULL;
+    }
+    int rc = zlink_spot_request_spot(
+      spot, &dest_node_rid, &dest_spot_rid, parts.data(), parts.size(),
+      request_reply_callback_trampoline, state,
+      static_cast<zlink_send_flags_t>(flags),
+      static_cast<uint32_t>(timeout_ms));
+    if (rc != 0) {
+        close_msg_vector(parts);
+        if (state->tsfn) {
+            (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_abort);
+            state->tsfn = NULL;
+        }
+        return throw_last_error(env, "spotRequestSpot failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
 }
 
 napi_value spot_reply_spot(napi_env env, napi_callback_info info)

@@ -3,6 +3,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from perf_multi_common import (
@@ -161,6 +162,45 @@ def _normalize_stream_result_lines(output):
     return "\n".join(normalized)
 
 
+def _parse_status_lines(output):
+    rows = []
+    for line in output.splitlines():
+        if line.startswith("SKIP,") or line.startswith("UNSUPPORTED,"):
+            rows.append(line.strip())
+    return rows
+
+
+def _read_next_nonempty_line(stream, *, timeout_s):
+    import time
+
+    deadline = time.perf_counter() + timeout_s
+    while time.perf_counter() < deadline:
+        line = stream.readline()
+        if not line:
+            return ""
+        text = line.strip()
+        if text:
+            return text
+    return ""
+
+
+def _wait_for_prefixed_line(proc, prefix, *, timeout_s, stdout_chunks):
+    import time
+
+    deadline = time.perf_counter() + timeout_s
+    while time.perf_counter() < deadline:
+        line = proc.stdout.readline()
+        if not line:
+            break
+        text = line.strip()
+        if not text:
+            continue
+        stdout_chunks.append(text)
+        if text.startswith(prefix):
+            return text
+    raise SystemExit(f"missing {prefix} line")
+
+
 def _terminate_process(proc, *, grace_seconds):
     if proc.poll() is not None:
         return
@@ -229,6 +269,7 @@ def _run_pattern(args, env, pattern, msg_size, clients):
     )
     stdout_chunks = []
     stderr_chunks = []
+    client = None
     try:
         ready = server.stdout.readline().strip()
         if ready:
@@ -238,10 +279,11 @@ def _run_pattern(args, env, pattern, msg_size, clients):
         if not ready.startswith("READY,"):
             raise SystemExit(f"server did not become ready: {ready}")
         endpoint = ready.split(",", 1)[1]
+        control_endpoint = ""
 
         if pattern == "STREAM":
             _wait_for_tcp_endpoint(endpoint)
-            client = subprocess.run(
+            client_run = subprocess.run(
                 [
                     str(STREAM_CLIENT),
                     "--transport",
@@ -272,36 +314,148 @@ def _run_pattern(args, env, pattern, msg_size, clients):
                 timeout=90,
                 check=True,
             )
-            if client.stdout:
-                stdout_chunks.append(_normalize_stream_result_lines(client.stdout.strip()))
-            if client.stderr:
-                stderr_chunks.append(client.stderr.strip())
+            if client_run.stdout:
+                stdout_chunks.append(_normalize_stream_result_lines(client_run.stdout.strip()))
+            if client_run.stderr:
+                stderr_chunks.append(client_run.stderr.strip())
             return "\n".join(chunk for chunk in stdout_chunks if chunk)
 
-        client = subprocess.run(
-            [
-                sys.executable,
-                str(client_path),
-                "--endpoint",
-                endpoint,
-                "--duration",
-                args.duration,
-                "--msg-size",
-                msg_size,
-                "--clients",
-                clients,
-            ],
-            cwd=str(ROOT.parent.parent),
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=90,
-            check=True,
-        )
-        if client.stdout:
-            stdout_chunks.append(client.stdout.strip())
-        if client.stderr:
-            stderr_chunks.append(client.stderr.strip())
+        if pattern == "SPOT":
+            control_ready = _wait_for_prefixed_line(
+                server,
+                "CONTROL_READY,",
+                timeout_s=10,
+                stdout_chunks=stdout_chunks,
+            )
+            control_endpoint = control_ready.split(",", 1)[1]
+            client = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(client_path),
+                    "--endpoint",
+                    f"{endpoint},{control_endpoint}",
+                    "--duration",
+                    args.duration,
+                    "--msg-size",
+                    msg_size,
+                    "--clients",
+                    clients,
+                ],
+                cwd=str(ROOT.parent.parent),
+                env=env,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                **_server_popen_kwargs(),
+            )
+            client_control = _wait_for_prefixed_line(
+                client,
+                "CLIENT_CONTROL_ENDPOINT,",
+                timeout_s=10,
+                stdout_chunks=stdout_chunks,
+            )
+            client_control_endpoint = client_control.split(",", 1)[1]
+            server.stdin.write(f"CONNECT_CONTROL,{client_control_endpoint}\n")
+            server.stdin.flush()
+            control_connected = _wait_for_prefixed_line(
+                server,
+                "CONTROL_CONNECTED,",
+                timeout_s=10,
+                stdout_chunks=stdout_chunks,
+            )
+            client.stdin.write(f"{control_connected}\n")
+            client.stdin.flush()
+            client_ready = _wait_for_prefixed_line(
+                client,
+                "CLIENT_READY,",
+                timeout_s=20,
+                stdout_chunks=stdout_chunks,
+            )
+            if client_ready != f"CLIENT_READY,{msg_size}":
+                raise SystemExit(f"client did not become ready: {client_ready}")
+            server.stdin.write(f"START,{msg_size}\n")
+            server.stdin.flush()
+            client.stdin.write(f"START,{msg_size}\n")
+            client.stdin.flush()
+            time.sleep(0.05)
+            client_stdout, client_stderr = client.communicate(timeout=90)
+            if client_stdout:
+                stdout_chunks.append(client_stdout.strip())
+            if client_stderr:
+                stderr_chunks.append(client_stderr.strip())
+            if client.returncode != 0:
+                raise subprocess.CalledProcessError(
+                    client.returncode,
+                    client.args,
+                    output=client_stdout,
+                    stderr=client_stderr,
+                )
+            return "\n".join(chunk for chunk in stdout_chunks if chunk)
+        one_way_pattern = pattern in {"DEALER_DEALER", "PUBSUB"}
+        if one_way_pattern:
+            client = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(client_path),
+                    "--endpoint",
+                    endpoint,
+                    "--duration",
+                    args.duration,
+                    "--msg-size",
+                    msg_size,
+                    "--clients",
+                    clients,
+                ],
+                cwd=str(ROOT.parent.parent),
+                env=env,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                **_server_popen_kwargs(),
+            )
+            client_ready = client.stdout.readline().strip()
+            if client_ready:
+                stdout_chunks.append(client_ready)
+            if client_ready != f"CLIENT_READY,{msg_size}":
+                raise SystemExit(f"client did not become ready: {client_ready}")
+            server.stdin.write(f"START,{msg_size}\n")
+            server.stdin.flush()
+            client.stdin.write(f"START,{msg_size}\n")
+            client.stdin.flush()
+            client_stdout, client_stderr = client.communicate(timeout=90)
+            if client_stdout:
+                stdout_chunks.append(client_stdout.strip())
+            if client_stderr:
+                stderr_chunks.append(client_stderr.strip())
+            if client.returncode != 0:
+                raise subprocess.CalledProcessError(client.returncode, client.args, output=client_stdout, stderr=client_stderr)
+        else:
+            client_run = subprocess.run(
+                [
+                    sys.executable,
+                    str(client_path),
+                    "--endpoint",
+                    endpoint,
+                    "--duration",
+                    args.duration,
+                    "--msg-size",
+                    msg_size,
+                    "--clients",
+                    clients,
+                ],
+                cwd=str(ROOT.parent.parent),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=90,
+                check=True,
+            )
+            if client_run.stdout:
+                stdout_chunks.append(client_run.stdout.strip())
+            if client_run.stderr:
+                stderr_chunks.append(client_run.stderr.strip())
     except subprocess.CalledProcessError as exc:
         if exc.stdout:
             stdout_chunks.append(exc.stdout.strip())
@@ -321,6 +475,8 @@ def _run_pattern(args, env, pattern, msg_size, clients):
             )
         )
     finally:
+        if client is not None and hasattr(client, "poll") and client.poll() is None:
+            _terminate_process(client, grace_seconds=3)
         _terminate_process(server, grace_seconds=3)
         if server.stderr:
             err = server.stderr.read().strip()
@@ -358,10 +514,17 @@ def main(argv=None):
     env["PYTHONPATH"] = args.pythonpath
     if RUNNER_LIB.exists():
         env["ZLINK_LIBRARY_PATH"] = str(RUNNER_LIB)
+        lib_dir = str(RUNNER_LIB.parent)
+        env["LD_LIBRARY_PATH"] = (
+            f"{lib_dir}:{env['LD_LIBRARY_PATH']}"
+            if env.get("LD_LIBRARY_PATH")
+            else lib_dir
+        )
 
     options = _build_options(args, patterns, transports, msg_sizes, clients)
     sections = [render_effective_options(options), ""]
     emitted_chunks = []
+    status_lines = []
     for _ in range(runs):
         for pattern in patterns:
             for _transport in transports:
@@ -369,13 +532,25 @@ def main(argv=None):
                     output = _run_pattern(args, env, pattern, msg_size, clients)
                     if output:
                         emitted_chunks.append(output)
+                        status_lines.extend(_parse_status_lines(output))
                         sections.append(output)
     rows = parse_result_lines("\n".join(emitted_chunks))
-    expected_result_lines = len(patterns) * len(transports) * len(msg_sizes) * runs * 5
+    skipped_cases = 0
+    unsupported_cases = 0
+    for line in status_lines:
+        if line.startswith("SKIP,"):
+            skipped_cases += 1
+        elif line.startswith("UNSUPPORTED,"):
+            unsupported_cases += 1
+    total_cases = len(patterns) * len(transports) * len(msg_sizes) * runs
+    expected_cases = max(0, total_cases - skipped_cases - unsupported_cases)
+    expected_result_lines = expected_cases * 5
     sections.extend(["", render_markdown_summary(rows), "", "## Effective Options (result)"])
     sections.append(f"- status: {'complete' if len(rows) == expected_result_lines else 'partial'}")
     sections.append(f"- expected_result_lines: {expected_result_lines}")
     sections.append(f"- actual_result_lines: {len(rows)}")
+    sections.append(f"- skip_cases: {skipped_cases}")
+    sections.append(f"- unsupported_cases: {unsupported_cases}")
     final_output = "\n".join(section for section in sections if section is not None).rstrip() + "\n"
     print(final_output, end="")
 

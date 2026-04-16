@@ -13,6 +13,10 @@ fn main() {
     let ctx = Context::new().expect("context");
     let pub_sock = ctx.pub_socket().expect("pub");
     let mut sub_sock = ctx.sub_socket().expect("sub");
+    sub_sock
+        .common_options()
+        .set_recv_timeout(Duration::from_millis(1))
+        .expect("recv timeout");
 
     if matches!(config.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
@@ -20,12 +24,13 @@ fn main() {
         common::setup_raw_tls_client(&sub_sock, &tls).expect("sub tls");
     }
 
+    let pub_mon = SocketMonitor::open(&pub_sock).expect("pub monitor");
+    let mon = SocketMonitor::open(&sub_sock).expect("monitor");
     pub_sock.bind(&bind_endpoint).expect("bind");
     let endpoint = pub_sock.last_endpoint().unwrap_or(bind_endpoint);
     sub_sock.connect(&endpoint).expect("connect");
     sub_sock.set_subscription("").expect("subscribe");
-
-    let mon = SocketMonitor::open(&sub_sock).expect("monitor");
+    common::wait_monitor_ready(&pub_mon);
     common::wait_monitor_ready(&mon);
 
     let collector = common::MetricCollector::new();
@@ -34,8 +39,6 @@ fn main() {
     let receiver_done = sender_done.clone();
 
     let receiver_thread = thread::spawn(move || {
-        let poller = Poller::new().expect("poller");
-        poller.add_socket(&sub_sock, 0, POLLIN).expect("poller add");
         let deadline = Instant::now() + Duration::from_secs(config.duration_seconds + 20);
         let mut idle_since: Option<Instant> = None;
 
@@ -44,25 +47,19 @@ fn main() {
                 break;
             }
 
-            match poller.wait(100) {
-                Ok(Some(_)) => {
-                    let mut saw_message = false;
-                    loop {
-                        match sub_sock.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-                            Ok(topic_msg) => {
-                                let data = common::message_payload(topic_msg.parts());
-                                common::handle_recv(data, config.size, &stats);
-                                saw_message = true;
-                            }
-                            Err(_) => break,
-                        }
+            let mut saw_message = false;
+            loop {
+                match sub_sock.subscribe() {
+                    Ok(topic_msg) => {
+                        let data = common::message_payload(topic_msg.parts());
+                        common::handle_recv(data, config.size, &stats);
+                        saw_message = true;
                     }
-                    if saw_message {
-                        idle_since = None;
-                    }
+                    Err(_) => break,
                 }
-                Ok(None) => {}
-                Err(_) => break,
+            }
+            if saw_message {
+                idle_since = None;
             }
 
             if receiver_done.is_done() {

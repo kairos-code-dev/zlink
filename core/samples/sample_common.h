@@ -12,7 +12,11 @@
 #include <time.h>
 
 #ifndef _WIN32
+#include <arpa/inet.h>
 #include <pthread.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <netinet/in.h>
 #endif
 
 /* ---- Constants ----------------------------------------------------------- */
@@ -23,6 +27,7 @@ static const char *const k_dealer_router_reply = "pong";
 static const char *const k_stream_payload = "hello-stream";
 static const char *const k_pubsub_topic = "prices";
 static const char *const k_pubsub_payload = "101.25";
+static const char *const k_service_name = "sample";
 static const char *const k_spot_topic = "room:lobby";
 static const char *const k_spot_payload = "hello-spot";
 
@@ -44,6 +49,33 @@ static inline void get_last_endpoint (void *socket, char *buf, size_t buf_size)
     int rc = zlink_get_option (socket, ZLINK_OPT_LAST_ENDPOINT, buf, &len);
     assert (rc == 0);
     assert (len > 0);
+}
+
+static inline void reserve_tcp_endpoint (char *buf, size_t buf_size)
+{
+#ifndef _WIN32
+    int fd = socket (AF_INET, SOCK_STREAM, 0);
+    assert (fd >= 0);
+
+    int reuse = 1;
+    assert (setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof (reuse)) == 0);
+
+    struct sockaddr_in addr;
+    memset (&addr, 0, sizeof (addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    assert (bind (fd, (const struct sockaddr *) &addr, sizeof (addr)) == 0);
+
+    socklen_t addr_len = sizeof (addr);
+    assert (getsockname (fd, (struct sockaddr *) &addr, &addr_len) == 0);
+    assert (close (fd) == 0);
+
+    snprintf (buf, buf_size, "tcp://127.0.0.1:%u", (unsigned) ntohs (addr.sin_port));
+#else
+    snprintf (buf, buf_size, "tcp://127.0.0.1:%u",
+              (unsigned) (30000u + ((unsigned) time (NULL) % 20000u)));
+#endif
 }
 
 /* ---- Monitor helpers ----------------------------------------------------- */

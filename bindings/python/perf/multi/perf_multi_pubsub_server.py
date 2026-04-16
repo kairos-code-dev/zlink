@@ -16,15 +16,27 @@ def _stdin_stop(stop_event):
 def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
     stop_event = threading.Event()
-    payload = new_payload(args.msg_size)
+    start_event = threading.Event()
     endpoint = tcp_endpoint()
-    threading.Thread(target=_stdin_stop, args=(stop_event,), daemon=True).start()
+
+    def read_commands():
+        for line in sys.stdin:
+            text = line.strip().upper()
+            if text.startswith("START,"):
+                start_event.set()
+            elif text in {"STOP", "QUIT"}:
+                stop_event.set()
+                return
+
+    threading.Thread(target=read_commands, daemon=True).start()
 
     with zlink.Context() as ctx:
         with zlink.PubSocket(ctx) as publisher:
             publisher.options.linger_ms = 0
             publisher.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
+            while not start_event.is_set() and not stop_event.is_set():
+                stop_event.wait(0.01)
             while not stop_event.is_set():
                 publisher.publish(
                     TOPIC,

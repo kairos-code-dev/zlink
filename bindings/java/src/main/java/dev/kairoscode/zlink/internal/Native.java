@@ -427,7 +427,8 @@ public final class Native {
     private static final MethodHandle MH_SPOT_REQUEST_SPOT = downcall(
       "zlink_spot_request_spot",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.JAVA_LONG,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
         ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_SEND_SPOT = downcall(

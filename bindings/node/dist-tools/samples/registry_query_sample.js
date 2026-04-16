@@ -29,7 +29,7 @@ async function main() {
     const ctx = new zlink.Context();
     const registry = new zlink.Registry(ctx);
     const query = new zlink.RegistryQueryClient(ctx);
-    const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'topology-entry-found');
+    const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'sample');
     const node = new zlink.SpotNode(ctx);
     const pubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const routerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
@@ -40,10 +40,10 @@ async function main() {
         discovery.connectRegistry(routerEndpoint);
         node.attachDiscovery(discovery);
         node.bind(serviceEndpoint);
-        const entry = await waitForTopologyEntry(query, 'topology-entry-found', serviceEndpoint);
+        const entry = await waitForTopologyEntry(query, 'sample', serviceEndpoint);
         assert.ok(entry);
         assert.equal(entry.endpoint, serviceEndpoint);
-        console.log('[registry-query] connect → snapshot: "topology-entry-found"');
+        console.log('[registry-query] service: "sample" -> snapshot: found');
     }
     finally {
         discovery.close();

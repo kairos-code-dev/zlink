@@ -1,12 +1,24 @@
 //! STREAM callback sample – demonstrates STREAM socket with packet handler.
 //! The STREAM socket binds as a server; a raw TCP client connects inward.
 
+#[path = "sample_support.rs"]
+mod sample_support;
+
 use std::io::Write;
 use std::net::TcpStream;
 use std::sync::mpsc;
 use std::time::Duration;
 
 use zlink::{Context, SocketMonitor};
+
+fn write_stream_packet(stream: &mut TcpStream, body: &[u8]) {
+    let mut frame = Vec::with_capacity(6 + body.len());
+    frame.extend_from_slice(&0u16.to_be_bytes());
+    frame.extend_from_slice(&(body.len() as u32).to_be_bytes());
+    frame.extend_from_slice(body);
+    stream.write_all(&frame).expect("tcp write failed");
+    stream.flush().expect("tcp flush failed");
+}
 
 pub fn reserve_tcp_port() -> u16 {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -50,8 +62,8 @@ fn main() {
     let ctx = Context::new().expect("context creation failed");
 
     let mut stream = ctx.stream_socket().expect("stream socket failed");
-    stream.bind("tcp://127.0.0.1:0").expect("bind failed");
-    let endpoint = stream.last_endpoint().expect("last_endpoint failed");
+    let endpoint = sample_support::tcp_endpoint();
+    stream.bind(&endpoint).expect("bind failed");
     let stream_mon = SocketMonitor::open(&stream).expect("stream monitor open failed");
 
     let (tx, rx) = mpsc::channel();
@@ -70,17 +82,14 @@ fn main() {
     wait_stream_connected(&stream_mon);
     drop(stream_mon);
 
-    tcp_client
-        .write_all(b"hello-stream")
-        .expect("tcp write failed");
-    tcp_client.flush().expect("tcp flush failed");
+    write_stream_packet(&mut tcp_client, b"hello-stream");
     let payload = rx
         .recv_timeout(Duration::from_secs(5))
         .expect("stream callback did not fire within 5s");
     assert_eq!(payload, b"hello-stream");
     let recv_str = std::str::from_utf8(&payload).unwrap();
     println!(
-        "[stream/callback] send: \"hello-stream\" → recv: \"{}\"",
+        "[stream/packet-callback] send: \"hello-stream\" → recv: \"{}\"",
         recv_str
     );
 }

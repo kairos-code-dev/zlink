@@ -2,6 +2,8 @@
 
 'use strict';
 
+const net = require('node:net');
+const { once } = require('node:events');
 const zlink = require('../../dist/canonical');
 const {
   MonitorEvent,
@@ -13,6 +15,33 @@ const {
 } = require('../common/perf_metrics');
 const READY_EVENTS = new Set([MonitorEvent.CONNECTION_READY, MonitorEvent.CONNECTED]);
 const POLLIN = 1;
+
+async function reservePort() {
+  const server = net.createServer();
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  await new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+  return address.port;
+}
+
+async function benchmarkEndpoint(transport, token) {
+  if (transport === 'inproc') {
+    return `inproc://perf-${token}-${process.pid}`;
+  }
+  if (transport === 'tcp') {
+    return `tcp://127.0.0.1:${await reservePort()}`;
+  }
+  throw new Error(`unsupported single transport: ${transport}`);
+}
 
 function tryRecv(socket) {
   try {
@@ -41,7 +70,11 @@ function trySocketSend(socket, ...args) {
     socket.send(...args, zlink.SendFlags.DontWait);
     return true;
   } catch (error) {
+    const text = String(error && error.message ? error.message : error);
     if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
+      return false;
+    }
+    if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
       return false;
     }
     throw error;
@@ -53,7 +86,11 @@ function trySocketPublish(socket, topic, payload) {
     socket.publish(topic, payload, zlink.SendFlags.DontWait);
     return true;
   } catch (error) {
+    const text = String(error && error.message ? error.message : error);
     if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
+      return false;
+    }
+    if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
       return false;
     }
     throw error;
@@ -147,6 +184,7 @@ function drainRecvNow(socket, onMessage) {
 }
 
 module.exports = {
+  benchmarkEndpoint,
   drainRecvSocket,
   drainRecvNow,
   waitForConnectionReady,

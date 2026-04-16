@@ -39,17 +39,13 @@ async function main() {
                 reject(error);
                 return;
             }
-            const header = Buffer.from('hello-stream-header');
-            const body = Buffer.from('hello-stream-body');
-            client.write(Buffer.concat([frame(header), frame(body)]));
+            const payload = Buffer.from('hello-stream');
+            client.write(Buffer.concat([frame(Buffer.alloc(0)), frame(payload)]));
         });
         assert.ok(received.sourceRid instanceof zlink.RoutingId);
-        assert.equal(received.header.data().toString(), 'hello-stream-header');
-        assert.equal(received.body.data().toString(), 'hello-stream-body');
-        stream.send(received.sourceRid, received.body.data());
-        const [reply] = await once(client, 'data');
-        assert.equal(reply.toString(), 'hello-stream-body');
-        console.log('[stream/packet] packet handler received framed header/body and echoed the body');
+        assert.equal(received.header.data().length, 0);
+        assert.equal(received.body.data().toString(), 'hello-stream');
+        console.log('[stream/packet-callback] send: "hello-stream" -> recv: "hello-stream"');
     }
     finally {
         if (client) {

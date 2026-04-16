@@ -1132,7 +1132,7 @@ public final class Spot implements AutoCloseable {
             throw new IllegalArgumentException("parts must not be empty");
         Message[] copies = new Message[parts.size()];
         for (int i = 0; i < copies.length; i++) {
-            copies[i] = InternalAccess.messageSharedCopyOf(parts.get(i));
+            copies[i] = Message.copyOf(parts.get(i).toByteArray());
         }
         return List.of(copies);
     }
@@ -1163,12 +1163,31 @@ public final class Spot implements AutoCloseable {
         int built = 0;
         try {
             for (int i = 0; i < payload.size(); i++) {
-                InternalAccess.messageMoveTo(payload.get(i),
-                  nativeParts.asSlice((long) i * msgSize, msgSize));
+                MemorySegment dest = nativeParts.asSlice((long) i * msgSize, msgSize);
+                byte[] bytes = payload.get(i).toByteArray();
+                int rc = NativeMsg.msgInitSize(dest, bytes.length);
+                if (rc != 0) {
+                    throw ZlinkException.fromLastError("zlink_msg_init_size");
+                }
+                if (bytes.length > 0) {
+                    MemorySegment.copy(
+                      MemorySegment.ofArray(bytes),
+                      0,
+                      NativeMsg.msgData(dest).reinterpret(bytes.length),
+                      0,
+                      bytes.length);
+                }
                 built++;
             }
             return nativeParts;
         } catch (RuntimeException ex) {
+            for (int i = 0; i < built; i++) {
+                try {
+                    NativeMsg.msgClose(
+                      nativeParts.asSlice((long) i * msgSize, msgSize));
+                } catch (RuntimeException ignored) {
+                }
+            }
             for (int i = built; i < payload.size(); i++) {
                 try {
                     payload.get(i).close();

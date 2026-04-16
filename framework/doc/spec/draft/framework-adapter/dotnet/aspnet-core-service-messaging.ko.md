@@ -25,6 +25,8 @@
 현재 초안은 아래 `.NET` binding 기능을 하부 토대로 본다.
 
 - `Discovery`
+- `Registry`
+- `RegistryQueryClient`
 - `DealerSocket`
 - `RouterSocket`
 - request-reply helper
@@ -162,6 +164,8 @@ public interface IZLinkRequestClient
 - 호출자는 `service_name`만 지정한다.
 - Discovery가 현재 provider 목록을 유지한다.
 - client factory 또는 request client가 provider를 선택한다.
+- 필요하면 운영 점검용 별도 서비스가 `Registry` 또는 `RegistryQueryClient`
+  snapshot/query 결과를 읽어 현재 topology를 노출할 수 있다.
 
 ### 6.2 왜 중요한가
 
@@ -208,3 +212,4 @@ builder.Services.AddZLinkFramework(options =>
 - typed client code generation을 할지
 - request client와 event publisher를 얼마나 분리할지
 - provider selection policy를 얼마나 공개 설정으로 열지
+- topology query surface를 운영 API로만 둘지, 일반 DI 서비스로도 열지

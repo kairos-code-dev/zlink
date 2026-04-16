@@ -5,6 +5,7 @@ import socket
 import statistics
 import struct
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -148,33 +149,32 @@ def tcp_endpoint(prefix="perf"):
 
 
 def wait_monitor_event(monitor, event_mask, *, timeout_ms=DEFAULT_READY_TIMEOUT_MS):
-    zlink_mod = _require_zlink()
-    deadline = time.perf_counter() + (timeout_ms / 1000.0)
-    with zlink_mod.Poller() as poller:
-        poller.add_socket(monitor, zlink_mod.PollEvent.POLLIN)
-        while True:
-            remaining_ms = max(0, int((deadline - time.perf_counter()) * 1000))
-            if remaining_ms == 0:
-                raise RuntimeError(
-                    f"timed out waiting for socket monitor event {int(event_mask)}"
-                )
-            try:
-                events = poller.poll(remaining_ms)
-            except zlink_mod.ZlinkError as exc:
-                if exc.errno == 11:
-                    events = []
-                else:
-                    raise
-            if not events:
-                if time.perf_counter() >= deadline:
-                    raise RuntimeError(
-                        f"timed out waiting for socket monitor event {int(event_mask)}"
-                    )
-                continue
-            event = monitor.recv()
-            if not (int(event.event) & int(event_mask)):
-                continue
-            return event
+    result = {}
+    failure = {}
+    done = threading.Event()
+
+    def _recv_event():
+        try:
+            result["event"] = monitor.recv()
+        except Exception as exc:  # pragma: no cover - propagated below
+            failure["exc"] = exc
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=_recv_event, daemon=True)
+    thread.start()
+    if not done.wait(timeout_ms / 1000.0):
+        raise RuntimeError(
+            f"timed out waiting for socket monitor event {int(event_mask)}"
+        )
+    if "exc" in failure:
+        raise failure["exc"]
+    event = result["event"]
+    if not (int(event.event) & int(event_mask)):
+        raise RuntimeError(
+            f"unexpected socket monitor event {int(event.event)} while waiting for {int(event_mask)}"
+        )
+    return event
 
 
 def _require_zlink():
@@ -189,7 +189,7 @@ def safe_poll(poller, timeout_ms):
     try:
         return poller.poll(timeout_ms)
     except zlink_mod.ZlinkError as exc:
-        if exc.errno == 11:
+        if exc.internal_errno == 11:
             return []
         raise
 

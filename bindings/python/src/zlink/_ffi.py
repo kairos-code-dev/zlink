@@ -6,8 +6,14 @@ import os
 import pathlib
 
 
-class ZlinkMsg(ctypes.Structure):
-    _fields_ = [("_", ctypes.c_ubyte * 64)]
+class ZlinkMsg(ctypes.Union):
+    # zlink_msg_t is a 64-byte opaque value aligned to sizeof(void *).
+    # Using a Union with a pointer member preserves the 64-byte size while
+    # forcing ctypes to match the required native alignment.
+    _fields_ = [
+        ("_", ctypes.c_ubyte * 64),
+        ("_align", ctypes.c_void_p),
+    ]
 
 
 class ZlinkRoutingId(ctypes.Structure):

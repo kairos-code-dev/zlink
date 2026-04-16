@@ -442,6 +442,11 @@ function wrapRoutingId(routingId: Buffer | Uint8Array | null | undefined): Routi
   return RoutingId.fromBytes(routingId);
 }
 
+function createRequestKeepAlive(): () => void {
+  const handle = setInterval(() => {}, 1000);
+  return () => clearInterval(handle);
+}
+
 function requireRoutingId(routingId: RoutingId, name = 'routingId'): Buffer {
   if (!(routingId instanceof RoutingId)) {
     throw new TypeError(`${name} must be a RoutingId`);
@@ -1700,13 +1705,77 @@ export class Spot extends NativeHandle {
     }
     const timeoutMs = (typeof callbackOrTimeout === 'number' ? callbackOrTimeout : timeout) ?? 0;
     return new Promise<Message[]>((resolve, reject) => {
+      const release = createRequestKeepAlive();
       requireNative().spotRequestService(
         this._native,
         validateCString(serviceName, 'serviceName', Number.MAX_SAFE_INTEGER),
         parts,
         (result: number, replyParts: Buffer[] | null) => {
+          release();
           if (result !== RequestResult.Ok) {
             reject(requestErrorFromResult(result as RequestResult, 'requestService failed'));
+            return;
+          }
+          resolve((replyParts ?? []).map((part) => Message.from(part)));
+        },
+        0,
+        timeoutMs | 0
+      );
+    });
+  }
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, flags?: SendFlags): void;
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+    try {
+      requireNative().spotSendSpot(
+        this._native,
+        normalizeRoutingId(destNodeRid),
+        normalizeRoutingId(destSpotRid),
+        Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)],
+        flags | 0
+      );
+    } catch (error) {
+      throw submitNativeError(error, flags, 'spot sendToSpot failed');
+    }
+  }
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, timeout?: number): Promise<Message[]>;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  requestToSpot(
+    destNodeRid: RoutingId,
+    destSpotRid: RoutingId,
+    payloadOrParts: MessageLike | readonly MessageLike[],
+    callbackOrTimeout?: RequestResultCallback | number,
+    flags: SendFlags = SendFlags.None,
+    timeout = 0
+  ): Promise<Message[]> | void {
+    const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
+    const nodeRid = normalizeRoutingId(destNodeRid);
+    const spotRid = normalizeRoutingId(destSpotRid);
+    if (typeof callbackOrTimeout === 'function') {
+      return void requireNative().spotRequestSpot(
+        this._native,
+        nodeRid,
+        spotRid,
+        parts,
+        (result: number, replyParts: Buffer[] | null) => callbackOrTimeout(result as RequestResult, replyParts ? replyParts.map((part) => Message.from(part)) : []),
+        flags | 0,
+        timeout | 0
+      );
+    }
+    const timeoutMs = (typeof callbackOrTimeout === 'number' ? callbackOrTimeout : timeout) ?? 0;
+    return new Promise<Message[]>((resolve, reject) => {
+      const release = createRequestKeepAlive();
+      requireNative().spotRequestSpot(
+        this._native,
+        nodeRid,
+        spotRid,
+        parts,
+        (result: number, replyParts: Buffer[] | null) => {
+          release();
+          if (result !== RequestResult.Ok) {
+            reject(requestErrorFromResult(result as RequestResult, 'requestToSpot failed'));
             return;
           }
           resolve((replyParts ?? []).map((part) => Message.from(part)));

@@ -1318,7 +1318,12 @@ unsafe extern "C" {
     pub fn zlink_registry_query_destroy(client_p: *mut *mut c_void) -> c_int;
 
     // -- Poller ------------------------------------------------------------
-    pub fn zlink_poll(items: *mut zlink_pollitem_t, nitems: c_int, timeout: c_long) -> c_int;
+    pub fn zlink_poll(
+        items: *mut zlink_pollitem_t,
+        nitems: c_int,
+        timeout: c_long,
+        error_out: *mut c_int,
+    ) -> c_int;
     pub fn zlink_poller_new() -> *mut c_void;
     pub fn zlink_poller_destroy(poller_p: *mut *mut c_void) -> c_int;
     pub fn zlink_poller_size(poller: *mut c_void, error_out: *mut c_int) -> c_int;
@@ -1342,12 +1347,14 @@ unsafe extern "C" {
         poller: *mut c_void,
         event: *mut zlink_poller_event_t,
         timeout: c_long,
+        error_out: *mut c_int,
     ) -> c_int;
     pub fn zlink_poller_wait_all(
         poller: *mut c_void,
         events: *mut zlink_poller_event_t,
         n_events: c_int,
         timeout: c_long,
+        error_out: *mut c_int,
     ) -> c_int;
     pub fn zlink_timer_new() -> *mut c_void;
     pub fn zlink_timer_destroy(timer_p: *mut *mut c_void) -> c_int;

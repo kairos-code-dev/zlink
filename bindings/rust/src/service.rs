@@ -2401,17 +2401,21 @@ impl Registry {
             }
 
             let mut entries =
-                vec![unsafe { std::mem::zeroed::<ffi::zlink_registry_topology_entry_t>() }; count];
+                vec![MaybeUninit::<ffi::zlink_registry_topology_entry_t>::uninit(); count];
             let actual = read_entries_config(
                 count,
                 |entries_ptr, count_ptr| unsafe {
                     if filter_ptr.is_null() {
-                        ffi::zlink_registry_topology_snapshot(self.handle, entries_ptr, count_ptr)
+                        ffi::zlink_registry_topology_snapshot(
+                            self.handle,
+                            entries_ptr.cast(),
+                            count_ptr,
+                        )
                     } else {
                         ffi::zlink_registry_topology_query(
                             self.handle,
                             filter_ptr,
-                            entries_ptr,
+                            entries_ptr.cast(),
                             count_ptr,
                         )
                     }
@@ -2420,7 +2424,7 @@ impl Registry {
             )?;
             Ok(entries[..actual]
                 .iter()
-                .map(RegistryTopologyEntry::from_raw)
+                .map(|entry| RegistryTopologyEntry::from_raw(unsafe { entry.assume_init_ref() }))
                 .collect())
         };
 
@@ -2445,14 +2449,14 @@ impl RegistryQueryClient {
             }
 
             let mut entries =
-                vec![unsafe { std::mem::zeroed::<ffi::zlink_registry_topology_entry_t>() }; count];
+                vec![MaybeUninit::<ffi::zlink_registry_topology_entry_t>::uninit(); count];
             let actual = read_entries_config(
                 count,
                 |entries_ptr, count_ptr| unsafe {
                     ffi::zlink_registry_query_snapshot(
                         self.handle,
                         filter_ptr,
-                        entries_ptr,
+                        entries_ptr.cast(),
                         count_ptr,
                     )
                 },
@@ -2460,7 +2464,7 @@ impl RegistryQueryClient {
             )?;
             Ok(entries[..actual]
                 .iter()
-                .map(RegistryTopologyEntry::from_raw)
+                .map(|entry| RegistryTopologyEntry::from_raw(unsafe { entry.assume_init_ref() }))
                 .collect())
         };
 

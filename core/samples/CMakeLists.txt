@@ -61,3 +61,11 @@ add_c_sample(
   sample_c_monitor_recv_sample
   monitor_recv_sample.c
 )
+add_c_sample(
+  sample_c_discovery_registry_sample
+  discovery_registry_sample.c
+)
+add_c_sample(
+  sample_c_registry_query_sample
+  registry_query_sample.c
+)

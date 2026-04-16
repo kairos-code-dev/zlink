@@ -139,7 +139,12 @@ impl Poller {
             events: 0,
         };
         let rc = unsafe {
-            ffi::zlink_poller_wait(self.handle, &mut raw, timeout_ms as std::ffi::c_long)
+            ffi::zlink_poller_wait(
+                self.handle,
+                &mut raw,
+                timeout_ms as std::ffi::c_long,
+                std::ptr::null_mut(),
+            )
         };
         if rc != 0 {
             let errno = crate::error::last_errno();
@@ -181,6 +186,7 @@ impl Poller {
                 raw.as_mut_ptr(),
                 max_events as i32,
                 timeout_ms as std::ffi::c_long,
+                std::ptr::null_mut(),
             )
         };
         if rc != 0 {
@@ -246,6 +252,7 @@ pub fn poll(items: &mut [PollItem], timeout_ms: i64) -> Result<i32, RecvError> {
             raw.as_mut_ptr(),
             raw.len() as i32,
             timeout_ms as std::ffi::c_long,
+            std::ptr::null_mut(),
         )
     };
     if rc < 0 {

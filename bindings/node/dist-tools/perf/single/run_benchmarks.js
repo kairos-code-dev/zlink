@@ -50,8 +50,8 @@ async function main() {
         usage();
         return;
     }
-    if (options.transports.some((transport) => transport !== 'inproc')) {
-        throw new Error('single perf currently supports only --transports inproc');
+    if (options.transports.some((transport) => transport !== 'inproc' && transport !== 'tcp')) {
+        throw new Error('single perf currently supports only --transports inproc,tcp');
     }
     const names = resolveSinglePatternNames(options.pattern);
     const resultLines = [];
@@ -66,33 +66,37 @@ async function main() {
         if (!runner) {
             throw new Error(`unsupported single pattern: ${name}`);
         }
-        const patternRows = [];
-        for (const msgSize of options.msgSizes) {
-            const latenciesNs = await runner(msgSize, options);
-            const metrics = computeMetrics(latenciesNs, options.duration, msgSize);
-            const lines = summarizeMetrics(name, 'inproc', msgSize, latenciesNs, options.duration);
-            for (const line of lines) {
-                console.log(line);
-                resultLines.push(line);
-            }
-            const row = { pattern: name, msgSize, metrics };
-            patternRows.push(row);
-        }
-        const needsSeparator = reportSections.length > 0;
-        if (needsSeparator) {
+        const sectionLines = [`## PATTERN: ${name}`];
+        if (reportSections.length > 0) {
             reportSections.push('===============================================================================');
             reportSections.push('');
             console.log('===============================================================================');
             console.log('');
         }
-        reportSections.push(`## PATTERN: ${name}`);
-        reportSections.push(...formatTableRows(patternRows));
-        reportSections.push('');
         console.log(`## PATTERN: ${name}`);
-        for (const line of formatTableRows(patternRows)) {
-            console.log(line);
+        for (const transport of options.transports) {
+            const patternRows = [];
+            for (const msgSize of options.msgSizes) {
+                const latenciesNs = await runner(msgSize, { ...options, transport });
+                const metrics = computeMetrics(latenciesNs, options.duration, msgSize);
+                const lines = summarizeMetrics(name, transport, msgSize, latenciesNs, options.duration);
+                for (const line of lines) {
+                    console.log(line);
+                    resultLines.push(line);
+                }
+                patternRows.push({ pattern: name, msgSize, metrics });
+            }
+            const tableLines = formatTableRows(patternRows);
+            sectionLines.push(`### Transport: ${transport}`);
+            sectionLines.push(...tableLines);
+            sectionLines.push('');
+            console.log(`### Transport: ${transport}`);
+            for (const line of tableLines) {
+                console.log(line);
+            }
+            console.log('');
         }
-        console.log('');
+        reportSections.push(...sectionLines);
     }
     console.log('## Result Data');
     for (const line of resultLines) {

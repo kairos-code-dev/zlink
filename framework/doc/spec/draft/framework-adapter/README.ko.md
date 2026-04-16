@@ -24,10 +24,16 @@ HTTP나 gRPC를 쓰던 감각에 가깝게 zlink 기반 서버 간 메시징을 
 - `body` codec은 `protobuf`, `json`을 우선 고려하고, 나중에 다른 codec을
   추가할 수 있게 연다.
 - 연결 방식은 수동 endpoint 설정과 Discovery 기반 자동 연결을 모두 지원한다.
+- 운영 점검이나 warm-up에는 Registry topology snapshot/query와 원격
+  `RegistryQueryClient`를 함께 활용할 수 있어야 한다.
 - 서비스 묶음은 `service_name` 기준으로 본다.
 - 위치투명성과 provider 선택을 위해 별도 gateway나 전용 로드밸런서를 먼저 두는
   모델보다, `service_name + Discovery + client-side selection`만으로 직접
   location-transparent 호출이 가능해야 한다.
+- `SPOT`은 pub/sub만이 아니라 routed send/request/reply도 가능한 기반으로
+  보고, framework 표면에서 어디까지 올릴지는 별도 초안으로 좁힌다.
+- raw `STREAM` packet callback은 binding 수준의 특수 helper로 보고, 일반
+  framework 공용 모델의 중심에는 두지 않는다.
 - 프레임워크 표면은 각 프레임워크 사용자가 익숙한 방식에 최대한 맞춘다.
 - 문서 구조는 use case를 먼저 정리하고, 그 use case를 만족하는지 나중 문서에서
   검증하는 순서를 따른다.

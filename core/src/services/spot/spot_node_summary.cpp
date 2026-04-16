@@ -79,6 +79,8 @@ std::string spot_node_t::summary_service_name () const
         return _discovery_service;
     if (_service_discoveries.size () == 1)
         return _service_discoveries.begin ()->first;
+    if (_service_attachments.size () == 1)
+        return _service_attachments.begin ()->first;
     return std::string ();
 }
 

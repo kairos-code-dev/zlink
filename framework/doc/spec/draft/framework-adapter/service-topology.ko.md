@@ -34,6 +34,8 @@
 클라이언트는 endpoint 주소보다 `service_name`을 먼저 기준으로 삼는다.
 Discovery를 쓰면 같은 `service_name`에 속한 provider를 자동으로 찾고,
 수동 연결을 쓰면 그 service의 provider 집합을 직접 설정한다.
+운영 점검이나 제어 plane에서는 Registry topology snapshot/query 또는 원격
+`RegistryQueryClient`로 전체 provider 집합을 읽을 수도 있다.
 
 이 점은 일반적인 웹 서버 호출 모델과 비교했을 때 중요한 차이점이다.
 보통은 위치투명성을 주기 위해 API gateway 또는 그와 비슷한 중간 계층을 두고,
@@ -80,11 +82,19 @@ provider selection을 얻는 구조를 전제로 하지 않는다.
 
 - 운영 환경 기본값으로 적합하다.
 - service_name 기준 provider grouping과 자동 갱신에 유리하다.
+- hot path의 provider 선택과 현재 service view 유지에 적합하다.
 
 ### 5.2 수동 연결
 
 - 개발, 테스트, 단순 배포에서 유용하다.
 - Discovery 없이도 같은 공용 API를 유지할 수 있다.
+
+### 5.3 Registry topology query
+
+- 운영 점검, warm-up, 관리 화면, 디버깅에 유용하다.
+- Discovery가 지금 보고 있는 개별 service view 밖의 전체 상태를 읽을 수 있다.
+- 다만 일반 요청 경로의 실시간 provider 선택을 모두 topology query에 의존하는
+  구조는 기본 방향으로 보지 않는다.
 
 즉 공용 표면은 "Discovery 전용 API"보다 "client/server 등록 방식"을 먼저
 보이고, 내부 연결 전략은 별도 설정으로 넣는 편이 좋다.

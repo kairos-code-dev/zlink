@@ -13,8 +13,12 @@ fn main() {
     let ctx = Context::new().expect("context");
     let mut router = ctx.router_socket().expect("router");
     let dealer = ctx.dealer_socket().expect("dealer");
-    let rid = RoutingId::new(b"perf-dealer").expect("rid");
+    let rid = RoutingId::from_bytes(b"perf-dealer");
     dealer.set_routing_id(&rid).expect("set rid");
+    router
+        .common_options()
+        .set_recv_timeout(Duration::from_millis(1))
+        .expect("recv timeout");
 
     if matches!(config.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
@@ -22,11 +26,12 @@ fn main() {
         common::setup_raw_tls_client(&dealer, &tls).expect("dealer tls");
     }
 
+    let router_mon = SocketMonitor::open(&router).expect("router monitor");
+    let mon = SocketMonitor::open(&dealer).expect("monitor");
     router.bind(&bind_endpoint).expect("bind");
     let endpoint = router.last_endpoint().unwrap_or(bind_endpoint);
     dealer.connect(&endpoint).expect("connect");
-
-    let mon = SocketMonitor::open(&dealer).expect("monitor");
+    common::wait_monitor_ready(&router_mon);
     common::wait_monitor_ready(&mon);
 
     let collector = common::MetricCollector::new();
@@ -35,8 +40,6 @@ fn main() {
     let receiver_done = sender_done.clone();
 
     let receiver_thread = thread::spawn(move || {
-        let poller = Poller::new().expect("poller");
-        poller.add_socket(&router, 0, POLLIN).expect("poller add");
         let deadline = Instant::now() + Duration::from_secs(config.duration_seconds + 20);
         let mut idle_since: Option<Instant> = None;
 
@@ -45,26 +48,19 @@ fn main() {
                 break;
             }
 
-            match poller.wait(100) {
-                Ok(Some(_)) => {
-                    let mut saw_message = false;
-                    loop {
-                        match router.try_recv() {
-                            Ok(Some(received)) => {
-                                let data = common::message_payload(received.parts());
-                                common::handle_recv(data, config.size, &stats);
-                                saw_message = true;
-                            }
-                            Ok(None) => break,
-                            Err(_) => break,
-                        }
+            let mut saw_message = false;
+            loop {
+                match router.recv() {
+                    Ok(received) => {
+                        let data = common::message_payload(received.parts());
+                        common::handle_recv(data, config.size, &stats);
+                        saw_message = true;
                     }
-                    if saw_message {
-                        idle_since = None;
-                    }
+                    Err(_) => break,
                 }
-                Ok(None) => {}
-                Err(_) => break,
+            }
+            if saw_message {
+                idle_since = None;
             }
 
             if receiver_done.is_done() {

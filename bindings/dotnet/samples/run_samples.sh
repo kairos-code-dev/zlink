@@ -10,18 +10,16 @@ fi
 
 SAMPLES=(
   "RequestReplyAsync/RequestReplyAsync.csproj"
-  "RequestReplyCallback/RequestReplyCallback.csproj"
   "PairRecv/PairRecv.csproj"
-  "PairCallback/PairCallback.csproj"
   "MonitorRecv/MonitorRecv.csproj"
   "PubSubRecv/PubSubRecv.csproj"
-  "PubSubCallback/PubSubCallback.csproj"
   "DealerRouterRecv/DealerRouterRecv.csproj"
-  "DealerRouterCallback/DealerRouterCallback.csproj"
   "StreamRecv/StreamRecv.csproj"
-  "StreamCallback/StreamCallback.csproj"
+  "StreamPacketCallback/StreamPacketCallback.csproj"
   "SpotRecv/SpotRecv.csproj"
-  "SpotCallback/SpotCallback.csproj"
+  "SpotRequestAsync/SpotRequestAsync.csproj"
+  "DiscoveryRegistry/DiscoveryRegistry.csproj"
+  "RegistryQuery/RegistryQuery.csproj"
 )
 
 passed=0

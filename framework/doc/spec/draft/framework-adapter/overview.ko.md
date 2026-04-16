@@ -19,6 +19,8 @@ pub/sub, service discovery를 사용할 수 있게 하는 상위 계층이다.
 - direct service call
 - pub/sub messaging
 - service discovery
+- registry topology inspection
+- spot routed request/reply
 - client-side provider selection
 - framework-friendly handler / client / event API
 
@@ -90,6 +92,11 @@ pub/sub, service discovery를 사용할 수 있게 하는 상위 계층이다.
 - scatter-gather
 - workflow orchestration
 - stream
+
+다만 이 말이 raw `STREAM` 기반 기능이 전혀 없다는 뜻은 아니다. 현재
+`core`와 `bindings`에는 packet framing을 돕는 stream packet callback 표면이
+이미 있으며, `ZLink Framework`는 그것을 일반 업무 API의 중심에 놓기보다
+필요한 프레임워크에서 제한된 저수준 확장 지점으로 다루는 편을 기본으로 본다.
 
 ## 7. 현재 문서와의 연결
 

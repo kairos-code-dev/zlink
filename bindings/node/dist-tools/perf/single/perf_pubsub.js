@@ -3,12 +3,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
-const { drainRecvNow, drainRecvSocket, waitForConnectionReady, trySocketPublish } = require('./perf_single_common');
+const { benchmarkEndpoint, drainRecvNow, drainRecvSocket, waitForConnectionReady, trySocketPublish } = require('./perf_single_common');
 async function runPubSubBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     const pub = new zlink.PubSocket(ctx);
     const sub = new zlink.SubSocket(ctx);
-    const endpoint = `inproc://perf-pubsub-${process.pid}-${msgSize}`;
+    const endpoint = await benchmarkEndpoint(options.transport, `pubsub-${msgSize}`);
     const topic = 'perf:pubsub';
     try {
         pub.bind(endpoint);

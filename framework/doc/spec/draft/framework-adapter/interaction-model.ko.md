@@ -22,7 +22,7 @@
 
 | 모델 | 설명 | 기본 내부 매핑 초안 | 1차 우선순위 |
 |------|------|---------------------|--------------|
-| `request-response` | 요청 하나에 응답 하나가 돌아온다 | `DEALER -> ROUTER` | 높음 |
+| `request-response` | 요청 하나에 응답 하나가 돌아온다 | `DEALER -> ROUTER`, 필요하면 routed `SPOT` request/reply | 높음 |
 | `command` | 응답을 기다리지 않는 one-way 전송 | `DEALER -> ROUTER` 또는 routed send | 높음 |
 | `publish-subscribe` | 발행자와 구독자가 느슨하게 연결된다 | `PUB/SUB` 또는 `SPOT` | 높음 |
 | `worker-dispatch` | 여러 worker 중 하나가 처리한다 | `DEALER -> ROUTER` | 중간 |
@@ -36,6 +36,8 @@
 - 호출자는 응답을 기다린다.
 - timeout, correlation, deadline이 중요하다.
 - HTTP 호출이나 gRPC unary와 가장 비슷한 경험을 제공한다.
+- 기본 토대는 `DEALER -> ROUTER`가 가장 자연스럽지만, 같은 모델을
+  `SPOT`의 routed request/reply 위에 올려 설명해야 하는 경우도 있다.
 
 ### 3.2 command
 
@@ -66,6 +68,9 @@
 - `router-router`는 고급 내부 모델로 남길 수 있지만, 1차 공용 API의 중심으로
   두지 않는다.
 - `dealer-dealer`는 현재 목표 범위에 넣지 않는다.
+- `SPOT`은 event 전파의 핵심 토대이지만, 필요할 때는 request/reply의 내부
+  운반층으로도 쓸 수 있다. 다만 framework 공용 이름은 여전히 socket 이름보다
+  상호작용 의미를 먼저 드러내야 한다.
 - 같은 내부 topology를 쓰더라도, use case가 다르면 공용 이름도 다르게 둔다.
   예를 들어 `request-response`와 `worker-dispatch`는 둘 다
   `DEALER -> ROUTER`로 구현할 수 있지만, 같은 개념으로 설명하지 않는다.

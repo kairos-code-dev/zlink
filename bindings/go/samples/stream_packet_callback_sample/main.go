@@ -15,7 +15,7 @@ func main() {
 	samplecommon.Must(err)
 	defer server.Close()
 
-	endpoint := samplecommon.UniqueTCP("stream-callback")
+	endpoint := samplecommon.UniqueTCP("stream-packet-callback")
 	samplecommon.Must(server.Bind(endpoint))
 
 	done := make(chan error, 1)
@@ -46,5 +46,5 @@ func main() {
 	buffer := samplecommon.ReadStreamPacketBody(conn)
 	samplecommon.Must(<-done)
 
-	fmt.Printf("[stream/callback] send: %q -> recv: %q\n", sent, string(buffer))
+	fmt.Printf("[stream/packet-callback] send: %q -> recv: %q\n", sent, string(buffer))
 }

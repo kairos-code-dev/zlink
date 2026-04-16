@@ -13,6 +13,7 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const {
+  benchmarkEndpoint,
   drainRecvNow,
   drainRecvSocket,
   waitForConnectionReady,
@@ -23,13 +24,13 @@ async function runPubSubBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
   const pub = new zlink.PubSocket(ctx);
   const sub = new zlink.SubSocket(ctx);
-    const endpoint = `inproc://perf-pubsub-${process.pid}-${msgSize}`;
-    const topic = 'perf:pubsub';
+  const endpoint = await benchmarkEndpoint(options.transport, `pubsub-${msgSize}`);
+  const topic = 'perf:pubsub';
 
-    try {
-      pub.bind(endpoint);
-      sub.setSubscription(topic);
-      await waitForConnectionReady(sub, () => sub.connect(endpoint));
+  try {
+    pub.bind(endpoint);
+    sub.setSubscription(topic);
+    await waitForConnectionReady(sub, () => sub.connect(endpoint));
 
     const startedAtNs = process.hrtime.bigint();
     const runId = createRunId();

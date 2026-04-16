@@ -12,18 +12,23 @@
 - 샘플 실행 스크립트
 - 샘플 전용 helper
 
-## 해석 규칙
-- 샘플 정책은 기본적으로 `Recommended`다.
-- 다만 공개적으로 배포되는 바인딩, 릴리즈 대상 바인딩, 또는 사용자 onboarding
-  경로를 제공하는 바인딩에는 `Required`로 간주한다.
-- `core/samples/`는 코어의 공식 샘플 표면이므로 이 문서의 규칙을 `Required`로
-  따른다.
+## 계약 상태
+- 이 문서는 샘플 작성 가이드가 아니라 샘플 공개 계약이다.
+- `core/samples/`와 공개 배포되는 `bindings/*/samples/`는 이 문서의 규칙을
+  `Required`로 따른다.
+- 공개 샘플 runner, CI sample smoke, 샘플 정렬 테스트는 이 계약을 기준으로
+  실패해야 한다.
+- "대체로 이렇게 하는 것이 좋다" 수준의 권고로 해석하지 않는다.
+- 계약과 현재 샘플 구현이 다르면 샘플 구현을 계약에 맞춘다.
 
 ## 기본 원칙
 - 샘플은 canonical public API만 사용해야 한다.
 - deprecated, legacy, raw option bag, raw flags 경로를 샘플에서 사용하면
   안 된다.
 - 샘플은 실제 메시징을 수행하고 결과를 확인해야 한다.
+- 샘플은 사용자가 실행 결과를 보고 메시지 흐름을 이해할 수 있어야 한다.
+- 샘플은 "컴파일되는 예제"가 아니라 "실행 관찰 가능한 예제"여야 한다.
+- 샘플은 역할, 토폴로지, 송수신 결과가 로그나 종료 검증으로 드러나야 한다.
 - 샘플은 canonical sample 세트만 둔다.
 - canonical sample 세트에 정의되지 않은 sample은 원칙적으로 만들지 않는다.
 - 다만 서비스 계층 컴포넌트를 구현한 표면은 해당 서비스 계층 샘플을 canonical
@@ -55,6 +60,16 @@
   - Discovery + Registry 미구현 → `discovery_registry_sample` 제외
   - RegistryQueryClient 미구현 → `registry_query_sample` 제외
 
+## Official Runner Contract
+- 공개 sample runner와 README에서 안내하는 sample 실행 경로는 canonical sample
+  세트만 실행해야 한다.
+- runner는 canonical sample 누락을 허용하면 안 된다.
+- runner는 canonical set 밖의 샘플을 "공식 샘플"로 실행하면 안 된다.
+- compatibility 또는 migration 목적의 임시 샘플이 남아 있더라도, 공식 runner와
+  README onboarding 경로에는 포함하지 않는다.
+- runner가 샘플 수를 요약할 때, 그 분모는 canonical sample 세트와 정확히
+  일치해야 한다.
+
 ## Sample Structure Rules
 - recv 버전과 STREAM packet callback 버전은 반드시 개별 파일로 분리한다.
 - `spot_recv_sample` 과 `spot_request_async_sample` 은 반드시 개별 파일로
@@ -83,6 +98,10 @@
   코드는 얇은 sample helper로 분리할 수 있다.
 - helper는 허용하지만 샘플의 핵심 메시징 의미를 가리면 안 된다.
 - helper를 쓰더라도 샘플 본문만 읽으면 전체 흐름을 따라갈 수 있어야 한다.
+- helper는 endpoint 확보, bounded readiness wait, test fixture 정리처럼
+  인프라성 작업만 감싸야 한다.
+- helper가 sender/receiver 역할 배치, 메시지 흐름, 핵심 API 호출 순서를 숨기면
+  안 된다.
 - 샘플은 최소한 다음 흐름을 드러내야 한다.
   - context/socket 생성
   - endpoint bind/connect
@@ -91,13 +110,18 @@
   - recv/subscribe 또는 예외적으로 필요한 event callback 설치
   - 수신 결과 확인
   - 종료/정리
+- 샘플은 마지막에 사용자가 눈으로 읽을 수 있는 결과 줄을 출력해야 한다.
+  출력에는 최소한 "무엇을 보냈고 무엇을 받았는지" 또는 "어떤 이벤트가
+  확인됐는지"가 드러나야 한다.
 
 ## Sample Classification Rules
 - `recv sample` 은 direct receive 계열만 사용한다.
 - `async sample` 은 future/task/coroutine 또는 그와 동등한 async completion
   surface만 사용한다.
 - `packet callback sample` 은 packet callback delivery 계열만 사용한다.
-- `monitor sample` 은 monitor `recv/tryRecv` 계열만 사용한다.
+- `monitor sample` 은 monitor `recv` 계열을 기본으로 사용한다.
+- 바인딩이 non-blocking monitor receive를 공개하면 `tryRecv` empty 경로를 함께
+  보여 줄 수 있다.
 - `spot_recv_sample` 에서는 dispatcher event callback 안에서 `recv` 를 호출하는
   흐름을 사용한다. 이 경우 수신의 본질은 recv 이므로 recv sample로 분류한다.
 - `spot_request_async_sample` 은 spot request/reply를 coroutine 또는 async
@@ -224,13 +248,32 @@
   맡는다.
 
 ## Sample Connection Handshake Rules
-- 샘플에서 `sleep`을 이용한 connection 대기는 허용하지 않는다.
-- TCP bind/connect 후 메시지를 주고받기 전에 monitor API로 connection
-  readiness를 확인해야 한다.
-- connection handshake는 monitor event 기반으로 작성한다.
-- handshake 호출은 샘플 본문에서 보이게 두고, monitor polling 같은 반복 로직은
-  helper로 감쌀 수 있다.
-- 목표는 샘플 본문만 보고도 bind/connect 이후 왜 바로 send/publish 하지
+- 샘플에서 `sleep`만으로 readiness를 해결하는 방식은 허용하지 않는다.
+- readiness 확인은 "무엇이 준비되어야 하는가"에 맞춰 가장 단순한 표면을 쓴다.
+  - raw socket connect readiness:
+    monitor event 또는 그와 동등한 readiness surface
+  - service-layer readiness (`spot`, `discovery`, `registry query`):
+    status snapshot, peer snapshot, service monitor event, bounded query retry,
+    bounded request submit retry 중 하나
+- TCP bind/connect 직후 raw socket 메시징을 시작하는 샘플은 가능하면 monitor API로
+  connection readiness를 확인한다.
+- 다만 service-layer 샘플은 monitor API만으로 모든 준비 상태를 설명하려고 하지
+  않는다.
+  service route, topology propagation, attachment visibility처럼 monitor로 직접
+  드러나지 않는 조건은 서비스 표면의 snapshot, event, query, retry로 확인해도
+  된다.
+- handshake는 샘플 의미를 흐리지 않는 가장 짧은 형태여야 한다.
+  readiness 확인이 샘플 본문보다 더 복잡해지면 과도한 handshake로 본다.
+- 허용 패턴:
+  - hard timeout이 있는 monitor wait
+  - hard timeout이 있는 snapshot polling
+  - hard timeout이 있는 query/request retry
+  - helper로 감싼 bounded readiness wait
+- 금지 패턴:
+  - 이유 없는 고정 `sleep`
+  - timeout 없는 busy-wait
+  - readiness 근거 없이 반복하는 sleep loop
+- 목표는 샘플 본문만 보고도 bind/connect 이후 왜 바로 send/publish/request 하지
   않는지 이해할 수 있게 만드는 것이다.
 
 ## Sample Runtime Verification Rules
@@ -282,11 +325,11 @@
 [spot/request/async] request: "spot-ping" -> reply: "spot-pong"
 
 # monitor
-[monitor/recv] recv: "connection-ready" -> tryRecv: empty
+[monitor/recv] recv: "connection-ready"
 
 # service layer (discovery + registry)
-[discovery-registry] registry: bind -> discovery: connect -> discover: "service-found"
-[registry-query] connect -> snapshot: "topology-entry-found"
+[discovery-registry] service: "sample" -> discovered
+[registry-query] service: "sample" -> snapshot: found
 ```
 
 - assert만으로 성공/실패를 판단하는 출력 없는 샘플은 허용하지 않는다.
@@ -405,22 +448,19 @@
   - service id는 `"sample"`
   - topic은 `"room:lobby"`
   - publish payload는 `"hello-spot"`
-  - send payload는 `"hello-spot-send"`
-  - timer tick 값은 `"tick-1"` 부터 시작한다.
+  - send payload와 timer tick 값은 확장 예가 필요할 때만 추가한다.
 - execution order:
   - dispatcher event callback 등록
-  - timer 시작
-  - 각 tick마다 같은 순서로 동작
   - `publish "room:lobby/hello-spot"`
-  - `send "hello-spot-send"`
   - dispatcher event callback 안에서 `recv`
+  - 필요하면 같은 샘플 안에 `send` 또는 timer round를 확장 예로 추가할 수 있다.
 - verification:
   - publish 경로 payload가 `"hello-spot"` 이어야 한다.
-  - send 경로 payload가 `"hello-spot-send"` 이어야 한다.
-  - timer event가 정해진 횟수만큼 발생해야 한다.
   - 수신 확인은 dispatcher event callback 경유 `recv` 로 일관되어야 한다.
+  - send 또는 timer를 넣으면 그 경로도 같은 규칙으로 별도 확인한다.
 - output example:
   - `[spot/recv] service: "sample" tick: 1 publish: "room:lobby/hello-spot" -> recv: "room:lobby/hello-spot"`
+  - 확장 예:
   - `[spot/recv] service: "sample" tick: 1 send: "hello-spot-send" -> recv: "hello-spot-send"`
   - `[spot/recv] service: "sample" tick: 1 timer: "tick-1" -> next-round`
 
@@ -437,13 +477,20 @@
   - request payload는 `"spot-ping"`
   - reply payload는 `"spot-pong"`
 - execution order:
-  - monitor readiness 확인
+  - peer connect
+  - 필요한 만큼만 service readiness 확인
   - spot requester가 async request `"spot-ping"` 시작
   - spot responder가 request 수신 후 `"spot-pong"` reply 전송
   - spot requester가 coroutine 또는 async completion surface에서 결과 수신
 - verification:
   - async completion 결과가 `"spot-pong"` 이어야 한다.
   - 결과 확인은 `await`, `future.get`, `Task` 같은 async surface로만 한다.
+- handshake note:
+  - 이 샘플은 raw socket monitor만으로 service readiness를 보장하려고 하지
+    않는다.
+  - peer/status snapshot 또는 bounded submit retry를 사용할 수 있다.
+  - 목적은 spot request/reply 의미를 보여 주는 것이지 복잡한 readiness
+    choreography를 보여 주는 것이 아니다.
 - output example:
   - `[spot/request/async] request: "spot-ping" -> reply: "spot-pong"`
 
@@ -459,8 +506,8 @@
   - discovery client는 상태 변화를 event stream으로 관찰한다.
 - fixed content:
   - service id는 `"sample"`
-  - discovery event는 `"service-found"`
-  - removal event를 다루면 `"service-removed"` 를 사용한다.
+  - discovered 상태를 확인한다.
+  - removal 흐름을 다루면 removed 상태를 확인한다.
 - execution order:
   - registry bind
   - discovery client connect
@@ -472,9 +519,14 @@
   - register 뒤에 discovery event가 실제로 도착해야 한다.
   - event 안의 service id가 `"sample"` 이어야 한다.
   - unregister 흐름을 포함하면 removal event도 확인해야 한다.
+- handshake note:
+  - 이 샘플은 topology 전파를 기다리는 bounded event wait 또는 bounded polling을
+    허용한다.
+  - 단순 socket connect handshake보다 "service가 보였는가"가 더 중요한
+    readiness다.
 - output example:
-  - `[discovery-registry] service: "sample" -> discover: "service-found"`
-  - `[discovery-registry] service: "sample" -> remove: "service-removed"`
+  - `[discovery-registry] service: "sample" -> discovered`
+  - `[discovery-registry] service: "sample" -> removed`
 
 ### Registry Query Sample Profile
 - 대상 샘플: `registry_query_sample`
@@ -488,7 +540,7 @@
   - registry query client는 현재 상태를 snapshot으로 조회한다.
 - fixed content:
   - service id는 `"sample"`
-  - snapshot result는 `"topology-entry-found"` 를 사용한다.
+  - snapshot result는 `found` 를 사용한다.
 - execution order:
   - registry bind
   - service provider register
@@ -498,8 +550,13 @@
 - verification:
   - snapshot 안에 `service id = "sample"` entry가 있어야 한다.
   - query 결과가 비어 있지 않아야 한다.
+- handshake note:
+  - 첫 query가 아직 실패하거나 빈 결과를 돌려줄 수 있으므로 bounded retry를
+    허용한다.
+  - 샘플 목적은 snapshot query contract를 보여 주는 것이므로 이 readiness 처리는
+    짧고 결정적으로 유지해야 한다.
 - output example:
-  - `[registry-query] service: "sample" -> snapshot: "topology-entry-found"`
+  - `[registry-query] service: "sample" -> snapshot: found`
 
 ### Monitor Sample Profile
 - 대상 샘플: `monitor_recv_sample`
@@ -507,16 +564,18 @@
 - roles: monitor consumer가 readiness/state event를 읽는다.
 - fixed content:
   - recv event는 `"connection-ready"`
-  - `tryRecv` 결과는 `empty`
+  - 바인딩이 non-blocking monitor receive를 공개하면 `tryRecv` 결과는 `empty`
 - execution order:
   - monitor attach 또는 enable
   - connection readiness 유도
   - `recv` 로 `"connection-ready"` 확인
-  - `tryRecv` 로 empty 경로 확인
+  - 가능하면 `tryRecv` 로 empty 경로 확인
 - verification:
   - 첫 monitor event가 `"connection-ready"` 이어야 한다.
-  - 이후 `tryRecv` 는 empty 를 반환해야 한다.
+  - non-blocking monitor receive가 있으면 이후 `tryRecv` 는 empty 여야 한다.
 - output example:
+  - `[monitor/recv] recv: "connection-ready"`
+  - 확장 예:
   - `[monitor/recv] recv: "connection-ready" -> tryRecv: empty`
 
 ## Sample Message Content Rules
@@ -533,9 +592,9 @@
 | pubsub | one-way | `"prices"` | `"101.25"` |
 | spot-recv | composite | `"room:lobby"` | service id: `"sample"`, publish: `"hello-spot"`, send: `"hello-spot-send"`, timer: `"tick-1"` |
 | spot-request | async request | — | service id: `"sample"`, request: `"spot-ping"`, reply: `"spot-pong"` |
-| monitor | event plane | — | recv: `"connection-ready"`, tryRecv: `empty` |
-| discovery-registry | service plane | — | service id: `"sample"`, discover: `"service-found"`, remove: `"service-removed"` |
-| registry-query | service plane | — | service id: `"sample"`, snapshot: `"topology-entry-found"` |
+| monitor | event plane | — | recv: `"connection-ready"` |
+| discovery-registry | service plane | — | service id: `"sample"`, state: `discovered`, remove: `removed` |
+| registry-query | service plane | — | service id: `"sample"`, snapshot: `found` |
 
 ## Sample Coverage Expectations
 - 각 표면은 canonical sample 세트를 공식 샘플 표면으로 유지한다.

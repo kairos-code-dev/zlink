@@ -1,5 +1,4 @@
 import sys
-import threading
 import time
 from contextlib import ExitStack
 
@@ -8,11 +7,9 @@ import zlink
 from perf_multi_common import (
     latency_ns_from_message,
     is_active_message,
-    new_payload,
     parse_client_args,
     print_result_lines,
     result_metrics,
-    stamp_payload,
     wait_monitor_event,
 )
 
@@ -22,8 +19,8 @@ def main(argv=None):
     endpoints = args.endpoint.split(";")
     if len(endpoints) != args.clients:
         raise SystemExit("endpoint count must match --clients")
-    payload = new_payload(args.msg_size)
-    results = [None] * args.clients
+    latencies = []
+    count = 0
 
     with zlink.Context() as ctx:
         sockets = [zlink.DealerSocket(ctx) for _ in range(args.clients)]
@@ -38,40 +35,36 @@ def main(argv=None):
                     monitors.append(monitor)
                 for monitor in monitors:
                     wait_monitor_event(monitor, zlink.MonitorEventMask.CONNECTION_READY)
+                for sock in sockets:
+                    sock.options.receive_timeout_ms = 50
+                print(f"CLIENT_READY,{args.msg_size}", flush=True)
+                command = sys.stdin.readline().strip()
+                if command != f"START,{args.msg_size}":
+                    raise SystemExit(f"unexpected command: {command}")
 
-                def worker(sock, slot):
-                    local_latencies = []
-                    deadline = time.perf_counter() + args.duration
-                    while time.perf_counter() < deadline:
-                        sock.send(stamp_payload(payload, phase=1))
-                        with sock.recv() as received:
-                            data = received.to_bytes_list()[0]
-                            if not is_active_message(
-                                data,
-                                expected_msg_size=args.msg_size,
-                                run_id=None,
-                            ):
-                                continue
-                            local_latencies.append(latency_ns_from_message(data))
-                    results[slot] = local_latencies
-
-                threads = [
-                    threading.Thread(target=worker, args=(sock, index))
-                    for index, sock in enumerate(sockets)
-                ]
                 started = time.perf_counter()
-                for thread in threads:
-                    thread.start()
-                for thread in threads:
-                    thread.join()
-                elapsed = time.perf_counter() - started
-                latencies = []
-                for bucket in results:
-                    latencies.extend(bucket or [])
+                deadline = started + args.duration
+                while time.perf_counter() < deadline:
+                    for current_sock in sockets:
+                        try:
+                            with current_sock.recv() as received:
+                                data = received.to_bytes_list()[0]
+                        except zlink.RecvError as exc:
+                            if exc.result == zlink.RecvResult.NO_DATA:
+                                continue
+                            raise
+                        if not is_active_message(
+                            data,
+                            expected_msg_size=args.msg_size,
+                            run_id=None,
+                        ):
+                            continue
+                        latencies.append(latency_ns_from_message(data))
+                        count += 1
                 metrics = result_metrics(
-                    count=len(latencies),
+                    count=count,
                     msg_size=args.msg_size,
-                    elapsed_s=max(args.duration, elapsed),
+                    elapsed_s=max(args.duration, time.perf_counter() - started),
                     latencies_ns=latencies,
                 )
                 print_result_lines("MULTI_DEALER_DEALER", "tcp", args.msg_size, metrics)

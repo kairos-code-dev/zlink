@@ -13,6 +13,7 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const {
+  benchmarkEndpoint,
   drainRecvNow,
   drainRecvSocket,
   waitForConnectionReady,
@@ -23,7 +24,7 @@ async function runDealerRouterBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
   const router = new zlink.RouterSocket(ctx);
   const dealer = new zlink.DealerSocket(ctx);
-  const endpoint = `inproc://perf-dealer-router-${process.pid}-${msgSize}`;
+  const endpoint = await benchmarkEndpoint(options.transport, `dealer-router-${msgSize}`);
 
   try {
     router.bind(endpoint);

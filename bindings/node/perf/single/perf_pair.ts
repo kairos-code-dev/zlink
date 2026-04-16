@@ -13,6 +13,7 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const {
+  benchmarkEndpoint,
   drainRecvNow,
   drainRecvSocket,
   waitForConnectionReady,
@@ -21,13 +22,13 @@ const {
 
 async function runPairBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
-    const server = new zlink.PairSocket(ctx);
-    const client = new zlink.PairSocket(ctx);
-    const endpoint = `inproc://perf-pair-${process.pid}-${msgSize}`;
+  const server = new zlink.PairSocket(ctx);
+  const client = new zlink.PairSocket(ctx);
+  const endpoint = await benchmarkEndpoint(options.transport, `pair-${msgSize}`);
 
-    try {
-      server.bind(endpoint);
-      await waitForConnectionReady(client, () => client.connect(endpoint));
+  try {
+    server.bind(endpoint);
+    await waitForConnectionReady(client, () => client.connect(endpoint));
 
     const startedAtNs = process.hrtime.bigint();
     const runId = createRunId();

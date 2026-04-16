@@ -24,9 +24,9 @@ from ._core import (
     SubmitError,
     SubmitResult,
     SubscriptionEvent,
-    _clone_native_msg,
     _copy_routing_id,
     _decode_topic_text,
+    _msg_to_bytes,
     _REPLY_HANDLER,
     _ROUTER_HANDLER,
     ZlinkRoutingId,
@@ -599,14 +599,8 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
                 routing_id = None
                 if source_rid_ptr:
                     routing_id = _routing_id_bytes(source_rid_ptr.contents)
-                header = Message.__new__(Message)
-                header._msg = _clone_native_msg(header_ptr.contents)
-                header._valid = True
-                header._keepalive = None
-                body = Message.__new__(Message)
-                body._msg = _clone_native_msg(body_ptr.contents)
-                body._valid = True
-                body._keepalive = None
+                header = Message.from_bytes(_msg_to_bytes(header_ptr.contents))
+                body = Message.from_bytes(_msg_to_bytes(body_ptr.contents))
                 events.put((routing_id, header, body))
             except Exception:
                 _report_unhandled_callback_exception(handler)

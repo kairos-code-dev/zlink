@@ -3,7 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-BUILD_DIR="${CORE_DIR}/build"
+ROOT_DIR="$(cd "${CORE_DIR}/.." && pwd)"
+BUILD_DIR="${ROOT_DIR}/build"
 
 CONFIGURE_ARGS=(
   -DZLINK_BUILD_C_SAMPLES=ON
@@ -14,23 +15,21 @@ if [[ $# -gt 0 ]]; then
 fi
 
 echo "[c-samples] configure: ${BUILD_DIR}"
-cmake -S "${CORE_DIR}" -B "${BUILD_DIR}" "${CONFIGURE_ARGS[@]}"
+cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" "${CONFIGURE_ARGS[@]}"
 
 echo "[c-samples] build"
 cmake --build "${BUILD_DIR}" -j"$(nproc)"
 
 sample_tests=(
   sample_smoke_sample_c_pair_recv_sample
-  sample_smoke_sample_c_pair_callback_sample
   sample_smoke_sample_c_pubsub_recv_sample
-  sample_smoke_sample_c_pubsub_callback_sample
   sample_smoke_sample_c_dealer_router_recv_sample
-  sample_smoke_sample_c_dealer_router_callback_sample
   sample_smoke_sample_c_stream_recv_sample
-  sample_smoke_sample_c_stream_callback_sample
+  sample_smoke_sample_c_stream_packet_callback_sample
   sample_smoke_sample_c_spot_recv_sample
-  sample_smoke_sample_c_spot_callback_sample
   sample_smoke_sample_c_monitor_recv_sample
+  sample_smoke_sample_c_discovery_registry_sample
+  sample_smoke_sample_c_registry_query_sample
 )
 
 pass_count=0

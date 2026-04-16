@@ -106,6 +106,7 @@ TMP_METRICS="$(mktemp)"
 TMP_CASES="$(mktemp)"
 trap 'rm -f "${TMP_METRICS}" "${TMP_CASES}"' EXIT
 METRICS_REGEX='^(throughput|bandwidth|latency|latency_p95|latency_p99)$'
+BIN_TIMEOUT_SECONDS=$((DURATION + 15))
 
 for pat in "${PATTERNS[@]}"; do
     BIN=""
@@ -123,7 +124,7 @@ for pat in "${PATTERNS[@]}"; do
             case_status="success"
             case_reason=""
             for run in $(seq 1 "${RUNS}"); do
-                if ! OUTPUT="$("${BIN}" \
+                if ! OUTPUT="$(timeout "${BIN_TIMEOUT_SECONDS}s" "${BIN}" \
                     --pattern "${pat}" \
                     --transport "${transport}" \
                     --msg-size "${size}" \
@@ -158,6 +159,7 @@ for pat in "${PATTERNS[@]}"; do
                     break
                 fi
             done
+            case_reason="${case_reason//,/;}"
             printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
         done
     done

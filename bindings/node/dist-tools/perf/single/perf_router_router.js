@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
-const { drainRecvNow, drainRecvSocket, waitForConnectionReady, trySocketSend } = require('./perf_single_common');
+const { benchmarkEndpoint, drainRecvNow, drainRecvSocket, waitForConnectionReady, trySocketSend } = require('./perf_single_common');
 const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
 const SENDER_ID = Buffer.from('router-perf-sender', 'ascii');
 const RECEIVER_ROUTING_ID = zlink.RoutingId.fromBytes(RECEIVER_ID);
@@ -27,7 +27,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     const receiver = new zlink.RouterSocket(ctx);
     const sender = new zlink.RouterSocket(ctx);
-    const endpoint = `inproc://perf-router-router-${process.pid}-${msgSize}`;
+    const endpoint = await benchmarkEndpoint(options.transport, `router-router-${msgSize}`);
     try {
         receiver.setRoutingId(RECEIVER_ROUTING_ID);
         sender.setRoutingId(SENDER_ROUTING_ID);

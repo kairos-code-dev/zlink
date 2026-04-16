@@ -158,3 +158,32 @@ fn typed_poller_surface_exists() {
     poller.modify_socket(&socket, POLLOUT).unwrap();
     poller.remove_socket(&socket).unwrap();
 }
+
+#[test]
+fn typed_poller_wait_on_pair_socket_does_not_crash() {
+    let ctx = Context::new().unwrap();
+    let server = ctx.pair_socket().unwrap();
+    let client = ctx.pair_socket().unwrap();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let endpoint = format!("tcp://127.0.0.1:{port}");
+
+    let server_mon = SocketMonitor::open(&server).unwrap();
+    let client_mon = SocketMonitor::open(&client).unwrap();
+    server.bind(&endpoint).unwrap();
+    client.connect(&endpoint).unwrap();
+    server_mon.recv().unwrap();
+    client_mon.recv().unwrap();
+
+    let poller = Poller::new().unwrap();
+    poller.add_socket(&server, POLLIN).unwrap();
+
+    let wait_result = poller.wait(0).unwrap();
+    if let Some(event) = wait_result {
+        assert!(
+            event.is_readable() || event.is_writable(),
+            "poller event must carry readiness bits"
+        );
+    }
+}

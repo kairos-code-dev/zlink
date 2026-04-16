@@ -7,21 +7,27 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLES_DIR = ROOT / "samples"
-SAMPLES = [
+CANONICAL_SAMPLES = [
     "request_reply_async_sample.py",
-    "request_reply_callback_sample.py",
     "spot_recv_sample.py",
-    "spot_callback_sample.py",
+    "spot_request_async_sample.py",
     "pair_recv_sample.py",
-    "pair_callback_sample.py",
     "dealer_router_recv_sample.py",
-    "dealer_router_callback_sample.py",
     "pubsub_recv_sample.py",
-    "pubsub_callback_sample.py",
     "stream_recv_sample.py",
-    "stream_callback_sample.py",
+    "stream_packet_callback_sample.py",
     "monitor_recv_sample.py",
+    "discovery_registry_sample.py",
+    "registry_query_sample.py",
 ]
+
+
+def _verify_canonical_samples():
+    missing = [name for name in CANONICAL_SAMPLES if not (SAMPLES_DIR / name).exists()]
+    if missing:
+        raise SystemExit(
+            "canonical sample file missing: " + ", ".join(sorted(missing))
+        )
 
 
 def _run_python_script(script_path, *, timeout, cwd, env):
@@ -47,6 +53,7 @@ def _run_python_script(script_path, *, timeout, cwd, env):
 
 
 def main():
+    _verify_canonical_samples()
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join(
         [
@@ -57,7 +64,7 @@ def main():
     ).rstrip(os.pathsep)
 
     passed = 0
-    for name in SAMPLES:
+    for name in CANONICAL_SAMPLES:
         sample_path = SAMPLES_DIR / name
         result = _run_python_script(
             sample_path,
@@ -73,7 +80,7 @@ def main():
             raise SystemExit(f"sample failed: {name}")
         passed += 1
 
-    print(f"Summary: {passed}/{len(SAMPLES)} samples passed")
+    print(f"Summary: {passed}/{len(CANONICAL_SAMPLES)} samples passed")
 
 
 if __name__ == "__main__":

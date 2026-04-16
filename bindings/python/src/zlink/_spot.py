@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 
+import asyncio
 import ctypes
 import errno
 import queue
@@ -68,6 +69,7 @@ from ._core import (
     _raise_config_error_from_errno,
     _raise_result_error,
     _routing_id_bytes,
+    _request_result_from_errno,
     _request_result_from_code,
     _request_result_internal_errno,
     _validated_c_string_bytes,

@@ -24,6 +24,7 @@
 - `Discovery`
 - `SpotNode`
 - `Spot`
+- `Spot.RequestServiceAsync(...)` / `Spot.RequestToSpotAsync(...)`
 
 즉 이 문서의 핵심은 `SPOT` 기능을 새로 만드는 일이 아니라,
 기존 binding 기능을 `ASP.NET Core` 안에 녹이는 방법이다.
@@ -133,6 +134,12 @@ public sealed class StageSyncWorker : BackgroundService
 - `service_name` 기반 direct call
 - `SPOT` 기반 pub/sub 및 state sync
 
+또한 현재 하부 binding은 `SPOT` routed request/reply도 제공하므로, framework는
+앞으로 아래 두 종류를 구분해 설명할 필요가 있다.
+
+- broad fan-out 또는 state sync 성격의 publish/subscribe
+- 특정 stage 또는 spot 대상으로 보내는 targeted request/reply
+
 이 점은 `playhouse` 시나리오에서 특히 중요하다.
 
 - play -> api 는 direct call
@@ -155,5 +162,5 @@ public sealed class StageSyncWorker : BackgroundService
 
 - `SpotNode`를 하나만 둘지 service별로 여러 개 둘지
 - publish API를 typed publisher로 얼마나 세분화할지
-- `SPOT` routed request/reply까지 framework 표면에 바로 올릴지
+- `SPOT` routed request/reply를 별도 typed client로 올릴지, 고급 API로만 둘지
 - subscriber concurrency와 backpressure를 어떻게 설정으로 노출할지

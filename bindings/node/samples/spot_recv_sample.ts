@@ -7,8 +7,7 @@ const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('../dist/canonical');
 
-const SERVICE_TYPE_SPOT = 0x3002;
-const SERVICE_NAME = 'spot-child-service';
+const SERVICE_NAME = 'sample';
 
 async function reservePort() {
   const server = net.createServer();
@@ -22,31 +21,25 @@ async function reservePort() {
 async function main() {
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const ctx = new zlink.Context();
-  const pubNode = new zlink.SpotNode(ctx);
-  const subNode = new zlink.SpotNode(ctx);
-  const pubSendSocket = new zlink.PubSocket(ctx);
-  const pubRecvSocket = new zlink.SubSocket(ctx);
-  const subSendSocket = new zlink.PubSocket(ctx);
-  const subRecvSocket = new zlink.SubSocket(ctx);
-  let pub = null;
-  let sub = null;
+  const node = new zlink.SpotNode(ctx);
+  const pubSocket = new zlink.PubSocket(ctx);
+  const subSocket = new zlink.SubSocket(ctx);
+  let spot = null;
   const topic = 'room:lobby';
   const sent = 'hello-spot';
 
   try {
-    pubNode.attachPubSub(SERVICE_NAME, pubSendSocket, pubRecvSocket);
-    subNode.attachPubSub(SERVICE_NAME, subSendSocket, subRecvSocket);
-    pub = pubNode.createSpot();
-    sub = subNode.createSpot();
-    pubSendSocket.bind(endpoint);
-    subRecvSocket.connect(endpoint);
-    sub.setSubscription(topic);
+    pubSocket.bind(endpoint);
+    subSocket.connect(endpoint);
+    node.attachPubSub(SERVICE_NAME, pubSocket, subSocket);
+    spot = node.createSpot();
+    spot.setSubscription(topic);
     const deadline = Date.now() + 5000;
     let received = null;
     while (Date.now() < deadline) {
-      pub.publish(SERVICE_NAME, topic, Buffer.from(sent));
+      spot.publish(SERVICE_NAME, topic, Buffer.from(sent));
       try {
-        received = sub.subscribe(zlink.RecvFlags.DontWait);
+        received = spot.subscribe(zlink.RecvFlags.DontWait);
         break;
       } catch (error) {
         if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
@@ -60,20 +53,14 @@ async function main() {
     assert.equal(received.serviceName, SERVICE_NAME);
     const recv = received.parts[0].data().toString();
     assert.equal(recv, sent);
-    console.log(`[spot/recv] publish: "${topic}/${sent}" \u2192 subscribe: "${topic}/${recv}"`);
+    console.log(`[spot/recv] service: "${SERVICE_NAME}" tick: 1 publish: "${topic}/${sent}" -> recv: "${topic}/${recv}"`);
   } finally {
-    if (sub) {
-      sub.close();
+    if (spot) {
+      spot.close();
     }
-    if (pub) {
-      pub.close();
-    }
-    subNode.close();
-    pubNode.close();
-    subRecvSocket.close();
-    subSendSocket.close();
-    pubRecvSocket.close();
-    pubSendSocket.close();
+    node.close();
+    subSocket.close();
+    pubSocket.close();
     ctx.close();
   }
 }

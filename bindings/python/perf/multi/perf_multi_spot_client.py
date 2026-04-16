@@ -1,5 +1,7 @@
+import socket
 import os
 import sys
+import threading
 import time
 
 import zlink
@@ -12,72 +14,196 @@ from perf_multi_common import (
     parse_client_args,
     print_result_lines,
     result_metrics,
-    recv_nonblocking,
 )
 
 
 SERVICE_NAME = "spot-svc"
+READY_SETTLE_S = 1.0
+CONTROL_SETTLE_S = 0.025
+READY_TIMEOUT_S = 15.0
+START_TIMEOUT_S = 15.0
+DRAIN_GRACE_S = 0.5
+
+
+def _parse_tcp_endpoint(endpoint):
+    host_port = endpoint.split("://", 1)[1]
+    host, port_text = host_port.rsplit(":", 1)
+    return host, int(port_text)
+
+
+def _listen_tcp():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("127.0.0.1", 0))
+    sock.listen(1)
+    return sock
+
+
+def _wait_connected(node, expected, timeout_s):
+    deadline = time.perf_counter() + timeout_s
+    while time.perf_counter() < deadline:
+        if node.status_snapshot().connected_peer_count >= expected:
+            return
+        time.sleep(0.01)
+    raise RuntimeError("spot data connection timeout")
 
 
 def main(argv=None):
     args = parse_client_args(argv or sys.argv[1:], pattern="spot")
-    clients = []
+    if len(args.endpoint.split(",")) != 2:
+        raise SystemExit("spot client expects --endpoint data_ep,control_ep")
+    data_endpoint, control_endpoint = args.endpoint.split(",", 1)
+
     latencies = []
-    count = 0
+    received_count = 0
+    recv_lock = threading.Lock()
+    runner_connected = threading.Event()
+    runner_start = threading.Event()
+    control_connected = threading.Event()
+    started_event = threading.Event()
+    started_size = [0]
+
+    ready_listener = _listen_tcp()
+    ready_host, ready_port = ready_listener.getsockname()
+    print(f"CLIENT_CONTROL_ENDPOINT,tcp://{ready_host}:{ready_port}", flush=True)
+
+    ready_sender = [None]
+
+    def accept_ready_sender():
+        conn, _addr = ready_listener.accept()
+        ready_sender[0] = conn
+        control_connected.set()
+
+    threading.Thread(target=accept_ready_sender, daemon=True).start()
+
+    start_reader = socket.create_connection(_parse_tcp_endpoint(control_endpoint), timeout=READY_TIMEOUT_S)
+    start_file = start_reader.makefile("r", encoding="utf-8", newline="\n")
+
+    def control_loop():
+        for line in start_file:
+            text = line.strip()
+            if text.startswith("START,"):
+                try:
+                    started_size[0] = int(text.split(",", 1)[1])
+                    started_event.set()
+                except Exception:
+                    pass
+            elif text in {"STOP", "QUIT"}:
+                return
+
+    threading.Thread(target=control_loop, daemon=True).start()
+
+    def stdin_loop():
+        for line in sys.stdin:
+            text = line.strip()
+            if not text:
+                continue
+            if text.startswith("CONTROL_CONNECTED,"):
+                runner_connected.set()
+            elif text == f"START,{args.msg_size}":
+                runner_start.set()
+            elif text in {"STOP", "QUIT"}:
+                return
+
+    threading.Thread(target=stdin_loop, daemon=True).start()
 
     with zlink.Context() as ctx:
-        try:
-            for index in range(args.clients):
-                node = zlink.SpotNode(ctx)
-                node.set_routing_id(f"SPOT-CLIENT-{index}".encode("ascii"))
-                _service = attach_spot_service_pair(ctx, node, SERVICE_NAME)
-                node.connect_peer(args.endpoint)
-                spot = node.create_spot()
-                spot.set_subscription(TOPIC)
-                clients.append((node, spot))
+        clients = []
+        service_pairs = []
+        for index in range(args.clients):
+            node = zlink.SpotNode(ctx)
+            node.set_routing_id(f"SPOT-CLIENT-{index}".encode("ascii"))
+            service_pairs.append(attach_spot_service_pair(ctx, node, SERVICE_NAME))
+            node.connect_peer(data_endpoint)
+            spot = node.create_spot()
+            spot.set_subscription(TOPIC)
+            clients.append((node, spot))
 
-            time.sleep(0.05)
-            started = time.perf_counter()
-            deadline = started + args.duration
-            while time.perf_counter() < deadline:
-                for _, spot in clients:
-                    received = recv_nonblocking(spot, method="subscribe")
-                    if received is None:
-                        continue
-                    with received:
-                        data = received.to_bytes_list()[0]
-                    if not is_active_message(
-                        data,
-                        expected_msg_size=args.msg_size,
-                        run_id=None,
-                    ):
-                        continue
+        def on_dispatch(spot, event):
+            nonlocal received_count
+            if event != zlink.SpotDispatchEvent.SUBSCRIBE_READABLE:
+                return
+            while True:
+                try:
+                    received = spot.subscribe(flags=zlink.RecvFlags.DONT_WAIT)
+                except zlink.RecvError as exc:
+                    if exc.result == zlink.RecvResult.NO_DATA:
+                        return
+                    raise
+                with received:
+                    parts = received.to_bytes_list()
+                if not parts:
+                    continue
+                data = parts[0]
+                if not is_active_message(data, expected_msg_size=args.msg_size, run_id=None):
+                    continue
+                with recv_lock:
                     latencies.append(latency_ns_from_message(data))
-                    count += 1
+                    received_count += 1
 
+        for _, spot in clients:
+            spot.on_dispatch_event(on_dispatch)
+        for node, _ in clients:
+            _wait_connected(node, 1, READY_TIMEOUT_S)
+
+        deadline = time.perf_counter() + READY_TIMEOUT_S
+        while time.perf_counter() < deadline:
+            if control_connected.is_set() and runner_connected.is_set():
+                break
+            time.sleep(0.01)
+        if not (control_connected.is_set() and runner_connected.is_set()):
+            raise RuntimeError("control connection handshake timeout")
+
+        time.sleep(READY_SETTLE_S)
+        time.sleep(CONTROL_SETTLE_S)
+        ready_sender[0].sendall(b"CONNECTED\n")
+        ready_sender[0].sendall(f"READY_COUNT,{args.msg_size},{args.clients}\n".encode("utf-8"))
+        print(f"CLIENT_READY,{args.msg_size}", flush=True)
+
+        start_deadline = time.perf_counter() + START_TIMEOUT_S
+        while time.perf_counter() < start_deadline:
+            if runner_start.is_set() and started_event.is_set() and started_size[0] == args.msg_size:
+                break
+            time.sleep(0.01)
+        if not (runner_start.is_set() and started_event.is_set() and started_size[0] == args.msg_size):
+            raise RuntimeError("spot start handshake timeout")
+
+        active_deadline = time.perf_counter() + args.duration
+        while time.perf_counter() < active_deadline:
+            time.sleep(0.01)
+        drain_deadline = time.perf_counter() + DRAIN_GRACE_S
+        while time.perf_counter() < drain_deadline:
+            time.sleep(0.01)
+
+        with recv_lock:
             metrics = result_metrics(
-                count=count,
+                count=received_count,
                 msg_size=args.msg_size,
-                elapsed_s=max(args.duration, time.perf_counter() - started),
-                latencies_ns=latencies,
+                elapsed_s=max(args.duration, 0.001),
+                latencies_ns=list(latencies),
             )
-            if not latencies:
-                print("SKIP,SPOT,cross-process service-aware delivery is not yet stable")
-                sys.stdout.flush()
-                os._exit(0)
-            print_result_lines("MULTI_SPOT", "tcp", args.msg_size, metrics)
-            sys.stdout.flush()
-            os._exit(0)
-        finally:
-            for node, spot in reversed(clients):
-                try:
-                    spot.close()
-                except Exception:
-                    pass
-                try:
-                    node.close()
-                except Exception:
-                    pass
+        print_result_lines("MULTI_SPOT", "tcp", args.msg_size, metrics)
+        sys.stdout.flush()
+
+        for node, spot in reversed(clients):
+            try:
+                spot.close()
+            except Exception:
+                pass
+            try:
+                node.close()
+            except Exception:
+                pass
+        for pub_sock, sub_sock in reversed(service_pairs):
+            try:
+                sub_sock.close()
+            except Exception:
+                pass
+            try:
+                pub_sock.close()
+            except Exception:
+                pass
+        os._exit(0)
 
 
 if __name__ == "__main__":

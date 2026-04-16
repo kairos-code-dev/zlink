@@ -1,5 +1,5 @@
-import argparse
 import os
+import socket
 import sys
 import threading
 import time
@@ -10,46 +10,142 @@ from perf_multi_common import (
     TOPIC,
     attach_spot_service_pair,
     new_payload,
+    parse_server_args,
     stamp_payload,
     tcp_endpoint,
 )
 
 
 SERVICE_NAME = "spot-svc"
+CONNECT_TIMEOUT_S = 15.0
+
+
+def _parse_tcp_endpoint(endpoint):
+    host_port = endpoint.split("://", 1)[1]
+    host, port_text = host_port.rsplit(":", 1)
+    return host, int(port_text)
+
+
+def _listen_tcp():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("127.0.0.1", 0))
+    sock.listen(1)
+    return sock
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--clients", type=int, default=4)
-    parser.add_argument("--msg-size", type=int, default=256)
-    args = parser.parse_args(argv or sys.argv[1:])
-
-    endpoint = tcp_endpoint()
-    stop = threading.Event()
+    args = parse_server_args(argv or sys.argv[1:])
     payload = new_payload(args.msg_size)
+    stop = threading.Event()
+    start_runner = threading.Event()
+    control_connected = threading.Event()
+    ready_count = [0]
+    ready_lock = threading.Lock()
+    start_sender = [None]
+    ready_reader = [None]
+    control_peer_endpoint = [""]
 
-    def wait_stop():
-        sys.stdin.readline()
-        stop.set()
+    start_listener = _listen_tcp()
+    start_host, start_port = start_listener.getsockname()
 
-    threading.Thread(target=wait_stop, daemon=True).start()
+    def accept_start_reader():
+        conn, _addr = start_listener.accept()
+        start_sender[0] = conn
+
+    threading.Thread(target=accept_start_reader, daemon=True).start()
+
+    def stdin_loop():
+        for line in sys.stdin:
+            text = line.strip()
+            if not text:
+                continue
+            if text.startswith("CONNECT_CONTROL,"):
+                endpoint = text.split(",", 1)[1]
+                control_peer_endpoint[0] = endpoint
+                ready_reader[0] = socket.create_connection(
+                    _parse_tcp_endpoint(endpoint),
+                    timeout=CONNECT_TIMEOUT_S,
+                )
+                control_connected.set()
+                print(f"CONTROL_CONNECTED,{endpoint}", flush=True)
+            elif text == f"START,{args.msg_size}":
+                start_runner.set()
+            elif text in {"STOP", "QUIT"}:
+                stop.set()
+                return
+
+    def recv_control():
+        deadline = time.perf_counter() + CONNECT_TIMEOUT_S
+        while time.perf_counter() < deadline and ready_reader[0] is None and not stop.is_set():
+            time.sleep(0.01)
+        if ready_reader[0] is None:
+            return
+        fileobj = ready_reader[0].makefile("r", encoding="utf-8", newline="\n")
+        for line in fileobj:
+            text = line.strip()
+            if text == "CONNECTED":
+                control_connected.set()
+            elif text.startswith("READY_COUNT,"):
+                _, size_text, count_text = text.split(",", 2)
+                if int(size_text) == args.msg_size:
+                    with ready_lock:
+                        ready_count[0] += int(count_text)
+            elif text in {"STOP", "QUIT"}:
+                return
+
+    threading.Thread(target=stdin_loop, daemon=True).start()
+    threading.Thread(target=recv_control, daemon=True).start()
 
     with zlink.Context() as ctx:
-        with zlink.SpotNode(ctx) as node:
-            node.set_routing_id(b"SPOT-SERVER")
-            _service = attach_spot_service_pair(ctx, node, SERVICE_NAME)
-            node.bind(endpoint)
-            with node.create_spot() as spot:
-                print(f"READY,{endpoint}", flush=True)
-                while not stop.is_set():
-                    spot.publish(
-                        SERVICE_NAME,
-                        TOPIC,
-                        [stamp_payload(payload, phase=1)],
-                    )
-                    time.sleep(0.001)
-                sys.stdout.flush()
-                os._exit(0)
+        data_node = zlink.SpotNode(ctx)
+        service_pair = attach_spot_service_pair(ctx, data_node, SERVICE_NAME)
+        data_node.bind(tcp_endpoint())
+        data_endpoint = data_node.last_endpoint()
+        data_spot = data_node.create_spot()
+
+        print(f"READY,{data_endpoint}", flush=True)
+        print(f"CONTROL_READY,tcp://{start_host}:{start_port}", flush=True)
+
+        deadline = time.perf_counter() + CONNECT_TIMEOUT_S
+        while time.perf_counter() < deadline:
+            with ready_lock:
+                ready_ok = ready_count[0] >= args.clients
+            if control_connected.is_set() and start_runner.is_set() and ready_ok and start_sender[0] is not None:
+                break
+            if stop.is_set():
+                return
+            time.sleep(0.01)
+        with ready_lock:
+            ready_ok = ready_count[0] >= args.clients
+        if not (control_connected.is_set() and start_runner.is_set() and ready_ok and start_sender[0] is not None):
+            raise RuntimeError("spot server handshake timeout")
+
+        start_sender[0].sendall(f"START,{args.msg_size}\n".encode("utf-8"))
+        deadline = time.perf_counter() + float(os.environ.get("PERF_MULTI_DURATION_SECONDS", "5"))
+        while time.perf_counter() < deadline and not stop.is_set():
+            data_spot.publish(
+                SERVICE_NAME,
+                TOPIC,
+                [stamp_payload(payload, phase=1)],
+            )
+        sys.stdout.flush()
+        try:
+            data_spot.close()
+        except Exception:
+            pass
+        try:
+            data_node.close()
+        except Exception:
+            pass
+        try:
+            service_pair[1].close()
+        except Exception:
+            pass
+        try:
+            service_pair[0].close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

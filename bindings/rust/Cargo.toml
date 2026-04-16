@@ -19,49 +19,41 @@ name = "request_reply_async_sample"
 path = "samples/request_reply_async_sample.rs"
 
 [[example]]
-name = "request_reply_callback_sample"
-path = "samples/request_reply_callback_sample.rs"
-
-[[example]]
 name = "pair_recv_sample"
 path = "samples/pair_recv_sample.rs"
-
-[[example]]
-name = "pair_callback_sample"
-path = "samples/pair_callback_sample.rs"
 
 [[example]]
 name = "pubsub_recv_sample"
 path = "samples/pubsub_recv_sample.rs"
 
 [[example]]
-name = "pubsub_callback_sample"
-path = "samples/pubsub_callback_sample.rs"
-
-[[example]]
 name = "dealer_router_recv_sample"
 path = "samples/dealer_router_recv_sample.rs"
-
-[[example]]
-name = "dealer_router_callback_sample"
-path = "samples/dealer_router_callback_sample.rs"
 
 [[example]]
 name = "stream_recv_sample"
 path = "samples/stream_recv_sample.rs"
 
 [[example]]
-name = "stream_callback_sample"
-path = "samples/stream_callback_sample.rs"
+name = "stream_packet_callback_sample"
+path = "samples/stream_packet_callback_sample.rs"
 
 [[example]]
 name = "spot_recv_sample"
 path = "samples/spot_recv_sample.rs"
 
 [[example]]
-name = "spot_callback_sample"
-path = "samples/spot_callback_sample.rs"
+name = "spot_request_async_sample"
+path = "samples/spot_request_async_sample.rs"
 
 [[example]]
 name = "monitor_recv_sample"
 path = "samples/monitor_recv_sample.rs"
+
+[[example]]
+name = "discovery_registry_sample"
+path = "samples/discovery_registry_sample.rs"
+
+[[example]]
+name = "registry_query_sample"
+path = "samples/registry_query_sample.rs"

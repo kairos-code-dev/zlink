@@ -54,7 +54,7 @@ int main (void)
     assert (rc != 0);
 
     printf (
-      "[monitor] event: \"CONNECTION_READY\" -> tryRecv: empty\n");
+      "[monitor/recv] recv: \"connection-ready\" -> tryRecv: empty\n");
 
     zlink_monitor_close (&client_monitor);
     zlink_monitor_close (&server_monitor);

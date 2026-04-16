@@ -5,24 +5,37 @@ if (!SampleSupport.IsNativeAvailable())
     return;
 
 using var ctx = new Context();
-using var pubNode = new SpotNode(ctx);
-using var subNode = new SpotNode(ctx);
-using var publisher = pubNode.CreateSpot();
-using var subscriber = subNode.CreateSpot();
-const string serviceName = "room:lobby";
+using var pubSocket = new PubSocket(ctx);
+using var subSocket = new SubSocket(ctx);
+using var node = new SpotNode(ctx);
+using var spot = node.CreateSpot();
+const string serviceName = "sample";
 const string topic = "room:lobby";
 const string payload = "hello-spot";
-pubNode.Bind("tcp://127.0.0.1:0");
-string endpoint = pubNode.LastEndpoint;
-subNode.ConnectPeer(endpoint);
-subscriber.SetSubscription(topic);
-SampleSupport.WaitSpotPeerConnected(subNode);
+string endpoint = SampleSupport.NewEndpoint("tcp", "spot-recv-service");
+pubSocket.Bind(endpoint);
+subSocket.Connect(endpoint);
+node.AttachPubSub(serviceName, pubSocket, subSocket);
+spot.SetSubscription(topic);
 
-using (Message message = Message.FromString(payload))
-    publisher.Publish(serviceName, topic, message);
+TopicMessage? subscribed = null;
+SampleSupport.WaitOrThrow(() =>
+{
+    using Message message = Message.FromString(payload);
+    spot.Publish(serviceName, topic, message);
+    try
+    {
+        subscribed = spot.Subscribe(RecvFlags.DontWait);
+        return true;
+    }
+    catch (ZlinkRecvException)
+    {
+        return false;
+    }
+}, 5000, "spot recv sample");
 
-using TopicMessage subscribed = subscriber.Subscribe();
-string receivedTopic = subscribed.Topic;
-string receivedPayload = subscribed.SinglePartOrThrow().GetString();
+using var subscribedMessage = subscribed!;
+string receivedTopic = subscribedMessage.Topic;
+string receivedPayload = subscribedMessage.SinglePartOrThrow().GetString();
 Console.WriteLine(
-    $"[spot/recv] publish: \"{serviceName}/{topic}/{payload}\" -> subscribe: \"{subscribed.ServiceName}/{receivedTopic}/{receivedPayload}\"");
+    $"[spot/recv] service: \"{serviceName}\" tick: 1 publish: \"{topic}/{payload}\" -> recv: \"{receivedTopic}/{receivedPayload}\"");

@@ -1,13 +1,12 @@
 import sys
 import threading
+import queue
 
 import zlink
 
 from perf_multi_common import (
     parse_len32be_frames,
     parse_server_args,
-    recv_nonblocking,
-    safe_poll,
     tcp_endpoint,
 )
 
@@ -16,43 +15,46 @@ def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
     endpoint = tcp_endpoint()
     stop = threading.Event()
-    lock = threading.Lock()
-    buffers = {}
 
     def wait_stop():
         sys.stdin.readline()
         stop.set()
 
-    def handle_chunk(received, server):
-        routing_id = received.routing_id
-        chunk = received.to_bytes_list()[0]
-        if routing_id is None:
-            return
-        with lock:
-            buffer = buffers.setdefault(routing_id, bytearray())
-            buffer.extend(chunk)
-            frames = parse_len32be_frames(buffer)
-        for frame in frames:
-            server.send(routing_id, frame)
-
     threading.Thread(target=wait_stop, daemon=True).start()
 
     with zlink.Context() as ctx:
         with zlink.StreamSocket(ctx) as server:
+            server.options.tcp_no_delay = True
             server.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
-            with zlink.Poller() as poller:
-                poller.add_socket(server, zlink.PollEvent.POLLIN)
+            send_queue = queue.SimpleQueue()
+
+            def packet_handler(routing_id, header, body):
+                send_queue.put((routing_id, build_packet_frame(header, body)))
+
+            def sender_worker():
                 while not stop.is_set():
-                    events = safe_poll(poller, 100)
-                    if not events:
+                    try:
+                        routing_id, payload = send_queue.get(timeout=0.1)
+                    except queue.Empty:
                         continue
-                    while True:
-                        received = recv_nonblocking(server)
-                        if received is None:
-                            break
-                        with received:
-                            handle_chunk(received, server)
+                    server.send(routing_id, payload)
+
+            server.on_packet(packet_handler)
+            threading.Thread(target=sender_worker, daemon=True).start()
+            while not stop.is_set():
+                stop.wait(0.1)
+
+
+def build_packet_frame(header, body):
+    header_bytes = header.to_bytes()
+    body_bytes = body.to_bytes()
+    return (
+        len(header_bytes).to_bytes(2, "big")
+        + len(body_bytes).to_bytes(4, "big")
+        + header_bytes
+        + body_bytes
+    )
 
 
 if __name__ == "__main__":

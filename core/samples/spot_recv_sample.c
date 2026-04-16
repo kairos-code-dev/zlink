@@ -49,7 +49,7 @@ int main (void)
     assert (memcmp (zlink_msg_data (&parts[0]), k_spot_payload,
                     strlen (k_spot_payload))
             == 0);
-    printf ("[spot/recv] publish: \"%s/%s\" → subscribe: \"%s/%.*s\"\n",
+    printf ("[spot/recv] service: \"sample\" tick: 1 publish: \"%s/%s\" -> recv: \"%s/%.*s\"\n",
             k_spot_topic, k_spot_payload,
             topic, (int) zlink_msg_size (&parts[0]),
             (const char *) zlink_msg_data (&parts[0]));

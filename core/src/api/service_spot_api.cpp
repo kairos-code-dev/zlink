@@ -154,6 +154,12 @@ zlink_submit_result_t zlink_spot_publish (void *spot_,
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
 
+    std::string bound_service_name;
+    if (resolve_spot_bound_service_name (spot, &bound_service_name) == 0
+        && service_name_matches_or_unset (bound_service_name, service_name_)) {
+        return zlink_publish (spot_, topic_id_, parts_, part_count_, flags_);
+    }
+
     zlink::socket_base_t *service_pub =
       zlink::spot_node_access_t::service_pub_socket (spot->node, service_name_);
     if (service_pub) {
@@ -161,11 +167,6 @@ zlink_submit_result_t zlink_spot_publish (void *spot_,
     }
 
     const int service_pub_errno = errno;
-    std::string bound_service_name;
-    if (resolve_spot_bound_service_name (spot, &bound_service_name) == 0
-        && service_name_matches_or_unset (bound_service_name, service_name_)) {
-        return zlink_publish (spot_, topic_id_, parts_, part_count_, flags_);
-    }
 
     errno = service_pub_errno == ENOTCONN ? ENOTCONN : ENOENT;
     return service_pub_errno == ENOTCONN ? ZLINK_SUBMIT_NOT_CONNECTED

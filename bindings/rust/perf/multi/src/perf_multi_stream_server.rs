@@ -1,84 +1,66 @@
-//! MULTI_STREAM server: poll-based echo relay.
-//! STREAM socket bind, echo incoming payloads back to originating peer.
-
 mod common;
 
-use common::backpressure::SocketBackpressure;
-use std::collections::VecDeque;
-use std::time::{Duration, Instant};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use zlink::*;
 
+fn build_packet_frame(header: &[u8], body: &[u8]) -> Vec<u8> {
+    let mut packet = Vec::with_capacity(6 + header.len() + body.len());
+    packet.extend_from_slice(&(header.len() as u16).to_be_bytes());
+    packet.extend_from_slice(&(body.len() as u32).to_be_bytes());
+    packet.extend_from_slice(header);
+    packet.extend_from_slice(body);
+    packet
+}
+
 fn main() {
-    let _args = common::MultiArgs::parse();
-    let settings = common::MultiSettings::from_env();
-
+    let args = common::MultiArgs::parse();
     let ctx = Context::new().expect("context");
-    let stream = ctx.stream_socket().expect("stream");
-    stream.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
-    stream.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
-    stream.stream_options().set_notify(true).expect("notify");
-    stream.bind("tcp://0.0.0.0:0").expect("bind");
+    let mut stream = ctx.stream_socket().expect("stream");
+    stream.common_options().set_send_hwm(10).expect("sndhwm");
+    stream.common_options().set_recv_hwm(10).expect("rcvhwm");
+    stream
+        .common_options()
+        .set_send_timeout(std::time::Duration::from_secs(5))
+        .expect("sndtimeo");
+    stream
+        .common_options()
+        .set_recv_timeout(std::time::Duration::from_secs(5))
+        .expect("rcvtimeo");
+    stream
+        .common_options()
+        .set_tcp_nodelay(true)
+        .expect("tcp_nodelay");
+    let send_handle = stream.send_handle();
+    stream
+        .on_packet(move |routing_id, header, body| {
+            let packet = build_packet_frame(header.as_bytes(), body.as_bytes());
+            let msg = Message::copy_from(&packet).expect("packet");
+            let _ = send_handle.send_to(&routing_id, msg);
+        })
+        .expect("on_packet");
+    let bind_endpoint = match args.transport.as_str() {
+        "ws" => "ws://0.0.0.0:0".to_string(),
+        "wss" => "wss://0.0.0.0:0".to_string(),
+        "tls" => "tls://0.0.0.0:0".to_string(),
+        _ => "tcp://0.0.0.0:0".to_string(),
+    };
+    if matches!(args.transport.as_str(), "tls" | "wss") {
+        let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
+        common::setup_raw_tls_server(&stream, &tls).expect("stream tls");
+    }
+    stream.bind(&bind_endpoint).expect("bind");
     let endpoint = stream.last_endpoint().expect("endpoint");
-
     common::print_ready(&endpoint);
-
-    let poller = Poller::new().expect("poller");
-    poller.add_socket(&stream, 0, POLLIN).expect("poller add");
-
-    let deadline = Instant::now()
-        + Duration::from_secs(settings.duration_seconds + 30);
-
-    let mut stop_seen = false;
-    let mut pending: VecDeque<(RoutingId, Vec<u8>)> = VecDeque::new();
-    let mut backpressure = SocketBackpressure::new();
-
-    while !stop_seen && Instant::now() < deadline {
-        let remain = (deadline - Instant::now()).as_millis() as i64;
-        let wait = remain.min(100).max(1);
-        match poller.wait(wait) {
-            Ok(Some(ev)) => {
-                if ev.is_readable() {
-                    loop {
-                        match stream.try_recv() {
-                            Ok(Some(received)) => {
-                                let data = received.parts()[0].data();
-                                if data.is_empty() { continue; } // connect/disconnect notification
-                                if common::is_stop_token(data) { stop_seen = true; break; }
-                                let rid = received.routing_id().clone();
-                                let payload = data.to_vec();
-                                let msg = Message::from_bytes(&payload).expect("msg");
-                                match stream.try_send(&rid, msg) {
-                                    Ok(SendResult::Sent) => {}
-                                    _ => {
-                                        pending.push_back((rid, payload));
-                                        backpressure.mark_pending(|| {
-                                            let _ = poller.modify_socket(&stream, POLLIN | POLLOUT);
-                                        });
-                                    }
-                                }
-                            }
-                            Ok(None) => break,
-                            Err(_) => break,
-                        }
-                    }
-                }
-                if ev.is_writable() && !pending.is_empty() {
-                    while let Some((rid, payload)) = pending.front() {
-                        let msg = Message::from_bytes(payload).expect("msg");
-                        match stream.try_send(rid, msg) {
-                            Ok(SendResult::Sent) => { pending.pop_front(); }
-                            _ => break,
-                        }
-                    }
-                    if pending.is_empty() && backpressure.is_pending() {
-                        backpressure.clear_pending(|| {
-                            let _ = poller.modify_socket(&stream, POLLIN);
-                        });
-                    }
-                }
-            }
-            Ok(None) => continue,
-            Err(_) => break,
-        }
+    let stop = Arc::new(AtomicBool::new(false));
+    let stop_reader = stop.clone();
+    std::thread::spawn(move || {
+        common::wait_for_stop_stdin();
+        stop_reader.store(true, Ordering::Release);
+    });
+    while !stop.load(Ordering::Acquire) {
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
 }

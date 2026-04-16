@@ -17,31 +17,34 @@ func main() {
 	publisherNode, err := ctx.SpotNode()
 	samplecommon.MustStep("publisherNode", err)
 	defer func() { samplecommon.MustStep("publisherNode.Close", publisherNode.Close()) }()
-	subscriberNode, err := ctx.SpotNode()
-	samplecommon.MustStep("subscriberNode", err)
-	defer func() { samplecommon.MustStep("subscriberNode.Close", subscriberNode.Close()) }()
-
-	publisher, err := publisherNode.Spot()
-	samplecommon.MustStep("publisher", err)
-	defer func() { samplecommon.MustStep("publisher.Close", publisher.Close()) }()
-	subscriber, err := subscriberNode.Spot()
-	samplecommon.MustStep("subscriber", err)
-	defer func() { samplecommon.MustStep("subscriber.Close", subscriber.Close()) }()
+	spot, err := publisherNode.Spot()
+	samplecommon.MustStep("spot", err)
+	defer func() { samplecommon.MustStep("spot.Close", spot.Close()) }()
 
 	topic := "room:lobby"
-	serviceName := "bench"
+	serviceName := "sample"
 	payload := "hello-spot"
-	endpoint := samplecommon.UniqueTCP("spot-recv")
-	samplecommon.MustStep("publisherNode.Bind", publisherNode.Bind(endpoint))
-	samplecommon.MustStep("subscriberNode.ConnectPeer", subscriberNode.ConnectPeer(endpoint))
-	samplecommon.MustStep("subscriber.SetSubscription", subscriber.SetSubscription(topic))
-	samplecommon.WaitSpotPeerConnected(subscriberNode, 5*time.Second)
+	pubSock, err := ctx.PubSocket()
+	samplecommon.MustStep("pubSock", err)
+	defer func() { samplecommon.MustStep("pubSock.Close", pubSock.Close()) }()
+	subSock, err := ctx.SubSocket()
+	samplecommon.MustStep("subSock", err)
+	defer func() { samplecommon.MustStep("subSock.Close", subSock.Close()) }()
+
+	serviceEndpoint := samplecommon.UniqueTCP("spot-recv-service")
+	samplecommon.MustStep("pubSock.Bind", pubSock.Bind(serviceEndpoint))
+	samplecommon.MustStep("subSock.Connect", subSock.Connect(serviceEndpoint))
+	samplecommon.MustStep(
+		"publisherNode.AttachPubSub",
+		publisherNode.AttachPubSub(serviceName, pubSock, subSock),
+	)
+	samplecommon.MustStep("spot.SetSubscription", spot.SetSubscription(topic))
 
 	var message *zlink.TopicMessage
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		samplecommon.MustStep("publisher.Publish", publisher.Publish(serviceName, topic, zlink.SendFlagsNone, samplecommon.Message(payload)))
-		received, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
+		samplecommon.MustStep("spot.Publish", spot.Publish(serviceName, topic, zlink.SendFlagsNone, samplecommon.Message(payload)))
+		received, err := spot.Subscribe(zlink.RecvFlagsDontWait)
 		if err != nil {
 			runtime.Gosched()
 			continue
@@ -62,5 +65,5 @@ func main() {
 		samplecommon.Must(fmt.Errorf("unexpected spot payload %q/%q", message.Topic(), string(part.Data())))
 	}
 
-	fmt.Printf("[spot/recv] publish: %q -> subscribe: %q\n", topic+"/"+payload, message.Topic()+"/"+string(part.Data()))
+	fmt.Printf("[spot/recv] service: %q tick: 1 publish: %q -> recv: %q\n", serviceName, topic+"/"+payload, message.Topic()+"/"+string(part.Data()))
 }

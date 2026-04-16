@@ -33,7 +33,7 @@ async function main() {
     const clientEvent = clientMonitor.recv();
     assert.equal(serverEvent.event, zlink.MonitorEvent.CONNECTION_READY);
     assert.equal(clientEvent.event, zlink.MonitorEvent.CONNECTION_READY);
-    console.log('[monitor/recv] recv: "connection-ready" → state: ready');
+    console.log('[monitor/recv] recv: "connection-ready"');
   } finally {
     clientMonitor.close();
     serverMonitor.close();

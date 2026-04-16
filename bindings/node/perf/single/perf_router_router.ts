@@ -13,6 +13,7 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const {
+  benchmarkEndpoint,
   drainRecvNow,
   drainRecvSocket,
   waitForConnectionReady,
@@ -46,14 +47,14 @@ async function runRouterRouterBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
   const receiver = new zlink.RouterSocket(ctx);
   const sender = new zlink.RouterSocket(ctx);
-  const endpoint = `inproc://perf-router-router-${process.pid}-${msgSize}`;
+  const endpoint = await benchmarkEndpoint(options.transport, `router-router-${msgSize}`);
 
-    try {
-      receiver.setRoutingId(RECEIVER_ROUTING_ID);
-      sender.setRoutingId(SENDER_ROUTING_ID);
-      receiver.bind(endpoint);
-      await waitForConnectionReady(sender, () => sender.connect(endpoint));
-      await handshake(receiver, sender);
+  try {
+    receiver.setRoutingId(RECEIVER_ROUTING_ID);
+    sender.setRoutingId(SENDER_ROUTING_ID);
+    receiver.bind(endpoint);
+    await waitForConnectionReady(sender, () => sender.connect(endpoint));
+    await handshake(receiver, sender);
 
     const startedAtNs = process.hrtime.bigint();
     const runId = createRunId();

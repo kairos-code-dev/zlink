@@ -1,12 +1,13 @@
-//! SPOT recv sample – demonstrates service-aware publish/subscribe.
+//! SPOT recv sample – demonstrates dispatcher callback plus recv.
 
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 mod sample_support;
 
-use zlink::{Context, Message, SpotNode};
+use zlink::{Context, Message, SpotDispatchEvent, SpotNode};
 
-const SERVICE_NAME: &str = "spot-svc";
+const SERVICE_NAME: &str = "sample";
 const TOPIC: &str = "room:lobby";
 
 fn attach_service_pair(
@@ -26,48 +27,46 @@ fn attach_service_pair(
 
 fn main() {
     let ctx = Context::new().expect("context creation failed");
+    let node = SpotNode::new(&ctx).expect("spot node failed");
+    let _service = attach_service_pair(&ctx, &node, SERVICE_NAME);
+    let mut spot = node.create_spot().expect("spot failed");
 
-    let publisher_node = SpotNode::new(&ctx).expect("publisher node failed");
-    let subscriber_node = SpotNode::new(&ctx).expect("subscriber node failed");
-    let publisher = publisher_node.create_spot().expect("publisher spot failed");
-    let subscriber = subscriber_node
-        .create_spot()
-        .expect("subscriber spot failed");
-    let endpoint = sample_support::tcp_endpoint();
+    let (tx, rx) = mpsc::channel();
+    spot.on_dispatch_event(move |event| {
+        if event == SpotDispatchEvent::SubscribeReadable {
+            let _ = tx.send(());
+        }
+    })
+    .expect("on_dispatch_event failed");
 
-    let _publisher_service = attach_service_pair(&ctx, &publisher_node, SERVICE_NAME);
-    let _subscriber_service = attach_service_pair(&ctx, &subscriber_node, SERVICE_NAME);
-
-    publisher_node.bind(&endpoint).expect("bind failed");
-    subscriber_node
-        .connect_peer(&endpoint)
-        .expect("connect_peer failed");
-    subscriber
-        .set_subscription(TOPIC)
+    spot.set_subscription(TOPIC)
         .expect("set_subscription failed");
-    sample_support::wait_spot_peer_connected(&subscriber_node, Duration::from_secs(5));
 
     let deadline = Instant::now() + Duration::from_secs(5);
-    let mut message = None;
     while Instant::now() < deadline {
-        publisher
-            .publish(
-                SERVICE_NAME,
-                TOPIC,
-                vec![Message::copy_from(b"hello-spot").unwrap()],
-            )
-            .expect("publish failed");
-        message = Some(subscriber.subscribe().expect("subscribe failed"));
-        break;
+        spot.publish(
+            SERVICE_NAME,
+            TOPIC,
+            vec![Message::copy_from(b"hello-spot").unwrap()],
+        )
+        .expect("publish failed");
+
+        if rx.recv_timeout(Duration::from_millis(50)).is_err() {
+            continue;
+        }
+
+        let message = spot.subscribe().expect("subscribe failed");
+        let payload = message.parts()[0].as_str().unwrap_or("(binary)");
+        assert_eq!(message.service_name.as_deref(), Some(SERVICE_NAME));
+        assert_eq!(message.topic(), TOPIC);
+        assert_eq!(payload, "hello-spot");
+        println!(
+            "[spot/recv] service: \"{SERVICE_NAME}\" tick: 1 publish: \"{TOPIC}/hello-spot\" -> recv: \"{}/{}\"",
+            message.topic(),
+            payload
+        );
+        return;
     }
-    let message = message.expect("spot delivery did not arrive within 5s");
-    let payload = message.parts()[0].as_str().unwrap_or("(binary)");
-    assert_eq!(message.service_name.as_deref(), Some(SERVICE_NAME));
-    assert_eq!(message.topic(), TOPIC);
-    assert_eq!(payload, "hello-spot");
-    println!(
-        "[spot/recv] publish: \"{SERVICE_NAME}/{TOPIC}/hello-spot\" → subscribe: \"{}/{}\"",
-        message.topic(),
-        payload
-    );
+
+    panic!("spot recv did not deliver within 5s");
 }

@@ -29,7 +29,7 @@ inline const char *const k_dealer_router_reply = "pong";
 inline const char *const k_stream_payload = "hello-stream";
 inline const char *const k_pubsub_topic = "prices";
 inline const char *const k_pubsub_payload = "101.25";
-inline const char *const k_spot_service = "spot-sample";
+inline const char *const k_spot_service = "sample";
 inline const char *const k_spot_topic = "room:lobby";
 inline const char *const k_spot_payload = "hello-spot";
 

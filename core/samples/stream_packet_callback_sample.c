@@ -122,7 +122,7 @@ int main (void)
     }
     assert ((size_t) received == request_size);
     assert (memcmp (response, k_stream_payload, request_size) == 0);
-    printf ("[stream/callback] send: \"%s\" → recv: \"%.*s\"\n",
+    printf ("[stream/packet-callback] send: \"%s\" → recv: \"%.*s\"\n",
             k_stream_payload, (int) received, response);
 
     close (client_fd);

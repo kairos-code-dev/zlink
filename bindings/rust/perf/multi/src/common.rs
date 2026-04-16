@@ -8,7 +8,7 @@ pub mod backpressure;
 use std::sync::OnceLock;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
-use zlink::{DealerSocket, PairSocket, PubSocket, RouterSocket, SubSocket, ZlinkError};
+use zlink::{DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, ZlinkError};
 use zlink::Message;
 
 pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";
@@ -101,7 +101,7 @@ macro_rules! impl_raw_tls_socket {
     };
 }
 
-impl_raw_tls_socket!(PairSocket, PubSocket, DealerSocket, RouterSocket, SubSocket);
+impl_raw_tls_socket!(PairSocket, PubSocket, DealerSocket, RouterSocket, StreamSocket, SubSocket);
 
 fn resolve_perf_tls_paths_from(start: &Path) -> Option<TlsPaths> {
     let mut cur = if start.is_file() {

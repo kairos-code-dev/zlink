@@ -38,7 +38,7 @@ def main():
                     reply = client.recv(64)
                     if reply != b"hello-stream":
                         raise AssertionError(f"unexpected stream packet reply: {reply!r}")
-            print('[stream/callback] send: "hello-stream" → recv: "hello-stream"')
+            print('[stream/packet-callback] send: "hello-stream" → recv: "hello-stream"')
 
 
 if __name__ == "__main__":

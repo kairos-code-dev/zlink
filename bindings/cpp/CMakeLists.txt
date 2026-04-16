@@ -90,52 +90,44 @@ if(ZLINK_CPP_BUILD_SAMPLES)
   )
   target_compile_features(sample_cpp_request_reply_async_sample PRIVATE cxx_std_20)
   add_cpp_sample(
-    sample_cpp_request_reply_callback_sample
-    samples/request_reply_callback_sample.cpp
-  )
-  add_cpp_sample(
     sample_cpp_pair_recv_sample
     samples/pair_recv_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_pair_callback_sample
-    samples/pair_callback_sample.cpp
   )
   add_cpp_sample(
     sample_cpp_pubsub_recv_sample
     samples/pubsub_recv_sample.cpp
   )
   add_cpp_sample(
-    sample_cpp_pubsub_callback_sample
-    samples/pubsub_callback_sample.cpp
-  )
-  add_cpp_sample(
     sample_cpp_dealer_router_recv_sample
     samples/dealer_router_recv_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_dealer_router_callback_sample
-    samples/dealer_router_callback_sample.cpp
   )
   add_cpp_sample(
     sample_cpp_stream_recv_sample
     samples/stream_recv_sample.cpp
   )
   add_cpp_sample(
-    sample_cpp_stream_callback_sample
-    samples/stream_callback_sample.cpp
+    sample_cpp_stream_packet_callback_sample
+    samples/stream_packet_callback_sample.cpp
   )
   add_cpp_sample(
     sample_cpp_spot_recv_sample
     samples/spot_recv_sample.cpp
   )
   add_cpp_sample(
-    sample_cpp_spot_callback_sample
-    samples/spot_callback_sample.cpp
+    sample_cpp_spot_request_async_sample
+    samples/spot_request_async_sample.cpp
   )
   add_cpp_sample(
     sample_cpp_monitor_recv_sample
     samples/monitor_recv_sample.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_discovery_registry_sample
+    samples/discovery_registry_sample.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_registry_query_sample
+    samples/registry_query_sample.cpp
   )
 endif()
 

@@ -9,7 +9,9 @@ from perf_multi_common import (
     is_active_message,
     parse_client_args,
     print_result_lines,
+    recv_nonblocking,
     result_metrics,
+    safe_poll,
 )
 
 
@@ -27,22 +29,36 @@ def main(argv=None):
                 sock.options.linger_ms = 0
                 sock.connect(args.endpoint)
                 sock.set_subscription(TOPIC)
-            time.sleep(0.05)
+            print(f"CLIENT_READY,{args.msg_size}", flush=True)
+            command = sys.stdin.readline().strip()
+            if command != f"START,{args.msg_size}":
+                raise SystemExit(f"unexpected command: {command}")
 
             started = time.perf_counter()
             deadline = started + args.duration
-            while time.perf_counter() < deadline:
+            with zlink.Poller() as poller:
                 for sock in sockets:
-                    with sock.subscribe() as received:
-                        data = received.to_bytes_list()[0]
-                    if not is_active_message(
-                        data,
-                        expected_msg_size=args.msg_size,
-                        run_id=None,
-                    ):
+                    poller.add_socket(sock, zlink.PollEvent.POLLIN)
+                while time.perf_counter() < deadline:
+                    events = safe_poll(poller, 100)
+                    if not events:
                         continue
-                    latencies.append(latency_ns_from_message(data))
-                    count += 1
+                    for event in events:
+                        current_sock = event["socket"]
+                        while True:
+                            received = recv_nonblocking(current_sock, method="subscribe")
+                            if received is None:
+                                break
+                            with received:
+                                data = received.to_bytes_list()[0]
+                            if not is_active_message(
+                                data,
+                                expected_msg_size=args.msg_size,
+                                run_id=None,
+                            ):
+                                continue
+                            latencies.append(latency_ns_from_message(data))
+                            count += 1
 
             elapsed = time.perf_counter() - started
             metrics = result_metrics(

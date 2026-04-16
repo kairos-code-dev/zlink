@@ -23,6 +23,10 @@ def main():
                             raise AssertionError("monitor sample expected idle server snapshot")
                         if client_monitor.snapshot().is_ready():
                             raise AssertionError("monitor sample expected idle client snapshot")
+                        if server_monitor.snapshot().is_ready():
+                            raise AssertionError("monitor sample expected idle server snapshot before connect")
+                        if client_monitor.snapshot().is_ready():
+                            raise AssertionError("monitor sample expected idle client snapshot before connect")
                         server.bind(endpoint)
                         client.connect(endpoint)
                         server_event = server_monitor.recv()
@@ -31,7 +35,7 @@ def main():
                             raise AssertionError("monitor sample expected server CONNECTION_READY")
                         if not (int(client_event.event) & int(zlink.MonitorEventMask.CONNECTION_READY)):
                             raise AssertionError("monitor sample expected client CONNECTION_READY")
-                print('[monitor/recv] recv: "connection-ready" → snapshot: not-ready-before-connect')
+                print('[monitor/recv] recv: "connection-ready"')
 
 
 if __name__ == "__main__":

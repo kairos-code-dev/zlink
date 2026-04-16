@@ -13,6 +13,8 @@
   handler, client, event, DI 같은 익숙한 개념으로 작업하게 만든다.
 - 기존 웹 서버 환경에서 흔히 두는 별도 gateway나 전용 로드밸런서 없이도
   `service_name` 기준으로 직접 서비스 호출을 가능하게 만든다.
+- 현재 `core/`와 `bindings/`가 이미 제공하는 Discovery, Registry topology 조회,
+  `SPOT` request/reply 같은 기반 기능을 프레임워크 친화적인 API로 다시 묶는다.
 - `core` 계약과 `bindings` 계약을 직접 바꾸지 않고, 그 위에서 별도 라이브러리
   또는 패키지로 발전할 수 있는 구조를 잡는다.
 

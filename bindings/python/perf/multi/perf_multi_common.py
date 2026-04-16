@@ -1,6 +1,7 @@
 import argparse
 import sys
 import struct
+import time
 from pathlib import Path
 
 PERF_DIR = Path(__file__).resolve().parent.parent
@@ -96,6 +97,38 @@ def recv_nonblocking(sock, *, method="recv"):
         raise
 
 
+def send_nonblocking(sock, payload, *, method="send", routing_id=None):
+    zlink_mod = _require_zlink()
+    send_method = getattr(sock, method)
+    try:
+        if routing_id is None:
+            send_method(payload, flags=zlink_mod.SendFlags.DONT_WAIT)
+        else:
+            send_method(routing_id, payload, flags=zlink_mod.SendFlags.DONT_WAIT)
+        return True
+    except zlink_mod.SubmitError as exc:
+        if exc.result in (
+            zlink_mod.SubmitResult.BACKPRESSURED,
+            zlink_mod.SubmitResult.NOT_CONNECTED,
+            zlink_mod.SubmitResult.NOT_ADMITTED,
+        ):
+            return False
+        raise
+
+
+def wait_for_command_line(stream, *, deadline):
+    while True:
+        remaining = deadline - time.perf_counter()
+        if remaining <= 0:
+            return None
+        line = stream.readline()
+        if not line:
+            return None
+        text = line.strip()
+        if text:
+            return text
+
+
 def attach_spot_service_pair(ctx, node, service_name):
     zlink_mod = _require_zlink()
     pub_sock = zlink_mod.PubSocket(ctx)
@@ -103,5 +136,6 @@ def attach_spot_service_pair(ctx, node, service_name):
     endpoint = tcp_endpoint()
     pub_sock.bind(endpoint)
     sub_sock.connect(endpoint)
+    sub_sock.set_subscription(b"")
     node.attach_pubsub(service_name, pub_sock, sub_sock)
     return pub_sock, sub_sock

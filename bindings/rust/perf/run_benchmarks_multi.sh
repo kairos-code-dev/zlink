@@ -178,6 +178,8 @@ IFS=',' read -ra TRANSPORT_LIST <<< "${TRANSPORTS}"
 
 SERVER_READY_TIMEOUT=10
 SERVER_SHUTDOWN_TIMEOUT=5
+CLIENT_TIMEOUT_SECONDS=$((DURATION + 10))
+ONE_WAY_CLIENT_READY_TIMEOUT=10
 
 TMP_METRICS="$(mktemp)"
 TMP_CASES="$(mktemp)"
@@ -214,6 +216,20 @@ shutdown_server() {
         kill -9 "${pid}" 2>/dev/null || true
         wait "${pid}" 2>/dev/null || true
     fi
+}
+
+wait_for_file_line() {
+    local file_path="$1"
+    local timeout_seconds="$2"
+    local deadline=$((SECONDS + timeout_seconds))
+    while (( SECONDS < deadline )); do
+        if [[ -s "${file_path}" ]]; then
+            head -1 "${file_path}" 2>/dev/null || true
+            return 0
+        fi
+        sleep 0.1
+    done
+    return 1
 }
 
 for run in $(seq 1 "${RUNS}"); do
@@ -278,27 +294,74 @@ for run in $(seq 1 "${RUNS}"); do
                     continue
                 fi
 
-                if [[ "${pat}" == "MULTI_STREAM" ]]; then
-                    if [[ ! -x "${STREAM_CLIENT}" ]]; then
+                if [[ "${pat}" == "MULTI_DEALER_DEALER" || "${pat}" == "MULTI_PUBSUB" ]]; then
+                    CLIENT_OUT="$(mktemp)"
+                    CLIENT_ERR="$(mktemp)"
+                    CLIENT_FIFO="$(mktemp -u)"
+                    mkfifo "${CLIENT_FIFO}"
+                    "${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT}" < "${CLIENT_FIFO}" > "${CLIENT_OUT}" 2> "${CLIENT_ERR}" &
+                    CLIENT_PID=$!
+                    exec {CLIENT_CONTROL_FD}> "${CLIENT_FIFO}"
+                    rm -f "${CLIENT_FIFO}"
+
+                    CLIENT_READY_LINE=""
+                    if CLIENT_READY_LINE="$(wait_for_file_line "${CLIENT_OUT}" "${ONE_WAY_CLIENT_READY_TIMEOUT}")"; then
+                        CLIENT_READY_LINE="${CLIENT_READY_LINE%%$'\n'*}"
+                    fi
+                    if [[ "${CLIENT_READY_LINE}" != "CLIENT_READY,${size}" ]]; then
                         case_status="fail"
-                        case_reason="missing_shared_stream_client"
-                        OUTPUT=""
+                        case_reason="client_ready_timeout_or_invalid"
                     else
-                        if ! OUTPUT="$("${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
-                            --sizes "${size}" --runs 1 \
-                            --duration "${DURATION}" --ccu "${CLIENTS}" \
-                            --send-stop-token 1 \
-                            --endpoint "${ENDPOINT}" 2>&1)"; then
+                        printf 'START,%s\n' "${size}" >&"${SERVER_CONTROL_FD}" || true
+                        printf 'START,%s\n' "${size}" >&"${CLIENT_CONTROL_FD}" || true
+                    fi
+
+                    if [[ "${case_status}" == "success" ]]; then
+                        if ! wait_for_pid "${CLIENT_PID}" "${CLIENT_TIMEOUT_SECONDS}"; then
                             case_status="fail"
-                            case_reason="binary_exit"
-                        else
-                            OUTPUT="$(printf '%s\n' "${OUTPUT}" | sed 's/^RESULT,current,STREAM,/RESULT,current,MULTI_STREAM,/')"
+                            case_reason="binary_exit_or_timeout"
+                            kill "${CLIENT_PID}" 2>/dev/null || true
+                            wait "${CLIENT_PID}" 2>/dev/null || true
+                        elif ! wait "${CLIENT_PID}"; then
+                            case_status="fail"
+                            case_reason="binary_exit_or_timeout"
                         fi
+                    else
+                        kill "${CLIENT_PID}" 2>/dev/null || true
+                        wait "${CLIENT_PID}" 2>/dev/null || true
+                    fi
+
+                    exec {CLIENT_CONTROL_FD}>&- || true
+                    OUTPUT=""
+                    if [[ -f "${CLIENT_OUT}" ]]; then
+                        OUTPUT="$(cat "${CLIENT_OUT}")"
+                    fi
+                    if [[ -s "${CLIENT_ERR}" ]]; then
+                        if [[ -n "${OUTPUT}" ]]; then
+                            OUTPUT+=$'\n'
+                        fi
+                        OUTPUT+="$(cat "${CLIENT_ERR}")"
+                    fi
+                    rm -f "${CLIENT_OUT}" "${CLIENT_ERR}"
+                elif [[ "${pat}" == "MULTI_STREAM" ]]; then
+                    if ! OUTPUT="$(timeout "${CLIENT_TIMEOUT_SECONDS}s" "${STREAM_CLIENT}" \
+                        --transport tcp \
+                        --pattern STREAM \
+                        --sizes "${size}" \
+                        --runs 1 \
+                        --duration "${DURATION}" \
+                        --ccu "${CLIENTS}" \
+                        --io-threads 4 \
+                        --print-perf-result 1 \
+                        --send-stop-token 0 \
+                        --endpoint "${ENDPOINT}" 2>&1)"; then
+                        case_status="fail"
+                        case_reason="binary_exit_or_timeout"
                     fi
                 else
-                    if ! OUTPUT="$("${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT}" 2>&1)"; then
+                    if ! OUTPUT="$(timeout "${CLIENT_TIMEOUT_SECONDS}s" "${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT}" 2>&1)"; then
                         case_status="fail"
-                        case_reason="binary_exit"
+                        case_reason="binary_exit_or_timeout"
                     fi
                 fi
 
@@ -318,6 +381,7 @@ for run in $(seq 1 "${RUNS}"); do
                         case_reason="${skip_line}"
                     fi
                 fi
+                case_reason="${case_reason//,/;}"
                 while IFS= read -r line; do
                     [[ "${line}" == RESULT,* ]] || continue
                     IFS=',' read -r tag lib result_pattern result_transport result_size metric value <<< "${line}"

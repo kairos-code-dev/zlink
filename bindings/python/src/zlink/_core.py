@@ -402,8 +402,8 @@ _LEGACY_SOCKET_TYPE_MAP = {
 def _copy_routing_id(routing_id):
     view = _as_bytes_view(routing_id)
     size = view.nbytes
-    if size <= 0 or size > 255:
-        raise ValueError("routing_id length must be between 1 and 255")
+    if size > 255:
+        raise ValueError("routing_id length must be at most 255 bytes")
     native = ZlinkRoutingId()
     native.size = size
     for index in range(size):
@@ -414,6 +414,107 @@ def _copy_routing_id(routing_id):
 def _validated_routing_id_bytes(routing_id):
     native = _copy_routing_id(routing_id)
     return bytes(native.data[: native.size])
+
+
+def _routing_id_struct(routing_id):
+    if isinstance(routing_id, ZlinkRoutingId):
+        return routing_id
+    return _copy_routing_id(routing_id)
+
+
+def _routing_id_from_text(text):
+    if not isinstance(text, str):
+        raise TypeError("value must be a string")
+    native = ZlinkRoutingId()
+    rc = lib().zlink_routing_id_from_text(ctypes.byref(native), text.encode("utf-8"))
+    if rc != 0:
+        errno_code = lib().zlink_errno()
+        if errno_code == _errno.EINVAL:
+            raise ValueError("routing id text must be non-empty UTF-8")
+        _raise_result_error(ConfigError, ConfigResult, rc, errno_code)
+    return bytes(native.data[: native.size])
+
+
+def _routing_id_from_u32(value):
+    native = ZlinkRoutingId()
+    rc = lib().zlink_routing_id_from_u32(
+        ctypes.byref(native),
+        ctypes.c_uint32(_validated_uint32(value)),
+    )
+    if rc != 0:
+        errno_code = lib().zlink_errno()
+        if errno_code == _errno.EINVAL:
+            raise ValueError("routing id conversion failed")
+        _raise_result_error(ConfigError, ConfigResult, rc, errno_code)
+    return bytes(native.data[: native.size])
+
+
+def _routing_id_to_u32(routing_id):
+    raw = _routing_id_struct(routing_id)
+    value = ctypes.c_uint32()
+    rc = lib().zlink_routing_id_to_u32(ctypes.byref(raw), ctypes.byref(value))
+    if rc != 0:
+        errno_code = lib().zlink_errno()
+        if errno_code == _errno.EINVAL:
+            raise ValueError("routing id is not a 4-byte STREAM routing id")
+        _raise_result_error(ConfigError, ConfigResult, rc, errno_code)
+    return int(value.value)
+
+
+def _routing_id_to_text(routing_id):
+    raw = _routing_id_struct(routing_id)
+    text_size = ctypes.c_size_t(0)
+    rc = lib().zlink_routing_id_to_text(
+        ctypes.byref(raw),
+        None,
+        ctypes.byref(text_size),
+    )
+    if rc != 0:
+        errno_code = lib().zlink_errno()
+        if errno_code == _errno.EINVAL:
+            raise ValueError("routing id is not UTF-8 or is empty")
+        _raise_result_error(ConfigError, ConfigResult, rc, errno_code)
+    if text_size.value == 0:
+        return ""
+    buffer = (ctypes.c_char * text_size.value)()
+    rc = lib().zlink_routing_id_to_text(
+        ctypes.byref(raw),
+        buffer,
+        ctypes.byref(text_size),
+    )
+    if rc != 0:
+        errno_code = lib().zlink_errno()
+        if errno_code == _errno.EINVAL:
+            raise ValueError("routing id is not UTF-8")
+        _raise_result_error(ConfigError, ConfigResult, rc, errno_code)
+    return ctypes.string_at(buffer).decode("utf-8")
+
+
+def _routing_id_to_hex(routing_id):
+    raw = _routing_id_struct(routing_id)
+    hex_size = ctypes.c_size_t(0)
+    rc = lib().zlink_routing_id_to_hex(
+        ctypes.byref(raw),
+        None,
+        ctypes.byref(hex_size),
+    )
+    if rc != 0:
+        errno_code = lib().zlink_errno()
+        if errno_code == _errno.EINVAL:
+            raise ValueError("routing id size is invalid")
+        _raise_result_error(ConfigError, ConfigResult, rc, errno_code)
+    buffer = (ctypes.c_char * hex_size.value)()
+    rc = lib().zlink_routing_id_to_hex(
+        ctypes.byref(raw),
+        buffer,
+        ctypes.byref(hex_size),
+    )
+    if rc != 0:
+        errno_code = lib().zlink_errno()
+        if errno_code == _errno.EINVAL:
+            raise ValueError("routing id size is invalid")
+        _raise_result_error(ConfigError, ConfigResult, rc, errno_code)
+    return ctypes.string_at(buffer).decode("utf-8")
 
 
 def _msg_data_ptr(msg):
@@ -686,26 +787,35 @@ class RoutingId:
         return cls(data)
 
     @classmethod
+    def from_text(cls, value):
+        return cls(_routing_id_from_text(value))
+
+    @classmethod
     def from_uint32(cls, value):
-        native = ctypes.c_uint32(int(value))
-        return cls(ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native)))
+        return cls(_routing_id_from_u32(value))
+
+    @classmethod
+    def from_u32(cls, value):
+        return cls(_routing_id_from_u32(value))
 
     @classmethod
     def from_string(cls, value):
-        if not isinstance(value, str):
-            raise TypeError("value must be a string")
-        return cls(value.encode("utf-8"))
+        return cls.from_text(value)
 
     def to_bytes(self):
         return self._raw
 
     def to_uint32(self):
-        if len(self._raw) != ctypes.sizeof(ctypes.c_uint32):
-            raise ValueError("routing id is not a uint32-sized STREAM routing id")
-        return ctypes.c_uint32.from_buffer_copy(self._raw).value
+        return _routing_id_to_u32(self._raw)
+
+    def to_u32(self):
+        return _routing_id_to_u32(self._raw)
 
     def to_public_string(self):
-        return self._raw.decode("utf-8")
+        return self.to_text()
+
+    def to_text(self):
+        return _routing_id_to_text(self._raw)
 
     @property
     def size(self):
@@ -732,7 +842,7 @@ class RoutingId:
         return f"RoutingId({self._raw!r})"
 
     def to_hex(self):
-        return self._raw.hex()
+        return _routing_id_to_hex(self._raw)
 
     def __str__(self):
         return self.to_hex()

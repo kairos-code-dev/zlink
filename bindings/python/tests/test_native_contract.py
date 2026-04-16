@@ -25,6 +25,11 @@ class NativeContractTests(unittest.TestCase):
         self.assertTrue(hasattr(native, "zlink_discovery_new"))
         self.assertTrue(hasattr(native, "zlink_spot_new"))
         self.assertTrue(hasattr(native, "zlink_registry_query_snapshot"))
+        self.assertTrue(hasattr(native, "zlink_routing_id_from_u32"))
+        self.assertTrue(hasattr(native, "zlink_routing_id_to_u32"))
+        self.assertTrue(hasattr(native, "zlink_routing_id_from_text"))
+        self.assertTrue(hasattr(native, "zlink_routing_id_to_text"))
+        self.assertTrue(hasattr(native, "zlink_routing_id_to_hex"))
 
         for removed_name in (
             "zlink_setsockopt",

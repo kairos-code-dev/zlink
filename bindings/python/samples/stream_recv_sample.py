@@ -19,11 +19,12 @@ def main():
                             raise AssertionError("unexpected stream payload")
                         if not received.routing_id:
                             raise AssertionError("stream sample expected a routing id")
+                        peer_id = received.routing_id.to_u32()
                         server.send(received.routing_id, b"hello-stream")
                     reply = client.recv(64)
                     if reply != b"hello-stream":
                         raise AssertionError(f"unexpected stream reply: {reply!r}")
-            print('[stream/recv] send: "hello-stream" → recv: "hello-stream"')
+            print(f'[stream/recv] peer: {peer_id} send: "hello-stream" → recv: "hello-stream"')
 
 
 if __name__ == "__main__":

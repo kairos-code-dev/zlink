@@ -1,6 +1,7 @@
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::slice;
+use std::str;
 
 use crate::error::{ConfigError, check_config_rc, config_validation_error};
 use crate::ffi;
@@ -214,11 +215,15 @@ impl RoutingId {
     }
 
     pub fn from_u32(value: u32) -> Self {
-        Self::from_bytes(&value.to_le_bytes())
+        Self::from_bytes(&value.to_be_bytes())
+    }
+
+    pub fn from_text(value: &str) -> Self {
+        Self::from_bytes(value.as_bytes())
     }
 
     pub fn from_utf8(value: &str) -> Self {
-        Self::from_bytes(value.as_bytes())
+        Self::from_text(value)
     }
 
     pub(crate) fn new(data: &[u8]) -> Result<Self, ConfigError> {
@@ -265,11 +270,15 @@ impl RoutingId {
         if bytes.len() != 4 {
             return None;
         }
-        Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+        Some(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
 
-    pub fn to_public_string(&self) -> Result<String, std::string::FromUtf8Error> {
-        String::from_utf8(self.as_bytes().to_vec())
+    pub fn to_text(&self) -> Result<String, str::Utf8Error> {
+        str::from_utf8(self.as_bytes()).map(|text| text.to_owned())
+    }
+
+    pub fn to_public_string(&self) -> Result<String, str::Utf8Error> {
+        self.to_text()
     }
 
     /// Borrow the underlying FFI struct.

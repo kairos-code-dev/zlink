@@ -518,6 +518,31 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_routing_id_from_u32",
+            [ctypes.POINTER(ZlinkRoutingId), ctypes.c_uint32],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_routing_id_to_u32",
+            [ctypes.POINTER(ZlinkRoutingId), ctypes.POINTER(ctypes.c_uint32)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_routing_id_from_text",
+            [ctypes.POINTER(ZlinkRoutingId), ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_routing_id_to_text",
+            [ctypes.POINTER(ZlinkRoutingId), ctypes.c_char_p, ctypes.POINTER(ctypes.c_size_t)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_routing_id_to_hex",
+            [ctypes.POINTER(ZlinkRoutingId), ctypes.c_char_p, ctypes.POINTER(ctypes.c_size_t)],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_set_subscription",
             [ctypes.c_void_p, ctypes.c_char_p],
             ctypes.c_int,
@@ -1320,6 +1345,7 @@ def _find_dev_library():
         else:
             candidates.extend(
                 [
+                    repo / "build" / "lib" / "libzlink.so",
                     repo / "core" / "build" / "lib" / "libzlink.so",
                     repo / "core" / "build" / "linux-x64" / "lib" / "libzlink.so",
                 ]

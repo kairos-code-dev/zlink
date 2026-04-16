@@ -8,6 +8,7 @@
 #include "api/socket_api_internal.hpp"
 #include "api/socket_message_api_internal.hpp"
 #include "api/submit_result_internal.hpp"
+#include "api/routing_id_internal.hpp"
 #include "sockets/stream_dispatch_internal.hpp"
 #include "core/msg.hpp"
 #include "core/multipart_send_txn.hpp"
@@ -126,34 +127,6 @@ int send_socket_singlepart_fast (socket_handle_t handle_,
     return 0;
 }
 
-bool parse_stream_routing_id (const zlink_routing_id_t *rid_,
-                              uint32_t *routing_id_out_)
-{
-    if (!rid_ || !routing_id_out_ || rid_->size == 0
-        || rid_->size > sizeof (rid_->data) || rid_->size != 4) {
-        errno = EINVAL;
-        return false;
-    }
-
-    *routing_id_out_ = (static_cast<uint32_t> (rid_->data[0]) << 24)
-                       | (static_cast<uint32_t> (rid_->data[1]) << 16)
-                       | (static_cast<uint32_t> (rid_->data[2]) << 8)
-                       | static_cast<uint32_t> (rid_->data[3]);
-    return true;
-}
-
-bool stream_routing_id_matches_value (const zlink_routing_id_t *rid_,
-                                      uint32_t routing_id_)
-{
-    return rid_ && rid_->size == 4
-           && rid_->data[0] == static_cast<uint8_t> (routing_id_ >> 24)
-           && rid_->data[1]
-                == static_cast<uint8_t> ((routing_id_ >> 16) & 0xFF)
-           && rid_->data[2]
-                == static_cast<uint8_t> ((routing_id_ >> 8) & 0xFF)
-           && rid_->data[3] == static_cast<uint8_t> (routing_id_ & 0xFF);
-}
-
 void consume_stream_send_msg (zlink::msg_t *msg_)
 {
     if (!msg_ || !msg_->check ())
@@ -193,8 +166,11 @@ int send_stream_message (socket_handle_t handle_,
     if (handle_.socket->stream_dispatch_in_callback ()) {
         const uint32_t current_routing_id =
           zlink::stream_dispatch_context_t::current_routing_id ();
+        uint32_t current_target_routing_id = 0;
         if (current_routing_id != 0
-            && stream_routing_id_matches_value (rid_, current_routing_id)) {
+            && zlink::routing_id_internal::to_u32 (rid_,
+                                                  &current_target_routing_id)
+            && current_target_routing_id == current_routing_id) {
             tried_current_dispatch_send = true;
             const int send_rc =
               handle_.socket->stream_dispatch_send_current_msg_from_io (
@@ -232,7 +208,7 @@ int send_stream_message (socket_handle_t handle_,
     }
 
     uint32_t routing_id = 0;
-    if (!parse_stream_routing_id (rid_, &routing_id)) {
+    if (!zlink::routing_id_internal::to_u32 (rid_, &routing_id)) {
         const int err = errno;
         consume_stream_send_msg (core_msg);
         errno = err;

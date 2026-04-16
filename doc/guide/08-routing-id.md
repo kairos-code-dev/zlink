@@ -15,6 +15,12 @@ typedef struct {
 } zlink_routing_id_t;
 ```
 
+The important rule is that the public canonical form is always raw bytes.
+`STREAM` is not a special public type. Instead, applications may decode the
+4-byte STREAM routing id with `zlink_routing_id_to_u32()`, and routed/service
+paths may decode UTF-8 text with `zlink_routing_id_to_text()` or fall back to
+`zlink_routing_id_to_hex()` for display.
+
 ## 3. Auto-Generation Rules
 
 | Type | Format | Size | Description |
@@ -189,7 +195,9 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ## 7. Using routing_id with STREAM Sockets
 
-STREAM sockets identify external clients using a 4B uint32 peer routing_id.
+STREAM sockets identify external clients using canonical routing-id bytes.
+In practice the STREAM peer id is a 4-byte big-endian `uint32`, so
+`zlink_routing_id_to_u32()` is the intended helper for application code.
 
 ### Basic Usage
 

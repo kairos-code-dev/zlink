@@ -989,6 +989,7 @@ set(api-sources
     src/api/timer_scheduler_backend.cpp
     src/api/zlink.cpp
     src/api/zlink_option.cpp
+    src/api/routing_id_api.cpp
     src/api/zlink_option_specialized_api.cpp
     src/api/zlink_option_subscription_api.cpp
     src/api/zlink_utils.cpp)

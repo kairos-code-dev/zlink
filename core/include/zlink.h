@@ -412,6 +412,58 @@ ZLINK_EXPORT zlink_config_result_t zlink_set_routing_id (void *handle_,
                                         size_t size_);
 ZLINK_EXPORT zlink_config_result_t zlink_get_routing_id (void *handle_,
                                         zlink_routing_id_t *out_);
+/** @brief Convert a 32-bit integer to canonical routing_id bytes (big-endian).
+ * @param out_ Output routing id. Must be non-NULL.
+ * @param value_ 32-bit unsigned integer value.
+ * @return `ZLINK_CONFIG_OK` on success, or a `zlink_config_result_t` error.
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_routing_id_from_u32 (
+  zlink_routing_id_t *out_,
+  uint32_t value_);
+
+/** @brief Parse a canonical routing_id as a 32-bit integer (big-endian).
+ * @param rid_ Canonical routing_id. Must be non-NULL and exactly 4 bytes.
+ * @param value_out_ Output integer value. Must be non-NULL.
+ * @return `ZLINK_CONFIG_OK` on success, or a `zlink_config_result_t` error.
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_routing_id_to_u32 (
+  const zlink_routing_id_t *rid_,
+  uint32_t *value_out_);
+
+/** @brief Convert UTF-8 text to canonical routing_id bytes.
+ * @param out_ Output routing_id. Must be non-NULL.
+ * @param text_ UTF-8 text pointer (NUL-terminated). Must be non-empty.
+ * @return `ZLINK_CONFIG_OK` on success, or a `zlink_config_result_t` error.
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_routing_id_from_text (
+  zlink_routing_id_t *out_,
+  const char *text_);
+
+/** @brief Convert canonical routing_id to UTF-8 text.
+ * @param rid_ Canonical routing_id to read. Must be non-NULL.
+ * @param out_ Output buffer for NUL-terminated text. Optional when querying
+ * length with only out_len_.
+ * @param out_len_ On input, size of out_ in bytes; on output, required bytes
+ * including terminating NUL.
+ * @return `ZLINK_CONFIG_OK` on success, or a `zlink_config_result_t` error.
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_routing_id_to_text (
+  const zlink_routing_id_t *rid_,
+  char *out_,
+  size_t *out_len_);
+
+/** @brief Convert canonical routing_id to hexadecimal string.
+ * @param rid_ Canonical routing_id to read. Must be non-NULL.
+ * @param out_ Output buffer for NUL-terminated hex string. Optional when
+ * querying length with only out_len_.
+ * @param out_len_ On input, size of out_ in bytes; on output, required bytes
+ * including terminating NUL.
+ * @return `ZLINK_CONFIG_OK` on success, or a `zlink_config_result_t` error.
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_routing_id_to_hex (
+  const zlink_routing_id_t *rid_,
+  char *out_,
+  size_t *out_len_);
 ZLINK_EXPORT zlink_config_result_t zlink_set_admission_state (
   void *handle_,
   zlink_admission_state_t state_);

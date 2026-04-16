@@ -5,6 +5,7 @@
 #include "sockets/stream_dispatch_internal.hpp"
 #include "core/pipe.hpp"
 #include "protocol/wire.hpp"
+#include "api/routing_id_internal.hpp"
 #include "utils/err.hpp"
 #include "utils/likely.hpp"
 #include <chrono>
@@ -93,8 +94,12 @@ uint32_t resolve_dispatch_routing_id (const zlink::msg_t *msg_,
         return routing_id;
 
     const zlink::blob_t &router_routing_id = pipe_->get_routing_id ();
-    if (router_routing_id.size () == 4)
-        return zlink::get_uint32 (router_routing_id.data ());
+    if (router_routing_id.size () == 4) {
+        uint32_t router_id = 0;
+        if (zlink::routing_id_internal::to_u32 (
+              router_routing_id.data (), router_routing_id.size (), &router_id))
+            return router_id;
+    }
 
     zlink::pipe_t *peer = pipe_->get_peer ();
     if (peer) {
@@ -103,8 +108,12 @@ uint32_t resolve_dispatch_routing_id (const zlink::msg_t *msg_,
             return routing_id;
 
         const zlink::blob_t &peer_routing_id = peer->get_routing_id ();
-        if (peer_routing_id.size () == 4)
-            return zlink::get_uint32 (peer_routing_id.data ());
+        if (peer_routing_id.size () == 4) {
+            uint32_t peer_id = 0;
+            if (zlink::routing_id_internal::to_u32 (
+                  peer_routing_id.data (), peer_routing_id.size (), &peer_id))
+                return peer_id;
+        }
     }
 
     return 0;
@@ -292,8 +301,13 @@ int zlink::stream_t::xsend (msg_t *msg_)
                 return -1;
             }
 
-            const uint32_t routing_id =
-              get_uint32 (static_cast<unsigned char *> (msg_->data ()));
+            uint32_t routing_id = 0;
+            if (!zlink::routing_id_internal::to_u32 (
+                  static_cast<const uint8_t *> (msg_->data ()),
+                  msg_->size (),
+                  &routing_id)) {
+                return -1;
+            }
             route_shard_t &shard = route_shard_for (routing_id);
             scoped_fast_lock_t shard_lock (shard.sync);
             route_shard_t::routes_t::iterator it = shard.routes.find (

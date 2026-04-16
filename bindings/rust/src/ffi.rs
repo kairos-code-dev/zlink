@@ -793,6 +793,25 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_set_routing_id(handle: *mut c_void, data: *const c_void, size: usize) -> c_int;
     pub fn zlink_get_routing_id(handle: *mut c_void, out: *mut zlink_routing_id_t) -> c_int;
+    pub fn zlink_routing_id_from_u32(out: *mut zlink_routing_id_t, value: u32) -> c_int;
+    pub fn zlink_routing_id_to_u32(
+        rid: *const zlink_routing_id_t,
+        value_out: *mut u32,
+    ) -> c_int;
+    pub fn zlink_routing_id_from_text(
+        out: *mut zlink_routing_id_t,
+        text: *const c_char,
+    ) -> c_int;
+    pub fn zlink_routing_id_to_text(
+        rid: *const zlink_routing_id_t,
+        out: *mut c_char,
+        out_len: *mut usize,
+    ) -> c_int;
+    pub fn zlink_routing_id_to_hex(
+        rid: *const zlink_routing_id_t,
+        out: *mut c_char,
+        out_len: *mut usize,
+    ) -> c_int;
     pub fn zlink_set_tls_server(
         handle: *mut c_void,
         cert: *const c_char,

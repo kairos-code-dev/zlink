@@ -579,8 +579,15 @@ appears in the public surface.
 class RoutingId {
     /** @throws {ConfigError} */
     static fromBytes(bytes: Buffer | Uint8Array): RoutingId;
+    /** @throws {RangeError} */
+    static fromU32(value: number): RoutingId;
+    /** @throws {TypeError | ConfigError} */
+    static fromText(value: string): RoutingId;
     toBytes(): Buffer;
     readonly size: number;             // byte length (1-255)
+    /** @throws {RangeError} */
+    toU32(): number;
+    toText(): string;
     equals(other: RoutingId): boolean;
     /** Hex-encoded representation (lower-case, no separators). */
     toHex(): string;
@@ -590,9 +597,10 @@ class RoutingId {
 ```
 
 Rules:
-- `RoutingId` is binary-safe; there is no `RoutingId(string)` constructor.
-  Use `fromBytes` for construction and `toHex()` / `toString()` for
-  display.
+- `RoutingId` is bytes-canonical. `fromU32()` and `toU32()` use 4-byte
+  big-endian STREAM encoding.
+- `fromText()` and `toText()` use UTF-8. When text decoding is not
+  appropriate, use `toHex()` or `toString()` for display.
 - `RoutingId` instances are immutable; `toBytes()` returns a copy or an
   immutable view.
 - Any socket or service method that takes a routing id accepts a

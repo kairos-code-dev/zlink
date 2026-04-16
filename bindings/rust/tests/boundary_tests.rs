@@ -32,6 +32,26 @@ fn routing_id_one_byte_accepted() {
 }
 
 #[test]
+fn routing_id_u32_roundtrip_uses_big_endian_bytes() {
+    let rid = RoutingId::from_u32(0x01020304);
+    assert_eq!(rid.as_bytes(), &[0x01, 0x02, 0x03, 0x04]);
+    assert_eq!(rid.to_u32(), Some(0x01020304));
+}
+
+#[test]
+fn routing_id_text_and_hex_helpers_roundtrip() {
+    let rid = RoutingId::from_text("router-a");
+    assert_eq!(rid.to_text().unwrap(), "router-a");
+    assert_eq!(rid.to_hex(), "726f757465722d61");
+}
+
+#[test]
+fn routing_id_to_text_rejects_invalid_utf8() {
+    let rid = RoutingId::from_bytes(&[0xC3, 0x28]);
+    assert!(rid.to_text().is_err());
+}
+
+#[test]
 fn duration_overflow_fails() {
     // Duration larger than i32::MAX milliseconds
     let huge = Duration::from_millis(i32::MAX as u64 + 1);

@@ -17,6 +17,15 @@ typedef struct {
 } zlink_routing_id_t;
 ```
 
+핵심 규칙은 간단합니다.
+
+- 공개 canonical 형태는 항상 길이가 있는 바이트 열입니다.
+- `STREAM`도 공개 표면에서는 예외가 아닙니다.
+- `STREAM`에서만 이 바이트 열을 4바이트 big-endian `uint32`로 해석하는
+  helper를 함께 쓰는 것이 권장됩니다.
+- routed socket과 service 경로에서 사람이 읽을 값이 필요하면 UTF-8
+  `to_text()` 또는 항상 성공하는 `to_hex()`를 사용합니다.
+
 ## 3. 자동 생성 규칙
 
 | 종류 | 포맷 | 크기 | 설명 |
@@ -194,7 +203,9 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ## 7. STREAM 소켓에서 routing_id 사용법
 
-STREAM 소켓은 4B uint32 peer routing_id로 외부 클라이언트를 식별한다.
+STREAM 소켓은 canonical bytes routing id로 외부 클라이언트를 식별한다.
+관례상 이 값은 4바이트 big-endian `uint32`이므로 응용은
+`zlink_routing_id_to_u32()`로 해석할 수 있다.
 
 ### 기본 사용
 

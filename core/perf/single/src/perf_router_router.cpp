@@ -41,10 +41,29 @@ bool setup_router_router_session (void *receiver_,
     if (!receiver_ || !sender_)
         return false;
 
-    zlink_set_routing_id (receiver_, "ROUTER1", 7);
-    zlink_set_routing_id (sender_, "ROUTER2", 7);
-    zlink_set_router_option (sender_, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
-                             "ROUTER1", 7);
+    zlink_routing_id_t receiver_rid;
+    zlink_routing_id_t sender_rid;
+    zlink_routing_id_t connect_rid;
+    if (zlink_routing_id_from_text (&receiver_rid, "ROUTER1")
+        != ZLINK_CONFIG_OK)
+        return false;
+    if (zlink_routing_id_from_text (&sender_rid, "ROUTER2")
+        != ZLINK_CONFIG_OK)
+        return false;
+    if (zlink_routing_id_from_text (&connect_rid, "ROUTER1")
+        != ZLINK_CONFIG_OK)
+        return false;
+
+    if (zlink_set_routing_id (receiver_, receiver_rid.data, receiver_rid.size)
+        != 0)
+        return false;
+    if (zlink_set_routing_id (sender_, sender_rid.data, sender_rid.size)
+        != 0)
+        return false;
+    if (zlink_set_router_option (sender_, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
+                                connect_rid.data, connect_rid.size)
+        != 0)
+        return false;
 
     if (!setup_tls_server (receiver_, transport_)
         || !setup_tls_client (sender_, transport_)) {
@@ -118,9 +137,14 @@ int recv_router_router_header_flags (void *receiver_,
         return -1;
     }
 
+    char source_text[8] = {0};
+    size_t source_rid_text_len = sizeof (source_text);
     const bool rid_ok =
-      source_rid && source_rid->size == 7
-      && std::memcmp (source_rid->data, "ROUTER2", 7) == 0;
+      source_rid && source_rid->size != 0
+      && zlink_routing_id_to_text (source_rid, source_text,
+                                   &source_rid_text_len)
+             == ZLINK_CONFIG_OK
+      && std::strcmp (source_text, "ROUTER2") == 0;
     const bool shape_ok =
       rid_ok && (!source_spot_rid || source_spot_rid->size == 0)
       && request_seq == 0 && parts && part_count == 1;
@@ -156,9 +180,9 @@ bool send_router_samples (void *sender_,
         return false;
 
     zlink_routing_id_t target_rid;
-    std::memset (&target_rid, 0, sizeof (target_rid));
-    target_rid.size = 7;
-    std::memcpy (target_rid.data, "ROUTER1", target_rid.size);
+    if (zlink_routing_id_from_text (&target_rid, "ROUTER1")
+        != ZLINK_CONFIG_OK)
+        return false;
 
     const auto deadline =
       std::chrono::steady_clock::now ()

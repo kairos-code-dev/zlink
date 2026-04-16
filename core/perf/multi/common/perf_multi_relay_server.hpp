@@ -184,10 +184,14 @@ inline int run_server_benchmark (const relay_server_config_t &config,
     set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
     if (config.has_server_routing_id && config.server_routing_id) {
-        zlink_set_routing_id (
-          server,
-          config.server_routing_id,
-          std::strlen (config.server_routing_id));
+        zlink_routing_id_t rid;
+        if (zlink_routing_id_from_text (&rid, config.server_routing_id)
+            != ZLINK_CONFIG_OK) {
+            zlink_close (server);
+            return 1;
+        }
+
+        zlink_set_routing_id (server, rid.data, rid.size);
     }
 
     if (!setup_tls_server (server, transport)) {

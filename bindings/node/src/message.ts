@@ -30,6 +30,7 @@ function normalizeMessageProperties(
 const EMPTY_PROPERTIES: Readonly<Record<string, string>> = Object.freeze({});
 const EMPTY_METADATA: Readonly<Map<number, Buffer>> = Object.freeze(new Map<number, Buffer>());
 const ROUTING_ID_MAX_LENGTH = 255;
+const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
 
 interface ReplyContext {
   reply(parts: readonly Message[], flags: SendFlags): void;
@@ -175,35 +176,51 @@ export class RoutingId {
     return new RoutingId(normalizeRoutingIdBytes(bytes, 'bytes'));
   }
 
-  static fromUInt32(value: number): RoutingId {
+  static fromU32(value: number): RoutingId {
     if (!Number.isInteger(value) || value < 0 || value > 0xFFFF_FFFF) {
       throw new RangeError('value must be a uint32');
     }
     const raw = Buffer.allocUnsafe(4);
-    raw.writeUInt32LE(value >>> 0, 0);
+    raw.writeUInt32BE(value >>> 0, 0);
     return new RoutingId(raw);
   }
 
-  static fromString(value: string): RoutingId {
+  static fromUInt32(value: number): RoutingId {
+    return RoutingId.fromU32(value);
+  }
+
+  static fromText(value: string): RoutingId {
     if (typeof value !== 'string') {
       throw new TypeError('value must be a string');
     }
     return new RoutingId(normalizeRoutingIdBytes(Buffer.from(value, 'utf8'), 'value'));
   }
 
+  static fromString(value: string): RoutingId {
+    return RoutingId.fromText(value);
+  }
+
   toBytes(): Buffer {
     return Buffer.from(this._bytes);
   }
 
-  toUInt32(): number {
+  toU32(): number {
     if (this._bytes.length !== 4) {
       throw new RangeError('routing id is not a uint32-sized STREAM routing id');
     }
-    return this._bytes.readUInt32LE(0);
+    return this._bytes.readUInt32BE(0);
+  }
+
+  toUInt32(): number {
+    return this.toU32();
+  }
+
+  toText(): string {
+    return UTF8_DECODER.decode(this._bytes);
   }
 
   toPublicString(): string {
-    return this._bytes.toString('utf8');
+    return this.toText();
   }
 
   get size(): number {

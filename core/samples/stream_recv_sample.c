@@ -77,6 +77,7 @@ int main (void)
     rc = zlink_recv (server, &rid, &parts, &count, 0);
     assert (rc == 0);
     assert (rid.size > 0);
+    const uint32_t peer_id = routing_id_to_u32_checked (&rid);
     assert (count == 1);
     assert (zlink_msg_size (&parts[0]) == request_size);
     assert (memcmp (zlink_msg_data (&parts[0]), k_stream_payload,
@@ -99,8 +100,8 @@ int main (void)
     }
     assert ((size_t) received == request_size);
     assert (memcmp (response, k_stream_payload, request_size) == 0);
-    printf ("[stream/recv] send: \"%s\" → recv: \"%.*s\"\n",
-            k_stream_payload, (int) received, response);
+    printf ("[stream/recv] peer: %u send: \"%s\" → recv: \"%.*s\"\n",
+            (unsigned) peer_id, k_stream_payload, (int) received, response);
 
     close (client_fd);
     zlink_monitor_close (&server_monitor);

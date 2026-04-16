@@ -21,14 +21,18 @@ function loadNative(): NativeBinding | null {
   try {
     if (process.platform === 'linux') {
       const addonDir = path.join(packageRoot, 'build', 'Release');
+      const repoCoreDir = path.join(packageRoot, '..', '..', 'build', 'lib');
       const coreDir = path.join(packageRoot, '..', '..', 'core', 'build', 'lib');
       const coreAltDir = path.join(packageRoot, '..', 'build_cpp', 'lib');
       const addonLib = path.join(addonDir, 'libzlink.so.5');
+      const repoCoreLib = path.join(repoCoreDir, 'libzlink.so.5');
       const coreLib = path.join(coreDir, 'libzlink.so.5');
       const coreAltLib = path.join(coreAltDir, 'libzlink.so.5');
       if (!fs.existsSync(addonLib)) {
         let sourceLib: string | null = null;
-        if (fs.existsSync(coreAltLib)) {
+        if (fs.existsSync(repoCoreLib)) {
+          sourceLib = repoCoreLib;
+        } else if (fs.existsSync(coreAltLib)) {
           sourceLib = coreAltLib;
         } else if (fs.existsSync(coreLib)) {
           sourceLib = coreLib;
@@ -42,7 +46,7 @@ function loadNative(): NativeBinding | null {
         }
       }
       const existing = (process.env.LD_LIBRARY_PATH || '').split(':').filter(Boolean);
-      for (const entry of [coreAltDir, coreDir, addonDir]) {
+      for (const entry of [repoCoreDir, coreAltDir, coreDir, addonDir]) {
         if (!existing.includes(entry)) existing.unshift(entry);
       }
       process.env.LD_LIBRARY_PATH = existing.join(':');

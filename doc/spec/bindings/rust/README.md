@@ -608,10 +608,18 @@ pub struct RoutingId { /* ... */ }
 impl RoutingId {
     /// Construct from raw bytes (must be 1-255 bytes).
     pub fn from_bytes(bytes: &[u8]) -> RoutingId;
+    /// Construct a STREAM routing id from a 4-byte big-endian integer.
+    pub fn from_u32(value: u32) -> RoutingId;
+    /// Construct a text routing id from UTF-8 bytes.
+    pub fn from_text(value: &str) -> RoutingId;
     /// Borrow the raw byte view (immutable).
     pub fn as_bytes(&self) -> &[u8];
     /// Byte length (1-255).
     pub fn size(&self) -> usize;
+    /// Parse a 4-byte big-endian STREAM routing id.
+    pub fn to_u32(&self) -> Option<u32>;
+    /// Decode UTF-8 text when the bytes are valid text.
+    pub fn to_text(&self) -> Result<String, std::str::Utf8Error>;
     /// Hex-encoded convenience string.
     pub fn to_hex(&self) -> String;
 }

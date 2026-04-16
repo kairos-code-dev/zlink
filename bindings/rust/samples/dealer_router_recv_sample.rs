@@ -65,6 +65,9 @@ fn main() {
 
     let received = router.recv().expect("router recv failed");
     let sender_rid = received.routing_id().expect("missing routing id").clone();
+    let sender_text = sender_rid
+        .to_text()
+        .unwrap_or_else(|_| sender_rid.to_hex());
     assert_eq!(received.parts()[0].as_str().unwrap(), "ping");
 
     let resp = Message::copy_from(b"pong").expect("message failed");
@@ -73,7 +76,8 @@ fn main() {
     let response = dealer.recv().expect("dealer recv failed");
     assert_eq!(response.parts()[0].as_str().unwrap(), "pong");
     println!(
-        "[dealer-router/recv] send: \"ping\" → recv: \"{}\"",
+        "[dealer-router/recv] peer: \"{}\" send: \"ping\" → recv: \"{}\"",
+        sender_text,
         response.parts()[0].as_str().unwrap()
     );
 }

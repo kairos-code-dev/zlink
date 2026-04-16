@@ -357,8 +357,13 @@ inline int run_server_benchmark (const std::string &lib_name,
     set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
     if (k_server_has_routing_id) {
-        zlink_set_routing_id (
-          server, k_server_routing_id, std::strlen (k_server_routing_id));
+        zlink_routing_id_t rid;
+        if (zlink_routing_id_from_text (&rid, k_server_routing_id)
+            != ZLINK_CONFIG_OK) {
+            zlink_close (server);
+            return 1;
+        }
+        zlink_set_routing_id (server, rid.data, rid.size);
     }
 
     if (!setup_tls_server (server, transport)) {

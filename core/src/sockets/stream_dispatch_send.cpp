@@ -5,6 +5,7 @@
 #include "sockets/stream.hpp"
 #include "sockets/stream_dispatch_internal.hpp"
 #include "core/pipe.hpp"
+#include "api/routing_id_internal.hpp"
 #include "utils/err.hpp"
 
 #include <chrono>
@@ -59,20 +60,15 @@ int zlink::stream_t::stream_dispatch_send_from_io (
   size_t size_,
   int flags_)
 {
-    if (!rid_ || rid_->size != 4) {
-        errno = EINVAL;
+    uint32_t routing_id = 0;
+    if (!zlink::routing_id_internal::to_u32 (rid_, &routing_id))
         return -1;
-    }
+
     if (!data_ && size_ > 0) {
         errno = EINVAL;
         return -1;
     }
 
-    const uint32_t routing_id =
-      (static_cast<uint32_t> (rid_->data[0]) << 24)
-      | (static_cast<uint32_t> (rid_->data[1]) << 16)
-      | (static_cast<uint32_t> (rid_->data[2]) << 8)
-      | static_cast<uint32_t> (rid_->data[3]);
     if (routing_id == 0) {
         errno = EINVAL;
         return -1;
@@ -169,16 +165,15 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
   msg_t *msg_,
   int flags_)
 {
-    if (!rid_ || rid_->size != 4 || !msg_) {
+    if (!msg_) {
         errno = EINVAL;
         return -1;
     }
 
-    const uint32_t routing_id =
-      (static_cast<uint32_t> (rid_->data[0]) << 24)
-      | (static_cast<uint32_t> (rid_->data[1]) << 16)
-      | (static_cast<uint32_t> (rid_->data[2]) << 8)
-      | static_cast<uint32_t> (rid_->data[3]);
+    uint32_t routing_id = 0;
+    if (!zlink::routing_id_internal::to_u32 (rid_, &routing_id))
+        return -1;
+
     if (routing_id == 0) {
         errno = EINVAL;
         return -1;

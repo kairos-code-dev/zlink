@@ -35,7 +35,12 @@ bool setup_dealer_router_session (void *router_,
     if (!router_ || !dealer_)
         return false;
 
-    zlink_set_routing_id (dealer_, "CLIENT", 6);
+    zlink_routing_id_t rid;
+    if (zlink_routing_id_from_text (&rid, "CLIENT") != ZLINK_CONFIG_OK)
+        return false;
+
+    if (zlink_set_routing_id (dealer_, rid.data, rid.size) != 0)
+        return false;
     return setup_connected_pair (router_, dealer_, transport_, pair_id_);
 }
 

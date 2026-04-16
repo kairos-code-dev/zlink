@@ -39,6 +39,9 @@ int main (void)
     assert (rc == 0);
     assert (source_node_rid != NULL);
     assert (source_node_rid->size > 0);
+    char source_text[64];
+    routing_id_to_display_text (
+      source_node_rid, source_text, sizeof (source_text));
     assert (source_spot_rid != NULL);
     assert (source_spot_rid->size == 0);
     assert (request_seq == 0);
@@ -65,8 +68,9 @@ int main (void)
     assert (memcmp (zlink_msg_data (&echo_parts[0]), k_dealer_router_reply,
                     strlen (k_dealer_router_reply))
             == 0);
-    printf ("[dealer-router/recv] send: \"%s\" → recv: \"%.*s\"\n",
-            k_dealer_router_request, (int) zlink_msg_size (&echo_parts[0]),
+    printf ("[dealer-router/recv] peer: \"%s\" send: \"%s\" → recv: \"%.*s\"\n",
+            source_text, k_dealer_router_request,
+            (int) zlink_msg_size (&echo_parts[0]),
             (const char *) zlink_msg_data (&echo_parts[0]));
     zlink_multipart_close (echo_parts, echo_count);
 

@@ -3,13 +3,10 @@
 
 #include "perf_common.hpp"
 #include "../../common/streamclient/perf_stream_common.hpp"
-#include "../../common/streamclient/perf_stream_frame_reassembly.hpp"
 
 #include <atomic>
 #include <deque>
-#include <map>
 #include <mutex>
-#include <string>
 
 namespace perf_multi_stream {
 
@@ -90,8 +87,6 @@ struct session_t
     std::atomic<unsigned long long> pending_count;
     std::mutex pending_mutex;
     std::deque<queued_message_t> pending_queue;
-    std::mutex reassembly_mutex;
-    std::map<std::string, perf_stream_frame::buffer_t> reassembly_by_rid;
 };
 
 inline bool is_stop_payload(const unsigned char *data,
@@ -113,8 +108,6 @@ inline void reset_session(session_t *session, void *send_socket)
     session->pending_count.store(0, std::memory_order_release);
     std::lock_guard<std::mutex> lock(session->pending_mutex);
     session->pending_queue.clear();
-    std::lock_guard<std::mutex> reassembly_lock(session->reassembly_mutex);
-    session->reassembly_by_rid.clear();
 }
 
 inline void clear_session(session_t *session)
@@ -124,8 +117,6 @@ inline void clear_session(session_t *session)
     session->send_socket = NULL;
     std::lock_guard<std::mutex> lock(session->pending_mutex);
     session->pending_queue.clear();
-    std::lock_guard<std::mutex> reassembly_lock(session->reassembly_mutex);
-    session->reassembly_by_rid.clear();
 }
 
 inline size_t pending_size(session_t *session)
@@ -207,37 +198,6 @@ inline bool build_packet_frame(zlink_msg_t *packet_out,
     return true;
 }
 
-inline bool build_raw_packet_frame(zlink_msg_t *packet_out,
-                                   const unsigned char *header_data,
-                                   size_t header_size,
-                                   const unsigned char *body_data,
-                                   size_t body_size)
-{
-    if (!packet_out
-        || !perf_stream_common::perf_stream_validate_frame_sizes (header_size,
-                                                                  body_size))
-        return false;
-
-    const size_t total_size =
-      perf_stream_common::k_stream_packet_prefix_size + header_size + body_size;
-    if (zlink_msg_init_size (packet_out, total_size) != 0)
-        return false;
-
-    unsigned char *dst = static_cast<unsigned char *> (zlink_msg_data (packet_out));
-    perf_stream_common::perf_stream_store_u16_be (
-      dst, static_cast<uint16_t> (header_size));
-    perf_stream_common::perf_stream_store_u32_be (
-      dst + 2, static_cast<uint32_t> (body_size));
-    if (header_size > 0 && header_data)
-        std::memcpy (dst + perf_stream_common::k_stream_packet_prefix_size,
-                     header_data, header_size);
-    if (body_size > 0 && body_data)
-        std::memcpy (dst + perf_stream_common::k_stream_packet_prefix_size
-                       + header_size,
-                     body_data, body_size);
-    return true;
-}
-
 inline send_result_t try_send_packet_now(void *stream_socket,
                                          const zlink_routing_id_t *rid,
                                          zlink_msg_t *packet)
@@ -292,99 +252,6 @@ inline bool handle_packet_message(session_t *session,
     const bool queued = enqueue_packet_message(session, rid, &packet);
     (void) zlink_msg_close(&packet);
     return queued;
-}
-
-inline std::string routing_id_key (const zlink_routing_id_t *rid)
-{
-    if (!rid)
-        return std::string ();
-    return std::string (reinterpret_cast<const char *> (rid->data),
-                        reinterpret_cast<const char *> (rid->data) + rid->size);
-}
-
-inline bool is_stream_event_payload (const unsigned char *data, size_t size)
-{
-    return data && size == 1 && (data[0] == 0x00 || data[0] == 0x01);
-}
-
-inline bool handle_raw_frame(session_t *session,
-                             void *stream_socket,
-                             const zlink_routing_id_t *rid,
-                             const perf_stream_frame::frame_view_t &frame,
-                             const char *stop_token)
-{
-    if (!session || !stream_socket || !rid)
-        return false;
-
-    if (!perf_stream_common::perf_stream_is_msg_name (frame.header,
-                                                      frame.header_size)) {
-        errno = EPROTO;
-        return false;
-    }
-
-    if (is_stop_payload (frame.payload, frame.payload_size, stop_token)) {
-        perf_stop_requested ().store (true, std::memory_order_release);
-        return true;
-    }
-
-    session->recv_count.fetch_add (1, std::memory_order_relaxed);
-    zlink_msg_t packet;
-    if (!build_raw_packet_frame (&packet, frame.header, frame.header_size,
-                                 frame.payload, frame.payload_size)) {
-        return false;
-    }
-
-    const send_result_t send_rc = try_send_packet_now (stream_socket, rid, &packet);
-    if (send_rc == send_result_sent) {
-        session->send_count.fetch_add (1, std::memory_order_relaxed);
-        (void) zlink_msg_close (&packet);
-        return true;
-    }
-    if (send_rc != send_result_pending) {
-        (void) zlink_msg_close (&packet);
-        return false;
-    }
-
-    const bool queued = enqueue_packet_message (session, rid, &packet);
-    (void) zlink_msg_close (&packet);
-    return queued;
-}
-
-inline bool handle_raw_stream_chunk(session_t *session,
-                                    void *stream_socket,
-                                    const zlink_routing_id_t *rid,
-                                    zlink_msg_t *msg_part,
-                                    const char *stop_token)
-{
-    if (!session || !stream_socket || !rid || !msg_part)
-        return false;
-
-    const unsigned char *chunk =
-      static_cast<const unsigned char *> (zlink_msg_data (msg_part));
-    const size_t chunk_size = zlink_msg_size (msg_part);
-    if (chunk_size == 0 || is_stream_event_payload (chunk, chunk_size))
-        return true;
-
-    const std::string key = routing_id_key (rid);
-    std::lock_guard<std::mutex> lock (session->reassembly_mutex);
-    perf_stream_frame::buffer_t &buffer = session->reassembly_by_rid[key];
-    perf_stream_frame::append (&buffer, chunk, chunk_size);
-
-    if (perf_stream_frame::has_invalid_declared_size (&buffer)) {
-        perf_stream_frame::reset (&buffer);
-        errno = EMSGSIZE;
-        return false;
-    }
-
-    perf_stream_frame::frame_view_t frame;
-    while (perf_stream_frame::try_peek (&buffer, &frame)) {
-        if (!handle_raw_frame (session, stream_socket, rid, frame, stop_token))
-            return false;
-        perf_stream_frame::consume (&buffer, frame);
-        perf_stream_frame::compact (&buffer);
-    }
-
-    return true;
 }
 
 inline void drain_pending(session_t *session)

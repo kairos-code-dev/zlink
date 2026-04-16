@@ -17,14 +17,6 @@ pub enum SendResult {
 }
 
 impl SendResult {
-    pub(crate) fn from_raw(raw: crate::ffi::zlink_send_result_t) -> Self {
-        match raw {
-            crate::ffi::zlink_send_result_t::ZLINK_SEND_RESULT_SENT => Self::Sent,
-            crate::ffi::zlink_send_result_t::ZLINK_SEND_RESULT_BACKPRESSURED => Self::Backpressured,
-            crate::ffi::zlink_send_result_t::ZLINK_SEND_RESULT_NOT_READY => Self::NotReady,
-        }
-    }
-
     pub fn is_sent(&self) -> bool {
         matches!(self, Self::Sent)
     }
@@ -96,20 +88,6 @@ impl Received {
             routing_id,
             spot_rid: None,
             request_seq: None,
-            parts,
-            reply_context: None,
-        }
-    }
-
-    pub(crate) fn with_request_seq(
-        routing_id: Option<RoutingId>,
-        parts: Vec<Message>,
-        request_seq: u64,
-    ) -> Self {
-        Self {
-            routing_id,
-            spot_rid: None,
-            request_seq: Some(request_seq),
             parts,
             reply_context: None,
         }

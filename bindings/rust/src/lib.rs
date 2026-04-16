@@ -65,7 +65,7 @@ pub use service::{
     AdmissionState, Discovery, DiscoveryDealerPeerMode, MemberPeerEntry, Registry, RegistryQueryClient,
     RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryState, RegistryStatus,
     RegistryTopologyEntry, RegistryTopologyFilter, ServiceKind, ServiceRole, ServiceType, Spot,
-    SpotDispatchEvent, SpotNode, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeState,
+    SpotDispatchContext, SpotDispatchEvent, SpotNode, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeState,
     SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter, SpotPeerSource, SpotPeerState,
     SpotRole, SpotServiceAttachmentRole, SpotServiceAttachmentStats, SpotServiceMonitorEvent,
     TopologySource, TopologyState,

@@ -28,7 +28,7 @@ HTTP나 gRPC를 쓰던 감각에 가깝게 zlink 기반 서버 간 메시징을 
   `RegistryQueryClient`를 함께 활용할 수 있어야 한다.
 - 서비스 묶음은 `service_name` 기준으로 본다.
 - 위치투명성과 provider 선택을 위해 별도 gateway나 전용 로드밸런서를 먼저 두는
-  모델보다, `service_name + Discovery + client-side selection`만으로 직접
+  모델보다, `service_name + service별 Discovery channel`만으로 직접
   location-transparent 호출이 가능해야 한다.
 - `SPOT`은 pub/sub만이 아니라 routed send/request/reply도 가능한 기반으로
   보고, framework 표면에서 어디까지 올릴지는 별도 초안으로 좁힌다.

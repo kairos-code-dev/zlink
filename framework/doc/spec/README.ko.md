@@ -13,12 +13,13 @@
 영역을 위한 문서 자리다.
 
 이 계층이 노리는 중요한 장점 하나는, 일반적인 웹 서버 환경에서 위치투명성과
-provider 선택을 위해 흔히 두는 별도 gateway나 전용 로드밸런서 없이도
+service 단위 직접 호출을 위해 흔히 두는 별도 gateway나 전용 로드밸런서 없이도
 `service_name` 기준으로 직접 호출할 수 있다는 점이다.
 
-즉 provider 위치는 Discovery가 숨기고, provider 선택은 adapter 쪽의
-client-side policy가 맡는다. 응용은 gateway 주소나 load balancer 주소보다
-논리 서비스 이름을 기준으로 요청을 보낸다.
+즉 응용은 gateway 주소나 load balancer 주소보다 논리 서비스 이름을 기준으로
+요청을 보낸다. framework runtime은 접근하는 service마다 별도 channel을 두고,
+그 channel이 해당 service view의 `Discovery`와 outbound socket을 관리하는
+방향을 기본으로 본다.
 
 현재 초안은 아래 공개 기반 기능을 전제로 설명한다.
 

@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -36,6 +37,22 @@ public final class RoutingId {
             throw new IndexOutOfBoundsException("value range out of bounds");
         validateLength(length);
         return new RoutingId(Arrays.copyOfRange(value, offset, offset + length));
+    }
+
+    public static RoutingId fromUInt32(int value) {
+        byte[] bytes = new byte[Integer.BYTES];
+        bytes[0] = (byte) (value >>> 24);
+        bytes[1] = (byte) (value >>> 16);
+        bytes[2] = (byte) (value >>> 8);
+        bytes[3] = (byte) value;
+        return new RoutingId(bytes);
+    }
+
+    public static RoutingId fromUtf8(String value) {
+        Objects.requireNonNull(value, "value");
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        validateLength(bytes.length);
+        return new RoutingId(bytes);
     }
 
     private static void validateLength(int length) {
@@ -76,6 +93,21 @@ public final class RoutingId {
             out.append(Character.forDigit(b & 0xF, 16));
         }
         return out.toString();
+    }
+
+    public String utf8() {
+        return new String(value, StandardCharsets.UTF_8);
+    }
+
+    public int toUInt32() {
+        if (value.length != Integer.BYTES) {
+            throw new IllegalStateException(
+                "routing id is not a 4-byte STREAM id");
+        }
+        return ((value[0] & 0xFF) << 24)
+            | ((value[1] & 0xFF) << 16)
+            | ((value[2] & 0xFF) << 8)
+            | (value[3] & 0xFF);
     }
 
     @Override

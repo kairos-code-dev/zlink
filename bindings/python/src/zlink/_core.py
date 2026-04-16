@@ -685,8 +685,27 @@ class RoutingId:
     def from_bytes(cls, data):
         return cls(data)
 
+    @classmethod
+    def from_uint32(cls, value):
+        native = ctypes.c_uint32(int(value))
+        return cls(ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native)))
+
+    @classmethod
+    def from_string(cls, value):
+        if not isinstance(value, str):
+            raise TypeError("value must be a string")
+        return cls(value.encode("utf-8"))
+
     def to_bytes(self):
         return self._raw
+
+    def to_uint32(self):
+        if len(self._raw) != ctypes.sizeof(ctypes.c_uint32):
+            raise ValueError("routing id is not a uint32-sized STREAM routing id")
+        return ctypes.c_uint32.from_buffer_copy(self._raw).value
+
+    def to_public_string(self):
+        return self._raw.decode("utf-8")
 
     @property
     def size(self):

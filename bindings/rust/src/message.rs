@@ -213,6 +213,14 @@ impl RoutingId {
         Self { raw }
     }
 
+    pub fn from_u32(value: u32) -> Self {
+        Self::from_bytes(&value.to_le_bytes())
+    }
+
+    pub fn from_utf8(value: &str) -> Self {
+        Self::from_bytes(value.as_bytes())
+    }
+
     pub(crate) fn new(data: &[u8]) -> Result<Self, ConfigError> {
         if data.is_empty() || data.len() > Self::MAX_LEN {
             return Err(config_validation_error());
@@ -250,6 +258,18 @@ impl RoutingId {
             let _ = write!(&mut out, "{byte:02x}");
         }
         out
+    }
+
+    pub fn to_u32(&self) -> Option<u32> {
+        let bytes = self.as_bytes();
+        if bytes.len() != 4 {
+            return None;
+        }
+        Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+
+    pub fn to_public_string(&self) -> Result<String, std::string::FromUtf8Error> {
+        String::from_utf8(self.as_bytes().to_vec())
     }
 
     /// Borrow the underlying FFI struct.

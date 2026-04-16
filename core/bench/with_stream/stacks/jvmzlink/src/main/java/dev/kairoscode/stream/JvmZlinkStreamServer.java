@@ -1,17 +1,12 @@
 package dev.kairoscode.stream;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.Received;
-import dev.kairoscode.zlink.RecvException;
-import dev.kairoscode.zlink.RecvResult;
-import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.StreamSocket;
+import dev.kairoscode.zlink.StreamUInt32FramedBufferHandler;
 import java.time.Duration;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -21,6 +16,8 @@ public final class JvmZlinkStreamServer {
     private static final int MAX_PAYLOAD_SIZE = 4 * 1024 * 1024;
     private static final int PREFIX_SIZE = 6;
     private static final byte[] MSG_NAME = "stream.echo".getBytes(StandardCharsets.US_ASCII);
+    private static final ThreadLocal<ByteBuffer> REPLY_SCRATCH =
+        ThreadLocal.withInitial(() -> ByteBuffer.allocateDirect(4096));
 
     private JvmZlinkStreamServer() {
     }
@@ -94,34 +91,6 @@ public final class JvmZlinkStreamServer {
         final AtomicLong sendError = new AtomicLong();
     }
 
-    private static final class BufferState {
-        byte[] data = new byte[0];
-        int size = 0;
-
-        void append(byte[] chunk) {
-            int needed = size + chunk.length;
-            if (data.length < needed)
-                data = Arrays.copyOf(data, Math.max(needed, Math.max(64, data.length * 2)));
-            System.arraycopy(chunk, 0, data, size, chunk.length);
-            size = needed;
-        }
-
-        void consume(int count) {
-            if (count <= 0)
-                return;
-            if (count >= size) {
-                size = 0;
-                return;
-            }
-            System.arraycopy(data, count, data, 0, size - count);
-            size -= count;
-        }
-
-        void clear() {
-            size = 0;
-        }
-    }
-
     private static String endpoint(String host, int port) {
         return "tcp://" + host + ":" + port;
     }
@@ -143,77 +112,45 @@ public final class JvmZlinkStreamServer {
             server.options().recvTimeout(Duration.ofMillis(200));
             server.options().tcpNoDelay(opt.tcpNoDelay != 0);
             server.bind(endpoint(opt.host, opt.port));
-            final Map<RoutingId, BufferState> buffers = new HashMap<>();
+            server.onFramedPacketView((StreamUInt32FramedBufferHandler) (routingId,
+                header, body) -> {
+                int headerSize = header.remaining();
+                if (headerSize != MSG_NAME.length || !matchesHeader(header)) {
+                    metrics.parseError.incrementAndGet();
+                    metrics.protocolError.incrementAndGet();
+                    return;
+                }
+
+                int bodySize = body.remaining();
+                if (bodySize < MIN_PAYLOAD_SIZE || bodySize > MAX_PAYLOAD_SIZE) {
+                    metrics.parseError.incrementAndGet();
+                    metrics.protocolError.incrementAndGet();
+                    return;
+                }
+
+                int totalSize = PREFIX_SIZE + headerSize + bodySize;
+                ByteBuffer reply = ensureScratchCapacity(totalSize);
+                reply.clear();
+                reply.put((byte) (headerSize >> 8));
+                reply.put((byte) headerSize);
+                reply.put((byte) (bodySize >> 24));
+                reply.put((byte) (bodySize >> 16));
+                reply.put((byte) (bodySize >> 8));
+                reply.put((byte) bodySize);
+                reply.put(MSG_NAME);
+                reply.put(body.duplicate());
+                reply.flip();
+                metrics.recvMsgs.incrementAndGet();
+                try {
+                    server.send(routingId, reply, SendFlags.DONT_WAIT);
+                } catch (RuntimeException ex) {
+                    metrics.sendError.incrementAndGet();
+                }
+            });
 
             Runtime.getRuntime().addShutdownHook(shutdownHook);
             while (!stop.get()) {
-                try (Received received = server.recv()) {
-                    RoutingId routingId = received.routingId().orElse(null);
-                    if (routingId == null || !received.isSinglePart())
-                        continue;
-
-                    byte[] chunk = received.singlePartOrThrow().toByteArray();
-                    int payloadSize = chunk.length;
-                    if (payloadSize <= 0)
-                        continue;
-
-                    synchronized (buffers) {
-                        BufferState buffer = buffers.computeIfAbsent(routingId,
-                                unused -> new BufferState());
-                        buffer.append(chunk);
-
-                        while (true) {
-                            if ((buffer.size) < PREFIX_SIZE)
-                                break;
-                            int headerSize = ((buffer.data[0] & 0xFF) << 8)
-                                             | (buffer.data[1] & 0xFF);
-                            int bodySize = ((buffer.data[2] & 0xFF) << 24)
-                                           | ((buffer.data[3] & 0xFF) << 16)
-                                           | ((buffer.data[4] & 0xFF) << 8)
-                                           | (buffer.data[5] & 0xFF);
-                            if (headerSize != MSG_NAME.length
-                                || bodySize < MIN_PAYLOAD_SIZE
-                                || bodySize > MAX_PAYLOAD_SIZE) {
-                                metrics.parseError.incrementAndGet();
-                                metrics.protocolError.incrementAndGet();
-                                buffer.clear();
-                                break;
-                            }
-
-                            int total = PREFIX_SIZE + headerSize + bodySize;
-                            if (buffer.size < total)
-                                break;
-
-                            boolean headerMatch = true;
-                            for (int i = 0; i < MSG_NAME.length; i++) {
-                                if (buffer.data[PREFIX_SIZE + i] != MSG_NAME[i]) {
-                                    headerMatch = false;
-                                    break;
-                                }
-                            }
-                            if (!headerMatch) {
-                                metrics.parseError.incrementAndGet();
-                                metrics.protocolError.incrementAndGet();
-                                buffer.clear();
-                                break;
-                            }
-
-                            metrics.recvMsgs.incrementAndGet();
-                            try (Message reply = Message.copyOf(buffer.data, 0, total)) {
-                                server.send(routingId, reply);
-                            } catch (Throwable t) {
-                                metrics.sendError.incrementAndGet();
-                                buffer.clear();
-                                break;
-                            }
-                            buffer.consume(total);
-                        }
-                    }
-                } catch (RecvException ex) {
-                    if (ex.getResult() == RecvResult.NO_DATA)
-                        continue;
-                    throw ex;
-                }
+                stopped.await();
             }
             return 0;
         } catch (Throwable t) {
@@ -253,5 +190,28 @@ public final class JvmZlinkStreamServer {
           0);
         if (rc != 0)
             System.exit(rc);
+    }
+
+    private static boolean matchesHeader(ByteBuffer header) {
+        if (header.remaining() != MSG_NAME.length)
+            return false;
+        ByteBuffer scratch = header.duplicate();
+        for (int i = 0; i < MSG_NAME.length; i++) {
+            if (scratch.get(i) != MSG_NAME[i])
+                return false;
+        }
+        return true;
+    }
+
+    private static ByteBuffer ensureScratchCapacity(int required) {
+        ByteBuffer current = REPLY_SCRATCH.get();
+        if (current.capacity() >= required)
+            return current;
+        int next = current.capacity();
+        while (next < required)
+            next *= 2;
+        current = ByteBuffer.allocateDirect(next);
+        REPLY_SCRATCH.set(current);
+        return current;
     }
 }

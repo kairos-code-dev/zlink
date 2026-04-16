@@ -28,6 +28,19 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         return new RoutingId(bytes, takeOwnership: false);
     }
 
+    public static RoutingId FromUInt32(uint value)
+    {
+        return new RoutingId(
+            RoutingIdCodec.FromUInt32(value), takeOwnership: true);
+    }
+
+    public static RoutingId FromString(string value)
+    {
+        return new RoutingId(
+            RoutingIdCodec.FromPublicString(value, nameof(value)),
+            takeOwnership: true);
+    }
+
     public int Size => _bytes?.Length ?? 0;
 
     public bool IsEmpty => Size == 0;
@@ -45,6 +58,16 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     public string ToHex()
     {
         return Convert.ToHexString(ToBytes()).ToLowerInvariant();
+    }
+
+    public bool TryToUInt32(out uint value)
+    {
+        return RoutingIdCodec.TryToUInt32(ToBytes(), out value);
+    }
+
+    public string ToPublicString()
+    {
+        return RoutingIdCodec.ToPublicString(ToBytes());
     }
 
     public override string ToString()

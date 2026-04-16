@@ -10,22 +10,43 @@
 
 `ZLink Framework`는 zlink 바인딩 위에 올라가서, 기존 애플리케이션 프레임워크에서
 **gateway나 전용 로드밸런서 없이도** `service_name` 기준의 직접 서비스 호출,
-pub/sub, service discovery를 사용할 수 있게 하는 상위 계층이다.
+pub/sub, `SPOT`, `STREAM`, service discovery를 사용할 수 있게 하는 상위
+계층이다.
 
 ## 2. 무엇을 제공하는가
 
 `ZLink Framework`는 아래 기능을 하나의 방향으로 묶는다.
 
-- direct service call
-- pub/sub messaging
+- server-to-server send/request
+- router-to-router integration
+- pub/sub integration
+- spot integration
+- stream integration
 - service discovery
 - registry topology inspection
-- spot routed request/reply
-- client-side provider selection
+- service별 discovery channel
 - framework-friendly handler / client / event API
 
 즉 raw socket과 low-level discovery를 프레임워크 사용자가 직접 다루지 않고도,
 기존 HTTP나 gRPC를 쓰던 감각에 가까운 개발 모델을 제공하는 것이 목표다.
+다만 내부에서 무엇을 쓰는지는 숨기더라도, framework가 실제로 통합할 transport
+축 자체는 명확해야 한다.
+
+현재 이 초안은 아래 네 축을 직접 통합 대상으로 본다.
+
+1. `ROUTER <-> ROUTER`
+2. `SPOT`
+3. `PUB/SUB`
+4. `STREAM`
+
+그리고 그 위에 사용자 경험은 아래처럼 다시 올린다.
+
+- 서버 간 `send`
+- 서버 간 `request`
+- pub/sub
+- `spot <-> spot`
+- `spot <-> server(router)`
+- stream handler
 
 ## 3. 핵심 차별점
 
@@ -39,8 +60,9 @@ pub/sub, service discovery를 사용할 수 있게 하는 상위 계층이다.
 `ZLink Framework`는 이와 다른 방향을 기본으로 본다.
 
 - 호출자는 gateway 주소 대신 `service_name`을 기준으로 요청한다.
-- Discovery가 provider 위치를 숨긴다.
-- `ZLink Framework`가 client-side policy로 provider를 선택한다.
+- framework runtime이 service마다 별도 channel을 만든다.
+- Discovery가 그 service view 안의 provider 위치를 숨긴다.
+- framework는 그 channel 안의 `rid` 집합과 연결 상태를 기준으로 요청을 보낸다.
 - 요청은 중간 gateway 없이 provider로 직접 간다.
 
 즉 "위치투명성을 얻으려면 반드시 gateway를 거쳐야 한다"는 전제를 두지 않는다.
@@ -85,18 +107,18 @@ pub/sub, service discovery를 사용할 수 있게 하는 상위 계층이다.
 - request-response
 - command
 - publish-subscribe
-- worker-dispatch
+- stream
 
 고급 조합 모델은 아래처럼 후속으로 다룬다.
 
+- worker-dispatch
 - scatter-gather
 - workflow orchestration
-- stream
 
-다만 이 말이 raw `STREAM` 기반 기능이 전혀 없다는 뜻은 아니다. 현재
-`core`와 `bindings`에는 packet framing을 돕는 stream packet callback 표면이
-이미 있으며, `ZLink Framework`는 그것을 일반 업무 API의 중심에 놓기보다
-필요한 프레임워크에서 제한된 저수준 확장 지점으로 다루는 편을 기본으로 본다.
+여기서 `stream`은 더 이상 단순 후순위 참고 항목이 아니다. 현재 방향에서는
+`STREAM`도 네 가지 직접 통합 축 중 하나다. 다만 `send/request`처럼 모든
+프레임워크의 기본 업무 API로 똑같이 보이게 하기보다, 연결 수명과 packet 처리
+성격을 드러내는 별도 handler 모델로 설명하는 편을 기본으로 본다.
 
 ## 7. 현재 문서와의 연결
 
@@ -105,7 +127,7 @@ pub/sub, service discovery를 사용할 수 있게 하는 상위 계층이다.
 | [README.ko.md](./README.ko.md) | `ZLink Framework` 초안 묶음 진입점 |
 | [interaction-model.ko.md](./interaction-model.ko.md) | 상호작용 모델 정리 |
 | [message-model.ko.md](./message-model.ko.md) | `header + body` 메시지 초안 |
-| [service-topology.ko.md](./service-topology.ko.md) | service name, Discovery, provider selection |
+| [service-topology.ko.md](./service-topology.ko.md) | service name, Discovery, service channel |
 | [framework-api.ko.md](./framework-api.ko.md) | 프레임워크별 API 표면 방향 |
 | [use-cases/README.ko.md](./use-cases/README.ko.md) | use case 목록 |
 | [usecase-validation.ko.md](./usecase-validation.ko.md) | use case 충족 여부 점검 |

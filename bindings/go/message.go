@@ -11,6 +11,7 @@ import "C"
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"hash/fnv"
 	"strings"
@@ -32,12 +33,33 @@ func NewRoutingID(data []byte) RoutingID {
 	return RoutingID{data: cloned}
 }
 
+func RoutingIDFromString(value string) RoutingID {
+	return NewRoutingID([]byte(value))
+}
+
+func RoutingIDFromUInt32(value uint32) RoutingID {
+	var raw [4]byte
+	binary.LittleEndian.PutUint32(raw[:], value)
+	return NewRoutingID(raw[:])
+}
+
 func (r RoutingID) Bytes() []byte {
 	return append([]byte(nil), r.data...)
 }
 
 func (r RoutingID) Size() int {
 	return len(r.data)
+}
+
+func (r RoutingID) UInt32() (uint32, bool) {
+	if len(r.data) != 4 {
+		return 0, false
+	}
+	return binary.LittleEndian.Uint32(r.data), true
+}
+
+func (r RoutingID) UTF8() string {
+	return string(r.data)
 }
 
 func (r RoutingID) Hash() uint64 {

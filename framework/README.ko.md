@@ -7,6 +7,8 @@
 
 이 계층의 목표는 아래와 같다.
 
+- framework가 직접 통합할 축을 `ROUTER <-> ROUTER`, `SPOT`, `PUB/SUB`,
+  `STREAM` 네 가지로 좁힌다.
 - `ASP.NET Core`, `Spring`, `NestJS` 같은 기존 애플리케이션 프레임워크에
   zlink 기반 서버 간 메시징을 자연스럽게 붙인다.
 - 프레임워크 사용자가 raw socket이나 low-level discovery 설정보다

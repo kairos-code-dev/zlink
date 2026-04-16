@@ -10,7 +10,7 @@ package zlink
 extern void goZlinkSubscribeTrampoline(zlink_routing_id_t *source_rid_, char *topic_, size_t topic_len_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 extern void goZlinkSendReadyTrampoline(void *subject_, uintptr_t userdata_);
 extern void goZlinkSpotRoutedTrampoline(zlink_routing_id_t *source_node_rid_, zlink_routing_id_t *source_spot_rid_, uint64_t request_seq_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
-extern void goZlinkSpotDispatchEventTrampoline(zlink_spot_dispatch_event_t event_, uintptr_t userdata_);
+extern void goZlinkSpotDispatchEventTrampoline(void *spot_, zlink_spot_dispatch_event_t event_, uintptr_t userdata_);
 extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 
 static inline int zlink_spot_send_ready_handler_go_local(void *s, uintptr_t userdata) {

@@ -105,6 +105,95 @@ func TestSubSubscribeEmpty(t *testing.T) {
 	}
 }
 
+func TestSpotDispatchCallbackCanSubscribe(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	node, err := ctx.SpotNode()
+	if err != nil {
+		t.Fatalf("SpotNode() error = %v", err)
+	}
+	defer node.Close()
+	spot, err := node.Spot()
+	if err != nil {
+		t.Fatalf("Spot() error = %v", err)
+	}
+	defer spot.Close()
+
+	pubSocket, err := ctx.PubSocket()
+	if err != nil {
+		t.Fatalf("PubSocket() error = %v", err)
+	}
+	defer pubSocket.Close()
+	subSocket, err := ctx.SubSocket()
+	if err != nil {
+		t.Fatalf("SubSocket() error = %v", err)
+	}
+	defer subSocket.Close()
+	serviceEndpoint := tcpEndpoint(t)
+	if err := pubSocket.Bind(serviceEndpoint); err != nil {
+		t.Fatalf("PubSocket.Bind() error = %v", err)
+	}
+	if err := subSocket.Connect(serviceEndpoint); err != nil {
+		t.Fatalf("SubSocket.Connect() error = %v", err)
+	}
+	var attachErr error
+	waitUntil(t, 5*time.Second, "spot service attachment", func() bool {
+		attachErr = node.AttachPubSub("sample", pubSocket, subSocket)
+		return attachErr == nil
+	})
+	if err := spot.SetSubscription("room:lobby"); err != nil {
+		t.Fatalf("SetSubscription() error = %v", err)
+	}
+
+	type result struct {
+		service string
+		topic   string
+		payload string
+		err     error
+	}
+	delivered := make(chan result, 1)
+	if err := spot.OnDispatchEvent(func(event zlink.SpotDispatchEvent) {
+		if event != zlink.SpotDispatchEventSubscribeReadable {
+			return
+		}
+		message, err := spot.Subscribe(zlink.RecvFlagsDontWait)
+		if err != nil {
+			delivered <- result{err: err}
+			return
+		}
+		defer message.Close()
+		part, err := message.SinglePartOrError()
+		if err != nil {
+			delivered <- result{err: err}
+			return
+		}
+		delivered <- result{
+			service: message.ServiceName(),
+			topic:   message.Topic(),
+			payload: string(part.Data()),
+		}
+	}); err != nil {
+		t.Fatalf("OnDispatchEvent() error = %v", err)
+	}
+
+	if err := spot.Publish("sample", "room:lobby", zlink.SendFlagsNone, newMessage(t, "hello-spot")); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+
+	select {
+	case got := <-delivered:
+		if got.err != nil {
+			t.Fatalf("dispatch callback subscribe error = %v", got.err)
+		}
+		if got.service != "sample" || got.topic != "room:lobby" || got.payload != "hello-spot" {
+			t.Fatalf("unexpected callback delivery = %#v", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("dispatch callback did not deliver within 5s")
+	}
+}
+
 func TestDealerRouterRoundTrip(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()

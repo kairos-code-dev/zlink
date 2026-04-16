@@ -34,8 +34,8 @@
 여기서 중요한 차별점은 위치투명성을 위해 별도 gateway를 강제하지 않는다는
 점이다. 기존 웹 시스템에서는 서비스 주소를 숨기기 위해 gateway를 두는 경우가
 많고, provider 선택을 위해 전용 load balancer를 앞단에 두기도 한다.
-현재 방향에서는 `service_name`, Discovery, adapter의 client-side selection만으로
-직접 location-transparent 호출이 가능해야 한다.
+현재 방향에서는 `service_name`과 service별 `Discovery` channel만으로 직접
+location-transparent 호출이 가능해야 한다.
 
 ## 3. 필요한 능력
 
@@ -43,7 +43,7 @@
 - 서비스 이름 기반 대상 선택
 - 수동 연결과 Discovery 연결 둘 다 지원
 - gateway나 전용 로드밸런서 없이도 위치투명 호출 가능
-- adapter 쪽 provider selection
+- service별 channel 내부의 `rid` 집합 관리
 - timeout, correlation, deadline 전달
 - 공통 에러 모델
 - codec 교체
@@ -53,7 +53,7 @@
 
 1. 애플리케이션이 `profile-service` client를 DI로 받는다.
 2. client가 `profile.get` 요청을 header + body 메시지로 만든다.
-3. `ZLink Framework`가 `profile-service`에 속한 provider 중 하나를 고른다.
+3. `ZLink Framework`가 `profile-service` 전용 channel을 통해 요청을 보낸다.
 4. 서버 handler가 요청을 처리한다.
 5. 응답 또는 에러가 같은 상관관계 정보와 함께 돌아온다.
 

@@ -1442,9 +1442,14 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         Action<SpotDispatchEvent>? handler = _dispatchEventHandler;
         if (handler == null)
             return;
-
-        CallbackDelivery.Post(_dispatchEventHandlerContext,
-            () => handler((SpotDispatchEvent)@event));
+        try
+        {
+            handler((SpotDispatchEvent)@event);
+        }
+        catch (Exception ex)
+        {
+            Runtime.ReportUnhandledCallbackException(ex);
+        }
     }
 
     private static void OnRoutedReply(int result, IntPtr parts, nuint partCount,

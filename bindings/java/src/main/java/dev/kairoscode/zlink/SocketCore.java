@@ -21,6 +21,7 @@ import java.lang.invoke.MethodType;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -39,6 +40,9 @@ final class SocketCore {
     private static final FunctionDescriptor FD_STREAM_RAW_CALLBACK =
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+    private static final FunctionDescriptor FD_STREAM_PACKET_CALLBACK =
+      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
 
     /**
      * Tracks whether the current thread is executing inside a native callback
@@ -71,11 +75,17 @@ final class SocketCore {
     private SubscribeHandler subscribeHandler;
     private SendReadyHandler sendReadyHandler;
     private StreamPacketHandler streamPacketHandler;
+    private StreamFramedPacketHandler streamFramedPacketHandler;
+    private StreamUInt32FramedPacketHandler streamUInt32FramedPacketHandler;
+    private StreamUInt32FramedBufferHandler streamUInt32FramedBufferHandler;
     private volatile ExecutorService callbackExecutor;
     private Arena receiveCallbackArena;
     private Arena subscribeCallbackArena;
     private Arena sendReadyCallbackArena;
     private Arena streamRawCallbackArena;
+    private Arena streamPacketCallbackArena;
+    private final ConcurrentHashMap<Integer, RoutingId> routingIdCache =
+      new ConcurrentHashMap<>();
     private volatile RuntimeException callbackFailure;
 
     SocketCore(Socket socket) {
@@ -392,14 +402,133 @@ final class SocketCore {
         }
     }
 
+    void attachStreamPacket(StreamFramedPacketHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        ensureOpen();
+        ensureNoCallbackFailure();
+        ExecutorService executor = callbackExecutor;
+        boolean createdExecutor = false;
+        if (executor == null) {
+            executor = newCallbackExecutor();
+            callbackExecutor = executor;
+            createdExecutor = true;
+        }
+        Arena arena = Arena.ofShared();
+        MemorySegment stub = LINKER.upcallStub(callbackHandle(
+            "handleStreamPacketCallback",
+            MethodType.methodType(void.class, MemorySegment.class,
+                MemorySegment.class, MemorySegment.class,
+                MemorySegment.class, MemorySegment.class)),
+            FD_STREAM_PACKET_CALLBACK, arena);
+        boolean success = false;
+        try {
+            int rc = Native.streamPacketHandler(socket.handle(), stub);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_stream_packet_handler");
+            success = true;
+            closeArena(streamPacketCallbackArena);
+            streamPacketCallbackArena = arena;
+            streamFramedPacketHandler = handler;
+        } finally {
+            if (!success) {
+                if (createdExecutor) {
+                    callbackExecutor = null;
+                    shutdownExecutor(executor);
+                }
+                closeArena(arena);
+            }
+        }
+    }
+
+    void attachStreamPacket(StreamUInt32FramedPacketHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        ensureOpen();
+        ensureNoCallbackFailure();
+        ExecutorService executor = callbackExecutor;
+        boolean createdExecutor = false;
+        if (executor == null) {
+            executor = newCallbackExecutor();
+            callbackExecutor = executor;
+            createdExecutor = true;
+        }
+        Arena arena = Arena.ofShared();
+        MemorySegment stub = LINKER.upcallStub(callbackHandle(
+            "handleStreamPacketUInt32Callback",
+            MethodType.methodType(void.class, MemorySegment.class,
+                MemorySegment.class, MemorySegment.class,
+                MemorySegment.class, MemorySegment.class)),
+            FD_STREAM_PACKET_CALLBACK, arena);
+        boolean success = false;
+        try {
+            int rc = Native.streamPacketHandler(socket.handle(), stub);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_stream_packet_handler");
+            success = true;
+            closeArena(streamPacketCallbackArena);
+            streamPacketCallbackArena = arena;
+            streamUInt32FramedPacketHandler = handler;
+        } finally {
+            if (!success) {
+                if (createdExecutor) {
+                    callbackExecutor = null;
+                    shutdownExecutor(executor);
+                }
+                closeArena(arena);
+            }
+        }
+    }
+
+    void attachStreamPacket(StreamUInt32FramedBufferHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        ensureOpen();
+        ensureNoCallbackFailure();
+        ExecutorService executor = callbackExecutor;
+        boolean createdExecutor = false;
+        if (executor == null) {
+            executor = newCallbackExecutor();
+            callbackExecutor = executor;
+            createdExecutor = true;
+        }
+        Arena arena = Arena.ofShared();
+        MemorySegment stub = LINKER.upcallStub(callbackHandle(
+            "handleStreamPacketUInt32BufferCallback",
+            MethodType.methodType(void.class, MemorySegment.class,
+                MemorySegment.class, MemorySegment.class,
+                MemorySegment.class, MemorySegment.class)),
+            FD_STREAM_PACKET_CALLBACK, arena);
+        boolean success = false;
+        try {
+            int rc = Native.streamPacketHandler(socket.handle(), stub);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_stream_packet_handler");
+            success = true;
+            closeArena(streamPacketCallbackArena);
+            streamPacketCallbackArena = arena;
+            streamUInt32FramedBufferHandler = handler;
+        } finally {
+            if (!success) {
+                if (createdExecutor) {
+                    callbackExecutor = null;
+                    shutdownExecutor(executor);
+                }
+                closeArena(arena);
+            }
+        }
+    }
+
     void detachStream() {
         ensureOpen();
         int rc = Native.streamDetach(socket.handle());
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_stream_detach");
         streamPacketHandler = null;
+        streamFramedPacketHandler = null;
+        streamUInt32FramedPacketHandler = null;
+        streamUInt32FramedBufferHandler = null;
         closeArena(streamRawCallbackArena);
+        closeArena(streamPacketCallbackArena);
         streamRawCallbackArena = null;
+        streamPacketCallbackArena = null;
     }
 
     void close() {
@@ -435,6 +564,8 @@ final class SocketCore {
         subscribeHandler = null;
         sendReadyHandler = null;
         streamPacketHandler = null;
+        streamFramedPacketHandler = null;
+        streamUInt32FramedPacketHandler = null;
         callbackFailure = null;
         shutdownExecutor(callbackExecutor);
         callbackExecutor = null;
@@ -442,10 +573,12 @@ final class SocketCore {
         closeArena(subscribeCallbackArena);
         closeArena(sendReadyCallbackArena);
         closeArena(streamRawCallbackArena);
+        closeArena(streamPacketCallbackArena);
         receiveCallbackArena = null;
         subscribeCallbackArena = null;
         sendReadyCallbackArena = null;
         streamRawCallbackArena = null;
+        streamPacketCallbackArena = null;
         closeArena(sendScratchArena);
         sendScratchArena = null;
         sendScratch = MemorySegment.NULL;
@@ -580,12 +713,107 @@ final class SocketCore {
         }
     }
 
+    private void handleStreamPacketCallback(MemorySegment stream,
+                                            MemorySegment sourceRid,
+                                            MemorySegment header,
+                                            MemorySegment body,
+                                            MemorySegment userdata) {
+        StreamFramedPacketHandler handler = streamFramedPacketHandler;
+        if (handler == null)
+            return;
+        try {
+            dispatchStreamPacket(handler, readRoutingId(sourceRid),
+                Message.fromOwnedNative(header), Message.fromOwnedNative(body));
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
+        }
+    }
+
+    private void handleStreamPacketUInt32Callback(MemorySegment stream,
+                                                  MemorySegment sourceRid,
+                                                  MemorySegment header,
+                                                  MemorySegment body,
+                                                  MemorySegment userdata) {
+        StreamUInt32FramedPacketHandler handler =
+            streamUInt32FramedPacketHandler;
+        if (handler == null)
+            return;
+        try {
+            dispatchStreamPacketUInt32(handler, readRoutingIdUInt32(sourceRid),
+                Message.fromOwnedNative(header), Message.fromOwnedNative(body));
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
+        }
+    }
+
+    private void handleStreamPacketUInt32BufferCallback(MemorySegment stream,
+                                                        MemorySegment sourceRid,
+                                                        MemorySegment header,
+                                                        MemorySegment body,
+                                                        MemorySegment userdata) {
+        StreamUInt32FramedBufferHandler handler =
+            streamUInt32FramedBufferHandler;
+        if (handler == null)
+            return;
+        try {
+            dispatchStreamPacketUInt32Buffer(handler,
+                readRoutingIdUInt32(sourceRid),
+                borrowedMessageBuffer(header),
+                borrowedMessageBuffer(body));
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
+        }
+    }
+
     private void dispatchStreamRaw(StreamPacketHandler handler,
                                    RoutingId routingId,
                                    Message payload) {
         enterCallback();
         try (payload) {
             handler.onPacket(routingId, payload);
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
+        } finally {
+            leaveCallback();
+        }
+    }
+
+    private void dispatchStreamPacket(StreamFramedPacketHandler handler,
+                                      RoutingId routingId,
+                                      Message header,
+                                      Message body) {
+        enterCallback();
+        try (header; body) {
+            handler.onPacket(routingId, header, body);
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
+        } finally {
+            leaveCallback();
+        }
+    }
+
+    private void dispatchStreamPacketUInt32(StreamUInt32FramedPacketHandler handler,
+                                            int routingId,
+                                            Message header,
+                                            Message body) {
+        enterCallback();
+        try (header; body) {
+            handler.onPacket(routingId, header, body);
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
+        } finally {
+            leaveCallback();
+        }
+    }
+
+    private void dispatchStreamPacketUInt32Buffer(
+      StreamUInt32FramedBufferHandler handler,
+      int routingId,
+      ByteBuffer header,
+      ByteBuffer body) {
+        enterCallback();
+        try {
+            handler.onPacket(routingId, header, body);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
         } finally {
@@ -626,7 +854,7 @@ final class SocketCore {
           null);
     }
 
-    private static RoutingId readRoutingId(MemorySegment sourceRid) {
+    private RoutingId readRoutingId(MemorySegment sourceRid) {
         if (sourceRid == null || sourceRid.address() == 0)
             return null;
         MemorySegment routingId = sourceRid.reinterpret(
@@ -635,10 +863,54 @@ final class SocketCore {
             NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
         if (size == 0)
             return null;
+        if (size == Integer.BYTES) {
+            int key = 0;
+            for (int i = 0; i < Integer.BYTES; i++) {
+                key = (key << 8) | (routingId.get(ValueLayout.JAVA_BYTE,
+                    NativeLayouts.ROUTING_ID_DATA_OFFSET + i) & 0xFF);
+            }
+            final int routingKey = key;
+            return routingIdCache.computeIfAbsent(routingKey, unused -> {
+                byte[] cached = new byte[Integer.BYTES];
+                for (int i = 0; i < Integer.BYTES; i++) {
+                    cached[i] = routingId.get(ValueLayout.JAVA_BYTE,
+                        NativeLayouts.ROUTING_ID_DATA_OFFSET + i);
+                }
+                return RoutingId.fromTrusted(cached);
+            });
+        }
         byte[] value = new byte[size];
         MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
             MemorySegment.ofArray(value), 0, size);
         return RoutingId.fromTrusted(value);
+    }
+
+    private int readRoutingIdUInt32(MemorySegment sourceRid) {
+        if (sourceRid == null || sourceRid.address() == 0)
+            throw new IllegalStateException("missing routing id");
+        MemorySegment routingId = sourceRid.reinterpret(
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
+        int size = routingId.get(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
+        if (size != Integer.BYTES) {
+            throw new IllegalStateException(
+                "STREAM uint32 callback requires a 4-byte routing id");
+        }
+        return ((routingId.get(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_DATA_OFFSET) & 0xFF) << 24)
+            | ((routingId.get(ValueLayout.JAVA_BYTE,
+                NativeLayouts.ROUTING_ID_DATA_OFFSET + 1) & 0xFF) << 16)
+            | ((routingId.get(ValueLayout.JAVA_BYTE,
+                NativeLayouts.ROUTING_ID_DATA_OFFSET + 2) & 0xFF) << 8)
+            | (routingId.get(ValueLayout.JAVA_BYTE,
+                NativeLayouts.ROUTING_ID_DATA_OFFSET + 3) & 0xFF);
+    }
+
+    private static ByteBuffer borrowedMessageBuffer(MemorySegment msg) {
+        long size = NativeMsg.msgSize(msg);
+        if (size <= 0)
+            return ByteBuffer.allocate(0);
+        return NativeMsg.msgData(msg).reinterpret(size).asByteBuffer();
     }
 
     private static String decodeTopic(MemorySegment topic, long topicLen) {

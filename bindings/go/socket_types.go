@@ -1347,6 +1347,10 @@ func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Messa
 	return s.core.SendTo(target, flags, parts...)
 }
 
+func (s *StreamSocket) SendToUInt32(target uint32, flags SendFlags, parts ...*Message) error {
+	return s.SendTo(RoutingIDFromUInt32(target), flags, parts...)
+}
+
 func (s *StreamSocket) Recv(flags RecvFlags) (*Received, error) {
 	return (&directSocket{connectionSocket: s.core.connectionSocket}).Recv(flags)
 }
@@ -1370,6 +1374,19 @@ func (s *StreamSocket) OnPacket(handler func(RoutingID, *Message, *Message)) err
 	}
 	s.core.streamPacketHandle = handle
 	return nil
+}
+
+func (s *StreamSocket) OnPacketUInt32(handler func(uint32, *Message, *Message)) error {
+	if handler == nil {
+		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	return s.OnPacket(func(source RoutingID, header, body *Message) {
+		routingID, ok := source.UInt32()
+		if !ok {
+			return
+		}
+		handler(routingID, header, body)
+	})
 }
 
 func (s *StreamSocket) SetNotify(value bool) error {

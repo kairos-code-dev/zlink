@@ -122,6 +122,10 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_STREAM_ATTACH_RAW = downcall("zlink_stream_attach_raw",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_STREAM_PACKET_HANDLER = downcall(
+            "zlink_stream_packet_handler",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_STREAM_ATTACH_LEN32BE = downcall("zlink_stream_attach_len32be",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_STREAM_DETACH = downcall("zlink_stream_detach",
@@ -976,6 +980,16 @@ public final class Native {
             return (int) MH_STREAM_ATTACH_RAW.invokeExact(socket, callback, MemorySegment.NULL);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_stream_attach_raw failed", t);
+        }
+    }
+
+    public static int streamPacketHandler(MemorySegment socket,
+                                          MemorySegment callback) {
+        try {
+            return (int) MH_STREAM_PACKET_HANDLER.invokeExact(socket, callback,
+                MemorySegment.NULL);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_stream_packet_handler failed", t);
         }
     }
 

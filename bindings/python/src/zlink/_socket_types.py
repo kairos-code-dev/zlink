@@ -637,6 +637,20 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
         self._packet_handler_thread = thread
         thread.start()
 
+    def on_packet_uint32(self, handler):
+        if handler is None:
+            raise ValueError("handler must not be None")
+
+        def _typed_handler(routing_id, header, body):
+            if routing_id is None:
+                return
+            handler(RoutingId(routing_id).to_uint32(), header, body)
+
+        self.on_packet(_typed_handler)
+
+    def send_uint32(self, routing_id, payload, *, flags=0):
+        self.send(RoutingId.from_uint32(routing_id), payload, flags=flags)
+
 
 class PubSocket(_SendReadySocket, _DiscoveryAttachSocket, _EndpointSocket, _PublisherOptionSocket, _PublisherSocket):
     _socket_type_value = SocketType.PUB

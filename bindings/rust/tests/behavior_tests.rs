@@ -162,7 +162,7 @@ fn dealer_router_send_from_callback() {
     let ctx = Context::new().unwrap();
     let endpoint = tcp_endpoint();
 
-    let mut router = ctx.router_socket().unwrap();
+    let router = ctx.router_socket().unwrap();
     let dealer = ctx.dealer_socket().unwrap();
     let rid = RoutingId::from_bytes(b"dealer-cb-test");
     dealer.set_routing_id(&rid).unwrap();
@@ -207,7 +207,7 @@ fn pair_send_from_callback() {
     let ctx = Context::new().unwrap();
     let endpoint = tcp_endpoint();
 
-    let mut server = ctx.pair_socket().unwrap();
+    let server = ctx.pair_socket().unwrap();
     let client = ctx.pair_socket().unwrap();
 
     let server_mon = SocketMonitor::open(&server).unwrap();
@@ -236,4 +236,65 @@ fn pair_send_from_callback() {
         .unwrap();
     let response = client.recv().unwrap();
     assert_eq!(response.parts()[0].as_bytes(), b"pong-pair");
+}
+
+#[test]
+fn spot_dispatch_callback_can_subscribe() {
+    let ctx = Context::new().unwrap();
+    let mut node = SpotNode::new(&ctx).unwrap();
+    let mut spot = node.create_spot().unwrap();
+    let mut pub_sock = ctx.pub_socket().unwrap();
+    let mut sub_sock = ctx.sub_socket().unwrap();
+    let endpoint = tcp_endpoint();
+    pub_sock.bind(&endpoint).unwrap();
+    sub_sock.connect(&endpoint).unwrap();
+
+    let attach_deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        match node.attach_pubsub("sample", &pub_sock, &sub_sock) {
+            Ok(()) => break,
+            Err(_) if std::time::Instant::now() < attach_deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(err) => panic!("attach_pubsub failed: {err:?}"),
+        }
+    }
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    spot.on_dispatch_event_with_context(move |event, dispatch| {
+        if event != SpotDispatchEvent::SubscribeReadable {
+            return;
+        }
+        let result = dispatch
+            .subscribe_with_flags(RecvFlags::DONT_WAIT)
+            .map(|message| {
+                (
+                    message.service_name.as_deref().unwrap_or("").to_string(),
+                    message.topic().to_string(),
+                    message.parts()[0].as_bytes().to_vec(),
+                )
+            });
+        let _ = tx.send(result);
+    })
+    .unwrap();
+    spot.set_subscription("room:lobby").unwrap();
+    spot.publish(
+        "sample",
+        "room:lobby",
+        Message::copy_from(b"hello-spot").unwrap(),
+    )
+    .unwrap();
+
+    let delivered = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("spot dispatch callback did not deliver")
+        .expect("subscribe in dispatch callback failed");
+    assert_eq!(delivered.0, "sample");
+    assert_eq!(delivered.1, "room:lobby");
+    assert_eq!(delivered.2, b"hello-spot");
+
+    sub_sock.close().unwrap();
+    pub_sock.close().unwrap();
+    spot.close().unwrap();
+    node.close().unwrap();
 }

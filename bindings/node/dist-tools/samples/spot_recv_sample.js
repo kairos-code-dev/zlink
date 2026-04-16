@@ -28,28 +28,34 @@ async function main() {
         subSocket.connect(endpoint);
         node.attachPubSub(SERVICE_NAME, pubSocket, subSocket);
         spot = node.createSpot();
-        spot.setSubscription(topic);
-        const deadline = Date.now() + 5000;
-        let received = null;
-        while (Date.now() < deadline) {
-            spot.publish(SERVICE_NAME, topic, Buffer.from(sent));
-            try {
-                received = spot.subscribe(zlink.RecvFlags.DontWait);
-                break;
-            }
-            catch (error) {
-                if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
-                    throw error;
+        const delivered = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('spot dispatch callback did not deliver within 5s')), 5000);
+            spot.onDispatchEvent((event) => {
+                if (event !== zlink.SpotDispatchEvent.SubscribeReadable) {
+                    return;
                 }
-            }
-            await new Promise((resolve) => setTimeout(resolve, 25));
-        }
-        assert.notEqual(received, null);
+                try {
+                    const received = spot.subscribe(zlink.RecvFlags.DontWait);
+                    clearTimeout(timeout);
+                    resolve({
+                        serviceName: received.serviceName ?? '',
+                        topic: received.topic,
+                        payload: received.parts[0].data().toString(),
+                    });
+                }
+                catch (error) {
+                    clearTimeout(timeout);
+                    reject(error);
+                }
+            });
+        });
+        spot.setSubscription(topic);
+        spot.publish(SERVICE_NAME, topic, Buffer.from(sent));
+        const received = await delivered;
         assert.equal(received.topic, topic);
         assert.equal(received.serviceName, SERVICE_NAME);
-        const recv = received.parts[0].data().toString();
-        assert.equal(recv, sent);
-        console.log(`[spot/recv] service: "${SERVICE_NAME}" tick: 1 publish: "${topic}/${sent}" -> recv: "${topic}/${recv}"`);
+        assert.equal(received.payload, sent);
+        console.log(`[spot/recv] service: "${SERVICE_NAME}" tick: 1 publish: "${topic}/${sent}" -> recv: "${topic}/${received.payload}"`);
     }
     finally {
         if (spot) {

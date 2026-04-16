@@ -2,8 +2,45 @@
 
 #include "sample_common.hpp"
 
-#include <optional>
-#include <thread>
+#include <condition_variable>
+#include <mutex>
+
+namespace {
+struct spot_recv_state_t
+{
+    zlink::service::spot_t *spot = nullptr;
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false;
+    bool failed = false;
+    std::string service_name;
+    std::string topic;
+    std::string payload;
+};
+
+void on_spot_dispatch_event (void *, zlink_spot_dispatch_event_t event_, void *userdata_)
+{
+    if (event_ != ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE)
+        return;
+
+    spot_recv_state_t &state = *static_cast<spot_recv_state_t *> (userdata_);
+    try {
+        const zlink::topic_message_t inbound =
+          state.spot->subscribe (zlink::recv_flags_t::dontwait);
+        std::lock_guard<std::mutex> lock (state.mutex);
+        state.service_name = inbound.service_name ().value_or ("");
+        state.topic = inbound.topic ();
+        state.payload = inbound.parts ().at (0).to_string ();
+        state.done = true;
+    }
+    catch (...) {
+        std::lock_guard<std::mutex> lock (state.mutex);
+        state.failed = true;
+        state.done = true;
+    }
+    state.cv.notify_one ();
+}
+} // namespace
 
 int main ()
 {
@@ -25,35 +62,25 @@ int main ()
 
     const std::string topic = detail::k_spot_topic;
     const std::string sent = detail::k_spot_payload;
+    spot_recv_state_t state;
+    state.spot = &spot;
+    spot.on_dispatch_event (&on_spot_dispatch_event, &state);
     spot.set_subscription (topic);
 
-    const auto deadline =
-      std::chrono::steady_clock::now () + std::chrono::seconds (5);
-    std::optional<zlink::topic_message_t> inbound;
-    while (std::chrono::steady_clock::now () < deadline) {
-        zlink::message_t outbound = detail::make_message (sent);
-        spot.publish (service_name, topic, outbound);
-        try {
-            inbound = spot.subscribe (zlink::recv_flags_t::dontwait);
-            break;
-        }
-        catch (const zlink::recv_error_t &err) {
-            if (err.result () != zlink::recv_result_t::no_data)
-                throw;
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
-        }
-    }
+    zlink::message_t outbound = detail::make_message (sent);
+    spot.publish (service_name, topic, outbound);
 
-    assert (inbound.has_value ());
-    assert (inbound->service_name ());
-    assert (*inbound->service_name () == service_name);
-    assert (inbound->topic () == topic);
-    assert (inbound->parts ().size () == 1);
-    const std::string received = inbound->parts ()[0].to_string ();
-    assert (received == sent);
+    std::unique_lock<std::mutex> lock (state.mutex);
+    const bool delivered =
+      state.cv.wait_for (lock, std::chrono::seconds (5), [&state] { return state.done; });
+    assert (delivered);
+    assert (!state.failed);
+    assert (state.service_name == service_name);
+    assert (state.topic == topic);
+    assert (state.payload == sent);
     std::printf (
       "[spot/recv] service: \"%s\" tick: 1 publish: \"%s/%s\" -> recv: \"%s/%s\"\n",
       service_name.c_str (), topic.c_str (), sent.c_str (),
-      inbound->topic ().c_str (), received.c_str ());
+      state.topic.c_str (), state.payload.c_str ());
     return 0;
 }

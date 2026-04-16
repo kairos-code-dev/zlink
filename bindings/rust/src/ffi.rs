@@ -1196,7 +1196,7 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_spot_subscribe(
         spot: *mut c_void,
-        source_rid_out: *mut *const zlink_routing_id_t,
+        source_rid_out: *mut zlink_routing_id_t,
         parts_out: *mut *mut zlink_msg_t,
         part_count_out: *mut usize,
         service_name_out: *mut c_char,
@@ -1207,7 +1207,7 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_spot_subscription_event(
         spot: *mut c_void,
-        source_rid_out: *mut *const zlink_routing_id_t,
+        source_rid_out: *mut zlink_routing_id_t,
         subscribed_out: *mut c_int,
         service_name_out: *mut c_char,
         service_name_len_out: *mut usize,

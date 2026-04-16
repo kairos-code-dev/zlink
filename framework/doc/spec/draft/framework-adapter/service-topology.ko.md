@@ -11,7 +11,7 @@
 `ZLink Framework`는 zlink의 raw topology를 없애는 계층이 아니라, 그것을
 **서비스 단위 개념으로 다시 묶는 계층**이다.
 
-즉 내부 구현은 `DEALER`, `ROUTER`, `PUB`, `SUB`, `SPOT`를 계속 쓸 수 있지만,
+즉 내부 구현은 `ROUTER`, `PUB`, `SUB`, `SPOT`, `STREAM`를 계속 쓸 수 있지만,
 사용자에게는 아래 개념이 먼저 보여야 한다.
 
 - service name
@@ -19,6 +19,7 @@
 - message handler
 - event publisher
 - event subscriber
+- stream handler
 
 ## 2. service grouping
 
@@ -32,10 +33,18 @@
 - `game.stage.sync`
 
 클라이언트는 endpoint 주소보다 `service_name`을 먼저 기준으로 삼는다.
-Discovery를 쓰면 같은 `service_name`에 속한 provider를 자동으로 찾고,
-수동 연결을 쓰면 그 service의 provider 집합을 직접 설정한다.
-운영 점검이나 제어 plane에서는 Registry topology snapshot/query 또는 원격
-`RegistryQueryClient`로 전체 provider 집합을 읽을 수도 있다.
+현재 방향에서는 framework runtime도 이 기준을 그대로 따른다. 즉 outbound 요청
+경로는 "노드 하나에 모든 service를 합쳐 관리하는 연결"보다, "접근하려는
+service마다 별도 channel을 두는 구조"를 기본으로 본다.
+
+- `api.profile`에 처음 요청하면 `api.profile` 전용 channel을 만든다.
+- 이 channel은 그 service view에 묶인 `Discovery`와 outbound socket을 가진다.
+- 같은 `service_name`에 속한 provider 집합은 discovery가 자동으로 갱신한다.
+- framework는 그 service에 대한 `rid` 집합과 상태만 관리하면 된다.
+
+수동 연결을 쓰면 그 service의 provider 집합을 직접 설정한다. 운영 점검이나 제어
+plane에서는 Registry topology snapshot/query 또는 원격 `RegistryQueryClient`로
+전체 provider 집합을 읽을 수도 있다.
 
 이 점은 일반적인 웹 서버 호출 모델과 비교했을 때 중요한 차이점이다.
 보통은 위치투명성을 주기 위해 API gateway 또는 그와 비슷한 중간 계층을 두고,
@@ -43,22 +52,22 @@ Discovery를 쓰면 같은 `service_name`에 속한 provider를 자동으로 찾
 현재 초안은 그보다 아래처럼 가는 편을 기본 방향으로 본다.
 
 - 호출자는 gateway 주소 대신 `service_name`을 기준으로 요청한다.
-- Discovery가 현재 provider 위치를 숨긴다.
-- `ZLink Framework`가 적절한 provider를 골라 직접 요청을 보낸다.
-- 즉 provider 선택이 client 쪽에서 이뤄질 수 있어야 한다.
+- framework runtime은 그 service 전용 channel을 통해 요청을 보낸다.
+- Discovery가 현재 service view 안의 provider 위치를 숨긴다.
+- framework는 해당 service의 `rid` 집합과 연결 상태를 기준으로 요청을 보낸다.
 
 즉 gateway나 전용 로드밸런서를 반드시 거쳐야만 location transparency와
-provider selection을 얻는 구조를 전제로 하지 않는다.
+service 단위 직접 호출을 얻는 구조를 전제로 하지 않는다.
 
 ## 3. 상호작용 모델과 topology 매핑 초안
 
 | 공용 모델 | 내부 기본 매핑 초안 |
 |-----------|---------------------|
-| `request-response` | client side `DEALER`, server side `ROUTER` |
-| `command` | `DEALER -> ROUTER` 또는 routed send |
+| `request-response` | `ROUTER <-> ROUTER`, 필요하면 routed `SPOT` request/reply |
+| `command` | `ROUTER <-> ROUTER` send 또는 `SPOT` routed send |
 | `publish-subscribe` | `PUB/SUB` 또는 `SPOT` |
-| `worker-dispatch` | `DEALER -> ROUTER` |
-| 고급 브리지 또는 서버 간 중계 | 필요하면 `ROUTER <-> ROUTER` |
+| `stream` | `STREAM` |
+| `worker-dispatch` | 별도 조합 모델 |
 
 ## 4. playhouse use case에 대한 해석
 
@@ -67,12 +76,13 @@ provider selection을 얻는 구조를 전제로 하지 않는다.
 
 예를 들면 아래처럼 보는 편이 자연스럽다.
 
-- `profileClient`는 `api.profile` service group에 보낸다.
-- `inventoryClient`는 `api.inventory` service group에 보낸다.
+- `IZLinkClient`가 `api.profile`에 요청하면 framework는 `api.profile` channel을 쓴다.
+- `IZLinkClient`가 `api.inventory`에 요청하면 framework는 `api.inventory` channel을 쓴다.
 - api 서버는 각 service group에 대해 request handler를 제공한다.
 
-내부적으로는 서비스마다 별도 outbound connection set이나 pool이 필요할 수
-있지만, 그것은 `ZLink Framework`의 책임으로 두는 편이 낫다.
+즉 outward API는 공용 client 하나로 보이더라도, 내부 runtime은 service마다 별도
+channel과 socket을 가질 수 있다. 현재 초안은 이 service별 channel 구조를 기본
+방향으로 본다.
 
 ## 5. Discovery와 수동 연결
 
@@ -82,7 +92,9 @@ provider selection을 얻는 구조를 전제로 하지 않는다.
 
 - 운영 환경 기본값으로 적합하다.
 - service_name 기준 provider grouping과 자동 갱신에 유리하다.
-- hot path의 provider 선택과 현재 service view 유지에 적합하다.
+- 각 service 전용 channel이 자기 service view를 독립적으로 유지하기에 적합하다.
+- 일반 요청 경로에서는 다른 service topology를 매번 조회하지 않고, 현재 service
+  view와 `rid` 집합만 보면 된다.
 
 ### 5.2 수동 연결
 
@@ -93,16 +105,16 @@ provider selection을 얻는 구조를 전제로 하지 않는다.
 
 - 운영 점검, warm-up, 관리 화면, 디버깅에 유용하다.
 - Discovery가 지금 보고 있는 개별 service view 밖의 전체 상태를 읽을 수 있다.
-- 다만 일반 요청 경로의 실시간 provider 선택을 모두 topology query에 의존하는
-  구조는 기본 방향으로 보지 않는다.
+- 다만 일반 요청 경로의 service channel 생성과 실시간 요청 분산을 모두 topology
+  query에 의존하는 구조는 기본 방향으로 보지 않는다.
 
-즉 공용 표면은 "Discovery 전용 API"보다 "client/server 등록 방식"을 먼저
-보이고, 내부 연결 전략은 별도 설정으로 넣는 편이 좋다.
+즉 공용 표면은 "client/server 등록 방식"을 먼저 보이고, 내부 구현은
+"service별 Discovery + service별 outbound channel"을 기본으로 두는 편이 좋다.
 
 ## 6. 범위 밖에 두는 것
 
 - `DEALER <-> DEALER`를 공용 모델로 노출하는 일
-- `ROUTER <-> ROUTER`를 일반 사용자용 기본 모델로 설명하는 일
+- raw multipart header를 application handler 인자로 직접 노출하는 일
 
 이 둘은 필요해지면 고급 문서에서 다루되, 현재 `ZLink Framework` 초안의 중심에는 두지
 않는다.

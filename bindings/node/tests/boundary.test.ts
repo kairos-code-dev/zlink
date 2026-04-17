@@ -16,7 +16,7 @@ test('routing id accepts 255-byte maximum and rejects overflow', () => {
 
   assert.doesNotThrow(() => dealer.setRoutingId(maxRoutingId));
 
-  assert.throws(() => zlink.RoutingId.fromBytes(overflowRoutingId), /0\.\.255 bytes/);
+  assert.throws(() => zlink.RoutingId.fromBytes(overflowRoutingId), /1\.\.255 bytes/);
   assert.doesNotThrow(() => zlink.RoutingId.fromBytes(Buffer.alloc(1, 0x63)));
   assert.throws(() => router.send(overflowRoutingId, Buffer.alloc(0)), /RoutingId/);
   assert.throws(() => stream.send(overflowRoutingId, Buffer.alloc(0)), /RoutingId/);
@@ -25,17 +25,6 @@ test('routing id accepts 255-byte maximum and rejects overflow', () => {
   router.close();
   dealer.close();
   ctx.close();
-});
-
-test('routing id helper conversions keep bytes canonical', () => {
-  const streamRid = zlink.RoutingId.fromU32(0x01020304);
-  assert.deepEqual(streamRid.toBytes(), Buffer.from([0x01, 0x02, 0x03, 0x04]));
-  assert.equal(streamRid.toU32(), 0x01020304);
-
-  const textRid = zlink.RoutingId.fromText('router-a');
-  assert.equal(textRid.toText(), 'router-a');
-  assert.equal(textRid.toHex(), '726f757465722d61');
-  assert.throws(() => zlink.RoutingId.fromBytes(Buffer.from([0xc3, 0x28])).toText(), /encoded data/);
 });
 
 test('fixed-size c-string inputs reject embedded nulls and overflow', () => {

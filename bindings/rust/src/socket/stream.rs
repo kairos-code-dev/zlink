@@ -39,10 +39,6 @@ impl StreamSocket {
         self.inner.send_to(target, parts)
     }
 
-    pub fn send_u32(&self, target: u32, parts: impl IntoMultipart) -> Result<(), SubmitError> {
-        self.send(&RoutingId::from_u32(target), parts)
-    }
-
     pub fn send_with_flags(
         &self,
         target: &RoutingId,
@@ -78,17 +74,6 @@ impl StreamSocket {
         }
         self.inner.packet_cb = Some(cb);
         Ok(())
-    }
-
-    pub fn on_packet_u32<F>(&mut self, handler: F) -> Result<(), HandlerError>
-    where
-        F: Fn(u32, Message, Message) + Send + 'static,
-    {
-        self.on_packet(move |routing_id, header, body| {
-            if let Some(routing_id) = routing_id.to_u32() {
-                handler(routing_id, header, body);
-            }
-        })
     }
 
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>

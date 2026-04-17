@@ -110,11 +110,18 @@ inline send_status_t send_echo_message_flags (void *socket,
             return send_error;
         }
 
-        zlink_routing_id_t target_rid;
-        if (zlink_routing_id_from_text (&target_rid, server_id.c_str ())
-            != ZLINK_CONFIG_OK) {
+        if (server_id.size () > sizeof (zlink_routing_id_t ().data)) {
             zlink_msg_close (&part);
             return send_error;
+        }
+
+        zlink_routing_id_t target_rid;
+        target_rid.size = static_cast<uint8_t> (server_id.size ());
+        if (target_rid.size > 0) {
+            std::memcpy (
+              target_rid.data,
+              server_id.data (),
+              static_cast<size_t> (target_rid.size));
         }
         const zlink_submit_result_t rc =
           ::zlink_send_rid (socket, &target_rid, &part, 1, base_flags);
@@ -173,10 +180,7 @@ inline int recv_one_message (void *socket,
             &part_count,
             static_cast<zlink_recv_flags_t> (recv_flags))
         : ::zlink_recv (
-            socket,
-            static_cast<const zlink_routing_id_t **> (NULL),
-            &parts,
-            &part_count,
+            socket, NULL, &parts, &part_count,
             static_cast<zlink_recv_flags_t> (recv_flags));
     if (rc != ZLINK_RECV_OK) {
         const int err = zlink_errno ();
@@ -306,32 +310,18 @@ inline bool create_client_sockets (
             const int id_len =
               std::snprintf (id_buf, sizeof (id_buf), "client_%zu", i);
             if (id_len > 0) {
-                zlink_routing_id_t rid;
-                if (zlink_routing_id_from_text (&rid, id_buf) != ZLINK_CONFIG_OK) {
-                    zlink_close (sock);
-                    return false;
-                }
-                if (zlink_set_routing_id (sock, rid.data, rid.size) != 0) {
-                    zlink_close (sock);
-                    return false;
-                }
+                zlink_set_routing_id (
+                  sock, id_buf, static_cast<size_t> (id_len));
             }
         }
 
         if (client_socket_type == ZLINK_SOCKET_ROUTER) {
             static const char k_server_connect_id[] = "SERVER";
-            zlink_routing_id_t connect_rid;
-            if (zlink_routing_id_from_text (&connect_rid,
-                                            k_server_connect_id)
-                != ZLINK_CONFIG_OK) {
-                zlink_close (sock);
-                return false;
-            }
             if (zlink_set_router_option (
                   sock,
                   ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
-                  connect_rid.data,
-                  connect_rid.size)
+                  k_server_connect_id,
+                  sizeof (k_server_connect_id) - 1)
                 != 0) {
                 if (bench_debug_enabled ()) {
                     std::cerr
@@ -397,7 +387,14 @@ inline bool make_routing_id (const char *text, zlink_routing_id_t *routing_id)
     if (!text || !routing_id)
         return false;
 
-    return zlink_routing_id_from_text (routing_id, text) == ZLINK_CONFIG_OK;
+    const size_t size = std::strlen (text);
+    if (size == 0 || size > sizeof (routing_id->data))
+        return false;
+
+    std::memset (routing_id, 0, sizeof (*routing_id));
+    std::memcpy (routing_id->data, text, size);
+    routing_id->size = static_cast<uint8_t> (size);
+    return true;
 }
 
 inline int remaining_poll_timeout_ms (
@@ -558,10 +555,7 @@ inline int recv_one_message_header (void *socket,
             &part_count,
             static_cast<zlink_recv_flags_t> (recv_flags))
         : ::zlink_recv (
-            socket,
-            static_cast<const zlink_routing_id_t **> (NULL),
-            &parts,
-            &part_count,
+            socket, NULL, &parts, &part_count,
             static_cast<zlink_recv_flags_t> (recv_flags));
     if (rc != ZLINK_RECV_OK) {
         const int err = zlink_errno ();

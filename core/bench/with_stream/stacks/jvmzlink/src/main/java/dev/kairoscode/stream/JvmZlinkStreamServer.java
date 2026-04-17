@@ -3,7 +3,9 @@ package dev.kairoscode.stream;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.StreamSocket;
-import dev.kairoscode.zlink.StreamUInt32FramedBufferHandler;
+import dev.kairoscode.zlink.StreamUInt32FramedNativeHandler;
+import dev.kairoscode.zlink.internal.NativeMsg;
+import java.lang.foreign.MemorySegment;
 import java.time.Duration;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -112,16 +114,16 @@ public final class JvmZlinkStreamServer {
             server.options().recvTimeout(Duration.ofMillis(200));
             server.options().tcpNoDelay(opt.tcpNoDelay != 0);
             server.bind(endpoint(opt.host, opt.port));
-            server.onFramedPacketView((StreamUInt32FramedBufferHandler) (routingId,
-                header, body) -> {
-                int headerSize = header.remaining();
-                if (headerSize != MSG_NAME.length || !matchesHeader(header)) {
+            server.onFramedPacketNative((StreamUInt32FramedNativeHandler) (routingId,
+                headerMsg, bodyMsg) -> {
+                int headerSize = (int) NativeMsg.msgSize(headerMsg);
+                if (headerSize != MSG_NAME.length || !matchesHeader(headerMsg)) {
                     metrics.parseError.incrementAndGet();
                     metrics.protocolError.incrementAndGet();
                     return;
                 }
 
-                int bodySize = body.remaining();
+                int bodySize = (int) NativeMsg.msgSize(bodyMsg);
                 if (bodySize < MIN_PAYLOAD_SIZE || bodySize > MAX_PAYLOAD_SIZE) {
                     metrics.parseError.incrementAndGet();
                     metrics.protocolError.incrementAndGet();
@@ -138,7 +140,8 @@ public final class JvmZlinkStreamServer {
                 reply.put((byte) (bodySize >> 8));
                 reply.put((byte) bodySize);
                 reply.put(MSG_NAME);
-                reply.put(body.duplicate());
+                MemorySegment bodyData = NativeMsg.msgData(bodyMsg).reinterpret(bodySize);
+                reply.put(bodyData.asByteBuffer());
                 reply.flip();
                 metrics.recvMsgs.incrementAndGet();
                 try {
@@ -192,12 +195,13 @@ public final class JvmZlinkStreamServer {
             System.exit(rc);
     }
 
-    private static boolean matchesHeader(ByteBuffer header) {
-        if (header.remaining() != MSG_NAME.length)
+    private static boolean matchesHeader(MemorySegment headerMsg) {
+        int size = (int) NativeMsg.msgSize(headerMsg);
+        if (size != MSG_NAME.length)
             return false;
-        ByteBuffer scratch = header.duplicate();
+        MemorySegment header = NativeMsg.msgData(headerMsg).reinterpret(size);
         for (int i = 0; i < MSG_NAME.length; i++) {
-            if (scratch.get(i) != MSG_NAME[i])
+            if (header.get(java.lang.foreign.ValueLayout.JAVA_BYTE, i) != MSG_NAME[i])
                 return false;
         }
         return true;

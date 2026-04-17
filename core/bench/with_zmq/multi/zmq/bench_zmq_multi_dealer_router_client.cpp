@@ -198,10 +198,7 @@ recv_status_t receive_dealer_reply(dealer_client_state_t *state,
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = zlink_recv(slot->socket,
-                              static_cast<const zlink_routing_id_t **> (NULL),
-                              &parts,
-                              &part_count,
+    const int rc = zlink_recv(slot->socket, NULL, &parts, &part_count,
                               ZLINK_DONTWAIT);
     if (rc != 0) {
         const int err = zlink_errno();

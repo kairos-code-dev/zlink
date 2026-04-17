@@ -96,6 +96,8 @@ fn send_failure_does_not_leak() {
 
 #[test]
 fn multipart_recv_shape_matches_callback_shape() {
+    use std::sync::{Arc, Mutex};
+
     let ctx = Context::new().unwrap();
 
     // Direct recv path
@@ -115,7 +117,7 @@ fn multipart_recv_shape_matches_callback_shape() {
     let direct_data: Vec<Vec<u8>> = direct.parts().iter().map(|p| p.as_bytes().to_vec()).collect();
 
     // Direct recv path with the same frame ownership semantics.
-    let a2 = ctx.pair_socket().unwrap();
+    let mut a2 = ctx.pair_socket().unwrap();
     a2.bind("inproc://own-shape-callback").unwrap();
 
     let b2 = ctx.pair_socket().unwrap();
@@ -141,8 +143,10 @@ fn multipart_recv_shape_matches_callback_shape() {
 
 #[test]
 fn callback_receives_owned_parts() {
+    use std::sync::{Arc, Mutex};
+
     let ctx = Context::new().unwrap();
-    let server = ctx.pair_socket().unwrap();
+    let mut server = ctx.pair_socket().unwrap();
     server.bind("inproc://own-callback").unwrap();
 
     let client = ctx.pair_socket().unwrap();

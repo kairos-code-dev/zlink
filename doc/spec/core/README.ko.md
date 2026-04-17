@@ -31,7 +31,7 @@
 | 타입 | 정의 위치 | 설명 |
 |------|-----------|------|
 | [`zlink_msg_t`](message.ko.md) | message.ko.md | 불투명 메시지 컨테이너 (64B, 스택 할당 가능) |
-| [`zlink_routing_id_t`](message.ko.md) | message.ko.md | 피어 라우팅 아이덴티티 borrowed 바이트 view |
+| [`zlink_routing_id_t`](message.ko.md) | message.ko.md | 피어 라우팅 아이덴티티 |
 | `zlink_socket_msg_handler_fn` | [socket/](socket/README.ko.md) | raw `STREAM` raw 수신 콜백 |
 | [`zlink_monitor_event_t`](monitoring.ko.md) | monitoring.ko.md | 모니터 이벤트 구조체 (이벤트, 값, 주소) |
 | [`zlink_monitor_snapshot_t`](monitoring.ko.md) | monitoring.ko.md | monitor snapshot (state, queue depth) |

@@ -41,49 +41,6 @@ static inline void make_message (zlink_msg_t *msg, const char *text)
     memcpy (zlink_msg_data (msg), text, len);
 }
 
-static inline uint32_t routing_id_to_u32_checked (const zlink_routing_id_t *rid)
-{
-    uint32_t value = 0;
-    const int rc = zlink_routing_id_to_u32 (rid, &value);
-    assert (rc == 0);
-    return value;
-}
-
-static inline void routing_id_to_display_text (const zlink_routing_id_t *rid,
-                                               char *buf,
-                                               size_t buf_size)
-{
-    size_t text_len = buf_size;
-    if (zlink_routing_id_to_text (rid, buf, &text_len) == 0)
-        return;
-
-    size_t hex_len = buf_size;
-    const int rc = zlink_routing_id_to_hex (rid, buf, &hex_len);
-    assert (rc == 0);
-}
-
-static inline void routing_id_copy_checked (const zlink_routing_id_t *src,
-                                            zlink_routing_id_t *dst,
-                                            uint8_t *storage,
-                                            size_t storage_size)
-{
-    assert (dst != NULL);
-    if (!src) {
-        dst->size = 0;
-        dst->data = NULL;
-        return;
-    }
-    assert (storage != NULL || src->size == 0);
-    assert (src->size <= storage_size);
-    dst->size = src->size;
-    if (src->size == 0) {
-        dst->data = NULL;
-        return;
-    }
-    memcpy (storage, src->data, src->size);
-    dst->data = storage;
-}
-
 /* ---- Endpoint helpers ---------------------------------------------------- */
 
 static inline void get_last_endpoint (void *socket, char *buf, size_t buf_size)

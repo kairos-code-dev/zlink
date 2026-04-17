@@ -41,7 +41,7 @@ int recv_single_part_header_flags (void *socket_,
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     const int rc = zlink_recv (
-      socket_, (const zlink_routing_id_t **) NULL, &parts, &part_count,
+      socket_, NULL, &parts, &part_count,
       static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0) {
         const int err = zlink_errno ();

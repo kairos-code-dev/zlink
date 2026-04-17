@@ -12,10 +12,6 @@ const SPOT_PEER_SOURCE_MANUAL = 1;
 const SERVICE_TYPE_SPOT = 0x3002;
 const SPOT_SERVICE_NAME = 'pubsub-spot-service';
 
-function jsonReplacer(_key: string, value: unknown): unknown {
-  return typeof value === 'bigint' ? value.toString() : value;
-}
-
 async function reservePort() {
   const server = net.createServer();
   server.listen(0, '127.0.0.1');
@@ -61,8 +57,8 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
     clientNode.attachPubSub(SPOT_SERVICE_NAME, clientPub, clientSub);
     serverSpot = serverNode.createSpot();
     clientSpot = clientNode.createSpot();
-    serverNode.bind(endpoint);
-    clientNode.connectPeer(endpoint);
+    serverPub.bind(endpoint);
+    clientSub.connect(endpoint);
     clientSpot.setSubscription(topic);
 
     const deadline = Date.now() + 5000;
@@ -95,7 +91,7 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
       clientPeers: clientNode.peersSnapshot(),
       serverSubjects: serverNode.subjectsSnapshot(),
       clientSubjects: clientNode.subjectsSnapshot()
-    }, jsonReplacer)}`);
+    })}`);
   } finally {
     if (clientSpot) {
       clientSpot.close();

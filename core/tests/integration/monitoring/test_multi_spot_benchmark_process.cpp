@@ -173,7 +173,7 @@ int resolve_case_exit_timeout_ms (const char *transport_,
     if (is_secure_transport_name (transport_) && max_msg_size >= 131072)
         timeout_ms = std::max (timeout_ms, 120000);
     if (is_secure_transport_name (transport_) && max_msg_size >= 262144)
-        timeout_ms = std::max (timeout_ms, 240000);
+        timeout_ms = std::max (timeout_ms, 150000);
 
     return timeout_ms;
 }

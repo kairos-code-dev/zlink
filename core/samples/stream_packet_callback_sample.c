@@ -12,7 +12,6 @@ typedef struct
 {
     callback_signal_t signal;
     zlink_routing_id_t routing_id;
-    uint8_t routing_id_storage[255];
     char payload[256];
     size_t payload_len;
 } stream_callback_ctx_t;
@@ -62,9 +61,7 @@ static void stream_callback (const zlink_routing_id_t *source_rid,
     assert (source_rid != NULL);
     assert (part_count == 1);
 
-    routing_id_copy_checked (
-      source_rid, &cb->routing_id, cb->routing_id_storage,
-      sizeof (cb->routing_id_storage));
+    cb->routing_id = *source_rid;
     cb->payload_len = zlink_msg_size (&parts[0]);
     assert (cb->payload_len < sizeof (cb->payload));
     memcpy (cb->payload, zlink_msg_data (&parts[0]), cb->payload_len);
@@ -109,7 +106,6 @@ int main (void)
 
     assert (callback_signal_wait (&cb_ctx.signal, 2000));
     assert (strcmp (cb_ctx.payload, k_stream_payload) == 0);
-    const uint32_t peer_id = routing_id_to_u32_checked (&cb_ctx.routing_id);
 
     zlink_msg_t reply;
     make_message (&reply, k_stream_payload);
@@ -126,8 +122,8 @@ int main (void)
     }
     assert ((size_t) received == request_size);
     assert (memcmp (response, k_stream_payload, request_size) == 0);
-    printf ("[stream/packet-callback] peer: %u send: \"%s\" → recv: \"%.*s\"\n",
-            (unsigned) peer_id, k_stream_payload, (int) received, response);
+    printf ("[stream/packet-callback] send: \"%s\" → recv: \"%.*s\"\n",
+            k_stream_payload, (int) received, response);
 
     close (client_fd);
     callback_signal_destroy (&cb_ctx.signal);

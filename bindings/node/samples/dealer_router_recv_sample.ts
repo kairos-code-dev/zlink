@@ -43,20 +43,13 @@ async function main() {
     const recvReq = request.parts[0].data().toString();
     assert.equal(recvReq, sent);
     assert.ok(request.routingId instanceof zlink.RoutingId);
-    const peerText = (() => {
-      try {
-        return request.routingId.toText();
-      } catch {
-        return request.routingId.toHex();
-      }
-    })();
     const reply = 'pong';
     router.send(request.routingId, Buffer.from(reply));
 
     const response = dealer.recv();
     const recv = response.parts[0].data().toString();
     assert.equal(recv, reply);
-    console.log(`[dealer-router/recv] peer: "${peerText}" send: "${sent}" \u2192 recv: "${recv}"`);
+    console.log(`[dealer-router/recv] send: "${sent}" \u2192 recv: "${recv}"`);
   } finally {
     dealer.close();
     router.close();

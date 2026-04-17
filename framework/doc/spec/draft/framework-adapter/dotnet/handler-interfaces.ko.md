@@ -38,8 +38,9 @@
 | handler | `IZLinkSendHandler<TMessage>` | one-way send handler | 4.2 |
 | handler | `IZLinkEventHandler<TEvent>` | pub/sub event handler | 4.3 |
 | handler | `IZLinkStreamPacketHandler` | stream packet handler (header/body raw) | 4.4 |
-| handler | `IZLinkStreamPacketHandler<THeader, TBody>` | stream packet handler (typed) | 4.4 |
+| handler | `IZLinkStreamPacketHandler<THeader>` | stream packet handler (typed header) | 4.4 |
 | handler | `IZLinkStreamRawHandler` | stream raw handler | 4.4 |
+| serializer | `IZLinkMessageSerializer` | `Message` payload 직렬화/역직렬화 | 4.5 |
 | client | `IZLinkClient` | 서버 간 outbound client | 5.1 |
 | client | `IZLinkSpotClient` | SPOT outbound client | 5.2 |
 | client | `IZLinkEventPublisher` | pub/sub event publisher | 5.3 |
@@ -184,11 +185,11 @@ public interface IZLinkStreamPacketHandler
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkStreamPacketHandler<in THeader, in TBody>
+public interface IZLinkStreamPacketHandler<in THeader>
 {
     ValueTask HandleAsync(
         THeader header,
-        TBody body,
+        Message body,
         ZLinkStreamContext context,
         CancellationToken cancellationToken);
 }
@@ -207,10 +208,59 @@ public interface IZLinkStreamRawHandler
 framework가 dispatch를 맡고 application은 packet handler 또는 raw handler를
 구현하는 모델을 기본으로 본다.
 
-typed packet handler는 raw `Message header`, `Message body`를 framework codec 또는
-mapper가 사용자 정의 `THeader`, `TBody`로 변환해 주는 상위 표면이다. 즉 header도
-별도 고정 구조체가 아니라, 원래는 하나의 message chunk이고 필요하면 사용자 정의
-header 타입으로 decode해서 쓸 수 있어야 한다.
+typed packet handler는 raw `Message header`를 framework codec 또는 mapper가
+사용자 정의 `THeader`로 변환해 주는 상위 표면이다. `playhouse`의 `RouteHeader`
+처럼 header는 고정 메타데이터 역할을 하고, body는 `header.MsgId` 같은 정보를 보고
+각 packet 타입으로 다시 decode하는 방식이 더 자연스럽다. 즉 body까지 하나의 고정
+타입으로 묶는 것보다, header만 typed로 올리고 body는 raw `Message`로 두는 쪽을
+기본으로 본다.
+
+이때 stream 핫패스에서는 `Message.ToArray()` 같은 추가 복사를 기본 사용법으로
+두면 안 된다. `Message.AsReadOnlySpan()` 같은 현재 표면이나, 그 위에 얹는
+protobuf/json decode helper가 가능한 한 추가 메모리 할당 없이 동작하도록
+설계하는 쪽을 기본 원칙으로 본다.
+
+### 4.5 message serializer
+
+`playhouse/extensions`처럼 serializer 계층은 transport 인터페이스와 분리해서 두는
+쪽이 자연스럽다. 즉 `STREAM` handler는 `Message`를 받고, protobuf/json 같은
+객체 변환은 별도 serializer 또는 extension helper가 맡는다.
+
+```csharp
+public interface IZLinkMessageSerializer
+{
+    string Name { get; }
+
+    bool CanSerialize(Type type);
+
+    bool CanDeserialize(Type type);
+
+    Message Serialize<T>(T value);
+
+    T Deserialize<T>(Message message);
+
+    bool TryDeserialize<T>(Message message, out T? value);
+}
+```
+
+실사용 표면은 아래처럼 extension helper로 얹는 쪽을 기본으로 본다.
+
+```csharp
+public static class ProtoMessageExtensions
+{
+    public static T ParseProto<T>(this Message message)
+        where T : IMessage<T>, new();
+}
+
+public static class JsonMessageExtensions
+{
+    public static T ParseJson<T>(this Message message)
+        where T : class;
+}
+```
+
+즉 transport가 serializer를 직접 내장하는 구조보다, `Message` 위에 protobuf/json
+helper를 얹는 구조가 `playhouse/extensions`와 더 가깝고 문서도 단순하게 읽힌다.
 
 ## 5. Client 인터페이스
 

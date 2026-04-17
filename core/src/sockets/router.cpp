@@ -18,7 +18,6 @@ void clear_dispatch_source_rid (zlink_routing_id_t *rid_, bool *valid_)
     if (!rid_ || !valid_)
         return;
     rid_->size = 0;
-    rid_->data = NULL;
     *valid_ = false;
 }
 
@@ -29,10 +28,11 @@ void store_dispatch_source_rid (zlink_routing_id_t *rid_,
     if (!rid_ || !valid_ || !msg_)
         return;
 
-    rid_->size = msg_->size ();
-    rid_->data = rid_->size == 0
-                   ? NULL
-                   : static_cast<uint8_t *> (msg_->data ());
+    const size_t size = msg_->size ();
+    zlink_assert (size <= sizeof (rid_->data));
+    rid_->size = static_cast<uint8_t> (size);
+    if (size > 0)
+        memcpy (rid_->data, msg_->data (), size);
     *valid_ = true;
 }
 
@@ -42,10 +42,12 @@ void copy_source_rid_from_blob (const zlink::blob_t &routing_id_,
     if (!out_)
         return;
 
-    out_->size = routing_id_.size ();
-    out_->data = routing_id_.size () == 0
-                   ? NULL
-                   : const_cast<uint8_t *> (routing_id_.data ());
+    const size_t size = routing_id_.size () < sizeof (out_->data)
+                          ? routing_id_.size ()
+                          : sizeof (out_->data);
+    out_->size = static_cast<uint8_t> (size);
+    if (size > 0)
+        memcpy (out_->data, routing_id_.data (), size);
 }
 
 void copy_source_rid_from_msg (const zlink::msg_t &msg_,
@@ -54,11 +56,11 @@ void copy_source_rid_from_msg (const zlink::msg_t &msg_,
     if (!out_)
         return;
 
-    out_->size = msg_.size ();
-    out_->data = out_->size == 0
-                   ? NULL
-                   : static_cast<uint8_t *>(
-                       const_cast<zlink::msg_t &> (msg_).data ());
+    const size_t size = msg_.size () < sizeof (out_->data) ? msg_.size ()
+                                                            : sizeof (out_->data);
+    out_->size = static_cast<uint8_t> (size);
+    if (size > 0)
+        memcpy (out_->data, const_cast<zlink::msg_t &> (msg_).data (), size);
 }
 
 void copy_router_pipe_source_rid (zlink::pipe_t *pipe_,

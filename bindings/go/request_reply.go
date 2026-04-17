@@ -16,20 +16,6 @@ static inline int zlink_router_request_go_local(void *router, const zlink_routin
 	return zlink_router_request(router, peer_rid, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
 }
 
-static inline int zlink_router_request_go_bytes_local(void *router, const void *data, size_t size, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
-	zlink_routing_id_t routing_id;
-	routing_id.size = size;
-	routing_id.data = (uint8_t *)data;
-	return zlink_router_request(router, &routing_id, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
-}
-
-static inline int zlink_router_reply_go_local(void *router, const void *data, size_t size, uint64_t request_seq, zlink_msg_t *parts, size_t part_count) {
-	zlink_routing_id_t routing_id;
-	routing_id.size = size;
-	routing_id.data = (uint8_t *)data;
-	return zlink_router_reply(router, &routing_id, request_seq, parts, part_count);
-}
-
 */
 import "C"
 
@@ -179,7 +165,8 @@ func (r *routerRequestSupport) Reply(routingID RoutingID, requestSeq uint64, fla
 		closeMessageSlice(cloned)
 		return err
 	}
-	if err := submitErrorFromResult(C.zlink_router_reply_go_local(r.socket.raw(), routingIDBytesPointer(routingID), C.size_t(routingID.Size()), C.uint64_t(requestSeq), prepared.ptr(), prepared.count())); err != nil {
+	rid := routingID.toC()
+	if err := submitErrorFromResult(C.zlink_router_reply(r.socket.raw(), &rid, C.uint64_t(requestSeq), prepared.ptr(), prepared.count())); err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
 			return restoreErr
 		}
@@ -208,10 +195,10 @@ func startRouterRequest(socket *RouterSocket, routingID RoutingID, flags SendFla
 	}
 	resultCh := make(chan requestResult, 1)
 	handle := cgo.NewHandle(&replyCallbackState{result: resultCh})
-	if err := submitErrorFromResult(C.zlink_router_request_go_bytes_local(
+	rid := routingID.toC()
+	if err := submitErrorFromResult(C.zlink_router_request_go_local(
 		socket.raw(),
-		routingIDBytesPointer(routingID),
-		C.size_t(routingID.Size()),
+		&rid,
 		prepared.ptr(),
 		prepared.count(),
 		C.zlink_send_flags_t(flags),

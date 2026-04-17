@@ -313,14 +313,6 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertEqual(rid.to_bytes(), b"peer-1")
         self.assertEqual(rid.size, 6)
         self.assertEqual(str(rid), rid.to_hex())
-        stream_rid = zlink.RoutingId.from_u32(0x01020304)
-        self.assertEqual(stream_rid.to_bytes(), b"\x01\x02\x03\x04")
-        self.assertEqual(stream_rid.to_u32(), 0x01020304)
-        text_rid = zlink.RoutingId.from_text("peer-1")
-        self.assertEqual(text_rid.to_text(), "peer-1")
-        self.assertEqual(text_rid.to_hex(), "706565722d31")
-        with self.assertRaises(ValueError):
-            zlink.RoutingId.from_bytes(b"\xc3(").to_text()
 
     def test_message_does_not_expose_borrowed_wrap_surface(self):
         self.assertFalse(hasattr(zlink.Message, "wrap_buffer"))

@@ -131,10 +131,11 @@ static void copy_routing_id (zlink_routing_id_t *out_,
 {
     if (!out_)
         return;
-    out_->size = routing_id_.size ();
-    out_->data = routing_id_.size () == 0
-                   ? NULL
-                   : const_cast<uint8_t *> (routing_id_.data ());
+    const size_t copy_size =
+      std::min (routing_id_.size (), sizeof (out_->data));
+    out_->size = static_cast<uint8_t> (copy_size);
+    if (copy_size > 0)
+        memcpy (out_->data, routing_id_.data (), copy_size);
 }
 
 zlink::socket_base_t::~socket_base_t ()

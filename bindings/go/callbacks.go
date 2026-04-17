@@ -210,16 +210,22 @@ func (s *spotRoutedCallbackState) close() {
 }
 
 type spotDispatchCallbackState struct {
-	handler func(SpotDispatchEvent)
+	dispatcher *callbackDispatcher
+	handler    func(SpotDispatchEvent)
 }
 
 func newSpotDispatchCallbackState(handler func(SpotDispatchEvent)) *spotDispatchCallbackState {
 	return &spotDispatchCallbackState{
-		handler: handler,
+		dispatcher: newCallbackDispatcher(),
+		handler:    handler,
 	}
 }
 
 func (s *spotDispatchCallbackState) close() {
+	if s == nil {
+		return
+	}
+	s.dispatcher.close()
 }
 
 type monitorCallbackState struct {
@@ -462,18 +468,18 @@ func goZlinkSpotRoutedTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpot
 }
 
 //export goZlinkSpotDispatchEventTrampoline
-func goZlinkSpotDispatchEventTrampoline(_ unsafe.Pointer, event C.zlink_spot_dispatch_event_t, userdata C.uintptr_t) {
+func goZlinkSpotDispatchEventTrampoline(event C.zlink_spot_dispatch_event_t, userdata C.uintptr_t) {
 	value, ok := safeHandleValue(userdata)
 	if !ok {
 		return
 	}
 	state := value.(*spotDispatchCallbackState)
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			log.Printf("zlink: recovered panic in %s callback: %v\n%s", "spot-dispatch", recovered, debug.Stack())
-		}
-	}()
-	state.handler(SpotDispatchEvent(event))
+	state.dispatcher.enqueue(&callbackTask{
+		label: "spot-dispatch",
+		invoke: func() {
+			state.handler(SpotDispatchEvent(event))
+		},
+	})
 }
 
 //export goZlinkTimerTrampoline

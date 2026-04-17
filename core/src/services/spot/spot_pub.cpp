@@ -3,7 +3,6 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_pub.hpp"
-#include "api/routing_id_internal.hpp"
 #include "services/common/monitor_decode.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
 #include "services/control/service_control_runtime.hpp"
@@ -129,8 +128,7 @@ spot_pub_t::spot_pub_t (spot_node_t *node_,
     _monitor_task_id (0)
 {
     memset (&_routing_id, 0, sizeof (_routing_id));
-    memset (_routing_id_storage, 0, sizeof (_routing_id_storage));
-    initialize_routing_id (&_routing_id, _routing_id_storage);
+    initialize_routing_id (&_routing_id);
 }
 
 spot_pub_t::~spot_pub_t ()
@@ -160,18 +158,16 @@ socket_base_t *spot_pub_t::socket () const
     return _socket;
 }
 
-int spot_pub_t::initialize_routing_id (zlink_routing_id_t *out_,
-                                       uint8_t storage_[255])
+int spot_pub_t::initialize_routing_id (zlink_routing_id_t *out_)
 {
-    if (!out_ || !storage_) {
+    if (!out_) {
         errno = EINVAL;
         return -1;
     }
 
     const uint32_t value = generate_random ();
     out_->size = sizeof (value);
-    memcpy (storage_, &value, sizeof (value));
-    out_->data = storage_;
+    memcpy (out_->data, &value, sizeof (value));
     return 0;
 }
 
@@ -275,7 +271,7 @@ int spot_pub_t::set_option (int option_,
 
 int spot_pub_t::set_routing_id (const void *data_, size_t size_)
 {
-    if (!data_ || size_ == 0 || size_ > sizeof (_routing_id_storage)) {
+    if (!data_ || size_ == 0 || size_ > sizeof (_routing_id.data)) {
         errno = EINVAL;
         return -1;
     }
@@ -285,9 +281,8 @@ int spot_pub_t::set_routing_id (const void *data_, size_t size_)
         errno = EFSM;
         return -1;
     }
-    _routing_id.size = size_;
-    memcpy (_routing_id_storage, data_, size_);
-    _routing_id.data = _routing_id_storage;
+    _routing_id.size = static_cast<uint8_t> (size_);
+    memcpy (_routing_id.data, data_, size_);
     return 0;
 }
 

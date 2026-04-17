@@ -172,6 +172,10 @@ public abstract class Socket implements AutoCloseable {
         socketCore.attachStreamPacket(handler);
     }
 
+    void attachStreamPacket(StreamUInt32FramedNativeHandler handler) {
+        socketCore.attachStreamPacket(handler);
+    }
+
     void detachStream() {
         socketCore.detachStream();
     }
@@ -332,7 +336,30 @@ public abstract class Socket implements AutoCloseable {
     }
 
     void send(int rid, Message part, SendFlag flags) {
-        send(RoutingId.fromU32(rid), part, flags);
+        Objects.requireNonNull(part, "part");
+        Objects.requireNonNull(flags, "flags");
+        ensureBlockingSendAllowed(flags);
+        int effectiveFlags = flags.getValue();
+        SendScratch scratch = sendScratch.get();
+        MemorySegment nativeMsg = scratch.nativeMsg;
+        MemorySegment nativeRoutingId = nativeRoutingIdU32(scratch, rid);
+        Object anchor = part.transferTo(nativeMsg);
+        boolean success = false;
+        try {
+            int rc = Native.sendMultipart(handle, nativeRoutingId, nativeMsg, 1,
+                effectiveFlags);
+            if (rc < 0)
+                throw ZlinkException.fromLastError("zlink_send_rid");
+            success = true;
+        } finally {
+            if (!success) {
+                part.restoreFromNative(nativeMsg, false, anchor);
+                try {
+                    NativeMsg.msgClose(nativeMsg);
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
     }
 
     int send(RoutingId rid, ByteBuffer buffer, int sendFlags) {
@@ -343,9 +370,7 @@ public abstract class Socket implements AutoCloseable {
             return sendDirectBuffer(rid, buffer, flag);
         int length = buffer.remaining();
         ByteBuffer slice = buffer.slice();
-        try (Message msg = buffer.isDirect()
-            ? Message.wrapDirect(slice)
-            : Message.copyOf(slice)) {
+        try (Message msg = Message.copyOf(slice)) {
             sendMessageFrame(rid, msg, flag);
             buffer.position(buffer.position() + length);
             return length;
@@ -353,7 +378,17 @@ public abstract class Socket implements AutoCloseable {
     }
 
     int send(int rid, ByteBuffer buffer, int sendFlags) {
-        return send(RoutingId.fromU32(rid), buffer, sendFlags);
+        Objects.requireNonNull(buffer, "buffer");
+        SendFlag flag = SendFlag.fromValue(sendFlags);
+        if (buffer.isDirect())
+            return sendDirectBuffer(rid, buffer, flag);
+        int length = buffer.remaining();
+        ByteBuffer slice = buffer.slice();
+        try (Message msg = Message.copyOf(slice)) {
+            send(rid, msg, flag);
+            buffer.position(buffer.position() + length);
+            return length;
+        }
     }
 
     boolean trySend(RoutingId rid, ByteBuffer buffer, int sendFlags) {
@@ -364,9 +399,7 @@ public abstract class Socket implements AutoCloseable {
             return trySendDirectBuffer(rid, buffer, flag);
         int length = buffer.remaining();
         ByteBuffer slice = buffer.slice();
-        try (Message msg = buffer.isDirect()
-            ? Message.wrapDirect(slice)
-            : Message.copyOf(slice)) {
+        try (Message msg = Message.copyOf(slice)) {
             SendResult result = trySendMessageFrame(rid, msg);
             if (result == SendResult.SENT) {
                 buffer.position(buffer.position() + length);
@@ -387,6 +420,40 @@ public abstract class Socket implements AutoCloseable {
         SendScratch scratch = sendScratch.get();
         MemorySegment nativeMsg = scratch.nativeMsg;
         MemorySegment nativeRoutingId = nativeRoutingId(scratch, rid);
+        int rc = NativeMsg.msgInitData(nativeMsg, payload, length,
+            MemorySegment.NULL, MemorySegment.NULL);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_msg_init_data");
+        boolean success = false;
+        try {
+            rc = Native.sendMultipart(handle, nativeRoutingId, nativeMsg, 1,
+                flag.getValue());
+            if (rc < 0)
+                throw ZlinkException.fromLastError("zlink_send_rid");
+            success = true;
+        } finally {
+            if (!success) {
+                try {
+                    NativeMsg.msgClose(nativeMsg);
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
+        buffer.position(buffer.position() + length);
+        return length;
+    }
+
+    private int sendDirectBuffer(int rid, ByteBuffer buffer,
+                                 SendFlag flag) {
+        ensureBlockingSendAllowed(flag);
+        int length = buffer.remaining();
+        ByteBuffer slice = buffer.slice();
+        MemorySegment payload = length == 0
+            ? MemorySegment.NULL
+            : MemorySegment.ofBuffer(slice);
+        SendScratch scratch = sendScratch.get();
+        MemorySegment nativeMsg = scratch.nativeMsg;
+        MemorySegment nativeRoutingId = nativeRoutingIdU32(scratch, rid);
         int rc = NativeMsg.msgInitData(nativeMsg, payload, length,
             MemorySegment.NULL, MemorySegment.NULL);
         if (rc != 0)
@@ -1671,6 +1738,22 @@ public abstract class Socket implements AutoCloseable {
             MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeRid,
                 NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
         }
+        return nativeRid;
+    }
+
+    private static MemorySegment nativeRoutingIdU32(SendScratch scratch,
+                                                    int routingId) {
+        MemorySegment nativeRid = scratch.nativeRoutingId;
+        nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+            (byte) Integer.BYTES);
+        nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_DATA_OFFSET,
+            (byte) (routingId >>> 24));
+        nativeRid.set(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_DATA_OFFSET + 1, (byte) (routingId >>> 16));
+        nativeRid.set(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_DATA_OFFSET + 2, (byte) (routingId >>> 8));
+        nativeRid.set(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_DATA_OFFSET + 3, (byte) routingId);
         return nativeRid;
     }
 

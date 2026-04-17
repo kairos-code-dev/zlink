@@ -5,17 +5,11 @@
 #include "api/config_result_internal.hpp"
 #include "api/monitor_api_internal.hpp"
 #include "api/recv_result_internal.hpp"
-#include "api/routing_id_internal.hpp"
 #include "api/socket_api_internal.hpp"
 
 #include <cstring>
 
 #include "core/recv_internal.hpp"
-
-namespace
-{
-thread_local uint8_t g_monitor_event_routing_id_storage[255];
-}
 
 int socket_monitor_snapshot_provider (void *subject_,
                                       zlink_monitor_snapshot_t *out_)
@@ -101,15 +95,12 @@ int recv_socket_monitor_event_unchecked (void *monitor_socket_,
     }
     const size_t routing_id_size = zlink_msg_size (&msg);
     const size_t copy_size =
-      routing_id_size > sizeof (g_monitor_event_routing_id_storage)
-        ? sizeof (g_monitor_event_routing_id_storage)
+      routing_id_size > sizeof (event_->routing_id.data)
+        ? sizeof (event_->routing_id.data)
         : routing_id_size;
+    event_->routing_id.size = static_cast<uint8_t> (copy_size);
     if (copy_size > 0)
-        memcpy (g_monitor_event_routing_id_storage, zlink_msg_data (&msg),
-                copy_size);
-    zlink::routing_id_internal::assign_view (
-      &event_->routing_id,
-      copy_size > 0 ? g_monitor_event_routing_id_storage : NULL, copy_size);
+        memcpy (event_->routing_id.data, zlink_msg_data (&msg), copy_size);
     zlink_msg_close (&msg);
 
     zlink_msg_init (&msg);

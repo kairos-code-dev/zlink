@@ -40,14 +40,12 @@ struct socket_monitor_event_record_t
     {
         memset (values, 0, sizeof (values));
         memset (&routing_id, 0, sizeof (routing_id));
-        memset (routing_id_storage, 0, sizeof (routing_id_storage));
     }
 
     uint64_t event;
     uint64_t values[socket_monitor_max_values];
     uint64_t values_count;
     zlink_routing_id_t routing_id;
-    uint8_t routing_id_storage[255];
     endpoint_uri_pair_t endpoint_uri_pair;
 };
 
@@ -91,7 +89,6 @@ struct socket_endpoint_runtime_t
     socket_inprocs_t inprocs;
     attached_pipes_t attached_pipes;
     zlink_routing_id_t last_recv_source_rid;
-    uint8_t last_recv_source_rid_storage[255];
     bool last_recv_source_rid_valid;
     std::string last_endpoint;
 
@@ -99,8 +96,6 @@ struct socket_endpoint_runtime_t
         last_recv_source_rid (),
         last_recv_source_rid_valid (false)
     {
-        memset (last_recv_source_rid_storage, 0,
-                sizeof (last_recv_source_rid_storage));
     }
 
     void attach_pipe (pipe_t *pipe_);

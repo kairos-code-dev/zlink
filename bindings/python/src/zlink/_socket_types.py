@@ -637,6 +637,7 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
         self._packet_handler_thread = thread
         thread.start()
 
+
 class PubSocket(_SendReadySocket, _DiscoveryAttachSocket, _EndpointSocket, _PublisherOptionSocket, _PublisherSocket):
     _socket_type_value = SocketType.PUB
 
@@ -657,7 +658,7 @@ class XPubSocket(_SendReadySocket, _EndpointSocket, _PublisherOptionSocket, _Pub
         return PubSocketOptions(self)
 
     def _subscription_event(self, flags):
-        routing_id = ctypes.POINTER(ZlinkRoutingId)()
+        routing_id = ZlinkRoutingId()
         subscribed = ctypes.c_int()
         topic_buf = ctypes.create_string_buffer(256)
         topic_len = ctypes.c_size_t(len(topic_buf))
@@ -672,7 +673,7 @@ class XPubSocket(_SendReadySocket, _EndpointSocket, _PublisherOptionSocket, _Pub
         if rc != 0:
             _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
         return SubscriptionEvent(
-            routing_id=_routing_id_bytes_from_ptr(routing_id),
+            routing_id=_routing_id_bytes(routing_id),
             topic=_decode_topic_text(topic_buf.raw[: topic_len.value]),
             subscribed=bool(subscribed.value),
             service_name=None,

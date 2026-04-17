@@ -17,17 +17,16 @@ def main():
 
                 dealer.send(b"ping")
                 with router.recv() as request:
-                    if request.routing_id != zlink.RoutingId.from_text("CLIENT"):
+                    if request.routing_id != zlink.RoutingId(b"CLIENT"):
                         raise AssertionError(f"unexpected routing id: {request.routing_id!r}")
                     if request.to_bytes_list() != [b"ping"]:
                         raise AssertionError("unexpected dealer-router request payload")
-                    peer_text = request.routing_id.to_text()
                     router.send(request.routing_id, b"pong")
 
                 with dealer.recv() as reply:
                     if reply.to_bytes_list() != [b"pong"]:
                         raise AssertionError("unexpected dealer-router reply payload")
-                print(f'[dealer-router/recv] peer: "{peer_text}" send: "ping" → recv: "pong"')
+                print('[dealer-router/recv] send: "ping" → recv: "pong"')
 
 
 if __name__ == "__main__":

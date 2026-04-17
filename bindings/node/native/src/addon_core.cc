@@ -482,16 +482,12 @@ int recv_parts(void *sock,
                size_t *part_count,
                int32_t flags)
 {
-    const zlink_routing_id_t *routing_id_view = NULL;
     if (routing_id)
         memset(routing_id, 0, sizeof(*routing_id));
     *parts = NULL;
     *part_count = 0;
-    const int rc = zlink_recv(
-      sock, &routing_id_view, parts, part_count, static_cast<zlink_recv_flags_t>(flags));
-    if (rc == 0 && routing_id && routing_id_view)
-        *routing_id = *routing_id_view;
-    return rc;
+    return zlink_recv(
+      sock, routing_id, parts, part_count, static_cast<zlink_recv_flags_t>(flags));
 }
 
 size_t recv_parts_size(zlink_msg_t *parts, size_t part_count)
@@ -812,7 +808,6 @@ bool parse_routing_id(napi_env env,
                       napi_value value,
                       zlink_routing_id_t *routing_id)
 {
-    static thread_local uint8_t routing_id_storage[255];
     void *data = NULL;
     size_t len = 0;
     if (napi_get_buffer_info(env, value, &data, &len) != napi_ok) {
@@ -824,21 +819,16 @@ bool parse_routing_id(napi_env env,
         return false;
     }
     memset(routing_id, 0, sizeof(*routing_id));
-    routing_id->size = len;
-    memcpy(routing_id_storage, data, len);
-    routing_id->data = routing_id_storage;
+    routing_id->size = static_cast<uint8_t>(len);
+    memcpy(routing_id->data, data, len);
     return true;
 }
 
 int set_socket_option(void *sock, int32_t opt, const void *data, size_t len)
 {
     switch (opt) {
-    case k_legacy_opt_routing_id: {
-        zlink_routing_id_t rid;
-        rid.size = len;
-        rid.data = const_cast<uint8_t *>(static_cast<const uint8_t *>(data));
-        return zlink_set_routing_id(sock, &rid);
-    }
+    case k_legacy_opt_routing_id:
+        return zlink_set_routing_id(sock, data, len);
     case k_legacy_opt_subscribe: {
         std::string filter(static_cast<const char *>(data), len);
         return zlink_set_subscription(sock, filter.c_str());
@@ -897,14 +887,15 @@ int get_socket_option(void *sock, int32_t opt, void *data, size_t *len)
 {
     switch (opt) {
     case k_legacy_opt_routing_id: {
-        const zlink_routing_id_t *rid = NULL;
+        zlink_routing_id_t rid;
+        memset(&rid, 0, sizeof(rid));
         int rc = zlink_get_routing_id(sock, &rid);
         if (rc != 0)
             return rc;
-        size_t copy_len = rid ? std::min(*len, static_cast<size_t>(rid->size)) : 0;
+        size_t copy_len = std::min(*len, static_cast<size_t>(rid.size));
         if (copy_len > 0)
-            memcpy(data, rid->data, copy_len);
-        *len = rid ? rid->size : 0;
+            memcpy(data, rid.data, copy_len);
+        *len = rid.size;
         return 0;
     }
     case ZLINK_ROUTER_OPT_MANDATORY:
@@ -1172,7 +1163,7 @@ void router_handler_tsfn_call_js(napi_env env,
     memset(&rid, 0, sizeof(rid));
     if (!payload->routing_id.empty()) {
         rid.size = payload->routing_id.size();
-        rid.data = reinterpret_cast<uint8_t *>(payload->routing_id.data());
+        memcpy(rid.data, payload->routing_id.data(), rid.size);
     }
 
     napi_value rid_value = create_routing_id_value(env, rid);
@@ -1183,8 +1174,7 @@ void router_handler_tsfn_call_js(napi_env env,
         zlink_routing_id_t spot_rid;
         memset(&spot_rid, 0, sizeof(spot_rid));
         spot_rid.size = payload->spot_routing_id.size();
-        spot_rid.data =
-          reinterpret_cast<uint8_t *>(payload->spot_routing_id.data());
+        memcpy(spot_rid.data, payload->spot_routing_id.data(), spot_rid.size);
         spot_rid_value = create_routing_id_value(env, spot_rid);
     } else {
         napi_get_null(env, &spot_rid_value);
@@ -3006,12 +2996,13 @@ napi_value socket_subscribe_message(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &sock);
 
     std::vector<char> topic(256, '\0');
-    const zlink_routing_id_t *routing_id = NULL;
+    zlink_routing_id_t routing_id;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     size_t topic_len = topic.size();
 
     for (;;) {
+        memset(&routing_id, 0, sizeof(routing_id));
         int rc = zlink_subscribe(
           sock,
           &routing_id,
@@ -3022,8 +3013,7 @@ napi_value socket_subscribe_message(napi_env env, napi_callback_info info)
           ZLINK_RECV_FLAGS_NONE);
         if (rc == 0) {
           napi_value out = create_subscribed_value(
-            env, routing_id ? *routing_id : zlink_routing_id_t{0, NULL},
-            topic.data(), topic_len, parts, part_count);
+            env, routing_id, topic.data(), topic_len, parts, part_count);
           close_recv_parts(parts, part_count);
           return out;
         }
@@ -3042,12 +3032,13 @@ napi_value socket_try_subscribe_message(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &sock);
 
     std::vector<char> topic(256, '\0');
-    const zlink_routing_id_t *routing_id = NULL;
+    zlink_routing_id_t routing_id;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     size_t topic_len = topic.size();
 
     for (;;) {
+        memset(&routing_id, 0, sizeof(routing_id));
         int rc = zlink_subscribe(
           sock,
           &routing_id,
@@ -3058,8 +3049,7 @@ napi_value socket_try_subscribe_message(napi_env env, napi_callback_info info)
           ZLINK_RECV_FLAGS_DONTWAIT);
         if (rc == 0) {
           napi_value out = create_subscribed_value(
-            env, routing_id ? *routing_id : zlink_routing_id_t{0, NULL},
-            topic.data(), topic_len, parts, part_count);
+            env, routing_id, topic.data(), topic_len, parts, part_count);
           close_recv_parts(parts, part_count);
           return out;
         }
@@ -3136,11 +3126,12 @@ napi_value socket_subscription_event(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &sock);
 
     std::vector<char> topic(256, '\0');
-    const zlink_routing_id_t *routing_id = NULL;
+    zlink_routing_id_t routing_id;
     int subscribed = 0;
     size_t topic_len = topic.size();
 
     for (;;) {
+        memset(&routing_id, 0, sizeof(routing_id));
         int rc = zlink_subscription_event(
           sock,
           &routing_id,
@@ -3150,8 +3141,7 @@ napi_value socket_subscription_event(napi_env env, napi_callback_info info)
           ZLINK_RECV_FLAGS_NONE);
         if (rc == 0)
             return create_subscription_event_value(
-              env, routing_id ? *routing_id : zlink_routing_id_t{0, NULL},
-              subscribed, topic.data(), topic_len);
+              env, routing_id, subscribed, topic.data(), topic_len);
         if (zlink_errno() != EMSGSIZE)
             return throw_last_error(env, "receiveSubscriptionEvent failed");
         topic.assign(topic_len > 0 ? topic_len : 1, '\0');
@@ -3167,11 +3157,12 @@ napi_value socket_try_subscription_event(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &sock);
 
     std::vector<char> topic(256, '\0');
-    const zlink_routing_id_t *routing_id = NULL;
+    zlink_routing_id_t routing_id;
     int subscribed = 0;
     size_t topic_len = topic.size();
 
     for (;;) {
+        memset(&routing_id, 0, sizeof(routing_id));
         int rc = zlink_subscription_event(
           sock,
           &routing_id,
@@ -3181,8 +3172,7 @@ napi_value socket_try_subscription_event(napi_env env, napi_callback_info info)
           ZLINK_RECV_FLAGS_DONTWAIT);
         if (rc == 0)
             return create_subscription_event_value(
-              env, routing_id ? *routing_id : zlink_routing_id_t{0, NULL},
-              subscribed, topic.data(), topic_len);
+              env, routing_id, subscribed, topic.data(), topic_len);
         const int err = zlink_errno();
         if (err == EAGAIN) {
             napi_value none;
@@ -3464,13 +3454,10 @@ napi_value socket_stream_send(napi_env env, napi_callback_info info)
         }
     }
 
-    uint8_t rid_storage[255];
     zlink_routing_id_t rid;
-    memset(rid_storage, 0, sizeof(rid_storage));
     memset(&rid, 0, sizeof(rid));
-    rid.size = rid_len;
-    rid.data = rid_storage;
-    memcpy(rid_storage, rid_data, rid_len);
+    rid.size = static_cast<uint8_t>(rid_len);
+    memcpy(rid.data, rid_data, rid_len);
 
     zlink_msg_t msg;
     if (!init_msg_from_bytes(&msg, payload_data, payload_len))
@@ -3544,7 +3531,7 @@ napi_value handle_set_routing_id(napi_env env, napi_callback_info info)
     zlink_routing_id_t routing_id;
     if (!parse_routing_id(env, argv[1], &routing_id))
         return NULL;
-    int rc = zlink_set_routing_id(handle, &routing_id);
+    int rc = zlink_set_routing_id(handle, routing_id.data, routing_id.size);
     if (rc != 0)
         return throw_last_error(env, "set_routing_id failed");
     napi_value ok;
@@ -3559,15 +3546,12 @@ napi_value handle_get_routing_id(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *handle = NULL;
     napi_get_value_external(env, argv[0], &handle);
-    const zlink_routing_id_t *routing_id = NULL;
+    zlink_routing_id_t routing_id;
+    memset(&routing_id, 0, sizeof(routing_id));
     int rc = zlink_get_routing_id(handle, &routing_id);
     if (rc != 0)
         return throw_last_error(env, "get_routing_id failed");
-    if (routing_id)
-        return create_routing_id_value(env, *routing_id);
-    napi_value none;
-    napi_get_null(env, &none);
-    return none;
+    return create_routing_id_value(env, routing_id);
 }
 
 napi_value dealer_request(napi_env env, napi_callback_info info)

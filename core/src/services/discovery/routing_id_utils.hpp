@@ -3,7 +3,6 @@
 #define __ZLINK_DISCOVERY_ROUTING_ID_UTILS_HPP_INCLUDED__
 
 #include "protocol/wire.hpp"
-#include "api/routing_id_internal.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/random.hpp"
 
@@ -14,8 +13,6 @@ namespace zlink
 {
 namespace discovery
 {
-static thread_local uint8_t g_discovery_socket_routing_id_storage[255];
-
 inline bool set_socket_routing_id (socket_base_t *socket_,
                                    const std::string *override_id_,
                                    zlink_routing_id_t *out_)
@@ -38,15 +35,10 @@ inline bool set_socket_routing_id (socket_base_t *socket_,
             return false;
     }
     if (out_) {
-        size_t size = sizeof (g_discovery_socket_routing_id_storage);
-        if (socket_->getsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID,
-                                 g_discovery_socket_routing_id_storage, &size)
-            != 0)
+        size_t size = sizeof (out_->data);
+        if (socket_->getsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, out_->data, &size) != 0)
             return false;
-        if (!zlink::routing_id_internal::assign_view (
-              out_,
-              size > 0 ? g_discovery_socket_routing_id_storage : NULL, size))
-            return false;
+        out_->size = static_cast<uint8_t> (size);
     }
     return true;
 }
@@ -66,10 +58,8 @@ inline bool ensure_socket_routing_id_present (socket_base_t *socket_,
         return false;
     if (size > 0) {
         if (out_) {
-            memcpy (g_discovery_socket_routing_id_storage, buf, size);
-            if (!zlink::routing_id_internal::assign_view (
-                  out_, g_discovery_socket_routing_id_storage, size))
-                return false;
+            out_->size = static_cast<uint8_t> (size);
+            memcpy (out_->data, buf, size);
         }
         return true;
     }

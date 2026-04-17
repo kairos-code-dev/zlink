@@ -4,8 +4,6 @@
 
 #include "sockets/socket_runtime.hpp"
 
-#include "api/routing_id_internal.hpp"
-
 #include "core/io_thread.hpp"
 #include "core/mailbox.hpp"
 #include "sockets/socket_base.hpp"
@@ -181,24 +179,13 @@ void zlink::socket_endpoint_runtime_t::store_last_recv_source_rid (
         return;
     }
 
-    if (source_rid_->size > zlink::routing_id_internal::owned_capacity ()
-        || (source_rid_->size > 0 && !source_rid_->data)) {
-        clear_last_recv_source_rid ();
-        return;
-    }
-    if (source_rid_->size > 0)
-        memcpy (last_recv_source_rid_storage, source_rid_->data,
-                source_rid_->size);
-    last_recv_source_rid.size = source_rid_->size;
-    last_recv_source_rid.data =
-      source_rid_->size > 0 ? last_recv_source_rid_storage : NULL;
+    last_recv_source_rid = *source_rid_;
     last_recv_source_rid_valid = true;
 }
 
 void zlink::socket_endpoint_runtime_t::clear_last_recv_source_rid ()
 {
-    last_recv_source_rid.size = 0;
-    last_recv_source_rid.data = NULL;
+    memset (&last_recv_source_rid, 0, sizeof (last_recv_source_rid));
     last_recv_source_rid_valid = false;
 }
 

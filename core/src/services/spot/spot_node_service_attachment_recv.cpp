@@ -74,7 +74,7 @@ int spot_node_t::snapshot_service_attachments (
     return 0;
 }
 
-int spot_node_t::service_subscribe_recv (const zlink_routing_id_t **source_rid_out_,
+int spot_node_t::service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
                                          zlink_msg_t **parts_out_,
                                          size_t *part_count_out_,
                                          char *service_name_out_,
@@ -107,9 +107,8 @@ int spot_node_t::service_subscribe_recv (const zlink_routing_id_t **source_rid_o
         }
 
         size_t service_len = *service_name_len_out_;
-        const zlink_routing_id_t *source_rid = NULL;
         zlink_recv_result_t rc =
-          zlink_subscribe ((*subs)[ready_index].socket, &source_rid,
+          zlink_subscribe ((*subs)[ready_index].socket, source_rid_out_,
                            parts_out_, part_count_out_, topic_id_out_,
                            topic_id_len_out_,
                            static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
@@ -122,8 +121,6 @@ int spot_node_t::service_subscribe_recv (const zlink_routing_id_t **source_rid_o
         }
         if (rc != ZLINK_RECV_OK)
             return -1;
-        if (source_rid_out_)
-            *source_rid_out_ = source_rid;
         if (!service_name_out_) {
             *service_name_len_out_ = (*subs)[ready_index].service_name.size ();
             return 0;
@@ -143,7 +140,7 @@ int spot_node_t::service_subscribe_recv (const zlink_routing_id_t **source_rid_o
 }
 
 int spot_node_t::service_subscription_event_recv (
-  const zlink_routing_id_t **source_rid_out_,
+  zlink_routing_id_t *source_rid_out_,
   int *subscribed_out_,
   char *service_name_out_,
   size_t *service_name_len_out_,
@@ -174,10 +171,9 @@ int spot_node_t::service_subscription_event_recv (
         }
 
         size_t service_len = *service_name_len_out_;
-        const zlink_routing_id_t *source_rid = NULL;
         zlink_recv_result_t rc =
           zlink_subscription_event ((*subs)[ready_index].socket,
-                                    &source_rid, subscribed_out_,
+                                    source_rid_out_, subscribed_out_,
                                     topic_id_out_, topic_id_len_out_,
                                     static_cast<zlink_recv_flags_t> (
                                       ZLINK_DONTWAIT));
@@ -190,8 +186,6 @@ int spot_node_t::service_subscription_event_recv (
         }
         if (rc != ZLINK_RECV_OK)
             return -1;
-        if (source_rid_out_)
-            *source_rid_out_ = source_rid;
         if (!service_name_out_) {
             *service_name_len_out_ = (*subs)[ready_index].service_name.size ();
             return 0;
@@ -257,3 +251,4 @@ int spot_node_t::service_monitor_recv (zlink_spot_service_monitor_event_t *out_,
     }
 }
 }
+

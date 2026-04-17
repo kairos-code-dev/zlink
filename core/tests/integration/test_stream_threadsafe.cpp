@@ -64,13 +64,10 @@ struct route_probe_t
     route_probe_t () : ready (0), rid ()
     {
         memset (&rid, 0, sizeof (rid));
-        rid.data = rid_storage;
-        memset (rid_storage, 0, sizeof (rid_storage));
     }
 
     std::atomic<int> ready;
     zlink_routing_id_t rid;
-    uint8_t rid_storage[kRouteIdSize];
 };
 
 struct lifecycle_probe_t
@@ -415,7 +412,7 @@ int capture_route_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
         && zlink_msg_size (msg_) > 0
         && g_route_probe->ready.load (std::memory_order_acquire) == 0) {
         g_route_probe->rid.size = rid_->size;
-        memcpy (g_route_probe->rid_storage, rid_->data, kRouteIdSize);
+        memcpy (g_route_probe->rid.data, rid_->data, kRouteIdSize);
         g_route_probe->ready.store (1, std::memory_order_release);
     }
 
@@ -1689,5 +1686,42 @@ void test_stream_send_to_stale_rid_after_disconnect ()
 
 int main ()
 {
-    return 0;
+    setup_test_environment ();
+
+    UNITY_BEGIN ();
+    if (should_run_stream_threadsafe_test (
+          "test_stream_callback_rejects_detach_and_close"))
+        RUN_TEST (test_stream_callback_rejects_detach_and_close);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_send_is_thread_safe_across_app_threads"))
+        RUN_TEST (test_stream_send_is_thread_safe_across_app_threads);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_send_and_close_race_is_safe"))
+        RUN_TEST (test_stream_send_and_close_race_is_safe);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_callback_handoff_to_worker_thread_send_msg_is_safe"))
+        RUN_TEST (test_stream_callback_handoff_to_worker_thread_send_msg_is_safe);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_callback_queue_handoff_with_send_ready_under_load_is_safe"))
+        RUN_TEST (test_stream_callback_queue_handoff_with_send_ready_under_load_is_safe);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe"))
+        RUN_TEST (test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_cleanly"))
+        RUN_TEST (test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_cleanly);
+    if (should_run_stream_threadsafe_test ("test_stream_send_msg_is_thread_safe"))
+        RUN_TEST (test_stream_send_msg_is_thread_safe);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_runtime_reads_are_safe_during_send"))
+        RUN_TEST (test_stream_runtime_reads_are_safe_during_send);
+    if (should_run_stream_threadsafe_test (
+          "test_socket_runtime_reads_are_safe_during_connect_disconnect"))
+        RUN_TEST (test_socket_runtime_reads_are_safe_during_connect_disconnect);
+    if (should_run_stream_threadsafe_test ("test_stream_rapid_client_churn_during_send"))
+        RUN_TEST (test_stream_rapid_client_churn_during_send);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_send_to_stale_rid_after_disconnect"))
+        RUN_TEST (test_stream_send_to_stale_rid_after_disconnect);
+    return UNITY_END ();
 }

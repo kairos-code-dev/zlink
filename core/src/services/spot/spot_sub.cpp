@@ -3,7 +3,6 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_sub.hpp"
-#include "api/routing_id_internal.hpp"
 
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_node.hpp"
@@ -45,8 +44,7 @@ spot_sub_t::spot_sub_t (spot_node_t *node_,
     _monitor_task_id (0)
 {
     memset (&_routing_id, 0, sizeof (_routing_id));
-    memset (_routing_id_storage, 0, sizeof (_routing_id_storage));
-    initialize_routing_id (&_routing_id, _routing_id_storage);
+    initialize_routing_id (&_routing_id);
 }
 
 spot_sub_t::~spot_sub_t ()
@@ -76,18 +74,16 @@ socket_base_t *spot_sub_t::socket () const
     return _socket;
 }
 
-int spot_sub_t::initialize_routing_id (zlink_routing_id_t *out_,
-                                       uint8_t storage_[255])
+int spot_sub_t::initialize_routing_id (zlink_routing_id_t *out_)
 {
-    if (!out_ || !storage_) {
+    if (!out_) {
         errno = EINVAL;
         return -1;
     }
 
     const uint32_t value = generate_random ();
     out_->size = sizeof (value);
-    memcpy (storage_, &value, sizeof (value));
-    out_->data = storage_;
+    memcpy (out_->data, &value, sizeof (value));
     return 0;
 }
 

@@ -499,49 +499,30 @@ class Message:
 
 ### RoutingId
 
-Binary-safe immutable value type (0-255 bytes). The canonical form is raw
-bytes. `from_u32()` and `from_text()` are helper constructors only; they
-do not change the bytes-canonical contract.
+Binary-safe immutable value type (1-255 bytes). Construction from a raw
+`str` is **not** supported by default; string conversion is exposed only
+through convenience helpers (`to_hex()`, `__str__`).
 
 ```python
 class RoutingId:
     def __init__(self, data: bytes | bytearray) -> None: ...      # Raises: ConfigError
     @classmethod
     def from_bytes(cls, data: bytes | bytearray) -> "RoutingId": ...  # Raises: ConfigError
-    @classmethod
-    def from_u32(cls, value: int) -> "RoutingId": ...             # Raises: ConfigError
-    @classmethod
-    def from_text(cls, value: str) -> "RoutingId": ...            # Raises: ConfigError
 
     def to_bytes(self) -> bytes: ...
-    def to_u32(self) -> int: ...                                  # Raises: ConfigError
-    def to_text(self) -> str: ...                                 # Raises: ConfigError
 
     @property
-    def size(self) -> int: ...       # byte length (0..255)
+    def size(self) -> int: ...       # byte length (1..255)
 
     def __bytes__(self) -> bytes: ...
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
 
+    # Convenience only — not part of the canonical shape:
     def to_hex(self) -> str: ...
     def __str__(self) -> str: ...
     def __repr__(self) -> str: ...
 ```
-
-Rules:
-- `RoutingId` is bytes-canonical. `from_u32()` / `to_u32()` use 4-byte
-  big-endian STREAM encoding.
-- `from_text()` / `to_text()` use UTF-8.
-- Display code should prefer `to_text()` when text is expected and fall
-  back to `to_hex()` when the bytes are not text.
-
-Rules:
-- `RoutingId` is bytes-canonical. `from_u32()` / `to_u32()` use 4-byte
-  big-endian STREAM encoding.
-- `from_text()` / `to_text()` use UTF-8.
-- Display code should prefer `to_text()` when text is expected and fall
-  back to `to_hex()` when the bytes are not text.
 
 ### Received
 

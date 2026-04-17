@@ -30,7 +30,6 @@ function normalizeMessageProperties(
 const EMPTY_PROPERTIES: Readonly<Record<string, string>> = Object.freeze({});
 const EMPTY_METADATA: Readonly<Map<number, Buffer>> = Object.freeze(new Map<number, Buffer>());
 const ROUTING_ID_MAX_LENGTH = 255;
-const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
 
 interface ReplyContext {
   reply(parts: readonly Message[], flags: SendFlags): void;
@@ -61,11 +60,11 @@ function normalizeRoutingIdBytes(bytes: Buffer | Uint8Array, name: string): Buff
     throw new TypeError(`${name} must be a Buffer or Uint8Array`);
   }
   const normalized = Buffer.from(bytes);
-  if (normalized.length > ROUTING_ID_MAX_LENGTH) {
+  if (normalized.length === 0 || normalized.length > ROUTING_ID_MAX_LENGTH) {
     throw new ConfigError(
       ConfigResult.InvalidArgument,
       0,
-      `${name} must be 0..${ROUTING_ID_MAX_LENGTH} bytes`
+      `${name} must be 1..${ROUTING_ID_MAX_LENGTH} bytes`
     );
   }
   return normalized;
@@ -176,51 +175,8 @@ export class RoutingId {
     return new RoutingId(normalizeRoutingIdBytes(bytes, 'bytes'));
   }
 
-  static fromU32(value: number): RoutingId {
-    if (!Number.isInteger(value) || value < 0 || value > 0xFFFF_FFFF) {
-      throw new RangeError('value must be a uint32');
-    }
-    const raw = Buffer.allocUnsafe(4);
-    raw.writeUInt32BE(value >>> 0, 0);
-    return new RoutingId(raw);
-  }
-
-  static fromUInt32(value: number): RoutingId {
-    return RoutingId.fromU32(value);
-  }
-
-  static fromText(value: string): RoutingId {
-    if (typeof value !== 'string') {
-      throw new TypeError('value must be a string');
-    }
-    return new RoutingId(normalizeRoutingIdBytes(Buffer.from(value, 'utf8'), 'value'));
-  }
-
-  static fromString(value: string): RoutingId {
-    return RoutingId.fromText(value);
-  }
-
   toBytes(): Buffer {
     return Buffer.from(this._bytes);
-  }
-
-  toU32(): number {
-    if (this._bytes.length !== 4) {
-      throw new RangeError('routing id is not a uint32-sized STREAM routing id');
-    }
-    return this._bytes.readUInt32BE(0);
-  }
-
-  toUInt32(): number {
-    return this.toU32();
-  }
-
-  toText(): string {
-    return UTF8_DECODER.decode(this._bytes);
-  }
-
-  toPublicString(): string {
-    return this.toText();
   }
 
   get size(): number {

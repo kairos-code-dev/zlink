@@ -70,5 +70,9 @@ void test_router_auto_id_format ()
 
 int main ()
 {
-    return 0;
+    setup_test_environment ();
+
+    UNITY_BEGIN ();
+    RUN_TEST (test_router_auto_id_format);
+    return UNITY_END ();
 }

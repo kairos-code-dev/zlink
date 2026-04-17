@@ -446,22 +446,17 @@ func (m *Message) Close() error
 
 ### RoutingID
 
-Immutable binary-safe routing id value (0-255 bytes).
+Immutable binary-safe routing id value (1-255 bytes).
 
 ```go
-// NewRoutingID builds a routing id from raw bytes (0-255 bytes).
+// NewRoutingID builds a routing id from raw bytes (1-255 bytes).
 // Binary-safe: the input is copied verbatim and may contain NUL.
 func NewRoutingID(bytes []byte) RoutingID
-func RoutingIDFromU32(value uint32) RoutingID
-func RoutingIDFromText(value string) RoutingID
 
 // Bytes returns the raw byte view. The returned slice must not be mutated.
 func (r RoutingID) Bytes() []byte
-func (r RoutingID) ToBytes() []byte
-// Size returns the byte length (0-255).
+// Size returns the byte length (1-255; 0 when empty/unset).
 func (r RoutingID) Size() int
-func (r RoutingID) ToU32() (uint32, bool)
-func (r RoutingID) ToText() string
 
 // Equal compares two routing ids byte-for-byte.
 func (r RoutingID) Equal(other RoutingID) bool
@@ -472,7 +467,6 @@ func (r RoutingID) Hash() uint64
 // constructors. RoutingID must be built from raw bytes.
 func (r RoutingID) String() string
 func (r RoutingID) Hex() string
-func (r RoutingID) ToHex() string
 ```
 
 ### Received

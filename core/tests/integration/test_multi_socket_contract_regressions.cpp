@@ -1258,5 +1258,19 @@ void test_pubsub_publish_rollback_preserves_next_topic_boundary ()
 
 int main ()
 {
-    return 0;
+    setup_test_environment ();
+
+    UNITY_BEGIN ();
+    RUN_TEST (test_router_recv_with_source_rid_strips_routing_envelope_from_dealer);
+    RUN_TEST (test_dealer_recv_with_source_rid_hides_peer_routing_id);
+    RUN_TEST (test_router_recv_dontwait_no_data_does_not_break_poller_rearm);
+    RUN_TEST (test_pubsub_callback_is_supported_on_raw_sub_sockets);
+    RUN_TEST (test_pubsub_subscribe_preserves_topic_and_payload_shape_across_warmup);
+    RUN_TEST (test_pubsub_subscribe_dontwait_preserves_perf_contract_during_burst);
+    RUN_TEST (test_pubsub_repeated_topic_stops_delivery_after_unsubscribe);
+    RUN_TEST (test_pubsub_repeated_topic_keeps_delivering_after_peer_disconnect);
+    RUN_TEST (test_pubsub_subscribe_can_skip_topic_copy_and_keep_multipart_payload);
+    RUN_TEST (test_pubsub_publish_is_safe_from_multiple_threads);
+    RUN_TEST (test_pubsub_publish_rollback_preserves_next_topic_boundary);
+    return UNITY_END ();
 }

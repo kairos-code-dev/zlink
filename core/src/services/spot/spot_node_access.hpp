@@ -57,7 +57,7 @@ struct spot_node_access_t
     static socket_base_t *service_pub_socket (spot_node_t *node_,
                                               const std::string &service_name_);
     static int service_subscribe_recv (spot_node_t *node_,
-                                       const zlink_routing_id_t **source_rid_out_,
+                                       zlink_routing_id_t *source_rid_out_,
                                        zlink_msg_t **parts_out_,
                                        size_t *part_count_out_,
                                        char *service_name_out_,
@@ -67,7 +67,7 @@ struct spot_node_access_t
                                        zlink_recv_flags_t flags_);
     static int service_subscription_event_recv (
       spot_node_t *node_,
-      const zlink_routing_id_t **source_rid_out_,
+      zlink_routing_id_t *source_rid_out_,
       int *subscribed_out_,
       char *service_name_out_,
       size_t *service_name_len_out_,

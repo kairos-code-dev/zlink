@@ -373,5 +373,9 @@ void test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp ()
 
 int main ()
 {
-    return 0;
+    setup_test_environment ();
+    UNITY_BEGIN ();
+    RUN_TEST (test);
+    RUN_TEST (test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp);
+    return UNITY_END ();
 }

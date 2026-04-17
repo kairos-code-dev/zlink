@@ -8,11 +8,6 @@
 피어 routing id 주소 지정을 사용하는 raw TCP/WS 통신. STREAM은 bind 전용이며
 `zlink_connect`를 지원하지 않습니다.
 
-`routing_id`의 공개 canonical 형태는 다른 소켓과 마찬가지로
-`zlink_routing_id_t` 바이트 열입니다. 다만 STREAM에서는 이 값을 4바이트
-big-endian `uint32`로 해석하는 `zlink_routing_id_to_u32()` /
-`zlink_routing_id_from_u32()` helper를 함께 쓰는 것이 권장됩니다.
-
 ## 수신 모델
 
 STREAM은 다른 소켓 타입과 달리 세 가지 수신 모델을 지원합니다. 하나의

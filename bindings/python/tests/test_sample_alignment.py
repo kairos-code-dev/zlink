@@ -51,16 +51,6 @@ class SampleAlignmentTests(unittest.TestCase):
             runner,
         )
 
-    def test_spot_recv_sample_shows_dispatch_callback_recv_flow(self):
-        text = (SAMPLES_DIR / "spot_recv_sample.py").read_text(encoding="utf-8")
-        self.assertIn("with zlink.SpotNode(ctx) as publisher_node", text)
-        self.assertIn("with zlink.SpotNode(ctx) as subscriber_node", text)
-        self.assertIn("subscriber.on_dispatch_event(on_dispatch)", text)
-        self.assertIn("subscriber.subscribe(", text)
-        self.assertIn("flags=zlink.RecvFlags.DONT_WAIT", text)
-        self.assertIn("publisher.publish(", text)
-        self.assertNotIn("attach_service_pair", text)
-
     def test_readme_mentions_samples_runner(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("samples/run_samples.sh", readme)

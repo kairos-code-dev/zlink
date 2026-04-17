@@ -75,18 +75,6 @@ func waitForMonitorEvent(t testing.TB, mon *zlink.SocketMonitor, timeout time.Du
 	}
 }
 
-func waitUntil(t testing.TB, timeout time.Duration, description string, predicate func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if predicate() {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("timed out waiting for %s", description)
-}
-
 func writeStreamPacket(t testing.TB, conn net.Conn, body []byte) {
 	t.Helper()
 	frame := make([]byte, 6+len(body))

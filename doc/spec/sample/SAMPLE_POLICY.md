@@ -83,6 +83,9 @@
   `monitor_recv_sample` 로 고정한다.
 - 각 샘플은 하나의 핵심 패턴만 설명해야 한다.
 - 혼합형 샘플은 두지 않는다.
+- 다만 `spot_recv_sample` 은 예외다.
+  spot은 publish/subscribe, send/recv, timer event를 함께 제공하는 표면 특성을
+  보여 주기 위해 통합 흐름을 한 파일에 담을 수 있다.
 
 ## Sample Content Rules
 - 샘플은 핵심 로직이 한눈에 보이게 작성한다.
@@ -131,22 +134,27 @@
 - `recv sample` 은 packet callback 등록 API를 사용하지 않는다.
 - `send/publish` 후 direct receive 결과를 직접 확인한다.
 - `spot_recv_sample` 은 dispatcher event callback이 호출되면 그 안에서
-  `recv` 또는 subscribe recv를 수행해 데이터를 확인한다.
-- `spot_recv_sample` 은 polling loop로 `recv` 또는 `subscribe` 를 호출하면 안
-  된다.
-- `spot_recv_sample` 의 메인 흐름은 publish trigger와 완료 대기만 담당한다.
-- 실제 수신 확인은 반드시 dispatcher event callback 본문에서 끝나야 한다.
+  `recv` 를 수행해 데이터를 확인한다.
+- `spot_recv_sample` 은 다음 흐름을 함께 보여 줄 수 있다.
+  - publish 후 subscribe 성격의 메시지 수신
+  - send 후 direct recv
+  - timer event 발생 후 관련 recv 또는 후속 동작 확인
 - recv sample 본문은 recv surface를 배우는 데 필요한 코드만 남긴다.
 
 ## Spot Sample Rules
-- `spot_recv_sample` 은 dispatcher event callback과 callback 안의 recv를 보여
-  주는 단일 canonical 샘플이다.
-- 이 샘플은 publish -> dispatch event -> recv 흐름 하나만 설명한다.
+- `spot_recv_sample` 은 spot이 여러 상호작용 모델을 한 표면에서 제공한다는
+  점을 보여 주는 대표 샘플이다.
+- 이 샘플은 단일 패턴 예제가 아니라 spot event and recv overview로 작성한다.
+- 따라서 한 파일 안에 publish, send, timer 흐름을 함께 둘 수 있다.
+- 다만 각 흐름은 순서대로 분리해서 보여야 한다.
+  사용자가 어떤 호출이 어떤 결과를 만드는지 바로 따라갈 수 있어야 한다.
 - 수신 확인은 dispatcher event callback 안의 `recv` 로 일관되게 처리한다.
 - monitor event, packet callback, 별도 async completion 표면은 여기에 섞지
   않는다.
 - helper를 쓰더라도 본문에서 다음이 직접 보여야 한다.
   - publish 호출
+  - send 호출
+  - timer 등록 또는 시작
   - dispatcher event callback 등록
   - callback 안의 `recv`
 - `spot` 의 request/reply는 `spot_recv_sample` 에 넣지 않는다.
@@ -440,17 +448,21 @@
   - service id는 `"sample"`
   - topic은 `"room:lobby"`
   - publish payload는 `"hello-spot"`
+  - send payload와 timer tick 값은 확장 예가 필요할 때만 추가한다.
 - execution order:
   - dispatcher event callback 등록
   - `publish "room:lobby/hello-spot"`
-  - dispatcher event callback이 `SUBSCRIBE_READABLE` 을 수신
-  - dispatcher event callback 안에서 `recv` 또는 subscribe recv 수행
+  - dispatcher event callback 안에서 `recv`
+  - 필요하면 같은 샘플 안에 `send` 또는 timer round를 확장 예로 추가할 수 있다.
 - verification:
   - publish 경로 payload가 `"hello-spot"` 이어야 한다.
   - 수신 확인은 dispatcher event callback 경유 `recv` 로 일관되어야 한다.
-  - polling loop 기반 `recv` 또는 `subscribe` 는 없어야 한다.
+  - send 또는 timer를 넣으면 그 경로도 같은 규칙으로 별도 확인한다.
 - output example:
   - `[spot/recv] service: "sample" tick: 1 publish: "room:lobby/hello-spot" -> recv: "room:lobby/hello-spot"`
+  - 확장 예:
+  - `[spot/recv] service: "sample" tick: 1 send: "hello-spot-send" -> recv: "hello-spot-send"`
+  - `[spot/recv] service: "sample" tick: 1 timer: "tick-1" -> next-round`
 
 ### Spot Request Async Sample Profile
 - 대상 샘플: `spot_request_async_sample`
@@ -578,7 +590,7 @@
 | dealer-router | bidirectional | — | request: `"ping"`, reply: `"pong"` |
 | stream | bidirectional | — | `"hello-stream"` |
 | pubsub | one-way | `"prices"` | `"101.25"` |
-| spot-recv | dispatch recv | `"room:lobby"` | service id: `"sample"`, publish: `"hello-spot"` |
+| spot-recv | composite | `"room:lobby"` | service id: `"sample"`, publish: `"hello-spot"`, send: `"hello-spot-send"`, timer: `"tick-1"` |
 | spot-request | async request | — | service id: `"sample"`, request: `"spot-ping"`, reply: `"spot-pong"` |
 | monitor | event plane | — | recv: `"connection-ready"` |
 | discovery-registry | service plane | — | service id: `"sample"`, state: `discovered`, remove: `removed` |

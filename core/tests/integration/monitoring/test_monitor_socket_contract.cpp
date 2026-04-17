@@ -828,7 +828,6 @@ bool recv_stream_routing_id_and_payload (void *socket_,
                                          zlink_routing_id_t *rid_out_,
                                          zlink_msg_t *payload_out_)
 {
-    static thread_local uint8_t routing_id_storage[stream_routing_id_size];
     zlink_msg_t rid_msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&rid_msg));
     if (test_recv_single_msg (&rid_msg, socket_, 0) < 0) {
@@ -842,9 +841,8 @@ bool recv_stream_routing_id_and_payload (void *socket_,
         return false;
     }
 
-    rid_out_->size = stream_routing_id_size;
-    rid_out_->data = routing_id_storage;
-    memcpy (routing_id_storage, zlink_msg_data (&rid_msg), stream_routing_id_size);
+    rid_out_->size = static_cast<uint8_t> (stream_routing_id_size);
+    memcpy (rid_out_->data, zlink_msg_data (&rid_msg), stream_routing_id_size);
     const bool more = test_msg_has_more (&rid_msg);
     zlink_msg_close (&rid_msg);
     if (!more) {
@@ -1567,5 +1565,20 @@ void test_stream_ready_with_monitor_callback_and_socket_callback ()
 
 int main ()
 {
-    return 0;
+    setup_test_environment ();
+
+    UNITY_BEGIN ();
+    RUN_TEST (test_pair_ready_with_monitor_recv_and_socket_recv);
+    RUN_TEST (test_pair_ready_with_monitor_recv_and_socket_callback);
+    RUN_TEST (test_dealer_router_ready_with_monitor_recv_and_socket_recv);
+    RUN_TEST (test_dealer_router_ready_with_monitor_recv_and_socket_callback);
+    RUN_TEST (test_router_router_ready_with_monitor_recv_and_socket_recv);
+    RUN_TEST (test_router_router_ready_with_monitor_recv_and_socket_callback);
+    RUN_TEST (test_pubsub_ready_with_monitor_recv_and_socket_recv);
+    RUN_TEST (test_pubsub_ready_with_monitor_recv_and_socket_callback);
+    RUN_TEST (test_pubsub_delivery_ready_snapshot_and_reopen_after_ready);
+    RUN_TEST (test_pubsub_delivery_ready_reaches_1000_subscribers);
+    RUN_TEST (test_stream_ready_with_monitor_recv_and_socket_recv);
+    RUN_TEST (test_stream_ready_with_monitor_recv_and_socket_callback);
+    return UNITY_END ();
 }

@@ -10,7 +10,7 @@ use std::task::{Context as TaskContext, Poll, RawWaker, RawWakerVTable, Waker};
 use std::thread;
 use std::time::Duration;
 
-use zlink::{Context, Message, RecvFlags, RequestResult, RoutingId, SpotNode};
+use zlink::{Context, Message, SpotNode};
 
 fn noop_raw_waker() -> RawWaker {
     fn clone(_: *const ()) -> RawWaker { noop_raw_waker() }
@@ -43,18 +43,6 @@ fn main() {
     let responder_node = SpotNode::new(&ctx).expect("responder node failed");
     let requester = requester_node.create_spot().expect("requester spot failed");
     let responder = responder_node.create_spot().expect("responder spot failed");
-    requester_node
-        .set_routing_id(&RoutingId::from_bytes(b"spot-requester-node"))
-        .expect("requester node routing id failed");
-    responder_node
-        .set_routing_id(&RoutingId::from_bytes(b"spot-responder-node"))
-        .expect("responder node routing id failed");
-    requester
-        .set_routing_id(&RoutingId::from_bytes(b"spot-requester"))
-        .expect("requester spot routing id failed");
-    responder
-        .set_routing_id(&RoutingId::from_bytes(b"spot-responder"))
-        .expect("responder spot routing id failed");
 
     let endpoint = sample_support::tcp_endpoint();
     responder_node.bind(&endpoint).expect("bind failed");
@@ -67,12 +55,7 @@ fn main() {
 
     let (server_done_tx, server_done_rx) = mpsc::channel();
     thread::spawn(move || {
-        let received = loop {
-            match responder.recv_routed_with_flags(RecvFlags::DONT_WAIT) {
-                Ok(received) => break received,
-                Err(_) => thread::sleep(Duration::from_millis(10)),
-            }
-        };
+        let received = responder.recv_routed().expect("spot recv failed");
         assert_eq!(received.parts()[0].as_str().unwrap_or("?"), "spot-ping");
         received
             .reply(vec![Message::copy_from(b"spot-pong").expect("reply message failed")])
@@ -80,24 +63,13 @@ fn main() {
         server_done_tx.send(()).expect("server done send failed");
     });
 
-    let request_deadline = std::time::Instant::now() + Duration::from_secs(5);
-    let reply = loop {
-        match block_on(requester.request_to_spot(
-            responder_node_rid.clone(),
-            responder_spot_rid.clone(),
-            vec![Message::copy_from(b"spot-ping").expect("request message failed")],
-            Duration::from_secs(5),
-        )) {
-            Ok(reply) => break reply,
-            Err(err)
-                if err.code() == RequestResult::NotFound as i32
-                    && std::time::Instant::now() < request_deadline =>
-            {
-                thread::sleep(Duration::from_millis(10));
-            }
-            Err(err) => panic!("spot request failed: {err:?}"),
-        }
-    };
+    let reply = block_on(requester.request_to_spot(
+        responder_node_rid,
+        responder_spot_rid,
+        vec![Message::copy_from(b"spot-ping").expect("request message failed")],
+        Duration::from_secs(5),
+    ))
+    .expect("spot request failed");
     assert_eq!(reply[0].as_str().unwrap_or("?"), "spot-pong");
     server_done_rx
         .recv_timeout(Duration::from_secs(2))

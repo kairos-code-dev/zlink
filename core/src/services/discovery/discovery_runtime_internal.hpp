@@ -142,7 +142,6 @@ class discovery_bootstrap_socket_config_t
 
     std::vector<socket_opt_t> _socket_options;
     zlink_routing_id_t _routing_id;
-    uint8_t _routing_id_storage[255];
     std::string _routing_id_override;
     bool _routing_id_locked;
 };

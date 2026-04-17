@@ -1387,14 +1387,6 @@ export class StreamSocket extends RoutedMessageSocket {
       1
     );
   }
-  onPacketUInt32(handler: (routingId: number, header: Message, body: Message) => void): void {
-    this.onPacket((routingId, header, body) => {
-      handler(routingId.toU32(), header, body);
-    });
-  }
-  sendUInt32(routingId: number, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
-    this.send(RoutingId.fromU32(routingId), payload, flags);
-  }
   setRoutingId(routingId: RoutingId): void {
     requireNative().socketSetOpt(
       this.nativeHandle(),

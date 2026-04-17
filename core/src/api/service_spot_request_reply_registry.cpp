@@ -69,7 +69,7 @@ zlink::spot_runtime_t *resolve_active_spot_runtime (void *spot_)
 bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_)
 {
     return peer_rid_ && peer_rid_->size > 0
-           && peer_rid_->size <= 255;
+           && peer_rid_->size <= sizeof (peer_rid_->data);
 }
 
 uint32_t dispatch_event_bit (zlink_spot_dispatch_event_t event_)

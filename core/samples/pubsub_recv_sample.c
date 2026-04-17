@@ -27,7 +27,7 @@ int main (void)
     rc = zlink_set_subscription (subscriber, k_pubsub_topic);
     assert (rc == 0);
 
-    const zlink_routing_id_t *event_rid = NULL;
+    zlink_routing_id_t event_rid;
     int subscribed = 0;
     char event_topic[256];
     size_t event_topic_len = sizeof (event_topic);
@@ -42,7 +42,7 @@ int main (void)
     rc = zlink_publish (publisher, k_pubsub_topic, &outbound, 1, 0);
     assert (rc == 0);
 
-    const zlink_routing_id_t *rid = NULL;
+    zlink_routing_id_t rid;
     zlink_msg_t *parts = NULL;
     size_t count = 0;
     char topic[256];

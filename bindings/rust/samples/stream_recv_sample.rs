@@ -4,7 +4,7 @@
 use std::io::Write;
 use std::net::TcpStream;
 
-use zlink::{Context, Message, SocketMonitor};
+use zlink::{Context, SocketMonitor};
 
 pub fn reserve_tcp_port() -> u16 {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -64,21 +64,9 @@ fn main() {
     tcp_client.flush().expect("tcp flush failed");
 
     let received = stream.recv().expect("server recv failed");
-    let peer_id = received
-        .routing_id()
-        .expect("missing routing id")
-        .to_u32()
-        .expect("stream routing id must be a u32");
     assert_eq!(received.parts()[0].as_bytes(), b"hello-stream");
-    stream
-        .send(
-            received.routing_id().expect("missing routing id"),
-            Message::copy_from(b"hello-stream").expect("reply failed"),
-        )
-        .expect("stream send failed");
     println!(
-        "[stream/recv] peer: {} send: \"hello-stream\" → recv: \"{}\"",
-        peer_id,
+        "[stream/recv] send: \"hello-stream\" → recv: \"{}\"",
         received.parts()[0].as_str().unwrap()
     );
 }

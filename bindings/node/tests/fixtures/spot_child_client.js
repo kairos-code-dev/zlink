@@ -27,7 +27,7 @@ async function main() {
   try {
     node.attachPubSub(SERVICE_NAME, pubSocket, subSocket);
     spot = node.createSpot();
-    node.connectPeer(options.endpoint);
+    subSocket.connect(options.endpoint);
     spot.setSubscription(TOPIC);
     console.log('CLIENT_READY');
 

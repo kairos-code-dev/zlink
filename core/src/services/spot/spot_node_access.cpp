@@ -144,7 +144,7 @@ socket_base_t *spot_node_access_t::service_pub_socket (
 
 int spot_node_access_t::service_subscribe_recv (
   spot_node_t *node_,
-  const zlink_routing_id_t **source_rid_out_,
+  zlink_routing_id_t *source_rid_out_,
   zlink_msg_t **parts_out_,
   size_t *part_count_out_,
   char *service_name_out_,
@@ -163,7 +163,7 @@ int spot_node_access_t::service_subscribe_recv (
 
 int spot_node_access_t::service_subscription_event_recv (
   spot_node_t *node_,
-  const zlink_routing_id_t **source_rid_out_,
+  zlink_routing_id_t *source_rid_out_,
   int *subscribed_out_,
   char *service_name_out_,
   size_t *service_name_len_out_,

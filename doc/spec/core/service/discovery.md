@@ -231,10 +231,8 @@ Not every call has the same timing constraints, though.
 
 ## API Surface
 
-- Use `zlink_set_routing_id(discovery, &rid)` to set Discovery identity.
-  Use `zlink_get_routing_id(discovery, &out)` when a borrowed `RoutingId`
-  is enough, or `zlink_get_routing_id_bytes(discovery, buf, &len)` when the
-  caller needs stable caller-owned bytes.
+- Use `zlink_set_routing_id(discovery, data, size)` /
+  `zlink_get_routing_id(discovery, &out)` for Discovery identity.
 - Use `zlink_set_tls_client(discovery, ca_cert, hostname, trust_system)` for
   TLS configuration on Discovery registry links.
 - Use `zlink_discovery_connect_registry()` as the single Registry bootstrap

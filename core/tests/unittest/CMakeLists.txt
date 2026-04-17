@@ -21,8 +21,7 @@ set(unittests
     unittest_spot_subject_access
     unittest_registry_access
     unittest_typed_option
-    unittest_result_enum_mapping
-    unittest_routing_id_helpers)
+    unittest_result_enum_mapping)
 
 # add location of platform.hpp for Windows builds
 if(WIN32)

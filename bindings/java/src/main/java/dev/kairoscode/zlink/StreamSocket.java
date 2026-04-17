@@ -46,6 +46,9 @@ public final class StreamSocket extends Socket {
     public void onFramedPacketView(StreamUInt32FramedBufferHandler handler) {
         super.attachStreamPacket(handler);
     }
+    public void onFramedPacketNative(StreamUInt32FramedNativeHandler handler) {
+        super.attachStreamPacket(handler);
+    }
     public void detachStream() { super.detachStream(); }
     @Override public StreamSocketOptions options() { return options; }
 }

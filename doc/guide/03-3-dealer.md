@@ -44,10 +44,7 @@ its messages cycle across them (msg1 -> ROUTER-A, msg2 -> ROUTER-B, ...).
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 
 /* Set routing_id (optional, used for identification by ROUTER) */
-uint8_t dealer_rid_buf[255];
-zlink_routing_id_t dealer_rid;
-zlink_routing_id_from_text("client-1", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
-zlink_set_routing_id(dealer, &dealer_rid); 
+zlink_set_routing_id(dealer, "client-1", 8);
 
 /* Connect to server */
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
@@ -154,14 +151,11 @@ To allow ROUTER to identify a DEALER, explicitly set the routing_id.
 
 ```c
 /* Set before bind/connect */
-uint8_t dealer_rid_buf[255];
-zlink_routing_id_t dealer_rid;
-zlink_routing_id_from_text("D1", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
-zlink_set_routing_id(dealer, &dealer_rid); 
+zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ```
 
-> Reference: `core/tests/test_router_multiple_dealers.cpp` -- multiple DEALER identities
+> Reference: `core/tests/test_router_multiple_dealers.cpp` -- `zlink_set_routing_id(dealer1, "D1", 2)`
 
 ### 4.1 Request-Reply
 
@@ -247,10 +241,7 @@ zlink_bind(router, "tcp://*:5558");
 /* Client: DEALER */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 /* Receive replies with zlink_recv() */
-uint8_t dealer_rid_buf[255];
-zlink_routing_id_t dealer_rid;
-zlink_routing_id_from_text("D1", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
-zlink_set_routing_id(dealer, &dealer_rid); 
+zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
 /* Client request */
@@ -279,17 +270,11 @@ size_t len = sizeof(endpoint);
 zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 void *dealer1 = zlink_socket(ctx, ZLINK_DEALER);
-uint8_t dealer1_rid_buf[255];
-zlink_routing_id_t dealer1_rid;
-zlink_routing_id_from_text("D1", dealer1_rid_buf, sizeof(dealer1_rid_buf), &dealer1_rid);
-zlink_set_routing_id(dealer1, &dealer1_rid); 
+zlink_set_routing_id(dealer1, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
 void *dealer2 = zlink_socket(ctx, ZLINK_DEALER);
-uint8_t dealer2_rid_buf[255];
-zlink_routing_id_t dealer2_rid;
-zlink_routing_id_from_text("D2", dealer2_rid_buf, sizeof(dealer2_rid_buf), &dealer2_rid);
-zlink_set_routing_id(dealer2, &dealer2_rid); 
+zlink_set_routing_id(dealer2, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
 /* Each DEALER sends a message */
@@ -418,10 +403,7 @@ messages that are expected to succeed once maintenance ends.
 
 ```c
 /* Correct order */
-uint8_t dealer_rid_buf[255];
-zlink_routing_id_t dealer_rid;
-zlink_routing_id_from_text("D1", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
-zlink_set_routing_id(dealer, &dealer_rid); 
+zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, endpoint);  /* identified as D1 */
 ```
 

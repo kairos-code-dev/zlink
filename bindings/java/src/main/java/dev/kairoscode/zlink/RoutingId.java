@@ -3,9 +3,6 @@
 package dev.kairoscode.zlink;
 
 import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -41,28 +38,14 @@ public final class RoutingId {
         return new RoutingId(Arrays.copyOfRange(value, offset, offset + length));
     }
 
-    public static RoutingId fromUInt32(int value) {
-        byte[] bytes = new byte[Integer.BYTES];
-        bytes[0] = (byte) (value >>> 24);
-        bytes[1] = (byte) (value >>> 16);
-        bytes[2] = (byte) (value >>> 8);
-        bytes[3] = (byte) value;
-        return new RoutingId(bytes);
-    }
-
+    /** Creates a 4-byte big-endian routing id from an unsigned 32-bit value. */
     public static RoutingId fromU32(int value) {
-        return fromUInt32(value);
-    }
-
-    public static RoutingId fromUtf8(String value) {
-        Objects.requireNonNull(value, "value");
-        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-        validateLength(bytes.length);
-        return new RoutingId(bytes);
-    }
-
-    public static RoutingId fromText(String value) {
-        return fromUtf8(value);
+        return new RoutingId(new byte[] {
+            (byte) (value >>> 24),
+            (byte) (value >>> 16),
+            (byte) (value >>> 8),
+            (byte) value
+        });
     }
 
     private static void validateLength(int length) {
@@ -86,10 +69,6 @@ public final class RoutingId {
         return ByteBuffer.wrap(value).asReadOnlyBuffer();
     }
 
-    public ByteBuffer asByteBuffer() {
-        return asReadOnlyBuffer();
-    }
-
     /** Returns the routing id byte length. */
     public int size() {
         return value.length;
@@ -107,37 +86,6 @@ public final class RoutingId {
             out.append(Character.forDigit(b & 0xF, 16));
         }
         return out.toString();
-    }
-
-    public String utf8() {
-        try {
-            return StandardCharsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(value))
-                .toString();
-        } catch (CharacterCodingException ex) {
-            throw new IllegalStateException("routing id is not valid UTF-8", ex);
-        }
-    }
-
-    public int toUInt32() {
-        if (value.length != Integer.BYTES) {
-            throw new IllegalStateException(
-                "routing id is not a 4-byte STREAM id");
-        }
-        return ((value[0] & 0xFF) << 24)
-            | ((value[1] & 0xFF) << 16)
-            | ((value[2] & 0xFF) << 8)
-            | (value[3] & 0xFF);
-    }
-
-    public int toU32() {
-        return toUInt32();
-    }
-
-    public String toText() {
-        return utf8();
     }
 
     @Override

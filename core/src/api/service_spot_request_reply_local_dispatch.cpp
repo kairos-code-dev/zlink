@@ -4,7 +4,6 @@
 
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
-#include "api/routing_id_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
@@ -34,7 +33,8 @@ const size_t spot_routed_control_part_count = 8;
 
 std::string routing_id_key_local (const zlink_routing_id_t *peer_rid_)
 {
-    if (!peer_rid_ || peer_rid_->size == 0 || peer_rid_->size > 255)
+    if (!peer_rid_ || peer_rid_->size == 0
+        || peer_rid_->size > sizeof (peer_rid_->data))
         return std::string ();
 
     return std::string (reinterpret_cast<const char *> (peer_rid_->data),
@@ -51,9 +51,10 @@ void routing_id_from_string_local (const std::string &value_,
     if (value_.empty ())
         return;
 
-    (void) zlink::routing_id_internal::assign_view (
-      out_, reinterpret_cast<const uint8_t *> (value_.data ()),
-      std::min (value_.size (), zlink::routing_id_internal::owned_capacity ()));
+    const size_t size =
+      value_.size () > sizeof (out_->data) ? sizeof (out_->data) : value_.size ();
+    memcpy (out_->data, value_.data (), size);
+    out_->size = static_cast<uint8_t> (size);
 }
 
 bool parse_spot_routed_envelope_local (zlink_msg_t *parts_,

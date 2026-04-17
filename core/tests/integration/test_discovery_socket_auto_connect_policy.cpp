@@ -446,5 +446,12 @@ void test_socket_discovery_router_router_uses_single_initiator ()
 
 int main ()
 {
-    return 0;
+    setup_test_environment ();
+
+    UNITY_BEGIN ();
+    RUN_TEST (test_socket_discovery_default_dealer_mode_targets_router);
+    RUN_TEST (test_socket_discovery_default_dealer_mode_ignores_dealer_peers);
+    RUN_TEST (test_socket_discovery_explicit_dealer_mode_targets_dealer);
+    RUN_TEST (test_socket_discovery_router_router_uses_single_initiator);
+    return UNITY_END ();
 }

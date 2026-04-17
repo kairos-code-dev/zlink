@@ -10,7 +10,7 @@ package zlink
 extern void goZlinkSubscribeTrampoline(zlink_routing_id_t *source_rid_, char *topic_, size_t topic_len_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 extern void goZlinkSendReadyTrampoline(void *subject_, uintptr_t userdata_);
 extern void goZlinkSpotRoutedTrampoline(zlink_routing_id_t *source_node_rid_, zlink_routing_id_t *source_spot_rid_, uint64_t request_seq_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
-extern void goZlinkSpotDispatchEventTrampoline(void *spot_, zlink_spot_dispatch_event_t event_, uintptr_t userdata_);
+extern void goZlinkSpotDispatchEventTrampoline(zlink_spot_dispatch_event_t event_, uintptr_t userdata_);
 extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 
 static inline int zlink_spot_send_ready_handler_go_local(void *s, uintptr_t userdata) {
@@ -39,74 +39,6 @@ static inline int zlink_spot_request_service_go_local(void *spot, const char *se
 
 static inline int zlink_spot_recv_go_local(void *spot, const zlink_routing_id_t **source_rid, const zlink_routing_id_t **spot_rid, uint64_t *request_seq, zlink_msg_t **parts, size_t *part_count, zlink_recv_flags_t flags) {
     return zlink_spot_recv(spot, source_rid, spot_rid, request_seq, parts, part_count, flags);
-}
-
-static inline int zlink_set_routing_id_go_local(void *handle, const void *data, size_t size) {
-    zlink_routing_id_t routing_id;
-    routing_id.size = size;
-    routing_id.data = (uint8_t *)data;
-    return zlink_set_routing_id(handle, &routing_id);
-}
-
-static inline int zlink_spot_send_spot_go_local(void *spot,
-                                                const void *node_data, size_t node_size,
-                                                const void *spot_data, size_t spot_size,
-                                                zlink_msg_t *parts, size_t part_count,
-                                                zlink_send_flags_t flags) {
-    zlink_routing_id_t node_routing_id;
-    zlink_routing_id_t spot_routing_id;
-    node_routing_id.size = node_size;
-    node_routing_id.data = (uint8_t *)node_data;
-    spot_routing_id.size = spot_size;
-    spot_routing_id.data = (uint8_t *)spot_data;
-    return zlink_spot_send_spot(spot, &node_routing_id, &spot_routing_id, parts, part_count, flags);
-}
-
-static inline int zlink_spot_reply_spot_go_local(void *spot,
-                                                 const void *node_data, size_t node_size,
-                                                 const void *spot_data, size_t spot_size,
-                                                 uint64_t request_seq,
-                                                 zlink_msg_t *parts, size_t part_count) {
-    zlink_routing_id_t node_routing_id;
-    zlink_routing_id_t spot_routing_id;
-    node_routing_id.size = node_size;
-    node_routing_id.data = (uint8_t *)node_data;
-    spot_routing_id.size = spot_size;
-    spot_routing_id.data = (uint8_t *)spot_data;
-    return zlink_spot_reply_spot(spot, &node_routing_id, &spot_routing_id, request_seq, parts, part_count);
-}
-
-static inline int zlink_spot_send_router_go_local(void *spot, const void *peer_data, size_t peer_size, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags) {
-    zlink_routing_id_t peer_routing_id;
-    peer_routing_id.size = peer_size;
-    peer_routing_id.data = (uint8_t *)peer_data;
-    return zlink_spot_send_router(spot, &peer_routing_id, parts, part_count, flags);
-}
-
-static inline int zlink_spot_request_spot_go_bytes_local(void *spot,
-                                                         const void *node_data, size_t node_size,
-                                                         const void *spot_data, size_t spot_size,
-                                                         zlink_msg_t *parts, size_t part_count,
-                                                         zlink_send_flags_t flags, uint32_t timeout_ms,
-                                                         uintptr_t userdata) {
-    zlink_routing_id_t node_routing_id;
-    zlink_routing_id_t spot_routing_id;
-    node_routing_id.size = node_size;
-    node_routing_id.data = (uint8_t *)node_data;
-    spot_routing_id.size = spot_size;
-    spot_routing_id.data = (uint8_t *)spot_data;
-    return zlink_spot_request_spot(spot, &node_routing_id, &spot_routing_id, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
-}
-
-static inline int zlink_spot_request_router_go_bytes_local(void *spot,
-                                                           const void *peer_data, size_t peer_size,
-                                                           zlink_msg_t *parts, size_t part_count,
-                                                           zlink_send_flags_t flags, uint32_t timeout_ms,
-                                                           uintptr_t userdata) {
-    zlink_routing_id_t peer_routing_id;
-    peer_routing_id.size = peer_size;
-    peer_routing_id.data = (uint8_t *)peer_data;
-    return zlink_spot_request_router(spot, &peer_routing_id, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
 }
 */
 import "C"
@@ -213,7 +145,8 @@ func (n *SpotNode) SetRoutingID(id RoutingID) error {
 	if err != nil {
 		return err
 	}
-	return configErrorFromResult(C.zlink_set_routing_id_go_local(handle, routingIDBytesPointer(id), C.size_t(id.Size())))
+	raw := id.toC()
+	return configErrorFromResult(C.zlink_set_routing_id(handle, routingIDPointer(&raw), C.size_t(raw.size)))
 }
 
 func (n *SpotNode) RoutingID() (RoutingID, error) {
@@ -441,16 +374,16 @@ func (s *spotCore) Close() error {
 	s.owner = nil
 	s.mu.Unlock()
 	if subscribeHandle != 0 {
-		releaseCallbackHandle(subscribeHandle)
+		subscribeHandle.Delete()
 	}
 	if routedHandle != 0 {
-		releaseCallbackHandle(routedHandle)
+		routedHandle.Delete()
 	}
 	if sendReadyHandle != 0 {
-		releaseCallbackHandle(sendReadyHandle)
+		sendReadyHandle.Delete()
 	}
 	if dispatchHandle != 0 {
-		releaseCallbackHandle(dispatchHandle)
+		dispatchHandle.Delete()
 	}
 	if owner != nil {
 		owner.unregisterSpot(s)
@@ -531,7 +464,8 @@ func (s *Spot) SetRoutingID(rid RoutingID) error {
 	if s == nil || s.core == nil || s.core.closed {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	return configErrorFromResult(C.zlink_set_routing_id_go_local(s.raw(), routingIDBytesPointer(rid), C.size_t(rid.Size())))
+	raw := rid.toC()
+	return configErrorFromResult(C.zlink_set_routing_id(s.raw(), routingIDPointer(&raw), C.size_t(raw.size)))
 }
 
 func (s *Spot) RoutingID() (RoutingID, error) {
@@ -640,7 +574,9 @@ func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID, flags SendFlags, p
 	if err != nil {
 		return err
 	}
-	if err := submitErrorFromResult(C.zlink_spot_send_spot_go_local(s.raw(), routingIDBytesPointer(destNodeRid), C.size_t(destNodeRid.Size()), routingIDBytesPointer(destSpotRid), C.size_t(destSpotRid.Size()), prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags))); err != nil {
+	node := destNodeRid.toC()
+	spot := destSpotRid.toC()
+	if err := submitErrorFromResult(C.zlink_spot_send_spot(s.raw(), &node, &spot, prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags))); err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
 			return restoreErr
 		}
@@ -667,7 +603,9 @@ func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64
 		closeMessageSlice(cloned)
 		return err
 	}
-	if err := submitErrorFromResult(C.zlink_spot_reply_spot_go_local(s.raw(), routingIDBytesPointer(destNodeRid), C.size_t(destNodeRid.Size()), routingIDBytesPointer(destSpotRid), C.size_t(destSpotRid.Size()), C.uint64_t(requestSeq), prepared.ptr(), prepared.count())); err != nil {
+	node := destNodeRid.toC()
+	spot := destSpotRid.toC()
+	if err := submitErrorFromResult(C.zlink_spot_reply_spot(s.raw(), &node, &spot, C.uint64_t(requestSeq), prepared.ptr(), prepared.count())); err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
 			return restoreErr
 		}
@@ -682,7 +620,8 @@ func (s *Spot) SendToRouter(peerRid RoutingID, flags SendFlags, parts ...*Messag
 	if err != nil {
 		return err
 	}
-	if err := submitErrorFromResult(C.zlink_spot_send_router_go_local(s.raw(), routingIDBytesPointer(peerRid), C.size_t(peerRid.Size()), prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags))); err != nil {
+	peer := peerRid.toC()
+	if err := submitErrorFromResult(C.zlink_spot_send_router(s.raw(), &peer, prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags))); err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
 			return restoreErr
 		}
@@ -733,13 +672,13 @@ func (s *Spot) UnsetSubscription(filter string) error {
 }
 
 func (s *Spot) Subscribe(flags RecvFlags) (*TopicMessage, error) {
-	return recvSpotTopicMessage(func(rid **C.zlink_routing_id_t, parts **C.zlink_msg_t, partCount *C.size_t, serviceName *C.char, serviceNameLen *C.size_t, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
+	return recvSpotTopicMessage(func(rid *C.zlink_routing_id_t, parts **C.zlink_msg_t, partCount *C.size_t, serviceName *C.char, serviceNameLen *C.size_t, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_spot_subscribe(s.raw(), rid, parts, partCount, serviceName, serviceNameLen, topic, topicLen, recvFlags))
 	}, flags)
 }
 
 func (s *Spot) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error) {
-	return recvSpotSubscriptionEvent(func(rid **C.zlink_routing_id_t, subscribed *C.int, serviceName *C.char, serviceNameLen *C.size_t, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
+	return recvSpotSubscriptionEvent(func(rid *C.zlink_routing_id_t, subscribed *C.int, serviceName *C.char, serviceNameLen *C.size_t, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_spot_subscription_event(s.raw(), rid, subscribed, serviceName, serviceNameLen, topic, topicLen, recvFlags))
 	}, flags)
 }
@@ -869,12 +808,12 @@ func (s *Spot) startSpotRequest(destNodeRid, destSpotRid RoutingID, flags SendFl
 	}
 	resultCh := make(chan requestResult, 1)
 	handle := cgo.NewHandle(&replyCallbackState{result: resultCh})
-	if err := submitErrorFromResult(C.zlink_spot_request_spot_go_bytes_local(
+	node := destNodeRid.toC()
+	spot := destSpotRid.toC()
+	if err := submitErrorFromResult(C.zlink_spot_request_spot_go_local(
 		s.raw(),
-		routingIDBytesPointer(destNodeRid),
-		C.size_t(destNodeRid.Size()),
-		routingIDBytesPointer(destSpotRid),
-		C.size_t(destSpotRid.Size()),
+		&node,
+		&spot,
 		prepared.ptr(),
 		prepared.count(),
 		C.zlink_send_flags_t(flags),
@@ -934,10 +873,10 @@ func (s *Spot) startRouterRequest(peerRid RoutingID, flags SendFlags, timeout ti
 	}
 	resultCh := make(chan requestResult, 1)
 	handle := cgo.NewHandle(&replyCallbackState{result: resultCh})
-	if err := submitErrorFromResult(C.zlink_spot_request_router_go_bytes_local(
+	peer := peerRid.toC()
+	if err := submitErrorFromResult(C.zlink_spot_request_router_go_local(
 		s.raw(),
-		routingIDBytesPointer(peerRid),
-		C.size_t(peerRid.Size()),
+		&peer,
 		prepared.ptr(),
 		prepared.count(),
 		C.zlink_send_flags_t(flags),

@@ -31,11 +31,11 @@ public interface IZLinkStreamPacketHandler
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkStreamPacketHandler<in THeader, in TBody>
+public interface IZLinkStreamPacketHandler<in THeader>
 {
     ValueTask HandleAsync(
         THeader header,
-        TBody body,
+        Message body,
         ZLinkStreamContext context,
         CancellationToken cancellationToken);
 }
@@ -49,12 +49,23 @@ public interface IZLinkStreamRawHandler
 }
 ```
 
+이 초안에서는 stream packet 처리에서 불필요한 메모리 복사를 줄이는 것을 중요하게
+본다. 그래서 `Message.ToArray()`를 기본 경로로 두기보다, `Message`가 가진
+`AsReadOnlySpan()` 위에서 decode helper가 동작하는 쪽을 더 자연스러운 방향으로
+본다.
+
+또한 객체 직렬화 계층은 `playhouse/extensions`처럼 transport 본체와 분리하는
+방향을 기본으로 본다. 즉 packet handler는 `Message`를 받고, protobuf/json 같은
+객체 변환은 extension helper가 맡는다.
+
 ## 3. packet handler 샘플
 
-아래 샘플은 C API가 이미 잘라 준 `header/body` packet 단위를 처리하는 방향이다.
+아래 샘플은 `playhouse`의 `RouteHeader + Payload`처럼, header는 고정 메타데이터로
+읽고 body는 `header.MsgId`를 보고 각 packet 타입으로 다시 parse하는 방향이다.
 
 ```csharp
 using Gateway.Protocol; // protoc generated
+using PlayHouse.Runtime.Proto; // RouteHeader protobuf generated
 
 builder.Services.AddZLinkFramework(options =>
 {
@@ -68,7 +79,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 
 public sealed class GatewayPacketHandler
-    : IZLinkStreamPacketHandler<ClientInputHeader, ClientInputBody>
+    : IZLinkStreamPacketHandler<RouteHeader>
 {
     private readonly IZLinkClient _client;
 
@@ -78,28 +89,101 @@ public sealed class GatewayPacketHandler
     }
 
     public async ValueTask HandleAsync(
-        ClientInputHeader header,
-        ClientInputBody body,
+        RouteHeader header,
+        Message body,
         ZLinkStreamContext context,
         CancellationToken cancellationToken)
     {
-        await _client.SendAsync(
-            "api",
-            new ForwardInputCommand(),
-            cancellationToken);
+        switch (header.MsgId)
+        {
+            case "ClientInput":
+            {
+                ClientInput input = body.ParseProto<ClientInput>();
+
+                await _client.SendAsync(
+                    "play",
+                    new ForwardInputCommand
+                    {
+                        StageId = header.StageId,
+                        AccountId = header.AccountId,
+                        Input = input
+                    },
+                    cancellationToken);
+
+                break;
+            }
+
+            case "Ping":
+            {
+                Ping ping = body.ParseProto<Ping>();
+
+                await _client.SendAsync(
+                    "api",
+                    new ReportPingCommand
+                    {
+                        From = header.From,
+                        Sequence = ping.Sequence
+                    },
+                    cancellationToken);
+
+                break;
+            }
+        }
     }
 }
 
-// ClientInputHeader, ClientInputBody, ForwardInputCommand는
-// .proto에서 생성된 타입이라고 가정한다.
+// RouteHeader, ClientInput, Ping은 .proto에서 생성된 타입이라고 가정한다.
 ```
 
 이 샘플을 읽을 때 중요한 점은 아래와 같다.
 
-- framework가 raw `Message header`, `Message body`를
-  `ClientInputHeader`, `ClientInputBody`로 변환한다.
+- framework가 raw `Message header`를 `RouteHeader`로 변환한다.
+- body는 고정 타입 하나로 바로 올리지 않는다.
+- handler가 `header.MsgId`를 보고 `ClientInput`, `Ping` 같은 각 packet 타입으로
+  parse한다.
 - application은 recv loop 대신 `HandleAsync(...)`만 구현한다.
 - 다른 서버로의 outbound 호출은 handler가 `IZLinkClient`를 DI로 받아 처리한다.
+- body parse는 `body.ParseProto<T>()` 같은 extension helper를 통해 처리한다.
+- 이 helper는 내부에서 `Message.AsReadOnlySpan()`를 사용해서 추가 복사를 가능한 한
+  피하는 쪽을 기본으로 본다.
+- 즉 stream 핫패스에서는 불필요한 배열 복사와 추가 메모리 할당을 가능한 한
+  피해야 한다.
+
+이 방식은 `playhouse`의 아래 흐름과 같은 감각이다.
+
+- `RouteHeader`를 먼저 읽는다.
+- `RouteHeader.MsgId`를 dispatch 기준으로 쓴다.
+- `packet.Payload`를 각 protobuf 타입으로 parse한다.
+
+예를 들면 serializer extension은 아래처럼 분리할 수 있다.
+
+```csharp
+public static class ProtoMessageExtensions
+{
+    public static T ParseProto<T>(this Message message)
+        where T : IMessage<T>, new()
+    {
+        return new MessageParser<T>(() => new T())
+            .ParseFrom(message.AsReadOnlySpan());
+    }
+}
+```
+
+```csharp
+public static class JsonMessageExtensions
+{
+    public static T ParseJson<T>(this Message message)
+        where T : class
+    {
+        return JsonSerializer.Deserialize<T>(message.AsReadOnlySpan())
+            ?? throw new InvalidOperationException(
+                $"Failed to deserialize {typeof(T).Name}");
+    }
+}
+```
+
+이 구조는 `playhouse/extensions`의 `ProtoPacketExtensions.Parse<T>()`,
+`JsonPacketExtensions.Parse<T>()`와 비슷한 감각이다.
 
 ## 4. raw handler 샘플
 
@@ -137,7 +221,8 @@ public sealed class GatewayRawHandler : IZLinkStreamRawHandler
 
 - packet handler
   - C API가 이미 잘라 준 `header/body` packet 처리
-  - 필요하면 framework가 사용자 정의 `header/body` 타입으로 변환
+  - 필요하면 framework가 사용자 정의 `header` 타입으로 변환
+  - body는 `msgId`를 보고 각 packet 타입으로 parse
 - raw handler
   - socket raw payload chunk 처리
   - 필요하면 application이 직접 packet 재조립
@@ -161,5 +246,8 @@ public sealed class GatewayRawHandler : IZLinkStreamRawHandler
 
 - `STREAM`은 packet handler와 raw handler 두 축이면 충분한가
 - raw handler 등록 이름을 `AddRaw`로 둘지 더 분명한 이름으로 둘지
-- packet handler의 header/body 변환을 codec으로 할지 mapper로 할지
+- packet handler의 header 변환을 codec으로 할지 mapper로 할지
+- body parse helper를 framework가 어디까지 제공할지
+- `Message`에 protobuf/json decode helper를 둘지
+- protobuf/json/messagepack을 별도 extension 패키지로 둘지
 - connection open/close hook을 추가로 노출할지

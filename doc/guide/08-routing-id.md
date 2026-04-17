@@ -10,21 +10,10 @@ A Routing ID is binary data that identifies sockets and connections in zlink. It
 
 ```c
 typedef struct {
-    size_t size;
-    const uint8_t *data;
+    uint8_t size;       /* 0~255 */
+    uint8_t data[255];
 } zlink_routing_id_t;
 ```
-
-The important rule is that the public canonical form is always raw bytes.
-`STREAM` is not a special public type. Instead, applications may decode the
-4-byte STREAM routing id with `zlink_routing_id_to_u32()`, and routed/service
-paths may decode UTF-8 text with `zlink_routing_id_to_text()` or fall back to
-`zlink_routing_id_to_hex()` for display.
-`zlink_routing_id_t` itself is a borrowed `RoutingId` view. If an application
-must keep the bytes beyond the documented owner lifetime, it must copy them.
-If an application wants a stable caller-owned copy directly from a handle, use
-`zlink_get_routing_id_bytes()`. If it wants to construct a borrowed view from
-raw bytes, use `zlink_routing_id_from_bytes()`.
 
 ## 3. Auto-Generation Rules
 
@@ -53,9 +42,8 @@ The own routing_id is automatically assigned a UUID when the socket is created a
 
 ```c
 /* Set before bind/connect */
-static const uint8_t id_bytes[] = "router-A";
-zlink_routing_id_t id = { .size = sizeof(id_bytes) - 1, .data = id_bytes };
-zlink_set_routing_id(socket, &id);
+const char *id = "router-A";
+zlink_set_routing_id(socket, id, strlen(id));
 ```
 
 Notes:
@@ -68,34 +56,24 @@ Notes:
 
 ```c
 /* Good example: meaningful identifiers */
-static const uint8_t worker_id_bytes[] = "worker-01";
-static const uint8_t dealer_id_bytes[] = "D1";
-zlink_routing_id_t worker_id = {
-    .size = sizeof(worker_id_bytes) - 1,
-    .data = worker_id_bytes,
-};
-zlink_routing_id_t dealer_id = {
-    .size = sizeof(dealer_id_bytes) - 1,
-    .data = dealer_id_bytes,
-};
-zlink_set_routing_id(dealer, &worker_id);
-zlink_set_routing_id(dealer, &dealer_id);
+zlink_set_routing_id(dealer, "worker-01", 9);
+zlink_set_routing_id(dealer, "D1", 2);
 
 /* Caution: potential collision with auto-generated routing_ids */
 /* Avoid UUID format (16B binary) */
 ```
 
-> Reference: `core/tests/test_router_multiple_dealers.cpp` — multiple DEALER identities
+> Reference: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
 
 ### Querying
 
 ```c
-const zlink_routing_id_t *rid = NULL;
+zlink_routing_id_t rid;
 zlink_get_routing_id(socket, &rid);
 
-printf("routing_id (%zu bytes): ", rid->size);
-for (size_t i = 0; i < rid->size; ++i)
-    printf("%02x", rid->data[i]);
+printf("routing_id (%u bytes): ", rid.size);
+for (size_t i = 0; i < rid.size; ++i)
+    printf("%02x", rid.data[i]);
 printf("\n");
 ```
 
@@ -144,10 +122,7 @@ zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* DEALER client (explicit routing_id) */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-uint8_t dealer_rid_buf[255];
-zlink_routing_id_t dealer_rid;
-zlink_routing_id_from_text("D1", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
-zlink_set_routing_id(dealer, &dealer_rid); 
+zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, endpoint);
 
 /* DEALER send */
@@ -165,17 +140,11 @@ zlink_send(dealer, &req, 1, 0);
 
 ```c
 /* DEALER 1: routing_id = "D1" */
-uint8_t dealer1_rid_buf[255];
-zlink_routing_id_t dealer1_rid;
-zlink_routing_id_from_text("D1", dealer1_rid_buf, sizeof(dealer1_rid_buf), &dealer1_rid);
-zlink_set_routing_id(dealer1, &dealer1_rid); 
+zlink_set_routing_id(dealer1, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
 /* DEALER 2: routing_id = "D2" */
-uint8_t dealer2_rid_buf[255];
-zlink_routing_id_t dealer2_rid;
-zlink_routing_id_from_text("D2", dealer2_rid_buf, sizeof(dealer2_rid_buf), &dealer2_rid);
-zlink_set_routing_id(dealer2, &dealer2_rid); 
+zlink_set_routing_id(dealer2, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
 /* ROUTER handler distinguishes clients by source_rid */
@@ -220,9 +189,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ## 7. Using routing_id with STREAM Sockets
 
-STREAM sockets identify external clients using canonical routing-id bytes.
-In practice the STREAM peer id is a 4-byte big-endian `uint32`, so
-`zlink_routing_id_to_u32()` is the intended helper for application code.
+STREAM sockets identify external clients using a 4B uint32 peer routing_id.
 
 ### Basic Usage
 
@@ -316,10 +283,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 If the user-defined routing_id is an ASCII string, it can be printed directly.
 
 ```c
-uint8_t dealer_rid_buf[255];
-zlink_routing_id_t dealer_rid;
-zlink_routing_id_from_text("D1", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
-zlink_set_routing_id(dealer, &dealer_rid); 
+zlink_set_routing_id(dealer, "D1", 2);
 
 /* In ROUTER handler callback */
 void on_message(const zlink_routing_id_t *source_rid,
@@ -339,9 +303,9 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ```c
 /* Query the auto-assigned routing_id after socket creation */
-const zlink_routing_id_t *rid = NULL;
+zlink_routing_id_t rid;
 zlink_get_routing_id(socket, &rid);
-printf("Auto-generated routing_id: %zu bytes\n", rid->size);  /* 16 bytes (UUID) */
+printf("Auto-generated routing_id: %u bytes\n", rid.size);  /* 16 bytes (UUID) */
 ```
 
 ## 9. Binary Handling Principles

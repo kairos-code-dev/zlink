@@ -7,7 +7,6 @@
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/service_api_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
-#include "api/routing_id_internal.hpp"
 #include "core/ctx.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
@@ -33,7 +32,7 @@ zlink::ctx_t *resolve_spot_ctx (void *spot_)
 bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_)
 {
     return peer_rid_ && peer_rid_->size > 0
-           && peer_rid_->size <= 255;
+           && peer_rid_->size <= sizeof (peer_rid_->data);
 }
 
 int copy_topic_to_output_local (const char *topic_data_,
@@ -73,13 +72,15 @@ int copy_routing_id_frame_local (const zlink_msg_t &frame_,
 
     const size_t routing_id_size = zlink_msg_size (&frame_);
     const size_t routing_id_copy =
-      std::min (routing_id_size,
-                zlink::routing_id_internal::owned_capacity ());
-    (void) zlink::routing_id_internal::assign_view (
-      source_rid_out_,
-      static_cast<const uint8_t *> (
-        zlink_msg_data (&const_cast<zlink_msg_t &> (frame_))),
-      routing_id_copy);
+      routing_id_size > sizeof (source_rid_out_->data)
+        ? sizeof (source_rid_out_->data)
+        : routing_id_size;
+    source_rid_out_->size = static_cast<uint8_t> (routing_id_copy);
+    if (routing_id_copy > 0) {
+        memcpy (source_rid_out_->data,
+                zlink_msg_data (&const_cast<zlink_msg_t &> (frame_)),
+                routing_id_copy);
+    }
     return 0;
 }
 }
@@ -291,23 +292,19 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
     }
 
     g_spot_recv_source_rid.size =
-      std::min (zlink_msg_size (&source_frame),
-                sizeof (g_spot_recv_source_rid_storage));
+      static_cast<uint8_t> (std::min (zlink_msg_size (&source_frame),
+                                      sizeof (g_spot_recv_source_rid.data)));
     if (g_spot_recv_source_rid.size > 0) {
-        memcpy (g_spot_recv_source_rid_storage, zlink_msg_data (&source_frame),
+        memcpy (g_spot_recv_source_rid.data, zlink_msg_data (&source_frame),
                 g_spot_recv_source_rid.size);
     }
-    g_spot_recv_source_rid.data =
-      g_spot_recv_source_rid.size > 0 ? g_spot_recv_source_rid_storage : NULL;
     g_spot_recv_spot_rid.size =
-      std::min (zlink_msg_size (&spot_frame),
-                sizeof (g_spot_recv_spot_rid_storage));
+      static_cast<uint8_t> (std::min (zlink_msg_size (&spot_frame),
+                                      sizeof (g_spot_recv_spot_rid.data)));
     if (g_spot_recv_spot_rid.size > 0) {
-        memcpy (g_spot_recv_spot_rid_storage, zlink_msg_data (&spot_frame),
+        memcpy (g_spot_recv_spot_rid.data, zlink_msg_data (&spot_frame),
                 g_spot_recv_spot_rid.size);
     }
-    g_spot_recv_spot_rid.data =
-      g_spot_recv_spot_rid.size > 0 ? g_spot_recv_spot_rid_storage : NULL;
     *source_rid_out_ = &g_spot_recv_source_rid;
     *spot_rid_out_ = g_spot_recv_spot_rid.size > 0 ? &g_spot_recv_spot_rid
                                                     : NULL;

@@ -31,56 +31,6 @@ static inline int zlink_router_request_spot_go_local(void *router, const zlink_r
 static inline int zlink_router_send_spot_go_local(void *router, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags) {
     return zlink_router_send_spot(router, dest_node_rid, dest_spot_rid, parts, part_count, flags);
 }
-
-static inline int zlink_set_routing_id_go_local(void *handle, const void *data, size_t size) {
-    zlink_routing_id_t routing_id;
-    routing_id.size = size;
-    routing_id.data = (uint8_t *)data;
-    return zlink_set_routing_id(handle, &routing_id);
-}
-
-static inline int zlink_send_rid_go_local(void *socket, const void *data, size_t size, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags) {
-    zlink_routing_id_t routing_id;
-    routing_id.size = size;
-    routing_id.data = (uint8_t *)data;
-    return zlink_send_rid(socket, &routing_id, parts, part_count, flags);
-}
-
-static inline int zlink_router_reply_go_local(void *router, const void *data, size_t size, uint64_t request_seq, zlink_msg_t *parts, size_t part_count) {
-    zlink_routing_id_t routing_id;
-    routing_id.size = size;
-    routing_id.data = (uint8_t *)data;
-    return zlink_router_reply(router, &routing_id, request_seq, parts, part_count);
-}
-
-static inline int zlink_router_send_spot_go_bytes_local(void *router,
-                                                        const void *node_data, size_t node_size,
-                                                        const void *spot_data, size_t spot_size,
-                                                        zlink_msg_t *parts, size_t part_count,
-                                                        zlink_send_flags_t flags) {
-    zlink_routing_id_t node_routing_id;
-    zlink_routing_id_t spot_routing_id;
-    node_routing_id.size = node_size;
-    node_routing_id.data = (uint8_t *)node_data;
-    spot_routing_id.size = spot_size;
-    spot_routing_id.data = (uint8_t *)spot_data;
-    return zlink_router_send_spot(router, &node_routing_id, &spot_routing_id, parts, part_count, flags);
-}
-
-static inline int zlink_router_request_spot_go_bytes_local(void *router,
-                                                           const void *node_data, size_t node_size,
-                                                           const void *spot_data, size_t spot_size,
-                                                           zlink_msg_t *parts, size_t part_count,
-                                                           zlink_send_flags_t flags, uint32_t timeout_ms,
-                                                           uintptr_t userdata) {
-    zlink_routing_id_t node_routing_id;
-    zlink_routing_id_t spot_routing_id;
-    node_routing_id.size = node_size;
-    node_routing_id.data = (uint8_t *)node_data;
-    spot_routing_id.size = spot_size;
-    spot_routing_id.data = (uint8_t *)spot_data;
-    return zlink_router_request_spot(router, &node_routing_id, &spot_routing_id, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
-}
 */
 import "C"
 
@@ -402,15 +352,15 @@ func routingIDPointer(raw *C.zlink_routing_id_t) unsafe.Pointer {
 	if raw == nil || raw.size == 0 {
 		return nil
 	}
-	return unsafe.Pointer(raw.data)
+	return unsafe.Pointer(&raw.data[0])
 }
 
 func getHandleRoutingID(handle unsafe.Pointer) (RoutingID, error) {
-	var raw *C.zlink_routing_id_t
+	var raw C.zlink_routing_id_t
 	if err := configErrorFromResult(C.zlink_get_routing_id(handle, &raw)); err != nil {
 		return RoutingID{}, err
 	}
-	return routingIDFromCPtr(raw), nil
+	return routingIDFromC(raw), nil
 }
 
 func withCStringPair(left string, right string, fn func(*C.char, *C.char) error) error {
@@ -468,10 +418,10 @@ func setTLSClient(handle unsafe.Pointer, caCertPath string, hostname string, tru
 }
 
 func recvTopicMessage(
-	call func(**C.zlink_routing_id_t, **C.zlink_msg_t, *C.size_t, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
+	call func(*C.zlink_routing_id_t, **C.zlink_msg_t, *C.size_t, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
 ) (*TopicMessage, error) {
-	var rid *C.zlink_routing_id_t
+	var rid C.zlink_routing_id_t
 	var parts *C.zlink_msg_t
 	var partCount C.size_t
 	topicBuf := make([]byte, recvTopicBufferCap)
@@ -484,17 +434,17 @@ func recvTopicMessage(
 		return nil, err
 	}
 	return &TopicMessage{
-		routingID: routingIDFromCPtr(rid),
+		routingID: routingIDFromC(rid),
 		topic:     string(topicBuf[:int(topicLen)]),
 		parts:     clonedParts,
 	}, nil
 }
 
 func recvSpotTopicMessage(
-	call func(**C.zlink_routing_id_t, **C.zlink_msg_t, *C.size_t, *C.char, *C.size_t, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
+	call func(*C.zlink_routing_id_t, **C.zlink_msg_t, *C.size_t, *C.char, *C.size_t, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
 ) (*TopicMessage, error) {
-	var rid *C.zlink_routing_id_t
+	var rid C.zlink_routing_id_t
 	var parts *C.zlink_msg_t
 	var partCount C.size_t
 	serviceBuf := make([]byte, recvTopicBufferCap)
@@ -509,7 +459,7 @@ func recvSpotTopicMessage(
 		return nil, err
 	}
 	return &TopicMessage{
-		routingID:   routingIDFromCPtr(rid),
+		routingID:   routingIDFromC(rid),
 		serviceName: string(serviceBuf[:int(serviceLen)]),
 		topic:       string(topicBuf[:int(topicLen)]),
 		parts:       clonedParts,
@@ -517,10 +467,10 @@ func recvSpotTopicMessage(
 }
 
 func recvSubscriptionEvent(
-	call func(**C.zlink_routing_id_t, *C.int, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
+	call func(*C.zlink_routing_id_t, *C.int, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
 ) (*SubscriptionEvent, error) {
-	var rid *C.zlink_routing_id_t
+	var rid C.zlink_routing_id_t
 	var subscribed C.int
 	topicBuf := make([]byte, recvTopicBufferCap)
 	topicLen := C.size_t(len(topicBuf))
@@ -528,17 +478,17 @@ func recvSubscriptionEvent(
 		return nil, err
 	}
 	return &SubscriptionEvent{
-		routingID:  routingIDFromCPtr(rid),
+		routingID:  routingIDFromC(rid),
 		subscribed: subscribed != 0,
 		topic:      string(topicBuf[:int(topicLen)]),
 	}, nil
 }
 
 func recvSpotSubscriptionEvent(
-	call func(**C.zlink_routing_id_t, *C.int, *C.char, *C.size_t, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
+	call func(*C.zlink_routing_id_t, *C.int, *C.char, *C.size_t, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
 ) (*SubscriptionEvent, error) {
-	var rid *C.zlink_routing_id_t
+	var rid C.zlink_routing_id_t
 	var subscribed C.int
 	serviceBuf := make([]byte, recvTopicBufferCap)
 	serviceLen := C.size_t(len(serviceBuf))
@@ -548,7 +498,7 @@ func recvSpotSubscriptionEvent(
 		return nil, err
 	}
 	return &SubscriptionEvent{
-		routingID:   routingIDFromCPtr(rid),
+		routingID:   routingIDFromC(rid),
 		serviceName: string(serviceBuf[:int(serviceLen)]),
 		subscribed:  subscribed != 0,
 		topic:       string(topicBuf[:int(topicLen)]),
@@ -665,7 +615,7 @@ func (s *directSocket) Send(flags SendFlags, parts ...*Message) error {
 }
 
 func (s *directSocket) Recv(flags RecvFlags) (*Received, error) {
-	var rid *C.zlink_routing_id_t
+	var rid C.zlink_routing_id_t
 	var parts *C.zlink_msg_t
 	var partCount C.size_t
 	if err := recvErrorFromResult(C.zlink_recv(s.raw(), &rid, &parts, &partCount, C.zlink_recv_flags_t(flags))); err != nil {
@@ -676,7 +626,7 @@ func (s *directSocket) Recv(flags RecvFlags) (*Received, error) {
 		return nil, err
 	}
 	return &Received{
-		routingID: routingIDFromCPtr(rid),
+		routingID: routingIDFromC(rid),
 		parts:     clonedParts,
 	}, nil
 }
@@ -730,7 +680,8 @@ func (s *routedSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Messa
 	if err != nil {
 		return err
 	}
-	if err := submitErrorFromResult(C.zlink_send_rid_go_local(s.raw(), routingIDBytesPointer(target), C.size_t(target.Size()), prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags))); err != nil {
+	rid := target.toC()
+	if err := submitErrorFromResult(C.zlink_send_rid(s.raw(), &rid, prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags))); err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
 			return restoreErr
 		}
@@ -745,7 +696,9 @@ func (s *routedSocket) SendToSpot(destNodeRid, destSpotRid RoutingID, flags Send
 	if err != nil {
 		return err
 	}
-	if err := submitErrorFromResult(C.zlink_router_send_spot_go_bytes_local(s.raw(), routingIDBytesPointer(destNodeRid), C.size_t(destNodeRid.Size()), routingIDBytesPointer(destSpotRid), C.size_t(destSpotRid.Size()), prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags))); err != nil {
+	node := destNodeRid.toC()
+	spot := destSpotRid.toC()
+	if err := submitErrorFromResult(C.zlink_router_send_spot_go_local(s.raw(), &node, &spot, prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags))); err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
 			return restoreErr
 		}
@@ -783,7 +736,8 @@ func (s *routedSocket) reply(rid RoutingID, requestSeq uint64, flags SendFlags, 
 		closeMessageSlice(cloned)
 		return err
 	}
-	if err := submitErrorFromResult(C.zlink_router_reply_go_local(s.raw(), routingIDBytesPointer(rid), C.size_t(rid.Size()), C.uint64_t(requestSeq), prepared.ptr(), prepared.count())); err != nil {
+	target := rid.toC()
+	if err := submitErrorFromResult(C.zlink_router_reply(s.raw(), &target, C.uint64_t(requestSeq), prepared.ptr(), prepared.count())); err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
 			return restoreErr
 		}
@@ -905,12 +859,12 @@ func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flag
 	}
 	resultCh := make(chan requestResult, 1)
 	handle := cgo.NewHandle(&replyCallbackState{result: resultCh})
-	if err := submitErrorFromResult(C.zlink_router_request_spot_go_bytes_local(
+	node := destNodeRid.toC()
+	spot := destSpotRid.toC()
+	if err := submitErrorFromResult(C.zlink_router_request_spot_go_local(
 		s.raw(),
-		routingIDBytesPointer(destNodeRid),
-		C.size_t(destNodeRid.Size()),
-		routingIDBytesPointer(destSpotRid),
-		C.size_t(destSpotRid.Size()),
+		&node,
+		&spot,
 		prepared.ptr(),
 		prepared.count(),
 		C.zlink_send_flags_t(flags),
@@ -944,7 +898,7 @@ func (s *subscribeSocket) UnsetSubscription(filter string) error {
 }
 
 func (s *subscribeSocket) Subscribe(flags RecvFlags) (*TopicMessage, error) {
-	return recvTopicMessage(func(rid **C.zlink_routing_id_t, parts **C.zlink_msg_t, partCount *C.size_t, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
+	return recvTopicMessage(func(rid *C.zlink_routing_id_t, parts **C.zlink_msg_t, partCount *C.size_t, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_subscribe(s.raw(), rid, parts, partCount, topic, topicLen, recvFlags))
 	}, flags)
 }
@@ -954,7 +908,7 @@ type xpubSubscribeSocket struct {
 }
 
 func (s *xpubSubscribeSocket) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error) {
-	return recvSubscriptionEvent(func(rid **C.zlink_routing_id_t, subscribed *C.int, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
+	return recvSubscriptionEvent(func(rid *C.zlink_routing_id_t, subscribed *C.int, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_subscription_event(s.raw(), rid, subscribed, topic, topicLen, recvFlags))
 	}, flags)
 }
@@ -1096,7 +1050,8 @@ func newDealerSocket(ctx *Context) (*DealerSocket, error) {
 }
 
 func (s *DealerSocket) SetRoutingID(id RoutingID) error {
-	return configErrorFromResult(C.zlink_set_routing_id_go_local(s.raw(), routingIDBytesPointer(id), C.size_t(id.Size())))
+	raw := id.toC()
+	return configErrorFromResult(C.zlink_set_routing_id(s.raw(), routingIDPointer(&raw), C.size_t(raw.size)))
 }
 
 func (s *DealerSocket) SetProbe(value bool) error {
@@ -1177,7 +1132,8 @@ func (s *RouterSocket) SetProbe(value bool) error {
 }
 
 func (s *RouterSocket) SetRoutingID(id RoutingID) error {
-	return configErrorFromResult(C.zlink_set_routing_id_go_local(s.raw(), routingIDBytesPointer(id), C.size_t(id.Size())))
+	raw := id.toC()
+	return configErrorFromResult(C.zlink_set_routing_id(s.raw(), routingIDPointer(&raw), C.size_t(raw.size)))
 }
 
 func (s *RouterSocket) SetConnectRoutingID(id RoutingID) error {
@@ -1379,7 +1335,8 @@ func (s *StreamSocket) SetTLSClient(caCertPath string, hostname string, trustSys
 }
 
 func (s *StreamSocket) SetRoutingID(id RoutingID) error {
-	return configErrorFromResult(C.zlink_set_routing_id_go_local(s.raw(), routingIDBytesPointer(id), C.size_t(id.Size())))
+	raw := id.toC()
+	return configErrorFromResult(C.zlink_set_routing_id(s.raw(), routingIDPointer(&raw), C.size_t(raw.size)))
 }
 
 func (s *StreamSocket) RoutingID() (RoutingID, error) {
@@ -1388,10 +1345,6 @@ func (s *StreamSocket) RoutingID() (RoutingID, error) {
 
 func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) error {
 	return s.core.SendTo(target, flags, parts...)
-}
-
-func (s *StreamSocket) SendToUInt32(target uint32, flags SendFlags, parts ...*Message) error {
-	return s.SendTo(RoutingIDFromUInt32(target), flags, parts...)
 }
 
 func (s *StreamSocket) Recv(flags RecvFlags) (*Received, error) {
@@ -1417,19 +1370,6 @@ func (s *StreamSocket) OnPacket(handler func(RoutingID, *Message, *Message)) err
 	}
 	s.core.streamPacketHandle = handle
 	return nil
-}
-
-func (s *StreamSocket) OnPacketUInt32(handler func(uint32, *Message, *Message)) error {
-	if handler == nil {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	return s.OnPacket(func(source RoutingID, header, body *Message) {
-		routingID, ok := source.UInt32()
-		if !ok {
-			return
-		}
-		handler(routingID, header, body)
-	})
 }
 
 func (s *StreamSocket) SetNotify(value bool) error {

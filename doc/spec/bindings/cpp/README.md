@@ -705,7 +705,7 @@ class message_t {
 
 ### routing_id_t
 
-Immutable binary-safe routing identity value object (0-255 bytes).
+Immutable binary-safe routing identity value object (1-255 bytes).
 Routing ids are binary — the primary construction surface takes raw
 bytes. `to_hex()` / `to_string()` are convenience views only.
 

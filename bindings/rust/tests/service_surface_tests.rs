@@ -74,8 +74,6 @@ fn spot_callback_surfaces_exist() {
     let _on_send_ready = Spot::on_send_ready::<fn()>;
     let _on_routed_receive = Spot::on_routed_receive::<fn(RoutingId, RoutingId, u64, Vec<Message>)>;
     let _on_dispatch_event = Spot::on_dispatch_event::<fn(SpotDispatchEvent)>;
-    let _on_dispatch_event_with_context =
-        Spot::on_dispatch_event_with_context::<fn(SpotDispatchEvent, SpotDispatchContext)>;
 }
 
 #[test]

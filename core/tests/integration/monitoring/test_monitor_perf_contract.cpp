@@ -1021,5 +1021,24 @@ void test_send_ready_self_close_blocks_followup_operational_api ()
 
 int main ()
 {
-    return 0;
+    setup_test_environment ();
+
+    UNITY_BEGIN ();
+    RUN_TEST (test_pair_perf_like_send_sampling_preserves_oneway_delivery);
+    RUN_TEST (test_pair_perf_like_recv_sampling_preserves_oneway_delivery);
+    RUN_TEST (test_pair_perf_like_bidirectional_sampling_preserves_oneway_delivery);
+    RUN_TEST (
+      test_pair_inproc_perf_like_monitor_ready_implies_bidirectional_delivery);
+    RUN_TEST (test_pubsub_perf_like_monitor_sockopts_preserve_connect_ready);
+    RUN_TEST (
+      test_pubsub_perf_like_delivery_ready_preserves_oneway_delivery_recv);
+    RUN_TEST (test_pubsub_raw_socket_callback_model_is_accepted);
+    RUN_TEST (test_pubsub_raw_socket_rejects_multipart_send_api);
+    RUN_TEST (
+      test_dealer_dealer_perf_like_monitor_sockopts_preserve_connect_ready);
+    RUN_TEST (
+      test_dealer_router_perf_like_client_monitor_preserves_bidirectional_delivery);
+    RUN_TEST (
+      test_router_router_perf_like_client_monitor_preserves_bidirectional_delivery);
+    return UNITY_END ();
 }

@@ -12,25 +12,10 @@ STREAM 소켓에서 외부 클라이언트 식별에, 모니터링에서 피어 
 
 ```c
 typedef struct {
-    size_t size;
-    const uint8_t *data;
+    uint8_t size;       /* 0~255 */
+    uint8_t data[255];
 } zlink_routing_id_t;
 ```
-
-핵심 규칙은 간단합니다.
-
-- 공개 canonical 형태는 항상 길이가 있는 바이트 열입니다.
-- `STREAM`도 공개 표면에서는 예외가 아닙니다.
-- `STREAM`에서만 이 바이트 열을 4바이트 big-endian `uint32`로 해석하는
-  helper를 함께 쓰는 것이 권장됩니다.
-- routed socket과 service 경로에서 사람이 읽을 값이 필요하면 UTF-8
-  `to_text()` 또는 항상 성공하는 `to_hex()`를 사용합니다.
-- 이 타입은 바이트를 소유하지 않는 borrowed `RoutingId` view입니다.
-  오래 보관하려면 호출자가 별도로 복사해야 합니다.
-- handle에서 안정한 caller-owned bytes 복사본이 필요하면
-  `zlink_get_routing_id_bytes()`를 사용합니다.
-- raw bytes에서 borrowed view를 만들 때는 `zlink_routing_id_from_bytes()`를
-  사용합니다.
 
 ## 3. 자동 생성 규칙
 
@@ -59,9 +44,8 @@ own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 피
 
 ```c
 /* Set before bind/connect */
-static const uint8_t id_bytes[] = "router-A";
-zlink_routing_id_t id = { .size = sizeof(id_bytes) - 1, .data = id_bytes };
-zlink_set_routing_id(socket, &id);
+const char *id = "router-A";
+zlink_set_routing_id(socket, id, strlen(id));
 ```
 
 주의사항:
@@ -74,34 +58,24 @@ zlink_set_routing_id(socket, &id);
 
 ```c
 /* Good example: meaningful identifiers */
-static const uint8_t worker_id_bytes[] = "worker-01";
-static const uint8_t dealer_id_bytes[] = "D1";
-zlink_routing_id_t worker_id = {
-    .size = sizeof(worker_id_bytes) - 1,
-    .data = worker_id_bytes,
-};
-zlink_routing_id_t dealer_id = {
-    .size = sizeof(dealer_id_bytes) - 1,
-    .data = dealer_id_bytes,
-};
-zlink_set_routing_id(dealer, &worker_id);
-zlink_set_routing_id(dealer, &dealer_id);
+zlink_set_routing_id(dealer, "worker-01", 9);
+zlink_set_routing_id(dealer, "D1", 2);
 
 /* Caution: potential collision with auto-generated routing_ids */
 /* Avoid UUID format (16B binary) */
 ```
 
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — 여러 DEALER identity 예제
+> 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
 
 ### 조회
 
 ```c
-const zlink_routing_id_t *rid = NULL;
+zlink_routing_id_t rid;
 zlink_get_routing_id(socket, &rid);
 
-printf("routing_id (%zu bytes): ", rid->size);
-for (size_t i = 0; i < rid->size; ++i)
-    printf("%02x", rid->data[i]);
+printf("routing_id (%u bytes): ", rid.size);
+for (size_t i = 0; i < rid.size; ++i)
+    printf("%02x", rid.data[i]);
 printf("\n");
 ```
 
@@ -153,10 +127,7 @@ zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* DEALER client (explicit routing_id) */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-uint8_t dealer_rid_buf[255];
-zlink_routing_id_t dealer_rid;
-zlink_routing_id_from_text("D1", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
-zlink_set_routing_id(dealer, &dealer_rid); 
+zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, endpoint);
 
 /* DEALER send */
@@ -174,17 +145,11 @@ zlink_send(dealer, &req, 1, 0);
 
 ```c
 /* DEALER 1: routing_id = "D1" */
-uint8_t dealer1_rid_buf[255];
-zlink_routing_id_t dealer1_rid;
-zlink_routing_id_from_text("D1", dealer1_rid_buf, sizeof(dealer1_rid_buf), &dealer1_rid);
-zlink_set_routing_id(dealer1, &dealer1_rid); 
+zlink_set_routing_id(dealer1, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
 /* DEALER 2: routing_id = "D2" */
-uint8_t dealer2_rid_buf[255];
-zlink_routing_id_t dealer2_rid;
-zlink_routing_id_from_text("D2", dealer2_rid_buf, sizeof(dealer2_rid_buf), &dealer2_rid);
-zlink_set_routing_id(dealer2, &dealer2_rid); 
+zlink_set_routing_id(dealer2, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
 /* ROUTER handler distinguishes clients by source_rid */
@@ -229,9 +194,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ## 7. STREAM 소켓에서 routing_id 사용법
 
-STREAM 소켓은 canonical bytes routing id로 외부 클라이언트를 식별한다.
-관례상 이 값은 4바이트 big-endian `uint32`이므로 응용은
-`zlink_routing_id_to_u32()`로 해석할 수 있다.
+STREAM 소켓은 4B uint32 peer routing_id로 외부 클라이언트를 식별한다.
 
 ### 기본 사용
 
@@ -325,10 +288,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 사용자가 설정한 routing_id가 ASCII 문자열이면 직접 출력 가능.
 
 ```c
-uint8_t dealer_rid_buf[255];
-zlink_routing_id_t dealer_rid;
-zlink_routing_id_from_text("D1", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
-zlink_set_routing_id(dealer, &dealer_rid); 
+zlink_set_routing_id(dealer, "D1", 2);
 
 /* In ROUTER handler callback */
 void on_message(const zlink_routing_id_t *source_rid,
@@ -348,9 +308,9 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ```c
 /* Query the auto-assigned routing_id after socket creation */
-const zlink_routing_id_t *rid = NULL;
+zlink_routing_id_t rid;
 zlink_get_routing_id(socket, &rid);
-printf("Auto-generated routing_id: %zu bytes\n", rid->size);  /* 16 bytes (UUID) */
+printf("Auto-generated routing_id: %u bytes\n", rid.size);  /* 16 bytes (UUID) */
 ```
 
 ## 9. 바이너리 처리 원칙

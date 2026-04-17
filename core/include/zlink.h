@@ -184,8 +184,8 @@ typedef struct zlink_msg_t
 
 typedef struct zlink_routing_id_t
 {
-    size_t size;
-    const uint8_t *data;
+    uint8_t size;
+    uint8_t data[255];
 } zlink_routing_id_t;
 
 typedef void (zlink_free_fn) (void *data_, void *hint_);
@@ -407,83 +407,11 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_option (void *handle_,
                                     zlink_option_t option_,
                                     void *optval_,
                                     size_t *optvallen_);
-ZLINK_EXPORT zlink_config_result_t zlink_set_routing_id (
-  void *handle_,
-  const zlink_routing_id_t *routing_id_);
+ZLINK_EXPORT zlink_config_result_t zlink_set_routing_id (void *handle_,
+                                        const void *data_,
+                                        size_t size_);
 ZLINK_EXPORT zlink_config_result_t zlink_get_routing_id (void *handle_,
-                                                 const zlink_routing_id_t **out_);
-
-ZLINK_EXPORT zlink_config_result_t zlink_get_routing_id_bytes (
-  void *handle_,
-  uint8_t *buf_,
-  size_t *inout_len_);
-/** @brief Convert a 32-bit integer to canonical routing_id bytes (big-endian).
- * @param value_ 32-bit unsigned integer value.
- * @param buf_ Backing storage for the returned bytes.
- * @param buf_cap_ Capacity of @p buf_ in bytes.
- * @param out_ Output borrowed routing id view. Must be non-NULL.
- * @return `ZLINK_CONFIG_OK` on success, or a `zlink_config_result_t` error.
- */
-ZLINK_EXPORT zlink_config_result_t zlink_routing_id_from_u32 (
-  uint32_t value_,
-  uint8_t *buf_,
-  size_t buf_cap_,
-  zlink_routing_id_t *out_);
-
-/** @brief Parse a canonical routing_id as a 32-bit integer (big-endian).
- * @param rid_ Canonical routing_id. Must be non-NULL and exactly 4 bytes.
- * @param value_out_ Output integer value. Must be non-NULL.
- * @return `ZLINK_CONFIG_OK` on success, or a `zlink_config_result_t` error.
- */
-ZLINK_EXPORT zlink_config_result_t zlink_routing_id_to_u32 (
-  const zlink_routing_id_t *rid_,
-  uint32_t *value_out_);
-
-/** @brief Convert UTF-8 text to canonical routing_id bytes.
- * @param text_ UTF-8 text pointer (NUL-terminated). Must be non-empty.
- * @param buf_ Backing storage for the returned bytes.
- * @param buf_cap_ Capacity of @p buf_ in bytes.
- * @param out_ Output borrowed routing_id view. Must be non-NULL.
- * @return `ZLINK_CONFIG_OK` on success, or a `zlink_config_result_t` error.
- */
-ZLINK_EXPORT zlink_config_result_t zlink_routing_id_from_text (
-  const char *text_,
-  uint8_t *buf_,
-  size_t buf_cap_,
-  zlink_routing_id_t *out_);
-
-ZLINK_EXPORT zlink_config_result_t zlink_routing_id_from_bytes (
-  const void *data_,
-  size_t size_,
-  uint8_t *buf_,
-  size_t buf_cap_,
-  zlink_routing_id_t *out_);
-
-/** @brief Convert canonical routing_id to UTF-8 text.
- * @param rid_ Canonical routing_id to read. Must be non-NULL.
- * @param out_ Output buffer for NUL-terminated text. Optional when querying
- * length with only out_len_.
- * @param out_len_ On input, size of out_ in bytes; on output, required bytes
- * including terminating NUL.
- * @return `ZLINK_CONFIG_OK` on success, or a `zlink_config_result_t` error.
- */
-ZLINK_EXPORT zlink_config_result_t zlink_routing_id_to_text (
-  const zlink_routing_id_t *rid_,
-  char *out_,
-  size_t *out_len_);
-
-/** @brief Convert canonical routing_id to hexadecimal string.
- * @param rid_ Canonical routing_id to read. Must be non-NULL.
- * @param out_ Output buffer for NUL-terminated hex string. Optional when
- * querying length with only out_len_.
- * @param out_len_ On input, size of out_ in bytes; on output, required bytes
- * including terminating NUL.
- * @return `ZLINK_CONFIG_OK` on success, or a `zlink_config_result_t` error.
- */
-ZLINK_EXPORT zlink_config_result_t zlink_routing_id_to_hex (
-  const zlink_routing_id_t *rid_,
-  char *out_,
-  size_t *out_len_);
+                                        zlink_routing_id_t *out_);
 ZLINK_EXPORT zlink_config_result_t zlink_set_admission_state (
   void *handle_,
   zlink_admission_state_t state_);
@@ -710,7 +638,7 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_publish (
 
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscribe (
   void *spot_,
-  const zlink_routing_id_t **source_rid_out_,
+  zlink_routing_id_t *source_rid_out_,
   zlink_msg_t **parts_out_,
   size_t *part_count_out_,
   char *service_name_out_,
@@ -721,7 +649,7 @@ ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscribe (
 
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscription_event (
   void *spot_,
-  const zlink_routing_id_t **source_rid_out_,
+  zlink_routing_id_t *source_rid_out_,
   int *subscribed_out_,
   char *service_name_out_,
   size_t *service_name_len_out_,
@@ -822,7 +750,7 @@ ZLINK_EXPORT zlink_submit_result_t zlink_router_send_spot (
  * on the same thread.
  */
 ZLINK_EXPORT zlink_recv_result_t zlink_recv (void *s_,
-                              const zlink_routing_id_t **source_rid_out_,
+                              zlink_routing_id_t *source_rid_out_,
                               zlink_msg_t **parts_out_,
                               size_t *part_count_out_,
                               zlink_recv_flags_t flags_);
@@ -844,7 +772,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_subscription_at (void *handle_,
                                          int *is_pattern_out_);
 
 ZLINK_EXPORT zlink_recv_result_t zlink_subscribe (void *subject_,
-                                   const zlink_routing_id_t **source_rid_out_,
+                                   zlink_routing_id_t *source_rid_out_,
                                    zlink_msg_t **parts_out_,
                                    size_t *part_count_out_,
                                    char *topic_id_out_,
@@ -853,7 +781,7 @@ ZLINK_EXPORT zlink_recv_result_t zlink_subscribe (void *subject_,
 
 ZLINK_EXPORT zlink_recv_result_t zlink_subscription_event (
   void *subject_,
-  const zlink_routing_id_t **source_rid_out_,
+  zlink_routing_id_t *source_rid_out_,
   int *subscribed_out_,
   char *topic_id_out_,
   size_t *topic_id_len_out_,
@@ -1551,134 +1479,6 @@ ZLINK_EXPORT void zlink_thread_join (void *thread_);
 
 #ifdef __cplusplus
 }
-
-namespace zlink_cpp_routing_id_detail
-{
-struct routing_id_tls_pool_t
-{
-    routing_id_tls_pool_t () : next (0) {}
-
-    uint8_t *acquire ()
-    {
-        uint8_t *slot = slots[next];
-        next = (next + 1) % (sizeof (slots) / sizeof (slots[0]));
-        return slot;
-    }
-
-    uint8_t slots[16][255];
-    size_t next;
-};
-
-inline routing_id_tls_pool_t &routing_id_tls_pool ()
-{
-    static thread_local routing_id_tls_pool_t pool;
-    return pool;
-}
-}
-
-static inline zlink_config_result_t zlink_routing_id_from_u32 (
-  zlink_routing_id_t *out_,
-  uint32_t value_)
-{
-    return zlink_routing_id_from_u32 (
-      value_, zlink_cpp_routing_id_detail::routing_id_tls_pool ().acquire (),
-      255, out_);
-}
-
-static inline zlink_config_result_t zlink_routing_id_from_text (
-  zlink_routing_id_t *out_,
-  const char *text_)
-{
-    return zlink_routing_id_from_text (
-      text_, zlink_cpp_routing_id_detail::routing_id_tls_pool ().acquire (),
-      255, out_);
-}
-
-static inline zlink_config_result_t zlink_routing_id_from_bytes (
-  zlink_routing_id_t *out_,
-  const void *data_,
-  size_t size_)
-{
-    return zlink_routing_id_from_bytes (
-      data_, size_, zlink_cpp_routing_id_detail::routing_id_tls_pool ().acquire (),
-      255, out_);
-}
-
-static inline zlink_config_result_t zlink_set_routing_id (
-  void *handle_,
-  const void *data_,
-  size_t size_)
-{
-    zlink_routing_id_t routing_id;
-    routing_id.size = size_;
-    routing_id.data = static_cast<const uint8_t *> (data_);
-    return zlink_set_routing_id (handle_, &routing_id);
-}
-
-static inline zlink_config_result_t zlink_get_routing_id (
-  void *handle_,
-  zlink_routing_id_t *out_)
-{
-    const zlink_routing_id_t *routing_id = NULL;
-    const zlink_config_result_t rc = zlink_get_routing_id (handle_, &routing_id);
-    if (rc != ZLINK_CONFIG_OK || !out_)
-        return rc;
-    out_->size = 0;
-    out_->data = NULL;
-    if (routing_id)
-        *out_ = *routing_id;
-    return rc;
-}
-
-static inline zlink_recv_result_t zlink_spot_subscribe (
-  void *spot_,
-  zlink_routing_id_t *source_rid_out_,
-  zlink_msg_t **parts_out_,
-  size_t *part_count_out_,
-  char *service_name_out_,
-  size_t *service_name_len_out_,
-  char *topic_id_out_,
-  size_t *topic_id_len_out_,
-  int flags_)
-{
-    const zlink_routing_id_t *source_rid = NULL;
-    const zlink_recv_result_t rc = ::zlink_spot_subscribe (
-      spot_, &source_rid, parts_out_, part_count_out_, service_name_out_,
-      service_name_len_out_, topic_id_out_, topic_id_len_out_,
-      static_cast<zlink_recv_flags_t> (flags_));
-    if (rc != ZLINK_RECV_OK || !source_rid_out_)
-        return rc;
-    source_rid_out_->size = 0;
-    source_rid_out_->data = NULL;
-    if (source_rid)
-        *source_rid_out_ = *source_rid;
-    return rc;
-}
-
-static inline zlink_recv_result_t zlink_spot_subscription_event (
-  void *spot_,
-  zlink_routing_id_t *source_rid_out_,
-  int *subscribed_out_,
-  char *service_name_out_,
-  size_t *service_name_len_out_,
-  char *topic_id_out_,
-  size_t *topic_id_len_out_,
-  int flags_)
-{
-    const zlink_routing_id_t *source_rid = NULL;
-    const zlink_recv_result_t rc = ::zlink_spot_subscription_event (
-      spot_, &source_rid, subscribed_out_, service_name_out_,
-      service_name_len_out_, topic_id_out_, topic_id_len_out_,
-      static_cast<zlink_recv_flags_t> (flags_));
-    if (rc != ZLINK_RECV_OK || !source_rid_out_)
-        return rc;
-    source_rid_out_->size = 0;
-    source_rid_out_->data = NULL;
-    if (source_rid)
-        *source_rid_out_ = *source_rid;
-    return rc;
-}
-
 #endif
 
 #endif

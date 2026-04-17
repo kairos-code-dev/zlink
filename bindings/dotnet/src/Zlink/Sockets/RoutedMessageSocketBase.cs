@@ -31,18 +31,6 @@ public abstract class RoutedMessageSocketBase : SocketBase
         Kernel.Send(routingId, message, flags);
     }
 
-    public void Send(string routingId, byte[] payload,
-        SendFlags flags = SendFlags.None)
-    {
-        Kernel.SendBorrowedSingle(routingId, payload, (int)flags);
-    }
-
-    public void Send(RoutingId routingId, byte[] payload,
-        SendFlags flags = SendFlags.None)
-    {
-        Kernel.SendBorrowedSingle(routingId, payload, (int)flags);
-    }
-
     public void Send(string routingId, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
@@ -63,16 +51,6 @@ public abstract class RoutedMessageSocketBase : SocketBase
     internal SendResult TrySend(RoutingId routingId, Message message)
     {
         return Kernel.TrySend(routingId, message);
-    }
-
-    internal SendResult TrySend(string routingId, byte[] payload)
-    {
-        return Kernel.TrySendBorrowedSingle(routingId, payload);
-    }
-
-    internal SendResult TrySend(RoutingId routingId, byte[] payload)
-    {
-        return Kernel.TrySendBorrowedSingle(routingId, payload);
     }
 
     internal SendResult TrySend(string routingId, IReadOnlyList<Message> parts)

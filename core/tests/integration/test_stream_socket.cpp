@@ -147,7 +147,6 @@ static bool recv_stream_routing_id_and_payload (void *socket_,
                                                 zlink_msg_t *payload_out_,
                                                 int flags_)
 {
-    static thread_local uint8_t routing_id_storage[stream_routing_id_size];
     if (!socket_ || !rid_out_ || !payload_out_) {
         errno = EINVAL;
         return false;
@@ -167,9 +166,8 @@ static bool recv_stream_routing_id_and_payload (void *socket_,
         return false;
     }
 
-    rid_out_->size = stream_routing_id_size;
-    rid_out_->data = routing_id_storage;
-    memcpy (routing_id_storage, zlink_msg_data (&rid_msg), stream_routing_id_size);
+    rid_out_->size = static_cast<uint8_t> (stream_routing_id_size);
+    memcpy (rid_out_->data, zlink_msg_data (&rid_msg), stream_routing_id_size);
     zlink_msg_close (&rid_msg);
 
     const bool more = test_msg_has_more (&rid_msg);
@@ -2478,5 +2476,54 @@ void test_stream_connect_rejected ()
 
 int main (void)
 {
-    return 0;
+    UNITY_BEGIN ();
+
+    setup_test_environment ();
+
+    if (should_run_stream_socket_test ("test_stream_callback_lifecycle"))
+        RUN_TEST (test_stream_callback_lifecycle);
+    if (should_run_stream_socket_test ("test_stream_recv_api_dispatch_conflict"))
+        RUN_TEST (test_stream_recv_api_dispatch_conflict);
+    if (should_run_stream_socket_test (
+          "test_stream_notify_option_remains_available_with_dispatch"))
+        RUN_TEST (test_stream_notify_option_remains_available_with_dispatch);
+    if (should_run_stream_socket_test ("test_stream_callback_echo_raw"))
+        RUN_TEST (test_stream_callback_echo_raw);
+    if (should_run_stream_socket_test ("test_stream_callback_echo_single_zero_byte"))
+        RUN_TEST (test_stream_callback_echo_single_zero_byte);
+    if (should_run_stream_socket_test (
+          "test_stream_recv_ready_precedes_first_payload_contract"))
+        RUN_TEST (test_stream_recv_ready_precedes_first_payload_contract);
+    if (should_run_stream_socket_test (
+          "test_stream_raw_callback_ready_precedes_first_payload_contract"))
+        RUN_TEST (test_stream_raw_callback_ready_precedes_first_payload_contract);
+    if (should_run_stream_socket_test (
+          "test_stream_recv_handler_delivers_raw_chunks_not_len32be_frames"))
+        RUN_TEST (test_stream_recv_handler_delivers_raw_chunks_not_len32be_frames);
+    if (should_run_stream_socket_test ("test_stream_packet_handler_mode_gates"))
+        RUN_TEST (test_stream_packet_handler_mode_gates);
+    if (should_run_stream_socket_test ("test_stream_packet_framing_contracts"))
+        RUN_TEST (test_stream_packet_framing_contracts);
+    if (should_run_stream_socket_test ("test_stream_packet_ordering_contracts"))
+        RUN_TEST (test_stream_packet_ordering_contracts);
+    if (should_run_stream_socket_test (
+          "test_stream_packet_malformed_close_contracts"))
+        RUN_TEST (test_stream_packet_malformed_close_contracts);
+#if !defined(ZLINK_HAVE_WINDOWS)
+    if (should_run_stream_socket_test (
+          "test_stream_raw_multiclient_strict_ready_gating_regression"))
+        RUN_TEST (test_stream_raw_multiclient_strict_ready_gating_regression);
+    if (should_run_stream_socket_test (
+          "test_stream_recv_multiclient_strict_ready_gating_regression"))
+        RUN_TEST (test_stream_recv_multiclient_strict_ready_gating_regression);
+    if (should_run_stream_socket_test ("test_stream_raw_multiclient_load_integrity"))
+        RUN_TEST (test_stream_raw_multiclient_load_integrity);
+    if (should_run_stream_socket_test (
+          "test_stream_raw_multiclient_load_integrity_with_send_ready_handler"))
+        RUN_TEST (test_stream_raw_multiclient_load_integrity_with_send_ready_handler);
+#endif
+    if (should_run_stream_socket_test ("test_stream_connect_rejected"))
+        RUN_TEST (test_stream_connect_rejected);
+
+    return UNITY_END ();
 }

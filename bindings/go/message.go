@@ -11,7 +11,6 @@ import "C"
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/hex"
 	"hash/fnv"
 	"strings"
@@ -26,60 +25,19 @@ type RoutingID struct {
 }
 
 func NewRoutingID(data []byte) RoutingID {
-	if len(data) > maxRoutingIDSize {
+	if len(data) == 0 || len(data) > maxRoutingIDSize {
 		return RoutingID{}
 	}
 	cloned := append([]byte(nil), data...)
 	return RoutingID{data: cloned}
 }
 
-func RoutingIDFromText(value string) RoutingID {
-	return NewRoutingID([]byte(value))
-}
-
-func RoutingIDFromString(value string) RoutingID {
-	return RoutingIDFromText(value)
-}
-
-func RoutingIDFromU32(value uint32) RoutingID {
-	var raw [4]byte
-	binary.BigEndian.PutUint32(raw[:], value)
-	return NewRoutingID(raw[:])
-}
-
-func RoutingIDFromUInt32(value uint32) RoutingID {
-	return RoutingIDFromU32(value)
-}
-
 func (r RoutingID) Bytes() []byte {
 	return append([]byte(nil), r.data...)
 }
 
-func (r RoutingID) ToBytes() []byte {
-	return r.Bytes()
-}
-
 func (r RoutingID) Size() int {
 	return len(r.data)
-}
-
-func (r RoutingID) UInt32() (uint32, bool) {
-	if len(r.data) != 4 {
-		return 0, false
-	}
-	return binary.BigEndian.Uint32(r.data), true
-}
-
-func (r RoutingID) ToU32() (uint32, bool) {
-	return r.UInt32()
-}
-
-func (r RoutingID) UTF8() string {
-	return string(r.data)
-}
-
-func (r RoutingID) ToText() string {
-	return r.UTF8()
 }
 
 func (r RoutingID) Hash() uint64 {
@@ -96,19 +54,15 @@ func (r RoutingID) Hex() string {
 	return hex.EncodeToString(r.data)
 }
 
-func (r RoutingID) ToHex() string {
-	return r.Hex()
-}
-
 func (r RoutingID) Equal(other RoutingID) bool {
 	return bytes.Equal(r.data, other.data)
 }
 
 func (r RoutingID) toC() C.zlink_routing_id_t {
 	var out C.zlink_routing_id_t
-	out.size = C.size_t(len(r.data))
+	out.size = C.uint8_t(len(r.data))
 	if len(r.data) > 0 {
-		out.data = (*C.uint8_t)(unsafe.Pointer(&r.data[0]))
+		C.memcpy(unsafe.Pointer(&out.data[0]), unsafe.Pointer(&r.data[0]), C.size_t(len(r.data)))
 	}
 	return out
 }
@@ -118,7 +72,7 @@ func routingIDFromC(raw C.zlink_routing_id_t) RoutingID {
 	if size == 0 {
 		return RoutingID{}
 	}
-	data := C.GoBytes(unsafe.Pointer(raw.data), C.int(size))
+	data := C.GoBytes(unsafe.Pointer(&raw.data[0]), C.int(size))
 	return RoutingID{data: data}
 }
 
@@ -127,13 +81,6 @@ func routingIDFromCPtr(raw *C.zlink_routing_id_t) RoutingID {
 		return RoutingID{}
 	}
 	return routingIDFromC(*raw)
-}
-
-func routingIDBytesPointer(id RoutingID) unsafe.Pointer {
-	if len(id.data) == 0 {
-		return nil
-	}
-	return unsafe.Pointer(&id.data[0])
 }
 
 type Message struct {

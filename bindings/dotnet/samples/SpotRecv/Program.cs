@@ -1,6 +1,4 @@
 using SampleCommon;
-using System;
-using System.Threading.Tasks;
 using Zlink;
 
 if (!SampleSupport.IsNativeAvailable())
@@ -17,54 +15,27 @@ const string payload = "hello-spot";
 string endpoint = SampleSupport.NewEndpoint("tcp", "spot-recv-service");
 pubSocket.Bind(endpoint);
 subSocket.Connect(endpoint);
-Exception? attachError = null;
-DateTime attachDeadline = DateTime.UtcNow.AddSeconds(5);
-while (DateTime.UtcNow < attachDeadline)
-{
-    try
-    {
-        node.AttachPubSub(serviceName, pubSocket, subSocket);
-        attachError = null;
-        break;
-    }
-    catch (Exception ex)
-    {
-        attachError = ex;
-        Task.Delay(10).Wait();
-    }
-}
-if (attachError != null)
-    throw attachError;
-
-var delivered = new TaskCompletionSource<(string Service, string Topic, string Payload)>(
-    TaskCreationOptions.RunContinuationsAsynchronously);
-spot.OnDispatchEvent(dispatchEvent =>
-{
-    if (dispatchEvent != SpotDispatchEvent.SubscribeReadable)
-        return;
-    try
-    {
-        using TopicMessage subscribed = spot.Subscribe(RecvFlags.DontWait);
-        delivered.TrySetResult((
-            subscribed.ServiceName ?? string.Empty,
-            subscribed.Topic,
-            subscribed.SinglePartOrThrow().GetString()));
-    }
-    catch (Exception ex)
-    {
-        delivered.TrySetException(ex);
-    }
-});
+node.AttachPubSub(serviceName, pubSocket, subSocket);
 spot.SetSubscription(topic);
 
-using (Message message = Message.FromString(payload))
+TopicMessage? subscribed = null;
+SampleSupport.WaitOrThrow(() =>
 {
+    using Message message = Message.FromString(payload);
     spot.Publish(serviceName, topic, message);
-}
-if (!delivered.Task.Wait(TimeSpan.FromSeconds(5)))
-    throw new InvalidOperationException("spot dispatch callback did not deliver");
-var received = delivered.Task.GetAwaiter().GetResult();
-if (received.Service != serviceName)
-    throw new InvalidOperationException("unexpected spot service");
+    try
+    {
+        subscribed = spot.Subscribe(RecvFlags.DontWait);
+        return true;
+    }
+    catch (ZlinkRecvException)
+    {
+        return false;
+    }
+}, 5000, "spot recv sample");
+
+using var subscribedMessage = subscribed!;
+string receivedTopic = subscribedMessage.Topic;
+string receivedPayload = subscribedMessage.SinglePartOrThrow().GetString();
 Console.WriteLine(
-    $"[spot/recv] service: \"{serviceName}\" tick: 1 publish: \"{topic}/{payload}\" -> recv: \"{received.Topic}/{received.Payload}\"");
+    $"[spot/recv] service: \"{serviceName}\" tick: 1 publish: \"{topic}/{payload}\" -> recv: \"{receivedTopic}/{receivedPayload}\"");

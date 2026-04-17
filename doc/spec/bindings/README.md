@@ -580,25 +580,20 @@ XPub 이 받는 subscribe/unsubscribe 이벤트와 Spot subscription event recv 
 
 #### `RoutingId`
 
-Routing id value object. Binary-safe (0-255 bytes).
+Routing id value object. Binary-safe (1-255 bytes).
 
 | 구성 | 타입 | 의미 |
 |------|------|------|
 | `bytes` / `data` | `bytes` / `byte[]` / `Vec<u8>` / `Buffer` | raw bytes (immutable view) |
-| `size` | `int` (0-255) | byte length |
+| `size` | `int` (1-255) | byte length |
 | `from_bytes(bytes)` | static/ctor | 생성자 |
 | `to_bytes()` | `bytes` | 원본 바이트 반환 |
-| `from_u32(value)` | static/ctor | 4-byte big-endian STREAM helper |
-| `to_u32()` | integer / optional / result | 4-byte big-endian STREAM helper |
-| `from_text(value)` | static/ctor | UTF-8 text helper |
-| `to_text()` | string / result | UTF-8 text helper |
-| `to_hex()` | string | hex display helper |
 | equality / hash | — | 언어별 관용구 (`equals`/`hashCode`, `__eq__`/`__hash__`, `PartialEq+Eq+Hash`) |
 
 규칙:
 - **binary-safe value type**. `RoutingId(string value)` 같은 string 전용
-  생성자를 기본으로 두지 않는다. `from_text()` / `to_text()`는 helper일 뿐
-  canonical 형식을 바꾸지 않는다.
+  생성자를 기본으로 두지 않는다. string 변환은 편의 메서드 (`to_hex()`,
+  `to_string()`) 로만 제공.
 - 불변 (immutable). 한 번 생성하면 내용 변경 불가.
 - Node 에서는 raw `Buffer` 대신 `RoutingId` 래퍼 타입을 그대로 노출한다.
 

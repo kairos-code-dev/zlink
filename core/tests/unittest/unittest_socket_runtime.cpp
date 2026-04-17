@@ -130,13 +130,11 @@ void test_socket_endpoint_runtime_tracks_last_recv_source_rid ()
 {
     zlink::socket_endpoint_runtime_t runtime;
     zlink_routing_id_t source_rid;
-    uint8_t source_rid_storage[3];
     memset (&source_rid, 0, sizeof (source_rid));
     source_rid.size = 3;
-    source_rid.data = source_rid_storage;
-    source_rid_storage[0] = 'a';
-    source_rid_storage[1] = 'b';
-    source_rid_storage[2] = 'c';
+    source_rid.data[0] = 'a';
+    source_rid.data[1] = 'b';
+    source_rid.data[2] = 'c';
 
     zlink_routing_id_t copied;
     memset (&copied, 0xAB, sizeof (copied));
@@ -467,7 +465,31 @@ void test_socket_public_send_scope_without_sync_keeps_inflight_admission ()
 
 int main (int argc, char **argv)
 {
-    LIBZLINK_UNUSED (argc);
-    LIBZLINK_UNUSED (argv);
-    return 0;
+    UNITY_BEGIN ();
+    RUN_TEST (test_socket_monitor_runtime_tracks_ready_connections_once);
+    RUN_TEST (test_socket_monitor_runtime_erases_only_matching_ready_connection);
+    RUN_TEST (test_socket_monitor_runtime_dequeues_enqueued_worker_event_nowait);
+    RUN_TEST (test_socket_monitor_runtime_hwm_drops_lossy_events);
+    RUN_TEST (test_socket_monitor_runtime_reset_clears_stop_state);
+    RUN_TEST (test_socket_endpoint_runtime_tracks_last_recv_source_rid);
+    RUN_TEST (test_socket_endpoint_runtime_tracks_last_endpoint);
+    RUN_TEST (test_socket_lifecycle_coordinator_tracks_destroy_state);
+    RUN_TEST (
+      test_socket_lifecycle_coordinator_completes_deferred_close_without_async_mailbox);
+    RUN_TEST (
+      test_socket_lifecycle_coordinator_handoff_waits_pending_async_quiesce);
+    RUN_TEST (test_socket_public_api_scope_releases_inflight_admission);
+    RUN_TEST (test_socket_public_api_lock_scope_releases_sync_bit_on_exit);
+    RUN_TEST (test_socket_callback_scope_tracks_callback_depth_and_inflight_state);
+    RUN_TEST (test_socket_send_ready_dispatch_scope_restores_previous_socket);
+    RUN_TEST (test_socket_command_runtime_throttles_command_polls_by_tsc_window);
+    RUN_TEST (test_socket_command_runtime_tracks_recv_ticks_until_reset);
+    RUN_TEST (test_socket_dispatch_bridge_reads_send_ready_triplet_consistently);
+    RUN_TEST (test_socket_dispatch_bridge_arms_send_ready_only_with_handler);
+    RUN_TEST (test_socket_public_send_scope_combines_initial_admission_and_sync);
+    RUN_TEST (
+      test_socket_public_send_scope_unlocks_sync_but_keeps_inflight_admission);
+    RUN_TEST (
+      test_socket_public_send_scope_without_sync_keeps_inflight_admission);
+    return UNITY_END ();
 }

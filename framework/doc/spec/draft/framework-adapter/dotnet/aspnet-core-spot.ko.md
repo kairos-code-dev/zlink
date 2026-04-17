@@ -175,7 +175,7 @@ public interface IZLinkSpotManager
 즉 사용자는 생성 직후 식별자만 얻고:
 
 ```csharp
-var stage = await spotManager.CreateAsync("stage-1001", cancellationToken);
+var stage = await spotManager.CreateAsync(cancellationToken);
 
 await spotClient.SendToAsync(
     targetRid,
@@ -264,72 +264,99 @@ var reply = await client.RequestToAsync(
 예를 들면 아래 두 축이다.
 
 - `IZLinkSpotDirectory<TKey>`: 논리 키를 `(targetRid, spotRid)` 주소로 해석
-- `ZLinkSpotContext.Self`: 현재 spot의 `spotRid`, `nodeRid` 조회
+- `StageSpot.SpotRid`, `StageSpot.NodeRid`: 현재 spot 객체 자신의 identity
 
-즉 어떤 spot이 생성될 때 받은 `spotRid`는 이후 그 spot에서 실행되는 handler 안에서
-`context.Self.SpotRid`로 다시 조회할 수 있어야 한다. 외부 address lookup과 내부
-self identity 조회는 서로 다른 문제다.
+즉 어떤 spot이 생성될 때 받은 `spotRid`는 이후 그 spot 객체가 그대로 들고 있어야
+한다. 외부 address lookup과 내부 self identity 조회는 서로 다른 문제다.
+
+또한 subscribe handler는 router request handler와 같은 종류의 매핑으로 보면 안
+된다.
+
+- packet은 header의 `msgId`를 기준으로 targeted dispatch 된다.
+- subscribe는 `"stage.state.updated"` 같은 topic subscription으로 consumer 등록된다.
+- 즉 둘 다 문자열을 쓰더라도 dispatch 의미가 다르다.
 
 ## 7. subscribe 모델 초안
 
 실제 handler 인터페이스 초안은 [handler-interfaces.ko.md](./handler-interfaces.ko.md)를
 기준으로 본다.
 
-### 5.1 handler 기반 구독
+현재 `SPOT` 샘플은 attribute 기반보다, spot 객체가 자기 초기화 단계에서 직접
+handler를 등록하는 쪽을 기본으로 본다.
 
 ```csharp
-public sealed class StageSpot
+public sealed class StageSpot : ZLinkSpot
 {
-    [ZLinkSpotSubscription("game.stage", "zone.*.state")]
-    public ValueTask OnZoneStateAsync(
-        ZoneStateEvent message,
-        ZLinkSpotSubscriptionContext context,
+    private IZLinkTimer? _heartbeat;
+
+    public override async ValueTask OnInitializeAsync(
+        IServiceProvider services,
         CancellationToken cancellationToken)
     {
-        return ValueTask.CompletedTask;
+        AddPacket<GetStageStateHandler>(services);
+        AddPacket<ReportStageStateHandler>(services);
+
+        AddSubscribe<StageStateUpdatedHandler>(
+            "stage.state.updated",
+            services);
+
+        _heartbeat = await AddTimer<StageHeartbeatHandler>(
+            "heartbeat",
+            TimeSpan.FromSeconds(1),
+            services,
+            cancellationToken);
     }
 }
 ```
 
 여기서 기대하는 점은 아래와 같다.
 
-- 구독 등록은 framework startup에서 이뤄진다.
-- 수신 메시지는 typed object로 역직렬화된다.
-- `ZLinkSpotSubscriptionContext`에서 topic, source rid, dispatch metadata를 본다.
-- `ZLinkSpotSubscriptionContext.Self`에서 현재 spot 자신의 identity를 본다.
+- `AddPacket<THandler>(...)`는 request와 send packet을 함께 등록한다.
+- packet dispatch key는 packet 타입의 header `msgId`다.
+- `protobuf`를 쓰면 `msgId`는 protobuf message name이다.
+- `json`을 쓰면 `msgId`는 CLR class name이다.
+- `AddSubscribe<THandler>(...)`는 topic consumer 등록이다.
+- `AddTimer<THandler>(...)`는 현재 spot lifecycle 안에 timer를 등록한다.
+- handler는 별도 class로 두고, `StageSpot` 안에는 코어 로직만 남길 수 있다.
+- handler가 다른 서버나 다른 spot으로 outbound 호출을 해야 하면, `IZLinkClient`
+  또는 `IZLinkSpotClient`를 constructor injection으로 받는 쪽이 더 자연스럽다.
 
-추가로 routed request/reply를 handler로 올릴 경우 아래 attribute 후보를 쓴다.
+### 7.1 room 계열 사용과 핫패스 원칙
 
-```csharp
-public sealed class StageSpot
-{
-    [ZLinkSpotRequest("stage.query")]
-    public ValueTask<StageQueryReply> HandleAsync(
-        StageQueryRequest request,
-        ZLinkSpotRequestContext context,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.FromResult(new StageQueryReply());
-    }
-}
-```
+`SPOT`이 FPS 같은 게임의 room으로 쓰이더라도, 이 모델 자체가 곧바로 과한
+오버헤드를 만든다고 보지는 않는다. 다만 `SPOT` 쪽 메시지 handler 호출은 room
+핫패스로 쓰일 수 있으므로, 일반 service messaging보다 더 강한 성능 기준을 둬야
+한다.
 
-### 5.2 background service 모델
+- reflection은 registration 단계까지만 허용한다.
+- 런타임 packet 처리 경로에서는 `MethodInfo.Invoke` 같은 반사 호출이 있으면 안 된다.
+- `msgId -> handler descriptor` lookup은 미리 만든 dispatch table을 써야 한다.
+- handler 호출은 캐시된 delegate 또는 그와 비슷한 저비용 경로여야 한다.
+- per-packet allocation, 과도한 DI 재구성, 불필요한 boxing은 피해야 한다.
 
-경우에 따라 attribute보다 `BackgroundService` 스타일이 더 자연스러울 수 있다.
+즉 `AddPacket<THandler>(...)` 같은 등록 표면은 startup 또는 spot initialize 단계에서만
+비용이 들고, 실제 핫패스는 아래처럼 짧아야 한다.
 
-```csharp
-public sealed class StageSyncWorker : BackgroundService
-{
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        return Task.CompletedTask;
-    }
-}
-```
+1. header에서 `msgId` 읽기
+2. dispatch table에서 handler descriptor 찾기
+3. packet decode
+4. handler resolve 또는 재사용
+5. `HandleAsync(...)` 호출
 
-현재 초안은 두 모델 모두 가능하다고 보되, 1차는 handler registration 쪽이 더
-일관적일 수 있다고 본다.
+실제 room 성능에 더 큰 영향을 주는 것은 보통 registration 문법보다 아래 항목이다.
+
+- protobuf encode/decode 비용
+- 같은 spot 안의 queue 적체
+- broadcast fan-out
+- allocator pressure
+- lock contention
+
+따라서 framework 문서에서는 "class 기반 handler라서 느리다"보다, "핫패스 구현을
+어떻게 캐시하고 줄일 것인가"를 더 중요한 원칙으로 본다. 여기서 말하는 강한
+최적화 기준은 `SPOT` packet 처리 쪽에 우선 적용된다. 반대로 일반 socket/service
+메시지 handler가 성능이 낮아도 된다는 뜻은 아니다. 차이는 "성능을 포기해도 된다"가
+아니라, 일반 service messaging 쪽은 `SPOT` room 핫패스보다 편의 기능을 조금 더
+허용할 여지가 있다는 점에 가깝다.
 
 ## 8. SPOT과 direct call의 관계
 

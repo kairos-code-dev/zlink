@@ -30,6 +30,8 @@
   한다.
 - `stream`은 일반 request handler와 다른 전용 handler 그룹으로 분리할 수
   있어야 한다.
+- `stream`은 packet handler와 raw handler 두 축을 우선 지원하고, recv loop는
+  기본 application 표면에 올리지 않는다.
 
 ### 2.2 클라이언트 쪽
 
@@ -66,7 +68,7 @@ section 2에 정의되어 있다. 이 문서에서 다루는 API 표면 범위�
 - `MapZlinkHandlers()` 또는 그와 비슷한 endpoint 등록
 - outbound client DI
 - `SPOT` node / publisher / subscriber의 hosted lifecycle 통합
-- stream hosted lifecycle 또는 connection handler 등록
+- stream hosted lifecycle 또는 stream handler 등록
 
 ### 3.2 예시
 
@@ -145,7 +147,7 @@ export class ProfileController {
 - ASP.NET Core에서 endpoint mapping과 attribute model 중 어디를 우선할지
 - pub/sub을 `PUB/SUB` 중심으로 설명할지, `SPOT`와 묶은 상위 event 모델로 먼저
   설명할지
-- stream을 connection handler 중심으로 볼지, packet handler 중심으로 볼지
+- stream을 packet handler와 raw handler 두 축만으로 충분히 설명할 수 있는지
 - scatter-gather 같은 aggregate helper를 adapter 기본 기능으로 둘지
 - workflow metadata를 context에 어느 수준까지 노출할지
 

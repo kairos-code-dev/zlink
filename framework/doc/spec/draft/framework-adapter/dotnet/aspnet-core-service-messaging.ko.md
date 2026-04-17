@@ -136,6 +136,12 @@ handler class attribute보다 등록 옵션에 두는 편을 현재 방향으로
 실제 handler 인터페이스 초안은 [handler-interfaces.ko.md](./handler-interfaces.ko.md)를
 기준으로 본다. 이 문서는 그중 `ASP.NET Core` 매핑 경험을 설명하는 쪽에 집중한다.
 
+여기서 service messaging handler는 `SPOT` room 핫패스와 완전히 같은 성능 문맥을
+기본 전제로 두지는 않는다. 그렇다고 성능이 낮아도 된다는 뜻은 아니다. 이 계층도
+불필요한 reflection과 할당은 줄여야 한다. 다만 `SPOT` packet 처리처럼 "FPS room
+핫패스"를 전제로 가장 강한 최적화를 우선하는 대신, 일반 service messaging 쪽은
+조금 더 많은 편의 기능을 허용할 여지가 있다는 뜻에 가깝다.
+
 ### 4.1 request handler
 
 ```csharp

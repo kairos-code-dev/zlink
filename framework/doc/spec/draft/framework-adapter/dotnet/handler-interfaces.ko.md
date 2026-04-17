@@ -22,6 +22,10 @@
   [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md)
 - SPOT 샘플 →
   [spot-samples.ko.md](./spot-samples.ko.md)
+- STREAM 통합 →
+  [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md)
+- STREAM 샘플 →
+  [stream-samples.ko.md](./stream-samples.ko.md)
 - Registry 통합 →
   [aspnet-core-registry.ko.md](./aspnet-core-registry.ko.md)
 
@@ -33,9 +37,9 @@
 | handler | `IZLinkRequestHandler<TRequest, TResponse>` | request-response handler | 4.1 |
 | handler | `IZLinkSendHandler<TMessage>` | one-way send handler | 4.2 |
 | handler | `IZLinkEventHandler<TEvent>` | pub/sub event handler | 4.3 |
-| handler | `IZLinkStreamPacketHandler` | stream packet handler (raw) | 4.4 |
-| handler | `IZLinkStreamPacketHandler<TPacket>` | stream packet handler (typed) | 4.4 |
-| handler | `IZLinkStreamSessionHandler` | stream session handler | 4.5 |
+| handler | `IZLinkStreamPacketHandler` | stream packet handler (header/body raw) | 4.4 |
+| handler | `IZLinkStreamPacketHandler<THeader, TBody>` | stream packet handler (typed) | 4.4 |
+| handler | `IZLinkStreamRawHandler` | stream raw handler | 4.4 |
 | client | `IZLinkClient` | 서버 간 outbound client | 5.1 |
 | client | `IZLinkSpotClient` | SPOT outbound client | 5.2 |
 | client | `IZLinkEventPublisher` | pub/sub event publisher | 5.3 |
@@ -163,41 +167,50 @@ public interface IZLinkTopicHandler<in TEvent>
 
 `IZLinkEventHandler`와 `IZLinkTopicHandler` 중 최종 이름은 미정이다.
 
-### 4.4 stream packet handler
+### 4.4 stream handler
 
-stream packet을 처리하는 handler다. raw 버전과 typed 버전 두 가지가 있다.
+stream은 packet handler와 raw handler 두 가지 방식을 지원하는 방향으로 본다.
+여기서 raw handler는 socket에서 들어오는 raw payload chunk를 직접 받는 방식이고,
+packet handler는 C API가 이미 header/body 두 청크로 잘라서 올려주는 framed packet
+위에서 동작하는 방식이다.
 
 ```csharp
 public interface IZLinkStreamPacketHandler
 {
     ValueTask HandleAsync(
-        ZLinkStreamPacket packet,
+        Message header,
+        Message body,
         ZLinkStreamContext context,
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkStreamPacketHandler<in TPacket>
+public interface IZLinkStreamPacketHandler<in THeader, in TBody>
 {
     ValueTask HandleAsync(
-        TPacket packet,
+        THeader header,
+        TBody body,
+        ZLinkStreamContext context,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkStreamRawHandler
+{
+    ValueTask HandleAsync(
+        Message payload,
         ZLinkStreamContext context,
         CancellationToken cancellationToken);
 }
 ```
 
-### 4.5 stream session handler
+이 초안에서는 recv loop를 application 표면으로 직접 노출하지 않는다.
+즉 사용자가 `RecvAsync(...)` 같은 방식으로 직접 drain loop를 돌리는 모델보다,
+framework가 dispatch를 맡고 application은 packet handler 또는 raw handler를
+구현하는 모델을 기본으로 본다.
 
-connection 수준에서 stream을 처리하는 handler다.
-packet handler와 session handler 중 어느 쪽을 기본으로 둘지는 미정이다.
-
-```csharp
-public interface IZLinkStreamSessionHandler
-{
-    Task OnConnectedAsync(
-        ZLinkStreamSession session,
-        CancellationToken cancellationToken);
-}
-```
+typed packet handler는 raw `Message header`, `Message body`를 framework codec 또는
+mapper가 사용자 정의 `THeader`, `TBody`로 변환해 주는 상위 표면이다. 즉 header도
+별도 고정 구조체가 아니라, 원래는 하나의 message chunk이고 필요하면 사용자 정의
+header 타입으로 decode해서 쓸 수 있어야 한다.
 
 ## 5. Client 인터페이스
 
@@ -448,7 +461,7 @@ public interface IZLinkSpotDirectory<TKey>
 즉 두 기능은 아래처럼 구분된다.
 
 - `IZLinkSpotDirectory<TKey>`: 외부가 논리 키로 spot 주소를 찾는다.
-- `ZLinkSpotContext.Self`: 현재 spot이 자기 `spotRid`, `nodeRid`를 읽는다.
+- `StageSpot.SpotRid`, `StageSpot.NodeRid`: 현재 spot 객체가 자기 identity를 직접 가진다.
 
 ## 7. Timer 인터페이스
 
@@ -607,17 +620,17 @@ public sealed class ZLinkSpotSubscriptionAttribute : Attribute
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class ZLinkStreamPacketAttribute : Attribute
 {
-    public ZLinkStreamPacketAttribute(string? pattern = null);
-    public string? Pattern { get; }
+    public ZLinkStreamPacketAttribute();
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ZLinkStreamSessionAttribute : Attribute
+public sealed class ZLinkStreamRawAttribute : Attribute
 {
 }
 ```
 
-stream을 packet 중심으로 고정할지, session 중심으로 올릴지는 미정이다.
+stream은 packet handler와 raw handler 두 축으로 본다.
+recv 방식과 session handler는 현재 초안 범위에서 제외한다.
 
 ## 12. 시그니처 규칙
 

@@ -40,6 +40,7 @@ DI, hosted service, handler 모델을 제공하는 것이다.
 |------|------------|
 | [aspnet-core-service-messaging.ko.md](./aspnet-core-service-messaging.ko.md) | 서비스 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, lifecycle, middleware/filter |
 | [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish/subscribe, discovery |
+| [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, packet handler, raw handler, recv 비지원 방향 |
 | [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) | `playhouse` Stage 같은 상위 모델을 SPOT 위에 감쌀 때 필요한 추가 조건 |
 | [aspnet-core-registry.ko.md](./aspnet-core-registry.ko.md) | Registry embedded/standalone 구동, topology 조회, 클러스터링 |
 
@@ -52,6 +53,7 @@ DI, hosted service, handler 모델을 제공하는 것이다.
 |------|------------|
 | [service-messaging-samples.ko.md](./service-messaging-samples.ko.md) | 서비스 등록, handler, HTTP handler, outbound client를 한 번에 보는 샘플 |
 | [spot-samples.ko.md](./spot-samples.ko.md) | room, stage, zone 기준 SPOT 등록, handler, SendTo, publish를 한 번에 보는 샘플 |
+| [stream-samples.ko.md](./stream-samples.ko.md) | STREAM packet handler, raw handler, 등록 코드를 한 번에 보는 샘플 |
 
 ### 2.4 범위 원칙
 

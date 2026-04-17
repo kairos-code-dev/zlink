@@ -115,7 +115,8 @@ class spot_sub_t
 
     static bool is_valid_topic (const char *topic_, std::string *out_);
     static bool is_valid_pattern (const char *pattern_, std::string *prefix_out_);
-    static int initialize_routing_id (zlink_routing_id_t *out_);
+    static int initialize_routing_id (zlink_routing_id_t *out_,
+                                      uint8_t storage_[255]);
     static void dispatch_from_io (const zlink_routing_id_t *source_rid_,
                                   const char *topic_,
                                   size_t topic_len_,
@@ -147,6 +148,7 @@ class spot_sub_t
 
     mutable mutex_t _sync;
     zlink_routing_id_t _routing_id;
+    uint8_t _routing_id_storage[255];
     bool _routing_id_locked;
 
     std::set<std::string> _topics;

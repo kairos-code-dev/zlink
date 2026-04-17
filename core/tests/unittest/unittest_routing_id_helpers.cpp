@@ -8,10 +8,12 @@
 static void test_routing_id_to_u32_from_u32_round_trip ()
 {
     zlink_routing_id_t rid;
+    uint8_t rid_storage[255];
     memset (&rid, 0, sizeof (rid));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_routing_id_from_u32 (&rid, 0x01020304u));
+      zlink_routing_id_from_u32 (0x01020304u, rid_storage,
+                                 sizeof (rid_storage), &rid));
     TEST_ASSERT_EQUAL_UINT8 (4, rid.size);
     TEST_ASSERT_EQUAL_UINT8 (0x01, rid.data[0]);
     TEST_ASSERT_EQUAL_UINT8 (0x02, rid.data[1]);
@@ -23,7 +25,8 @@ static void test_routing_id_to_u32_from_u32_round_trip ()
     TEST_ASSERT_EQUAL_UINT32 (0x01020304u, value);
 
     rid.size = 3;
-    memcpy (rid.data, "abc", 3);
+    rid.data = rid_storage;
+    memcpy (rid_storage, "abc", 3);
     const zlink_config_result_t rc_u32 = zlink_routing_id_to_u32 (&rid, &value);
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT, rc_u32);
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
@@ -32,10 +35,12 @@ static void test_routing_id_to_u32_from_u32_round_trip ()
 static void test_routing_id_from_to_text_round_trip ()
 {
     zlink_routing_id_t rid;
+    uint8_t rid_storage[255];
     memset (&rid, 0, sizeof (rid));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_routing_id_from_text (&rid, "stream-router"));
+      zlink_routing_id_from_text ("stream-router", rid_storage,
+                                  sizeof (rid_storage), &rid));
     TEST_ASSERT_EQUAL_UINT (13, rid.size);
 
     char text[32];
@@ -57,9 +62,11 @@ static void test_routing_id_from_to_text_round_trip ()
 static void test_routing_id_from_text_rejects_empty ()
 {
     zlink_routing_id_t rid;
+    uint8_t rid_storage[255];
     memset (&rid, 0, sizeof (rid));
 
-    const zlink_config_result_t rc_empty = zlink_routing_id_from_text (&rid, "");
+    const zlink_config_result_t rc_empty =
+      zlink_routing_id_from_text ("", rid_storage, sizeof (rid_storage), &rid);
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT, rc_empty);
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 }
@@ -67,10 +74,12 @@ static void test_routing_id_from_text_rejects_empty ()
 static void test_routing_id_to_text_rejects_invalid_utf8 ()
 {
     zlink_routing_id_t rid;
+    uint8_t rid_storage[255];
     memset (&rid, 0, sizeof (rid));
     rid.size = 2;
-    rid.data[0] = static_cast<uint8_t> (0xC3);
-    rid.data[1] = static_cast<uint8_t> (0x28);
+    rid.data = rid_storage;
+    rid_storage[0] = static_cast<uint8_t> (0xC3);
+    rid_storage[1] = static_cast<uint8_t> (0x28);
 
     char text[4];
     size_t text_len = sizeof (text);
@@ -83,11 +92,13 @@ static void test_routing_id_to_text_rejects_invalid_utf8 ()
 static void test_routing_id_from_text_rejects_invalid_utf8 ()
 {
     zlink_routing_id_t rid;
+    uint8_t rid_storage[255];
     memset (&rid, 0, sizeof (rid));
 
     static const char invalid_utf8[] = {(char) 0xC3, (char) 0x28, '\0'};
     const zlink_config_result_t rc_bad_utf8 =
-      zlink_routing_id_from_text (&rid, invalid_utf8);
+      zlink_routing_id_from_text (invalid_utf8, rid_storage,
+                                  sizeof (rid_storage), &rid);
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT, rc_bad_utf8);
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 }
@@ -95,12 +106,14 @@ static void test_routing_id_from_text_rejects_invalid_utf8 ()
 static void test_routing_id_helpers_reject_invalid_buffers ()
 {
     zlink_routing_id_t rid;
+    uint8_t rid_storage[255];
     memset (&rid, 0, sizeof (rid));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_routing_id_from_text (&rid, "route-a"));
+      zlink_routing_id_from_text ("route-a", rid_storage,
+                                  sizeof (rid_storage), &rid));
 
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_HANDLE,
-                           zlink_routing_id_from_u32 (NULL, 7));
+                           zlink_routing_id_from_u32 (7, NULL, 4, &rid));
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 
     uint32_t value = 0;
@@ -121,9 +134,11 @@ static void test_routing_id_helpers_reject_invalid_buffers ()
 static void test_routing_id_to_hex_always_succeeds ()
 {
     zlink_routing_id_t rid;
+    uint8_t rid_storage[255];
     memset (&rid, 0, sizeof (rid));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_routing_id_from_text (&rid, "xyz"));
+      zlink_routing_id_from_text ("xyz", rid_storage, sizeof (rid_storage),
+                                  &rid));
 
     char hex[16];
     size_t hex_len = sizeof (hex);

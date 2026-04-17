@@ -49,16 +49,11 @@
 
 ### 2.3 transport 통합 축
 
-현재 초안은 framework가 아래 네 축을 직접 통합해야 한다고 본다.
-
-| 축 | framework에서 먼저 보여야 하는 개념 |
-|----|-----------------------------------|
-| `ROUTER <-> ROUTER` | server-to-server `send`, `request`, handler mapping |
-| `PUB/SUB` | event publish, event subscribe |
-| `STREAM` | connection/session handler, packet handler |
-
-현재 이 문서가 직접 다루는 범위는 `ROUTER <-> ROUTER`, `PUB/SUB`, `STREAM`
-세 축이다. `SPOT`은 별도 문서에서 따로 다룬다.
+framework가 직접 통합할 transport 축은 [overview.ko.md](./overview.ko.md)의
+section 2에 정의되어 있다. 이 문서에서 다루는 API 표면 범위는 그 중
+`ROUTER <-> ROUTER`, `PUB/SUB`, `STREAM` 세 축이다. `SPOT`은
+[dotnet/aspnet-core-spot.ko.md](./dotnet/aspnet-core-spot.ko.md) 등 별도
+문서에서 따로 다룬다.
 
 핵심은 transport 축은 명확히 두되, 프레임워크 사용자가 보는 이름은 socket
 이름보다 역할 이름이 되게 만드는 것이다.

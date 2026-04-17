@@ -392,7 +392,7 @@ fn router_received_from_raw(
     let rid = if source_node_rid.is_null() {
         RoutingId::from_raw(ffi::zlink_routing_id_t {
             size: 0,
-            data: [0; 255],
+            data: std::ptr::null_mut(),
         })
     } else {
         unsafe { RoutingId::from_raw(*source_node_rid) }

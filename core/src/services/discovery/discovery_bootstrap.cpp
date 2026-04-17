@@ -116,6 +116,7 @@ discovery_bootstrap_socket_config_t::discovery_bootstrap_socket_config_t () :
     _routing_id_locked (false)
 {
     memset (&_routing_id, 0, sizeof (_routing_id));
+    memset (_routing_id_storage, 0, sizeof (_routing_id_storage));
 }
 
 void discovery_bootstrap_socket_config_t::lock_routing_id (
@@ -131,7 +132,7 @@ int discovery_bootstrap_socket_config_t::set_routing_id (
     service_public_api_scope_t admission (owner_->_public_api);
     if (!admission.acquired ())
         return -1;
-    if (!data_ || size_ == 0 || size_ > sizeof (_routing_id.data)) {
+    if (!data_ || size_ == 0 || size_ > sizeof (_routing_id_storage)) {
         errno = EINVAL;
         return -1;
     }
@@ -144,8 +145,9 @@ int discovery_bootstrap_socket_config_t::set_routing_id (
         return -1;
     }
     _routing_id_override.assign (static_cast<const char *> (data_), size_);
-    _routing_id.size = static_cast<uint8_t> (size_);
-    memcpy (_routing_id.data, data_, size_);
+    _routing_id.size = size_;
+    memcpy (_routing_id_storage, data_, size_);
+    _routing_id.data = _routing_id_storage;
     return 0;
 }
 

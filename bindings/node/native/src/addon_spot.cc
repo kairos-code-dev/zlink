@@ -34,19 +34,26 @@ static bool parse_routing_id_value(napi_env env,
                                    napi_value value,
                                    zlink_routing_id_t *routing_id)
 {
+    static thread_local uint8_t routing_id_storage[8][255];
+    static thread_local size_t routing_id_storage_index = 0;
     void *data = NULL;
     size_t len = 0;
     if (napi_get_buffer_info(env, value, &data, &len) != napi_ok) {
         napi_throw_type_error(env, NULL, "routingId must be Buffer");
         return false;
     }
-    if (len == 0 || len > sizeof(routing_id->data)) {
+    if (len == 0 || len > 255) {
         napi_throw_range_error(env, NULL, "routingId length must be 1..255 bytes");
         return false;
     }
     memset(routing_id, 0, sizeof(*routing_id));
-    routing_id->size = static_cast<uint8_t>(len);
-    memcpy(routing_id->data, data, len);
+    routing_id->size = len;
+    uint8_t *storage = routing_id_storage[routing_id_storage_index];
+    routing_id_storage_index =
+      (routing_id_storage_index + 1) % (sizeof(routing_id_storage)
+                                        / sizeof(routing_id_storage[0]));
+    memcpy(storage, data, len);
+    routing_id->data = storage;
     return true;
 }
 
@@ -2197,14 +2204,14 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
         napi_get_value_int32(env, argv[1], &flags);
     std::vector<char> service_name(256, '\0');
     std::vector<char> topic(256, '\0');
-    zlink_routing_id_t routing_id;
+    const zlink_routing_id_t *routing_id = NULL;
     zlink_msg_t *parts = NULL;
     size_t count = 0;
     size_t service_name_len = service_name.size();
     size_t topic_len = topic.size();
 
     for (;;) {
-        memset(&routing_id, 0, sizeof(routing_id));
+        routing_id = NULL;
         int rc = zlink_spot_subscribe(
           spot,
           &routing_id,
@@ -2220,7 +2227,7 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
             napi_create_array_with_length(env, count, &arr);
             for (size_t i = 0; i < count; ++i) {
                 napi_value part =
-                  create_message_snapshot_value(env, &routing_id, &parts[i]);
+                  create_message_snapshot_value(env, routing_id, &parts[i]);
                 napi_set_element(env, arr, static_cast<uint32_t>(i), part);
             }
             zlink_multipart_close(parts, count);
@@ -2235,7 +2242,10 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
               env, service_name.data(), service_name_len, &service_name_value);
             napi_set_named_property(env, obj, "serviceName", service_name_value);
             napi_set_named_property(env, obj, "parts", arr);
-            napi_value rid = create_routing_id_value(env, routing_id);
+            napi_value rid = routing_id ? create_routing_id_value(env, *routing_id)
+                                        : (napi_value) NULL;
+            if (!routing_id || routing_id->size == 0)
+                napi_get_null(env, &rid);
             napi_set_named_property(env, obj, "routingId", rid);
             return obj;
         }
@@ -2256,14 +2266,14 @@ napi_value spot_try_recv(napi_env env, napi_callback_info info)
 
     std::vector<char> service_name(256, '\0');
     std::vector<char> topic(256, '\0');
-    zlink_routing_id_t routing_id;
+    const zlink_routing_id_t *routing_id = NULL;
     zlink_msg_t *parts = NULL;
     size_t count = 0;
     size_t service_name_len = service_name.size();
     size_t topic_len = topic.size();
 
     for (;;) {
-        memset(&routing_id, 0, sizeof(routing_id));
+        routing_id = NULL;
         int rc = zlink_spot_subscribe(
           spot,
           &routing_id,
@@ -2279,7 +2289,7 @@ napi_value spot_try_recv(napi_env env, napi_callback_info info)
             napi_create_array_with_length(env, count, &arr);
             for (size_t i = 0; i < count; ++i) {
                 napi_value part =
-                  create_message_snapshot_value(env, &routing_id, &parts[i]);
+                  create_message_snapshot_value(env, routing_id, &parts[i]);
                 napi_set_element(env, arr, static_cast<uint32_t>(i), part);
             }
             zlink_multipart_close(parts, count);
@@ -2294,7 +2304,10 @@ napi_value spot_try_recv(napi_env env, napi_callback_info info)
               env, service_name.data(), service_name_len, &service_name_value);
             napi_set_named_property(env, obj, "serviceName", service_name_value);
             napi_set_named_property(env, obj, "parts", arr);
-            napi_value rid = create_routing_id_value(env, routing_id);
+            napi_value rid = routing_id ? create_routing_id_value(env, *routing_id)
+                                        : (napi_value) NULL;
+            if (!routing_id || routing_id->size == 0)
+                napi_get_null(env, &rid);
             napi_set_named_property(env, obj, "routingId", rid);
             return obj;
         }
@@ -2322,13 +2335,12 @@ napi_value spot_subscription_event(napi_env env, napi_callback_info info)
     if (argc >= 2)
         napi_get_value_int32(env, argv[1], &flags);
 
-    zlink_routing_id_t routing_id;
+    const zlink_routing_id_t *routing_id = NULL;
     int subscribed = 0;
     std::vector<char> service_name(256, '\0');
     std::vector<char> topic(256, '\0');
     size_t service_name_len = service_name.size();
     size_t topic_len = topic.size();
-    memset(&routing_id, 0, sizeof(routing_id));
     int rc = zlink_spot_subscription_event(
       spot, &routing_id, &subscribed, service_name.data(), &service_name_len,
       topic.data(), &topic_len, static_cast<zlink_recv_flags_t>(flags));
@@ -2337,7 +2349,11 @@ napi_value spot_subscription_event(napi_env env, napi_callback_info info)
 
     napi_value obj;
     napi_create_object(env, &obj);
-    napi_value routing_id_value = create_routing_id_value(env, routing_id);
+    napi_value routing_id_value = routing_id
+                                    ? create_routing_id_value(env, *routing_id)
+                                    : (napi_value) NULL;
+    if (!routing_id || routing_id->size == 0)
+        napi_get_null(env, &routing_id_value);
     napi_set_named_property(env, obj, "routingId", routing_id_value);
     set_string_property(env, obj, "serviceName", service_name.data());
     set_string_property(env, obj, "topic", topic.data());
@@ -2355,13 +2371,12 @@ napi_value spot_try_subscription_event(napi_env env, napi_callback_info info)
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
 
-    zlink_routing_id_t routing_id;
+    const zlink_routing_id_t *routing_id = NULL;
     int subscribed = 0;
     std::vector<char> service_name(256, '\0');
     std::vector<char> topic(256, '\0');
     size_t service_name_len = service_name.size();
     size_t topic_len = topic.size();
-    memset(&routing_id, 0, sizeof(routing_id));
     int rc = zlink_spot_subscription_event(
       spot, &routing_id, &subscribed, service_name.data(), &service_name_len,
       topic.data(), &topic_len, ZLINK_RECV_FLAGS_DONTWAIT);
@@ -2376,7 +2391,11 @@ napi_value spot_try_subscription_event(napi_env env, napi_callback_info info)
 
     napi_value obj;
     napi_create_object(env, &obj);
-    napi_value routing_id_value = create_routing_id_value(env, routing_id);
+    napi_value routing_id_value = routing_id
+                                    ? create_routing_id_value(env, *routing_id)
+                                    : (napi_value) NULL;
+    if (!routing_id || routing_id->size == 0)
+        napi_get_null(env, &routing_id_value);
     napi_set_named_property(env, obj, "routingId", routing_id_value);
     set_string_property(env, obj, "serviceName", service_name.data());
     set_string_property(env, obj, "topic", topic.data());

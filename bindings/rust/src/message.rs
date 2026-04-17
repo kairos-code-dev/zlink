@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::slice;
@@ -184,7 +185,28 @@ impl TryFrom<Vec<u8>> for Message {
 /// the length; overflow is rejected immediately (fail-fast).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RoutingId {
-    raw: ffi::zlink_routing_id_t,
+    raw: Vec<u8>,
+}
+
+struct RoutingIdViewPool {
+    slots: [ffi::zlink_routing_id_t; 16],
+    next: usize,
+}
+
+impl RoutingIdViewPool {
+    fn new() -> Self {
+        Self {
+            slots: [ffi::zlink_routing_id_t {
+                size: 0,
+                data: std::ptr::null_mut(),
+            }; 16],
+            next: 0,
+        }
+    }
+}
+
+thread_local! {
+    static ROUTING_ID_VIEW_POOL: RefCell<RoutingIdViewPool> = RefCell::new(RoutingIdViewPool::new());
 }
 
 impl RoutingId {
@@ -192,13 +214,7 @@ impl RoutingId {
     pub const MAX_LEN: usize = 255;
 
     /// Create a `RoutingId` from a byte slice.
-    ///
-    /// # Errors
-    /// Returns `ZlinkError` if `data` is empty or exceeds 255 bytes.
     pub fn from_bytes(data: &[u8]) -> Self {
-        if data.is_empty() {
-            panic!("routing id must not be empty");
-        }
         if data.len() > Self::MAX_LEN {
             panic!(
                 "routing id length {} exceeds maximum {}",
@@ -206,12 +222,7 @@ impl RoutingId {
                 Self::MAX_LEN
             );
         }
-        let mut raw = ffi::zlink_routing_id_t {
-            size: data.len() as u8,
-            data: [0u8; 255],
-        };
-        raw.data[..data.len()].copy_from_slice(data);
-        Self { raw }
+        Self { raw: data.to_vec() }
     }
 
     pub fn from_u32(value: u32) -> Self {
@@ -227,7 +238,7 @@ impl RoutingId {
     }
 
     pub(crate) fn new(data: &[u8]) -> Result<Self, ConfigError> {
-        if data.is_empty() || data.len() > Self::MAX_LEN {
+        if data.len() > Self::MAX_LEN {
             return Err(config_validation_error());
         }
         Ok(Self::from_bytes(data))
@@ -235,7 +246,11 @@ impl RoutingId {
 
     /// The routing-id bytes.
     pub fn as_bytes(&self) -> &[u8] {
-        &self.raw.data[..self.raw.size as usize]
+        self.raw.as_slice()
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.as_bytes().to_vec()
     }
 
     pub(crate) fn data(&self) -> &[u8] {
@@ -244,7 +259,7 @@ impl RoutingId {
 
     /// Byte length of the routing id.
     pub fn size(&self) -> usize {
-        self.raw.size as usize
+        self.raw.len()
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -253,7 +268,7 @@ impl RoutingId {
 
     /// Returns `true` if the routing id is empty (should not happen after construction).
     pub fn is_empty(&self) -> bool {
-        self.raw.size == 0
+        self.raw.is_empty()
     }
 
     pub fn to_hex(&self) -> String {
@@ -282,20 +297,37 @@ impl RoutingId {
     }
 
     /// Borrow the underlying FFI struct.
-    pub(crate) fn as_raw(&self) -> &ffi::zlink_routing_id_t {
-        &self.raw
+    pub(crate) fn as_raw(&self) -> *const ffi::zlink_routing_id_t {
+        ROUTING_ID_VIEW_POOL.with(|pool| {
+            let mut pool = pool.borrow_mut();
+            let slot = pool.next;
+            pool.next = (pool.next + 1) % pool.slots.len();
+            pool.slots[slot] = ffi::zlink_routing_id_t {
+                size: self.raw.len(),
+                data: if self.raw.is_empty() {
+                    std::ptr::null_mut()
+                } else {
+                    self.raw.as_ptr() as *mut u8
+                },
+            };
+            &pool.slots[slot] as *const ffi::zlink_routing_id_t
+        })
     }
 
     /// Build from a raw FFI struct (coming from native recv).
     pub(crate) fn from_raw(raw: ffi::zlink_routing_id_t) -> Self {
-        Self { raw }
+        if raw.size == 0 || raw.data.is_null() {
+            return Self { raw: Vec::new() };
+        }
+        let bytes = unsafe { slice::from_raw_parts(raw.data as *const u8, raw.size) };
+        Self { raw: bytes.to_vec() }
     }
 
     pub(crate) fn from_raw_optional(raw: ffi::zlink_routing_id_t) -> Option<Self> {
         if raw.size == 0 {
             None
         } else {
-            Some(Self { raw })
+            Some(Self::from_raw(raw))
         }
     }
 }

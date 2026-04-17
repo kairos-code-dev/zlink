@@ -63,7 +63,8 @@ class spot_pub_t
     int stop_monitor_bridge ();
     void emit_monitor_event (const zlink_service_event_t &event_);
     void lock_routing_id ();
-    static int initialize_routing_id (zlink_routing_id_t *out_);
+    static int initialize_routing_id (zlink_routing_id_t *out_,
+                                      uint8_t storage_[255]);
     socket_base_t *socket () const;
 
     spot_node_t *_node;
@@ -75,6 +76,7 @@ class spot_pub_t
     mutable mutex_t _sync;
     mutex_t _publish_sync;
     zlink_routing_id_t _routing_id;
+    uint8_t _routing_id_storage[255];
     std::atomic<bool> _routing_id_locked;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     std::atomic<void *> _send_ready_subject;

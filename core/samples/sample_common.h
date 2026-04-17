@@ -62,6 +62,28 @@ static inline void routing_id_to_display_text (const zlink_routing_id_t *rid,
     assert (rc == 0);
 }
 
+static inline void routing_id_copy_checked (const zlink_routing_id_t *src,
+                                            zlink_routing_id_t *dst,
+                                            uint8_t *storage,
+                                            size_t storage_size)
+{
+    assert (dst != NULL);
+    if (!src) {
+        dst->size = 0;
+        dst->data = NULL;
+        return;
+    }
+    assert (storage != NULL || src->size == 0);
+    assert (src->size <= storage_size);
+    dst->size = src->size;
+    if (src->size == 0) {
+        dst->data = NULL;
+        return;
+    }
+    memcpy (storage, src->data, src->size);
+    dst->data = storage;
+}
+
 /* ---- Endpoint helpers ---------------------------------------------------- */
 
 static inline void get_last_endpoint (void *socket, char *buf, size_t buf_size)

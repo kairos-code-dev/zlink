@@ -5,6 +5,7 @@
 #include "api/config_result_internal.hpp"
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
+#include "api/routing_id_internal.hpp"
 #include "api/zlink_option_internal.hpp"
 
 #include "core/ctx.hpp"
@@ -331,8 +332,13 @@ zlink_config_result_t zlink_get_option (void *handle_,
       handle_, option_, socket_option, optval_, optvallen_));
 }
 
-zlink_config_result_t zlink_set_routing_id (void *handle_, const void *data_, size_t size_)
+zlink_config_result_t zlink_set_routing_id (void *handle_,
+                                            const zlink_routing_id_t *routing_id_)
 {
+    if (!routing_id_ || (routing_id_->size != 0 && !routing_id_->data)) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         const int type = socket_type_of (socket);
         if (type == ZLINK_CORE_SOCKET_STREAM) {
@@ -340,38 +346,80 @@ zlink_config_result_t zlink_set_routing_id (void *handle_, const void *data_, si
             return ZLINK_CONFIG_INVALID_ARGUMENT;
         }
         return zlink::config_result_internal::from_rc (
-          socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, data_, size_));
+          socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, routing_id_->data,
+                              routing_id_->size));
     }
     errno = 0;
 
     return zlink::config_result_internal::from_rc (
-      zlink_service_set_routing_id (handle_, data_, size_));
+      zlink_service_set_routing_id (handle_, routing_id_->data,
+                                    routing_id_->size));
 }
 
-zlink_config_result_t zlink_get_routing_id (void *handle_, zlink_routing_id_t *out_)
+zlink_config_result_t zlink_get_routing_id (void *handle_, const zlink_routing_id_t **out_)
 {
+    static thread_local zlink_routing_id_t routing_id;
+    static thread_local uint8_t routing_id_storage[255];
+
     if (!out_) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
+    *out_ = NULL;
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
-        size_t size = sizeof (out_->data);
+        size_t size = sizeof (routing_id_storage);
         const int rc =
-          socket->getsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, out_->data, &size);
+          socket->getsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, routing_id_storage, &size);
         if (rc != 0)
             return zlink::config_result_internal::from_rc (rc);
-        if (size > sizeof (out_->data)) {
+        if (!zlink::routing_id_internal::assign_view (
+              &routing_id, size > 0 ? routing_id_storage : NULL, size)) {
             errno = EINVAL;
             return ZLINK_CONFIG_INVALID_ARGUMENT;
         }
-        out_->size = static_cast<uint8_t> (size);
+        *out_ = &routing_id;
         return ZLINK_CONFIG_OK;
     }
     errno = 0;
 
-    return zlink::config_result_internal::from_rc (
-      zlink_service_get_routing_id (handle_, out_));
+    const zlink_config_result_t rc = zlink::config_result_internal::from_rc (
+      zlink_service_get_routing_id (handle_, &routing_id));
+    if (rc == ZLINK_CONFIG_OK)
+        *out_ = &routing_id;
+    return rc;
+}
+
+zlink_config_result_t zlink_get_routing_id_bytes (void *handle_,
+                                                  uint8_t *buf_,
+                                                  size_t *inout_len_)
+{
+    if (!inout_len_) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+
+    const zlink_routing_id_t *routing_id = NULL;
+    const zlink_config_result_t rc = zlink_get_routing_id (handle_, &routing_id);
+    if (rc != ZLINK_CONFIG_OK)
+        return rc;
+
+    const size_t needed = routing_id ? routing_id->size : 0;
+    if (!buf_) {
+        *inout_len_ = needed;
+        errno = 0;
+        return ZLINK_CONFIG_OK;
+    }
+    if (*inout_len_ < needed) {
+        *inout_len_ = needed;
+        errno = EMSGSIZE;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    if (needed != 0 && routing_id && routing_id->data)
+        memcpy (buf_, routing_id->data, needed);
+    *inout_len_ = needed;
+    errno = 0;
+    return ZLINK_CONFIG_OK;
 }
 
 zlink_config_result_t zlink_set_admission_state (void *handle_,

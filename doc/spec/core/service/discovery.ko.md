@@ -215,8 +215,10 @@ zlink_config_result_t zlink_discovery_set_dealer_peer_mode (
 
 ## API 표면
 
-- Discovery 자체의 이름은 `zlink_set_routing_id(discovery, data, size)` /
-  `zlink_get_routing_id(discovery, &out)`로 다룹니다.
+- Discovery 자체의 이름은 `zlink_set_routing_id(discovery, &rid)`로
+  설정합니다. 조회는 borrowed `RoutingId`만으로 충분하면
+  `zlink_get_routing_id(discovery, &out)`를 쓰고, 호출자 소유 bytes가
+  필요하면 `zlink_get_routing_id_bytes(discovery, buf, &len)`를 사용합니다.
 - Discovery registry 링크의 TLS 설정은
   `zlink_set_tls_client(discovery, ca_cert, hostname, trust_system)`로
   구성합니다.

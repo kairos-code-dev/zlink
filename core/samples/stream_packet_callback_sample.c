@@ -12,6 +12,7 @@ typedef struct
 {
     callback_signal_t signal;
     zlink_routing_id_t routing_id;
+    uint8_t routing_id_storage[255];
     char payload[256];
     size_t payload_len;
 } stream_callback_ctx_t;
@@ -61,7 +62,9 @@ static void stream_callback (const zlink_routing_id_t *source_rid,
     assert (source_rid != NULL);
     assert (part_count == 1);
 
-    cb->routing_id = *source_rid;
+    routing_id_copy_checked (
+      source_rid, &cb->routing_id, cb->routing_id_storage,
+      sizeof (cb->routing_id_storage));
     cb->payload_len = zlink_msg_size (&parts[0]);
     assert (cb->payload_len < sizeof (cb->payload));
     memcpy (cb->payload, zlink_msg_data (&parts[0]), cb->payload_len);

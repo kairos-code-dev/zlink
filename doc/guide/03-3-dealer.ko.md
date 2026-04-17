@@ -56,7 +56,10 @@ DEALER가 여러 ROUTER에 연결하면 메시지가 라운드 로빈으로 순�
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 
 /* Set routing_id (optional, used for identification by ROUTER) */
-zlink_set_routing_id(dealer, "client-1", 8);
+uint8_t dealer_rid_buf[255];
+zlink_routing_id_t dealer_rid;
+zlink_routing_id_from_text("client-1", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
+zlink_set_routing_id(dealer, &dealer_rid); 
 
 /* Connect to server */
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
@@ -164,11 +167,14 @@ ROUTER가 DEALER를 식별하려면 명시적으로 routing_id를 설정한다.
 
 ```c
 /* Set before bind/connect */
-zlink_set_routing_id(dealer, "D1", 2);
+uint8_t dealer_rid_buf[255];
+zlink_routing_id_t dealer_rid;
+zlink_routing_id_from_text("D1", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
+zlink_set_routing_id(dealer, &dealer_rid); 
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ```
 
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
+> 참고: `core/tests/test_router_multiple_dealers.cpp` — 여러 DEALER identity 예제
 
 ### 4.1 request-reply 시작
 
@@ -261,11 +267,17 @@ size_t len = sizeof(endpoint);
 zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 void *dealer1 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_set_routing_id(dealer1, "D1", 2);
+uint8_t dealer1_rid_buf[255];
+zlink_routing_id_t dealer1_rid;
+zlink_routing_id_from_text("D1", dealer1_rid_buf, sizeof(dealer1_rid_buf), &dealer1_rid);
+zlink_set_routing_id(dealer1, &dealer1_rid); 
 zlink_connect(dealer1, endpoint);
 
 void *dealer2 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_set_routing_id(dealer2, "D2", 2);
+uint8_t dealer2_rid_buf[255];
+zlink_routing_id_t dealer2_rid;
+zlink_routing_id_from_text("D2", dealer2_rid_buf, sizeof(dealer2_rid_buf), &dealer2_rid);
+zlink_set_routing_id(dealer2, &dealer2_rid); 
 zlink_connect(dealer2, endpoint);
 
 /* Each DEALER sends a message */
@@ -293,7 +305,10 @@ zlink_send(dealer2, &m2, 1, 0);
 
 ```c
 /* Correct order */
-zlink_set_routing_id(dealer, "D1", 2);
+uint8_t dealer_rid_buf[255];
+zlink_routing_id_t dealer_rid;
+zlink_routing_id_from_text("D1", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
+zlink_set_routing_id(dealer, &dealer_rid); 
 zlink_connect(dealer, endpoint);  /* identified as D1 */
 ```
 

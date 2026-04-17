@@ -29,7 +29,7 @@ int main (void)
     rc = zlink_send (client, &outbound, 1, 0);
     assert (rc == 0);
 
-    zlink_routing_id_t rid;
+    const zlink_routing_id_t *rid = NULL;
     zlink_msg_t *parts = NULL;
     size_t count = 0;
     rc = zlink_recv (server, &rid, &parts, &count, 0);

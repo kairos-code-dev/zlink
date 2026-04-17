@@ -629,8 +629,10 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     }
 
     zlink_routing_id_t rid;
+    uint8_t rid_storage[4];
     rid.size = 4;
-    put_uint32 (rid.data, routing_id_value);
+    rid.data = rid_storage;
+    put_uint32 (rid_storage, routing_id_value);
 
     const stream_dispatch_context_t dispatch_scope (this, pipe_,
                                                     routing_id_value);

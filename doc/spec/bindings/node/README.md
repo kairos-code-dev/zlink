@@ -571,7 +571,7 @@ type BufferLike = Buffer | Uint8Array | string;
 
 ### RoutingId
 
-Routing-id value object. Binary-safe, 1-255 bytes, immutable. The binding
+Routing-id value object. Binary-safe, 0-255 bytes, immutable. The binding
 exposes this wrapper type (not a raw `Buffer`) everywhere a routing id
 appears in the public surface.
 
@@ -584,7 +584,7 @@ class RoutingId {
     /** @throws {TypeError | ConfigError} */
     static fromText(value: string): RoutingId;
     toBytes(): Buffer;
-    readonly size: number;             // byte length (1-255)
+    readonly size: number;             // byte length (0-255)
     /** @throws {RangeError} */
     toU32(): number;
     toText(): string;

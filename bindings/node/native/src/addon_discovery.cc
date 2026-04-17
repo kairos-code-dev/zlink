@@ -89,9 +89,12 @@ bool parse_routing_id(napi_env env,
         napi_throw_range_error(env, NULL, "routingId length must be 1..255 bytes");
         return false;
     }
+    static thread_local uint8_t routing_id_storage[255];
+    memset(routing_id_storage, 0, sizeof(routing_id_storage));
     memset(routing_id, 0, sizeof(*routing_id));
-    routing_id->size = static_cast<uint8_t>(len);
-    memcpy(routing_id->data, data, len);
+    routing_id->size = len;
+    routing_id->data = routing_id_storage;
+    memcpy(routing_id_storage, data, len);
     return true;
 }
 

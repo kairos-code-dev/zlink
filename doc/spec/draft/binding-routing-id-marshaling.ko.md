@@ -11,9 +11,11 @@
 
 이 초안은 binding 경계에서 `routing_id`를 어떻게 노출하고 변환할지 정리한다.
 
-이 문서는 companion draft인
+이 문서는 helper 의미를 다루는
 [`routing-id-bytes-and-conversions.ko.md`](routing-id-bytes-and-conversions.ko.md)
-를 바탕으로, 바인딩 public surface의 marshaling 원칙에만 초점을 맞춘다.
+와, ABI 및 수명 규칙을 다루는
+[`routing-id-borrowed-routingid.ko.md`](routing-id-borrowed-routingid.ko.md)
+를 바탕으로 바인딩 public surface의 적용 원칙만 정리한다.
 
 핵심 목표는 아래와 같다.
 
@@ -26,10 +28,10 @@
 
 이 초안은 아래 전제를 따른다.
 
-- canonical routing id 표현은 계속 `zlink_routing_id_t`다.
+- core canonical routing id는 borrowed `zlink_routing_id_t`를 기준으로 본다.
 - 공개 운반 형태는 전부 바이트 열이다.
 - `STREAM`도 public에서 별도 정수 타입으로 분리하지 않는다.
-- 응용 편의를 위해 binding helper를 추가한다.
+- 응용 편의를 위해 binding `RoutingId` 타입에 변환 메서드를 둔다.
 - raw bytes 경로는 빈 routing id도 그대로 다룰 수 있어야 한다.
 
 즉 이 문서는 "binding public surface를 string-only 또는 uint32-only로 바꾼다"는
@@ -41,19 +43,19 @@
 
 ### 3.1 raw canonical layer
 
-- raw bytes로 생성
-- raw bytes로 읽기
-- send/recv/callback에서 raw bytes를 그대로 유지할 수 있는 escape hatch 제공
+- raw bytes accessor 제공
+- send/recv/callback에서 bytes canonical을 유지할 수 있는 escape hatch 제공
+- receive 경로에서는 owner 수명에 종속된 borrowed `RoutingId`를 기본으로 노출
 
 이 층은 low-level 제어, interop, 기존 코드 호환을 위한 경로다.
 
 ### 3.2 convenience layer
 
-- `from_u32`
-- `to_u32`
-- `from_text`
-- `to_text`
-- `to_hex`
+- `RoutingId.from_u32`
+- `RoutingId.to_u32`
+- `RoutingId.from_text`
+- `RoutingId.to_text`
+- `RoutingId.to_hex`
 
 이 층은 응용이 raw encode/decode를 직접 반복하지 않게 만드는 경로다.
 
@@ -71,7 +73,7 @@
 
 권장 규칙은 아래와 같다.
 
-- callback이 주는 `source_rid` 타입은 raw bytes 기반 `RoutingId` wrapper다.
+- callback이 주는 `source_rid` 타입은 raw bytes 기반 borrowed `RoutingId`다.
 - `send`도 raw bytes 기반 `RoutingId`를 받는다.
 - `RoutingId.to_u32()`는 길이가 4바이트일 때만 성공한다.
 - `RoutingId.from_u32()`는 항상 4바이트 big-endian 값을 만든다.
@@ -101,7 +103,8 @@ raw bytes 기반 `RoutingId`를 공통으로 쓴다.
 
 ## 6. binding별 구현 원칙
 
-이 초안은 각 binding이 helper를 **직접 구현**하는 방향을 권장한다.
+이 초안은 각 binding이 변환 로직을 **`RoutingId` 타입에 직접 구현**하는 방향을
+권장한다.
 
 이유는 아래와 같다.
 
@@ -115,11 +118,20 @@ raw bytes 기반 `RoutingId`를 공통으로 쓴다.
 - Rust: `u32::to_be_bytes`, `u32::from_be_bytes`, `String::from_utf8`
 - Node: `Buffer.writeUInt32BE`, `buf.readUInt32BE`, `Buffer.from(text, "utf8")`
 
-즉 규칙은 공유하되, 구현은 바인딩별이다.
+즉 규칙은 공유하되, 구현은 바인딩별 `RoutingId`에 둔다.
+
+이 문서는 별도 public helper 계층을 권장하지 않는다.
+예를 들어 아래 성격의 API는 정리 대상이다.
+
+- `routing_id_from_u32(...)`
+- `routing_id_to_u32(...)`
+- `routing_id_to_text(...)`
+- `routing_id_to_hex(...)`
+- `RoutingIdHelper`, `RoutingIdCodec`, `routing_id_utils`
 
 ## 7. 공통 검증 규칙
 
-각 binding helper는 아래 규칙을 맞춰야 한다.
+각 binding의 `RoutingId` 변환 메서드는 아래 규칙을 맞춰야 한다.
 
 - `from_u32`: 항상 4-byte big-endian
 - `to_u32`: 길이 4가 아니면 실패
@@ -133,7 +145,7 @@ helper는 아래처럼 조용히 보정하면 안 된다.
 - invalid UTF-8을 조용히 다른 문자열로 바꾸기
 - overflow 값을 자동 truncate하기
 
-## 8. binding helper 초안
+## 8. binding `RoutingId` 초안
 
 ### 8.1 Python
 
@@ -158,14 +170,18 @@ class RoutingId:
 권장 모양:
 
 ```rust
-impl RoutingId {
+impl RoutingId<'_> {
+    pub fn copy(&self) -> RoutingId<'static>;
+    pub fn as_bytes(&self) -> &[u8];
+    pub fn to_u32(&self) -> Result<u32, RoutingIdError>;
+    pub fn to_text(&self) -> Result<&str, RoutingIdError>;
+    pub fn to_hex(&self) -> String;
+}
+
+impl RoutingId<'static> {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, RoutingIdError>;
     pub fn from_u32(value: u32) -> Self;
     pub fn from_text(text: &str) -> Result<Self, RoutingIdError>;
-    pub fn as_bytes(&self) -> &[u8];
-    pub fn to_u32(&self) -> Result<u32, RoutingIdError>;
-    pub fn to_text(&self) -> Result<String, RoutingIdError>;
-    pub fn to_hex(&self) -> String;
 }
 ```
 
@@ -176,14 +192,18 @@ impl RoutingId {
 ```ts
 class RoutingId {
   static fromBytes(bytes: Buffer | Uint8Array): RoutingId;
-  static fromUInt32(value: number): RoutingId;
-  static fromString(text: string): RoutingId;
-  toBytes(): Buffer;
-  toUInt32(): number;
-  toStringUtf8(): string;
+  static fromU32(value: number): RoutingId;
+  static fromText(text: string): RoutingId;
+  asBuffer(): Buffer;
+  copy(): RoutingId;
+  toU32(): number;
+  toText(): string;
   toHex(): string;
 }
 ```
+
+여기서 `asBuffer()`는 owner가 살아 있는 동안만 유효한 borrowed bytes accessor이고,
+독립 보관이 필요하면 `copy()`를 호출한다.
 
 ## 9. sample과 guide 방향
 
@@ -205,7 +225,8 @@ sample과 guide는 raw bytes만 직접 다루는 예제를 기본 경로로 두�
 - `bindings/python/`, `bindings/rust/`, `bindings/node/` 등 각 언어의
   `RoutingId` wrapper 정리
 - raw bytes canonical 유지 여부 확인
-- `from_u32`, `to_u32`, `from_text`, `to_text`, `to_hex` helper 추가
+- `RoutingId` 타입에 `from_u32`, `to_u32`, `from_text`, `to_text`, `to_hex` 추가
+- 별도 public helper 계층 제거 또는 내부 구현으로 축소
 - binding library 뿐 아니라 sample, perf 경로까지 함께 정리
 - `STREAM` packet/raw callback, send, recv 예제의 helper 사용 경로 정리
 - 일반 routed/service 예제의 text helper 사용 경로 정리
@@ -227,12 +248,13 @@ binding 쪽은 아래 순서로 진행하는 것이 좋다.
 
 1. core 변경을 binding native 폴더 또는 동기화 대상 파일에 반영
 2. `RoutingId` raw bytes canonical 유지 확인
-3. `from_u32`, `to_u32`, `from_text`, `to_text`, `to_hex` helper 추가
-4. `STREAM` callback/send helper 사용 경로 정리
-5. routed/service helper 사용 경로 정리
-6. binding library, sample, perf 갱신
-7. sample과 test 갱신
-8. binding spec 문서 반영
+3. `RoutingId` 타입에 `from_u32`, `to_u32`, `from_text`, `to_text`, `to_hex` 추가
+4. 별도 public helper 정리
+5. `STREAM` callback/send helper 사용 경로 정리
+6. routed/service helper 사용 경로 정리
+7. binding library, sample, perf 갱신
+8. sample과 test 갱신
+9. binding spec 문서 반영
 
 구체적인 적용 순서는 저장소 상태와 각 binding의 준비 정도에 맞춰 조정할 수 있다.
 
@@ -244,5 +266,6 @@ binding 쪽은 아래 순서로 진행하는 것이 좋다.
 - `STREAM`만 다른 public 타입으로 분리
 - routed id를 모두 문자열이라고 가정
 - 모든 binding이 같은 API 이름을 정확히 그대로 쓰게 강제
+- 별도 public helper 계층 유지
 
 이 문서의 목표는 binding 표면이 서로 다른 타입 체계로 흩어지지 않게 하는 데 있다.

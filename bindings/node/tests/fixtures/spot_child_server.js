@@ -27,7 +27,7 @@ async function main() {
   try {
     node.attachPubSub(SERVICE_NAME, pubSocket, subSocket);
     spot = node.createSpot();
-    pubSocket.bind(options.endpoint);
+    node.bind(options.endpoint);
     console.log(`READY,${options.endpoint}`);
 
     const deadline = Date.now() + 5000;

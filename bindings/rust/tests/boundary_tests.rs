@@ -20,9 +20,10 @@ fn routing_id_exceeds_max_fails() {
 }
 
 #[test]
-fn routing_id_empty_fails() {
-    let result = std::panic::catch_unwind(|| RoutingId::from_bytes(&[]));
-    assert!(result.is_err(), "empty routing id must fail");
+fn routing_id_empty_is_allowed() {
+    let rid = RoutingId::from_bytes(&[]);
+    assert_eq!(rid.size(), 0, "empty routing id must stay as empty bytes");
+    assert_eq!(rid.as_bytes(), &[]);
 }
 
 #[test]

@@ -6,6 +6,8 @@
 #include "core/send_internal.hpp"
 #include "services/control/service_control_runtime.hpp"
 #include "sockets/socket_base.hpp"
+
+#include "api/routing_id_internal.hpp"
 #include "utils/sleep.hpp"
 #include "zlink.h"
 
@@ -402,7 +404,7 @@ bool zlink::socket_base_t::build_monitor_event_record (
   const endpoint_uri_pair_t &endpoint_uri_pair_) const
 {
     if (!out_ || values_count_ > monitor_max_values
-        || routing_id_size_ > sizeof (out_->routing_id.data))
+        || routing_id_size_ > sizeof (out_->routing_id_storage))
         return false;
 
     out_->event = event_;
@@ -411,9 +413,11 @@ bool zlink::socket_base_t::build_monitor_event_record (
     for (uint64_t i = 0; i < values_count_; ++i)
         out_->values[i] = values_[i];
     memset (&out_->routing_id, 0, sizeof (out_->routing_id));
-    out_->routing_id.size = static_cast<uint8_t> (routing_id_size_);
+    out_->routing_id.size = routing_id_size_;
+    out_->routing_id.data =
+      routing_id_size_ > 0 ? out_->routing_id_storage : NULL;
     if (routing_id_size_ > 0 && routing_id_)
-        memcpy (out_->routing_id.data, routing_id_, routing_id_size_);
+        memcpy (out_->routing_id_storage, routing_id_, routing_id_size_);
     out_->endpoint_uri_pair = endpoint_uri_pair_;
     return true;
 }

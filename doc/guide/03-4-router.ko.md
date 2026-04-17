@@ -41,7 +41,10 @@ zlink_bind(router, "inproc://router");
 
 ```c
 /* Explicit routing_id -- remains the same across reconnections */
-zlink_set_routing_id(dealer, "stable-id", 9);
+uint8_t dealer_rid_buf[255];
+zlink_routing_id_t dealer_rid;
+zlink_routing_id_from_text("stable-id", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
+zlink_set_routing_id(dealer, &dealer_rid); 
 ```
 
 ## 2. 기본 사용법
@@ -277,7 +280,10 @@ ROUTER의 핵심 패턴. N개 노드가 각각 상대의 routing_id를 지정하
 ```c
 /* DEALER connects and sends initial message */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-zlink_set_routing_id(dealer, "X", 1);
+uint8_t dealer_rid_buf[255];
+zlink_routing_id_t dealer_rid;
+zlink_routing_id_from_text("X", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
+zlink_set_routing_id(dealer, &dealer_rid); 
 zlink_connect(dealer, endpoint);
 zlink_msg_t hello;
 zlink_msg_init_size(&hello, 5);
@@ -313,13 +319,19 @@ zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 /* Client 1 */
 void *d1 = zlink_socket(ctx, ZLINK_DEALER);
 /* Receive replies with zlink_recv() */
-zlink_set_routing_id(d1, "D1", 2);
+uint8_t d1_rid_buf[255];
+zlink_routing_id_t d1_rid;
+zlink_routing_id_from_text("D1", d1_rid_buf, sizeof(d1_rid_buf), &d1_rid);
+zlink_set_routing_id(d1, &d1_rid); 
 zlink_connect(d1, endpoint);
 
 /* Client 2 */
 void *d2 = zlink_socket(ctx, ZLINK_DEALER);
 /* Receive replies with zlink_recv() */
-zlink_set_routing_id(d2, "D2", 2);
+uint8_t d2_rid_buf[255];
+zlink_routing_id_t d2_rid;
+zlink_routing_id_from_text("D2", d2_rid_buf, sizeof(d2_rid_buf), &d2_rid);
+zlink_set_routing_id(d2, &d2_rid); 
 zlink_connect(d2, endpoint);
 
 /* Each client sends a message -- router_recv returns source_node_rid */
@@ -423,18 +435,30 @@ DEALER → ROUTER는 라운드 로빈이 고정되어 분배 비율을 제어할
 ```c
 /* 서버 3대 */
 void *sa = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_set_routing_id(sa, "SA", 2);
+uint8_t sa_rid_buf[255];
+zlink_routing_id_t sa_rid;
+zlink_routing_id_from_text("SA", sa_rid_buf, sizeof(sa_rid_buf), &sa_rid);
+zlink_set_routing_id(sa, &sa_rid); 
 zlink_bind(sa, "tcp://127.0.0.1:5560");
 void *sb = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_set_routing_id(sb, "SB", 2);
+uint8_t sb_rid_buf[255];
+zlink_routing_id_t sb_rid;
+zlink_routing_id_from_text("SB", sb_rid_buf, sizeof(sb_rid_buf), &sb_rid);
+zlink_set_routing_id(sb, &sb_rid); 
 zlink_bind(sb, "tcp://127.0.0.1:5561");
 void *sc = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_set_routing_id(sc, "SC", 2);
+uint8_t sc_rid_buf[255];
+zlink_routing_id_t sc_rid;
+zlink_routing_id_from_text("SC", sc_rid_buf, sizeof(sc_rid_buf), &sc_rid);
+zlink_set_routing_id(sc, &sc_rid); 
 zlink_bind(sc, "tcp://127.0.0.1:5562");
 
 /* 클라이언트 ROUTER: 3개 서버에 connect */
 void *client = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_set_routing_id(client, "C1", 2);
+uint8_t client_rid_buf[255];
+zlink_routing_id_t client_rid;
+zlink_routing_id_from_text("C1", client_rid_buf, sizeof(client_rid_buf), &client_rid);
+zlink_set_routing_id(client, &client_rid); 
 zlink_connect(client, "tcp://127.0.0.1:5560");
 zlink_connect(client, "tcp://127.0.0.1:5561");
 zlink_connect(client, "tcp://127.0.0.1:5562");
@@ -489,12 +513,18 @@ zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* 클라이언트 1 */
 void *d1 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_set_routing_id(d1, "D1", 2);
+uint8_t d1_rid_buf[255];
+zlink_routing_id_t d1_rid;
+zlink_routing_id_from_text("D1", d1_rid_buf, sizeof(d1_rid_buf), &d1_rid);
+zlink_set_routing_id(d1, &d1_rid); 
 zlink_connect(d1, endpoint);
 
 /* 클라이언트 2 */
 void *d2 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_set_routing_id(d2, "D2", 2);
+uint8_t d2_rid_buf[255];
+zlink_routing_id_t d2_rid;
+zlink_routing_id_from_text("D2", d2_rid_buf, sizeof(d2_rid_buf), &d2_rid);
+zlink_set_routing_id(d2, &d2_rid); 
 zlink_connect(d2, endpoint);
 
 /* 각 클라이언트가 메시지 전송 — ROUTER가 source_rid로 구분 */
@@ -628,7 +658,10 @@ void on_connect(const zlink_routing_id_t *source_node_rid,
 
 /* DEALER 연결 및 초기 메시지 전송 */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-zlink_set_routing_id(dealer, "X", 1);
+uint8_t dealer_rid_buf[255];
+zlink_routing_id_t dealer_rid;
+zlink_routing_id_from_text("X", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
+zlink_set_routing_id(dealer, &dealer_rid); 
 zlink_connect(dealer, endpoint);
 zlink_msg_t hello;
 zlink_msg_init_size(&hello, 5);
@@ -688,7 +721,10 @@ DEALER가 재연결하면 자동 생성된 routing_id가 변경될 수 있다. �
 
 ```c
 /* 명시적 routing_id — 재연결 시에도 동일 */
-zlink_set_routing_id(dealer, "stable-id", 9);
+uint8_t dealer_rid_buf[255];
+zlink_routing_id_t dealer_rid;
+zlink_routing_id_from_text("stable-id", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
+zlink_set_routing_id(dealer, &dealer_rid); 
 ```
 
 ### routing_id 충돌

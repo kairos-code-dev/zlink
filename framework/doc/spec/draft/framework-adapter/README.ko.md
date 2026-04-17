@@ -12,44 +12,40 @@
 
 이 초안 묶음은 zlink의 `.NET`, `Java`, `Node.js` 바인딩 위에
 `ASP.NET Core`, `Spring`, `NestJS` 사용자를 위한 `ZLink Framework` 방향을
-정리한다.
+정리한다. 제품 개요와 핵심 가치는 [overview.ko.md](./overview.ko.md)를 참고한다.
 
-`ZLink Framework`의 목표는 새 transport를 만드는 일이 아니다. 목표는 프레임워크 사용자가
-raw `DEALER`, `ROUTER`, `PUB`, `SUB`, `SPOT`를 직접 다루지 않고도, 기존에
-HTTP나 gRPC를 쓰던 감각에 가깝게 zlink 기반 서버 간 메시징을 쓰게 만드는 일이다.
+## 2. 문서 구성
 
-## 2. 이 초안이 전제하는 방향
+아래 문서들은 각각 한 가지 주제만 다루며, 서로 범위가 겹치지 않게 구성했다.
+번호 순서대로 읽으면 전체 그림을 자연스럽게 따라갈 수 있다.
 
-- 메시지는 기본적으로 `header + body` 멀티파트로 다룬다.
-- `body` codec은 `protobuf`, `json`을 우선 고려하고, 나중에 다른 codec을
-  추가할 수 있게 연다.
-- 연결 방식은 수동 endpoint 설정과 Discovery 기반 자동 연결을 모두 지원한다.
-- 운영 점검이나 warm-up에는 Registry topology snapshot/query와 원격
-  `RegistryQueryClient`를 함께 활용할 수 있어야 한다.
-- 서비스 묶음은 `service_name` 기준으로 본다.
-- 위치투명성과 provider 선택을 위해 별도 gateway나 전용 로드밸런서를 먼저 두는
-  모델보다, `service_name + service별 Discovery channel`만으로 직접
-  location-transparent 호출이 가능해야 한다.
-- `SPOT`은 pub/sub만이 아니라 routed send/request/reply도 가능한 기반으로
-  보고, framework 표면에서 어디까지 올릴지는 별도 초안으로 좁힌다.
-- raw `STREAM` packet callback은 binding 수준의 특수 helper로 보고, 일반
-  framework 공용 모델의 중심에는 두지 않는다.
-- 프레임워크 표면은 각 프레임워크 사용자가 익숙한 방식에 최대한 맞춘다.
-- 문서 구조는 use case를 먼저 정리하고, 그 use case를 만족하는지 나중 문서에서
-  검증하는 순서를 따른다.
+| 순서 | 문서 | 다루는 범위 |
+|:----:|------|------------|
+| 1 | [overview.ko.md](./overview.ko.md) | 제품 개요, 핵심 차별점, 현재 우선 범위. "ZLink Framework가 무엇이고, 왜 필요한가"에 답한다. |
+| 2 | [use-cases/README.ko.md](./use-cases/README.ko.md) | use case별 문서 목록과 관리 규칙. 모든 설계는 use case에서 출발한다. |
+| 3 | [interaction-model.ko.md](./interaction-model.ko.md) | 사용자에게 보이는 상호작용 모델 분류. request-response, command, publish-subscribe 등 각 모델의 의미를 정의한다. |
+| 4 | [message-model.ko.md](./message-model.ko.md) | `header + body` 메시지 구조, header 필드, body codec 방향. wire 수준 메시지 형식을 다룬다. |
+| 5 | [service-topology.ko.md](./service-topology.ko.md) | service grouping, Discovery, 수동 연결, 상호작용 모델과 내부 transport 매핑. 내부 배선이 어떻게 구성되는지 다룬다. |
+| 6 | [framework-api.ko.md](./framework-api.ko.md) | `ASP.NET Core`, `Spring`, `NestJS`별 API 표면 방향. 각 프레임워크에서 handler와 client가 어떤 모양으로 보이는지 다룬다. |
+| 7 | [dotnet/README.ko.md](./dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 상세 초안. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
+| 8 | [usecase-validation.ko.md](./usecase-validation.ko.md) | 각 use case를 현재 초안이 얼마나 설명하는지 점검하는 체크리스트. |
 
-## 3. 문서 구성
+개요(1)로 전체 그림을 잡고, use case(2)로 무엇을 해결하려는지 본 뒤,
+모델(3-4)로 설계 방향을 확인하고, topology(5)로 내부 매핑을 이해하고,
+API 표면(6-7)으로 구체적인 모양을 보고, 마지막으로 검증(8)에서 빠진 부분을
+확인하는 흐름이다.
 
-| 문서 | 역할 |
-|------|------|
-| [overview.ko.md](./overview.ko.md) | `ZLink Framework`의 제품 개요와 핵심 가치 |
-| [use-cases/README.ko.md](./use-cases/README.ko.md) | 케이스별 문서 목록과 관리 규칙 |
-| [interaction-model.ko.md](./interaction-model.ko.md) | 사용자에게 보일 상호작용 모델 |
-| [message-model.ko.md](./message-model.ko.md) | `header + body` 메시지 초안 |
-| [service-topology.ko.md](./service-topology.ko.md) | service grouping, Discovery, topology 매핑 |
-| [framework-api.ko.md](./framework-api.ko.md) | `ASP.NET Core`, `Spring`, `NestJS` 표면 방향 |
-| [dotnet/README.ko.md](./dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 초안 |
-| [usecase-validation.ko.md](./usecase-validation.ko.md) | 각 use case를 현재 초안이 얼마나 설명하는지 점검 |
+## 3. 각 문서의 범위 원칙
+
+각 문서가 다루는 내용이 겹치지 않도록, 아래 원칙을 따른다.
+
+| 개념 | 다루는 곳 | 다른 문서에서는 |
+|------|----------|---------------|
+| 제품 정의, 차별점, transport 축, 우선 범위 | overview | 필요하면 overview를 링크 |
+| 상호작용 모델 분류와 모델별 의미 | interaction-model | 필요하면 interaction-model을 링크 |
+| 메시지 구조, header 필드, codec | message-model | 필요하면 message-model을 링크 |
+| service grouping, Discovery, 내부 매핑 | service-topology | 필요하면 service-topology를 링크 |
+| 프레임워크별 API 표면, DI, handler 등록 | framework-api, dotnet/ | 필요하면 해당 문서를 링크 |
 
 ## 4. 문서 작성 원칙
 

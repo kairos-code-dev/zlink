@@ -569,8 +569,9 @@ public sealed class Message : IDisposable, IAsyncDisposable
 
 ### RoutingId
 
-Immutable binary-safe routing identity value type (1-255 bytes).
-Carries raw bytes; string conversions are convenience only.
+Immutable binary-safe routing identity value type (0-255 bytes). The
+canonical form is raw bytes. `FromU32()` and `FromText()` are helper
+constructors only; they do not change the bytes-canonical contract.
 
 ```csharp
 public readonly struct RoutingId : IEquatable<RoutingId>
@@ -580,15 +581,20 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     static RoutingId FromBytes(ReadOnlySpan<byte> bytes);
     /// <exception cref="ZlinkConfigException">Length is 0 or exceeds 255 bytes.</exception>
     static RoutingId FromBytes(byte[] bytes);
+    static RoutingId FromU32(uint value);
+    static RoutingId FromText(string value);
 
     // --- accessors ---
-    int Size { get; }                        // 1..255
+    int Size { get; }                        // 0..255
     bool IsEmpty { get; }
     ReadOnlySpan<byte> ToBytes();            // zero-copy view of the raw bytes
+    ReadOnlySpan<byte> AsSpan();             // alias of ToBytes()
     byte[] ToByteArray();                    // heap-allocated copy
+    bool TryToU32(out uint value);
+    uint ToU32();
+    string ToText();
 
     // --- string convenience (NOT a primary representation) ---
-    string ToString();                       // UTF-8 decode; non-UTF-8 bytes replaced
     string ToHex();                          // lowercase hex
 
     // --- equality ---
@@ -600,6 +606,15 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     static bool operator !=(RoutingId left, RoutingId right);
 }
 ```
+
+Rules:
+- `RoutingId` is bytes-canonical. `FromU32()` / `ToU32()` use 4-byte
+  big-endian STREAM encoding.
+- `FromText()` / `ToText()` use UTF-8.
+- `AsSpan()` is the no-copy byte view for callers that need direct
+  byte access.
+- Display code should prefer `ToText()` when text is expected and fall
+  back to `ToHex()` when the bytes are not text.
 
 ### ZlinkException
 

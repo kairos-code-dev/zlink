@@ -65,12 +65,11 @@ bool try_extract_router_target_rid (const zlink_msg_t *part_,
         return false;
 
     const size_t size = msg->size ();
-    if (size == 0 || size > sizeof (out_->data))
+    if (size == 0 || size > zlink::routing_id_internal::owned_capacity ())
         return false;
 
-    out_->size = static_cast<uint8_t> (size);
-    memcpy (out_->data, msg->data (), size);
-    return true;
+    return zlink::routing_id_internal::assign_view (
+      out_, static_cast<const uint8_t *> (msg->data ()), size);
 }
 
 int s_sendmsg (socket_handle_t handle_,

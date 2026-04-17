@@ -46,18 +46,9 @@ service마다 별도 channel을 두는 구조"를 기본으로 본다.
 plane에서는 Registry topology snapshot/query 또는 원격 `RegistryQueryClient`로
 전체 provider 집합을 읽을 수도 있다.
 
-이 점은 일반적인 웹 서버 호출 모델과 비교했을 때 중요한 차이점이다.
-보통은 위치투명성을 주기 위해 API gateway 또는 그와 비슷한 중간 계층을 두고,
-응용이 그 gateway를 향해 호출하거나, 전용 load balancer 뒤의 주소를 호출한다.
-현재 초안은 그보다 아래처럼 가는 편을 기본 방향으로 본다.
-
-- 호출자는 gateway 주소 대신 `service_name`을 기준으로 요청한다.
-- framework runtime은 그 service 전용 channel을 통해 요청을 보낸다.
-- Discovery가 현재 service view 안의 provider 위치를 숨긴다.
-- framework는 해당 service의 `rid` 집합과 연결 상태를 기준으로 요청을 보낸다.
-
-즉 gateway나 전용 로드밸런서를 반드시 거쳐야만 location transparency와
-service 단위 직접 호출을 얻는 구조를 전제로 하지 않는다.
+이 구조가 일반적인 gateway 기반 호출 모델과 어떻게 다른지, 왜 gateway 없이도
+location transparency를 얻을 수 있는지는 [overview.ko.md](./overview.ko.md)의
+section 3을 참고한다.
 
 ## 3. 상호작용 모델과 topology 매핑 초안
 

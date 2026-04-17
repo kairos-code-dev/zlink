@@ -22,6 +22,22 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
 {
+void copy_routing_id_local (zlink_routing_id_t *dst_,
+                            uint8_t *storage_,
+                            const zlink_routing_id_t *src_)
+{
+    if (!dst_ || !storage_) {
+        return;
+    }
+    dst_->size = 0;
+    dst_->data = NULL;
+    if (!src_ || !src_->data || src_->size == 0)
+        return;
+    memcpy (storage_, src_->data, src_->size);
+    dst_->size = src_->size;
+    dst_->data = storage_;
+}
+
 const int kStreamHwm = 10;
 const int kSendTimeoutMs = 1000;
 const int kWakeupSendTimeoutMs = 5000;
@@ -37,10 +53,13 @@ struct stream_route_probe_t
     stream_route_probe_t () : ready (0), rid ()
     {
         memset (&rid, 0, sizeof (rid));
+        memset (rid_storage, 0, sizeof (rid_storage));
+        rid.data = rid_storage;
     }
 
     std::atomic<int> ready;
     zlink_routing_id_t rid;
+    uint8_t rid_storage[255];
 };
 
 stream_route_probe_t *g_stream_route_probe = NULL;
@@ -236,7 +255,8 @@ int capture_stream_route_callback (const zlink_routing_id_t *rid_,
             && zlink_msg_size (msg_) > 0 && rid_->size == kRouteIdSize
             && g_stream_route_probe->ready.load (std::memory_order_acquire) == 0) {
             g_stream_route_probe->rid.size = rid_->size;
-            memcpy (g_stream_route_probe->rid.data, rid_->data, kRouteIdSize);
+            memcpy (g_stream_route_probe->rid_storage, rid_->data, kRouteIdSize);
+            g_stream_route_probe->rid.data = g_stream_route_probe->rid_storage;
             g_stream_route_probe->ready.store (1, std::memory_order_release);
         }
         (void) zlink_msg_close (msg_);
@@ -287,7 +307,10 @@ bool wait_stream_poller_no_event (
     return rc == -1 && errno == EAGAIN;
 }
 
-void establish_stream_route (void *server_, int raw_fd_, zlink_routing_id_t *rid_)
+void establish_stream_route (void *server_,
+                             int raw_fd_,
+                             zlink_routing_id_t *rid_,
+                             uint8_t *rid_storage_)
 {
     stream_route_probe_t probe;
     g_stream_route_probe = &probe;
@@ -298,7 +321,7 @@ void establish_stream_route (void *server_, int raw_fd_, zlink_routing_id_t *rid
     TEST_ASSERT_EQUAL_INT (0, send_all (raw_fd_, &request, sizeof (request)));
     TEST_ASSERT_TRUE (wait_stream_route_ready (&probe, 5000));
 
-    *rid_ = probe.rid;
+    copy_routing_id_local (rid_, rid_storage_, &probe.rid);
     g_stream_route_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server_));
 }
@@ -422,7 +445,8 @@ void test_stream_queue_reopens_after_peer_reads ()
     set_raw_timeout (raw_fd, 200);
 
     zlink_routing_id_t rid;
-    establish_stream_route (server, raw_fd, &rid);
+    uint8_t rid_storage[255] = {0};
+    establish_stream_route (server, raw_fd, &rid, rid_storage);
     fill_stream_send_queue_until_hwm (server, &rid);
 
     std::vector<unsigned char> payload (kPayloadSize, 0x33);
@@ -483,7 +507,8 @@ void test_stream_send_ready_pollout_share_recovery_axis ()
     set_raw_timeout (raw_fd, 200);
 
     zlink_routing_id_t rid;
-    establish_stream_route (server, raw_fd, &rid);
+    uint8_t rid_storage[255] = {0};
+    establish_stream_route (server, raw_fd, &rid, rid_storage);
 
     stream_send_ready_probe_t probe;
     g_stream_send_ready_probe = &probe;
@@ -567,7 +592,8 @@ void test_stream_pollout_only_observes_recovery_readiness ()
     set_raw_timeout (raw_fd, 200);
 
     zlink_routing_id_t rid;
-    establish_stream_route (server, raw_fd, &rid);
+    uint8_t rid_storage[255] = {0};
+    establish_stream_route (server, raw_fd, &rid, rid_storage);
 
     void *poller = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (poller);
@@ -657,7 +683,8 @@ void test_stream_blocking_send_times_out_without_peer_reads ()
     set_raw_timeout (raw_fd, 200);
 
     zlink_routing_id_t rid;
-    establish_stream_route (server, raw_fd, &rid);
+    uint8_t rid_storage[255] = {0};
+    establish_stream_route (server, raw_fd, &rid, rid_storage);
     fill_stream_send_queue_until_hwm (server, &rid);
 
     std::vector<unsigned char> payload (kPayloadSize, 0x44);
@@ -693,7 +720,8 @@ void test_stream_nonblocking_send_preserves_message_for_retry ()
     set_raw_timeout (raw_fd, 200);
 
     zlink_routing_id_t rid;
-    establish_stream_route (server, raw_fd, &rid);
+    uint8_t rid_storage[255] = {0};
+    establish_stream_route (server, raw_fd, &rid, rid_storage);
     fill_stream_send_queue_until_hwm (server, &rid);
 
     zlink_msg_t msg;

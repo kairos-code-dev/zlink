@@ -14,6 +14,7 @@
 #include "api/service_api_internal.hpp"
 #include "api/service_spot_dispatch_context_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
+#include "api/routing_id_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
 #include "api/status_internal.hpp"
@@ -137,7 +138,7 @@ zlink::spot_runtime_t *resolve_active_spot_runtime (void *spot_)
 bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_)
 {
     return peer_rid_ && peer_rid_->size > 0
-           && peer_rid_->size <= sizeof (peer_rid_->data);
+           && peer_rid_->size <= 255;
 }
 
 bool spot_destination_is_admitted (void *spot_,
@@ -245,10 +246,9 @@ void routing_id_from_string (const std::string &value_, zlink_routing_id_t *out_
     if (value_.empty ())
         return;
 
-    const size_t size =
-      value_.size () > sizeof (out_->data) ? sizeof (out_->data) : value_.size ();
-    memcpy (out_->data, value_.data (), size);
-    out_->size = static_cast<uint8_t> (size);
+    (void) zlink::routing_id_internal::assign_view (
+      out_, reinterpret_cast<const uint8_t *> (value_.data ()),
+      std::min (value_.size (), zlink::routing_id_internal::owned_capacity ()));
 }
 
 bool parse_spot_routed_envelope (zlink_msg_t *parts_,
@@ -602,14 +602,14 @@ int start_router_request_to_spot (void *router_,
         return -1;
     }
 
-    zlink_routing_id_t router_rid;
-    memset (&router_rid, 0, sizeof (router_rid));
-    if (zlink_get_routing_id (router_, &router_rid) != 0 || router_rid.size == 0)
+    const zlink_routing_id_t *router_rid = NULL;
+    if (zlink_get_routing_id (router_, &router_rid) != 0 || !router_rid
+        || router_rid->size == 0)
         return -1;
 
     std::shared_ptr<router_spot_request_reply_state_t> state =
       find_or_create_router_state (router_);
-    bind_router_state_rid (router_, routing_id_key (&router_rid), state);
+    bind_router_state_rid (router_, routing_id_key (router_rid), state);
 
     uint64_t request_seq = 0;
     pending_spot_key_t key;
@@ -1308,14 +1308,14 @@ zlink_submit_result_t zlink_router_reply_spot (
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
 
-    zlink_routing_id_t router_rid;
-    memset (&router_rid, 0, sizeof (router_rid));
-    if (zlink_get_routing_id (router_, &router_rid) != 0 || router_rid.size == 0)
+    const zlink_routing_id_t *router_rid = NULL;
+    if (zlink_get_routing_id (router_, &router_rid) != 0 || !router_rid
+        || router_rid->size == 0)
         return zlink::submit_result_internal::from_errno (errno);
 
     std::vector<zlink_msg_t> combined;
     if (build_spot_request_reply_message (
-          zmp_router_class, std::string (), routing_id_key (&router_rid),
+          zmp_router_class, std::string (), routing_id_key (router_rid),
           zmp_spot_class, routing_id_key (dest_node_rid_),
           routing_id_key (dest_spot_rid_), zlink::request_reply::reply_type,
           request_seq_, parts_, part_count_, &combined)
@@ -1364,14 +1364,14 @@ zlink_submit_result_t zlink_router_send_spot (
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
 
-    zlink_routing_id_t router_rid;
-    memset (&router_rid, 0, sizeof (router_rid));
-    if (zlink_get_routing_id (router_, &router_rid) != 0 || router_rid.size == 0)
+    const zlink_routing_id_t *router_rid = NULL;
+    if (zlink_get_routing_id (router_, &router_rid) != 0 || !router_rid
+        || router_rid->size == 0)
         return zlink::submit_result_internal::from_errno (errno);
 
     std::vector<zlink_msg_t> combined;
     if (build_spot_routed_message (zmp_router_class, std::string (),
-                                   routing_id_key (&router_rid), zmp_spot_class,
+                                   routing_id_key (router_rid), zmp_spot_class,
                                    routing_id_key (dest_node_rid_),
                                    routing_id_key (dest_spot_rid_), parts_,
                                    part_count_, &combined)
@@ -1406,16 +1406,16 @@ extern "C" int zlink_router_enable_spot_receive (void *router_)
         return -1;
     }
 
-    zlink_routing_id_t router_rid;
-    memset (&router_rid, 0, sizeof (router_rid));
-    if (zlink_get_routing_id (router_, &router_rid) != 0 || router_rid.size == 0) {
+    const zlink_routing_id_t *router_rid = NULL;
+    if (zlink_get_routing_id (router_, &router_rid) != 0 || !router_rid
+        || router_rid->size == 0) {
         errno = 0;
         return 0;
     }
 
     std::shared_ptr<router_spot_request_reply_state_t> state =
       find_or_create_router_state (router_);
-    bind_router_state_rid (router_, routing_id_key (&router_rid), state);
+    bind_router_state_rid (router_, routing_id_key (router_rid), state);
     errno = 0;
     return 0;
 }

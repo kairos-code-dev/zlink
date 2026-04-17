@@ -61,11 +61,11 @@ function normalizeRoutingIdBytes(bytes: Buffer | Uint8Array, name: string): Buff
     throw new TypeError(`${name} must be a Buffer or Uint8Array`);
   }
   const normalized = Buffer.from(bytes);
-  if (normalized.length === 0 || normalized.length > ROUTING_ID_MAX_LENGTH) {
+  if (normalized.length > ROUTING_ID_MAX_LENGTH) {
     throw new ConfigError(
       ConfigResult.InvalidArgument,
       0,
-      `${name} must be 1..${ROUTING_ID_MAX_LENGTH} bytes`
+      `${name} must be 0..${ROUTING_ID_MAX_LENGTH} bytes`
     );
   }
   return normalized;

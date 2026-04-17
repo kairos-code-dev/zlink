@@ -70,8 +70,7 @@ inline recv_result_t receive_one_message (
     if (!server)
         return recv_fatal;
 
-    zlink_routing_id_t source_rid;
-    source_rid.size = 0;
+    const zlink_routing_id_t *source_rid = NULL;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     const zlink_recv_result_t rc = ::zlink_recv (

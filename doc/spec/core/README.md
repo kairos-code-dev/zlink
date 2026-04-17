@@ -32,7 +32,7 @@ is defined in `core/include/zlink.h`.
 | Type | Defined in | Description |
 |------|-----------|-------------|
 | [`zlink_msg_t`](message.md) | message.md | Opaque message container (64-byte, stack-allocatable) |
-| [`zlink_routing_id_t`](message.md) | message.md | Peer routing identity (1-byte size + 255-byte data) |
+| [`zlink_routing_id_t`](message.md) | message.md | Borrowed peer routing identity byte view |
 | `zlink_socket_msg_handler_fn` | [socket/](socket/README.md) | Raw `STREAM` raw receive callback |
 | [`zlink_monitor_event_t`](monitoring.md) | monitoring.md | Monitor event structure (event, value, addresses) |
 | [`zlink_monitor_snapshot_t`](monitoring.md) | monitoring.md | Monitor snapshot (state and queue depth) |

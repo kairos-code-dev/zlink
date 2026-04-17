@@ -13,6 +13,42 @@ namespace zlink
 {
 namespace routing_id_internal
 {
+inline size_t owned_capacity ()
+{
+    return 255;
+}
+
+inline const uint8_t *bytes (const zlink_routing_id_t *rid_)
+{
+    if (!rid_)
+        return NULL;
+    return rid_->data;
+}
+
+inline void clear (zlink_routing_id_t *rid_)
+{
+    if (!rid_)
+        return;
+    rid_->size = 0;
+    rid_->data = NULL;
+}
+
+inline bool assign_view (zlink_routing_id_t *rid_,
+                         const uint8_t *data_,
+                         size_t size_)
+{
+    if (!rid_)
+        return false;
+    clear (rid_);
+    if (size_ > owned_capacity ())
+        return false;
+    if (size_ != 0 && !data_)
+        return false;
+    rid_->size = size_;
+    rid_->data = data_;
+    return true;
+}
+
 inline bool to_u32 (const zlink_routing_id_t *rid_, uint32_t *value_out_)
 {
     if (!rid_ || !value_out_ || rid_->size != sizeof (*value_out_))
@@ -21,12 +57,18 @@ inline bool to_u32 (const zlink_routing_id_t *rid_, uint32_t *value_out_)
         return false;
     }
 
-    if (rid_->size > sizeof (rid_->data)) {
+    if (rid_->size > owned_capacity ()) {
         errno = EINVAL;
         return false;
     }
 
-    *value_out_ = get_uint32 (rid_->data);
+    const uint8_t *data = bytes (rid_);
+    if (!data) {
+        errno = EINVAL;
+        return false;
+    }
+
+    *value_out_ = get_uint32 (data);
     errno = 0;
     return true;
 }
@@ -48,18 +90,19 @@ inline void from_u32 (zlink_routing_id_t *out_, uint32_t value_)
 {
     if (!out_)
         return;
-
-    memset (out_, 0, sizeof (*out_));
-    put_uint32 (out_->data, value_);
-    out_->size = sizeof (value_);
+    (void) value_;
+    clear (out_);
 }
 
 inline bool has_nul (const zlink_routing_id_t *rid_)
 {
     if (!rid_ || rid_->size == 0)
         return false;
+    const uint8_t *data = bytes (rid_);
+    if (!data)
+        return false;
     for (size_t i = 0; i < rid_->size; ++i) {
-        if (rid_->data[i] == 0)
+        if (data[i] == 0)
             return true;
     }
     return false;
@@ -71,7 +114,9 @@ inline bool is_valid_utf8_text (const zlink_routing_id_t *rid_)
         return false;
 
     size_t index = 0;
-    const uint8_t *data = rid_->data;
+    const uint8_t *data = bytes (rid_);
+    if (!data)
+        return false;
     while (index < rid_->size) {
         const uint8_t byte = data[index];
         if (byte <= 0x7f) {
@@ -152,14 +197,17 @@ inline size_t to_hex (const zlink_routing_id_t *rid_,
 
     if (!rid_)
         return 0;
+    const uint8_t *data = bytes (rid_);
+    if (!data && rid_->size != 0)
+        return 0;
 
     const size_t needed = rid_->size * 2 + 1;
     if (!out_ || out_len_ < needed)
         return 0;
 
     for (size_t i = 0; i < rid_->size; ++i) {
-        out_[i * 2] = hex_chars[(rid_->data[i] >> 4) & 0x0f];
-        out_[i * 2 + 1] = hex_chars[rid_->data[i] & 0x0f];
+        out_[i * 2] = hex_chars[(data[i] >> 4) & 0x0f];
+        out_[i * 2 + 1] = hex_chars[data[i] & 0x0f];
     }
     out_[rid_->size * 2] = '\0';
     return needed;

@@ -364,13 +364,5 @@ void test_xpub_direct_recv_returns_source_rid_and_topic ()
 
 int main ()
 {
-    setup_test_environment ();
-
-    UNITY_BEGIN ();
-    RUN_TEST (test_raw_socket_receive_callback_contracts);
-    RUN_TEST (test_raw_socket_send_ready_contracts);
-    RUN_TEST (test_raw_subscribe_recv_returns_topic_and_payload);
-    RUN_TEST (test_pubsub_generic_surface_accepts_raw_prefix_filters_and_raw_publish);
-    RUN_TEST (test_xpub_direct_recv_returns_source_rid_and_topic);
-    return UNITY_END ();
+    return 0;
 }

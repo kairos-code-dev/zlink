@@ -285,12 +285,18 @@ zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 /* Client 1 */
 void *d1 = zlink_socket(ctx, ZLINK_DEALER);
 /* DEALER receives replies via zlink_recv() */
-zlink_set_routing_id(d1, "D1", 2);
+uint8_t d1_rid_buf[255];
+zlink_routing_id_t d1_rid;
+zlink_routing_id_from_text("D1", d1_rid_buf, sizeof(d1_rid_buf), &d1_rid);
+zlink_set_routing_id(d1, &d1_rid); 
 zlink_connect(d1, endpoint);
 
 /* Client 2 */
 void *d2 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_set_routing_id(d2, "D2", 2);
+uint8_t d2_rid_buf[255];
+zlink_routing_id_t d2_rid;
+zlink_routing_id_from_text("D2", d2_rid_buf, sizeof(d2_rid_buf), &d2_rid);
+zlink_set_routing_id(d2, &d2_rid); 
 zlink_connect(d2, endpoint);
 
 /* Each client sends a message -- router_recv returns source_node_rid */
@@ -340,7 +346,10 @@ DEALER sends a message first to notify ROUTER of its connection, then ROUTER rep
 ```c
 /* DEALER connects and sends initial message */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-zlink_set_routing_id(dealer, "X", 1);
+uint8_t dealer_rid_buf[255];
+zlink_routing_id_t dealer_rid;
+zlink_routing_id_from_text("X", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
+zlink_set_routing_id(dealer, &dealer_rid); 
 zlink_connect(dealer, endpoint);
 zlink_msg_t hello;
 zlink_msg_init_size(&hello, 5);
@@ -387,7 +396,10 @@ When a DEALER reconnects, its auto-generated routing_id may change. Setting an e
 
 ```c
 /* Explicit routing_id -- remains the same across reconnections */
-zlink_set_routing_id(dealer, "stable-id", 9);
+uint8_t dealer_rid_buf[255];
+zlink_routing_id_t dealer_rid;
+zlink_routing_id_from_text("stable-id", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
+zlink_set_routing_id(dealer, &dealer_rid); 
 ```
 
 ### routing_id Conflicts

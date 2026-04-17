@@ -173,7 +173,10 @@ inline int recv_one_message (void *socket,
             &part_count,
             static_cast<zlink_recv_flags_t> (recv_flags))
         : ::zlink_recv (
-            socket, NULL, &parts, &part_count,
+            socket,
+            static_cast<const zlink_routing_id_t **> (NULL),
+            &parts,
+            &part_count,
             static_cast<zlink_recv_flags_t> (recv_flags));
     if (rc != ZLINK_RECV_OK) {
         const int err = zlink_errno ();
@@ -555,7 +558,10 @@ inline int recv_one_message_header (void *socket,
             &part_count,
             static_cast<zlink_recv_flags_t> (recv_flags))
         : ::zlink_recv (
-            socket, NULL, &parts, &part_count,
+            socket,
+            static_cast<const zlink_routing_id_t **> (NULL),
+            &parts,
+            &part_count,
             static_cast<zlink_recv_flags_t> (recv_flags));
     if (rc != ZLINK_RECV_OK) {
         const int err = zlink_errno ();

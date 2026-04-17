@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "api/request_reply_protocol_internal.hpp"
+#include "api/routing_id_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
@@ -19,6 +20,8 @@ namespace socket_reqrep_internal
 {
 thread_local zlink_routing_id_t g_router_recv_source_rid;
 thread_local zlink_routing_id_t g_router_recv_source_spot_rid;
+thread_local uint8_t g_router_recv_source_rid_storage[255];
+thread_local uint8_t g_router_recv_source_spot_rid_storage[255];
 
 namespace
 {
@@ -346,7 +349,7 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
 bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_)
 {
     return peer_rid_ && peer_rid_->size > 0
-           && peer_rid_->size <= sizeof (peer_rid_->data);
+           && peer_rid_->size <= 255;
 }
 
 std::string routing_id_key (const zlink_routing_id_t *peer_rid_)
@@ -453,21 +456,28 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
     }
 
     g_router_recv_source_rid.size =
-      static_cast<uint8_t> (std::min (zlink_msg_size (&source_node_frame),
-                                      sizeof (g_router_recv_source_rid.data)));
+      std::min (zlink_msg_size (&source_node_frame),
+                sizeof (g_router_recv_source_rid_storage));
     if (g_router_recv_source_rid.size > 0) {
-        memcpy (g_router_recv_source_rid.data,
+        memcpy (g_router_recv_source_rid_storage,
                 zlink_msg_data (&source_node_frame),
                 g_router_recv_source_rid.size);
     }
-    g_router_recv_source_spot_rid.size = static_cast<uint8_t> (
+    g_router_recv_source_rid.data =
+      g_router_recv_source_rid.size > 0 ? g_router_recv_source_rid_storage
+                                        : NULL;
+    g_router_recv_source_spot_rid.size =
       std::min (zlink_msg_size (&source_spot_frame),
-                sizeof (g_router_recv_source_spot_rid.data)));
+                sizeof (g_router_recv_source_spot_rid_storage));
     if (g_router_recv_source_spot_rid.size > 0) {
-        memcpy (g_router_recv_source_spot_rid.data,
+        memcpy (g_router_recv_source_spot_rid_storage,
                 zlink_msg_data (&source_spot_frame),
                 g_router_recv_source_spot_rid.size);
     }
+    g_router_recv_source_spot_rid.data =
+      g_router_recv_source_spot_rid.size > 0
+        ? g_router_recv_source_spot_rid_storage
+        : NULL;
     *source_node_rid_out_ = &g_router_recv_source_rid;
     *source_spot_rid_out_ = &g_router_recv_source_spot_rid;
     *request_seq_out_ = zlink::request_reply::decode_u64_be (
@@ -575,7 +585,15 @@ int recv_router_message_direct (socket_handle_t handle_,
         }
     }
 
-    g_router_recv_source_rid = source_rid;
+    g_router_recv_source_rid.size =
+      std::min (source_rid.size, sizeof (g_router_recv_source_rid_storage));
+    if (g_router_recv_source_rid.size > 0) {
+        memcpy (g_router_recv_source_rid_storage, source_rid.data,
+                g_router_recv_source_rid.size);
+    }
+    g_router_recv_source_rid.data =
+      g_router_recv_source_rid.size > 0 ? g_router_recv_source_rid_storage
+                                        : NULL;
     memset (&g_router_recv_source_spot_rid, 0,
             sizeof (g_router_recv_source_spot_rid));
     *source_node_rid_out_ = &g_router_recv_source_rid;

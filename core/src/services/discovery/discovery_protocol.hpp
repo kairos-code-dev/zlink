@@ -6,6 +6,7 @@
 #include "core/internal_defs.hpp"
 #include "core/send_internal.hpp"
 #include "core/msg.hpp"
+#include "api/routing_id_internal.hpp"
 #include "zlink_enum.h"
 #include "utils/err.hpp"
 #include "utils/stdint.hpp"
@@ -256,13 +257,13 @@ inline bool read_routing_id (const zlink_msg_t &msg_, zlink_routing_id_t *out_)
     if (!out_)
         return false;
     const size_t size = zlink_msg_size (&msg_);
-    if (size > sizeof (out_->data))
+    if (size > zlink::routing_id_internal::owned_capacity ())
         return false;
-    out_->size = static_cast<uint8_t> (size);
-    if (size > 0)
-        memcpy (out_->data,
-                zlink_msg_data (const_cast<zlink_msg_t *> (&msg_)), size);
-    return true;
+    return zlink::routing_id_internal::assign_view (
+      out_,
+      static_cast<const uint8_t *> (
+        zlink_msg_data (const_cast<zlink_msg_t *> (&msg_))),
+      size);
 }
 }
 }

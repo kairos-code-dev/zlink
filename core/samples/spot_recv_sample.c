@@ -47,7 +47,7 @@ static void on_spot_dispatch_event (void *spot_,
     if (event_ != ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE)
         return;
 
-    zlink_routing_id_t source_rid;
+    const zlink_routing_id_t *source_rid = NULL;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     size_t service_name_len = sizeof (state->service_name);
@@ -80,7 +80,7 @@ int main (void)
     assert (ctx != NULL);
 
     void *node = zlink_spot_node_new (ctx);
-    void *publisher = zlink_socket (ctx, ZLINK_SOCKET_XPUB);
+    void *publisher = zlink_socket (ctx, ZLINK_SOCKET_PUB);
     void *subscriber = zlink_socket (ctx, ZLINK_SOCKET_SUB);
     void *spot = zlink_spot_new (node);
     assert (node != NULL);
@@ -90,11 +90,11 @@ int main (void)
 
     char endpoint[256];
     reserve_tcp_endpoint (endpoint, sizeof (endpoint));
+    assert (wait_attach_pubsub (node, k_service_name, publisher, subscriber));
     int rc = zlink_bind (publisher, endpoint);
     assert (rc == 0);
     rc = zlink_connect (subscriber, endpoint);
     assert (rc == 0);
-    assert (wait_attach_pubsub (node, k_service_name, publisher, subscriber));
     rc = zlink_set_subscription (spot, k_spot_topic);
     assert (rc == 0);
 
@@ -128,11 +128,10 @@ int main (void)
     assert (strcmp (state.service_name, k_service_name) == 0);
     assert (strcmp (state.topic, k_spot_topic) == 0);
     assert (strcmp (state.payload, k_spot_payload) == 0);
-    zlink_routing_id_t source_rid;
-    memset (&source_rid, 0, sizeof (source_rid));
+    const zlink_routing_id_t *source_rid = NULL;
     assert (zlink_get_routing_id (spot, &source_rid) == 0);
     char routing_text[64];
-    routing_id_to_display_text (&source_rid, routing_text, sizeof (routing_text));
+    routing_id_to_display_text (source_rid, routing_text, sizeof (routing_text));
     printf ("[spot/recv] spot: \"%s\" service: \"sample\" tick: 1 publish: \"%s/%s\" -> recv: \"%s/%s\"\n",
             routing_text, k_spot_topic, k_spot_payload, state.topic,
             state.payload);

@@ -21,7 +21,92 @@
 
 피드백은 이 문서의 코드 흐름을 기준으로 받는 것을 목표로 한다.
 
-## 2. 한 번에 보는 전체 예시
+## 2. 서비스 등록 샘플부터 보면
+
+service channel 연결 방식은 두 가지를 모두 열어 두는 편이 맞다.
+
+- `Discovery`를 이용한 자동 연결
+- endpoint와 `RoutingId`를 직접 넣는 수동 연결
+
+### 2.1 자동 연결 샘플
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.ServiceId = "api";
+    options.NodeName = "api-1";
+    options.DefaultTimeout = TimeSpan.FromSeconds(1);
+    options.Codecs.AddProtobuf();
+
+    options.UseDiscovery(registry =>
+    {
+        registry.Add("tcp://registry1:5551");
+        registry.Add("tcp://registry2:5551");
+    });
+});
+```
+
+이 경우 runtime은 접근한 `service_name`마다 channel을 만들고, 그 channel이
+`Discovery` service view를 붙잡아 provider 집합을 관리한다.
+
+### 2.2 수동 연결 샘플
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.ServiceId = "api";
+    options.NodeName = "api-1";
+    options.DefaultTimeout = TimeSpan.FromSeconds(1);
+    options.Codecs.AddProtobuf();
+
+    options.ConfigureManualConnections(connections =>
+    {
+        connections.Add("api.profile", peers =>
+        {
+            peers.Connect(
+                targetRid: RoutingId.Parse("01HZX..."),
+                endpoint: "tcp://10.0.10.15:7101");
+
+            peers.Connect(
+                targetRid: RoutingId.Parse("01HZY..."),
+                endpoint: "tcp://10.0.10.16:7101");
+        });
+    });
+});
+```
+
+이 경우 framework가 `Discovery`를 강제하지 않는다. 호출자는 어떤 service에 어떤
+peer를 붙일지 직접 정하고, channel은 그 목록만 기준으로 연결을 관리한다.
+
+### 2.3 두 방식을 함께 둘 수도 있다
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.ServiceId = "api";
+    options.NodeName = "api-1";
+
+    options.UseDiscovery(registry =>
+    {
+        registry.Add("tcp://registry1:5551");
+    });
+
+    options.ConfigureManualConnections(connections =>
+    {
+        connections.Add("api.profile", peers =>
+        {
+            peers.Connect(
+                targetRid: RoutingId.Parse("01HZX..."),
+                endpoint: "tcp://10.0.10.15:7101");
+        });
+    });
+});
+```
+
+현재 초안은 자동 연결과 수동 연결을 서로 배타적으로 보지 않는다. service별
+channel이 두 정보를 함께 가질 수 있게 두는 편이 더 자연스럽다.
+
+## 3. 한 번에 보는 전체 예시
 
 아래 코드는 하나의 `ASP.NET Core` 애플리케이션 안에서
 
@@ -63,7 +148,7 @@ app.MapPost("/profiles/get", async (
     IZLinkClient client,
     CancellationToken cancellationToken) =>
 {
-    var reply = await client.RequestAsync<GetProfileReply>(
+    var reply = await client.RequestAsync(
         "api.profile",
         new GetProfileRequest { AccountId = request.AccountId },
         cancellationToken);
@@ -105,7 +190,7 @@ public sealed class UserHandlers
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        var account = await _client.RequestAsync<GetAccountReply>(
+        var account = await _client.RequestAsync(
             "api.account",
             new GetAccountRequest { AccountId = request.AccountId },
             cancellationToken);
@@ -168,7 +253,7 @@ public sealed class RefreshUserCacheHttpRequest
     public long AccountId { get; set; }
 }
 
-public sealed class GetUserRequest
+public sealed class GetUserRequest : IZLinkRequest<GetUserReply>
 {
     public long AccountId { get; set; }
 }
@@ -179,7 +264,7 @@ public sealed class GetUserReply
     public string Nickname { get; set; } = "";
 }
 
-public sealed class GetAccountRequest
+public sealed class GetAccountRequest : IZLinkRequest<GetAccountReply>
 {
     public long AccountId { get; set; }
 }
@@ -210,7 +295,7 @@ public sealed class UserCacheRefreshedEvent
 }
 ```
 
-## 3. 이 샘플을 어떻게 읽으면 되는가
+## 4. 이 샘플을 어떻게 읽으면 되는가
 
 이 샘플에서 중요한 부분은 아래 여섯 가지다.
 
@@ -228,197 +313,15 @@ service별 outbound channel이 분리되어 관리된다.
 그리고 handler class는 dispatch key가 아니라 **코드 조직 단위**다. 실제 dispatch는
 `user.get`, `item.get` 같은 메시지 이름으로 이뤄진다.
 
-## 4. client 함수 시그니처를 따로 보면
+## 5. client와 publisher 인터페이스
 
-위 예시가 전제로 하는 client 함수 시그니처는 아래와 같다.
+위 예시가 전제하는 `IZLinkClient`, `IZLinkEventPublisher`, `IZLinkRequest<TReply>`
+전체 정의는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 5와
+section 9를 참고한다.
 
-```csharp
-public interface IZLinkClient
-{
-    ValueTask SendAsync<TMessage>(
-        string serviceName,
-        TMessage message,
-        CancellationToken cancellationToken = default);
+## 6. 함수 호출 예시
 
-    ValueTask<TReply> RequestAsync<TReply>(
-        string serviceName,
-        object request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestAsync<TReply>(
-        string serviceName,
-        object request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-
-    ValueTask SendToAsync<TMessage>(
-        RoutingId targetRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        object request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        object request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-
-    ValueTask SendToSpotAsync<TMessage>(
-        RoutingId spotRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToSpotAsync<TReply>(
-        RoutingId spotRid,
-        object request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToSpotAsync<TReply>(
-        RoutingId spotRid,
-        object request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-
-    ValueTask SendToSpotAsync<TMessage>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToSpotAsync<TReply>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        object request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToSpotAsync<TReply>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        object request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkEventPublisher
-{
-    ValueTask PublishAsync<TEvent>(
-        string serviceName,
-        string topic,
-        TEvent message,
-        CancellationToken cancellationToken = default);
-}
-```
-
-함수별로 다시 풀어 쓰면 아래와 같다.
-
-```csharp
-ValueTask SendAsync<TMessage>(
-    string serviceName,
-    TMessage message,
-    CancellationToken cancellationToken = default);
-```
-
-```csharp
-ValueTask<TReply> RequestAsync<TReply>(
-    string serviceName,
-    object request,
-    CancellationToken cancellationToken = default);
-```
-
-```csharp
-ValueTask<TReply> RequestAsync<TReply>(
-    string serviceName,
-    object request,
-    TimeSpan timeout,
-    CancellationToken cancellationToken = default);
-```
-
-```csharp
-ValueTask PublishAsync<TEvent>(
-    string serviceName,
-    string topic,
-    TEvent message,
-    CancellationToken cancellationToken = default);
-```
-
-```csharp
-ValueTask SendToAsync<TMessage>(
-    RoutingId targetRid,
-    TMessage message,
-    CancellationToken cancellationToken = default);
-```
-
-```csharp
-ValueTask<TReply> RequestToAsync<TReply>(
-    RoutingId targetRid,
-    object request,
-    CancellationToken cancellationToken = default);
-```
-
-```csharp
-ValueTask<TReply> RequestToAsync<TReply>(
-    RoutingId targetRid,
-    object request,
-    TimeSpan timeout,
-    CancellationToken cancellationToken = default);
-```
-
-```csharp
-ValueTask SendToSpotAsync<TMessage>(
-    RoutingId spotRid,
-    TMessage message,
-    CancellationToken cancellationToken = default);
-```
-
-```csharp
-ValueTask<TReply> RequestToSpotAsync<TReply>(
-    RoutingId spotRid,
-    object request,
-    CancellationToken cancellationToken = default);
-```
-
-```csharp
-ValueTask<TReply> RequestToSpotAsync<TReply>(
-    RoutingId spotRid,
-    object request,
-    TimeSpan timeout,
-    CancellationToken cancellationToken = default);
-```
-
-```csharp
-ValueTask SendToSpotAsync<TMessage>(
-    RoutingId targetRid,
-    RoutingId spotRid,
-    TMessage message,
-    CancellationToken cancellationToken = default);
-```
-
-```csharp
-ValueTask<TReply> RequestToSpotAsync<TReply>(
-    RoutingId targetRid,
-    RoutingId spotRid,
-    object request,
-    CancellationToken cancellationToken = default);
-```
-
-```csharp
-ValueTask<TReply> RequestToSpotAsync<TReply>(
-    RoutingId targetRid,
-    RoutingId spotRid,
-    object request,
-    TimeSpan timeout,
-    CancellationToken cancellationToken = default);
-```
-
-현재 샘플 기준으로 일반 client 쪽 public 함수는 이 열세 개를 먼저 본다.
-
-## 5. 함수 호출 예시만 따로 보면
-
-위 시그니처는 실제 코드에서 아래처럼 호출된다.
+위 인터페이스는 실제 코드에서 아래처럼 호출된다.
 
 ```csharp
 await client.SendAsync(
@@ -428,14 +331,14 @@ await client.SendAsync(
 ```
 
 ```csharp
-var reply = await client.RequestAsync<GetProfileReply>(
+var reply = await client.RequestAsync(
     "api.profile",
     new GetProfileRequest { AccountId = accountId },
     cancellationToken);
 ```
 
 ```csharp
-var fastReply = await client.RequestAsync<GetProfileReply>(
+var fastReply = await client.RequestAsync(
     "api.profile",
     new GetProfileRequest { AccountId = accountId },
     TimeSpan.FromMilliseconds(200),
@@ -443,14 +346,7 @@ var fastReply = await client.RequestAsync<GetProfileReply>(
 ```
 
 ```csharp
-await client.SendToSpotAsync(
-    stageRid,
-    new StageNoticeMessage { Text = "start" },
-    cancellationToken);
-```
-
-```csharp
-var stageReply = await client.RequestToSpotAsync<GetStageStateReply>(
+var stageReply = await client.RequestToAsync(
     targetRid,
     stageRid,
     new GetStageStateRequest(),
@@ -476,21 +372,21 @@ await client.SendToAsync(
 ```
 
 ```csharp
-var directReply = await client.RequestToAsync<GetUserReply>(
+var directReply = await client.RequestToAsync(
     targetRid,
     new GetUserRequest { AccountId = accountId },
     cancellationToken);
 ```
 
 ```csharp
-var timedDirectReply = await client.RequestToAsync<GetUserReply>(
+var timedDirectReply = await client.RequestToAsync(
     targetRid,
     new GetUserRequest { AccountId = accountId },
     TimeSpan.FromMilliseconds(200),
     cancellationToken);
 ```
 
-## 6. handler 시그니처만 따로 보면
+## 7. handler 시그니처만 따로 보면
 
 request와 send handler는 아래 감각을 기준으로 본다.
 
@@ -557,7 +453,7 @@ public sealed class ItemGetHandler
 즉 framework가 강제하는 것은 class 구조가 아니라 "메시지 이름 하나는 하나의
 handler에만 매핑된다"는 규칙이다.
 
-## 7. HTTP handler에서 outbound만 따로 보면
+## 8. HTTP handler에서 outbound만 따로 보면
 
 기존 HTTP endpoint에서도 같은 client를 그대로 써야 한다.
 
@@ -567,7 +463,7 @@ app.MapPost("/profiles/get", async (
     IZLinkClient client,
     CancellationToken cancellationToken) =>
 {
-    var reply = await client.RequestAsync<GetUserReply>(
+    var reply = await client.RequestAsync(
         "api",
         new GetUserRequest { AccountId = request.AccountId },
         cancellationToken);

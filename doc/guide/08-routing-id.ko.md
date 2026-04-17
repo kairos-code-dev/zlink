@@ -12,8 +12,8 @@ STREAM 소켓에서 외부 클라이언트 식별에, 모니터링에서 피어 
 
 ```c
 typedef struct {
-    uint8_t size;       /* 0~255 */
-    uint8_t data[255];
+    size_t size;
+    const uint8_t *data;
 } zlink_routing_id_t;
 ```
 
@@ -25,6 +25,12 @@ typedef struct {
   helper를 함께 쓰는 것이 권장됩니다.
 - routed socket과 service 경로에서 사람이 읽을 값이 필요하면 UTF-8
   `to_text()` 또는 항상 성공하는 `to_hex()`를 사용합니다.
+- 이 타입은 바이트를 소유하지 않는 borrowed `RoutingId` view입니다.
+  오래 보관하려면 호출자가 별도로 복사해야 합니다.
+- handle에서 안정한 caller-owned bytes 복사본이 필요하면
+  `zlink_get_routing_id_bytes()`를 사용합니다.
+- raw bytes에서 borrowed view를 만들 때는 `zlink_routing_id_from_bytes()`를
+  사용합니다.
 
 ## 3. 자동 생성 규칙
 
@@ -53,8 +59,9 @@ own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 피
 
 ```c
 /* Set before bind/connect */
-const char *id = "router-A";
-zlink_set_routing_id(socket, id, strlen(id));
+static const uint8_t id_bytes[] = "router-A";
+zlink_routing_id_t id = { .size = sizeof(id_bytes) - 1, .data = id_bytes };
+zlink_set_routing_id(socket, &id);
 ```
 
 주의사항:
@@ -67,24 +74,34 @@ zlink_set_routing_id(socket, id, strlen(id));
 
 ```c
 /* Good example: meaningful identifiers */
-zlink_set_routing_id(dealer, "worker-01", 9);
-zlink_set_routing_id(dealer, "D1", 2);
+static const uint8_t worker_id_bytes[] = "worker-01";
+static const uint8_t dealer_id_bytes[] = "D1";
+zlink_routing_id_t worker_id = {
+    .size = sizeof(worker_id_bytes) - 1,
+    .data = worker_id_bytes,
+};
+zlink_routing_id_t dealer_id = {
+    .size = sizeof(dealer_id_bytes) - 1,
+    .data = dealer_id_bytes,
+};
+zlink_set_routing_id(dealer, &worker_id);
+zlink_set_routing_id(dealer, &dealer_id);
 
 /* Caution: potential collision with auto-generated routing_ids */
 /* Avoid UUID format (16B binary) */
 ```
 
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
+> 참고: `core/tests/test_router_multiple_dealers.cpp` — 여러 DEALER identity 예제
 
 ### 조회
 
 ```c
-zlink_routing_id_t rid;
+const zlink_routing_id_t *rid = NULL;
 zlink_get_routing_id(socket, &rid);
 
-printf("routing_id (%u bytes): ", rid.size);
-for (size_t i = 0; i < rid.size; ++i)
-    printf("%02x", rid.data[i]);
+printf("routing_id (%zu bytes): ", rid->size);
+for (size_t i = 0; i < rid->size; ++i)
+    printf("%02x", rid->data[i]);
 printf("\n");
 ```
 
@@ -136,7 +153,10 @@ zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* DEALER client (explicit routing_id) */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-zlink_set_routing_id(dealer, "D1", 2);
+uint8_t dealer_rid_buf[255];
+zlink_routing_id_t dealer_rid;
+zlink_routing_id_from_text("D1", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
+zlink_set_routing_id(dealer, &dealer_rid); 
 zlink_connect(dealer, endpoint);
 
 /* DEALER send */
@@ -154,11 +174,17 @@ zlink_send(dealer, &req, 1, 0);
 
 ```c
 /* DEALER 1: routing_id = "D1" */
-zlink_set_routing_id(dealer1, "D1", 2);
+uint8_t dealer1_rid_buf[255];
+zlink_routing_id_t dealer1_rid;
+zlink_routing_id_from_text("D1", dealer1_rid_buf, sizeof(dealer1_rid_buf), &dealer1_rid);
+zlink_set_routing_id(dealer1, &dealer1_rid); 
 zlink_connect(dealer1, endpoint);
 
 /* DEALER 2: routing_id = "D2" */
-zlink_set_routing_id(dealer2, "D2", 2);
+uint8_t dealer2_rid_buf[255];
+zlink_routing_id_t dealer2_rid;
+zlink_routing_id_from_text("D2", dealer2_rid_buf, sizeof(dealer2_rid_buf), &dealer2_rid);
+zlink_set_routing_id(dealer2, &dealer2_rid); 
 zlink_connect(dealer2, endpoint);
 
 /* ROUTER handler distinguishes clients by source_rid */
@@ -299,7 +325,10 @@ void on_message(const zlink_routing_id_t *source_rid,
 사용자가 설정한 routing_id가 ASCII 문자열이면 직접 출력 가능.
 
 ```c
-zlink_set_routing_id(dealer, "D1", 2);
+uint8_t dealer_rid_buf[255];
+zlink_routing_id_t dealer_rid;
+zlink_routing_id_from_text("D1", dealer_rid_buf, sizeof(dealer_rid_buf), &dealer_rid);
+zlink_set_routing_id(dealer, &dealer_rid); 
 
 /* In ROUTER handler callback */
 void on_message(const zlink_routing_id_t *source_rid,
@@ -319,9 +348,9 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ```c
 /* Query the auto-assigned routing_id after socket creation */
-zlink_routing_id_t rid;
+const zlink_routing_id_t *rid = NULL;
 zlink_get_routing_id(socket, &rid);
-printf("Auto-generated routing_id: %u bytes\n", rid.size);  /* 16 bytes (UUID) */
+printf("Auto-generated routing_id: %zu bytes\n", rid->size);  /* 16 bytes (UUID) */
 ```
 
 ## 9. 바이너리 처리 원칙

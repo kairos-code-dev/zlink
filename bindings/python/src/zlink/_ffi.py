@@ -17,7 +17,10 @@ class ZlinkMsg(ctypes.Union):
 
 
 class ZlinkRoutingId(ctypes.Structure):
-    _fields_ = [("size", ctypes.c_uint8), ("data", ctypes.c_uint8 * 255)]
+    _fields_ = [
+        ("size", ctypes.c_size_t),
+        ("data", ctypes.POINTER(ctypes.c_uint8)),
+    ]
 
 
 class ZlinkMonitorEvent(ctypes.Structure):
@@ -509,17 +512,22 @@ class _Lib:
         )
         self._require(
             "zlink_set_routing_id",
-            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_get_routing_id",
             [ctypes.c_void_p, ctypes.POINTER(ZlinkRoutingId)],
             ctypes.c_int,
         )
         self._require(
+            "zlink_get_routing_id",
+            [ctypes.c_void_p, ctypes.POINTER(ctypes.POINTER(ZlinkRoutingId))],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_routing_id_from_u32",
-            [ctypes.POINTER(ZlinkRoutingId), ctypes.c_uint32],
+            [
+                ctypes.c_uint32,
+                ctypes.POINTER(ctypes.c_uint8),
+                ctypes.c_size_t,
+                ctypes.POINTER(ZlinkRoutingId),
+            ],
             ctypes.c_int,
         )
         self._require(
@@ -529,7 +537,12 @@ class _Lib:
         )
         self._require(
             "zlink_routing_id_from_text",
-            [ctypes.POINTER(ZlinkRoutingId), ctypes.c_char_p],
+            [
+                ctypes.c_char_p,
+                ctypes.POINTER(ctypes.c_uint8),
+                ctypes.c_size_t,
+                ctypes.POINTER(ZlinkRoutingId),
+            ],
             ctypes.c_int,
         )
         self._require(
@@ -593,7 +606,7 @@ class _Lib:
             "zlink_recv",
             [
                 ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ctypes.POINTER(ZlinkRoutingId)),
                 ctypes.POINTER(ctypes.POINTER(ZlinkMsg)),
                 ctypes.POINTER(ctypes.c_size_t),
                 ctypes.c_uint32,
@@ -615,7 +628,7 @@ class _Lib:
             "zlink_subscribe",
             [
                 ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ctypes.POINTER(ZlinkRoutingId)),
                 ctypes.POINTER(ctypes.POINTER(ZlinkMsg)),
                 ctypes.POINTER(ctypes.c_size_t),
                 ctypes.POINTER(ctypes.c_char),
@@ -628,7 +641,7 @@ class _Lib:
             "zlink_subscription_event",
             [
                 ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ctypes.POINTER(ZlinkRoutingId)),
                 ctypes.POINTER(ctypes.c_int),
                 ctypes.POINTER(ctypes.c_char),
                 ctypes.POINTER(ctypes.c_size_t),
@@ -974,7 +987,7 @@ class _Lib:
             "zlink_spot_subscribe",
             [
                 ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ctypes.POINTER(ZlinkRoutingId)),
                 ctypes.POINTER(ctypes.POINTER(ZlinkMsg)),
                 ctypes.POINTER(ctypes.c_size_t),
                 ctypes.POINTER(ctypes.c_char),
@@ -989,7 +1002,7 @@ class _Lib:
             "zlink_spot_subscription_event",
             [
                 ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ctypes.POINTER(ZlinkRoutingId)),
                 ctypes.POINTER(ctypes.c_int),
                 ctypes.POINTER(ctypes.c_char),
                 ctypes.POINTER(ctypes.c_size_t),
@@ -1087,8 +1100,8 @@ class _Lib:
             "zlink_spot_recv",
             [
                 ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRoutingId),
-                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ctypes.POINTER(ZlinkRoutingId)),
+                ctypes.POINTER(ctypes.POINTER(ZlinkRoutingId)),
                 ctypes.POINTER(ctypes.c_uint64),
                 ctypes.POINTER(ctypes.POINTER(ZlinkMsg)),
                 ctypes.POINTER(ctypes.c_size_t),

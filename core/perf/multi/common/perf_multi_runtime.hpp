@@ -202,7 +202,7 @@ inline int zlink_subscribe(void *sub_,
 {
     return ::zlink_subscribe(
       sub_,
-      NULL,
+      static_cast<const zlink_routing_id_t **>(NULL),
       parts_,
       part_count_,
       topic_id_out_,

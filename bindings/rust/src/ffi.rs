@@ -21,8 +21,8 @@ pub struct zlink_msg_t {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct zlink_routing_id_t {
-    pub size: u8,
-    pub data: [u8; 255],
+    pub size: usize,
+    pub data: *mut u8,
 }
 
 pub type zlink_free_fn = unsafe extern "C" fn(data: *mut c_void, hint: *mut c_void);
@@ -791,16 +791,23 @@ unsafe extern "C" {
         handle: *mut c_void,
         state: *mut zlink_admission_state_t,
     ) -> c_int;
-    pub fn zlink_set_routing_id(handle: *mut c_void, data: *const c_void, size: usize) -> c_int;
-    pub fn zlink_get_routing_id(handle: *mut c_void, out: *mut zlink_routing_id_t) -> c_int;
-    pub fn zlink_routing_id_from_u32(out: *mut zlink_routing_id_t, value: u32) -> c_int;
+    pub fn zlink_set_routing_id(handle: *mut c_void, routing_id: *const zlink_routing_id_t) -> c_int;
+    pub fn zlink_get_routing_id(handle: *mut c_void, out: *mut *const zlink_routing_id_t) -> c_int;
+    pub fn zlink_routing_id_from_u32(
+        value: u32,
+        buf: *mut u8,
+        buf_cap: usize,
+        out: *mut zlink_routing_id_t,
+    ) -> c_int;
     pub fn zlink_routing_id_to_u32(
         rid: *const zlink_routing_id_t,
         value_out: *mut u32,
     ) -> c_int;
     pub fn zlink_routing_id_from_text(
-        out: *mut zlink_routing_id_t,
         text: *const c_char,
+        buf: *mut u8,
+        buf_cap: usize,
+        out: *mut zlink_routing_id_t,
     ) -> c_int;
     pub fn zlink_routing_id_to_text(
         rid: *const zlink_routing_id_t,
@@ -969,7 +976,7 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_recv(
         socket: *mut c_void,
-        source_rid_out: *mut zlink_routing_id_t,
+        source_rid_out: *mut *const zlink_routing_id_t,
         parts_out: *mut *mut zlink_msg_t,
         part_count_out: *mut usize,
         flags: zlink_send_flags_t,
@@ -994,7 +1001,7 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_subscribe(
         subject: *mut c_void,
-        source_rid_out: *mut zlink_routing_id_t,
+        source_rid_out: *mut *const zlink_routing_id_t,
         parts_out: *mut *mut zlink_msg_t,
         part_count_out: *mut usize,
         topic_id_out: *mut c_char,
@@ -1003,7 +1010,7 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_subscription_event(
         subject: *mut c_void,
-        source_rid_out: *mut zlink_routing_id_t,
+        source_rid_out: *mut *const zlink_routing_id_t,
         subscribed_out: *mut c_int,
         topic_id_out: *mut c_char,
         topic_id_len_out: *mut usize,
@@ -1095,7 +1102,7 @@ unsafe extern "C" {
     pub fn zlink_discovery_resolve_spot(
         discovery: *mut c_void,
         spot_rid: *const zlink_routing_id_t,
-        owner_node_rid_out: *mut zlink_routing_id_t,
+        owner_node_rid_out: *mut *const zlink_routing_id_t,
     ) -> c_int;
     pub fn zlink_discovery_set_dealer_peer_mode(discovery: *mut c_void, mode: u32) -> c_int;
     pub fn zlink_discovery_destroy(discovery_p: *mut *mut c_void) -> c_int;
@@ -1215,7 +1222,7 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_spot_subscribe(
         spot: *mut c_void,
-        source_rid_out: *mut zlink_routing_id_t,
+        source_rid_out: *mut *const zlink_routing_id_t,
         parts_out: *mut *mut zlink_msg_t,
         part_count_out: *mut usize,
         service_name_out: *mut c_char,
@@ -1226,7 +1233,7 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_spot_subscription_event(
         spot: *mut c_void,
-        source_rid_out: *mut zlink_routing_id_t,
+        source_rid_out: *mut *const zlink_routing_id_t,
         subscribed_out: *mut c_int,
         service_name_out: *mut c_char,
         service_name_len_out: *mut usize,

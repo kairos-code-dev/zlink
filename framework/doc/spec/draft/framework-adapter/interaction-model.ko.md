@@ -22,14 +22,17 @@
 
 ## 2. 제안하는 공용 상호작용 모델
 
-| 모델 | 설명 | 기본 내부 매핑 초안 | 1차 우선순위 |
-|------|------|---------------------|--------------|
-| `request-response` | 요청 하나에 응답 하나가 돌아온다 | `ROUTER <-> ROUTER`, 필요하면 routed `SPOT` request/reply | 높음 |
-| `command` | 응답을 기다리지 않는 one-way 전송 | `ROUTER <-> ROUTER` send 또는 `SPOT` routed send | 높음 |
-| `publish-subscribe` | 발행자와 구독자가 느슨하게 연결된다 | `PUB/SUB` 또는 `SPOT` | 높음 |
-| `stream` | 연결 수명 위에서 packet 또는 session 단위로 처리한다 | `STREAM` | 높음 |
-| `worker-dispatch` | 여러 worker 중 하나가 처리한다 | 별도 조합 모델 | 중간 |
-| `scatter-gather` | 여러 대상에 요청을 보내고 결과를 모은다 | 여러 `request-response` 조합 | 낮음 |
+| 모델 | 설명 | 1차 우선순위 |
+|------|------|--------------|
+| `request-response` | 요청 하나에 응답 하나가 돌아온다 | 높음 |
+| `command` | 응답을 기다리지 않는 one-way 전송 | 높음 |
+| `publish-subscribe` | 발행자와 구독자가 느슨하게 연결된다 | 높음 |
+| `stream` | 연결 수명 위에서 packet 또는 session 단위로 처리한다 | 높음 |
+| `worker-dispatch` | 여러 worker 중 하나가 처리한다 | 중간 |
+| `scatter-gather` | 여러 대상에 요청을 보내고 결과를 모은다 | 낮음 |
+
+각 모델이 어떤 내부 transport에 매핑되는지는
+[service-topology.ko.md](./service-topology.ko.md)의 section 3을 참고한다.
 
 ## 3. 모델별 기본 의미
 
@@ -42,16 +45,18 @@
   `ROUTER <-> ROUTER`다.
 - 같은 모델을 `SPOT`의 routed request/reply 위에 올려 설명해야 하는 경우도
   있다.
-- 다만 `router rid` direct 전송과 `spot rid` 전송은 주소 체계가 달라서,
-  framework 공용 표면에서도 `RequestTo(...)`와 `RequestToSpot(...)`를 구분하는
-  편이 더 자연스러울 수 있다.
+- 다만 `router rid` direct 전송과 `spot` 전송은 주소 체계가 다르다.
+  `spot`으로 보낼 때는 `targetRid`와 `spotRid`를 함께 알아야 하므로,
+  framework 공용 표면은 별도 함수 이름보다 `RequestTo(...)` 오버로드로 구분하는
+  편이 더 자연스럽다.
 
 ### 3.2 command
 
 - 호출자는 성공적으로 전송됐는지만 확인하거나, 그마저도 느슨하게 다룰 수 있다.
 - 작업 위임, 후처리 트리거, 간단한 signal에 적합하다.
 - 현재 framework 초안의 기본 서버 간 send 토대는 `ROUTER <-> ROUTER`다.
-- 이 모델도 `SendTo(...)`와 `SendToSpot(...)` 둘 다 설명할 수 있어야 한다.
+- 이 모델도 `SendTo(...)` 오버로드만으로 `router rid` direct 전송과 `spot`
+  대상 전송을 함께 설명할 수 있어야 한다.
 
 ### 3.3 publish-subscribe
 
@@ -81,8 +86,9 @@
 
 ## 4. 기본 원칙
 
-- framework가 직접 통합할 transport 축은 `ROUTER <-> ROUTER`, `SPOT`,
-  `PUB/SUB`, `STREAM` 네 가지로 한정한다.
+- framework가 직접 통합할 transport 축은 네 가지로 한정한다. 구체적인 축
+  정의는 [overview.ko.md](./overview.ko.md)의 section 2를, 각 모델과의 매핑은
+  [service-topology.ko.md](./service-topology.ko.md)의 section 3을 참고한다.
 - 서버 간 `send/request`는 프레임워크 사용자에게 HTTP handler 매핑과 비슷한
   방식으로 보여야 한다.
 - 이 경로에서 wire header는 공용 handler 시그니처에 직접 노출하지 않는다.
@@ -93,8 +99,9 @@
   운반층으로도 쓸 수 있다. 다만 framework 공용 이름은 여전히 socket 이름보다
   상호작용 의미를 먼저 드러내야 한다.
 - `server -> spot`, `spot -> server`, `spot -> spot`은 모두 가능해야 한다.
-  다만 `spot` 주소는 `router rid`와 다르므로, 함수 이름도 `SendToSpot` /
-  `RequestToSpot`처럼 분리하는 방향이 더 명확할 수 있다.
+  다만 `spot` 주소는 `router rid`와 다르므로, `SendTo(...)` / `RequestTo(...)`
+  오버로드에서 `targetRid, spotRid`를 함께 받는 방식으로 구분하는 편이 더
+  명확하다.
 - 같은 내부 topology를 쓰더라도, use case가 다르면 공용 이름도 다르게 둔다.
   예를 들어 `request-response`와 `worker-dispatch`는 둘 다 어떤 routed transport
   위에 올릴 수 있어도, 같은 개념으로 설명하지 않는다.

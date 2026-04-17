@@ -42,13 +42,21 @@ typedef struct zlink_msg_t
 ```c
 typedef struct zlink_routing_id_t
 {
-    uint8_t size;
-    uint8_t data[255];
+    size_t size;
+    const uint8_t *data;
 } zlink_routing_id_t;
 ```
 
 `zlink_routing_id_t`는 `ROUTER` 소켓이 특정 피어에 주소를 지정하는 데 사용하는
-라우팅 아이덴티티를 전달합니다. `size`는 `data`에서 유효한 바이트 수를 나타냅니다.
+라우팅 아이덴티티를 전달합니다. 이 타입은 바이트 열 자체를 소유하지 않는 borrowed
+view입니다. `size`는 `data`에서 유효한 바이트 수를 나타내며, `data == NULL`이면
+`size`는 0이어야 합니다.
+
+안정한 호출자 소유 복사본이 필요하면 `zlink_get_routing_id_bytes()`를 사용하고,
+borrowed 접근이 필요하면 `zlink_get_routing_id()`를 사용합니다. raw bytes에서
+`RoutingId`를 만들 때는 `zlink_routing_id_from_bytes()`를 사용합니다. 텍스트
+helper는 사람이 읽는 UTF-8 routing id에만 쓰고, 공개 canonical은 항상 bytes로
+취급합니다.
 
 ```c
 typedef void (zlink_free_fn) (void *data_, void *hint_);

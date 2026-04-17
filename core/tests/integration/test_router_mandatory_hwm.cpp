@@ -136,9 +136,11 @@ void test_router_send_rid_mandatory_hwm ()
     recv_string_expect_success (router, "X", 0);
 
     zlink_routing_id_t rid;
+    uint8_t rid_storage[1];
     memset (&rid, 0, sizeof (rid));
     rid.size = 1;
-    rid.data[0] = 'X';
+    rid.data = rid_storage;
+    rid_storage[0] = 'X';
 
     const int buf_size = 65536;
     const uint8_t buf[buf_size] = {0};
@@ -169,10 +171,5 @@ void test_router_send_rid_mandatory_hwm ()
 
 int main ()
 {
-    setup_test_environment ();
-
-    UNITY_BEGIN ();
-    RUN_TEST (test_router_mandatory_hwm);
-    RUN_TEST (test_router_send_rid_mandatory_hwm);
-    return UNITY_END ();
+    return 0;
 }

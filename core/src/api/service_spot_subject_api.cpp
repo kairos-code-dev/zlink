@@ -15,14 +15,21 @@ int zlink_service_publish_internal (void *subject_,
 }
 
 int zlink_service_subscribe_recv_internal (void *subject_,
-                                           zlink_routing_id_t *source_rid_out_,
+                                           const zlink_routing_id_t **source_rid_out_,
                                            zlink_msg_t **parts_out_,
                                            size_t *part_count_out_,
                                            char *topic_id_out_,
                                            size_t *topic_id_len_out_,
                                            zlink_send_flags_t flags_)
 {
-    return spot_subject_recv (subject_, source_rid_out_, parts_out_,
-                              part_count_out_, topic_id_out_, topic_id_len_out_,
-                              flags_);
+    static thread_local zlink_routing_id_t source_rid_value;
+    zlink_routing_id_t *source_rid_value_out =
+      source_rid_out_ ? &source_rid_value : NULL;
+    const int rc = spot_subject_recv (subject_, source_rid_value_out,
+                                      parts_out_, part_count_out_,
+                                      topic_id_out_, topic_id_len_out_,
+                                      flags_);
+    if (source_rid_out_)
+        *source_rid_out_ = rc == 0 ? source_rid_value_out : NULL;
+    return rc;
 }

@@ -406,14 +406,18 @@ def _copy_routing_id(routing_id):
         raise ValueError("routing_id length must be at most 255 bytes")
     native = ZlinkRoutingId()
     native.size = size
+    buf_type = ctypes.c_uint8 * max(size, 1)
+    backing = buf_type()
     for index in range(size):
-        native.data[index] = view[index]
+        backing[index] = view[index]
+    native.data = ctypes.cast(backing, ctypes.POINTER(ctypes.c_uint8))
+    native._keepalive = backing
     return native
 
 
 def _validated_routing_id_bytes(routing_id):
     native = _copy_routing_id(routing_id)
-    return bytes(native.data[: native.size])
+    return ctypes.string_at(native.data, native.size)
 
 
 def _routing_id_struct(routing_id):
@@ -426,27 +430,40 @@ def _routing_id_from_text(text):
     if not isinstance(text, str):
         raise TypeError("value must be a string")
     native = ZlinkRoutingId()
-    rc = lib().zlink_routing_id_from_text(ctypes.byref(native), text.encode("utf-8"))
+    encoded = text.encode("utf-8")
+    buf_type = ctypes.c_uint8 * max(len(encoded), 1)
+    backing = buf_type()
+    rc = lib().zlink_routing_id_from_text(
+        encoded,
+        backing,
+        len(encoded) if encoded else 1,
+        ctypes.byref(native),
+    )
+    native._keepalive = backing
     if rc != 0:
         errno_code = lib().zlink_errno()
         if errno_code == _errno.EINVAL:
             raise ValueError("routing id text must be non-empty UTF-8")
         _raise_result_error(ConfigError, ConfigResult, rc, errno_code)
-    return bytes(native.data[: native.size])
+    return ctypes.string_at(native.data, native.size)
 
 
 def _routing_id_from_u32(value):
     native = ZlinkRoutingId()
+    backing = (ctypes.c_uint8 * 4)()
     rc = lib().zlink_routing_id_from_u32(
-        ctypes.byref(native),
         ctypes.c_uint32(_validated_uint32(value)),
+        backing,
+        4,
+        ctypes.byref(native),
     )
+    native._keepalive = backing
     if rc != 0:
         errno_code = lib().zlink_errno()
         if errno_code == _errno.EINVAL:
             raise ValueError("routing id conversion failed")
         _raise_result_error(ConfigError, ConfigResult, rc, errno_code)
-    return bytes(native.data[: native.size])
+    return ctypes.string_at(native.data, native.size)
 
 
 def _routing_id_to_u32(routing_id):
@@ -582,10 +599,16 @@ def _close_multipart(parts_ptr, part_count):
 
 
 def _routing_id_bytes(routing_id):
-    raw = bytes(routing_id.data[: routing_id.size])
+    raw = ctypes.string_at(routing_id.data, routing_id.size) if routing_id.size else b""
     if not raw:
         return None
     return RoutingId(raw)
+
+
+def _routing_id_bytes_from_ptr(routing_id_ptr):
+    if not routing_id_ptr:
+        return None
+    return _routing_id_bytes(routing_id_ptr.contents)
 
 
 def _is_eagain(exc):
@@ -636,7 +659,7 @@ class _ReceivedPartsOwner:
 
 
 def _recv_native_parts(handle, flags):
-    routing_id = ZlinkRoutingId()
+    routing_id = ctypes.POINTER(ZlinkRoutingId)()
     parts = ctypes.POINTER(ZlinkMsg)()
     part_count = ctypes.c_size_t()
     rc = lib().zlink_recv(
@@ -648,7 +671,7 @@ def _recv_native_parts(handle, flags):
     )
     if rc != 0:
         _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
-    return _routing_id_bytes(routing_id), _ReceivedPartsOwner(
+    return _routing_id_bytes_from_ptr(routing_id), _ReceivedPartsOwner(
         parts, int(part_count.value)
     )
 

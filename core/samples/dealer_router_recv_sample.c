@@ -57,7 +57,7 @@ int main (void)
     rc = zlink_send_rid (router, source_node_rid, &reply, 1, 0);
     assert (rc == 0);
 
-    zlink_routing_id_t echo_rid;
+    const zlink_routing_id_t *echo_rid = NULL;
     zlink_msg_t *echo_parts = NULL;
     size_t echo_count = 0;
     rc = zlink_recv (dealer, &echo_rid, &echo_parts, &echo_count, 0);

@@ -93,7 +93,7 @@ int recv_pubsub_header_flags (void *subscriber_,
     char topic[256];
     size_t topic_len = sizeof (topic);
     const int rc = zlink_subscribe (
-      subscriber_, NULL, &parts, &part_count, topic, &topic_len,
+      subscriber_, (const zlink_routing_id_t **) NULL, &parts, &part_count, topic, &topic_len,
       static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0) {
         const int err = zlink_errno ();

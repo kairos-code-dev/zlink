@@ -9,8 +9,13 @@
 
 ## 1. 목적
 
-이 초안은 `routing_id`의 공개 표현을 전부 **바이트 열**로 통일하고,
-응용이 자주 쓰는 정수/문자열 변환 함수를 함께 정의하는 방향을 설명한다.
+이 초안은 `routing_id`의 공개 표현을 바이트 열로 해석하고, 그 위에서 쓰는
+정수/문자열 변환 규칙을 정리한다.
+
+이 문서는 helper 의미와 실패 규칙에 집중한다. C ABI, receive 수명 규칙,
+binding public receive surface는
+[`routing-id-borrowed-routingid.ko.md`](routing-id-borrowed-routingid.ko.md)를
+우선 기준으로 본다.
 
 핵심 목표는 아래와 같다.
 
@@ -33,8 +38,8 @@
 
 이 초안은 이 문제를 아래처럼 풀려고 한다.
 
-- **공개 운반 형태는 전부 바이트 열로 통일한다.**
-- 대신 **정수/문자열 변환 helper**를 명시적으로 제공한다.
+- 공개 운반 형태는 바이트 열로 본다.
+- 정수/문자열 해석은 helper 규칙으로 분리한다.
 
 즉 "운반 타입은 하나로 유지하고, 해석 helper를 추가한다"는 방향이다.
 
@@ -46,29 +51,23 @@
 - `STREAM`도 예외를 두지 않는다. 다만 `STREAM routing_id`는 관례상 4바이트 값으로 다룬다.
 - 일반 routed socket과 service 계열의 `routing_id`는 여전히 opaque bytes로 본다.
 - 응용 편의를 위해 `u32`, `text`, `hex` 변환 helper를 둔다.
-- C API에도 공통 규칙을 설명하는 helper를 둘 수 있지만, 각 binding은 언어별로 직접
-  구현해도 된다.
+- core C는 공통 규칙을 설명하는 helper를 둘 수 있다.
+- binding은 같은 규칙을 따르되, public 변환 API는 각 binding의 `RoutingId`
+  타입에 흡수한다.
 
-## 4. canonical 표현
+## 4. canonical 의미
 
-canonical 표현은 계속 아래 타입을 사용한다.
-
-```c
-typedef struct zlink_routing_id_t
-{
-    uint8_t size;
-    uint8_t data[255];
-} zlink_routing_id_t;
-```
-
-이 초안은 공개 계약을 아래처럼 해석한다.
+이 초안은 canonical 의미를 아래처럼 해석한다.
 
 - `routing_id`의 본질은 **길이가 있는 바이트 열**이다.
 - 이 바이트 열의 의미는 socket 종류나 사용 맥락에 따라 달라질 수 있다.
 - 공개 API는 그 의미를 강제로 문자열이나 정수로 고정하지 않는다.
 
 즉 canonical 타입은 "이 값이 문자열인지, 정수인지, UUID인지"를 스스로 설명하지
-않는다. 그 해석은 helper 함수가 맡는다.
+않는다. 그 해석은 helper 함수나 `RoutingId` 변환 메서드가 맡는다.
+
+구체적인 C ABI shape는 이 문서의 범위가 아니다.
+그 부분은 borrowed `RoutingId` draft를 기준으로 따로 정한다.
 
 ## 5. socket별 의미
 
@@ -119,7 +118,6 @@ bytes = 01 02 03 04
 
 - `from_text`
 - `to_text`
-- 필요하면 `to_text_lossy`
 
 규칙은 아래와 같다.
 
@@ -129,7 +127,9 @@ bytes = 01 02 03 04
   이 초안은 기본적으로 `from_text("")`는 허용하지 않는 방향을 권장한다.
   다만 raw bytes 경로는 API가 돌려주는 빈 routing id를 그대로 다룰 수 있어야 한다.
 - `to_text`는 유효한 UTF-8일 때만 성공한다.
-- 디버그와 운영 편의를 위해 실패하지 않는 `to_text_lossy` 변형을 둘 수 있다.
+
+이 초안은 `to_text_lossy` 같은 별도 public 변환 API는 기본 규칙에 넣지 않는다.
+문자열 해석이 실패하면 `to_hex`를 fallback으로 쓰는 쪽을 기준으로 본다.
 
 ### 6.3 표시용 변환
 
@@ -141,26 +141,21 @@ bytes = 01 02 03 04
 
 ## 7. C API 방향
 
-이 초안은 C API에도 아래 helper를 둘 수 있다고 본다.
-아래 시그니처는 **형태 예시**이며, 정확한 buffer 규약은 구현 단계에서 확정한다.
+이 초안은 core C helper의 의미를 아래처럼 본다.
+정확한 시그니처와 buffer 규약은 borrowed `RoutingId` draft를 따른다.
 
 ```c
 zlink_config_result_t zlink_routing_id_from_u32 (
-  zlink_routing_id_t *out_,
-  uint32_t value_);
+  ...);
 
 zlink_config_result_t zlink_routing_id_to_u32 (
-  const zlink_routing_id_t *rid_,
-  uint32_t *value_out_);
+  ...);
 
 zlink_config_result_t zlink_routing_id_from_text (
-  zlink_routing_id_t *out_,
-  const char *text_);
+  ...);
 
 zlink_config_result_t zlink_routing_id_to_text (
-  const zlink_routing_id_t *rid_,
-  char *buf_,
-  size_t *buf_len_);
+  ...);
 ```
 
 다만 이 초안의 핵심은 "반드시 C API helper만 써야 한다"가 아니다.
@@ -168,13 +163,14 @@ zlink_config_result_t zlink_routing_id_to_text (
 핵심은 아래 두 가지다.
 
 - canonical encoding rule이 문서로 고정되어야 한다.
-- 바인딩과 C API가 같은 규칙을 따라야 한다.
+- core helper와 binding `RoutingId` 메서드가 같은 규칙을 따라야 한다.
 
 즉 C API helper는 공통 기준을 제공하는 한 방법일 뿐이다.
 
 ## 8. binding 구현 원칙
 
-이 초안은 binding helper를 **각 언어에서 직접 구현하는 방향**을 권장한다.
+이 초안은 binding 변환 규칙을 **각 언어의 `RoutingId` 타입 안에서 직접 구현하는
+방향**을 권장한다.
 
 그 이유는 아래와 같다.
 
@@ -190,11 +186,20 @@ zlink_config_result_t zlink_routing_id_to_text (
 - 예외, `Result`, `TypeError` 같은 에러 방식을 언어에 맞출 수 있다.
 - 테스트도 바인딩 단위에서 간단하게 작성할 수 있다.
 
-즉 규칙은 공통으로 두되, 구현은 바인딩별로 둘 수 있다.
+즉 규칙은 공통으로 두되, 구현은 바인딩별 `RoutingId`에 둔다.
+
+이 문서는 별도 public helper 계층을 권장하지 않는다.
+예를 들어 아래 성격의 public API는 정리 대상이다.
+
+- `routing_id_from_u32(...)`
+- `routing_id_to_u32(...)`
+- `routing_id_to_text(...)`
+- `routing_id_to_hex(...)`
+- `RoutingIdHelper`, `RoutingIdCodec`, `routing_id_utils`
 
 ## 9. 권장 API 모양
 
-이 초안은 아래처럼 "raw bytes + conversion helper" 구성을 권장한다.
+이 초안은 아래처럼 "`RoutingId` + 변환 메서드" 구성을 권장한다.
 
 ### 9.1 공통 개념
 
@@ -266,17 +271,18 @@ impl RoutingId {
 ```ts
 class RoutingId {
   static fromBytes(bytes: Buffer | Uint8Array): RoutingId;
-  static fromUInt32(value: number): RoutingId;
-  static fromString(text: string): RoutingId;
+  static fromU32(value: number): RoutingId;
+  static fromText(text: string): RoutingId;
   toBytes(): Buffer;
-  toUInt32(): number;
-  toStringUtf8(): string;
+  toU32(): number;
+  toText(): string;
   toHex(): string;
 }
 ```
 
-이 예시는 helper의 성격을 설명하기 위한 것이며, 최종 이름과 예외 방식은 언어별
-binding spec에서 조정할 수 있다.
+이 예시는 helper의 성격을 설명하기 위한 것이다.
+최종 이름과 예외 방식은 언어별 binding spec에서 조정할 수 있지만, 변환 기능은
+독립 helper가 아니라 `RoutingId` 타입에 붙는 것을 기준으로 본다.
 
 ## 10. error 규칙
 
@@ -331,9 +337,7 @@ to_hex(peer_rid) = "a1ff0013"
 
 1. draft를 확정한다.
 2. core/C spec에 canonical rule을 반영한다.
-3. binding spec은
-   [`binding-routing-id-marshaling.ko.md`](binding-routing-id-marshaling.ko.md)
-   방향으로 helper surface를 구체화한다.
+3. binding spec은 `RoutingId` 타입 정의 안에 helper surface를 구체화한다.
 4. C API helper가 필요하면 추가한다.
 5. 각 binding은 같은 규칙으로 helper를 직접 구현한다.
 6. guide와 sample은 raw bytes만 직접 만지는 예제를 줄이고 helper 사용 예제로 옮긴다.

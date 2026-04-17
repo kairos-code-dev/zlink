@@ -328,7 +328,10 @@ inline int zlink_recv (void *s_,
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     const zlink_recv_result_t rc = ::zlink_recv (
-      s_, NULL, &parts, &part_count,
+      s_,
+      static_cast<const zlink_routing_id_t **> (NULL),
+      &parts,
+      &part_count,
       static_cast<zlink_recv_flags_t> (flags_));
     if (rc != ZLINK_RECV_OK)
         return -1;
@@ -350,7 +353,11 @@ inline int zlink_subscribe (void *subject_,
                             char *topic_id_out_,
                             size_t *topic_id_len_)
 {
-    return ::zlink_subscribe (subject_, NULL, parts_, part_count_,
+    return ::zlink_subscribe (
+      subject_,
+      static_cast<const zlink_routing_id_t **> (NULL),
+      parts_,
+      part_count_,
                               topic_id_out_, topic_id_len_,
                               static_cast<zlink_recv_flags_t> (flags_));
 }

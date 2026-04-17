@@ -44,7 +44,9 @@ handler/controller 안에서도 똑같이 쓸 수 있어야 한다.
 
 ### 3.1 서비스 등록
 
-현재 초안은 아래 같은 등록 모양을 우선 가정한다.
+현재 초안은 자동 연결과 수동 연결을 둘 다 열어 두는 편을 우선 가정한다.
+
+자동 연결 예시는 아래와 같다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -61,6 +63,32 @@ builder.Services.AddZLinkFramework(options =>
 
 이 등록은 framework 전역 runtime, service channel factory, codec registry의 기본
 구성을 맡는다.
+
+수동 연결 예시는 아래와 같이 둘 수 있다.
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.ServiceId = "api";
+    options.NodeName = "api-1";
+
+    options.ConfigureManualConnections(connections =>
+    {
+        connections.Add("api.profile", peers =>
+        {
+            peers.Connect(
+                targetRid: RoutingId.Parse("01HZX..."),
+                endpoint: "tcp://10.0.10.15:7101");
+        });
+    });
+});
+```
+
+이 경우 framework는 `Discovery`를 강제하지 않는다. service별 channel이 수동으로
+주어진 peer 목록만 기준으로 연결을 관리한다.
+
+필요하면 두 방식을 함께 둘 수도 있다. 즉 자동 연결과 수동 연결은 서로 배타적
+기능이라기보다, service channel이 함께 가질 수 있는 두 종류의 연결 소스에 가깝다.
 
 ### 3.2 outbound client 등록
 
@@ -95,6 +123,11 @@ builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
 [ZLinkSend("profile.refresh-cache")]
 ```
 
+이 등록 모델에서 중요한 점은 handler 인스턴스 생성도 `.NET DI`가 맡는다는 것이다.
+즉 framework는 매핑만 잡고, 실제 handler 객체는 `IServiceProvider`를 통해 resolve
+한다. 따라서 constructor injection은 일반 `ASP.NET Core` 서비스와 같은 방식으로
+동작해야 한다.
+
 여기서 `serviceId`는 route prefix가 아니라 앱이 속한 서버군 식별자이므로,
 handler class attribute보다 등록 옵션에 두는 편을 현재 방향으로 본다.
 
@@ -121,7 +154,7 @@ public sealed class UserHandlers
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        var account = await _client.RequestAsync<GetAccountReply>(
+        var account = await _client.RequestAsync(
             "api.account",
             new GetAccountRequest { AccountId = request.AccountId },
             cancellationToken);
@@ -162,187 +195,122 @@ public sealed class CacheEventHandlers
 
 request-response와 event는 분리된 표면으로 보이는 편이 좋다.
 
-현재 기준으로는 아래 세 인터페이스를 먼저 고정하는 편이 낫다.
+### 4.3 inbound dispatch 시퀀스
 
-```csharp
-public interface IZLinkRequestHandler<in TRequest, TResponse>
-{
-    ValueTask<TResponse> HandleAsync(
-        TRequest request,
-        ZLinkRequestContext context,
-        CancellationToken cancellationToken);
-}
+아래 시퀀스는 `"profile.get"` 요청이 들어왔을 때 runtime이 handler를 찾고,
+DI로 handler를 resolve해서 응답을 돌려주는 흐름을 보여 준다. 이때 service
+channel은 `Discovery` 기반 자동 연결과 수동 연결 구성을 둘 다 가질 수 있다.
 
-public interface IZLinkSendHandler<in TMessage>
-{
-    ValueTask HandleAsync(
-        TMessage message,
-        ZLinkSendContext context,
-        CancellationToken cancellationToken);
-}
+```mermaid
+sequenceDiagram
+    autonumber
+    participant RP as Remote Peer
+    participant RT as ZLink Runtime
+    participant CH as Service Channel
+    participant DISC as Discovery
+    participant MC as Manual Connections
+    participant DSP as Dispatcher
+    participant REG as Handler Registry
+    participant CODEC as Codec
+    participant PIPE as Handler Filter Pipeline
+    participant SCOPE as IServiceScope
+    participant SP as IServiceProvider
+    participant H as ProfileHandlers
+    participant SVC as IProfileService
 
-public interface IZLinkClient
-{
-    ValueTask SendAsync<TMessage>(
-        string serviceName,
-        TMessage message,
-        CancellationToken cancellationToken = default);
+    Note over RT,MC: startup or first-use stage
+    RT->>CH: GetOrCreateChannel("api.profile")
+    alt discovery-based connection
+        CH->>DISC: Attach service view("api.profile")
+        DISC-->>CH: provider rid set / endpoint updates
+    else manual connection
+        CH->>MC: Load configured peers/endpoints
+        MC-->>CH: target rid + endpoint set
+    end
+    Note over CH: channel can support both modes
 
-    ValueTask<TResponse> RequestAsync<TResponse>(
-        string serviceName,
-        object request,
-        CancellationToken cancellationToken = default);
+    RP->>RT: request frame(pattern=profile.get, body, headers)
+    RT->>CH: Select inbound session / validate route
+    CH-->>RT: session ready
 
-    ValueTask<TResponse> RequestAsync<TResponse>(
-        string serviceName,
-        object request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
+    RT->>DSP: OnRequest(frame)
+    DSP->>REG: ResolveEndpoint("profile.get")
+    REG-->>DSP: EndpointInfo
+    Note over REG,DSP: handlerType=ProfileHandlers<br/>method=HandleAsync<br/>requestType=ProfileRequest<br/>replyType=ProfileReply
 
-    ValueTask SendToAsync<TMessage>(
-        RoutingId targetRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
+    DSP->>CODEC: Deserialize(ProfileRequest, body)
+    CODEC-->>DSP: ProfileRequest
 
-    ValueTask<TResponse> RequestToAsync<TResponse>(
-        RoutingId targetRid,
-        object request,
-        CancellationToken cancellationToken = default);
+    DSP->>RT: CreateRequestContext(frame metadata)
+    RT-->>DSP: ZLinkRequestContext
 
-    ValueTask<TResponse> RequestToAsync<TResponse>(
-        RoutingId targetRid,
-        object request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
+    DSP->>SCOPE: CreateScope()
+    SCOPE-->>DSP: IServiceScope
+    DSP->>SP: GetRequiredService(ProfileHandlers)
+    SP-->>DSP: ProfileHandlers
+    Note over SP,H: constructor injection 수행
 
-    ValueTask SendToSpotAsync<TMessage>(
-        RoutingId spotRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
+    DSP->>PIPE: Invoke(filters, handler)
+    PIPE->>PIPE: logging / validation / auth
+    PIPE->>H: HandleAsync(request, context, cancellationToken)
+    H->>SVC: GetAsync(request, cancellationToken)
+    SVC-->>H: ProfileReply
+    H-->>PIPE: ProfileReply
+    PIPE->>PIPE: metrics / after filters
+    PIPE-->>DSP: ProfileReply
 
-    ValueTask<TResponse> RequestToSpotAsync<TResponse>(
-        RoutingId spotRid,
-        object request,
-        CancellationToken cancellationToken = default);
+    DSP->>CODEC: Serialize(ProfileReply)
+    CODEC-->>DSP: reply body
 
-    ValueTask<TResponse> RequestToSpotAsync<TResponse>(
-        RoutingId spotRid,
-        object request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
+    DSP->>RT: WriteReply(correlationId, reply body, headers)
+    RT-->>RP: reply frame
 
-    ValueTask SendToSpotAsync<TMessage>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
+    DSP->>SCOPE: DisposeAsync()
 
-    ValueTask<TResponse> RequestToSpotAsync<TResponse>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        object request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TResponse> RequestToSpotAsync<TResponse>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        object request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-}
+    alt handler or filter throws exception
+        H-->>PIPE: exception
+        PIPE-->>DSP: exception
+        DSP->>RT: MapExceptionToErrorReply()
+        RT-->>RP: error reply frame
+        DSP->>SCOPE: DisposeAsync()
+    end
 ```
 
-결론적으로 `.NET` 앞면은 "인터페이스 + attribute 둘 다 가능하지만, 일반 사용자는
-attribute 매핑과 `IZLinkClient`를 함께 쓴다"를 기본으로 본다.
+이 흐름에서 중요한 점은 아래와 같다.
 
-이 문서는 현재 `ROUTER <-> ROUTER` 기반 서버간 request/send와 일반 `PUB/SUB`
-설계를 중심으로 다룬다. 다만 하부 C API가 허용하는 범위 때문에 `IZLinkClient`
-시그니처에는 `spot rid` direct 호출 함수도 함께 포함한다. `SPOT` lifecycle과
-handler 모델 자체는 별도 문서에서 따로 다룬다.
+- service channel은 `Discovery` 기반 자동 연결과 수동 연결 구성을 둘 다 가질 수 있다.
+- framework는 handler 객체를 직접 `new` 하지 않고 `.NET DI`로 resolve한다.
+- filter pipeline이 있으면 handler 호출 전후를 감싼다.
+- 예외는 framework가 표준 오류 응답으로 매핑해서 reply로 돌려준다.
+
+위 dispatch 흐름에서 사용하는 handler, client, filter 인터페이스 정의는
+[handler-interfaces.ko.md](./handler-interfaces.ko.md)에 모아 두었다.
+주요 인터페이스는 아래와 같다.
+
+- `IZLinkRequestHandler<TRequest, TResponse>` -- request-response handler
+- `IZLinkSendHandler<TMessage>` -- one-way send handler
+- `IZLinkClient` -- outbound client (serviceName/rid/spotRid 기준 호출)
+- `IZLinkHandlerFilter` -- handler 전후 공통 처리
+
+`.NET` 앞면은 "인터페이스 + attribute 둘 다 가능하지만, 일반 사용자는
+attribute 매핑과 `IZLinkClient`를 함께 쓴다"를 기본으로 본다.
 
 ## 5. 클라이언트 쪽 프로그래밍 모델 초안
 
-### 5.1 generic outbound client
+### 5.1 outbound client 개요
 
-```csharp
-public interface IZLinkClient
-{
-    ValueTask SendAsync<TMessage>(
-        string serviceName,
-        TMessage message,
-        CancellationToken cancellationToken = default);
+`IZLinkClient` 인터페이스 전체 정의는
+[handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 5.1을
+참고한다.
 
-    ValueTask<TResponse> RequestAsync<TResponse>(
-        string serviceName,
-        object request,
-        CancellationToken cancellationToken = default);
+구현체는 `ZLink Framework`가 DI로 제공한다. 호출 방식은 세 가지 축이 있다.
 
-    ValueTask<TResponse> RequestAsync<TResponse>(
-        string serviceName,
-        object request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
+- `serviceName` 기준 호출 -- Discovery가 대상을 선택
+- `RoutingId targetRid` 직접 호출 -- 특정 peer 지정
+- `targetRid + spotRid` 호출 -- 특정 spot 인스턴스 지정
 
-    ValueTask SendToAsync<TMessage>(
-        RoutingId targetRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TResponse> RequestToAsync<TResponse>(
-        RoutingId targetRid,
-        object request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TResponse> RequestToAsync<TResponse>(
-        RoutingId targetRid,
-        object request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-
-    ValueTask SendToSpotAsync<TMessage>(
-        RoutingId spotRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TResponse> RequestToSpotAsync<TResponse>(
-        RoutingId spotRid,
-        object request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TResponse> RequestToSpotAsync<TResponse>(
-        RoutingId spotRid,
-        object request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-
-    ValueTask SendToSpotAsync<TMessage>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TResponse> RequestToSpotAsync<TResponse>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        object request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TResponse> RequestToSpotAsync<TResponse>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        object request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-}
-```
-
-구현체는 `ZLink Framework`가 DI로 제공한다.
-이 표면은 `playhouse`의 sender/link 스타일을 서비스 이름 기반 호출에 맞게
-다시 올린 형태로 볼 수 있다.
-또한 일반 client도 하부 C API가 허용하는 범위에서는 `spot rid` 대상 send/request
-함수를 함께 가진다. 다만 `IZLinkSpotClient`와 같은 인터페이스라는 뜻은 아니다.
-두 인터페이스는 서로 다른 C API 위에서 각각 구현되며, 필요한 기능이 겹치는 부분만
-공통으로 가진다.
+framework가 `spotRid`만으로 `targetRid`를 찾아 주는 축약 API는 기본으로 두지
+않는다. `discovery` 사용은 옵션이기 때문이다.
 
 ### 5.2 HTTP handler에서의 사용
 
@@ -355,7 +323,7 @@ app.MapPost("/profiles/get", async (
     IZLinkClient client,
     CancellationToken cancellationToken) =>
 {
-    var reply = await client.RequestAsync<GetProfileReply>(
+    var reply = await client.RequestAsync(
         "api.profile",
         new GetProfileRequest { AccountId = request.AccountId },
         cancellationToken);
@@ -372,9 +340,66 @@ app.MapPost("/profiles/get", async (
 - 이미 알고 있는 `rid`로 직접 요청 또는 전송
 - 특정 요청만 별도 timeout으로 보내기
 
-## 6. Discovery와 service channel
+## 6. ASP.NET Core middleware, 서비스 AOP, handler pipeline
 
-### 6.1 기본 방향
+### 6.1 HTTP middleware와의 관계
+
+기존 `ASP.NET Core`의 `app.Use(...)` middleware는 HTTP pipeline 전용이다.
+따라서 ZLink 메시지 handler에 자동으로 그대로 적용되지는 않는다.
+
+```csharp
+app.UseAuthentication();
+app.UseAuthorization();
+app.Use(async (context, next) =>
+{
+    await next();
+});
+```
+
+즉 위 같은 middleware는 HTTP endpoint에는 적용되지만, `ZLinkRequest(...)`
+handler에는 바로 연결되지 않는다.
+
+### 6.2 서비스 레이어 AOP
+
+서비스 레이어 AOP는 기존 라이브러리 방식에 맞춰 그대로 사용할 수 있다.
+핵심은 handler 메서드 자체보다, handler가 주입받는 서비스 계층에서 AOP가
+동작한다는 점이다.
+
+```csharp
+public sealed class UserHandlers
+{
+    private readonly IUserService _service;
+
+    public UserHandlers(IUserService service)
+    {
+        _service = service;
+    }
+
+    [ZLinkRequest("user.get")]
+    public Task<UserReply> GetUserAsync(
+        UserRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        return _service.GetAsync(request, cancellationToken);
+    }
+}
+```
+
+여기서 `IUserService`가 decorator, proxy, interceptor 같은 방식으로 감싸져 있다면
+그 AOP는 그대로 적용된다. 어떤 방식으로 적용할지는 사용 중인 라이브러리 규칙을
+따르면 된다.
+
+### 6.3 ZLink handler filter
+
+logging, validation, authorization, metrics, exception mapping 같은 공통 처리가
+필요하면, HTTP middleware와는 별도의 ZLink handler filter가 필요하다.
+`IZLinkHandlerFilter` 인터페이스 정의와 등록 방법은
+[handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 8을 참고한다.
+
+## 7. Discovery와 service channel
+
+### 7.1 기본 방향
 
 - 호출자는 `service_name`만 지정한다.
 - `IZLinkClient`는 접근한 `service_name`마다 별도 channel을 lazy하게 만든다.
@@ -385,7 +410,7 @@ app.MapPost("/profiles/get", async (
 - 필요하면 운영 점검용 별도 서비스가 `Registry` snapshot/query 결과를 읽어 현재
   topology를 노출할 수 있다.
 
-### 6.2 왜 중요한가
+### 7.2 왜 중요한가
 
 이 모델의 핵심은 내부 서비스 호출에서 별도 gateway나 전용 load balancer를
 강제하지 않으면서도, core의 fixed service view 철학을 그대로 따른다는 점이다.
@@ -396,7 +421,7 @@ app.MapPost("/profiles/get", async (
 - `ZLink Framework`는 그 service 전용 channel로 직접 요청을 보낸다.
 - 같은 service 안의 여러 provider는 그 channel 안에서만 관리한다.
 
-## 7. codec과 message model
+## 8. codec과 message model
 
 현재 초안은 아래 구성을 가정한다.
 
@@ -413,7 +438,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-## 8. lifecycle 초안
+## 9. lifecycle 초안
 
 `ASP.NET Core`에서는 아래 lifecycle이 중요하다.
 
@@ -425,7 +450,7 @@ builder.Services.AddZLinkFramework(options =>
 따라서 내부 구현은 `IHostedService` 또는 그와 비슷한 hosted lifecycle 모델과
 잘 맞아야 한다.
 
-## 9. 아직 확정하지 않는 것
+## 10. 아직 확정하지 않는 것
 
 - attribute model과 endpoint model 중 어느 쪽을 우선할지
 - 서비스별 typed wrapper를 공식 제공할지

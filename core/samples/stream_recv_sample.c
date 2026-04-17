@@ -71,13 +71,13 @@ int main (void)
     ssize_t sent = send (client_fd, k_stream_payload, request_size, 0);
     assert (sent == (ssize_t) request_size);
 
-    zlink_routing_id_t rid;
+    const zlink_routing_id_t *rid = NULL;
     zlink_msg_t *parts = NULL;
     size_t count = 0;
     rc = zlink_recv (server, &rid, &parts, &count, 0);
     assert (rc == 0);
-    assert (rid.size > 0);
-    const uint32_t peer_id = routing_id_to_u32_checked (&rid);
+    assert (rid != NULL && rid->size > 0);
+    const uint32_t peer_id = routing_id_to_u32_checked (rid);
     assert (count == 1);
     assert (zlink_msg_size (&parts[0]) == request_size);
     assert (memcmp (zlink_msg_data (&parts[0]), k_stream_payload,
@@ -87,7 +87,7 @@ int main (void)
 
     zlink_msg_t reply;
     make_message (&reply, k_stream_payload);
-    rc = zlink_send_rid (server, &rid, &reply, 1, 0);
+    rc = zlink_send_rid (server, rid, &reply, 1, 0);
     assert (rc == 0);
 
     char response[64];

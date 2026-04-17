@@ -120,14 +120,6 @@ pub/sub, `SPOT`, `STREAM`, service discovery를 사용할 수 있게 하는 상�
 프레임워크의 기본 업무 API로 똑같이 보이게 하기보다, 연결 수명과 packet 처리
 성격을 드러내는 별도 handler 모델로 설명하는 편을 기본으로 본다.
 
-## 7. 현재 문서와의 연결
+## 7. 다음 문서
 
-| 문서 | 역할 |
-|------|------|
-| [README.ko.md](./README.ko.md) | `ZLink Framework` 초안 묶음 진입점 |
-| [interaction-model.ko.md](./interaction-model.ko.md) | 상호작용 모델 정리 |
-| [message-model.ko.md](./message-model.ko.md) | `header + body` 메시지 초안 |
-| [service-topology.ko.md](./service-topology.ko.md) | service name, Discovery, service channel |
-| [framework-api.ko.md](./framework-api.ko.md) | 프레임워크별 API 표면 방향 |
-| [use-cases/README.ko.md](./use-cases/README.ko.md) | use case 목록 |
-| [usecase-validation.ko.md](./usecase-validation.ko.md) | use case 충족 여부 점검 |
+전체 문서 목록과 읽는 순서는 [README.ko.md](./README.ko.md)를 참고한다.

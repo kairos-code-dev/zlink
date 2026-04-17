@@ -52,7 +52,7 @@ int spot_sub_t::set_option (int option_,
 
 int spot_sub_t::set_routing_id (const void *data_, size_t size_)
 {
-    if (!data_ || size_ == 0 || size_ > sizeof (_routing_id.data)) {
+    if (!data_ || size_ == 0 || size_ > sizeof (_routing_id_storage)) {
         errno = EINVAL;
         return -1;
     }
@@ -62,8 +62,9 @@ int spot_sub_t::set_routing_id (const void *data_, size_t size_)
         errno = EFSM;
         return -1;
     }
-    _routing_id.size = static_cast<uint8_t> (size_);
-    memcpy (_routing_id.data, data_, size_);
+    _routing_id.size = size_;
+    memcpy (_routing_id_storage, data_, size_);
+    _routing_id.data = _routing_id_storage;
     return 0;
 }
 

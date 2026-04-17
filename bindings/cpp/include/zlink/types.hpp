@@ -570,9 +570,11 @@ enum class config_result_t : int
 class routing_id_t
 {
   public:
-    routing_id_t () noexcept : _native ()
+    routing_id_t () noexcept : _storage (), _native ()
     {
+        std::memset (_storage, 0, sizeof (_storage));
         std::memset (&_native, 0, sizeof (_native));
+        _native.data = _storage;
     }
 
     routing_id_t (const uint8_t *bytes_, size_t size_) : routing_id_t ()
@@ -580,7 +582,10 @@ class routing_id_t
         assign (bytes_, size_);
     }
 
-    routing_id_t (const zlink_routing_id_t &native_) : _native (native_) {}
+    routing_id_t (const zlink_routing_id_t &native_) : routing_id_t ()
+    {
+        assign (native_.data, native_.size);
+    }
 
     static routing_id_t from_bytes (const uint8_t *bytes_, size_t size_)
     {
@@ -644,18 +649,21 @@ class routing_id_t
   private:
     void assign (const uint8_t *bytes_, size_t size_)
     {
-        if (size_ > sizeof (_native.data))
+        if (size_ > sizeof (_storage))
             throw std::invalid_argument ("routing id exceeds 255 bytes");
         if (size_ > 0 && !bytes_)
             throw std::invalid_argument (
               "routing id bytes must not be null for non-empty input");
 
+        std::memset (_storage, 0, sizeof (_storage));
         std::memset (&_native, 0, sizeof (_native));
-        _native.size = static_cast<uint8_t> (size_);
+        _native.size = size_;
+        _native.data = _storage;
         if (size_ > 0)
-            std::memcpy (_native.data, bytes_, size_);
+            std::memcpy (_storage, bytes_, size_);
     }
 
+    uint8_t _storage[255];
     zlink_routing_id_t _native;
 
     friend inline zlink_routing_id_t *routing_id_native (routing_id_t &) noexcept;

@@ -52,6 +52,8 @@ spot_state_identity_index_t g_spot_state_identity_index;
 router_state_identity_index_t g_router_state_identity_index;
 thread_local zlink_routing_id_t g_spot_recv_source_rid;
 thread_local zlink_routing_id_t g_spot_recv_spot_rid;
+thread_local uint8_t g_spot_recv_source_rid_storage[255];
+thread_local uint8_t g_spot_recv_spot_rid_storage[255];
 
 std::string make_spot_identity_key (const std::string &node_rid_,
                                     const std::string &spot_rid_)

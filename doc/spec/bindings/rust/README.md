@@ -597,7 +597,7 @@ impl Message {
 
 ### RoutingId
 
-Binary-safe routing id value object (1-255 bytes). Immutable; the public
+Binary-safe routing id value object (0-255 bytes). Immutable; the public
 API treats the identifier as raw bytes. String conversions are provided
 as convenience only.
 
@@ -606,15 +606,17 @@ as convenience only.
 pub struct RoutingId { /* ... */ }
 
 impl RoutingId {
-    /// Construct from raw bytes (must be 1-255 bytes).
+    /// Construct from raw bytes (must be 0-255 bytes).
     pub fn from_bytes(bytes: &[u8]) -> RoutingId;
     /// Construct a STREAM routing id from a 4-byte big-endian integer.
     pub fn from_u32(value: u32) -> RoutingId;
     /// Construct a text routing id from UTF-8 bytes.
     pub fn from_text(value: &str) -> RoutingId;
+    /// Copy the raw bytes.
+    pub fn to_bytes(&self) -> Vec<u8>;
     /// Borrow the raw byte view (immutable).
     pub fn as_bytes(&self) -> &[u8];
-    /// Byte length (1-255).
+    /// Byte length (0-255).
     pub fn size(&self) -> usize;
     /// Parse a 4-byte big-endian STREAM routing id.
     pub fn to_u32(&self) -> Option<u32>;
@@ -626,6 +628,13 @@ impl RoutingId {
 
 impl std::fmt::Display for RoutingId { /* hex form */ }
 ```
+
+Rules:
+- `RoutingId` is bytes-canonical. `from_u32()` / `to_u32()` use 4-byte
+  big-endian STREAM encoding.
+- `from_text()` / `to_text()` use UTF-8.
+- Display code should prefer `to_text()` when text is expected and fall
+  back to `to_hex()` when the bytes are not text.
 
 ### Received
 

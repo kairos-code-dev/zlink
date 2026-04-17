@@ -69,6 +69,8 @@ from ._core import (
     _raise_config_error_from_errno,
     _raise_result_error,
     _routing_id_bytes,
+    _routing_id_bytes_from_ptr,
+    _routing_id_struct,
     _request_result_from_errno,
     _request_result_from_code,
     _request_result_internal_errno,
@@ -472,19 +474,17 @@ class SpotNode:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def set_routing_id(self, routing_id):
-        raw = _validated_routing_id_bytes(routing_id)
-        rc = lib().zlink_set_routing_id(
-            self._handle, ctypes.c_char_p(raw), len(raw)
-        )
+        native = _routing_id_struct(routing_id)
+        rc = lib().zlink_set_routing_id(self._handle, ctypes.byref(native))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def get_routing_id(self):
-        routing_id = ZlinkRoutingId()
+        routing_id = ctypes.POINTER(ZlinkRoutingId)()
         rc = lib().zlink_get_routing_id(self._handle, ctypes.byref(routing_id))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return _routing_id_bytes(routing_id)
+        return _routing_id_bytes_from_ptr(routing_id)
 
     @property
     def routing_id(self):
@@ -684,17 +684,17 @@ class Spot:
         node._register_spot(self)
 
     def set_routing_id(self, routing_id):
-        raw = _validated_routing_id_bytes(routing_id)
-        rc = lib().zlink_set_routing_id(self._handle, ctypes.c_char_p(raw), len(raw))
+        native = _routing_id_struct(routing_id)
+        rc = lib().zlink_set_routing_id(self._handle, ctypes.byref(native))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def get_routing_id(self):
-        routing_id = ZlinkRoutingId()
+        routing_id = ctypes.POINTER(ZlinkRoutingId)()
         rc = lib().zlink_get_routing_id(self._handle, ctypes.byref(routing_id))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return _routing_id_bytes(routing_id)
+        return _routing_id_bytes_from_ptr(routing_id)
 
     @property
     def routing_id(self):
@@ -847,7 +847,7 @@ class Spot:
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
 
     def _recv_subscribed(self, flags):
-        routing_id = ZlinkRoutingId()
+        routing_id = ctypes.POINTER(ZlinkRoutingId)()
         parts = ctypes.POINTER(ZlinkMsg)()
         part_count = ctypes.c_size_t()
         service_buf = ctypes.create_string_buffer(256)
@@ -876,7 +876,7 @@ class Spot:
         return TopicMessage(
             topic,
             owner,
-            _routing_id_bytes(routing_id),
+            _routing_id_bytes_from_ptr(routing_id),
             service_name=service_name,
         )
 
@@ -884,7 +884,7 @@ class Spot:
         return self._recv_subscribed(flags)
 
     def receive_subscription_event(self, *, flags=0):
-        routing_id = ZlinkRoutingId()
+        routing_id = ctypes.POINTER(ZlinkRoutingId)()
         subscribed = ctypes.c_int()
         service_buf = ctypes.create_string_buffer(256)
         service_len = ctypes.c_size_t(len(service_buf))
@@ -909,7 +909,7 @@ class Spot:
         return SubscriptionEvent(
             topic=topic,
             subscribed=bool(subscribed.value),
-            routing_id=_routing_id_bytes(routing_id),
+            routing_id=_routing_id_bytes_from_ptr(routing_id),
             service_name=service_name,
         )
 
@@ -1201,8 +1201,8 @@ class Spot:
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
 
     def recv_routed(self, *, flags=0):
-        source_node_rid = ZlinkRoutingId()
-        source_spot_rid = ZlinkRoutingId()
+        source_node_rid = ctypes.POINTER(ZlinkRoutingId)()
+        source_spot_rid = ctypes.POINTER(ZlinkRoutingId)()
         request_seq = ctypes.c_uint64()
         parts = ctypes.POINTER(ZlinkMsg)()
         part_count = ctypes.c_size_t()
@@ -1223,7 +1223,7 @@ class Spot:
             int(request_seq.value),
             parts,
             int(part_count.value),
-            reply_sender=lambda payload, *, flags=0, node_rid=_routing_id_bytes(source_node_rid), spot_rid=_routing_id_bytes(source_spot_rid), seq=int(request_seq.value): self.reply_to_spot(
+            reply_sender=lambda payload, *, flags=0, node_rid=_routing_id_bytes_from_ptr(source_node_rid), spot_rid=_routing_id_bytes_from_ptr(source_spot_rid), seq=int(request_seq.value): self.reply_to_spot(
                 node_rid,
                 spot_rid,
                 seq,

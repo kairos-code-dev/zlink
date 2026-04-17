@@ -127,7 +127,7 @@ class spot_node_t : public discovery_observer_t
     bool peer_is_admitted (const zlink_routing_id_t *peer_rid_) const;
     socket_base_t *select_service_router (const std::string &service_name_);
     socket_base_t *service_pub_socket (const std::string &service_name_) const;
-    int service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
+    int service_subscribe_recv (const zlink_routing_id_t **source_rid_out_,
                                 zlink_msg_t **parts_out_,
                                 size_t *part_count_out_,
                                 char *service_name_out_,
@@ -135,7 +135,7 @@ class spot_node_t : public discovery_observer_t
                                 char *topic_id_out_,
                                 size_t *topic_id_len_out_,
                                 zlink_recv_flags_t flags_);
-    int service_subscription_event_recv (zlink_routing_id_t *source_rid_out_,
+    int service_subscription_event_recv (const zlink_routing_id_t **source_rid_out_,
                                          int *subscribed_out_,
                                          char *service_name_out_,
                                          size_t *service_name_len_out_,

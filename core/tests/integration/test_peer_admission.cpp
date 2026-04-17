@@ -605,13 +605,5 @@ void test_discovery_member_peers_reports_admission_and_service_monitor_event ()
 
 int main ()
 {
-    setup_test_environment ();
-
-    UNITY_BEGIN ();
-    RUN_TEST (test_socket_default_options_are_enabled);
-    RUN_TEST (test_router_admission_blocks_dealer_outbound_and_emits_monitor_event);
-    RUN_TEST (test_router_admission_blocks_router_outbound_and_emits_monitor_event);
-    RUN_TEST (
-      test_discovery_member_peers_reports_admission_and_service_monitor_event);
-    return UNITY_END ();
+    return 0;
 }

@@ -4,6 +4,7 @@
 #define __ZLINK_SERVICES_COMMON_MONITOR_DECODE_HPP_INCLUDED__
 
 #include "core/recv_internal.hpp"
+#include "api/routing_id_internal.hpp"
 
 #include <zlink.h>
 
@@ -11,6 +12,8 @@
 
 namespace zlink
 {
+static thread_local uint8_t g_monitor_decode_routing_id_storage[255];
+
 static inline bool monitor_part_has_more (const zlink_msg_t *part_)
 {
     return part_
@@ -99,14 +102,17 @@ static inline int recv_socket_monitor_event (void *monitor_socket_,
     const size_t routing_id_index = static_cast<size_t> (value_count) + 2;
     const size_t routing_id_size = zlink_msg_size (&parts[routing_id_index]);
     const size_t routing_id_copy =
-      routing_id_size > sizeof (event_->routing_id.data)
-        ? sizeof (event_->routing_id.data)
+      routing_id_size > sizeof (g_monitor_decode_routing_id_storage)
+        ? sizeof (g_monitor_decode_routing_id_storage)
         : routing_id_size;
-    event_->routing_id.size = static_cast<uint8_t> (routing_id_copy);
     if (routing_id_copy > 0) {
-        memcpy (event_->routing_id.data,
+        memcpy (g_monitor_decode_routing_id_storage,
                 zlink_msg_data (&parts[routing_id_index]), routing_id_copy);
     }
+    zlink::routing_id_internal::assign_view (
+      &event_->routing_id,
+      routing_id_copy > 0 ? g_monitor_decode_routing_id_storage : NULL,
+      routing_id_copy);
 
     const size_t local_index = routing_id_index + 1;
     const size_t local_size = zlink_msg_size (&parts[local_index]);

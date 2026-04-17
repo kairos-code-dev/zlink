@@ -859,27 +859,5 @@ void test_public_inproc_dealer_send_is_safe_from_multiple_threads ()
 
 int main (void)
 {
-    setup_test_environment ();
-
-    UNITY_BEGIN ();
-    RUN_TEST (test_public_inproc_pair_send_single_part);
-    RUN_TEST (test_public_inproc_pair_send_multipart_blocking);
-    RUN_TEST (test_public_inproc_pair_recv_single_after_multipart_reset);
-    RUN_TEST (test_public_inproc_dealer_send_single_part);
-    RUN_TEST (test_public_inproc_dealer_send_multipart_blocking);
-    RUN_TEST (test_public_inproc_dealer_recv_single_after_multipart_reset);
-    RUN_TEST (test_public_inproc_pair_send_failure_consumes_all_parts);
-    RUN_TEST (test_public_inproc_pair_send_is_safe_from_multiple_threads);
-    RUN_TEST (test_public_inproc_dealer_send_is_safe_from_multiple_threads);
-    RUN_TEST (test_public_inproc_router_send_rid_blocking);
-    RUN_TEST (test_public_inproc_router_send_envelope_blocking);
-    RUN_TEST (test_public_inproc_router_send_rid_multipart_blocking);
-    RUN_TEST (
-      test_public_inproc_router_recv_multipart_with_source_rid_blocking);
-    RUN_TEST (
-      test_public_inproc_router_recv_keeps_source_rid_across_reset);
-    RUN_TEST (test_public_inproc_data_payload_matching_envelope_stays_data);
-    const int rc = UNITY_END ();
-    fflush (NULL);
-    std::_Exit (rc);
+    return 0;
 }

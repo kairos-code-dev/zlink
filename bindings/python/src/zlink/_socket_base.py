@@ -47,6 +47,8 @@ from ._core import (
     _report_unhandled_callback_exception,
     _raise_result_error,
     _routing_id_bytes,
+    _routing_id_bytes_from_ptr,
+    _routing_id_struct,
     _validated_c_string_bytes,
     _validated_c_string_text,
     _validated_c_string_value,
@@ -551,21 +553,17 @@ class _BaseSocket:
         return self._OPTION_ROUTE_MISS
 
     def _set_routing_id_raw(self, routing_id):
-        topic_bytes = _validated_routing_id_bytes(routing_id)
-        rc = lib().zlink_set_routing_id(
-            self._handle,
-            ctypes.c_char_p(topic_bytes),
-            len(topic_bytes),
-        )
+        native = _routing_id_struct(routing_id)
+        rc = lib().zlink_set_routing_id(self._handle, ctypes.byref(native))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def _get_routing_id_raw(self):
-        rid = ZlinkRoutingId()
+        rid = ctypes.POINTER(ZlinkRoutingId)()
         rc = lib().zlink_get_routing_id(self._handle, ctypes.byref(rid))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return _routing_id_bytes(rid)
+        return _routing_id_bytes_from_ptr(rid)
 
     def _send_result(self, native_result):
         if int(native_result) < 0:
@@ -952,7 +950,7 @@ class _PublisherSocket(_Socket):
 
 class _SubscriberSocket(_Socket):
     def _subscribe_once(self, flags):
-        routing_id = ZlinkRoutingId()
+        routing_id = ctypes.POINTER(ZlinkRoutingId)()
         parts = ctypes.POINTER(ZlinkMsg)()
         part_count = ctypes.c_size_t()
         topic_buf = ctypes.create_string_buffer(256)
@@ -971,7 +969,7 @@ class _SubscriberSocket(_Socket):
 
         owner = _ReceivedPartsOwner(parts, int(part_count.value))
         topic = _decode_topic_text(topic_buf.raw[: topic_len.value])
-        routing = _routing_id_bytes(routing_id)
+        routing = _routing_id_bytes_from_ptr(routing_id)
         return TopicMessage(topic, owner, routing)
 
     def subscribe(self, *, flags=0):

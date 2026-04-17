@@ -116,27 +116,41 @@ int spot_sub_unsubscribe_internal (void *spot_sub_,
 }
 
 int spot_sub_recv_internal (void *sub_,
-                            zlink_routing_id_t *source_rid_out_,
+                            const zlink_routing_id_t **source_rid_out_,
                             zlink_msg_t **parts_,
                             size_t *part_count_,
                             char *topic_id_out_,
                             size_t *topic_id_len_,
                             zlink_send_flags_t flags_)
 {
-    return spot_subject_recv (sub_, source_rid_out_, parts_, part_count_,
-                              topic_id_out_, topic_id_len_, flags_);
+    static thread_local zlink_routing_id_t source_rid_value;
+    zlink_routing_id_t *source_rid_value_out =
+      source_rid_out_ ? &source_rid_value : NULL;
+    const int rc = spot_subject_recv (sub_, source_rid_value_out, parts_,
+                                      part_count_, topic_id_out_,
+                                      topic_id_len_, flags_);
+    if (source_rid_out_)
+        *source_rid_out_ = rc == 0 ? source_rid_value_out : NULL;
+    return rc;
 }
 
 int spot_node_recv_internal (void *node_,
-                             zlink_routing_id_t *source_rid_out_,
+                             const zlink_routing_id_t **source_rid_out_,
                              zlink_msg_t **parts_,
                              size_t *part_count_,
                              char *topic_id_out_,
                              size_t *topic_id_len_,
                              zlink_send_flags_t flags_)
 {
-    return spot_subject_recv (node_, source_rid_out_, parts_, part_count_,
-                              topic_id_out_, topic_id_len_, flags_);
+    static thread_local zlink_routing_id_t source_rid_value;
+    zlink_routing_id_t *source_rid_value_out =
+      source_rid_out_ ? &source_rid_value : NULL;
+    const int rc = spot_subject_recv (node_, source_rid_value_out, parts_,
+                                      part_count_, topic_id_out_,
+                                      topic_id_len_, flags_);
+    if (source_rid_out_)
+        *source_rid_out_ = rc == 0 ? source_rid_value_out : NULL;
+    return rc;
 }
 
 zlink_submit_result_t zlink_spot_publish (void *spot_,
@@ -174,7 +188,7 @@ zlink_submit_result_t zlink_spot_publish (void *spot_,
 }
 
 zlink_recv_result_t zlink_spot_subscribe (void *spot_,
-                                          zlink_routing_id_t *source_rid_out_,
+                                          const zlink_routing_id_t **source_rid_out_,
                                           zlink_msg_t **parts_out_,
                                           size_t *part_count_out_,
                                           char *service_name_out_,
@@ -198,11 +212,14 @@ zlink_recv_result_t zlink_spot_subscribe (void *spot_,
     if (service_recv != ZLINK_RECV_NO_DATA)
         return service_recv;
 
+    const zlink_routing_id_t *source_rid = NULL;
     const zlink_recv_result_t recv_rc =
-      zlink_subscribe (spot_, source_rid_out_, parts_out_, part_count_out_,
+      zlink_subscribe (spot_, &source_rid, parts_out_, part_count_out_,
                        topic_id_out_, topic_id_len_out_, flags_);
     if (recv_rc != ZLINK_RECV_OK)
         return recv_rc;
+    if (source_rid_out_)
+        *source_rid_out_ = source_rid;
 
     std::string bound_service_name;
     if (resolve_spot_bound_service_name (spot, &bound_service_name) != 0)
@@ -213,7 +230,7 @@ zlink_recv_result_t zlink_spot_subscribe (void *spot_,
 
 zlink_recv_result_t zlink_spot_subscription_event (
   void *spot_,
-  zlink_routing_id_t *source_rid_out_,
+  const zlink_routing_id_t **source_rid_out_,
   int *subscribed_out_,
   char *service_name_out_,
   size_t *service_name_len_out_,
@@ -235,11 +252,14 @@ zlink_recv_result_t zlink_spot_subscription_event (
     if (service_recv != ZLINK_RECV_NO_DATA)
         return service_recv;
 
+    const zlink_routing_id_t *source_rid = NULL;
     const zlink_recv_result_t recv_rc =
-      zlink_subscription_event (spot_, source_rid_out_, subscribed_out_,
+      zlink_subscription_event (spot_, &source_rid, subscribed_out_,
                                 topic_id_out_, topic_id_len_out_, flags_);
     if (recv_rc != ZLINK_RECV_OK)
         return recv_rc;
+    if (source_rid_out_)
+        *source_rid_out_ = source_rid;
 
     std::string bound_service_name;
     if (resolve_spot_bound_service_name (spot, &bound_service_name) != 0)

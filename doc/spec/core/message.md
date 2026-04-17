@@ -31,13 +31,20 @@ initialized before use and closed after use.
 ```c
 typedef struct zlink_routing_id_t
 {
-    uint8_t size;
-    uint8_t data[255];
+    size_t size;
+    const uint8_t *data;
 } zlink_routing_id_t;
 ```
 
 `zlink_routing_id_t` carries a routing identity used by `ROUTER` sockets to
-address specific peers. `size` indicates the number of valid bytes in `data`.
+address specific peers. This type is a borrowed byte view, not an owning value
+object. `size` indicates the number of valid bytes in `data`, and `data == NULL`
+requires `size == 0`.
+
+For stable caller-owned copies, use `zlink_get_routing_id_bytes()`. For
+borrowed access, use `zlink_get_routing_id()`. For construction from raw
+bytes, use `zlink_routing_id_from_bytes()`. Text helpers remain available for
+UTF-8 display-oriented routing ids, but bytes are the canonical public form.
 
 ```c
 typedef void (zlink_free_fn) (void *data_, void *hint_);

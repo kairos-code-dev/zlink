@@ -773,15 +773,16 @@ impl Discovery {
     }
 
     pub fn resolve_spot(&self, spot_rid: &RoutingId) -> Result<RoutingId, ConfigError> {
-        let mut owner_node_rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
+        let mut owner_node_rid: *const ffi::zlink_routing_id_t = ptr::null();
         check_config_rc(unsafe {
             ffi::zlink_discovery_resolve_spot(
                 self.handle,
                 spot_rid.as_raw(),
-                owner_node_rid.as_mut_ptr(),
+                &mut owner_node_rid,
             )
         })?;
-        Ok(RoutingId::from_raw(unsafe { owner_node_rid.assume_init() }))
+        debug_assert!(!owner_node_rid.is_null());
+        Ok(unsafe { RoutingId::from_raw(*owner_node_rid) })
     }
 
     pub fn set_dealer_peer_mode(&self, mode: DiscoveryDealerPeerMode) -> Result<(), ConfigError> {
@@ -986,15 +987,17 @@ impl SpotNode {
     }
 
     pub fn set_routing_id(&self, rid: &RoutingId) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_set_routing_id(self.handle, rid.data().as_ptr() as *const c_void, rid.len())
-        })
+        check_config_rc(unsafe { ffi::zlink_set_routing_id(self.handle, rid.as_raw()) })
     }
 
     pub fn routing_id(&self) -> Result<RoutingId, ConfigError> {
-        let mut raw = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
-        check_config_rc(unsafe { ffi::zlink_get_routing_id(self.handle, raw.as_mut_ptr()) })?;
-        Ok(RoutingId::from_raw(unsafe { raw.assume_init() }))
+        let mut raw: *const ffi::zlink_routing_id_t = std::ptr::null();
+        check_config_rc(unsafe { ffi::zlink_get_routing_id(self.handle, &mut raw) })?;
+        Ok(if raw.is_null() {
+            RoutingId::from_bytes(&[])
+        } else {
+            unsafe { RoutingId::from_raw(*raw) }
+        })
     }
 
     pub fn service_attachment_count(&self) -> Result<usize, ConfigError> {
@@ -1307,15 +1310,17 @@ impl Spot {
     }
 
     pub fn set_routing_id(&self, rid: &RoutingId) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_set_routing_id(self.handle, rid.data().as_ptr() as *const c_void, rid.len())
-        })
+        check_config_rc(unsafe { ffi::zlink_set_routing_id(self.handle, rid.as_raw()) })
     }
 
     pub fn routing_id(&self) -> Result<RoutingId, ConfigError> {
-        let mut raw = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
-        check_config_rc(unsafe { ffi::zlink_get_routing_id(self.handle, raw.as_mut_ptr()) })?;
-        Ok(RoutingId::from_raw(unsafe { raw.assume_init() }))
+        let mut raw: *const ffi::zlink_routing_id_t = std::ptr::null();
+        check_config_rc(unsafe { ffi::zlink_get_routing_id(self.handle, &mut raw) })?;
+        Ok(if raw.is_null() {
+            RoutingId::from_bytes(&[])
+        } else {
+            unsafe { RoutingId::from_raw(*raw) }
+        })
     }
 
     pub fn set_subscription(&self, filter: &str) -> Result<(), ConfigError> {
@@ -1344,7 +1349,7 @@ impl Spot {
         &self,
         flags: RecvFlags,
     ) -> Result<SubscriptionEvent, RecvError> {
-        let mut source_rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
+        let mut source_rid: *const ffi::zlink_routing_id_t = ptr::null();
         let mut subscribed: i32 = 0;
         let mut service_buf = [0i8; 256];
         let mut service_len: usize = 256;
@@ -1354,7 +1359,7 @@ impl Spot {
         let rc = unsafe {
             ffi::zlink_spot_subscription_event(
                 self.handle,
-                source_rid.as_mut_ptr(),
+                &mut source_rid,
                 &mut subscribed,
                 service_buf.as_mut_ptr(),
                 &mut service_len,
@@ -1365,7 +1370,11 @@ impl Spot {
         };
         check_recv_rc(rc)?;
 
-        let routing_id = Some(RoutingId::from_raw(unsafe { source_rid.assume_init() }));
+        let routing_id = if source_rid.is_null() {
+            None
+        } else {
+            Some(unsafe { RoutingId::from_raw(*source_rid) })
+        };
         let service_name = cstr_buf_to_string(&service_buf, service_len);
         let topic = cstr_buf_to_string(&topic_buf, topic_len);
         Ok(SubscriptionEvent::new(
@@ -1751,7 +1760,30 @@ impl Spot {
     }
 
     pub fn close(&mut self) -> Result<(), CloseError> {
-        destroy_handle_close(&mut self.handle, ffi::zlink_spot_destroy)
+        if !self.handle.is_null() {
+            unsafe {
+                let _ = ffi::zlink_send_ready_handler(
+                    self.handle,
+                    spot_noop_send_ready_handler,
+                    ptr::null_mut(),
+                );
+                let _ = ffi::zlink_spot_handler(
+                    self.handle,
+                    spot_noop_routed_handler,
+                    ptr::null_mut(),
+                );
+                let _ = ffi::zlink_spot_dispatch_event_handler(
+                    self.handle,
+                    spot_noop_dispatch_handler,
+                    ptr::null_mut(),
+                );
+            }
+        }
+        destroy_handle_close(&mut self.handle, ffi::zlink_spot_destroy)?;
+        self.send_ready_cb = None;
+        self.routed_cb = None;
+        self.dispatch_cb = None;
+        Ok(())
     }
 }
 
@@ -1896,8 +1928,27 @@ unsafe extern "C" fn spot_dispatch_ctx_trampoline<
     );
 }
 
+unsafe extern "C" fn spot_noop_send_ready_handler(_: *mut c_void, _: *mut c_void) {}
+
+unsafe extern "C" fn spot_noop_routed_handler(
+    _: *const ffi::zlink_routing_id_t,
+    _: *const ffi::zlink_routing_id_t,
+    _: u64,
+    _: *mut ffi::zlink_msg_t,
+    _: usize,
+    _: *mut c_void,
+) {
+}
+
+unsafe extern "C" fn spot_noop_dispatch_handler(
+    _: *mut c_void,
+    _: ffi::zlink_spot_dispatch_event_t,
+    _: *mut c_void,
+) {
+}
+
 fn spot_subscribe_with_flags(handle: *mut c_void, flags: RecvFlags) -> Result<TopicMessage, RecvError> {
-    let mut source_rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
+    let mut source_rid: *const ffi::zlink_routing_id_t = ptr::null();
     let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
     let mut part_count: usize = 0;
     let mut service_buf = [0i8; 256];
@@ -1908,7 +1959,7 @@ fn spot_subscribe_with_flags(handle: *mut c_void, flags: RecvFlags) -> Result<To
     let rc = unsafe {
         ffi::zlink_spot_subscribe(
             handle,
-            source_rid.as_mut_ptr(),
+            &mut source_rid,
             &mut parts_ptr,
             &mut part_count,
             service_buf.as_mut_ptr(),
@@ -1920,7 +1971,11 @@ fn spot_subscribe_with_flags(handle: *mut c_void, flags: RecvFlags) -> Result<To
     };
     check_recv_rc(rc)?;
 
-    let routing_id = Some(RoutingId::from_raw(unsafe { source_rid.assume_init() }));
+    let routing_id = if source_rid.is_null() {
+        None
+    } else {
+        Some(unsafe { RoutingId::from_raw(*source_rid) })
+    };
     let service_name = cstr_buf_to_string(&service_buf, service_len);
     let topic = cstr_buf_to_string(&topic_buf, topic_len);
     let parts = take_parts_copying(parts_ptr, part_count);

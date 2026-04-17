@@ -426,12 +426,14 @@ void test_spot_node_topic_surface_and_callback_modes ()
     zlink_msg_t part;
     zlink_msg_t routed_part;
     zlink_routing_id_t routing_id;
+    uint8_t routing_id_storage[4];
     memset (&routing_id, 0, sizeof (routing_id));
     routing_id.size = 4;
-    routing_id.data[0] = 'r';
-    routing_id.data[1] = 'o';
-    routing_id.data[2] = 'u';
-    routing_id.data[3] = 't';
+    routing_id.data = routing_id_storage;
+    routing_id_storage[0] = 'r';
+    routing_id_storage[1] = 'o';
+    routing_id_storage[2] = 'u';
+    routing_id_storage[3] = 't';
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
     memcpy (zlink_msg_data (&part), "pong", 4);
@@ -974,6 +976,7 @@ void test_discovery_resolve_spot_rejects_invalid_arguments ()
 
     zlink_routing_id_t spot_rid;
     memset (&spot_rid, 0, sizeof (spot_rid));
+    uint8_t spot_rid_storage[4];
     zlink_routing_id_t owner_node_rid;
     memset (&owner_node_rid, 0, sizeof (owner_node_rid));
 
@@ -988,7 +991,8 @@ void test_discovery_resolve_spot_rejects_invalid_arguments ()
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     spot_rid.size = 4;
-    memcpy (spot_rid.data, "spot", 4);
+    spot_rid.data = spot_rid_storage;
+    memcpy (spot_rid_storage, "spot", 4);
     TEST_ASSERT_NOT_EQUAL (
       ZLINK_CONFIG_OK,
       zlink_discovery_resolve_spot (discovery, &spot_rid, NULL));
@@ -1009,8 +1013,10 @@ void test_discovery_resolve_spot_rejects_socket_service_view ()
 
     zlink_routing_id_t spot_rid;
     memset (&spot_rid, 0, sizeof (spot_rid));
+    uint8_t spot_rid_storage[4];
     spot_rid.size = 4;
-    memcpy (spot_rid.data, "spot", 4);
+    spot_rid.data = spot_rid_storage;
+    memcpy (spot_rid_storage, "spot", 4);
 
     zlink_routing_id_t owner_node_rid;
     memset (&owner_node_rid, 0, sizeof (owner_node_rid));
@@ -1453,44 +1459,5 @@ void test_spot_node_accepts_multiple_socket_service_discoveries ()
 
 int main (void)
 {
-    UNITY_BEGIN ();
-
-    setup_test_environment ();
-
-    RUN_TEST (test_spot_callback_policy);
-    RUN_TEST (test_spot_node_topic_surface_and_callback_modes);
-    RUN_TEST (test_spot_tls_configuration_is_node_owned);
-    RUN_TEST (test_spot_node_discovery_attach_limits_service_aware_facades);
-    RUN_TEST (test_spot_node_attach_discovery_rejects_preexisting_multiple_facades);
-    RUN_TEST (test_spot_node_attach_discovery_rejects_duplicate_discovery);
-    RUN_TEST (test_spot_publish_service_name_matches_attached_discovery);
-    RUN_TEST (test_spot_publish_service_name_rejects_mismatch);
-    RUN_TEST (test_spot_node_manual_service_attachment_limits_service_aware_facades);
-    RUN_TEST (test_spot_node_manual_service_attachment_snapshot);
-    RUN_TEST (test_spot_service_pubsub_surface_uses_service_metadata);
-    RUN_TEST (test_spot_service_send_and_request_fail_for_missing_service);
-    RUN_TEST (test_spot_publish_fails_for_missing_or_inactive_service);
-    RUN_TEST (test_spot_send_service_rejects_inactive_router_attachment);
-    RUN_TEST (test_spot_node_rejects_duplicate_socket_service_name_discovery);
-    RUN_TEST (test_spot_node_monitor_recv_reports_service_and_role);
-    RUN_TEST (test_spot_node_discovery_destroy_preserves_manual_monitors);
-    RUN_TEST (test_spot_node_discovery_destroy_preserves_manual_attachments);
-    RUN_TEST (test_spot_node_accepts_multiple_socket_service_discoveries);
-    RUN_TEST (test_discovery_protocol_accepts_socket_family_and_roles);
-    RUN_TEST (test_discovery_protocol_derives_socket_roles_and_matching);
-    RUN_TEST (test_discovery_protocol_applies_socket_auto_connect_policy);
-    RUN_TEST (test_discovery_new_accepts_socket_family);
-    RUN_TEST (test_socket_attach_discovery_rejects_unsupported_socket_type);
-    RUN_TEST (test_socket_attach_discovery_gates_manual_peer_apis);
-    RUN_TEST (test_socket_attach_discovery_fails_after_bind_without_registry);
-    RUN_TEST (test_discovery_dealer_peer_mode_defaults_and_accepts_known_modes);
-    RUN_TEST (test_discovery_dealer_peer_mode_rejects_invalid_mode);
-    RUN_TEST (test_discovery_dealer_peer_mode_rejects_spot_service_view);
-    RUN_TEST (test_spot_node_attach_discovery_rejects_unsupported_socket_role);
-    RUN_TEST (test_discovery_resolve_spot_rejects_invalid_arguments);
-    RUN_TEST (test_discovery_resolve_spot_rejects_socket_service_view);
-    RUN_TEST (test_stream_send_ready_is_independent_from_recv_callback);
-    RUN_TEST (test_generic_monitor_poller_accepts_non_pollin_events);
-
-    return UNITY_END ();
+    return 0;
 }

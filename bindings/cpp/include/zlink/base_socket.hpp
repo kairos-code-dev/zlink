@@ -201,15 +201,15 @@ inline int recv_envelope (void *socket_,
             envelope_.request_seq = request_seq;
         }
     } else {
-        zlink_routing_id_t source_rid = {};
+        const zlink_routing_id_t *source_rid = NULL;
         const int rc = zlink_recv (
           socket_, &source_rid, &native_parts, &native_part_count,
           static_cast<zlink_recv_flags_t> (flags_));
         if (rc != 0)
             return rc;
 
-        if (source_rid.size > 0)
-            envelope_.source_rid = routing_id_t (source_rid);
+        if (source_rid && source_rid->size > 0)
+            envelope_.source_rid = routing_id_t (*source_rid);
     }
 
     if (assign_parts_from_native (native_parts, native_part_count, envelope_.parts)
@@ -756,16 +756,21 @@ class base_socket_t : public socket_handle_t
                recv_flags_t flags_ = recv_flags_t::none)
     {
         std::vector<char> topic_buffer (256);
+        const zlink_routing_id_t *source_rid = NULL;
         zlink_msg_t *parts_native = NULL;
         size_t part_count = 0;
         size_t topic_size = topic_buffer.size ();
         const int rc = zlink_subscribe (
-          handle (), routing_id_native (source_rid_out_), &parts_native,
+          handle (), &source_rid, &parts_native,
           &part_count,
           topic_buffer.data (), &topic_size,
           static_cast<zlink_recv_flags_t> (flags_));
         if (rc != 0)
             return rc;
+        if (source_rid)
+            source_rid_out_ = routing_id_t (*source_rid);
+        else
+            source_rid_out_ = routing_id_t ();
 
         const size_t bounded_topic =
           topic_size <= topic_buffer.size () ? topic_size : topic_buffer.size ();
@@ -800,12 +805,17 @@ class base_socket_t : public socket_handle_t
         std::vector<char> topic_buffer (256);
         size_t topic_size = topic_buffer.size ();
         int subscribed = 0;
+        const zlink_routing_id_t *source_rid = NULL;
         const int rc = zlink_subscription_event (
-          handle (), routing_id_native (source_rid_out_), &subscribed,
+          handle (), &source_rid, &subscribed,
           topic_buffer.data (),
           &topic_size, static_cast<zlink_recv_flags_t> (flags_));
         if (rc != 0)
             return rc;
+        if (source_rid)
+            source_rid_out_ = routing_id_t (*source_rid);
+        else
+            source_rid_out_ = routing_id_t ();
 
         const size_t bounded_topic =
           topic_size <= topic_buffer.size () ? topic_size : topic_buffer.size ();

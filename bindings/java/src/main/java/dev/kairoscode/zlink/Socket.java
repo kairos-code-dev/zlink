@@ -332,7 +332,7 @@ public abstract class Socket implements AutoCloseable {
     }
 
     void send(int rid, Message part, SendFlag flags) {
-        send(RoutingId.fromUInt32(rid), part, flags);
+        send(RoutingId.fromU32(rid), part, flags);
     }
 
     int send(RoutingId rid, ByteBuffer buffer, int sendFlags) {
@@ -353,7 +353,7 @@ public abstract class Socket implements AutoCloseable {
     }
 
     int send(int rid, ByteBuffer buffer, int sendFlags) {
-        return send(RoutingId.fromUInt32(rid), buffer, sendFlags);
+        return send(RoutingId.fromU32(rid), buffer, sendFlags);
     }
 
     boolean trySend(RoutingId rid, ByteBuffer buffer, int sendFlags) {

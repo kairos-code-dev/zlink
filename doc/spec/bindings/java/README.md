@@ -486,9 +486,9 @@ public final class Message implements AutoCloseable {
 
 ### RoutingId
 
-Immutable binary-safe routing identity value object (1-255 bytes). The
-canonical constructor is `fromBytes(byte[])`; no string-only constructor
-is provided. `toHex()` is offered as a convenience only.
+Immutable binary-safe routing identity value object (0-255 bytes). The
+canonical form is raw bytes. `fromU32()` and `fromText()` are helper
+constructors only; they do not change the bytes-canonical contract.
 
 ```java
 public final class RoutingId {
@@ -497,12 +497,16 @@ public final class RoutingId {
     // --- factories (binary-safe) ---
     static RoutingId fromBytes(byte[] bytes);
     static RoutingId fromBytes(byte[] bytes, int offset, int length);
+    static RoutingId fromU32(int value);
+    static RoutingId fromText(String value);
 
     // --- accessors ---
     byte[] toBytes();                       // defensive copy of raw bytes
-    ByteBuffer asReadOnlyBuffer();
-    int size();                             // 1-255
+    ByteBuffer asByteBuffer();              // read-only borrowed view
+    int size();                             // 0-255
     boolean empty();
+    int toU32();
+    String toText();
 
     // --- convenience (not canonical) ---
     String toHex();
@@ -511,6 +515,15 @@ public final class RoutingId {
     int hashCode();
 }
 ```
+
+Rules:
+- `RoutingId` is bytes-canonical. `fromU32()` / `toU32()` use 4-byte
+  big-endian STREAM encoding.
+- `fromText()` / `toText()` use UTF-8.
+- `asByteBuffer()` is the no-copy byte view for callers that need direct
+  byte access.
+- Display code should prefer `toText()` when text is expected and fall
+  back to `toHex()` when the bytes are not text.
 
 ### SendFlags
 

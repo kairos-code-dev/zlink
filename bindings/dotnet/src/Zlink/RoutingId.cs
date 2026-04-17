@@ -7,6 +7,7 @@ namespace Zlink;
 
 public readonly struct RoutingId : IEquatable<RoutingId>
 {
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly byte[]? _bytes;
 
     private RoutingId(byte[] bytes, bool takeOwnership)
@@ -34,11 +35,23 @@ public readonly struct RoutingId : IEquatable<RoutingId>
             RoutingIdCodec.FromUInt32(value), takeOwnership: true);
     }
 
+    public static RoutingId FromU32(uint value)
+    {
+        return FromUInt32(value);
+    }
+
     public static RoutingId FromString(string value)
     {
-        return new RoutingId(
-            RoutingIdCodec.FromPublicString(value, nameof(value)),
-            takeOwnership: true);
+        return FromText(value);
+    }
+
+    public static RoutingId FromText(string value)
+    {
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+        byte[] bytes = StrictUtf8.GetBytes(value);
+        Validate(bytes, nameof(value));
+        return new RoutingId(bytes, takeOwnership: true);
     }
 
     public int Size => _bytes?.Length ?? 0;
@@ -48,6 +61,11 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     public ReadOnlySpan<byte> ToBytes()
     {
         return _bytes ?? ReadOnlySpan<byte>.Empty;
+    }
+
+    public ReadOnlySpan<byte> AsSpan()
+    {
+        return ToBytes();
     }
 
     public byte[] ToByteArray()
@@ -65,14 +83,32 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         return RoutingIdCodec.TryToUInt32(ToBytes(), out value);
     }
 
+    public bool TryToU32(out uint value)
+    {
+        return TryToUInt32(out value);
+    }
+
+    public uint ToU32()
+    {
+        if (!TryToUInt32(out uint value))
+            throw new InvalidOperationException(
+                "routing id is not a 4-byte STREAM routing id.");
+        return value;
+    }
+
     public string ToPublicString()
     {
         return RoutingIdCodec.ToPublicString(ToBytes());
     }
 
+    public string ToText()
+    {
+        return StrictUtf8.GetString(ToBytes());
+    }
+
     public override string ToString()
     {
-        return Encoding.UTF8.GetString(ToBytes());
+        return ToHex();
     }
 
     public bool Equals(RoutingId other)
@@ -110,10 +146,10 @@ public readonly struct RoutingId : IEquatable<RoutingId>
 
     private static void Validate(ReadOnlySpan<byte> bytes, string paramName)
     {
-        if (bytes.Length <= 0 || bytes.Length > 255)
+        if (bytes.Length > 255)
         {
             throw new ArgumentOutOfRangeException(paramName,
-                "routingId length must be between 1 and 255 bytes.");
+                "routingId length must be between 0 and 255 bytes.");
         }
     }
 }

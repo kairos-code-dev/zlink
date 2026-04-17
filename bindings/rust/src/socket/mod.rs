@@ -240,14 +240,14 @@ impl SocketInner {
     }
 
     pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {
-        let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
+        let mut rid: *const ffi::zlink_routing_id_t = ptr::null();
         let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
         let mut part_count: usize = 0;
 
         let rc = unsafe {
             ffi::zlink_recv(
                 self.handle,
-                rid.as_mut_ptr(),
+                &mut rid,
                 &mut parts_ptr,
                 &mut part_count,
                 flags.bits(),
@@ -255,20 +255,22 @@ impl SocketInner {
         };
         check_recv_rc(rc)?;
 
-        let rid = unsafe { rid.assume_init() };
         let parts = take_parts(parts_ptr, part_count);
-        Ok(Received::new(RoutingId::from_raw_optional(rid), parts))
+        Ok(Received::new(
+            if rid.is_null() { None } else { Some(unsafe { RoutingId::from_raw(*rid) }) },
+            parts,
+        ))
     }
 
     pub(crate) fn try_recv(&self) -> Result<Option<Received>, RecvError> {
-        let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
+        let mut rid: *const ffi::zlink_routing_id_t = ptr::null();
         let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
         let mut part_count: usize = 0;
 
         let rc = unsafe {
             ffi::zlink_recv(
                 self.handle,
-                rid.as_mut_ptr(),
+                &mut rid,
                 &mut parts_ptr,
                 &mut part_count,
                 ffi::ZLINK_DONTWAIT,
@@ -285,10 +287,9 @@ impl SocketInner {
             return Err(RecvError::new(crate::error::RecvResult::Terminated, errno));
         }
 
-        let rid = unsafe { rid.assume_init() };
         let parts = take_parts(parts_ptr, part_count);
         Ok(Some(Received::new(
-            RoutingId::from_raw_optional(rid),
+            if rid.is_null() { None } else { Some(unsafe { RoutingId::from_raw(*rid) }) },
             parts,
         )))
     }
@@ -349,7 +350,7 @@ impl SocketInner {
     }
 
     pub fn subscribe_recv_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, RecvError> {
-        let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
+        let mut rid: *const ffi::zlink_routing_id_t = ptr::null();
         let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
         let mut part_count: usize = 0;
         let mut topic_buf = [0i8; 256];
@@ -358,7 +359,7 @@ impl SocketInner {
         let rc = unsafe {
             ffi::zlink_subscribe(
                 self.handle,
-                rid.as_mut_ptr(),
+                &mut rid,
                 &mut parts_ptr,
                 &mut part_count,
                 topic_buf.as_mut_ptr(),
@@ -368,11 +369,10 @@ impl SocketInner {
         };
         check_recv_rc(rc)?;
 
-        let rid = unsafe { rid.assume_init() };
         let topic = cstr_buf_to_string(&topic_buf, topic_len);
         let parts = take_parts(parts_ptr, part_count);
         Ok(TopicMessage::new(
-            RoutingId::from_raw_optional(rid),
+            if rid.is_null() { None } else { Some(unsafe { RoutingId::from_raw(*rid) }) },
             None,
             topic,
             parts,
@@ -380,7 +380,7 @@ impl SocketInner {
     }
 
     pub(crate) fn try_subscribe_recv(&self) -> Result<Option<TopicMessage>, RecvError> {
-        let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
+        let mut rid: *const ffi::zlink_routing_id_t = ptr::null();
         let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
         let mut part_count: usize = 0;
         let mut topic_buf = [0i8; 256];
@@ -389,7 +389,7 @@ impl SocketInner {
         let rc = unsafe {
             ffi::zlink_subscribe(
                 self.handle,
-                rid.as_mut_ptr(),
+                &mut rid,
                 &mut parts_ptr,
                 &mut part_count,
                 topic_buf.as_mut_ptr(),
@@ -408,11 +408,10 @@ impl SocketInner {
             return Err(RecvError::new(crate::error::RecvResult::Terminated, errno));
         }
 
-        let rid = unsafe { rid.assume_init() };
         let topic = cstr_buf_to_string(&topic_buf, topic_len);
         let parts = take_parts(parts_ptr, part_count);
         Ok(Some(TopicMessage::new(
-            RoutingId::from_raw_optional(rid),
+            if rid.is_null() { None } else { Some(unsafe { RoutingId::from_raw(*rid) }) },
             None,
             topic,
             parts,
@@ -441,7 +440,7 @@ impl SocketInner {
         &self,
         flags: RecvFlags,
     ) -> Result<SubscriptionEvent, RecvError> {
-        let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
+        let mut rid: *const ffi::zlink_routing_id_t = ptr::null();
         let mut subscribed: i32 = 0;
         let mut topic_buf = [0i8; 256];
         let mut topic_len: usize = 256;
@@ -449,7 +448,7 @@ impl SocketInner {
         let rc = unsafe {
             ffi::zlink_subscription_event(
                 self.handle,
-                rid.as_mut_ptr(),
+                &mut rid,
                 &mut subscribed,
                 topic_buf.as_mut_ptr(),
                 &mut topic_len,
@@ -458,10 +457,9 @@ impl SocketInner {
         };
         check_recv_rc(rc)?;
 
-        let rid = unsafe { rid.assume_init() };
         let topic = cstr_buf_to_string(&topic_buf, topic_len);
         Ok(SubscriptionEvent::new(
-            RoutingId::from_raw_optional(rid),
+            if rid.is_null() { None } else { Some(unsafe { RoutingId::from_raw(*rid) }) },
             None,
             subscribed != 0,
             topic,
@@ -471,7 +469,7 @@ impl SocketInner {
     pub(crate) fn try_receive_subscription_event(
         &self,
     ) -> Result<Option<SubscriptionEvent>, RecvError> {
-        let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
+        let mut rid: *const ffi::zlink_routing_id_t = ptr::null();
         let mut subscribed: i32 = 0;
         let mut topic_buf = [0i8; 256];
         let mut topic_len: usize = 256;
@@ -479,7 +477,7 @@ impl SocketInner {
         let rc = unsafe {
             ffi::zlink_subscription_event(
                 self.handle,
-                rid.as_mut_ptr(),
+                &mut rid,
                 &mut subscribed,
                 topic_buf.as_mut_ptr(),
                 &mut topic_len,
@@ -497,10 +495,9 @@ impl SocketInner {
             return Err(RecvError::new(crate::error::RecvResult::Terminated, errno));
         }
 
-        let rid = unsafe { rid.assume_init() };
         let topic = cstr_buf_to_string(&topic_buf, topic_len);
         Ok(Some(SubscriptionEvent::new(
-            RoutingId::from_raw_optional(rid),
+            if rid.is_null() { None } else { Some(unsafe { RoutingId::from_raw(*rid) }) },
             None,
             subscribed != 0,
             topic,
@@ -680,15 +677,17 @@ impl SocketInner {
     }
 
     pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_set_routing_id(self.handle, id.data().as_ptr() as *const c_void, id.len())
-        })
+        check_config_rc(unsafe { ffi::zlink_set_routing_id(self.handle, id.as_raw()) })
     }
 
     pub fn routing_id(&self) -> Result<RoutingId, ConfigError> {
-        let mut raw = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
-        check_config_rc(unsafe { ffi::zlink_get_routing_id(self.handle, raw.as_mut_ptr()) })?;
-        Ok(RoutingId::from_raw(unsafe { raw.assume_init() }))
+        let mut raw: *const ffi::zlink_routing_id_t = ptr::null();
+        check_config_rc(unsafe { ffi::zlink_get_routing_id(self.handle, &mut raw) })?;
+        Ok(if raw.is_null() {
+            RoutingId::from_bytes(&[])
+        } else {
+            unsafe { RoutingId::from_raw(*raw) }
+        })
     }
 
     pub fn last_endpoint(&self) -> Result<String, ConfigError> {

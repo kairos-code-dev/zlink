@@ -35,9 +35,9 @@ test('spot requestToSpot promise resolves through routed reply', async () => {
         responderNode.bind(endpoint);
         requesterNode.connectPeer(endpoint);
         await waitForPeer(requesterNode);
-        const handled = new Promise((resolve, reject) => {
+        const handled = (async () => {
             const deadline = Date.now() + 5000;
-            const poll = () => {
+            while (Date.now() < deadline) {
                 try {
                     const received = responder.recvRouted(zlink.RecvFlags.DontWait);
                     try {
@@ -47,22 +47,21 @@ test('spot requestToSpot promise resolves through routed reply', async () => {
                         assert.equal(received.parts.length, 1);
                         assert.equal(received.parts[0].data().toString(), 'spot-ping');
                         received.reply(zlink.Message.from(Buffer.from('spot-pong')));
-                        resolve(null);
+                        return;
                     }
                     finally {
                         received.close();
                     }
                 }
                 catch (error) {
-                    if (error instanceof zlink.RecvError && Date.now() < deadline) {
-                        setImmediate(poll);
-                        return;
+                    if (!(error instanceof zlink.RecvError)) {
+                        throw error;
                     }
-                    reject(error);
                 }
-            };
-            poll();
-        });
+                await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+            throw new Error('spot routed request timed out');
+        })();
         const reply = await requester.requestToSpot(responderNode.routingId, responder.routingId, Buffer.from('spot-ping'), 2000);
         assert.equal(reply.length, 1);
         assert.equal(reply[0].data().toString(), 'spot-pong');

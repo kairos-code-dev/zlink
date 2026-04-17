@@ -73,18 +73,12 @@ int copy_routing_id_frame (const zlink_msg_t &frame_,
     if (!source_rid_out_)
         return 0;
 
-    const size_t routing_id_size = zlink_msg_size (&frame_);
-    const size_t routing_id_copy =
-      routing_id_size > sizeof (source_rid_out_->data)
-        ? sizeof (source_rid_out_->data)
-        : routing_id_size;
-    source_rid_out_->size = static_cast<uint8_t> (routing_id_copy);
-    if (routing_id_copy > 0) {
-        memcpy (
-          source_rid_out_->data,
-          zlink_msg_data (&const_cast<zlink_msg_t &> (frame_)),
-          routing_id_copy);
-    }
+    source_rid_out_->size = zlink_msg_size (&frame_);
+    source_rid_out_->data = source_rid_out_->size == 0
+                              ? NULL
+                              : static_cast<uint8_t *> (
+                                  zlink_msg_data (&const_cast<zlink_msg_t &> (
+                                    frame_)));
     return 0;
 }
 

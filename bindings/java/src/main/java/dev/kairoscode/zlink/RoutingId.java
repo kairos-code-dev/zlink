@@ -3,6 +3,8 @@
 package dev.kairoscode.zlink;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Objects;
@@ -48,11 +50,19 @@ public final class RoutingId {
         return new RoutingId(bytes);
     }
 
+    public static RoutingId fromU32(int value) {
+        return fromUInt32(value);
+    }
+
     public static RoutingId fromUtf8(String value) {
         Objects.requireNonNull(value, "value");
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
         validateLength(bytes.length);
         return new RoutingId(bytes);
+    }
+
+    public static RoutingId fromText(String value) {
+        return fromUtf8(value);
     }
 
     private static void validateLength(int length) {
@@ -76,6 +86,10 @@ public final class RoutingId {
         return ByteBuffer.wrap(value).asReadOnlyBuffer();
     }
 
+    public ByteBuffer asByteBuffer() {
+        return asReadOnlyBuffer();
+    }
+
     /** Returns the routing id byte length. */
     public int size() {
         return value.length;
@@ -96,7 +110,15 @@ public final class RoutingId {
     }
 
     public String utf8() {
-        return new String(value, StandardCharsets.UTF_8);
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(value))
+                .toString();
+        } catch (CharacterCodingException ex) {
+            throw new IllegalStateException("routing id is not valid UTF-8", ex);
+        }
     }
 
     public int toUInt32() {
@@ -108,6 +130,14 @@ public final class RoutingId {
             | ((value[1] & 0xFF) << 16)
             | ((value[2] & 0xFF) << 8)
             | (value[3] & 0xFF);
+    }
+
+    public int toU32() {
+        return toUInt32();
+    }
+
+    public String toText() {
+        return utf8();
     }
 
     @Override

@@ -77,6 +77,10 @@ internal static partial class NativeMethods
     internal static extern int zlink_stream_detach(IntPtr socket);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_stream_packet_handler(IntPtr socket,
+        ZlinkStreamOnPacketDelegate handler, IntPtr userData);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_recv_handler(IntPtr subject,
         ZlinkSocketMsgHandlerDelegate handler, IntPtr userData);
 

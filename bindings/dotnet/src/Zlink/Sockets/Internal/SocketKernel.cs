@@ -32,11 +32,16 @@ internal sealed class SocketKernel : IDisposable
     private readonly SocketOptionAccessor _options;
     private readonly SocketTypePolicy _policy;
     private NativeMethods.ZlinkStreamOnRawDelegate? _streamRawCallback;
+    private NativeMethods.ZlinkStreamOnPacketDelegate? _streamPacketCallback;
     private StreamPacketHandler? _streamPacketHandler;
+    private StreamUInt32PacketHandler? _streamUInt32PacketHandler;
+    private StreamFramedPacketHandler? _streamFramedPacketHandler;
+    private StreamUInt32FramedPacketHandler? _streamUInt32FramedPacketHandler;
     private SocketRecvHandler? _recvHandler;
     private SocketSubscribeHandler? _subscribeHandler;
     private Action? _sendReadyHandler;
     private SynchronizationContext? _streamRawContext;
+    private SynchronizationContext? _streamPacketContext;
     private SynchronizationContext? _recvHandlerContext;
     private SynchronizationContext? _subscribeHandlerContext;
     private SynchronizationContext? _sendReadyHandlerContext;
@@ -135,6 +140,84 @@ internal sealed class SocketKernel : IDisposable
         _streamAttached = true;
     }
 
+    public void AttachStreamRaw(StreamUInt32PacketHandler handler)
+    {
+        EnsureSupports(nameof(AttachStreamRaw),
+            SocketTypePolicy.SocketCapability.StreamAttach);
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
+        if (_streamAttached)
+            throw new InvalidOperationException(
+                "STREAM callback is already attached.");
+
+        SynchronizationContext? context = SynchronizationContext.Current;
+        _streamUInt32PacketHandler = handler;
+        _streamRawContext = context;
+        _streamRawCallback = OnStreamRawUInt32;
+        int rc = NativeMethods.zlink_stream_attach_raw(Handle,
+            _streamRawCallback, IntPtr.Zero);
+        if (rc != 0)
+        {
+            _streamUInt32PacketHandler = null;
+            _streamRawContext = null;
+            _streamRawCallback = null;
+            throw ZlinkException.FromLastError();
+        }
+        _streamAttached = true;
+    }
+
+    public void AttachStreamPacket(StreamFramedPacketHandler handler)
+    {
+        EnsureSupports(nameof(AttachStreamPacket),
+            SocketTypePolicy.SocketCapability.StreamAttach);
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
+        if (_streamAttached)
+            throw new InvalidOperationException(
+                "STREAM callback is already attached.");
+
+        SynchronizationContext? context = SynchronizationContext.Current;
+        _streamFramedPacketHandler = handler;
+        _streamPacketContext = context;
+        _streamPacketCallback = OnStreamPacket;
+        int rc = NativeMethods.zlink_stream_packet_handler(Handle,
+            _streamPacketCallback, IntPtr.Zero);
+        if (rc != 0)
+        {
+            _streamFramedPacketHandler = null;
+            _streamPacketContext = null;
+            _streamPacketCallback = null;
+            throw ZlinkException.FromLastError();
+        }
+        _streamAttached = true;
+    }
+
+    public void AttachStreamPacket(StreamUInt32FramedPacketHandler handler)
+    {
+        EnsureSupports(nameof(AttachStreamPacket),
+            SocketTypePolicy.SocketCapability.StreamAttach);
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
+        if (_streamAttached)
+            throw new InvalidOperationException(
+                "STREAM callback is already attached.");
+
+        SynchronizationContext? context = SynchronizationContext.Current;
+        _streamUInt32FramedPacketHandler = handler;
+        _streamPacketContext = context;
+        _streamPacketCallback = OnStreamPacketUInt32;
+        int rc = NativeMethods.zlink_stream_packet_handler(Handle,
+            _streamPacketCallback, IntPtr.Zero);
+        if (rc != 0)
+        {
+            _streamUInt32FramedPacketHandler = null;
+            _streamPacketContext = null;
+            _streamPacketCallback = null;
+            throw ZlinkException.FromLastError();
+        }
+        _streamAttached = true;
+    }
+
     public void DetachStream()
     {
         EnsureSupports(nameof(DetachStream),
@@ -145,8 +228,13 @@ internal sealed class SocketKernel : IDisposable
         int rc = NativeMethods.zlink_stream_detach(Handle);
         _streamAttached = false;
         _streamPacketHandler = null;
+        _streamUInt32PacketHandler = null;
+        _streamFramedPacketHandler = null;
+        _streamUInt32FramedPacketHandler = null;
         _streamRawCallback = null;
+        _streamPacketCallback = null;
         _streamRawContext = null;
+        _streamPacketContext = null;
         ZlinkException.ThrowIfError(rc);
     }
 
@@ -261,6 +349,17 @@ internal sealed class SocketKernel : IDisposable
         SendSingleCore(ref nativeRoutingId, message, (int)flags);
     }
 
+    public void Send(uint routingId, Message message,
+        SendFlags flags = SendFlags.None)
+    {
+        EnsureSupports(nameof(Send), SocketTypePolicy.SocketCapability.RoutedSend);
+        if (message == null)
+            throw new ArgumentNullException(nameof(message));
+        byte[] encoded = RoutingIdCodec.FromUInt32(routingId);
+        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        SendSingleCore(ref nativeRoutingId, message, (int)flags);
+    }
+
     public SendResult TrySend(string routingId, Message message)
     {
         EnsureSupports(nameof(TrySend),
@@ -306,6 +405,18 @@ internal sealed class SocketKernel : IDisposable
         if (payload == null)
             throw new ArgumentNullException(nameof(payload));
         byte[] encoded = RoutingIdCodec.FromRoutingId(routingId);
+        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        SendBorrowedSingleCore(ref nativeRoutingId, payload, flags);
+    }
+
+    internal void SendBorrowedSingle(uint routingId, byte[] payload,
+        int flags)
+    {
+        EnsureSupports(nameof(SendBorrowedSingle),
+            SocketTypePolicy.SocketCapability.RoutedSend);
+        if (payload == null)
+            throw new ArgumentNullException(nameof(payload));
+        byte[] encoded = RoutingIdCodec.FromUInt32(routingId);
         ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
         SendBorrowedSingleCore(ref nativeRoutingId, payload, flags);
     }
@@ -1652,6 +1763,174 @@ internal sealed class SocketKernel : IDisposable
         finally
         {
             CloseStreamPacket(message);
+        }
+    }
+
+    private unsafe int OnStreamRawUInt32(IntPtr routingId, IntPtr message,
+        IntPtr userdata)
+    {
+        if (message == IntPtr.Zero)
+            return 0;
+
+        StreamUInt32PacketHandler? packetHandler = _streamUInt32PacketHandler;
+        SynchronizationContext? context = _streamRawContext;
+        if (packetHandler == null || routingId == IntPtr.Zero)
+        {
+            CloseStreamPacket(message);
+            return 0;
+        }
+
+        byte[] ridBytes = NativeHelpers.ReadRoutingId(
+            ref *(ZlinkRoutingId*)routingId);
+        if (!RoutingIdCodec.TryToUInt32(ridBytes, out uint routingIdValue))
+        {
+            CloseStreamPacket(message);
+            return 0;
+        }
+
+        Message? payloadMsg = null;
+        bool delivered = false;
+        try
+        {
+            payloadMsg = Message.MoveFromNativeSingle(message);
+            delivered = true;
+            return CallbackDelivery.Invoke(context,
+                () => packetHandler(routingIdValue, payloadMsg));
+        }
+        catch (Exception ex)
+        {
+            Runtime.ReportUnhandledCallbackException(ex);
+            if (!delivered && payloadMsg != null)
+            {
+                try
+                {
+                    payloadMsg.Dispose();
+                }
+                catch
+                {
+                }
+            }
+            return 1;
+        }
+        finally
+        {
+            CloseStreamPacket(message);
+        }
+    }
+
+    private unsafe void OnStreamPacket(IntPtr stream, IntPtr routingId,
+        IntPtr header, IntPtr body, IntPtr userdata)
+    {
+        StreamFramedPacketHandler? packetHandler = _streamFramedPacketHandler;
+        SynchronizationContext? context = _streamPacketContext;
+        if (packetHandler == null || routingId == IntPtr.Zero)
+        {
+            CloseStreamPacket(header);
+            CloseStreamPacket(body);
+            return;
+        }
+
+        Message? headerMsg = null;
+        Message? bodyMsg = null;
+        bool delivered = false;
+        try
+        {
+            string routingIdText = RoutingIdCodec.ToPublicString(
+                NativeHelpers.ReadRoutingId(ref *(ZlinkRoutingId*)routingId));
+            headerMsg = Message.MoveFromNativeSingle(header);
+            bodyMsg = Message.MoveFromNativeSingle(body);
+            delivered = true;
+            CallbackDelivery.Post(context,
+                () => packetHandler(routingIdText, headerMsg, bodyMsg));
+        }
+        catch (Exception ex)
+        {
+            Runtime.ReportUnhandledCallbackException(ex);
+            if (!delivered)
+            {
+                try
+                {
+                    headerMsg?.Dispose();
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    bodyMsg?.Dispose();
+                }
+                catch
+                {
+                }
+            }
+        }
+        finally
+        {
+            CloseStreamPacket(header);
+            CloseStreamPacket(body);
+        }
+    }
+
+    private unsafe void OnStreamPacketUInt32(IntPtr stream, IntPtr routingId,
+        IntPtr header, IntPtr body, IntPtr userdata)
+    {
+        StreamUInt32FramedPacketHandler? packetHandler =
+            _streamUInt32FramedPacketHandler;
+        SynchronizationContext? context = _streamPacketContext;
+        if (packetHandler == null || routingId == IntPtr.Zero)
+        {
+            CloseStreamPacket(header);
+            CloseStreamPacket(body);
+            return;
+        }
+
+        byte[] ridBytes = NativeHelpers.ReadRoutingId(
+            ref *(ZlinkRoutingId*)routingId);
+        if (!RoutingIdCodec.TryToUInt32(ridBytes, out uint routingIdValue))
+        {
+            CloseStreamPacket(header);
+            CloseStreamPacket(body);
+            return;
+        }
+
+        Message? headerMsg = null;
+        Message? bodyMsg = null;
+        bool delivered = false;
+        try
+        {
+            headerMsg = Message.MoveFromNativeSingle(header);
+            bodyMsg = Message.MoveFromNativeSingle(body);
+            delivered = true;
+            CallbackDelivery.Post(context,
+                () => packetHandler(routingIdValue, headerMsg, bodyMsg));
+        }
+        catch (Exception ex)
+        {
+            Runtime.ReportUnhandledCallbackException(ex);
+            if (!delivered)
+            {
+                try
+                {
+                    headerMsg?.Dispose();
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    bodyMsg?.Dispose();
+                }
+                catch
+                {
+                }
+            }
+        }
+        finally
+        {
+            CloseStreamPacket(header);
+            CloseStreamPacket(body);
         }
     }
 

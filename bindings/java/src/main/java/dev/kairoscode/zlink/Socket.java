@@ -160,6 +160,10 @@ public abstract class Socket implements AutoCloseable {
         socketCore.attachStreamRaw(handler);
     }
 
+    void attachStreamRaw(StreamUInt32RawNativeHandler handler) {
+        socketCore.attachStreamRaw(handler);
+    }
+
     void attachStreamPacket(StreamFramedPacketHandler handler) {
         socketCore.attachStreamPacket(handler);
     }
@@ -391,6 +395,45 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
+
+    int send(int rid, MemorySegment payload, int length, int sendFlags) {
+        Objects.requireNonNull(payload, "payload");
+        SendFlag flag = SendFlag.fromValue(sendFlags);
+        return sendDirectSegment(rid, payload, length, flag);
+    }
+
+    int sendCopied(int rid, MemorySegment payload, int length, int sendFlags) {
+        Objects.requireNonNull(payload, "payload");
+        SendFlag flag = SendFlag.fromValue(sendFlags);
+        ensureBlockingSendAllowed(flag);
+        SendScratch scratch = sendScratch.get();
+        MemorySegment nativeMsg = scratch.nativeMsg;
+        MemorySegment nativeRoutingId = nativeRoutingIdU32(scratch, rid);
+        int rc = NativeMsg.msgInitSize(nativeMsg, length);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_msg_init_size");
+        if (length > 0) {
+            MemorySegment dst = NativeMsg.msgData(nativeMsg).reinterpret(length);
+            MemorySegment.copy(payload, 0, dst, 0, length);
+        }
+        boolean success = false;
+        try {
+            rc = Native.sendMultipart(handle, nativeRoutingId, nativeMsg, 1,
+                flag.getValue());
+            if (rc < 0)
+                throw ZlinkException.fromLastError("zlink_send_rid");
+            success = true;
+        } finally {
+            if (!success) {
+                try {
+                    NativeMsg.msgClose(nativeMsg);
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
+        return length;
+    }
+
     boolean trySend(RoutingId rid, ByteBuffer buffer, int sendFlags) {
         Objects.requireNonNull(rid, "rid");
         Objects.requireNonNull(buffer, "buffer");
@@ -451,6 +494,14 @@ public abstract class Socket implements AutoCloseable {
         MemorySegment payload = length == 0
             ? MemorySegment.NULL
             : MemorySegment.ofBuffer(slice);
+        int sent = sendDirectSegment(rid, payload, length, flag);
+        buffer.position(buffer.position() + length);
+        return sent;
+    }
+
+    private int sendDirectSegment(int rid, MemorySegment payload, int length,
+                                  SendFlag flag) {
+        ensureBlockingSendAllowed(flag);
         SendScratch scratch = sendScratch.get();
         MemorySegment nativeMsg = scratch.nativeMsg;
         MemorySegment nativeRoutingId = nativeRoutingIdU32(scratch, rid);
@@ -473,7 +524,6 @@ public abstract class Socket implements AutoCloseable {
                 }
             }
         }
-        buffer.position(buffer.position() + length);
         return length;
     }
 

@@ -75,6 +75,7 @@ final class SocketCore {
     private SubscribeHandler subscribeHandler;
     private SendReadyHandler sendReadyHandler;
     private StreamPacketHandler streamPacketHandler;
+    private StreamUInt32RawNativeHandler streamUInt32RawNativeHandler;
     private StreamFramedPacketHandler streamFramedPacketHandler;
     private StreamUInt32FramedPacketHandler streamUInt32FramedPacketHandler;
     private StreamUInt32FramedBufferHandler streamUInt32FramedBufferHandler;
@@ -403,6 +404,43 @@ final class SocketCore {
         }
     }
 
+    void attachStreamRaw(StreamUInt32RawNativeHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        ensureOpen();
+        ensureNoCallbackFailure();
+        ExecutorService executor = callbackExecutor;
+        boolean createdExecutor = false;
+        if (executor == null) {
+            executor = newCallbackExecutor();
+            callbackExecutor = executor;
+            createdExecutor = true;
+        }
+        Arena arena = Arena.ofShared();
+        MemorySegment stub = LINKER.upcallStub(callbackHandle(
+            "handleStreamRawUInt32NativeCallback",
+            MethodType.methodType(int.class, MemorySegment.class,
+                MemorySegment.class, MemorySegment.class)),
+            FD_STREAM_RAW_CALLBACK, arena);
+        boolean success = false;
+        try {
+            int rc = Native.streamAttachRaw(socket.handle(), stub);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_stream_attach_raw");
+            success = true;
+            closeArena(streamRawCallbackArena);
+            streamRawCallbackArena = arena;
+            streamUInt32RawNativeHandler = handler;
+        } finally {
+            if (!success) {
+                if (createdExecutor) {
+                    callbackExecutor = null;
+                    shutdownExecutor(executor);
+                }
+                closeArena(arena);
+            }
+        }
+    }
+
     void attachStreamPacket(StreamFramedPacketHandler handler) {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
@@ -561,6 +599,7 @@ final class SocketCore {
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_stream_detach");
         streamPacketHandler = null;
+        streamUInt32RawNativeHandler = null;
         streamFramedPacketHandler = null;
         streamUInt32FramedPacketHandler = null;
         streamUInt32FramedBufferHandler = null;
@@ -604,6 +643,7 @@ final class SocketCore {
         subscribeHandler = null;
         sendReadyHandler = null;
         streamPacketHandler = null;
+        streamUInt32RawNativeHandler = null;
         streamFramedPacketHandler = null;
         streamUInt32FramedPacketHandler = null;
         streamUInt32FramedBufferHandler = null;
@@ -755,6 +795,22 @@ final class SocketCore {
         }
     }
 
+    private int handleStreamRawUInt32NativeCallback(MemorySegment sourceRid,
+                                                    MemorySegment message,
+                                                    MemorySegment userdata) {
+        StreamUInt32RawNativeHandler handler = streamUInt32RawNativeHandler;
+        if (handler == null)
+            return 0;
+        try {
+            dispatchStreamRawUInt32Native(handler, readRoutingIdUInt32(sourceRid),
+                message);
+            return 0;
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
+            return -1;
+        }
+    }
+
     private void handleStreamPacketCallback(MemorySegment stream,
                                             MemorySegment sourceRid,
                                             MemorySegment header,
@@ -830,6 +886,20 @@ final class SocketCore {
         enterCallback();
         try (payload) {
             handler.onPacket(routingId, payload);
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
+        } finally {
+            leaveCallback();
+        }
+    }
+
+    private void dispatchStreamRawUInt32Native(
+      StreamUInt32RawNativeHandler handler,
+      int routingId,
+      MemorySegment message) {
+        enterCallback();
+        try {
+            handler.onPacket(routingId, message);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
         } finally {

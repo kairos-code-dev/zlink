@@ -71,6 +71,33 @@ internal static class RoutingIdCodec
         return routingId.ToByteArray();
     }
 
+    internal static byte[] FromUInt32(uint routingId)
+    {
+        return
+        [
+            (byte)(routingId >> 24),
+            (byte)(routingId >> 16),
+            (byte)(routingId >> 8),
+            (byte)routingId
+        ];
+    }
+
+    internal static bool TryToUInt32(ReadOnlySpan<byte> routingId,
+        out uint value)
+    {
+        if (routingId.Length != 4)
+        {
+            value = 0;
+            return false;
+        }
+
+        value = ((uint)routingId[0] << 24)
+              | ((uint)routingId[1] << 16)
+              | ((uint)routingId[2] << 8)
+              | routingId[3];
+        return true;
+    }
+
     internal static byte[] FromPublicString(string routingId, string paramName)
     {
         if (routingId == null)

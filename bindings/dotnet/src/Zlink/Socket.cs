@@ -12,6 +12,11 @@ namespace Zlink;
 /// The callback must dispose each message exactly once.
 /// </summary>
 public delegate int StreamPacketHandler(string routingId, Message payload);
+public delegate int StreamUInt32PacketHandler(uint routingId, Message payload);
+public delegate void StreamFramedPacketHandler(string routingId, Message header,
+    Message body);
+public delegate void StreamUInt32FramedPacketHandler(uint routingId,
+    Message header, Message body);
 public delegate void SocketRecvHandler(string routingId, Message[] parts);
 internal delegate void SocketSubscribeHandler(string routingId, string topic,
     Message[] parts);

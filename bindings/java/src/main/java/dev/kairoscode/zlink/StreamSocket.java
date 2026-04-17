@@ -2,6 +2,7 @@
 
 package dev.kairoscode.zlink;
 
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.util.List;
 
@@ -25,6 +26,13 @@ public final class StreamSocket extends Socket {
     public int send(int rid, ByteBuffer buffer, SendFlags flags) {
         return super.send(rid, buffer, flags.value());
     }
+    public int send(int rid, MemorySegment payload, int length, SendFlags flags) {
+        return super.send(rid, payload, length, flags.value());
+    }
+    public int sendCopied(int rid, MemorySegment payload, int length,
+                          SendFlags flags) {
+        return super.sendCopied(rid, payload, length, flags.value());
+    }
     public int send(RoutingId rid, ByteBuffer buffer, SendFlags flags) {
         return super.send(rid, buffer, flags.value());
     }
@@ -37,6 +45,9 @@ public final class StreamSocket extends Socket {
     public Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     public void onPacket(StreamPacketHandler handler) { super.attachStreamRaw(handler); }
+    public void onPacketNative(StreamUInt32RawNativeHandler handler) {
+        super.attachStreamRaw(handler);
+    }
     public void onFramedPacket(StreamFramedPacketHandler handler) {
         super.attachStreamPacket(handler);
     }

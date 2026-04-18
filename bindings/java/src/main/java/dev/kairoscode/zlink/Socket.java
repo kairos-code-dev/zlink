@@ -276,25 +276,12 @@ public abstract class Socket implements AutoCloseable {
         ensureBlockingSendAllowed(flag);
         int effectiveFlags = flag.getValue();
         SendScratch scratch = sendScratch.get();
-        MemorySegment nativeMsg = scratch.nativeMsg;
         MemorySegment nativeRoutingId = nativeRoutingId(scratch, routingId);
-        Object anchor = message.transferTo(nativeMsg);
-        boolean success = false;
-        try {
-            int rc = Native.sendMultipart(handle, nativeRoutingId, nativeMsg,
-                1, effectiveFlags);
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_send_rid");
-            success = true;
-        } finally {
-            if (!success) {
-                message.restoreFromNative(nativeMsg, false, anchor);
-                try {
-                    NativeMsg.msgClose(nativeMsg);
-                } catch (RuntimeException ignored) {
-                }
-            }
-        }
+        int rc = Native.sendMultipart(handle, nativeRoutingId,
+            message.nativeHandle(), 1, effectiveFlags);
+        if (rc < 0)
+            throw ZlinkException.fromLastError("zlink_send_rid");
+        message.markTransferred();
     }
 
     void send(List<Message> parts) {
@@ -307,6 +294,10 @@ public abstract class Socket implements AutoCloseable {
 
     SendResult sendNoWaitResult(Message part) {
         return messagePlane.sendNoWaitResult(part);
+    }
+
+    boolean trySend(Message part) {
+        return trySendResult(sendNoWaitResult(part));
     }
 
     SendResult sendMessageFrameNoWaitResult(RoutingId routingId, Message message) {
@@ -327,6 +318,10 @@ public abstract class Socket implements AutoCloseable {
         return messagePlane.sendNoWaitResult(parts);
     }
 
+    boolean trySend(List<Message> parts) {
+        return trySendResult(sendNoWaitResult(parts));
+    }
+
     void send(RoutingId rid, Message part) {
         messagePlane.send(rid, part);
     }
@@ -340,26 +335,11 @@ public abstract class Socket implements AutoCloseable {
         Objects.requireNonNull(flags, "flags");
         ensureBlockingSendAllowed(flags);
         int effectiveFlags = flags.getValue();
-        SendScratch scratch = sendScratch.get();
-        MemorySegment nativeMsg = scratch.nativeMsg;
-        MemorySegment nativeRoutingId = nativeRoutingIdU32(scratch, rid);
-        Object anchor = part.transferTo(nativeMsg);
-        boolean success = false;
-        try {
-            int rc = Native.sendMultipart(handle, nativeRoutingId, nativeMsg, 1,
-                effectiveFlags);
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_send_rid");
-            success = true;
-        } finally {
-            if (!success) {
-                part.restoreFromNative(nativeMsg, false, anchor);
-                try {
-                    NativeMsg.msgClose(nativeMsg);
-                } catch (RuntimeException ignored) {
-                }
-            }
-        }
+        int rc = Native.sendMultipartU32(handle, rid, part.nativeHandle(), 1,
+            effectiveFlags);
+        if (rc < 0)
+            throw ZlinkException.fromLastError("zlink_send_rid");
+        part.markTransferred();
     }
 
     int send(int rid, MemorySegment payload, int length, int sendFlags) {
@@ -374,7 +354,6 @@ public abstract class Socket implements AutoCloseable {
         ensureBlockingSendAllowed(flag);
         SendScratch scratch = sendScratch.get();
         MemorySegment nativeMsg = scratch.nativeMsg;
-        MemorySegment nativeRoutingId = nativeRoutingIdU32(scratch, rid);
         int rc = NativeMsg.msgInitSize(nativeMsg, length);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_init_size");
@@ -384,7 +363,7 @@ public abstract class Socket implements AutoCloseable {
         }
         boolean success = false;
         try {
-            rc = Native.sendMultipart(handle, nativeRoutingId, nativeMsg, 1,
+            rc = Native.sendMultipartU32(handle, rid, nativeMsg, 1,
                 flag.getValue());
             if (rc < 0)
                 throw ZlinkException.fromLastError("zlink_send_rid");
@@ -405,14 +384,13 @@ public abstract class Socket implements AutoCloseable {
         ensureBlockingSendAllowed(flag);
         SendScratch scratch = sendScratch.get();
         MemorySegment nativeMsg = scratch.nativeMsg;
-        MemorySegment nativeRoutingId = nativeRoutingIdU32(scratch, rid);
         int rc = NativeMsg.msgInitData(nativeMsg, payload, length,
             MemorySegment.NULL, MemorySegment.NULL);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_init_data");
         boolean success = false;
         try {
-            rc = Native.sendMultipart(handle, nativeRoutingId, nativeMsg, 1,
+            rc = Native.sendMultipartU32(handle, rid, nativeMsg, 1,
                 flag.getValue());
             if (rc < 0)
                 throw ZlinkException.fromLastError("zlink_send_rid");
@@ -440,8 +418,16 @@ public abstract class Socket implements AutoCloseable {
         return messagePlane.sendNoWaitResult(rid, part);
     }
 
+    boolean trySend(RoutingId rid, Message part) {
+        return trySendResult(sendNoWaitResult(rid, part));
+    }
+
     SendResult sendNoWaitResult(RoutingId rid, List<Message> parts) {
         return messagePlane.sendNoWaitResult(rid, parts);
+    }
+
+    boolean trySend(RoutingId rid, List<Message> parts) {
+        return trySendResult(sendNoWaitResult(rid, parts));
     }
 
     /** Publishes a single payload part to a topic-aware socket. */
@@ -463,24 +449,11 @@ public abstract class Socket implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeTopic = arena.allocateFrom(topicId,
                 StandardCharsets.UTF_8);
-            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            Object anchor = message.transferTo(nativeMsg);
-            boolean success = false;
-            try {
-                int rc = Native.publish(handle, nativeTopic, nativeMsg, 1,
-                    effectiveFlags);
-                if (rc < 0)
-                    throw ZlinkException.fromLastError("zlink_publish");
-                success = true;
-            } finally {
-                if (!success) {
-                    message.restoreFromNative(nativeMsg, false, anchor);
-                    try {
-                        NativeMsg.msgClose(nativeMsg);
-                    } catch (RuntimeException ignored) {
-                    }
-                }
-            }
+            int rc = Native.publish(handle, nativeTopic, message.nativeHandle(),
+                1, effectiveFlags);
+            if (rc < 0)
+                throw ZlinkException.fromLastError("zlink_publish");
+            message.markTransferred();
         }
     }
 
@@ -521,11 +494,21 @@ public abstract class Socket implements AutoCloseable {
     }
 
     Received recv(ReceiveFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        if (flags == ReceiveFlag.DONTWAIT) {
+            return messagePlane.recvNoWait()
+                .orElseThrow(() -> new RecvException(RecvResult.NO_DATA,
+                    ERRNO_EAGAIN));
+        }
         return messagePlane.recv(flags);
     }
 
     Optional<Received> recvNoWait() {
         return messagePlane.recvNoWait();
+    }
+
+    Received tryRecv() {
+        return recvNoWait().orElse(null);
     }
 
     /** Receives a topic-aware delivery from a SUB/XSUB-style socket. */
@@ -1093,48 +1076,28 @@ public abstract class Socket implements AutoCloseable {
 
     private int withNativeSendNoWaitFrame(Message message, RoutingId routingId) {
         SendScratch scratch = sendScratch.get();
-        MemorySegment nativeMsg = scratch.nativeMsg;
         MemorySegment nativeRoutingId = routingId == null
             ? MemorySegment.NULL
             : nativeRoutingId(scratch, routingId);
-        Object anchor = message.transferTo(nativeMsg);
-        boolean success = false;
-        try {
-            int rc = nativeRoutingId.address() == 0
-                ? Native.sendMultipart(handle, nativeMsg, 1,
-                    SendFlag.DONTWAIT.getValue())
-                : Native.sendMultipart(handle, nativeRoutingId, nativeMsg, 1,
-                    SendFlag.DONTWAIT.getValue());
-            if (rc == SendResult.SENT.nativeValue()) {
-                success = true;
-            }
-            return rc;
-        } finally {
-            if (!success) {
-                message.restoreFromNative(nativeMsg, false, anchor);
-            }
-        }
+        int rc = nativeRoutingId.address() == 0
+            ? Native.sendMultipart(handle, message.nativeHandle(), 1,
+                SendFlag.DONTWAIT.getValue())
+            : Native.sendMultipart(handle, nativeRoutingId,
+                message.nativeHandle(), 1, SendFlag.DONTWAIT.getValue());
+        if (rc == SendResult.SENT.nativeValue())
+            message.markTransferred();
+        return rc;
     }
 
     private int withNativePublishNoWaitFrame(String topicId, Message message) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeTopic = arena.allocateFrom(topicId,
                 StandardCharsets.UTF_8);
-            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            Object anchor = message.transferTo(nativeMsg);
-            boolean success = false;
-            try {
-                int rc = Native.publish(handle, nativeTopic, nativeMsg, 1,
-                    SendFlag.DONTWAIT.getValue());
-                if (rc == SendResult.SENT.nativeValue()) {
-                    success = true;
-                }
-                return rc;
-            } finally {
-                if (!success) {
-                    message.restoreFromNative(nativeMsg, false, anchor);
-                }
-            }
+            int rc = Native.publish(handle, nativeTopic, message.nativeHandle(),
+                1, SendFlag.DONTWAIT.getValue());
+            if (rc == SendResult.SENT.nativeValue())
+                message.markTransferred();
+            return rc;
         }
     }
 
@@ -1448,11 +1411,19 @@ public abstract class Socket implements AutoCloseable {
         throw ZlinkException.fromLastError(apiName);
     }
 
-    private static SubmitException submitExceptionFromSendResult(int rc) {
+    static SubmitException submitExceptionFromSendResult(int rc) {
         return switch (SendResult.fromNativeValue(rc)) {
             case BACKPRESSURED -> new SubmitException(SubmitResult.BACKPRESSURED, 0);
             case NOT_READY -> new SubmitException(SubmitResult.NOT_CONNECTED, 0);
             case SENT -> throw new IllegalArgumentException("send result indicates success");
+        };
+    }
+
+    private static boolean trySendResult(SendResult result) {
+        return switch (result) {
+            case SENT -> true;
+            case BACKPRESSURED -> false;
+            case NOT_READY -> throw submitExceptionFromSendResult(result.nativeValue());
         };
     }
 

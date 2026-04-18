@@ -23,15 +23,12 @@ conflicts with the rules here, this section wins.
   expose a dedicated packet callback surface mapped to
   `zlink_stream_packet_handler()`. Recommended canonical name:
   `on_packet(...)`.
-- `service::spot_node_t` must expose service-aware attachment methods:
-  `attach_router(const std::string& service_name, router_socket_t&)`,
-  `attach_pubsub(const std::string& service_name, pub_socket_t&, sub_socket_t&)`,
-  and attachment snapshot / monitor accessors mapped to
-  `zlink_spot_node_service_attachment_count()`,
-  `zlink_spot_node_service_attachment_at()`, and
-  `zlink_spot_node_monitor_recv()`.
-- `service::spot_t` must expose service-aware data-plane methods:
-  `send_service(...)`, `request_service(...)`, and
+- `service::spot_node_t` must expose channel-aware attachment methods:
+  `attach_channel_dealer(...)`,
+  `attach_channel_dealer_manual(...)`,
+  `attach_pub_ingress(...)`, and `attach_discovery(...)`.
+- `service::spot_t` must expose channel-aware data-plane methods:
+  `send_channel(...)`, `request_channel(...)`, and
   `publish(const std::string& service_name, const std::string& topic, ...)`.
 - `service::spot_t::subscribe(...)` returns a service-aware `topic_message_t`.
   `topic_message_t` therefore needs `std::optional<std::string> service_name()`
@@ -134,6 +131,13 @@ class context_options_t {
 All socket types inherit from `base_socket_t` and expose these common operations.
 Individual socket classes re-expose them as public.
 
+Nonblocking data-plane helpers follow this rule:
+
+- `try_send(...)` returns `false` only for temporary backpressure.
+- Route-not-ready and other submit failures still throw `submit_error_t`.
+- `try_recv()` returns `std::nullopt` when no message is currently available
+  and still throws `recv_error_t` for real recv failures.
+
 ```cpp
 // Available on all socket types
 bool valid() const noexcept;
@@ -176,10 +180,16 @@ class pair_socket_t : public message_socket_t {
     void send(message_t& part, send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
     void send(std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    /// @throws submit_error_t
+    bool try_send(message_t& part);
+    /// @throws submit_error_t
+    bool try_send(std::vector<message_t>& parts);
 
     // --- receive ---
     /// @throws recv_error_t
     received_t recv(recv_flags_t flags = recv_flags_t::none);
+    /// @throws recv_error_t
+    std::optional<received_t> try_recv();
     /// @throws handler_error_t
     void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 };
@@ -253,10 +263,16 @@ class dealer_socket_t : public message_socket_t {
     void send(message_t& part, send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
     void send(std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    /// @throws submit_error_t
+    bool try_send(message_t& part);
+    /// @throws submit_error_t
+    bool try_send(std::vector<message_t>& parts);
 
     // --- receive ---
     /// @throws recv_error_t
     received_t recv(recv_flags_t flags = recv_flags_t::none);
+    /// @throws recv_error_t
+    std::optional<received_t> try_recv();
     /// @throws handler_error_t
     void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
@@ -314,6 +330,10 @@ class router_socket_t : public routed_message_socket_t {
     void send(const routing_id_t& target_rid, message_t& part, send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
     void send(const routing_id_t& target_rid, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    /// @throws submit_error_t
+    bool try_send(const routing_id_t& target_rid, message_t& part);
+    /// @throws submit_error_t
+    bool try_send(const routing_id_t& target_rid, std::vector<message_t>& parts);
 
     // --- receive (unified routed surface) ---
     // 단일 recv 표면이다. 일반 ROUTER 트래픽과 spot-origin routed 트래픽을
@@ -322,6 +342,8 @@ class router_socket_t : public routed_message_socket_t {
     // 트래픽 (reply 는 reply_to_spot 사용).
     /// @throws recv_error_t
     received_t recv(recv_flags_t flags = recv_flags_t::none);
+    /// @throws recv_error_t
+    std::optional<received_t> try_recv();
     /// @throws handler_error_t
     void on_send_ready(zlink_send_ready_handler_fn handler, void* userdata = NULL);
 
@@ -474,11 +496,17 @@ class stream_socket_t : public routed_message_socket_t {
     void send(const routing_id_t& target_rid, message_t& part, send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
     void send(const routing_id_t& target_rid, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    /// @throws submit_error_t
+    bool try_send(const routing_id_t& target_rid, message_t& part);
+    /// @throws submit_error_t
+    bool try_send(const routing_id_t& target_rid, std::vector<message_t>& parts);
 
     // --- receive (three mutually-exclusive modes) ---
     /// (1) raw recv. Returns a multipart received_t.
     /// @throws recv_error_t
     received_t recv(recv_flags_t flags = recv_flags_t::none);
+    /// @throws recv_error_t
+    std::optional<received_t> try_recv();
     /// (2) raw direct callback (zlink_recv_handler). Mutually exclusive
     /// with recv() and on_packet(). Second attach on the same stream returns
     /// BUSY (EBUSY).
@@ -1747,7 +1775,7 @@ class spot_t {
     bool valid() const noexcept;
     void* handle() const;
 
-    // --- service-aware publish / request ---
+    // --- channel-aware publish / request ---
     /// @throws submit_error_t
     void publish(const std::string& service_name, const std::string& topic,
                  message_t& part, send_flags_t flags = send_flags_t::none);
@@ -1755,11 +1783,11 @@ class spot_t {
     void publish(const std::string& service_name, const std::string& topic,
                  std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    void send_service(const std::string& service_name,
+    void send_channel(const std::string& channel_name,
                       std::vector<message_t>& parts,
                       send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    void request_service(const std::string& service_name,
+    void request_channel(const std::string& channel_name,
                          std::vector<message_t>& parts,
                          std::function<void(request_result_t, std::vector<message_t>)> callback,
                          send_flags_t flags = send_flags_t::none,
@@ -1786,30 +1814,6 @@ class spot_t {
     void set_routing_id(const routing_id_t& routing_id);
     /// @throws config_error_t
     void get_routing_id(routing_id_t& routing_id) const;
-
-    // --- routed send (spot → spot) ---
-    /// @throws submit_error_t
-    void send_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
-                      message_t& part, send_flags_t flags = send_flags_t::none);
-    /// @throws submit_error_t
-    void send_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
-                      std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
-
-    // --- routed request (spot → spot, coroutine, blocking submit — no flags) ---
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request_to_spot(const routing_id_t& dest_node_rid,
-                                                           const routing_id_t& dest_spot_rid,
-                                                           message_t message,
-                                                           std::chrono::milliseconds timeout = {});
-
-    // --- routed request (spot → spot, callback; callback receives request_result_t) ---
-    /// @throws submit_error_t
-    void request_to_spot(const routing_id_t& dest_node_rid,
-                         const routing_id_t& dest_spot_rid,
-                         message_t message,
-                         std::function<void(request_result_t, std::vector<message_t>)> callback,
-                         send_flags_t flags = send_flags_t::none,
-                         std::chrono::milliseconds timeout = {});
 
     // --- routed reply (spot → spot) ---
     /// @throws submit_error_t

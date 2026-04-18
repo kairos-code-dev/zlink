@@ -28,7 +28,7 @@ template<typename SocketT> class has_try_subscribe_t
   private:
     template<typename T>
     static auto test (int)
-      -> decltype (std::declval<T &> ().try_subscribe (),
+      -> decltype (std::declval<T &> ().subscribe_no_wait (),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -51,10 +51,10 @@ template<typename SocketT> class has_try_receive_subscription_event_t
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
-static_assert (!has_try_send_t<zlink::pair_socket_t>::value,
-               "pair_socket_t must not expose try_send");
+static_assert (has_try_send_t<zlink::pair_socket_t>::value,
+               "pair_socket_t must expose try_send");
 static_assert (!has_try_subscribe_t<zlink::sub_socket_t>::value,
-               "sub_socket_t must not expose try_subscribe");
+               "sub_socket_t must not expose subscribe_no_wait");
 static_assert (!has_try_receive_subscription_event_t<zlink::xpub_socket_t>::value,
                "xpub_socket_t must not expose try_receive_subscription_event");
 

@@ -29,14 +29,24 @@ public abstract class MessageSocketBase : ConnectableSocketBase
         Kernel.Send(parts, flags);
     }
 
-    internal SendResult TrySend(Message message)
+    public bool TrySend(Message message)
     {
-        return Kernel.TrySend(message);
+        return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(message));
     }
 
-    internal SendResult TrySend(IReadOnlyList<Message> parts)
+    public bool TrySend(IReadOnlyList<Message> parts)
     {
-        return Kernel.TrySend(parts);
+        return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(parts));
+    }
+
+    internal SendResult SendNoWaitResult(Message message)
+    {
+        return Kernel.SendNoWaitResult(message);
+    }
+
+    internal SendResult SendNoWaitResult(IReadOnlyList<Message> parts)
+    {
+        return Kernel.SendNoWaitResult(parts);
     }
 
     internal void OnReceive(SocketRecvHandler handler)
@@ -49,10 +59,15 @@ public abstract class MessageSocketBase : ConnectableSocketBase
         return Kernel.Recv(flags);
     }
 
-    internal bool TryRecv(out Received? received)
+    public bool TryRecv(out Received? received)
     {
-        received = Kernel.TryRecv();
+        received = Kernel.RecvNoWait();
         return received != null;
+    }
+
+    internal Received? RecvNoWait()
+    {
+        return Kernel.RecvNoWait();
     }
 
     public void OnSendReady(Action handler)

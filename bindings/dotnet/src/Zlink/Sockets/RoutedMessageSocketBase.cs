@@ -43,24 +43,48 @@ public abstract class RoutedMessageSocketBase : SocketBase
         Kernel.Send(routingId, parts, flags);
     }
 
-    internal SendResult TrySend(string routingId, Message message)
+    public bool TrySend(string routingId, Message message)
     {
-        return Kernel.TrySend(routingId, message);
+        return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
+            message));
     }
 
-    internal SendResult TrySend(RoutingId routingId, Message message)
+    public bool TrySend(RoutingId routingId, Message message)
     {
-        return Kernel.TrySend(routingId, message);
+        return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
+            message));
     }
 
-    internal SendResult TrySend(string routingId, IReadOnlyList<Message> parts)
+    public bool TrySend(string routingId, IReadOnlyList<Message> parts)
     {
-        return Kernel.TrySend(routingId, parts);
+        return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
+            parts));
     }
 
-    internal SendResult TrySend(RoutingId routingId, IReadOnlyList<Message> parts)
+    public bool TrySend(RoutingId routingId, IReadOnlyList<Message> parts)
     {
-        return Kernel.TrySend(routingId, parts);
+        return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
+            parts));
+    }
+
+    internal SendResult SendNoWaitResult(string routingId, Message message)
+    {
+        return Kernel.SendNoWaitResult(routingId, message);
+    }
+
+    internal SendResult SendNoWaitResult(RoutingId routingId, Message message)
+    {
+        return Kernel.SendNoWaitResult(routingId, message);
+    }
+
+    internal SendResult SendNoWaitResult(string routingId, IReadOnlyList<Message> parts)
+    {
+        return Kernel.SendNoWaitResult(routingId, parts);
+    }
+
+    internal SendResult SendNoWaitResult(RoutingId routingId, IReadOnlyList<Message> parts)
+    {
+        return Kernel.SendNoWaitResult(routingId, parts);
     }
 
     internal void OnReceive(SocketRecvHandler handler)
@@ -73,10 +97,15 @@ public abstract class RoutedMessageSocketBase : SocketBase
         return Kernel.ReceiveRouted(flags);
     }
 
-    internal bool TryRecv(out Received? received)
+    public bool TryRecv(out Received? received)
     {
-        received = Kernel.TryReceiveRouted();
+        received = Kernel.ReceiveRoutedNoWait();
         return received != null;
+    }
+
+    internal Received? RecvNoWait()
+    {
+        return Kernel.ReceiveRoutedNoWait();
     }
 
     public void OnSendReady(Action handler)

@@ -20,14 +20,13 @@ with the rules here, this section wins.
 - `StreamSocket` keeps `Recv(...)` and exposes a packet callback surface
   mapped to `zlink_stream_packet_handler()`. Recommended canonical name:
   `OnPacket(...)`.
-- `SpotNode` must expose service-aware attachment APIs:
-  `AttachRouter(serviceName string, router *RouterSocket)`,
-  `AttachPubSub(serviceName string, pub *PubSocket, sub *SubSocket)`,
-  `ServiceAttachmentCount()`,
-  `ServiceAttachmentAt(index int)`, and node monitor receive mapped to
-  `zlink_spot_node_monitor_recv()`.
-- `Spot` must expose service-aware data-plane methods:
-  `SendService(...)`, `RequestService(...)`, and
+- `SpotNode` must expose channel-aware attachment APIs:
+  `AttachDiscovery(...)`,
+  `AttachChannelDealer(...)`,
+  `AttachChannelDealerManual(...)`, and
+  `AttachPubIngress(...)`.
+- `Spot` must expose channel-aware data-plane methods:
+  `SendChannel(...)`, `RequestChannel(...)`, and
   `Publish(serviceName, topic, ...)`.
 - `Spot.Subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `ServiceName *string` or equivalent optional
@@ -118,6 +117,15 @@ type Version struct {
 All sockets listed below share common connection and option methods
 inherited from internal base types. Only the public methods are shown.
 
+Go nonblocking data-plane helpers follow this rule:
+
+- `TrySend(...)` / `TrySendTo(...)` return `(false, nil)` only for temporary
+  backpressure.
+- Route-not-ready and other submit failures return a non-nil error.
+- `TryRecv()` returns `(*Received, true, nil)` when a message was received,
+  `(nil, false, nil)` when no message is currently available, and a non-nil
+  error for real recv failures.
+
 Every socket type (and `*Spot`) exposes the admission-state accessor pair:
 
 ```go
@@ -142,8 +150,14 @@ func (s *PairSocket) Connect(endpoint string) error
 func (s *PairSocket) Disconnect(endpoint string) error
 // Send submits parts on the socket. Returns *SubmitError on failure.
 func (s *PairSocket) Send(flags SendFlags, parts ...*Message) error
+// TrySend submits parts without blocking. Returns (false, nil) only when the
+// socket is temporarily backpressured.
+func (s *PairSocket) TrySend(parts ...*Message) (bool, error)
 // Recv receives a message. Returns *RecvError on failure.
 func (s *PairSocket) Recv(flags RecvFlags) (*Received, error)
+// TryRecv receives a message without blocking. Returns (nil, false, nil) when
+// no message is currently available.
+func (s *PairSocket) TryRecv() (*Received, bool, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *PairSocket) OnSendReady(handler func()) error
 // Option setters/getters return *ConfigError on failure.
@@ -237,8 +251,14 @@ func (s *DealerSocket) RoutingID() (RoutingID, error)
 func (s *DealerSocket) SetProbe(value bool) error
 // Send submits parts on the socket. Returns *SubmitError on failure.
 func (s *DealerSocket) Send(flags SendFlags, parts ...*Message) error
+// TrySend submits parts without blocking. Returns (false, nil) only when the
+// socket is temporarily backpressured.
+func (s *DealerSocket) TrySend(parts ...*Message) (bool, error)
 // Recv receives a message. Returns *RecvError on failure.
 func (s *DealerSocket) Recv(flags RecvFlags) (*Received, error)
+// TryRecv receives a message without blocking. Returns (nil, false, nil) when
+// no message is currently available.
+func (s *DealerSocket) TryRecv() (*Received, bool, error)
 // Request performs a synchronous request — blocks until reply or timeout.
 // timeout = 0 uses the socket default timeout.
 // Returns *SubmitError on submit failure, *RequestError on reply failure
@@ -278,8 +298,14 @@ func (s *RouterSocket) SetProbe(value bool) error
 func (s *RouterSocket) SetConnectRoutingID(id RoutingID) error
 // SendTo submits parts to a specific peer. Returns *SubmitError on failure.
 func (s *RouterSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) error
+// TrySendTo submits parts without blocking. Returns (false, nil) only when the
+// socket is temporarily backpressured.
+func (s *RouterSocket) TrySendTo(target RoutingID, parts ...*Message) (bool, error)
 // Recv receives a message. Returns *RecvError on failure.
 func (s *RouterSocket) Recv(flags RecvFlags) (*Received, error)
+// TryRecv receives a routed message without blocking. Returns (nil, false, nil)
+// when no message is currently available.
+func (s *RouterSocket) TryRecv() (*Received, bool, error)
 // Request performs a synchronous request to a specific peer — blocks until
 // reply or timeout. timeout = 0 uses the socket default timeout.
 // Returns *SubmitError on submit failure, *RequestError on reply failure
@@ -390,11 +416,17 @@ func (s *StreamSocket) SetRoutingID(id RoutingID) error
 func (s *StreamSocket) RoutingID() (RoutingID, error)
 // SendTo submits parts to a specific peer. Returns *SubmitError on failure.
 func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) error
+// TrySendTo submits parts without blocking. Returns (false, nil) only when the
+// socket is temporarily backpressured.
+func (s *StreamSocket) TrySendTo(target RoutingID, parts ...*Message) (bool, error)
 // Two mutually-exclusive receive modes on the same StreamSocket:
 //   (1) Recv, (2) OnPacket(handler). Second attach on the same stream
 //   returns *HandlerError{Code: HandlerResultBusy}.
 // Recv receives a message. Returns *RecvError on failure.
 func (s *StreamSocket) Recv(flags RecvFlags) (*Received, error)
+// TryRecv receives a routed stream frame without blocking. Returns
+// (nil, false, nil) when no message is currently available.
+func (s *StreamSocket) TryRecv() (*Received, bool, error)
 // OnPacket registers the framed packet callback mapped to
 // zlink_stream_packet_handler. The wire frame is big-endian uint16
 // header_size + uint32 body_size + header + body. The handler receives the
@@ -616,7 +648,7 @@ const (
 )
 
 // RequestReplyCallback is invoked on completion of a callback-based request
-// (e.g. RouterSocket.RequestToSpot, Spot.RequestToSpot, Spot.RequestToRouter).
+// (e.g. RouterSocket.RequestToSpot, Spot.RequestChannel, Spot.RequestToRouter).
 // The RequestResult conveys completion status; the []*Message slice carries
 // reply parts (nil/empty on failure; non-empty only for RequestOK).
 type RequestReplyCallback func(RequestResult, []*Message)
@@ -1010,11 +1042,11 @@ func (n *SpotNode) Bind(endpoint string) error
 // ConnectPeer / DisconnectPeer manage peer links. Return *ConnectError on failure.
 func (n *SpotNode) ConnectPeer(endpoint string) error
 func (n *SpotNode) DisconnectPeer(endpoint string) error
-// Service-aware attachment APIs return *ConfigError on failure.
-func (n *SpotNode) AttachRouter(serviceName string, router *RouterSocket) error
-func (n *SpotNode) AttachPubSub(serviceName string, pub *PubSocket, sub *SubSocket) error
 // AttachDiscovery and TLS setters return *ConfigError on failure.
 func (n *SpotNode) AttachDiscovery(discovery *Discovery) error
+func (n *SpotNode) AttachChannelDealer(discovery *Discovery, dealer *DealerSocket) error
+func (n *SpotNode) AttachChannelDealerManual(channelName string, dealer *DealerSocket) error
+func (n *SpotNode) AttachPubIngress(pub *PubSocket) error
 func (n *SpotNode) SetTLSServer(certPath, keyPath string, requireClientCert bool) error
 func (n *SpotNode) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
 // SetRoutingID sets the spot node's logical address. Maps to
@@ -1030,9 +1062,6 @@ func (n *SpotNode) StatusSnapshot() (*SpotNodeStatus, error)
 func (n *SpotNode) PeersSnapshot() ([]SpotNodePeerEntry, error)
 func (n *SpotNode) PeersQuery(filter *SpotNodePeerFilter) ([]SpotNodePeerEntry, error)
 func (n *SpotNode) SubjectsSnapshot(filters ...*SpotNodeSubjectFilter) ([]SpotNodeSubjectEntry, error)
-func (n *SpotNode) ServiceAttachmentCount() (int, error)
-func (n *SpotNode) ServiceAttachmentAt(index int) (*SpotServiceAttachmentStats, error)
-func (n *SpotNode) NodeMonitorRecv(flags RecvFlags) (*SpotServiceMonitorEvent, error)
 // Close closes the spot node after cascading close to all live Spot handles.
 // Returns *CloseError on failure.
 func (n *SpotNode) Close() error
@@ -1048,10 +1077,10 @@ There is no standalone `NewSpot` constructor in the public API.
 // Spot is a pub/sub facade owned by SpotNode and created only by SpotNode.Spot().
 // Publish sends parts on the given service/topic. Returns *SubmitError on failure.
 func (s *Spot) Publish(serviceName, topic string, flags SendFlags, parts ...*Message) error
-// SendService sends routed multipart data to the selected service. Returns *SubmitError on failure.
-func (s *Spot) SendService(serviceName string, flags SendFlags, parts ...*Message) error
-// RequestService submits a service-aware request. Returns *SubmitError on submit failure.
-func (s *Spot) RequestService(serviceName string, callback RequestReplyCallback,
+// SendChannel sends routed multipart data to the selected channel. Returns *SubmitError on failure.
+func (s *Spot) SendChannel(channelName string, flags SendFlags, parts ...*Message) error
+// RequestChannel submits a channel-aware request. Returns *SubmitError on submit failure.
+func (s *Spot) RequestChannel(channelName string, callback RequestReplyCallback,
     flags SendFlags, timeout time.Duration, parts ...*Message) error
 // Subscription filter mutation returns *ConfigError on failure.
 func (s *Spot) SetSubscription(filter string) error
@@ -1076,19 +1105,6 @@ func (s *Spot) SetRoutingID(rid RoutingID) error
 // RoutingID returns the spot's current logical address. Maps to
 // zlink_get_routing_id(spot, ...).
 func (s *Spot) RoutingID() (RoutingID, error)
-
-// --- routed send (spot → spot) ---
-// SendToSpot submits parts routed to a spot. Returns *SubmitError on failure.
-func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID,
-    flags SendFlags, parts ...*Message) error
-
-// --- routed request (spot → spot, callback) ---
-// timeout = 0 uses the socket default timeout.
-// Returns *SubmitError on submit failure; the callback receives a
-// RequestResult which maps to *RequestError for failures.
-func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID,
-    callback RequestReplyCallback, flags SendFlags,
-    timeout time.Duration, parts ...*Message) error
 
 // --- routed reply (spot → spot) ---
 // ReplyToSpot submits a routed reply. Returns *SubmitError on failure.
@@ -1246,36 +1262,12 @@ type SpotNodeSubjectEntry struct {
     LastChangedMs    uint64
 }
 
-type SpotServiceAttachmentRole int
-
-const (
-    SpotServiceAttachmentRouter SpotServiceAttachmentRole = 1
-    SpotServiceAttachmentPub    SpotServiceAttachmentRole = 2
-    SpotServiceAttachmentSub    SpotServiceAttachmentRole = 3
-)
-
 type AdmissionState int
 
 const (
     AdmissionStateServing  AdmissionState = 1
     AdmissionStateDraining AdmissionState = 2
 )
-
-type SpotServiceAttachmentStats struct {
-    ServiceName     string
-    RouterCount     uint32
-    PubCount        uint32
-    SubCount        uint32
-    AutoRouterCount uint32
-    AutoPubCount    uint32
-    AutoSubCount    uint32
-}
-
-type SpotServiceMonitorEvent struct {
-    ServiceName string
-    Role        SpotServiceAttachmentRole
-    Event       MonitorEventType
-}
 
 // RegistryServiceSummaryFilter — optional filter for Registry.ServiceSummarySnapshot.
 type RegistryServiceSummaryFilter struct {

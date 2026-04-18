@@ -20,21 +20,19 @@ with the rules here, this section wins.
 - `StreamSocket` keeps `recv(...)` and exposes a packet callback surface
   mapped to `zlink_stream_packet_handler()`. Recommended canonical name:
   `onPacket(...)`.
-- `SpotNode` must expose service-aware attachment APIs:
-  `attachRouter(serviceName, router)`,
-  `attachPubSub(serviceName, pub, sub)`,
-  service attachment snapshot accessors, and node monitor receive mapped
-  to `zlink_spot_node_monitor_recv()`.
-- `Spot` must expose service-aware data-plane methods:
-  `sendService(...)`, `requestService(...)`, and
+- `SpotNode` must expose channel-aware attachment APIs:
+  `attachDiscovery(discovery)`,
+  `attachChannelDealer(discovery, dealer)`,
+  `attachChannelDealerManual(channelName, dealer)`, and
+  `attachPubIngress(pub)`.
+- `Spot` must expose channel-aware data-plane methods:
+  `sendChannel(...)`, `requestChannel(...)`, and
   `publish(serviceName, topic, ...)`.
 - `Spot.subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `serviceName: string | null`, populated for
   SPOT subscribe results and `null` for raw `SUB` / `XSUB`.
-- `Spot` must not expose `onSubscribe(...)`. Use
-  `onDispatchEvent(...)` plus `subscribe(...)` / routed recv / timer recv.
-- `Spot.onRoutedReceive(...)` and `Spot.onDispatchEvent(...)` are mutually
-  exclusive on the routed axis.
+- `Spot` must not expose `onSubscribe(...)`.
+- `Spot` direct RID send/request APIs are removed from the public contract.
 - Every socket and `Spot` exposes `setAdmissionState(state)` /
   `getAdmissionState()` using the typed enum-like object
   `AdmissionState.Serving` (1) and `AdmissionState.Draining` (2). Submit
@@ -130,6 +128,13 @@ function multipartClose(parts: Message[]): void;
 All sockets expose `bind()`, `unbind()`, and `close()` from `BaseSocket`.
 Connectable sockets also expose `connect()` and `disconnect()`.
 
+Node / TypeScript nonblocking data-plane helpers follow this rule:
+
+- `trySend(...)` returns `false` only for temporary backpressure.
+- Route-not-ready and other submit failures still throw `SubmitError`.
+- `tryRecv()` returns `null` when no message is currently available and still
+  throws `RecvError` for real recv failures.
+
 All sockets (and `Spot`) also expose the admission-state accessor pair:
 
 ```typescript
@@ -159,8 +164,14 @@ class PairSocket {
     send(message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
     send(parts: readonly MessageLike[], flags?: SendFlags): void;
+    /** @throws {SubmitError} */
+    trySend(message: MessageLike): boolean;
+    /** @throws {SubmitError} */
+    trySend(parts: readonly MessageLike[]): boolean;
     /** @throws {RecvError} */
     recv(flags?: RecvFlags): Received;
+    /** @throws {RecvError} */
+    tryRecv(): Received | null;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {CloseError} */
@@ -244,8 +255,14 @@ class DealerSocket {
     send(message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
     send(parts: readonly MessageLike[], flags?: SendFlags): void;
+    /** @throws {SubmitError} */
+    trySend(message: MessageLike): boolean;
+    /** @throws {SubmitError} */
+    trySend(parts: readonly MessageLike[]): boolean;
     /** @throws {RecvError} */
     recv(flags?: RecvFlags): Received;
+    /** @throws {RecvError} */
+    tryRecv(): Received | null;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
@@ -300,8 +317,14 @@ class RouterSocket {
     send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
     send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
+    /** @throws {SubmitError} */
+    trySend(routingId: RoutingId, message: MessageLike): boolean;
+    /** @throws {SubmitError} */
+    trySend(routingId: RoutingId, parts: readonly MessageLike[]): boolean;
     /** @throws {RecvError} */
     recv(flags?: RecvFlags): Received;
+    /** @throws {RecvError} */
+    tryRecv(): Received | null;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
@@ -463,6 +486,10 @@ class StreamSocket {
     send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
     send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
+    /** @throws {SubmitError} */
+    trySend(routingId: RoutingId, message: MessageLike): boolean;
+    /** @throws {SubmitError} */
+    trySend(routingId: RoutingId, parts: readonly MessageLike[]): boolean;
     /**
      * Three mutually-exclusive receive modes on the same StreamSocket:
      *   (1) recv(), (2) onPacket(handler). Second attach throws
@@ -470,6 +497,8 @@ class StreamSocket {
      * @throws {RecvError}
      */
     recv(flags?: RecvFlags): Received;
+    /** @throws {RecvError} */
+    tryRecv(): Received | null;
     /**
      * Mode (3): framed packet callback mapped to
      * `zlink_stream_packet_handler()`. Wire frame is big-endian u16
@@ -1155,11 +1184,13 @@ class SpotNode {
     /** @throws {ConnectError} */
     disconnectPeer(endpoint: string): void;
     /** @throws {ConfigError} */
-    attachRouter(serviceName: string, router: RouterSocket): void;
-    /** @throws {ConfigError} */
-    attachPubSub(serviceName: string, pub: PubSocket, sub: SubSocket): void;
-    /** @throws {ConfigError} */
     attachDiscovery(discovery: Discovery): void;
+    /** @throws {ConfigError} */
+    attachChannelDealer(discovery: Discovery, dealer: DealerSocket): void;
+    /** @throws {ConfigError} */
+    attachChannelDealerManual(channelName: string, dealer: DealerSocket): void;
+    /** @throws {ConfigError} */
+    attachPubIngress(pub: PubSocket): void;
     /** @throws {ConfigError} */
     setTlsServer(cert: string, key: string, requireClient?: number): void;
     /** @throws {ConfigError} */
@@ -1175,12 +1206,6 @@ class SpotNode {
     /** @throws {ConfigError} */
     subjectsSnapshot(filter?: SpotNodeSubjectFilter): SpotNodeSubjectEntry[];
     /** @throws {ConfigError} */
-    serviceAttachmentCount(): number;
-    /** @throws {ConfigError} */
-    serviceAttachmentAt(index: number): SpotServiceAttachmentStats;
-    /** @throws {RecvError} */
-    nodeMonitorRecv(flags?: RecvFlags): SpotServiceMonitorEvent;
-
     // --- identity / routing ---
     /**
      * SpotNode's logical address. Maps to zlink_set_routing_id(node, ...) /
@@ -1209,13 +1234,27 @@ class Spot {
     /** @throws {SubmitError} */
     publish(serviceName: string, topic: string, payloadParts: readonly MessageLike[], flags?: SendFlags): void;
     /** @throws {SubmitError} */
-    sendService(serviceName: string, payload: MessageLike, flags?: SendFlags): void;
+    sendChannel(channelName: string, payload: MessageLike, flags?: SendFlags): void;
     /** @throws {SubmitError} */
-    sendService(serviceName: string, payloadParts: readonly MessageLike[], flags?: SendFlags): void;
+    sendChannel(channelName: string, payloadParts: readonly MessageLike[], flags?: SendFlags): void;
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestService(serviceName: string, message: MessageLike, timeout?: number): Promise<Message[]>;
+    requestChannel(channelName: string, message: MessageLike, timeout?: number): Promise<Message[]>;
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestService(serviceName: string, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
+    requestChannel(channelName: string, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
+    /**
+     * @throws {SubmitError} on submit failure.
+     * Callback receives `RequestResult` directly.
+     */
+    requestChannel(channelName: string, message: MessageLike,
+                   callback: RequestResultCallback,
+                   flags?: SendFlags, timeout?: number): void;
+    /**
+     * @throws {SubmitError} on submit failure.
+     * Callback receives `RequestResult` directly.
+     */
+    requestChannel(channelName: string, parts: readonly MessageLike[],
+                   callback: RequestResultCallback,
+                   flags?: SendFlags, timeout?: number): void;
     /** @throws {ConfigError} */
     setSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
@@ -1238,86 +1277,6 @@ class Spot {
     setReceiveTimeout(milliseconds: number): void;
     /** @throws {ConfigError} */
     setNoDrop(enabled: boolean): void;
-
-    // --- routed send (spot → spot) ---
-    /** @throws {SubmitError} */
-    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-               message: MessageLike, flags?: SendFlags): void;
-    /** @throws {SubmitError} */
-    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-               parts: readonly MessageLike[], flags?: SendFlags): void;
-
-    // --- routed request (spot → spot, async) — no flags ---
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  message: MessageLike, timeout?: number): Promise<Message[]>;
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-
-    // --- routed request (spot → spot, callback) — throws on submit failure ---
-    /**
-     * @throws {SubmitError} on submit failure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  message: MessageLike,
-                  callback: RequestResultCallback,
-                  flags?: SendFlags, timeout?: number): void;
-    /**
-     * @throws {SubmitError} on submit failure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  parts: readonly MessageLike[],
-                  callback: RequestResultCallback,
-                  flags?: SendFlags, timeout?: number): void;
-
-    // --- routed reply (spot → spot) ---
-    /** @throws {SubmitError} */
-    replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
-    /** @throws {SubmitError} */
-    replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
-
-    // --- routed send (spot → router) ---
-    /** @throws {SubmitError} */
-    sendToRouter(peerRid: RoutingId, message: MessageLike, flags?: SendFlags): void;
-    /** @throws {SubmitError} */
-    sendToRouter(peerRid: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
-
-    // --- routed request (spot → router, async) — no flags ---
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToRouter(peerRid: RoutingId, message: MessageLike,
-                    timeout?: number): Promise<Message[]>;
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToRouter(peerRid: RoutingId, parts: readonly MessageLike[],
-                    timeout?: number): Promise<Message[]>;
-
-    // --- routed request (spot → router, callback) — throws on submit failure ---
-    /**
-     * @throws {SubmitError} on submit failure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    requestToRouter(peerRid: RoutingId, message: MessageLike,
-                    callback: RequestResultCallback,
-                    flags?: SendFlags, timeout?: number): void;
-    /**
-     * @throws {SubmitError} on submit failure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    requestToRouter(peerRid: RoutingId, parts: readonly MessageLike[],
-                    callback: RequestResultCallback,
-                    flags?: SendFlags, timeout?: number): void;
-
-    // --- routed reply (spot → router) ---
-    /** @throws {SubmitError} */
-    replyToRouter(peerRid: RoutingId, requestSeq: bigint,
-                  message: MessageLike, flags?: SendFlags): void;
-    /** @throws {SubmitError} */
-    replyToRouter(peerRid: RoutingId, requestSeq: bigint,
-                  parts: readonly MessageLike[], flags?: SendFlags): void;
 
     // --- routed receive ---
     /** @throws {RecvError} */
@@ -1455,22 +1414,6 @@ interface SpotNodeSubjectEntry {
     readonly readyPeerCount: number;         // uint32
     readonly activePeerCount: number;        // uint32
     readonly lastChangedMs: bigint;          // uint64 epoch ms
-}
-
-interface SpotServiceAttachmentStats {
-    readonly serviceName: string;
-    readonly routerCount: number;
-    readonly pubCount: number;
-    readonly subCount: number;
-    readonly autoRouterCount: number;
-    readonly autoPubCount: number;
-    readonly autoSubCount: number;
-}
-
-interface SpotServiceMonitorEvent {
-    readonly serviceName: string;
-    readonly role: number;
-    readonly event: MonitorEventType;
 }
 
 /** Admission state for a peer. */

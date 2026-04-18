@@ -30,14 +30,13 @@ with the rules here, this section wins.
   their public contract.
 - `StreamSocket` keeps `recv` and exposes a packet callback surface mapped to
   `zlink_stream_packet_handler()`. Recommended canonical name: `on_packet`.
-- `SpotNode` must expose service-aware attachment APIs:
-  `attach_router(service_name, &RouterSocket)`,
-  `attach_pubsub(service_name, &PubSocket, &SubSocket)`,
-  `service_attachment_count()`,
-  `service_attachment_at(index)`, and node monitor receive mapped to
-  `zlink_spot_node_monitor_recv()`.
-- `Spot` must expose service-aware data-plane methods:
-  `send_service(...)`, `request_service(...)`, and
+- `SpotNode` must expose channel-aware attachment APIs:
+  `attach_discovery(...)`,
+  `attach_channel_dealer(...)`,
+  `attach_channel_dealer_manual(...)`, and
+  `attach_pub_ingress(...)`.
+- `Spot` must expose channel-aware data-plane methods:
+  `send_channel(...)`, `request_channel(...)`, and
   `publish(service_name, topic, ...)`.
 - `Spot::subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `service_name: Option<String>`, populated for
@@ -185,6 +184,14 @@ All sockets implement `Drop` (calls `close`). Common connection and
 option methods are provided through the internal `SocketCore` but appear
 as direct methods on each socket type.
 
+Rust nonblocking data-plane helpers follow this rule:
+
+- `try_send...()` returns `Ok(false)` only for temporary backpressure.
+- Route-not-ready and other submit failures still return
+  `Err(SubmitError)`.
+- `try_recv()` returns `Ok(None)` when no message is currently available and
+  still returns `Err(RecvError)` for real recv failures.
+
 Every socket type (and `Spot`) also exposes the admission-state accessor
 pair through `CommonSocketOptions` (or an equivalent inherent method):
 
@@ -214,10 +221,14 @@ impl PairSocket {
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
     pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn try_send(&self, parts: impl IntoMultipart) -> Result<bool, SubmitError>;
     /// # Errors: RecvError
     pub fn recv(&self) -> Result<Received, RecvError>;
     /// # Errors: RecvError
     pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    /// # Errors: RecvError
+    pub fn try_recv(&self) -> Result<Option<Received>, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -305,10 +316,14 @@ impl DealerSocket {
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
     pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn try_send(&self, parts: impl IntoMultipart) -> Result<bool, SubmitError>;
     /// # Errors: RecvError
     pub fn recv(&self) -> Result<Received, RecvError>;
     /// # Errors: RecvError
     pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    /// # Errors: RecvError
+    pub fn try_recv(&self) -> Result<Option<Received>, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -358,11 +373,16 @@ impl RouterSocket {
         -> Result<(), SubmitError>;
     /// # Errors: SubmitError
     pub fn send_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
-        flags: SendFlags) -> Result<(), SubmitError>;
+                           flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn try_send(&self, target: &RoutingId, parts: impl IntoMultipart)
+        -> Result<bool, SubmitError>;
     /// # Errors: RecvError
     pub fn recv(&self) -> Result<Received, RecvError>;
     /// # Errors: RecvError
     pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    /// # Errors: RecvError
+    pub fn try_recv(&self) -> Result<Option<Received>, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -515,7 +535,10 @@ impl StreamSocket {
         -> Result<(), SubmitError>;
     /// # Errors: SubmitError
     pub fn send_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
-        flags: SendFlags) -> Result<(), SubmitError>;
+                           flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn try_send(&self, target: &RoutingId, parts: impl IntoMultipart)
+        -> Result<bool, SubmitError>;
     /// Two mutually-exclusive receive modes on the same StreamSocket:
     ///   (1) recv(), (2) on_packet(handler). Second attach returns
     ///   Err(HandlerError { code: HandlerResult::Busy, .. }).
@@ -523,6 +546,8 @@ impl StreamSocket {
     pub fn recv(&self) -> Result<Received, RecvError>;
     /// # Errors: RecvError
     pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    /// # Errors: RecvError
+    pub fn try_recv(&self) -> Result<Option<Received>, RecvError>;
     /// Mode (3): framed packet callback mapped to
     /// `zlink_stream_packet_handler`. Wire frame is big-endian `u16`
     /// header_size + `u32` body_size + header + body. The handler receives
@@ -1302,13 +1327,15 @@ impl SpotNode {
     /// # Errors: ConnectError
     pub fn disconnect_peer(&self, peer_endpoint: &str) -> Result<(), ConnectError>;
     /// # Errors: ConfigError
-    pub fn attach_router(&self, service_name: &str, router: &RouterSocket)
-        -> Result<(), ConfigError>;
-    /// # Errors: ConfigError
-    pub fn attach_pubsub(&self, service_name: &str, pub: &PubSocket, sub: &SubSocket)
-        -> Result<(), ConfigError>;
-    /// # Errors: ConfigError
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn attach_channel_dealer(&self, discovery: &Discovery, dealer: &DealerSocket)
+        -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn attach_channel_dealer_manual(&self, channel_name: &str, dealer: &DealerSocket)
+        -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn attach_pub_ingress(&self, pub: &PubSocket) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn set_tls_server(&self, cert_path: &str, key_path: &str,
         require_client_cert: bool) -> Result<(), ConfigError>;
@@ -1328,16 +1355,6 @@ impl SpotNode {
     pub fn subjects_snapshot(&self, filter: Option<&SpotNodeSubjectFilter>)
         -> Result<Vec<SpotNodeSubjectEntry>, ConfigError>;
     /// # Errors: ConfigError
-    pub fn service_attachment_count(&self) -> Result<usize, ConfigError>;
-    /// # Errors: ConfigError
-    pub fn service_attachment_at(&self, index: usize)
-        -> Result<SpotServiceAttachmentStats, ConfigError>;
-    /// # Errors: RecvError
-    pub fn node_monitor_recv(&self) -> Result<SpotServiceMonitorEvent, RecvError>;
-    /// # Errors: RecvError
-    pub fn node_monitor_recv_with_flags(&self, flags: RecvFlags)
-        -> Result<SpotServiceMonitorEvent, RecvError>;
-
     // --- identity / routing ---
     /// SpotNode's logical address.
     /// Maps to `zlink_set_routing_id(node, ...)`.
@@ -1368,19 +1385,19 @@ impl Spot {
     pub fn publish_with_flags(&self, service_name: &str, topic: &str,
         parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
-    pub fn send_service(&self, service_name: &str,
+    pub fn send_channel(&self, channel_name: &str,
         parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
-    pub fn send_service_with_flags(&self, service_name: &str,
+    pub fn send_channel_with_flags(&self, channel_name: &str,
         parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
     /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
-    pub fn request_service_callback<F>(&self, service_name: &str,
+    pub fn request_channel_callback<F>(&self, channel_name: &str,
         parts: impl IntoMultipart, callback: F,
         flags: SendFlags, timeout: Duration)
         -> Result<(), SubmitError>
         where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
     /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
-    pub async fn request_service(&self, service_name: &str,
+    pub async fn request_channel(&self, channel_name: &str,
         parts: impl IntoMultipart, timeout: Duration) -> Result<Vec<Message>, ZlinkError>;
     /// # Errors: ConfigError
     pub fn set_subscription(&self, filter: &str) -> Result<(), ConfigError>;
@@ -1397,33 +1414,6 @@ impl Spot {
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
-
-    // --- routed send (spot → spot) ---
-    /// # Errors: SubmitError
-    pub fn send_to_spot(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
-        parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_to_spot_with_flags(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
-
-    // --- routed request (spot → spot, async) — no flags ---
-    // Duration::ZERO uses the socket default timeout.
-    // Submit failure yields SubmitError; request failure yields RequestError;
-    // both unify under ZlinkError at this API seam.
-    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
-    pub async fn request_to_spot(&self, dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId, parts: impl IntoMultipart,
-        timeout: Duration) -> Result<Vec<Message>, ZlinkError>;
-
-    // --- routed request (spot → spot, callback) ---
-    // Duration::ZERO uses the socket default timeout.
-    // The callback receives Result<Vec<Message>, RequestError>.
-    /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
-    pub fn request_to_spot_callback<F>(&self, dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId, parts: impl IntoMultipart, callback: F,
-        flags: SendFlags, timeout: Duration)
-        -> Result<(), SubmitError>
-        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
 
     // --- routed reply (spot → spot) ---
     /// # Errors: SubmitError
@@ -1632,32 +1622,9 @@ pub struct SpotNodeSubjectFilter {
 }
 
 #[repr(i32)]
-pub enum SpotServiceAttachmentRole {
-    Router = 1,
-    Pub = 2,
-    Sub = 3,
-}
-
-#[repr(i32)]
 pub enum AdmissionState {
     Serving  = 1,
     Draining = 2,
-}
-
-pub struct SpotServiceAttachmentStats {
-    pub service_name: String,
-    pub router_count: u32,
-    pub pub_count: u32,
-    pub sub_count: u32,
-    pub auto_router_count: u32,
-    pub auto_pub_count: u32,
-    pub auto_sub_count: u32,
-}
-
-pub struct SpotServiceMonitorEvent {
-    pub service_name: String,
-    pub role: SpotServiceAttachmentRole,
-    pub event: MonitorEventType,
 }
 ```
 

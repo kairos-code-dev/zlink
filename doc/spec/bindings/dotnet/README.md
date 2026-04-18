@@ -22,21 +22,19 @@ with the rules here, this section wins.
 - `StreamSocket` keeps `Recv(...)` and exposes a packet callback surface
   mapped to `zlink_stream_packet_handler()`. Recommended canonical name:
   `OnPacket(...)`.
-- `SpotNode` must expose service-aware attachment APIs:
-  `AttachRouter(string serviceName, RouterSocket router)`,
-  `AttachPubSub(string serviceName, PubSocket pub, SubSocket sub)`,
-  service attachment snapshot accessors, and node monitor receive mapped
-  to `zlink_spot_node_monitor_recv()`.
-- `Spot` must expose service-aware data-plane methods:
-  `SendService(...)`, `RequestService(...)`, and
+- `SpotNode` must expose channel-aware attachment APIs:
+  `AttachDiscovery(Discovery discovery)`,
+  `AttachChannelDealer(Discovery discovery, DealerSocket dealer)`,
+  `AttachChannelDealerManual(string channelName, DealerSocket dealer)`, and
+  `AttachPubIngress(PubSocket pub)`.
+- `Spot` must expose channel-aware data-plane methods:
+  `SendChannel(...)`, `RequestChannelAsync(...)`, and
   `Publish(string serviceName, string topic, ...)`.
 - `Spot.Subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `ServiceName` populated for SPOT subscribe
   results and `null` for raw `SUB` / `XSUB`.
-- `Spot` must not expose `OnSubscribe(...)`. Use `OnDispatchEvent(...)`
-  plus `Subscribe(...)` / routed recv / timer recv.
-- `Spot.OnRoutedReceive(...)` and `Spot.OnDispatchEvent(...)` are mutually
-  exclusive on the routed axis.
+- `Spot` must not expose `OnSubscribe(...)`.
+- `Spot` direct RID send/request APIs are removed from the public contract.
 - Every socket and `Spot` exposes `SetAdmissionState(state)` and
   `GetAdmissionState()` backed by the typed enum
   `AdmissionState { Serving = 1, Draining = 2 }`. Submit attempts to a
@@ -139,7 +137,22 @@ ValueTask DisposeAsync();
 void Connect(string address);
 /// <exception cref="ZlinkConnectException"/>
 void Disconnect(string address);
+
+// Available on MessageSocketBase
+bool TrySend(Message message);
+bool TrySend(IReadOnlyList<Message> parts);
+bool TryRecv(out Received? received);
+
+// Available on RoutedMessageSocketBase
+bool TrySend(string routingId, Message message);
+bool TrySend(RoutingId routingId, Message message);
+bool TrySend(string routingId, IReadOnlyList<Message> parts);
+bool TrySend(RoutingId routingId, IReadOnlyList<Message> parts);
+bool TryRecv(out Received? received);
 ```
+
+`TrySend(...)` returns `false` only for temporary backpressure. Route-not-ready
+and other submit failures still raise `ZlinkSubmitException`.
 
 ### PairSocket
 
@@ -157,6 +170,9 @@ public sealed class PairSocket : MessageSocketBase
     void Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkRecvException"/>
     Received Recv(RecvFlags flags = RecvFlags.None);
+    bool TrySend(Message message);
+    bool TrySend(IReadOnlyList<Message> parts);
+    bool TryRecv(out Received? received);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 }
@@ -239,6 +255,9 @@ public sealed class DealerSocket : MessageSocketBase
     void Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkRecvException"/>
     Received Recv(RecvFlags flags = RecvFlags.None);
+    bool TrySend(Message message);
+    bool TrySend(IReadOnlyList<Message> parts);
+    bool TryRecv(out Received? received);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 
@@ -303,6 +322,11 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
               SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkRecvException"/>
     Received Recv(RecvFlags flags = RecvFlags.None);
+    bool TrySend(string routingId, Message message);
+    bool TrySend(RoutingId routingId, Message message);
+    bool TrySend(string routingId, IReadOnlyList<Message> parts);
+    bool TrySend(RoutingId routingId, IReadOnlyList<Message> parts);
+    bool TryRecv(out Received? received);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 
@@ -479,6 +503,11 @@ public sealed class StreamSocket : RoutedMessageSocketBase
     ///   ZlinkHandlerException(HandlerResult.Busy).
     /// <exception cref="ZlinkRecvException"/>
     Received Recv(RecvFlags flags = RecvFlags.None);
+    bool TrySend(string routingId, Message message);
+    bool TrySend(RoutingId routingId, Message message);
+    bool TrySend(string routingId, IReadOnlyList<Message> parts);
+    bool TrySend(RoutingId routingId, IReadOnlyList<Message> parts);
+    bool TryRecv(out Received? received);
     /// Mode (3): framed packet callback. Wire frame is
     ///   big-endian ushort header_size + uint body_size + header + body.
     ///   The handler receives the source routing id, a header Message,
@@ -1255,11 +1284,13 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConnectException"/>
     void DisconnectPeer(string peerEndpoint);
     /// <exception cref="ZlinkConfigException"/>
-    void AttachRouter(string serviceName, RouterSocket router);
-    /// <exception cref="ZlinkConfigException"/>
-    void AttachPubSub(string serviceName, PubSocket pub, SubSocket sub);
-    /// <exception cref="ZlinkConfigException"/>
     void AttachDiscovery(Discovery discovery);
+    /// <exception cref="ZlinkConfigException"/>
+    void AttachChannelDealer(Discovery discovery, DealerSocket dealer);
+    /// <exception cref="ZlinkConfigException"/>
+    void AttachChannelDealerManual(string channelName, DealerSocket dealer);
+    /// <exception cref="ZlinkConfigException"/>
+    void AttachPubIngress(PubSocket pub);
 
     /// <exception cref="ZlinkConfigException"/>
     void SetTlsServer(string certPath, string keyPath,
@@ -1277,13 +1308,6 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     SpotNodeSubjectEntry[] SubjectsSnapshot(
         SpotNodeSubjectFilter? filter = null);
-    /// <exception cref="ZlinkConfigException"/>
-    int ServiceAttachmentCount();
-    /// <exception cref="ZlinkConfigException"/>
-    SpotServiceAttachmentStats ServiceAttachmentAt(int index);
-    /// <exception cref="ZlinkRecvException"/>
-    SpotServiceMonitorEvent NodeMonitorRecv(RecvFlags flags = RecvFlags.None);
-
     // Spot 생성은 반드시 SpotNode 에서만
     /// <exception cref="ZlinkConfigException"/>
     Spot CreateSpot();
@@ -1322,20 +1346,26 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     RoutingId RoutingId { get; }
 
-    // --- service-aware publish / request ---
+    // --- channel-aware publish / request ---
     /// <exception cref="ZlinkSubmitException"/>
     void Publish(string serviceName, string topic, Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
     void Publish(string serviceName, string topic, IReadOnlyList<Message> parts,
                  SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void SendService(string serviceName, Message message, SendFlags flags = SendFlags.None);
+    void SendChannel(string channelName, Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void SendService(string serviceName, IReadOnlyList<Message> parts,
+    void SendChannel(string channelName, IReadOnlyList<Message> parts,
                      SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> RequestServiceAsync(string serviceName, Message message,
+    Task<IReadOnlyList<Message>> RequestChannelAsync(string channelName, Message message,
+                                                     TimeSpan timeout = default,
+                                                     CancellationToken ct = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
+    Task<IReadOnlyList<Message>> RequestChannelAsync(string channelName,
+                                                     IReadOnlyList<Message> parts,
                                                      TimeSpan timeout = default,
                                                      CancellationToken ct = default);
 
@@ -1351,44 +1381,6 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 
-    // --- routed send (spot -> spot) ---
-    /// <exception cref="ZlinkSubmitException"/>
-    void SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message message,
-                    SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    void SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                    IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
-
-    // --- routed request (spot -> spot, async, blocking submit, no flags) ---
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> RequestToSpotAsync(RoutingId destNodeRid, RoutingId destSpotRid,
-                                                    Message message, TimeSpan timeout = default,
-                                                    CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> RequestToSpotAsync(RoutingId destNodeRid, RoutingId destSpotRid,
-                                                    IReadOnlyList<Message> parts,
-                                                    TimeSpan timeout = default,
-                                                    CancellationToken ct = default);
-
-    // --- routed request (spot -> spot, callback, has flags) ---
-    // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
-    // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       Message message,
-                       Action<RequestResult, IReadOnlyList<Message>> callback,
-                       SendFlags flags = SendFlags.None,
-                       TimeSpan timeout = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       IReadOnlyList<Message> parts,
-                       Action<RequestResult, IReadOnlyList<Message>> callback,
-                       SendFlags flags = SendFlags.None,
-                       TimeSpan timeout = default);
-
-    // --- routed reply (spot -> spot) ---
     /// <exception cref="ZlinkSubmitException"/>
     void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                      ulong requestSequence, Message message,
@@ -1398,11 +1390,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                      ulong requestSequence, IReadOnlyList<Message> parts,
                      SendFlags flags = SendFlags.None);
 
-    // --- routed send (spot -> router) ---
-    /// <exception cref="ZlinkSubmitException"/>
     void SendToRouter(RoutingId peerRid, Message message,
                       SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
     void SendToRouter(RoutingId peerRid, IReadOnlyList<Message> parts,
                       SendFlags flags = SendFlags.None);
 
@@ -1608,32 +1597,11 @@ public sealed record SpotNodeSubjectEntry(
     uint ActivePeerCount,
     ulong LastChangedMs);
 
-public enum SpotServiceAttachmentRole
-{
-    Router = 1,
-    Pub = 2,
-    Sub = 3
-}
-
 public enum AdmissionState
 {
     Serving = 1,
     Draining = 2
 }
-
-public sealed record SpotServiceAttachmentStats(
-    string ServiceName,
-    uint RouterCount,
-    uint PubCount,
-    uint SubCount,
-    uint AutoRouterCount,
-    uint AutoPubCount,
-    uint AutoSubCount);
-
-public sealed record SpotServiceMonitorEvent(
-    string ServiceName,
-    SpotServiceAttachmentRole Role,
-    MonitorEventType Event);
 
 public sealed record RegistryServiceSummaryFilter(
     ServiceKind? ServiceKind = null,

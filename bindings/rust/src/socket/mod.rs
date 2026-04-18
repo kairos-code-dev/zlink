@@ -167,7 +167,7 @@ impl SocketInner {
         check_submit_rc(rc)
     }
 
-    pub(crate) fn try_send(&self, parts: impl IntoMultipart) -> Result<SendResult, SubmitError> {
+    pub(crate) fn send_no_wait_result(&self, parts: impl IntoMultipart) -> Result<SendResult, SubmitError> {
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
         let rc = unsafe {
@@ -180,6 +180,14 @@ impl SocketInner {
         };
         drop(parts);
         check_send_result(rc)
+    }
+
+    pub(crate) fn try_send(&self, parts: impl IntoMultipart) -> Result<bool, SubmitError> {
+        match self.send_no_wait_result(parts)? {
+            SendResult::Sent => Ok(true),
+            SendResult::Backpressured => Ok(false),
+            SendResult::NotReady => Err(SubmitError::new(crate::error::SubmitResult::NotConnected, libc::ENOTCONN)),
+        }
     }
 
     // -- Send (routed) -----------------------------------------------------
@@ -213,7 +221,7 @@ impl SocketInner {
         check_submit_rc(rc)
     }
 
-    pub(crate) fn try_send_to(
+    pub(crate) fn send_no_wait_result_to(
         &self,
         target: &RoutingId,
         parts: impl IntoMultipart,
@@ -231,6 +239,18 @@ impl SocketInner {
         };
         drop(parts);
         check_send_result(rc)
+    }
+
+    pub(crate) fn try_send_to(
+        &self,
+        target: &RoutingId,
+        parts: impl IntoMultipart,
+    ) -> Result<bool, SubmitError> {
+        match self.send_no_wait_result_to(target, parts)? {
+            SendResult::Sent => Ok(true),
+            SendResult::Backpressured => Ok(false),
+            SendResult::NotReady => Err(SubmitError::new(crate::error::SubmitResult::NotConnected, libc::ENOTCONN)),
+        }
     }
 
     // -- Recv (direct) -----------------------------------------------------
@@ -260,7 +280,7 @@ impl SocketInner {
         Ok(Received::new(RoutingId::from_raw_optional(rid), parts))
     }
 
-    pub(crate) fn try_recv(&self) -> Result<Option<Received>, RecvError> {
+    pub(crate) fn recv_no_wait(&self) -> Result<Option<Received>, RecvError> {
         let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
         let mut part_count: usize = 0;
@@ -321,7 +341,7 @@ impl SocketInner {
         check_submit_rc(rc)
     }
 
-    pub(crate) fn try_publish(
+    pub(crate) fn publish_no_wait_result(
         &self,
         topic: &str,
         parts: impl IntoMultipart,
@@ -379,7 +399,7 @@ impl SocketInner {
         ))
     }
 
-    pub(crate) fn try_subscribe_recv(&self) -> Result<Option<TopicMessage>, RecvError> {
+    pub(crate) fn subscribe_recv_no_wait(&self) -> Result<Option<TopicMessage>, RecvError> {
         let mut rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
         let mut part_count: usize = 0;

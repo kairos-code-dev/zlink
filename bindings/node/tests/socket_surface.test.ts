@@ -57,7 +57,9 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(xsub.onSubscribe, undefined);
 
   assert.equal(typeof pair.send, 'function');
+  assert.equal(typeof pair.trySend, 'function');
   assert.equal(typeof pair.recv, 'function');
+  assert.equal(typeof pair.tryRecv, 'function');
   assert.equal(typeof pair.onSendReady, 'function');
   assert.equal(typeof pair.options, 'object');
   assert.equal(pair.subscribe, undefined);
@@ -66,7 +68,9 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(pair.onReceive, undefined);
 
   assert.equal(typeof dealer.send, 'function');
+  assert.equal(typeof dealer.trySend, 'function');
   assert.equal(typeof dealer.recv, 'function');
+  assert.equal(typeof dealer.tryRecv, 'function');
   assert.equal(typeof dealer.onSendReady, 'function');
   assert.equal(typeof dealer.options, 'object');
   assert.equal(dealer.subscribe, undefined);
@@ -76,7 +80,9 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(typeof dealer.attachDiscovery, 'function');
   assert.equal(dealer.onReceive, undefined);
   assert.equal(typeof stream.send, 'function');
+  assert.equal(typeof stream.trySend, 'function');
   assert.equal(typeof stream.recv, 'function');
+  assert.equal(typeof stream.tryRecv, 'function');
   assert.equal(stream.onReceive, undefined);
   assert.equal(typeof stream.onPacket, 'function');
   assert.equal(typeof stream.onSendReady, 'function');
@@ -90,7 +96,9 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(typeof stream.getRoutingId, 'function');
 
   assert.equal(typeof router.recv, 'function');
+  assert.equal(typeof router.tryRecv, 'function');
   assert.equal(typeof router.send, 'function');
+  assert.equal(typeof router.trySend, 'function');
   assert.equal(typeof router.onSendReady, 'function');
   assert.equal(typeof router.options, 'object');
   assert.equal(router.subscribe, undefined);
@@ -109,17 +117,15 @@ test('canonical socket classes expose only directionally valid methods', () => {
   const spotNode = new zlink.SpotNode(ctx);
   assert.equal(spotNode.lastEndpoint, undefined);
   assert.equal(typeof spotNode.setRoutingId, 'function');
-  assert.equal(typeof spotNode.attachRouter, 'function');
-  assert.equal(typeof spotNode.attachPubSub, 'function');
-  assert.equal(typeof spotNode.serviceAttachmentCount, 'function');
-  assert.equal(typeof spotNode.serviceAttachmentAt, 'function');
-  assert.equal(typeof spotNode.nodeMonitorRecv, 'function');
+  assert.equal(typeof spotNode.attachChannelDealer, 'function');
+  assert.equal(typeof spotNode.attachChannelDealerManual, 'function');
+  assert.equal(typeof spotNode.attachPubIngress, 'function');
   spotNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('node-surface')));
   assert.ok(spotNode.routingId instanceof zlink.RoutingId);
   const spot = spotNode.createSpot();
   assert.equal(typeof spot.publish, 'function');
-  assert.equal(typeof spot.sendService, 'function');
-  assert.equal(typeof spot.requestService, 'function');
+  assert.equal(typeof spot.sendChannel, 'function');
+  assert.equal(typeof spot.requestChannel, 'function');
   assert.equal(typeof spot.subscribe, 'function');
   assert.equal(typeof spot.receiveSubscriptionEvent, 'function');
   assert.equal(typeof spot.onDispatchEvent, 'function');

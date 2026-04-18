@@ -170,6 +170,26 @@ class pair_socket_t : public message_socket_t
             throw submit_error_t (rc, zlink_errno ());
     }
 
+    bool try_send (message_t &part_)
+    {
+        send_result_t result = send_result_t::sent;
+        if (base_socket_t::send_no_wait_result (result, part_) != 0)
+            throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+        if (result == send_result_t::not_ready)
+            throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
+        return result == send_result_t::sent;
+    }
+
+    bool try_send (std::vector<message_t> &parts_)
+    {
+        send_result_t result = send_result_t::sent;
+        if (base_socket_t::send_no_wait_result (result, parts_) != 0)
+            throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+        if (result == send_result_t::not_ready)
+            throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
+        return result == send_result_t::sent;
+    }
+
     void send (std::vector<message_t> &parts_, send_flags_t flags_ = send_flags_t::none)
     {
         const submit_result_t rc = static_cast<submit_result_t> (
@@ -186,6 +206,18 @@ class pair_socket_t : public message_socket_t
         if (rc != recv_result_t::ok)
             throw recv_error_t (rc, zlink_errno ());
         return received;
+    }
+
+    std::optional<received_t> try_recv ()
+    {
+        try {
+            return recv (recv_flags_t::dontwait);
+        }
+        catch (const recv_error_t &err) {
+            if (err.result () == recv_result_t::no_data)
+                return std::nullopt;
+            throw;
+        }
     }
 
     void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
@@ -216,6 +248,26 @@ class dealer_socket_t : public message_socket_t
             throw submit_error_t (rc, zlink_errno ());
     }
 
+    bool try_send (message_t &part_)
+    {
+        send_result_t result = send_result_t::sent;
+        if (base_socket_t::send_no_wait_result (result, part_) != 0)
+            throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+        if (result == send_result_t::not_ready)
+            throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
+        return result == send_result_t::sent;
+    }
+
+    bool try_send (std::vector<message_t> &parts_)
+    {
+        send_result_t result = send_result_t::sent;
+        if (base_socket_t::send_no_wait_result (result, parts_) != 0)
+            throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+        if (result == send_result_t::not_ready)
+            throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
+        return result == send_result_t::sent;
+    }
+
     void send (std::vector<message_t> &parts_, send_flags_t flags_ = send_flags_t::none)
     {
         const submit_result_t rc = static_cast<submit_result_t> (
@@ -232,6 +284,18 @@ class dealer_socket_t : public message_socket_t
         if (rc != recv_result_t::ok)
             throw recv_error_t (rc, zlink_errno ());
         return received;
+    }
+
+    std::optional<received_t> try_recv ()
+    {
+        try {
+            return recv (recv_flags_t::dontwait);
+        }
+        catch (const recv_error_t &err) {
+            if (err.result () == recv_result_t::no_data)
+                return std::nullopt;
+            throw;
+        }
     }
 
     void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
@@ -369,6 +433,26 @@ class router_socket_t : public routed_message_socket_t
             throw submit_error_t (rc, zlink_errno ());
     }
 
+    bool try_send (const routing_id_t &target_rid_, message_t &part_)
+    {
+        send_result_t result = send_result_t::sent;
+        if (base_socket_t::send_no_wait_result (result, target_rid_, part_) != 0)
+            throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+        if (result == send_result_t::not_ready)
+            throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
+        return result == send_result_t::sent;
+    }
+
+    bool try_send (const routing_id_t &target_rid_, std::vector<message_t> &parts_)
+    {
+        send_result_t result = send_result_t::sent;
+        if (base_socket_t::send_no_wait_result (result, target_rid_, parts_) != 0)
+            throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+        if (result == send_result_t::not_ready)
+            throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
+        return result == send_result_t::sent;
+    }
+
     void send (const routing_id_t &target_rid_, std::vector<message_t> &parts_,
                send_flags_t flags_ = send_flags_t::none)
     {
@@ -382,6 +466,18 @@ class router_socket_t : public routed_message_socket_t
     received_t recv (recv_flags_t flags_ = recv_flags_t::none)
     {
         return detail::recv_router_received (handle (), flags_);
+    }
+
+    std::optional<received_t> try_recv ()
+    {
+        try {
+            return recv (recv_flags_t::dontwait);
+        }
+        catch (const recv_error_t &err) {
+            if (err.result () == recv_result_t::no_data)
+                return std::nullopt;
+            throw;
+        }
     }
 
     void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
@@ -664,6 +760,26 @@ class stream_socket_t : public routed_message_socket_t
             throw submit_error_t (rc, zlink_errno ());
     }
 
+    bool try_send (const routing_id_t &target_rid_, message_t &part_)
+    {
+        send_result_t result = send_result_t::sent;
+        if (base_socket_t::send_no_wait_result (result, target_rid_, part_) != 0)
+            throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+        if (result == send_result_t::not_ready)
+            throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
+        return result == send_result_t::sent;
+    }
+
+    bool try_send (const routing_id_t &target_rid_, std::vector<message_t> &parts_)
+    {
+        send_result_t result = send_result_t::sent;
+        if (base_socket_t::send_no_wait_result (result, target_rid_, parts_) != 0)
+            throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+        if (result == send_result_t::not_ready)
+            throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
+        return result == send_result_t::sent;
+    }
+
     void send (const routing_id_t &target_rid_, std::vector<message_t> &parts_,
                send_flags_t flags_ = send_flags_t::none)
     {
@@ -682,6 +798,18 @@ class stream_socket_t : public routed_message_socket_t
         if (rc != recv_result_t::ok)
             throw recv_error_t (rc, zlink_errno ());
         return received;
+    }
+
+    std::optional<received_t> try_recv ()
+    {
+        try {
+            return recv (recv_flags_t::dontwait);
+        }
+        catch (const recv_error_t &err) {
+            if (err.result () == recv_result_t::no_data)
+                return std::nullopt;
+            throw;
+        }
     }
 
     void on_receive (zlink_socket_msg_handler_fn handler_, void *userdata_ = NULL)

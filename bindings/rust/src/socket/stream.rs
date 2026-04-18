@@ -39,6 +39,14 @@ impl StreamSocket {
         self.inner.send_to(target, parts)
     }
 
+    pub fn try_send(
+        &self,
+        target: &RoutingId,
+        parts: impl IntoMultipart,
+    ) -> Result<bool, SubmitError> {
+        self.inner.try_send_to(target, parts)
+    }
+
     pub fn send_with_flags(
         &self,
         target: &RoutingId,
@@ -50,6 +58,10 @@ impl StreamSocket {
 
     pub fn recv(&self) -> Result<Received, RecvError> {
         self.inner.recv()
+    }
+
+    pub fn try_recv(&self) -> Result<Option<Received>, RecvError> {
+        self.inner.recv_no_wait()
     }
 
     pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {

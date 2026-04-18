@@ -300,6 +300,36 @@ public sealed class test_pair_tcp
     }
 
     [Fact]
+    public void try_send_returns_false_only_for_backpressured_pair_queue()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "pair-public-try-send-backpressured");
+
+        sender.SetOption(SocketOptions.SndHwm, 1);
+        receiver.SetOption(SocketOptions.RcvHwm, 1);
+        sender.Bind(endpoint);
+        receiver.Connect(endpoint);
+        Thread.Sleep(50);
+
+        bool sent = true;
+        for (int i = 0; i < 1024; i++)
+        {
+            using Message payload = Message.FromString($"bp-{i}");
+            sent = sender.TrySend(payload);
+            if (!sent)
+                break;
+        }
+
+        Assert.False(sent);
+    }
+
+    [Fact]
     public void try_send_reports_not_ready_for_unknown_router_peer()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -312,6 +342,22 @@ public sealed class test_pair_tcp
         using Message message = Message.FromString("no-route");
         var ex = Assert.Throws<ZlinkSubmitException>(() =>
             router.Send("UNKNOWN", message, SendFlags.DontWait));
+        Assert.Equal(SubmitResult.NotConnected, ex.Result);
+    }
+
+    [Fact]
+    public void public_try_send_throws_not_ready_for_unknown_router_peer()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var router = new RouterSocket(ctx);
+        router.RouterOptions.Mandatory = true;
+
+        using Message message = Message.FromString("no-route");
+        var ex = Assert.Throws<ZlinkSubmitException>(() =>
+            router.TrySend("UNKNOWN", message));
         Assert.Equal(SubmitResult.NotConnected, ex.Result);
     }
 }

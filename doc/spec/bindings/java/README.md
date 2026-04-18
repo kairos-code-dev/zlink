@@ -25,21 +25,19 @@ with the rules here, this section wins.
 - `StreamSocket` keeps `recv(...)` and exposes a packet callback surface
   mapped to `zlink_stream_packet_handler()`. Recommended canonical name:
   `onPacket(...)`.
-- `SpotNode` must expose service-aware attachment APIs:
-  `attachRouter(String serviceName, RouterSocket router)`,
-  `attachPubSub(String serviceName, PubSocket pub, SubSocket sub)`,
-  service attachment snapshot accessors, and node monitor receive mapped
-  to `zlink_spot_node_monitor_recv()`.
-- `Spot` must expose service-aware data-plane methods:
-  `sendService(...)`, `requestService(...)`, and
+- `SpotNode` must expose channel-aware attachment APIs:
+  `attachDiscovery(Discovery discovery)`,
+  `attachChannelDealer(Discovery discovery, DealerSocket dealer)`,
+  `attachChannelDealerManual(String channelName, DealerSocket dealer)`, and
+  `attachPubIngress(PubSocket pub)`.
+- `Spot` must expose channel-aware data-plane methods:
+  `sendChannel(...)`, `requestChannel(...)`, and
   `publish(String serviceName, String topic, ...)`.
 - `Spot.subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `serviceName()` populated for SPOT subscribe
   results and empty for raw `SUB` / `XSUB`.
-- `Spot` must not expose `onSubscribe(...)`. Use
-  `onDispatchEvent(...)` plus `subscribe(...)` / routed recv / timer recv.
-- `Spot.onRoutedReceive(...)` and `Spot.onDispatchEvent(...)` are mutually
-  exclusive on the routed axis.
+- `Spot` must not expose `onSubscribe(...)`.
+- `Spot` direct RID send/request APIs are removed from the public contract.
 - Every socket and `Spot` exposes `setAdmissionState(state)` /
   `getAdmissionState()` using the typed enum
   `AdmissionState { SERVING, DRAINING }`. Submit attempts to a drained peer
@@ -109,7 +107,19 @@ SocketMonitor monitorOpen();                                     // @throws Conf
 SocketMonitor monitorOpen(SocketEventMask events);               // @throws ConfigException
 AdmissionState getAdmissionState();                              // @throws ConfigException
 void setAdmissionState(AdmissionState state);                    // @throws ConfigException
+
+// Available on message-capable sockets
+boolean trySend(Message part);
+boolean trySend(List<Message> parts);
+Received tryRecv();
+
+// Available on routed message sockets
+boolean trySend(RoutingId rid, Message part);
+boolean trySend(RoutingId rid, List<Message> parts);
 ```
+
+`trySend(...)` returns `false` only for temporary backpressure. Route-not-ready
+and other submit failures still raise `SubmitException`.
 
 ### PairSocket
 
@@ -128,9 +138,12 @@ public final class PairSocket extends Socket {
     void send(Message part, SendFlags flags);                        // @throws SubmitException
     void send(List<Message> parts);                                  // @throws SubmitException
     void send(List<Message> parts, SendFlags flags);                 // @throws SubmitException
+    boolean trySend(Message part);
+    boolean trySend(List<Message> parts);
 
     Received recv();                                                 // @throws RecvException
     Received recv(RecvFlags flags);                                  // @throws RecvException
+    Received tryRecv();
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 }
 ```
@@ -203,9 +216,12 @@ public final class DealerSocket extends Socket {
     void send(Message part, SendFlags flags);                        // @throws SubmitException
     void send(List<Message> parts);                                  // @throws SubmitException
     void send(List<Message> parts, SendFlags flags);                 // @throws SubmitException
+    boolean trySend(Message part);
+    boolean trySend(List<Message> parts);
 
     Received recv();                                                 // @throws RecvException
     Received recv(RecvFlags flags);                                  // @throws RecvException
+    Received tryRecv();
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // --- request (async, no flags) ---
@@ -255,9 +271,12 @@ public final class RouterSocket extends Socket {
     void send(RoutingId rid, Message part, SendFlags flags);         // @throws SubmitException
     void send(RoutingId rid, List<Message> parts);                   // @throws SubmitException
     void send(RoutingId rid, List<Message> parts, SendFlags flags);  // @throws SubmitException
+    boolean trySend(RoutingId rid, Message part);
+    boolean trySend(RoutingId rid, List<Message> parts);
 
     Received recv();                                                 // @throws RecvException
     Received recv(RecvFlags flags);                                  // @throws RecvException
+    Received tryRecv();
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // --- request to a specific peer (async, no flags) ---
@@ -407,13 +426,19 @@ public final class StreamSocket extends Socket {
     void bind(String endpoint);                                      // @throws BindException
     void unbind(String endpoint);                                    // @throws ConnectException
 
+    void send(int rid, Message part);                                // @throws SubmitException
+    void send(int rid, Message part, SendFlags flags);               // @throws SubmitException
     void send(RoutingId rid, Message part);                          // @throws SubmitException
     void send(RoutingId rid, Message part, SendFlags flags);         // @throws SubmitException
     void send(RoutingId rid, List<Message> parts);                   // @throws SubmitException
     void send(RoutingId rid, List<Message> parts, SendFlags flags);  // @throws SubmitException
+    boolean trySend(int rid, Message part);
+    boolean trySend(RoutingId rid, Message part);
+    boolean trySend(RoutingId rid, List<Message> parts);
 
     Received recv();                                                 // @throws RecvException
     Received recv(RecvFlags flags);                                  // @throws RecvException
+    Received tryRecv();
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // Two mutually-exclusive receive modes on the same StreamSocket:
@@ -1073,9 +1098,10 @@ public final class SpotNode implements AutoCloseable {
     void bind(String endpoint);                                      // @throws BindException
     void connectPeer(String peerEndpoint);                           // @throws ConnectException
     void disconnectPeer(String peerEndpoint);                        // @throws ConnectException
-    void attachRouter(String serviceName, RouterSocket router);      // @throws ConfigException
-    void attachPubSub(String serviceName, PubSocket pub, SubSocket sub); // @throws ConfigException
     void attachDiscovery(Discovery discovery);                       // @throws ConfigException
+    void attachChannelDealer(Discovery discovery, DealerSocket dealer); // @throws ConfigException
+    void attachChannelDealerManual(String channelName, DealerSocket dealer); // @throws ConfigException
+    void attachPubIngress(PubSocket pub);                            // @throws ConfigException
     void setTlsServer(String certPem, String keyPem, boolean requireClientCert); // @throws ConfigException
     void setTlsClient(String caCertPem, String hostname, boolean trustSystem);   // @throws ConfigException
 
@@ -1093,11 +1119,6 @@ public final class SpotNode implements AutoCloseable {
     List<SpotNodePeerEntry> peersQuery(SpotNodePeerFilter filter);   // @throws ConfigException
     List<SpotNodeSubjectEntry> subjectsSnapshot();                   // @throws ConfigException
     List<SpotNodeSubjectEntry> subjectsSnapshot(SpotNodeSubjectFilter filter); // @throws ConfigException
-    int serviceAttachmentCount();                                    // @throws ConfigException
-    SpotServiceAttachmentStats serviceAttachmentAt(int index);       // @throws ConfigException
-    SpotServiceMonitorEvent nodeMonitorRecv();                       // @throws RecvException
-    SpotServiceMonitorEvent nodeMonitorRecv(RecvFlags flags);        // @throws RecvException
-
     // close() cascades: 모든 live Spot 먼저 close 한 후 node 종료
     void close();                                                    // @throws CloseException
 }
@@ -1122,17 +1143,17 @@ public final class Spot implements AutoCloseable {
     void setRoutingId(RoutingId rid);                                // @throws ConfigException
     RoutingId routingId();                                           // @throws ConfigException
 
-    // --- service-aware publish / request ---
+    // --- channel-aware publish / request ---
     void publish(String serviceName, String topicId, Message part);                      // @throws SubmitException
     void publish(String serviceName, String topicId, Message part, SendFlags flags);     // @throws SubmitException
     void publish(String serviceName, String topicId, List<Message> parts);               // @throws SubmitException
     void publish(String serviceName, String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
-    void sendService(String serviceName, Message part);                                  // @throws SubmitException
-    void sendService(String serviceName, Message part, SendFlags flags);                 // @throws SubmitException
-    void sendService(String serviceName, List<Message> parts);                           // @throws SubmitException
-    void sendService(String serviceName, List<Message> parts, SendFlags flags);          // @throws SubmitException
-    CompletableFuture<List<Message>> requestService(String serviceName, Message part);   // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestService(String serviceName, List<Message> parts); // @throws SubmitException; future completes with RequestException on failure
+    void sendChannel(String channelName, Message part);                                  // @throws SubmitException
+    void sendChannel(String channelName, Message part, SendFlags flags);                 // @throws SubmitException
+    void sendChannel(String channelName, List<Message> parts);                           // @throws SubmitException
+    void sendChannel(String channelName, List<Message> parts, SendFlags flags);          // @throws SubmitException
+    CompletableFuture<List<Message>> requestChannel(String channelName, Message part);   // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> requestChannel(String channelName, List<Message> parts); // @throws SubmitException; future completes with RequestException on failure
 
     // --- subscribe ---
     void setSubscription(String topicId);                            // @throws ConfigException
@@ -1142,52 +1163,6 @@ public final class Spot implements AutoCloseable {
     TopicMessage subscribe(RecvFlags flags);                         // @throws RecvException
     SubscriptionEvent receiveSubscriptionEvent();                    // @throws RecvException
     SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags);     // @throws RecvException
-
-    // --- routed send (spot -> spot) ---
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);         // @throws SubmitException
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part,
-                    SendFlags flags);                                                    // @throws SubmitException
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts);  // @throws SubmitException
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts,
-                    SendFlags flags);                                                    // @throws SubmitException
-
-    // --- routed request (spot -> spot, async, no flags) ---
-    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                              RoutingId destSpotRid,
-                                              Message part);                             // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                              RoutingId destSpotRid,
-                                              Message part, Duration timeout);           // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                              RoutingId destSpotRid,
-                                              List<Message> parts);                      // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                              RoutingId destSpotRid,
-                                              List<Message> parts, Duration timeout);    // @throws SubmitException; future completes with RequestException on failure
-
-    // --- routed request (spot -> spot, callback, has flags, throws on submit failure) ---
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       Message part,
-                       BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       Message part,
-                       BiConsumer<RequestResult, List<Message>> callback,
-                       SendFlags flags);                                                 // @throws SubmitException; callback receives RequestResult
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       Message part,
-                       BiConsumer<RequestResult, List<Message>> callback,
-                       SendFlags flags, Duration timeout);                               // @throws SubmitException; callback receives RequestResult
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       List<Message> parts,
-                       BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       List<Message> parts,
-                       BiConsumer<RequestResult, List<Message>> callback,
-                       SendFlags flags);                                                 // @throws SubmitException; callback receives RequestResult
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       List<Message> parts,
-                       BiConsumer<RequestResult, List<Message>> callback,
-                       SendFlags flags, Duration timeout);                               // @throws SubmitException; callback receives RequestResult
 
     // --- routed reply (spot -> spot) ---
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
@@ -1383,23 +1358,6 @@ public record SpotNodeSubjectEntry(SpotRole role,
                                    int activePeerCount,
                                    long lastChangedMs) {}
 
-public record SpotServiceAttachmentStats(String serviceName,
-                                         int routerCount,
-                                         int pubCount,
-                                         int subCount,
-                                         int autoRouterCount,
-                                         int autoPubCount,
-                                         int autoSubCount) {}
-
-public record SpotServiceMonitorEvent(String serviceName,
-                                      SpotServiceAttachmentRole role,
-                                      MonitorEventType event) {}
-
-public enum SpotServiceAttachmentRole {
-    ROUTER,
-    PUB,
-    SUB
-}
 
 public enum AdmissionState {
     SERVING,   // value = 1

@@ -614,6 +614,18 @@ func (s *directSocket) Send(flags SendFlags, parts ...*Message) error {
 	return nil
 }
 
+func (s *directSocket) TrySend(parts ...*Message) (bool, error) {
+	err := s.Send(SendFlagsDontWait, parts...)
+	if err == nil {
+		return true, nil
+	}
+	var submitErr *SubmitError
+	if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
+		return false, nil
+	}
+	return false, err
+}
+
 func (s *directSocket) Recv(flags RecvFlags) (*Received, error) {
 	var rid C.zlink_routing_id_t
 	var parts *C.zlink_msg_t
@@ -629,6 +641,18 @@ func (s *directSocket) Recv(flags RecvFlags) (*Received, error) {
 		routingID: routingIDFromC(rid),
 		parts:     clonedParts,
 	}, nil
+}
+
+func (s *directSocket) TryRecv() (*Received, bool, error) {
+	received, err := s.Recv(RecvFlagsDontWait)
+	if err == nil {
+		return received, true, nil
+	}
+	var recvErr *RecvError
+	if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		return nil, false, nil
+	}
+	return nil, false, err
 }
 
 func (s *directSocket) onReceive(handler func(*Received)) error {
@@ -689,6 +713,18 @@ func (s *routedSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Messa
 	}
 	prepared.commit()
 	return nil
+}
+
+func (s *routedSocket) TrySendTo(target RoutingID, parts ...*Message) (bool, error) {
+	err := s.SendTo(target, SendFlagsDontWait, parts...)
+	if err == nil {
+		return true, nil
+	}
+	var submitErr *SubmitError
+	if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
+		return false, nil
+	}
+	return false, err
 }
 
 func (s *routedSocket) SendToSpot(destNodeRid, destSpotRid RoutingID, flags SendFlags, parts ...*Message) error {
@@ -842,6 +878,18 @@ func (s *routedSocket) Recv(flags RecvFlags) (*Received, error) {
 		return nil, &RecvError{Result: RecvBusy, internalErrno: int(C.EBUSY)}
 	}
 	return s.directRecv(flags)
+}
+
+func (s *routedSocket) TryRecv() (*Received, bool, error) {
+	received, err := s.Recv(RecvFlagsDontWait)
+	if err == nil {
+		return received, true, nil
+	}
+	var recvErr *RecvError
+	if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		return nil, false, nil
+	}
+	return nil, false, err
 }
 
 func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
@@ -1347,8 +1395,24 @@ func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Messa
 	return s.core.SendTo(target, flags, parts...)
 }
 
+func (s *StreamSocket) TrySendTo(target RoutingID, parts ...*Message) (bool, error) {
+	err := s.core.SendTo(target, SendFlagsDontWait, parts...)
+	if err == nil {
+		return true, nil
+	}
+	var submitErr *SubmitError
+	if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
+		return false, nil
+	}
+	return false, err
+}
+
 func (s *StreamSocket) Recv(flags RecvFlags) (*Received, error) {
 	return (&directSocket{connectionSocket: s.core.connectionSocket}).Recv(flags)
+}
+
+func (s *StreamSocket) TryRecv() (*Received, bool, error) {
+	return (&directSocket{connectionSocket: s.core.connectionSocket}).TryRecv()
 }
 
 func (s *StreamSocket) OnPacket(handler func(RoutingID, *Message, *Message)) error {

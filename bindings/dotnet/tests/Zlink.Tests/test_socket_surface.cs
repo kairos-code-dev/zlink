@@ -97,12 +97,12 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(XPubSocket),
             nameof(XPubSocket.ReceiveSubscriptionEvent)));
         Assert.False(HasPublicInstanceMethod(typeof(XPubSocket),
-            nameof(XPubSocket.TryReceiveSubscriptionEvent),
+            "ReceiveSubscriptionEventNoWait",
             typeof(SubscriptionEvent).MakeByRefType()));
         Assert.False(HasPublicInstanceMethod(typeof(PubSocket),
             nameof(XPubSocket.ReceiveSubscriptionEvent)));
         Assert.False(HasPublicInstanceMethod(typeof(PubSocket),
-            nameof(XPubSocket.TryReceiveSubscriptionEvent),
+            "ReceiveSubscriptionEventNoWait",
             typeof(SubscriptionEvent).MakeByRefType()));
         Assert.False(HasPublicInstanceMethod(typeof(PairSocket),
             "OnSubscribe"));
@@ -162,9 +162,12 @@ public sealed class test_socket_surface
         Assert.Null(typeof(MessageSocketBase).GetMethod("Recv",
             BindingFlags.Instance | BindingFlags.Public, binder: null,
             types: new[] { typeof(int) }, modifiers: null));
-        Assert.Null(typeof(MessageSocketBase).GetMethod("TryRecv",
-            BindingFlags.Instance | BindingFlags.Public, binder: null,
-            types: Type.EmptyTypes, modifiers: null));
+        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "TrySend",
+            typeof(Message)));
+        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "TrySend",
+            typeof(IReadOnlyList<Message>)));
+        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "TryRecv",
+            typeof(Received).MakeByRefType()));
         Assert.Null(typeof(PublisherSocketBase).GetMethod("Publish",
             BindingFlags.Instance | BindingFlags.Public, binder: null,
             types: new[] { typeof(string), typeof(Message), typeof(int) },
@@ -232,6 +235,12 @@ public sealed class test_socket_surface
             typeof(Message), typeof(SendFlags)));
         Assert.False(HasPublicInstanceMethod(typeof(RouterSocket), "RecvSpot"));
         Assert.False(HasPublicInstanceMethod(typeof(RouterSocket), "OnSpotReceive"));
+        Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "TrySend",
+            typeof(RoutingId), typeof(Message)));
+        Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "TrySend",
+            typeof(string), typeof(Message)));
+        Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "TryRecv",
+            typeof(Received).MakeByRefType()));
     }
 
     [Fact]
@@ -276,15 +285,12 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "SetAdmissionState",
             typeof(AdmissionState)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "GetAdmissionState"));
-        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachRouter",
-            typeof(string), typeof(RouterSocket)));
-        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachPubSub",
-            typeof(string), typeof(PubSocket), typeof(SubSocket)));
-        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "ServiceAttachmentCount"));
-        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "ServiceAttachmentAt",
-            typeof(int)));
-        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "NodeMonitorRecv",
-            typeof(RecvFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachChannelDealer",
+            typeof(Discovery), typeof(DealerSocket)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachChannelDealerManual",
+            typeof(string), typeof(DealerSocket)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachPubIngress",
+            typeof(PubSocket)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
             nameof(Spot.SetAdmissionState), typeof(AdmissionState)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
@@ -292,13 +298,18 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(Spot), nameof(Spot.Publish),
             typeof(string), typeof(string), typeof(Message),
             typeof(SendFlags)));
-        Assert.True(HasPublicInstanceMethod(typeof(Spot), nameof(Spot.SendService),
+        Assert.True(HasPublicInstanceMethod(typeof(Spot), nameof(Spot.SendChannel),
             typeof(string), typeof(Message), typeof(SendFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
-            nameof(Spot.RequestServiceAsync), typeof(string), typeof(Message),
+            nameof(Spot.RequestChannelAsync), typeof(string), typeof(Message),
             typeof(TimeSpan), typeof(System.Threading.CancellationToken)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
             nameof(Spot.ReceiveSubscriptionEvent), typeof(RecvFlags)));
+        Assert.False(HasPublicInstanceMethod(typeof(PubSocket), "TryPublish",
+            typeof(string), typeof(Message)));
+        Assert.False(HasPublicInstanceMethod(typeof(PubSocket), "TryPublish",
+            typeof(string), typeof(IReadOnlyList<Message>)));
+        Assert.False(HasPublicInstanceMethod(typeof(SubSocket), "TrySubscribe"));
     }
 
     [Fact]

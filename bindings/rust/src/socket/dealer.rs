@@ -48,6 +48,10 @@ impl DealerSocket {
         self.inner.send(parts)
     }
 
+    pub fn try_send(&self, parts: impl IntoMultipart) -> Result<bool, SubmitError> {
+        self.inner.try_send(parts)
+    }
+
     pub fn send_with_flags(
         &self,
         parts: impl IntoMultipart,
@@ -58,6 +62,10 @@ impl DealerSocket {
 
     pub fn recv(&self) -> Result<Received, RecvError> {
         self.inner.recv()
+    }
+
+    pub fn try_recv(&self) -> Result<Option<Received>, RecvError> {
+        self.inner.recv_no_wait()
     }
 
     pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {

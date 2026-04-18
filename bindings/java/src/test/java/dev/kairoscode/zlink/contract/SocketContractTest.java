@@ -56,6 +56,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -296,10 +297,6 @@ public class SocketContractTest {
             RecvFlags.class));
         assertFalse(hasPublicMethod(RouterSocket.class, "onSpotReceive"));
 
-        assertTrue(hasPublicMethod(Spot.class, "sendToSpot",
-            RoutingId.class, RoutingId.class, Message.class));
-        assertTrue(hasPublicMethod(Spot.class, "requestToSpot",
-            RoutingId.class, RoutingId.class, Message.class));
         assertTrue(hasPublicMethod(Spot.class, "replyToSpot",
             RoutingId.class, RoutingId.class, long.class, Message.class));
         assertTrue(hasPublicMethod(Spot.class, "sendToRouter",
@@ -497,12 +494,24 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(XPubSocket.class, "subscriptionEvent"));
             assertFalse(hasPublicConstructor(ServiceMonitor.class,
                 MemorySegment.class));
-            assertFalse(hasPublicMethod(PairSocket.class, "trySend", Message.class));
-            assertFalse(hasPublicMethod(PairSocket.class, "tryRecv"));
-            assertFalse(hasPublicMethod(MonitorSocket.class, "tryRecv"));
-            assertFalse(hasPublicMethod(PubSocket.class, "tryPublish",
+            assertFalse(hasPublicMethod(PairSocket.class, "sendNoWaitResult", Message.class));
+            assertFalse(hasPublicMethod(PairSocket.class, "recvNoWait"));
+            assertFalse(hasPublicMethod(MonitorSocket.class, "recvNoWait"));
+            assertTrue(hasPublicMethod(PairSocket.class, "trySend", Message.class));
+            assertTrue(hasPublicMethod(PairSocket.class, "trySend", List.class));
+            assertTrue(hasPublicMethod(PairSocket.class, "tryRecv"));
+            assertTrue(hasPublicMethod(DealerSocket.class, "trySend", Message.class));
+            assertTrue(hasPublicMethod(DealerSocket.class, "trySend", List.class));
+            assertTrue(hasPublicMethod(DealerSocket.class, "tryRecv"));
+            assertTrue(hasPublicMethod(RouterSocket.class, "trySend", RoutingId.class, Message.class));
+            assertTrue(hasPublicMethod(RouterSocket.class, "trySend", RoutingId.class, List.class));
+            assertTrue(hasPublicMethod(RouterSocket.class, "tryRecv"));
+            assertTrue(hasPublicMethod(StreamSocket.class, "trySend", int.class, Message.class));
+            assertTrue(hasPublicMethod(StreamSocket.class, "trySend", RoutingId.class, Message.class));
+            assertTrue(hasPublicMethod(StreamSocket.class, "tryRecv"));
+            assertFalse(hasPublicMethod(PubSocket.class, "publishNoWaitResult",
                 String.class, Message.class));
-            assertFalse(hasPublicMethod(SubSocket.class, "trySubscribe"));
+            assertFalse(hasPublicMethod(SubSocket.class, "subscribeNoWait"));
             assertFalse(hasPublicMethod(SubSocket.class, "onSubscribe",
                 dev.kairoscode.zlink.SubscribeHandler.class));
             assertFalse(hasPublicMethod(XSubSocket.class, "onSubscribe",
@@ -554,12 +563,12 @@ public class SocketContractTest {
             server.bind(endpoint);
             client.connect(endpoint);
 
-            assertThrows(RecvException.class,
-                () -> server.recv(RecvFlags.DONT_WAIT));
+            assertNull(server.tryRecv());
             try (Message outbound = Message.copyOfUtf8("pair-try")) {
-                client.send(outbound, SendFlags.DONT_WAIT);
+                assertTrue(client.trySend(outbound));
             }
-            try (var received = server.recv(RecvFlags.DONT_WAIT)) {
+            try (var received = server.tryRecv()) {
+                assertNotNull(received);
                 assertEquals(List.of("pair-try"),
                     List.of(received.singlePartOrThrow().toUtf8String()));
             }

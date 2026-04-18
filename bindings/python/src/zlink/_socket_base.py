@@ -131,7 +131,7 @@ def _classify_nonblocking_send_errno():
     return SubmitResult.INTERNAL_ERROR
 
 
-def _try_send_via_native(handle, parts_array, part_count):
+def _send_via_native_no_wait_result(handle, parts_array, part_count):
     rc = lib().zlink_send(handle, parts_array, part_count, 1)
     result = SubmitResult.OK if rc == 0 else _classify_nonblocking_send_errno()
     if result is not SubmitResult.OK:
@@ -139,7 +139,7 @@ def _try_send_via_native(handle, parts_array, part_count):
     return result
 
 
-def _try_send_rid_via_native(handle, routing_id, parts_array, part_count):
+def _send_rid_via_native_no_wait_result(handle, routing_id, parts_array, part_count):
     rc = lib().zlink_send_rid(handle, ctypes.byref(routing_id), parts_array, part_count, 1)
     result = SubmitResult.OK if rc == 0 else _classify_nonblocking_send_errno()
     if result is not SubmitResult.OK:
@@ -147,7 +147,7 @@ def _try_send_rid_via_native(handle, routing_id, parts_array, part_count):
     return result
 
 
-def _try_publish_via_native(handle, topic_bytes, parts_array, part_count):
+def _publish_via_native_no_wait_result(handle, topic_bytes, parts_array, part_count):
     rc = lib().zlink_publish(handle, topic_bytes, parts_array, part_count, 1)
     result = SubmitResult.OK if rc == 0 else _classify_nonblocking_send_errno()
     if result is not SubmitResult.OK:
@@ -867,9 +867,26 @@ class _MessageSocket(_Socket):
     def send(self, payload, *, flags=0):
         self._send_native_parts(self._native_parts_from_payload(payload), flags)
 
+    def try_send(self, payload):
+        try:
+            self.send(payload, flags=1)
+            return True
+        except SubmitError as ex:
+            if ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
+
     def recv(self, *, flags=0):
         routing, owner = _recv_native_parts(self._handle, flags)
         return Received(owner, routing)
+
+    def try_recv(self):
+        try:
+            return self.recv(flags=1)
+        except RecvError as ex:
+            if ex.result == RecvResult.NO_DATA:
+                return None
+            raise
 
     def _attach_recv_handler(self, handler):
         if handler is None:
@@ -932,6 +949,15 @@ class _RoutedMessageSocket(_MessageSocket):
         self._send_native_parts_to_routing_id(
             routing_id, self._native_parts_from_payload(payload), flags
         )
+
+    def try_send(self, routing_id, payload):
+        try:
+            self.send(routing_id, payload, flags=1)
+            return True
+        except SubmitError as ex:
+            if ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
 
 
 class _PublisherSocket(_Socket):

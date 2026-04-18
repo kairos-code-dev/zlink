@@ -49,6 +49,14 @@ impl RouterSocket {
         self.inner.send_to(target, parts)
     }
 
+    pub fn try_send(
+        &self,
+        target: &RoutingId,
+        parts: impl IntoMultipart,
+    ) -> Result<bool, SubmitError> {
+        self.inner.try_send_to(target, parts)
+    }
+
     pub fn send_with_flags(
         &self,
         target: &RoutingId,
@@ -60,6 +68,10 @@ impl RouterSocket {
 
     pub fn recv(&self) -> Result<Received, RecvError> {
         self.recv_with_flags(RecvFlags::NONE)
+    }
+
+    pub fn try_recv(&self) -> Result<Option<Received>, RecvError> {
+        recv_router_once(self.inner.handle, ffi::ZLINK_DONTWAIT)
     }
 
     pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {

@@ -31,11 +31,11 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.PairSocket)(nil), "Recv") {
 		t.Fatalf("PairSocket should expose Recv")
 	}
-	if hasMethod((*zlink.PairSocket)(nil), "TrySend") {
-		t.Fatalf("PairSocket should not expose TrySend")
+	if !hasMethod((*zlink.PairSocket)(nil), "TrySend") {
+		t.Fatalf("PairSocket should expose TrySend")
 	}
-	if hasMethod((*zlink.PairSocket)(nil), "TryRecv") {
-		t.Fatalf("PairSocket should not expose TryRecv")
+	if !hasMethod((*zlink.PairSocket)(nil), "TryRecv") {
+		t.Fatalf("PairSocket should expose TryRecv")
 	}
 	if hasMethod((*zlink.PubSocket)(nil), "Recv") {
 		t.Fatalf("PubSocket should not expose Recv")
@@ -67,8 +67,8 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.RouterSocket)(nil), "RoutingID") {
 		t.Fatalf("RouterSocket should expose RoutingID")
 	}
-	if hasMethod((*zlink.RouterSocket)(nil), "TrySendTo") {
-		t.Fatalf("RouterSocket should not expose TrySendTo")
+	if !hasMethod((*zlink.RouterSocket)(nil), "TrySendTo") {
+		t.Fatalf("RouterSocket should expose TrySendTo")
 	}
 	if hasMethod((*zlink.RouterSocket)(nil), "Send") {
 		t.Fatalf("RouterSocket should not expose Send")
@@ -112,20 +112,14 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "AttachDiscovery") {
 		t.Fatalf("SpotNode should expose AttachDiscovery")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "AttachRouter") {
-		t.Fatalf("SpotNode should expose AttachRouter")
+	if !hasMethod((*zlink.SpotNode)(nil), "AttachChannelDealer") {
+		t.Fatalf("SpotNode should expose AttachChannelDealer")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "AttachPubSub") {
-		t.Fatalf("SpotNode should expose AttachPubSub")
+	if !hasMethod((*zlink.SpotNode)(nil), "AttachChannelDealerManual") {
+		t.Fatalf("SpotNode should expose AttachChannelDealerManual")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "ServiceAttachmentCount") {
-		t.Fatalf("SpotNode should expose ServiceAttachmentCount")
-	}
-	if !hasMethod((*zlink.SpotNode)(nil), "ServiceAttachmentAt") {
-		t.Fatalf("SpotNode should expose ServiceAttachmentAt")
-	}
-	if !hasMethod((*zlink.SpotNode)(nil), "NodeMonitorRecv") {
-		t.Fatalf("SpotNode should expose NodeMonitorRecv")
+	if !hasMethod((*zlink.SpotNode)(nil), "AttachPubIngress") {
+		t.Fatalf("SpotNode should expose AttachPubIngress")
 	}
 	if !hasMethod((*zlink.SpotNode)(nil), "SetRoutingID") {
 		t.Fatalf("SpotNode should expose SetRoutingID")
@@ -136,11 +130,11 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.Spot)(nil), "Publish") {
 		t.Fatalf("Spot should expose Publish")
 	}
-	if !hasMethod((*zlink.Spot)(nil), "SendService") {
-		t.Fatalf("Spot should expose SendService")
+	if !hasMethod((*zlink.Spot)(nil), "SendChannel") {
+		t.Fatalf("Spot should expose SendChannel")
 	}
-	if !hasMethod((*zlink.Spot)(nil), "RequestService") {
-		t.Fatalf("Spot should expose RequestService")
+	if !hasMethod((*zlink.Spot)(nil), "RequestChannel") {
+		t.Fatalf("Spot should expose RequestChannel")
 	}
 	if !hasMethod((*zlink.Spot)(nil), "Subscribe") {
 		t.Fatalf("Spot should expose Subscribe")
@@ -465,12 +459,6 @@ func TestSurfaceCallbackCapabilities(t *testing.T) {
 	}
 	if !hasMethod((*zlink.Spot)(nil), "ReceiveSubscriptionEvent") {
 		t.Fatalf("Spot should expose ReceiveSubscriptionEvent")
-	}
-	if !hasMethod((*zlink.Spot)(nil), "SendToSpot") {
-		t.Fatalf("Spot should expose SendToSpot")
-	}
-	if !hasMethod((*zlink.Spot)(nil), "RequestToSpot") {
-		t.Fatalf("Spot should expose RequestToSpot")
 	}
 	if !hasMethod((*zlink.Spot)(nil), "ReplyToSpot") {
 		t.Fatalf("Spot should expose ReplyToSpot")

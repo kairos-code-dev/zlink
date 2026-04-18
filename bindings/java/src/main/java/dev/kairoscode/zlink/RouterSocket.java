@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
@@ -34,8 +35,22 @@ public final class RouterSocket extends Socket {
     public void send(RoutingId rid, Message part, SendFlags flags) { super.send(rid, part, SendFlag.fromValue(flags.value())); }
     public void send(RoutingId rid, List<Message> parts) { super.send(rid, parts); }
     public void send(RoutingId rid, List<Message> parts, SendFlags flags) { super.send(rid, parts, SendFlag.fromValue(flags.value())); }
+    public boolean trySend(RoutingId rid, Message part) {
+        return super.trySend(rid, part);
+    }
+    public boolean trySend(RoutingId rid, List<Message> parts) {
+        return super.trySend(rid, parts);
+    }
+    SendResult sendNoWaitResult(RoutingId rid, Message part) {
+        return super.sendNoWaitResult(rid, part);
+    }
+    SendResult sendNoWaitResult(RoutingId rid, List<Message> parts) {
+        return super.sendNoWaitResult(rid, parts);
+    }
     public Received recv() { return routedRequests.recv(); }
     public Received recv(RecvFlags flags) { return routedRequests.recv(flags); }
+    public Received tryRecv() { return routedRequests.recvNoWait().orElse(null); }
+    Optional<Received> recvNoWait() { return routedRequests.recvNoWait(); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     public CompletableFuture<List<Message>> request(RoutingId rid, Message part) {
         return request(rid, List.of(part));

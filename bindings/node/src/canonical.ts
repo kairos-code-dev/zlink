@@ -130,7 +130,7 @@ export class MonitorEvent {
   static readonly CONNECTION_READY = 0x1000;
   static readonly HANDSHAKE_FAILED_PROTOCOL = 0x2000;
   static readonly HANDSHAKE_FAILED_AUTH = 0x4000;
-  static readonly ALL = 0x7FFF;
+  static readonly ALL = 0xFFFF;
 
   readonly event: MonitorEventType;
   readonly value: number;
@@ -257,16 +257,6 @@ export interface SpotNodeSubjectEntry {
   readonly readyPeerCount: number;
   readonly activePeerCount: number;
   readonly lastChangedMs: bigint;
-}
-
-export interface SpotServiceAttachmentStats {
-  readonly serviceName: string;
-  readonly routerCount: number;
-  readonly pubCount: number;
-  readonly subCount: number;
-  readonly autoRouterCount: number;
-  readonly autoPubCount: number;
-  readonly autoSubCount: number;
 }
 
 export const SpotServiceAttachmentRole = Object.freeze({
@@ -638,26 +628,6 @@ function mapSpotNodeSubjectEntry(entry: {
   };
 }
 
-function mapSpotServiceAttachmentStats(entry: {
-  serviceName: string;
-  routerCount: number;
-  pubCount: number;
-  subCount: number;
-  autoRouterCount: number;
-  autoPubCount: number;
-  autoSubCount: number;
-}): SpotServiceAttachmentStats {
-  return {
-    serviceName: entry.serviceName,
-    routerCount: entry.routerCount,
-    pubCount: entry.pubCount,
-    subCount: entry.subCount,
-    autoRouterCount: entry.autoRouterCount,
-    autoPubCount: entry.autoPubCount,
-    autoSubCount: entry.autoSubCount
-  };
-}
-
 function mapSpotServiceMonitorEvent(entry: {
   serviceName: string;
   role: number;
@@ -990,7 +960,12 @@ export class Context extends NativeHandle {
 
 export class MonitorSocket extends NativeHandle {
   static readonly ignoreHandler: SocketMonitorHandler = () => {};
-  recv(): MonitorEvent {
+  recv(flags: RecvFlags = RecvFlags.None): MonitorEvent {
+    if ((flags | 0) & (RecvFlags.DontWait | 0)) {
+      const raw = requireNative().monitorRecvNoWait(this._native) as MonitorEventValueRaw | null;
+      if (!raw) throw new RecvError(RecvResult.NoData, 11, 'monitor recv failed');
+      return new MonitorEvent(raw);
+    }
     return new MonitorEvent(requireNative().monitorRecv(this._native) as MonitorEventValueRaw);
   }
   onEvent(handler: SocketMonitorHandler): void {
@@ -1007,7 +982,14 @@ export class MonitorSocket extends NativeHandle {
 }
 
 export class ServiceMonitor extends NativeHandle {
-  recv(): ServiceEvent { return new ServiceEvent(requireNative().serviceMonitorRecv(this._native) as ServiceEventValue); }
+  recv(flags: RecvFlags = RecvFlags.None): ServiceEvent {
+    if ((flags | 0) & (RecvFlags.DontWait | 0)) {
+      const raw = requireNative().serviceMonitorRecvNoWait(this._native) as ServiceEventValue | null;
+      if (!raw) throw new RecvError(RecvResult.NoData, 11, 'service monitor recv failed');
+      return new ServiceEvent(raw);
+    }
+    return new ServiceEvent(requireNative().serviceMonitorRecv(this._native) as ServiceEventValue);
+  }
   onEvent(handler: (event: ServiceEvent) => void): void {
     requireNative().serviceMonitorHandler(this._native, (event: ServiceEventValue) => handler(new ServiceEvent(event)));
   }
@@ -1032,6 +1014,16 @@ class SendSocket extends BaseSocket {
       throw submitNativeError(error, flags, 'send failed');
     }
   }
+
+  trySend(message: MessageLike | readonly MessageLike[]): boolean {
+    const payload = normalizeMessageLikePayload(message);
+    const result = Array.isArray(payload)
+      ? requireNative().socketSendNoWaitResultParts(this.nativeHandle(), payload) as number
+      : requireNative().socketSendNoWaitResult(this.nativeHandle(), payload) as number;
+    if (result === SubmitResult.Ok) return true;
+    if (result === SubmitResult.Backpressured) return false;
+    throw submitErrorFromResult(result as SubmitResult, 'trySend failed');
+  }
 }
 
 class PublisherSocket extends BaseSocket {
@@ -1051,13 +1043,22 @@ class MessageSocket extends SendSocket {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? requireNative().socketTryRecvMessage(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null
+        ? requireNative().socketRecvMessageNoWait(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null
         : requireNative().socketRecvMessage(this.nativeHandle(), flags | 0) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'recv failed');
     }
     if (!raw) throw new RecvError(RecvResult.NoData, 11, 'recv failed');
     return materializeReceived(raw);
+  }
+  tryRecv(): Received | null {
+    let raw;
+    try {
+      raw = requireNative().socketRecvMessageNoWait(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null;
+    } catch (error) {
+      throw recvNativeError(error, RecvFlags.DontWait, 'tryRecv failed');
+    }
+    return raw ? materializeReceived(raw) : null;
   }
   onSendReady(handler: SocketSendReadyHandler): void {
     requireNative().socketSendReadyHandler(this.nativeHandle(), handler);
@@ -1101,17 +1102,35 @@ class RoutedMessageSocket extends BaseSocket {
       : [normalizeRoutingId(routingId), normalized];
     requireNative().socketSendParts(this.nativeHandle(), parts, flags | 0);
   }
+  trySend(routingId: RoutingId, payload: MessageLike | readonly MessageLike[]): boolean {
+    const normalized = normalizeMessageLikePayload(payload);
+    const result = Array.isArray(normalized)
+      ? requireNative().socketSendRoutingNoWaitResultParts(this.nativeHandle(), normalizeRoutingId(routingId), normalized) as number
+      : requireNative().socketSendRoutingNoWaitResult(this.nativeHandle(), normalizeRoutingId(routingId), normalized) as number;
+    if (result === SubmitResult.Ok) return true;
+    if (result === SubmitResult.Backpressured) return false;
+    throw submitErrorFromResult(result as SubmitResult, 'trySend failed');
+  }
   recv(flags: RecvFlags = RecvFlags.None): Received {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? requireNative().routerTryRecvMessage(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null
+        ? requireNative().routerRecvMessageNoWait(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null
         : requireNative().routerRecvMessage(this.nativeHandle(), flags | 0) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'recv failed');
     }
     if (!raw) throw new RecvError(RecvResult.NoData, 11, 'recv failed');
     return materializeReceived(raw);
+  }
+  tryRecv(): Received | null {
+    let raw;
+    try {
+      raw = requireNative().routerRecvMessageNoWait(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null;
+    } catch (error) {
+      throw recvNativeError(error, RecvFlags.DontWait, 'tryRecv failed');
+    }
+    return raw ? materializeReceived(raw) : null;
   }
   onSendReady(handler: SocketSendReadyHandler): void {
     requireNative().socketSendReadyHandler(this.nativeHandle(), handler);
@@ -1361,7 +1380,7 @@ export class StreamSocket extends RoutedMessageSocket {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? requireNative().socketTryRecvMessage(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null } | null
+        ? requireNative().socketRecvMessageNoWait(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null } | null
         : requireNative().socketRecvMessage(this.nativeHandle(), flags | 0) as { parts: MessageSnapshot[]; routingId?: Buffer | null } | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'recv failed');
@@ -1493,20 +1512,22 @@ export class SpotNode extends NativeHandle {
   bind(endpoint: string): void { requireNative().spotNodeBind(this._native, validateCString(endpoint, 'endpoint')); }
   connectPeer(endpoint: string): void { requireNative().spotNodeConnectPeerPub(this._native, validateCString(endpoint, 'endpoint')); }
   disconnectPeer(endpoint: string): void { requireNative().spotNodeDisconnectPeerPub(this._native, validateCString(endpoint, 'endpoint')); }
-  attachRouter(serviceName: string, router: RouterSocket): void {
-    requireNative().spotNodeAttachRouter(
+  attachChannelDealer(discovery: Discovery, dealer: DealerSocket): void {
+    requireNative().spotNodeAttachChannelDealer(
       this._native,
-      validateCString(serviceName, 'serviceName'),
-      router.nativeHandle()
+      discovery.nativeHandle(),
+      dealer.nativeHandle()
     );
   }
-  attachPubSub(serviceName: string, pub: PubSocket, sub: SubSocket): void {
-    requireNative().spotNodeAttachPubSub(
+  attachChannelDealerManual(channelName: string, dealer: DealerSocket): void {
+    requireNative().spotNodeAttachChannelDealerManual(
       this._native,
-      validateCString(serviceName, 'serviceName'),
-      pub.nativeHandle(),
-      sub.nativeHandle()
+      validateCString(channelName, 'channelName'),
+      dealer.nativeHandle()
     );
+  }
+  attachPubIngress(pub: PubSocket): void {
+    requireNative().spotNodeAttachPubIngress(this._native, pub.nativeHandle());
   }
   attachDiscovery(discovery: Discovery): void { requireNative().spotNodeSetDiscovery(this._native, discovery.nativeHandle()); }
   setRoutingId(routingId: RoutingId): void {
@@ -1568,21 +1589,6 @@ export class SpotNode extends NativeHandle {
     return (requireNative().spotNodeSubjectsSnapshot(this._native, filter ?? undefined) as Array<Record<string, unknown>>)
       .map((entry) => mapSpotNodeSubjectEntry(entry as any));
   }
-  serviceAttachmentCount(): number {
-    return requireNative().spotNodeServiceAttachmentCount(this._native) as number;
-  }
-  serviceAttachmentAt(index: number): SpotServiceAttachmentStats {
-    return mapSpotServiceAttachmentStats(
-      requireNative().spotNodeServiceAttachmentAt(this._native, index | 0) as any
-    );
-  }
-  nodeMonitorRecv(flags: RecvFlags = RecvFlags.None): SpotServiceMonitorEvent {
-    const raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-      ? requireNative().spotNodeMonitorTryRecv(this._native) as any
-      : requireNative().spotNodeMonitorRecv(this._native, flags | 0) as any;
-    if (!raw) throw new RecvError(RecvResult.NoData, 11, 'nodeMonitorRecv failed');
-    return mapSpotServiceMonitorEvent(raw);
-  }
   close(): void {
     if (!this._native) {
       return;
@@ -1642,7 +1648,7 @@ export class Spot extends NativeHandle {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? requireNative().spotTryRecv(this._native) as any
+        ? requireNative().spotRecvNoWait(this._native) as any
         : requireNative().spotRecv(this._native, flags | 0) as any;
     } catch (error) {
       throw recvNativeError(error, flags, 'subscribe failed');
@@ -1652,7 +1658,7 @@ export class Spot extends NativeHandle {
   }
   receiveSubscriptionEvent(flags: RecvFlags = RecvFlags.None): SubscriptionEvent {
     const raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-      ? requireNative().spotTrySubscriptionEvent(this._native) as {
+      ? requireNative().spotSubscriptionEventNoWait(this._native) as {
           routingId?: Buffer | null;
           serviceName?: string | null;
           topic: string;
@@ -1673,30 +1679,30 @@ export class Spot extends NativeHandle {
     );
   }
   onSendReady(handler: SpotSendReadyHandler): void { requireNative().spotSendReadyHandler(this._native, handler); }
-  sendService(serviceName: string, message: MessageLike, flags?: SendFlags): void;
-  sendService(serviceName: string, parts: readonly MessageLike[], flags?: SendFlags): void;
-  sendService(serviceName: string, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+  sendChannel(channelName: string, message: MessageLike, flags?: SendFlags): void;
+  sendChannel(channelName: string, parts: readonly MessageLike[], flags?: SendFlags): void;
+  sendChannel(channelName: string, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     try {
-      requireNative().spotSendService(
+      requireNative().spotSendChannel(
         this._native,
-        validateCString(serviceName, 'serviceName', Number.MAX_SAFE_INTEGER),
+        validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER),
         Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)],
         flags | 0
       );
     } catch (error) {
-      throw submitNativeError(error, flags, 'spot sendService failed');
+      throw submitNativeError(error, flags, 'spot sendChannel failed');
     }
   }
-  requestService(serviceName: string, message: MessageLike, timeout?: number): Promise<Message[]>;
-  requestService(serviceName: string, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-  requestService(serviceName: string, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestService(serviceName: string, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestService(serviceName: string, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, flags: SendFlags = SendFlags.None, timeout = 0): Promise<Message[]> | void {
+  requestChannel(channelName: string, message: MessageLike, timeout?: number): Promise<Message[]>;
+  requestChannel(channelName: string, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
+  requestChannel(channelName: string, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  requestChannel(channelName: string, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  requestChannel(channelName: string, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, flags: SendFlags = SendFlags.None, timeout = 0): Promise<Message[]> | void {
     const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
     if (typeof callbackOrTimeout === 'function') {
-      return void requireNative().spotRequestService(
+      return void requireNative().spotRequestChannel(
         this._native,
-        validateCString(serviceName, 'serviceName', Number.MAX_SAFE_INTEGER),
+        validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER),
         parts,
         (result: number, replyParts: Buffer[] | null) => callbackOrTimeout(result as RequestResult, replyParts ? replyParts.map((part) => Message.from(part)) : []),
         flags | 0,
@@ -1706,76 +1712,14 @@ export class Spot extends NativeHandle {
     const timeoutMs = (typeof callbackOrTimeout === 'number' ? callbackOrTimeout : timeout) ?? 0;
     return new Promise<Message[]>((resolve, reject) => {
       const release = createRequestKeepAlive();
-      requireNative().spotRequestService(
+      requireNative().spotRequestChannel(
         this._native,
-        validateCString(serviceName, 'serviceName', Number.MAX_SAFE_INTEGER),
+        validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER),
         parts,
         (result: number, replyParts: Buffer[] | null) => {
           release();
           if (result !== RequestResult.Ok) {
-            reject(requestErrorFromResult(result as RequestResult, 'requestService failed'));
-            return;
-          }
-          resolve((replyParts ?? []).map((part) => Message.from(part)));
-        },
-        0,
-        timeoutMs | 0
-      );
-    });
-  }
-  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, flags?: SendFlags): void;
-  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
-  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
-    try {
-      requireNative().spotSendSpot(
-        this._native,
-        normalizeRoutingId(destNodeRid),
-        normalizeRoutingId(destSpotRid),
-        Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)],
-        flags | 0
-      );
-    } catch (error) {
-      throw submitNativeError(error, flags, 'spot sendToSpot failed');
-    }
-  }
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, timeout?: number): Promise<Message[]>;
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestToSpot(
-    destNodeRid: RoutingId,
-    destSpotRid: RoutingId,
-    payloadOrParts: MessageLike | readonly MessageLike[],
-    callbackOrTimeout?: RequestResultCallback | number,
-    flags: SendFlags = SendFlags.None,
-    timeout = 0
-  ): Promise<Message[]> | void {
-    const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
-    const nodeRid = normalizeRoutingId(destNodeRid);
-    const spotRid = normalizeRoutingId(destSpotRid);
-    if (typeof callbackOrTimeout === 'function') {
-      return void requireNative().spotRequestSpot(
-        this._native,
-        nodeRid,
-        spotRid,
-        parts,
-        (result: number, replyParts: Buffer[] | null) => callbackOrTimeout(result as RequestResult, replyParts ? replyParts.map((part) => Message.from(part)) : []),
-        flags | 0,
-        timeout | 0
-      );
-    }
-    const timeoutMs = (typeof callbackOrTimeout === 'number' ? callbackOrTimeout : timeout) ?? 0;
-    return new Promise<Message[]>((resolve, reject) => {
-      const release = createRequestKeepAlive();
-      requireNative().spotRequestSpot(
-        this._native,
-        nodeRid,
-        spotRid,
-        parts,
-        (result: number, replyParts: Buffer[] | null) => {
-          release();
-          if (result !== RequestResult.Ok) {
-            reject(requestErrorFromResult(result as RequestResult, 'requestToSpot failed'));
+            reject(requestErrorFromResult(result as RequestResult, 'requestChannel failed'));
             return;
           }
           resolve((replyParts ?? []).map((part) => Message.from(part)));

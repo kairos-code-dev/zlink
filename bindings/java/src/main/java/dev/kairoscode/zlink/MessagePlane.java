@@ -21,6 +21,12 @@ final class MessagePlane {
     void send(Message part, SendFlag flags) {
         Objects.requireNonNull(part, "part");
         Objects.requireNonNull(flags, "flags");
+        if (flags == SendFlag.DONTWAIT) {
+            SendResult result = socket.sendMessageFrameNoWaitResult(part);
+            if (result != SendResult.SENT)
+                throw Socket.submitExceptionFromSendResult(result.nativeValue());
+            return;
+        }
         socket.sendMessageFrame(part, flags);
     }
 
@@ -34,14 +40,14 @@ final class MessagePlane {
         socket.sendParts(null, parts, flags, false);
     }
 
-    SendResult trySend(Message part) {
+    SendResult sendNoWaitResult(Message part) {
         Objects.requireNonNull(part, "part");
-        return socket.trySendMessageFrame(part);
+        return socket.sendMessageFrameNoWaitResult(part);
     }
 
-    SendResult trySend(List<Message> parts) {
+    SendResult sendNoWaitResult(List<Message> parts) {
         Objects.requireNonNull(parts, "parts");
-        return socket.trySendParts(null, parts);
+        return socket.sendNoWaitPartsResult(null, parts);
     }
 
     void send(RoutingId rid, Message part) {
@@ -51,6 +57,12 @@ final class MessagePlane {
     void send(RoutingId rid, Message part, SendFlag flags) {
         Objects.requireNonNull(part, "part");
         Objects.requireNonNull(flags, "flags");
+        if (flags == SendFlag.DONTWAIT) {
+            SendResult result = socket.sendMessageFrameNoWaitResult(rid, part);
+            if (result != SendResult.SENT)
+                throw Socket.submitExceptionFromSendResult(result.nativeValue());
+            return;
+        }
         socket.sendMessageFrame(rid, part, flags);
     }
 
@@ -64,14 +76,14 @@ final class MessagePlane {
         socket.sendParts(rid, parts, flags, false);
     }
 
-    SendResult trySend(RoutingId rid, Message part) {
+    SendResult sendNoWaitResult(RoutingId rid, Message part) {
         Objects.requireNonNull(part, "part");
-        return socket.trySendMessageFrame(rid, part);
+        return socket.sendMessageFrameNoWaitResult(rid, part);
     }
 
-    SendResult trySend(RoutingId rid, List<Message> parts) {
+    SendResult sendNoWaitResult(RoutingId rid, List<Message> parts) {
         Objects.requireNonNull(parts, "parts");
-        return socket.trySendParts(rid, parts);
+        return socket.sendNoWaitPartsResult(rid, parts);
     }
 
     Received recv() {
@@ -85,8 +97,12 @@ final class MessagePlane {
                 flags.getValue());
             if (received != null) {
                 RoutingId rid = Socket.toRoutingId(received.routingId());
-                Message[] parts = Message.fromOwnedMsgVector(received.parts(),
-                    received.partCount());
+                if (received.partCount() == 1) {
+                    Message part = Message.fromOwnedMsgSingle(received.parts());
+                    return new Received(rid, null, part, 0L, false, null);
+                }
+                Message[] parts = Message.fromOwnedMsgVector(
+                    received.parts(), received.partCount());
                 return new Received(rid, null, parts, true, 0L, false, null);
             }
 
@@ -97,16 +113,19 @@ final class MessagePlane {
         }
     }
 
-    Optional<Received> tryRecv() {
+    Received recvNoWaitOrNull() {
         while (true) {
             Native.MultipartReceive received = Native.recvMultipart(socket.handle(),
                 ReceiveFlag.DONTWAIT.getValue());
             if (received != null) {
                 RoutingId rid = Socket.toRoutingId(received.routingId());
-                Message[] parts = Message.fromOwnedMsgVector(received.parts(),
-                    received.partCount());
-                return Optional.of(new Received(rid, null, parts, true, 0L,
-                    false, null));
+                if (received.partCount() == 1) {
+                    Message part = Message.fromOwnedMsgSingle(received.parts());
+                    return new Received(rid, null, part, 0L, false, null);
+                }
+                Message[] parts = Message.fromOwnedMsgVector(
+                    received.parts(), received.partCount());
+                return new Received(rid, null, parts, true, 0L, false, null);
             }
 
             int errno = Native.errno();
@@ -114,25 +133,29 @@ final class MessagePlane {
                 continue;
             if (errno == Socket.ERRNO_EAGAIN
                 || errno == Socket.ERRNO_EWOULDBLOCK_WIN) {
-                return Optional.empty();
+                return null;
             }
             throw ZlinkException.fromLastError("zlink_recv");
         }
+    }
+
+    Optional<Received> recvNoWait() {
+        return Optional.ofNullable(recvNoWaitOrNull());
     }
 
     void sendMessageFrame(Message message, SendFlag flag) {
         socket.sendMessageFrame(message, flag);
     }
 
-    boolean trySendMessageFrame(Message message, SendFlag flag) {
-        return socket.trySendMessageFrame(message, flag);
+    boolean sendMessageFrameNoWaitResult(Message message, SendFlag flag) {
+        return socket.sendMessageFrameNoWaitResult(message, flag);
     }
 
     void recvMessageFrame(Message message, ReceiveFlag flag) {
         socket.recvMessageFrame(message, flag);
     }
 
-    int tryRecvMessageFrame(Message message, ReceiveFlag flag) {
-        return socket.tryRecvMessageFrame(message, flag);
+    int recvMessageFrameNoWait(Message message, ReceiveFlag flag) {
+        return socket.recvMessageFrameNoWait(message, flag);
     }
 }

@@ -179,6 +179,14 @@ final class RouterRequestSupport implements AutoCloseable {
             throw new IllegalStateException(
                 "socket is in callback mode; direct recv is not allowed");
         }
+        if (flags == RecvFlags.DONT_WAIT) {
+            Received received = recvNoWaitOrNull();
+            if (received == null) {
+                throw new RecvException(RecvResult.NO_DATA,
+                    Socket.ERRNO_EAGAIN);
+            }
+            return received;
+        }
         return recvDirect(flags);
     }
 
@@ -236,19 +244,23 @@ final class RouterRequestSupport implements AutoCloseable {
         }
     }
 
-    Optional<Received> tryRecv() {
+    Received recvNoWaitOrNull() {
         if (dataHandler != null) {
             throw new IllegalStateException(
                 "socket is in callback mode; direct recv is not allowed");
         }
         try {
-            return Optional.of(recvDirectOnce(RecvFlags.DONT_WAIT));
+            return recvDirectOnce(RecvFlags.DONT_WAIT);
         } catch (RecvException ex) {
             if (ex.getResult() == RecvResult.NO_DATA) {
-                return Optional.empty();
+                return null;
             }
             throw ex;
         }
+    }
+
+    Optional<Received> recvNoWait() {
+        return Optional.ofNullable(recvNoWaitOrNull());
     }
 
     @Override

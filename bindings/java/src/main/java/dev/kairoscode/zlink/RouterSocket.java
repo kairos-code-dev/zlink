@@ -49,8 +49,8 @@ public final class RouterSocket extends Socket {
     }
     public Received recv() { return routedRequests.recv(); }
     public Received recv(RecvFlags flags) { return routedRequests.recv(flags); }
-    public Received tryRecv() { return routedRequests.recvNoWait().orElse(null); }
-    Optional<Received> recvNoWait() { return routedRequests.recvNoWait(); }
+    public Received tryRecv() { return routedRequests.recvNoWaitOrNull(); }
+    Optional<Received> recvNoWait() { return Optional.ofNullable(routedRequests.recvNoWaitOrNull()); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     public CompletableFuture<List<Message>> request(RoutingId rid, Message part) {
         return request(rid, List.of(part));

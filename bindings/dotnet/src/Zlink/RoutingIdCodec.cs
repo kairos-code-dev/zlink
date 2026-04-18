@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using Zlink.Native;
 
 namespace Zlink;
 
@@ -12,6 +13,10 @@ internal static class RoutingIdCodec
     private static readonly object ByteCacheLock = new();
     private static readonly Dictionary<RouteCacheKey, List<RouteCacheEntry>>
         ByteToPublicCache = new();
+    private static readonly Dictionary<RouteCacheKey, List<byte[]>>
+        ByteCanonicalCache = new();
+    private static readonly Dictionary<RouteCacheKey, List<RouteRoutingEntry>>
+        ByteToRoutingCache = new();
     private static readonly Dictionary<string, byte[]> PublicToByteCache =
         new(StringComparer.Ordinal);
 
@@ -63,12 +68,55 @@ internal static class RoutingIdCodec
 
     internal static RoutingId? ToRoutingId(ReadOnlySpan<byte> routingId)
     {
-        return RoutingId.FromOptionalBytes(routingId);
+        return routingId.Length == 0 ? null : ToRoutingIdCached(routingId);
+    }
+
+    internal static unsafe RoutingId? ToRoutingId(ref ZlinkRoutingId routingId)
+    {
+        int size = routingId.Size;
+        if (size <= 0)
+            return null;
+
+        fixed (byte* src = routingId.Data)
+        {
+            return ToRoutingIdCached(new ReadOnlySpan<byte>(src, size));
+        }
+    }
+
+    internal static RoutingId? ToRoutingId(byte[] routingId)
+    {
+        return routingId.Length == 0 ? null : ToRoutingIdCached(routingId);
     }
 
     internal static byte[] FromRoutingId(RoutingId routingId)
     {
-        return routingId.ToByteArray();
+        return routingId.AsByteArrayUnsafe();
+    }
+
+    internal static unsafe byte[]? ToOwnedBytes(ref ZlinkRoutingId routingId)
+    {
+        int size = routingId.Size;
+        if (size <= 0)
+            return null;
+
+        fixed (byte* src = routingId.Data)
+        {
+            return Canonicalize(new ReadOnlySpan<byte>(src, size));
+        }
+    }
+
+    internal static unsafe byte[]? CopyOwnedBytes(ref ZlinkRoutingId routingId)
+    {
+        int size = routingId.Size;
+        if (size <= 0)
+            return null;
+
+        byte[] bytes = new byte[size];
+        fixed (byte* src = routingId.Data)
+        {
+            new ReadOnlySpan<byte>(src, size).CopyTo(bytes);
+        }
+        return bytes;
     }
 
     internal static byte[] FromUInt32(uint routingId)
@@ -181,6 +229,65 @@ internal static class RoutingIdCodec
         return roundtrip.AsSpan().SequenceEqual(original);
     }
 
+    private static byte[] Canonicalize(ReadOnlySpan<byte> routingId)
+    {
+        RouteCacheKey key = RouteCacheKey.Create(routingId);
+        lock (ByteCacheLock)
+        {
+            if (ByteCanonicalCache.TryGetValue(key,
+                out List<byte[]>? cachedEntries))
+            {
+                for (int i = 0; i < cachedEntries.Count; i++)
+                {
+                    if (routingId.SequenceEqual(cachedEntries[i]))
+                        return cachedEntries[i];
+                }
+            }
+
+            byte[] copy = routingId.ToArray();
+            if (!ByteCanonicalCache.TryGetValue(key, out cachedEntries))
+            {
+                cachedEntries = new List<byte[]>(1);
+                ByteCanonicalCache[key] = cachedEntries;
+            }
+
+            cachedEntries.Add(copy);
+            return copy;
+        }
+    }
+
+    private static RoutingId ToRoutingIdCached(ReadOnlySpan<byte> routingId)
+    {
+        byte[] canonical = Canonicalize(routingId);
+        RouteCacheKey key = RouteCacheKey.Create(canonical);
+        lock (ByteCacheLock)
+        {
+            if (ByteToRoutingCache.TryGetValue(key,
+                out List<RouteRoutingEntry>? cachedEntries))
+            {
+                for (int i = 0; i < cachedEntries.Count; i++)
+                {
+                    if (ReferenceEquals(canonical, cachedEntries[i].Bytes)
+                        || canonical.AsSpan().SequenceEqual(cachedEntries[i].Bytes))
+                    {
+                        return cachedEntries[i].RoutingId;
+                    }
+                }
+            }
+
+            RoutingId created = RoutingId.FromOwnedOptionalBytes(canonical)
+                ?? throw new InvalidOperationException("routingId must not be empty.");
+            if (!ByteToRoutingCache.TryGetValue(key, out cachedEntries))
+            {
+                cachedEntries = new List<RouteRoutingEntry>(1);
+                ByteToRoutingCache[key] = cachedEntries;
+            }
+
+            cachedEntries.Add(new RouteRoutingEntry(canonical, created));
+            return created;
+        }
+    }
+
     private readonly struct RouteCacheKey : IEquatable<RouteCacheKey>
     {
         private RouteCacheKey(int length, ulong hash)
@@ -231,5 +338,17 @@ internal static class RoutingIdCodec
 
         internal byte[] Bytes { get; }
         internal string Public { get; }
+    }
+
+    private sealed class RouteRoutingEntry
+    {
+        internal RouteRoutingEntry(byte[] bytes, RoutingId routingId)
+        {
+            Bytes = bytes;
+            RoutingId = routingId;
+        }
+
+        internal byte[] Bytes { get; }
+        internal RoutingId RoutingId { get; }
     }
 }

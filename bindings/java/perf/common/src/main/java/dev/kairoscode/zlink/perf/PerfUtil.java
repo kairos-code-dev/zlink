@@ -212,35 +212,35 @@ public final class PerfUtil {
         PerfTransport.waitForMonitorEvent(monitor, expectedMask, expectedCount, timeout, label);
     }
 
-    public static Optional<dev.kairoscode.zlink.MonitorEvent> tryRecv(MonitorSocket monitor) {
-        return invokeOptionalNoArg(monitor, "tryRecv");
+    public static Optional<dev.kairoscode.zlink.MonitorEvent> recvNoWait(MonitorSocket monitor) {
+        return invokeOptionalNoArg(monitor, "recvNoWait");
     }
 
-    public static Optional<dev.kairoscode.zlink.service.registry.ServiceEvent> tryRecv(ServiceMonitor monitor) {
-        return invokeOptionalNoArg(monitor, "tryRecv");
+    public static Optional<dev.kairoscode.zlink.service.registry.ServiceEvent> recvNoWait(ServiceMonitor monitor) {
+        return invokeOptionalNoArg(monitor, "recvNoWait");
     }
 
-    public static Optional<dev.kairoscode.zlink.Received> tryRecv(PairSocket socket) {
-        return tryOptional(() -> socket.recv(RecvFlags.DONT_WAIT));
+    public static dev.kairoscode.zlink.Received recvNoWait(PairSocket socket) {
+        return socket.tryRecv();
     }
 
-    public static Optional<dev.kairoscode.zlink.Received> tryRecv(DealerSocket socket) {
-        return tryOptional(() -> socket.recv(RecvFlags.DONT_WAIT));
+    public static dev.kairoscode.zlink.Received recvNoWait(DealerSocket socket) {
+        return socket.tryRecv();
     }
 
-    public static Optional<dev.kairoscode.zlink.Received> tryRecv(RouterSocket socket) {
-        return tryOptional(() -> socket.recv(RecvFlags.DONT_WAIT));
+    public static dev.kairoscode.zlink.Received recvNoWait(RouterSocket socket) {
+        return socket.tryRecv();
     }
 
-    public static Optional<dev.kairoscode.zlink.Received> tryRecv(StreamSocket socket) {
-        return tryOptional(() -> socket.recv(RecvFlags.DONT_WAIT));
+    public static dev.kairoscode.zlink.Received recvNoWait(StreamSocket socket) {
+        return socket.tryRecv();
     }
 
-    public static Optional<TopicMessage> trySubscribe(SubSocket socket) {
+    public static Optional<TopicMessage> subscribeNoWait(SubSocket socket) {
         return tryOptional(() -> socket.subscribe(RecvFlags.DONT_WAIT));
     }
 
-    public static Optional<TopicMessage> trySubscribe(Spot spot) {
+    public static Optional<TopicMessage> subscribeNoWait(Spot spot) {
         return tryOptional(() -> spot.subscribe(RecvFlags.DONT_WAIT));
     }
 

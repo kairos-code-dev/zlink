@@ -10,7 +10,6 @@ import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -50,11 +49,12 @@ final class PerfDealerDealer {
                     while (finished.getCount() > 0L) {
                         pollSet.poll(-1);
                         while (true) {
-                            Optional<dev.kairoscode.zlink.Received> maybe = PerfUtil.tryRecv(receiver);
-                            if (maybe.isEmpty()) {
+                            dev.kairoscode.zlink.Received received =
+                                PerfUtil.recvNoWait(receiver);
+                            if (received == null) {
                                 break;
                             }
-                            try (var received = maybe.orElseThrow()) {
+                            try (received) {
                                 PerfUtil.Header header = PerfUtil.decodeHeader(
                                     received.firstPart(), config.size());
                                 if (header == null) {

@@ -496,19 +496,25 @@ public abstract class Socket implements AutoCloseable {
     Received recv(ReceiveFlag flags) {
         Objects.requireNonNull(flags, "flags");
         if (flags == ReceiveFlag.DONTWAIT) {
-            return messagePlane.recvNoWait()
-                .orElseThrow(() -> new RecvException(RecvResult.NO_DATA,
-                    ERRNO_EAGAIN));
+            Received received = messagePlane.recvNoWaitOrNull();
+            if (received == null) {
+                throw new RecvException(RecvResult.NO_DATA, ERRNO_EAGAIN);
+            }
+            return received;
         }
         return messagePlane.recv(flags);
     }
 
+    Received recvNoWaitOrNull() {
+        return messagePlane.recvNoWaitOrNull();
+    }
+
     Optional<Received> recvNoWait() {
-        return messagePlane.recvNoWait();
+        return Optional.ofNullable(recvNoWaitOrNull());
     }
 
     Received tryRecv() {
-        return recvNoWait().orElse(null);
+        return recvNoWaitOrNull();
     }
 
     /** Receives a topic-aware delivery from a SUB/XSUB-style socket. */

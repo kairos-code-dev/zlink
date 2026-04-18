@@ -14,7 +14,6 @@ import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 
 final class PerfMultiRouterRouter {
@@ -44,11 +43,12 @@ final class PerfMultiRouterRouter {
                 while (stops < config.clients()) {
                     pollSet.poll(-1);
                     while (true) {
-                        Optional<dev.kairoscode.zlink.Received> maybe = PerfUtil.tryRecv(server);
-                        if (maybe.isEmpty()) {
+                        dev.kairoscode.zlink.Received received =
+                            PerfUtil.recvNoWait(server);
+                        if (received == null) {
                             break;
                         }
-                        try (var received = maybe.orElseThrow()) {
+                        try (received) {
                             PerfUtil.Header header = PerfUtil.decodeHeader(
                                 received.firstPart(), config.size());
                             if (header == null) {
@@ -58,9 +58,8 @@ final class PerfMultiRouterRouter {
                                 stops++;
                                 continue;
                             }
-                            try (Message reply = Message.copyOf(
-                                received.firstPart().toByteArray())) {
-                                server.send(received.routingId().orElseThrow(), List.of(reply));
+                            try (Message reply = Message.copyOf(received.firstPart())) {
+                                server.send(received.routingIdOrThrow(), reply);
                             }
                         }
                     }
@@ -102,17 +101,18 @@ final class PerfMultiRouterRouter {
                     while (System.nanoTime() < activeEnd) {
                         try (Message request = PerfUtil.payload(config.size(),
                                  (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                            sendUntilSent(client, pollSet, List.of(request));
+                            sendUntilSent(client, pollSet, request);
                         }
                         if (!awaitReadable(pollSet, activeEnd)) {
                             break;
                         }
                         while (true) {
-                            Optional<dev.kairoscode.zlink.Received> maybe = PerfUtil.tryRecv(client);
-                            if (maybe.isEmpty()) {
+                            dev.kairoscode.zlink.Received received =
+                                PerfUtil.recvNoWait(client);
+                            if (received == null) {
                                 break;
                             }
-                            try (var received = maybe.orElseThrow()) {
+                            try (received) {
                                 PerfUtil.Header header = PerfUtil.decodeHeader(
                                     received.firstPart(), config.size());
                                 if (header != null && header.phase() == PerfUtil.PHASE_ACTIVE) {
@@ -124,7 +124,7 @@ final class PerfMultiRouterRouter {
                     for (int i = 0; i < 4; i++) {
                         try (Message stop = PerfUtil.payload(config.size(),
                                  (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                            sendUntilSent(client, pollSet, List.of(stop));
+                            sendUntilSent(client, pollSet, stop);
                         }
                     }
                 }
@@ -134,15 +134,10 @@ final class PerfMultiRouterRouter {
     }
 
     private static void sendUntilSent(RouterSocket client, PerfSocketPollSet pollSet,
-                                      List<Message> parts) {
+                                      Message part) {
         while (true) {
-            try {
-                client.send(SERVER_ID, parts, SendFlags.DONT_WAIT);
+            if (client.trySend(SERVER_ID, part)) {
                 return;
-            } catch (dev.kairoscode.zlink.ZlinkException ex) {
-                if (ex.getInternalErrno() != 11 && ex.getInternalErrno() != 4) {
-                    throw ex;
-                }
             }
             pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
             pollSet.poll(-1);

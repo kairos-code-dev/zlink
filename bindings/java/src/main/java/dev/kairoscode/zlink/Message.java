@@ -9,10 +9,12 @@ import io.netty.buffer.ByteBuf;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import sun.misc.Unsafe;
 
 /**
  * Owns one native zlink frame and exposes the canonical copy and borrow
@@ -23,6 +25,9 @@ import java.util.Objects;
  * backing alive through the message lifetime.
  */
 public final class Message implements AutoCloseable {
+    private static final Unsafe UNSAFE = lookupUnsafe();
+    private static final long BYTE_ARRAY_BASE =
+        UNSAFE.arrayBaseOffset(byte[].class);
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
@@ -43,6 +48,16 @@ public final class Message implements AutoCloseable {
         this.arena = Objects.requireNonNull(arena, "arena");
         this.msg = arena.allocate(NativeLayouts.MSG_LAYOUT);
         this.valid = false;
+        this.closed = false;
+        this.recvArmed = false;
+        this.more = false;
+        this.zeroCopyAnchor = null;
+    }
+
+    private Message(MemorySegment adoptedMsg) {
+        this.arena = null;
+        this.msg = Objects.requireNonNull(adoptedMsg, "adoptedMsg");
+        this.valid = true;
         this.closed = false;
         this.recvArmed = false;
         this.more = false;
@@ -91,7 +106,8 @@ public final class Message implements AutoCloseable {
         Message msg = new Message(length);
         if (length > 0) {
             MemorySegment dst = NativeMsg.msgData(msg.msg).reinterpret(length);
-            MemorySegment.copy(MemorySegment.ofArray(data), offset, dst, 0, length);
+            UNSAFE.copyMemory(data, BYTE_ARRAY_BASE + offset, null,
+                dst.address(), length);
         }
         return msg;
     }
@@ -121,7 +137,8 @@ public final class Message implements AutoCloseable {
         msg.more = false;
         if (length > 0) {
             MemorySegment dst = NativeMsg.msgData(msg.msg).reinterpret(length);
-            MemorySegment.copy(MemorySegment.ofArray(data), offset, dst, 0, length);
+            UNSAFE.copyMemory(data, BYTE_ARRAY_BASE + offset, null,
+                dst.address(), length);
         }
         return msg;
     }
@@ -388,7 +405,7 @@ public final class Message implements AutoCloseable {
             return new byte[0];
         MemorySegment data = dataSegment();
         byte[] out = new byte[size];
-        MemorySegment.copy(data, 0, MemorySegment.ofArray(out), 0, size);
+        UNSAFE.copyMemory(null, data.address(), out, BYTE_ARRAY_BASE, size);
         return out;
     }
 
@@ -402,7 +419,8 @@ public final class Message implements AutoCloseable {
         validateRange(destination.length, offset, size, "destination");
         if (size == 0)
             return 0;
-        MemorySegment.copy(dataSegment(), 0, MemorySegment.ofArray(destination), offset, size);
+        UNSAFE.copyMemory(null, dataSegment().address(), destination,
+            BYTE_ARRAY_BASE + offset, size);
         return size;
     }
 
@@ -439,6 +457,63 @@ public final class Message implements AutoCloseable {
             return false;
         copyTo(destination);
         return true;
+    }
+
+    public void reset(int size) {
+        if (arena == null)
+            throw new IllegalStateException("message is not reusable");
+        if (size < 0)
+            throw new IllegalArgumentException("size must be >= 0");
+        if (closed || !arena.scope().isAlive())
+            throw new IllegalStateException("message is closed");
+        if (valid) {
+            int closeRc = NativeMsg.msgClose(msg);
+            if (closeRc != 0)
+                throw ZlinkException.fromLastError("zlink_msg_close");
+            valid = false;
+        }
+        int rc = size == 0 ? NativeMsg.msgInit(msg) : NativeMsg.msgInitSize(msg, size);
+        if (rc != 0) {
+            String op = size == 0 ? "zlink_msg_init" : "zlink_msg_init_size";
+            throw ZlinkException.fromLastError(op);
+        }
+        valid = true;
+        recvArmed = false;
+        more = false;
+        zeroCopyAnchor = null;
+    }
+
+    public void writeByte(int offset, byte value) {
+        int size = size();
+        validateRange(size, offset, 1, "offset");
+        dataSegment(size).set(ValueLayout.JAVA_BYTE, offset, value);
+    }
+
+    public int copyFrom(byte[] source, int sourceOffset, int destinationOffset,
+                        int length) {
+        Objects.requireNonNull(source, "source");
+        validateRange(source.length, sourceOffset, length, "source");
+        int size = size();
+        validateRange(size, destinationOffset, length, "destination");
+        if (length == 0)
+            return 0;
+        MemorySegment.copy(MemorySegment.ofArray(source), sourceOffset,
+            dataSegment(size), destinationOffset, length);
+        return length;
+    }
+
+    public int copyFrom(Message source, int sourceOffset, int destinationOffset,
+                        int length) {
+        Objects.requireNonNull(source, "source");
+        int sourceSize = source.size();
+        validateRange(sourceSize, sourceOffset, length, "source");
+        int size = size();
+        validateRange(size, destinationOffset, length, "destination");
+        if (length == 0)
+            return 0;
+        MemorySegment.copy(source.dataSegment(sourceSize), sourceOffset,
+            dataSegment(size), destinationOffset, length);
+        return length;
     }
 
     void copyTo(MemorySegment destination) {
@@ -486,6 +561,8 @@ public final class Message implements AutoCloseable {
     }
 
     void resetForReuse() {
+        if (arena == null)
+            throw new IllegalStateException("message is not reusable");
         if (closed || !arena.scope().isAlive())
             throw new IllegalStateException("message is closed");
         if (valid) {
@@ -504,7 +581,7 @@ public final class Message implements AutoCloseable {
     }
 
     boolean isReusable() {
-        return !closed && arena.scope().isAlive();
+        return arena != null && !closed && arena.scope().isAlive();
     }
 
     static Message[] fromMsgVector(MemorySegment partsAddr, long count) {
@@ -616,34 +693,7 @@ public final class Message implements AutoCloseable {
     static Message fromOwnedNative(MemorySegment nativeMsg) {
         if (nativeMsg == null || nativeMsg.address() == 0)
             throw new IllegalArgumentException("nativeMsg is null");
-
-        Message out = new Message();
-        boolean sourceClosed = false;
-        try {
-            int rc = NativeMsg.msgMove(out.msg, nativeMsg);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_msg_move");
-            out.valid = true;
-            out.recvArmed = false;
-            out.more = false;
-            rc = NativeMsg.msgClose(nativeMsg);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_msg_close");
-            sourceClosed = true;
-            return out;
-        } catch (RuntimeException ex) {
-            if (!sourceClosed) {
-                try {
-                    NativeMsg.msgClose(nativeMsg);
-                } catch (RuntimeException ignored) {
-                }
-            }
-            try {
-                out.close();
-            } catch (RuntimeException ignored) {
-            }
-            throw ex;
-        }
+        return new Message(nativeMsg);
     }
 
     public static void closeAll(Message[] parts) {
@@ -726,7 +776,7 @@ public final class Message implements AutoCloseable {
         recvArmed = false;
         more = false;
         zeroCopyAnchor = null;
-        if (arena.scope().isAlive())
+        if (arena != null && arena.scope().isAlive())
             arena.close();
         closed = true;
     }
@@ -745,5 +795,16 @@ public final class Message implements AutoCloseable {
     private static void validateRange(long total, long offset, long length, String name) {
         if (offset < 0 || length < 0 || offset > total - length)
             throw new IndexOutOfBoundsException(name + " range out of bounds");
+    }
+
+    private static Unsafe lookupUnsafe() {
+        try {
+            Field field = Unsafe.class.getDeclaredField("theUnsafe");
+            field.setAccessible(true);
+            return (Unsafe) field.get(null);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("Unable to access sun.misc.Unsafe",
+                ex);
+        }
     }
 }

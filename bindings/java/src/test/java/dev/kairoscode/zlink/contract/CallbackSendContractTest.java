@@ -281,7 +281,7 @@ public class CallbackSendContractTest {
                     if (size == 0)
                         return 0;
                     if (size == 1) {
-                        int marker = payload.dataBuffer().get(0) & 0xFF;
+                        int marker = payload.data()[0] & 0xFF;
                         if (marker == 0x00 || marker == 0x01)
                             return 0;
                     }

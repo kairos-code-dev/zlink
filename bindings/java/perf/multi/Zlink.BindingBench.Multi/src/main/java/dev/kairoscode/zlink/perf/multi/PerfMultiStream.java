@@ -13,7 +13,6 @@ import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -108,7 +107,7 @@ final class PerfMultiStream {
                 throw ex;
             }
             pending.add(new PendingReply(routingId,
-                Message.copyOf(payload.dataBuffer())));
+                Message.copyOf(payload.data())));
             pendingCount.incrementAndGet();
             return 0;
         }
@@ -159,27 +158,27 @@ final class PerfMultiStream {
             return true;
         }
         if (size == 1) {
-            int value = payload.dataBuffer().get(0) & 0xFF;
+            int value = payload.data()[0] & 0xFF;
             return value == 0x00 || value == 0x01;
         }
         if (size != 4) {
             return false;
         }
-        ByteBuffer bytes = payload.dataBuffer();
+        byte[] bytes = payload.data();
         return matchesToken(bytes, 'S', 'T', 'O', 'P')
             || matchesToken(bytes, 'Q', 'U', 'I', 'T');
     }
 
-    private static boolean matchesToken(ByteBuffer payload,
+    private static boolean matchesToken(byte[] payload,
                                         int a,
                                         int b,
                                         int c,
                                         int d) {
-        return payload.remaining() == 4
-            && (payload.get(0) & 0xFF) == a
-            && (payload.get(1) & 0xFF) == b
-            && (payload.get(2) & 0xFF) == c
-            && (payload.get(3) & 0xFF) == d;
+        return payload.length == 4
+            && (payload[0] & 0xFF) == a
+            && (payload[1] & 0xFF) == b
+            && (payload[2] & 0xFF) == c
+            && (payload[3] & 0xFF) == d;
     }
 
     private record PendingReply(dev.kairoscode.zlink.RoutingId routingId,

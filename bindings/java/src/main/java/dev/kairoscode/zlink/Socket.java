@@ -172,10 +172,6 @@ public abstract class Socket implements AutoCloseable {
         socketCore.attachStreamPacket(handler);
     }
 
-    void attachStreamPacket(StreamUInt32FramedBufferHandler handler) {
-        socketCore.attachStreamPacket(handler);
-    }
-
     void attachStreamPacket(StreamUInt32FramedNativeHandler handler) {
         socketCore.attachStreamPacket(handler);
     }
@@ -309,15 +305,15 @@ public abstract class Socket implements AutoCloseable {
         messagePlane.send(parts, flags);
     }
 
-    SendResult trySend(Message part) {
-        return messagePlane.trySend(part);
+    SendResult sendNoWaitResult(Message part) {
+        return messagePlane.sendNoWaitResult(part);
     }
 
-    SendResult trySendMessageFrame(RoutingId routingId, Message message) {
+    SendResult sendMessageFrameNoWaitResult(RoutingId routingId, Message message) {
         Objects.requireNonNull(routingId, "routingId");
         Objects.requireNonNull(message, "message");
         while (true) {
-            int rc = withNativeTrySendFrame(message, routingId);
+            int rc = withNativeSendNoWaitFrame(message, routingId);
             if (rc >= 0)
                 return SendResult.fromNativeValue(rc);
             int errno = Native.errno();
@@ -327,8 +323,8 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    SendResult trySend(List<Message> parts) {
-        return messagePlane.trySend(parts);
+    SendResult sendNoWaitResult(List<Message> parts) {
+        return messagePlane.sendNoWaitResult(parts);
     }
 
     void send(RoutingId rid, Message part) {
@@ -365,36 +361,6 @@ public abstract class Socket implements AutoCloseable {
             }
         }
     }
-
-    int send(RoutingId rid, ByteBuffer buffer, int sendFlags) {
-        Objects.requireNonNull(rid, "rid");
-        Objects.requireNonNull(buffer, "buffer");
-        SendFlag flag = SendFlag.fromValue(sendFlags);
-        if (buffer.isDirect())
-            return sendDirectBuffer(rid, buffer, flag);
-        int length = buffer.remaining();
-        ByteBuffer slice = buffer.slice();
-        try (Message msg = Message.copyOf(slice)) {
-            sendMessageFrame(rid, msg, flag);
-            buffer.position(buffer.position() + length);
-            return length;
-        }
-    }
-
-    int send(int rid, ByteBuffer buffer, int sendFlags) {
-        Objects.requireNonNull(buffer, "buffer");
-        SendFlag flag = SendFlag.fromValue(sendFlags);
-        if (buffer.isDirect())
-            return sendDirectBuffer(rid, buffer, flag);
-        int length = buffer.remaining();
-        ByteBuffer slice = buffer.slice();
-        try (Message msg = Message.copyOf(slice)) {
-            send(rid, msg, flag);
-            buffer.position(buffer.position() + length);
-            return length;
-        }
-    }
-
 
     int send(int rid, MemorySegment payload, int length, int sendFlags) {
         Objects.requireNonNull(payload, "payload");
@@ -434,71 +400,6 @@ public abstract class Socket implements AutoCloseable {
         return length;
     }
 
-    boolean trySend(RoutingId rid, ByteBuffer buffer, int sendFlags) {
-        Objects.requireNonNull(rid, "rid");
-        Objects.requireNonNull(buffer, "buffer");
-        SendFlag flag = SendFlag.fromValue(sendFlags);
-        if (buffer.isDirect())
-            return trySendDirectBuffer(rid, buffer, flag);
-        int length = buffer.remaining();
-        ByteBuffer slice = buffer.slice();
-        try (Message msg = Message.copyOf(slice)) {
-            SendResult result = trySendMessageFrame(rid, msg);
-            if (result == SendResult.SENT) {
-                buffer.position(buffer.position() + length);
-                return true;
-            }
-            return false;
-        }
-    }
-
-    private int sendDirectBuffer(RoutingId rid, ByteBuffer buffer,
-                                 SendFlag flag) {
-        ensureBlockingSendAllowed(flag);
-        int length = buffer.remaining();
-        ByteBuffer slice = buffer.slice();
-        MemorySegment payload = length == 0
-            ? MemorySegment.NULL
-            : MemorySegment.ofBuffer(slice);
-        SendScratch scratch = sendScratch.get();
-        MemorySegment nativeMsg = scratch.nativeMsg;
-        MemorySegment nativeRoutingId = nativeRoutingId(scratch, rid);
-        int rc = NativeMsg.msgInitData(nativeMsg, payload, length,
-            MemorySegment.NULL, MemorySegment.NULL);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_msg_init_data");
-        boolean success = false;
-        try {
-            rc = Native.sendMultipart(handle, nativeRoutingId, nativeMsg, 1,
-                flag.getValue());
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_send_rid");
-            success = true;
-        } finally {
-            if (!success) {
-                try {
-                    NativeMsg.msgClose(nativeMsg);
-                } catch (RuntimeException ignored) {
-                }
-            }
-        }
-        buffer.position(buffer.position() + length);
-        return length;
-    }
-
-    private int sendDirectBuffer(int rid, ByteBuffer buffer,
-                                 SendFlag flag) {
-        ensureBlockingSendAllowed(flag);
-        int length = buffer.remaining();
-        ByteBuffer slice = buffer.slice();
-        MemorySegment payload = length == 0
-            ? MemorySegment.NULL
-            : MemorySegment.ofBuffer(slice);
-        int sent = sendDirectSegment(rid, payload, length, flag);
-        buffer.position(buffer.position() + length);
-        return sent;
-    }
-
     private int sendDirectSegment(int rid, MemorySegment payload, int length,
                                   SendFlag flag) {
         ensureBlockingSendAllowed(flag);
@@ -527,47 +428,6 @@ public abstract class Socket implements AutoCloseable {
         return length;
     }
 
-    private boolean trySendDirectBuffer(RoutingId rid, ByteBuffer buffer,
-                                        SendFlag flag) {
-        int length = buffer.remaining();
-        ByteBuffer slice = buffer.slice();
-        MemorySegment payload = length == 0
-            ? MemorySegment.NULL
-            : MemorySegment.ofBuffer(slice);
-        SendScratch scratch = sendScratch.get();
-        MemorySegment nativeMsg = scratch.nativeMsg;
-        MemorySegment nativeRoutingId = nativeRoutingId(scratch, rid);
-        int rc = NativeMsg.msgInitData(nativeMsg, payload, length,
-            MemorySegment.NULL, MemorySegment.NULL);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_msg_init_data");
-        boolean success = false;
-        try {
-            while (true) {
-                rc = Native.sendMultipart(handle, nativeRoutingId, nativeMsg, 1,
-                    flag.getValue() | SendFlag.DONTWAIT.getValue());
-                if (rc >= 0) {
-                    success = true;
-                    buffer.position(buffer.position() + length);
-                    return true;
-                }
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
-                    continue;
-                if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)
-                    return false;
-                throw ZlinkException.fromLastError("zlink_send_rid");
-            }
-        } finally {
-            if (!success) {
-                try {
-                    NativeMsg.msgClose(nativeMsg);
-                } catch (RuntimeException ignored) {
-                }
-            }
-        }
-    }
-
     void send(RoutingId rid, List<Message> parts) {
         messagePlane.send(rid, parts);
     }
@@ -576,12 +436,12 @@ public abstract class Socket implements AutoCloseable {
         messagePlane.send(rid, parts, flags);
     }
 
-    SendResult trySend(RoutingId rid, Message part) {
-        return messagePlane.trySend(rid, part);
+    SendResult sendNoWaitResult(RoutingId rid, Message part) {
+        return messagePlane.sendNoWaitResult(rid, part);
     }
 
-    SendResult trySend(RoutingId rid, List<Message> parts) {
-        return messagePlane.trySend(rid, parts);
+    SendResult sendNoWaitResult(RoutingId rid, List<Message> parts) {
+        return messagePlane.sendNoWaitResult(rid, parts);
     }
 
     /** Publishes a single payload part to a topic-aware socket. */
@@ -634,15 +494,15 @@ public abstract class Socket implements AutoCloseable {
         topicPlane.publish(topicId, parts, flags);
     }
 
-    SendResult tryPublish(String topicId, Message part) {
-        return topicPlane.tryPublish(topicId, part);
+    SendResult publishNoWaitResult(String topicId, Message part) {
+        return topicPlane.publishNoWaitResult(topicId, part);
     }
 
-    SendResult tryPublishMessageFrame(String topicId, Message message) {
+    SendResult publishMessageFrameNoWaitResult(String topicId, Message message) {
         Objects.requireNonNull(topicId, "topicId");
         Objects.requireNonNull(message, "message");
         while (true) {
-            int rc = withNativeTryPublishFrame(topicId, message);
+            int rc = withNativePublishNoWaitFrame(topicId, message);
             if (rc >= 0)
                 return SendResult.fromNativeValue(rc);
             int errno = Native.errno();
@@ -652,8 +512,8 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    SendResult tryPublish(String topicId, List<Message> parts) {
-        return topicPlane.tryPublish(topicId, parts);
+    SendResult publishNoWaitResult(String topicId, List<Message> parts) {
+        return topicPlane.publishNoWaitResult(topicId, parts);
     }
 
     Received recv() {
@@ -664,8 +524,8 @@ public abstract class Socket implements AutoCloseable {
         return messagePlane.recv(flags);
     }
 
-    Optional<Received> tryRecv() {
-        return messagePlane.tryRecv();
+    Optional<Received> recvNoWait() {
+        return messagePlane.recvNoWait();
     }
 
     /** Receives a topic-aware delivery from a SUB/XSUB-style socket. */
@@ -678,8 +538,8 @@ public abstract class Socket implements AutoCloseable {
         return topicPlane.subscribe(flags);
     }
 
-    Optional<TopicMessage> trySubscribe() {
-        return topicPlane.trySubscribe();
+    Optional<TopicMessage> subscribeNoWait() {
+        return topicPlane.subscribeNoWait();
     }
 
     SubscriptionEvent receiveSubscriptionEvent() {
@@ -747,39 +607,11 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    boolean trySend(byte[] data, int offset, int length, int sendFlags) {
+    boolean sendNoWaitResult(byte[] data, int offset, int length, int sendFlags) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
         try (Message msg = Message.copyOf(data, offset, length)) {
-            return trySendMessageFrame(msg, SendFlag.fromValue(sendFlags));
-        }
-    }
-
-    int send(ByteBuffer buffer, int sendFlags) {
-        Objects.requireNonNull(buffer, "buffer");
-        int length = buffer.remaining();
-        ByteBuffer slice = buffer.slice();
-        try (Message msg = buffer.isDirect()
-            ? Message.wrapDirect(slice)
-            : Message.copyOf(slice)) {
-            sendMessageFrame(msg, SendFlag.fromValue(sendFlags));
-            buffer.position(buffer.position() + length);
-            return length;
-        }
-    }
-
-    boolean trySend(ByteBuffer buffer, int sendFlags) {
-        Objects.requireNonNull(buffer, "buffer");
-        int length = buffer.remaining();
-        ByteBuffer slice = buffer.slice();
-        try (Message msg = buffer.isDirect()
-            ? Message.wrapDirect(slice)
-            : Message.copyOf(slice)) {
-            boolean sent = trySendMessageFrame(msg, SendFlag.fromValue(sendFlags));
-            if (sent) {
-                buffer.position(buffer.position() + length);
-            }
-            return sent;
+            return sendMessageFrameNoWaitResult(msg, SendFlag.fromValue(sendFlags));
         }
     }
 
@@ -795,14 +627,14 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    boolean trySend(MemorySegment segment, long offset, long length,
+    boolean sendNoWaitResult(MemorySegment segment, long offset, long length,
                     int sendFlags) {
         Objects.requireNonNull(segment, "segment");
         validateRange(segment.byteSize(), offset, length, "segment");
         try (Message msg = segment.isNative()
             ? Message.wrapNative(segment, offset, length)
             : Message.copyOf(segment, offset, length)) {
-            return trySendMessageFrame(msg, SendFlag.fromValue(sendFlags));
+            return sendMessageFrameNoWaitResult(msg, SendFlag.fromValue(sendFlags));
         }
     }
 
@@ -825,83 +657,28 @@ public abstract class Socket implements AutoCloseable {
             }
             return rc;
         }
-        try {
-            ByteBuffer nio = nettyReadableBuffer(buf, readerIndex, len);
-            int rc = send(nio, sendFlags);
-            if (rc > 0)
-                buf.readerIndex(readerIndex + rc);
-            return rc;
-        } catch (UnsupportedOperationException ex) {
-            return sendNettyFallback(buf, readerIndex, len, sendFlags);
-        }
+        return sendNettyFallback(buf, readerIndex, len, sendFlags);
     }
 
-    boolean trySend(ByteBuf buf, int sendFlags) {
+    boolean sendNoWaitResult(ByteBuf buf, int sendFlags) {
         Objects.requireNonNull(buf, "buf");
         int len = buf.readableBytes();
         if (len <= 0) {
             try (Message msg = Message.copyOf(EMPTY_BYTES)) {
-                return trySendMessageFrame(msg, SendFlag.fromValue(sendFlags));
+                return sendMessageFrameNoWaitResult(msg, SendFlag.fromValue(sendFlags));
             }
         }
 
         int readerIndex = buf.readerIndex();
         MemorySegment directSeg = nettyReadableSegment(buf, readerIndex, len);
         if (directSeg.address() != 0) {
-            boolean sent = trySend(directSeg, 0, len, sendFlags);
+            boolean sent = sendNoWaitResult(directSeg, 0, len, sendFlags);
             if (sent) {
                 buf.readerIndex(readerIndex + len);
             }
             return sent;
         }
-        try {
-            ByteBuffer nio = nettyReadableBuffer(buf, readerIndex, len);
-            boolean sent = trySend(nio, sendFlags);
-            if (sent) {
-                buf.readerIndex(readerIndex + len);
-            }
-            return sent;
-        } catch (UnsupportedOperationException ex) {
-            return trySendNettyFallback(buf, readerIndex, len, sendFlags);
-        }
-    }
-
-    int recv(ByteBuffer buffer, ReceiveFlag flags) {
-        Objects.requireNonNull(buffer, "buffer");
-        int writable = buffer.remaining();
-        if (writable <= 0)
-            return 0;
-        try (Message frame = nextRecvFrame(flags, false)) {
-            int rc = Math.min(writable, frame.size());
-            if (rc > 0) {
-                ByteBuffer dst = buffer.slice();
-                dst.limit(rc);
-                MemorySegment.copy(frame.dataSegment(), 0,
-                    MemorySegment.ofBuffer(dst), 0, rc);
-            }
-            buffer.position(buffer.position() + rc);
-            return rc;
-        }
-    }
-
-    int tryRecv(ByteBuffer buffer, ReceiveFlag flags) {
-        Objects.requireNonNull(buffer, "buffer");
-        int writable = buffer.remaining();
-        if (writable <= 0)
-            return 0;
-        try (Message frame = nextRecvFrame(flags, true)) {
-            if (frame == null)
-                return -1;
-            int rc = Math.min(writable, frame.size());
-            if (rc > 0) {
-                ByteBuffer dst = buffer.slice();
-                dst.limit(rc);
-                MemorySegment.copy(frame.dataSegment(), 0,
-                    MemorySegment.ofBuffer(dst), 0, rc);
-            }
-            buffer.position(buffer.position() + rc);
-            return rc;
-        }
+        return sendNettyFallbackNoWait(buf, readerIndex, len, sendFlags);
     }
 
     int recv(MemorySegment segment, long offset, long length,
@@ -919,7 +696,7 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    int tryRecv(MemorySegment segment, long offset, long length,
+    int recvNoWait(MemorySegment segment, long offset, long length,
                 ReceiveFlag flags) {
         Objects.requireNonNull(segment, "segment");
         validateRange(segment.byteSize(), offset, length, "segment");
@@ -982,18 +759,10 @@ public abstract class Socket implements AutoCloseable {
                 buf.writerIndex(writerIndex + rc);
             return rc;
         }
-        try {
-            ByteBuffer nio = nettyWritableBuffer(buf, writerIndex, writable);
-            int rc = recv(nio, flags);
-            if (rc > 0)
-                buf.writerIndex(writerIndex + rc);
-            return rc;
-        } catch (UnsupportedOperationException ex) {
-            return recvNettyFallback(buf, writerIndex, writable, flags);
-        }
+        return recvNettyFallback(buf, writerIndex, writable, flags);
     }
 
-    int tryRecvByteBufDirect(ByteBuf buf, ReceiveFlag flags) {
+    int recvByteBufDirectNoWait(ByteBuf buf, ReceiveFlag flags) {
         int writable = buf.writableBytes();
         if (writable <= 0)
             return 0;
@@ -1001,20 +770,12 @@ public abstract class Socket implements AutoCloseable {
         int writerIndex = buf.writerIndex();
         MemorySegment directSeg = nettyWritableSegment(buf, writerIndex, writable);
         if (directSeg.address() != 0) {
-            int rc = tryRecv(directSeg, 0, writable, flags);
+            int rc = recvNoWait(directSeg, 0, writable, flags);
             if (rc > 0)
                 buf.writerIndex(writerIndex + rc);
             return rc;
         }
-        try {
-            ByteBuffer nio = nettyWritableBuffer(buf, writerIndex, writable);
-            int rc = tryRecv(nio, flags);
-            if (rc > 0)
-                buf.writerIndex(writerIndex + rc);
-            return rc;
-        } catch (UnsupportedOperationException ex) {
-            return tryRecvNettyFallback(buf, writerIndex, writable, flags);
-        }
+        return recvNettyFallbackNoWait(buf, writerIndex, writable, flags);
     }
 
     static void validateRange(int total, int offset, int length, String name) {
@@ -1294,7 +1055,7 @@ public abstract class Socket implements AutoCloseable {
         });
     }
 
-    boolean trySendMessageFrame(Message message, SendFlag flag) {
+    boolean sendMessageFrameNoWaitResult(Message message, SendFlag flag) {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flag, "flag");
         while (true) {
@@ -1316,10 +1077,10 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    SendResult trySendMessageFrame(Message message) {
+    SendResult sendMessageFrameNoWaitResult(Message message) {
         Objects.requireNonNull(message, "message");
         while (true) {
-            int rc = withNativeTrySendFrame(message, null);
+            int rc = withNativeSendNoWaitFrame(message, null);
             if (rc >= 0)
                 return SendResult.fromNativeValue(rc);
 
@@ -1330,7 +1091,7 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    private int withNativeTrySendFrame(Message message, RoutingId routingId) {
+    private int withNativeSendNoWaitFrame(Message message, RoutingId routingId) {
         SendScratch scratch = sendScratch.get();
         MemorySegment nativeMsg = scratch.nativeMsg;
         MemorySegment nativeRoutingId = routingId == null
@@ -1355,7 +1116,7 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    private int withNativeTryPublishFrame(String topicId, Message message) {
+    private int withNativePublishNoWaitFrame(String topicId, Message message) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeTopic = arena.allocateFrom(topicId,
                 StandardCharsets.UTF_8);
@@ -1417,7 +1178,7 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    int tryRecvMessageFrame(Message message, ReceiveFlag flag) {
+    int recvMessageFrameNoWait(Message message, ReceiveFlag flag) {
         Message frame = nextRecvFrame(flag, true);
         if (frame == null)
             return -1;
@@ -1480,7 +1241,7 @@ public abstract class Socket implements AutoCloseable {
         boolean explicitNonBlocking =
             (flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0;
         while (true) {
-            int rc = trySendPartsOnce(routingId, parts, flags);
+            int rc = sendNoWaitPartsOnce(routingId, parts, flags);
             if (rc == SendResult.SENT.nativeValue())
                 return;
             if (rc >= 0)
@@ -1497,11 +1258,11 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    SendResult trySendParts(RoutingId routingId, List<Message> parts) {
+    SendResult sendNoWaitPartsResult(RoutingId routingId, List<Message> parts) {
         ensureOpen();
         validateParts(parts);
         while (true) {
-            int rc = trySendPartsOnceResult(routingId, parts);
+            int rc = sendNoWaitPartsOnceResult(routingId, parts);
             if (rc >= 0)
                 return SendResult.fromNativeValue(rc);
             int errno = Native.errno();
@@ -1512,7 +1273,7 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    private int trySendPartsOnce(RoutingId routingId, List<Message> parts,
+    private int sendNoWaitPartsOnce(RoutingId routingId, List<Message> parts,
                                  SendFlag flags) {
         try (Arena arena = Arena.ofConfined()) {
             int count = parts.size();
@@ -1545,7 +1306,7 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    private int trySendPartsOnceResult(RoutingId routingId, List<Message> parts) {
+    private int sendNoWaitPartsOnceResult(RoutingId routingId, List<Message> parts) {
         try (Arena arena = Arena.ofConfined()) {
             int count = parts.size();
             long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
@@ -1583,7 +1344,7 @@ public abstract class Socket implements AutoCloseable {
         boolean explicitNonBlocking =
             (flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0;
         while (true) {
-            int rc = tryPublishPartsOnce(topicId, parts, flags);
+            int rc = publishNoWaitPartsOnce(topicId, parts, flags);
             if (rc == SendResult.SENT.nativeValue())
                 return;
             if (rc >= 0)
@@ -1599,11 +1360,11 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    SendResult tryPublishParts(String topicId, List<Message> parts) {
+    SendResult publishNoWaitPartsResult(String topicId, List<Message> parts) {
         ensureOpen();
         validateParts(parts);
         while (true) {
-            int rc = tryPublishPartsOnceResult(topicId, parts);
+            int rc = publishNoWaitPartsOnceResult(topicId, parts);
             if (rc >= 0)
                 return SendResult.fromNativeValue(rc);
             int errno = Native.errno();
@@ -1613,7 +1374,7 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    private int tryPublishPartsOnce(String topicId, List<Message> parts,
+    private int publishNoWaitPartsOnce(String topicId, List<Message> parts,
                                     SendFlag flags) {
         try (Arena arena = Arena.ofConfined()) {
             int count = parts.size();
@@ -1645,7 +1406,7 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    private int tryPublishPartsOnceResult(String topicId, List<Message> parts) {
+    private int publishNoWaitPartsOnceResult(String topicId, List<Message> parts) {
         try (Arena arena = Arena.ofConfined()) {
             int count = parts.size();
             long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
@@ -1732,7 +1493,7 @@ public abstract class Socket implements AutoCloseable {
         if (SocketCore.inCallback()
             && (flags.getValue() & SendFlag.DONTWAIT.getValue()) == 0) {
             throw new IllegalStateException(
-                "blocking send is not supported from callback context; use trySend/tryPublish");
+                "blocking send is not supported from callback context; use SendFlag.DONTWAIT");
         }
     }
 
@@ -1984,13 +1745,6 @@ public abstract class Socket implements AutoCloseable {
         return socketCore.ensureSendScratch(length);
     }
 
-    private static ByteBuffer nettyReadableBuffer(ByteBuf buf, int index,
-                                                  int length) {
-        return buf.nioBufferCount() == 1
-            ? buf.internalNioBuffer(index, length)
-            : buf.nioBuffer(index, length);
-    }
-
     private static MemorySegment nettyReadableSegment(ByteBuf buf, int index,
                                                       int length) {
         if (length <= 0 || !buf.hasMemoryAddress()) {
@@ -1998,13 +1752,6 @@ public abstract class Socket implements AutoCloseable {
         }
         return MemorySegment.ofAddress(buf.memoryAddress() + index)
             .reinterpret(length);
-    }
-
-    private static ByteBuffer nettyWritableBuffer(ByteBuf buf, int index,
-                                                  int length) {
-        return buf.nioBufferCount() == 1
-            ? buf.internalNioBuffer(index, length)
-            : buf.nioBuffer(index, length);
     }
 
     private static MemorySegment nettyWritableSegment(ByteBuf buf, int index,
@@ -2044,13 +1791,13 @@ public abstract class Socket implements AutoCloseable {
         return rc;
     }
 
-    private boolean trySendNettyFallback(ByteBuf buf,
+    private boolean sendNettyFallbackNoWait(ByteBuf buf,
                                          int readerIndex,
                                          int length,
                                          int sendFlags) {
         byte[] tmp = new byte[length];
         buf.getBytes(readerIndex, tmp);
-        boolean sent = trySend(tmp, 0, length, sendFlags);
+        boolean sent = sendNoWaitResult(tmp, 0, length, sendFlags);
         if (sent)
             buf.readerIndex(readerIndex + length);
         return sent;
@@ -2071,7 +1818,7 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    private int tryRecvNettyFallback(ByteBuf buf,
+    private int recvNettyFallbackNoWait(ByteBuf buf,
                                      int writerIndex,
                                      int writable,
                                      ReceiveFlag flags) {

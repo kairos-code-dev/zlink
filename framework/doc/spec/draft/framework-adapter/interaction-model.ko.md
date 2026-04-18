@@ -45,18 +45,18 @@
   `ROUTER <-> ROUTER`다.
 - 같은 모델을 `SPOT`의 routed request/reply 위에 올려 설명해야 하는 경우도
   있다.
-- 다만 `router rid` direct 전송과 `spot` 전송은 주소 체계가 다르다.
-  `spot`으로 보낼 때는 `targetRid`와 `spotRid`를 함께 알아야 하므로,
-  framework 공용 표면은 별도 함수 이름보다 `RequestTo(...)` 오버로드로 구분하는
-  편이 더 자연스럽다.
+- 다만 최신 SPOT topology 초안에서는 high-level public surface에서
+  `targetRid + spotRid` direct addressing을 기본으로 두지 않는다. current SPOT
+  channel 안의 상호작용과 다른 channel 호출은 분리해서 설명하는 편이 더
+  자연스럽다.
 
 ### 3.2 command
 
 - 호출자는 성공적으로 전송됐는지만 확인하거나, 그마저도 느슨하게 다룰 수 있다.
 - 작업 위임, 후처리 트리거, 간단한 signal에 적합하다.
 - 현재 framework 초안의 기본 서버 간 send 토대는 `ROUTER <-> ROUTER`다.
-- 이 모델도 `SendTo(...)` 오버로드만으로 `router rid` direct 전송과 `spot`
-  대상 전송을 함께 설명할 수 있어야 한다.
+- SPOT 쪽은 direct addressing보다 attach된 channel client를 통한
+  `SendChannelAsync(...)` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
 
 ### 3.3 publish-subscribe
 
@@ -98,10 +98,10 @@
 - `SPOT`은 event 전파의 핵심 토대이지만, 필요할 때는 request/reply의 내부
   운반층으로도 쓸 수 있다. 다만 framework 공용 이름은 여전히 socket 이름보다
   상호작용 의미를 먼저 드러내야 한다.
-- `server -> spot`, `spot -> server`, `spot -> spot`은 모두 가능해야 한다.
-  다만 `spot` 주소는 `router rid`와 다르므로, `SendTo(...)` / `RequestTo(...)`
-  오버로드에서 `targetRid, spotRid`를 함께 받는 방식으로 구분하는 편이 더
-  명확하다.
+- `SpotNode` peer topology와 channel 단위 호출은 서로 다른 의미다.
+- 현재 방향에서는 `SpotNode.router` 경로를 공개 high-level direct API로 그대로
+  드러내기보다, current channel publish와 cross-channel send/request를 분리해서
+  설명하는 편이 더 명확하다.
 - 같은 내부 topology를 쓰더라도, use case가 다르면 공용 이름도 다르게 둔다.
   예를 들어 `request-response`와 `worker-dispatch`는 둘 다 어떤 routed transport
   위에 올릴 수 있어도, 같은 개념으로 설명하지 않는다.
@@ -112,7 +112,7 @@
 |----------|-----------|
 | 일반 웹 백엔드 서비스 호출 | `request-response` |
 | playhouse play -> api | `request-response` |
-| room/stage/zone 대상 direct call | `request-response` 또는 `command` |
+| room/stage/zone 안의 channel 호출 | `request-response` 또는 `command` |
 | worker dispatch | `worker-dispatch` 또는 `command` |
 | domain event fanout | `publish-subscribe` |
 | cache invalidation / config refresh | `publish-subscribe` |

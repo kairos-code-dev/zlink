@@ -17,7 +17,7 @@ timer가 함께 나오기 때문에 설명만 보면 감이 잘 안 올 수 있�
 3. packet handler 등록
 4. subscribe handler 등록
 5. timer 등록
-6. `SendTo` / `RequestTo`
+6. channel send / request
 7. topic publish
 
 ## 2. 인터페이스 초안
@@ -28,16 +28,14 @@ timer가 함께 나오기 때문에 설명만 보면 감이 잘 안 올 수 있�
 ```csharp
 public abstract class ZLinkSpot
 {
-    protected ZLinkSpot(RoutingId spotRid, RoutingId nodeRid, IZLinkSpotClient spotClient)
+    protected ZLinkSpot(RoutingId spotRid, RoutingId nodeRid)
     {
         SpotRid = spotRid;
         NodeRid = nodeRid;
-        SpotClient = spotClient;
     }
 
     public RoutingId SpotRid { get; }
     public RoutingId NodeRid { get; }
-    protected IZLinkSpotClient SpotClient { get; }
 
     protected void AddPacket<THandler>(IServiceProvider services)
         where THandler : class
@@ -58,7 +56,7 @@ public abstract class ZLinkSpot
         CancellationToken cancellationToken)
         where THandler : class
     {
-        return SpotClient.SchedulePeriodicAsync(period, _ => ValueTask.CompletedTask, cancellationToken);
+        return ValueTask.FromResult<IZLinkTimer>(default!);
     }
 
     public virtual ValueTask OnInitializeAsync(
@@ -108,10 +106,6 @@ public readonly record struct ZLinkSpotCreateResult(
     RoutingId SpotRid,
     bool Created);
 
-public readonly record struct ZLinkSpotAddress(
-    RoutingId TargetRid,
-    RoutingId SpotRid);
-
 public interface IZLinkSpotManager
 {
     ValueTask<ZLinkSpotCreateResult> CreateAsync(
@@ -126,70 +120,32 @@ public interface IZLinkSpotManager
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkSpotDirectory<TKey>
-{
-    ValueTask<ZLinkSpotAddress?> ResolveAsync(
-        TKey key,
-        CancellationToken cancellationToken = default);
-}
-
 public interface IZLinkSpotClient
 {
-    ValueTask SendAsync<TMessage>(
-        string serviceName,
+    ValueTask SendChannelAsync<TMessage>(
+        string channelName,
         TMessage message,
         CancellationToken cancellationToken = default);
 
-    ValueTask<TReply> RequestAsync<TReply>(
-        string serviceName,
+    ValueTask<TReply> RequestChannelAsync<TReply>(
+        string channelName,
         IZLinkRequest<TReply> request,
         CancellationToken cancellationToken = default);
 
-    ValueTask<TReply> RequestAsync<TReply>(
-        string serviceName,
-        IZLinkRequest<TReply> request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-
-    ValueTask SendToAsync<TMessage>(
-        RoutingId targetRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        IZLinkRequest<TReply> request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        IZLinkRequest<TReply> request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-
-    ValueTask SendToAsync<TMessage>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        IZLinkRequest<TReply> request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        RoutingId spotRid,
+    ValueTask<TReply> RequestChannelAsync<TReply>(
+        string channelName,
         IZLinkRequest<TReply> request,
         TimeSpan timeout,
         CancellationToken cancellationToken = default);
 
     ValueTask PublishAsync<TEvent>(
-        string serviceName,
         string topic,
         TEvent message,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkTimer> SchedulePeriodicAsync(
+        TimeSpan period,
+        Func<CancellationToken, ValueTask> callback,
         CancellationToken cancellationToken = default);
 }
 ```
@@ -216,11 +172,12 @@ builder.Services.AddZLinkFramework(options =>
         registry.Add("tcp://registry1:5551");
     });
 
-    options.AddSpotNode("game.stage", spot =>
+    options.AddSpotNode("stage-node", spot =>
     {
         spot.Bind("tcp://0.0.0.0:9000");
-        spot.AttachRouterService("play");
-        spot.AttachPubSubService("play");
+        spot.AttachSpotDiscovery("game.stage");
+        spot.AttachChannelClient("orders");
+        spot.AttachPubIngress();
         spot.AddSpotFactory<StageSpot>();
     });
 });
@@ -238,9 +195,8 @@ public sealed class StageSpot : ZLinkSpot
 
     public StageSpot(
         RoutingId spotRid,
-        RoutingId nodeRid,
-        IZLinkSpotClient spotClient)
-        : base(spotRid, nodeRid, spotClient)
+        RoutingId nodeRid)
+        : base(spotRid, nodeRid)
     {
     }
 
@@ -277,11 +233,11 @@ public sealed class StageSpot : ZLinkSpot
 public sealed class GetStageStateHandler
     : IZLinkSpotRequestHandler<StageSpot, GetStageStateRequest, GetStageStateReply>
 {
-    private readonly IZLinkClient _client;
+    private readonly IZLinkSpotClient _spotClient;
 
-    public GetStageStateHandler(IZLinkClient client)
+    public GetStageStateHandler(IZLinkSpotClient spotClient)
     {
-        _client = client;
+        _spotClient = spotClient;
     }
 
     public async ValueTask<GetStageStateReply> HandleAsync(
@@ -289,14 +245,16 @@ public sealed class GetStageStateHandler
         GetStageStateRequest request,
         CancellationToken cancellationToken)
     {
-        await _client.SendAsync(
-            "api",
-            new ReportStageLookupCommand(),
+        await _spotClient.SendChannelAsync(
+            "orders",
+            new ReportStageQueryCommand
+            {
+                StageRid = spot.SpotRid.ToString()
+            },
             cancellationToken);
 
         return new GetStageStateReply
         {
-            StageId = request.StageId,
             SpotRid = spot.SpotRid,
             UserCount = spot.UserCount
         };
@@ -320,9 +278,12 @@ public sealed class ReportStageStateHandler
     {
         spot.ApplyReportedState(message);
 
-        await _spotClient.SendAsync(
-            "api",
-            new ReportStageLookupCommand(),
+        await _spotClient.SendChannelAsync(
+            "orders",
+            new ReportStageQueryCommand
+            {
+                StageRid = spot.SpotRid.ToString()
+            },
             cancellationToken);
     }
 }
@@ -330,14 +291,10 @@ public sealed class ReportStageStateHandler
 public sealed class StageStateUpdatedHandler
     : IZLinkSpotSubscriptionHandler<StageSpot, StageStateUpdatedEvent>
 {
-    private readonly IZLinkSpotDirectory<string> _spotDirectory;
     private readonly IZLinkSpotClient _spotClient;
 
-    public StageStateUpdatedHandler(
-        IZLinkSpotDirectory<string> spotDirectory,
-        IZLinkSpotClient spotClient)
+    public StageStateUpdatedHandler(IZLinkSpotClient spotClient)
     {
-        _spotDirectory = spotDirectory;
         _spotClient = spotClient;
     }
 
@@ -346,24 +303,14 @@ public sealed class StageStateUpdatedHandler
         StageStateUpdatedEvent message,
         CancellationToken cancellationToken)
     {
-        ZLinkSpotAddress? address = await _spotDirectory.ResolveAsync(
-            message.StageId,
-            cancellationToken);
-
-        if (address is not null)
-        {
-            await _spotClient.RequestToAsync(
-                address.Value.TargetRid,
-                address.Value.SpotRid,
-                new GetStageStateRequest { StageId = message.StageId },
-                TimeSpan.FromMilliseconds(200),
-                cancellationToken);
-        }
-
-        await _spotClient.SendToAsync(
-            spot.NodeRid,
-            spot.SpotRid,
-            new StagePingCommand(),
+        await _spotClient.RequestChannelAsync(
+            "orders",
+            new SyncStageStateRequest
+            {
+                StageRid = spot.SpotRid.ToString(),
+                UserCount = message.UserCount
+            },
+            TimeSpan.FromMilliseconds(200),
             cancellationToken);
     }
 }
@@ -382,11 +329,10 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
         CancellationToken cancellationToken)
     {
         return _spotClient.PublishAsync(
-            "game.stage",
             "stage.state.updated",
             new StageStateUpdatedEvent
             {
-                StageId = spot.SpotRid.ToString(),
+                StageRid = spot.SpotRid.ToString(),
                 UserCount = spot.UserCount
             },
             cancellationToken);
@@ -398,7 +344,7 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
 
 ```csharp
 // GetStageStateRequest, GetStageStateReply, ReportStageStateCommand,
-// StageStateUpdatedEvent, ReportStageLookupCommand, StagePingCommand는
+// StageStateUpdatedEvent, ReportStageQueryCommand, SyncStageStateRequest는
 // .proto에서 생성된 protobuf message 타입이라고 가정한다.
 // 실제 generated code는 샘플에서 생략한다.
 ```
@@ -407,16 +353,16 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
 
 이 샘플에서 중요한 부분은 아래 아홉 가지다.
 
-- `game.stage`는 `SpotNode` 이름이다.
+- `stage-node`는 논리 `SpotNode` 이름이고, attach된 SPOT discovery view가
+  `game.stage` channel mesh 범위를 정한다.
 - `StageSpot`은 단순 handler class가 아니라 실제 spot 객체다.
 - `StageSpot`은 `ZLinkSpot`을 상속받고 자기 `SpotRid`, `NodeRid`를 상태로 가진다.
 - `StageSpot` 안에는 상태와 코어 로직만 두고, packet 처리는 별도 handler class로 뺄 수 있다.
-- handler는 `IZLinkClient`, `IZLinkSpotClient`를 constructor injection으로 받을 수 있다.
+- handler는 `IZLinkSpotClient`를 constructor injection으로 받을 수 있다.
 - `AddPacket<THandler>(...)`는 request와 send packet을 함께 등록한다.
 - `AddSubscribe<THandler>(...)`는 topic subscription consumer를 등록한다.
 - `AddTimer<THandler>(...)`는 spot lifecycle 안에서 timer를 등록한다.
-- 실제 전송에는 `targetRid`와 `spotRid`를 함께 넘긴다.
-- 외부 lookup은 `IZLinkSpotDirectory<TKey>`가 맡고, 자기 identity는 `StageSpot`이 직접 가진다.
+- 다른 channel 호출은 attach된 channel client를 통해 보낸다.
 
 즉 이 샘플의 핵심은 "`StageSpot`이 이미 생성된 spot 객체"라는 점이다.
 그래서 현재 spot rid는 요청 scope에서 따로 꺼내는 값이 아니라, `StageSpot.SpotRid`
@@ -438,9 +384,9 @@ packet은 request와 send를 함께 묶는 상위 개념이다.
 subscribe는 topic fan-out consumer 등록이고, packet은 targeted delivery다.
 
 handler가 다른 서버나 다른 spot으로 outbound 호출을 해야 하면, `StageSpot`에서
-client를 꺼내 쓰기보다 handler가 `IZLinkClient`나 `IZLinkSpotClient`를 직접
-주입받는 쪽이 더 자연스럽다. 이러면 `StageSpot`은 상태와 코어 로직에 집중하고,
-outbound 호출 책임은 handler가 맡을 수 있다.
+client를 꺼내 쓰기보다 handler가 `IZLinkSpotClient`를 직접 주입받는 쪽이 더
+자연스럽다. 이러면 `StageSpot`은 상태와 코어 로직에 집중하고, outbound 호출
+책임은 handler가 맡을 수 있다.
 
 이 샘플 기준으로 `StageSpot` 안에 남는 것은 아래 정도다.
 
@@ -492,16 +438,14 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
 
 - 새 spot 인스턴스를 만들고 싶다
   - `IZLinkSpotManager.CreateAsync(...)`
-- 특정 spot 하나에 send packet을 보내고 싶다
-  - `SendTo(targetRid, spotRid, ...)`
-- 특정 spot 하나에 request packet을 보내고 싶다
-  - `RequestTo(targetRid, spotRid, ...)`
-- stageId 같은 논리 키로 spot 주소를 찾고 싶다
-  - `IZLinkSpotDirectory<TKey>.ResolveAsync(...)`
+- attach된 다른 channel에 send packet을 보내고 싶다
+  - `SendChannelAsync(...)`
+- attach된 다른 channel에 request packet을 보내고 싶다
+  - `RequestChannelAsync(...)`
 - 현재 spot 자신의 rid를 알고 싶다
   - `StageSpot.SpotRid`
 - stage 안에서 fan-out 하고 싶다
-  - `PublishAsync(serviceName, topic, ...)`
+  - `PublishAsync(topic, ...)`
 - stage 안에서 heartbeat 같은 주기 작업을 돌리고 싶다
   - `StageSpot.OnInitializeAsync()`에서 `AddTimer<THandler>(...)` 등록
 
@@ -539,4 +483,4 @@ service messaging 쪽은 편의 기능을 조금 더 허용할 여지가 있다�
 - `AddPacket / AddSubscribe / AddTimer` 같은 등록 표면이 자연스러운가
 - packet 매핑을 header `msgId` 기준으로 보는 것이 자연스러운가
 - `IZLinkSpotManager`가 spot 객체 factory와 어떻게 연결되는 것이 자연스러운가
-- `IZLinkSpotDirectory<TKey>`가 framework 기본 범위인지 wrapper 범위인지
+- attach된 channel client 설정을 어떤 표면으로 노출하는 것이 자연스러운가

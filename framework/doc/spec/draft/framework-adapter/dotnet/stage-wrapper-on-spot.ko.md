@@ -12,8 +12,8 @@
 
 - `SpotNode` 등록
 - `spotRid` 생성과 삭제
-- `serviceName` 기반 호출
-- `targetRid + spotRid` 기반 direct call
+- current channel publish/subscribe
+- attach된 channel client 기반 send/request
 - topic publish/subscribe
 
 이 정도면 `SPOT` 자체를 설명하기에는 충분한 출발점이다.
@@ -37,8 +37,8 @@
 현재 초안 중 `Stage wrapper`의 바닥으로 그대로 써도 되는 부분은 아래다.
 
 - `Spot`은 특정 service가 아니라 `SpotNode`에 종속된다는 점
-- `SpotNode`가 여러 service의 `router`와 `pub/sub` surface에 붙을 수 있다는 점
-- `targetRid + spotRid`를 함께 받아서 direct call 하는 점
+- attach된 SPOT `Discovery`가 `SpotNode`의 active channel view를 정한다는 점
+- 다른 channel 호출을 attach된 channel client 경로로 푼다는 점
 - `spotRid`와 topic publish를 구분해서 설명하는 점
 - `IZLinkSpotManager`로 spot 생성 lifecycle을 분리한 점
 
@@ -54,7 +54,8 @@
 
 - `SpotNode` 등록과 lifecycle
 - `spotRid` 생성과 삭제
-- `serviceName`, `targetRid`, `spotRid` 기반 메시징
+- current channel publish/subscribe
+- attach된 channel client 기반 send/request
 - publish/subscribe
 - timer 등록과 취소
 - DI, handler, filter, context
@@ -216,19 +217,16 @@ public interface IZLinkSpotManager
 
 ### 3.5 stage directory 또는 lookup helper
 
-현재 direct call은 `targetRid + spotRid`를 함께 받는 방향으로 잘 정리되어 있다.
-이건 low-level 주소 모델로는 맞다.
-
-다만 `Stage wrapper`를 실제로 쓰는 응용은 보통 `stageId`만 알고 있는 경우가 많다.
+`Stage wrapper`를 실제로 쓰는 응용은 보통 `stageId`만 알고 있는 경우가 많다.
 
 즉 상위 계층에는 아래 중 하나가 필요하다.
 
-- `stageId -> (targetRid, spotRid)` lookup
-- `logical key -> address` directory
+- `stageId -> stage 위치 정보` lookup
+- `logical key -> channel / node / spot` 해석 helper
 - wrapper 전용 registry helper
 
 이 기능을 `SPOT` 공용 API에 바로 넣을 필요는 없지만, `Stage wrapper` 초안에서는
-누가 이 주소 해석을 맡는지 분명히 적어야 한다.
+누가 이 위치 해석을 맡는지 분명히 적어야 한다.
 
 ## 5. 정리
 

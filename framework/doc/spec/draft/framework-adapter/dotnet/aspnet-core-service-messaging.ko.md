@@ -295,7 +295,7 @@ sequenceDiagram
 
 - `IZLinkRequestHandler<TRequest, TResponse>` -- request-response handler
 - `IZLinkSendHandler<TMessage>` -- one-way send handler
-- `IZLinkClient` -- outbound client (serviceName/rid/spotRid 기준 호출)
+- `IZLinkClient` -- outbound client (serviceName/rid 기준 호출이 기본이며, 더 낮은 수준의 direct 경로도 포함 가능)
 - `IZLinkHandlerFilter` -- handler 전후 공통 처리
 
 `.NET` 앞면은 "인터페이스 + attribute 둘 다 가능하지만, 일반 사용자는
@@ -315,8 +315,11 @@ attribute 매핑과 `IZLinkClient`를 함께 쓴다"를 기본으로 본다.
 - `RoutingId targetRid` 직접 호출 -- 특정 peer 지정
 - `targetRid + spotRid` 호출 -- 특정 spot 인스턴스 지정
 
-framework가 `spotRid`만으로 `targetRid`를 찾아 주는 축약 API는 기본으로 두지
-않는다. `discovery` 사용은 옵션이기 때문이다.
+다만 최신 SPOT topology 초안에서는 이 세 번째 축을 framework의 high-level SPOT
+기본 표면으로 먼저 설명하지 않는다. 현재 방향에서는 `IZLinkSpotClient`가 current
+channel publish/subscribe와 attach된 channel send/request를 먼저 보여 주고,
+`targetRid + spotRid` direct 경로는 더 낮은 수준의 경로나 상위 wrapper가 다루는
+방향이 더 자연스럽다.
 
 ### 5.2 HTTP handler에서의 사용
 

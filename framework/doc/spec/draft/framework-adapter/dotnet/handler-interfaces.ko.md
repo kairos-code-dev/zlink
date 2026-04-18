@@ -276,6 +276,11 @@ DI로 주입되며, ZLink handler와 기존 ASP.NET Core HTTP handler 양쪽에�
 - `RoutingId targetRid` 기준 직접 호출 -- 특정 peer를 지정한다
 - `targetRid + spotRid` 기준 호출 -- 특정 spot 인스턴스를 지정한다
 
+다만 최신 SPOT topology 초안에서는 이 세 번째 축을 high-level `SPOT` 기본
+프로그래밍 모델로 먼저 설명하지 않는다. framework 문서에서는 `IZLinkSpotClient`의
+channel publish/send/request 표면을 우선 보여 주고, direct addressing은 저수준
+또는 별도 경로로 이해하는 편이 더 자연스럽다.
+
 ```csharp
 public interface IZLinkClient
 {
@@ -353,73 +358,36 @@ runtime은 접근한 `serviceName`마다 별도 outbound channel을 lazy하게 �
 
 SPOT outbound 호출을 위한 client다.
 `IZLinkClient`와 독립된 인터페이스이며, 하부에서 서로 다른 C API를 감싼다.
-다만 하부 기능이 겹치는 부분이 있으므로 호출 축 구조는 비슷하다.
+최신 SPOT topology 초안에서는 high-level public surface에서 `targetRid +
+spotRid` direct addressing을 기본으로 두지 않는다. 현재 방향은 아래 두 축이다.
+
+- 현재 SPOT channel 안의 publish/subscribe
+- attach된 channel client를 통한 다른 channel send/request
 
 ```csharp
 public interface IZLinkSpotClient
 {
-    // --- serviceName 기준 ---
-    ValueTask SendAsync<TMessage>(
-        string serviceName,
+    ValueTask SendChannelAsync<TMessage>(
+        string channelName,
         TMessage message,
         CancellationToken cancellationToken = default);
 
-    ValueTask<TReply> RequestAsync<TReply>(
-        string serviceName,
+    ValueTask<TReply> RequestChannelAsync<TReply>(
+        string channelName,
         IZLinkRequest<TReply> request,
         CancellationToken cancellationToken = default);
 
-    ValueTask<TReply> RequestAsync<TReply>(
-        string serviceName,
+    ValueTask<TReply> RequestChannelAsync<TReply>(
+        string channelName,
         IZLinkRequest<TReply> request,
         TimeSpan timeout,
         CancellationToken cancellationToken = default);
 
-    // --- targetRid 직접 지정 ---
-    ValueTask SendToAsync<TMessage>(
-        RoutingId targetRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        IZLinkRequest<TReply> request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        IZLinkRequest<TReply> request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-
-    // --- targetRid + spotRid ---
-    ValueTask SendToAsync<TMessage>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        IZLinkRequest<TReply> request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        IZLinkRequest<TReply> request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-
-    // --- publish ---
-    ValueTask PublishAsync<T>(
-        string serviceName,
+    ValueTask PublishAsync<TEvent>(
         string topic,
-        T message,
+        TEvent message,
         CancellationToken cancellationToken = default);
 
-    // --- timer ---
     ValueTask<IZLinkTimer> ScheduleOnceAsync(
         TimeSpan dueTime,
         Func<CancellationToken, ValueTask> callback,
@@ -434,8 +402,9 @@ public interface IZLinkSpotClient
 
 `IZLinkClient`와의 차이점은 아래와 같다.
 
-- `PublishAsync`가 있다. SPOT 쪽은 direct call과 publish를 함께 쓰는 경우가
-  많으므로 한 인터페이스에 같이 둔다.
+- `PublishAsync(topic, ...)`가 있다. SPOT 쪽은 현재 channel 안의 topic publish를
+  함께 쓰는 경우가 많으므로 한 인터페이스에 같이 둔다.
+- 다른 channel send/request는 attach된 channel client를 통해 푼다.
 - timer callback은 가능하면 같은 spot 실행 문맥에서 실행되는 편이 더
   자연스럽다. 이 부분은 하부 C API 계약(`zlink_spot_timer_new`)을 따른다.
 
@@ -492,26 +461,10 @@ public interface IZLinkSpotManager
 반환값은 `spotRid`와 새로 만들었는지 여부다. 장기적으로 들고 다닐 instance
 handle이 아니라, 생성 결과만 돌려준다.
 
-추가로 외부에서 논리 키로 주소를 찾는 directory도 필요할 수 있다.
-이건 `spot` 자신이 자기 정보를 읽는 기능과는 다른 축이다.
-
-```csharp
-public readonly record struct ZLinkSpotAddress(
-    RoutingId TargetRid,
-    RoutingId SpotRid);
-
-public interface IZLinkSpotDirectory<TKey>
-{
-    ValueTask<ZLinkSpotAddress?> ResolveAsync(
-        TKey key,
-        CancellationToken cancellationToken = default);
-}
-```
-
-즉 두 기능은 아래처럼 구분된다.
-
-- `IZLinkSpotDirectory<TKey>`: 외부가 논리 키로 spot 주소를 찾는다.
-- `StageSpot.SpotRid`, `StageSpot.NodeRid`: 현재 spot 객체가 자기 identity를 직접 가진다.
+현재 SPOT topology 초안에서는 high-level public surface에서 `spotRid ->
+targetRid` 주소 해석을 framework 기본 기능으로 두지 않는다. 직접 addressing이
+필요하면 low-level socket API나 상위 wrapper가 맡고, framework의 기본 SPOT
+표면은 channel publish와 channel send/request를 먼저 설명하는 편이 더 자연스럽다.
 
 ## 7. Timer 인터페이스
 

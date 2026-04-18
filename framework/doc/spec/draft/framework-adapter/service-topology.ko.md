@@ -56,9 +56,22 @@ section 3을 참고한다.
 |-----------|---------------------|
 | `request-response` | `ROUTER <-> ROUTER`, 필요하면 routed `SPOT` request/reply |
 | `command` | `ROUTER <-> ROUTER` send 또는 `SPOT` routed send |
-| `publish-subscribe` | `PUB/SUB` 또는 `SPOT` |
+| `publish-subscribe` | `PUB/SUB` 또는 같은 channel의 `SPOT` mesh |
 | `stream` | `STREAM` |
 | `worker-dispatch` | 별도 조합 모델 |
+
+현재 SPOT topology는 예전처럼 "하나의 `SpotNode`에 여러 service surface를 붙이는
+모델"보다, "attach된 SPOT `Discovery`가 node의 active channel view를 소유하는
+모델"로 읽는 편이 맞다. 즉:
+
+- `SpotNode`는 생성 시 channel 이름을 직접 소유하지 않는다.
+- attach된 SPOT `Discovery`가 node의 mesh 범위를 정한다.
+- 같은 `SpotNode`에는 active SPOT channel view를 하나만 둔다.
+- 같은 channel의 다른 `SpotNode`와만 router / pub/sub mesh를 만든다.
+- 다른 channel 호출은 attach된 `DEALER(client)` 경로로 푼다.
+
+즉 SPOT 내부 peer topology와 channel 단위 호출은 서로 다른 경로로 설명하는 편이
+더 자연스럽다.
 
 ## 4. playhouse use case에 대한 해석
 

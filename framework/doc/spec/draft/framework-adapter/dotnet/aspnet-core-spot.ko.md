@@ -15,7 +15,8 @@
 - `SpotNode` lifecycle 관리
 - `Spot` publish/subscribe facade 주입
 - room, stage, zone 같은 논리 인스턴스 모델 설명
-- `spot -> server`, `server -> spot`, `spot -> spot` direct call
+- current channel publish/subscribe
+- attach된 다른 channel client를 통한 send/request
 - discovery 기반 peer 구성
 - background subscriber handler
 
@@ -26,12 +27,13 @@
 - `Discovery`
 - `SpotNode`
 - `Spot`
-- `Spot.RequestServiceAsync(...)` / `Spot.RequestToSpotAsync(...)`
+- `Spot` publish/subscribe
+- channel client attach 기반 channel send/request
 
 즉 이 문서의 핵심은 `SPOT` 기능을 새로 만드는 일이 아니라,
 기존 binding 기능을 `ASP.NET Core` 안에 녹이는 방법이다.
 
-등록부터 handler, `SendTo`, topic publish까지 이어서 보는 샘플은
+등록부터 handler, channel send/request, topic publish까지 이어서 보는 샘플은
 [spot-samples.ko.md](./spot-samples.ko.md)를 참고한다.
 `playhouse`의 `Stage` 같은 상위 모델을 `SPOT` 위에 다시 감쌀 때 필요한 추가 조건은
 [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md)를 참고한다.
@@ -54,18 +56,22 @@ publish/subscribe는 그 안에서 함께 쓰일 수 있는 한 가지 사용 �
 
 - `Spot`은 특정 service에 속하지 않는다.
 - `Spot`은 `SpotNode`에 종속된다.
-- `SpotNode`가 여러 service의 `router`와 `pub/sub` surface에 연결될 수 있다.
+- `SpotNode`가 channel 이름을 직접 소유하지 않는다.
+- attach된 SPOT channel `Discovery`가 active channel view를 소유한다.
+- 같은 `SpotNode`에는 active SPOT channel view를 하나만 둔다.
+- `SpotNode.router`와 pub/sub mesh는 같은 channel의 다른 `SpotNode`와만 연결된다.
+- 다른 channel 호출은 `SpotNode.router`가 아니라 attach된 channel client 경로로 푼다.
 - 따라서 `spotRid`는 service에서 생기는 값이 아니라, `SpotNode`가 개별 spot
   인스턴스를 만들 때 생기는 식별자다.
 
 이 관점에서 중요한 점은 아래와 같다.
 
-- `server -> spot` 요청이 가능해야 한다.
-- `spot -> server` 요청도 가능해야 한다.
-- `spot -> spot` 요청도 가능해야 한다.
-- 다만 `router rid` direct 전송과 `spot` 전송은 주소 체계가 다르므로,
-  `SendTo(...)` / `RequestTo(...)` 오버로드에서 `targetRid, spotRid`를 함께 받는
-  편이 더 명확하다.
+- 현재 SPOT channel 안에서는 topic publish/subscribe를 쓴다.
+- 다른 channel 호출은 attach된 channel client를 통해 보낸다.
+- `SpotNode.router`는 peer topology를 위해 남기되, public high-level API에서
+  `targetRid + spotRid`를 직접 넣는 모델은 기본으로 두지 않는다.
+- 외부 `PUB -> Spot` 입력은 generic pub/sub attach가 아니라 별도 ingress 표면으로
+  분리한다.
 
 여기서 경계를 분명히 하면, `SPOT`이 제공하는 것은 주소 가능한 논리 인스턴스와
 그 인스턴스에 대한 메시징, publish/subscribe, timer, lifecycle까지다.
@@ -82,39 +88,37 @@ builder.Services.AddZLinkFramework(options =>
         registry.Add("tcp://registry1:5551");
     });
 
-    options.AddSpotNode("game.stage", spot =>
+    options.AddSpotNode("stage-node", spot =>
     {
         spot.Bind("tcp://0.0.0.0:9000");
-        spot.AttachRouterService("play");
-        spot.AttachPubSubService("play");
+        spot.AttachSpotDiscovery("game.stage");
+        spot.AttachChannelClient("orders");
+        spot.AttachPubIngress();
     });
 });
 ```
 
 이 등록은 아래를 의미한다.
 
-- 논리 `SpotNode` 이름 = `game.stage`
+- 논리 `SpotNode` 이름 = `stage-node`
 - backing `SpotNode` 생성
-- 어떤 서비스의 `router`와 `pub/sub`에 붙는지 지정
-- discovery attach
+- attach된 SPOT channel `Discovery`가 active channel view를 공급
+- 같은 channel의 다른 `SpotNode`와만 mesh 구성
+- 다른 channel 호출용 client attach
+- 필요하면 외부 `PUB -> Spot` ingress attach
 - host shutdown 시 lifecycle 정리
 
-즉 `SpotNode`는 독립 인스턴스이지만, 실제로는 어떤 서비스의 transport surface에
-붙는지도 함께 알아야 한다. 현재 초안은 아래 두 attachment를 함께 두는 쪽을
-기본으로 본다.
+즉 `SpotNode`는 더 이상 여러 service surface를 동시에 소유하는 hub처럼 설명하지
+않는다. 현재 방향에서는 attach된 SPOT channel `Discovery`가 node의 channel
+정체성을 닫고, 다른 channel 호출은 별도 attach된 client 경로로 푼다.
 
-```csharp
-spot.AttachRouterService("play");
-spot.AttachPubSubService("play");
-```
+여기서 중요한 점은 아래와 같다.
 
-여기서 중요한 점은 사용자가 low-level router 또는 pub/sub 객체를 직접 만들지
-않는다는 것이다. `AttachRouterService("play")`, `AttachPubSubService("play")`처럼
-`serviceId`만 넘기면 framework가 내부에서 해당 service runtime의 surface를
-생성하거나 재사용하고, 필요한 `Discovery` attach까지 자동으로 처리하는 방향을
-기본으로 본다.
-
-필요하면 둘을 서로 다른 서비스에 붙이는 구성도 열어 둘 수 있다.
+- `SpotNode` 생성 자체는 channel-neutral 하다.
+- attach된 SPOT channel `Discovery`가 이 node의 mesh 범위를 정한다.
+- 같은 `SpotNode`에 active SPOT channel view는 하나만 둔다.
+- 다른 channel에 대한 send/request는 attach된 client가 맡는다.
+- 외부 topic 입력은 generic pub/sub attach가 아니라 ingress 표면으로 분리한다.
 
 ### 4.1 spot 실행 문맥과 timer
 
@@ -169,18 +173,21 @@ public interface IZLinkSpotManager
 - 이미 존재하는 `spotRid`면 그대로 얻는 `get-or-create` 성격의 동작
 
 중요한 점은 반환값이 장기적으로 들고 다닐 spot instance handle이 아니라는 점이다.
-생성 결과는 `spotRid`와 `Created` 정도면 충분하고, 이후 메시징은
-`IZLinkSpotClient`가 `targetRid + spotRid`를 기준으로 처리하는 편이 더 자연스럽다.
+생성 결과는 `spotRid`와 `Created` 정도면 충분하다. 이후 메시징은 현재 channel
+publish 또는 attach된 channel client를 통한 send/request로 푸는 쪽이 현재
+topology 초안과 더 잘 맞는다.
 
 즉 사용자는 생성 직후 식별자만 얻고:
 
 ```csharp
 var stage = await spotManager.CreateAsync(cancellationToken);
 
-await spotClient.SendToAsync(
-    targetRid,
-    stage.SpotRid,
-    new StageNoticeMessage(),
+await spotClient.PublishAsync(
+    "stage.state.updated",
+    new StageStateUpdatedEvent
+    {
+        StageRid = stage.SpotRid.ToString()
+    },
     cancellationToken);
 ```
 
@@ -193,37 +200,32 @@ framework 기본 계약처럼 적기보다 wrapper 확장 후보로 따로 다�
 
 ## 5. SPOT outbound 모델 초안
 
-현재 방향에서는 아래 세 종류를 구분하는 편이 더 자연스럽다.
+현재 방향에서는 아래 두 종류를 구분하는 편이 더 자연스럽다.
 
-- `serviceName` 기준 일반 호출
-- `router rid` 기준 direct peer 호출
-- `targetRid + spotRid` 기준 spot 호출
+- 현재 SPOT channel 안의 topic publish
+- attach된 다른 channel client를 통한 channel send/request
 
-즉 별도 spot 전용 함수 이름보다, `SendTo(...)` / `RequestTo(...)`의
-오버로드로 두는 편이 더 맞다.
-여기서 중요한 점은 framework가 `spotRid`만 받고 내부에서 `discovery`로
-`targetRid`를 찾아 주는 축약 API를 기본으로 두지 않는다는 것이다. `discovery`
-사용은 선택 사항이므로, public API는 필요한 주소를 호출자가 직접 넘기는 편이
-더 정직하다.
+즉 high-level `SPOT` 표면은 `targetRid + spotRid` direct addressing보다,
+`SendChannelAsync(...)` / `RequestChannelAsync(...)` 같은 channel 호출이 먼저
+보이는 편이 더 맞다. `SpotNode.router`는 peer topology를 위해 남지만, 그 경로를
+공개 high-level API에 그대로 드러내는 것은 현재 방향으로 보지 않는다.
 
 `IZLinkSpotClient` 인터페이스 전체 정의는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 5.2를
-참고한다. 호출 축은 `IZLinkClient`와 동일하게 `serviceName`, `targetRid`,
-`targetRid + spotRid` 세 가지이며, 추가로 `PublishAsync`와 spot 문맥 timer를
-제공한다.
+참고한다. 현재 방향에서는 `SendChannelAsync(...)`,
+`RequestChannelAsync(...)`, `PublishAsync(...)`, spot 문맥 timer를 함께 제공하는
+쪽이 더 자연스럽다.
 
 예를 들면 아래처럼 쓸 수 있다.
 
 ```csharp
-await client.SendToAsync(
-    targetRid,
-    stageRid,
+await client.SendChannelAsync(
+    "orders",
     new RoomNoticeMessage(),
     cancellationToken);
 
-var reply = await client.RequestToAsync(
-    targetRid,
-    stageRid,
+var reply = await client.RequestChannelAsync(
+    "orders",
     new GetStageStateRequest(),
     TimeSpan.FromMilliseconds(200),
     cancellationToken);
@@ -234,18 +236,11 @@ var reply = await client.RequestToAsync(
 문맥으로 들어오는 쪽이 더 자연스럽다. 그래야 stage state를 별도 lock 없이 다루는
 상위 모델을 설명하기 쉽다.
 
-이 모델이면 아래를 함께 설명할 수 있다.
-
-- `server -> server`는 `SendAsync(...)`, `RequestAsync(...)`, `SendTo(...)`, `RequestTo(...)`
-- `server -> spot`는 `SendTo(targetRid, spotRid, ...)` / `RequestTo(targetRid, spotRid, ...)`
-- `spot -> server`도 같은 `IZLinkSpotClient`를 써서 `SendAsync(...)` / `RequestAsync(...)`
-- `spot -> spot`는 `SendTo(targetRid, spotRid, ...)` / `RequestTo(targetRid, spotRid, ...)`
-
 하지만 이것을 `IZLinkClient` 위에 `IZLinkSpotClient`를 얹는 관계로 설명하면 안
-된다. 두 인터페이스는 하부에서 서로 다른 C API를 감싼다. 다만 C API 단계부터
-겹치는 기능이 있으므로, 각 인터페이스가 `serviceName` 기반 호출, `router rid`
-기반 직접 호출, `targetRid + spotRid` 기반 호출의 일부 또는 전부를 각각 가질 수
-있다.
+된다. 두 인터페이스는 하부에서 서로 다른 C API를 감싼다. 현재 방향에서는
+`IZLinkClient`가 일반 service messaging을 맡고, `IZLinkSpotClient`는 current
+SPOT channel publish와 다른 channel send/request를 맡는 식으로 책임을 나누는
+편이 더 자연스럽다.
 
 ## 6. publish 모델 초안
 
@@ -260,14 +255,15 @@ var reply = await client.RequestToAsync(
 - `spotRid`: 특정 room/stage/zone 인스턴스를 가리키는 논리 주소
 - `topic`: 여러 subscriber가 함께 듣는 fan-out 주제 이름
 
-추가로 `SPOT` 쪽에는 외부 lookup과 현재 spot 자기 조회를 분리해서 둘 필요가 있다.
-예를 들면 아래 두 축이다.
+현재 topology 초안에서는 framework 기본 표면을 `spotRid -> targetRid` 해석
+기능 중심으로 설명하지 않는다. high-level framework 문서는 아래 두 축을 먼저
+보여 주는 편이 더 자연스럽다.
 
-- `IZLinkSpotDirectory<TKey>`: 논리 키를 `(targetRid, spotRid)` 주소로 해석
-- `StageSpot.SpotRid`, `StageSpot.NodeRid`: 현재 spot 객체 자신의 identity
+- 같은 channel 안의 publish/subscribe
+- attach된 다른 channel client를 통한 send/request
 
-즉 어떤 spot이 생성될 때 받은 `spotRid`는 이후 그 spot 객체가 그대로 들고 있어야
-한다. 외부 address lookup과 내부 self identity 조회는 서로 다른 문제다.
+`Stage wrapper` 같은 상위 계층이 별도 directory나 lookup을 얹는 것은 가능하지만,
+그것을 framework 기본 표면으로 고정하는 것은 현재 방향으로 보지 않는다.
 
 또한 subscribe handler는 router request handler와 같은 종류의 매핑으로 보면 안
 된다.
@@ -365,14 +361,15 @@ public sealed class StageSpot : ZLinkSpot
 
 즉 아래 둘이 함께 있어야 한다.
 
-- `service_name` 기반 direct call
-- `SPOT` 기반 pub/sub 및 state sync
+- `serviceName` 기반 일반 service messaging
+- `SPOT` 기반 current channel publish/subscribe와 channel send/request
 
-또한 현재 하부 binding은 `SPOT` routed request/reply도 제공하므로, framework는
-앞으로 아래 두 종류를 구분해 설명할 필요가 있다.
+또한 현재 하부 topology는 `SpotNode.router` peer 경로와 attach된 channel client
+경로를 함께 가진다. framework 문서에서는 아래 두 종류를 구분해 설명하는 편이
+더 맞다.
 
-- broad fan-out 또는 state sync 성격의 publish/subscribe
-- 특정 stage 또는 spot 대상으로 보내는 targeted request/reply
+- 같은 channel 안의 topic publish/subscribe
+- attach된 다른 channel client를 통한 send/request
 
 이 점은 `playhouse` 시나리오에서 특히 중요하다.
 
@@ -380,28 +377,28 @@ public sealed class StageSpot : ZLinkSpot
 - stage/state sync 는 `SPOT`
 
 즉 `SPOT`은 pub/sub만으로 설명하면 부족하고, room/stage/zone 같은 논리 인스턴스
-모델과 targeted call, 그리고 `SpotNode`가 spot 인스턴스를 생성하고 소유하는
-lifecycle까지 함께 설명해야 한다.
+모델과 channel publish/send/request, 그리고 `SpotNode`가 spot 인스턴스를 생성하고
+소유하는 lifecycle까지 함께 설명해야 한다.
 
 ## 9. discovery와 service name
 
-`SPOT`도 `service_name` 단위로 설명되어야 한다.
+최신 topology 초안에서는 `SpotNode`가 channel 이름을 직접 소유하지 않는다.
+attach된 SPOT channel `Discovery`가 active channel view를 공급하고, 그 view가
+같은 channel의 peer mesh 범위를 닫는다.
 
-예를 들면:
+다만 현재 구현과 공개 헤더에는 여전히 `service_name` 필드 이름이 남아 있는
+영역이 있다. framework 문서에서는 이 표기를 "현재 구현 이름"으로 읽고, 의미는
+channel view 쪽에 더 가깝다고 설명하는 편이 맞다.
 
-- `game.stage`
-- `game.presence`
-- `match.realtime`
-
-애플리케이션은 어떤 `SpotNode`가 어느 endpoint에 붙는지보다,
-어느 논리 service에 속하는 `SPOT` runtime인지를 먼저 보게 하는 편이 좋다.
+예를 들어 attach된 discovery view가 `game.stage`라면, 그 `SpotNode`는
+`game.stage` channel mesh 안에서 동작한다고 이해하면 된다.
 
 ## 10. 아직 확정하지 않는 것
 
 - `SpotNode`를 하나만 둘지 여러 개 둘지
 - `IZLinkSpotClient`에서 publish를 분리할지, 그대로 둘지
-- `SendTo(targetRid, spotRid, ...)`와 `RequestTo(targetRid, spotRid, ...)`만으로
-  충분한지
+- `SendChannelAsync(...)` / `RequestChannelAsync(...)` 이름을 그대로 둘지
+- attach된 channel client 설정을 어떻게 노출할지
 - `IZLinkSpotManager`가 `Created` 외에 어떤 생성 메타데이터를 더 돌려줄지
 - `spotRid` 타입을 `RoutingId` 그대로 쓸지, 별도 wrapper로 올릴지
 - subscriber concurrency와 backpressure를 어떻게 설정으로 노출할지
@@ -411,4 +408,4 @@ lifecycle까지 함께 설명해야 한다.
 - spot 실행 문맥을 어떻게 보장할지
 - timer callback을 어떤 문맥에서 실행할지
 - create 시 초기 metadata를 어떻게 전달할지
-- membership 와 directory 같은 상위 모델 축을 어디서 맡을지
+- membership 같은 상위 모델 축을 어디서 맡을지

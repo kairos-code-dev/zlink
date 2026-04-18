@@ -41,6 +41,7 @@ DI, hosted service, handler 모델을 제공하는 것이다.
 | [aspnet-core-service-messaging.ko.md](./aspnet-core-service-messaging.ko.md) | 서비스 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, lifecycle, middleware/filter |
 | [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish/subscribe, discovery |
 | [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, packet handler, raw handler, recv 비지원 방향 |
+| [stream-open-items.ko.md](./stream-open-items.ko.md) | STREAM에서 아직 닫지 않은 serializer, write, lifecycle 항목 |
 | [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) | `playhouse` Stage 같은 상위 모델을 SPOT 위에 감쌀 때 필요한 추가 조건 |
 | [aspnet-core-registry.ko.md](./aspnet-core-registry.ko.md) | Registry embedded/standalone 구동, topology 조회, 클러스터링 |
 
@@ -52,7 +53,7 @@ DI, hosted service, handler 모델을 제공하는 것이다.
 | 문서 | 다루는 범위 |
 |------|------------|
 | [service-messaging-samples.ko.md](./service-messaging-samples.ko.md) | 서비스 등록, handler, HTTP handler, outbound client를 한 번에 보는 샘플 |
-| [spot-samples.ko.md](./spot-samples.ko.md) | room, stage, zone 기준 SPOT 등록, handler, SendTo, publish를 한 번에 보는 샘플 |
+| [spot-samples.ko.md](./spot-samples.ko.md) | room, stage, zone 기준 SPOT 등록, handler, channel send/request, publish를 한 번에 보는 샘플 |
 | [stream-samples.ko.md](./stream-samples.ko.md) | STREAM packet handler, raw handler, 등록 코드를 한 번에 보는 샘플 |
 
 ### 2.4 범위 원칙
@@ -73,8 +74,9 @@ DI, hosted service, handler 모델을 제공하는 것이다.
 - gateway나 전용 load balancer 없이 service별 discovery channel로 직접 호출한다.
 - `SPOT`도 별도 low-level runtime이 아니라, framework lifecycle 안에서
   다룰 수 있어야 한다.
-- outbound 호출은 `serviceName` 호출, `router rid` direct 호출,
-  `targetRid + spotRid` 호출을 모두 가져야 한다.
+- 일반 service messaging은 `serviceName` 호출과 `router rid` direct 호출을 가진다.
+- `SPOT` high-level 표면은 current channel publish/subscribe와 attach된 channel
+  send/request를 먼저 설명한다.
 - `IZLinkClient`와 `IZLinkSpotClient`는 서로 다른 C API를 감싸는 별도 인터페이스다.
-  다만 하부 기능이 겹치는 부분이 있으므로, 두 인터페이스가 비슷한 send/request
-  함수군을 각각 가질 수 있다.
+  다만 하부 기능이 겹치는 부분이 있으므로, 두 인터페이스가 일부 비슷한
+  send/request 계열 함수를 가질 수 있다.

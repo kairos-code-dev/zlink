@@ -56,10 +56,10 @@ class spot_node_t : public discovery_observer_t
     int connect_peer_pub (const char *peer_pub_endpoint_);
     int disconnect_peer_pub (const char *peer_pub_endpoint_);
     int attach_discovery (discovery_t *discovery_);
-    int attach_router (const char *service_name_, socket_base_t *router_);
-    int attach_pubsub (const char *service_name_,
-                       socket_base_t *pub_,
-                       socket_base_t *sub_);
+    int attach_channel_dealer (discovery_t *discovery_, socket_base_t *dealer_);
+    int attach_channel_dealer_manual (const char *channel_name_,
+                                      socket_base_t *dealer_);
+    int attach_pub_ingress (socket_base_t *pub_);
     int try_register_spot_facade (spot_handle_t *spot_);
     void unregister_spot_facade (spot_handle_t *spot_);
     int set_tls_server (const char *cert_, const char *key_);
@@ -113,8 +113,6 @@ class spot_node_t : public discovery_observer_t
     void snapshot_subscription_subjects (
       std::vector<spot_sub_t::subject_descriptor_t> *out_) const;
     int snapshot_status (zlink_spot_node_status_t *out_) const;
-    int snapshot_service_attachments (
-      std::vector<zlink_spot_service_attachment_stats_t> *out_) const;
     int snapshot_peers (const zlink_spot_node_peer_filter_t *filter_,
                         std::vector<zlink_spot_node_peer_entry_t> *out_) const;
     int snapshot_subjects (
@@ -142,8 +140,6 @@ class spot_node_t : public discovery_observer_t
                                          char *topic_id_out_,
                                          size_t *topic_id_len_out_,
                                          zlink_recv_flags_t flags_);
-    int service_monitor_recv (zlink_spot_service_monitor_event_t *out_,
-                              zlink_recv_flags_t flags_);
 
   private:
     friend class spot_pub_t;
@@ -254,6 +250,7 @@ class spot_node_t : public discovery_observer_t
     void begin_destroy_detach_phase (
       discovery_t **discovery_out_,
       std::map<std::string, discovery_t *> *service_discoveries_out_,
+      std::map<std::string, discovery_t *> *channel_dealer_discoveries_out_,
       std::vector<std::string> *active_peer_endpoints_out_,
       std::string *bound_endpoint_out_);
     void clear_service_attachment_runtime_locked (
@@ -262,28 +259,11 @@ class spot_node_t : public discovery_observer_t
       std::deque<service_monitor_handle_t> *monitors_);
     int validate_socket_service_discovery_attach_locked (
       const std::string &service_name_, discovery_t *discovery_) const;
-    int validate_manual_service_attachment_locked (
-      const std::string &service_name_,
-      const socket_base_t *primary_socket_,
-      const socket_base_t *secondary_socket_ = NULL) const;
     void register_service_monitor_locked (
       socket_base_t *owner_socket_,
       void *monitor_handle_,
-      const std::string &service_name_,
-      zlink_spot_service_attachment_role_t role_);
-    void register_manual_router_locked (const std::string &service_name_,
-                                        socket_base_t *router_,
-                                        void *monitor_handle_);
-    void register_manual_pubsub_locked (const std::string &service_name_,
-                                        socket_base_t *pub_,
-                                        socket_base_t *sub_,
-                                        void *pub_monitor_handle_,
-                                        void *sub_monitor_handle_);
+      const std::string &service_name_);
     void rebuild_service_attachment_caches_locked ();
-    void ensure_service_stats_row_locked (const std::string &service_name_);
-    void erase_service_stats_row_if_unused_locked (const std::string &service_name_);
-    void update_service_stats_locked (const std::string &service_name_,
-                                      const service_attachment_t &attachment_);
     void reset_spot_discovery_state_locked ();
     void queue_service_discovery_refresh_locked (
       const std::string &service_name_);
@@ -403,7 +383,6 @@ class spot_node_t : public discovery_observer_t
         void *handle;
         socket_base_t *owner_socket;
         std::string service_name;
-        zlink_spot_service_attachment_role_t role;
     };
 
     struct service_discovery_topology_t
@@ -440,13 +419,17 @@ class spot_node_t : public discovery_observer_t
     {
         struct manual_state_t
         {
-            manual_state_t () : pub (NULL), sub (NULL)
+            manual_state_t () :
+                pub (NULL),
+                sub (NULL),
+                channel_dealer_discovery (NULL)
             {
             }
 
             std::vector<socket_base_t *> routers;
             socket_base_t *pub;
             socket_base_t *sub;
+            discovery_t *channel_dealer_discovery;
         };
 
         struct discovered_state_t
@@ -558,26 +541,23 @@ class spot_node_t : public discovery_observer_t
 
         typedef std::vector<service_sub_cache_entry_t> service_sub_cache_t;
         typedef std::vector<socket_base_t *> readable_sub_cache_t;
-        typedef std::vector<service_monitor_handle_t> service_monitor_cache_t;
-        typedef std::map<std::string, zlink_spot_service_attachment_stats_t>
-          service_stats_cache_t;
 
         std::map<std::string, service_attachment_t> attachments;
         std::map<const socket_base_t *, std::string> socket_index;
         std::deque<service_monitor_handle_t> monitors;
         std::map<std::string, discovery_t *> discoveries;
+        std::map<std::string, discovery_t *> channel_dealer_discoveries;
         std::set<std::string> pending_refresh_services;
         std::shared_ptr<service_sub_cache_t> sub_cache;
         std::shared_ptr<readable_sub_cache_t> readable_sub_cache;
         std::shared_ptr<socket_poller_t> readable_sub_poller;
-        std::shared_ptr<service_monitor_cache_t> monitor_cache;
-        service_stats_cache_t stats_cache;
+        socket_base_t *pub_ingress;
 
         service_attachment_state_t () :
             sub_cache (new service_sub_cache_t ()),
             readable_sub_cache (new readable_sub_cache_t ()),
             readable_sub_poller (new socket_poller_t ()),
-            monitor_cache (new service_monitor_cache_t ())
+            pub_ingress (NULL)
         {
         }
     };
@@ -622,6 +602,8 @@ class spot_node_t : public discovery_observer_t
     std::map<const socket_base_t *, std::string> &_service_attachment_socket_index;
     std::deque<service_monitor_handle_t> &_service_monitors;
     std::map<std::string, discovery_t *> &_service_discoveries;
+    std::map<std::string, discovery_t *> &_channel_dealer_discoveries;
+    socket_base_t *&_pub_ingress;
 
     friend struct spot_runtime_t;
     friend class spot_data_plane_t;

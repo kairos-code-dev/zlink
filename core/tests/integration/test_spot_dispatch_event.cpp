@@ -296,19 +296,20 @@ void test_spot_dispatch_routed_recv_inside_callback ()
 {
     void *ctx = zlink_ctx_new ();
     void *node = zlink_spot_node_new (ctx);
-    void *sender = zlink_spot_new (node);
     void *receiver = zlink_spot_new (node);
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (ctx);
     TEST_ASSERT_NOT_NULL (node);
-    TEST_ASSERT_NOT_NULL (sender);
     TEST_ASSERT_NOT_NULL (receiver);
+    TEST_ASSERT_NOT_NULL (router);
 
     set_routing_id_text (node, "node-dispatch");
-    set_routing_id_text (sender, "spot-sender");
     set_routing_id_text (receiver, "spot-receiver");
+    set_routing_id_text (router, "router-dispatch");
 
     const zlink_routing_id_t node_rid = get_routing_id_value (node);
     const zlink_routing_id_t receiver_rid = get_routing_id_value (receiver);
+    const zlink_routing_id_t router_rid = get_routing_id_value (router);
 
     spot_dispatch_recv_probe_t probe;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
@@ -316,8 +317,8 @@ void test_spot_dispatch_routed_recv_inside_callback ()
 
     zlink_msg_t part;
     init_string_part (&part, "routed-payload");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_send_spot (
-      sender, &node_rid, &receiver_rid, &part, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_send_spot (
+      router, &node_rid, &receiver_rid, &part, 1, 0));
 
     {
         std::unique_lock<std::mutex> lock (probe.mutex);
@@ -330,17 +331,16 @@ void test_spot_dispatch_routed_recv_inside_callback ()
         TEST_ASSERT_EQUAL_UINT (1, probe.routed_payloads.size ());
         TEST_ASSERT_EQUAL_STRING ("routed-payload",
                                   probe.routed_payloads[0].c_str ());
-        TEST_ASSERT_EQUAL_STRING ("node-dispatch",
+        TEST_ASSERT_EQUAL_STRING ("router-dispatch",
                                   probe.routed_source_rid.c_str ());
-        TEST_ASSERT_EQUAL_STRING ("spot-sender",
-                                  probe.routed_spot_rid.c_str ());
+        TEST_ASSERT_EQUAL_STRING ("", probe.routed_spot_rid.c_str ());
         TEST_ASSERT_EQUAL_UINT64 (0, probe.routed_request_seq);
         TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE,
                                probe.events[0]);
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&receiver));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sender));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (router));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }

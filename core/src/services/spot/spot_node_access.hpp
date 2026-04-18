@@ -74,12 +74,6 @@ struct spot_node_access_t
       char *topic_id_out_,
       size_t *topic_id_len_out_,
       zlink_recv_flags_t flags_);
-    static int service_attachment_snapshot (
-      spot_node_t *node_,
-      std::vector<zlink_spot_service_attachment_stats_t> *out_);
-    static int service_monitor_recv (spot_node_t *node_,
-                                     zlink_spot_service_monitor_event_t *out_,
-                                     zlink_recv_flags_t flags_);
     static int peers_snapshot (
       spot_node_t *node_,
       const zlink_spot_node_peer_filter_t *filter_,
@@ -89,13 +83,13 @@ struct spot_node_access_t
       const zlink_spot_node_subject_filter_t *filter_,
       std::vector<zlink_spot_node_subject_entry_t> *out_);
     static int attach_discovery (spot_node_t *node_, void *discovery_);
-    static int attach_router (spot_node_t *node_,
-                              const char *service_name_,
-                              void *router_);
-    static int attach_pubsub (spot_node_t *node_,
-                              const char *service_name_,
-                              void *pub_,
-                              void *sub_);
+    static int attach_channel_dealer (spot_node_t *node_,
+                                      void *discovery_,
+                                      void *dealer_);
+    static int attach_channel_dealer_manual (spot_node_t *node_,
+                                             const char *channel_name_,
+                                             void *dealer_);
+    static int attach_pub_ingress (spot_node_t *node_, void *pub_);
     static int try_register_spot_facade (spot_node_t *node_,
                                          spot_handle_t *spot_);
     static void unregister_spot_facade (spot_node_t *node_,

@@ -1450,62 +1450,6 @@ struct spot_node_subject_filter_t
 
 template<size_t N> inline std::string fixed_string_to_string (const char (&src_)[N]);
 
-enum class spot_service_attachment_role_t : int
-{
-    router = ZLINK_SPOT_SERVICE_ATTACHMENT_ROUTER,
-    pub = ZLINK_SPOT_SERVICE_ATTACHMENT_PUB,
-    sub = ZLINK_SPOT_SERVICE_ATTACHMENT_SUB
-};
-
-struct spot_service_attachment_stats_t
-{
-    spot_service_attachment_stats_t ()
-        : service_name (), router_count (0), pub_count (0), sub_count (0),
-          auto_router_count (0), auto_pub_count (0), auto_sub_count (0)
-    {
-    }
-
-    explicit spot_service_attachment_stats_t (
-      const zlink_spot_service_attachment_stats_t &entry_)
-        : service_name (fixed_string_to_string (entry_.service_name)),
-          router_count (entry_.router_count), pub_count (entry_.pub_count),
-          sub_count (entry_.sub_count),
-          auto_router_count (entry_.auto_router_count),
-          auto_pub_count (entry_.auto_pub_count),
-          auto_sub_count (entry_.auto_sub_count)
-    {
-    }
-
-    std::string service_name;
-    uint32_t router_count;
-    uint32_t pub_count;
-    uint32_t sub_count;
-    uint32_t auto_router_count;
-    uint32_t auto_pub_count;
-    uint32_t auto_sub_count;
-};
-
-struct spot_service_monitor_event_t
-{
-    spot_service_monitor_event_t ()
-        : service_name (), role (spot_service_attachment_role_t::router),
-          event ()
-    {
-    }
-
-    explicit spot_service_monitor_event_t (
-      const zlink_spot_service_monitor_event_t &event_)
-        : service_name (fixed_string_to_string (event_.service_name)),
-          role (static_cast<spot_service_attachment_role_t> (event_.role)),
-          event (event_.event)
-    {
-    }
-
-    std::string service_name;
-    spot_service_attachment_role_t role;
-    monitor_event_t event;
-};
-
 struct registry_topology_filter_t
 {
     zlink::service_kind service_kind = service_kind::socket;

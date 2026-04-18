@@ -249,6 +249,11 @@ typedef enum zlink_service_type_t
     ZLINK_SERVICE_TYPE_SOCKET = 0x3003
 } zlink_service_type_t;
 
+typedef zlink_service_type_t zlink_channel_type_t;
+
+#define ZLINK_CHANNEL_TYPE_SPOT ZLINK_SERVICE_TYPE_SPOT
+#define ZLINK_CHANNEL_TYPE_SOCKET ZLINK_SERVICE_TYPE_SOCKET
+
 typedef enum zlink_service_role_t
 {
     ZLINK_SERVICE_ROLE_INVALID = 0,
@@ -258,6 +263,15 @@ typedef enum zlink_service_role_t
     ZLINK_SERVICE_ROLE_PUB = 5,
     ZLINK_SERVICE_ROLE_SUB = 6
 } zlink_service_role_t;
+
+typedef zlink_service_role_t zlink_channel_role_t;
+
+#define ZLINK_CHANNEL_ROLE_INVALID ZLINK_SERVICE_ROLE_INVALID
+#define ZLINK_CHANNEL_ROLE_SPOT ZLINK_SERVICE_ROLE_SPOT
+#define ZLINK_CHANNEL_ROLE_ROUTER ZLINK_SERVICE_ROLE_ROUTER
+#define ZLINK_CHANNEL_ROLE_DEALER ZLINK_SERVICE_ROLE_DEALER
+#define ZLINK_CHANNEL_ROLE_PUB ZLINK_SERVICE_ROLE_PUB
+#define ZLINK_CHANNEL_ROLE_SUB ZLINK_SERVICE_ROLE_SUB
 
 typedef enum zlink_discovery_dealer_peer_mode_t
 {

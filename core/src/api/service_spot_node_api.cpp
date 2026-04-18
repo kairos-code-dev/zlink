@@ -256,9 +256,9 @@ zlink_config_result_t zlink_spot_node_attach_discovery (void *node_, void *disco
       zlink::spot_node_access_t::attach_discovery (node, discovery_));
 }
 
-zlink_config_result_t zlink_spot_node_attach_router (void *node_,
-                                                     const char *service_name_,
-                                                     void *router_)
+zlink_config_result_t zlink_spot_node_attach_channel_dealer (void *node_,
+                                                             void *discovery_,
+                                                             void *dealer_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -266,13 +266,14 @@ zlink_config_result_t zlink_spot_node_attach_router (void *node_,
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     return zlink::config_result_internal::from_rc (
-      zlink::spot_node_access_t::attach_router (node, service_name_, router_));
+      zlink::spot_node_access_t::attach_channel_dealer (
+        node, discovery_, dealer_));
 }
 
-zlink_config_result_t zlink_spot_node_attach_pubsub (void *node_,
-                                                     const char *service_name_,
-                                                     void *pub_,
-                                                     void *sub_)
+zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual (
+  void *node_,
+  const char *channel_name_,
+  void *dealer_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -280,66 +281,18 @@ zlink_config_result_t zlink_spot_node_attach_pubsub (void *node_,
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     return zlink::config_result_internal::from_rc (
-      zlink::spot_node_access_t::attach_pubsub (node, service_name_, pub_, sub_));
+      zlink::spot_node_access_t::attach_channel_dealer_manual (
+        node, channel_name_, dealer_));
 }
 
-zlink_config_result_t zlink_spot_node_service_attachment_count (
-  void *node_,
-  size_t *count_out_)
+zlink_config_result_t zlink_spot_node_attach_pub_ingress (void *node_,
+                                                          void *pub_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
-    std::vector<zlink_spot_service_attachment_stats_t> rows;
-    if (zlink::spot_node_access_t::service_attachment_snapshot (node, &rows) != 0)
-        return zlink::config_result_internal::from_rc (-1);
-    if (!count_out_) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-    *count_out_ = rows.size ();
-    return ZLINK_CONFIG_OK;
-}
-
-zlink_config_result_t zlink_spot_node_service_attachment_at (
-  void *node_,
-  size_t index_,
-  zlink_spot_service_attachment_stats_t *out_)
-{
-    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
-    if (!node) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    std::vector<zlink_spot_service_attachment_stats_t> rows;
-    if (zlink::spot_node_access_t::service_attachment_snapshot (node, &rows) != 0)
-        return zlink::config_result_internal::from_rc (-1);
-    if (!out_) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-    if (index_ >= rows.size ()) {
-        errno = ENOENT;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-    *out_ = rows[index_];
-    return ZLINK_CONFIG_OK;
-}
-
-zlink_recv_result_t zlink_spot_node_monitor_recv (
-  void *node_,
-  zlink_spot_service_monitor_event_t *out_,
-  zlink_recv_flags_t flags_)
-{
-    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
-    if (!node) {
-        errno = EFAULT;
-        return ZLINK_RECV_INVALID_HANDLE;
-    }
-    if (validate_recv_flags (flags_) != 0)
-        return zlink::recv_result_internal::from_errno (errno);
-    return zlink::recv_result_internal::from_rc (
-      zlink::spot_node_access_t::service_monitor_recv (node, out_, flags_));
+    return zlink::config_result_internal::from_rc (
+      zlink::spot_node_access_t::attach_pub_ingress (node, pub_));
 }

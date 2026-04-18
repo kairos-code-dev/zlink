@@ -33,16 +33,12 @@ void spot_node_t::rebuild_service_attachment_caches_locked ()
       readable_sub_cache (new service_attachment_state_t::readable_sub_cache_t ());
     std::shared_ptr<socket_poller_t> readable_sub_poller (
       new socket_poller_t ());
-    std::shared_ptr<service_attachment_state_t::service_monitor_cache_t>
-      monitor_cache (new service_attachment_state_t::service_monitor_cache_t ());
 
     sub_cache->reserve (_service_attachments.size () * 2);
     readable_sub_cache->reserve (_service_attachments.size () * 2);
-    monitor_cache->reserve (_service_monitors.size ());
     for (std::map<std::string, service_attachment_t>::const_iterator it =
            _service_attachments.begin ();
          it != _service_attachments.end (); ++it) {
-        update_service_stats_locked (it->first, it->second);
         if (it->second.has_manual_pubsub ()) {
             service_attachment_state_t::service_sub_cache_entry_t entry;
             entry.service_name = it->first;
@@ -62,25 +58,10 @@ void spot_node_t::rebuild_service_attachment_caches_locked ()
                                              ZLINK_POLLIN);
         }
     }
-    for (std::deque<service_monitor_handle_t>::const_iterator it =
-           _service_monitors.begin ();
-         it != _service_monitors.end (); ++it)
-        monitor_cache->push_back (*it);
-
-    for (service_attachment_state_t::service_stats_cache_t::iterator it =
-           _service_attachment_state.stats_cache.begin ();
-         it != _service_attachment_state.stats_cache.end ();) {
-        if (_service_attachments.count (it->first) == 0
-            && _service_discoveries.count (it->first) == 0)
-            it = _service_attachment_state.stats_cache.erase (it);
-        else
-            ++it;
-    }
 
     _service_attachment_state.sub_cache = sub_cache;
     _service_attachment_state.readable_sub_cache = readable_sub_cache;
     _service_attachment_state.readable_sub_poller = readable_sub_poller;
-    _service_attachment_state.monitor_cache = monitor_cache;
 }
 
 void spot_node_t::remove_service_monitors_by_owner_locked (
@@ -152,18 +133,14 @@ bool spot_node_t::detach_discovered_service_locked (
             attach_it->second.discovered.pub_endpoints.clear ();
             attach_it->second.discovered.sub_endpoints.clear ();
             attach_it->second.clear_auto_sub_replay ();
-            update_service_stats_locked (service_name, attach_it->second);
             if (attach_it->second.manual.routers.empty ()
-                && !attach_it->second.has_manual_pubsub ()) {
+                && !attach_it->second.has_manual_pubsub ())
                 _service_attachments.erase (attach_it);
-                erase_service_stats_row_if_unused_locked (service_name);
-            }
         }
 
         remove_service_monitors_by_owner_locked (*sockets_to_close_out_);
         _service_discoveries.erase (it);
         _service_attachment_state.pending_refresh_services.erase (service_name);
-        erase_service_stats_row_if_unused_locked (service_name);
         rebuild_service_attachment_caches_locked ();
         spot_shutdown_logf_local (
           false, "step=detach_discovered_service node=%p sockets=%zu",
@@ -173,4 +150,3 @@ bool spot_node_t::detach_discovered_service_locked (
     return false;
 }
 }
-

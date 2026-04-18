@@ -61,6 +61,7 @@ int spot_node_t::validate_destroyable_handles_locked () const
 void spot_node_t::begin_destroy_detach_phase (
   discovery_t **discovery_out_,
   std::map<std::string, discovery_t *> *service_discoveries_out_,
+  std::map<std::string, discovery_t *> *channel_dealer_discoveries_out_,
   std::vector<std::string> *active_peer_endpoints_out_,
   std::string *bound_endpoint_out_)
 {
@@ -72,6 +73,8 @@ void spot_node_t::begin_destroy_detach_phase (
         bound_endpoint_out_->clear ();
     if (service_discoveries_out_)
         service_discoveries_out_->clear ();
+    if (channel_dealer_discoveries_out_)
+        channel_dealer_discoveries_out_->clear ();
 
     scoped_lock_t lock (_sync);
     if (active_peer_endpoints_out_) {
@@ -89,6 +92,8 @@ void spot_node_t::begin_destroy_detach_phase (
     _active_peer_count.store (0, std::memory_order_release);
     if (service_discoveries_out_)
         service_discoveries_out_->swap (_service_discoveries);
+    if (channel_dealer_discoveries_out_)
+        channel_dealer_discoveries_out_->swap (_channel_dealer_discoveries);
 }
 
 void spot_node_t::clear_service_attachment_runtime_locked (
@@ -99,10 +104,13 @@ void spot_node_t::clear_service_attachment_runtime_locked (
     monitors_out_->clear ();
     scoped_lock_t lock (_sync);
     monitors_out_->swap (_service_monitors);
+    if (_pub_ingress) {
+        (void) _pub_ingress->term_endpoint (pub_ingress_endpoint ().c_str ());
+        _pub_ingress = NULL;
+    }
     _service_attachments.clear ();
     _service_attachment_socket_index.clear ();
     _service_attachment_state.pending_refresh_services.clear ();
-    _service_attachment_state.stats_cache.clear ();
     rebuild_service_attachment_caches_locked ();
 }
 
@@ -128,6 +136,7 @@ int spot_node_t::destroy ()
     _lifecycle.transition_to (service_state_stopping);
     discovery_t *discovery = NULL;
     std::map<std::string, discovery_t *> service_discoveries;
+    std::map<std::string, discovery_t *> channel_dealer_discoveries;
     std::vector<std::string> active_peer_endpoints;
     std::string bound_endpoint;
     int first_error = 0;
@@ -144,6 +153,7 @@ int spot_node_t::destroy ()
     if (_discovery && _registered)
         (void) unregister_registered ();
     begin_destroy_detach_phase (&discovery, &service_discoveries,
+                                &channel_dealer_discoveries,
                                 &active_peer_endpoints, &bound_endpoint);
     for (size_t i = 0; i < active_peer_endpoints.size (); ++i)
         (void) send_data_plane_command ("disconnect_peer_pub",
@@ -176,6 +186,13 @@ int spot_node_t::destroy ()
     for (std::map<std::string, discovery_t *>::iterator it =
            service_discoveries.begin ();
          it != service_discoveries.end (); ++it) {
+        if (it->second)
+            preserve_first_error_local (it->second->remove_observer (this),
+                                        &first_error);
+    }
+    for (std::map<std::string, discovery_t *>::iterator it =
+           channel_dealer_discoveries.begin ();
+         it != channel_dealer_discoveries.end (); ++it) {
         if (it->second)
             preserve_first_error_local (it->second->remove_observer (this),
                                         &first_error);

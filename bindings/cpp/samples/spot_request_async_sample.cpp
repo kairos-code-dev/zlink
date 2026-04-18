@@ -2,62 +2,70 @@
 
 #include "sample_common.hpp"
 
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 
 int main ()
 {
     zlink::context_t ctx;
     zlink::service::spot_node_t requester_node (ctx);
-    zlink::service::spot_node_t responder_node (ctx);
     zlink::service::spot_t requester = requester_node.create_spot ();
-    zlink::service::spot_t responder_spot = responder_node.create_spot ();
+    zlink::router_socket_t responder_router (ctx);
+    zlink::dealer_socket_t requester_dealer (ctx);
     assert (requester_node.valid ());
-    assert (responder_node.valid ());
     assert (requester.valid ());
-    assert (responder_spot.valid ());
+    assert (responder_router.valid ());
+    assert (requester_dealer.valid ());
 
-    const std::string endpoint = detail::unique_tcp ("spot-request-async");
-    responder_node.bind (endpoint);
-    requester_node.connect_peer (endpoint);
+    const std::string channel_name = "orders";
+    const std::string endpoint = detail::unique_tcp ("spot-channel-request");
+    assert (responder_router.bind (endpoint) == 0);
+    assert (requester_dealer.connect (endpoint) == 0);
+    requester_node.attach_channel_dealer_manual (channel_name, requester_dealer);
 
-    const auto deadline =
-      std::chrono::steady_clock::now () + std::chrono::seconds (5);
-    while (std::chrono::steady_clock::now () < deadline) {
-        bool service_ready = false;
-        const auto peers = requester_node.peers_snapshot ();
-        for (const auto &peer : peers) {
-            if (peer.service_name == detail::k_spot_service
-                && peer.state == zlink::spot_peer_state::connected) {
-                service_ready = true;
-                break;
-            }
-        }
-        if (requester_node.status_snapshot ().connected_peer_count > 0
-            && service_ready) {
-            break;
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (10));
-    }
-    assert (requester_node.status_snapshot ().connected_peer_count > 0);
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::atomic<bool> done (false);
+    zlink::request_result_t result = zlink::request_result_t::terminated;
+    std::vector<zlink::message_t> reply_parts;
 
-    std::thread responder ([&responder_spot] {
-        const zlink::received_t received = responder_spot.recv_routed ();
+    std::thread responder ([&responder_router] {
+        const zlink::received_t received = responder_router.recv ();
         assert (received.parts ().size () == 1);
-        assert (received.routing_id ().has_value ());
-        assert (received.spot_rid ().has_value ());
+        assert (!received.routing_id ().has_value ());
+        assert (!received.spot_rid ().has_value ());
         assert (received.request_seq ().has_value ());
         assert (received.parts ()[0].to_string () == "spot-ping");
         zlink::message_t reply = detail::make_message ("spot-pong");
         received.reply (reply);
     });
 
-    zlink::message_t request = detail::make_message ("spot-ping");
-    std::vector<zlink::message_t> reply_parts =
-      requester.request_to_spot (responder_node.routing_id (),
-                                 responder_spot.routing_id (),
-                                 std::move (request),
-                                 std::chrono::milliseconds (5000))
-        .get ();
+    std::vector<zlink::message_t> request_parts;
+    request_parts.push_back (detail::make_message ("spot-ping"));
+    requester.request_channel (
+      channel_name, request_parts,
+      [&mutex, &cv, &done, &result, &reply_parts] (
+        zlink::request_result_t request_result_,
+        std::vector<zlink::message_t> reply_parts_) {
+          {
+              std::lock_guard<std::mutex> lock (mutex);
+              result = request_result_;
+              reply_parts = std::move (reply_parts_);
+          }
+          done.store (true, std::memory_order_release);
+          cv.notify_one ();
+      },
+      zlink::send_flags_t::none, std::chrono::milliseconds (5000));
+
+    {
+        std::unique_lock<std::mutex> lock (mutex);
+        cv.wait_for (lock, std::chrono::seconds (5),
+                     [&done] { return done.load (std::memory_order_acquire); });
+    }
+    assert (done.load (std::memory_order_acquire));
+    assert (result == zlink::request_result_t::ok);
     assert (reply_parts.size () == 1);
     const std::string reply = reply_parts[0].to_string ();
     assert (reply == "spot-pong");

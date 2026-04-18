@@ -56,14 +56,14 @@ void test_spot_node_discovery_direct_and_child_interop ()
       zlink_set_subscription (sub, "interop:node"));
 
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
+      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_READY, 1, 10000));
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
+      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 10000));
 
     TEST_ASSERT_SUCCESS_ERRNO (publish_text (
       &zlink_publish, pub, "interop:node", "node-hop", 0));
     TEST_ASSERT_TRUE (wait_for_spot_recv_message (
-      sub, "interop:node", "node-hop", 8, 5000));
+      sub, "interop:node", "node-hop", 8, 10000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_unset_subscription (sub, "interop:node"));

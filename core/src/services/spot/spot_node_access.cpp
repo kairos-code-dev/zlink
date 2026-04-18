@@ -179,21 +179,6 @@ int spot_node_access_t::service_subscription_event_recv (
              : -1;
 }
 
-int spot_node_access_t::service_attachment_snapshot (
-  spot_node_t *node_,
-  std::vector<zlink_spot_service_attachment_stats_t> *out_)
-{
-    return node_ ? node_->snapshot_service_attachments (out_) : -1;
-}
-
-int spot_node_access_t::service_monitor_recv (
-  spot_node_t *node_,
-  zlink_spot_service_monitor_event_t *out_,
-  zlink_recv_flags_t flags_)
-{
-    return node_ ? node_->service_monitor_recv (out_, flags_) : -1;
-}
-
 int spot_node_access_t::peers_snapshot (
   spot_node_t *node_,
   const zlink_spot_node_peer_filter_t *filter_,
@@ -234,23 +219,34 @@ int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
     return discovery ? node_->attach_discovery (discovery) : -1;
 }
 
-int spot_node_access_t::attach_router (spot_node_t *node_,
-                                       const char *service_name_,
-                                       void *router_)
+int spot_node_access_t::attach_channel_dealer (spot_node_t *node_,
+                                               void *discovery_,
+                                               void *dealer_)
 {
-    socket_base_t *router = try_as_socket (router_);
-    return node_ && router ? node_->attach_router (service_name_, router) : -1;
+    if (!node_ || !discovery_ || !dealer_) {
+        errno = EFAULT;
+        return -1;
+    }
+    discovery_t *discovery = discovery_access_t::from_handle (discovery_);
+    socket_base_t *dealer = try_as_socket (dealer_);
+    return discovery && dealer ? node_->attach_channel_dealer (discovery, dealer)
+                               : -1;
 }
 
-int spot_node_access_t::attach_pubsub (spot_node_t *node_,
-                                       const char *service_name_,
-                                       void *pub_,
-                                       void *sub_)
+int spot_node_access_t::attach_channel_dealer_manual (spot_node_t *node_,
+                                                      const char *channel_name_,
+                                                      void *dealer_)
+{
+    socket_base_t *dealer = try_as_socket (dealer_);
+    return node_ && dealer
+             ? node_->attach_channel_dealer_manual (channel_name_, dealer)
+             : -1;
+}
+
+int spot_node_access_t::attach_pub_ingress (spot_node_t *node_, void *pub_)
 {
     socket_base_t *pub = try_as_socket (pub_);
-    socket_base_t *sub = try_as_socket (sub_);
-    return node_ && pub && sub ? node_->attach_pubsub (service_name_, pub, sub)
-                               : -1;
+    return node_ && pub ? node_->attach_pub_ingress (pub) : -1;
 }
 
 int spot_node_access_t::try_register_spot_facade (spot_node_t *node_,

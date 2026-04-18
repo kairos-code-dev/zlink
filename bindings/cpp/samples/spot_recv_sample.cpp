@@ -11,17 +11,12 @@ int main ()
     zlink::service::spot_node_t node (ctx);
     zlink::service::spot_t spot = node.create_spot ();
     zlink::pub_socket_t pub_socket (ctx);
-    zlink::sub_socket_t sub_socket (ctx);
     assert (node.valid ());
     assert (spot.valid ());
     assert (pub_socket.valid ());
-    assert (sub_socket.valid ());
 
     const std::string service_name = detail::k_spot_service;
-    const std::string service_endpoint = detail::unique_tcp ("spot-recv-service");
-    assert (pub_socket.bind (service_endpoint) == 0);
-    assert (sub_socket.connect (service_endpoint) == 0);
-    node.attach_pubsub (service_name, pub_socket, sub_socket);
+    node.attach_pub_ingress (pub_socket);
 
     const std::string topic = detail::k_spot_topic;
     const std::string sent = detail::k_spot_payload;
@@ -32,7 +27,7 @@ int main ()
     std::optional<zlink::topic_message_t> inbound;
     while (std::chrono::steady_clock::now () < deadline) {
         zlink::message_t outbound = detail::make_message (sent);
-        spot.publish (service_name, topic, outbound);
+        pub_socket.publish (topic, outbound);
         try {
             inbound = spot.subscribe (zlink::recv_flags_t::dontwait);
             break;

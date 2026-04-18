@@ -225,7 +225,8 @@ inline bool wait_for_router_distribution_local (void *spot_,
         TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, payload_size));
         memcpy (zlink_msg_data (&part), payload, payload_size);
         const zlink_submit_result_t submit_rc =
-          zlink_spot_send_service (spot_, service_name_, &part, 1, ZLINK_DONTWAIT);
+          zlink_spot_send_channel (spot_, service_name_, &part, 1,
+                                   ZLINK_DONTWAIT);
         if (submit_rc != ZLINK_SUBMIT_OK)
             zlink_msg_close (&part);
 
@@ -259,7 +260,8 @@ inline bool wait_for_router_set_distribution_local (
         TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, payload_size));
         memcpy (zlink_msg_data (&part), payload, payload_size);
         const zlink_submit_result_t submit_rc =
-          zlink_spot_send_service (spot_, service_name_, &part, 1, ZLINK_DONTWAIT);
+          zlink_spot_send_channel (spot_, service_name_, &part, 1,
+                                   ZLINK_DONTWAIT);
         if (submit_rc != ZLINK_SUBMIT_OK)
             zlink_msg_close (&part);
 

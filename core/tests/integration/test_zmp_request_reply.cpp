@@ -1190,57 +1190,6 @@ void test_dealer_request_uses_socket_default_timeout_when_reply_is_missing ()
     test_context_socket_close_zero_linger (router);
 }
 
-void test_spot_to_spot_request_reply_basic ()
-{
-    spot_case_t spot_case;
-    setup_connected_spot_case (&spot_case);
-
-    spot_request_handler_probe_t handler_probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_handler (spot_case.spot_b, &capture_spot_request,
-                                  &handler_probe));
-
-    zlink_msg_t request_part;
-    zlink_msg_init (&request_part);
-    init_string_part (&request_part, "spot-to-spot");
-
-    reply_probe_t reply_probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_spot (
-      spot_case.spot_a, &spot_case.node_b_rid, &spot_case.spot_b_rid,
-      &request_part, 1, &capture_reply, &reply_probe, 0, 3000));
-
-    TEST_ASSERT_TRUE (wait_for_spot_request_handler (&handler_probe));
-
-    {
-        std::lock_guard<std::mutex> lock (handler_probe.mutex);
-        TEST_ASSERT_EQUAL_STRING_LEN ("spot-node-a",
-                                      handler_probe.source_rid.c_str (),
-                                      handler_probe.source_rid.size ());
-        TEST_ASSERT_EQUAL_STRING_LEN ("spot-a", handler_probe.spot_rid.c_str (),
-                                      handler_probe.spot_rid.size ());
-        TEST_ASSERT_EQUAL_STRING_LEN ("spot-to-spot",
-                                      handler_probe.request_payload.c_str (),
-                                      handler_probe.request_payload.size ());
-    }
-
-    zlink_msg_t reply_part;
-    zlink_msg_init (&reply_part);
-    init_string_part (&reply_part, "spot-reply");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_reply_spot (
-      spot_case.spot_b, &handler_probe.source_rid_value,
-      &handler_probe.spot_rid_value, handler_probe.request_seq, &reply_part, 1));
-
-    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
-    {
-        std::lock_guard<std::mutex> lock (reply_probe.mutex);
-        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, reply_probe.result);
-        TEST_ASSERT_EQUAL_STRING_LEN ("spot-reply", reply_probe.payload.c_str (),
-                                      reply_probe.payload.size ());
-    }
-
-    teardown_connected_spot_case (&spot_case);
-}
-
 void test_spot_to_router_request_reply_basic ()
 {
     spot_case_t spot_case;
@@ -1353,54 +1302,6 @@ void test_router_to_spot_request_reply_basic ()
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (router));
-    teardown_connected_spot_case (&spot_case);
-}
-
-void test_spot_request_times_out_and_late_reply_is_dropped ()
-{
-    spot_case_t spot_case;
-    setup_connected_spot_case (&spot_case);
-
-    spot_request_handler_probe_t handler_probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_handler (spot_case.spot_b, &capture_spot_request,
-                                  &handler_probe));
-
-    zlink_msg_t request_part;
-    zlink_msg_init (&request_part);
-    init_string_part (&request_part, "spot-timeout-request");
-
-    reply_probe_t reply_probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_spot (
-      spot_case.spot_a, &spot_case.node_b_rid, &spot_case.spot_b_rid,
-      &request_part, 1, &capture_reply, &reply_probe, 0, 50));
-
-    TEST_ASSERT_TRUE (wait_for_spot_request_handler (&handler_probe));
-    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
-
-    {
-        std::lock_guard<std::mutex> lock (reply_probe.mutex);
-        TEST_ASSERT_TRUE (reply_probe.done);
-        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_TIMED_OUT, reply_probe.result);
-        TEST_ASSERT_EQUAL_UINT64 (0, reply_probe.part_count);
-        TEST_ASSERT_EQUAL_UINT64 (1, reply_probe.callback_count);
-    }
-
-    zlink_msg_t late_reply;
-    zlink_msg_init (&late_reply);
-    init_string_part (&late_reply, "spot-late-reply");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_reply_spot (
-      spot_case.spot_b, &handler_probe.source_rid_value,
-      &handler_probe.spot_rid_value, handler_probe.request_seq, &late_reply, 1));
-    msleep (SETTLE_TIME * 2);
-
-    {
-        std::lock_guard<std::mutex> lock (reply_probe.mutex);
-        TEST_ASSERT_EQUAL_UINT64 (1, reply_probe.callback_count);
-        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_TIMED_OUT, reply_probe.result);
-        TEST_ASSERT_TRUE (reply_probe.payload.empty ());
-    }
-
     teardown_connected_spot_case (&spot_case);
 }
 
@@ -1535,47 +1436,6 @@ void test_spot_to_router_direct_send_recv_basic ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_to_missing_spot_completes_with_enoent ()
-{
-    void *ctx = zlink_ctx_new ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    void *node = zlink_spot_node_new (ctx);
-    void *source_spot = zlink_spot_new (node);
-    TEST_ASSERT_NOT_NULL (node);
-    TEST_ASSERT_NOT_NULL (source_spot);
-
-    set_routing_id_text (node, "spot-node");
-    set_routing_id_text (source_spot, "spot-source");
-
-    const zlink_routing_id_t node_rid = get_routing_id_value (node);
-    zlink_routing_id_t missing_spot_rid;
-    memset (&missing_spot_rid, 0, sizeof (missing_spot_rid));
-    memcpy (missing_spot_rid.data, "spot-missing", 12);
-    missing_spot_rid.size = 12;
-
-    zlink_msg_t request_part;
-    zlink_msg_init (&request_part);
-    init_string_part (&request_part, "spot-request");
-
-    reply_probe_t reply_probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_spot (
-      source_spot, &node_rid, &missing_spot_rid, &request_part, 1,
-      &capture_reply, &reply_probe, 0, 3000));
-    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
-
-    {
-        std::lock_guard<std::mutex> lock (reply_probe.mutex);
-        TEST_ASSERT_TRUE (reply_probe.done);
-        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_NOT_FOUND, reply_probe.result);
-        TEST_ASSERT_EQUAL_UINT64 (0, reply_probe.part_count);
-    }
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&source_spot));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
-}
-
 void test_router_to_missing_spot_completes_with_enoent ()
 {
     void *ctx = zlink_ctx_new ();
@@ -1632,13 +1492,10 @@ int main ()
     RUN_TEST (test_dealer_to_dealer_request_is_not_supported);
     RUN_TEST (test_router_request_rejects_non_router_target);
     RUN_TEST (test_dealer_request_uses_socket_default_timeout_when_reply_is_missing);
-    RUN_TEST (test_spot_to_spot_request_reply_basic);
     RUN_TEST (test_spot_to_router_request_reply_basic);
     RUN_TEST (test_router_to_spot_request_reply_basic);
-    RUN_TEST (test_spot_request_times_out_and_late_reply_is_dropped);
     RUN_TEST (test_spot_to_router_direct_send_handler_basic);
     RUN_TEST (test_spot_to_router_direct_send_recv_basic);
-    RUN_TEST (test_spot_to_missing_spot_completes_with_enoent);
     RUN_TEST (test_router_to_missing_spot_completes_with_enoent);
     RUN_TEST (test_request_reply_process_exits_cleanly_after_round_trip);
     const int rc = UNITY_END ();

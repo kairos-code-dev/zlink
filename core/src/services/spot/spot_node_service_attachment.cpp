@@ -240,9 +240,7 @@ void spot_node_t::install_service_discovery_sockets (
               router_socket;
             _service_attachment_socket_index[router_socket] = service_name_;
             register_service_monitor_locked (
-              router_socket, monitor, service_name_,
-              ZLINK_SPOT_SERVICE_ATTACHMENT_ROUTER);
-            update_service_stats_locked (service_name_, attachment);
+              router_socket, monitor, service_name_);
             mutated = true;
         } else {
             if (monitor)
@@ -262,9 +260,7 @@ void spot_node_t::install_service_discovery_sockets (
         if (!attachment.discovered.pub) {
             attachment.discovered.pub = plan_.pub_socket;
             register_service_monitor_locked (
-              plan_.pub_socket, monitor, service_name_,
-              ZLINK_SPOT_SERVICE_ATTACHMENT_PUB);
-            update_service_stats_locked (service_name_, attachment);
+              plan_.pub_socket, monitor, service_name_);
             mutated = true;
         } else {
             if (monitor)
@@ -291,9 +287,7 @@ void spot_node_t::install_service_discovery_sockets (
             attachment.mark_auto_sub_replay_pending (
               service_attachment_t::discovered_state_t::auto_sub_replay_initial);
             register_service_monitor_locked (
-              plan_.sub_socket, monitor, service_name_,
-              ZLINK_SPOT_SERVICE_ATTACHMENT_SUB);
-            update_service_stats_locked (service_name_, attachment);
+              plan_.sub_socket, monitor, service_name_);
             mutated = true;
         } else {
             if (monitor)
@@ -394,7 +388,6 @@ void spot_node_t::sync_service_discovery_topology (
         attachment.discovered.sub_endpoints =
           topology_.pubsub_active () ? topology_.sub_endpoints
                                      : std::set<std::string> ();
-        update_service_stats_locked (service_name_, attachment);
         rebuild_service_attachment_caches_locked ();
     }
 

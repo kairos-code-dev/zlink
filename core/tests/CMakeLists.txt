@@ -44,8 +44,6 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
   ${INTEGRATION_TEST_ROOT}/test_xpub_nodrop
   ${INTEGRATION_TEST_ROOT}/test_spot_dispatch_event
-  ${INTEGRATION_TEST_ROOT}/test_spot_multi_service_discovery
-  ${INTEGRATION_TEST_ROOT}/test_spot_multi_service_discovery_scale
   ${INTEGRATION_TEST_ROOT}/test_discovery_resolve_spot
   ${INTEGRATION_TEST_ROOT}/test_peer_admission
   ${INTEGRATION_TEST_ROOT}/test_discovery_socket_auto_connect_policy
@@ -425,13 +423,6 @@ endif()
 if(TARGET test_discovery_socket_auto_connect_policy)
   set_tests_properties(
     test_discovery_socket_auto_connect_policy
-    PROPERTIES
-      TIMEOUT 30
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-endif()
-if(TARGET test_spot_multi_service_discovery)
-  set_tests_properties(
-    test_spot_multi_service_discovery
     PROPERTIES
       TIMEOUT 30
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
@@ -892,6 +883,8 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_router_auto_id_format
     test_router_handover
     test_router_mandatory_hwm
+    test_spot_multi_service_discovery
+    test_spot_multi_service_discovery_scale
     test_router_multiple_dealers
     test_reconnect_ivl
     test_reconnect_options

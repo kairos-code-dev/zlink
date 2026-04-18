@@ -595,25 +595,6 @@ ZLINK_EXPORT zlink_recv_result_t zlink_router_recv (void *router_,
                                     size_t *part_count_out_,
                                     zlink_recv_flags_t flags_);
 
-ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_spot (
-  void *spot_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_);
-
-ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_spot (
-  void *spot_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_send_flags_t flags_);
-
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_router (
   void *spot_,
   const zlink_routing_id_t *peer_rid_,
@@ -621,9 +602,9 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_router (
   size_t part_count_,
   zlink_send_flags_t flags_);
 
-ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_service (
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_channel (
   void *spot_,
-  const char *service_name_,
+  const char *channel_name_,
   zlink_msg_t *parts_,
   size_t part_count_,
   zlink_send_flags_t flags_);
@@ -667,9 +648,9 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_router (
   zlink_send_flags_t flags_,
   uint32_t timeout_ms_);
 
-ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_service (
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_channel (
   void *spot_,
-  const char *service_name_,
+  const char *channel_name_,
   zlink_msg_t *parts_,
   size_t part_count_,
   zlink_reply_handler_fn handler_,
@@ -952,8 +933,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_discovery_set_dealer_peer_mode (
  * This lookup is scoped to the current Discovery service view. Discovery may
  * answer from its local cache or refresh against Registry as needed. On
  * success, the returned node routing id should be paired with the original
- * `spot_rid_` when calling `zlink_spot_send_spot()`,
- * `zlink_spot_request_spot()`, or the corresponding router-side APIs.
+ * `spot_rid_` when using router-side SPOT addressing APIs.
  *
  * This helper is intended for send/request destination lookup. Reply paths
  * must continue to use the concrete source addresses that were delivered with
@@ -1047,64 +1027,29 @@ ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_peer (void *node,
 ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer (
   void *node, const char *peer_endpoint);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_router (
-  void *node_,
-  const char *service_name_,
-  void *router_);
-
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_pubsub (
-  void *node_,
-  const char *service_name_,
-  void *pub_,
-  void *sub_);
-
 /**
- * @brief Attach a Discovery instance for discovery-owned peer connection.
+ * @brief Attach a Discovery instance for discovery-owned SPOT peer connection.
  *
- * After attach, the node takes its service identity from the discovery and
- * discovery destroy owns participant shutdown.
+ * The discovery must provide a SPOT channel view. After attach, the node takes
+ * its mesh identity from that channel view and discovery destroy owns
+ * participant shutdown.
  */
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_discovery (void *node,
                                                    void *discovery);
 
-typedef enum zlink_spot_service_attachment_role_t
-{
-    ZLINK_SPOT_SERVICE_ATTACHMENT_ROUTER = 1,
-    ZLINK_SPOT_SERVICE_ATTACHMENT_PUB = 2,
-    ZLINK_SPOT_SERVICE_ATTACHMENT_SUB = 3
-} zlink_spot_service_attachment_role_t;
-
-typedef struct zlink_spot_service_attachment_stats_t
-{
-    char service_name[256];
-    uint32_t router_count;
-    uint32_t pub_count;
-    uint32_t sub_count;
-    uint32_t auto_router_count;
-    uint32_t auto_pub_count;
-    uint32_t auto_sub_count;
-} zlink_spot_service_attachment_stats_t;
-
-typedef struct zlink_spot_service_monitor_event_t
-{
-    char service_name[256];
-    zlink_spot_service_attachment_role_t role;
-    zlink_monitor_event_t event;
-} zlink_spot_service_monitor_event_t;
-
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_service_attachment_count (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_channel_dealer (
   void *node_,
-  size_t *count_out_);
+  void *discovery_,
+  void *dealer_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_service_attachment_at (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual (
   void *node_,
-  size_t index_,
-  zlink_spot_service_attachment_stats_t *out_);
+  const char *channel_name_,
+  void *dealer_);
 
-ZLINK_EXPORT zlink_recv_result_t zlink_spot_node_monitor_recv (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_pub_ingress (
   void *node_,
-  zlink_spot_service_monitor_event_t *out_,
-  zlink_recv_flags_t flags_);
+  void *pub_);
 
 /******************************************************************************/
 /*  Service Monitor / Topology API                                            */

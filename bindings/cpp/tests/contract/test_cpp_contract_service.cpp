@@ -96,6 +96,53 @@ template<typename SpotT> class has_receive_subscription_event_t
     static const bool value = decltype (test<SpotT> (0))::value;
 };
 
+template<typename NodeT> class has_attach_channel_dealer_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().attach_channel_dealer (
+                      std::declval<zlink::service::discovery_t &> (),
+                      std::declval<zlink::dealer_socket_t &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<NodeT> (0))::value;
+};
+
+template<typename NodeT> class has_attach_channel_dealer_manual_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().attach_channel_dealer_manual (
+                      std::declval<const std::string &> (),
+                      std::declval<zlink::dealer_socket_t &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<NodeT> (0))::value;
+};
+
+template<typename NodeT> class has_attach_pub_ingress_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().attach_pub_ingress (
+                      std::declval<zlink::pub_socket_t &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<NodeT> (0))::value;
+};
+
 template<typename NodeT> class has_attach_router_t
 {
   private:
@@ -121,49 +168,6 @@ template<typename NodeT> class has_attach_pubsub_t
                       std::declval<const std::string &> (),
                       std::declval<zlink::pub_socket_t &> (),
                       std::declval<zlink::sub_socket_t &> ()),
-                    std::true_type ());
-
-    template<typename> static std::false_type test (...);
-
-  public:
-    static const bool value = decltype (test<NodeT> (0))::value;
-};
-
-template<typename NodeT> class has_service_attachment_count_t
-{
-  private:
-    template<typename T>
-    static auto test (int)
-      -> decltype (std::declval<const T &> ().service_attachment_count (),
-                    std::true_type ());
-
-    template<typename> static std::false_type test (...);
-
-  public:
-    static const bool value = decltype (test<NodeT> (0))::value;
-};
-
-template<typename NodeT> class has_service_attachment_at_t
-{
-  private:
-    template<typename T>
-    static auto test (int)
-      -> decltype (std::declval<const T &> ().service_attachment_at (
-                      0u),
-                    std::true_type ());
-
-    template<typename> static std::false_type test (...);
-
-  public:
-    static const bool value = decltype (test<NodeT> (0))::value;
-};
-
-template<typename NodeT> class has_node_monitor_recv_t
-{
-  private:
-    template<typename T>
-    static auto test (int)
-      -> decltype (std::declval<T &> ().node_monitor_recv (),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -309,16 +313,17 @@ static_assert (!has_monitor_open_t<zlink::service::spot_t>::value,
                "spot_t must not expose monitor_open");
 static_assert (!has_monitor_open_t<zlink::service::spot_node_t>::value,
                "spot_node_t must not expose monitor_open");
-static_assert (has_attach_router_t<zlink::service::spot_node_t>::value,
-               "spot_node_t must expose attach_router");
-static_assert (has_attach_pubsub_t<zlink::service::spot_node_t>::value,
-               "spot_node_t must expose attach_pubsub");
-static_assert (has_service_attachment_count_t<zlink::service::spot_node_t>::value,
-               "spot_node_t must expose service_attachment_count");
-static_assert (has_service_attachment_at_t<zlink::service::spot_node_t>::value,
-               "spot_node_t must expose service_attachment_at");
-static_assert (has_node_monitor_recv_t<zlink::service::spot_node_t>::value,
-               "spot_node_t must expose node_monitor_recv");
+static_assert (has_attach_channel_dealer_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must expose attach_channel_dealer");
+static_assert (
+  has_attach_channel_dealer_manual_t<zlink::service::spot_node_t>::value,
+  "spot_node_t must expose attach_channel_dealer_manual");
+static_assert (has_attach_pub_ingress_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must expose attach_pub_ingress");
+static_assert (!has_attach_router_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must not expose attach_router");
+static_assert (!has_attach_pubsub_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must not expose attach_pubsub");
 static_assert (has_monitor_open_t<zlink::service::discovery_t>::value,
                "discovery_t must expose monitor_open");
 static_assert (has_resolve_spot_t<zlink::service::discovery_t>::value,

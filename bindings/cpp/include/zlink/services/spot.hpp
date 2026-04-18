@@ -292,34 +292,36 @@ class spot_node_t
             zlink_spot_node_attach_discovery (_node, discovery_.handle ())));
     }
 
-    template<typename RouterT>
-    void attach_router (const std::string &service_name_, RouterT &router_)
+    template<typename DealerT>
+    void attach_channel_dealer (discovery_t &discovery_, DealerT &dealer_)
     {
-        validate_bounded_c_string (service_name_, 255u, "service_name");
-        if (service_name_.empty ()) {
-            errno = EINVAL;
-            throw config_error_t (config_result_t::invalid_argument, EINVAL);
-        }
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_spot_node_attach_router (
-              _node, service_name_.c_str (), router_.handle ())));
+            zlink_spot_node_attach_channel_dealer (
+              _node, discovery_.handle (), dealer_.handle ())));
     }
 
-    template<typename PubT, typename SubT>
-    void attach_pubsub (const std::string &service_name_,
-                        PubT &pub_,
-                        SubT &sub_)
+    template<typename DealerT>
+    void attach_channel_dealer_manual (const std::string &channel_name_,
+                                       DealerT &dealer_)
     {
-        validate_bounded_c_string (service_name_, 255u, "service_name");
-        if (service_name_.empty ()) {
+        validate_bounded_c_string (channel_name_, 255u, "channel_name");
+        if (channel_name_.empty ()) {
             errno = EINVAL;
             throw config_error_t (config_result_t::invalid_argument, EINVAL);
         }
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_spot_node_attach_pubsub (
-              _node, service_name_.c_str (), pub_.handle (), sub_.handle ())));
+            zlink_spot_node_attach_channel_dealer_manual (
+              _node, channel_name_.c_str (), dealer_.handle ())));
+    }
+
+    template<typename PubT>
+    void attach_pub_ingress (PubT &pub_)
+    {
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_spot_node_attach_pub_ingress (_node, pub_.handle ())));
     }
 
     void set_routing_id (const routing_id_t &routing_id_)
@@ -473,51 +475,6 @@ class spot_node_t
         return entries;
     }
 
-    size_t service_attachment_count () const
-    {
-        size_t count = 0;
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_spot_node_service_attachment_count (_node, &count)));
-        return count;
-    }
-
-    spot_service_attachment_stats_t service_attachment_at (size_t index_) const
-    {
-        zlink_spot_service_attachment_stats_t native;
-        std::memset (&native, 0, sizeof (native));
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_spot_node_service_attachment_at (_node, index_, &native)));
-        return spot_service_attachment_stats_t (native);
-    }
-
-    spot_service_monitor_event_t node_monitor_recv (recv_flags_t flags_ = recv_flags_t::none)
-    {
-        zlink_spot_service_monitor_event_t native;
-        std::memset (&native, 0, sizeof (native));
-        detail::throw_if_failed<recv_error_t> (
-          static_cast<recv_result_t> (
-            zlink_spot_node_monitor_recv (
-              _node, &native, static_cast<zlink_recv_flags_t> (flags_))));
-        return spot_service_monitor_event_t (native);
-    }
-
-    maybe_t<spot_service_monitor_event_t> node_monitor_recv (non_blocking_t)
-    {
-        zlink_spot_service_monitor_event_t native;
-        std::memset (&native, 0, sizeof (native));
-        const recv_result_t result = static_cast<recv_result_t> (
-          zlink_spot_node_monitor_recv (
-            _node, &native, ZLINK_RECV_FLAGS_DONTWAIT));
-        if (result == recv_result_t::ok)
-            return maybe_t<spot_service_monitor_event_t> (
-              spot_service_monitor_event_t (native));
-        if (result == recv_result_t::no_data || result == recv_result_t::busy)
-            return maybe_t<spot_service_monitor_event_t> ();
-        throw recv_error_t (result, zlink_errno ());
-    }
-
     spot_t create_spot ();
 
     void close ()
@@ -607,26 +564,26 @@ class spot_t
               static_cast<submit_result_t> (rc), zlink_errno ());
     }
 
-    void send_service (const std::string &service_name_,
+    void send_channel (const std::string &channel_name_,
                        std::vector<message_t> &parts_,
                        send_flags_t flags_ = send_flags_t::none)
     {
-        validate_service_name (service_name_);
-        const int rc = send_service_impl (
-          service_name_.c_str (), parts_, flags_);
+        validate_channel_name (channel_name_);
+        const int rc = send_channel_impl (
+          channel_name_.c_str (), parts_, flags_);
         if (rc != 0)
             throw submit_error_t (
               static_cast<submit_result_t> (rc), zlink_errno ());
     }
 
-    void request_service (
-      const std::string &service_name_,
+    void request_channel (
+      const std::string &channel_name_,
       std::vector<message_t> &parts_,
       std::function<void(request_result_t, std::vector<message_t>)> callback_,
       send_flags_t flags_ = send_flags_t::none,
       std::chrono::milliseconds timeout_ = {})
     {
-        validate_service_name (service_name_);
+        validate_channel_name (channel_name_);
         detail::request_state_t *state = new detail::request_state_t ();
         state->on_complete = std::move (callback_);
         std::vector<zlink_msg_t> native;
@@ -635,8 +592,8 @@ class spot_t
             throw last_error ();
         }
         const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_spot_request_service (
-            _spot, service_name_.c_str (), native.data (), native.size (),
+          zlink_spot_request_channel (
+            _spot, channel_name_.c_str (), native.data (), native.size (),
             &detail::request_callback_trampoline, state,
             static_cast<zlink_send_flags_t> (flags_),
             static_cast<uint32_t> (timeout_.count ())));
@@ -752,13 +709,18 @@ class spot_t
     void *handle () const { return _spot; }
 
   private:
-    static void validate_service_name (const std::string &service_name_)
+    static void validate_channel_name (const std::string &channel_name_)
     {
-        validate_bounded_c_string (service_name_, 255u, "service_name");
-        if (service_name_.empty ()) {
+        validate_bounded_c_string (channel_name_, 255u, "channel_name");
+        if (channel_name_.empty ()) {
             errno = EINVAL;
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
         }
+    }
+
+    static void validate_service_name (const std::string &service_name_)
+    {
+        validate_channel_name (service_name_);
     }
 
     ZLINK_CPP_NODISCARD int
@@ -829,7 +791,7 @@ class spot_t
     }
 
     ZLINK_CPP_NODISCARD int
-    send_service_impl (const char *service_name_,
+    send_channel_impl (const char *channel_name_,
                        std::vector<message_t> &parts_,
                        send_flags_t flags_)
     {
@@ -847,8 +809,8 @@ class spot_t
         if (detail::move_parts_to_native (parts_, native) != 0)
             return -1;
 
-        const int rc = zlink_spot_send_service (
-          _spot, service_name_, native.data (), native.size (),
+        const int rc = zlink_spot_send_channel (
+          _spot, channel_name_, native.data (), native.size (),
           static_cast<zlink_send_flags_t> (flags_));
         if (rc != 0) {
             const int err = errno;
@@ -1064,100 +1026,6 @@ class spot_t
         routing_id_t value;
         get_routing_id (value);
         return value;
-    }
-
-    void send_to_spot (const routing_id_t &dest_node_rid_,
-                       const routing_id_t &dest_spot_rid_,
-                       message_t &part_,
-                       send_flags_t flags_ = send_flags_t::none)
-    {
-        std::vector<message_t> parts;
-        parts.push_back (std::move (part_));
-        send_to_spot (dest_node_rid_, dest_spot_rid_, parts, flags_);
-        if (!parts.empty ())
-            part_ = std::move (parts.front ());
-    }
-
-    void send_to_spot (const routing_id_t &dest_node_rid_,
-                       const routing_id_t &dest_spot_rid_,
-                       std::vector<message_t> &parts_,
-                       send_flags_t flags_ = send_flags_t::none)
-    {
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts_, native) != 0)
-            throw last_error ();
-        const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_spot_send_spot (
-            _spot, routing_id_native (dest_node_rid_),
-            routing_id_native (dest_spot_rid_), native.data (), native.size (),
-            static_cast<zlink_send_flags_t> (flags_)));
-        if (rc != submit_result_t::ok) {
-            for (size_t i = 0; i < native.size (); ++i) {
-                parts_[i].init ();
-                if (parts_[i].valid ())
-                    (void) zlink_msg_move (parts_[i].handle (), &native[i]);
-                (void) zlink_msg_close (&native[i]);
-            }
-            throw submit_error_t (rc, zlink_errno ());
-        }
-    }
-
-    async_result_t<std::vector<message_t>>
-    request_to_spot (const routing_id_t &dest_node_rid_,
-                     const routing_id_t &dest_spot_rid_,
-                     message_t message_,
-                     std::chrono::milliseconds timeout_ = {})
-    {
-        detail::request_state_t *state = new detail::request_state_t ();
-        std::future<std::vector<message_t>> future = state->promise.get_future ();
-        std::vector<message_t> parts;
-        parts.push_back (std::move (message_));
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts, native) != 0) {
-            delete state;
-            throw last_error ();
-        }
-        const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_spot_request_spot (
-            _spot, routing_id_native (dest_node_rid_),
-            routing_id_native (dest_spot_rid_), native.data (), native.size (),
-            &detail::request_callback_trampoline, state, ZLINK_SEND_FLAGS_NONE,
-            static_cast<uint32_t> (timeout_.count ())));
-        if (rc != submit_result_t::ok) {
-            delete state;
-            throw submit_error_t (rc, zlink_errno ());
-        }
-        return async_result_t<std::vector<message_t>> (std::move (future));
-    }
-
-    void request_to_spot (
-      const routing_id_t &dest_node_rid_,
-      const routing_id_t &dest_spot_rid_,
-      message_t message_,
-      std::function<void(request_result_t, std::vector<message_t>)> callback_,
-      send_flags_t flags_ = send_flags_t::none,
-      std::chrono::milliseconds timeout_ = {})
-    {
-        detail::request_state_t *state = new detail::request_state_t ();
-        state->on_complete = std::move (callback_);
-        std::vector<message_t> parts;
-        parts.push_back (std::move (message_));
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts, native) != 0) {
-            delete state;
-            throw last_error ();
-        }
-        const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_spot_request_spot (
-            _spot, routing_id_native (dest_node_rid_),
-            routing_id_native (dest_spot_rid_), native.data (), native.size (),
-            &detail::request_callback_trampoline, state,
-            static_cast<zlink_send_flags_t> (flags_),
-            static_cast<uint32_t> (timeout_.count ())));
-        if (rc != submit_result_t::ok) {
-            delete state;
-            throw submit_error_t (rc, zlink_errno ());
-        }
     }
 
     void reply_to_spot (const routing_id_t &dest_node_rid_,

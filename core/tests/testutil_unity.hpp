@@ -185,35 +185,6 @@ inline zlink_submit_result_t zlink_router_request (
       static_cast<zlink_send_flags_t> (flags_), timeout_ms_);
 }
 
-inline zlink_submit_result_t zlink_spot_request_spot (
-  void *spot_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  int flags_,
-  uint32_t timeout_ms_)
-{
-    return ::zlink_spot_request_spot (
-      spot_, dest_node_rid_, dest_spot_rid_, parts_, part_count_, handler_,
-      userdata_, static_cast<zlink_send_flags_t> (flags_), timeout_ms_);
-}
-
-inline zlink_submit_result_t zlink_spot_send_spot (
-  void *spot_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  int flags_)
-{
-    return ::zlink_spot_send_spot (
-      spot_, dest_node_rid_, dest_spot_rid_, parts_, part_count_,
-      static_cast<zlink_send_flags_t> (flags_));
-}
-
 inline zlink_submit_result_t zlink_spot_send_router (
   void *spot_,
   const zlink_routing_id_t *peer_rid_,

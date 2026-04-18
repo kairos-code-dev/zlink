@@ -19,19 +19,6 @@ namespace zlink
 {
 namespace
 {
-static void copy_service_name_field_local (char *dst_,
-                                           size_t dst_size_,
-                                           const std::string &src_)
-{
-    if (!dst_ || dst_size_ == 0)
-        return;
-    dst_[0] = '\0';
-    if (src_.empty ())
-        return;
-    strncpy (dst_, src_.c_str (), dst_size_ - 1);
-    dst_[dst_size_ - 1] = '\0';
-}
-
 static bool valid_service_name_local (const char *service_name_)
 {
     return service_name_ && service_name_[0] != '\0';
@@ -43,25 +30,6 @@ static bool valid_attached_socket_type_local (socket_base_t *socket_,
     return socket_ && socket_->check_tag ()
            && socket_->socket_type () == expected_type_;
 }
-
-static bool valid_router_attachment_type_local (socket_base_t *socket_)
-{
-    return socket_ && socket_->check_tag ()
-           && (socket_->socket_type () == ZLINK_CORE_SOCKET_ROUTER
-               || socket_->socket_type () == ZLINK_CORE_SOCKET_DEALER);
-}
-
-static void reset_service_attachment_stats_row_local (
-  zlink_spot_service_attachment_stats_t *row_,
-  const std::string &service_name_)
-{
-    if (!row_)
-        return;
-    memset (row_, 0, sizeof (*row_));
-    copy_service_name_field_local (
-      row_->service_name, sizeof (row_->service_name), service_name_);
-}
-
 }
 
 int spot_node_t::bind (const char *endpoint_)
@@ -357,105 +325,16 @@ int spot_node_t::validate_socket_service_discovery_attach_locked (
     return 0;
 }
 
-int spot_node_t::validate_manual_service_attachment_locked (
-  const std::string &service_name_,
-  const socket_base_t *primary_socket_,
-  const socket_base_t *secondary_socket_) const
-{
-    (void) service_name_;
-    if (_facades.size () > 1) {
-        errno = EBUSY;
-        return -1;
-    }
-    if (primary_socket_ && _service_attachment_socket_index.count (primary_socket_) != 0) {
-        errno = EBUSY;
-        return -1;
-    }
-    if (secondary_socket_
-        && _service_attachment_socket_index.count (secondary_socket_) != 0) {
-        errno = EBUSY;
-        return -1;
-    }
-    return 0;
-}
-
 void spot_node_t::register_service_monitor_locked (
   socket_base_t *owner_socket_,
   void *monitor_handle_,
-  const std::string &service_name_,
-  zlink_spot_service_attachment_role_t role_)
+  const std::string &service_name_)
 {
     service_monitor_handle_t monitor_entry;
     monitor_entry.handle = monitor_handle_;
     monitor_entry.owner_socket = owner_socket_;
     monitor_entry.service_name = service_name_;
-    monitor_entry.role = role_;
     _service_monitors.push_back (monitor_entry);
-}
-
-void spot_node_t::ensure_service_stats_row_locked (
-  const std::string &service_name_)
-{
-    if (_service_attachment_state.stats_cache.count (service_name_) != 0)
-        return;
-    zlink_spot_service_attachment_stats_t row;
-    reset_service_attachment_stats_row_local (&row, service_name_);
-    _service_attachment_state.stats_cache[service_name_] = row;
-}
-
-void spot_node_t::erase_service_stats_row_if_unused_locked (
-  const std::string &service_name_)
-{
-    if (_service_attachments.count (service_name_) != 0
-        || _service_discoveries.count (service_name_) != 0)
-        return;
-    _service_attachment_state.stats_cache.erase (service_name_);
-}
-
-void spot_node_t::update_service_stats_locked (
-  const std::string &service_name_, const service_attachment_t &attachment_)
-{
-    ensure_service_stats_row_locked (service_name_);
-    zlink_spot_service_attachment_stats_t &row =
-      _service_attachment_state.stats_cache[service_name_];
-    reset_service_attachment_stats_row_local (&row, service_name_);
-    row.router_count =
-      static_cast<uint32_t> (attachment_.manual.routers.size ());
-    row.pub_count = attachment_.manual.pub ? 1u : 0u;
-    row.sub_count = attachment_.manual.sub ? 1u : 0u;
-    row.auto_router_count = attachment_.auto_router_count ();
-    row.auto_pub_count = attachment_.auto_pub_count ();
-    row.auto_sub_count = attachment_.auto_sub_count ();
-}
-
-void spot_node_t::register_manual_router_locked (const std::string &service_name_,
-                                                 socket_base_t *router_,
-                                                 void *monitor_handle_)
-{
-    service_attachment_t &attachment = _service_attachments[service_name_];
-    attachment.manual.routers.push_back (router_);
-    _service_attachment_socket_index[router_] = service_name_;
-    register_service_monitor_locked (router_, monitor_handle_, service_name_,
-                                     ZLINK_SPOT_SERVICE_ATTACHMENT_ROUTER);
-    update_service_stats_locked (service_name_, attachment);
-}
-
-void spot_node_t::register_manual_pubsub_locked (const std::string &service_name_,
-                                                 socket_base_t *pub_,
-                                                 socket_base_t *sub_,
-                                                 void *pub_monitor_handle_,
-                                                 void *sub_monitor_handle_)
-{
-    service_attachment_t &attachment = _service_attachments[service_name_];
-    attachment.manual.pub = pub_;
-    attachment.manual.sub = sub_;
-    _service_attachment_socket_index[pub_] = service_name_;
-    _service_attachment_socket_index[sub_] = service_name_;
-    register_service_monitor_locked (
-      pub_, pub_monitor_handle_, service_name_, ZLINK_SPOT_SERVICE_ATTACHMENT_PUB);
-    register_service_monitor_locked (
-      sub_, sub_monitor_handle_, service_name_, ZLINK_SPOT_SERVICE_ATTACHMENT_SUB);
-    update_service_stats_locked (service_name_, attachment);
 }
 
 void spot_node_t::reset_spot_discovery_state_locked ()
@@ -482,57 +361,6 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
     if (!discovery_) {
         errno = EINVAL;
         return -1;
-    }
-
-    if (discovery_->service_type () == discovery_protocol::service_type_socket) {
-        const std::string service_name = discovery_->service_name ();
-        std::vector<provider_info_t> providers;
-        discovery_->snapshot_providers (service_name, &providers);
-        bool has_router = false;
-        bool has_pub = false;
-        bool has_sub = false;
-        for (size_t i = 0; i < providers.size (); ++i) {
-            if (providers[i].service_role == discovery_protocol::service_role_dealer) {
-                errno = ENOTSUP;
-                return -1;
-            }
-            if (providers[i].service_role == discovery_protocol::service_role_router)
-                has_router = true;
-            else if (providers[i].service_role == discovery_protocol::service_role_pub)
-                has_pub = true;
-            else if (providers[i].service_role == discovery_protocol::service_role_sub)
-                has_sub = true;
-            else {
-                errno = ENOTSUP;
-                return -1;
-            }
-        }
-        if (has_pub != has_sub) {
-            errno = EINVAL;
-            return -1;
-        }
-
-        {
-            scoped_lock_t lock (_sync);
-            if (validate_socket_service_discovery_attach_locked (service_name,
-                                                                 discovery_)
-                != 0) {
-                return -1;
-            }
-            _service_discoveries[service_name] = discovery_;
-            ensure_service_stats_row_locked (service_name);
-            queue_service_discovery_refresh_locked (service_name);
-            _summary_last_changed_ms = zlink::clock_t ().now_ms ();
-        }
-        if (discovery_->add_observer (this) != 0) {
-            scoped_lock_t lock (_sync);
-            _service_discoveries.erase (service_name);
-            _service_attachment_state.pending_refresh_services.erase (service_name);
-            erase_service_stats_row_if_unused_locked (service_name);
-            return -1;
-        }
-        wake_control_task ();
-        return 0;
     }
 
     if (discovery_->service_type () != discovery_protocol::service_type_spot_node) {
@@ -581,14 +409,87 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
     return 0;
 }
 
-int spot_node_t::attach_router (const char *service_name_, socket_base_t *router_)
+int spot_node_t::attach_channel_dealer (discovery_t *discovery_,
+                                        socket_base_t *dealer_)
 {
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
 
-    if (!valid_service_name_local (service_name_)
-        || !valid_router_attachment_type_local (router_)) {
+    if (!discovery_ || !dealer_) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (discovery_->service_type () != discovery_protocol::service_type_socket
+        || !valid_attached_socket_type_local (dealer_, ZLINK_CORE_SOCKET_DEALER)) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (ensure_healthy () != 0)
+        return -1;
+
+    const std::string channel_name = discovery_->service_name ();
+    {
+        scoped_lock_t lock (_sync);
+        if (channel_name.empty ()) {
+            errno = EINVAL;
+            return -1;
+        }
+        if (_channel_dealer_discoveries.count (channel_name) != 0
+            || (_service_attachments.count (channel_name) != 0
+                && !_service_attachments[channel_name].manual.routers.empty ())) {
+            errno = EBUSY;
+            return -1;
+        }
+        if (_service_attachment_socket_index.count (dealer_) != 0) {
+            errno = EBUSY;
+            return -1;
+        }
+    }
+
+    if (discovery_->add_observer (this) != 0)
+        return -1;
+
+    zlink_socket_monitor_open_options_t monitor_options;
+    memset (&monitor_options, 0, sizeof (monitor_options));
+    monitor_options.events = ZLINK_EVENT_ALL;
+    void *monitor = zlink_socket_monitor_open (dealer_, &monitor_options);
+    if (!monitor) {
+        discovery_->remove_observer (this);
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    if (_channel_dealer_discoveries.count (channel_name) != 0
+        || (_service_attachments.count (channel_name) != 0
+            && !_service_attachments[channel_name].manual.routers.empty ())
+        || _service_attachment_socket_index.count (dealer_) != 0) {
+        zlink_monitor_close (&monitor);
+        discovery_->remove_observer (this);
+        errno = EBUSY;
+        return -1;
+    }
+
+    _channel_dealer_discoveries[channel_name] = discovery_;
+    service_attachment_t &attachment = _service_attachments[channel_name];
+    attachment.manual.routers.push_back (dealer_);
+    attachment.manual.channel_dealer_discovery = discovery_;
+    _service_attachment_socket_index[dealer_] = channel_name;
+    register_service_monitor_locked (dealer_, monitor, channel_name);
+    rebuild_service_attachment_caches_locked ();
+    _summary_last_changed_ms = zlink::clock_t ().now_ms ();
+    return 0;
+}
+
+int spot_node_t::attach_channel_dealer_manual (const char *channel_name_,
+                                               socket_base_t *dealer_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    if (!valid_service_name_local (channel_name_)
+        || !valid_attached_socket_type_local (dealer_, ZLINK_CORE_SOCKET_DEALER)) {
         errno = EINVAL;
         return -1;
     }
@@ -598,72 +499,71 @@ int spot_node_t::attach_router (const char *service_name_, socket_base_t *router
     zlink_socket_monitor_open_options_t monitor_options;
     memset (&monitor_options, 0, sizeof (monitor_options));
     monitor_options.events = ZLINK_EVENT_ALL;
-    void *monitor = zlink_socket_monitor_open (router_, &monitor_options);
+    void *monitor = zlink_socket_monitor_open (dealer_, &monitor_options);
     if (!monitor)
         return -1;
 
     scoped_lock_t lock (_sync);
-    if (validate_manual_service_attachment_locked (service_name_, router_) != 0) {
+    const std::string channel_name (channel_name_);
+    if (_channel_dealer_discoveries.count (channel_name) != 0
+        || (_service_attachments.count (channel_name) != 0
+            && !_service_attachments[channel_name].manual.routers.empty ())
+        || _service_attachment_socket_index.count (dealer_) != 0) {
         zlink_monitor_close (&monitor);
+        errno = EBUSY;
         return -1;
     }
 
-    register_manual_router_locked (service_name_, router_, monitor);
+    service_attachment_t &attachment = _service_attachments[channel_name];
+    attachment.manual.routers.push_back (dealer_);
+    attachment.manual.channel_dealer_discovery = NULL;
+    _service_attachment_socket_index[dealer_] = channel_name;
+    register_service_monitor_locked (dealer_, monitor, channel_name);
     rebuild_service_attachment_caches_locked ();
+    _summary_last_changed_ms = zlink::clock_t ().now_ms ();
     return 0;
 }
 
-int spot_node_t::attach_pubsub (const char *service_name_,
-                                socket_base_t *pub_,
-                                socket_base_t *sub_)
+int spot_node_t::attach_pub_ingress (socket_base_t *pub_)
 {
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
 
-    if (!valid_service_name_local (service_name_)
-        || !valid_attached_socket_type_local (pub_, ZLINK_CORE_SOCKET_PUB)
-        || !valid_attached_socket_type_local (sub_, ZLINK_CORE_SOCKET_SUB)) {
+    if (!valid_attached_socket_type_local (pub_, ZLINK_CORE_SOCKET_PUB)) {
         errno = EINVAL;
         return -1;
     }
     if (ensure_healthy () != 0)
         return -1;
 
-    zlink_socket_monitor_open_options_t monitor_options;
-    memset (&monitor_options, 0, sizeof (monitor_options));
-    monitor_options.events = ZLINK_EVENT_ALL;
-    void *pub_monitor = zlink_socket_monitor_open (pub_, &monitor_options);
-    if (!pub_monitor)
-        return -1;
-    void *sub_monitor = zlink_socket_monitor_open (sub_, &monitor_options);
-    if (!sub_monitor) {
-        zlink_monitor_close (&pub_monitor);
+    const std::string endpoint = pub_ingress_endpoint ();
+    if (endpoint.empty ()) {
+        errno = EFAULT;
         return -1;
     }
 
     {
         scoped_lock_t lock (_sync);
-        if (validate_manual_service_attachment_locked (service_name_, pub_, sub_)
-            != 0) {
-            zlink_monitor_close (&pub_monitor);
-            zlink_monitor_close (&sub_monitor);
-            return -1;
-        }
-
-        service_attachment_t &attachment = _service_attachments[service_name_];
-        if (attachment.manual.pub || attachment.manual.sub) {
-            zlink_monitor_close (&pub_monitor);
-            zlink_monitor_close (&sub_monitor);
+        if (_pub_ingress || _service_attachment_socket_index.count (pub_) != 0) {
             errno = EBUSY;
             return -1;
         }
-        register_manual_pubsub_locked (service_name_, pub_, sub_, pub_monitor,
-                                       sub_monitor);
-        rebuild_service_attachment_caches_locked ();
     }
 
-    return apply_service_subscription_filters ();
+    if (pub_->connect (endpoint.c_str ()) != 0)
+        return -1;
+
+    scoped_lock_t lock (_sync);
+    if (_pub_ingress || _service_attachment_socket_index.count (pub_) != 0) {
+        (void) pub_->term_endpoint (endpoint.c_str ());
+        errno = EBUSY;
+        return -1;
+    }
+    _pub_ingress = pub_;
+    _service_attachment_socket_index[pub_] = std::string ("__spot_pub_ingress__");
+    _summary_last_changed_ms = zlink::clock_t ().now_ms ();
+    return 0;
 }
 
 int spot_node_t::try_register_spot_facade (spot_handle_t *spot_)
@@ -732,6 +632,31 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
     if (!sockets_to_close.empty ())
         return;
     scoped_lock_t lock (_sync);
+    for (std::map<std::string, discovery_t *>::iterator it =
+           _channel_dealer_discoveries.begin ();
+         it != _channel_dealer_discoveries.end (); ++it) {
+        if (it->second != discovery_)
+            continue;
+        const std::string channel_name = it->first;
+        std::map<std::string, service_attachment_t>::iterator attach_it =
+          _service_attachments.find (channel_name);
+        if (attach_it != _service_attachments.end ()) {
+            std::vector<socket_base_t *> owners = attach_it->second.manual.routers;
+            for (size_t i = 0; i < owners.size (); ++i)
+                _service_attachment_socket_index.erase (owners[i]);
+            remove_service_monitors_by_owner_locked (owners);
+            attach_it->second.manual.routers.clear ();
+            attach_it->second.manual.channel_dealer_discovery = NULL;
+            if (!attach_it->second.has_manual_pubsub ()
+                && attach_it->second.discovered.routers.empty ()
+                && !attach_it->second.has_auto_pubsub ())
+                _service_attachments.erase (attach_it);
+        }
+        _channel_dealer_discoveries.erase (it);
+        rebuild_service_attachment_caches_locked ();
+        _summary_last_changed_ms = zlink::clock_t ().now_ms ();
+        return;
+    }
     if (_discovery != discovery_)
         return;
     reset_spot_discovery_state_locked ();
@@ -742,6 +667,14 @@ void spot_node_t::on_discovery_shutdown_requested (discovery_t *discovery_)
 {
     {
         scoped_lock_t lock (_sync);
+        for (std::map<std::string, discovery_t *>::iterator it =
+               _channel_dealer_discoveries.begin ();
+             it != _channel_dealer_discoveries.end (); ++it) {
+            if (it->second == discovery_) {
+                _summary_last_changed_ms = zlink::clock_t ().now_ms ();
+                return;
+            }
+        }
         for (std::map<std::string, discovery_t *>::iterator it =
                _service_discoveries.begin ();
             it != _service_discoveries.end (); ++it) {

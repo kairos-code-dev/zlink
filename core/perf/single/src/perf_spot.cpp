@@ -7,10 +7,8 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
-#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
-#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -37,22 +35,11 @@ int current_process_id ()
 
 struct spot_recv_state_t
 {
-    spot_recv_state_t () :
-        run_id (0),
-        msg_size (0),
-        active_received (0),
-        fatal (false),
-        last_recv_ns (0)
-    {
-    }
+    spot_recv_state_t () : run_id (0), msg_size (0), active_received (0) {}
 
-    std::mutex mutex;
-    std::condition_variable cv;
     uint32_t run_id;
     size_t msg_size;
     std::atomic<unsigned long long> active_received;
-    std::atomic<bool> fatal;
-    std::atomic<uint64_t> last_recv_ns;
     latency_stats_builder_t latency;
 };
 
@@ -117,86 +104,6 @@ int recv_spot_header_flags (void *subscriber_,
     return 1;
 }
 
-void spot_dispatch_event_handler (void *spot_,
-                                  zlink_spot_dispatch_event_t event_,
-                                  void *userdata_)
-{
-    if (event_ != ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE || !spot_
-        || !userdata_)
-        return;
-
-    spot_recv_state_t *state = static_cast<spot_recv_state_t *> (userdata_);
-    while (true) {
-        perf_single_metric::header_t header;
-        bool header_ok = false;
-        const int recv_rc =
-          recv_spot_header_flags (spot_, ZLINK_DONTWAIT, &header, &header_ok);
-        if (recv_rc > 0) {
-            state->last_recv_ns.store (perf_single_metric::now_ns (),
-                                       std::memory_order_release);
-            if (header_ok && single_header_matches_run (*state, header)) {
-                state->active_received.fetch_add (1,
-                                                  std::memory_order_release);
-                {
-                    std::lock_guard<std::mutex> lock (state->mutex);
-                    state->latency.add (single_latency_ns (header));
-                }
-            }
-            continue;
-        }
-
-        if (recv_rc == 0)
-            break;
-
-        state->fatal.store (true, std::memory_order_release);
-        break;
-    }
-    state->cv.notify_all ();
-}
-
-bool install_spot_dispatch_handler (void *subscriber_, spot_recv_state_t *state_)
-{
-    if (!subscriber_ || !state_)
-        return false;
-
-    if (zlink_spot_dispatch_event_handler (
-          subscriber_, &spot_dispatch_event_handler, state_)
-        != ZLINK_HANDLER_OK) {
-        if (bench_debug_enabled ())
-            std::cerr << "[perf-spot] dispatch handler install failed"
-                      << std::endl;
-        return false;
-    }
-    return true;
-}
-
-void reset_spot_recv_state (spot_recv_state_t *state_)
-{
-    if (!state_)
-        return;
-
-    state_->active_received.store (0, std::memory_order_release);
-    state_->latency = latency_stats_builder_t ();
-    state_->fatal.store (false, std::memory_order_release);
-    state_->last_recv_ns.store (0, std::memory_order_release);
-}
-
-bool wait_for_spot_recv_signal (spot_recv_state_t *state_,
-                                std::chrono::milliseconds timeout_,
-                                bool require_message_)
-{
-    if (!state_)
-        return false;
-    (void) require_message_;
-
-    std::unique_lock<std::mutex> lock (state_->mutex);
-    const bool ready = state_->cv.wait_for (lock, timeout_, [&] () {
-        return state_->fatal.load (std::memory_order_acquire)
-               || state_->active_received.load (std::memory_order_acquire) > 0;
-    });
-    return ready && !state_->fatal.load (std::memory_order_acquire);
-}
-
 bool publish_metric_payload (void *publisher_,
                              std::vector<char> *payload_,
                              size_t msg_size_,
@@ -231,6 +138,9 @@ bool publish_metric_payload (void *publisher_,
           publisher_, k_topic, &part, 1,
           static_cast<zlink_send_flags_t> (flags_))
         != 0) {
+        const int err = zlink_errno ();
+        if (err == EINTR || (flags_ & ZLINK_DONTWAIT) != 0 && err == EAGAIN)
+            return true;
         return false;
     }
 
@@ -246,8 +156,8 @@ bool wait_for_spot_ready_barrier (void *publisher_,
     if (!publisher_ || !subscriber_ || !state_)
         return false;
 
-    (void) subscriber_;
-    reset_spot_recv_state (state_);
+    state_->active_received.store (0, std::memory_order_release);
+    state_->latency = latency_stats_builder_t ();
     std::vector<char> payload;
     const auto deadline =
       std::chrono::steady_clock::now ()
@@ -260,25 +170,39 @@ bool wait_for_spot_ready_barrier (void *publisher_,
                                      0,
                                      perf_single_metric::phase_active,
                                      ZLINK_DONTWAIT)) {
-            const int err = zlink_errno ();
-            if (err == EAGAIN || err == EINTR) {
-                std::this_thread::yield ();
-                continue;
-            }
             if (bench_debug_enabled ())
-                std::cerr << "[perf-spot] probe publish failed err=" << err
-                          << std::endl;
+                std::cerr << "[perf-spot] probe publish failed" << std::endl;
             return false;
         }
 
-        const bool ready =
-          wait_for_spot_recv_signal (
-            state_, std::chrono::milliseconds (50), true);
-        if (ready
-            && state_->active_received.load (std::memory_order_acquire) > 0)
-            return true;
-        if (state_->fatal.load (std::memory_order_acquire))
-            return false;
+        const auto probe_deadline =
+          std::min (deadline, std::chrono::steady_clock::now ()
+                                 + std::chrono::milliseconds (50));
+        while (std::chrono::steady_clock::now () < probe_deadline) {
+            bool progressed = false;
+            perf_single_metric::header_t header;
+            bool header_ok = false;
+            const int recv_rc =
+              recv_spot_header_flags (subscriber_, 0, &header, &header_ok);
+            if (recv_rc > 0) {
+                progressed = true;
+                if (header_ok) {
+                    (void) single_record_active_header (state_, header);
+                    if (state_->active_received.load (std::memory_order_acquire)
+                        > 0) {
+                        return true;
+                    }
+                }
+            } else if (recv_rc < 0) {
+                return false;
+            }
+
+            if (!progressed
+                && !wait_socket_event_until (
+                  subscriber_, ZLINK_POLLIN, probe_deadline)) {
+                break;
+            }
+        }
     }
 
     return state_->active_received.load (std::memory_order_acquire) > 0;
@@ -310,12 +234,7 @@ bool send_spot_samples (void *publisher_,
                                      state_->run_id,
                                      seq,
                                      perf_single_metric::phase_active,
-                                     ZLINK_DONTWAIT)) {
-            const int err = zlink_errno ();
-            if (err == EAGAIN || err == EINTR) {
-                std::this_thread::yield ();
-                continue;
-            }
+                                     0)) {
             return false;
         }
         sent_count_->fetch_add (1, std::memory_order_release);
@@ -337,14 +256,74 @@ bool run_active_window (void *publisher_,
         return false;
     }
 
-    (void) subscriber_;
-    reset_spot_recv_state (state_);
-
+    state_->active_received.store (0, std::memory_order_release);
+    state_->latency = latency_stats_builder_t ();
     std::vector<char> payload;
     std::atomic<unsigned long long> sent_count (0);
     std::atomic<bool> sender_ok (true);
     std::atomic<bool> sender_done (false);
-    (void) recv_timeout_ms_;
+    std::atomic<unsigned long long> received (0);
+    latency_stats_builder_t latency_builder;
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::seconds (std::max (1, duration_s_));
+    const auto drain_idle_limit =
+      std::chrono::milliseconds (recv_timeout_ms_ > 0 ? recv_timeout_ms_ : 200);
+
+    std::thread receiver_thread ([&]() {
+        auto last_recv_at = std::chrono::steady_clock::now ();
+        while (true) {
+            const bool done = sender_done.load (std::memory_order_acquire);
+            perf_single_metric::header_t header;
+            bool header_ok = false;
+            const int recv_rc =
+              recv_spot_header_flags (subscriber_, 0, &header, &header_ok);
+            if (recv_rc > 0) {
+                last_recv_at = std::chrono::steady_clock::now ();
+                if (header_ok && single_header_matches_run (*state_, header)
+                    && std::chrono::steady_clock::now () < deadline) {
+                    received.fetch_add (1, std::memory_order_relaxed);
+                    latency_builder.add (single_latency_ns (header));
+                }
+
+                for (;;) {
+                    perf_single_metric::header_t burst_header;
+                    bool burst_header_ok = false;
+                    const int burst_rc = recv_spot_header_flags (
+                      subscriber_, ZLINK_DONTWAIT, &burst_header,
+                      &burst_header_ok);
+                    if (burst_rc > 0) {
+                        last_recv_at = std::chrono::steady_clock::now ();
+                        if (burst_header_ok
+                            && single_header_matches_run (*state_, burst_header)
+                            && std::chrono::steady_clock::now () < deadline) {
+                            received.fetch_add (1, std::memory_order_relaxed);
+                            latency_builder.add (
+                              single_latency_ns (burst_header));
+                        }
+                        continue;
+                    }
+                    if (burst_rc == 0)
+                        break;
+                    sender_ok.store (false, std::memory_order_release);
+                    return;
+                }
+                continue;
+            }
+
+            if (recv_rc == 0) {
+                if (done
+                    && std::chrono::steady_clock::now () - last_recv_at
+                         >= drain_idle_limit) {
+                    break;
+                }
+                continue;
+            }
+
+            sender_ok.store (false, std::memory_order_release);
+            return;
+        }
+    });
 
     std::thread sender_thread ([&]() {
         sender_ok.store (
@@ -352,65 +331,30 @@ bool run_active_window (void *publisher_,
             publisher_, &payload, state_, duration_s_, &sent_count),
           std::memory_order_release);
         sender_done.store (true, std::memory_order_release);
-        state_->cv.notify_all ();
     });
 
     sender_thread.join ();
-    {
-        std::unique_lock<std::mutex> lock (state_->mutex);
-        const auto drain_deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::seconds (std::max (5, duration_s_ + 2));
-        while (!state_->fatal.load (std::memory_order_acquire)) {
-            const bool done = sender_done.load (std::memory_order_acquire);
-            const uint64_t last_recv_ns =
-                state_->last_recv_ns.load (std::memory_order_acquire);
-            const unsigned long long sent =
-              sent_count.load (std::memory_order_acquire);
-            const unsigned long long received =
-              state_->active_received.load (std::memory_order_acquire);
-            if (done && received >= sent && sent > 0)
-                break;
-            if (std::chrono::steady_clock::now () >= drain_deadline) {
-                if (done && received >= sent)
-                    break;
-                if (bench_debug_enabled ()) {
-                    std::cerr << "[perf-spot] drain deadline hit sent="
-                              << sent << " received=" << received
-                              << " last_recv_ns=" << last_recv_ns << std::endl;
-                }
-                break;
-            }
-            state_->cv.wait_until (lock, drain_deadline);
-        }
-    }
+    receiver_thread.join ();
     if (!sender_ok.load (std::memory_order_acquire)) {
         if (bench_debug_enabled ()) {
             std::cerr << "[perf-spot] active phase failed sent="
                       << sent_count.load (std::memory_order_relaxed)
                       << " received="
-                      << state_->active_received.load (std::memory_order_relaxed)
-                      << " latency_count=" << state_->latency.count ()
-                      << " latency_mean=" << state_->latency.snapshot ().mean_ns
+                      << received.load (std::memory_order_relaxed)
                       << std::endl;
         }
         return false;
     }
 
     const unsigned long long recv_total =
-      state_->active_received.load (std::memory_order_relaxed);
-    latency_stats_t latency_snapshot;
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        latency_snapshot = state_->latency.snapshot ();
-    }
-    if (recv_total == 0 || latency_snapshot.mean_ns <= 0.0)
+      received.load (std::memory_order_relaxed);
+    if (recv_total == 0 || latency_builder.count () == 0)
         return false;
 
     *throughput_out_ =
       static_cast<double> (recv_total)
       / static_cast<double> (std::max (1, duration_s_));
-    *latency_out_ = latency_snapshot;
+    *latency_out_ = latency_builder.snapshot ();
     return true;
 }
 
@@ -419,26 +363,14 @@ void cleanup_spot_case (void **subscriber_,
                         void **subscriber_node_,
                         void **publisher_node_)
 {
-    if (bench_debug_enabled ())
-        std::cerr << "[perf-spot] cleanup begin" << std::endl;
     if (subscriber_ && *subscriber_)
-        if (bench_debug_enabled ())
-            std::cerr << "[perf-spot] destroy subscriber" << std::endl;
         zlink_spot_destroy (subscriber_);
     if (publisher_ && *publisher_)
-        if (bench_debug_enabled ())
-            std::cerr << "[perf-spot] destroy publisher" << std::endl;
         zlink_spot_destroy (publisher_);
     if (subscriber_node_ && *subscriber_node_)
-        if (bench_debug_enabled ())
-            std::cerr << "[perf-spot] destroy subscriber node" << std::endl;
         (void) zlink_spot_node_destroy (subscriber_node_);
     if (publisher_node_ && *publisher_node_)
-        if (bench_debug_enabled ())
-            std::cerr << "[perf-spot] destroy publisher node" << std::endl;
         (void) zlink_spot_node_destroy (publisher_node_);
-    if (bench_debug_enabled ())
-        std::cerr << "[perf-spot] cleanup end" << std::endl;
 }
 
 int run_case (const std::string &lib_name_,
@@ -526,12 +458,6 @@ int run_case (const std::string &lib_name_,
     spot_recv_state_t state;
     state.run_id = next_single_metric_run_id ();
     state.msg_size = msg_size_;
-    if (!install_spot_dispatch_handler (subscriber, &state)) {
-        cleanup_spot_case (&subscriber, &publisher, &subscriber_node,
-                           &publisher_node);
-        print_fail ();
-        return 1;
-    }
     if (!wait_for_spot_ready_barrier (
           publisher,
           subscriber,

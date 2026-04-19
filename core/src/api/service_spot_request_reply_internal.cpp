@@ -56,6 +56,50 @@ spot_dispatch_state_t::spot_dispatch_state_t () :
 {
 }
 
+queued_spot_subscribe_message_t::queued_spot_subscribe_message_t ()
+{
+    memset (&source_rid, 0, sizeof (source_rid));
+}
+
+queued_spot_subscribe_message_t::~queued_spot_subscribe_message_t ()
+{
+    for (size_t i = 0; i < parts.size (); ++i)
+        zlink_msg_close (&parts[i]);
+}
+
+queued_spot_subscribe_message_t::queued_spot_subscribe_message_t (
+  queued_spot_subscribe_message_t &&other_) noexcept :
+    source_rid (other_.source_rid),
+    topic (std::move (other_.topic)),
+    parts (std::move (other_.parts))
+{
+    memset (&other_.source_rid, 0, sizeof (other_.source_rid));
+    other_.parts.clear ();
+}
+
+queued_spot_subscribe_message_t &queued_spot_subscribe_message_t::operator= (
+  queued_spot_subscribe_message_t &&other_) noexcept
+{
+    if (this == &other_)
+        return *this;
+
+    for (size_t i = 0; i < parts.size (); ++i)
+        zlink_msg_close (&parts[i]);
+
+    source_rid = other_.source_rid;
+    topic = std::move (other_.topic);
+    parts = std::move (other_.parts);
+
+    memset (&other_.source_rid, 0, sizeof (other_.source_rid));
+    other_.parts.clear ();
+    return *this;
+}
+
+spot_subscribe_dispatch_queue_t::spot_subscribe_dispatch_queue_t () :
+    closed (false)
+{
+}
+
 spot_request_reply_state_t::spot_request_reply_state_t (void *owner_) :
     owner (owner_),
     default_timeout_ms (zlink::request_reply::default_timeout_ms),

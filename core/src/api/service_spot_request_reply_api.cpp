@@ -59,6 +59,7 @@ using zlink::spot_reqrep_internal::find_spot_state_by_identity;
 using zlink::spot_reqrep_internal::install_spot_dispatch_event_task;
 using zlink::spot_reqrep_internal::maybe_dispatch_spot_event;
 using zlink::spot_reqrep_internal::close_spot_dispatch_parts;
+using zlink::spot_reqrep_internal::close_spot_subscribe_dispatch_queue;
 using zlink::spot_reqrep_internal::queue_spot_message;
 using zlink::spot_reqrep_internal::queue_spot_subscribe_message;
 using zlink::spot_reqrep_internal::recv_internal_spot_queue;
@@ -935,13 +936,6 @@ int spot_dispatch_subscribe_recv_internal (
 
     if (validate_recv_flags (flags_) != 0)
         return -1;
-
-    if (zlink::internal_pair_queue::ensure (resolve_spot_ctx (spot_),
-                                            "zlink.spot.subscribe.recv",
-                                            &state->subscribe_queue)
-        != 0) {
-        return -1;
-    }
 
     return recv_internal_spot_subscribe_queue (&state->subscribe_queue,
                                                source_rid_out_, parts_out_,
@@ -2460,7 +2454,7 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
         (void) dispatch_runtime->remove_task (dispatch_task_id);
     if (state) {
         std::lock_guard<std::mutex> state_lock (state->mutex);
-        zlink::internal_pair_queue::close (&state->subscribe_queue);
+        close_spot_subscribe_dispatch_queue (&state->subscribe_queue);
         zlink::internal_pair_queue::close (&state->recv_queue);
     }
     for (size_t i = 0; i < timeout_tasks.size (); ++i)

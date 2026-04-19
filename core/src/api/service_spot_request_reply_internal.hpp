@@ -6,6 +6,8 @@
 #include <zlink.h>
 
 #include <memory>
+#include <condition_variable>
+#include <deque>
 #include <mutex>
 #include <set>
 #include <string>
@@ -72,6 +74,37 @@ struct spot_dispatch_state_t
     bool running;
 };
 
+struct queued_spot_subscribe_message_t
+{
+    queued_spot_subscribe_message_t ();
+    ~queued_spot_subscribe_message_t ();
+
+    queued_spot_subscribe_message_t (
+      queued_spot_subscribe_message_t &&other_) noexcept;
+    queued_spot_subscribe_message_t &operator= (
+      queued_spot_subscribe_message_t &&other_) noexcept;
+
+    zlink_routing_id_t source_rid;
+    std::string topic;
+    std::vector<zlink_msg_t> parts;
+
+  private:
+    queued_spot_subscribe_message_t (
+      const queued_spot_subscribe_message_t &);
+    queued_spot_subscribe_message_t &operator= (
+      const queued_spot_subscribe_message_t &);
+};
+
+struct spot_subscribe_dispatch_queue_t
+{
+    spot_subscribe_dispatch_queue_t ();
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::deque<queued_spot_subscribe_message_t> messages;
+    bool closed;
+};
+
 struct spot_request_reply_state_t
 {
     explicit spot_request_reply_state_t (void *owner_);
@@ -85,7 +118,7 @@ struct spot_request_reply_state_t
                        pending_reply_t,
                        pending_spot_key_hash_t>
       pending_replies;
-    zlink::internal_pair_queue::queue_t subscribe_queue;
+    spot_subscribe_dispatch_queue_t subscribe_queue;
     zlink::internal_pair_queue::queue_t recv_queue;
     zlink_spot_handler_fn request_handler;
     void *request_handler_userdata;
@@ -138,6 +171,8 @@ int queue_spot_subscribe_message (spot_request_reply_state_t *state_,
                                   size_t topic_len_,
                                   zlink_msg_t *parts_,
                                   size_t part_count_);
+void close_spot_subscribe_dispatch_queue (
+  spot_subscribe_dispatch_queue_t *queue_);
 int recv_internal_spot_queue (zlink::internal_pair_queue::queue_t *queue_,
                               const zlink_routing_id_t **source_rid_out_,
                               const zlink_routing_id_t **spot_rid_out_,
@@ -146,7 +181,7 @@ int recv_internal_spot_queue (zlink::internal_pair_queue::queue_t *queue_,
                               size_t *part_count_out_,
                               int flags_);
 int recv_internal_spot_subscribe_queue (
-  zlink::internal_pair_queue::queue_t *queue_,
+  spot_subscribe_dispatch_queue_t *queue_,
   zlink_routing_id_t *source_rid_out_,
   zlink_msg_t **parts_out_,
   size_t *part_count_out_,

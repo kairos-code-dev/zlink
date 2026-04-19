@@ -17,7 +17,9 @@ namespace
 using zlink::spot_reqrep_internal::g_spot_recv_source_rid;
 using zlink::spot_reqrep_internal::g_spot_recv_spot_rid;
 using zlink::spot_reqrep_internal::maybe_dispatch_spot_event;
+using zlink::spot_reqrep_internal::queued_spot_subscribe_message_t;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
+using zlink::spot_reqrep_internal::spot_subscribe_dispatch_queue_t;
 
 zlink::ctx_t *resolve_spot_ctx (void *spot_)
 {
@@ -165,42 +167,50 @@ int zlink::spot_reqrep_internal::queue_spot_subscribe_message (
         return -1;
     }
 
-    if (zlink::internal_pair_queue::ensure (resolve_spot_ctx (state_->owner),
-                                            "zlink.spot.subscribe.recv",
-                                            &state_->subscribe_queue)
-        != 0) {
-        close_spot_dispatch_parts (parts_, part_count_);
-        return -1;
-    }
-
-    const void *source_data =
-      has_valid_routing_id (source_rid_) ? source_rid_->data : NULL;
-    const size_t source_size =
-      has_valid_routing_id (source_rid_) ? source_rid_->size : 0;
-    const int topic_flags = part_count_ > 0 ? ZLINK_SNDMORE : 0;
-    if (zlink::internal_pair_queue::send_buffer_frame (
-          state_->subscribe_queue.tx, source_data, source_size, ZLINK_SNDMORE)
-        != 0
-        || zlink::internal_pair_queue::send_buffer_frame (
-             state_->subscribe_queue.tx, topic_, topic_len_, topic_flags)
-             != 0) {
-        close_spot_dispatch_parts (parts_, part_count_);
-        return -1;
-    }
+    queued_spot_subscribe_message_t message;
+    if (has_valid_routing_id (source_rid_))
+        message.source_rid = *source_rid_;
+    message.topic.assign (topic_, topic_len_);
+    message.parts.reserve (part_count_);
 
     for (size_t i = 0; i < part_count_; ++i) {
-        const int flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
-        if (state_->subscribe_queue.tx->send (
-              reinterpret_cast<zlink::msg_t *> (&parts_[i]), flags)
-            != 0) {
+        zlink_msg_t part;
+        zlink_msg_init (&part);
+        if (zlink_msg_move (&part, &parts_[i]) != 0) {
+            zlink_msg_close (&part);
             close_spot_dispatch_parts (&parts_[i], part_count_ - i);
             return -1;
         }
+        message.parts.push_back (part);
     }
+
+    {
+        std::lock_guard<std::mutex> lock (state_->subscribe_queue.mutex);
+        if (state_->subscribe_queue.closed) {
+            errno = ETERM;
+            return -1;
+        }
+        state_->subscribe_queue.messages.push_back (std::move (message));
+    }
+    state_->subscribe_queue.cv.notify_one ();
 
     maybe_dispatch_spot_event (state_,
                                ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE);
     return 0;
+}
+
+void zlink::spot_reqrep_internal::close_spot_subscribe_dispatch_queue (
+  spot_subscribe_dispatch_queue_t *queue_)
+{
+    if (!queue_)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock (queue_->mutex);
+        queue_->closed = true;
+        queue_->messages.clear ();
+    }
+    queue_->cv.notify_all ();
 }
 
 int zlink::spot_reqrep_internal::recv_internal_spot_queue (
@@ -322,7 +332,7 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
 }
 
 int zlink::spot_reqrep_internal::recv_internal_spot_subscribe_queue (
-  zlink::internal_pair_queue::queue_t *queue_,
+  spot_subscribe_dispatch_queue_t *queue_,
   zlink_routing_id_t *source_rid_out_,
   zlink_msg_t **parts_out_,
   size_t *part_count_out_,
@@ -330,8 +340,7 @@ int zlink::spot_reqrep_internal::recv_internal_spot_subscribe_queue (
   size_t *topic_id_len_out_,
   int flags_)
 {
-    if (!queue_ || !queue_->rx || !parts_out_ || !part_count_out_
-        || !topic_id_len_out_) {
+    if (!queue_ || !parts_out_ || !part_count_out_ || !topic_id_len_out_) {
         errno = EFAULT;
         return -1;
     }
@@ -339,79 +348,44 @@ int zlink::spot_reqrep_internal::recv_internal_spot_subscribe_queue (
     if (source_rid_out_)
         memset (source_rid_out_, 0, sizeof (*source_rid_out_));
 
-    zlink_msg_t source_frame;
-    zlink_msg_t topic_frame;
-    zlink_msg_t *first_payload = NULL;
-    zlink_msg_init (&source_frame);
-    zlink_msg_init (&topic_frame);
+    queued_spot_subscribe_message_t message;
+    {
+        std::unique_lock<std::mutex> lock (queue_->mutex);
+        while (queue_->messages.empty ()) {
+            if ((flags_ & ZLINK_DONTWAIT) != 0) {
+                errno = EAGAIN;
+                return -1;
+            }
+            if (queue_->closed) {
+                errno = ETERM;
+                return -1;
+            }
+            queue_->cv.wait (lock);
+        }
+        message = std::move (queue_->messages.front ());
+        queue_->messages.pop_front ();
+    }
 
-    if (zlink::recv_tls_view::begin_with_first_slot (
-          parts_out_, part_count_out_, &first_payload)
-        != 0)
+    if (source_rid_out_)
+        *source_rid_out_ = message.source_rid;
+
+    if (copy_topic_to_output_local (message.topic.data (),
+                                    message.topic.size (),
+                                    topic_id_out_,
+                                    topic_id_len_out_)
+        != 0) {
+        return -1;
+    }
+
+    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
         return -1;
 
-    while (queue_->rx->recv (reinterpret_cast<zlink::msg_t *> (&source_frame),
-                             flags_)
-           != 0) {
-        const int saved_errno = errno;
-        zlink_msg_close (&source_frame);
-        if ((flags_ & ZLINK_DONTWAIT) != 0 || saved_errno != EAGAIN) {
+    for (size_t i = 0; i < message.parts.size (); ++i) {
+        if (zlink::recv_tls_view::push (&message.parts[i]) != 0) {
             zlink::recv_tls_view::abort ();
-            errno = saved_errno;
             return -1;
         }
-        if (zlink::wait_socket_events_internal (queue_->rx, ZLINK_POLLIN, -1)
-            <= 0) {
-            zlink::recv_tls_view::abort ();
-            errno = saved_errno;
-            return -1;
-        }
-        zlink_msg_init (&source_frame);
-    }
-    if (zlink::internal_pair_queue::recv_followup_with_retry (
-          queue_->rx, &topic_frame, flags_)
-        != 0) {
-        const int saved_errno = errno;
-        zlink_msg_close (&source_frame);
-        zlink_msg_close (&topic_frame);
-        zlink::recv_tls_view::abort ();
-        errno = saved_errno;
-        return -1;
     }
 
-    if (copy_routing_id_frame_local (source_frame, source_rid_out_) != 0
-        || copy_topic_to_output_local (
-             static_cast<const char *> (zlink_msg_data (&topic_frame)),
-             zlink_msg_size (&topic_frame), topic_id_out_, topic_id_len_out_)
-             != 0) {
-        const int saved_errno = errno;
-        zlink_msg_close (&source_frame);
-        zlink_msg_close (&topic_frame);
-        zlink::recv_tls_view::abort ();
-        errno = saved_errno;
-        return -1;
-    }
-
-    zlink_msg_close (&source_frame);
-    if (!zlink::internal_pair_queue::frame_has_more (topic_frame)) {
-        zlink_msg_close (&topic_frame);
-        return zlink::recv_tls_view::commit (parts_out_, part_count_out_);
-    }
-    zlink_msg_close (&topic_frame);
-
-    if (zlink::internal_pair_queue::recv_followup_with_retry (
-          queue_->rx, first_payload, flags_)
-        != 0) {
-        const int saved_errno = errno;
-        zlink_msg_close (first_payload);
-        zlink::recv_tls_view::abort ();
-        errno = saved_errno;
-        return -1;
-    }
-
-    if (!zlink::internal_pair_queue::frame_has_more (*first_payload))
-        return zlink::recv_tls_view::commit_reserved_single (parts_out_,
-                                                             part_count_out_);
-    return zlink::internal_pair_queue::export_followup_sequence_from_reserved_first (
-      queue_->rx, parts_out_, part_count_out_);
+    return zlink::recv_tls_view::commit (parts_out_, part_count_out_);
 }

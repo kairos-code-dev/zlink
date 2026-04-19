@@ -1,33 +1,24 @@
 package dev.kairoscode.stream;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.StreamSocket;
-import dev.kairoscode.zlink.StreamUInt32RawNativeHandler;
-import dev.kairoscode.zlink.internal.NativeMsg;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
-import java.time.Duration;
-import java.nio.ByteBuffer;
+import dev.kairoscode.zlink.StreamUInt32FramedPacketHandler;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
+import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class JvmZlinkStreamServer {
-    private static final byte STREAM_EVENT_CONNECT = 0x01;
-    private static final byte STREAM_EVENT_DISCONNECT = 0x00;
     private static final int MIN_PAYLOAD_SIZE = 16;
     private static final int MAX_PAYLOAD_SIZE = 4 * 1024 * 1024;
     private static final int PREFIX_SIZE = 6;
-    private static final byte[] MSG_NAME = "stream.echo".getBytes(StandardCharsets.US_ASCII);
-    private static final int SHARD_COUNT = 64;
-    private static final ThreadLocal<ByteBuffer> REPLY_SCRATCH =
-        ThreadLocal.withInitial(() -> ByteBuffer.allocateDirect(4096));
-
+    private static final byte[] MSG_NAME =
+        "stream.echo".getBytes(StandardCharsets.US_ASCII);
+    private static final byte[] FRAME_PREFIX_AND_HEADER =
+        buildPrefixAndHeader();
     private JvmZlinkStreamServer() {
     }
 
@@ -98,67 +89,20 @@ public final class JvmZlinkStreamServer {
         final AtomicLong parseError = new AtomicLong();
         final AtomicLong protocolError = new AtomicLong();
         final AtomicLong sendError = new AtomicLong();
-        final AtomicLong exactFastPath = new AtomicLong();
-        final AtomicLong chunkFastPath = new AtomicLong();
-        final AtomicLong bufferedPath = new AtomicLong();
-    }
-
-    private static final class FrameSpec {
-        final int totalSize;
-        final byte[] prefixHeader;
-
-        FrameSpec(int bodySize) {
-            totalSize = PREFIX_SIZE + MSG_NAME.length + bodySize;
-            prefixHeader = new byte[PREFIX_SIZE + MSG_NAME.length];
-            prefixHeader[0] = (byte) (MSG_NAME.length >> 8);
-            prefixHeader[1] = (byte) MSG_NAME.length;
-            prefixHeader[2] = (byte) (bodySize >> 24);
-            prefixHeader[3] = (byte) (bodySize >> 16);
-            prefixHeader[4] = (byte) (bodySize >> 8);
-            prefixHeader[5] = (byte) bodySize;
-            System.arraycopy(MSG_NAME, 0, prefixHeader, PREFIX_SIZE,
-                MSG_NAME.length);
-        }
-    }
-
-    private static final class BufferState {
-        byte[] data = new byte[0];
-        int size = 0;
-
-        void append(MemorySegment chunk, int length) {
-            if (length <= 0)
-                return;
-            int needed = size + length;
-            if (data.length < needed)
-                data = Arrays.copyOf(data, Math.max(needed,
-                    Math.max(64, data.length * 2)));
-            MemorySegment.copy(chunk, 0, MemorySegment.ofArray(data), size, length);
-            size = needed;
-        }
-
-        void consume(int count) {
-            if (count <= 0)
-                return;
-            if (count >= size) {
-                size = 0;
-                return;
-            }
-            System.arraycopy(data, count, data, 0, size - count);
-            size -= count;
-        }
-
-        void clear() {
-            size = 0;
-        }
-    }
-
-    private static final class BufferShard {
-        final Object lock = new Object();
-        final Map<Integer, BufferState> buffers = new HashMap<>();
+        final AtomicLong framedPath = new AtomicLong();
     }
 
     private static String endpoint(String host, int port) {
         return "tcp://" + host + ":" + port;
+    }
+
+    private static byte[] buildPrefixAndHeader() {
+        byte[] frame = new byte[PREFIX_SIZE + MSG_NAME.length];
+        int headerSize = MSG_NAME.length;
+        frame[0] = (byte) (headerSize >> 8);
+        frame[1] = (byte) headerSize;
+        System.arraycopy(MSG_NAME, 0, frame, PREFIX_SIZE, headerSize);
+        return frame;
     }
 
     private static int runServer(ServerOptions opt, Metrics metrics) {
@@ -178,11 +122,9 @@ public final class JvmZlinkStreamServer {
             server.options().recvTimeout(Duration.ofMillis(200));
             server.options().tcpNoDelay(opt.tcpNoDelay != 0);
             server.bind(endpoint(opt.host, opt.port));
-            BufferShard[] shards = createShards();
-            FrameSpec frameSpec = new FrameSpec(opt.size);
-            server.onPacketNative((StreamUInt32RawNativeHandler) (routingId, message) ->
-                handleRawChunk(server, shards, frameSpec, routingId, message,
-                    metrics));
+            server.onFramedPacket(
+                (StreamUInt32FramedPacketHandler) (routingId, header, body) ->
+                    handleFramedPacket(server, routingId, header, body, metrics));
 
             Runtime.getRuntime().addShutdownHook(shutdownHook);
             while (!stop.get()) {
@@ -223,207 +165,51 @@ public final class JvmZlinkStreamServer {
           metrics.parseError.get(),
           metrics.protocolError.get(),
           metrics.sendError.get(),
-          metrics.exactFastPath.get(),
-          metrics.chunkFastPath.get(),
-          metrics.bufferedPath.get(),
+          metrics.framedPath.get(),
+          0,
+          0,
           0);
         if (rc != 0)
             System.exit(rc);
     }
 
-    private static BufferShard[] createShards() {
-        BufferShard[] shards = new BufferShard[SHARD_COUNT];
-        for (int i = 0; i < SHARD_COUNT; i++)
-            shards[i] = new BufferShard();
-        return shards;
-    }
-
-    private static void handleRawChunk(StreamSocket server, BufferShard[] shards,
-                                       FrameSpec frameSpec, int routingId,
-                                       MemorySegment message, Metrics metrics) {
-        int size = (int) NativeMsg.msgSize(message);
-        if (size <= 0)
-            return;
-        MemorySegment chunk = NativeMsg.msgData(message).reinterpret(size);
-        if (size == 1) {
-            byte marker = chunk.get(ValueLayout.JAVA_BYTE, 0);
-            if (marker == STREAM_EVENT_DISCONNECT) {
-                BufferShard shard = shardFor(shards, routingId);
-                synchronized (shard.lock) {
-                    shard.buffers.remove(routingId);
-                }
-            }
+    private static void handleFramedPacket(StreamSocket server, int routingId,
+                                           Message header,
+                                           Message body,
+                                           Metrics metrics) {
+        int headerSize = header.size();
+        if (headerSize != MSG_NAME.length) {
+            metrics.parseError.incrementAndGet();
+            metrics.protocolError.incrementAndGet();
             return;
         }
 
-        if (size == frameSpec.totalSize && matchesPrefixHeader(chunk,
-            frameSpec.prefixHeader)) {
-            metrics.recvMsgs.incrementAndGet();
-            metrics.exactFastPath.incrementAndGet();
-            try {
-                server.sendCopied(routingId, chunk, size, SendFlags.DONT_WAIT);
-            } catch (RuntimeException ex) {
-                metrics.sendError.incrementAndGet();
-            }
+        if (!header.contentEquals(MSG_NAME)) {
+            metrics.parseError.incrementAndGet();
+            metrics.protocolError.incrementAndGet();
             return;
         }
 
-        int consumed = dispatchCompleteFrames(server, routingId, chunk, size,
-            metrics);
-        if (consumed < 0 || consumed >= size)
+        int bodySize = body.size();
+        if (bodySize < MIN_PAYLOAD_SIZE || bodySize > MAX_PAYLOAD_SIZE) {
+            metrics.parseError.incrementAndGet();
+            metrics.protocolError.incrementAndGet();
             return;
-
-        BufferShard shard = shardFor(shards, routingId);
-        synchronized (shard.lock) {
-            BufferState state = shard.buffers.computeIfAbsent(routingId,
-                unused -> new BufferState());
-            state.append(chunk.asSlice(consumed, size - consumed), size - consumed);
-            dispatchBufferedFrames(server, state, routingId, metrics);
-            if (state.size == 0)
-                shard.buffers.remove(routingId);
         }
-    }
 
-    private static int dispatchCompleteFrames(StreamSocket server, int routingId,
-                                             MemorySegment chunk, int size,
-                                             Metrics metrics) {
-        int offset = 0;
-        while (true) {
-            int available = size - offset;
-            if (available < PREFIX_SIZE)
-                return offset;
-            int headerSize = readHeaderSize(chunk, offset);
-            int bodySize = readBodySize(chunk, offset);
-            if (!validSizes(headerSize, bodySize)) {
-                metrics.parseError.incrementAndGet();
-                metrics.protocolError.incrementAndGet();
-                return -1;
+        metrics.recvMsgs.incrementAndGet();
+        metrics.framedPath.incrementAndGet();
+        int totalSize = PREFIX_SIZE + headerSize + bodySize;
+        try {
+            try (Message response = new Message(totalSize)) {
+                response.copyFrom(FRAME_PREFIX_AND_HEADER, 0, 0,
+                    FRAME_PREFIX_AND_HEADER.length);
+                response.writeIntBe(2, bodySize);
+                response.copyFrom(body, 0, PREFIX_SIZE + headerSize, bodySize);
+                server.send(routingId, response, SendFlags.DONT_WAIT);
             }
-            int total = PREFIX_SIZE + headerSize + bodySize;
-            if (available < total)
-                return offset;
-            if (!matchesHeader(chunk, offset + PREFIX_SIZE)) {
-                metrics.parseError.incrementAndGet();
-                metrics.protocolError.incrementAndGet();
-                return -1;
-            }
-            metrics.recvMsgs.incrementAndGet();
-            metrics.chunkFastPath.incrementAndGet();
-            try {
-                server.sendCopied(routingId, chunk.asSlice(offset, total),
-                    total, SendFlags.DONT_WAIT);
-            } catch (RuntimeException ex) {
-                metrics.sendError.incrementAndGet();
-                return -1;
-            }
-            offset += total;
-            if (offset == size)
-                return size;
+        } catch (RuntimeException ex) {
+            metrics.sendError.incrementAndGet();
         }
-    }
-
-    private static void dispatchBufferedFrames(StreamSocket server,
-                                               BufferState state,
-                                               int routingId,
-                                               Metrics metrics) {
-        while (true) {
-            if (state.size < PREFIX_SIZE)
-                return;
-            int headerSize = ((state.data[0] & 0xFF) << 8)
-                             | (state.data[1] & 0xFF);
-            int bodySize = ((state.data[2] & 0xFF) << 24)
-                           | ((state.data[3] & 0xFF) << 16)
-                           | ((state.data[4] & 0xFF) << 8)
-                           | (state.data[5] & 0xFF);
-            if (!validSizes(headerSize, bodySize)) {
-                metrics.parseError.incrementAndGet();
-                metrics.protocolError.incrementAndGet();
-                state.clear();
-                return;
-            }
-            int total = PREFIX_SIZE + headerSize + bodySize;
-            if (state.size < total)
-                return;
-            if (!matchesHeader(state.data, PREFIX_SIZE)) {
-                metrics.parseError.incrementAndGet();
-                metrics.protocolError.incrementAndGet();
-                state.clear();
-                return;
-            }
-
-            metrics.recvMsgs.incrementAndGet();
-            metrics.bufferedPath.incrementAndGet();
-            try {
-                ByteBuffer reply = ensureScratchCapacity(total);
-                reply.clear();
-                reply.put(state.data, 0, total);
-                reply.flip();
-                server.send(routingId, reply, SendFlags.DONT_WAIT);
-            } catch (RuntimeException ex) {
-                metrics.sendError.incrementAndGet();
-                state.clear();
-                return;
-            }
-            state.consume(total);
-        }
-    }
-
-    private static BufferShard shardFor(BufferShard[] shards, int routingId) {
-        return shards[(routingId & Integer.MAX_VALUE) % SHARD_COUNT];
-    }
-
-    private static int readHeaderSize(MemorySegment chunk, int offset) {
-        return ((chunk.get(ValueLayout.JAVA_BYTE, offset) & 0xFF) << 8)
-            | (chunk.get(ValueLayout.JAVA_BYTE, offset + 1) & 0xFF);
-    }
-
-    private static int readBodySize(MemorySegment chunk, int offset) {
-        return ((chunk.get(ValueLayout.JAVA_BYTE, offset + 2) & 0xFF) << 24)
-            | ((chunk.get(ValueLayout.JAVA_BYTE, offset + 3) & 0xFF) << 16)
-            | ((chunk.get(ValueLayout.JAVA_BYTE, offset + 4) & 0xFF) << 8)
-            | (chunk.get(ValueLayout.JAVA_BYTE, offset + 5) & 0xFF);
-    }
-
-    private static boolean validSizes(int headerSize, int bodySize) {
-        return headerSize == MSG_NAME.length
-            && bodySize >= MIN_PAYLOAD_SIZE
-            && bodySize <= MAX_PAYLOAD_SIZE;
-    }
-
-    private static boolean matchesHeader(MemorySegment chunk, int headerOffset) {
-        for (int i = 0; i < MSG_NAME.length; i++) {
-            if (chunk.get(ValueLayout.JAVA_BYTE, headerOffset + i) != MSG_NAME[i])
-                return false;
-        }
-        return true;
-    }
-
-    private static boolean matchesPrefixHeader(MemorySegment chunk,
-                                               byte[] prefixHeader) {
-        for (int i = 0; i < prefixHeader.length; i++) {
-            if (chunk.get(ValueLayout.JAVA_BYTE, i) != prefixHeader[i])
-                return false;
-        }
-        return true;
-    }
-
-    private static boolean matchesHeader(byte[] chunk, int headerOffset) {
-        for (int i = 0; i < MSG_NAME.length; i++) {
-            if (chunk[headerOffset + i] != MSG_NAME[i])
-                return false;
-        }
-        return true;
-    }
-
-    private static ByteBuffer ensureScratchCapacity(int required) {
-        ByteBuffer current = REPLY_SCRATCH.get();
-        if (current.capacity() >= required)
-            return current;
-        int next = current.capacity();
-        while (next < required)
-            next *= 2;
-        current = ByteBuffer.allocateDirect(next);
-        REPLY_SCRATCH.set(current);
-        return current;
     }
 }

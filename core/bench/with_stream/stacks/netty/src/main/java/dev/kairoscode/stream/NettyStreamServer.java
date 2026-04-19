@@ -179,7 +179,10 @@ public final class NettyStreamServer
             }
 
             metrics.recvMsgs.incrementAndGet();
-            ctx.write(frame).addListener((ChannelFutureListener) future -> {
+            ByteBuf reply = ctx.alloc().buffer(frame.readableBytes());
+            reply.writeBytes(frame, frame.readerIndex(), frame.readableBytes());
+            frame.release();
+            ctx.write(reply).addListener((ChannelFutureListener) future -> {
                 if (!future.isSuccess()) {
                     metrics.sendError.incrementAndGet();
                     future.channel().close();

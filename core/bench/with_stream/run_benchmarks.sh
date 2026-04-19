@@ -27,7 +27,7 @@ Usage:
   run_benchmarks.sh [options]
 
 Options:
-  --stack <asio|cppserver|dotnet|netzlink|jvmzlink|netty|zlink|zlink_packet|zmq|all|comma-list>
+  --stack <asio|cppserver|dotnet|netzlink|jvmzlink|jvmzlink-recv|jvmzmq|netty|zlink|zlink_packet|zmq|all|comma-list>
   --size <64|1024|65536|all|comma-list>
   --build-dir PATH            Build directory (default: core/build).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
@@ -51,7 +51,7 @@ Examples:
 USAGE
 }
 
-STACKS_ALL=(zlink zlink_packet netzlink jvmzlink asio cppserver dotnet zmq netty)
+STACKS_ALL=(zlink zlink_packet netzlink jvmzlink jvmzlink-recv jvmzmq asio cppserver dotnet zmq netty)
 SIZES_ALL=(64 1024 65536)
 
 TARGET_STACK="all"
@@ -205,7 +205,7 @@ fi
 
 for s in "${RUN_STACKS[@]}"; do
     case "${s}" in
-        asio|cppserver|dotnet|netzlink|jvmzlink|netty|zlink|zlink_packet|zmq)
+        asio|cppserver|dotnet|netzlink|jvmzlink|jvmzlink-recv|jvmzmq|netty|zlink|zlink_packet|zmq)
             ;;
         *)
             echo "invalid stack: ${s}" >&2
@@ -266,6 +266,12 @@ NETZLINK_LEN32BE_DLL="${NETZLINK_LEN32BE_OUT_DIR}/NetZlinkStreamLen32BeServer.dl
 JVMZLINK_PROJECT_DIR="${STACKS_ROOT_DIR}/jvmzlink"
 JVMZLINK_BUILD_DIR="${JVMZLINK_PROJECT_DIR}/build"
 JVMZLINK_BIN="${JVMZLINK_BUILD_DIR}/install/jvmzlink-stream-server/bin/jvmzlink-stream-server"
+JVMZLINK_RECV_PROJECT_DIR="${STACKS_ROOT_DIR}/jvmzlink-recv"
+JVMZLINK_RECV_BUILD_DIR="${JVMZLINK_RECV_PROJECT_DIR}/build"
+JVMZLINK_RECV_BIN="${JVMZLINK_RECV_BUILD_DIR}/install/jvmzlink-recv-stream-server/bin/jvmzlink-recv-stream-server"
+JVMZMQ_PROJECT_DIR="${STACKS_ROOT_DIR}/jvmzmq"
+JVMZMQ_BUILD_DIR="${JVMZMQ_PROJECT_DIR}/build"
+JVMZMQ_BIN="${JVMZMQ_BUILD_DIR}/install/jvmzmq-stream-server/bin/jvmzmq-stream-server"
 JVMZLINK_LEN32BE_PROJECT_DIR="${STACKS_ROOT_DIR}/jvmzlink-len32be"
 JVMZLINK_LEN32BE_BUILD_DIR="${JVMZLINK_LEN32BE_PROJECT_DIR}/build"
 JVMZLINK_LEN32BE_BIN="${JVMZLINK_LEN32BE_BUILD_DIR}/install/jvmzlink-len32be-stream-server/bin/jvmzlink-len32be-stream-server"
@@ -336,7 +342,7 @@ resolve_stack_tuning()
             STACK_ENV_VARS+=("DOTNET_gcServer=1")
             STACK_ENV_VARS+=("COMPlus_gcServer=1")
             ;;
-        jvmzlink|jvmzlink-len32be)
+        jvmzlink|jvmzlink-recv|jvmzlink-len32be)
             STACK_IO_THREADS="${SERVER_IO_THREADS}"
             STACK_SNDBUF=8388608
             STACK_RCVBUF=8388608
@@ -930,7 +936,7 @@ build_core_targets()
     local stack=""
     for stack in "${RUN_STACKS[@]}"; do
         case "${stack}" in
-            netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be)
+            netzlink|netzlink-len32be|jvmzlink|jvmzlink-recv|jvmzmq|jvmzlink-len32be)
                 needs_zlink_core=1
                 break
                 ;;
@@ -1125,6 +1131,35 @@ CPP
                 "${NETTY_GRADLE_BIN}" -p "${JVMZLINK_PROJECT_DIR}" --no-daemon installDist >/dev/null
             [[ -x "${JVMZLINK_BIN}" ]]
             ;;
+        jvmzlink-recv)
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -x "${JVMZLINK_RECV_BIN}" ]]
+                return 0
+            fi
+            resolve_netty_java || return 1
+            resolve_netty_gradle || return 1
+            log "jvmzlink-recv using java major=${NETTY_JAVA_VERSION} home=${NETTY_JAVA_HOME} gradle=${NETTY_GRADLE_VERSION}"
+            if [[ "${JAVA_BINDINGS_JAR_BUILT}" == "0" ]]; then
+                JAVA_HOME="${NETTY_JAVA_HOME}" PATH="${NETTY_JAVA_HOME}/bin:${PATH}" \
+                    "${BINDINGS_JAVA_PROJECT_DIR}/gradlew" -p "${BINDINGS_JAVA_PROJECT_DIR}" --no-daemon jar >/dev/null
+                JAVA_BINDINGS_JAR_BUILT=1
+            fi
+            JAVA_HOME="${NETTY_JAVA_HOME}" PATH="${NETTY_JAVA_HOME}/bin:${PATH}" \
+                "${NETTY_GRADLE_BIN}" -p "${JVMZLINK_RECV_PROJECT_DIR}" --no-daemon installDist >/dev/null
+            [[ -x "${JVMZLINK_RECV_BIN}" ]]
+            ;;
+        jvmzmq)
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -x "${JVMZMQ_BIN}" ]]
+                return 0
+            fi
+            resolve_netty_java || return 1
+            resolve_netty_gradle || return 1
+            log "jvmzmq using java major=${NETTY_JAVA_VERSION} home=${NETTY_JAVA_HOME} gradle=${NETTY_GRADLE_VERSION}"
+            JAVA_HOME="${NETTY_JAVA_HOME}" PATH="${NETTY_JAVA_HOME}/bin:${PATH}" \
+                "${NETTY_GRADLE_BIN}" -p "${JVMZMQ_PROJECT_DIR}" --no-daemon installDist >/dev/null
+            [[ -x "${JVMZMQ_BIN}" ]]
+            ;;
         jvmzlink-len32be)
             if [[ "${BUILD_MODE}" == "reuse" ]]; then
                 [[ -x "${JVMZLINK_LEN32BE_BIN}" ]]
@@ -1217,6 +1252,12 @@ start_server()
         jvmzlink)
             cmd=("${JVMZLINK_BIN}")
             ;;
+        jvmzlink-recv)
+            cmd=("${JVMZLINK_RECV_BIN}")
+            ;;
+        jvmzmq)
+            cmd=("${JVMZMQ_BIN}")
+            ;;
         jvmzlink-len32be)
             cmd=("${JVMZLINK_LEN32BE_BIN}")
             ;;
@@ -1256,7 +1297,7 @@ start_server()
                 exec "${cmd[@]}" >"${server_log}" 2>&1
             fi
         ) &
-    elif [[ "${stack}" == "netty" || "${stack}" == "jvmzlink" || "${stack}" == "jvmzlink-len32be" ]]; then
+    elif [[ "${stack}" == "netty" || "${stack}" == "jvmzlink" || "${stack}" == "jvmzlink-recv" || "${stack}" == "jvmzmq" || "${stack}" == "jvmzlink-len32be" ]]; then
         (
             export JAVA_HOME="${NETTY_JAVA_HOME}"
             export PATH="${NETTY_JAVA_HOME}/bin:${PATH}"

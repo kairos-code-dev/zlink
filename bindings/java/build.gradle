@@ -47,9 +47,14 @@ tasks.register('buildZlinkJavaBridge', Exec) {
     def outputDir = bridgeOutputDir.get().asFile
     def output = new File(outputDir, 'libzlink_java_bridge.so')
     def linkDir = new File(projectDir, 'src/main/resources/native/linux-x86_64')
+    def javaHome = System.getProperty('java.home')
+    def jniIncludeDir = new File(javaHome, 'include')
+    def jniOsIncludeDir = new File(jniIncludeDir, 'linux')
     inputs.file(source)
     inputs.dir(new File(repoRoot, 'core/include'))
     inputs.dir(linkDir)
+    inputs.dir(jniIncludeDir)
+    inputs.dir(jniOsIncludeDir)
     outputs.file(output)
     doFirst {
         outputDir.mkdirs()
@@ -61,6 +66,8 @@ tasks.register('buildZlinkJavaBridge', Exec) {
         '-O2',
         '-pthread',
         '-I', new File(repoRoot, 'core/include').absolutePath,
+        '-I', jniIncludeDir.absolutePath,
+        '-I', jniOsIncludeDir.absolutePath,
         '-L', linkDir.absolutePath,
         '-Wl,-rpath,$ORIGIN',
         '-Wl,--no-as-needed',
@@ -96,6 +103,42 @@ tasks.register('integrationTest', Test) {
     filter {
         includeTestsMatching 'dev.kairoscode.zlink.integration.contract.*'
     }
+}
+
+tasks.register('runMessageOutboundMicrobench', JavaExec) {
+    group = 'benchmark'
+    description = 'Run Java outbound message-path microbenchmarks'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.kairoscode.zlink.MessageOutboundMicrobench'
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+
+tasks.register('runFfmVsJniMicrobench', JavaExec) {
+    group = 'benchmark'
+    description = 'Compare FFM and JNI call/copy overhead on the Java bridge'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.kairoscode.zlink.FfmVsJniMicrobench'
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+
+tasks.register('runMsgOperationMicrobench', JavaExec) {
+    group = 'benchmark'
+    description = 'Measure msg_t and Message hot-path operations'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.kairoscode.zlink.MsgOperationMicrobench'
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+
+tasks.register('runMsgInteropFfmVsJniMicrobench', JavaExec) {
+    group = 'benchmark'
+    description = 'Compare msg_t primitive operations via FFM and JNI'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.kairoscode.zlink.MsgInteropFfmVsJniMicrobench'
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
 javadoc {

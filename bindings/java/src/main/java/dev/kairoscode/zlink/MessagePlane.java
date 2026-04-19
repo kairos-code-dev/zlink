@@ -96,14 +96,14 @@ final class MessagePlane {
             Native.MultipartReceive received = Native.recvMultipart(socket.handle(),
                 flags.getValue());
             if (received != null) {
-                RoutingId rid = Socket.toRoutingId(received.routingId());
+                byte[] ridBytes = received.routingId();
                 if (received.partCount() == 1) {
                     Message part = Message.fromOwnedMsgSingle(received.parts());
-                    return new Received(rid, null, part, 0L, false, null);
+                    return new Received(ridBytes, null, part, 0L, false, null);
                 }
                 Message[] parts = Message.fromOwnedMsgVector(
                     received.parts(), received.partCount());
-                return new Received(rid, null, parts, true, 0L, false, null);
+                return new Received(ridBytes, null, parts, true, 0L, false, null);
             }
 
             int errno = Native.errno();
@@ -118,14 +118,14 @@ final class MessagePlane {
             Native.MultipartReceive received = Native.recvMultipart(socket.handle(),
                 ReceiveFlag.DONTWAIT.getValue());
             if (received != null) {
-                RoutingId rid = Socket.toRoutingId(received.routingId());
+                byte[] ridBytes = received.routingId();
                 if (received.partCount() == 1) {
                     Message part = Message.fromOwnedMsgSingle(received.parts());
-                    return new Received(rid, null, part, 0L, false, null);
+                    return new Received(ridBytes, null, part, 0L, false, null);
                 }
                 Message[] parts = Message.fromOwnedMsgVector(
                     received.parts(), received.partCount());
-                return new Received(rid, null, parts, true, 0L, false, null);
+                return new Received(ridBytes, null, parts, true, 0L, false, null);
             }
 
             int errno = Native.errno();

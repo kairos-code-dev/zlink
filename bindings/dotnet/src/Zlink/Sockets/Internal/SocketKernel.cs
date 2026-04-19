@@ -1518,12 +1518,12 @@ internal sealed class SocketKernel : IDisposable
                 if (requestSequence == 0)
                 {
                     byte[]? routingIdBytes =
-                        RoutingIdCodec.CopyOwnedBytes(ref nativeRoutingId);
+                        RoutingIdCodec.ToOwnedBytes(ref nativeRoutingId);
                     byte[]? spotRidBytes = nativeSpotRoutingId.Size == 0
                         ? null
-                        : RoutingIdCodec.CopyOwnedBytes(ref nativeSpotRoutingId);
-                    return Received.Create(routingIdBytes, part, adoptRoutingBytes: true,
-                        spotRidBytes: spotRidBytes);
+                        : RoutingIdCodec.ToOwnedBytes(ref nativeSpotRoutingId);
+                    return Received.Create(routingIdBytes, part,
+                        adoptRoutingBytes: true, spotRidBytes: spotRidBytes);
                 }
 
                 RoutingId? replyRoutingId = RoutingIdCodec.ToRoutingId(ref nativeRoutingId);
@@ -1556,12 +1556,12 @@ internal sealed class SocketKernel : IDisposable
             if (requestSequence == 0)
             {
                 byte[]? routingIdBytes =
-                    RoutingIdCodec.CopyOwnedBytes(ref nativeRoutingId);
+                    RoutingIdCodec.ToOwnedBytes(ref nativeRoutingId);
                 byte[]? spotRidBytes = nativeSpotRoutingId.Size == 0
                     ? null
-                    : RoutingIdCodec.CopyOwnedBytes(ref nativeSpotRoutingId);
-                return Received.Create(routingIdBytes, parts, adoptRoutingBytes: true,
-                    spotRidBytes: spotRidBytes);
+                    : RoutingIdCodec.ToOwnedBytes(ref nativeSpotRoutingId);
+                return Received.Create(routingIdBytes, parts,
+                    adoptRoutingBytes: true, spotRidBytes: spotRidBytes);
             }
 
             RoutingId? replyRoutingIdMulti = RoutingIdCodec.ToRoutingId(ref nativeRoutingId);
@@ -1641,12 +1641,12 @@ internal sealed class SocketKernel : IDisposable
                 if (requestSequence == 0)
                 {
                     byte[]? routingIdBytes =
-                        RoutingIdCodec.CopyOwnedBytes(ref nativeRoutingId);
+                        RoutingIdCodec.ToOwnedBytes(ref nativeRoutingId);
                     byte[]? spotRidBytes = nativeSpotRoutingId.Size == 0
                         ? null
-                        : RoutingIdCodec.CopyOwnedBytes(ref nativeSpotRoutingId);
-                    return Received.Create(routingIdBytes, part, adoptRoutingBytes: true,
-                        spotRidBytes: spotRidBytes);
+                        : RoutingIdCodec.ToOwnedBytes(ref nativeSpotRoutingId);
+                    return Received.Create(routingIdBytes, part,
+                        adoptRoutingBytes: true, spotRidBytes: spotRidBytes);
                 }
 
                 RoutingId? replyRoutingId = RoutingIdCodec.ToRoutingId(ref nativeRoutingId);
@@ -1680,12 +1680,12 @@ internal sealed class SocketKernel : IDisposable
             if (requestSequence == 0)
             {
                 byte[]? routingIdBytes =
-                    RoutingIdCodec.CopyOwnedBytes(ref nativeRoutingId);
+                    RoutingIdCodec.ToOwnedBytes(ref nativeRoutingId);
                 byte[]? spotRidBytes = nativeSpotRoutingId.Size == 0
                     ? null
-                    : RoutingIdCodec.CopyOwnedBytes(ref nativeSpotRoutingId);
-                return Received.Create(routingIdBytes, parts, adoptRoutingBytes: true,
-                    spotRidBytes: spotRidBytes);
+                    : RoutingIdCodec.ToOwnedBytes(ref nativeSpotRoutingId);
+                return Received.Create(routingIdBytes, parts,
+                    adoptRoutingBytes: true, spotRidBytes: spotRidBytes);
             }
 
             RoutingId? replyRoutingIdMulti = RoutingIdCodec.ToRoutingId(ref nativeRoutingId);
@@ -1955,10 +1955,9 @@ internal sealed class SocketKernel : IDisposable
         GCHandle handle = GCHandle.FromIntPtr(hint);
         if (handle.Target is Message)
         {
-            Message.CompleteBorrowedSend(hint);
+            Message.CompleteBorrowedSend(handle);
             return;
         }
-
         handle.Free();
     }
 
@@ -2526,6 +2525,8 @@ internal sealed class SocketKernel : IDisposable
                 moved = false;
                 throw ZlinkException.FromLastError();
             }
+            message.RestoreFrom(ref nativePart);
+            moved = false;
             return sendResult.Value;
         }
         catch
@@ -2842,6 +2843,8 @@ internal sealed class SocketKernel : IDisposable
                 moved = false;
                 throw ZlinkException.FromLastError();
             }
+            message.RestoreFrom(ref nativePart);
+            moved = false;
             return sendResult.Value;
         }
         catch

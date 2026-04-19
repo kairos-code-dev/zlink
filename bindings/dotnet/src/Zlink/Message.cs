@@ -13,6 +13,12 @@ public sealed class Message : IDisposable, IAsyncDisposable
 {
     private ZlinkMsg _msg;
     private bool _valid;
+    private byte[]? _managedBytes;
+    private int _managedLength;
+    private GCHandle _borrowedPinnedHandle;
+    private GCHandle _selfHandle;
+    private bool _borrowedInFlight;
+    private bool _disposeAfterBorrowedSend;
 
     public Message()
     {
@@ -57,6 +63,8 @@ public sealed class Message : IDisposable, IAsyncDisposable
         get
         {
             EnsureValid();
+            if (_managedBytes != null)
+                return _managedLength;
             return (int)NativeMethods.zlink_msg_size(ref _msg);
         }
     }
@@ -66,6 +74,8 @@ public sealed class Message : IDisposable, IAsyncDisposable
         get
         {
             EnsureValid();
+            if (_managedBytes != null)
+                return 1;
             return NativeMethods.zlink_msg_refcnt(ref _msg);
         }
     }
@@ -78,6 +88,8 @@ public sealed class Message : IDisposable, IAsyncDisposable
     public unsafe ReadOnlySpan<byte> AsReadOnlySpan()
     {
         EnsureValid();
+        if (_managedBytes != null)
+            return _managedBytes.AsSpan(0, _managedLength);
         nuint size = NativeMethods.zlink_msg_size(ref _msg);
         if (size == 0)
             return ReadOnlySpan<byte>.Empty;
@@ -89,6 +101,8 @@ public sealed class Message : IDisposable, IAsyncDisposable
 
     public ReadOnlyMemory<byte> AsReadOnlyMemory()
     {
+        if (_managedBytes != null)
+            return _managedBytes.AsMemory(0, _managedLength);
         return ToArray();
     }
 
@@ -115,6 +129,18 @@ public sealed class Message : IDisposable, IAsyncDisposable
     public unsafe bool TryCopyTo(Span<byte> destination, out int bytesWritten)
     {
         EnsureValid();
+        if (_managedBytes != null)
+        {
+            if (_managedLength > destination.Length)
+            {
+                bytesWritten = 0;
+                return false;
+            }
+
+            _managedBytes.AsSpan(0, _managedLength).CopyTo(destination);
+            bytesWritten = _managedLength;
+            return true;
+        }
         nuint size = NativeMethods.zlink_msg_size(ref _msg);
         if (size == 0)
         {
@@ -141,17 +167,23 @@ public sealed class Message : IDisposable, IAsyncDisposable
     {
         if (data == null)
             throw new ArgumentNullException(nameof(data));
-        return FromBytes(data.AsSpan());
+        var message = new Message(false);
+        message.InitializeManagedCopy(data.AsSpan());
+        return message;
     }
 
     public static Message FromBytes(ReadOnlySpan<byte> data)
     {
-        return new Message(data);
+        var message = new Message(false);
+        message.InitializeManagedCopy(data);
+        return message;
     }
 
     public static Message FromBytes(ReadOnlyMemory<byte> data)
     {
-        return new Message(data);
+        var message = new Message(false);
+        message.InitializeManagedCopy(data.Span);
+        return message;
     }
 
     public static Message FromSequence(ReadOnlySequence<byte> data)
@@ -190,6 +222,8 @@ public sealed class Message : IDisposable, IAsyncDisposable
     public string? GetProperty(string property)
     {
         EnsureValid();
+        if (_managedBytes != null)
+            return null;
         IntPtr ptr = NativeMethods.zlink_msg_gets(ref _msg, property);
         if (ptr == IntPtr.Zero)
             return null;
@@ -199,6 +233,10 @@ public sealed class Message : IDisposable, IAsyncDisposable
     public void Dispose()
     {
         Close();
+        if (_borrowedInFlight)
+            _disposeAfterBorrowedSend = true;
+        else
+            ReleaseSelfHandle();
         GC.SuppressFinalize(this);
     }
 
@@ -211,6 +249,7 @@ public sealed class Message : IDisposable, IAsyncDisposable
     ~Message()
     {
         Close();
+        ReleaseSelfHandle();
     }
 
     internal ref ZlinkMsg Handle => ref _msg;
@@ -237,6 +276,20 @@ public sealed class Message : IDisposable, IAsyncDisposable
     /// </remarks>
     public Message Move()
     {
+        if (_managedBytes != null)
+        {
+            var movedManaged = new Message(false)
+            {
+                _managedBytes = _managedBytes,
+                _managedLength = _managedLength,
+                _valid = true
+            };
+            _managedBytes = null;
+            _managedLength = 0;
+            _valid = false;
+            return movedManaged;
+        }
+
         var moved = new Message(false);
         MoveTo(ref moved._msg);
         moved._valid = true;
@@ -246,23 +299,42 @@ public sealed class Message : IDisposable, IAsyncDisposable
     public Message Copy()
     {
         EnsureValid();
+        if (_managedBytes != null)
+            return FromBytes(_managedBytes.AsSpan(0, _managedLength));
         var copy = new Message(false);
         CopyTo(ref copy._msg);
         copy._valid = true;
         return copy;
     }
 
-    internal void MoveTo(ref ZlinkMsg dest)
+    internal unsafe void MoveTo(ref ZlinkMsg dest)
     {
         EnsureValid();
-            int rc = NativeMethods.zlink_msg_init(ref dest);
+        int rc = _managedBytes != null
+            ? NativeMethods.zlink_msg_init_size(ref dest, (nuint)_managedLength)
+            : NativeMethods.zlink_msg_init(ref dest);
         if (rc != 0)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         try
         {
-            rc = NativeMethods.zlink_msg_move(ref dest, ref _msg);
-            if (rc != 0)
-                throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+            if (_managedBytes != null)
+            {
+                if (_managedLength != 0)
+                {
+                    IntPtr destPtr = NativeMethods.zlink_msg_data(ref dest);
+                    if (destPtr == IntPtr.Zero)
+                        throw new InvalidOperationException("Message data is null.");
+                    _managedBytes.AsSpan(0, _managedLength).CopyTo(
+                        new Span<byte>((void*)destPtr, _managedLength));
+                }
+                ReleaseManagedBytes();
+            }
+            else
+            {
+                rc = NativeMethods.zlink_msg_move(ref dest, ref _msg);
+                if (rc != 0)
+                    throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+            }
             _valid = false;
         }
         catch
@@ -284,6 +356,8 @@ public sealed class Message : IDisposable, IAsyncDisposable
             throw new InvalidOperationException(
                 "RestoreFrom requires an invalid message state.");
 
+        _managedBytes = null;
+        _managedLength = 0;
         int rc = NativeMethods.zlink_msg_init(ref _msg);
         if (rc != 0)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
@@ -307,17 +381,33 @@ public sealed class Message : IDisposable, IAsyncDisposable
         }
     }
 
-    internal void CopyTo(ref ZlinkMsg dest)
+    internal unsafe void CopyTo(ref ZlinkMsg dest)
     {
         EnsureValid();
-        int rc = NativeMethods.zlink_msg_init(ref dest);
+        int rc = _managedBytes != null
+            ? NativeMethods.zlink_msg_init_size(ref dest, (nuint)_managedLength)
+            : NativeMethods.zlink_msg_init(ref dest);
         if (rc != 0)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         try
         {
-            rc = NativeMethods.zlink_msg_copy(ref dest, ref _msg);
-            if (rc != 0)
-                throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+            if (_managedBytes != null)
+            {
+                if (_managedLength != 0)
+                {
+                    IntPtr destPtr = NativeMethods.zlink_msg_data(ref dest);
+                    if (destPtr == IntPtr.Zero)
+                        throw new InvalidOperationException("Message data is null.");
+                    _managedBytes.AsSpan(0, _managedLength).CopyTo(
+                        new Span<byte>((void*)destPtr, _managedLength));
+                }
+            }
+            else
+            {
+                rc = NativeMethods.zlink_msg_copy(ref dest, ref _msg);
+                if (rc != 0)
+                    throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+            }
         }
         catch
         {
@@ -486,14 +576,63 @@ public sealed class Message : IDisposable, IAsyncDisposable
     internal void DetachAfterSend()
     {
         EnsureValid();
+        if (!_borrowedInFlight)
+            ReleaseManagedBytes();
         _valid = false;
+    }
+
+    internal bool TryPrepareBorrowedSend(out IntPtr data, out int length,
+        out IntPtr hint)
+    {
+        EnsureValid();
+        if (_managedBytes == null || _borrowedInFlight)
+        {
+            data = IntPtr.Zero;
+            length = 0;
+            hint = IntPtr.Zero;
+            return false;
+        }
+
+        _borrowedPinnedHandle = GCHandle.Alloc(_managedBytes, GCHandleType.Pinned);
+        if (!_selfHandle.IsAllocated)
+            _selfHandle = GCHandle.Alloc(this);
+        _borrowedInFlight = true;
+        data = _managedLength == 0
+            ? IntPtr.Zero
+            : _borrowedPinnedHandle.AddrOfPinnedObject();
+        length = _managedLength;
+        hint = GCHandle.ToIntPtr(_selfHandle);
+        return true;
+    }
+
+    internal void DetachAfterPreparedSend()
+    {
+        EnsureValid();
+        _valid = false;
+    }
+
+    internal void CancelBorrowedSendPrepare()
+    {
+        if (_borrowedPinnedHandle.IsAllocated)
+            _borrowedPinnedHandle.Free();
+        _borrowedInFlight = false;
+        _disposeAfterBorrowedSend = false;
+    }
+
+    internal static void CompleteBorrowedSend(GCHandle handle)
+    {
+        if (handle.Target is Message message)
+            message.CompleteBorrowedSendCore();
     }
 
     private void Close()
     {
         if (!_valid)
             return;
-        NativeMethods.zlink_msg_close(ref _msg);
+        if (_managedBytes == null)
+            NativeMethods.zlink_msg_close(ref _msg);
+        if (!_borrowedInFlight)
+            ReleaseManagedBytes();
         _valid = false;
     }
 
@@ -501,5 +640,37 @@ public sealed class Message : IDisposable, IAsyncDisposable
     {
         if (!_valid)
             throw new ObjectDisposedException(nameof(Message));
+    }
+
+    private void InitializeManagedCopy(ReadOnlySpan<byte> data)
+    {
+        _managedBytes = data.ToArray();
+        _managedLength = data.Length;
+        _valid = true;
+    }
+
+    private void ReleaseManagedBytes()
+    {
+        _managedBytes = null;
+        _managedLength = 0;
+    }
+
+    private void CompleteBorrowedSendCore()
+    {
+        if (_borrowedPinnedHandle.IsAllocated)
+            _borrowedPinnedHandle.Free();
+        _borrowedInFlight = false;
+        ReleaseManagedBytes();
+        if (_disposeAfterBorrowedSend)
+        {
+            _disposeAfterBorrowedSend = false;
+            ReleaseSelfHandle();
+        }
+    }
+
+    private void ReleaseSelfHandle()
+    {
+        if (_selfHandle.IsAllocated)
+            _selfHandle.Free();
     }
 }

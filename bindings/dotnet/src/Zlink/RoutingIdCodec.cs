@@ -10,7 +10,10 @@ namespace Zlink;
 internal static class RoutingIdCodec
 {
     private const string HexPrefix = "hex:";
+    private const int ThreadCacheMaxEntries = 256;
     private static readonly object ByteCacheLock = new();
+    [ThreadStatic]
+    private static Dictionary<RouteCacheKey, List<byte[]>>? t_ownedBytesCache;
     private static readonly Dictionary<RouteCacheKey, List<RouteCacheEntry>>
         ByteToPublicCache = new();
     private static readonly Dictionary<RouteCacheKey, List<byte[]>>
@@ -101,7 +104,7 @@ internal static class RoutingIdCodec
 
         fixed (byte* src = routingId.Data)
         {
-            return Canonicalize(new ReadOnlySpan<byte>(src, size));
+            return CanonicalizeThreadLocal(new ReadOnlySpan<byte>(src, size));
         }
     }
 
@@ -254,6 +257,33 @@ internal static class RoutingIdCodec
             cachedEntries.Add(copy);
             return copy;
         }
+    }
+
+    private static byte[] CanonicalizeThreadLocal(ReadOnlySpan<byte> routingId)
+    {
+        RouteCacheKey key = RouteCacheKey.Create(routingId);
+        Dictionary<RouteCacheKey, List<byte[]>> cache =
+            t_ownedBytesCache ??= new Dictionary<RouteCacheKey, List<byte[]>>();
+        if (cache.TryGetValue(key, out List<byte[]>? cachedEntries))
+        {
+            for (int i = 0; i < cachedEntries.Count; i++)
+            {
+                if (routingId.SequenceEqual(cachedEntries[i]))
+                    return cachedEntries[i];
+            }
+        }
+
+        byte[] copy = routingId.ToArray();
+        if (cache.Count >= ThreadCacheMaxEntries)
+            cache.Clear();
+        if (!cache.TryGetValue(key, out cachedEntries))
+        {
+            cachedEntries = new List<byte[]>(1);
+            cache[key] = cachedEntries;
+        }
+
+        cachedEntries.Add(copy);
+        return copy;
     }
 
     private static RoutingId ToRoutingIdCached(ReadOnlySpan<byte> routingId)

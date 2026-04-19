@@ -163,7 +163,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ServiceId = "play";
+    options.ChannelId = "play";
     options.NodeName = "play-1";
     options.Codecs.AddProtobuf();
 
@@ -442,6 +442,10 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
   - `SendChannelAsync(...)`
 - attach된 다른 channel에 request packet을 보내고 싶다
   - `RequestChannelAsync(...)`
+- 다른 SPOT peer에 routed packet을 보내고 싶다
+  - 현재 raw binding 기준으로는 `Spot.SendToRouter(...)`
+- 다른 SPOT peer에 routed request를 보내고 싶다
+  - 현재 raw binding 기준으로는 `Spot.RequestToRouterAsync(...)`
 - 현재 spot 자신의 rid를 알고 싶다
   - `StageSpot.SpotRid`
 - stage 안에서 fan-out 하고 싶다
@@ -453,7 +457,7 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
 
 `SPOT`이 room, stage, zone처럼 핫패스가 있는 용도로 쓰이더라도, 이 샘플 구조
 자체가 바로 과한 오버헤드를 뜻하는 것은 아니다. 다만 `SPOT` packet handler 쪽은
-room 핫패스로 쓰일 수 있으므로, 일반 service messaging보다 더 강한 최적화 기준이
+room 핫패스로 쓰일 수 있으므로, 일반 channel messaging보다 더 강한 최적화 기준이
 필요하다.
 
 - `AddPacket`, `AddSubscribe`, `AddTimer`는 registration 단계에서만 동작해야 한다.
@@ -475,7 +479,7 @@ room 핫패스로 쓰일 수 있으므로, 일반 service messaging보다 더 �
 언제까지 허용하느냐보다, 핫패스에서 그 비용을 제거했느냐에 더 크게 좌우된다.
 반대로 일반 socket/service handler가 성능이 낮아도 된다는 뜻은 아니다. 차이는
 `SPOT` packet 처리 쪽은 room 핫패스이므로 더 강한 최적화를 먼저 요구하고, 일반
-service messaging 쪽은 편의 기능을 조금 더 허용할 여지가 있다는 점이다.
+channel messaging 쪽은 편의 기능을 조금 더 허용할 여지가 있다는 점이다.
 
 ## 9. 피드백 포인트
 

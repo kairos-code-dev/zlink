@@ -41,7 +41,7 @@ typed request body를 받고, header metadata가 필요하면 context에서 조�
 | 필드 | 용도 |
 |------|------|
 | `message-kind` | request, response, command, event 구분 |
-| `channel` | 논리 channel 이름 (현재 구현 필드명은 `service_name`) |
+| `channel` | 논리 channel 이름 |
 | `method` 또는 `pattern` | handler 선택에 쓰는 이름 |
 | `content-type` | body codec 식별 |
 | `correlation-id` | 요청과 응답 연결 |

@@ -15,9 +15,9 @@
 사용법은 아래 문서를 참고한다.
 
 - 서버 간 messaging 프로그래밍 모델 →
-  [aspnet-core-service-messaging.ko.md](./aspnet-core-service-messaging.ko.md)
+  [aspnet-core-channel-messaging.ko.md](./aspnet-core-channel-messaging.ko.md)
 - 서버 간 messaging 샘플 →
-  [service-messaging-samples.ko.md](./service-messaging-samples.ko.md)
+  [channel-messaging-samples.ko.md](./channel-messaging-samples.ko.md)
 - SPOT 통합 →
   [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md)
 - SPOT 샘플 →
@@ -270,70 +270,29 @@ helper를 얹는 구조가 `playhouse/extensions`와 더 가깝고 문서도 단
 DI로 주입되며, ZLink handler와 기존 ASP.NET Core HTTP handler 양쪽에서
 동일하게 사용할 수 있다.
 
-호출 방식은 세 가지 축이 있다.
+호출 방식은 한 가지 축을 기본으로 둔다.
 
-- `serviceName` 기준 호출 -- Discovery가 대상을 선택한다
-- `RoutingId targetRid` 기준 직접 호출 -- 특정 peer를 지정한다
-- `targetRid + spotRid` 기준 호출 -- 특정 spot 인스턴스를 지정한다
+- `channelName` 기준 호출 -- Discovery가 대상을 선택한다
 
-다만 최신 SPOT topology 초안에서는 이 세 번째 축을 high-level `SPOT` 기본
-프로그래밍 모델로 먼저 설명하지 않는다. framework 문서에서는 `IZLinkSpotClient`의
-channel publish/send/request 표면을 우선 보여 주고, direct addressing은 저수준
-또는 별도 경로로 이해하는 편이 더 자연스럽다.
+즉 일반 channel messaging에서는 특정 `ROUTER(server)`를 `rid`로 직접 지정해
+호출하지 않는다. `rid`를 넣는 routed 호출은 SPOT spot-to-spot 경로에만 남긴다.
 
 ```csharp
 public interface IZLinkClient
 {
-    // --- serviceName 기준 ---
+    // --- channelName 기준 ---
     ValueTask SendAsync<TMessage>(
-        string serviceName,
+        string channelName,
         TMessage message,
         CancellationToken cancellationToken = default);
 
     ValueTask<TReply> RequestAsync<TReply>(
-        string serviceName,
+        string channelName,
         IZLinkRequest<TReply> request,
         CancellationToken cancellationToken = default);
 
     ValueTask<TReply> RequestAsync<TReply>(
-        string serviceName,
-        IZLinkRequest<TReply> request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-
-    // --- targetRid 직접 지정 ---
-    ValueTask SendToAsync<TMessage>(
-        RoutingId targetRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        IZLinkRequest<TReply> request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        IZLinkRequest<TReply> request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-
-    // --- targetRid + spotRid ---
-    ValueTask SendToAsync<TMessage>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        TMessage message,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        IZLinkRequest<TReply> request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        RoutingId spotRid,
+        string channelName,
         IZLinkRequest<TReply> request,
         TimeSpan timeout,
         CancellationToken cancellationToken = default);
@@ -351,18 +310,19 @@ public interface IZLinkClient
 }
 ```
 
-runtime은 접근한 `serviceName`마다 별도 outbound channel을 lazy하게 만든다.
-각 channel은 그 service 전용 `Discovery`와 outbound socket을 가진다.
+runtime은 접근한 `channelName`마다 별도 outbound channel을 lazy하게 만든다.
+각 channel은 그 channel 전용 `Discovery`와 outbound socket을 가진다.
 
 ### 5.2 IZLinkSpotClient
 
 SPOT outbound 호출을 위한 client다.
 `IZLinkClient`와 독립된 인터페이스이며, 하부에서 서로 다른 C API를 감싼다.
 최신 SPOT topology 초안에서는 high-level public surface에서 `targetRid +
-spotRid` direct addressing을 기본으로 두지 않는다. 현재 방향은 아래 두 축이다.
+spotRid` routed 호출을 기본으로 두지 않는다. 현재 방향은 아래 세 축이다.
 
 - 현재 SPOT channel 안의 publish/subscribe
 - attach된 channel client를 통한 다른 channel send/request
+- 필요할 때만 쓰는 spot-to-spot routed 호출
 
 ```csharp
 public interface IZLinkSpotClient
@@ -379,6 +339,25 @@ public interface IZLinkSpotClient
 
     ValueTask<TReply> RequestChannelAsync<TReply>(
         string channelName,
+        IZLinkRequest<TReply> request,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default);
+
+    ValueTask SendToAsync<TMessage>(
+        RoutingId targetRid,
+        RoutingId spotRid,
+        TMessage message,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<TReply> RequestToAsync<TReply>(
+        RoutingId targetRid,
+        RoutingId spotRid,
+        IZLinkRequest<TReply> request,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<TReply> RequestToAsync<TReply>(
+        RoutingId targetRid,
+        RoutingId spotRid,
         IZLinkRequest<TReply> request,
         TimeSpan timeout,
         CancellationToken cancellationToken = default);
@@ -405,8 +384,21 @@ public interface IZLinkSpotClient
 - `PublishAsync(topic, ...)`가 있다. SPOT 쪽은 현재 channel 안의 topic publish를
   함께 쓰는 경우가 많으므로 한 인터페이스에 같이 둔다.
 - 다른 channel send/request는 attach된 channel client를 통해 푼다.
+- `SendToAsync(...)` / `RequestToAsync(...)`는 spot-to-spot routed 호출에만 쓴다.
+  일반 channel `ROUTER(server)`를 `rid`로 직접 지정하는 용도는 아니다.
 - timer callback은 가능하면 같은 spot 실행 문맥에서 실행되는 편이 더
   자연스럽다. 이 부분은 하부 C API 계약(`zlink_spot_timer_new`)을 따른다.
+
+현재 `.NET` 바인딩의 raw `Spot` 표면은 이 두 종류를 더 직접적으로 나눈다.
+
+- channel 이름 기준 호출:
+  `Spot.SendChannel(...)`, `Spot.RequestChannelAsync(...)`
+- SPOT routed 호출:
+  `Spot.SendToRouter(...)`, `Spot.RequestToRouterAsync(...)`,
+  `Spot.ReplyToSpot(...)`
+
+즉 framework 초안에서 말하는 "spot용 함수"와 "channelName으로 호출하는 함수"는
+실제 바인딩에서도 분리되어 있다.
 
 `IZLinkClient`와 `IZLinkSpotClient`는 상하 관계가 아니다. 두 인터페이스는 서로
 다른 하부 C API를 감싸며, 각자 독립 구현을 가진다.
@@ -420,7 +412,7 @@ SPOT publish와 별도로, `ROUTER <-> ROUTER` 기반 서버간 messaging 쪽에
 public interface IZLinkEventPublisher
 {
     ValueTask PublishAsync<TEvent>(
-        string serviceName,
+        string channelName,
         string topic,
         TEvent message,
         CancellationToken cancellationToken = default);
@@ -658,19 +650,19 @@ handler에만 매핑된다는 규칙이다. 주제별 handler 묶음(`UserHandle
 - framework는 별도 객체 생성기를 두기보다, `ASP.NET Core`가 쓰는
   `IServiceProvider`를 기준으로 handler invocation을 구성한다.
 
-`serviceId`는 route prefix가 아니라 애플리케이션이 속한 서버군 식별자다.
-handler class attribute보다 등록 옵션(`options.ServiceId = "api"`)에 두는 편을
+`channelId`는 route prefix가 아니라 애플리케이션이 속한 channel 묶음 식별자다.
+handler class attribute보다 등록 옵션(`options.ChannelId = "api"`)에 두는 편을
 현재 방향으로 본다.
 
 ## 14. 아직 확정하지 않는 것
 
 - request/send를 인터페이스와 attribute 중 어느 쪽을 앞면으로 둘지
-- `serviceId`를 등록 옵션에서만 둘지, 별도 attribute도 허용할지
+- `channelId`를 등록 옵션에서만 둘지, 별도 attribute도 허용할지
 - pub/sub을 `IZLinkEventHandler<>`와 `IZLinkTopicHandler<>` 중 무엇으로 둘지
 - `ZLinkRequestContext`와 `ZLinkSendContext`를 하나의 공통 context로 합칠지
 - stream을 packet 중심으로 고정할지, session 중심으로 올릴지
 - pub/sub 최종 attribute 이름을 `ZLinkEvent`와 `ZLinkTopic` 중 무엇으로 고를지
-- `IZLinkClient` 위에 서비스별 typed wrapper를 공식 제공할지
+- `IZLinkClient` 위에 channel별 typed wrapper를 공식 제공할지
 - `IZLinkSpotClient`에서 publish를 분리할지, 그대로 둘지
 - `spotRid` 타입을 `RoutingId` 그대로 쓸지, 별도 wrapper로 올릴지
 - `IZLinkRegistryQuery`와 `IZLinkRegistryQueryClient`를 공용 인터페이스로 묶을지

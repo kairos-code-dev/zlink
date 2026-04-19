@@ -11,7 +11,7 @@
 이 문서는 `.NET` 바인딩 위에 올라가는 `ZLink Framework`의 `.NET` 방향을 정리한다.
 특히 아래 세 축을 우선 다룬다.
 
-- 서비스 간 direct call과 event messaging
+- channel 이름 기준 direct call과 event messaging
 - `SPOT`을 `ASP.NET Core` 애플리케이션에서 다루는 방법
 - Registry 서버를 `ASP.NET Core` lifecycle 안에서 구동하고 topology를 조회하는 방법
 
@@ -38,7 +38,7 @@ DI, hosted service, handler 모델을 제공하는 것이다.
 
 | 문서 | 다루는 범위 |
 |------|------------|
-| [aspnet-core-service-messaging.ko.md](./aspnet-core-service-messaging.ko.md) | 서비스 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, lifecycle, middleware/filter |
+| [aspnet-core-channel-messaging.ko.md](./aspnet-core-channel-messaging.ko.md) | channel 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, lifecycle, middleware/filter |
 | [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish/subscribe, discovery |
 | [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, packet handler, raw handler, recv 비지원 방향 |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | STREAM에서 아직 닫지 않은 serializer, write, lifecycle 항목 |
@@ -52,7 +52,7 @@ DI, hosted service, handler 모델을 제공하는 것이다.
 
 | 문서 | 다루는 범위 |
 |------|------------|
-| [service-messaging-samples.ko.md](./service-messaging-samples.ko.md) | 서비스 등록, handler, HTTP handler, outbound client를 한 번에 보는 샘플 |
+| [channel-messaging-samples.ko.md](./channel-messaging-samples.ko.md) | channel 등록, handler, HTTP handler, outbound client를 한 번에 보는 샘플 |
 | [spot-samples.ko.md](./spot-samples.ko.md) | room, stage, zone 기준 SPOT 등록, handler, channel send/request, publish를 한 번에 보는 샘플 |
 | [stream-samples.ko.md](./stream-samples.ko.md) | STREAM packet handler, raw handler, 등록 코드를 한 번에 보는 샘플 |
 
@@ -61,7 +61,7 @@ DI, hosted service, handler 모델을 제공하는 것이다.
 | 개념 | 다루는 곳 | 다른 문서에서는 |
 |------|----------|---------------|
 | 인터페이스, attribute, context 전체 정의 | handler-interfaces | 교차 참조 |
-| 서비스 등록 (AddZLinkFramework), lifecycle | service-messaging | 필요하면 링크 |
+| channel 등록 (AddZLinkFramework), lifecycle | service-messaging | 필요하면 링크 |
 | handler/client 사용 예시, dispatch 흐름 | service-messaging, 샘플 | |
 | SPOT 개념, 등록, lifecycle | aspnet-core-spot | 필요하면 링크 |
 | Registry 구동, topology 조회 | aspnet-core-registry | 필요하면 링크 |
@@ -70,11 +70,12 @@ DI, hosted service, handler 모델을 제공하는 것이다.
 
 - `ASP.NET Core`의 DI와 hosted service 모델에 맞춘다.
 - handler, client, filter 생성은 같은 `.NET DI` 컨테이너를 기준으로 맞춘다.
-- `service_name` 기준 direct call을 기본으로 둔다.
-- gateway나 전용 load balancer 없이 service별 discovery channel로 직접 호출한다.
+- `channel_name` 기준 direct call을 기본으로 둔다.
+- gateway나 전용 load balancer 없이 channel별 `Discovery`로 직접 호출한다.
 - `SPOT`도 별도 low-level runtime이 아니라, framework lifecycle 안에서
   다룰 수 있어야 한다.
-- 일반 service messaging은 `serviceName` 호출과 `router rid` direct 호출을 가진다.
+- 일반 channel messaging은 `channelName` 호출을 기본으로 두고, `rid` 지정은
+  SPOT spot-to-spot 경로에만 남긴다.
 - `SPOT` high-level 표면은 current channel publish/subscribe와 attach된 channel
   send/request를 먼저 설명한다.
 - `IZLinkClient`와 `IZLinkSpotClient`는 서로 다른 C API를 감싸는 별도 인터페이스다.

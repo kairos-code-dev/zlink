@@ -25,7 +25,7 @@ play 서버 개발자는 raw socket을 직접 열고 multipart framing을 손으
 
 - `outgameClient.request("profile.get", req)`
 - `accountClient.request("inventory.get", req)`
-- 서비스별 client를 DI 또는 server bootstrap에서 받아 사용
+- channel별 client를 DI 또는 server bootstrap에서 받아 사용
 
 서버 쪽 api 서버 개발자는 아래와 같은 형태를 원한다.
 
@@ -35,7 +35,7 @@ play 서버 개발자는 raw socket을 직접 열고 multipart framing을 손으
 
 ## 3. 서비스 묶음에 대한 요구
 
-이 시나리오에서는 대상 서버가 **서비스 단위로 묶여야** 한다.
+이 시나리오에서는 대상 서버가 **channel 단위로 묶여야** 한다.
 
 예를 들면 아래처럼 나뉠 수 있다.
 
@@ -43,22 +43,22 @@ play 서버 개발자는 raw socket을 직접 열고 multipart framing을 손으
 - `api.inventory`
 - `api.payment`
 
-play 서버가 여러 api 서비스군에 요청을 보내야 한다면, 내부적으로는 서비스별
+play 서버가 여러 api channel에 요청을 보내야 한다면, 내부적으로는 channel별
 outbound client나 connection pool이 필요하다. 이때 사용자가 raw `DEALER`
-소켓을 직접 들고 있게 만들기보다, `ZLink Framework`가 서비스 이름 기준
+소켓을 직접 들고 있게 만들기보다, `ZLink Framework`가 channel 이름 기준
 client를 관리하는 편이 낫다.
 
 이 모델에서는 중간 gateway나 전용 로드밸런서를 별도로 두지 않아도 된다.
-play 서버는 `api.profile`, `api.inventory` 같은 `service_name`만 기준으로
+play 서버는 `api.profile`, `api.inventory` 같은 `channel_name`만 기준으로
 요청하고, 실제 provider 위치와 선택은 Discovery와 adapter가 숨긴다.
 
 ## 4. 필요한 능력
 
 - request-response
-- service_name 단위 provider grouping
+- channel_name 단위 provider grouping
 - Discovery를 통한 대상 자동 발견
 - 필요하면 수동 endpoint 설정
-- service별 client 분리
+- channel별 client 분리
 - 낮은 지연과 높은 동시성
 - 게임 서버에서 다루기 쉬운 timeout과 cancellation
 
@@ -68,7 +68,7 @@ play 서버는 `api.profile`, `api.inventory` 같은 `service_name`만 기준으
 자연스럽다. 다만 그 구조는 내부 설명으로만 남기고, 공용 API는 아래 개념으로
 올리는 편이 낫다.
 
-- `service client`
+- `channel client`
 - `request handler`
 - `message name`
 - `request context`
@@ -78,7 +78,7 @@ play 서버는 `api.profile`, `api.inventory` 같은 `service_name`만 기준으
 
 ## 6. 이 use case가 설계에 주는 요구
 
-- 서비스 이름과 client 구분이 중요하다.
+- channel 이름과 client 구분이 중요하다.
 - 하나의 play 서버가 여러 논리 서비스에 동시에 붙는 구성을 자연스럽게 다뤄야
   한다.
 - `SPOT` 기반 stage 구조와 충돌하지 않아야 한다.

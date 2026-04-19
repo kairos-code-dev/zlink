@@ -1,6 +1,6 @@
 [스펙 목차](../../README.ko.md)
 
-# Draft -- ZLink Framework Service Topology
+# Draft -- ZLink Framework Channel Topology
 
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, topology를 사용자에게 어떻게 숨기고 내부에 어떻게
@@ -9,12 +9,12 @@
 ## 1. 목적
 
 `ZLink Framework`는 zlink의 raw topology를 없애는 계층이 아니라, 그것을
-**서비스 단위 개념으로 다시 묶는 계층**이다.
+**channel 단위 개념으로 다시 묶는 계층**이다.
 
 즉 내부 구현은 `ROUTER`, `PUB`, `SUB`, `SPOT`, `STREAM`를 계속 쓸 수 있지만,
 사용자에게는 아래 개념이 먼저 보여야 한다.
 
-- service name
+- channel name
 - request client
 - message handler
 - event publisher
@@ -23,9 +23,7 @@
 
 ## 2. channel grouping
 
-현재 초안은 provider grouping의 기준을 `channel_name`으로 본다. 현재 구현과
-공개 헤더에는 `service_name` 필드 이름이 남아 있는 영역이 있으나, 의미는
-channel 쪽에 더 가깝다.
+현재 초안은 provider grouping의 기준을 `channel_name`으로 본다.
 
 예를 들면 아래처럼 묶는다.
 
@@ -63,7 +61,7 @@ section 3을 참고한다.
 | `stream` | `STREAM` |
 | `worker-dispatch` | 별도 조합 모델 |
 
-현재 SPOT topology는 예전처럼 "하나의 `SpotNode`에 여러 service surface를 붙이는
+현재 SPOT topology는 예전처럼 "하나의 `SpotNode`에 여러 channel surface를 붙이는
 모델"보다, "attach된 SPOT `Discovery`가 node의 active channel view를 소유하는
 모델"로 읽는 편이 맞다. 즉:
 
@@ -78,14 +76,14 @@ section 3을 참고한다.
 
 ## 4. playhouse use case에 대한 해석
 
-`playhouse` 시나리오에서는 play 서버가 여러 api 서비스군에 요청을 보내야 할 수
-있다. 이때 사용자가 생각하는 단위는 보통 socket이 아니라 서비스 client다.
+`playhouse` 시나리오에서는 play 서버가 여러 api channel에 요청을 보내야 할 수
+있다. 이때 사용자가 생각하는 단위는 보통 socket이 아니라 channel client다.
 
 예를 들면 아래처럼 보는 편이 자연스럽다.
 
 - `IZLinkClient`가 `api.profile`에 요청하면 framework는 `api.profile` channel을 쓴다.
 - `IZLinkClient`가 `api.inventory`에 요청하면 framework는 `api.inventory` channel을 쓴다.
-- api 서버는 각 service group에 대해 request handler를 제공한다.
+- api 서버는 각 channel group에 대해 request handler를 제공한다.
 
 즉 outward API는 공용 client 하나로 보이더라도, 내부 runtime은 channel마다 별도
 outbound socket을 가질 수 있다. 현재 초안은 이 channel별 outbound socket 구조를

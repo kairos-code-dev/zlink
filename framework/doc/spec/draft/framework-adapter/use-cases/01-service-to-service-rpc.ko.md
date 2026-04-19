@@ -26,7 +26,7 @@
 - 클라이언트 쪽에서는 DI로 주입된 client 또는 proxy를 통해 요청을 보낸다.
 - 요청 하나마다 header, body, timeout, metadata를 다룰 수 있다.
 - body는 `protobuf` 또는 `json`처럼 codec에 따라 직렬화된다.
-- 대상 서버 주소를 직접 적지 않고, 서비스 이름 기준으로 보낼 수 있다.
+- 대상 서버 주소를 직접 적지 않고, channel 이름 기준으로 보낼 수 있다.
 
 즉 사용자는 "몇 번 포트의 어느 peer에게 connect할까"보다
 "`profile.get` 요청을 어디로 보낼까"를 먼저 생각한다.
@@ -34,16 +34,16 @@
 여기서 중요한 차별점은 위치투명성을 위해 별도 gateway를 강제하지 않는다는
 점이다. 기존 웹 시스템에서는 서비스 주소를 숨기기 위해 gateway를 두는 경우가
 많고, provider 선택을 위해 전용 load balancer를 앞단에 두기도 한다.
-현재 방향에서는 `service_name`과 service별 `Discovery` channel만으로 직접
+현재 방향에서는 `channel_name`과 channel별 `Discovery`만으로 직접
 location-transparent 호출이 가능해야 한다.
 
 ## 3. 필요한 능력
 
 - 요청/응답 상호작용
-- 서비스 이름 기반 대상 선택
+- channel 이름 기반 대상 선택
 - 수동 연결과 Discovery 연결 둘 다 지원
 - gateway나 전용 로드밸런서 없이도 위치투명 호출 가능
-- service별 channel 내부의 `rid` 집합 관리
+- channel별 `rid` 집합 관리
 - timeout, correlation, deadline 전달
 - 공통 에러 모델
 - codec 교체
@@ -65,9 +65,9 @@ location-transparent 호출이 가능해야 한다.
 공용 개념은 아래처럼 잡는 편이 낫다.
 
 - `request-response`
-- `service client`
+- `channel client`
 - `message handler`
-- `service name`
+- `channel name`
 
 ## 6. 이 use case가 설계에 주는 요구
 

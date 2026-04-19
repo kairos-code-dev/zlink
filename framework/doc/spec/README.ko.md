@@ -13,19 +13,19 @@
 영역을 위한 문서 자리다.
 
 이 계층이 노리는 중요한 장점 하나는, 일반적인 웹 서버 환경에서 위치투명성과
-service 단위 직접 호출을 위해 흔히 두는 별도 gateway나 전용 로드밸런서 없이도
-`service_name` 기준으로 직접 호출할 수 있다는 점이다.
+channel 단위 직접 호출을 위해 흔히 두는 별도 gateway나 전용 로드밸런서 없이도
+`channel_name` 기준으로 직접 호출할 수 있다는 점이다.
 
-즉 응용은 gateway 주소나 load balancer 주소보다 논리 서비스 이름을 기준으로
-요청을 보낸다. framework runtime은 접근하는 service마다 별도 channel을 두고,
-그 channel이 해당 service view의 `Discovery`와 outbound socket을 관리하는
+즉 응용은 gateway 주소나 load balancer 주소보다 논리 channel 이름을 기준으로
+요청을 보낸다. framework runtime은 접근하는 channel마다 별도 outbound runtime을 두고,
+그 runtime이 해당 channel view의 `Discovery`와 outbound socket을 관리하는
 방향을 기본으로 본다.
 
 현재 초안은 아래 공개 기반 기능을 전제로 설명한다.
 
-- Discovery 기반 서비스 뷰와 자동 연결
+- Discovery 기반 channel view와 자동 연결
 - Registry topology snapshot/query 및 원격 `RegistryQueryClient`
-- `service_name` 기준 direct request/reply
+- `channel_name` 기준 direct request/reply
 - `SPOT` publish/subscribe와 routed request/reply
 - raw `STREAM`의 packet callback 같은 low-level helper
 

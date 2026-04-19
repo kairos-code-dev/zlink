@@ -9,8 +9,8 @@
 ## 1. 한 줄 정의
 
 `ZLink Framework`는 zlink 바인딩 위에 올라가서, 기존 애플리케이션 프레임워크에서
-**gateway나 전용 로드밸런서 없이도** `service_name` 기준의 직접 서비스 호출,
-pub/sub, `SPOT`, `STREAM`, service discovery를 사용할 수 있게 하는 상위
+**gateway나 전용 로드밸런서 없이도** `channel_name` 기준의 직접 channel 호출,
+pub/sub, `SPOT`, `STREAM`, channel discovery를 사용할 수 있게 하는 상위
 계층이다.
 
 ## 2. 무엇을 제공하는가
@@ -22,9 +22,9 @@ pub/sub, `SPOT`, `STREAM`, service discovery를 사용할 수 있게 하는 상�
 - pub/sub integration
 - spot integration
 - stream integration
-- service discovery
+- channel discovery
 - registry topology inspection
-- service별 discovery channel
+- channel별 Discovery
 - framework-friendly handler / client / event API
 
 즉 raw socket과 low-level discovery를 프레임워크 사용자가 직접 다루지 않고도,
@@ -72,7 +72,7 @@ pub/sub, `SPOT`, `STREAM`, service discovery를 사용할 수 있게 하는 상�
 ### 4.1 잘 대체하는 것
 
 - 내부 서비스 간 위치투명 호출
-- 서비스 이름 기반 provider 선택
+- channel 이름 기반 provider 선택
 - 일부 내부 gateway 또는 내부 load balancing 계층
 - request-response와 event fan-out을 함께 쓰는 내부 통신
 

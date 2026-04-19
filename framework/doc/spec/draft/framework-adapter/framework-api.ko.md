@@ -37,10 +37,10 @@
 
 - 공용 outbound client를 DI로 주입한다.
 - 요청 메서드는 async 중심으로 제공한다.
-- codec, timeout, target service를 설정할 수 있다.
-- gateway 주소나 load balancer 주소 대신 `service_name` 기준 호출을 기본으로
+- codec, timeout, target channel을 설정할 수 있다.
+- gateway 주소나 load balancer 주소 대신 `channel_name` 기준 호출을 기본으로
   삼는다.
-- framework runtime은 접근하는 service마다 별도 outbound channel을 관리할 수
+- framework runtime은 접근하는 channel마다 별도 outbound runtime을 관리할 수
   있어야 한다.
 - 단순 unary request 외에 event publish와 필요하면 aggregate helper를 분리할 수
   있어야 한다.
@@ -90,8 +90,8 @@ public sealed class ProfileHandler
 이 예시에서 중요한 점은 handler가 raw header part를 직접 받지 않는다는 점이다.
 필요한 metadata는 `ZlinkContext`에서 조회한다.
 
-또한 outbound 호출은 framework가 service별 channel을 내부에서 lazy하게 만들어
-관리하는 쪽이 기본 방향이다.
+또한 outbound 호출은 framework가 channel별 outbound runtime을 내부에서 lazy하게
+만들어 관리하는 쪽이 기본 방향이다.
 
 보다 자세한 `.NET` 초안은 [dotnet/README.ko.md](./dotnet/README.ko.md)를 참고한다.
 

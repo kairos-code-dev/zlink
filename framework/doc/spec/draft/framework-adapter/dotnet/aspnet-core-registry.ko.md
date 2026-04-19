@@ -8,9 +8,9 @@
 
 ## 1. 목표
 
-`ZLink Framework`의 service discovery는 Registry 서버가 중심이다.
-Registry는 서비스 등록, heartbeat, topology broadcast를 담당하며,
-`Discovery`가 이 Registry에 연결해서 service view를 자동으로 갱신한다.
+`ZLink Framework`의 channel discovery는 Registry 서버가 중심이다.
+Registry는 channel 등록, heartbeat, topology broadcast를 담당하며,
+`Discovery`가 이 Registry에 연결해서 channel view를 자동으로 갱신한다.
 
 현재 C API와 `.NET` binding은 Registry를 두 가지 방식으로 사용할 수 있게
 설계되어 있다.
@@ -77,7 +77,7 @@ Registry만 올리고 서비스 handler는 등록하지 않는 구성도 가능�
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ServiceId = "api";
+    options.ChannelId = "api";
     options.NodeName = "api-1";
     options.UseDiscovery(registry =>
     {
@@ -126,10 +126,10 @@ HTTP로 함께 올릴 수 있다. 이때 topology 정보를 HTTP endpoint에서
 
 ### 4.3 왜 AddZLinkFramework와 분리하는가
 
-Registry는 service runtime의 부속이 아니다. 오히려 service runtime이
+Registry는 channel runtime의 부속이 아니다. 오히려 channel runtime이
 Registry에 의존한다. 이 관계가 등록 API에도 드러나야 한다.
 
-- `AddZLinkFramework(...)` -- 서비스 런타임. Discovery에 연결하는 쪽이다.
+- `AddZLinkFramework(...)` -- channel 런타임. Discovery에 연결하는 쪽이다.
 - `AddZLinkRegistry(...)` -- Registry 서버. Discovery가 연결하는 대상이다.
 
 둘을 한 호출에 섞으면 embedded 전용 API로 보이기 쉽다.
@@ -204,7 +204,7 @@ embedded 구성에서 `AddZLinkFramework(...)`의 hosted service가 Discovery를
 
 host shutdown 시 아래 순서를 따른다.
 
-1. service runtime shutdown (handler dispatcher 종료, outbound channel 정리)
+1. channel runtime shutdown (handler dispatcher 종료, outbound channel 정리)
 2. Registry shutdown (`Registry.Dispose()`)
 3. `Context` 정리
 
@@ -238,7 +238,7 @@ public interface IZLinkRegistryQuery
     RegistryTopologyEntry[] TopologyQuery(
         RegistryTopologyFilter? filter = null);
     MemberPeerEntry[] MemberPeers(
-        ServiceType serviceType, string serviceName);
+        ChannelType channelType, string channelName);
 }
 ```
 
@@ -334,7 +334,7 @@ builder.Services.AddZLinkRegistry(registry =>
 // --- 서비스 런타임 ---
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ServiceId = "api";
+    options.ChannelId = "api";
     options.NodeName = "api-1";
     options.UseDiscovery(discovery =>
     {
@@ -403,7 +403,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ServiceId = "dashboard";
+    options.ChannelId = "dashboard";
     options.NodeName = "dashboard-1";
     options.UseDiscovery(discovery =>
     {

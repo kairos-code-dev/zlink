@@ -69,7 +69,8 @@ publish/subscribe는 그 안에서 함께 쓰일 수 있는 한 가지 사용 �
 - 현재 SPOT channel 안에서는 topic publish/subscribe를 쓴다.
 - 다른 channel 호출은 attach된 channel client를 통해 보낸다.
 - `SpotNode.router`는 peer topology를 위해 남기되, public high-level API에서
-  `targetRid + spotRid`를 직접 넣는 모델은 기본으로 두지 않는다.
+  `targetRid + spotRid`를 직접 넣는 모델은 spot-to-spot routed 경로에만 남기고
+  기본 표면으로 두지 않는다.
 - 외부 `PUB -> Spot` 입력은 generic pub/sub attach가 아니라 별도 ingress 표면으로
   분리한다.
 
@@ -143,7 +144,7 @@ framework 표면으로 끌어올리는 성격이 더 강하다.
 `Spot` 인스턴스는 `SpotNode`가 생성하고 소유한다. handler는 이미 존재하는 spot으로
 들어오는 request, publish, subscribe를 처리할 뿐이다.
 
-이 기준에서 manager는 `serviceName`이 아니라 현재 앱의 `SpotNode`를 대상으로
+이 기준에서 manager는 `channelName`이 아니라 현재 앱의 `SpotNode`를 대상으로
 동작하는 편이 더 자연스럽다.
 
 ```csharp
@@ -205,16 +206,27 @@ framework 기본 계약처럼 적기보다 wrapper 확장 후보로 따로 다�
 - 현재 SPOT channel 안의 topic publish
 - attach된 다른 channel client를 통한 channel send/request
 
-즉 high-level `SPOT` 표면은 `targetRid + spotRid` direct addressing보다,
+즉 high-level `SPOT` 표면은 `targetRid + spotRid` routed 호출보다,
 `SendChannelAsync(...)` / `RequestChannelAsync(...)` 같은 channel 호출이 먼저
 보이는 편이 더 맞다. `SpotNode.router`는 peer topology를 위해 남지만, 그 경로를
-공개 high-level API에 그대로 드러내는 것은 현재 방향으로 보지 않는다.
+공개 high-level API의 기본 표면으로 두는 것은 현재 방향으로 보지 않는다.
 
 `IZLinkSpotClient` 인터페이스 전체 정의는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 5.2를
 참고한다. 현재 방향에서는 `SendChannelAsync(...)`,
 `RequestChannelAsync(...)`, `PublishAsync(...)`, spot 문맥 timer를 함께 제공하는
 쪽이 더 자연스럽다.
+
+현재 `.NET` 바인딩의 raw `Spot` 표면도 이 구분을 그대로 가진다.
+
+- channel 이름 기준 호출:
+  `Spot.SendChannel(...)`, `Spot.RequestChannelAsync(...)`
+- SPOT routed 호출:
+  `Spot.SendToRouter(...)`, `Spot.RequestToRouterAsync(...)`,
+  `Spot.ReplyToSpot(...)`
+
+즉 "spot용 routed 함수"와 "channelName으로 호출하는 함수"가 둘 다 있고, 둘은
+서로 다른 경로를 뜻한다.
 
 예를 들면 아래처럼 쓸 수 있다.
 
@@ -238,7 +250,7 @@ var reply = await client.RequestChannelAsync(
 
 하지만 이것을 `IZLinkClient` 위에 `IZLinkSpotClient`를 얹는 관계로 설명하면 안
 된다. 두 인터페이스는 하부에서 서로 다른 C API를 감싼다. 현재 방향에서는
-`IZLinkClient`가 일반 service messaging을 맡고, `IZLinkSpotClient`는 current
+`IZLinkClient`가 일반 channel messaging을 맡고, `IZLinkSpotClient`는 current
 SPOT channel publish와 다른 channel send/request를 맡는 식으로 책임을 나누는
 편이 더 자연스럽다.
 
@@ -246,7 +258,7 @@ SPOT channel publish와 다른 channel send/request를 맡는 식으로 책임�
 
 ### 6.1 topic publish
 
-`IZLinkSpotClient`는 direct call과 publish를 함께 가진다
+`IZLinkSpotClient`는 spot-to-spot routed call과 publish를 함께 가질 수 있다
 ([handler-interfaces.ko.md](./handler-interfaces.ko.md) section 5.2 참고).
 이는 `SPOT` 쪽이 두 기능을 함께 쓰는 경우가 많기 때문이다.
 
@@ -255,8 +267,8 @@ SPOT channel publish와 다른 channel send/request를 맡는 식으로 책임�
 - `spotRid`: 특정 room/stage/zone 인스턴스를 가리키는 논리 주소
 - `topic`: 여러 subscriber가 함께 듣는 fan-out 주제 이름
 
-현재 topology 초안에서는 framework 기본 표면을 `spotRid -> targetRid` 해석
-기능 중심으로 설명하지 않는다. high-level framework 문서는 아래 두 축을 먼저
+현재 topology 초안에서는 framework 기본 표면을 `targetRid + spotRid` routed
+호출 중심으로 설명하지 않는다. high-level framework 문서는 아래 두 축을 먼저
 보여 주는 편이 더 자연스럽다.
 
 - 같은 channel 안의 publish/subscribe
@@ -321,7 +333,7 @@ public sealed class StageSpot : ZLinkSpot
 
 `SPOT`이 FPS 같은 게임의 room으로 쓰이더라도, 이 모델 자체가 곧바로 과한
 오버헤드를 만든다고 보지는 않는다. 다만 `SPOT` 쪽 메시지 handler 호출은 room
-핫패스로 쓰일 수 있으므로, 일반 service messaging보다 더 강한 성능 기준을 둬야
+핫패스로 쓰일 수 있으므로, 일반 channel messaging보다 더 강한 성능 기준을 둬야
 한다.
 
 - reflection은 registration 단계까지만 허용한다.
@@ -351,17 +363,17 @@ public sealed class StageSpot : ZLinkSpot
 어떻게 캐시하고 줄일 것인가"를 더 중요한 원칙으로 본다. 여기서 말하는 강한
 최적화 기준은 `SPOT` packet 처리 쪽에 우선 적용된다. 반대로 일반 socket/service
 메시지 handler가 성능이 낮아도 된다는 뜻은 아니다. 차이는 "성능을 포기해도 된다"가
-아니라, 일반 service messaging 쪽은 `SPOT` room 핫패스보다 편의 기능을 조금 더
+아니라, 일반 channel messaging 쪽은 `SPOT` room 핫패스보다 편의 기능을 조금 더
 허용할 여지가 있다는 점에 가깝다.
 
 ## 8. SPOT과 direct call의 관계
 
-`ZLink Framework`는 direct service call만 제공하는 계층처럼 보이면 안 된다.
+`ZLink Framework`는 direct channel call만 제공하는 계층처럼 보이면 안 된다.
 `SPOT`도 framework 안에서 동등한 축으로 다뤄야 한다.
 
 즉 아래 둘이 함께 있어야 한다.
 
-- `serviceName` 기반 일반 service messaging
+- `channelName` 기반 일반 channel messaging
 - `SPOT` 기반 current channel publish/subscribe와 channel send/request
 
 또한 현재 하부 topology는 `SpotNode.router` peer 경로와 attach된 channel client
@@ -376,6 +388,10 @@ public sealed class StageSpot : ZLinkSpot
 - play -> api 는 direct call
 - stage/state sync 는 `SPOT`
 
+또한 `rid`를 직접 넣는 routed 호출은 SPOT spot-to-spot 경로에만 남는다.
+특정 channel의 `ROUTER(server)`를 `rid`로 직접 지정해 호출하는 모델은 현재
+방향으로 보지 않는다.
+
 즉 `SPOT`은 pub/sub만으로 설명하면 부족하고, room/stage/zone 같은 논리 인스턴스
 모델과 channel publish/send/request, 그리고 `SpotNode`가 spot 인스턴스를 생성하고
 소유하는 lifecycle까지 함께 설명해야 한다.
@@ -385,10 +401,6 @@ public sealed class StageSpot : ZLinkSpot
 최신 topology 초안에서는 `SpotNode`가 channel 이름을 직접 소유하지 않는다.
 attach된 SPOT channel `Discovery`가 active channel view를 공급하고, 그 view가
 같은 channel의 peer mesh 범위를 닫는다.
-
-다만 현재 구현과 공개 헤더에는 여전히 `service_name` 필드 이름이 남아 있는
-영역이 있다. framework 문서에서는 이 표기를 "현재 구현 이름"으로 읽고, 의미는
-channel view 쪽에 더 가깝다고 설명하는 편이 맞다.
 
 예를 들어 attach된 discovery view가 `game.stage`라면, 그 `SpotNode`는
 `game.stage` channel mesh 안에서 동작한다고 이해하면 된다.

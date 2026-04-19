@@ -47,28 +47,32 @@
 
 ## Substrate vs Public Binding Surface
 
-bindings 구현은 앞으로 core가 제공하는 더 낮은 수준의 helper substrate C API
-위에 올라갈 수 있다. 다만 bindings 사용자에게 노출되는 public API는 그 helper
-시그니처를 그대로 따라야 한다는 뜻이 아니다.
+bindings 구현은 core가 제공하는 helper substrate C API(`*_part` 계열) 위에 올라간다.
+bindings 사용자에게 노출되는 public API는 그 helper 시그니처를 그대로 따라야 한다는
+뜻이 아니다. 다만 내부 구현이 어떤 core 함수를 호출하는가는 아래 규칙으로 고정한다.
 
 이 문서는 아래 경계를 기준으로 해석한다.
 
-- `core/include/zlink.h` 와 그에 대응하는 helper substrate 계약은
-  bindings 구현을 위한 native substrate다.
+- `core/include/zlink.h` 의 `*_part` helper substrate 계약은
+  bindings 구현이 반드시 사용해야 하는 native substrate다.
 - `doc/spec/bindings/` 아래 문서는 각 언어 binding이 외부에 제공하는
   **public convenience contract**만 정의한다.
 
-즉 binding public API는 helper substrate와 모양이 달라도 된다.
+즉 binding public API는 helper substrate와 모양이 달라도 된다. 그러나 내부에서
+core를 호출하는 방식은 달라서는 안 된다.
 
-예를 들면 아래가 허용된다.
+예를 들면 아래 구조가 요구된다.
 
 - core substrate는 `*_part`, `has_more`, caller-provided `zlink_msg_t`
-  같은 더 primitive한 표면을 가진다.
+  같은 primitive한 표면을 가진다.
 - Java, `.NET`, `Go`, `Rust`, `Python`, `Node`, `C++`, C binding은 그 위에
   `Received`, `Message`, collection, request/reply convenience 같은
-  언어 친화적 public API를 다시 올린다.
+  언어 친화적 public API를 올린다.
+- public API 내부에서 core를 직접 호출하는 경로는 반드시 `*_part` substrate를 사용한다.
+  aggregate 형태의 core 함수(`zlink_send`, `zlink_recv`, `zlink_publish` 등)를
+  binding 내부에서 호출하면 안 된다.
 
-다만 아래 조건은 반드시 지켜야 한다.
+아래 조건은 반드시 지켜야 한다.
 
 - binding public API의 의미 계약은 core 계약으로 설명 가능해야 한다.
 - helper substrate에만 있는 low-level 세부사항을 binding 사용자에게 직접 노출하지
@@ -79,6 +83,62 @@ bindings 구현은 앞으로 core가 제공하는 더 낮은 수준의 helper su
 
 즉 bindings 정책 문서의 기준은 "helper가 어떻게 생겼는가"가 아니라,
 "binding 사용자가 최종적으로 어떤 public contract를 보게 되는가"이다.
+
+## `*_part` Substrate 사용 의무 (Required)
+
+send, request, reply, publish, subscribe 계열 함수의 내부 구현은 반드시
+core의 `*_part` helper substrate를 사용해야 한다. 이는 `Required` 규칙이다.
+
+### 적용 대상
+
+아래 계열에 해당하는 모든 binding 내부 구현 경로에 적용한다.
+
+- send / trySend (단일 part, 복수 part, routed 포함)
+- recv / tryRecv (단일 part, 복수 part, routed 포함)
+- request / tryRequest (dealer, router, SPOT 계열 포함)
+- reply (router, SPOT 계열 포함)
+- publish / tryPublish
+- subscribe / trySubscribe (SPOT subscribe 포함)
+
+### 이유
+
+core가 aggregate 함수와 `*_part` substrate를 모두 제공하던 시기에는 aggregate 함수를
+직접 호출하는 것이 허용됐다. 그러나 이 구조는 아래 비용을 만든다.
+
+- core가 먼저 native aggregate (parts 배열) 를 구성한다.
+- binding이 그 aggregate를 다시 언어별 객체(`Message[]`, `Received`, value object)로
+  변환한다.
+- 결과적으로 "native aggregate 생성 → 언어 객체 aggregate 생성"이 연속으로 일어나며,
+  이 이중 변환 비용이 hot path의 실질적인 병목이 된다.
+
+`*_part` substrate를 직접 사용하면 binding이 part 하나씩 언어 객체로 직접 변환할 수
+있고, native aggregate 생성 단계를 완전히 제거할 수 있다. 이는 특히 Java, .NET처럼
+객체 materialization 비용이 큰 언어에서 측정 가능한 성능 차이를 만든다.
+
+이 규칙은 구조 정리 목적이 아니라 **런타임 성능 비용을 실질적으로 줄이기 위한** 요구사항이다.
+
+### public API 형태는 유지
+
+이 규칙은 내부 구현 기반에 관한 것이다. binding 사용자가 보는 public API 형태는
+이 규칙과 무관하게 각 언어 spec이 정한 대로 유지한다.
+
+- 사용자는 `send(List<Message>)`, `recv()`, `request(...)` 같은 언어 친화적 API를 그대로 쓴다.
+- `*_part` 호출 시퀀스는 binding 내부 구현 세부사항이며, 사용자에게 노출하지 않는다.
+
+### 준수 확인
+
+구현 리뷰와 검증 단계에서 아래를 확인한다.
+
+- binding 소스에서 aggregate 심볼(`zlink_send`, `zlink_recv`, `zlink_send_rid`,
+  `zlink_publish`, `zlink_subscribe`, `zlink_router_recv`, `zlink_dealer_request`,
+  `zlink_router_request`, `zlink_router_reply`, `zlink_spot_send_*`,
+  `zlink_spot_request_*`, `zlink_spot_reply_*`, `zlink_spot_subscribe` 등)을
+  직접 호출하는 경로가 없어야 한다.
+- 대신 대응하는 `*_part` 심볼(`zlink_send_part`, `zlink_recv_part`,
+  `zlink_send_part_rid`, `zlink_publish_part`, `zlink_subscribe_part`,
+  `zlink_router_recv_part`, `zlink_dealer_request_part`, `zlink_router_request_part`,
+  `zlink_router_reply_part`, `zlink_spot_*_part` 등)을 사용해야 한다.
+- 미준수 시 리뷰에서 차단된다.
 
 ## Public vs Internal API Boundary
 
@@ -202,7 +262,9 @@ public shape를 기준으로 고정한다.
 - backlog 항목은 현재 미준수 가능성을 추적하기 위한 것이며, 문서 본문의 의미 계약을 대체하지 않는다.
 
 ## 핵심 원칙
-- 코어 계약은 `zlink.h`가 단일 기준이다.
+- 코어 계약은 `zlink.h`의 `*_part` substrate가 단일 기준이다.
+- send/recv/request/reply/publish/subscribe 계열의 내부 구현은 반드시 core `*_part`
+  substrate를 사용한다. aggregate 형태의 core 함수를 binding 내부에서 직접 호출하지 않는다.
 - public API는 multipart 모델을 기준으로 설계한다.
 - blocking과 non-blocking은 이름으로 구분할 수 있다.
 - 동일한 능력을 여러 방식으로 중복 노출하지 않는다.

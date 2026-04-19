@@ -32,7 +32,7 @@
 | `scatter-gather` | 여러 대상에 요청을 보내고 결과를 모은다 | 낮음 |
 
 각 모델이 어떤 내부 transport에 매핑되는지는
-[service-topology.ko.md](./service-topology.ko.md)의 section 3을 참고한다.
+[channel-topology.ko.md](./channel-topology.ko.md)의 section 3을 참고한다.
 
 ## 3. 모델별 기본 의미
 
@@ -48,7 +48,7 @@
 - 다만 같은 SPOT mesh 안의 `spot-to-spot` request/reply는
   `ROUTER <-> ROUTER` routed 경로로 설명하는 편이 맞다.
 - 다만 최신 SPOT topology 초안에서는 high-level public surface에서
-  `targetRid + spotRid` direct addressing을 기본으로 두지 않는다. current SPOT
+  `targetRid + spotRid` routed 호출을 기본으로 두지 않는다. current SPOT
   channel 안의 상호작용과 다른 channel 호출은 분리해서 설명하는 편이 더
   자연스럽다.
 
@@ -64,7 +64,7 @@
   둔다.
 - 다만 같은 SPOT mesh 안의 `spot-to-spot` send는
   `ROUTER <-> ROUTER` routed 경로로 설명하는 편이 맞다.
-- SPOT 쪽은 direct addressing보다 attach된 channel client를 통한
+- SPOT 쪽은 routed 호출보다 attach된 channel client를 통한
   `SendChannelAsync(...)` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
 
 ### 3.3 publish-subscribe
@@ -97,7 +97,7 @@
 
 - framework가 직접 통합할 transport 축은 네 가지로 한정한다. 구체적인 축
   정의는 [overview.ko.md](./overview.ko.md)의 section 2를, 각 모델과의 매핑은
-  [service-topology.ko.md](./service-topology.ko.md)의 section 3을 참고한다.
+  [channel-topology.ko.md](./channel-topology.ko.md)의 section 3을 참고한다.
 - 서버 간 `send/request`는 프레임워크 사용자에게 HTTP handler 매핑과 비슷한
   방식으로 보여야 한다.
 - 이 경로에서 wire header는 공용 handler 시그니처에 직접 노출하지 않는다.

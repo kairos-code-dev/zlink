@@ -25,7 +25,7 @@
 | 2 | [use-cases/README.ko.md](./use-cases/README.ko.md) | use case별 문서 목록과 관리 규칙. 모든 설계는 use case에서 출발한다. |
 | 3 | [interaction-model.ko.md](./interaction-model.ko.md) | 사용자에게 보이는 상호작용 모델 분류. request-response, command, publish-subscribe 등 각 모델의 의미를 정의한다. |
 | 4 | [message-model.ko.md](./message-model.ko.md) | `header + body` 메시지 구조, header 필드, body codec 방향. wire 수준 메시지 형식을 다룬다. |
-| 5 | [service-topology.ko.md](./service-topology.ko.md) | service grouping, Discovery, 수동 연결, 상호작용 모델과 내부 transport 매핑. 내부 배선이 어떻게 구성되는지 다룬다. |
+| 5 | [channel-topology.ko.md](./channel-topology.ko.md) | channel grouping, Discovery, 수동 연결, 상호작용 모델과 내부 transport 매핑. 내부 배선이 어떻게 구성되는지 다룬다. |
 | 6 | [framework-api.ko.md](./framework-api.ko.md) | `ASP.NET Core`, `Spring`, `NestJS`별 API 표면 방향. 각 프레임워크에서 handler와 client가 어떤 모양으로 보이는지 다룬다. |
 | 7 | [dotnet/README.ko.md](./dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 상세 초안. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
 | 8 | [usecase-validation.ko.md](./usecase-validation.ko.md) | 각 use case를 현재 초안이 얼마나 설명하는지 점검하는 체크리스트. |
@@ -44,7 +44,7 @@ API 표면(6-7)으로 구체적인 모양을 보고, 마지막으로 검증(8)�
 | 제품 정의, 차별점, transport 축, 우선 범위 | overview | 필요하면 overview를 링크 |
 | 상호작용 모델 분류와 모델별 의미 | interaction-model | 필요하면 interaction-model을 링크 |
 | 메시지 구조, header 필드, codec | message-model | 필요하면 message-model을 링크 |
-| service grouping, Discovery, 내부 매핑 | service-topology | 필요하면 service-topology를 링크 |
+| channel grouping, Discovery, 내부 매핑 | service-topology | 필요하면 service-topology를 링크 |
 | 프레임워크별 API 표면, DI, handler 등록 | framework-api, dotnet/ | 필요하면 해당 문서를 링크 |
 
 ## 4. 문서 작성 원칙

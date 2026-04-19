@@ -25,7 +25,7 @@
 
 ## 2. 기본 방향
 
-`STREAM`은 일반 service messaging handler와 같은 감각으로 억지로 맞추지 않는다.
+`STREAM`은 일반 channel messaging handler와 같은 감각으로 억지로 맞추지 않는다.
 특히 아래 원칙을 둔다.
 
 - raw payload chunk를 직접 다루고 재조립까지 application이 맡고 싶으면 raw handler를 쓴다.
